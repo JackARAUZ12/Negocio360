@@ -19,7 +19,6 @@
     --accent-glow: rgba(59,130,246,0.25);
     --success: #10B981;
     --error: #EF4444;
-    --warning: #F59E0B;
   }
 
   body {
@@ -42,8 +41,7 @@
     width: 600px; height: 600px;
     background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%);
     top: -100px; right: -100px;
-    pointer-events: none;
-    z-index: 0;
+    pointer-events: none; z-index: 0;
   }
   body::after {
     content: '';
@@ -51,11 +49,10 @@
     width: 500px; height: 500px;
     background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%);
     bottom: -80px; left: -80px;
-    pointer-events: none;
-    z-index: 0;
+    pointer-events: none; z-index: 0;
   }
 
-  /* Logo */
+  /* ── Logo ── */
   .logo-link {
     text-decoration: none;
     display: flex; align-items: center; gap: 10px;
@@ -64,21 +61,19 @@
   }
   .logo-icon {
     width: 38px; height: 38px;
-    background: var(--accent);
-    border-radius: 10px;
+    background: var(--accent); border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; font-weight: 700; color: #fff;
   }
   .logo-text { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
 
-  /* Card principal */
+  /* ── Card ── */
   .card {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 20px;
     padding: 40px;
-    width: 100%;
-    max-width: 460px;
+    width: 100%; max-width: 460px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
     animation: slideUp 0.5s cubic-bezier(0.22,1,0.36,1);
     position: relative; z-index: 1;
@@ -89,7 +84,7 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* Badge */
+  /* ── Badge ── */
   .badge {
     display: inline-flex; align-items: center; gap: 6px;
     background: rgba(59,130,246,0.12);
@@ -105,15 +100,15 @@
   .card-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
   .card-sub   { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.6; }
 
-  /* Perks */
+  /* ── Perks ── */
   .perks { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
   .perk  { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
   .perk-icon { color: var(--success); font-size: 13px; }
 
-  /* Grid 2 cols */
+  /* ── Grid 2 cols ── */
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  /* Form grupos */
+  /* ── Inputs ── */
   .form-group { margin-bottom: 18px; }
   label {
     display: block; font-size: 13px; font-weight: 500;
@@ -139,7 +134,8 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
-  input.input-error { border-color: var(--error) !important; }
+  input.input-error  { border-color: var(--error) !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.15) !important; }
+  input.input-valid  { border-color: var(--success) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.15) !important; }
   input::placeholder { color: rgba(136,146,164,0.5); }
 
   .field-error {
@@ -149,138 +145,59 @@
   }
   .field-error.visible { display: flex; }
 
-  /* Password wrapper */
+  /* ── Password ── */
   .pass-wrapper { position: relative; }
   .toggle-pass {
     position: absolute; right: 14px; top: 50%;
     transform: translateY(-50%);
     background: none; border: none;
-    cursor: pointer; color: var(--muted); font-size: 15px;
-    padding: 0; line-height: 1;
+    cursor: pointer; color: var(--muted);
+    font-size: 15px; padding: 0; line-height: 1;
   }
 
-  /* ===== TARJETA DE PAGO ===== */
-  .payment-card {
-    background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.06) 100%);
-    border: 1px solid rgba(59,130,246,0.2);
-    border-radius: 14px;
-    padding: 20px 22px;
-    margin-bottom: 20px;
-    position: relative;
-    overflow: hidden;
-  }
-  .payment-card::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, var(--accent), #8B5CF6);
-  }
-  .payment-title {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 14px; font-weight: 700; margin-bottom: 14px;
-    color: var(--text);
-  }
-  .payment-title-icon {
-    width: 28px; height: 28px;
-    background: rgba(59,130,246,0.15);
-    border-radius: 7px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
-  }
-  .payment-accounts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-  .payment-row {
-    display: flex; align-items: center; justify-content: space-between;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 8px; padding: 9px 12px;
-    gap: 10px;
-  }
-  .payment-row-left { display: flex; flex-direction: column; gap: 2px; }
-  .payment-label { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
-  .payment-value { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-  .copy-btn {
-    background: rgba(59,130,246,0.12);
-    border: 1px solid rgba(59,130,246,0.2);
-    border-radius: 6px;
-    color: #60A5FA;
-    font-size: 11px; font-weight: 600;
-    padding: 4px 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex-shrink: 0;
-    font-family: 'Sora', sans-serif;
-  }
-  .copy-btn:hover { background: rgba(59,130,246,0.22); }
-  .copy-btn.copied { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); color: var(--success); }
-
-  .payment-titular {
-    font-size: 12px; color: var(--muted);
-    background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 8px; padding: 8px 12px;
-    margin-bottom: 10px;
-  }
-  .payment-titular span { color: var(--text); font-weight: 600; }
-
-  .payment-note {
-    font-size: 12px; color: #60A5FA;
-    background: rgba(59,130,246,0.08);
-    border: 1px solid rgba(59,130,246,0.15);
-    border-radius: 8px; padding: 10px 12px;
-    line-height: 1.5;
-    display: flex; gap: 8px; align-items: flex-start;
-  }
-  .payment-note-icon { flex-shrink: 0; margin-top: 1px; }
-
-  /* ===== COMPROBANTE UPLOAD ===== */
-  .upload-area {
-    border: 1.5px dashed rgba(255,255,255,0.12);
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    background: rgba(255,255,255,0.02);
-  }
-  .upload-area:hover, .upload-area.dragover {
-    border-color: var(--accent);
-    background: rgba(59,130,246,0.05);
-  }
-  .upload-area.has-file {
-    border-color: rgba(16,185,129,0.4);
-    background: rgba(16,185,129,0.04);
-  }
-  .upload-area input[type="file"] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-  }
-  .upload-icon { font-size: 28px; margin-bottom: 8px; display: block; }
-  .upload-text { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-  .upload-sub  { font-size: 11px; color: var(--muted); }
-  .upload-preview {
+  /* ── Código de acceso ── */
+  .code-wrapper { position: relative; }
+  .code-input-wrap { position: relative; }
+  .code-status {
+    position: absolute; right: 14px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px; pointer-events: none;
     display: none;
-    align-items: center; gap: 12px;
-    background: rgba(255,255,255,0.03);
-    border-radius: 8px; padding: 10px 14px;
-    margin-top: 12px;
-    border: 1px solid rgba(16,185,129,0.2);
   }
-  .upload-preview.visible { display: flex; }
-  .preview-thumb {
-    width: 44px; height: 44px; border-radius: 6px;
-    object-fit: cover; flex-shrink: 0;
-    border: 1px solid rgba(255,255,255,0.1);
-  }
-  .preview-info { flex: 1; min-width: 0; }
-  .preview-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .preview-size { font-size: 11px; color: var(--muted); }
-  .preview-remove {
-    background: none; border: none; cursor: pointer;
-    color: var(--muted); font-size: 16px; padding: 0;
-    transition: color 0.2s;
-  }
-  .preview-remove:hover { color: var(--error); }
+  .code-status.visible { display: block; }
 
-  /* Términos */
+  .code-hint {
+    margin-top: 10px;
+    background: rgba(59,130,246,0.07);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 13px; color: #93C5FD; line-height: 1.55;
+  }
+  .code-hint-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .code-hint a {
+    color: #60A5FA; font-weight: 600; text-decoration: none;
+    white-space: nowrap;
+  }
+  .code-hint a:hover { text-decoration: underline; }
+
+  /* ── Alerta global ── */
+  .alert {
+    border-radius: 10px; padding: 14px 16px;
+    font-size: 14px; line-height: 1.6;
+    display: none; margin-bottom: 20px;
+    align-items: flex-start; gap: 10px;
+  }
+  .alert.visible { display: flex; }
+  .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .alert-error {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.25);
+    color: #FCA5A5;
+  }
+
+  /* ── Términos ── */
   .terms {
     display: flex; align-items: flex-start; gap: 10px;
     font-size: 13px; color: var(--muted);
@@ -294,10 +211,9 @@
   .terms a { color: var(--accent); text-decoration: none; }
   .terms a:hover { text-decoration: underline; }
 
-  /* Botón principal */
+  /* ── Botón ── */
   .btn-primary {
-    width: 100%;
-    padding: 14px;
+    width: 100%; padding: 14px;
     background: var(--accent);
     border: none; border-radius: 10px;
     color: #fff;
@@ -307,13 +223,12 @@
     transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
     box-shadow: 0 4px 20px rgba(59,130,246,0.35);
     display: flex; align-items: center; justify-content: center; gap: 8px;
-    position: relative;
   }
   .btn-primary:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 6px 28px rgba(59,130,246,0.45); }
   .btn-primary:active:not(:disabled) { transform: scale(0.98); }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Spinner */
+  /* ── Spinner ── */
   .spinner {
     width: 18px; height: 18px;
     border: 2px solid rgba(255,255,255,0.3);
@@ -325,7 +240,7 @@
   .spinner.visible { display: block; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Barra de progreso */
+  /* ── Progreso ── */
   .progress-bar-wrap {
     height: 4px; background: rgba(255,255,255,0.06);
     border-radius: 2px; margin-top: 12px; overflow: hidden;
@@ -336,31 +251,10 @@
     height: 100%; width: 0%;
     background: linear-gradient(90deg, var(--accent), #8B5CF6);
     border-radius: 2px;
-    transition: width 0.3s ease;
+    transition: width 0.4s ease;
   }
 
-  /* Mensaje global */
-  .alert {
-    border-radius: 10px; padding: 14px 16px;
-    font-size: 14px; line-height: 1.6;
-    display: none; margin-bottom: 20px;
-    align-items: flex-start; gap: 10px;
-    animation: slideUp 0.3s ease;
-  }
-  .alert.visible { display: flex; }
-  .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
-  .alert-success {
-    background: rgba(16,185,129,0.1);
-    border: 1px solid rgba(16,185,129,0.25);
-    color: #6EE7B7;
-  }
-  .alert-error {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.25);
-    color: #FCA5A5;
-  }
-
-  /* Divider */
+  /* ── Divider ── */
   .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
   .divider span { font-size: 12px; color: var(--muted); }
@@ -369,11 +263,12 @@
   .login-link a { color: var(--accent); text-decoration: none; font-weight: 500; }
   .login-link a:hover { text-decoration: underline; }
 
+  /* ── Back ── */
   .back-home { margin-top: 24px; font-size: 13px; color: var(--muted); text-align: center; position: relative; z-index: 1; }
   .back-home a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: color 0.2s; }
   .back-home a:hover { color: var(--text); }
 
-  /* Estado de éxito completo */
+  /* ── Pantalla de éxito ── */
   .success-screen {
     display: none;
     flex-direction: column; align-items: center;
@@ -381,22 +276,44 @@
   }
   .success-screen.visible { display: flex; }
   .success-checkmark {
-    width: 68px; height: 68px;
+    width: 72px; height: 72px;
     background: rgba(16,185,129,0.12);
     border: 2px solid rgba(16,185,129,0.3);
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 32px; margin-bottom: 20px;
+    font-size: 34px; margin-bottom: 20px;
     animation: pop 0.5s cubic-bezier(0.22,1,0.36,1);
   }
   @keyframes pop {
     from { transform: scale(0.5); opacity: 0; }
     to   { transform: scale(1);   opacity: 1; }
   }
-  .success-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px; }
-  .success-msg   { font-size: 14px; color: var(--muted); line-height: 1.7; max-width: 340px; }
+  .success-title { font-size: 22px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px; }
+  .success-msg   { font-size: 14px; color: var(--muted); line-height: 1.75; max-width: 340px; }
+  .success-actions {
+    margin-top: 28px;
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+  }
+  .btn-ghost-light {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 20px; border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--text); text-decoration: none;
+    font-size: 13px; font-weight: 600;
+    transition: background 0.2s;
+  }
+  .btn-ghost-light:hover { background: rgba(255,255,255,0.1); }
+  .btn-wa {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 20px; border-radius: 8px;
+    background: #25D366; color: #fff; text-decoration: none;
+    font-size: 13px; font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  .btn-wa:hover { opacity: 0.88; }
 
-  /* Responsive */
+  /* ── Responsive ── */
   @media (max-width: 480px) {
     .card { padding: 28px 20px; }
     .row  { grid-template-columns: 1fr; }
@@ -413,11 +330,14 @@
 
   <div class="card" id="mainCard">
 
-    <!-- ===== FORMULARIO ===== -->
+    <!-- ═══════════════════════════════════
+         FORMULARIO
+    ════════════════════════════════════ -->
     <div id="formSection">
-      <div class="badge">Prueba 7 días gratis</div>
+
+      <div class="badge">Acceso con código</div>
       <div class="card-title">Crea tu cuenta</div>
-      <div class="card-sub">Empieza a gestionar tu negocio hoy. Sin tarjeta de crédito.</div>
+      <div class="card-sub">Ingresa tu código de acceso y completa tu registro en segundos.</div>
 
       <div class="perks">
         <div class="perk"><span class="perk-icon">✓</span> Sin costos ocultos</div>
@@ -425,7 +345,7 @@
         <div class="perk"><span class="perk-icon">✓</span> Soporte incluido</div>
       </div>
 
-      <!-- Alerta global -->
+      <!-- Alerta global de error -->
       <div class="alert alert-error" id="globalAlert">
         <span class="alert-icon">⚠️</span>
         <span id="globalAlertMsg"></span>
@@ -436,12 +356,12 @@
         <div class="form-group">
           <label for="nombre">Nombre</label>
           <input type="text" id="nombre" placeholder="Juan" autocomplete="given-name">
-          <div class="field-error" id="err-nombre">⚠ Este campo es obligatorio</div>
+          <div class="field-error" id="err-nombre">⚠ Campo obligatorio</div>
         </div>
         <div class="form-group">
           <label for="apellido">Apellido</label>
           <input type="text" id="apellido" placeholder="García" autocomplete="family-name">
-          <div class="field-error" id="err-apellido">⚠ Este campo es obligatorio</div>
+          <div class="field-error" id="err-apellido">⚠ Campo obligatorio</div>
         </div>
       </div>
 
@@ -449,7 +369,7 @@
       <div class="form-group">
         <label for="negocio">Nombre del negocio</label>
         <input type="text" id="negocio" placeholder="Mi Empresa S.A.">
-        <div class="field-error" id="err-negocio">⚠ Este campo es obligatorio</div>
+        <div class="field-error" id="err-negocio">⚠ Campo obligatorio</div>
       </div>
 
       <!-- Email -->
@@ -463,7 +383,7 @@
       <div class="form-group">
         <label for="telefono">Teléfono (WhatsApp)</label>
         <input type="tel" id="telefono" placeholder="+505 8888 8888" autocomplete="tel">
-        <div class="field-error" id="err-telefono">⚠ Este campo es obligatorio</div>
+        <div class="field-error" id="err-telefono">⚠ Campo obligatorio</div>
       </div>
 
       <!-- Contraseña -->
@@ -471,76 +391,37 @@
         <label for="password">Contraseña</label>
         <div class="pass-wrapper">
           <input type="password" id="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
-          <button class="toggle-pass" type="button" onclick="togglePass()" title="Mostrar/ocultar contraseña">👁</button>
+          <button class="toggle-pass" type="button" onclick="togglePass()" title="Mostrar/ocultar">👁</button>
         </div>
         <div class="field-error" id="err-password">⚠ Mínimo 8 caracteres</div>
       </div>
 
-      <!-- ===== TARJETA DE PAGO ===== -->
-      <div class="payment-card">
-        <div class="payment-title">
-          <div class="payment-title-icon">💳</div>
-          Pagar mensualidad Negocio360
-        </div>
-
-        <div class="payment-accounts">
-          <div class="payment-row">
-            <div class="payment-row-left">
-              <span class="payment-label">Cuenta Córdoba · Lafise</span>
-              <span class="payment-value">137072236</span>
-            </div>
-            <button class="copy-btn" onclick="copyText('137072236', this)">Copiar</button>
-          </div>
-          <div class="payment-row">
-            <div class="payment-row-left">
-              <span class="payment-label">Cuenta Dólar · Lafise</span>
-              <span class="payment-value">133218184</span>
-            </div>
-            <button class="copy-btn" onclick="copyText('133218184', this)">Copiar</button>
-          </div>
-          <div class="payment-row">
-            <div class="payment-row-left">
-              <span class="payment-label">Billetera Móvil</span>
-              <span class="payment-value">81294177</span>
-            </div>
-            <button class="copy-btn" onclick="copyText('81294177', this)">Copiar</button>
-          </div>
-        </div>
-
-        <div class="payment-titular">
-          Titular: <span>Jack Darren Arauz Pilarte</span> &nbsp;·&nbsp;
-          Comentario: <span>Mensualidad Negocio360</span>
-        </div>
-
-        <div class="payment-note">
-          <span class="payment-note-icon">ℹ️</span>
-          Después de realizar el pago suba una captura del comprobante para revisión.
-        </div>
-      </div>
-
-      <!-- ===== COMPROBANTE ===== -->
+      <!-- ═══ CÓDIGO DE ACCESO ═══ -->
       <div class="form-group">
-        <label>Comprobante de pago <span style="color:var(--error)">*</span></label>
-        <div class="upload-area" id="uploadArea">
+        <label for="codigo">Código de acceso</label>
+        <div class="code-input-wrap">
           <input
-            type="file"
-            id="comprobante"
-            accept="image/jpeg,image/jpg,image/png,image/webp"
-            onchange="handleFile(event)"
+            type="text"
+            id="codigo"
+            placeholder="Ingresa el código proporcionado por WhatsApp"
+            autocomplete="off"
+            spellcheck="false"
+            autocorrect="off"
+            autocapitalize="characters"
+            oninput="onCodigoInput(this)"
           >
-          <span class="upload-icon">📎</span>
-          <div class="upload-text">Selecciona o arrastra tu comprobante</div>
-          <div class="upload-sub">JPG, PNG, WEBP · Máx. 5 MB</div>
+          <span class="code-status" id="codeStatus"></span>
         </div>
-        <div class="upload-preview" id="uploadPreview">
-          <img class="preview-thumb" id="previewThumb" src="" alt="Comprobante">
-          <div class="preview-info">
-            <div class="preview-name" id="previewName"></div>
-            <div class="preview-size" id="previewSize"></div>
-          </div>
-          <button class="preview-remove" type="button" onclick="removeFile()" title="Quitar archivo">✕</button>
+        <div class="field-error" id="err-codigo">⚠ Código de acceso inválido. Solicita un código válido por WhatsApp.</div>
+        <!-- Hint de cómo obtener el código -->
+        <div class="code-hint">
+          <span class="code-hint-icon">💬</span>
+          <span>
+            ¿No tienes un código?
+            <a href="https://wa.me/50581294177?text=Hola%2C+quiero+registrarme+en+Negocio360+y+necesito+mi+c%C3%B3digo+de+acceso." target="_blank">Escríbenos por WhatsApp</a>
+            y te lo enviamos al instante.
+          </span>
         </div>
-        <div class="field-error" id="err-comprobante">⚠ El comprobante de pago es obligatorio</div>
       </div>
 
       <!-- Términos -->
@@ -548,50 +429,39 @@
         <input type="checkbox" id="terms">
         <label for="terms">Acepto los <a href="#">Términos de servicio</a> y la <a href="#">Política de privacidad</a> de Negocio360.</label>
       </div>
-      <div class="field-error" id="err-terms" style="margin-top:-16px;margin-bottom:16px;">⚠ Debes aceptar los términos</div>
+      <div class="field-error" id="err-terms" style="margin-top:-16px;margin-bottom:16px;">⚠ Debes aceptar los términos para continuar</div>
 
-      <!-- Progreso upload -->
+      <!-- Barra de progreso -->
       <div class="progress-bar-wrap" id="progressWrap">
         <div class="progress-bar" id="progressBar"></div>
       </div>
 
-      <!-- Botón -->
+      <!-- Botón submit -->
       <button class="btn-primary" id="submitBtn" type="button" onclick="handleSubmit()">
         <div class="spinner" id="btnSpinner"></div>
-        <span id="btnText">Crear cuenta gratis →</span>
+        <span id="btnText">Crear cuenta →</span>
       </button>
 
       <div class="divider"><span>ya tienes cuenta</span></div>
       <div class="login-link"><a href="login.html">Iniciar sesión</a></div>
-    </div>
 
-    <!-- ===== PANTALLA DE ÉXITO ===== -->
+    </div><!-- /formSection -->
+
+    <!-- ═══════════════════════════════════
+         PANTALLA DE ÉXITO
+    ════════════════════════════════════ -->
     <div class="success-screen" id="successScreen">
       <div class="success-checkmark">✅</div>
-      <div class="success-title">¡Solicitud enviada!</div>
+      <div class="success-title">¡Cuenta creada!</div>
       <div class="success-msg">
-        Tu solicitud fue recibida correctamente. Nuestro equipo revisará tu comprobante de pago.<br><br>
-        <strong style="color:var(--text)">La activación suele tardar menos de 24 horas.</strong><br><br>
-        Te contactaremos por WhatsApp al número registrado para confirmar el acceso.
+        Tu cuenta fue registrada correctamente.<br><br>
+        <strong style="color:var(--text)">Ya puedes empezar a gestionar tu negocio.</strong><br><br>
+        Si tienes alguna duda contáctanos por WhatsApp, estamos para ayudarte.
       </div>
-      <div style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
-        <a href="index.html" style="
-          display:inline-flex;align-items:center;gap:6px;
-          padding:10px 20px;border-radius:8px;
-          background:rgba(255,255,255,0.06);border:1px solid var(--border);
-          color:var(--text);text-decoration:none;font-size:13px;font-weight:600;
-          transition:background 0.2s;
-        " onmouseover="this.style.background='rgba(255,255,255,0.1)'"
-           onmouseout="this.style.background='rgba(255,255,255,0.06)'">
-          ← Volver al inicio
-        </a>
-        <a href="https://wa.me/50581294177?text=Hola%2C+acabo+de+registrarme+en+Negocio360+y+subí+mi+comprobante.+Quedo+atento+a+la+activación." target="_blank" style="
-          display:inline-flex;align-items:center;gap:6px;
-          padding:10px 20px;border-radius:8px;
-          background:#25D366;color:#fff;text-decoration:none;
-          font-size:13px;font-weight:600;transition:opacity 0.2s;
-        " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
-          💬 Escribir al soporte
+      <div class="success-actions">
+        <a href="index.html" class="btn-ghost-light">← Ir al inicio</a>
+        <a href="https://wa.me/50581294177?text=Hola%2C+acabo+de+registrarme+en+Negocio360.+¿Cómo+accedo+a+mi+panel?" target="_blank" class="btn-wa">
+          💬 Contactar soporte
         </a>
       </div>
     </div>
@@ -604,32 +474,22 @@
 
 <script>
 // =============================================
-//  SUPABASE INIT
-//  ⚠ SUPA_KEY debe ser la "anon public" key JWT
-//  Formato correcto: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO...
-//  Obtenerla en: Supabase Dashboard → Settings → API → anon public
+//  CONFIGURACIÓN
 // =============================================
-const SUPA_URL = 'https://odyldlgxoijrxooclkhg.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9keWxkbGd4b2lqcnhvb2Nsa2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTkxOTIsImV4cCI6MjA5NjMzNTE5Mn0.HzStWBSpOFFCbwKcoGOfzw0aOANQAlZbOqAZJihBYzA'; // ← reemplaza esto
 
-// Validación temprana: si la key no es JWT el error es inmediato y claro
-if (!SUPA_KEY.startsWith('eyJ')) {
-  console.error(
-    '[Negocio360] Supabase API key inválida.\n' +
-    'Necesitas la "anon public" key en formato JWT (empieza con eyJ...).\n' +
-    'Encuéntrala en: Supabase Dashboard → Settings → API → anon public'
-  );
-}
+// Código de acceso válido (fase de prueba)
+// Modular: en el futuro se reemplazará por consulta
+// a la tabla `codigos_acceso` en Supabase.
+const ACCESS_CODE = 'NEGOCIO360-2026';
+
+// Supabase
+const SUPA_URL = 'https://odyldlgxoijrxooclkhg.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9keWxkbGd4b2lqcnhvb2Nsa2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTkxOTIsImV4cCI6MjA5NjMzNTE5Mn0.HzStWBSpOFFCbwKcoGOfzw0aOANQAlZbOqAZJihBYzA';
 
 const { createClient } = supabase;
 const db = createClient(SUPA_URL, SUPA_KEY, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
-
-// =============================================
-//  ESTADO GLOBAL
-// =============================================
-let selectedFile = null;
 
 // =============================================
 //  TOGGLE CONTRASEÑA
@@ -640,98 +500,58 @@ function togglePass() {
 }
 
 // =============================================
-//  COPIAR AL PORTAPAPELES
+//  VALIDACIÓN DEL CÓDIGO EN TIEMPO REAL
 // =============================================
-async function copyText(text, btn) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-  }
-  const orig = btn.textContent;
-  btn.textContent = '✓ Copiado';
-  btn.classList.add('copied');
-  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1800);
-}
+function onCodigoInput(input) {
+  // Forzar mayúsculas mientras escribe
+  const pos = input.selectionStart;
+  input.value = input.value.toUpperCase();
+  input.setSelectionRange(pos, pos);
 
-// =============================================
-//  MANEJO DE ARCHIVO
-// =============================================
-function handleFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  processFile(file);
-}
+  const status = document.getElementById('codeStatus');
+  clearFieldError('codigo');
 
-function processFile(file) {
-  // Validar tipo
-  const allowed = ['image/jpeg','image/jpg','image/png','image/webp'];
-  if (!allowed.includes(file.type)) {
-    showFieldError('comprobante', '⚠ Solo se permiten imágenes JPG, PNG o WEBP');
+  if (input.value.length === 0) {
+    status.textContent = '';
+    status.classList.remove('visible');
+    input.classList.remove('input-valid', 'input-error');
     return;
   }
-  // Validar tamaño (5 MB)
-  if (file.size > 5 * 1024 * 1024) {
-    showFieldError('comprobante', '⚠ El archivo supera los 5 MB permitidos');
-    return;
+
+  if (input.value === ACCESS_CODE) {
+    status.textContent = '✅';
+    status.classList.add('visible');
+    input.classList.add('input-valid');
+    input.classList.remove('input-error');
+  } else {
+    // Solo marcar error si ya tiene longitud similar al código esperado
+    // para no molestar mientras escribe
+    if (input.value.length >= ACCESS_CODE.length) {
+      status.textContent = '❌';
+      status.classList.add('visible');
+      input.classList.add('input-error');
+      input.classList.remove('input-valid');
+    } else {
+      status.textContent = '';
+      status.classList.remove('visible');
+      input.classList.remove('input-valid', 'input-error');
+    }
   }
-  clearFieldError('comprobante');
-  selectedFile = file;
-
-  // Preview
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    document.getElementById('previewThumb').src = ev.target.result;
-    document.getElementById('previewName').textContent = file.name;
-    document.getElementById('previewSize').textContent = formatBytes(file.size);
-    document.getElementById('uploadPreview').classList.add('visible');
-    document.getElementById('uploadArea').classList.add('has-file');
-  };
-  reader.readAsDataURL(file);
 }
-
-function removeFile() {
-  selectedFile = null;
-  document.getElementById('comprobante').value = '';
-  document.getElementById('previewThumb').src = '';
-  document.getElementById('uploadPreview').classList.remove('visible');
-  document.getElementById('uploadArea').classList.remove('has-file');
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-}
-
-// Drag & drop
-const uploadArea = document.getElementById('uploadArea');
-uploadArea.addEventListener('dragover',  (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
-uploadArea.addEventListener('dragleave', ()  => uploadArea.classList.remove('dragover'));
-uploadArea.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadArea.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) { document.getElementById('comprobante').files = e.dataTransfer.files; processFile(file); }
-});
 
 // =============================================
-//  VALIDACIÓN
+//  VALIDACIÓN DE CAMPOS
 // =============================================
-function showFieldError(fieldId, msg) {
-  const input = document.getElementById(fieldId);
-  const err   = document.getElementById('err-' + fieldId);
+function showFieldError(id, msg) {
+  const input = document.getElementById(id);
+  const err   = document.getElementById('err-' + id);
   if (input) input.classList.add('input-error');
   if (err)   { if (msg) err.textContent = msg; err.classList.add('visible'); }
 }
-function clearFieldError(fieldId) {
-  const input = document.getElementById(fieldId);
-  const err   = document.getElementById('err-' + fieldId);
+
+function clearFieldError(id) {
+  const input = document.getElementById(id);
+  const err   = document.getElementById('err-' + id);
   if (input) input.classList.remove('input-error');
   if (err)   err.classList.remove('visible');
 }
@@ -742,28 +562,39 @@ function isValidEmail(email) {
 
 function validateForm() {
   let ok = true;
-  const fields = ['nombre','apellido','negocio','email','telefono','password'];
-  fields.forEach(id => clearFieldError(id));
-  clearFieldError('comprobante');
-  clearFieldError('terms');
+  ['nombre','apellido','negocio','email','telefono','password','codigo'].forEach(id => clearFieldError(id));
   document.getElementById('globalAlert').classList.remove('visible');
+  document.getElementById('err-terms').classList.remove('visible');
 
   const get = id => document.getElementById(id).value.trim();
 
-  if (!get('nombre'))   { showFieldError('nombre');   ok = false; }
-  if (!get('apellido')) { showFieldError('apellido'); ok = false; }
-  if (!get('negocio'))  { showFieldError('negocio');  ok = false; }
-  if (!get('email') || !isValidEmail(get('email'))) { showFieldError('email'); ok = false; }
-  if (!get('telefono')) { showFieldError('telefono'); ok = false; }
-  if (!get('password') || get('password').length < 8) { showFieldError('password'); ok = false; }
-  if (!selectedFile)    { showFieldError('comprobante'); ok = false; }
-  if (!document.getElementById('terms').checked) { showFieldError('terms'); ok = false; }
+  if (!get('nombre'))                                      { showFieldError('nombre');   ok = false; }
+  if (!get('apellido'))                                    { showFieldError('apellido'); ok = false; }
+  if (!get('negocio'))                                     { showFieldError('negocio');  ok = false; }
+  if (!get('email') || !isValidEmail(get('email')))        { showFieldError('email');    ok = false; }
+  if (!get('telefono'))                                    { showFieldError('telefono'); ok = false; }
+  if (!get('password') || get('password').length < 8)     { showFieldError('password'); ok = false; }
+
+  // ── Validación del código de acceso ──
+  const codigoIngresado = get('codigo');
+  if (!codigoIngresado) {
+    showFieldError('codigo', '⚠ El código de acceso es obligatorio');
+    ok = false;
+  } else if (codigoIngresado !== ACCESS_CODE) {
+    showFieldError('codigo', '⚠ Código de acceso inválido. Solicita un código válido por WhatsApp.');
+    ok = false;
+  }
+
+  if (!document.getElementById('terms').checked) {
+    document.getElementById('err-terms').classList.add('visible');
+    ok = false;
+  }
 
   return ok;
 }
 
 // =============================================
-//  PROGRESO VISUAL
+//  PROGRESO Y LOADING
 // =============================================
 function setProgress(pct) {
   document.getElementById('progressWrap').classList.add('visible');
@@ -773,34 +604,33 @@ function hideProgress() {
   document.getElementById('progressWrap').classList.remove('visible');
   document.getElementById('progressBar').style.width = '0%';
 }
-
-// =============================================
-//  SETEAR LOADING
-// =============================================
 function setLoading(on) {
-  const btn     = document.getElementById('submitBtn');
-  const spinner = document.getElementById('btnSpinner');
-  const txt     = document.getElementById('btnText');
+  const btn = document.getElementById('submitBtn');
   btn.disabled = on;
-  spinner.classList.toggle('visible', on);
-  txt.textContent = on ? 'Enviando solicitud...' : 'Crear cuenta gratis →';
+  document.getElementById('btnSpinner').classList.toggle('visible', on);
+  document.getElementById('btnText').textContent = on ? 'Registrando...' : 'Crear cuenta →';
 }
 
 // =============================================
-//  OBTENER IP (best-effort, no crítico)
+//  OBTENER IP (best-effort)
 // =============================================
 async function getIP() {
   try {
-    const r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
+    const r = await fetch('https://api.ipify.org?format=json', {
+      signal: AbortSignal.timeout(3000)
+    });
     const d = await r.json();
     return d.ip || 'desconocida';
-  } catch { return 'desconocida'; }
+  } catch {
+    return 'desconocida';
+  }
 }
 
 // =============================================
 //  SUBMIT PRINCIPAL
 // =============================================
 async function handleSubmit() {
+  // 1. Validar formulario (incluye código de acceso)
   if (!validateForm()) {
     const firstErr = document.querySelector('.input-error, .field-error.visible');
     if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -822,125 +652,67 @@ async function handleSubmit() {
     alertEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  // ── Paso 1: construir nombre de archivo limpio ──────────────────────────
-  // Usamos solo caracteres seguros para evitar URLs malformadas en Storage
-  let ext = 'jpg';
-  const nameParts = selectedFile.name.split('.');
-  if (nameParts.length > 1) {
-    ext = nameParts.pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  }
-  const ts       = Date.now();
-  const rand     = Math.random().toString(36).slice(2, 9);
-  const filePath = `solicitudes/comprobante_${ts}_${rand}.${ext}`;
-
-  console.log('[Upload] filePath:', filePath);
-  console.log('[Upload] bucket: comprobantes');
-  console.log('[Upload] contentType:', selectedFile.type);
-  console.log('[Upload] size:', selectedFile.size);
-
   try {
-    // ── Paso 2: subir a Storage ──────────────────────────────────────────
-    setProgress(20);
+    setProgress(30);
 
-    const { data: uploadData, error: uploadError } = await db.storage
-      .from('comprobantes')
-      .upload(filePath, selectedFile, {
-        contentType : selectedFile.type,
-        cacheControl: '3600',
-        upsert      : false
-      });
-
-    if (uploadError) {
-      console.error('[Upload] error completo:', uploadError);
-      // Mensajes de error específicos y accionables
-      if (uploadError.message?.includes('JWT') || uploadError.message?.includes('token') || uploadError.statusCode === 401) {
-        showGlobalError('Error de autenticación con el servidor. Contacta al administrador.');
-      } else if (uploadError.message?.includes('Bucket not found') || uploadError.statusCode === 404) {
-        showGlobalError('Bucket de almacenamiento no encontrado. Contacta al administrador.');
-      } else if (uploadError.message?.includes('exceeded') || uploadError.statusCode === 413) {
-        showGlobalError('El archivo es demasiado grande. Máximo permitido: 5 MB.');
-      } else if (uploadError.message?.includes('mime') || uploadError.message?.includes('type')) {
-        showGlobalError('Tipo de archivo no permitido. Solo JPG, PNG o WEBP.');
-      } else {
-        showGlobalError(`Error al subir el comprobante: ${uploadError.message || 'error desconocido'}. Intenta nuevamente.`);
-      }
-      return;
-    }
-
-    console.log('[Upload] éxito:', uploadData);
+    // 2. Obtener IP (no bloquea el flujo si falla)
+    const ip = await getIP();
     setProgress(55);
 
-    // ── Paso 3: obtener URL pública ──────────────────────────────────────
-    // getPublicUrl es síncrono y no arroja error — siempre devuelve data
-    const { data: publicUrlData } = db.storage
-      .from('comprobantes')
-      .getPublicUrl(filePath);
-
-    const comprobanteUrl = publicUrlData?.publicUrl;
-
-    if (!comprobanteUrl || !comprobanteUrl.startsWith('http')) {
-      showGlobalError('No se pudo obtener la URL del comprobante. Intenta nuevamente.');
-      return;
-    }
-
-    console.log('[Upload] URL pública:', comprobanteUrl);
-    setProgress(70);
-
-    // ── Paso 4: obtener IP (best-effort, no bloquea el flujo) ────────────
-    const ip = await getIP();
-    setProgress(85);
-
-    // ── Paso 5: insertar solicitud en la BD ──────────────────────────────
+    // 3. Insertar usuario en la tabla `usuarios`
+    //    (sin Storage, sin comprobantes, sin estado pendiente)
     const payload = {
-      nombre          : get('nombre'),
-      apellido        : get('apellido'),
-      nombre_negocio  : get('negocio'),
-      email           : get('email'),
-      telefono        : get('telefono'),
-      comprobante_url : comprobanteUrl,
-      estado          : 'pendiente',
-      fecha_registro  : new Date().toISOString(),
-      ip_usuario      : ip,
-      dispositivo     : navigator.userAgent.substring(0, 250)
+      nombre         : get('nombre'),
+      apellido       : get('apellido'),
+      nombre_negocio : get('negocio'),
+      email          : get('email'),
+      telefono       : get('telefono'),
+      password       : get('password'),   // en producción usar hash; por ahora se guarda
+      fecha_registro : new Date().toISOString(),
+      ip_usuario     : ip,
+      dispositivo    : navigator.userAgent.substring(0, 250)
     };
 
-    console.log('[DB] insertando payload:', { ...payload, dispositivo: '...' });
+    console.log('[N360] insertando usuario…');
+    setProgress(75);
 
-    const { data: insertData, error: dbError } = await db
-      .from('solicitudes_registro')
-      .insert([payload])
-      .select();
+    const { error: dbError } = await db
+      .from('usuarios')
+      .insert(payload);   // sin .select() para respetar RLS
 
     if (dbError) {
-      console.error('[DB] error completo:', dbError);
-      if (dbError.code === '23505' || dbError.message?.includes('duplicate') || dbError.message?.includes('unique')) {
-        showGlobalError('Ya existe una solicitud registrada con este correo electrónico.');
-      } else if (dbError.code === '42501' || dbError.message?.includes('permission') || dbError.message?.includes('policy')) {
-        showGlobalError('Sin permiso para guardar la solicitud. Contacta al administrador.');
+      console.error('[N360] DB error:', JSON.stringify(dbError));
+
+      const msg  = dbError.message || '';
+      const code = dbError.code    || '';
+
+      if (code === '23505' || msg.includes('duplicate') || msg.includes('unique')) {
+        showGlobalError('Ya existe una cuenta con ese correo electrónico. Prueba iniciando sesión.');
+      } else if (code === '42501' || msg.includes('policy') || msg.includes('permission')) {
+        showGlobalError('Error de permisos en la base de datos. Contacta al administrador.');
       } else {
-        showGlobalError(`Error al guardar la solicitud: ${dbError.message || 'error desconocido'}. Intenta nuevamente.`);
+        showGlobalError('Error al crear la cuenta: ' + (msg || 'error desconocido') + '. Intenta de nuevo.');
       }
       return;
     }
 
-    console.log('[DB] solicitud guardada:', insertData);
     setProgress(100);
+    console.log('[N360] usuario registrado correctamente ✓');
 
-    // ── Paso 6: mostrar pantalla de éxito ────────────────────────────────
+    // 4. Mostrar pantalla de éxito
     setTimeout(() => {
       document.getElementById('formSection').style.display = 'none';
       document.getElementById('successScreen').classList.add('visible');
       hideProgress();
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 500);
+    }, 400);
 
   } catch (err) {
-    // Error de red (sin internet, CORS, DNS, etc.)
-    console.error('[handleSubmit] excepción:', err);
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      showGlobalError('Sin conexión a internet o el servidor no responde. Verifica tu conexión e intenta nuevamente.');
+    console.error('[N360] excepción:', err);
+    if (err?.name === 'TypeError' && err.message?.includes('fetch')) {
+      showGlobalError('Sin conexión a internet. Verifica tu red e intenta nuevamente.');
     } else {
-      showGlobalError(`Error inesperado: ${err.message || 'desconocido'}. Intenta nuevamente.`);
+      showGlobalError('Error inesperado: ' + (err?.message || 'desconocido') + '. Intenta nuevamente.');
     }
   }
 }
@@ -950,10 +722,11 @@ async function handleSubmit() {
 // =============================================
 ['nombre','apellido','negocio','email','telefono','password'].forEach(id => {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('input', () => clearFieldError(id));
+  if (el) el.addEventListener('input', () => clearFieldError(id));
 });
-document.getElementById('terms').addEventListener('change', () => clearFieldError('terms'));
+document.getElementById('terms').addEventListener('change', () => {
+  document.getElementById('err-terms').classList.remove('visible');
+});
 </script>
 </body>
 </html>
