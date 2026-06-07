@@ -1756,6 +1756,15 @@ async function finalizarOnboarding() {
 
     if (upsertErr) throw upsertErr;
 
+     // 11c-bis. Marcar onboarding como completado en tabla usuarios
+    // Esto es lo que login.html consulta para redirigir correctamente
+    const { error: usuarioErr } = await db
+      .from('usuarios')
+      .update({ onboarding_completado: true })
+      .eq('auth_user_id', currentUser.id);
+
+    if (usuarioErr) console.warn('No se pudo actualizar usuarios:', usuarioErr.message);
+
     // 11d. Guardar config mínima en sessionStorage para el dashboard
     sessionStorage.setItem('n360_config', JSON.stringify({
       nombre:           formData.nombre_comercial,
