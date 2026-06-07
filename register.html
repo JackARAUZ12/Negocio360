@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crear Cuenta — Negocio360</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0B0F19;
+    --card: #121826;
+    --border: rgba(255,255,255,0.07);
+    --text: #F0F4FF;
+    --muted: #8892A4;
+    --accent: #3B82F6;
+    --accent-glow: rgba(59,130,246,0.25);
+  }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%);
+    top: -100px; right: -100px;
+    pointer-events: none;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%);
+    bottom: -80px; left: -80px;
+    pointer-events: none;
+  }
+
+  .logo-link { text-decoration: none; display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: #fff;
+  }
+  .logo-text { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 40px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
+    animation: slideUp 0.5s cubic-bezier(0.22,1,0.36,1);
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(59,130,246,0.12);
+    border: 1px solid rgba(59,130,246,0.25);
+    color: #60A5FA;
+    font-size: 11px; font-weight: 600;
+    padding: 4px 10px; border-radius: 100px;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .badge::before { content: '✦'; font-size: 9px; }
+
+  .card-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
+  .card-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.6; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .form-group { margin-bottom: 18px; }
+  label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
+  input[type="email"], input[type="password"], input[type="text"], input[type="tel"] {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  input::placeholder { color: rgba(136,146,164,0.5); }
+
+  .terms {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 13px; color: var(--muted);
+    margin-bottom: 24px; line-height: 1.5;
+  }
+  .terms input[type="checkbox"] {
+    width: 16px; height: 16px; min-width: 16px;
+    margin-top: 2px; cursor: pointer;
+    accent-color: var(--accent);
+  }
+  .terms a { color: var(--accent); text-decoration: none; }
+
+  .btn-primary {
+    width: 100%;
+    padding: 13px;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'Sora', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(59,130,246,0.35);
+  }
+  .btn-primary:hover { opacity: 0.9; box-shadow: 0 6px 28px rgba(59,130,246,0.45); }
+  .btn-primary:active { transform: scale(0.98); }
+
+  .perks {
+    display: flex; gap: 16px; margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .perk {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+  }
+  .perk-icon { color: #10B981; font-size: 13px; }
+
+  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .divider span { font-size: 12px; color: var(--muted); }
+
+  .login-link { text-align: center; font-size: 14px; color: var(--muted); }
+  .login-link a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  .login-link a:hover { text-decoration: underline; }
+
+  .back-home { margin-top: 24px; font-size: 13px; color: var(--muted); text-align: center; }
+  .back-home a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: color 0.2s; }
+  .back-home a:hover { color: var(--text); }
+
+  .pass-wrapper { position: relative; }
+  .toggle-pass {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: var(--muted); font-size: 15px;
+  }
+</style>
+</head>
+<body>
+  <a href="index.html" class="logo-link">
+    <div class="logo-icon">N</div>
+    <span class="logo-text">Negocio360</span>
+  </a>
+
+  <div class="card">
+    <div class="badge">Prueba 7 días gratis</div>
+    <div class="card-title">Crea tu cuenta</div>
+    <div class="card-sub">Empieza a gestionar tu negocio hoy. Sin tarjeta de crédito.</div>
+
+    <div class="perks">
+      <div class="perk"><span class="perk-icon">✓</span> Sin costos ocultos</div>
+      <div class="perk"><span class="perk-icon">✓</span> Cancela cuando quieras</div>
+      <div class="perk"><span class="perk-icon">✓</span> Soporte incluido</div>
+    </div>
+
+    <div class="row">
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" placeholder="Juan">
+      </div>
+      <div class="form-group">
+        <label>Apellido</label>
+        <input type="text" placeholder="García">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Nombre del negocio</label>
+      <input type="text" placeholder="Mi Empresa S.A.">
+    </div>
+
+    <div class="form-group">
+      <label>Correo electrónico</label>
+      <input type="email" placeholder="tu@empresa.com">
+    </div>
+
+    <div class="form-group">
+      <label>Teléfono (WhatsApp)</label>
+      <input type="tel" placeholder="+505 8888 8888">
+    </div>
+
+    <div class="form-group">
+      <label>Contraseña</label>
+      <div class="pass-wrapper">
+        <input type="password" id="pass" placeholder="Mínimo 8 caracteres">
+        <button class="toggle-pass" onclick="togglePass()" type="button">👁</button>
+      </div>
+    </div>
+
+    <div class="terms">
+      <input type="checkbox" id="terms">
+      <label for="terms">Acepto los <a href="#">Términos de servicio</a> y la <a href="#">Política de privacidad</a> de Negocio360.</label>
+    </div>
+
+    <button class="btn-primary">Crear cuenta gratis →</button>
+
+    <div class="divider"><span>ya tienes cuenta</span></div>
+
+    <div class="login-link">
+      <a href="login.html">Iniciar sesión</a>
+    </div>
+  </div>
+
+  <div class="back-home">
+    <a href="index.html">← Volver al inicio</a>
+  </div>
+
+  <script>
+    function togglePass() {
+      const p = document.getElementById('pass');
+      p.type = p.type === 'password' ? 'text' : 'password';
+    }
+  </script>
+</body>
+</html>
