@@ -1,191 +1,817 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Iniciar Sesión — Negocio360</title>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar sesión — Negocio360</title>
 
-  :root {
-    --bg: #0B0F19;
-    --card: #121826;
-    --border: rgba(255,255,255,0.07);
-    --text: #F0F4FF;
-    --muted: #8892A4;
-    --accent: #3B82F6;
-    --accent-glow: rgba(59,130,246,0.25);
-    --white: #fff;
-  }
+  <!-- Supabase JS v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  body {
-    font-family: 'Sora', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    position: relative;
-    overflow: hidden;
-  }
+  <!-- Google Fonts: Sora (display) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
 
-  /* Background mesh */
-  body::before {
-    content: '';
-    position: fixed;
-    width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%);
-    top: -100px; left: -100px;
-    pointer-events: none;
-  }
-  body::after {
-    content: '';
-    position: fixed;
-    width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%);
-    bottom: -80px; right: -80px;
-    pointer-events: none;
-  }
+  <style>
+    /* ─── TOKENS ─────────────────────────────────────────────── */
+    :root {
+      --bg:          #f5f4f0;
+      --bg-card:     #ffffff;
+      --bg-input:    #f9f8f5;
+      --border:      #e4e2db;
+      --border-focus:#2563eb;
+      --text-primary:#111010;
+      --text-secondary:#6b6860;
+      --text-muted:  #a09e99;
+      --accent:      #2563eb;
+      --accent-hover:#1d4ed8;
+      --accent-light:#eff6ff;
+      --danger:      #dc2626;
+      --danger-bg:   #fef2f2;
+      --danger-border:#fecaca;
+      --success:     #16a34a;
+      --success-bg:  #f0fdf4;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-card: 0 4px 24px rgba(0,0,0,.07), 0 1px 4px rgba(0,0,0,.04);
+      --shadow-focus:0 0 0 3px rgba(37,99,235,.18);
+      --radius:      14px;
+      --radius-sm:   8px;
+      --radius-lg:   20px;
+      --font-display:'Sora', sans-serif;
+      --font-body:   'DM Sans', sans-serif;
+      --transition:  .2s cubic-bezier(.4,0,.2,1);
+    }
 
-  .logo-link { text-decoration: none; display: flex; align-items: center; gap: 10px; margin-bottom: 36px; }
-  .logo-icon {
-    width: 38px; height: 38px;
-    background: var(--accent);
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; font-weight: 700; color: #fff;
-  }
-  .logo-text { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+    [data-theme="dark"] {
+      --bg:          #0d0d0f;
+      --bg-card:     #18181b;
+      --bg-input:    #1f1f23;
+      --border:      #2a2a30;
+      --border-focus:#3b82f6;
+      --text-primary:#f4f4f5;
+      --text-secondary:#a1a1aa;
+      --text-muted:  #52525b;
+      --accent:      #3b82f6;
+      --accent-hover:#2563eb;
+      --accent-light:#172554;
+      --danger:      #f87171;
+      --danger-bg:   #1c0a0a;
+      --danger-border:#7f1d1d;
+      --success:     #4ade80;
+      --success-bg:  #052e16;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.3);
+      --shadow-card: 0 4px 32px rgba(0,0,0,.4), 0 1px 6px rgba(0,0,0,.3);
+      --shadow-focus:0 0 0 3px rgba(59,130,246,.25);
+    }
 
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 40px;
-    width: 100%;
-    max-width: 420px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
-    animation: slideUp 0.5s cubic-bezier(0.22,1,0.36,1);
-  }
+    /* ─── RESET ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
 
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(24px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+    body {
+      font-family: var(--font-body);
+      background-color: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      transition: background-color var(--transition), color var(--transition);
+      position: relative;
+    }
 
-  .card-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
-  .card-sub { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+    /* ─── BACKGROUND TEXTURE ─────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(37,99,235,.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 90%, rgba(37,99,235,.05) 0%, transparent 55%);
+      pointer-events: none;
+      z-index: 0;
+      transition: opacity var(--transition);
+    }
 
-  .form-group { margin-bottom: 20px; }
-  label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.02em; }
-  input[type="email"], input[type="password"], input[type="text"] {
-    width: 100%;
-    padding: 12px 16px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    font-family: 'Sora', sans-serif;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
-  input::placeholder { color: rgba(136,146,164,0.5); }
+    [data-theme="dark"] body::before {
+      background-image:
+        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,130,246,.09) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 90%, rgba(59,130,246,.06) 0%, transparent 55%);
+    }
 
-  .forgot { display: flex; justify-content: flex-end; margin-top: -12px; margin-bottom: 20px; }
-  .forgot a { font-size: 12px; color: var(--accent); text-decoration: none; }
-  .forgot a:hover { text-decoration: underline; }
+    /* ─── THEME TOGGLE ───────────────────────────────────────── */
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      user-select: none;
+    }
+    .theme-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 2px 8px rgba(37,99,235,.12);
+    }
+    .theme-toggle svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-  .btn-primary {
-    width: 100%;
-    padding: 13px;
-    background: var(--accent);
-    border: none;
-    border-radius: 10px;
-    color: #fff;
-    font-family: 'Sora', sans-serif;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
-    letter-spacing: -0.2px;
-    box-shadow: 0 4px 20px rgba(59,130,246,0.35);
-  }
-  .btn-primary:hover { opacity: 0.9; box-shadow: 0 6px 28px rgba(59,130,246,0.45); }
-  .btn-primary:active { transform: scale(0.98); }
+    /* ─── WRAPPER ────────────────────────────────────────────── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      animation: fadeUp .45s cubic-bezier(.22,1,.36,1) both;
+    }
 
-  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
-  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  .divider span { font-size: 12px; color: var(--muted); }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
 
-  .signup-link { text-align: center; font-size: 14px; color: var(--muted); }
-  .signup-link a { color: var(--accent); text-decoration: none; font-weight: 500; }
-  .signup-link a:hover { text-decoration: underline; }
+    /* ─── LOGO ───────────────────────────────────────────────── */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
 
-  .back-home { margin-top: 24px; font-size: 13px; color: var(--muted); text-align: center; }
-  .back-home a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: color 0.2s; }
-  .back-home a:hover { color: var(--text); }
+    .logo-mark {
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 12px rgba(37,99,235,.35);
+    }
 
-  .pass-wrapper { position: relative; }
-  .toggle-pass {
-    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-    background: none; border: none; cursor: pointer; color: var(--muted);
-    font-size: 16px; padding: 0;
-  }
-</style>
+    .logo-mark svg { width: 22px; height: 22px; color: #fff; }
+
+    .logo-text {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -.3px;
+    }
+    .logo-text span { color: var(--accent); }
+
+    /* ─── CARD ───────────────────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px 36px;
+      width: 100%;
+      box-shadow: var(--shadow-card);
+      transition: background var(--transition), border-color var(--transition), box-shadow var(--transition);
+    }
+
+    .card-header {
+      margin-bottom: 28px;
+    }
+
+    .card-header h1 {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -.4px;
+      line-height: 1.2;
+      margin-bottom: 8px;
+    }
+
+    .card-header p {
+      font-size: 14.5px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+
+    /* ─── FORM ───────────────────────────────────────────────── */
+    .form { display: flex; flex-direction: column; gap: 18px; }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+
+    .field label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: .01em;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-wrap .icon {
+      position: absolute;
+      left: 13px;
+      width: 17px;
+      height: 17px;
+      color: var(--text-muted);
+      pointer-events: none;
+      transition: color var(--transition);
+      flex-shrink: 0;
+    }
+
+    .input-wrap input {
+      width: 100%;
+      padding: 11px 14px 11px 40px;
+      background: var(--bg-input);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 14.5px;
+      color: var(--text-primary);
+      outline: none;
+      transition: all var(--transition);
+      -webkit-appearance: none;
+    }
+
+    .input-wrap input::placeholder { color: var(--text-muted); }
+
+    .input-wrap input:focus {
+      border-color: var(--border-focus);
+      background: var(--bg-card);
+      box-shadow: var(--shadow-focus);
+    }
+    .input-wrap input:focus + .icon,
+    .input-wrap:focus-within .icon { color: var(--accent); }
+
+    /* password eye toggle */
+    .eye-btn {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-muted);
+      display: grid;
+      place-items: center;
+      border-radius: 4px;
+      transition: color var(--transition);
+    }
+    .eye-btn:hover { color: var(--text-primary); }
+    .eye-btn svg { width: 17px; height: 17px; }
+
+    .input-with-eye input { padding-right: 42px; }
+
+    /* ─── FORGOT LINK ────────────────────────────────────────── */
+    .forgot {
+      text-align: right;
+      margin-top: -8px;
+    }
+    .forgot a {
+      font-size: 12.5px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      transition: opacity var(--transition);
+    }
+    .forgot a:hover { opacity: .75; }
+
+    /* ─── ALERT ──────────────────────────────────────────────── */
+    .alert {
+      display: none;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13.5px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+    .alert.error  { display: flex; background: var(--danger-bg);  border: 1px solid var(--danger-border); color: var(--danger); }
+    .alert.success{ display: flex; background: var(--success-bg); border: 1px solid rgba(22,163,74,.25);   color: var(--success); }
+    .alert svg    { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ─── BUTTONS ────────────────────────────────────────────── */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition);
+      border: 1.5px solid transparent;
+      text-decoration: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 1px 6px rgba(37,99,235,.25);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+      box-shadow: 0 4px 14px rgba(37,99,235,.35);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: .65; cursor: not-allowed; transform: none; }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-secondary);
+      border-color: var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    /* spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn.loading .spinner { display: block; }
+    .btn.loading .btn-label { opacity: .8; }
+
+    /* ─── DIVIDER ────────────────────────────────────────────── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: .04em;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────────── */
+    .footer-note {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .footer-note a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      transition: opacity var(--transition);
+    }
+    .footer-note a:hover { opacity: .75; }
+
+    /* ─── LOADING OVERLAY (session auto-detect) ──────────────── */
+    #session-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 999;
+      transition: opacity .3s ease;
+    }
+    #session-overlay .ov-logo {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -.3px;
+    }
+    #session-overlay .ov-logo span { color: var(--accent); }
+    #session-overlay .ov-spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    #session-overlay .ov-text {
+      font-size: 13.5px;
+      color: var(--text-muted);
+    }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────── */
+    @media (max-width: 480px) {
+      .card { padding: 28px 22px; border-radius: var(--radius); }
+      .card-header h1 { font-size: 21px; }
+    }
+  </style>
 </head>
 <body>
-  <a href="index.html" class="logo-link">
-    <div class="logo-icon">N</div>
-    <span class="logo-text">Negocio360</span>
-  </a>
 
-  <div class="card">
-    <div class="card-title">Bienvenido de vuelta</div>
-    <div class="card-sub">Inicia sesión en tu cuenta de Negocio360</div>
+  <!-- Session auto-detect overlay -->
+  <div id="session-overlay">
+    <div class="ov-logo">Negocio<span>360</span></div>
+    <div class="ov-spinner"></div>
+    <div class="ov-text">Verificando sesión…</div>
+  </div>
 
-    <div class="form-group">
-      <label>Correo electrónico</label>
-      <input type="email" placeholder="tu@empresa.com">
-    </div>
+  <!-- Theme toggle -->
+  <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema">
+    <!-- sun icon (shown in dark mode) -->
+    <svg id="iconSun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         style="display:none">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <!-- moon icon (shown in light mode) -->
+    <svg id="iconMoon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+    <span id="themeLabel">Modo oscuro</span>
+  </button>
 
-    <div class="form-group">
-      <label>Contraseña</label>
-      <div class="pass-wrapper">
-        <input type="password" id="pass" placeholder="••••••••">
-        <button class="toggle-pass" onclick="togglePass()" type="button">👁</button>
+  <!-- Main wrapper -->
+  <div class="wrapper">
+
+    <!-- Logo -->
+    <a href="#" class="logo">
+      <div class="logo-mark">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <path d="M8 21h8M12 17v4"/>
+          <path d="M7 8h4M7 12h6"/>
+          <path d="M15 8h2M15 12h2"/>
+        </svg>
+      </div>
+      <span class="logo-text">Negocio<span>360</span></span>
+    </a>
+
+    <!-- Card -->
+    <div class="card">
+      <div class="card-header">
+        <h1>Iniciar sesión</h1>
+        <p>Accede a tu negocio y continúa donde te quedaste.</p>
+      </div>
+
+      <!-- Alert box -->
+      <div class="alert" id="alertBox" role="alert">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span id="alertMsg"></span>
+      </div>
+
+      <div class="form" style="margin-top: 20px;">
+
+        <!-- Email -->
+        <div class="field">
+          <label for="email">Correo electrónico</label>
+          <div class="input-wrap">
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+            </svg>
+            <input type="email" id="email" name="email"
+                   placeholder="tu@correo.com"
+                   autocomplete="email"
+                   required />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <div class="input-wrap input-with-eye">
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <input type="password" id="password" name="password"
+                   placeholder="••••••••"
+                   autocomplete="current-password"
+                   required />
+            <button type="button" class="eye-btn" id="eyeBtn" aria-label="Mostrar contraseña">
+              <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg id="eyeClosed" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   style="display:none">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Forgot password -->
+        <div class="forgot">
+          <a href="#" id="forgotLink">¿Olvidaste tu contraseña?</a>
+        </div>
+
+        <!-- Submit -->
+        <button class="btn btn-primary" id="loginBtn" type="button">
+          <div class="spinner" id="loginSpinner"></div>
+          <span class="btn-label" id="loginLabel">Iniciar sesión</span>
+        </button>
+
+        <div class="divider">O</div>
+
+        <!-- Register redirect -->
+        <button class="btn btn-secondary" id="registerBtn" type="button">
+          <span class="btn-label">Ir a registro</span>
+        </button>
+
       </div>
     </div>
 
-    <div class="forgot"><a href="#">¿Olvidaste tu contraseña?</a></div>
-
-    <button class="btn-primary">Iniciar Sesión</button>
-
-    <div class="divider"><span>o</span></div>
-
-    <div class="signup-link">
+    <!-- Footer note -->
+    <p class="footer-note">
       ¿No tienes cuenta? <a href="register.html">Regístrate gratis</a>
-    </div>
-  </div>
+    </p>
 
-  <div class="back-home">
-    <a href="index.html">← Volver al inicio</a>
-  </div>
+  </div><!-- /wrapper -->
 
   <script>
-    function togglePass() {
-      const p = document.getElementById('pass');
-      p.type = p.type === 'password' ? 'text' : 'password';
+  // ─── SUPABASE INIT ──────────────────────────────────────────────
+  const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ─── THEME ─────────────────────────────────────────────────────
+  const html        = document.documentElement;
+  const themeToggle = document.getElementById('themeToggle');
+  const themeLabel  = document.getElementById('themeLabel');
+  const iconSun     = document.getElementById('iconSun');
+  const iconMoon    = document.getElementById('iconMoon');
+
+  function applyTheme(theme) {
+    html.setAttribute('data-theme', theme);
+    localStorage.setItem('n360-theme', theme);
+    if (theme === 'dark') {
+      iconSun.style.display  = 'block';
+      iconMoon.style.display = 'none';
+      themeLabel.textContent = 'Modo claro';
+    } else {
+      iconSun.style.display  = 'none';
+      iconMoon.style.display = 'block';
+      themeLabel.textContent = 'Modo oscuro';
     }
+  }
+
+  const savedTheme = localStorage.getItem('n360-theme') ||
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  applyTheme(savedTheme);
+
+  themeToggle.addEventListener('click', () => {
+    applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  // ─── PASSWORD VISIBILITY ────────────────────────────────────────
+  const passwordInput = document.getElementById('password');
+  const eyeBtn        = document.getElementById('eyeBtn');
+  const eyeOpen       = document.getElementById('eyeOpen');
+  const eyeClosed     = document.getElementById('eyeClosed');
+
+  eyeBtn.addEventListener('click', () => {
+    const isHidden = passwordInput.type === 'password';
+    passwordInput.type       = isHidden ? 'text'    : 'password';
+    eyeOpen.style.display    = isHidden ? 'none'    : 'block';
+    eyeClosed.style.display  = isHidden ? 'block'   : 'none';
+    eyeBtn.setAttribute('aria-label', isHidden ? 'Ocultar contraseña' : 'Mostrar contraseña');
+  });
+
+  // ─── ALERT ─────────────────────────────────────────────────────
+  const alertBox = document.getElementById('alertBox');
+  const alertMsg = document.getElementById('alertMsg');
+
+  function showError(msg) {
+    alertBox.className = 'alert error';
+    alertMsg.textContent = msg;
+    alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function showSuccess(msg) {
+    alertBox.className = 'alert success';
+    alertMsg.textContent = msg;
+  }
+
+  function clearAlert() {
+    alertBox.className = 'alert';
+  }
+
+  // ─── LOADING STATE ──────────────────────────────────────────────
+  const loginBtn     = document.getElementById('loginBtn');
+  const loginSpinner = document.getElementById('loginSpinner');
+  const loginLabel   = document.getElementById('loginLabel');
+
+  function setLoading(on) {
+    loginBtn.disabled          = on;
+    loginBtn.classList.toggle('loading', on);
+    loginSpinner.style.display = on ? 'block' : 'none';
+    loginLabel.textContent     = on ? 'Verificando…' : 'Iniciar sesión';
+  }
+
+  // ─── OVERLAY ────────────────────────────────────────────────────
+  const overlay = document.getElementById('session-overlay');
+
+  function hideOverlay() {
+    overlay.style.opacity = '0';
+    setTimeout(() => { overlay.style.display = 'none'; }, 300);
+  }
+
+  // ─── REDIRECT BASED ON ONBOARDING ──────────────────────────────
+  async function redirectByOnboarding(userId) {
+    const { data: profile, error } = await sb
+      .from('usuarios')
+      .select('onboarding_completado')
+      .eq('auth_user_id', userId)
+      .single();
+
+    if (error || !profile) {
+      // Profile not found — send to personalizacion so it can be created
+      window.location.href = 'personalizacion.html';
+      return;
+    }
+
+    if (profile.onboarding_completado === true) {
+      window.location.href = 'dashboard.html';
+    } else {
+      window.location.href = 'personalizacion.html';
+    }
+  }
+
+  // ─── AUTO-DETECT SESSION ────────────────────────────────────────
+  async function checkSession() {
+    try {
+      const { data: { session }, error } = await sb.auth.getSession();
+
+      if (error) {
+        console.warn('Session check error:', error.message);
+        hideOverlay();
+        return;
+      }
+
+      if (session && session.user) {
+        // Active session → redirect without showing form
+        await redirectByOnboarding(session.user.id);
+        return;
+      }
+    } catch (e) {
+      console.error('Unexpected error checking session:', e);
+    }
+
+    // No session → show form
+    hideOverlay();
+  }
+
+  // ─── LOGIN ──────────────────────────────────────────────────────
+  async function handleLogin() {
+    clearAlert();
+
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    // Basic validation
+    if (!email) { showError('Por favor ingresa tu correo electrónico.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError('El correo electrónico no es válido.'); return; }
+    if (!password) { showError('Por favor ingresa tu contraseña.'); return; }
+
+    setLoading(true);
+
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        // Translate common Supabase auth errors to Spanish
+        const msg = translateAuthError(error.message);
+        showError(msg);
+        setLoading(false);
+        return;
+      }
+
+      if (!data?.user) {
+        showError('Ocurrió un error inesperado. Por favor intenta de nuevo.');
+        setLoading(false);
+        return;
+      }
+
+      // Authenticated → check onboarding
+      showSuccess('¡Autenticado! Redirigiendo…');
+      await redirectByOnboarding(data.user.id);
+
+    } catch (e) {
+      console.error('Login error:', e);
+      showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+      setLoading(false);
+    }
+  }
+
+  // ─── ERROR TRANSLATIONS ─────────────────────────────────────────
+  function translateAuthError(msg) {
+    const m = (msg || '').toLowerCase();
+    if (m.includes('invalid login credentials') || m.includes('invalid credentials'))
+      return 'Correo o contraseña incorrectos. Verifica tus datos.';
+    if (m.includes('email not confirmed'))
+      return 'Tu correo aún no ha sido confirmado. Revisa tu bandeja de entrada.';
+    if (m.includes('too many requests') || m.includes('rate limit'))
+      return 'Demasiados intentos. Espera unos minutos antes de volver a intentarlo.';
+    if (m.includes('user not found') || m.includes('no user found'))
+      return 'No existe una cuenta con ese correo electrónico.';
+    if (m.includes('network') || m.includes('fetch'))
+      return 'Error de conexión. Verifica tu internet e intenta de nuevo.';
+    if (m.includes('disabled') || m.includes('banned'))
+      return 'Tu cuenta ha sido deshabilitada. Contacta al soporte.';
+    return 'Ocurrió un error al iniciar sesión. Por favor intenta de nuevo.';
+  }
+
+  // ─── FORGOT PASSWORD ────────────────────────────────────────────
+  document.getElementById('forgotLink').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('Ingresa tu correo electrónico primero para restablecer la contraseña.');
+      document.getElementById('email').focus();
+      return;
+    }
+    clearAlert();
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/login.html'
+    });
+    if (error) {
+      showError('No se pudo enviar el correo de recuperación. Intenta de nuevo.');
+    } else {
+      showSuccess('Correo de recuperación enviado. Revisa tu bandeja de entrada.');
+    }
+  });
+
+  // ─── REGISTER REDIRECT ──────────────────────────────────────────
+  document.getElementById('registerBtn').addEventListener('click', () => {
+    window.location.href = 'register.html';
+  });
+
+  // ─── LOGIN BUTTON & ENTER KEY ────────────────────────────────────
+  loginBtn.addEventListener('click', handleLogin);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !loginBtn.disabled) handleLogin();
+  });
+
+  // ─── RUN SESSION CHECK ON LOAD ──────────────────────────────────
+  checkSession();
   </script>
+
 </body>
 </html>
