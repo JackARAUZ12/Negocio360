@@ -1,730 +1,1327 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crear Cuenta — Negocio360</title>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crear cuenta — Negocio360</title>
 
-  :root {
-    --bg: #0B0F19;
-    --card: #121826;
-    --border: rgba(255,255,255,0.07);
-    --text: #F0F4FF;
-    --muted: #8892A4;
-    --accent: #3B82F6;
-    --accent-glow: rgba(59,130,246,0.25);
-    --success: #10B981;
-    --error: #EF4444;
-  }
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  body {
-    font-family: 'Sora', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    position: relative;
-    overflow-x: hidden;
-  }
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet" />
 
-  body::before {
-    content: '';
-    position: fixed;
-    width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%);
-    top: -100px; right: -100px;
-    pointer-events: none; z-index: 0;
-  }
-  body::after {
-    content: '';
-    position: fixed;
-    width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%);
-    bottom: -80px; left: -80px;
-    pointer-events: none; z-index: 0;
-  }
+  <style>
+    /* ============================================================
+       DESIGN TOKENS — NEGOCIO360
+       ============================================================ */
+    :root {
+      /* Brand */
+      --brand-primary:    #1A56DB;
+      --brand-primary-h:  #1446BF;
+      --brand-accent:     #0EA5E9;
+      --brand-success:    #10B981;
+      --brand-warning:    #F59E0B;
+      --brand-danger:     #EF4444;
 
-  /* ── Logo ── */
-  .logo-link {
-    text-decoration: none;
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 32px;
-    position: relative; z-index: 1;
-  }
-  .logo-icon {
-    width: 38px; height: 38px;
-    background: var(--accent); border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; font-weight: 700; color: #fff;
-  }
-  .logo-text { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+      /* Neutral — Light */
+      --bg-page:          #F5F7FA;
+      --bg-card:          #FFFFFF;
+      --bg-input:         #F9FAFB;
+      --border-subtle:    #E5E7EB;
+      --border-focus:     #1A56DB;
+      --text-primary:     #111827;
+      --text-secondary:   #6B7280;
+      --text-muted:       #9CA3AF;
+      --shadow-card:      0 1px 3px rgba(0,0,0,.06), 0 8px 32px rgba(0,0,0,.07);
+      --shadow-btn:       0 1px 2px rgba(26,86,219,.18), 0 4px 16px rgba(26,86,219,.18);
+      --shadow-input-focus: 0 0 0 3px rgba(26,86,219,.14);
 
-  /* ── Card ── */
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 40px;
-    width: 100%; max-width: 460px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
-    animation: slideUp 0.5s cubic-bezier(0.22,1,0.36,1);
-    position: relative; z-index: 1;
-  }
+      /* Typography */
+      --font-display:     'Sora', sans-serif;
+      --font-body:        'DM Sans', sans-serif;
 
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(24px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+      /* Transitions */
+      --transition:       .18s cubic-bezier(.4,0,.2,1);
 
-  /* ── Badge ── */
-  .badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(59,130,246,0.12);
-    border: 1px solid rgba(59,130,246,0.25);
-    color: #60A5FA;
-    font-size: 11px; font-weight: 600;
-    padding: 4px 10px; border-radius: 100px;
-    letter-spacing: 0.05em; text-transform: uppercase;
-    margin-bottom: 16px;
-  }
-  .badge::before { content: '✦'; font-size: 9px; }
+      /* Radius */
+      --radius-card:      18px;
+      --radius-input:     10px;
+      --radius-btn:       10px;
+    }
 
-  .card-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
-  .card-sub   { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.6; }
+    [data-theme="dark"] {
+      --bg-page:          #0D1117;
+      --bg-card:          #161B22;
+      --bg-input:         #0D1117;
+      --border-subtle:    #2D333B;
+      --border-focus:     #4D8EF7;
+      --text-primary:     #E6EDF3;
+      --text-secondary:   #8B949E;
+      --text-muted:       #6E7681;
+      --shadow-card:      0 1px 3px rgba(0,0,0,.4), 0 8px 32px rgba(0,0,0,.45);
+      --shadow-btn:       0 1px 2px rgba(77,142,247,.2), 0 4px 16px rgba(77,142,247,.22);
+      --shadow-input-focus: 0 0 0 3px rgba(77,142,247,.18);
+      --brand-primary:    #4D8EF7;
+      --brand-primary-h:  #3B7DE8;
+    }
 
-  /* ── Perks ── */
-  .perks { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
-  .perk  { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-  .perk-icon { color: var(--success); font-size: 13px; }
+    /* ============================================================
+       RESET & BASE
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* ── Grid 2 cols ── */
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    html { font-size: 16px; scroll-behavior: smooth; }
 
-  /* ── Inputs ── */
-  .form-group { margin-bottom: 18px; }
-  label {
-    display: block; font-size: 13px; font-weight: 500;
-    color: var(--muted); margin-bottom: 8px;
-  }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-page);
+      color: var(--text-primary);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px 48px;
+      transition: background var(--transition), color var(--transition);
+      line-height: 1.55;
+    }
 
-  input[type="email"],
-  input[type="password"],
-  input[type="text"],
-  input[type="tel"] {
-    width: 100%;
-    padding: 12px 16px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    font-family: 'Sora', sans-serif;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
-  input.input-error  { border-color: var(--error) !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.15) !important; }
-  input.input-valid  { border-color: var(--success) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.15) !important; }
-  input::placeholder { color: rgba(136,146,164,0.5); }
+    /* Subtle background pattern */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(26,86,219,.09) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-  .field-error {
-    font-size: 12px; color: var(--error);
-    margin-top: 6px; display: none;
-    align-items: center; gap: 4px;
-  }
-  .field-error.visible { display: flex; }
+    /* ============================================================
+       THEME TOGGLE
+       ============================================================ */
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-card);
+      transition: background var(--transition), border var(--transition), transform var(--transition);
+      color: var(--text-secondary);
+    }
+    .theme-toggle:hover { transform: scale(1.08); color: var(--text-primary); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    [data-theme="dark"] .icon-sun  { display: block; }
+    [data-theme="dark"] .icon-moon { display: none; }
+    [data-theme="light"] .icon-sun  { display: none; }
+    [data-theme="light"] .icon-moon { display: block; }
 
-  /* ── Password ── */
-  .pass-wrapper { position: relative; }
-  .toggle-pass {
-    position: absolute; right: 14px; top: 50%;
-    transform: translateY(-50%);
-    background: none; border: none;
-    cursor: pointer; color: var(--muted);
-    font-size: 15px; padding: 0; line-height: 1;
-  }
+    /* ============================================================
+       WRAPPER
+       ============================================================ */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      animation: fadeUp .5s cubic-bezier(.4,0,.2,1) both;
+    }
 
-  /* ── Código de acceso ── */
-  .code-wrapper { position: relative; }
-  .code-input-wrap { position: relative; }
-  .code-status {
-    position: absolute; right: 14px; top: 50%;
-    transform: translateY(-50%);
-    font-size: 16px; pointer-events: none;
-    display: none;
-  }
-  .code-status.visible { display: block; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(22px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
 
-  .code-hint {
-    margin-top: 10px;
-    background: rgba(59,130,246,0.07);
-    border: 1px solid rgba(59,130,246,0.15);
-    border-radius: 10px;
-    padding: 12px 14px;
-    display: flex; align-items: flex-start; gap: 10px;
-    font-size: 13px; color: #93C5FD; line-height: 1.55;
-  }
-  .code-hint-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-  .code-hint a {
-    color: #60A5FA; font-weight: 600; text-decoration: none;
-    white-space: nowrap;
-  }
-  .code-hint a:hover { text-decoration: underline; }
+    /* ============================================================
+       LOGO
+       ============================================================ */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      user-select: none;
+    }
 
-  /* ── Alerta global ── */
-  .alert {
-    border-radius: 10px; padding: 14px 16px;
-    font-size: 14px; line-height: 1.6;
-    display: none; margin-bottom: 20px;
-    align-items: flex-start; gap: 10px;
-  }
-  .alert.visible { display: flex; }
-  .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
-  .alert-error {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.25);
-    color: #FCA5A5;
-  }
+    .logo-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-accent) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(26,86,219,.28);
+      flex-shrink: 0;
+    }
 
-  /* ── Términos ── */
-  .terms {
-    display: flex; align-items: flex-start; gap: 10px;
-    font-size: 13px; color: var(--muted);
-    margin-bottom: 24px; line-height: 1.5;
-  }
-  .terms input[type="checkbox"] {
-    width: 16px; height: 16px; min-width: 16px;
-    margin-top: 2px; cursor: pointer;
-    accent-color: var(--accent);
-  }
-  .terms a { color: var(--accent); text-decoration: none; }
-  .terms a:hover { text-decoration: underline; }
+    .logo-mark svg { width: 22px; height: 22px; color: #fff; }
 
-  /* ── Botón ── */
-  .btn-primary {
-    width: 100%; padding: 14px;
-    background: var(--accent);
-    border: none; border-radius: 10px;
-    color: #fff;
-    font-family: 'Sora', sans-serif;
-    font-size: 15px; font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
-    box-shadow: 0 4px 20px rgba(59,130,246,0.35);
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .btn-primary:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 6px 28px rgba(59,130,246,0.45); }
-  .btn-primary:active:not(:disabled) { transform: scale(0.98); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .logo-text {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--text-primary);
+      letter-spacing: -.02em;
+    }
 
-  /* ── Spinner ── */
-  .spinner {
-    width: 18px; height: 18px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    display: none;
-  }
-  .spinner.visible { display: block; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+    .logo-text span {
+      color: var(--brand-primary);
+    }
 
-  /* ── Progreso ── */
-  .progress-bar-wrap {
-    height: 4px; background: rgba(255,255,255,0.06);
-    border-radius: 2px; margin-top: 12px; overflow: hidden;
-    display: none;
-  }
-  .progress-bar-wrap.visible { display: block; }
-  .progress-bar {
-    height: 100%; width: 0%;
-    background: linear-gradient(90deg, var(--accent), #8B5CF6);
-    border-radius: 2px;
-    transition: width 0.4s ease;
-  }
+    /* ============================================================
+       CARD
+       ============================================================ */
+    .card {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      transition: background var(--transition), border var(--transition), box-shadow var(--transition);
+    }
 
-  /* ── Divider ── */
-  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
-  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  .divider span { font-size: 12px; color: var(--muted); }
+    .card-header {
+      padding: 32px 36px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
 
-  .login-link { text-align: center; font-size: 14px; color: var(--muted); }
-  .login-link a { color: var(--accent); text-decoration: none; font-weight: 500; }
-  .login-link a:hover { text-decoration: underline; }
+    .card-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.35rem;
+      color: var(--text-primary);
+      letter-spacing: -.025em;
+      line-height: 1.3;
+    }
 
-  /* ── Back ── */
-  .back-home { margin-top: 24px; font-size: 13px; color: var(--muted); text-align: center; position: relative; z-index: 1; }
-  .back-home a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: color 0.2s; }
-  .back-home a:hover { color: var(--text); }
+    .card-subtitle {
+      margin-top: 6px;
+      font-size: .925rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
 
-  /* ── Pantalla de éxito ── */
-  .success-screen {
-    display: none;
-    flex-direction: column; align-items: center;
-    text-align: center; padding: 20px 0 10px;
-  }
-  .success-screen.visible { display: flex; }
-  .success-checkmark {
-    width: 72px; height: 72px;
-    background: rgba(16,185,129,0.12);
-    border: 2px solid rgba(16,185,129,0.3);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 34px; margin-bottom: 20px;
-    animation: pop 0.5s cubic-bezier(0.22,1,0.36,1);
-  }
-  @keyframes pop {
-    from { transform: scale(0.5); opacity: 0; }
-    to   { transform: scale(1);   opacity: 1; }
-  }
-  .success-title { font-size: 22px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px; }
-  .success-msg   { font-size: 14px; color: var(--muted); line-height: 1.75; max-width: 340px; }
-  .success-actions {
-    margin-top: 28px;
-    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
-  }
-  .btn-ghost-light {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 10px 20px; border-radius: 8px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid var(--border);
-    color: var(--text); text-decoration: none;
-    font-size: 13px; font-weight: 600;
-    transition: background 0.2s;
-  }
-  .btn-ghost-light:hover { background: rgba(255,255,255,0.1); }
-  .btn-wa {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 10px 20px; border-radius: 8px;
-    background: #25D366; color: #fff; text-decoration: none;
-    font-size: 13px; font-weight: 600;
-    transition: opacity 0.2s;
-  }
-  .btn-wa:hover { opacity: 0.88; }
+    .card-body {
+      padding: 28px 36px 32px;
+    }
 
-  /* ── Responsive ── */
-  @media (max-width: 480px) {
-    .card { padding: 28px 20px; }
-    .row  { grid-template-columns: 1fr; }
-    .perks { gap: 10px; }
-  }
-</style>
+    /* ============================================================
+       STEPS INDICATOR
+       ============================================================ */
+    .steps {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 24px;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .step-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: all var(--transition);
+      background: var(--bg-input);
+    }
+
+    .step-dot.active {
+      border-color: var(--brand-primary);
+      background: var(--brand-primary);
+      color: #fff;
+    }
+
+    .step-dot.done {
+      border-color: var(--brand-success);
+      background: var(--brand-success);
+      color: #fff;
+    }
+
+    .step-label {
+      font-size: .8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: color var(--transition);
+      white-space: nowrap;
+    }
+
+    .step-label.active { color: var(--text-primary); font-weight: 600; }
+    .step-label.done   { color: var(--brand-success); }
+
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background: var(--border-subtle);
+      margin: 0 6px;
+      border-radius: 2px;
+      transition: background var(--transition);
+    }
+
+    .step-line.done { background: var(--brand-success); }
+
+    /* ============================================================
+       FORM ELEMENTS
+       ============================================================ */
+    .form { display: flex; flex-direction: column; gap: 16px; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    label {
+      font-size: .84rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: .005em;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 13px;
+      color: var(--text-muted);
+      pointer-events: none;
+      flex-shrink: 0;
+      transition: color var(--transition);
+    }
+
+    .input-icon svg { width: 17px; height: 17px; display: block; }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="password"] {
+      width: 100%;
+      padding: 10px 14px 10px 40px;
+      background: var(--bg-input);
+      border: 1.5px solid var(--border-subtle);
+      border-radius: var(--radius-input);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: .93rem;
+      outline: none;
+      transition: border var(--transition), box-shadow var(--transition), background var(--transition);
+      -webkit-appearance: none;
+    }
+
+    input::placeholder { color: var(--text-muted); }
+
+    input:focus {
+      border-color: var(--border-focus);
+      box-shadow: var(--shadow-input-focus);
+      background: var(--bg-card);
+    }
+
+    input:focus + .input-icon,
+    .input-wrap:focus-within .input-icon { color: var(--brand-primary); }
+
+    input.error { border-color: var(--brand-danger) !important; }
+    input.error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,.14) !important; }
+
+    .field-error {
+      font-size: .78rem;
+      color: var(--brand-danger);
+      display: none;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .field-error.visible { display: flex; }
+
+    /* Password toggle */
+    .pw-toggle {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      transition: color var(--transition);
+    }
+
+    .pw-toggle:hover { color: var(--text-primary); }
+    .pw-toggle svg { width: 17px; height: 17px; }
+
+    /* Password strength */
+    .pw-strength {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .pw-bar {
+      flex: 1;
+      height: 3px;
+      border-radius: 3px;
+      background: var(--border-subtle);
+      transition: background .25s;
+    }
+
+    .pw-bar.weak   { background: var(--brand-danger); }
+    .pw-bar.fair   { background: var(--brand-warning); }
+    .pw-bar.strong { background: var(--brand-success); }
+
+    /* Checkbox */
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      padding: 0;
+      margin-top: 2px;
+      accent-color: var(--brand-primary);
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .checkbox-label {
+      font-size: .87rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      cursor: pointer;
+    }
+
+    .checkbox-label a {
+      color: var(--brand-primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .checkbox-label a:hover { text-decoration: underline; }
+
+    /* ============================================================
+       BUTTONS
+       ============================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 22px;
+      border-radius: var(--radius-btn);
+      font-family: var(--font-body);
+      font-size: .93rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: all var(--transition);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--brand-primary);
+      color: #fff;
+      box-shadow: var(--shadow-btn);
+      width: 100%;
+      padding: 13px;
+      font-size: .97rem;
+      letter-spacing: .01em;
+      margin-top: 4px;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--brand-primary-h);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(26,86,219,.2), 0 6px 22px rgba(26,86,219,.24);
+    }
+
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+
+    .btn-primary:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Loading spinner inside btn */
+    .btn-primary .spinner {
+      width: 17px;
+      height: 17px;
+      border: 2.5px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+      display: none;
+    }
+
+    .btn-primary.loading .spinner { display: block; }
+    .btn-primary.loading .btn-text { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* WhatsApp button */
+    .btn-wa {
+      background: #25D366;
+      color: #fff;
+      padding: 10px 18px;
+      font-size: .88rem;
+      width: 100%;
+      border-radius: var(--radius-btn);
+      box-shadow: 0 2px 12px rgba(37,211,102,.3);
+    }
+
+    .btn-wa:hover { background: #1ebe5d; transform: translateY(-1px); }
+    .btn-wa svg { width: 18px; height: 18px; }
+
+    /* ============================================================
+       DIVIDER
+       ============================================================ */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-subtle);
+    }
+
+    .divider span {
+      font-size: .78rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    /* ============================================================
+       NO-CODE SECTION (Paso 1)
+       ============================================================ */
+    .no-code-section {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .no-code-label {
+      font-size: .83rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* ============================================================
+       STEP PANELS
+       ============================================================ */
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    /* ============================================================
+       FOOTER CARD
+       ============================================================ */
+    .card-footer-link {
+      text-align: center;
+      font-size: .85rem;
+      color: var(--text-muted);
+      padding: 0 36px 28px;
+    }
+
+    .card-footer-link a {
+      color: var(--brand-primary);
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    .card-footer-link a:hover { text-decoration: underline; }
+
+    /* ============================================================
+       PAGE FOOTER
+       ============================================================ */
+    .page-footer {
+      font-size: .78rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* ============================================================
+       TOAST
+       ============================================================ */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: .87rem;
+      color: var(--text-primary);
+      box-shadow: 0 8px 32px rgba(0,0,0,.14);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 200;
+      transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .3s;
+      opacity: 0;
+      max-width: 360px;
+      width: calc(100% - 48px);
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .toast-icon { font-size: 1rem; flex-shrink: 0; }
+
+    .toast.toast-error { border-left: 3px solid var(--brand-danger); }
+    .toast.toast-success { border-left: 3px solid var(--brand-success); }
+
+    /* ============================================================
+       RESPONSIVE
+       ============================================================ */
+    @media (max-width: 560px) {
+      .card-header, .card-body, .card-footer-link {
+        padding-left: 22px;
+        padding-right: 22px;
+      }
+
+      .field-row { grid-template-columns: 1fr; }
+
+      .card-title { font-size: 1.2rem; }
+    }
+
+    @media (max-width: 380px) {
+      .step-label { display: none; }
+    }
+  </style>
 </head>
 <body>
 
-  <a href="index.html" class="logo-link">
-    <div class="logo-icon">N</div>
-    <span class="logo-text">Negocio360</span>
-  </a>
+  <!-- ===== THEME TOGGLE ===== -->
+  <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema" title="Cambiar tema">
+    <!-- Moon icon (mostrar en modo claro) -->
+    <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+    </svg>
+    <!-- Sun icon (mostrar en modo oscuro) -->
+    <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+    </svg>
+  </button>
 
-  <div class="card" id="mainCard">
+  <!-- ===== MAIN WRAPPER ===== -->
+  <main class="wrapper">
 
-    <!-- ═══════════════════════════════════
-         FORMULARIO
-    ════════════════════════════════════ -->
-    <div id="formSection">
+    <!-- LOGO -->
+    <a href="index.html" class="logo" aria-label="Negocio360 - Inicio">
+      <div class="logo-mark">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" />
+        </svg>
+      </div>
+      <span class="logo-text">Negocio<span>360</span></span>
+    </a>
 
-      <div class="badge">Acceso con código</div>
-      <div class="card-title">Crea tu cuenta</div>
-      <div class="card-sub">Ingresa tu código de acceso y completa tu registro en segundos.</div>
+    <!-- CARD PRINCIPAL -->
+    <div class="card" id="mainCard">
 
-      <div class="perks">
-        <div class="perk"><span class="perk-icon">✓</span> Sin costos ocultos</div>
-        <div class="perk"><span class="perk-icon">✓</span> Cancela cuando quieras</div>
-        <div class="perk"><span class="perk-icon">✓</span> Soporte incluido</div>
+      <!-- HEADER -->
+      <div class="card-header">
+        <h1 class="card-title" id="cardTitle">Código de acceso</h1>
+        <p class="card-subtitle" id="cardSubtitle">
+          Para crear una cuenta en Negocio360 necesitas un código de acceso proporcionado por nuestro equipo.
+        </p>
       </div>
 
-      <!-- Alerta global de error -->
-      <div class="alert alert-error" id="globalAlert">
-        <span class="alert-icon">⚠️</span>
-        <span id="globalAlertMsg"></span>
-      </div>
+      <!-- BODY -->
+      <div class="card-body">
 
-      <!-- Nombre / Apellido -->
-      <div class="row">
-        <div class="form-group">
-          <label for="nombre">Nombre</label>
-          <input type="text" id="nombre" placeholder="Juan" autocomplete="given-name">
-          <div class="field-error" id="err-nombre">⚠ Campo obligatorio</div>
+        <!-- STEPS INDICATOR (oculto en paso 1, visible en paso 2) -->
+        <div class="steps" id="stepsIndicator" style="display:none;">
+          <div class="step-item">
+            <div class="step-dot done" id="dot1">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12">
+                <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" />
+              </svg>
+            </div>
+            <span class="step-label done">Verificación</span>
+          </div>
+          <div class="step-line done"></div>
+          <div class="step-item">
+            <div class="step-dot active" id="dot2">2</div>
+            <span class="step-label active">Crear cuenta</span>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="apellido">Apellido</label>
-          <input type="text" id="apellido" placeholder="García" autocomplete="family-name">
-          <div class="field-error" id="err-apellido">⚠ Campo obligatorio</div>
+
+        <!-- ==========================================
+             PASO 1: VALIDACIÓN DE CÓDIGO
+             ========================================== -->
+        <div class="step-panel active" id="panelCodigo">
+          <div class="form">
+
+            <div class="field">
+              <label for="codigoAcceso">Código de acceso</label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 0 1 21.75 8.25Z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  id="codigoAcceso"
+                  placeholder="NEGOCIO360-XXXX"
+                  autocomplete="off"
+                  spellcheck="false"
+                  style="text-transform:uppercase; letter-spacing:.06em;"
+                />
+              </div>
+              <span class="field-error" id="err-codigo">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+                </svg>
+                <span id="err-codigo-text">Código inválido</span>
+              </span>
+            </div>
+
+            <button class="btn btn-primary" id="btnContinuar" type="button">
+              <span class="btn-text">Continuar</span>
+              <span class="spinner"></span>
+            </button>
+
+            <div class="divider"><span>¿No tienes código?</span></div>
+
+            <div class="no-code-section">
+              <p class="no-code-label">Solicita tu código de acceso a través de WhatsApp y nuestro equipo te responderá en breve.</p>
+              <a
+                class="btn btn-wa"
+                href="https://wa.me/50581294177?text=Hola%2C%20deseo%20obtener%20un%20c%C3%B3digo%20de%20acceso%20para%20registrarme%20en%20Negocio360."
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
+                </svg>
+                Solicitar código por WhatsApp
+              </a>
+            </div>
+
+          </div>
         </div>
-      </div>
 
-      <!-- Negocio -->
-      <div class="form-group">
-        <label for="negocio">Nombre del negocio</label>
-        <input type="text" id="negocio" placeholder="Mi Empresa S.A.">
-        <div class="field-error" id="err-negocio">⚠ Campo obligatorio</div>
-      </div>
+        <!-- ==========================================
+             PASO 2: FORMULARIO DE REGISTRO
+             ========================================== -->
+        <div class="step-panel" id="panelRegistro">
+          <div class="form" id="formRegistro">
 
-      <!-- Email -->
-      <div class="form-group">
-        <label for="email">Correo electrónico</label>
-        <input type="email" id="email" placeholder="tu@empresa.com" autocomplete="email">
-        <div class="field-error" id="err-email">⚠ Ingresa un correo válido</div>
-      </div>
+            <!-- Nombre y Apellido -->
+            <div class="field-row">
+              <div class="field">
+                <label for="nombre">Nombre <span style="color:var(--brand-danger)">*</span></label>
+                <div class="input-wrap">
+                  <span class="input-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                    </svg>
+                  </span>
+                  <input type="text" id="nombre" placeholder="Juan" autocomplete="given-name" />
+                </div>
+                <span class="field-error" id="err-nombre"><span>Campo requerido</span></span>
+              </div>
 
-      <!-- Teléfono -->
-      <div class="form-group">
-        <label for="telefono">Teléfono (WhatsApp)</label>
-        <input type="tel" id="telefono" placeholder="+505 8888 8888" autocomplete="tel">
-        <div class="field-error" id="err-telefono">⚠ Campo obligatorio</div>
-      </div>
+              <div class="field">
+                <label for="apellido">Apellido <span style="color:var(--brand-danger)">*</span></label>
+                <div class="input-wrap">
+                  <span class="input-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                    </svg>
+                  </span>
+                  <input type="text" id="apellido" placeholder="Pérez" autocomplete="family-name" />
+                </div>
+                <span class="field-error" id="err-apellido"><span>Campo requerido</span></span>
+              </div>
+            </div>
 
-      <!-- Contraseña -->
-      <div class="form-group">
-        <label for="password">Contraseña</label>
-        <div class="pass-wrapper">
-          <input type="password" id="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
-          <button class="toggle-pass" type="button" onclick="togglePass()" title="Mostrar/ocultar">👁</button>
+            <!-- Nombre del negocio -->
+            <div class="field">
+              <label for="negocio">Nombre del negocio <span style="color:var(--brand-danger)">*</span></label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" />
+                  </svg>
+                </span>
+                <input type="text" id="negocio" placeholder="Mi Empresa S.A." autocomplete="organization" />
+              </div>
+              <span class="field-error" id="err-negocio"><span>Campo requerido</span></span>
+            </div>
+
+            <!-- Email -->
+            <div class="field">
+              <label for="email">Correo electrónico <span style="color:var(--brand-danger)">*</span></label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+                  </svg>
+                </span>
+                <input type="email" id="email" placeholder="juan@empresa.com" autocomplete="email" />
+              </div>
+              <span class="field-error" id="err-email"><span>Correo inválido</span></span>
+            </div>
+
+            <!-- WhatsApp -->
+            <div class="field">
+              <label for="whatsapp">WhatsApp <span style="color:var(--brand-danger)">*</span></label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
+                  </svg>
+                </span>
+                <input type="tel" id="whatsapp" placeholder="+505 8000 0000" autocomplete="tel" />
+              </div>
+              <span class="field-error" id="err-whatsapp"><span>Campo requerido</span></span>
+            </div>
+
+            <!-- Contraseña -->
+            <div class="field">
+              <label for="password">Contraseña <span style="color:var(--brand-danger)">*</span></label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                  </svg>
+                </span>
+                <input type="password" id="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+                <button type="button" class="pw-toggle" id="togglePw1" aria-label="Ver contraseña">
+                  <svg id="eyeIcon1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                </button>
+              </div>
+              <div class="pw-strength" id="pwStrength">
+                <div class="pw-bar" id="bar1"></div>
+                <div class="pw-bar" id="bar2"></div>
+                <div class="pw-bar" id="bar3"></div>
+              </div>
+              <span class="field-error" id="err-password"><span>Mínimo 8 caracteres</span></span>
+            </div>
+
+            <!-- Confirmar contraseña -->
+            <div class="field">
+              <label for="passwordConfirm">Confirmar contraseña <span style="color:var(--brand-danger)">*</span></label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+                  </svg>
+                </span>
+                <input type="password" id="passwordConfirm" placeholder="Repite tu contraseña" autocomplete="new-password" />
+                <button type="button" class="pw-toggle" id="togglePw2" aria-label="Ver contraseña">
+                  <svg id="eyeIcon2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                </button>
+              </div>
+              <span class="field-error" id="err-confirm"><span>Las contraseñas no coinciden</span></span>
+            </div>
+
+            <!-- Términos -->
+            <div class="checkbox-row">
+              <input type="checkbox" id="terminos" />
+              <label for="terminos" class="checkbox-label">
+                Acepto los <a href="terminos.html" target="_blank">Términos y Condiciones</a> y la <a href="privacidad.html" target="_blank">Política de Privacidad</a> de Negocio360
+              </label>
+            </div>
+            <span class="field-error" id="err-terminos" style="margin-top:-8px;"><span>Debes aceptar los términos</span></span>
+
+            <!-- Botón registrar -->
+            <button class="btn btn-primary" id="btnRegistrar" type="button">
+              <span class="btn-text">Crear mi cuenta</span>
+              <span class="spinner"></span>
+            </button>
+
+          </div>
         </div>
-        <div class="field-error" id="err-password">⚠ Mínimo 8 caracteres</div>
+
+      </div><!-- /card-body -->
+
+      <!-- FOOTER LINK -->
+      <div class="card-footer-link">
+        ¿Ya tienes cuenta? <a href="login.html">Iniciar sesión</a>
       </div>
 
-      <!-- ═══ CÓDIGO DE ACCESO ═══ -->
-      <div class="form-group">
-        <label for="codigo">Código de acceso</label>
-        <div class="code-input-wrap">
-          <input
-            type="text"
-            id="codigo"
-            placeholder="Ingresa el código proporcionado por WhatsApp"
-            autocomplete="off"
-            spellcheck="false"
-            autocorrect="off"
-            autocapitalize="characters"
-            oninput="onCodigoInput(this)"
-          >
-          <span class="code-status" id="codeStatus"></span>
-        </div>
-        <div class="field-error" id="err-codigo">⚠ Código de acceso inválido. Solicita un código válido por WhatsApp.</div>
-        <!-- Hint de cómo obtener el código -->
-        <div class="code-hint">
-          <span class="code-hint-icon">💬</span>
-          <span>
-            ¿No tienes un código?
-            <a href="https://wa.me/50581294177?text=Hola%2C+quiero+registrarme+en+Negocio360+y+necesito+mi+c%C3%B3digo+de+acceso." target="_blank">Escríbenos por WhatsApp</a>
-            y te lo enviamos al instante.
-          </span>
-        </div>
-      </div>
+    </div><!-- /card -->
 
-      <!-- Términos -->
-      <div class="terms">
-        <input type="checkbox" id="terms">
-        <label for="terms">Acepto los <a href="#">Términos de servicio</a> y la <a href="#">Política de privacidad</a> de Negocio360.</label>
-      </div>
-      <div class="field-error" id="err-terms" style="margin-top:-16px;margin-bottom:16px;">⚠ Debes aceptar los términos para continuar</div>
+    <p class="page-footer">© 2026 Negocio360. Todos los derechos reservados.</p>
 
-      <!-- Barra de progreso -->
-      <div class="progress-bar-wrap" id="progressWrap">
-        <div class="progress-bar" id="progressBar"></div>
-      </div>
+  </main>
 
-      <!-- Botón submit -->
-      <button class="btn-primary" id="submitBtn" type="button" onclick="handleSubmit()">
-        <div class="spinner" id="btnSpinner"></div>
-        <span id="btnText">Crear cuenta →</span>
-      </button>
-
-      <div class="divider"><span>ya tienes cuenta</span></div>
-      <div class="login-link"><a href="login.html">Iniciar sesión</a></div>
-
-    </div><!-- /formSection -->
-
-    <!-- ═══════════════════════════════════
-         PANTALLA DE ÉXITO
-    ════════════════════════════════════ -->
-    <div class="success-screen" id="successScreen">
-      <div class="success-checkmark">✅</div>
-      <div class="success-title">¡Cuenta creada!</div>
-      <div class="success-msg">
-        Tu cuenta fue registrada correctamente.<br><br>
-        <strong style="color:var(--text)">Ya puedes empezar a gestionar tu negocio.</strong><br><br>
-        Si tienes alguna duda contáctanos por WhatsApp, estamos para ayudarte.
-      </div>
-      <div class="success-actions">
-        <a href="index.html" class="btn-ghost-light">← Ir al inicio</a>
-        <a href="https://wa.me/50581294177?text=Hola%2C+acabo+de+registrarme+en+Negocio360.+¿Cómo+accedo+a+mi+panel?" target="_blank" class="btn-wa">
-          💬 Contactar soporte
-        </a>
-      </div>
-    </div>
-
-  </div><!-- /card -->
-
-  <div class="back-home">
-    <a href="index.html">← Volver al inicio</a>
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast" id="toast" role="alert" aria-live="polite">
+    <span class="toast-icon" id="toastIcon">⚠️</span>
+    <span id="toastMsg">Mensaje</span>
   </div>
 
-<script>
-// =============================================
-//  CONFIGURACIÓN
-// =============================================
+  <!-- ================================================================
+       JAVASCRIPT
+       ================================================================ -->
+  <script>
+  (function () {
+    'use strict';
 
-// Código de acceso válido (fase de prueba)
-// Modular: en el futuro se reemplazará por consulta
-// a la tabla `codigos_acceso` en Supabase.
-const ACCESS_CODE = 'NEGOCIO360-2026';
+    /* ----------------------------------------------------------------
+       CONFIGURACIÓN SUPABASE
+       ----------------------------------------------------------------
+       ⚠️  Reemplaza SUPABASE_URL y SUPABASE_ANON_KEY con tus valores
+           reales del proyecto en https://app.supabase.com
+    ---------------------------------------------------------------- */
+    const SUPABASE_URL      = 'https://TU_PROYECTO.supabase.co';
+    const SUPABASE_ANON_KEY = 'TU_ANON_KEY';
 
-// Supabase
-const SUPA_URL = 'https://odyldlgxoijrxooclkhg.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9keWxkbGd4b2lqcnhvb2Nsa2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTkxOTIsImV4cCI6MjA5NjMzNTE5Mn0.HzStWBSpOFFCbwKcoGOfzw0aOANQAlZbOqAZJihBYzA';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const { createClient } = supabase;
-const db = createClient(SUPA_URL, SUPA_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false }
-});
+    /* ----------------------------------------------------------------
+       CÓDIGO TEMPORAL DE PRUEBA
+       ----------------------------------------------------------------
+       Este código se utiliza mientras no exista panel administrativo.
+       Para producción será reemplazado por la función validarCodigoAcceso()
+       que consulta la tabla "codigos_acceso" en Supabase.
+    ---------------------------------------------------------------- */
+    const CODIGO_TEMPORAL = 'NEGOCIO360-2026';
 
-// =============================================
-//  TOGGLE CONTRASEÑA
-// =============================================
-function togglePass() {
-  const p = document.getElementById('password');
-  p.type = p.type === 'password' ? 'text' : 'password';
-}
+    /* ----------------------------------------------------------------
+       VALIDAR CÓDIGO DE ACCESO
+       ----------------------------------------------------------------
+       Función preparada para futura integración con Supabase.
 
-// =============================================
-//  VALIDACIÓN DEL CÓDIGO EN TIEMPO REAL
-// =============================================
-function onCodigoInput(input) {
-  // Forzar mayúsculas mientras escribe
-  const pos = input.selectionStart;
-  input.value = input.value.toUpperCase();
-  input.setSelectionRange(pos, pos);
+       TODO (Panel Admin): Descomentar el bloque de Supabase y eliminar
+       la validación temporal cuando el panel administrativo esté listo.
+       La tabla "codigos_acceso" debe tener:
+         - codigo TEXT UNIQUE
+         - activo BOOLEAN
+         - usos_maximos INTEGER
+         - usos_actuales INTEGER
+         - fecha_expiracion TIMESTAMPTZ
+    ---------------------------------------------------------------- */
+    async function validarCodigoAcceso(codigo) {
 
-  const status = document.getElementById('codeStatus');
-  clearFieldError('codigo');
+      // ——— VALIDACIÓN TEMPORAL (reemplazar con Supabase) ———
+      return codigo.trim().toUpperCase() === CODIGO_TEMPORAL;
 
-  if (input.value.length === 0) {
-    status.textContent = '';
-    status.classList.remove('visible');
-    input.classList.remove('input-valid', 'input-error');
-    return;
-  }
+      // ——— VALIDACIÓN FUTURA CON SUPABASE (descomentar cuando esté listo) ———
+      /*
+      const { data, error } = await supabase
+        .from('codigos_acceso')
+        .select('id, activo, usos_maximos, usos_actuales, fecha_expiracion')
+        .eq('codigo', codigo.trim().toUpperCase())
+        .single();
 
-  if (input.value === ACCESS_CODE) {
-    status.textContent = '✅';
-    status.classList.add('visible');
-    input.classList.add('input-valid');
-    input.classList.remove('input-error');
-  } else {
-    // Solo marcar error si ya tiene longitud similar al código esperado
-    // para no molestar mientras escribe
-    if (input.value.length >= ACCESS_CODE.length) {
-      status.textContent = '❌';
-      status.classList.add('visible');
-      input.classList.add('input-error');
-      input.classList.remove('input-valid');
-    } else {
-      status.textContent = '';
-      status.classList.remove('visible');
-      input.classList.remove('input-valid', 'input-error');
+      if (error || !data) return false;
+      if (!data.activo) return false;
+      if (data.fecha_expiracion && new Date(data.fecha_expiracion) < new Date()) return false;
+      if (data.usos_maximos && data.usos_actuales >= data.usos_maximos) return false;
+      return true;
+      */
     }
-  }
-}
 
-// =============================================
-//  VALIDACIÓN DE CAMPOS
-// =============================================
-function showFieldError(id, msg) {
-  const input = document.getElementById(id);
-  const err   = document.getElementById('err-' + id);
-  if (input) input.classList.add('input-error');
-  if (err)   { if (msg) err.textContent = msg; err.classList.add('visible'); }
-}
+    /* ----------------------------------------------------------------
+       REGISTRAR USUARIO EN SUPABASE AUTH + TABLA usuarios
+    ---------------------------------------------------------------- */
+    async function registrarUsuario(payload) {
+      const { nombre, apellido, negocio, email, whatsapp, password } = payload;
 
-function clearFieldError(id) {
-  const input = document.getElementById(id);
-  const err   = document.getElementById('err-' + id);
-  if (input) input.classList.remove('input-error');
-  if (err)   err.classList.remove('visible');
-}
+      // 1. Crear cuenta en Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            nombre,
+            apellido,
+            nombre_negocio: negocio
+          }
+        }
+      });
 
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-}
+      if (authError) throw authError;
 
-function validateForm() {
-  let ok = true;
-  ['nombre','apellido','negocio','email','telefono','password','codigo'].forEach(id => clearFieldError(id));
-  document.getElementById('globalAlert').classList.remove('visible');
-  document.getElementById('err-terms').classList.remove('visible');
+      const userId = authData.user?.id;
+      if (!userId) throw new Error('No se pudo obtener el ID de usuario.');
 
-  const get = id => document.getElementById(id).value.trim();
+      // 2. Calcular fecha de vencimiento (7 días desde hoy)
+      const fechaVencimiento = new Date();
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + 7);
 
-  if (!get('nombre'))                                      { showFieldError('nombre');   ok = false; }
-  if (!get('apellido'))                                    { showFieldError('apellido'); ok = false; }
-  if (!get('negocio'))                                     { showFieldError('negocio');  ok = false; }
-  if (!get('email') || !isValidEmail(get('email')))        { showFieldError('email');    ok = false; }
-  if (!get('telefono'))                                    { showFieldError('telefono'); ok = false; }
-  if (!get('password') || get('password').length < 8)     { showFieldError('password'); ok = false; }
+      // 3. Insertar registro en tabla usuarios
+      // Compatible con RLS: el usuario ya está autenticado mediante signUp
+      const { error: dbError } = await supabase
+        .from('usuarios')
+        .insert({
+          auth_user_id:          userId,
+          nombre,
+          apellido,
+          nombre_negocio:        negocio,
+          email,
+          telefono:              whatsapp,
+          estado_cuenta:         'activa',
+          plan:                  'prueba',
+          fecha_vencimiento:     fechaVencimiento.toISOString(),
+          onboarding_completado: false
+        });
 
-  // ── Validación del código de acceso ──
-  const codigoIngresado = get('codigo');
-  if (!codigoIngresado) {
-    showFieldError('codigo', '⚠ El código de acceso es obligatorio');
-    ok = false;
-  } else if (codigoIngresado !== ACCESS_CODE) {
-    showFieldError('codigo', '⚠ Código de acceso inválido. Solicita un código válido por WhatsApp.');
-    ok = false;
-  }
+      if (dbError) throw dbError;
 
-  if (!document.getElementById('terms').checked) {
-    document.getElementById('err-terms').classList.add('visible');
-    ok = false;
-  }
+      return authData;
+    }
 
-  return ok;
-}
+    /* ================================================================
+       UI — ESTADO Y ELEMENTOS
+       ================================================================ */
+    const elements = {
+      // Paso 1
+      panelCodigo:      document.getElementById('panelCodigo'),
+      codigoInput:      document.getElementById('codigoAcceso'),
+      btnContinuar:     document.getElementById('btnContinuar'),
+      errCodigo:        document.getElementById('err-codigo'),
+      errCodigoText:    document.getElementById('err-codigo-text'),
 
-// =============================================
-//  PROGRESO Y LOADING
-// =============================================
-function setProgress(pct) {
-  document.getElementById('progressWrap').classList.add('visible');
-  document.getElementById('progressBar').style.width = pct + '%';
-}
-function hideProgress() {
-  document.getElementById('progressWrap').classList.remove('visible');
-  document.getElementById('progressBar').style.width = '0%';
-}
-function setLoading(on) {
-  const btn = document.getElementById('submitBtn');
-  btn.disabled = on;
-  document.getElementById('btnSpinner').classList.toggle('visible', on);
-  document.getElementById('btnText').textContent = on ? 'Registrando...' : 'Crear cuenta →';
-}
+      // Paso 2
+      panelRegistro:    document.getElementById('panelRegistro'),
+      btnRegistrar:     document.getElementById('btnRegistrar'),
+      stepsIndicator:   document.getElementById('stepsIndicator'),
 
-// =============================================
-//  OBTENER IP (best-effort)
-// =============================================
-async function getIP() {
-  try {
-    const r = await fetch('https://api.ipify.org?format=json', {
-      signal: AbortSignal.timeout(3000)
-    });
-    const d = await r.json();
-    return d.ip || 'desconocida';
-  } catch {
-    return 'desconocida';
-  }
-}
+      // Header
+      cardTitle:        document.getElementById('cardTitle'),
+      cardSubtitle:     document.getElementById('cardSubtitle'),
 
-// =============================================
-//  SUBMIT PRINCIPAL
-// =============================================
-async function handleSubmit() {
-  // 1. Validar formulario (incluye código de acceso)
-  if (!validateForm()) {
-    const firstErr = document.querySelector('.input-error, .field-error.visible');
-    if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
+      // Formulario
+      nombre:           document.getElementById('nombre'),
+      apellido:         document.getElementById('apellido'),
+      negocio:          document.getElementById('negocio'),
+      email:            document.getElementById('email'),
+      whatsapp:         document.getElementById('whatsapp'),
+      password:         document.getElementById('password'),
+      passwordConfirm:  document.getElementById('passwordConfirm'),
+      terminos:         document.getElementById('terminos'),
 
-  setLoading(true);
-  hideProgress();
-
-  const get      = id => document.getElementById(id).value.trim();
-  const alertEl  = document.getElementById('globalAlert');
-  const alertMsg = document.getElementById('globalAlertMsg');
-
-  function showGlobalError(msg) {
-    alertMsg.textContent = msg;
-    alertEl.className = 'alert alert-error visible';
-    setLoading(false);
-    hideProgress();
-    alertEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  try {
-    setProgress(30);
-
-    // 2. Obtener IP (no bloquea el flujo si falla)
-    const ip = await getIP();
-    setProgress(55);
-
-    // 3. Insertar usuario en la tabla `usuarios`
-    //    (sin Storage, sin comprobantes, sin estado pendiente)
-    const payload = {
-      nombre         : get('nombre'),
-      apellido       : get('apellido'),
-      nombre_negocio : get('negocio'),
-      email          : get('email'),
-      telefono       : get('telefono'),
-      password       : get('password'),   // en producción usar hash; por ahora se guarda
-      fecha_registro : new Date().toISOString(),
-      ip_usuario     : ip,
-      dispositivo    : navigator.userAgent.substring(0, 250)
+      // Toast
+      toast:            document.getElementById('toast'),
+      toastMsg:         document.getElementById('toastMsg'),
+      toastIcon:        document.getElementById('toastIcon'),
     };
 
-    console.log('[N360] insertando usuario…');
-    setProgress(75);
+    /* ----------------------------------------------------------------
+       TOAST
+    ---------------------------------------------------------------- */
+    let toastTimer = null;
+    function showToast(msg, type = 'error') {
+      clearTimeout(toastTimer);
+      elements.toastMsg.textContent = msg;
+      elements.toastIcon.textContent = type === 'success' ? '✅' : '⚠️';
+      elements.toast.className = `toast toast-${type} show`;
+      toastTimer = setTimeout(() => {
+        elements.toast.classList.remove('show');
+      }, 4000);
+    }
 
-    const { error: dbError } = await db
-      .from('usuarios')
-      .insert(payload);   // sin .select() para respetar RLS
-
-    if (dbError) {
-      console.error('[N360] DB error:', JSON.stringify(dbError));
-
-      const msg  = dbError.message || '';
-      const code = dbError.code    || '';
-
-      if (code === '23505' || msg.includes('duplicate') || msg.includes('unique')) {
-        showGlobalError('Ya existe una cuenta con ese correo electrónico. Prueba iniciando sesión.');
-      } else if (code === '42501' || msg.includes('policy') || msg.includes('permission')) {
-        showGlobalError('Error de permisos en la base de datos. Contacta al administrador.');
+    /* ----------------------------------------------------------------
+       VALIDACIÓN DE CAMPOS
+    ---------------------------------------------------------------- */
+    function setError(inputEl, errEl, show) {
+      if (show) {
+        inputEl?.classList.add('error');
+        errEl?.classList.add('visible');
       } else {
-        showGlobalError('Error al crear la cuenta: ' + (msg || 'error desconocido') + '. Intenta de nuevo.');
+        inputEl?.classList.remove('error');
+        errEl?.classList.remove('visible');
       }
-      return;
     }
 
-    setProgress(100);
-    console.log('[N360] usuario registrado correctamente ✓');
+    function validateForm() {
+      let valid = true;
 
-    // DESPUÉS:
-setTimeout(() => {
-  hideProgress();
-  window.location.href = 'personalizacion.html';
-}, 400);
+      // Nombre
+      const hasNombre = elements.nombre.value.trim().length > 0;
+      setError(elements.nombre, document.getElementById('err-nombre'), !hasNombre);
+      if (!hasNombre) valid = false;
 
-  } catch (err) {
-    console.error('[N360] excepción:', err);
-    if (err?.name === 'TypeError' && err.message?.includes('fetch')) {
-      showGlobalError('Sin conexión a internet. Verifica tu red e intenta nuevamente.');
-    } else {
-      showGlobalError('Error inesperado: ' + (err?.message || 'desconocido') + '. Intenta nuevamente.');
+      // Apellido
+      const hasApellido = elements.apellido.value.trim().length > 0;
+      setError(elements.apellido, document.getElementById('err-apellido'), !hasApellido);
+      if (!hasApellido) valid = false;
+
+      // Negocio
+      const hasNegocio = elements.negocio.value.trim().length > 0;
+      setError(elements.negocio, document.getElementById('err-negocio'), !hasNegocio);
+      if (!hasNegocio) valid = false;
+
+      // Email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const emailOk = emailRegex.test(elements.email.value.trim());
+      setError(elements.email, document.getElementById('err-email'), !emailOk);
+      if (!emailOk) valid = false;
+
+      // WhatsApp
+      const hasWa = elements.whatsapp.value.trim().length > 0;
+      setError(elements.whatsapp, document.getElementById('err-whatsapp'), !hasWa);
+      if (!hasWa) valid = false;
+
+      // Password
+      const pwOk = elements.password.value.length >= 8;
+      setError(elements.password, document.getElementById('err-password'), !pwOk);
+      if (!pwOk) valid = false;
+
+      // Confirm password
+      const confirmOk = elements.password.value === elements.passwordConfirm.value && elements.passwordConfirm.value.length > 0;
+      setError(elements.passwordConfirm, document.getElementById('err-confirm'), !confirmOk);
+      if (!confirmOk) valid = false;
+
+      // Términos
+      const termsOk = elements.terminos.checked;
+      setError(null, document.getElementById('err-terminos'), !termsOk);
+      if (!termsOk) valid = false;
+
+      return valid;
     }
-  }
-}
 
-// =============================================
-//  LIMPIAR ERRORES EN TIEMPO REAL
-// =============================================
-['nombre','apellido','negocio','email','telefono','password'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => clearFieldError(id));
-});
-document.getElementById('terms').addEventListener('change', () => {
-  document.getElementById('err-terms').classList.remove('visible');
-});
-</script>
+    /* ----------------------------------------------------------------
+       PASSWORD STRENGTH
+    ---------------------------------------------------------------- */
+    elements.password.addEventListener('input', function () {
+      const val = this.value;
+      const bars = [
+        document.getElementById('bar1'),
+        document.getElementById('bar2'),
+        document.getElementById('bar3')
+      ];
+
+      bars.forEach(b => { b.className = 'pw-bar'; });
+
+      if (val.length === 0) return;
+
+      let score = 0;
+      if (val.length >= 8)  score++;
+      if (/[A-Z]/.test(val) && /[a-z]/.test(val)) score++;
+      if (/\d/.test(val) || /[^A-Za-z0-9]/.test(val)) score++;
+
+      const cls = score === 1 ? 'weak' : score === 2 ? 'fair' : 'strong';
+      for (let i = 0; i < score; i++) bars[i].classList.add(cls);
+    });
+
+    /* ----------------------------------------------------------------
+       PASSWORD TOGGLE VISIBILITY
+    ---------------------------------------------------------------- */
+    function setupPwToggle(btnId, inputId) {
+      document.getElementById(btnId).addEventListener('click', function () {
+        const inp = document.getElementById(inputId);
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+      });
+    }
+    setupPwToggle('togglePw1', 'password');
+    setupPwToggle('togglePw2', 'passwordConfirm');
+
+    /* ----------------------------------------------------------------
+       STEP 1 — VALIDAR CÓDIGO
+    ---------------------------------------------------------------- */
+
+    // Verificar si ya fue validado en esta sesión
+    if (localStorage.getItem('codigoValidado') === 'true') {
+      mostrarPaso2();
+    }
+
+    elements.btnContinuar.addEventListener('click', async function () {
+      const codigo = elements.codigoInput.value.trim();
+
+      if (!codigo) {
+        setError(elements.codigoInput, elements.errCodigo, true);
+        elements.errCodigoText.textContent = 'Ingresa tu código de acceso.';
+        return;
+      }
+
+      // Estado loading
+      this.classList.add('loading');
+      this.disabled = true;
+      setError(elements.codigoInput, elements.errCodigo, false);
+
+      try {
+        const valido = await validarCodigoAcceso(codigo);
+
+        if (valido) {
+          localStorage.setItem('codigoValidado', 'true');
+          mostrarPaso2();
+        } else {
+          setError(elements.codigoInput, elements.errCodigo, true);
+          elements.errCodigoText.textContent = 'Código inválido o expirado. Verifica e intenta nuevamente.';
+        }
+      } catch (err) {
+        console.error('[Negocio360] Error validando código:', err);
+        showToast('Error de conexión. Intenta nuevamente.', 'error');
+      } finally {
+        this.classList.remove('loading');
+        this.disabled = false;
+      }
+    });
+
+    // Enter en campo código
+    elements.codigoInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') elements.btnContinuar.click();
+    });
+
+    function mostrarPaso2() {
+      // Ocultar paso 1
+      elements.panelCodigo.classList.remove('active');
+
+      // Actualizar header
+      elements.cardTitle.textContent = 'Crear tu cuenta';
+      elements.cardSubtitle.textContent = 'Completa la información para comenzar tu período de prueba gratuito de 7 días.';
+
+      // Mostrar indicador de pasos
+      elements.stepsIndicator.style.display = 'flex';
+
+      // Mostrar paso 2 con animación
+      elements.panelRegistro.classList.add('active');
+      elements.panelRegistro.style.animation = 'fadeUp .3s cubic-bezier(.4,0,.2,1) both';
+    }
+
+    /* ----------------------------------------------------------------
+       STEP 2 — REGISTRAR USUARIO
+    ---------------------------------------------------------------- */
+    elements.btnRegistrar.addEventListener('click', async function () {
+      if (!validateForm()) {
+        showToast('Por favor completa todos los campos correctamente.', 'error');
+        return;
+      }
+
+      // Estado loading
+      this.classList.add('loading');
+      this.disabled = true;
+
+      const payload = {
+        nombre:   elements.nombre.value.trim(),
+        apellido: elements.apellido.value.trim(),
+        negocio:  elements.negocio.value.trim(),
+        email:    elements.email.value.trim().toLowerCase(),
+        whatsapp: elements.whatsapp.value.trim(),
+        password: elements.password.value,
+      };
+
+      try {
+        await registrarUsuario(payload);
+
+        // Limpiar validación de código tras registro exitoso
+        localStorage.removeItem('codigoValidado');
+
+        // Redirección directa (sin modal, sin alerta)
+        window.location.href = 'personalizacion.html';
+
+      } catch (err) {
+        console.error('[Negocio360] Error en registro:', err);
+
+        let msg = 'Ocurrió un error. Por favor intenta nuevamente.';
+
+        if (err.message?.includes('already registered') || err.message?.includes('User already registered')) {
+          msg = 'Este correo ya tiene una cuenta registrada. ¿Deseas iniciar sesión?';
+        } else if (err.message?.includes('Password should be')) {
+          msg = 'La contraseña debe tener al menos 8 caracteres.';
+        } else if (err.message?.includes('invalid email')) {
+          msg = 'El correo electrónico no es válido.';
+        } else if (err.message?.includes('Unable to validate') || err.message?.includes('network')) {
+          msg = 'Error de conexión. Revisa tu internet e intenta nuevamente.';
+        }
+
+        showToast(msg, 'error');
+
+      } finally {
+        this.classList.remove('loading');
+        this.disabled = false;
+      }
+    });
+
+    /* ----------------------------------------------------------------
+       MODO OSCURO
+    ---------------------------------------------------------------- */
+    const htmlEl   = document.documentElement;
+    const themeBtn = document.getElementById('themeToggle');
+
+    function getTheme() {
+      return localStorage.getItem('n360_theme') ||
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    }
+
+    function applyTheme(theme) {
+      htmlEl.setAttribute('data-theme', theme);
+      localStorage.setItem('n360_theme', theme);
+    }
+
+    applyTheme(getTheme());
+
+    themeBtn.addEventListener('click', function () {
+      const current = htmlEl.getAttribute('data-theme');
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    });
+
+    // Sincronizar con preferencia del sistema
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+      if (!localStorage.getItem('n360_theme')) {
+        applyTheme(e.matches ? 'dark' : 'light');
+      }
+    });
+
+  })();
+  </script>
+
 </body>
 </html>
