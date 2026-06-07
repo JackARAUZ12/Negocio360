@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Negocio360 — Configura tu empresa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --brand: #0A0A0F;
+  --brand2: #111118;
+  --accent: #6EE7B7;
+  --accent2: #3B82F6;
+  --gold: #F59E0B;
+  --text: #F1F5F9;
+  --muted: #64748B;
+  --border: rgba(255,255,255,0.07);
+  --glass: rgba(255,255,255,0.04);
+  --glass2: rgba(255,255,255,0.08);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 24px 60px rgba(0,0,0,0.5);
+  --font-head: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --step-active: #6EE7B7;
+  --step-done: #3B82F6;
+  --step-inactive: #1E293B;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+html{scroll-behavior:smooth}
+
+body{
+  font-family:var(--font-body);
+  background:var(--brand);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── Background ── */
+.bg-mesh{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 60% at 10% -10%, rgba(110,231,183,.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(59,130,246,.10) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(245,158,11,.04) 0%, transparent 60%);
+}
+.bg-grid{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+
+/* ── Layout ── */
+.page{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Header ── */
+.header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 40px;
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  position:sticky;top:0;z-index:100;
+  background:rgba(10,10,15,0.8);
+}
+.logo{
+  font-family:var(--font-head);font-weight:800;font-size:1.4rem;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  letter-spacing:-0.03em;
+}
+.header-badge{
+  font-size:.75rem;font-weight:500;color:var(--muted);
+  background:var(--glass2);border:1px solid var(--border);
+  padding:6px 14px;border-radius:999px;
+}
+
+/* ── Main ── */
+.main{flex:1;display:flex;flex-direction:column;align-items:center;padding:40px 20px 80px}
+
+/* ── Progress ── */
+.progress-wrap{width:100%;max-width:860px;margin-bottom:44px}
+.progress-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px}
+.progress-title{font-family:var(--font-head);font-size:1.1rem;font-weight:700;color:var(--text)}
+.progress-count{font-size:.8rem;color:var(--muted)}
+.step-track{
+  display:flex;gap:6px;align-items:center;
+  overflow-x:auto;padding-bottom:4px;
+}
+.step-track::-webkit-scrollbar{height:3px}
+.step-track::-webkit-scrollbar-track{background:transparent}
+.step-track::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+.step-node{
+  flex:1;min-width:60px;height:6px;border-radius:99px;
+  background:var(--step-inactive);
+  transition:background .4s ease,transform .3s ease;
+  cursor:pointer;position:relative;
+}
+.step-node.done{background:var(--step-done)}
+.step-node.active{background:var(--step-active);box-shadow:0 0 12px rgba(110,231,183,.5)}
+.step-labels{display:flex;justify-content:space-between;margin-top:10px}
+.step-label{font-size:.7rem;color:var(--muted);transition:color .3s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;text-align:center}
+.step-label.active{color:var(--accent)}
+.step-label.done{color:var(--accent2)}
+
+/* ── Card ── */
+.card{
+  width:100%;max-width:860px;
+  background:var(--glass);
+  border:1px solid var(--border);
+  border-radius:24px;
+  backdrop-filter:blur(20px);
+  overflow:hidden;
+  box-shadow:var(--shadow);
+}
+.card-step{display:none;animation:fadeUp .4s ease}
+.card-step.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.card-header{
+  padding:36px 40px 28px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:flex-start;gap:20px;
+}
+.step-icon{
+  width:52px;height:52px;border-radius:var(--radius-sm);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.5rem;flex-shrink:0;
+}
+.step-icon.green{background:rgba(110,231,183,.12);border:1px solid rgba(110,231,183,.2)}
+.step-icon.blue{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2)}
+.step-icon.gold{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.2)}
+.step-icon.purple{background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.2)}
+.step-icon.rose{background:rgba(244,63,94,.12);border:1px solid rgba(244,63,94,.2)}
+.card-header-text{}
+.card-title{font-family:var(--font-head);font-size:1.5rem;font-weight:700;margin-bottom:6px;letter-spacing:-.02em}
+.card-subtitle{font-size:.9rem;color:var(--muted);line-height:1.5}
+
+.card-body{padding:36px 40px}
+
+/* ── Fields ── */
+.fields-grid{display:grid;gap:20px}
+.fields-grid.cols-2{grid-template-columns:1fr 1fr}
+.fields-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:640px){.fields-grid.cols-2,.fields-grid.cols-3{grid-template-columns:1fr}}
+
+.field{display:flex;flex-direction:column;gap:8px}
+.field.span-2{grid-column:span 2}
+.field.span-3{grid-column:span 3}
+@media(max-width:640px){.field.span-2,.field.span-3{grid-column:span 1}}
+
+label{font-size:.82rem;font-weight:500;color:#94A3B8;letter-spacing:.03em;text-transform:uppercase}
+label span.req{color:var(--accent);margin-left:3px}
+label span.opt{color:var(--muted);font-size:.72rem;text-transform:none;font-weight:400}
+
+input[type=text],
+input[type=email],
+input[type=tel],
+input[type=url],
+input[type=number],
+input[type=date],
+select,
+textarea{
+  background:var(--glass2);
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:.9rem;
+  padding:12px 16px;
+  outline:none;
+  width:100%;
+  transition:border-color .25s,box-shadow .25s,background .25s;
+  -webkit-appearance:none;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(110,231,183,.12);
+  background:rgba(255,255,255,.07);
+}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+select option{background:#1E293B;color:var(--text)}
+textarea{resize:vertical;min-height:90px}
+
+/* Phone prefix */
+.phone-wrap{display:flex;gap:8px}
+.phone-prefix{width:90px;flex-shrink:0}
+
+/* ── Toggle ── */
+.toggle-group{display:flex;flex-direction:column;gap:12px}
+.toggle-row{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--glass2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:14px 18px;
+  transition:border-color .2s;cursor:pointer;
+}
+.toggle-row:hover{border-color:rgba(255,255,255,.15)}
+.toggle-row.active{border-color:rgba(110,231,183,.3);background:rgba(110,231,183,.05)}
+.toggle-info{display:flex;flex-direction:column;gap:3px}
+.toggle-name{font-size:.9rem;font-weight:500}
+.toggle-desc{font-size:.77rem;color:var(--muted)}
+.toggle-switch{
+  width:44px;height:24px;border-radius:12px;
+  background:#1E293B;border:1px solid var(--border);
+  position:relative;flex-shrink:0;
+  transition:background .3s,border-color .3s;cursor:pointer;
+}
+.toggle-switch::after{
+  content:'';position:absolute;top:3px;left:3px;
+  width:16px;height:16px;border-radius:50%;
+  background:#475569;
+  transition:left .3s,background .3s;
+}
+.toggle-row.active .toggle-switch{background:rgba(110,231,183,.2);border-color:var(--accent)}
+.toggle-row.active .toggle-switch::after{left:23px;background:var(--accent)}
+
+/* ── Choice chips ── */
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{
+  padding:10px 18px;border-radius:99px;
+  border:1px solid var(--border);background:var(--glass2);
+  font-size:.85rem;font-weight:500;cursor:pointer;
+  transition:border-color .2s,background .2s,color .2s,transform .15s;
+  user-select:none;
+}
+.chip:hover{border-color:rgba(255,255,255,.2);transform:translateY(-1px)}
+.chip.selected{border-color:var(--accent);background:rgba(110,231,183,.12);color:var(--accent)}
+.chip.selected-blue{border-color:var(--accent2);background:rgba(59,130,246,.12);color:var(--accent2)}
+
+/* ── Size cards ── */
+.size-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:640px){.size-grid{grid-template-columns:repeat(2,1fr)}}
+.size-card{
+  padding:20px 16px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--glass2);
+  text-align:center;cursor:pointer;
+  transition:border-color .2s,background .2s,transform .2s;
+}
+.size-card:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.2)}
+.size-card.selected{border-color:var(--accent);background:rgba(110,231,183,.08)}
+.size-icon{font-size:2rem;margin-bottom:10px}
+.size-label{font-family:var(--font-head);font-size:.9rem;font-weight:700}
+.size-range{font-size:.75rem;color:var(--muted);margin-top:4px}
+
+/* ── Color picker ── */
+.color-row{display:flex;align-items:center;gap:12px}
+.color-swatch{
+  width:44px;height:44px;border-radius:10px;
+  border:2px solid var(--border);cursor:pointer;
+  overflow:hidden;flex-shrink:0;
+  transition:transform .2s,border-color .2s;
+}
+.color-swatch:hover{transform:scale(1.1);border-color:rgba(255,255,255,.3)}
+.color-swatch input[type=color]{
+  width:200%;height:200%;margin:-50%;cursor:pointer;border:none;padding:0;background:none;
+}
+.color-hex{
+  flex:1;background:var(--glass2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);
+  font-family:monospace;font-size:.85rem;padding:10px 14px;
+  outline:none;transition:border-color .25s;
+}
+.color-hex:focus{border-color:var(--accent)}
+
+/* ── Presets ── */
+.preset-palette{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.preset-dot{
+  width:28px;height:28px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;
+  transition:transform .15s,border-color .2s;
+}
+.preset-dot:hover{transform:scale(1.2);border-color:rgba(255,255,255,.3)}
+
+/* ── Theme toggle ── */
+.theme-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.theme-card{
+  padding:20px;border-radius:var(--radius);border:1px solid var(--border);
+  cursor:pointer;transition:border-color .2s,background .2s,transform .15s;
+  display:flex;align-items:center;gap:14px;
+}
+.theme-card:hover{transform:translateY(-2px)}
+.theme-card.selected{border-color:var(--accent);background:rgba(110,231,183,.06)}
+.theme-preview{
+  width:48px;height:32px;border-radius:6px;flex-shrink:0;
+  border:1px solid var(--border);
+}
+.theme-preview.light{background:linear-gradient(135deg,#f8fafc,#e2e8f0)}
+.theme-preview.dark{background:linear-gradient(135deg,#0f172a,#1e293b)}
+.theme-info{}
+.theme-name{font-weight:600;font-size:.9rem}
+.theme-desc{font-size:.75rem;color:var(--muted);margin-top:2px}
+
+/* ── Goal chips ── */
+.goals-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(max-width:480px){.goals-grid{grid-template-columns:1fr}}
+.goal-card{
+  padding:16px 18px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--glass2);
+  cursor:pointer;display:flex;align-items:center;gap:12px;
+  transition:border-color .2s,background .2s,transform .15s;
+}
+.goal-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.2)}
+.goal-card.selected{border-color:var(--accent);background:rgba(110,231,183,.08)}
+.goal-icon{font-size:1.4rem;flex-shrink:0}
+.goal-text{font-size:.88rem;font-weight:500}
+
+/* ── Upload ── */
+.upload-zone{
+  border:2px dashed var(--border);border-radius:var(--radius);
+  padding:32px;text-align:center;cursor:pointer;
+  transition:border-color .25s,background .25s;
+  position:relative;
+}
+.upload-zone:hover,.upload-zone.dragging{border-color:var(--accent);background:rgba(110,231,183,.04)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:2.4rem;margin-bottom:10px}
+.upload-text{font-size:.9rem;font-weight:500;margin-bottom:4px}
+.upload-hint{font-size:.78rem;color:var(--muted)}
+.upload-preview{
+  width:80px;height:80px;border-radius:10px;
+  object-fit:contain;margin:0 auto 10px;display:block;
+  background:var(--glass2);border:1px solid var(--border);
+  padding:6px;
+}
+
+/* ── Section divider ── */
+.section-divider{
+  display:flex;align-items:center;gap:12px;margin:28px 0 20px;
+}
+.section-divider span{font-size:.75rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.section-divider::before,.section-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── iva conditional ── */
+.conditional{overflow:hidden;max-height:0;transition:max-height .4s ease,opacity .4s ease;opacity:0}
+.conditional.show{max-height:200px;opacity:1}
+
+/* ── Footer ── */
+.card-footer{
+  padding:24px 40px;border-top:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+  gap:16px;
+}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:12px 24px;border-radius:var(--radius-sm);
+  font-family:var(--font-body);font-size:.9rem;font-weight:500;
+  cursor:pointer;border:none;transition:all .2s;
+  text-decoration:none;
+}
+.btn-ghost{background:var(--glass2);border:1px solid var(--border);color:var(--muted)}
+.btn-ghost:hover{border-color:rgba(255,255,255,.2);color:var(--text)}
+.btn-primary{
+  background:linear-gradient(135deg,var(--accent),#34D399);
+  color:#0A0A0F;font-weight:700;
+  box-shadow:0 4px 20px rgba(110,231,183,.25);
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(110,231,183,.4)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-finish{
+  background:linear-gradient(135deg,var(--gold),#FBBF24);
+  color:#0A0A0F;font-weight:700;
+  box-shadow:0 4px 20px rgba(245,158,11,.3);
+}
+.btn-finish:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(245,158,11,.5)}
+
+.step-indicator{font-size:.82rem;color:var(--muted)}
+
+/* ── Success ── */
+.success-screen{display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 40px}
+.success-screen.active{display:flex}
+.success-anim{
+  width:100px;height:100px;border-radius:50%;
+  background:rgba(110,231,183,.1);border:2px solid var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-size:3rem;margin-bottom:32px;
+  animation:pulse 2s ease infinite;
+}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(110,231,183,.4)}50%{box-shadow:0 0 0 20px rgba(110,231,183,0)}}
+.success-title{font-family:var(--font-head);font-size:2.4rem;font-weight:800;margin-bottom:12px;letter-spacing:-.03em}
+.success-sub{color:var(--muted);font-size:1rem;max-width:480px;margin:0 auto 36px;line-height:1.6}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:30px;right:30px;z-index:999;
+  background:var(--glass2);border:1px solid var(--border);backdrop-filter:blur(20px);
+  border-radius:var(--radius-sm);padding:14px 20px;
+  display:flex;align-items:center;gap:10px;
+  font-size:.875rem;font-weight:500;
+  transform:translateY(80px);opacity:0;
+  transition:transform .3s ease,opacity .3s ease;
+  max-width:320px;
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:rgba(110,231,183,.3)}
+.toast.error{border-color:rgba(244,63,94,.3)}
+
+/* ── Saving overlay ── */
+.saving-overlay{
+  position:fixed;inset:0;z-index:500;background:rgba(10,10,15,.7);
+  backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;
+  flex-direction:column;gap:16px;
+}
+.saving-overlay.active{display:flex}
+.spinner{
+  width:48px;height:48px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.saving-text{color:var(--muted);font-size:.9rem}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .header{padding:16px 20px}
+  .card-header,.card-body,.card-footer{padding-left:24px;padding-right:24px}
+}
+@media(max-width:640px){
+  .card-header{flex-direction:column;gap:12px;padding:24px}
+  .card-body{padding:24px}
+  .card-footer{flex-wrap:wrap;padding:20px 24px}
+  .card-title{font-size:1.2rem}
+  .size-grid{grid-template-columns:repeat(2,1fr)}
+  .goals-grid{grid-template-columns:1fr}
+  .theme-cards{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="bg-mesh"></div>
+<div class="bg-grid"></div>
+
+<!-- Saving Overlay -->
+<div class="saving-overlay" id="savingOverlay">
+  <div class="spinner"></div>
+  <div class="saving-text">Guardando configuración…</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <span id="toastIcon">✓</span>
+  <span id="toastMsg">Guardado correctamente</span>
+</div>
+
+<div class="page">
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">Negocio<span style="opacity:.5">360</span></div>
+    <div class="header-badge">Configuración inicial</div>
+  </header>
+
+  <main class="main">
+    <!-- Progress -->
+    <div class="progress-wrap">
+      <div class="progress-header">
+        <div class="progress-title">Personaliza tu espacio de trabajo</div>
+        <div class="progress-count" id="progressCount">Paso 1 de 9</div>
+      </div>
+      <div class="step-track" id="stepTrack"></div>
+      <div class="step-labels" id="stepLabels"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- PASO 1: INFORMACIÓN EMPRESARIAL             -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-step active" id="step-1">
+        <div class="card-header">
+          <div class="step-icon green">🏢</div>
+          <div class="card-header-text">
+            <div class="card-title">Información empresarial</div>
+            <div class="card-subtitle">Cuéntanos sobre tu empresa. Esta información personalizará toda la plataforma.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Nombre comercial <span class="req">*</span></label>
+              <input type="text" id="nombre_comercial" placeholder="Ej: Tienda La Esperanza" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Razón social <span class="opt">(opcional)</span></label>
+              <input type="text" id="razon_social" placeholder="Ej: Inversiones LA S.A.">
+            </div>
+            <div class="field">
+              <label>Tipo de negocio <span class="req">*</span></label>
+              <select id="tipo_negocio">
+                <option value="">Selecciona el tipo…</option>
+                <optgroup label="Comercio">
+                  <option value="retail">Tienda / Retail</option>
+                  <option value="mayorista">Mayorista</option>
+                  <option value="distribuidor">Distribuidor</option>
+                  <option value="importador">Importador / Exportador</option>
+                </optgroup>
+                <optgroup label="Servicios">
+                  <option value="servicios_profesionales">Servicios profesionales</option>
+                  <option value="consultoria">Consultoría</option>
+                  <option value="salud">Salud / Médico</option>
+                  <option value="educacion">Educación / Academia</option>
+                  <option value="tecnologia">Tecnología / Software</option>
+                  <option value="reparacion">Reparación / Técnico</option>
+                </optgroup>
+                <optgroup label="Gastronomía">
+                  <option value="restaurante">Restaurante / Comida</option>
+                  <option value="cafeteria">Cafetería / Panadería</option>
+                  <option value="catering">Catering / Eventos</option>
+                </optgroup>
+                <optgroup label="Producción">
+                  <option value="manufactura">Manufactura</option>
+                  <option value="construccion">Construcción</option>
+                  <option value="agropecuario">Agropecuario</option>
+                </optgroup>
+                <optgroup label="Otros">
+                  <option value="transporte">Transporte / Logística</option>
+                  <option value="inmobiliaria">Inmobiliaria</option>
+                  <option value="entretenimiento">Entretenimiento</option>
+                  <option value="otro">Otro</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="field">
+              <label>Año de fundación</label>
+              <input type="number" id="anio_fundacion" placeholder="Ej: 2018" min="1900" max="2025">
+            </div>
+            <div class="field span-2">
+              <label>Descripción del negocio <span class="opt">(opcional)</span></label>
+              <textarea id="descripcion" placeholder="¿A qué se dedica tu empresa? ¿Cuál es tu propuesta de valor?"></textarea>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Tamaño del equipo</span></div>
+
+          <div class="field" style="margin-bottom:20px">
+            <label>Cantidad aproximada de empleados</label>
+            <input type="number" id="cant_empleados" placeholder="Ej: 5" min="1" style="max-width:200px">
+          </div>
+
+          <div class="field">
+            <label>Tamaño del negocio <span class="req">*</span></label>
+            <div class="size-grid">
+              <div class="size-card" data-size="micro" onclick="selectSize(this)">
+                <div class="size-icon">🌱</div>
+                <div class="size-label">Microempresa</div>
+                <div class="size-range">1–10 empleados</div>
+              </div>
+              <div class="size-card" data-size="pequena" onclick="selectSize(this)">
+                <div class="size-icon">🚀</div>
+                <div class="size-label">Pequeña</div>
+                <div class="size-range">11–50 empleados</div>
+              </div>
+              <div class="size-card" data-size="mediana" onclick="selectSize(this)">
+                <div class="size-icon">🏗️</div>
+                <div class="size-label">Mediana</div>
+                <div class="size-range">51–250 empleados</div>
+              </div>
+              <div class="size-card" data-size="grande" onclick="selectSize(this)">
+                <div class="size-icon">🏛️</div>
+                <div class="size-label">Grande</div>
+                <div class="size-range">250+ empleados</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="step-indicator">Paso 1 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 2: UBICACIÓN                          -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-2">
+        <div class="card-header">
+          <div class="step-icon blue">📍</div>
+          <div class="card-header-text">
+            <div class="card-title">Ubicación y zona horaria</div>
+            <div class="card-subtitle">¿Desde dónde operas? Esto permite configurar zona horaria, impuestos y formato de fechas.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>País <span class="req">*</span></label>
+              <select id="pais" onchange="updateZonas()">
+                <option value="">Selecciona país…</option>
+                <option value="NI">🇳🇮 Nicaragua</option>
+                <option value="GT">🇬🇹 Guatemala</option>
+                <option value="SV">🇸🇻 El Salvador</option>
+                <option value="HN">🇭🇳 Honduras</option>
+                <option value="CR">🇨🇷 Costa Rica</option>
+                <option value="PA">🇵🇦 Panamá</option>
+                <option value="MX">🇲🇽 México</option>
+                <option value="CO">🇨🇴 Colombia</option>
+                <option value="PE">🇵🇪 Perú</option>
+                <option value="CL">🇨🇱 Chile</option>
+                <option value="AR">🇦🇷 Argentina</option>
+                <option value="EC">🇪🇨 Ecuador</option>
+                <option value="VE">🇻🇪 Venezuela</option>
+                <option value="BO">🇧🇴 Bolivia</option>
+                <option value="PY">🇵🇾 Paraguay</option>
+                <option value="UY">🇺🇾 Uruguay</option>
+                <option value="DO">🇩🇴 Rep. Dominicana</option>
+                <option value="CU">🇨🇺 Cuba</option>
+                <option value="ES">🇪🇸 España</option>
+                <option value="US">🇺🇸 Estados Unidos</option>
+                <option value="otro">🌎 Otro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Zona horaria <span class="req">*</span></label>
+              <select id="zona_horaria">
+                <option value="">Selecciona zona…</option>
+                <option value="America/Managua">America/Managua (UTC-6)</option>
+                <option value="America/Guatemala">America/Guatemala (UTC-6)</option>
+                <option value="America/El_Salvador">America/El_Salvador (UTC-6)</option>
+                <option value="America/Tegucigalpa">America/Tegucigalpa (UTC-6)</option>
+                <option value="America/Costa_Rica">America/Costa_Rica (UTC-6)</option>
+                <option value="America/Panama">America/Panama (UTC-5)</option>
+                <option value="America/Mexico_City">America/Mexico_City (UTC-6)</option>
+                <option value="America/Bogota">America/Bogota (UTC-5)</option>
+                <option value="America/Lima">America/Lima (UTC-5)</option>
+                <option value="America/Santiago">America/Santiago (UTC-3)</option>
+                <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires (UTC-3)</option>
+                <option value="America/New_York">America/New_York (UTC-5)</option>
+                <option value="America/Los_Angeles">America/Los_Angeles (UTC-8)</option>
+                <option value="Europe/Madrid">Europe/Madrid (UTC+1)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Departamento / Estado <span class="req">*</span></label>
+              <input type="text" id="departamento" placeholder="Ej: Managua">
+            </div>
+            <div class="field">
+              <label>Ciudad / Municipio <span class="req">*</span></label>
+              <input type="text" id="ciudad" placeholder="Ej: Managua">
+            </div>
+            <div class="field span-2">
+              <label>Dirección principal</label>
+              <input type="text" id="direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte">
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 2 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 3: CONTACTO                           -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-3">
+        <div class="card-header">
+          <div class="step-icon green">📞</div>
+          <div class="card-header-text">
+            <div class="card-title">Información de contacto</div>
+            <div class="card-subtitle">Tus canales de comunicación aparecerán en facturas, correos y widgets del dashboard.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="section-divider"><span>Comunicación directa</span></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>WhatsApp principal</label>
+              <div class="phone-wrap">
+                <select class="phone-prefix" id="wa_prefix">
+                  <option value="+505">🇳🇮 +505</option>
+                  <option value="+502">🇬🇹 +502</option>
+                  <option value="+503">🇸🇻 +503</option>
+                  <option value="+504">🇭🇳 +504</option>
+                  <option value="+506">🇨🇷 +506</option>
+                  <option value="+507">🇵🇦 +507</option>
+                  <option value="+52">🇲🇽 +52</option>
+                  <option value="+57">🇨🇴 +57</option>
+                  <option value="+51">🇵🇪 +51</option>
+                  <option value="+56">🇨🇱 +56</option>
+                  <option value="+54">🇦🇷 +54</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+34">🇪🇸 +34</option>
+                </select>
+                <input type="tel" id="whatsapp" placeholder="8888-1234">
+              </div>
+            </div>
+            <div class="field">
+              <label>Teléfono secundario <span class="opt">(opcional)</span></label>
+              <div class="phone-wrap">
+                <select class="phone-prefix" id="tel_prefix">
+                  <option value="+505">🇳🇮 +505</option>
+                  <option value="+502">🇬🇹 +502</option>
+                  <option value="+503">🇸🇻 +503</option>
+                  <option value="+504">🇭🇳 +504</option>
+                  <option value="+506">🇨🇷 +506</option>
+                  <option value="+507">🇵🇦 +507</option>
+                  <option value="+52">🇲🇽 +52</option>
+                  <option value="+57">🇨🇴 +57</option>
+                  <option value="+51">🇵🇪 +51</option>
+                  <option value="+56">🇨🇱 +56</option>
+                  <option value="+54">🇦🇷 +54</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+34">🇪🇸 +34</option>
+                </select>
+                <input type="tel" id="telefono" placeholder="2222-3456">
+              </div>
+            </div>
+            <div class="field">
+              <label>Correo empresarial</label>
+              <input type="email" id="email_empresa" placeholder="contacto@minegocio.com">
+            </div>
+            <div class="field">
+              <label>Sitio web <span class="opt">(opcional)</span></label>
+              <input type="url" id="sitio_web" placeholder="https://minegocio.com">
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Redes sociales</span></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Facebook <span class="opt">(opcional)</span></label>
+              <input type="url" id="facebook" placeholder="https://facebook.com/minegocio">
+            </div>
+            <div class="field">
+              <label>Instagram <span class="opt">(opcional)</span></label>
+              <input type="text" id="instagram" placeholder="@minegocio">
+            </div>
+            <div class="field">
+              <label>TikTok <span class="opt">(opcional)</span></label>
+              <input type="text" id="tiktok" placeholder="@minegocio">
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 3 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 4: CONFIGURACIÓN FINANCIERA           -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-4">
+        <div class="card-header">
+          <div class="step-icon gold">💰</div>
+          <div class="card-header-text">
+            <div class="card-title">Configuración financiera</div>
+            <div class="card-subtitle">Define cómo manejará el sistema los importes, impuestos y crédito comercial.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Moneda principal <span class="req">*</span></label>
+              <select id="moneda">
+                <option value="">Selecciona moneda…</option>
+                <option value="NIO">🇳🇮 Córdoba (NIO)</option>
+                <option value="USD">🇺🇸 Dólar (USD)</option>
+                <option value="GTQ">🇬🇹 Quetzal (GTQ)</option>
+                <option value="HNL">🇭🇳 Lempira (HNL)</option>
+                <option value="CRC">🇨🇷 Colón costarricense (CRC)</option>
+                <option value="PAB">🇵🇦 Balboa (PAB)</option>
+                <option value="MXN">🇲🇽 Peso mexicano (MXN)</option>
+                <option value="COP">🇨🇴 Peso colombiano (COP)</option>
+                <option value="PEN">🇵🇪 Sol (PEN)</option>
+                <option value="CLP">🇨🇱 Peso chileno (CLP)</option>
+                <option value="ARS">🇦🇷 Peso argentino (ARS)</option>
+                <option value="EUR">🇪🇺 Euro (EUR)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Impuestos y descuentos</span></div>
+          <div class="toggle-group">
+            <div class="toggle-row" id="toggle_iva" onclick="toggleSwitch('iva')">
+              <div class="toggle-info">
+                <div class="toggle-name">Maneja IVA / impuesto de ventas</div>
+                <div class="toggle-desc">Calcula y muestra impuesto sobre cada venta</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="conditional" id="cond_iva">
+              <div class="field" style="padding:8px 0 12px">
+                <label>Porcentaje de IVA (%)</label>
+                <input type="number" id="porcentaje_iva" placeholder="15" min="0" max="100" step="0.1" style="max-width:160px">
+              </div>
+            </div>
+            <div class="toggle-row" id="toggle_descuentos" onclick="toggleSwitch('descuentos')">
+              <div class="toggle-info">
+                <div class="toggle-name">Maneja descuentos</div>
+                <div class="toggle-desc">Aplica descuentos por porcentaje o monto fijo</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Crédito comercial</span></div>
+          <div class="toggle-group">
+            <div class="toggle-row" id="toggle_cxc" onclick="toggleSwitch('cxc')">
+              <div class="toggle-info">
+                <div class="toggle-name">Cuentas por cobrar</div>
+                <div class="toggle-desc">Registra ventas a crédito y da seguimiento a pagos</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_cxp" onclick="toggleSwitch('cxp')">
+              <div class="toggle-info">
+                <div class="toggle-name">Cuentas por pagar</div>
+                <div class="toggle-desc">Controla deudas con proveedores y vencimientos</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 4 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 5: INVENTARIO                         -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-5">
+        <div class="card-header">
+          <div class="step-icon blue">📦</div>
+          <div class="card-header-text">
+            <div class="card-title">Control de inventario</div>
+            <div class="card-subtitle">Configura cómo el sistema gestionará tu stock de productos y materiales.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="toggle-group">
+            <div class="toggle-row" id="toggle_inventario" onclick="toggleSwitch('inventario')">
+              <div class="toggle-info">
+                <div class="toggle-name">Activar control de inventario</div>
+                <div class="toggle-desc">Lleva registro de entradas, salidas y existencias</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_lotes" onclick="toggleSwitch('lotes')">
+              <div class="toggle-info">
+                <div class="toggle-name">Control por lotes / series</div>
+                <div class="toggle-desc">Rastrea lotes de producción o números de serie</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_categorias" onclick="toggleSwitch('categorias')">
+              <div class="toggle-info">
+                <div class="toggle-name">Organizar por categorías</div>
+                <div class="toggle-desc">Agrupa productos en familias y categorías</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_stock_bajo" onclick="toggleSwitch('stock_bajo')">
+              <div class="toggle-info">
+                <div class="toggle-name">Alertas de stock bajo</div>
+                <div class="toggle-desc">Recibe notificaciones cuando un producto esté por agotarse</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 5 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 6: CLIENTES                           -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-6">
+        <div class="card-header">
+          <div class="step-icon purple">👥</div>
+          <div class="card-header-text">
+            <div class="card-title">Gestión de clientes</div>
+            <div class="card-subtitle">Personaliza el módulo CRM según las necesidades de tu negocio.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="toggle-group">
+            <div class="toggle-row" id="toggle_clientes" onclick="toggleSwitch('clientes')">
+              <div class="toggle-info">
+                <div class="toggle-name">Gestión de clientes</div>
+                <div class="toggle-desc">Ficha de clientes con datos de contacto y actividad</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_frecuentes" onclick="toggleSwitch('frecuentes')">
+              <div class="toggle-info">
+                <div class="toggle-name">Clientes frecuentes / VIP</div>
+                <div class="toggle-desc">Identifica y diferencia a tus mejores clientes</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_fidelizacion" onclick="toggleSwitch('fidelizacion')">
+              <div class="toggle-info">
+                <div class="toggle-name">Programa de fidelización</div>
+                <div class="toggle-desc">Puntos, recompensas y beneficios para clientes leales</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+            <div class="toggle-row" id="toggle_historial" onclick="toggleSwitch('historial')">
+              <div class="toggle-info">
+                <div class="toggle-name">Historial de compras</div>
+                <div class="toggle-desc">Registro completo de transacciones por cliente</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 6 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 7: EMPLEADOS                          -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-7">
+        <div class="card-header">
+          <div class="step-icon rose">👤</div>
+          <div class="card-header-text">
+            <div class="card-title">Gestión de empleados</div>
+            <div class="card-subtitle">Configura el módulo de recursos humanos para tu equipo.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="toggle-group">
+            <div class="toggle-row" id="toggle_empleados" onclick="toggleSwitch('empleados')">
+              <div class="toggle-info">
+                <div class="toggle-name">Tiene empleados a cargo</div>
+                <div class="toggle-desc">Activa la gestión del equipo de trabajo</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+          </div>
+
+          <div class="conditional" id="cond_empleados" style="margin-top:16px">
+            <div class="fields-grid">
+              <div class="field">
+                <label>Cantidad de empleados</label>
+                <input type="number" id="num_empleados" placeholder="Ej: 8" min="1" style="max-width:200px">
+              </div>
+            </div>
+            <div class="toggle-group" style="margin-top:16px">
+              <div class="toggle-row" id="toggle_salarios" onclick="toggleSwitch('salarios')">
+                <div class="toggle-info">
+                  <div class="toggle-name">Manejo de salarios y nómina</div>
+                  <div class="toggle-desc">Cálculo de salarios, deducciones y liquidaciones</div>
+                </div>
+                <div class="toggle-switch"></div>
+              </div>
+              <div class="toggle-row" id="toggle_asistencia" onclick="toggleSwitch('asistencia')">
+                <div class="toggle-info">
+                  <div class="toggle-name">Control de asistencia</div>
+                  <div class="toggle-desc">Registro de entradas, salidas y horas trabajadas</div>
+                </div>
+                <div class="toggle-switch"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 7 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 8: PERSONALIZACIÓN VISUAL             -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-8">
+        <div class="card-header">
+          <div class="step-icon gold">🎨</div>
+          <div class="card-header-text">
+            <div class="card-title">Identidad visual</div>
+            <div class="card-subtitle">Tu marca en cada pantalla. El dashboard usará estos colores y logos automáticamente.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="section-divider"><span>Logotipos</span></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Logo principal</label>
+              <div class="upload-zone" id="zone_logo" ondragover="dragOver(event,'zone_logo')" ondragleave="dragLeave('zone_logo')" ondrop="dropFile(event,'logo_principal','zone_logo')">
+                <input type="file" id="logo_principal" accept="image/*" onchange="previewLogo(this,'prev_logo','zone_logo')">
+                <div id="zone_logo_content">
+                  <div class="upload-icon">🖼️</div>
+                  <div class="upload-text">Subir logo</div>
+                  <div class="upload-hint">PNG, SVG, WEBP · Máx 2MB · Fondo transparente recomendado</div>
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Logo alternativo <span class="opt">(icono / versión blanca)</span></label>
+              <div class="upload-zone" id="zone_logo2" ondragover="dragOver(event,'zone_logo2')" ondragleave="dragLeave('zone_logo2')" ondrop="dropFile(event,'logo_alternativo','zone_logo2')">
+                <input type="file" id="logo_alternativo" accept="image/*" onchange="previewLogo(this,'prev_logo2','zone_logo2')">
+                <div id="zone_logo2_content">
+                  <div class="upload-icon">✨</div>
+                  <div class="upload-text">Subir logo alternativo</div>
+                  <div class="upload-hint">Versión para fondos oscuros o ícono pequeño</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Paleta de colores</span></div>
+          <div class="fields-grid cols-3">
+            <div class="field">
+              <label>Color principal</label>
+              <div class="color-row">
+                <div class="color-swatch" style="background:#6EE7B7">
+                  <input type="color" id="color_principal" value="#6EE7B7" oninput="syncColor('color_principal','hex_principal')">
+                </div>
+                <input type="text" class="color-hex" id="hex_principal" value="#6EE7B7" maxlength="7" oninput="syncHex('hex_principal','color_principal')">
+              </div>
+              <div class="preset-palette" id="presets_principal"></div>
+            </div>
+            <div class="field">
+              <label>Color secundario</label>
+              <div class="color-row">
+                <div class="color-swatch" style="background:#3B82F6">
+                  <input type="color" id="color_secundario" value="#3B82F6" oninput="syncColor('color_secundario','hex_secundario')">
+                </div>
+                <input type="text" class="color-hex" id="hex_secundario" value="#3B82F6" maxlength="7" oninput="syncHex('hex_secundario','color_secundario')">
+              </div>
+            </div>
+            <div class="field">
+              <label>Color de acento</label>
+              <div class="color-row">
+                <div class="color-swatch" style="background:#F59E0B">
+                  <input type="color" id="color_acento" value="#F59E0B" oninput="syncColor('color_acento','hex_acento')">
+                </div>
+                <input type="text" class="color-hex" id="hex_acento" value="#F59E0B" maxlength="7" oninput="syncHex('hex_acento','color_acento')">
+              </div>
+            </div>
+          </div>
+
+          <!-- Color presets -->
+          <div style="margin-top:6px">
+            <label>Paletas prediseñadas</label>
+            <div class="chips" style="margin-top:10px" id="palette-presets">
+              <div class="chip" onclick="applyPalette('#6EE7B7','#3B82F6','#F59E0B')">🌿 Natural</div>
+              <div class="chip" onclick="applyPalette('#8B5CF6','#EC4899','#F59E0B')">💜 Violeta</div>
+              <div class="chip" onclick="applyPalette('#EF4444','#F97316','#FCD34D')">🔥 Fuego</div>
+              <div class="chip" onclick="applyPalette('#06B6D4','#0EA5E9','#38BDF8')">🌊 Océano</div>
+              <div class="chip" onclick="applyPalette('#10B981','#059669','#D1FAE5')">🍃 Esmeralda</div>
+              <div class="chip" onclick="applyPalette('#F59E0B','#D97706','#FDE68A')">☀️ Dorado</div>
+              <div class="chip" onclick="applyPalette('#1E40AF','#3B82F6','#93C5FD')">🔷 Corporativo</div>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Tema de interfaz</span></div>
+          <div class="theme-cards">
+            <div class="theme-card selected" id="theme_dark" onclick="selectTheme('dark')">
+              <div class="theme-preview dark"></div>
+              <div class="theme-info">
+                <div class="theme-name">🌙 Modo oscuro</div>
+                <div class="theme-desc">Interfaz oscura, ideal para uso prolongado</div>
+              </div>
+            </div>
+            <div class="theme-card" id="theme_light" onclick="selectTheme('light')">
+              <div class="theme-preview light"></div>
+              <div class="theme-info">
+                <div class="theme-name">☀️ Modo claro</div>
+                <div class="theme-desc">Interfaz luminosa, ideal para entornos brillantes</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 8 de 9</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════ -->
+      <!-- PASO 9: OBJETIVOS IA                       -->
+      <!-- ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-9">
+        <div class="card-header">
+          <div class="step-icon purple">🤖</div>
+          <div class="card-header-text">
+            <div class="card-title">Inteligencia artificial</div>
+            <div class="card-subtitle">Selecciona tus objetivos. La IA personalizará reportes, alertas y recomendaciones para tu negocio.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="field">
+            <label>¿Qué deseas lograr con Negocio360? <span class="opt">(elige todos los que apliquen)</span></label>
+          </div>
+          <div class="goals-grid" style="margin-top:16px">
+            <div class="goal-card" data-goal="ventas" onclick="toggleGoal(this)">
+              <div class="goal-icon">📈</div>
+              <div class="goal-text">Aumentar ventas</div>
+            </div>
+            <div class="goal-card" data-goal="gastos" onclick="toggleGoal(this)">
+              <div class="goal-icon">💸</div>
+              <div class="goal-text">Controlar gastos</div>
+            </div>
+            <div class="goal-card" data-goal="inventario" onclick="toggleGoal(this)">
+              <div class="goal-icon">📦</div>
+              <div class="goal-text">Controlar inventario</div>
+            </div>
+            <div class="goal-card" data-goal="clientes" onclick="toggleGoal(this)">
+              <div class="goal-icon">👥</div>
+              <div class="goal-text">Administrar clientes</div>
+            </div>
+            <div class="goal-card" data-goal="rentabilidad" onclick="toggleGoal(this)">
+              <div class="goal-icon">💎</div>
+              <div class="goal-text">Mejorar rentabilidad</div>
+            </div>
+            <div class="goal-card" data-goal="automatizar" onclick="toggleGoal(this)">
+              <div class="goal-icon">⚙️</div>
+              <div class="goal-text">Automatizar procesos</div>
+            </div>
+            <div class="goal-card" data-goal="reportes" onclick="toggleGoal(this)">
+              <div class="goal-icon">📊</div>
+              <div class="goal-text">Obtener reportes inteligentes</div>
+            </div>
+            <div class="goal-card" data-goal="empleados" onclick="toggleGoal(this)">
+              <div class="goal-icon">🧑‍💼</div>
+              <div class="goal-text">Gestionar empleados</div>
+            </div>
+          </div>
+
+          <div style="margin-top:28px;padding:20px;background:rgba(110,231,183,.06);border:1px solid rgba(110,231,183,.15);border-radius:var(--radius)">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <span style="font-size:1.4rem">✨</span>
+              <div>
+                <div style="font-size:.9rem;font-weight:600;margin-bottom:6px;color:var(--accent)">La IA adaptará tu experiencia</div>
+                <div style="font-size:.82rem;color:var(--muted);line-height:1.6">Según tus objetivos, el dashboard mostrará widgets relevantes, el asistente tendrá contexto de tu negocio y recibirás recomendaciones personalizadas cada semana.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 9 de 9</div>
+          <button class="btn btn-finish" id="btnFinish" onclick="finalizarOnboarding()">🚀 Ir a mi Dashboard</button>
+        </div>
+      </div>
+
+      <!-- Success Screen (inside card) -->
+      <div class="success-screen" id="successScreen">
+        <div class="success-anim">🎉</div>
+        <div class="success-title">¡Todo listo!</div>
+        <div class="success-sub">Tu espacio de trabajo está siendo configurado. En segundos serás redirigido a tu dashboard personalizado.</div>
+        <div class="spinner"></div>
+      </div>
+
+    </div><!-- /card -->
+  </main>
+</div>
+
+<script>
+/* ═══════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════ */
+const SUPABASE_URL = 'https://TU_PROYECTO.supabase.co';
+const SUPABASE_ANON_KEY = 'TU_ANON_KEY';
+
+const STEPS = [
+  { label: 'Empresa' },
+  { label: 'Ubicación' },
+  { label: 'Contacto' },
+  { label: 'Finanzas' },
+  { label: 'Inventario' },
+  { label: 'Clientes' },
+  { label: 'Empleados' },
+  { label: 'Visual' },
+  { label: 'IA' },
+];
+
+let currentStep = 1;
+let formData = {};
+let logoFiles = { principal: null, alternativo: null };
+
+/* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  renderProgress();
+  renderColorPresets();
+
+  // Pre-select Nicaragua timezone
+  document.getElementById('pais').value = 'NI';
+  document.getElementById('zona_horaria').value = 'America/Managua';
+});
+
+/* ═══════════════════════════════════════
+   PROGRESS
+═══════════════════════════════════════ */
+function renderProgress() {
+  const track = document.getElementById('stepTrack');
+  const labels = document.getElementById('stepLabels');
+  track.innerHTML = '';
+  labels.innerHTML = '';
+  STEPS.forEach((s, i) => {
+    const n = i + 1;
+    const node = document.createElement('div');
+    node.className = 'step-node' + (n < currentStep ? ' done' : n === currentStep ? ' active' : '');
+    node.title = s.label;
+    node.onclick = () => { if (n < currentStep) goToStep(n); };
+    track.appendChild(node);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'step-label' + (n < currentStep ? ' done' : n === currentStep ? ' active' : '');
+    lbl.textContent = s.label;
+    labels.appendChild(lbl);
+  });
+  document.getElementById('progressCount').textContent = `Paso ${currentStep} de ${STEPS.length}`;
+}
+
+/* ═══════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════ */
+function goToStep(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step-' + currentStep).classList.add('active');
+  renderProgress();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function nextStep() {
+  if (!validateStep(currentStep)) return;
+  collectStep(currentStep);
+  if (currentStep < STEPS.length) goToStep(currentStep + 1);
+}
+
+function prevStep() {
+  if (currentStep > 1) goToStep(currentStep - 1);
+}
+
+/* ═══════════════════════════════════════
+   VALIDATION
+═══════════════════════════════════════ */
+function validateStep(step) {
+  const rules = {
+    1: [
+      { id: 'nombre_comercial', msg: 'El nombre comercial es obligatorio' },
+      { id: 'tipo_negocio', msg: 'Selecciona el tipo de negocio' },
+      { custom: () => document.querySelector('.size-card.selected'), msg: 'Selecciona el tamaño del negocio' },
+    ],
+    2: [
+      { id: 'pais', msg: 'Selecciona el país' },
+      { id: 'departamento', msg: 'Ingresa el departamento o estado' },
+      { id: 'ciudad', msg: 'Ingresa la ciudad' },
+      { id: 'zona_horaria', msg: 'Selecciona la zona horaria' },
+    ],
+    4: [{ id: 'moneda', msg: 'Selecciona la moneda principal' }],
+  };
+  const stepRules = rules[step] || [];
+  for (const r of stepRules) {
+    if (r.custom) {
+      if (!r.custom()) { showToast(r.msg, 'error'); return false; }
+    } else {
+      const el = document.getElementById(r.id);
+      if (el && !el.value.trim()) { showToast(r.msg, 'error'); el.focus(); return false; }
+    }
+  }
+  return true;
+}
+
+/* ═══════════════════════════════════════
+   DATA COLLECTION
+═══════════════════════════════════════ */
+function collectStep(step) {
+  const g = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const b = (id) => document.getElementById(id)?.classList.contains('active') || false;
+
+  if (step === 1) {
+    Object.assign(formData, {
+      nombre_comercial: g('nombre_comercial'),
+      razon_social: g('razon_social'),
+      tipo_negocio: g('tipo_negocio'),
+      descripcion: g('descripcion'),
+      anio_fundacion: g('anio_fundacion') ? parseInt(g('anio_fundacion')) : null,
+      cant_empleados_aprox: g('cant_empleados') ? parseInt(g('cant_empleados')) : null,
+      tamano_negocio: document.querySelector('.size-card.selected')?.dataset.size || null,
+    });
+  }
+  if (step === 2) {
+    Object.assign(formData, {
+      pais: g('pais'),
+      departamento: g('departamento'),
+      ciudad: g('ciudad'),
+      direccion: g('direccion'),
+      zona_horaria: g('zona_horaria'),
+    });
+  }
+  if (step === 3) {
+    Object.assign(formData, {
+      whatsapp: g('wa_prefix') + g('whatsapp'),
+      telefono: g('tel_prefix') + g('telefono'),
+      email_empresa: g('email_empresa'),
+      sitio_web: g('sitio_web'),
+      facebook: g('facebook'),
+      instagram: g('instagram'),
+      tiktok: g('tiktok'),
+    });
+  }
+  if (step === 4) {
+    Object.assign(formData, {
+      moneda: g('moneda'),
+      maneja_iva: b('toggle_iva'),
+      porcentaje_iva: b('toggle_iva') ? (parseFloat(g('porcentaje_iva')) || 15) : null,
+      maneja_descuentos: b('toggle_descuentos'),
+      maneja_cxc: b('toggle_cxc'),
+      maneja_cxp: b('toggle_cxp'),
+    });
+  }
+  if (step === 5) {
+    Object.assign(formData, {
+      control_inventario: b('toggle_inventario'),
+      control_lotes: b('toggle_lotes'),
+      control_categorias: b('toggle_categorias'),
+      alerta_stock_bajo: b('toggle_stock_bajo'),
+    });
+  }
+  if (step === 6) {
+    Object.assign(formData, {
+      gestiona_clientes: b('toggle_clientes'),
+      clientes_frecuentes: b('toggle_frecuentes'),
+      programa_fidelizacion: b('toggle_fidelizacion'),
+      historial_compras: b('toggle_historial'),
+    });
+  }
+  if (step === 7) {
+    Object.assign(formData, {
+      tiene_empleados: b('toggle_empleados'),
+      num_empleados: g('num_empleados') ? parseInt(g('num_empleados')) : null,
+      manejo_salarios: b('toggle_salarios'),
+      control_asistencia: b('toggle_asistencia'),
+    });
+  }
+  if (step === 8) {
+    Object.assign(formData, {
+      color_principal: document.getElementById('color_principal').value,
+      color_secundario: document.getElementById('color_secundario').value,
+      color_acento: document.getElementById('color_acento').value,
+      tema: document.getElementById('theme_dark').classList.contains('selected') ? 'dark' : 'light',
+    });
+  }
+  if (step === 9) {
+    formData.objetivos = Array.from(document.querySelectorAll('.goal-card.selected')).map(el => el.dataset.goal);
+  }
+}
+
+/* ═══════════════════════════════════════
+   FINALIZE
+═══════════════════════════════════════ */
+async function finalizarOnboarding() {
+  collectStep(9);
+  if (formData.objetivos?.length === 0) {
+    showToast('Selecciona al menos un objetivo', 'error');
+    return;
+  }
+  document.getElementById('savingOverlay').classList.add('active');
+
+  try {
+    await saveToSupabase();
+  } catch (e) {
+    console.error('Supabase error (demo mode):', e);
+  }
+
+  // Simulate saving
+  setTimeout(() => {
+    document.getElementById('savingOverlay').classList.remove('active');
+    // Hide all steps, show success
+    document.querySelectorAll('.card-step').forEach(el => el.classList.remove('active'));
+    document.getElementById('successScreen').classList.add('active');
+
+    console.log('📦 Datos del onboarding:', formData);
+
+    // Redirect after delay
+    setTimeout(() => {
+      window.location.href = 'dashboard.html?onboarding=complete';
+    }, 3200);
+  }, 2200);
+}
+
+/* ═══════════════════════════════════════
+   SUPABASE STORAGE
+═══════════════════════════════════════ */
+async function saveToSupabase() {
+  // 1. Get current user
+  const userRes = await supabaseRequest('GET', '/auth/v1/user');
+  const userId = userRes?.id;
+  if (!userId) throw new Error('No authenticated user');
+
+  // 2. Upload logos if selected
+  let logoUrl = null, logoAltUrl = null;
+  if (logoFiles.principal) {
+    logoUrl = await uploadFile(logoFiles.principal, `logos/${userId}/logo_principal`);
+  }
+  if (logoFiles.alternativo) {
+    logoAltUrl = await uploadFile(logoFiles.alternativo, `logos/${userId}/logo_alternativo`);
+  }
+
+  // 3. Upsert empresa
+  const empresa = await supabaseRequest('POST', '/rest/v1/empresas', {
+    user_id: userId,
+    nombre_comercial: formData.nombre_comercial,
+    razon_social: formData.razon_social,
+    tipo_negocio: formData.tipo_negocio,
+    descripcion: formData.descripcion,
+    anio_fundacion: formData.anio_fundacion,
+    cant_empleados_aprox: formData.cant_empleados_aprox,
+    tamano_negocio: formData.tamano_negocio,
+    onboarding_completado: false,
+    onboarding_step: 9,
+  }, { 'Prefer': 'return=representation' });
+
+  const empresaId = empresa?.[0]?.id;
+  if (!empresaId) throw new Error('No empresa ID returned');
+
+  // 4. Upsert ubicacion
+  await supabaseRequest('POST', '/rest/v1/ubicaciones_empresa', {
+    empresa_id: empresaId,
+    pais: formData.pais,
+    departamento: formData.departamento,
+    ciudad: formData.ciudad,
+    direccion: formData.direccion,
+    zona_horaria: formData.zona_horaria,
+  }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
+
+  // 5. Upsert contacto
+  await supabaseRequest('POST', '/rest/v1/contactos_empresa', {
+    empresa_id: empresaId,
+    whatsapp: formData.whatsapp,
+    telefono: formData.telefono,
+    email_empresa: formData.email_empresa,
+    sitio_web: formData.sitio_web,
+    facebook: formData.facebook,
+    instagram: formData.instagram,
+    tiktok: formData.tiktok,
+  }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
+
+  // 6. Upsert configuracion financiera
+  await supabaseRequest('POST', '/rest/v1/configuracion_financiera', {
+    empresa_id: empresaId,
+    moneda: formData.moneda,
+    maneja_iva: formData.maneja_iva,
+    porcentaje_iva: formData.porcentaje_iva,
+    maneja_descuentos: formData.maneja_descuentos,
+    maneja_cxc: formData.maneja_cxc,
+    maneja_cxp: formData.maneja_cxp,
+  }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
+
+  // 7. Upsert configuracion modulos
+  await supabaseRequest('POST', '/rest/v1/configuracion_modulos', {
+    empresa_id: empresaId,
+    control_inventario: formData.control_inventario,
+    control_lotes: formData.control_lotes,
+    control_categorias: formData.control_categorias,
+    alerta_stock_bajo: formData.alerta_stock_bajo,
+    gestiona_clientes: formData.gestiona_clientes,
+    clientes_frecuentes: formData.clientes_frecuentes,
+    programa_fidelizacion: formData.programa_fidelizacion,
+    historial_compras: formData.historial_compras,
+    tiene_empleados: formData.tiene_empleados,
+    num_empleados: formData.num_empleados,
+    manejo_salarios: formData.manejo_salarios,
+    control_asistencia: formData.control_asistencia,
+  }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
+
+  // 8. Upsert configuracion visual
+  await supabaseRequest('POST', '/rest/v1/configuracion_visual', {
+    empresa_id: empresaId,
+    color_principal: formData.color_principal,
+    color_secundario: formData.color_secundario,
+    color_acento: formData.color_acento,
+    tema: formData.tema,
+    logo_url: logoUrl,
+    logo_alternativo_url: logoAltUrl,
+  }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
+
+  // 9. Upsert objetivos IA
+  for (const obj of (formData.objetivos || [])) {
+    await supabaseRequest('POST', '/rest/v1/objetivos_empresa', {
+      empresa_id: empresaId,
+      objetivo: obj,
+      activo: true,
+    }, { 'Prefer': 'resolution=merge-duplicates,return=minimal' });
+  }
+
+  // 10. Mark onboarding complete
+  await supabaseRequest('PATCH', `/rest/v1/empresas?id=eq.${empresaId}`, {
+    onboarding_completado: true,
+    onboarding_step: 9,
+  });
+
+  // 11. Save empresa_id to localStorage for dashboard
+  localStorage.setItem('n360_empresa_id', empresaId);
+  localStorage.setItem('n360_empresa_config', JSON.stringify({
+    nombre: formData.nombre_comercial,
+    color_principal: formData.color_principal,
+    color_secundario: formData.color_secundario,
+    color_acento: formData.color_acento,
+    tema: formData.tema,
+    moneda: formData.moneda,
+    logo_url: logoUrl,
+    tipo_negocio: formData.tipo_negocio,
+    objetivos: formData.objetivos,
+  }));
+}
+
+async function supabaseRequest(method, path, body = null, extraHeaders = {}) {
+  const res = await fetch(SUPABASE_URL + path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      ...extraHeaders,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Supabase ${method} ${path} failed: ${res.status}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function uploadFile(file, path) {
+  const formDataObj = new FormData();
+  formDataObj.append('', file);
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/empresa-assets/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: formDataObj,
+  });
+  if (!res.ok) return null;
+  return `${SUPABASE_URL}/storage/v1/object/public/empresa-assets/${path}`;
+}
+
+/* ═══════════════════════════════════════
+   TOGGLE SWITCHES
+═══════════════════════════════════════ */
+function toggleSwitch(key) {
+  const row = document.getElementById('toggle_' + key);
+  row.classList.toggle('active');
+  const cond = document.getElementById('cond_' + key);
+  if (cond) cond.classList.toggle('show', row.classList.contains('active'));
+}
+
+/* ═══════════════════════════════════════
+   SIZE SELECTION
+═══════════════════════════════════════ */
+function selectSize(el) {
+  document.querySelectorAll('.size-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+/* ═══════════════════════════════════════
+   THEME SELECTION
+═══════════════════════════════════════ */
+let selectedTheme = 'dark';
+function selectTheme(t) {
+  selectedTheme = t;
+  document.getElementById('theme_dark').classList.toggle('selected', t === 'dark');
+  document.getElementById('theme_light').classList.toggle('selected', t === 'light');
+}
+
+/* ═══════════════════════════════════════
+   GOAL SELECTION
+═══════════════════════════════════════ */
+function toggleGoal(el) {
+  el.classList.toggle('selected');
+}
+
+/* ═══════════════════════════════════════
+   COLOR PICKERS
+═══════════════════════════════════════ */
+function syncColor(colorId, hexId) {
+  const val = document.getElementById(colorId).value;
+  document.getElementById(hexId).value = val;
+  updateSwatch(colorId, val);
+}
+
+function syncHex(hexId, colorId) {
+  let val = document.getElementById(hexId).value;
+  if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+    document.getElementById(colorId).value = val;
+    updateSwatch(colorId, val);
+  }
+}
+
+function updateSwatch(colorId, val) {
+  const input = document.getElementById(colorId);
+  if (input) input.closest('.color-swatch').style.background = val;
+}
+
+function applyPalette(p, s, a) {
+  ['color_principal','color_secundario','color_acento'].forEach((id, i) => {
+    const vals = [p, s, a];
+    document.getElementById(id).value = vals[i];
+    updateSwatch(id, vals[i]);
+  });
+  document.getElementById('hex_principal').value = p;
+  document.getElementById('hex_secundario').value = s;
+  document.getElementById('hex_acento').value = a;
+}
+
+function renderColorPresets() {
+  const presets = ['#6EE7B7','#3B82F6','#F59E0B','#EF4444','#8B5CF6','#EC4899','#10B981','#0EA5E9','#F97316','#FFFFFF','#CBD5E1','#0A0A0F'];
+  const container = document.getElementById('presets_principal');
+  if (!container) return;
+  presets.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'preset-dot';
+    d.style.background = c;
+    d.title = c;
+    d.onclick = () => {
+      document.getElementById('color_principal').value = c;
+      document.getElementById('hex_principal').value = c;
+      updateSwatch('color_principal', c);
+    };
+    container.appendChild(d);
+  });
+}
+
+/* ═══════════════════════════════════════
+   FILE UPLOADS
+═══════════════════════════════════════ */
+function previewLogo(input, previewId, zoneId) {
+  const file = input.files[0];
+  if (!file) return;
+  const key = zoneId === 'zone_logo' ? 'principal' : 'alternativo';
+  logoFiles[key] = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const zone = document.getElementById(zoneId + '_content');
+    zone.innerHTML = `<img src="${e.target.result}" class="upload-preview" alt="Logo preview"><div class="upload-text" style="font-size:.8rem">${file.name}</div>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function dragOver(e, zoneId) {
+  e.preventDefault();
+  document.getElementById(zoneId).classList.add('dragging');
+}
+
+function dragLeave(zoneId) {
+  document.getElementById(zoneId).classList.remove('dragging');
+}
+
+function dropFile(e, inputId, zoneId) {
+  e.preventDefault();
+  dragLeave(zoneId);
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    const input = document.getElementById(inputId);
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    previewLogo(input, null, zoneId);
+  }
+}
+
+/* ═══════════════════════════════════════
+   TIMEZONE AUTO-SELECT
+═══════════════════════════════════════ */
+function updateZonas() {
+  const pais = document.getElementById('pais').value;
+  const map = {
+    NI: 'America/Managua', GT: 'America/Guatemala',
+    SV: 'America/El_Salvador', HN: 'America/Tegucigalpa',
+    CR: 'America/Costa_Rica', PA: 'America/Panama',
+    MX: 'America/Mexico_City', CO: 'America/Bogota',
+    PE: 'America/Lima', CL: 'America/Santiago',
+    AR: 'America/Argentina/Buenos_Aires', US: 'America/New_York',
+    ES: 'Europe/Madrid',
+  };
+  if (map[pais]) document.getElementById('zona_horaria').value = map[pais];
+}
+
+/* ═══════════════════════════════════════
+   TOAST
+═══════════════════════════════════════ */
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  const icon = type === 'success' ? '✓' : '⚠️';
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastMsg').textContent = msg;
+  t.className = 'toast ' + type;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+</script>
+</body>
+</html>
