@@ -605,11 +605,26 @@
 <script>
 // =============================================
 //  SUPABASE INIT
+//  ⚠ SUPA_KEY debe ser la "anon public" key JWT
+//  Formato correcto: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO...
+//  Obtenerla en: Supabase Dashboard → Settings → API → anon public
 // =============================================
 const SUPA_URL = 'https://odyldlgxojijrxooclkhg.supabase.co';
-const SUPA_KEY = 'sb_publishable_58dtd0rAUNDnohHBv3K-cA_C2-a9bwS';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9keWxkbGd4b2lqcnhvb2Nsa2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTkxOTIsImV4cCI6MjA5NjMzNTE5Mn0.HzStWBSpOFFCbwKcoGOfzw0aOANQAlZbOqAZJihBYzA'; // ← reemplaza esto
+
+// Validación temprana: si la key no es JWT el error es inmediato y claro
+if (!SUPA_KEY.startsWith('eyJ')) {
+  console.error(
+    '[Negocio360] Supabase API key inválida.\n' +
+    'Necesitas la "anon public" key en formato JWT (empieza con eyJ...).\n' +
+    'Encuéntrala en: Supabase Dashboard → Settings → API → anon public'
+  );
+}
+
 const { createClient } = supabase;
-const db = createClient(SUPA_URL, SUPA_KEY);
+const db = createClient(SUPA_URL, SUPA_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false }
+});
 
 // =============================================
 //  ESTADO GLOBAL
@@ -787,7 +802,6 @@ async function getIP() {
 // =============================================
 async function handleSubmit() {
   if (!validateForm()) {
-    // Scroll al primer error
     const firstErr = document.querySelector('.input-error, .field-error.visible');
     if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
@@ -796,97 +810,138 @@ async function handleSubmit() {
   setLoading(true);
   hideProgress();
 
-  const get = id => document.getElementById(id).value.trim();
-  const alertEl = document.getElementById('globalAlert');
+  const get      = id => document.getElementById(id).value.trim();
+  const alertEl  = document.getElementById('globalAlert');
   const alertMsg = document.getElementById('globalAlertMsg');
 
   function showGlobalError(msg) {
     alertMsg.textContent = msg;
-    alertEl.classList.remove('alert-success');
-    alertEl.classList.add('alert-error', 'visible');
+    alertEl.className = 'alert alert-error visible';
     setLoading(false);
     hideProgress();
     alertEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  try {
-    // 1. Subir imagen a Storage
-    setProgress(20);
-    const ext       = selectedFile.name.split('.').pop().toLowerCase();
-    const timestamp = Date.now();
-    const random    = Math.random().toString(36).substring(2, 8);
-    const fileName  = `comprobante_${timestamp}_${random}.${ext}`;
-    const filePath  = `solicitudes/${fileName}`;
+  // ── Paso 1: construir nombre de archivo limpio ──────────────────────────
+  // Usamos solo caracteres seguros para evitar URLs malformadas en Storage
+  let ext = 'jpg';
+  const nameParts = selectedFile.name.split('.');
+  if (nameParts.length > 1) {
+    ext = nameParts.pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  }
+  const ts       = Date.now();
+  const rand     = Math.random().toString(36).slice(2, 9);
+  const filePath = `solicitudes/comprobante_${ts}_${rand}.${ext}`;
 
-    const { error: uploadError } = await db.storage
+  console.log('[Upload] filePath:', filePath);
+  console.log('[Upload] bucket: comprobantes');
+  console.log('[Upload] contentType:', selectedFile.type);
+  console.log('[Upload] size:', selectedFile.size);
+
+  try {
+    // ── Paso 2: subir a Storage ──────────────────────────────────────────
+    setProgress(20);
+
+    const { data: uploadData, error: uploadError } = await db.storage
       .from('comprobantes')
       .upload(filePath, selectedFile, {
-        contentType: selectedFile.type,
-        upsert: false
+        contentType : selectedFile.type,
+        cacheControl: '3600',
+        upsert      : false
       });
 
     if (uploadError) {
-      console.error('Upload error:', uploadError);
-      showGlobalError('Error al subir el comprobante. Verifica tu conexión e intenta nuevamente.');
-      return;
-    }
-
-    setProgress(55);
-
-    // 2. Obtener URL pública
-    const { data: urlData } = db.storage
-      .from('comprobantes')
-      .getPublicUrl(filePath);
-
-    const comprobanteUrl = urlData?.publicUrl || filePath;
-
-    setProgress(70);
-
-    // 3. Obtener IP
-    const ip = await getIP();
-
-    setProgress(85);
-
-    // 4. Guardar solicitud en la BD
-    const { error: dbError } = await db
-      .from('solicitudes_registro')
-      .insert([{
-        nombre:           get('nombre'),
-        apellido:         get('apellido'),
-        nombre_negocio:   get('negocio'),
-        email:            get('email'),
-        telefono:         get('telefono'),
-        comprobante_url:  comprobanteUrl,
-        estado:           'pendiente',
-        fecha_registro:   new Date().toISOString(),
-        ip_usuario:       ip,
-        dispositivo:      navigator.userAgent.substring(0, 250)
-      }]);
-
-    if (dbError) {
-      console.error('DB error:', dbError);
-      // Revisar si es email duplicado
-      if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
-        showGlobalError('Ya existe una solicitud con este correo electrónico.');
+      console.error('[Upload] error completo:', uploadError);
+      // Mensajes de error específicos y accionables
+      if (uploadError.message?.includes('JWT') || uploadError.message?.includes('token') || uploadError.statusCode === 401) {
+        showGlobalError('Error de autenticación con el servidor. Contacta al administrador.');
+      } else if (uploadError.message?.includes('Bucket not found') || uploadError.statusCode === 404) {
+        showGlobalError('Bucket de almacenamiento no encontrado. Contacta al administrador.');
+      } else if (uploadError.message?.includes('exceeded') || uploadError.statusCode === 413) {
+        showGlobalError('El archivo es demasiado grande. Máximo permitido: 5 MB.');
+      } else if (uploadError.message?.includes('mime') || uploadError.message?.includes('type')) {
+        showGlobalError('Tipo de archivo no permitido. Solo JPG, PNG o WEBP.');
       } else {
-        showGlobalError('Error al registrar la solicitud. Por favor intenta nuevamente.');
+        showGlobalError(`Error al subir el comprobante: ${uploadError.message || 'error desconocido'}. Intenta nuevamente.`);
       }
       return;
     }
 
+    console.log('[Upload] éxito:', uploadData);
+    setProgress(55);
+
+    // ── Paso 3: obtener URL pública ──────────────────────────────────────
+    // getPublicUrl es síncrono y no arroja error — siempre devuelve data
+    const { data: publicUrlData } = db.storage
+      .from('comprobantes')
+      .getPublicUrl(filePath);
+
+    const comprobanteUrl = publicUrlData?.publicUrl;
+
+    if (!comprobanteUrl || !comprobanteUrl.startsWith('http')) {
+      showGlobalError('No se pudo obtener la URL del comprobante. Intenta nuevamente.');
+      return;
+    }
+
+    console.log('[Upload] URL pública:', comprobanteUrl);
+    setProgress(70);
+
+    // ── Paso 4: obtener IP (best-effort, no bloquea el flujo) ────────────
+    const ip = await getIP();
+    setProgress(85);
+
+    // ── Paso 5: insertar solicitud en la BD ──────────────────────────────
+    const payload = {
+      nombre          : get('nombre'),
+      apellido        : get('apellido'),
+      nombre_negocio  : get('negocio'),
+      email           : get('email'),
+      telefono        : get('telefono'),
+      comprobante_url : comprobanteUrl,
+      estado          : 'pendiente',
+      fecha_registro  : new Date().toISOString(),
+      ip_usuario      : ip,
+      dispositivo     : navigator.userAgent.substring(0, 250)
+    };
+
+    console.log('[DB] insertando payload:', { ...payload, dispositivo: '...' });
+
+    const { data: insertData, error: dbError } = await db
+      .from('solicitudes_registro')
+      .insert([payload])
+      .select();
+
+    if (dbError) {
+      console.error('[DB] error completo:', dbError);
+      if (dbError.code === '23505' || dbError.message?.includes('duplicate') || dbError.message?.includes('unique')) {
+        showGlobalError('Ya existe una solicitud registrada con este correo electrónico.');
+      } else if (dbError.code === '42501' || dbError.message?.includes('permission') || dbError.message?.includes('policy')) {
+        showGlobalError('Sin permiso para guardar la solicitud. Contacta al administrador.');
+      } else {
+        showGlobalError(`Error al guardar la solicitud: ${dbError.message || 'error desconocido'}. Intenta nuevamente.`);
+      }
+      return;
+    }
+
+    console.log('[DB] solicitud guardada:', insertData);
     setProgress(100);
 
-    // 5. Éxito — mostrar pantalla de confirmación
+    // ── Paso 6: mostrar pantalla de éxito ────────────────────────────────
     setTimeout(() => {
       document.getElementById('formSection').style.display = 'none';
       document.getElementById('successScreen').classList.add('visible');
       hideProgress();
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 400);
+    }, 500);
 
   } catch (err) {
-    console.error('Unexpected error:', err);
-    showGlobalError('Ocurrió un error inesperado. Verifica tu conexión e intenta nuevamente.');
+    // Error de red (sin internet, CORS, DNS, etc.)
+    console.error('[handleSubmit] excepción:', err);
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      showGlobalError('Sin conexión a internet o el servidor no responde. Verifica tu conexión e intenta nuevamente.');
+    } else {
+      showGlobalError(`Error inesperado: ${err.message || 'desconocido'}. Intenta nuevamente.`);
+    }
   }
 }
 
