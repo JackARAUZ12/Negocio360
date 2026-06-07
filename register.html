@@ -996,7 +996,10 @@
         }
       });
 
-      if (authError) throw authError;
+      if (authError) {
+  console.log('AUTH ERROR:', authError);
+  throw authError;
+}
 
       const userId = authData.user?.id;
       if (!userId) throw new Error('No se pudo obtener el ID de usuario.');
@@ -1022,7 +1025,10 @@
           onboarding_completado: false
         });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+  console.log('DB ERROR:', dbError);
+  throw dbError;
+}
 
       return authData;
     }
