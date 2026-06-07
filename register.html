@@ -699,13 +699,11 @@ async function handleSubmit() {
     setProgress(100);
     console.log('[N360] usuario registrado correctamente ✓');
 
-    // 4. Mostrar pantalla de éxito
-    setTimeout(() => {
-      document.getElementById('formSection').style.display = 'none';
-      document.getElementById('successScreen').classList.add('visible');
-      hideProgress();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 400);
+    // DESPUÉS:
+setTimeout(() => {
+  hideProgress();
+  window.location.href = 'personalizacion.html';
+}, 400);
 
   } catch (err) {
     console.error('[N360] excepción:', err);
