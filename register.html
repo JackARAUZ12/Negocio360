@@ -1004,32 +1004,6 @@
       const userId = authData.user?.id;
       if (!userId) throw new Error('No se pudo obtener el ID de usuario.');
 
-      // 2. Calcular fecha de vencimiento (7 días desde hoy)
-      const fechaVencimiento = new Date();
-      fechaVencimiento.setDate(fechaVencimiento.getDate() + 7);
-
-      // 3. Insertar registro en tabla usuarios
-      // Compatible con RLS: el usuario ya está autenticado mediante signUp
-      const { error: dbError } = await supabase
-        .from('usuarios')
-        .insert({
-          auth_user_id:          userId,
-          nombre,
-          apellido,
-          nombre_negocio:        negocio,
-          email,
-          telefono:              whatsapp,
-          estado_cuenta:         'activa',
-          plan:                  'prueba',
-          fecha_vencimiento:     fechaVencimiento.toISOString(),
-          onboarding_completado: false
-        });
-
-      if (dbError) {
-  console.log('DB ERROR:', dbError);
-  throw dbError;
-}
-
       return authData;
     }
 
