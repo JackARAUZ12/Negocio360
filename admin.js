@@ -5,7 +5,7 @@
 
 // ── SUPABASE INIT ──────────────────────────────────────────
 // REEMPLAZA CON TUS CREDENCIALES
-const SUPABASE_URL      = 'zvlincmqmmoclqhykejv.supabase.co';      // ← reemplazar
+const SUPABASE_URL      = 'https://zvlincmqmmoclqhykejv.supabase.co';      // ← reemplazar
 const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'; // ← reemplazar
 
 const { createClient } = supabase;
