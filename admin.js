@@ -17,7 +17,7 @@ let adminRecord   = null;
 let allUsers      = [];
 let allCodes      = [];
 let userFilter    = 'all';
-let confirmAction = null;  // función pendiente de confirmación
+let pendingAction = null;  // función pendiente de confirmación
 
 // ── HELPERS DOM ────────────────────────────────────────────
 const $  = (sel, ctx = document) => ctx.querySelector(sel);
@@ -288,13 +288,13 @@ function renderUsersTable(users) {
             Ver
           </button>
           ${u.estado_cuenta !== 'activa'
-            ? `<button class="btn-icon btn-success btn-sm" onclick="confirmAction('activar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Activar</button>`
+            ? `<button class="btn-icon btn-success btn-sm" onclick="openConfirmAction('activar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Activar</button>`
             : ''}
           ${u.estado_cuenta !== 'suspendida'
-            ? `<button class="btn-icon btn-warning btn-sm" onclick="confirmAction('suspender', '${u.id}', '${escHtml(u.nombre || u.email)}')">Suspender</button>`
+            ? `<button class="btn-icon btn-warning btn-sm" onclick="openConfirmAction('suspender', '${u.id}', '${escHtml(u.nombre || u.email)}')">Suspender</button>`
             : ''}
           ${u.estado_cuenta !== 'cancelada'
-            ? `<button class="btn-icon btn-danger btn-sm" onclick="confirmAction('cancelar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Cancelar</button>`
+            ? `<button class="btn-icon btn-danger btn-sm" onclick="openConfirmAction('cancelar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Cancelar</button>`
             : ''}
         </div>
       </td>
