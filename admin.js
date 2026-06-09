@@ -5,8 +5,8 @@
 
 // ── SUPABASE INIT ──────────────────────────────────────────
 // REEMPLAZA CON TUS CREDENCIALES
-const SUPABASE_URL      = 'TU_SUPABASE_URL';      // ← reemplazar
-const SUPABASE_ANON_KEY = 'TU_SUPABASE_ANON_KEY'; // ← reemplazar
+const SUPABASE_URL      = 'zvlincmqmmoclqhykejv.supabase.co';      // ← reemplazar
+const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'; // ← reemplazar
 
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
