@@ -353,7 +353,7 @@ function viewUser(id) {
 }
 
 // Confirmar acción sobre usuario
-function confirmAction(accion, userId, nombre) {
+function openConfirmAction(accion, userId, nombre) {
   const msgs = {
     activar:   { title: '¿Activar esta cuenta?',   sub: `Se activará la cuenta de <strong>${nombre}</strong>.`,   icon: '✓', cls: 'success', btn: 'btn-success', label: 'Sí, activar'    },
     suspender: { title: '¿Suspender esta cuenta?', sub: `Se suspenderá la cuenta de <strong>${nombre}</strong>.`, icon: '⚠', cls: 'warn',    btn: 'btn-warning', label: 'Sí, suspender' },
