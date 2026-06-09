@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel de Administración — Negocio360</title>
+
+  <!-- Fuente Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- Estilos -->
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     LOADER INICIAL
+══════════════════════════════════════════ -->
+<div id="page-loader">
+  <div class="loader-logo">Negocio<span>360</span></div>
+  <div class="loader-spinner"></div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TOAST CONTAINER
+══════════════════════════════════════════ -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ══════════════════════════════════════════
+     OVERLAY SIDEBAR MOBILE
+══════════════════════════════════════════ -->
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+<!-- ══════════════════════════════════════════
+     APP WRAPPER
+══════════════════════════════════════════ -->
+<div class="app-wrapper">
+
+  <!-- ══════════════════════════════════════
+       SIDEBAR
+  ══════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">Negocio<span>360</span></div>
+      <div class="logo-badge">Administración</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-section="dashboard">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Dashboard Admin
+      </button>
+
+      <button class="nav-item" data-section="users">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Usuarios
+      </button>
+
+      <button class="nav-item" data-section="codes">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+        Códigos de Acceso
+      </button>
+
+      <div class="nav-divider"></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="nav-item logout" id="btn-logout">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Cerrar Sesión
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════════
+       MAIN CONTENT
+  ══════════════════════════════════════ -->
+  <div class="main-content">
+
+    <!-- ─── HEADER ─── -->
+    <header class="header">
+      <div class="header-left">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Menú">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div>
+          <div class="header-title">Panel de Administración</div>
+          <div class="header-subtitle">Negocio360 Platform</div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <span class="header-date" id="header-date"></span>
+
+        <button class="theme-toggle" id="btn-theme" aria-label="Cambiar tema">
+          <span id="theme-icon"></span>
+        </button>
+
+        <div class="admin-info">
+          <div class="admin-avatar" id="admin-avatar">A</div>
+          <div class="admin-details">
+            <span class="admin-name"  id="header-admin-name">Administrador</span>
+            <span class="admin-email" id="header-admin-email">—</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: DASHBOARD ADMIN
+    ══════════════════════════════════ -->
+    <section class="page-content active" id="page-dashboard">
+      <div class="page-header">
+        <h1>Dashboard Admin</h1>
+        <p>Resumen general de la plataforma Negocio360</p>
+      </div>
+
+      <!-- Stats grid -->
+      <div class="stats-grid">
+        <div class="stat-card total">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Usuarios Totales</div>
+        </div>
+
+        <div class="stat-card active">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-activos">—</div>
+          <div class="stat-label">Usuarios Activos</div>
+        </div>
+
+        <div class="stat-card suspended">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="10" y1="15" x2="10" y2="9"/>
+              <line x1="14" y1="15" x2="14" y2="9"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-suspendidos">—</div>
+          <div class="stat-label">Usuarios Suspendidos</div>
+        </div>
+
+        <div class="stat-card cancelled">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-cancelados">—</div>
+          <div class="stat-label">Usuarios Cancelados</div>
+        </div>
+
+        <div class="stat-card trial">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-prueba">—</div>
+          <div class="stat-label">Usuarios Prueba</div>
+        </div>
+
+        <div class="stat-card premium">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-premium">—</div>
+          <div class="stat-label">Usuarios Premium</div>
+        </div>
+      </div>
+
+      <!-- Info rápida -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Acceso Rápido</div>
+            <div class="card-subtitle">Navega a las secciones de administración</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex; gap:12px; flex-wrap:wrap">
+            <button class="btn-icon btn-primary" data-section="users"
+              onclick="navigate('users')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+              </svg>
+              Gestionar Usuarios
+            </button>
+            <button class="btn-icon btn-ghost" onclick="navigate('codes')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+              </svg>
+              Códigos de Acceso
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: USUARIOS
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-users">
+      <div class="page-header">
+        <h1>Usuarios</h1>
+        <p>Administra los usuarios registrados en la plataforma</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Lista de Usuarios</div>
+            <div class="card-subtitle">Gestiona estados de cuenta de cada usuario</div>
+          </div>
+          <div class="table-toolbar">
+            <div class="search-box">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                id="user-search"
+                class="search-input"
+                placeholder="Buscar por nombre, email, negocio..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div style="padding: 14px 22px 0; border-bottom: 1px solid var(--border-color);">
+          <div class="filter-tabs">
+            <button class="filter-btn active" data-filter="all">Todos</button>
+            <button class="filter-btn" data-filter="activos">Activos</button>
+            <button class="filter-btn" data-filter="suspendidos">Suspendidos</button>
+            <button class="filter-btn" data-filter="cancelados">Cancelados</button>
+            <button class="filter-btn" data-filter="prueba">Prueba</button>
+            <button class="filter-btn" data-filter="premium">Premium</button>
+          </div>
+        </div>
+
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Apellido</th>
+                  <th>Negocio</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Fecha Registro</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="users-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: CÓDIGOS DE ACCESO
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-codes">
+      <div class="page-header">
+        <h1>Códigos de Acceso</h1>
+        <p>Genera y administra los códigos para registro de nuevos usuarios</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Códigos Generados</div>
+            <div class="card-subtitle">Activa, desactiva o elimina códigos de acceso</div>
+          </div>
+          <button class="btn-icon btn-primary" id="btn-new-code">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Crear Código
+          </button>
+        </div>
+
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Usos</th>
+                  <th>Fecha Creación</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="codes-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /main-content -->
+</div><!-- /app-wrapper -->
+
+
+<!-- ══════════════════════════════════════════
+     MODAL: VER USUARIO
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-view-user">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Detalle de Usuario</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-grid">
+        <div class="detail-item">
+          <label>Nombre</label>
+          <span id="detail-nombre">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Apellido</label>
+          <span id="detail-apellido">—</span>
+        </div>
+        <div class="detail-item full">
+          <label>Nombre del Negocio</label>
+          <span id="detail-negocio">—</span>
+        </div>
+        <div class="detail-item full">
+          <label>Email</label>
+          <span id="detail-email">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Teléfono</label>
+          <span id="detail-telefono">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Plan</label>
+          <span id="detail-plan">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Estado</label>
+          <span id="detail-estado">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Fecha de Registro</label>
+          <span id="detail-registro">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Onboarding</label>
+          <span id="detail-onboarding">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-view-user')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CREAR CÓDIGO
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-create-code">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Crear Código de Acceso</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="form-create-code">
+        <div class="form-group">
+          <label>Plan</label>
+          <select id="new-plan" class="form-control">
+            <option value="prueba">Prueba</option>
+            <option value="premium">Premium</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Código</label>
+          <div style="display:flex; gap:10px; align-items:center">
+            <input
+              type="text"
+              id="new-codigo"
+              class="form-control"
+              placeholder="NEG360-ABCD1234"
+              style="flex:1; font-family:monospace; letter-spacing:.5px"
+            />
+            <button class="btn-icon btn-ghost" id="btn-generate-code" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Generar
+            </button>
+          </div>
+          <div id="code-preview-text" class="code-preview" style="display:none"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Descripción (opcional)</label>
+          <input
+            type="text"
+            id="new-descripcion"
+            class="form-control"
+            placeholder="Ej: Código para campaña Julio 2025"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Usos máximos</label>
+          <input
+            type="number"
+            id="new-usos"
+            class="form-control"
+            value="1"
+            min="1"
+            max="9999"
+          />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-create-code')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-save-code">Guardar Código</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CONFIRMACIÓN
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-body" style="padding:32px 28px 24px">
+      <div class="confirm-icon warn" id="confirm-icon">⚠</div>
+      <div class="confirm-text">
+        <h3 id="confirm-title">¿Estás seguro?</h3>
+        <p id="confirm-sub">Esta acción modificará el estado de la cuenta.</p>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:center; padding-bottom:24px">
+      <button class="btn-icon btn-ghost" id="btn-cancel-confirm">Cancelar</button>
+      <button class="btn-icon btn-warning" id="btn-confirm-action">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Script -->
+<script>
+  // Preview código — mostrar/ocultar dinámicamente
+  document.addEventListener('DOMContentLoaded', () => {
+    const codigoInput   = document.getElementById('new-codigo');
+    const previewEl     = document.getElementById('code-preview-text');
+
+    if (codigoInput && previewEl) {
+      codigoInput.addEventListener('input', () => {
+        const val = codigoInput.value.trim();
+        previewEl.textContent = val;
+        previewEl.style.display = val ? 'block' : 'none';
+      });
+    }
+  });
+</script>
+<script src="admin.js"></script>
+
+</body>
+</html>
