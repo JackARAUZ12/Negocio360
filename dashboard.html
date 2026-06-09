@@ -1264,6 +1264,37 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span class="nav-label">Nuevo gasto</span>
       </div>
+
+      <!-- =====================================================
+           CAMBIO 1/3 — BOTÓN DE ADMINISTRACIÓN
+           Permanece oculto (display:none) para todos los usuarios.
+           checkAdminAccess() lo muestra SOLO si el correo del
+           usuario autenticado está en la tabla administradores
+           con activo = true.
+           El usuario regular NUNCA ve este elemento.
+      ===================================================== -->
+      <div
+        class="nav-item"
+        id="nav-admin"
+        onclick="navigate('admin.html')"
+        data-tooltip="Panel de Administración"
+        style="display:none; border-top:1px solid var(--border); margin-top:10px; padding-top:10px;"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                   a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                   A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                   l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                   A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                   l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                   a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                   l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                   a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="nav-label">⚙️ Panel de Administración</span>
+      </div>
+
     </nav>
 
     <!-- Upgrade box -->
@@ -2401,6 +2432,41 @@ function initDateDisplay() {
 }
 
 /* =====================================================
+   CAMBIO 2/3 — FUNCIÓN checkAdminAccess
+   ─────────────────────────────────────────────────────
+   Consulta la tabla `administradores` en Supabase.
+   La política RLS permite que cada usuario autenticado
+   lea ÚNICAMENTE su propio registro (donde email coincide
+   con auth.jwt() ->> 'email').
+   Si el correo está registrado y activo = true:
+     → se muestra el elemento #nav-admin.
+   Si no existe o activo = false:
+     → el elemento permanece display:none (invisible).
+   El try/catch asegura que cualquier error de red o de
+   permisos no revele información al usuario regular.
+===================================================== */
+async function checkAdminAccess(userEmail) {
+  try {
+    const { data, error } = await sbClient
+      .from('administradores')
+      .select('email, activo')
+      .eq('email', userEmail)
+      .eq('activo', true)
+      .maybeSingle();
+
+    if (!error && data) {
+      // Correo encontrado con activo = true → mostrar botón
+      const navAdmin = document.getElementById('nav-admin');
+      if (navAdmin) navAdmin.style.display = 'flex';
+    }
+    // Sin coincidencia: el botón permanece oculto, no se hace nada
+  } catch (e) {
+    // Silencioso: nunca revelar la existencia del panel al usuario regular
+    console.debug('Admin check completed.');
+  }
+}
+
+/* =====================================================
    MAIN INIT
 ===================================================== */
 async function initDashboard() {
@@ -2420,6 +2486,14 @@ async function initDashboard() {
     }
 
     const userId = user.id;
+
+    // =====================================================
+    // CAMBIO 3/3 — LLAMADA A checkAdminAccess
+    // Se ejecuta en paralelo con la carga del perfil,
+    // de forma no bloqueante. Si el correo no existe en
+    // administradores, simplemente no pasa nada.
+    // =====================================================
+    if (user.email) checkAdminAccess(user.email);
 
     // 2. Load empresa config first (colors, currency, etc.)
     await loadEmpresaConfig(userId);
