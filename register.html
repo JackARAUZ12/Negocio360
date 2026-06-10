@@ -924,63 +924,87 @@
 
     /* ----------------------------------------------------------------
        CONFIGURACIÓN SUPABASE
-       ----------------------------------------------------------------
-       ⚠️  Reemplaza SUPABASE_URL y SUPABASE_ANON_KEY con tus valores
-           reales del proyecto en https://app.supabase.com
     ---------------------------------------------------------------- */
     const SUPABASE_URL      = 'https://zvlincmqmmoclqhykejv.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
 
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    /* ----------------------------------------------------------------
-       CÓDIGO TEMPORAL DE PRUEBA
-       ----------------------------------------------------------------
-       Este código se utiliza mientras no exista panel administrativo.
-       Para producción será reemplazado por la función validarCodigoAcceso()
-       que consulta la tabla "codigos_acceso" en Supabase.
-    ---------------------------------------------------------------- */
-    const CODIGO_TEMPORAL = 'NEGOCIO360-2026';
+    /* ================================================================
+       LÓGICA DE CÓDIGO DE ACCESO
+       ================================================================
+
+       Se almacena en localStorage:
+         codigo_validado = {
+           codigo_id:            <uuid del registro en codigos_acceso>,
+           codigo:               <string del código>,
+           timestamp_validacion: <ISO string>
+         }
+
+       Al cargar la página, si existe ese objeto, se revalida contra
+       Supabase antes de avanzar al paso 2.  Un simple "true" ya no
+       es suficiente.
+    ================================================================ */
 
     /* ----------------------------------------------------------------
-       VALIDAR CÓDIGO DE ACCESO
-       ----------------------------------------------------------------
-       Función preparada para futura integración con Supabase.
-
-       TODO (Panel Admin): Descomentar el bloque de Supabase y eliminar
-       la validación temporal cuando el panel administrativo esté listo.
-       La tabla "codigos_acceso" debe tener:
-         - codigo TEXT UNIQUE
-         - activo BOOLEAN
-         - usos_maximos INTEGER
-         - usos_actuales INTEGER
-         - fecha_expiracion TIMESTAMPTZ
+       validarCodigoAcceso(codigo)
+       Consulta Supabase. Devuelve el objeto del código si es válido,
+       o null si no lo es.
     ---------------------------------------------------------------- */
     async function validarCodigoAcceso(codigo) {
-
-      // ——— VALIDACIÓN TEMPORAL (reemplazar con Supabase) ———
-      return codigo.trim().toUpperCase() === CODIGO_TEMPORAL;
-
-      // ——— VALIDACIÓN FUTURA CON SUPABASE (descomentar cuando esté listo) ———
-      /*
       const { data, error } = await supabase
         .from('codigos_acceso')
-        .select('id, activo, usos_maximos, usos_actuales, fecha_expiracion')
+        .select('id, codigo, activo, usos_maximos, usos_actuales')
         .eq('codigo', codigo.trim().toUpperCase())
         .single();
 
-      if (error || !data) return false;
-      if (!data.activo) return false;
-      if (data.fecha_expiracion && new Date(data.fecha_expiracion) < new Date()) return false;
-      if (data.usos_maximos && data.usos_actuales >= data.usos_maximos) return false;
-      return true;
-      */
+      if (error || !data)          return null;
+      if (!data.activo)            return null;
+      if (data.usos_actuales >= data.usos_maximos) return null;
+
+      return data; // objeto completo — lo necesitamos para incrementar luego
     }
 
     /* ----------------------------------------------------------------
-       REGISTRAR USUARIO EN SUPABASE AUTH + TABLA usuarios
+       revalidarCodigoGuardado()
+       Revalida el código almacenado en localStorage contra Supabase.
+       Devuelve el objeto actualizado si sigue válido, o null si no.
     ---------------------------------------------------------------- */
-    async function registrarUsuario(payload) {
+    async function revalidarCodigoGuardado() {
+      const raw = localStorage.getItem('codigo_validado');
+      if (!raw) return null;
+
+      let guardado;
+      try { guardado = JSON.parse(raw); } catch { return null; }
+
+      if (!guardado?.codigo) return null;
+
+      // Revalidar contra Supabase en tiempo real
+      return await validarCodigoAcceso(guardado.codigo);
+    }
+
+    /* ----------------------------------------------------------------
+       consumirCodigo(codigoId)
+       Llama a la función RPC consume_codigo_acceso que incrementa
+       usos_actuales de forma atómica y desactiva el código si se
+       agotaron los usos.  Ver register_rls.sql para la definición.
+    ---------------------------------------------------------------- */
+    async function consumirCodigo(codigoId) {
+      const { error } = await supabase.rpc('consume_codigo_acceso', {
+        p_codigo_id: codigoId
+      });
+      if (error) {
+        console.error('[Negocio360] Error al consumir código:', error);
+        // No bloqueamos el registro por esto, pero lo registramos
+      }
+    }
+
+    /* ----------------------------------------------------------------
+       registrarUsuario(payload, codigoData)
+       1. Crea el usuario en Supabase Auth.
+       2. Consume el código (incremento atómico + desactivación si agotado).
+    ---------------------------------------------------------------- */
+    async function registrarUsuario(payload, codigoData) {
       const { nombre, apellido, negocio, email, whatsapp, password } = payload;
 
       // 1. Crear cuenta en Supabase Auth
@@ -991,18 +1015,22 @@
           data: {
             nombre,
             apellido,
-            nombre_negocio: negocio
+            nombre_negocio: negocio,
+            whatsapp
           }
         }
       });
 
       if (authError) {
-  console.log('AUTH ERROR:', authError);
-  throw authError;
-}
+        console.error('[Negocio360] AUTH ERROR:', authError);
+        throw authError;
+      }
 
       const userId = authData.user?.id;
       if (!userId) throw new Error('No se pudo obtener el ID de usuario.');
+
+      // 2. Consumir el código (atómico, sin condición de carrera)
+      await consumirCodigo(codigoData.id);
 
       return authData;
     }
@@ -1157,10 +1185,21 @@
        STEP 1 — VALIDAR CÓDIGO
     ---------------------------------------------------------------- */
 
-    // Verificar si ya fue validado en esta sesión
-    if (localStorage.getItem('codigoValidado') === 'true') {
-      mostrarPaso2();
-    }
+    /*
+      Al cargar la página: si existe codigo_validado en localStorage,
+      revalidamos contra Supabase antes de avanzar.
+      Un simple booleano ya no es suficiente.
+    */
+    (async function inicializar() {
+      const codigoData = await revalidarCodigoGuardado();
+      if (codigoData) {
+        // El código sigue siendo válido en Supabase → avanzar al paso 2
+        mostrarPaso2();
+      } else {
+        // Si había algo guardado pero ya no es válido, limpiarlo
+        localStorage.removeItem('codigo_validado');
+      }
+    })();
 
     elements.btnContinuar.addEventListener('click', async function () {
       const codigo = elements.codigoInput.value.trim();
@@ -1177,10 +1216,15 @@
       setError(elements.codigoInput, elements.errCodigo, false);
 
       try {
-        const valido = await validarCodigoAcceso(codigo);
+        const codigoData = await validarCodigoAcceso(codigo);
 
-        if (valido) {
-          localStorage.setItem('codigoValidado', 'true');
+        if (codigoData) {
+          // Guardar objeto completo (NO un simple "true")
+          localStorage.setItem('codigo_validado', JSON.stringify({
+            codigo_id:            codigoData.id,
+            codigo:               codigoData.codigo,
+            timestamp_validacion: new Date().toISOString()
+          }));
           mostrarPaso2();
         } else {
           setError(elements.codigoInput, elements.errCodigo, true);
@@ -1225,6 +1269,30 @@
         return;
       }
 
+      // Recuperar datos del código guardado
+      let codigoData = null;
+      try {
+        const raw = localStorage.getItem('codigo_validado');
+        if (raw) {
+          const guardado = JSON.parse(raw);
+          // Revalidar en tiempo real antes de registrar
+          codigoData = await validarCodigoAcceso(guardado.codigo);
+        }
+      } catch { /* silencioso */ }
+
+      if (!codigoData) {
+        // El código fue invalidado por el admin mientras el usuario llenaba el formulario
+        localStorage.removeItem('codigo_validado');
+        showToast('Tu código de acceso ya no es válido. Por favor solicita uno nuevo.', 'error');
+        // Volver al paso 1
+        elements.panelRegistro.classList.remove('active');
+        elements.stepsIndicator.style.display = 'none';
+        elements.cardTitle.textContent = 'Código de acceso';
+        elements.cardSubtitle.textContent = 'Para crear una cuenta en Negocio360 necesitas un código de acceso proporcionado por nuestro equipo.';
+        elements.panelCodigo.classList.add('active');
+        return;
+      }
+
       // Estado loading
       this.classList.add('loading');
       this.disabled = true;
@@ -1239,10 +1307,10 @@
       };
 
       try {
-        await registrarUsuario(payload);
+        await registrarUsuario(payload, codigoData);
 
-        // Limpiar validación de código tras registro exitoso
-        localStorage.removeItem('codigoValidado');
+        // Limpiar datos de código tras registro exitoso
+        localStorage.removeItem('codigo_validado');
 
         // Redirección directa (sin modal, sin alerta)
         window.location.href = 'personalizacion.html';
