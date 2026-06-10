@@ -8,7 +8,7 @@
 // ============================================================
 // CONFIG SUPABASE
 // ============================================================
-const SUPABASE_URL     = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_URL      = 'https://zvlincmqmmoclqhykejv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
 
 let supabaseClient = null;
@@ -36,7 +36,7 @@ const STATE = {
 // ============================================================
 // DOM HELPERS
 // ============================================================
-const $ = id => document.getElementById(id);
+const $  = id  => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
 // ============================================================
@@ -63,7 +63,7 @@ function calcMargen(precio, costo) {
   const p = parseFloat(precio);
   const c = parseFloat(costo);
   if (!p || p === 0) return null;
-  return ((p - c) / p) * 100;
+  return ((p - (isNaN(c) ? 0 : c)) / p) * 100;
 }
 
 function renderMargen(precio, costo) {
@@ -90,12 +90,18 @@ function fmtFecha(ts) {
 }
 
 // ============================================================
-// MODO OSCURO
+// MODO OSCURO — FIX: se registra el evento directamente aquí
 // ============================================================
 function initTema() {
   const saved = localStorage.getItem('tema') || 'light';
   document.documentElement.setAttribute('data-theme', saved);
   actualizarIconoTema(saved);
+
+  // FIX: registrar evento aquí mismo, no en initEventos()
+  const btn = $('btnTema');
+  if (btn) {
+    btn.addEventListener('click', toggleTema);
+  }
 }
 
 function toggleTema() {
@@ -155,7 +161,6 @@ function showToast(tipo, titulo, mensaje, duracion = 3500) {
   `;
 
   container.appendChild(toast);
-
   setTimeout(() => removeToast(toast), duracion);
 }
 
@@ -169,13 +174,19 @@ function removeToast(toast) {
 // AUTENTICACIÓN
 // ============================================================
 async function checkAuth() {
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = 'index.html';
+      return false;
+    }
+    STATE.user = session.user;
+    return true;
+  } catch (e) {
+    console.error('checkAuth error:', e);
     window.location.href = 'index.html';
     return false;
   }
-  STATE.user = session.user;
-  return true;
 }
 
 // ============================================================
@@ -191,24 +202,20 @@ async function cargarDatosEmpresa() {
     STATE.perfil  = perfil  || {};
     STATE.empresa = empresa || {};
 
-    // Header: nombre empresa
     const nombreEl = $('nombreEmpresa');
     if (nombreEl) {
       nombreEl.textContent = STATE.empresa.nombre || STATE.perfil.nombre_negocio || 'Mi Negocio';
     }
 
-    // Plan badge
     const planEl = $('planBadge');
     if (planEl) {
       planEl.textContent = STATE.empresa.plan || STATE.perfil.plan || 'Free';
     }
 
-    // Avatar
     const avatarEls = $$('.header-avatar, .sidebar-user-avatar');
     const inicial = (STATE.perfil.nombre || STATE.user.email || 'U').charAt(0).toUpperCase();
     avatarEls.forEach(el => { el.textContent = inicial; });
 
-    // Nombre sidebar
     const sidebarName = $('sidebarUserName');
     if (sidebarName) sidebarName.textContent = STATE.perfil.nombre || STATE.user.email;
 
@@ -247,11 +254,14 @@ async function cargarProductos() {
 // STATS
 // ============================================================
 function actualizarStats() {
-  const todos    = STATE.productos;
-  const activos  = todos.filter(p => p.activo);
-  const prods    = activos.filter(p => p.tipo === 'producto');
-  const servs    = activos.filter(p => p.tipo === 'servicio');
-  const stockBajo = todos.filter(p => p.tipo === 'producto' && parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo));
+  const todos     = STATE.productos;
+  const activos   = todos.filter(p => p.activo);
+  const prods     = activos.filter(p => p.tipo === 'producto');
+  const servs     = activos.filter(p => p.tipo === 'servicio');
+  const stockBajo = todos.filter(p =>
+    p.tipo === 'producto' &&
+    parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo)
+  );
 
   const valorInventario = todos
     .filter(p => p.tipo === 'producto')
@@ -259,12 +269,11 @@ function actualizarStats() {
 
   const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 
-  set('statProductos',   prods.length);
-  set('statServicios',   servs.length);
-  set('statInventario',  fmtMoney(valorInventario));
-  set('statStockBajo',   stockBajo.length);
+  set('statProductos',  prods.length);
+  set('statServicios',  servs.length);
+  set('statInventario', fmtMoney(valorInventario));
+  set('statStockBajo',  stockBajo.length);
 
-  // Badge alerta stock bajo en sidebar
   const badge = $('badgeStockBajo');
   if (badge) {
     badge.textContent = stockBajo.length;
@@ -273,43 +282,49 @@ function actualizarStats() {
 }
 
 // ============================================================
-// FILTROS Y BÚSQUEDA
+// FILTROS Y BÚSQUEDA — FIX: lógica de filtro de stock_bajo corregida
 // ============================================================
 function aplicarFiltros() {
   let lista = [...STATE.productos];
   const q = STATE.busqueda.toLowerCase().trim();
 
-  // Filtro de texto
   if (q) {
     lista = lista.filter(p =>
-      (p.nombre        || '').toLowerCase().includes(q) ||
-      (p.sku           || '').toLowerCase().includes(q) ||
-      (p.categoria     || '').toLowerCase().includes(q) ||
-      (p.descripcion   || '').toLowerCase().includes(q)
+      (p.nombre       || '').toLowerCase().includes(q) ||
+      (p.sku          || '').toLowerCase().includes(q) ||
+      (p.categoria    || '').toLowerCase().includes(q) ||
+      (p.descripcion  || '').toLowerCase().includes(q)
     );
   }
 
-  // Filtro por tipo/estado
   switch (STATE.filtroActivo) {
     case 'productos':
-      lista = lista.filter(p => p.tipo === 'producto'); break;
+      lista = lista.filter(p => p.tipo === 'producto');
+      break;
     case 'servicios':
-      lista = lista.filter(p => p.tipo === 'servicio'); break;
+      lista = lista.filter(p => p.tipo === 'servicio');
+      break;
     case 'activos':
-      lista = lista.filter(p => p.activo); break;
+      lista = lista.filter(p => p.activo === true);
+      break;
     case 'inactivos':
-      lista = lista.filter(p => !p.activo); break;
+      lista = lista.filter(p => p.activo === false);
+      break;
     case 'stock_bajo':
       lista = lista.filter(p =>
         p.tipo === 'producto' &&
-        parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo)
+        parseFloat(p.stock_actual || 0) <= parseFloat(p.stock_minimo || 0)
       );
       break;
-    default: break;
+    default:
+      break;
   }
 
   STATE.filtrados = lista;
   renderTabla();
+
+  const pieEl = $('tablePie');
+  if (pieEl) pieEl.textContent = `${lista.length} registro${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`;
 }
 
 // ============================================================
@@ -320,7 +335,9 @@ function renderTabla() {
   if (!tbody) return;
 
   const countEl = $('resultadosCount');
-  if (countEl) countEl.textContent = `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
+  if (countEl) {
+    countEl.textContent = `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
+  }
 
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
@@ -329,9 +346,11 @@ function renderTabla() {
           <div class="empty-state-icon">📦</div>
           <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin productos aún'}</h3>
           <p>${STATE.busqueda
-            ? `No se encontró "${STATE.busqueda}". Intenta con otro término.`
+            ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
             : 'Agrega tu primer producto o servicio para comenzar.'}</p>
-          ${!STATE.busqueda ? `<button class="btn btn-primary" onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>` : ''}
+          ${!STATE.busqueda
+            ? `<button class="btn btn-primary" onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>`
+            : ''}
         </div>
       </td></tr>
     `;
@@ -339,7 +358,9 @@ function renderTabla() {
   }
 
   tbody.innerHTML = STATE.filtrados.map(p => {
-    const stockBajo = p.tipo === 'producto' && parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo);
+    const stockBajo = p.tipo === 'producto' &&
+      parseFloat(p.stock_actual || 0) <= parseFloat(p.stock_minimo || 0);
+
     const stockHtml = p.tipo === 'servicio'
       ? '<span style="color:var(--text-muted);font-size:12px">N/A</span>'
       : `<div class="td-stock">
@@ -370,10 +391,10 @@ function renderTabla() {
         </td>
         <td>
           <div class="row-actions">
-            <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
-            <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
-            <button class="row-action-btn dup"  title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
-            <button class="row-action-btn del"  title="Eliminar" onclick="confirmarEliminar('${p.id}')">🗑️</button>
+            <button class="row-action-btn view" title="Ver detalle"  onclick="abrirDetalle('${p.id}')">👁</button>
+            <button class="row-action-btn edit" title="Editar"       onclick="abrirEditar('${p.id}')">✏️</button>
+            <button class="row-action-btn dup"  title="Duplicar"     onclick="duplicarProducto('${p.id}')">📋</button>
+            <button class="row-action-btn del"  title="Eliminar"     onclick="confirmarEliminar('${p.id}')">🗑️</button>
           </div>
         </td>
       </tr>
@@ -400,11 +421,6 @@ function mostrarSkeletons() {
       <td></td>
     </tr>
   `).join('');
-
-  // Stats skeleton
-  $$('.stat-card-value[data-loading]').forEach(el => {
-    el.innerHTML = '<div class="skeleton" style="width:60px;height:30px;border-radius:6px"></div>';
-  });
 }
 
 function mostrarErrorTabla() {
@@ -430,7 +446,7 @@ function abrirModalNuevo(tipo = 'producto') {
   STATE.editTarget = null;
 
   resetFormulario();
-  setTipoModal(tipo);
+  setTipoModal(tipo, true);
 
   $('modalProductoTitle').textContent = tipo === 'producto' ? '+ Nuevo Producto' : '+ Nuevo Servicio';
   $('btnGuardarProducto').textContent = 'Crear';
@@ -462,48 +478,41 @@ function cerrarModalProducto() {
 }
 
 function setTipoModal(tipo, habilitarToggle = true) {
-  const btnProd = $('toggleProducto');
-  const btnServ = $('toggleServicio');
-  const inputTipo = $('inputTipo');
+  const btnProd      = $('toggleProducto');
+  const btnServ      = $('toggleServicio');
+  const inputTipo    = $('inputTipo');
   const stockSection = $('stockSection');
 
-  if (inputTipo) inputTipo.value = tipo;
+  if (inputTipo)    inputTipo.value = tipo;
+  if (btnProd)      btnProd.classList.toggle('active', tipo === 'producto');
+  if (btnServ)      btnServ.classList.toggle('active', tipo === 'servicio');
+  if (stockSection) stockSection.style.display = tipo === 'producto' ? '' : 'none';
 
-  if (btnProd) btnProd.classList.toggle('active', tipo === 'producto');
-  if (btnServ) btnServ.classList.toggle('active', tipo === 'servicio');
-
-  if (stockSection) {
-    stockSection.style.display = tipo === 'producto' ? '' : 'none';
-  }
-
-  if (!habilitarToggle) {
-    if (btnProd) btnProd.disabled = true;
-    if (btnServ) btnServ.disabled = true;
-  } else {
-    if (btnProd) btnProd.disabled = false;
-    if (btnServ) btnServ.disabled = false;
-  }
+  if (btnProd) btnProd.disabled = !habilitarToggle;
+  if (btnServ) btnServ.disabled = !habilitarToggle;
 }
 
 function resetFormulario() {
   const form = $('formProducto');
   if (form) form.reset();
-  // Limpiar errores
   $$('.form-error').forEach(el => el.textContent = '');
+  // Asegurarse de limpiar el preview de margen
+  const wrap = $('margenPreviewWrap');
+  if (wrap) wrap.style.display = 'none';
 }
 
 function cargarFormulario(p) {
   const campos = [
-    ['inputNombre',       p.nombre        || ''],
-    ['inputDescripcion',  p.descripcion   || ''],
-    ['inputCategoria',    p.categoria     || ''],
-    ['inputSku',          p.sku           || ''],
-    ['inputCodBarras',    p.codigo_barras || ''],
-    ['inputCosto',        p.costo         ?? ''],
-    ['inputPrecio',       p.precio        ?? ''],
-    ['inputStockActual',  p.stock_actual  ?? ''],
-    ['inputStockMinimo',  p.stock_minimo  ?? ''],
-    ['inputActivo',       p.activo ? 'true' : 'false'],
+    ['inputNombre',      p.nombre        || ''],
+    ['inputDescripcion', p.descripcion   || ''],
+    ['inputCategoria',   p.categoria     || ''],
+    ['inputSku',         p.sku           || ''],
+    ['inputCodBarras',   p.codigo_barras || ''],
+    ['inputCosto',       p.costo         ?? ''],
+    ['inputPrecio',      p.precio        ?? ''],
+    ['inputStockActual', p.stock_actual  ?? ''],
+    ['inputStockMinimo', p.stock_minimo  ?? ''],
+    ['inputActivo',      p.activo ? 'true' : 'false'],
   ];
 
   campos.forEach(([id, val]) => {
@@ -513,34 +522,43 @@ function cargarFormulario(p) {
 }
 
 // ============================================================
-// GUARDAR PRODUCTO
+// GUARDAR PRODUCTO — FIX: manejo robusto de errores y estado del botón
 // ============================================================
 async function guardarProducto() {
   const btn = $('btnGuardarProducto');
 
-  // Recolectar valores
+  // Limpiar error previo
+  const errEl = $('errNombre');
+  if (errEl) errEl.textContent = '';
+
   const tipo        = $('inputTipo')?.value || 'producto';
   const nombre      = ($('inputNombre')?.value || '').trim();
   const descripcion = ($('inputDescripcion')?.value || '').trim();
   const categoria   = ($('inputCategoria')?.value || '').trim();
   const sku         = ($('inputSku')?.value || '').trim();
   const codBarras   = ($('inputCodBarras')?.value || '').trim();
-  const costo       = parseFloat($('inputCosto')?.value) || 0;
-  const precio      = parseFloat($('inputPrecio')?.value) || 0;
-  const stockActual = tipo === 'producto' ? (parseFloat($('inputStockActual')?.value) || 0) : 0;
-  const stockMinimo = tipo === 'producto' ? (parseFloat($('inputStockMinimo')?.value) || 0) : 0;
-  const activoStr   = $('inputActivo')?.value;
-  const activo      = activoStr === 'true' || activoStr === true;
+  const costoRaw    = $('inputCosto')?.value;
+  const precioRaw   = $('inputPrecio')?.value;
+  const costo       = costoRaw  !== '' ? parseFloat(costoRaw)  : 0;
+  const precio      = precioRaw !== '' ? parseFloat(precioRaw) : 0;
+  const stockActual = tipo === 'producto' && $('inputStockActual')?.value !== ''
+    ? parseFloat($('inputStockActual').value) : 0;
+  const stockMinimo = tipo === 'producto' && $('inputStockMinimo')?.value !== ''
+    ? parseFloat($('inputStockMinimo').value) : 0;
+  const activoVal   = $('inputActivo')?.value;
+  const activo      = activoVal === 'true';
 
   // Validación
   if (!nombre) {
-    const errEl = $('errNombre');
     if (errEl) errEl.textContent = 'El nombre es obligatorio';
     $('inputNombre')?.focus();
     return;
   }
 
   if (!btn) return;
+
+  // FIX: guardar texto original para restaurarlo si falla
+  const textoOriginal = btn.textContent;
   btn.classList.add('btn-loading');
   btn.disabled = true;
 
@@ -552,32 +570,35 @@ async function guardarProducto() {
     categoria:     categoria   || null,
     sku:           sku         || null,
     codigo_barras: codBarras   || null,
-    costo,
-    precio,
-    stock_actual:  tipo === 'producto' ? stockActual : 0,
-    stock_minimo:  tipo === 'producto' ? stockMinimo : 0,
+    costo:         isNaN(costo)  ? 0 : costo,
+    precio:        isNaN(precio) ? 0 : precio,
+    stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
+    stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
     activo,
   };
 
   try {
-    let error;
+    let error = null;
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
-      ({ error } = await supabaseClient.from('productos').insert([payload]));
+      const res = await supabaseClient.from('productos').insert([payload]);
+      error = res.error;
     } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
-      delete payload.auth_user_id; // no modificar owner
-      const { error: e } = await supabaseClient
+      const updatePayload = { ...payload };
+      delete updatePayload.auth_user_id;
+      const res = await supabaseClient
         .from('productos')
-        .update(payload)
+        .update(updatePayload)
         .eq('id', STATE.editTarget.id)
         .eq('auth_user_id', STATE.user.id);
-      error = e;
+      error = res.error;
     }
 
     if (error) throw error;
 
     cerrarModalProducto();
-    showToast('success',
+    showToast(
+      'success',
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
       nombre
     );
@@ -585,10 +606,12 @@ async function guardarProducto() {
 
   } catch (e) {
     console.error('guardarProducto:', e);
-    showToast('error', 'Error al guardar', e.message);
+    showToast('error', 'Error al guardar', e.message || 'Verifica los datos e intenta de nuevo.');
   } finally {
+    // FIX: siempre restaurar el botón aunque haya error
     btn.classList.remove('btn-loading');
     btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 
@@ -604,7 +627,8 @@ function abrirDetalle(id) {
     ? `<span class="td-margin ${m >= 40 ? 'margin-good' : m >= 20 ? 'margin-mid' : 'margin-low'}">${m.toFixed(2)}%</span>`
     : '—';
 
-  const stockBajo = p.tipo === 'producto' && parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo);
+  const stockBajo = p.tipo === 'producto' &&
+    parseFloat(p.stock_actual || 0) <= parseFloat(p.stock_minimo || 0);
 
   $('detalleContent').innerHTML = `
     <div class="detail-grid">
@@ -703,7 +727,8 @@ async function duplicarProducto(id) {
   const p = STATE.productos.find(x => x.id === id);
   if (!p) return;
 
-  STATE.modalMode = 'duplicar';
+  STATE.modalMode  = 'duplicar';
+  STATE.editTarget = null;
 
   resetFormulario();
   cargarFormulario({ ...p, nombre: p.nombre + ' — Copia' });
@@ -732,6 +757,7 @@ function cerrarConfirmar() {
 
 async function eliminarProducto(id) {
   const btn = $('btnConfirmarEliminar');
+  const textoOriginal = btn ? btn.textContent : '';
   if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
 
   try {
@@ -748,10 +774,37 @@ async function eliminarProducto(id) {
     await cargarProductos();
 
   } catch (e) {
+    console.error('eliminarProducto:', e);
     showToast('error', 'Error al eliminar', e.message);
   } finally {
-    if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; }
+    if (btn) {
+      btn.classList.remove('btn-loading');
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
   }
+}
+
+// ============================================================
+// NOTIFICACIONES — FIX: funcionalidad básica agregada
+// ============================================================
+function initNotificaciones() {
+  const btnNotif = document.querySelector('.header-icon-btn[title="Notificaciones"]');
+  if (!btnNotif) return;
+
+  btnNotif.addEventListener('click', () => {
+    const stockBajo = STATE.productos.filter(p =>
+      p.tipo === 'producto' &&
+      parseFloat(p.stock_actual || 0) <= parseFloat(p.stock_minimo || 0)
+    );
+
+    if (stockBajo.length > 0) {
+      showToast('warning', `${stockBajo.length} producto${stockBajo.length !== 1 ? 's' : ''} con stock bajo`,
+        stockBajo.slice(0, 3).map(p => `• ${p.nombre}`).join('<br>'));
+    } else {
+      showToast('info', 'Sin notificaciones', 'Todo tu inventario está en orden.');
+    }
+  });
 }
 
 // ============================================================
@@ -776,13 +829,9 @@ function escHtml(str) {
 }
 
 // ============================================================
-// EVENTOS
+// EVENTOS — FIX: se registran todos los eventos de forma robusta
 // ============================================================
 function initEventos() {
-  // Tema
-  const btnTema = $('btnTema');
-  if (btnTema) btnTema.addEventListener('click', toggleTema);
-
   // Búsqueda instantánea
   const searchInput = $('searchInput');
   const searchClear = $('searchClear');
@@ -804,27 +853,30 @@ function initEventos() {
     });
   }
 
-  // Filtros
-  $$('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+  // FIX: Filtros — usar event delegation en el contenedor para mayor fiabilidad
+  const filtersGroup = document.querySelector('.filters-group');
+  if (filtersGroup) {
+    filtersGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
       $$('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       STATE.filtroActivo = btn.dataset.filtro;
       aplicarFiltros();
     });
-  });
+  }
 
   // Toggle tipo en modal
   const btnProd = $('toggleProducto');
   const btnServ = $('toggleServicio');
-  if (btnProd) btnProd.addEventListener('click', () => setTipoModal('producto'));
-  if (btnServ) btnServ.addEventListener('click', () => setTipoModal('servicio'));
+  if (btnProd) btnProd.addEventListener('click', () => setTipoModal('producto', true));
+  if (btnServ) btnServ.addEventListener('click', () => setTipoModal('servicio', true));
 
   // Guardar producto
   const btnGuardar = $('btnGuardarProducto');
   if (btnGuardar) btnGuardar.addEventListener('click', guardarProducto);
 
-  // Submit con Enter en modal
+  // Submit con Enter en modal (excepto textarea)
   const formProducto = $('formProducto');
   if (formProducto) {
     formProducto.addEventListener('keydown', e => {
@@ -844,7 +896,7 @@ function initEventos() {
     }
   });
 
-  // Cerrar modales al click en overlay
+  // Cerrar modales al click en overlay (fuera del modal)
   $$('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
@@ -855,7 +907,7 @@ function initEventos() {
     });
   });
 
-  // Validación en tiempo real: limpiar error al escribir
+  // Validación en tiempo real nombre
   const inputNombre = $('inputNombre');
   if (inputNombre) {
     inputNombre.addEventListener('input', () => {
@@ -878,23 +930,25 @@ function actualizarFecha() {
 }
 
 // ============================================================
-// INIT PRINCIPAL
+// INIT PRINCIPAL — FIX: orden correcto, eventos antes de async
 // ============================================================
 async function init() {
   initSupabase();
-  initTema();
+  initTema();        // FIX: incluye el registro del evento del botón tema
   initSidebar();
   actualizarFecha();
+  initEventos();     // FIX: registrar eventos ANTES de checkAuth (no depende de auth)
 
   const autenticado = await checkAuth();
   if (!autenticado) return;
 
-  // Cargar datos en paralelo
   await Promise.all([
     cargarDatosEmpresa(),
     cargarProductos(),
   ]);
+
+  // FIX: notificaciones después de cargar productos
+  initNotificaciones();
 }
 
-// Arrancar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', init);
