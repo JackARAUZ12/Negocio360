@@ -1421,17 +1421,34 @@
           </div>
         </div>
 
-        <!-- Productos -->
+        <!-- =====================================================
+             CAMBIO: Productos → SUM(stock_actual) tipo='producto'
+        ===================================================== -->
         <div class="kpi-card fade-in stagger-5">
           <div class="kpi-icon" style="background:var(--accent-5-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Productos / Servicios</div>
+            <div class="kpi-label">Productos</div>
             <div class="kpi-value" id="kpi-productos">0</div>
             <div class="kpi-delta neutral" id="kpi-productos-delta">Sin datos aún</div>
           </div>
         </div>
+
+        <!-- =====================================================
+             NUEVO: Servicios → COUNT tipo='servicio'
+        ===================================================== -->
+        <div class="kpi-card fade-in" style="animation-delay:0.30s">
+          <div class="kpi-icon" style="background:var(--accent-4-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Servicios</div>
+            <div class="kpi-value" id="kpi-servicios">0</div>
+            <div class="kpi-delta neutral" id="kpi-servicios-delta">Sin datos aún</div>
+          </div>
+        </div>
+
       </div>
 
       <!-- CHARTS -->
@@ -2038,36 +2055,65 @@ async function loadKPIs(userId) {
     }
   } catch(e) { console.warn('kpi-clientes:', e); }
 
-  // 5. Productos / Servicios
+  // =====================================================
+  // 5a. Productos → SUM(stock_actual) donde tipo = 'producto'
+  // Muestra unidades reales de inventario, no cantidad de registros
+  // =====================================================
   try {
-    const { count, error } = await sbClient
+    const { data: dataProds, error: errProds } = await sbClient
       .from('productos')
-      .select('id', { count: 'exact', head: true })
-      .eq('auth_user_id', userId);
+      .select('stock_actual, stock_minimo')
+      .eq('auth_user_id', userId)
+      .eq('tipo', 'producto');
 
-    if (!error) {
-      document.getElementById('kpi-productos').textContent = count || 0;
+    if (!errProds && dataProds) {
+      const totalStock = dataProds.reduce((s, r) => s + (r.stock_actual || 0), 0);
+      document.getElementById('kpi-productos').textContent = totalStock.toLocaleString('es-NI');
 
-      // Check low stock
-      const { count: lowCount } = await sbClient
-        .from('productos')
-        .select('id', { count: 'exact', head: true })
-        .eq('auth_user_id', userId)
-        .lt('stock', 5)
-        .gt('stock', -1);  // -1 = unlimited
+      // Detectar productos con stock bajo (stock_actual <= stock_minimo, o < 5 si no hay mínimo definido)
+      const lowCount = dataProds.filter(r =>
+        (r.stock_minimo !== null && r.stock_minimo !== undefined)
+          ? (r.stock_actual || 0) <= (r.stock_minimo || 0)
+          : (r.stock_actual || 0) < 5
+      ).length;
 
       const delta = document.getElementById('kpi-productos-delta');
-      if (lowCount > 0) {
+      if (totalStock === 0) {
+        delta.className = 'kpi-delta negative';
+        delta.textContent = 'Sin stock disponible';
+        document.getElementById('alert-stock-title').textContent = 'Sin stock en inventario';
+      } else if (lowCount > 0) {
         delta.className = 'kpi-delta alert';
-        delta.textContent = `${lowCount} bajo${lowCount !== 1 ? 's' : ''} de stock`;
+        delta.textContent = `${lowCount} producto${lowCount !== 1 ? 's' : ''} bajo de stock`;
         document.getElementById('alert-stock-title').textContent = `${lowCount} productos con bajo stock`;
       } else {
         delta.className = 'kpi-delta positive';
-        delta.textContent = 'Stock normal';
+        delta.textContent = 'Stock disponible';
         document.getElementById('alert-stock-title').textContent = 'Stock en buen estado';
       }
     }
   } catch(e) { console.warn('kpi-productos:', e); }
+
+  // =====================================================
+  // 5b. Servicios → COUNT(*) donde tipo = 'servicio'
+  // Los servicios no tienen stock, solo se cuenta cuántos hay activos
+  // =====================================================
+  try {
+    const { count: countServ, error: errServ } = await sbClient
+      .from('productos')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id', userId)
+      .eq('tipo', 'servicio');
+
+    if (!errServ) {
+      document.getElementById('kpi-servicios').textContent = countServ || 0;
+      const deltaServ = document.getElementById('kpi-servicios-delta');
+      deltaServ.className = 'kpi-delta ' + (countServ > 0 ? 'positive' : 'neutral');
+      deltaServ.textContent = countServ > 0
+        ? `${countServ} servicio${countServ !== 1 ? 's' : ''} activo${countServ !== 1 ? 's' : ''}`
+        : 'Sin servicios registrados';
+    }
+  } catch(e) { console.warn('kpi-servicios:', e); }
 }
 
 // --- Gastos del mes (for financial summary) ---
@@ -2574,3 +2620,5 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+HTMLEOF
+echo "✓ Archivo generado: $(wc -c < /mnt/user-data/outputs/dashboard.html) bytes"
