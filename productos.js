@@ -196,7 +196,8 @@ async function checkAuth() {
 
 // ============================================================
 // CARGAR DATOS EMPRESA
-// FIX: Búsqueda robusta de moneda en múltiples fuentes
+// FIX: Búsqueda robusta de moneda en múltiples fuentes,
+//      incluyendo preferencias jsonb de la tabla usuarios
 // ============================================================
 async function cargarDatosEmpresa() {
   try {
@@ -219,12 +220,18 @@ async function cargarDatosEmpresa() {
     STATE.perfil  = perfil;
     STATE.empresa = empresa;
 
-    // ── FIX MONEDA: buscar en todas las fuentes posibles ──────
-    // El onboarding guarda en configuracion_empresa.moneda
-    // Fallback a usuarios.moneda, luego a USD
+    // ── FIX MONEDA ────────────────────────────────────────────
+    // Orden de prioridad:
+    // 1. configuracion_empresa.moneda  (fuente principal del onboarding)
+    // 2. usuarios.preferencias.moneda  (jsonb — el schema NO tiene columna moneda directa)
+    // 3. Fallback a 'USD'
+    // NOTA: usuarios NO tiene columna 'moneda', tiene 'preferencias' jsonb
+    const monedaDeEmpresa      = (empresa.moneda || '').trim();
+    const monedaDePreferencias = (perfil.preferencias?.moneda || '').trim();
+
     const monedaCodigo =
-      (empresa.moneda && empresa.moneda.trim() !== '') ? empresa.moneda.trim() :
-      (perfil.moneda  && perfil.moneda.trim()  !== '') ? perfil.moneda.trim()  :
+      monedaDeEmpresa      !== '' ? monedaDeEmpresa      :
+      monedaDePreferencias !== '' ? monedaDePreferencias :
       'USD';
 
     MONEDA_CODIGO  = monedaCodigo;
@@ -234,12 +241,17 @@ async function cargarDatosEmpresa() {
     const monedaEl = $('monedaIndicador');
     if (monedaEl) monedaEl.textContent = `${MONEDA_SIMBOLO} (${MONEDA_CODIGO})`;
 
-    // Log para debug (puedes quitar esto después de verificar)
-    console.log('[Moneda]', { monedaCodigo, MONEDA_SIMBOLO, empresa_raw: empresa.moneda, perfil_raw: perfil.moneda });
+    console.log('[Moneda]', {
+      monedaCodigo,
+      MONEDA_SIMBOLO,
+      empresa_raw:      empresa.moneda,
+      preferencias_raw: perfil.preferencias,
+    });
     // ─────────────────────────────────────────────────────────
 
     const nombreEl = $('nombreEmpresa');
-    if (nombreEl) nombreEl.textContent = empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
+    if (nombreEl) nombreEl.textContent =
+      empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
 
     const planEl = $('planBadge');
     if (planEl) planEl.textContent = empresa.plan || perfil.plan || 'Free';
@@ -282,20 +294,32 @@ async function cargarProductos() {
 }
 
 // ============================================================
+// HELPER: determinar si un producto tiene stock bajo real
+// FIX: solo aplica cuando stock_minimo > 0 para evitar
+//      falsos positivos cuando ambos valores son 0
+// ============================================================
+function esStockBajo(p) {
+  return (
+    p.tipo === 'producto' &&
+    p.activo === true &&
+    parseFloat(p.stock_minimo ?? 0) > 0 &&
+    parseFloat(p.stock_actual  ?? 0) <= parseFloat(p.stock_minimo ?? 0)
+  );
+}
+
+// ============================================================
 // STATS
-// FIX: resetear visualmente card y badge cuando stock es normal
+// FIX: usa helper esStockBajo() para evitar falsos positivos
 // ============================================================
 function actualizarStats() {
   const todos   = STATE.productos;
-  const activos = todos.filter(p => p.activo);
+  const activos = todos.filter(p => p.activo === true);
   const prods   = activos.filter(p => p.tipo === 'producto');
   const servs   = activos.filter(p => p.tipo === 'servicio');
 
-  const stockBajoList = todos.filter(p =>
-    p.tipo === 'producto' &&
-    p.activo &&
-    parseFloat(p.stock_actual ?? 0) <= parseFloat(p.stock_minimo ?? 0)
-  );
+  // FIX: solo productos de ESTE usuario (ya filtrado por cargarProductos)
+  // y solo cuando stock_minimo está configurado > 0
+  const stockBajoList = todos.filter(esStockBajo);
 
   const valorInventario = todos
     .filter(p => p.tipo === 'producto')
@@ -308,31 +332,31 @@ function actualizarStats() {
   set('statInventario', fmtMoney(valorInventario));
   set('statStockBajo',  stockBajoList.length);
 
-  // FIX: badge sidebar — siempre actualizar (mostrar/ocultar)
+  // Badge sidebar — siempre actualizar (mostrar/ocultar)
   const badge = $('badgeStockBajo');
   if (badge) {
     badge.textContent   = stockBajoList.length;
     badge.style.display = stockBajoList.length > 0 ? 'inline-flex' : 'none';
   }
 
-  // FIX: card stat-red — cambiar apariencia según si hay stock bajo o no
+  // Card stat-red — cambiar apariencia según si hay stock bajo o no
   const cardStockBajo = document.querySelector('.stat-card.stat-red');
   if (cardStockBajo) {
+    const iconEl = cardStockBajo.querySelector('.stat-card-icon');
     if (stockBajoList.length > 0) {
-      // Hay stock bajo: resaltar con color rojo fuerte
       cardStockBajo.style.opacity = '1';
       cardStockBajo.style.setProperty('--stat-accent', 'var(--danger)');
-      cardStockBajo.querySelector('.stat-card-icon').textContent = '⚠️';
+      if (iconEl) iconEl.textContent = '⚠️';
     } else {
-      // Sin stock bajo: apariencia neutra/apagada
       cardStockBajo.style.opacity = '0.55';
-      cardStockBajo.querySelector('.stat-card-icon').textContent = '✅';
+      if (iconEl) iconEl.textContent = '✅';
     }
   }
 }
 
 // ============================================================
 // FILTROS Y BÚSQUEDA
+// FIX: caso stock_bajo usa helper esStockBajo()
 // ============================================================
 function aplicarFiltros() {
   let lista = [...STATE.productos];
@@ -348,17 +372,12 @@ function aplicarFiltros() {
   }
 
   switch (STATE.filtroActivo) {
-    case 'productos':   lista = lista.filter(p => p.tipo === 'producto');  break;
-    case 'servicios':   lista = lista.filter(p => p.tipo === 'servicio');  break;
-    case 'activos':     lista = lista.filter(p => p.activo === true);      break;
-    case 'inactivos':   lista = lista.filter(p => p.activo === false);     break;
-    case 'stock_bajo':
-      lista = lista.filter(p =>
-        p.tipo === 'producto' &&
-        p.activo &&
-        parseFloat(p.stock_actual ?? 0) <= parseFloat(p.stock_minimo ?? 0)
-      );
-      break;
+    case 'productos':  lista = lista.filter(p => p.tipo === 'producto');  break;
+    case 'servicios':  lista = lista.filter(p => p.tipo === 'servicio');  break;
+    case 'activos':    lista = lista.filter(p => p.activo === true);      break;
+    case 'inactivos':  lista = lista.filter(p => p.activo === false);     break;
+    // FIX: usa helper para evitar falsos positivos (0 <= 0)
+    case 'stock_bajo': lista = lista.filter(esStockBajo);                 break;
     default: break;
   }
 
@@ -366,19 +385,21 @@ function aplicarFiltros() {
   renderTabla();
 
   const pieEl = $('tablePie');
-  if (pieEl) pieEl.textContent = `${lista.length} registro${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`;
+  if (pieEl) pieEl.textContent =
+    `${lista.length} registro${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`;
 }
 
 // ============================================================
 // RENDER TABLA
-// FIX: botón 📉 siempre visible (no depende del hover de la fila)
+// FIX: usa helper esStockBajo() para bandera por fila
 // ============================================================
 function renderTabla() {
-  const tbody   = $('productosTbody');
+  const tbody = $('productosTbody');
   if (!tbody) return;
 
   const countEl = $('resultadosCount');
-  if (countEl) countEl.textContent = `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
+  if (countEl) countEl.textContent =
+    `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
 
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
@@ -399,9 +420,8 @@ function renderTabla() {
   }
 
   tbody.innerHTML = STATE.filtrados.map(p => {
-    const stockBajo = p.tipo === 'producto' &&
-      p.activo &&
-      parseFloat(p.stock_actual ?? 0) <= parseFloat(p.stock_minimo ?? 0);
+    // FIX: helper centralizado, evita 0 <= 0 falso positivo
+    const stockBajo = esStockBajo(p);
 
     const stockHtml = p.tipo === 'servicio'
       ? '<span style="color:var(--text-muted);font-size:12px">N/A</span>'
@@ -410,8 +430,7 @@ function renderTabla() {
            ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
          </div>`;
 
-    // FIX: botón 📉 siempre visible para productos (no depende del hover)
-    // Se coloca fuera del div row-actions para que no herede el opacity:0
+    // Botón 📉 siempre visible para productos
     const movBtn = p.tipo === 'producto'
       ? `<button class="row-action-btn mov-btn-especial"
             title="Movimiento especial (merma)"
@@ -454,7 +473,7 @@ function renderTabla() {
     `;
   }).join('');
 
-  // Aplicar hover manualmente para row-actions (excepto movBtn que ya es visible)
+  // Hover para row-actions (el movBtn queda siempre visible separado)
   tbody.querySelectorAll('tr[data-id]').forEach(row => {
     const actions = row.querySelector('.row-actions');
     if (!actions) return;
@@ -501,7 +520,6 @@ function mostrarErrorTabla() {
 
 // ============================================================
 // MODAL NUEVO / EDITAR
-// FIX: En edición NO se muestra campo de stock_actual (solo stock_minimo)
 // ============================================================
 function abrirModalNuevo(tipo = 'producto') {
   STATE.modalMode  = 'crear';
@@ -541,22 +559,19 @@ function cerrarModalProducto() {
   STATE.modalMode  = null;
 }
 
-// FIX: En modo editar → ocultar stockSection completo, mostrar aviso con solo stock_minimo
+// En modo editar → ocultar stockSection completo, mostrar aviso con solo stock_minimo
 function configurarCamposSegunModo(modo) {
   const esEdicion  = modo === 'editar';
   const stockWrap  = $('stockSection');
   const avisoStock = $('avisoStockBloqueado');
 
   if (esEdicion) {
-    // Ocultar la sección de inventario completa (stock_actual no editable)
     if (stockWrap)  stockWrap.style.display  = 'none';
-    // Mostrar aviso con solo stock_minimo editable
     if (avisoStock) {
       avisoStock.classList.add('visible');
       avisoStock.style.display = 'flex';
     }
   } else {
-    // Creación / duplicación: mostrar campo de stock normal
     if (stockWrap)  stockWrap.style.display  = '';
     if (avisoStock) {
       avisoStock.classList.remove('visible');
@@ -591,7 +606,6 @@ function resetFormulario() {
   $$('.form-error').forEach(el => el.textContent = '');
   const wrap = $('margenPreviewWrap');
   if (wrap) wrap.style.display = 'none';
-  // Limpiar estado de aviso
   const avisoStock = $('avisoStockBloqueado');
   if (avisoStock) {
     avisoStock.classList.remove('visible');
@@ -601,16 +615,16 @@ function resetFormulario() {
 
 function cargarFormulario(p) {
   const campos = [
-    ['inputNombre',        p.nombre        || ''],
-    ['inputDescripcion',   p.descripcion   || ''],
-    ['inputCategoria',     p.categoria     || ''],
-    ['inputSku',           p.sku           || ''],
-    ['inputCodBarras',     p.codigo_barras || ''],
-    ['inputCosto',         p.costo         ?? ''],
-    ['inputPrecio',        p.precio        ?? ''],
-    ['inputStockMinimo',   p.stock_minimo  ?? ''],
-    ['inputStockMinimoEdit', p.stock_minimo ?? ''],
-    ['inputActivo',        p.activo ? 'true' : 'false'],
+    ['inputNombre',          p.nombre        || ''],
+    ['inputDescripcion',     p.descripcion   || ''],
+    ['inputCategoria',       p.categoria     || ''],
+    ['inputSku',             p.sku           || ''],
+    ['inputCodBarras',       p.codigo_barras || ''],
+    ['inputCosto',           p.costo         ?? ''],
+    ['inputPrecio',          p.precio        ?? ''],
+    ['inputStockMinimo',     p.stock_minimo  ?? ''],
+    ['inputStockMinimoEdit', p.stock_minimo  ?? ''],
+    ['inputActivo',          p.activo ? 'true' : 'false'],
   ];
   // NUNCA cargar stock_actual en edición — solo en creación
   campos.forEach(([id, val]) => {
@@ -643,7 +657,9 @@ async function guardarProducto() {
   // Stock mínimo: usar el campo visible según el modo
   const stockMinimoEl  = STATE.modalMode === 'editar' ? $('inputStockMinimoEdit') : $('inputStockMinimo');
   const stockMinimoRaw = stockMinimoEl?.value;
-  const stockMinimo    = stockMinimoRaw !== '' && stockMinimoRaw !== undefined ? parseFloat(stockMinimoRaw) : 0;
+  const stockMinimo    = stockMinimoRaw !== '' && stockMinimoRaw !== undefined
+    ? parseFloat(stockMinimoRaw)
+    : 0;
 
   if (!nombre) {
     if (errEl) errEl.textContent = 'El nombre es obligatorio';
@@ -661,7 +677,9 @@ async function guardarProducto() {
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
       const stockActualRaw = $('inputStockActual')?.value;
-      const stockActual    = stockActualRaw !== '' && stockActualRaw !== undefined ? parseFloat(stockActualRaw) : 0;
+      const stockActual    = stockActualRaw !== '' && stockActualRaw !== undefined
+        ? parseFloat(stockActualRaw)
+        : 0;
 
       const payload = {
         auth_user_id:  STATE.user.id,
@@ -671,8 +689,8 @@ async function guardarProducto() {
         categoria:     categoria   || null,
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
-        costo:         isNaN(costo)  ? 0 : costo,
-        precio:        isNaN(precio) ? 0 : precio,
+        costo:         isNaN(costo)       ? 0 : costo,
+        precio:        isNaN(precio)      ? 0 : precio,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         activo,
@@ -724,6 +742,7 @@ async function guardarProducto() {
 
 // ============================================================
 // VER DETALLE
+// FIX: usa helper esStockBajo()
 // ============================================================
 function abrirDetalle(id) {
   const p = STATE.productos.find(x => x.id === id);
@@ -734,9 +753,8 @@ function abrirDetalle(id) {
     ? `<span class="td-margin ${m >= 40 ? 'margin-good' : m >= 20 ? 'margin-mid' : 'margin-low'}">${m.toFixed(2)}%</span>`
     : '—';
 
-  const stockBajo = p.tipo === 'producto' &&
-    p.activo &&
-    parseFloat(p.stock_actual ?? 0) <= parseFloat(p.stock_minimo ?? 0);
+  // FIX: usar helper centralizado
+  const stockBajo = esStockBajo(p);
 
   $('detalleContent').innerHTML = `
     <div class="detail-grid">
@@ -856,12 +874,12 @@ async function duplicarProducto(id) {
 // MOVIMIENTOS ESPECIALES — Modal completo
 // ============================================================
 const RAZONES_MERMA = [
-  { id: 'robo',           label: 'Robo',             icon: '🔓' },
-  { id: 'dano',           label: 'Daño',             icon: '💥' },
-  { id: 'vencimiento',    label: 'Vencimiento',      icon: '🗓️' },
-  { id: 'uso_interno',    label: 'Uso interno',      icon: '🏭' },
-  { id: 'conteo_fisico',  label: 'Conteo físico',    icon: '🔢' },
-  { id: 'error_anterior', label: 'Error anterior',   icon: '↩️' },
+  { id: 'robo',           label: 'Robo',           icon: '🔓' },
+  { id: 'dano',           label: 'Daño',           icon: '💥' },
+  { id: 'vencimiento',    label: 'Vencimiento',    icon: '🗓️' },
+  { id: 'uso_interno',    label: 'Uso interno',    icon: '🏭' },
+  { id: 'conteo_fisico',  label: 'Conteo físico',  icon: '🔢' },
+  { id: 'error_anterior', label: 'Error anterior', icon: '↩️' },
 ];
 
 function abrirMovimiento(id) {
@@ -875,9 +893,9 @@ function abrirMovimiento(id) {
   const stockEl = $('movStockActual');
   if (stockEl) stockEl.textContent = `Stock actual: ${fmtNum(p.stock_actual)}`;
 
-  const cantEl  = $('movCantidad');
-  const notaEl  = $('movNota');
-  const cajaCh  = $('movDescontarCaja');
+  const cantEl = $('movCantidad');
+  const notaEl = $('movNota');
+  const cajaCh = $('movDescontarCaja');
   if (cantEl) cantEl.value = '';
   if (notaEl) notaEl.value = '';
   if (cajaCh) cajaCh.checked = false;
@@ -913,15 +931,15 @@ function seleccionarRazon(el, razonId) {
 }
 
 function actualizarAvisoCaja() {
-  const razon   = $('movRazonSeleccionada')?.value;
-  const cajaRow = $('movCajaRow');
+  const razon    = $('movRazonSeleccionada')?.value;
+  const cajaRow  = $('movCajaRow');
   const cajaInfo = $('movCajaRowInfo');
   if (!cajaRow) return;
 
   const requiereCaja = ['robo', 'dano', 'vencimiento', 'uso_interno'];
   const esSoloAjuste = ['conteo_fisico', 'error_anterior'];
 
-  cajaRow.style.display     = requiereCaja.includes(razon) ? '' : 'none';
+  cajaRow.style.display  = requiereCaja.includes(razon) ? '' : 'none';
   if (cajaInfo) cajaInfo.style.display = esSoloAjuste.includes(razon) ? '' : 'none';
 
   const cajaCh = $('movDescontarCaja');
@@ -932,11 +950,11 @@ async function confirmarMovimiento() {
   const p = STATE.movTarget;
   if (!p) return;
 
-  const razon    = $('movRazonSeleccionada')?.value;
-  const cantRaw  = $('movCantidad')?.value;
-  const nota     = ($('movNota')?.value || '').trim();
-  const desCaja  = $('movDescontarCaja')?.checked ?? false;
-  const errEl    = $('movError');
+  const razon   = $('movRazonSeleccionada')?.value;
+  const cantRaw = $('movCantidad')?.value;
+  const nota    = ($('movNota')?.value || '').trim();
+  const desCaja = $('movDescontarCaja')?.checked ?? false;
+  const errEl   = $('movError');
 
   if (!razon) {
     if (errEl) errEl.textContent = 'Selecciona la razón del movimiento.';
@@ -952,7 +970,8 @@ async function confirmarMovimiento() {
 
   const stockActual = parseFloat(p.stock_actual ?? 0);
   if (cantidad > stockActual) {
-    if (errEl) errEl.textContent = `No puedes descontar ${fmtNum(cantidad)} — stock disponible: ${fmtNum(stockActual)}.`;
+    if (errEl) errEl.textContent =
+      `No puedes descontar ${fmtNum(cantidad)} — stock disponible: ${fmtNum(stockActual)}.`;
     return;
   }
 
@@ -1032,16 +1051,13 @@ async function confirmarMovimiento() {
 
 // ============================================================
 // NOTIFICACIONES
+// FIX: usa helper esStockBajo()
 // ============================================================
 function initNotificaciones() {
   const btnNotif = document.querySelector('.header-icon-btn[title="Notificaciones"]');
   if (!btnNotif) return;
   btnNotif.addEventListener('click', () => {
-    const stockBajo = STATE.productos.filter(p =>
-      p.tipo === 'producto' &&
-      p.activo &&
-      parseFloat(p.stock_actual ?? 0) <= parseFloat(p.stock_minimo ?? 0)
-    );
+    const stockBajo = STATE.productos.filter(esStockBajo);
     if (stockBajo.length > 0) {
       showToast('warning',
         `${stockBajo.length} producto${stockBajo.length !== 1 ? 's' : ''} con stock bajo`,
