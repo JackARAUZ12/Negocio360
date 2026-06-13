@@ -28,8 +28,8 @@ const CURRENCY_SYMBOLS = {
 };
 
 // Se cargará desde Supabase en cargarDatosEmpresa()
-let MONEDA_CODIGO  = 'USD';   // código ISO ej: 'NIO'
-let MONEDA_SIMBOLO = '$';     // símbolo ej: 'C$'
+let MONEDA_CODIGO  = 'USD';
+let MONEDA_SIMBOLO = '$';
 
 // ============================================================
 // ESTADO GLOBAL
@@ -44,7 +44,7 @@ const STATE = {
   cargando:     false,
   modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
   editTarget:   null,
-  movTarget:    null,   // producto objetivo para movimientos especiales
+  movTarget:    null,
 };
 
 // ============================================================
@@ -54,7 +54,7 @@ const $  = id  => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
 // ============================================================
-// FORMATO MONEDA — usa el símbolo cargado de configuración
+// FORMATO MONEDA
 // ============================================================
 function fmtMoney(val) {
   if (val === null || val === undefined || val === '') return '—';
@@ -195,40 +195,61 @@ async function checkAuth() {
 }
 
 // ============================================================
-// CARGAR DATOS EMPRESA — incluye moneda
+// CARGAR DATOS EMPRESA
+// FIX: Búsqueda robusta de moneda en múltiples fuentes
 // ============================================================
 async function cargarDatosEmpresa() {
   try {
-    const [{ data: perfil }, { data: empresa }] = await Promise.all([
-      supabaseClient.from('usuarios').select('*').eq('auth_user_id', STATE.user.id).maybeSingle(),
-      supabaseClient.from('configuracion_empresa').select('*').eq('auth_user_id', STATE.user.id).maybeSingle(),
+    const [resUsuario, resEmpresa] = await Promise.all([
+      supabaseClient
+        .from('usuarios')
+        .select('*')
+        .eq('auth_user_id', STATE.user.id)
+        .maybeSingle(),
+      supabaseClient
+        .from('configuracion_empresa')
+        .select('*')
+        .eq('auth_user_id', STATE.user.id)
+        .maybeSingle(),
     ]);
 
-    STATE.perfil  = perfil  || {};
-    STATE.empresa = empresa || {};
+    const perfil  = resUsuario.data  || {};
+    const empresa = resEmpresa.data  || {};
 
-    // ── Moneda dinámica ──────────────────────────────────────
-    const monedaCodigo = STATE.empresa.moneda || STATE.perfil.moneda || 'USD';
+    STATE.perfil  = perfil;
+    STATE.empresa = empresa;
+
+    // ── FIX MONEDA: buscar en todas las fuentes posibles ──────
+    // El onboarding guarda en configuracion_empresa.moneda
+    // Fallback a usuarios.moneda, luego a USD
+    const monedaCodigo =
+      (empresa.moneda && empresa.moneda.trim() !== '') ? empresa.moneda.trim() :
+      (perfil.moneda  && perfil.moneda.trim()  !== '') ? perfil.moneda.trim()  :
+      'USD';
+
     MONEDA_CODIGO  = monedaCodigo;
     MONEDA_SIMBOLO = CURRENCY_SYMBOLS[monedaCodigo] || monedaCodigo;
 
-    // Mostrar indicador de moneda en la UI (si existe el elemento)
+    // Actualizar indicador de moneda en header
     const monedaEl = $('monedaIndicador');
     if (monedaEl) monedaEl.textContent = `${MONEDA_SIMBOLO} (${MONEDA_CODIGO})`;
+
+    // Log para debug (puedes quitar esto después de verificar)
+    console.log('[Moneda]', { monedaCodigo, MONEDA_SIMBOLO, empresa_raw: empresa.moneda, perfil_raw: perfil.moneda });
     // ─────────────────────────────────────────────────────────
 
     const nombreEl = $('nombreEmpresa');
-    if (nombreEl) nombreEl.textContent = STATE.empresa.nombre || STATE.perfil.nombre_negocio || 'Mi Negocio';
+    if (nombreEl) nombreEl.textContent = empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
 
     const planEl = $('planBadge');
-    if (planEl) planEl.textContent = STATE.empresa.plan || STATE.perfil.plan || 'Free';
+    if (planEl) planEl.textContent = empresa.plan || perfil.plan || 'Free';
 
     const avatarEls = $$('.header-avatar, .sidebar-user-avatar');
-    const inicial = (STATE.perfil.nombre || STATE.user.email || 'U').charAt(0).toUpperCase();
+    const inicial = (perfil.nombre || STATE.user.email || 'U').charAt(0).toUpperCase();
     avatarEls.forEach(el => { el.textContent = inicial; });
 
     const sidebarName = $('sidebarUserName');
-    if (sidebarName) sidebarName.textContent = STATE.perfil.nombre || STATE.user.email;
+    if (sidebarName) sidebarName.textContent = perfil.nombre || STATE.user.email;
 
   } catch (e) {
     console.warn('cargarDatosEmpresa:', e.message);
@@ -261,7 +282,8 @@ async function cargarProductos() {
 }
 
 // ============================================================
-// STATS — FIX: el badge se actualiza correctamente a 0
+// STATS
+// FIX: resetear visualmente card y badge cuando stock es normal
 // ============================================================
 function actualizarStats() {
   const todos   = STATE.productos;
@@ -269,7 +291,6 @@ function actualizarStats() {
   const prods   = activos.filter(p => p.tipo === 'producto');
   const servs   = activos.filter(p => p.tipo === 'servicio');
 
-  // FIX: stock bajo = stock_actual <= stock_minimo (ambos como número)
   const stockBajoList = todos.filter(p =>
     p.tipo === 'producto' &&
     p.activo &&
@@ -287,17 +308,26 @@ function actualizarStats() {
   set('statInventario', fmtMoney(valorInventario));
   set('statStockBajo',  stockBajoList.length);
 
-  // FIX: badge del sidebar — se limpia cuando no hay stock bajo
+  // FIX: badge sidebar — siempre actualizar (mostrar/ocultar)
   const badge = $('badgeStockBajo');
   if (badge) {
     badge.textContent   = stockBajoList.length;
     badge.style.display = stockBajoList.length > 0 ? 'inline-flex' : 'none';
   }
 
-  // FIX: card de stat — cambiar color cuando hay stock bajo vs normal
+  // FIX: card stat-red — cambiar apariencia según si hay stock bajo o no
   const cardStockBajo = document.querySelector('.stat-card.stat-red');
   if (cardStockBajo) {
-    cardStockBajo.style.opacity = stockBajoList.length > 0 ? '1' : '0.6';
+    if (stockBajoList.length > 0) {
+      // Hay stock bajo: resaltar con color rojo fuerte
+      cardStockBajo.style.opacity = '1';
+      cardStockBajo.style.setProperty('--stat-accent', 'var(--danger)');
+      cardStockBajo.querySelector('.stat-card-icon').textContent = '⚠️';
+    } else {
+      // Sin stock bajo: apariencia neutra/apagada
+      cardStockBajo.style.opacity = '0.55';
+      cardStockBajo.querySelector('.stat-card-icon').textContent = '✅';
+    }
   }
 }
 
@@ -341,6 +371,7 @@ function aplicarFiltros() {
 
 // ============================================================
 // RENDER TABLA
+// FIX: botón 📉 siempre visible (no depende del hover de la fila)
 // ============================================================
 function renderTabla() {
   const tbody   = $('productosTbody');
@@ -379,10 +410,14 @@ function renderTabla() {
            ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
          </div>`;
 
-    // Botón de movimientos especiales solo para productos
+    // FIX: botón 📉 siempre visible para productos (no depende del hover)
+    // Se coloca fuera del div row-actions para que no herede el opacity:0
     const movBtn = p.tipo === 'producto'
-      ? `<button class="row-action-btn" title="Movimiento especial" onclick="abrirMovimiento('${p.id}')" style="color:var(--warning)">📉</button>`
-      : '';
+      ? `<button class="row-action-btn mov-btn-especial"
+            title="Movimiento especial (merma)"
+            onclick="abrirMovimiento('${p.id}')"
+            style="opacity:1;color:var(--warning);">📉</button>`
+      : '<span style="width:30px;display:inline-block"></span>';
 
     return `
       <tr data-id="${p.id}">
@@ -406,16 +441,26 @@ function renderTabla() {
           </span>
         </td>
         <td>
-          <div class="row-actions">
-            <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
-            <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
-            <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+              <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
+              <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
+              <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
+            </div>
             ${movBtn}
           </div>
         </td>
       </tr>
     `;
   }).join('');
+
+  // Aplicar hover manualmente para row-actions (excepto movBtn que ya es visible)
+  tbody.querySelectorAll('tr[data-id]').forEach(row => {
+    const actions = row.querySelector('.row-actions');
+    if (!actions) return;
+    row.addEventListener('mouseenter', () => actions.style.opacity = '1');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '0');
+  });
 }
 
 // ============================================================
@@ -456,6 +501,7 @@ function mostrarErrorTabla() {
 
 // ============================================================
 // MODAL NUEVO / EDITAR
+// FIX: En edición NO se muestra campo de stock_actual (solo stock_minimo)
 // ============================================================
 function abrirModalNuevo(tipo = 'producto') {
   STATE.modalMode  = 'crear';
@@ -495,22 +541,27 @@ function cerrarModalProducto() {
   STATE.modalMode  = null;
 }
 
-// ── FIX: bloquear campos de stock y precio en modo edición ──
+// FIX: En modo editar → ocultar stockSection completo, mostrar aviso con solo stock_minimo
 function configurarCamposSegunModo(modo) {
   const esEdicion  = modo === 'editar';
-  const stockField = $('inputStockActual');
   const stockWrap  = $('stockSection');
   const avisoStock = $('avisoStockBloqueado');
 
   if (esEdicion) {
-    // En edición: ocultar sección de inventario y mostrar aviso
+    // Ocultar la sección de inventario completa (stock_actual no editable)
     if (stockWrap)  stockWrap.style.display  = 'none';
-    if (avisoStock) avisoStock.style.display = '';
+    // Mostrar aviso con solo stock_minimo editable
+    if (avisoStock) {
+      avisoStock.classList.add('visible');
+      avisoStock.style.display = 'flex';
+    }
   } else {
-    // En creación: mostrar todo normal
-    if (stockField) stockField.disabled = false;
+    // Creación / duplicación: mostrar campo de stock normal
     if (stockWrap)  stockWrap.style.display  = '';
-    if (avisoStock) avisoStock.style.display = 'none';
+    if (avisoStock) {
+      avisoStock.classList.remove('visible');
+      avisoStock.style.display = 'none';
+    }
   }
 }
 
@@ -524,7 +575,7 @@ function setTipoModal(tipo, habilitarToggle = true) {
   if (btnProd)      btnProd.classList.toggle('active', tipo === 'producto');
   if (btnServ)      btnServ.classList.toggle('active', tipo === 'servicio');
 
-  // Solo mostrar stock si es producto Y estamos en modo creación
+  // Solo mostrar stock si es producto Y estamos en modo creación/duplicación
   if (stockSection) {
     const mostrar = tipo === 'producto' && STATE.modalMode !== 'editar';
     stockSection.style.display = mostrar ? '' : 'none';
@@ -540,21 +591,28 @@ function resetFormulario() {
   $$('.form-error').forEach(el => el.textContent = '');
   const wrap = $('margenPreviewWrap');
   if (wrap) wrap.style.display = 'none';
+  // Limpiar estado de aviso
+  const avisoStock = $('avisoStockBloqueado');
+  if (avisoStock) {
+    avisoStock.classList.remove('visible');
+    avisoStock.style.display = 'none';
+  }
 }
 
 function cargarFormulario(p) {
   const campos = [
-    ['inputNombre',      p.nombre        || ''],
-    ['inputDescripcion', p.descripcion   || ''],
-    ['inputCategoria',   p.categoria     || ''],
-    ['inputSku',         p.sku           || ''],
-    ['inputCodBarras',   p.codigo_barras || ''],
-    ['inputCosto',       p.costo         ?? ''],
-    ['inputPrecio',      p.precio        ?? ''],
-    ['inputStockMinimo', p.stock_minimo  ?? ''],
-    ['inputActivo',      p.activo ? 'true' : 'false'],
+    ['inputNombre',        p.nombre        || ''],
+    ['inputDescripcion',   p.descripcion   || ''],
+    ['inputCategoria',     p.categoria     || ''],
+    ['inputSku',           p.sku           || ''],
+    ['inputCodBarras',     p.codigo_barras || ''],
+    ['inputCosto',         p.costo         ?? ''],
+    ['inputPrecio',        p.precio        ?? ''],
+    ['inputStockMinimo',   p.stock_minimo  ?? ''],
+    ['inputStockMinimoEdit', p.stock_minimo ?? ''],
+    ['inputActivo',        p.activo ? 'true' : 'false'],
   ];
-  // No cargar stock_actual en edición (es solo lectura)
+  // NUNCA cargar stock_actual en edición — solo en creación
   campos.forEach(([id, val]) => {
     const el = $(id);
     if (el) el.value = val;
@@ -582,9 +640,10 @@ async function guardarProducto() {
   const activoVal   = $('inputActivo')?.value;
   const activo      = activoVal === 'true';
 
-  // Stock mínimo siempre editable; stock actual SOLO en creación
-  const stockMinimoRaw = $('inputStockMinimo')?.value;
-  const stockMinimo    = stockMinimoRaw !== '' ? parseFloat(stockMinimoRaw) : 0;
+  // Stock mínimo: usar el campo visible según el modo
+  const stockMinimoEl  = STATE.modalMode === 'editar' ? $('inputStockMinimoEdit') : $('inputStockMinimo');
+  const stockMinimoRaw = stockMinimoEl?.value;
+  const stockMinimo    = stockMinimoRaw !== '' && stockMinimoRaw !== undefined ? parseFloat(stockMinimoRaw) : 0;
 
   if (!nombre) {
     if (errEl) errEl.textContent = 'El nombre es obligatorio';
@@ -602,7 +661,7 @@ async function guardarProducto() {
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
       const stockActualRaw = $('inputStockActual')?.value;
-      const stockActual    = stockActualRaw !== '' ? parseFloat(stockActualRaw) : 0;
+      const stockActual    = stockActualRaw !== '' && stockActualRaw !== undefined ? parseFloat(stockActualRaw) : 0;
 
       const payload = {
         auth_user_id:  STATE.user.id,
@@ -622,7 +681,7 @@ async function guardarProducto() {
       error = res.error;
 
     } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
-      // En edición: NO se actualiza stock_actual (solo desde movimientos especiales)
+      // En edición: NUNCA actualizar stock_actual — solo desde movimientos especiales
       const updatePayload = {
         tipo,
         nombre,
@@ -782,7 +841,6 @@ async function duplicarProducto(id) {
   resetFormulario();
   cargarFormulario({ ...p, nombre: p.nombre + ' — Copia' });
 
-  // En duplicar sí mostramos stock como en "crear"
   const stockField = $('inputStockActual');
   if (stockField) { stockField.disabled = false; stockField.value = p.stock_actual ?? 0; }
 
@@ -811,14 +869,12 @@ function abrirMovimiento(id) {
   if (!p) return;
   STATE.movTarget = p;
 
-  // Rellenar nombre en el modal
   const nombreEl = $('movProductoNombre');
   if (nombreEl) nombreEl.textContent = p.nombre;
 
   const stockEl = $('movStockActual');
   if (stockEl) stockEl.textContent = `Stock actual: ${fmtNum(p.stock_actual)}`;
 
-  // Reset del formulario de movimiento
   const cantEl  = $('movCantidad');
   const notaEl  = $('movNota');
   const cajaCh  = $('movDescontarCaja');
@@ -826,15 +882,15 @@ function abrirMovimiento(id) {
   if (notaEl) notaEl.value = '';
   if (cajaCh) cajaCh.checked = false;
 
-  // Deseleccionar razones
   $$('.razon-card').forEach(c => c.classList.remove('selected'));
   $('movRazonSeleccionada').value = '';
 
-  // Limpiar error previo
   const errEl = $('movError');
   if (errEl) errEl.textContent = '';
 
-  // Actualizar aviso de descuento de caja
+  const prevEl = $('movCajaPreview');
+  if (prevEl) prevEl.textContent = '';
+
   actualizarAvisoCaja();
 
   $('modalMovimiento').classList.add('open');
@@ -850,24 +906,24 @@ function seleccionarRazon(el, razonId) {
   el.classList.add('selected');
   $('movRazonSeleccionada').value = razonId;
 
-  // Limpiar error
   const errEl = $('movError');
   if (errEl) errEl.textContent = '';
 
-  // Mostrar/ocultar checkbox de caja según razón
   actualizarAvisoCaja();
 }
 
 function actualizarAvisoCaja() {
   const razon   = $('movRazonSeleccionada')?.value;
   const cajaRow = $('movCajaRow');
+  const cajaInfo = $('movCajaRowInfo');
   if (!cajaRow) return;
 
-  // Razones donde tiene sentido descontar de caja
   const requiereCaja = ['robo', 'dano', 'vencimiento', 'uso_interno'];
-  cajaRow.style.display = requiereCaja.includes(razon) ? '' : 'none';
+  const esSoloAjuste = ['conteo_fisico', 'error_anterior'];
 
-  // Para "conteo_fisico" y "error_anterior" no aplica descontar de caja
+  cajaRow.style.display     = requiereCaja.includes(razon) ? '' : 'none';
+  if (cajaInfo) cajaInfo.style.display = esSoloAjuste.includes(razon) ? '' : 'none';
+
   const cajaCh = $('movDescontarCaja');
   if (cajaCh && !requiereCaja.includes(razon)) cajaCh.checked = false;
 }
@@ -882,7 +938,6 @@ async function confirmarMovimiento() {
   const desCaja  = $('movDescontarCaja')?.checked ?? false;
   const errEl    = $('movError');
 
-  // Validaciones
   if (!razon) {
     if (errEl) errEl.textContent = 'Selecciona la razón del movimiento.';
     return;
@@ -908,7 +963,6 @@ async function confirmarMovimiento() {
   try {
     const nuevoStock = stockActual - cantidad;
 
-    // 1. Actualizar stock del producto
     const { error: stockErr } = await supabaseClient
       .from('productos')
       .update({ stock_actual: nuevoStock })
@@ -917,31 +971,29 @@ async function confirmarMovimiento() {
 
     if (stockErr) throw stockErr;
 
-    // 2. Registrar en tabla de movimientos (si existe)
-    //    Si no tienes la tabla aún, esta parte falla silenciosamente
+    // Registrar en tabla de movimientos (si existe)
     try {
       await supabaseClient.from('movimientos_inventario').insert([{
-        auth_user_id: STATE.user.id,
-        producto_id:  p.id,
-        tipo:         'merma',
+        auth_user_id:   STATE.user.id,
+        producto_id:    p.id,
+        tipo:           'merma',
         razon,
-        cantidad:     -cantidad,        // negativo = salida
-        stock_antes:  stockActual,
-        stock_despues: nuevoStock,
-        nota:         nota || null,
+        cantidad:       -cantidad,
+        stock_antes:    stockActual,
+        stock_despues:  nuevoStock,
+        nota:           nota || null,
         descuenta_caja: desCaja,
         costo_unitario: desCaja ? parseFloat(p.costo || 0) : null,
         costo_total:    desCaja ? (parseFloat(p.costo || 0) * cantidad) : null,
       }]);
     } catch (_) {
-      // La tabla de movimientos puede no existir aún — no bloqueamos el flujo
       console.warn('Tabla movimientos_inventario no disponible aún');
     }
 
-    // 3. Si aplica, descontar de caja (tabla gastos o movimientos_caja)
+    // Descontar de caja si aplica
     if (desCaja && p.costo) {
-      const costoTotal = parseFloat(p.costo) * cantidad;
-      const razonLabel = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
+      const costoTotal  = parseFloat(p.costo) * cantidad;
+      const razonLabel  = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
       try {
         await supabaseClient.from('gastos').insert([{
           auth_user_id: STATE.user.id,
@@ -953,14 +1005,14 @@ async function confirmarMovimiento() {
           fecha:        new Date().toISOString().split('T')[0],
         }]);
       } catch (_) {
-        console.warn('No se pudo registrar en gastos — la tabla puede no existir aún');
+        console.warn('No se pudo registrar en gastos');
       }
     }
 
     cerrarMovimiento();
 
-    const razonLabel  = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
-    const cajaMsg     = desCaja ? ` · ${fmtMoney((p.costo || 0) * cantidad)} descontados de caja` : '';
+    const razonLabel = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
+    const cajaMsg    = desCaja ? ` · ${fmtMoney((p.costo || 0) * cantidad)} descontados de caja` : '';
     showToast('warning', 'Movimiento registrado',
       `${razonLabel}: −${fmtNum(cantidad)} u. de ${p.nombre}${cajaMsg}`);
 
@@ -1073,15 +1125,14 @@ function initEventos() {
       const p      = STATE.movTarget;
       const cant   = parseFloat(movCantidad.value) || 0;
       const prevEl = $('movCajaPreview');
-      if (prevEl && p && p.costo) {
-        prevEl.textContent = cant > 0
-          ? `Se registrará ${fmtMoney(parseFloat(p.costo) * cant)} como gasto de merma`
-          : '';
+      if (prevEl && p && p.costo && cant > 0) {
+        prevEl.textContent = `Se registrará ${fmtMoney(parseFloat(p.costo) * cant)} como gasto de merma`;
+      } else if (prevEl) {
+        prevEl.textContent = '';
       }
     });
   }
 
-  // Movimiento: checkbox de caja
   const cajaCh = $('movDescontarCaja');
   if (cajaCh) {
     cajaCh.addEventListener('change', () => {
