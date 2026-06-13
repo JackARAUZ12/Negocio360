@@ -844,34 +844,6 @@ async function crearCierreDiario() {
     setBtnLoading('btn-cierre-diario', false);
   }
 }
-
-/* =====================================================
-   CAPITAL: MODAL EDITAR
-===================================================== */
-function openEditCapital() {
-  document.getElementById('capital-monto-edit').value = STATE.capital;
-  openModal('modal-capital');
-}
-
-async function saveCapital() {
-  const monto = parseFloat(document.getElementById('capital-monto-edit').value);
-  if (isNaN(monto) || monto < 0) { showToast('Monto inválido', 'error'); return; }
-
-  try {
-    setBtnLoading('btn-save-capital', true);
-    await guardarCapitalInicial(monto);
-    STATE.capital = monto;
-    closeModal('modal-capital');
-    showToast('Capital actualizado');
-    await loadResumen();
-    actualizarDashboardStorage();
-  } catch(e) {
-    showToast('Error al actualizar capital', 'error');
-  } finally {
-    setBtnLoading('btn-save-capital', false);
-  }
-}
-
 /* =====================================================
    MODAL CAPITAL INICIAL (primera vez)
 ===================================================== */
