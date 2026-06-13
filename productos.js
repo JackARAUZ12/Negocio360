@@ -339,17 +339,29 @@ function actualizarStats() {
     badge.style.display = stockBajoList.length > 0 ? 'inline-flex' : 'none';
   }
 
-  // Card stat-red — cambiar apariencia según si hay stock bajo o no
+  // Card stat-red — cambiar TODA la apariencia según si hay stock bajo o no
   const cardStockBajo = document.querySelector('.stat-card.stat-red');
   if (cardStockBajo) {
-    const iconEl = cardStockBajo.querySelector('.stat-card-icon');
+    const iconEl     = cardStockBajo.querySelector('.stat-card-icon');
+    const subEl      = cardStockBajo.querySelector('.stat-card-sub');
+    const valueEl    = cardStockBajo.querySelector('.stat-card-value');
+
     if (stockBajoList.length > 0) {
-      cardStockBajo.style.opacity = '1';
-      cardStockBajo.style.setProperty('--stat-accent', 'var(--danger)');
-      if (iconEl) iconEl.textContent = '⚠️';
+      // HAY stock bajo → apariencia de alerta roja
+      cardStockBajo.style.opacity        = '1';
+      cardStockBajo.style.setProperty('--stat-accent',   'var(--danger)');
+      cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--danger-light)');
+      if (iconEl)  iconEl.textContent    = '⚠️';
+      if (subEl)   subEl.textContent     = 'Requieren atención';
+      if (valueEl) valueEl.style.color   = 'var(--danger)';
     } else {
-      cardStockBajo.style.opacity = '0.55';
-      if (iconEl) iconEl.textContent = '✅';
+      // SIN stock bajo → apariencia neutra/verde
+      cardStockBajo.style.opacity        = '1';
+      cardStockBajo.style.setProperty('--stat-accent',   'var(--success)');
+      cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--success-light)');
+      if (iconEl)  iconEl.textContent    = '✅';
+      if (subEl)   subEl.textContent     = 'Todo en orden';
+      if (valueEl) valueEl.style.color   = 'var(--success)';
     }
   }
 }
