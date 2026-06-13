@@ -11,6 +11,127 @@
 
   <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Estilos extra para modal de movimientos -->
+  <style>
+    /* ── Aviso de campos bloqueados en edición ── */
+    .edit-lock-notice {
+      display: none;
+      background: var(--warning-light);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--warning);
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .edit-lock-notice.visible { display: flex; }
+
+    /* ── Tarjetas de razón de merma ── */
+    .razones-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    @media (max-width: 480px) { .razones-grid { grid-template-columns: repeat(2,1fr); } }
+
+    .razon-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 8px;
+      border-radius: var(--radius-md);
+      border: 1.5px solid var(--border);
+      background: var(--bg-app);
+      cursor: pointer;
+      transition: all var(--transition);
+      text-align: center;
+      user-select: none;
+    }
+    .razon-card:hover {
+      border-color: var(--warning);
+      background: var(--warning-light);
+    }
+    .razon-card.selected {
+      border-color: var(--warning);
+      background: var(--warning-light);
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
+    }
+    .razon-icon { font-size: 22px; line-height: 1; }
+    .razon-label { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
+    .razon-card.selected .razon-label { color: var(--warning); }
+
+    /* ── Caja preview en movimiento ── */
+    .mov-caja-row {
+      background: var(--bg-app);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .mov-caja-row label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text-primary);
+      flex: 1;
+    }
+    .mov-caja-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--warning);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .mov-caja-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .mov-caja-preview {
+      font-size: 12px;
+      color: var(--warning);
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    /* ── Stock actual en modal movimiento ── */
+    .mov-stock-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--info-light);
+      color: var(--info);
+      border-radius: var(--radius-full);
+      padding: 4px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    /* ── Error inline en movimiento ── */
+    .mov-error {
+      font-size: 12.5px;
+      color: var(--danger);
+      font-weight: 500;
+      min-height: 18px;
+    }
+
+    /* ── Indicador de moneda en header ── */
+    .moneda-chip {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-app);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      padding: 3px 10px;
+      font-weight: 600;
+    }
+  </style>
 </head>
 <body>
 
@@ -26,8 +147,6 @@
        SIDEBAR
        ============================================================ -->
   <aside class="sidebar" id="sidebar">
-
-    <!-- Logo -->
     <div class="sidebar-logo">
       <div class="sidebar-logo-icon">⚡</div>
       <div>
@@ -36,69 +155,27 @@
       </div>
     </div>
 
-    <!-- Navegación -->
     <nav class="sidebar-nav">
       <div class="sidebar-section-label">Principal</div>
-
-      <a href="dashboard.html" class="sidebar-item">
-        <span class="sidebar-icon">🏠</span>
-        Dashboard
-      </a>
-
-      <a href="ventas.html" class="sidebar-item">
-        <span class="sidebar-icon">💰</span>
-        Ventas
-      </a>
-
-      <a href="clientes.html" class="sidebar-item">
-        <span class="sidebar-icon">👥</span>
-        Clientes
-      </a>
-
+      <a href="dashboard.html" class="sidebar-item"><span class="sidebar-icon">🏠</span>Dashboard</a>
+      <a href="ventas.html"    class="sidebar-item"><span class="sidebar-icon">💰</span>Ventas</a>
+      <a href="clientes.html"  class="sidebar-item"><span class="sidebar-icon">👥</span>Clientes</a>
       <a href="productos.html" class="sidebar-item active">
         <span class="sidebar-icon">📦</span>
         Productos / Servicios
         <span class="sidebar-badge" id="badgeStockBajo" style="display:none">0</span>
       </a>
-
       <div class="sidebar-section-label">Operaciones</div>
-
-      <a href="inventario.html" class="sidebar-item">
-        <span class="sidebar-icon">🏭</span>
-        Inventario
-      </a>
-
-      <a href="compras.html" class="sidebar-item">
-        <span class="sidebar-icon">🛒</span>
-        Compras
-      </a>
-
-      <a href="gastos.html" class="sidebar-item">
-        <span class="sidebar-icon">💸</span>
-        Gastos
-      </a>
-
-      <a href="caja.html" class="sidebar-item">
-        <span class="sidebar-icon">🏦</span>
-        Caja / Pagos
-      </a>
-
+      <a href="inventario.html"    class="sidebar-item"><span class="sidebar-icon">🏭</span>Inventario</a>
+      <a href="compras.html"       class="sidebar-item"><span class="sidebar-icon">🛒</span>Compras</a>
+      <a href="gastos.html"        class="sidebar-item"><span class="sidebar-icon">💸</span>Gastos</a>
+      <a href="caja.html"          class="sidebar-item"><span class="sidebar-icon">🏦</span>Caja / Pagos</a>
       <div class="sidebar-section-label">Análisis</div>
-
-      <a href="reportes.html" class="sidebar-item">
-        <span class="sidebar-icon">📊</span>
-        Reportes
-      </a>
-
+      <a href="reportes.html"      class="sidebar-item"><span class="sidebar-icon">📊</span>Reportes</a>
       <div class="sidebar-section-label">Sistema</div>
-
-      <a href="configuracion.html" class="sidebar-item">
-        <span class="sidebar-icon">⚙️</span>
-        Configuración
-      </a>
+      <a href="configuracion.html" class="sidebar-item"><span class="sidebar-icon">⚙️</span>Configuración</a>
     </nav>
 
-    <!-- Footer sidebar -->
     <div class="sidebar-footer">
       <div class="sidebar-user">
         <div class="sidebar-user-avatar">U</div>
@@ -117,40 +194,23 @@
 
     <!-- HEADER -->
     <header class="header">
-      <!-- Botón menú móvil -->
       <button class="header-menu-btn" id="menuToggle" aria-label="Abrir menú">☰</button>
-
-      <!-- Breadcrumb -->
       <div class="header-breadcrumb">
         <span class="header-subtitle" id="nombreEmpresa">Mi Negocio</span>
         <span class="header-breadcrumb-sep">›</span>
-        <span class="header-title">Productos & Servicios</span>
+        <span class="header-title">Productos &amp; Servicios</span>
       </div>
-
       <div class="header-divider"></div>
-
-      <!-- Acciones del header -->
       <div class="header-actions">
-        <!-- Fecha -->
-        <div class="header-date">
-          📅 <span id="fechaActual"></span>
-        </div>
-
+        <div class="header-date">📅 <span id="fechaActual"></span></div>
         <div class="header-divider"></div>
-
-        <!-- Plan badge -->
+        <!-- Indicador de moneda activa -->
+        <span class="moneda-chip" id="monedaIndicador" title="Moneda configurada">$ (USD)</span>
         <span class="header-plan-badge" id="planBadge">Free</span>
-
-        <!-- Tema -->
         <button class="header-icon-btn" id="btnTema" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
-
-        <!-- Notificaciones -->
         <button class="header-icon-btn" title="Notificaciones" aria-label="Notificaciones">
-          🔔
-          <span class="notif-dot"></span>
+          🔔<span class="notif-dot"></span>
         </button>
-
-        <!-- Avatar -->
         <div class="header-avatar" title="Mi cuenta">U</div>
       </div>
     </header>
@@ -165,19 +225,13 @@
           <p>Administra tu catálogo, precios, costos y stock</p>
         </div>
         <div class="page-header-actions">
-          <button class="btn btn-secondary" onclick="abrirModalNuevo('servicio')">
-            🔧 Nuevo Servicio
-          </button>
-          <button class="btn btn-primary" onclick="abrirModalNuevo('producto')">
-            + Nuevo Producto
-          </button>
+          <button class="btn btn-secondary" onclick="abrirModalNuevo('servicio')">🔧 Nuevo Servicio</button>
+          <button class="btn btn-primary"   onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>
         </div>
       </div>
 
       <!-- TARJETAS RESUMEN -->
       <div class="stats-grid">
-
-        <!-- Productos activos -->
         <div class="stat-card stat-purple">
           <div class="stat-card-header">
             <span class="stat-card-label">Productos activos</span>
@@ -186,8 +240,6 @@
           <div class="stat-card-value" id="statProductos">—</div>
           <div class="stat-card-sub">En catálogo</div>
         </div>
-
-        <!-- Servicios activos -->
         <div class="stat-card stat-blue">
           <div class="stat-card-header">
             <span class="stat-card-label">Servicios activos</span>
@@ -196,8 +248,6 @@
           <div class="stat-card-value" id="statServicios">—</div>
           <div class="stat-card-sub">Disponibles</div>
         </div>
-
-        <!-- Valor inventario -->
         <div class="stat-card stat-green">
           <div class="stat-card-header">
             <span class="stat-card-label">Valor del inventario</span>
@@ -206,8 +256,6 @@
           <div class="stat-card-value" id="statInventario" style="font-size:20px;letter-spacing:-0.5px">—</div>
           <div class="stat-card-sub">Stock × Costo</div>
         </div>
-
-        <!-- Stock bajo -->
         <div class="stat-card stat-red">
           <div class="stat-card-header">
             <span class="stat-card-label">Stock bajo</span>
@@ -216,26 +264,16 @@
           <div class="stat-card-value" id="statStockBajo">—</div>
           <div class="stat-card-sub">Requieren atención</div>
         </div>
-
       </div>
-      <!-- /TARJETAS -->
 
-      <!-- TOOLBAR (búsqueda + filtros) -->
+      <!-- TOOLBAR -->
       <div class="toolbar">
-        <!-- Buscador -->
         <div class="search-wrapper">
           <span class="search-icon">🔍</span>
-          <input
-            type="text"
-            class="search-input"
-            id="searchInput"
-            placeholder="Buscar por nombre, SKU, categoría..."
-            autocomplete="off"
-          />
+          <input type="text" class="search-input" id="searchInput"
+                 placeholder="Buscar por nombre, SKU, categoría..." autocomplete="off" />
           <button class="search-clear" id="searchClear" title="Limpiar búsqueda">✕</button>
         </div>
-
-        <!-- Filtros -->
         <div class="filters-group">
           <button class="filter-btn active" data-filtro="todos">Todos</button>
           <button class="filter-btn" data-filtro="productos">📦 Productos</button>
@@ -244,16 +282,11 @@
           <button class="filter-btn" data-filtro="inactivos">⛔ Inactivos</button>
           <button class="filter-btn" data-filtro="stock_bajo">⚠️ Stock bajo</button>
         </div>
-
-        <!-- Derecha -->
         <div class="toolbar-right">
           <span class="results-count" id="resultadosCount">0 resultados</span>
-          <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">
-            🔄 Actualizar
-          </button>
+          <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">🔄 Actualizar</button>
         </div>
       </div>
-      <!-- /TOOLBAR -->
 
       <!-- TABLA PRINCIPAL -->
       <div class="table-card">
@@ -273,7 +306,6 @@
               </tr>
             </thead>
             <tbody id="productosTbody">
-              <!-- Cargando skeletons -->
               <tr class="skeleton-row">
                 <td><div class="skeleton skel-badge"></div></td>
                 <td><div class="skeleton skel-line" style="width:140px"></div></td>
@@ -288,22 +320,15 @@
             </tbody>
           </table>
         </div>
-        <!-- Footer de tabla -->
         <div class="table-footer">
           <span id="tablePie">Cargando datos...</span>
           <span style="color:var(--text-muted);font-size:11px">Datos protegidos por RLS · Solo tus registros</span>
         </div>
       </div>
-      <!-- /TABLA -->
 
     </main>
-    <!-- /PAGE CONTENT -->
-
   </div>
-  <!-- /MAIN CONTENT -->
-
 </div>
-<!-- /APP LAYOUT -->
 
 
 <!-- ============================================================
@@ -311,12 +336,10 @@
      ============================================================ -->
 <div class="modal-overlay" id="modalProducto" role="dialog" aria-modal="true" aria-labelledby="modalProductoTitle">
   <div class="modal modal-lg">
-
     <div class="modal-header">
       <h2 class="modal-title" id="modalProductoTitle">+ Nuevo Producto</h2>
       <button class="modal-close" onclick="cerrarModalProducto()" aria-label="Cerrar">✕</button>
     </div>
-
     <div class="modal-body">
       <form id="formProducto" novalidate autocomplete="off">
 
@@ -324,159 +347,97 @@
         <div class="form-group full" style="margin-bottom:16px">
           <label class="form-label">Tipo de registro <span>*</span></label>
           <div class="type-toggle">
-            <button type="button" class="type-toggle-btn active" id="toggleProducto">
-              📦 Producto
-            </button>
-            <button type="button" class="type-toggle-btn" id="toggleServicio">
-              🔧 Servicio
-            </button>
+            <button type="button" class="type-toggle-btn active" id="toggleProducto">📦 Producto</button>
+            <button type="button" class="type-toggle-btn" id="toggleServicio">🔧 Servicio</button>
           </div>
           <input type="hidden" id="inputTipo" value="producto" />
         </div>
 
-        <!-- SECCIÓN: Información básica -->
+        <!-- INFORMACIÓN BÁSICA -->
         <div class="form-section-title">Información básica</div>
-
         <div class="form-grid">
-
           <div class="form-group full">
             <label class="form-label" for="inputNombre">Nombre <span>*</span></label>
-            <input
-              type="text"
-              class="form-input"
-              id="inputNombre"
-              placeholder="Ej: Camisa Polo Talla M"
-              maxlength="200"
-            />
+            <input type="text" class="form-input" id="inputNombre"
+                   placeholder="Ej: Camisa Polo Talla M" maxlength="200" />
             <span class="form-error" id="errNombre"></span>
           </div>
-
           <div class="form-group full">
             <label class="form-label" for="inputDescripcion">Descripción</label>
-            <textarea
-              class="form-textarea"
-              id="inputDescripcion"
-              placeholder="Descripción detallada del producto o servicio..."
-              rows="3"
-              maxlength="1000"
-            ></textarea>
+            <textarea class="form-textarea" id="inputDescripcion"
+                      placeholder="Descripción detallada..." rows="3" maxlength="1000"></textarea>
           </div>
-
           <div class="form-group">
             <label class="form-label" for="inputCategoria">Categoría</label>
-            <input
-              type="text"
-              class="form-input"
-              id="inputCategoria"
-              placeholder="Ej: Ropa, Tecnología..."
-              maxlength="100"
-            />
+            <input type="text" class="form-input" id="inputCategoria"
+                   placeholder="Ej: Ropa, Tecnología..." maxlength="100" />
           </div>
-
           <div class="form-group">
             <label class="form-label" for="inputSku">SKU</label>
-            <input
-              type="text"
-              class="form-input"
-              id="inputSku"
-              placeholder="Ej: CAM-POLO-M-001"
-              maxlength="100"
-            />
+            <input type="text" class="form-input" id="inputSku"
+                   placeholder="Ej: CAM-POLO-M-001" maxlength="100" />
           </div>
-
           <div class="form-group full">
             <label class="form-label" for="inputCodBarras">Código de barras</label>
-            <input
-              type="text"
-              class="form-input"
-              id="inputCodBarras"
-              placeholder="Ej: 7501234567890"
-              maxlength="100"
-            />
+            <input type="text" class="form-input" id="inputCodBarras"
+                   placeholder="Ej: 7501234567890" maxlength="100" />
           </div>
-
         </div>
-        <!-- /form-grid info básica -->
 
-        <!-- SECCIÓN: Costos y precios -->
+        <!-- COSTOS & PRECIOS -->
         <div class="form-section-title">Costos &amp; Precios</div>
-
         <div class="form-grid">
-
           <div class="form-group">
             <label class="form-label" for="inputCosto">Costo</label>
-            <input
-              type="number"
-              class="form-input"
-              id="inputCosto"
-              placeholder="0.00"
-              min="0"
-              step="0.01"
-              oninput="actualizarMargenPreview()"
-            />
+            <input type="number" class="form-input" id="inputCosto"
+                   placeholder="0.00" min="0" step="0.01" oninput="actualizarMargenPreview()" />
           </div>
-
           <div class="form-group">
             <label class="form-label" for="inputPrecio">Precio de venta</label>
-            <input
-              type="number"
-              class="form-input"
-              id="inputPrecio"
-              placeholder="0.00"
-              min="0"
-              step="0.01"
-              oninput="actualizarMargenPreview()"
-            />
+            <input type="number" class="form-input" id="inputPrecio"
+                   placeholder="0.00" min="0" step="0.01" oninput="actualizarMargenPreview()" />
           </div>
-
-          <!-- Preview margen -->
           <div class="form-group full" id="margenPreviewWrap" style="display:none">
             <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;color:var(--text-secondary)">
               Margen calculado: <strong id="margenPreview" style="color:var(--text-primary)">—</strong>
             </div>
           </div>
-
         </div>
-        <!-- /form-grid costos -->
 
-        <!-- SECCIÓN: Inventario (solo productos) -->
+        <!-- INVENTARIO (solo en creación/duplicación) -->
         <div id="stockSection">
           <div class="form-section-title">Inventario</div>
-
           <div class="form-grid">
-
             <div class="form-group">
-              <label class="form-label" for="inputStockActual">Stock actual</label>
-              <input
-                type="number"
-                class="form-input"
-                id="inputStockActual"
-                placeholder="0"
-                min="0"
-                step="0.01"
-              />
+              <label class="form-label" for="inputStockActual">Stock inicial</label>
+              <input type="number" class="form-input" id="inputStockActual"
+                     placeholder="0" min="0" step="0.01" />
             </div>
-
             <div class="form-group">
               <label class="form-label" for="inputStockMinimo">Stock mínimo</label>
-              <input
-                type="number"
-                class="form-input"
-                id="inputStockMinimo"
-                placeholder="0"
-                min="0"
-                step="0.01"
-              />
-              <span class="form-hint">Alerta cuando el stock llegue a este nivel</span>
+              <input type="number" class="form-input" id="inputStockMinimo"
+                     placeholder="0" min="0" step="0.01" />
+              <span class="form-hint">Alerta cuando llegue a este nivel</span>
             </div>
-
           </div>
         </div>
-        <!-- /stockSection -->
 
-        <!-- SECCIÓN: Estado -->
+        <!-- Aviso modo edición: stock bloqueado -->
+        <div class="edit-lock-notice" id="avisoStockBloqueado">
+          🔒 El stock solo se puede ajustar desde <strong>Movimientos especiales</strong> (botón 📉 en la tabla).
+          Aquí solo puedes cambiar el stock mínimo de alerta.
+          <div class="form-grid" style="margin-top:12px">
+            <div class="form-group">
+              <label class="form-label" for="inputStockMinimo">Stock mínimo</label>
+              <input type="number" class="form-input" id="inputStockMinimoEdit"
+                     placeholder="0" min="0" step="0.01" />
+              <span class="form-hint">Alerta cuando llegue a este nivel</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ESTADO -->
         <div class="form-section-title">Estado</div>
-
         <div class="form-grid">
           <div class="form-group">
             <label class="form-label" for="inputActivo">Estado del registro</label>
@@ -489,16 +450,12 @@
 
       </form>
     </div>
-    <!-- /modal-body -->
-
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="cerrarModalProducto()">Cancelar</button>
       <button class="btn btn-primary" id="btnGuardarProducto">Crear</button>
     </div>
-
   </div>
 </div>
-<!-- /MODAL PRODUCTO -->
 
 
 <!-- ============================================================
@@ -506,52 +463,130 @@
      ============================================================ -->
 <div class="modal-overlay" id="modalDetalle" role="dialog" aria-modal="true">
   <div class="modal modal-lg">
-
     <div class="modal-header">
       <h2 class="modal-title">Detalle del registro</h2>
       <button class="modal-close" onclick="cerrarDetalle()" aria-label="Cerrar">✕</button>
     </div>
-
-    <div class="modal-body" id="detalleContent">
-      <!-- Se llena dinámicamente -->
-    </div>
-
+    <div class="modal-body" id="detalleContent"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="cerrarDetalle()">Cerrar</button>
       <button class="btn btn-primary" id="btnEditarDesdeDetalle">✏️ Editar</button>
     </div>
-
   </div>
 </div>
-<!-- /MODAL DETALLE -->
 
 
 <!-- ============================================================
-     MODAL: CONFIRMAR ELIMINACIÓN
+     MODAL: MOVIMIENTOS ESPECIALES (merma)
      ============================================================ -->
-<div class="modal-overlay" id="modalConfirmar" role="dialog" aria-modal="true">
-  <div class="modal modal-sm">
+<div class="modal-overlay" id="modalMovimiento" role="dialog" aria-modal="true">
+  <div class="modal modal-lg">
 
-    <div class="modal-body" style="padding:32px 24px">
-      <div class="confirm-icon">🗑️</div>
-      <div class="confirm-text">
-        <h3>¿Eliminar este producto?</h3>
-        <p>
-          Estás a punto de eliminar
-          <span class="confirm-name" id="confirmNombre"></span>.
-          Esta acción no se puede deshacer.
-        </p>
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">📉 Movimiento especial</h2>
+        <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">
+          Descuento de stock por causa justificada
+        </div>
       </div>
+      <button class="modal-close" onclick="cerrarMovimiento()" aria-label="Cerrar">✕</button>
     </div>
 
+    <div class="modal-body">
+
+      <!-- Info producto -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:4px">Producto</div>
+          <div style="font-size:16px;font-weight:700" id="movProductoNombre">—</div>
+        </div>
+        <span class="mov-stock-chip" id="movStockActual">Stock actual: —</span>
+      </div>
+
+      <!-- Razón del movimiento -->
+      <div class="form-section-title" style="margin-top:0">Razón del descuento</div>
+      <input type="hidden" id="movRazonSeleccionada" value="" />
+      <div class="razones-grid">
+
+        <div class="razon-card" onclick="seleccionarRazon(this,'robo')">
+          <div class="razon-icon">🔓</div>
+          <div class="razon-label">Robo</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'dano')">
+          <div class="razon-icon">💥</div>
+          <div class="razon-label">Daño</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'vencimiento')">
+          <div class="razon-icon">🗓️</div>
+          <div class="razon-label">Vencimiento</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'uso_interno')">
+          <div class="razon-icon">🏭</div>
+          <div class="razon-label">Uso interno</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'conteo_fisico')">
+          <div class="razon-icon">🔢</div>
+          <div class="razon-label">Conteo físico</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'error_anterior')">
+          <div class="razon-icon">↩️</div>
+          <div class="razon-label">Error anterior</div>
+        </div>
+
+      </div>
+
+      <!-- Cantidad -->
+      <div class="form-section-title">Cantidad a descontar</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label" for="movCantidad">Unidades <span style="color:var(--danger)">*</span></label>
+          <input type="number" class="form-input" id="movCantidad"
+                 placeholder="0" min="0.01" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="movNota">Nota / observación <span style="color:var(--text-muted);font-weight:400;font-size:11px">(opcional)</span></label>
+          <input type="text" class="form-input" id="movNota"
+                 placeholder="Ej: encontrado en bodega dañado..." maxlength="300" />
+        </div>
+      </div>
+
+      <!-- Descuento de caja -->
+      <div class="form-section-title">Impacto financiero</div>
+      <div class="mov-caja-row" id="movCajaRow" style="display:none">
+        <div style="flex:1">
+          <label for="movDescontarCaja">
+            <input type="checkbox" id="movDescontarCaja" />
+            Registrar el costo como gasto de caja
+          </label>
+          <div class="mov-caja-desc">
+            Esto creará un gasto automático en el módulo de Gastos por el valor de costo del producto perdido.
+          </div>
+          <div class="mov-caja-preview" id="movCajaPreview"></div>
+        </div>
+      </div>
+      <div id="movCajaRowInfo" style="display:none">
+        <!-- Para conteo físico y error anterior -->
+        <div style="background:var(--bg-app);border-radius:var(--radius-md);border:1px solid var(--border);padding:10px 14px;font-size:12.5px;color:var(--text-muted)">
+          ℹ️ Para esta razón no se registra impacto en caja — es solo un ajuste de inventario.
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div class="mov-error" id="movError" style="margin-top:12px"></div>
+
+    </div><!-- /modal-body -->
+
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="cerrarConfirmar()">Cancelar</button>
-      <button class="btn btn-danger" id="btnConfirmarEliminar">Sí, eliminar</button>
+      <button class="btn btn-ghost" onclick="cerrarMovimiento()">Cancelar</button>
+      <button class="btn" id="btnConfirmarMovimiento"
+              style="background:var(--warning);color:white;"
+              onclick="confirmarMovimiento()">
+        📉 Confirmar descuento
+      </button>
     </div>
 
   </div>
 </div>
-<!-- /MODAL CONFIRMAR -->
 
 
 <!-- ============================================================
@@ -565,27 +600,34 @@
      ============================================================ -->
 <script src="productos.js"></script>
 
-<!-- Preview margen en modal (inline helper) -->
+<!-- Preview margen en modal (helper inline) -->
 <script>
 function actualizarMargenPreview() {
   const precio = parseFloat(document.getElementById('inputPrecio')?.value);
   const costo  = parseFloat(document.getElementById('inputCosto')?.value);
   const wrap   = document.getElementById('margenPreviewWrap');
   const el     = document.getElementById('margenPreview');
-
   if (!wrap || !el) return;
-
-  if (!precio || precio === 0) {
-    wrap.style.display = 'none';
-    return;
-  }
-
+  if (!precio || precio === 0) { wrap.style.display = 'none'; return; }
   wrap.style.display = '';
-  const m = ((precio - (costo || 0)) / precio) * 100;
+  const m     = ((precio - (costo || 0)) / precio) * 100;
   const color = m >= 40 ? 'var(--success)' : m >= 20 ? 'var(--warning)' : 'var(--danger)';
-  el.style.color = color;
-  el.textContent = m.toFixed(2) + '%';
+  el.style.color  = color;
+  el.textContent  = m.toFixed(2) + '%';
 }
+
+// Sincronizar stock mínimo entre los dos inputs del modal
+// (hay uno visible en crear y otro en editar)
+document.addEventListener('DOMContentLoaded', () => {
+  ['inputStockMinimo', 'inputStockMinimoEdit'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      const val = el.value;
+      const otro = document.getElementById(id === 'inputStockMinimo' ? 'inputStockMinimoEdit' : 'inputStockMinimo');
+      if (otro) otro.value = val;
+    });
+  });
+});
 </script>
 
 </body>
