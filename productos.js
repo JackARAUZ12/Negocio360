@@ -345,12 +345,14 @@ function actualizarStats() {
     const iconEl     = cardStockBajo.querySelector('.stat-card-icon');
     const subEl      = cardStockBajo.querySelector('.stat-card-sub');
     const valueEl    = cardStockBajo.querySelector('.stat-card-value');
+    const labelEl    = cardStockBajo.querySelector('.stat-card-label');
 
     if (stockBajoList.length > 0) {
       // HAY stock bajo → apariencia de alerta roja
       cardStockBajo.style.opacity        = '1';
       cardStockBajo.style.setProperty('--stat-accent',   'var(--danger)');
       cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--danger-light)');
+      if (labelEl) labelEl.textContent   = 'Stock bajo';
       if (iconEl)  iconEl.textContent    = '⚠️';
       if (subEl)   subEl.textContent     = 'Requieren atención';
       if (valueEl) valueEl.style.color   = 'var(--danger)';
@@ -359,6 +361,7 @@ function actualizarStats() {
       cardStockBajo.style.opacity        = '1';
       cardStockBajo.style.setProperty('--stat-accent',   'var(--success)');
       cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--success-light)');
+      if (labelEl) labelEl.textContent   = 'Inventario OK';
       if (iconEl)  iconEl.textContent    = '✅';
       if (subEl)   subEl.textContent     = 'Todo en orden';
       if (valueEl) valueEl.style.color   = 'var(--success)';
