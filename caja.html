@@ -969,10 +969,6 @@
           <p>Centro financiero del negocio. Todos los movimientos de dinero en un lugar.</p>
         </div>
         <div class="greeting-actions">
-          <button class="btn-secondary" onclick="openEditCapital()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Editar capital
-          </button>
           <button class="btn-primary" onclick="openNuevoMovimiento()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo movimiento
@@ -1223,32 +1219,6 @@
     </div>
   </div>
 </div>
-
-<!-- ===================================================
-     MODAL: EDITAR CAPITAL
-=================================================== -->
-<div class="modal-overlay" id="modal-capital" onclick="if(event.target===this)closeModal('modal-capital')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <span class="modal-title">Editar capital inicial</span>
-      <button class="modal-close" onclick="closeModal('modal-capital')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>Capital</label>
-        <input type="number" id="capital-monto-edit" placeholder="0.00" min="0" step="0.01"/>
-        <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Actualizar el capital no anula los movimientos existentes.</p>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-capital')">Cancelar</button>
-      <button class="btn-primary" id="btn-save-capital" onclick="saveCapital()">Guardar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ===================================================
      MODAL: NUEVO MOVIMIENTO
 =================================================== -->
