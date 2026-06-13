@@ -1216,6 +1216,13 @@ function actualizarFecha() {
 
 // ============================================================
 // INIT PRINCIPAL
+// FIX: cargar moneda/empresa ANTES de cargar productos.
+//      Antes ambas corrían en Promise.all (en paralelo), lo que
+//      generaba una condición de carrera: si cargarProductos()
+//      terminaba primero, actualizarStats() -> fmtMoney() usaba
+//      el símbolo por defecto ('$' / USD) en vez de la moneda
+//      configurada (ej. 'C$' / NIO), provocando el bug aleatorio
+//      al recargar la página.
 // ============================================================
 async function init() {
   initSupabase();
@@ -1227,10 +1234,11 @@ async function init() {
   const autenticado = await checkAuth();
   if (!autenticado) return;
 
-  await Promise.all([
-    cargarDatosEmpresa(),
-    cargarProductos(),
-  ]);
+  // 1) Primero la moneda/configuración de empresa (asigna MONEDA_SIMBOLO)
+  await cargarDatosEmpresa();
+
+  // 2) Luego los productos, que ya usarán MONEDA_SIMBOLO correcta
+  await cargarProductos();
 
   initNotificaciones();
 }
