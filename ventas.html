@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ventas — Negocio360</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =====================================================
+       CSS VARIABLES — idénticas a dashboard / caja
+    ===================================================== */
+    :root {
+      --bg-base:#f5f5f7;--bg-surface:#ffffff;--bg-surface-2:#fafafa;
+      --bg-sidebar:#ffffff;--bg-header:rgba(255,255,255,0.85);
+      --bg-hover:#f0f0f5;--bg-active:#eff0ff;
+      --text-primary:#0d0d14;--text-secondary:#60607a;
+      --text-muted:#9999b3;--text-accent:#5a5af4;
+      --border:#e8e8ef;--border-focus:#5a5af4;
+      --accent:#5a5af4;--accent-soft:#eff0ff;
+      --accent-2:#22c55e;--accent-2-soft:#f0fdf4;
+      --accent-3:#f97316;--accent-3-soft:#fff7ed;
+      --accent-4:#8b5cf6;--accent-4-soft:#f5f3ff;
+      --accent-5:#06b6d4;--accent-5-soft:#ecfeff;
+      --danger:#ef4444;--danger-soft:#fef2f2;
+      --warning:#f59e0b;--warning-soft:#fffbeb;
+      --success:#22c55e;--success-soft:#f0fdf4;
+      --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
+      --shadow-lg:0 12px 32px rgba(0,0,0,.1),0 4px 8px rgba(0,0,0,.05);
+      --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px;
+      --sidebar-w:240px;--header-h:64px;
+      --font-main:'Plus Jakarta Sans',sans-serif;
+      --font-mono:'JetBrains Mono',monospace;
+      --transition:0.2s cubic-bezier(0.4,0,0.2,1);
+    }
+    [data-theme="dark"] {
+      --bg-base:#0c0c14;--bg-surface:#13131f;--bg-surface-2:#1a1a2a;
+      --bg-sidebar:#13131f;--bg-header:rgba(19,19,31,.9);
+      --bg-hover:#1e1e30;--bg-active:#1e1e40;
+      --text-primary:#f0f0fa;--text-secondary:#9090b0;
+      --text-muted:#5a5a7a;--text-accent:#7b7bff;
+      --border:#1e1e30;--border-focus:#7b7bff;
+      --accent:#7b7bff;--accent-soft:#1e1e40;
+      --accent-2:#22c55e;--accent-2-soft:#0f2a1a;
+      --accent-3:#f97316;--accent-3-soft:#2a1a0a;
+      --accent-4:#a78bfa;--accent-4-soft:#1e1530;
+      --accent-5:#22d3ee;--accent-5-soft:#0a1e25;
+      --danger:#f87171;--danger-soft:#2a0f0f;
+      --warning:#fbbf24;--warning-soft:#2a200a;
+      --success:#4ade80;--success-soft:#0f2a1a;
+      --shadow-sm:0 1px 3px rgba(0,0,0,.3);
+      --shadow-md:0 4px 12px rgba(0,0,0,.4);
+      --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+    }
+
+    /* =====================================================
+       RESET
+    ===================================================== */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:var(--font-main);background:var(--bg-base);color:var(--text-primary);
+      font-size:14px;line-height:1.5;transition:background var(--transition),color var(--transition);overflow-x:hidden}
+    a{text-decoration:none;color:inherit}
+    button{cursor:pointer;border:none;background:none;font-family:inherit}
+    ul,ol{list-style:none}
+    input,select,textarea{font-family:var(--font-main);font-size:13.5px;color:var(--text-primary);
+      background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+      padding:9px 12px;width:100%;transition:border-color var(--transition),box-shadow var(--transition);outline:none}
+    input:focus,select:focus,textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-soft)}
+    select{appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+    label{font-size:12.5px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:5px}
+    textarea{resize:vertical;min-height:72px}
+
+    /* =====================================================
+       LAYOUT
+    ===================================================== */
+    #app{display:flex;min-height:100vh}
+
+    /* SIDEBAR */
+    #sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg-sidebar);
+      border-right:1px solid var(--border);display:flex;flex-direction:column;
+      position:fixed;top:0;left:0;z-index:100;
+      transition:width var(--transition),transform var(--transition),background var(--transition);overflow:hidden}
+    #sidebar.collapsed{width:64px}
+    .sidebar-logo{display:flex;align-items:center;gap:10px;padding:18px 20px;
+      border-bottom:1px solid var(--border);min-height:var(--header-h)}
+    .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .logo-icon svg{color:#fff}
+    .logo-text{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap;transition:opacity var(--transition)}
+    #sidebar.collapsed .logo-text,#sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,#sidebar.collapsed .sidebar-upgrade,
+    #sidebar.collapsed .nav-badge{opacity:0;pointer-events:none;width:0;overflow:hidden}
+    .sidebar-nav{flex:1;padding:12px;overflow-y:auto;overflow-x:hidden}
+    .nav-section-title{font-size:10px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.1em;color:var(--text-muted);padding:12px 8px 6px;white-space:nowrap;transition:opacity var(--transition)}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;
+      border-radius:var(--radius-sm);color:var(--text-secondary);transition:all var(--transition);
+      cursor:pointer;white-space:nowrap;margin-bottom:2px}
+    .nav-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+    .nav-item svg{flex-shrink:0;width:18px;height:18px}
+    .nav-label{font-size:13.5px;font-weight:500;white-space:nowrap}
+    .sidebar-upgrade{margin:12px;padding:16px;
+      background:linear-gradient(135deg,var(--accent-soft) 0%,var(--accent-4-soft) 100%);
+      border:1px solid var(--border);border-radius:var(--radius-md)}
+    .upgrade-icon{font-size:20px;margin-bottom:6px}
+    .upgrade-title{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:4px}
+    .upgrade-desc{font-size:11.5px;color:var(--text-secondary);margin-bottom:10px;line-height:1.4}
+    .upgrade-btn{width:100%;background:var(--accent);color:#fff;padding:8px;border-radius:6px;
+      font-size:12px;font-weight:600;transition:opacity var(--transition)}
+    .upgrade-btn:hover{opacity:.85}
+
+    /* MAIN */
+    #main{flex:1;margin-left:var(--sidebar-w);transition:margin-left var(--transition);
+      min-height:100vh;display:flex;flex-direction:column}
+    #main.sidebar-collapsed{margin-left:64px}
+
+    /* HEADER */
+    #header{height:var(--header-h);background:var(--bg-header);backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--border);display:flex;align-items:center;
+      padding:0 24px;gap:12px;position:sticky;top:0;z-index:50}
+    .header-toggle{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition)}
+    .header-toggle:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .header-title{font-size:16px;font-weight:700;color:var(--text-primary)}
+    .header-spacer{flex:1}
+    .plan-badge{display:flex;align-items:center;gap:6px;padding:6px 14px;
+      background:var(--accent-soft);border:1px solid var(--border);
+      border-radius:100px;font-size:12px;font-weight:600;color:var(--accent)}
+    .theme-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition)}
+    .theme-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .user-menu{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;
+      border:1px solid var(--border);border-radius:100px;cursor:pointer;transition:all var(--transition)}
+    .user-menu:hover{background:var(--bg-hover)}
+    .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);
+      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+    .user-info{display:flex;flex-direction:column}
+    .user-name{font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.2}
+    .user-biz{font-size:11px;color:var(--text-muted);line-height:1.2}
+
+    /* PAGE CONTENT */
+    #content{flex:1;padding:28px 28px 60px;max-width:1440px;width:100%}
+
+    /* GREETING */
+    .greeting-row{display:flex;align-items:flex-start;justify-content:space-between;
+      margin-bottom:28px;flex-wrap:wrap;gap:12px}
+    .greeting-text h1{font-size:22px;font-weight:800;color:var(--text-primary);margin-bottom:3px}
+    .greeting-text p{font-size:13.5px;color:var(--text-secondary)}
+    .greeting-actions{display:flex;align-items:center;gap:10px}
+
+    /* KPI CARDS */
+    .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
+    .kpi-card{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-lg);padding:18px 20px;display:flex;align-items:flex-start;
+      gap:14px;box-shadow:var(--shadow-sm);transition:all var(--transition)}
+    .kpi-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+    .kpi-icon{width:44px;height:44px;border-radius:var(--radius-sm);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .kpi-body{flex:1;min-width:0}
+    .kpi-label{font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .kpi-value{font-size:20px;font-weight:800;color:var(--text-primary);line-height:1.1;
+      margin-bottom:5px;font-variant-numeric:tabular-nums}
+    .kpi-delta{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:3px}
+    .kpi-delta.positive{color:var(--success)}
+    .kpi-delta.negative{color:var(--danger)}
+    .kpi-delta.neutral{color:var(--text-muted)}
+    .currency-symbol{font-size:.75em;font-weight:600;opacity:.8;vertical-align:super}
+
+    /* PANEL CARD */
+    .panel-card{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:24px}
+    .panel-header{display:flex;align-items:center;justify-content:space-between;
+      padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+    .panel-title{font-size:15px;font-weight:700;color:var(--text-primary);
+      display:flex;align-items:center;gap:8px}
+    .panel-title svg{width:16px;height:16px;color:var(--accent)}
+    .panel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+    /* BUTTONS */
+    .btn-primary{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
+      background:var(--accent);color:#fff;border-radius:var(--radius-sm);
+      font-size:13.5px;font-weight:600;transition:opacity var(--transition),transform var(--transition)}
+    .btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+    .btn-primary svg{width:15px;height:15px}
+    .btn-secondary{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+      background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-secondary);
+      border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:all var(--transition)}
+    .btn-secondary:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+    .btn-ghost{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;
+      color:var(--text-secondary);border-radius:var(--radius-sm);font-size:12.5px;font-weight:600;
+      transition:all var(--transition)}
+    .btn-ghost:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .btn-danger-outline{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+      background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);
+      border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:all var(--transition)}
+    .btn-danger-outline:hover{background:var(--danger);color:#fff}
+
+    /* FILTROS */
+    .filtros-row{display:flex;align-items:center;gap:8px;padding:14px 20px;
+      border-bottom:1px solid var(--border);flex-wrap:wrap}
+    .filter-btn{padding:6px 12px;border:1px solid var(--border);border-radius:6px;
+      font-size:12.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-surface-2);
+      transition:all var(--transition);cursor:pointer}
+    .filter-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .search-wrap{display:flex;align-items:center;gap:0;border:1px solid var(--border);
+      border-radius:var(--radius-sm);background:var(--bg-surface);overflow:hidden;
+      transition:border-color var(--transition);flex:1;max-width:280px}
+    .search-wrap:focus-within{border-color:var(--border-focus)}
+    .search-wrap svg{flex-shrink:0;margin-left:10px;color:var(--text-muted);width:14px;height:14px}
+    .search-wrap input{border:none;box-shadow:none;padding:8px 10px;background:transparent}
+    .search-wrap input:focus{box-shadow:none;border-color:transparent}
+
+    /* CUSTOM DATE RANGE */
+    #custom-dates{display:none;align-items:center;gap:6px}
+    #custom-dates input{width:auto;padding:6px 8px;font-size:12.5px}
+
+    /* TABLA */
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse}
+    thead th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border);
+      text-align:left;white-space:nowrap;background:var(--bg-surface-2)}
+    tbody td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);
+      vertical-align:middle;color:var(--text-primary)}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover{background:var(--bg-hover)}
+    tbody tr.venta-anulada{opacity:.45}
+
+    .td-num{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)}
+    .td-fecha{white-space:nowrap;color:var(--text-secondary);font-size:12.5px}
+    .td-cliente{font-weight:500}
+    .td-cliente-sub{font-size:11.5px;color:var(--text-muted)}
+    .td-metodo{color:var(--text-secondary);font-size:12.5px;white-space:nowrap}
+    .td-productos{font-size:12.5px;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .td-total{font-family:var(--font-mono);font-size:13.5px;font-weight:700;color:var(--text-primary);white-space:nowrap}
+    .td-ganancia{font-family:var(--font-mono);font-size:12.5px;font-weight:600;color:var(--success);white-space:nowrap}
+    .td-actions{white-space:nowrap}
+
+    /* ESTADO BADGE */
+    .estado-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+      border-radius:5px;font-size:11px;font-weight:700}
+    .estado-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+    .estado-completada{background:var(--success-soft);color:var(--success)}
+    .estado-anulada{background:var(--bg-hover);color:var(--text-muted)}
+    .estado-devuelta{background:var(--warning-soft);color:var(--warning)}
+
+    /* ICON BTNS */
+    .btn-icon-sm{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+      border-radius:6px;color:var(--text-muted);transition:all var(--transition);cursor:pointer}
+    .btn-icon-sm:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .btn-icon-sm.del:hover{background:var(--danger-soft);color:var(--danger)}
+
+    /* PAGINACIÓN */
+    .paginacion-row{display:flex;align-items:center;justify-content:space-between;
+      padding:12px 20px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px}
+    .pag-btns{display:flex;gap:6px}
+    .pag-btns button{padding:6px 12px;border:1px solid var(--border);border-radius:6px;
+      font-size:12.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-surface);
+      cursor:pointer;transition:all var(--transition)}
+    .pag-btns button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+    .pag-btns button:disabled{opacity:.4;cursor:not-allowed}
+
+    /* EMPTY STATE */
+    .empty-cell{text-align:center;padding:40px;color:var(--text-muted);font-size:13px}
+    .empty-icon{font-size:36px;opacity:.35;margin-bottom:8px}
+
+    /* =====================================================
+       MODAL BASE
+    ===================================================== */
+    .modal-overlay{display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,.45);backdrop-filter:blur(4px);
+      z-index:500;align-items:flex-start;justify-content:center;
+      padding:20px;overflow-y:auto}
+    .modal-overlay.modal-open{display:flex}
+    .modal-box{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);
+      width:100%;max-width:860px;margin:auto;
+      animation:modalIn .22s cubic-bezier(.34,1.56,.64,1) forwards}
+    .modal-box.modal-sm{max-width:440px}
+    .modal-box.modal-md{max-width:580px}
+    @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;
+      padding:20px 24px 16px;border-bottom:1px solid var(--border)}
+    .modal-title{font-size:17px;font-weight:700;color:var(--text-primary)}
+    .modal-subtitle{font-size:12.5px;color:var(--text-muted);margin-top:2px}
+    .modal-close{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+      border-radius:7px;color:var(--text-muted);transition:all var(--transition);cursor:pointer}
+    .modal-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .modal-body{padding:20px 24px}
+    .modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;
+      padding:14px 24px 20px;border-top:1px solid var(--border)}
+
+    /* =====================================================
+       MODAL NUEVA VENTA — PASOS
+    ===================================================== */
+    .steps-nav{display:flex;gap:0;margin-bottom:24px;border:1px solid var(--border);
+      border-radius:var(--radius-md);overflow:hidden}
+    .step-btn{flex:1;padding:10px 4px;font-size:12px;font-weight:600;
+      color:var(--text-muted);background:var(--bg-surface-2);
+      border-right:1px solid var(--border);cursor:default;
+      transition:all var(--transition);text-align:center;line-height:1.3}
+    .step-btn:last-child{border-right:none}
+    .step-btn.done{color:var(--success);background:var(--success-soft)}
+    .step-btn.active{color:var(--accent);background:var(--accent-soft);font-weight:700}
+
+    /* PASO CLIENTE */
+    .cliente-opciones{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+    .cliente-opcion{padding:14px;border:1.5px solid var(--border);border-radius:var(--radius-md);
+      cursor:pointer;text-align:center;transition:all var(--transition)}
+    .cliente-opcion:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .cliente-opcion.selected{border-color:var(--accent);background:var(--accent-soft)}
+    .co-icon{font-size:24px;margin-bottom:6px}
+    .co-label{font-size:13px;font-weight:700;color:var(--text-primary)}
+    .co-desc{font-size:11.5px;color:var(--text-muted)}
+
+    /* BUSCADOR DE PRODUCTOS */
+    .prod-search-wrap{position:relative;margin-bottom:12px}
+    .prod-search-results{position:absolute;top:calc(100% + 4px);left:0;right:0;
+      background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-md);box-shadow:var(--shadow-lg);
+      max-height:260px;overflow-y:auto;z-index:50;display:none}
+    .prod-search-results.open{display:block}
+    .prod-result-item{display:flex;align-items:center;gap:12px;padding:10px 14px;
+      cursor:pointer;transition:background var(--transition);border-bottom:1px solid var(--border)}
+    .prod-result-item:last-child{border-bottom:none}
+    .prod-result-item:hover{background:var(--bg-hover)}
+    .pri-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+    .pri-sku{font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
+    .pri-precio{font-size:13px;font-weight:700;color:var(--accent);white-space:nowrap}
+    .pri-stock{font-size:11.5px;padding:2px 7px;border-radius:4px;font-weight:600;white-space:nowrap}
+    .stock-ok{background:var(--success-soft);color:var(--success)}
+    .stock-low{background:var(--warning-soft);color:var(--warning)}
+    .stock-out{background:var(--danger-soft);color:var(--danger)}
+
+    /* CARRITO */
+    .carrito-tabla{width:100%;border-collapse:collapse;font-size:13px}
+    .carrito-tabla th{padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:left}
+    .carrito-tabla td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+    .carrito-tabla tr:last-child td{border-bottom:none}
+    .cart-qty-input{width:70px;padding:5px 8px;font-size:13px;text-align:center}
+    .cart-desc-input{width:90px;padding:5px 8px;font-size:13px;text-align:center}
+    .cart-remove{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+      border-radius:5px;color:var(--danger);transition:all var(--transition);cursor:pointer}
+    .cart-remove:hover{background:var(--danger-soft)}
+    .tipo-item-badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:4px}
+    .badge-prod{background:var(--accent-5-soft);color:var(--accent-5)}
+    .badge-serv{background:var(--accent-4-soft);color:var(--accent-4)}
+
+    /* RESUMEN VENTA */
+    .resumen-row{display:flex;justify-content:space-between;align-items:center;
+      padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+    .resumen-row:last-child{border-bottom:none}
+    .resumen-row.total-row{border-top:2px solid var(--border);padding-top:14px;margin-top:4px}
+    .resumen-row .label{color:var(--text-secondary)}
+    .resumen-row .value{font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums}
+    .resumen-row.total-row .value{font-size:18px;color:var(--accent)}
+    .resumen-row .ganancia-val{color:var(--success)}
+
+    /* METODOS DE PAGO CARDS */
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+    .metodo-card{padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);
+      cursor:pointer;transition:all var(--transition);display:flex;align-items:center;gap:10px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card.selected{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:20px}
+    .metodo-card .mc-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+
+    /* FORM GRID */
+    .form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .form-group{margin-bottom:14px}
+    .form-group:last-child{margin-bottom:0}
+    .full-col{grid-column:1/-1}
+
+    /* TOAST */
+    .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;
+      border-radius:var(--radius-md);font-size:13.5px;font-weight:600;
+      box-shadow:var(--shadow-lg);z-index:1000;max-width:360px;
+      opacity:0;transform:translateY(12px);transition:all .3s cubic-bezier(.34,1.56,.64,1);
+      pointer-events:none;display:flex;align-items:center;gap:10px}
+    .toast.show{opacity:1;transform:translateY(0)}
+    .toast-success{background:var(--success);color:#fff}
+    .toast-error{background:var(--danger);color:#fff}
+    .toast-info{background:var(--accent);color:#fff}
+    .toast-warning{background:var(--warning);color:#fff}
+
+    /* LOADER */
+    #loader{position:fixed;inset:0;background:var(--bg-base);z-index:1000;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;
+      gap:16px;transition:opacity .4s}
+    #loader.hidden{opacity:0;pointer-events:none}
+    .loader-logo{width:48px;height:48px;background:var(--accent);border-radius:12px;
+      display:flex;align-items:center;justify-content:center}
+    .loader-spinner{width:24px;height:24px;border:3px solid var(--border);
+      border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+
+    /* TOOLTIP */
+    [data-tooltip]{position:relative}
+    [data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:50%;
+      bottom:calc(100% + 6px);transform:translateX(-50%);background:var(--text-primary);
+      color:var(--bg-surface);font-size:11px;padding:4px 8px;border-radius:5px;
+      white-space:nowrap;pointer-events:none;opacity:0;transition:opacity var(--transition);z-index:200}
+    [data-tooltip]:hover::after{opacity:1}
+
+    /* ANIMATE */
+    .fade-in{animation:fadeIn .4s ease forwards}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .stagger-1{animation-delay:.05s}.stagger-2{animation-delay:.1s}
+    .stagger-3{animation-delay:.15s}.stagger-4{animation-delay:.2s}.stagger-5{animation-delay:.25s}
+
+    /* RESPONSIVE */
+    @media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:768px){
+      #sidebar{transform:translateX(-100%)}
+      #sidebar.mobile-open{transform:translateX(0)}
+      #main{margin-left:0!important}
+      .kpi-grid{grid-template-columns:repeat(2,1fr)}
+      #content{padding:16px 16px 40px}
+      .form-grid-2{grid-template-columns:1fr}
+      .cliente-opciones{grid-template-columns:1fr}
+      .steps-nav{flex-wrap:wrap}
+      .step-btn{flex:none;min-width:calc(33.33% - 1px)}
+    }
+    @media(max-width:480px){.kpi-grid{grid-template-columns:1fr}}
+
+    /* DETALLE MODAL */
+    .detalle-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .detalle-item{display:flex;flex-direction:column;gap:3px}
+    .detalle-item.full{grid-column:1/-1}
+    .detalle-label{font-size:11px;font-weight:700;color:var(--text-muted);
+      text-transform:uppercase;letter-spacing:.06em}
+    .detalle-value{font-size:14px;color:var(--text-primary);font-weight:500}
+    .detalle-divider{grid-column:1/-1;height:1px;background:var(--border);margin:4px 0}
+
+    /* MINI TABLE EN DETALLE */
+    .detalle-items-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+    .detalle-items-table th{padding:7px 10px;background:var(--bg-surface-2);
+      font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+      color:var(--text-muted);border-bottom:1px solid var(--border)}
+    .detalle-items-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text-primary)}
+    .detalle-items-table tr:last-child td{border-bottom:none}
+
+    /* LOADING INLINE */
+    .loading-row td{text-align:center;padding:32px;color:var(--text-muted)}
+
+    /* CONFIRM MODAL */
+    .confirm-icon{width:52px;height:52px;border-radius:50%;background:var(--danger-soft);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+
+    /* PILLS DE TABS */
+    .section-tabs{display:flex;gap:4px;background:var(--bg-surface);
+      border:1px solid var(--border);border-radius:var(--radius-md);
+      padding:4px;width:fit-content;margin-bottom:24px;flex-wrap:wrap}
+    .section-tab{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;
+      color:var(--text-secondary);cursor:pointer;transition:all var(--transition)}
+    .section-tab:hover{color:var(--text-primary);background:var(--bg-hover)}
+    .section-tab.active{background:var(--accent);color:#fff}
+  </style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+    </svg>
+  </div>
+  <div class="loader-spinner"></div>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Ventas…</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <span class="logo-text" id="sidebar-logo-text">Negocio360</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">PRINCIPAL</div>
+      <div class="nav-item" onclick="navigate('dashboard.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </div>
+      <div class="nav-item active" onclick="navigate('ventas.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Ventas</span>
+      </div>
+      <div class="nav-item" onclick="navigate('clientes.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Clientes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('productos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span class="nav-label">Productos / Servicios</span>
+      </div>
+      <div class="nav-item" onclick="navigate('inventario.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7h20l-6-4z"/></svg>
+        <span class="nav-label">Inventario</span>
+      </div>
+      <div class="nav-item" onclick="navigate('compras.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-label">Compras</span>
+      </div>
+      <div class="nav-item" onclick="navigate('gastos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="nav-label">Gastos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('caja.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span class="nav-label">Caja / Pagos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('reportes.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-label">Reportes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('configuracion.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nav-label">Configuración</span>
+      </div>
+      <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
+      <div class="nav-item" onclick="abrirNuevaVenta()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Nueva venta</span>
+      </div>
+      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')"
+        style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nav-label">⚙️ Panel Admin</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-upgrade" id="upgrade-box">
+      <div class="upgrade-icon">👑</div>
+      <div class="upgrade-title">Actualiza tu plan</div>
+      <div class="upgrade-desc">Obtén más funciones y haz crecer tu negocio.</div>
+      <button class="upgrade-btn" onclick="navigate('planes.html')">Ver planes</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- HEADER -->
+    <header id="header">
+      <button class="header-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="header-title">Ventas</span>
+      <div class="header-spacer"></div>
+      <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
+      <div class="plan-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span id="plan-text">Plan</span>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
+        <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="user-menu" onclick="navigate('perfil.html')">
+        <div class="user-avatar" id="header-avatar">--</div>
+        <div class="user-info">
+          <span class="user-name" id="header-name">Cargando…</span>
+          <span class="user-biz"  id="header-biz">—</span>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div id="content">
+
+      <!-- GREETING -->
+      <div class="greeting-row fade-in">
+        <div class="greeting-text">
+          <h1>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span id="greeting-text">Ventas</span>
+          </h1>
+          <p>Centro operativo de ventas. Registra, controla y analiza cada transacción.</p>
+        </div>
+        <div class="greeting-actions">
+          <button class="btn-primary" onclick="abrirNuevaVenta()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva Venta
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid">
+        <div class="kpi-card fade-in stagger-1">
+          <div class="kpi-icon" style="background:var(--accent-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ventas del día</div>
+            <div class="kpi-value" id="kpi-dia"><span class="currency-symbol" id="sym-dia">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-dia-d">Sin ventas hoy</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-2">
+          <div class="kpi-icon" style="background:var(--accent-2-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ventas del mes</div>
+            <div class="kpi-value" id="kpi-mes"><span class="currency-symbol" id="sym-mes">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-mes-d">Sin ventas este mes</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-3">
+          <div class="kpi-icon" style="background:var(--accent-3-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Cantidad de ventas</div>
+            <div class="kpi-value" id="kpi-count">0</div>
+            <div class="kpi-delta neutral" id="kpi-count-d">este mes</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-4">
+          <div class="kpi-icon" style="background:var(--accent-4-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ticket promedio</div>
+            <div class="kpi-value" id="kpi-ticket"><span class="currency-symbol" id="sym-ticket">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-ticket-d">promedio por venta</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-5">
+          <div class="kpi-icon" style="background:var(--success-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ganancia estimada</div>
+            <div class="kpi-value" id="kpi-ganancia"><span class="currency-symbol" id="sym-gan">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-ganancia-d">este mes</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORIAL DE VENTAS -->
+      <div class="panel-card fade-in">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Historial de ventas
+          </div>
+          <div class="panel-actions">
+            <span style="font-size:12.5px;color:var(--text-muted)" id="ventas-count-label">0 ventas</span>
+            <button class="btn-secondary" onclick="loadVentas()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Actualizar
+            </button>
+            <button class="btn-primary" onclick="abrirNuevaVenta()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nueva Venta
+            </button>
+          </div>
+        </div>
+
+        <!-- FILTROS -->
+        <div class="filtros-row">
+          <button class="filter-btn" data-f="hoy"    onclick="setFiltro('hoy')">Hoy</button>
+          <button class="filter-btn" data-f="semana" onclick="setFiltro('semana')">Semana</button>
+          <button class="filter-btn active" data-f="mes" onclick="setFiltro('mes')">Mes</button>
+          <button class="filter-btn" data-f="año"    onclick="setFiltro('año')">Año</button>
+          <button class="filter-btn" data-f="custom" onclick="setFiltro('custom')">Personalizado</button>
+          <div id="custom-dates">
+            <input type="date" id="date-from" onchange="S.dateFrom=this.value;loadVentas()" style="width:140px"/>
+            <span style="color:var(--text-muted);font-size:12px">—</span>
+            <input type="date" id="date-to"   onchange="S.dateTo=this.value;loadVentas()"   style="width:140px"/>
+          </div>
+          <div class="search-wrap" style="margin-left:auto">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="ventas-search" placeholder="Buscar cliente, número…" oninput="buscarVentas()"/>
+          </div>
+        </div>
+
+        <!-- TABLA -->
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th># Venta</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Método</th>
+                <th>Productos</th>
+                <th>Total</th>
+                <th>Ganancia</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ventas-tbody">
+              <tr class="loading-row"><td colspan="9">Cargando ventas…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PAGINACIÓN -->
+        <div class="paginacion-row">
+          <span id="pag-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
+          <div class="pag-btns">
+            <button id="btn-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
+            <button id="btn-next" onclick="paginaSiguiente()">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- =====================================================
+     MODAL: NUEVA VENTA (wizard multi-paso)
+===================================================== -->
+<div class="modal-overlay" id="modal-venta" onclick="if(event.target===this)cerrarModalVenta()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="mv-title">Nueva Venta</div>
+        <div class="modal-subtitle" id="mv-num">Generando número…</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalVenta()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+
+      <!-- STEPS NAV -->
+      <div class="steps-nav" id="steps-nav">
+        <div class="step-btn active" data-step="1">1. Cliente</div>
+        <div class="step-btn" data-step="2">2. Productos</div>
+        <div class="step-btn" data-step="3">3. Servicios</div>
+        <div class="step-btn" data-step="4">4. Resumen</div>
+        <div class="step-btn" data-step="5">5. Pago</div>
+        <div class="step-btn" data-step="6">6. Observaciones</div>
+      </div>
+
+      <!-- PASO 1: CLIENTE -->
+      <div id="step-1" class="step-panel">
+        <div class="cliente-opciones">
+          <div class="cliente-opcion" id="co-existente" onclick="selectClienteOpcion('existente')">
+            <div class="co-icon">👤</div>
+            <div class="co-label">Cliente existente</div>
+            <div class="co-desc">Buscar en tu lista</div>
+          </div>
+          <div class="cliente-opcion selected" id="co-final" onclick="selectClienteOpcion('final')">
+            <div class="co-icon">🛒</div>
+            <div class="co-label">Consumidor final</div>
+            <div class="co-desc">Sin registro</div>
+          </div>
+          <div class="cliente-opcion" id="co-nuevo" onclick="selectClienteOpcion('nuevo')">
+            <div class="co-icon">➕</div>
+            <div class="co-label">Cliente rápido</div>
+            <div class="co-desc">Crear al instante</div>
+          </div>
+        </div>
+
+        <!-- Buscador cliente existente -->
+        <div id="bloque-buscar-cliente" style="display:none;position:relative">
+          <label>Buscar cliente</label>
+          <input type="text" id="cliente-search-input" placeholder="Nombre, teléfono o correo…"
+            oninput="buscarClientes(this.value)" autocomplete="off"/>
+          <div id="clientes-results" class="prod-search-results">
+            <!-- resultados dinámicos -->
+          </div>
+          <div id="cliente-seleccionado-info" style="display:none;margin-top:10px;
+            padding:10px 14px;background:var(--accent-soft);border:1px solid var(--accent);
+            border-radius:var(--radius-md);font-size:13px">
+          </div>
+        </div>
+
+        <!-- Formulario cliente rápido -->
+        <div id="bloque-cliente-rapido" style="display:none">
+          <div class="form-grid-2">
+            <div class="form-group full-col">
+              <label>Nombre <span style="color:var(--danger)">*</span></label>
+              <input type="text" id="cq-nombre" placeholder="Nombre del cliente"/>
+            </div>
+            <div class="form-group">
+              <label>Teléfono</label>
+              <input type="text" id="cq-telefono" placeholder="Ej: 8888-8888"/>
+            </div>
+            <div class="form-group">
+              <label>Correo</label>
+              <input type="email" id="cq-correo" placeholder="correo@ejemplo.com"/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 2: PRODUCTOS -->
+      <div id="step-2" class="step-panel" style="display:none">
+        <div class="prod-search-wrap" style="position:relative">
+          <label>Buscar producto</label>
+          <input type="text" id="prod-search-input"
+            placeholder="Nombre o SKU del producto…"
+            oninput="buscarProductosParaVenta(this.value,'producto')" autocomplete="off"/>
+          <div id="prod-results" class="prod-search-results"></div>
+        </div>
+        <div id="carrito-productos-wrap" style="margin-top:16px;overflow-x:auto">
+          <table class="carrito-tabla">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Qty</th>
+                <th>Precio</th>
+                <th>Desc.</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="carrito-productos-tbody">
+              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+                Sin productos agregados
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PASO 3: SERVICIOS -->
+      <div id="step-3" class="step-panel" style="display:none">
+        <div class="prod-search-wrap" style="position:relative">
+          <label>Buscar servicio</label>
+          <input type="text" id="serv-search-input"
+            placeholder="Nombre del servicio…"
+            oninput="buscarProductosParaVenta(this.value,'servicio')" autocomplete="off"/>
+          <div id="serv-results" class="prod-search-results"></div>
+        </div>
+        <div id="carrito-servicios-wrap" style="margin-top:16px;overflow-x:auto">
+          <table class="carrito-tabla">
+            <thead>
+              <tr>
+                <th>Servicio</th>
+                <th>Qty</th>
+                <th>Precio</th>
+                <th>Desc.</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="carrito-servicios-tbody">
+              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+                Sin servicios agregados
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PASO 4: RESUMEN -->
+      <div id="step-4" class="step-panel" style="display:none">
+        <div id="resumen-items-preview" style="margin-bottom:16px;overflow-x:auto">
+          <!-- tabla dinámica -->
+        </div>
+        <div style="max-width:380px;margin-left:auto">
+          <div class="resumen-row">
+            <span class="label">Subtotal</span>
+            <span class="value" id="res-subtotal">—</span>
+          </div>
+          <div class="resumen-row">
+            <span class="label">Descuento total</span>
+            <span class="value" id="res-descuento">—</span>
+          </div>
+          <div class="resumen-row">
+            <span class="label">Impuestos</span>
+            <span class="value" style="color:var(--text-muted)" id="res-impuestos">C$ 0.00</span>
+          </div>
+          <div class="resumen-row total-row">
+            <span class="label" style="font-weight:700;font-size:15px">TOTAL</span>
+            <span class="value" id="res-total">—</span>
+          </div>
+          <div class="resumen-row">
+            <span class="label" style="color:var(--success)">Ganancia estimada</span>
+            <span class="ganancia-val" id="res-ganancia">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 5: MÉTODO DE PAGO -->
+      <div id="step-5" class="step-panel" style="display:none">
+        <div class="metodos-grid" id="metodos-grid">
+          <div style="color:var(--text-muted);font-size:13px;grid-column:1/-1;padding:20px;text-align:center">
+            Cargando métodos de pago…
+          </div>
+        </div>
+        <input type="hidden" id="metodo-pago-id-selected"/>
+        <input type="hidden" id="metodo-pago-nombre-selected" value="Efectivo"/>
+        <p id="metodo-error" style="color:var(--danger);font-size:12.5px;margin-top:8px;display:none">
+          Selecciona un método de pago.
+        </p>
+      </div>
+
+      <!-- PASO 6: OBSERVACIONES -->
+      <div id="step-6" class="step-panel" style="display:none">
+        <div class="form-group">
+          <label>Observaciones (opcional)</label>
+          <textarea id="venta-observaciones" rows="4"
+            placeholder="Notas internas, condiciones especiales, información adicional…"></textarea>
+        </div>
+        <!-- Resumen final compacto -->
+        <div style="background:var(--bg-surface-2);border:1px solid var(--border);
+          border-radius:var(--radius-md);padding:16px;margin-top:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:10px">
+            Resumen final
+          </div>
+          <div id="resumen-final-contenido" style="font-size:13px;color:var(--text-secondary)">
+            <!-- dinámico -->
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /modal-body -->
+
+    <div class="modal-footer">
+      <button class="btn-ghost" id="btn-anterior" onclick="pasoAnterior()" style="display:none">
+        ← Anterior
+      </button>
+      <div style="flex:1"></div>
+      <button class="btn-ghost" onclick="cerrarModalVenta()">Cancelar</button>
+      <button class="btn-primary" id="btn-siguiente" onclick="pasoSiguiente()">
+        Siguiente →
+      </button>
+      <button class="btn-primary" id="btn-confirmar-venta" style="display:none;background:var(--success)"
+        onclick="confirmarVenta()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Confirmar venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: DETALLE VENTA
+===================================================== -->
+<div class="modal-overlay modal-md" id="modal-detalle" onclick="if(event.target===this)closeModal('modal-detalle')">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="det-title">Detalle de venta</div>
+        <div class="modal-subtitle" id="det-subtitle">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-detalle')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="det-body" style="max-height:70vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-detalle')">Cerrar</button>
+      <button class="btn-danger-outline" id="btn-anular-venta" onclick="abrirConfirmarAnular()">
+        Anular venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: CONFIRMAR ANULAR
+===================================================== -->
+<div class="modal-overlay" id="modal-anular" onclick="if(event.target===this)closeModal('modal-anular')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Anular venta</span>
+      <button class="modal-close" onclick="closeModal('modal-anular')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:24px">
+      <div class="confirm-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">¿Anular esta venta?</h3>
+      <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
+        La venta quedará marcada como <strong>Anulada</strong>. El stock NO se repondrá automáticamente — si necesitas reponerlo hazlo desde Movimientos especiales en Productos.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-anular')">Cancelar</button>
+      <button class="btn-danger-outline" id="btn-confirmar-anular" onclick="anularVenta()">
+        Sí, anular
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="ventas.js"></script>
+</body>
+</html>
