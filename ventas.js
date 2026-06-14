@@ -503,7 +503,7 @@ async function abrirDetalle(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Impuestos</div>
-          <div class="detalle-value">${fmt(venta.impuestos)}</div>
+          <div class="detalle-value">${fmt(venta.impuesto)}</div>
         </div>
         <div class="detalle-item">
           <div class="detalle-label">TOTAL</div>
@@ -1149,7 +1149,7 @@ async function confirmarVenta() {
       fecha:              todayISO(),
       subtotal:           r.subtotal,
       descuento:          r.descuento,
-      impuestos:          r.impuestos,
+      impuesto:          r.impuestos,
       total:              r.total,
       ganancia:           r.ganancia,
       costo_total:        r.costoTotal,
