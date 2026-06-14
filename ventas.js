@@ -1151,7 +1151,6 @@ async function confirmarVenta() {
       descuento:          r.descuento,
       impuesto:          r.impuestos,
       total:              r.total,
-      ganancia:           r.ganancia,
       costo_total:        r.costoTotal,
       metodo_pago_id:     S.metodoPagoId || null,
       metodo_pago_nombre: S.metodoPagoNombre,
