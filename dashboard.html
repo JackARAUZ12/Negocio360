@@ -2135,23 +2135,49 @@ async function loadGastos(userId) {
   }
 }
 
-// --- Capital disponible (caja) ---
+  // --- Capital disponible ---
+// FIX: el capital ya NO se lee de una tabla "caja" (no existe).
+// Se calcula igual que en caja.js -> calcCapitalDisponible():
+//   capital = capital_inicial (capital_negocio, is_current=true)
+//             + Σ ingresos completados
+//             - Σ egresos completados  (movimientos_financieros)
+//
+// Si existen movimientos, el saldo_resultante del más reciente
+// ya refleja ese cálculo acumulado, así que se usa directamente
+// (más eficiente que recorrer todos los movimientos).
+// Si no hay movimientos aún, se usa el capital_inicial tal cual.
 async function loadCaja(userId) {
   try {
-    const { data, error } = await sbClient
-      .from('caja')
-      .select('saldo_actual')
+    // 1. Último movimiento completado -> saldo_resultante = capital actual
+    const { data: ultMov, error: errMov } = await sbClient
+      .from('movimientos_financieros')
+      .select('saldo_resultante')
       .eq('auth_user_id', userId)
+      .eq('estado', 'completado')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (!error && data) {
-      dashData.capital = data.saldo_actual || 0;
+    if (!errMov && ultMov) {
+      dashData.capital = Number(ultMov.saldo_resultante) || 0;
+      return;
+    }
+
+    // 2. Sin movimientos aún -> usar capital_inicial (capital_negocio)
+    const { data: cap, error: errCap } = await sbClient
+      .from('capital_negocio')
+      .select('monto')
+      .eq('auth_user_id', userId)
+      .eq('is_current', true)
+      .maybeSingle();
+
+    if (!errCap && cap) {
+      dashData.capital = Number(cap.monto) || 0;
     } else {
-      dashData.capital = null;
+      dashData.capital = null; // aún no configurado (mostrará "—")
     }
   } catch(e) {
+    console.warn('loadCaja:', e);
     dashData.capital = null;
   }
 }
