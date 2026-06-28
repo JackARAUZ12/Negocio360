@@ -666,33 +666,33 @@ async function loadEjecutivo() {
     };
 
     // HERO
-    setEl('eh-ventas',   fmtShort(vRes.total));
-    setEl('eh-compras',  fmtShort(totalCompras));
-    setEl('eh-gastos',   fmtShort(totalGastos));
-    setEl('eh-ganancia', fmtShort(gananciaNeta));
-    setEl('eh-capital',  fmtShort(capital));
+    setEl('eh-ventas',   fmt(vRes.total));
+    setEl('eh-compras',  fmt(totalCompras));
+    setEl('eh-gastos',   fmt(totalGastos));
+    setEl('eh-ganancia', fmt(gananciaNeta));
+    setEl('eh-capital',  fmt(capital));
     setEl('eh-clientes', clientesNuevos.toString());
 
     // KPIs fila 1
-    setEl('kpi-ventas-total',   fmtShort(vRes.total));
+    setEl('kpi-ventas-total',   fmt(vRes.total));
     setEl('kpi-ventas-count',   `${vRes.count} venta${vRes.count!==1?'s':''}`);
-    setEl('kpi-ganancia-bruta', fmtShort(vRes.ganancia));
+    setEl('kpi-ganancia-bruta', fmt(vRes.ganancia));
     setEl('kpi-margen-bruto',   `${margenBruto}% margen`);
-    setEl('kpi-ganancia-neta',  fmtShort(gananciaNeta));
+    setEl('kpi-ganancia-neta',  fmt(gananciaNeta));
     setEl('kpi-margen-neto',    `${margenNeto}% margen neto`);
-    setEl('kpi-gastos-total',   fmtShort(totalGastos));
+    setEl('kpi-gastos-total',   fmt(totalGastos));
     setEl('kpi-gastos-count',   `${gastos.length} gasto${gastos.length!==1?'s':''}`);
-    setEl('kpi-capital',        fmtShort(capital));
-    setEl('kpi-ticket-exec',    fmtShort(vRes.ticket));
+    setEl('kpi-capital',        fmt(capital));
+    setEl('kpi-ticket-exec',    fmt(vRes.ticket));
 
     // KPIs fila 2
-    setEl('kpi-compras-total',    fmtShort(totalCompras));
+    setEl('kpi-compras-total',    fmt(totalCompras));
     setEl('kpi-compras-count',    `${compras.length} compra${compras.length!==1?'s':''}`);
-    setEl('kpi-inventario-valor', fmtShort(valorInventario));
+    setEl('kpi-inventario-valor', fmt(valorInventario));
     setEl('kpi-inventario-prods', `${prods.length} productos`);
     setEl('kpi-clientes-nuevos',  clientesNuevos.toString());
     setEl('kpi-clientes-activos', `${(clientes||[]).filter(c=>c.num_compras>0).length} activos`);
-    setEl('kpi-venta-mayor',      fmtShort(vRes.mayor?.total||0));
+    setEl('kpi-venta-mayor',      fmt(vRes.mayor?.total||0));
     setEl('kpi-stock-bajo',       stockBajo.length.toString());
     setEl('kpi-prods-vendidos',   fmtNum(unidsVendidas));
 
@@ -872,10 +872,10 @@ async function loadVentasTab() {
 
     const unidades = detalles.filter(d=>d.tipo_item==='producto').reduce((s,d)=>s+Number(d.cantidad),0);
 
-    setEl('v-monto',    fmtShort(vRes.total));
+    setEl('v-monto',    fmt(vRes.total));
     setEl('v-count',    `${vRes.count} venta${vRes.count!==1?'s':''}`);
-    setEl('v-ticket',   fmtShort(vRes.ticket));
-    setEl('v-mayor',    fmtShort(vRes.mayor?.total||0));
+    setEl('v-ticket',   fmt(vRes.ticket));
+    setEl('v-mayor',    fmt(vRes.mayor?.total||0));
     setEl('v-unidades', fmtNum(unidades));
 
     // Gráfica por día
@@ -983,9 +983,9 @@ async function loadComprasTab() {
     const provSorted = Object.entries(provMap).sort((a,b)=>b[1]-a[1]);
     const provPrincipal = provSorted[0] || ['—', 0];
 
-    setEl('c-monto',         fmtShort(totalInv));
+    setEl('c-monto',         fmt(totalInv));
     setEl('c-count',         `${count} compra${count!==1?'s':''}`);
-    setEl('c-promedio',      fmtShort(promedio));
+    setEl('c-promedio',      fmt(promedio));
     setEl('c-proveedor',     provPrincipal[0]);
     setEl('c-proveedor-monto', fmt(provPrincipal[1]));
     setEl('c-unidades',      fmtNum(unidades));
@@ -1036,7 +1036,7 @@ async function loadInventario() {
     const prodsConVentas = new Set((detalles||[]).map(d=>d.producto_id));
     const sinMovimiento  = activos.filter(p=>!prodsConVentas.has(p.id));
 
-    setEl('inv-valor',   fmtShort(valorInv));
+    setEl('inv-valor',   fmt(valorInv));
     setEl('inv-total',   activos.length.toString());
     setEl('inv-servicios', `${servicios.length} servicios`);
     setEl('inv-bajo',    stockBajo.length.toString());
@@ -1167,9 +1167,9 @@ async function loadGastosTab() {
     const catSorted = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
     const catMayor  = catSorted[0] || ['—', 0];
 
-    setEl('g-total',       fmtShort(total));
+    setEl('g-total',       fmt(total));
     setEl('g-count',       `${gastos.length} gasto${gastos.length!==1?'s':''}`);
-    setEl('g-mayor',       mayor ? fmtShort(mayor.monto) : '—');
+    setEl('g-mayor',       mayor ? fmt(mayor.monto) : '—');
     setEl('g-mayor-concepto', mayor ? esc(mayor.concepto) : '—');
     setEl('g-cat-mayor',   catMayor[0]);
     setEl('g-cat-monto',   fmt(catMayor[1]));
