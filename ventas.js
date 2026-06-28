@@ -265,11 +265,11 @@ async function loadKPIs() {
     const cnt      = mes?.length || 0;
     const ticket   = cnt > 0 ? totalMes/cnt : 0;
 
-    setKPI('kpi-mes',     fmtShort(totalMes), totalMes>0?'positive':'neutral',
+    setKPI('kpi-mes',     fmt(totalMes), totalMes>0?'positive':'neutral',
       cnt>0?`${cnt} venta${cnt!==1?'s':''} este mes`:'Sin ventas este mes', 'sym-mes');
     setKPI('kpi-count',   cnt.toString(), cnt>0?'positive':'neutral', 'este mes');
-    setKPI('kpi-ticket',  fmtShort(ticket), ticket>0?'positive':'neutral', 'promedio por venta', 'sym-ticket');
-    setKPI('kpi-ganancia',fmtShort(ganMes), ganMes>0?'positive':'neutral', 'este mes', 'sym-gan');
+    setKPI('kpi-ticket',  fmt(ticket), ticket>0?'positive':'neutral', 'promedio por venta', 'sym-ticket');
+    setKPI('kpi-ganancia',fmt(ganMes), ganMes>0?'positive':'neutral', 'este mes', 'sym-gan');
 
   } catch(e) { console.warn('loadKPIs:', e); }
 }
