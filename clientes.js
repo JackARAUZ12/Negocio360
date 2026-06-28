@@ -299,8 +299,8 @@ function renderKPIs(k) {
   setKPIEl('kpi-activos',     k.activos?.toString() || '0', null);
   setKPIEl('kpi-nuevos',      k.nuevos_mes?.toString() || '0', null);
   setKPIEl('kpi-top',         esc(k.top_cliente || '—'), null);
-  setKPIEl('kpi-generado',    fmtShort(k.total_generado || 0), null);
-  setKPIEl('kpi-ticket',      fmtShort(k.ticket_promedio || 0), null);
+  setKPIEl('kpi-generado',    fmt(k.total_generado || 0), null);
+  setKPIEl('kpi-ticket',      fmt(k.ticket_promedio || 0), null);
 
   // Sub-etiquetas
   const topSub = document.getElementById('kpi-top-sub');
