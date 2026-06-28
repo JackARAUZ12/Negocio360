@@ -316,17 +316,17 @@ async function loadResumen() {
     const totalMov  = (data||[]).length;
 
     // KPI: Capital disponible
-    setEl('kpi-capital', fmtShort(STATE.capital));
+    setEl('kpi-capital', fmt(STATE.capital));
     setEl('kpi-capital-label', STATE.capital >= 0 ? 'positivo' : 'negativo', 'kpi-delta');
 
     // KPI: Ingresos del mes
-    setEl('kpi-ingresos', fmtShort(ingresos));
+    setEl('kpi-ingresos', fmt(ingresos));
 
     // KPI: Egresos del mes
-    setEl('kpi-egresos', fmtShort(egresos));
+    setEl('kpi-egresos', fmt(egresos));
 
     // KPI: Flujo neto
-    setEl('kpi-flujo', fmtShort(flujoNeto));
+    setEl('kpi-flujo', fmt(flujoNeto));
     const flujoEl = document.getElementById('kpi-flujo');
     if (flujoEl) flujoEl.style.color = flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)';
 
