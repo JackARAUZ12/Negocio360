@@ -346,11 +346,11 @@ async function loadKPIs() {
       .filter(d => compraIdsActivas.has(d.compra_id))
       .reduce((s, d) => s + Number(d.cantidad), 0);
 
-    setKPI('kpi-hoy',        fmtShort(totalHoy),         `${deHoy.length} compra${deHoy.length !== 1 ? 's' : ''}`);
-    setKPI('kpi-mes',        fmtShort(totalMes),         `${activas.length} compra${activas.length !== 1 ? 's' : ''}`);
+    setKPI('kpi-hoy',        fmt(totalHoy),         `${deHoy.length} compra${deHoy.length !== 1 ? 's' : ''}`);
+    setKPI('kpi-mes',        fmt(totalMes),         `${activas.length} compra${activas.length !== 1 ? 's' : ''}`);
     setKPI('kpi-cantidad',   activas.length.toString(),  `${todas.filter(c=>c.estado==='anulada').length} anuladas`);
     setKPI('kpi-unidades',   fmtNum(unidadesMes),        'unidades ingresadas');
-    setKPI('kpi-inventario', fmtShort(valorInventario),  'valor en stock');
+    setKPI('kpi-inventario', fmt(valorInventario),  'valor en stock');
     setKPI('kpi-proveedores', (provCount || 0).toString(), 'activos');
 
   } catch(e) { console.warn('loadKPIs:', e); }
