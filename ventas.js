@@ -252,7 +252,7 @@ async function loadKPIs() {
       .gte('fecha', today).lte('fecha', today);
 
     const totalDia = (dia||[]).reduce((s,r) => s+Number(r.total),0);
-    setKPI('kpi-dia', fmtShort(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
+    setKPI('kpi-dia', fmt(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
       dia?.length > 0 ? `${dia.length} venta${dia.length!==1?'s':''} hoy` : 'Sin ventas hoy', 'sym-dia');
 
     // Ventas del mes
