@@ -304,12 +304,12 @@ async function loadKpis() {
 }
 
 function renderKpis() {
-  setEl('kpi-gastos-hoy',  fmtShort(STATE.kpis.hoy));
-  setEl('kpi-gastos-mes',  fmtShort(STATE.kpis.mes));
-  setEl('kpi-gastos-anio', fmtShort(STATE.kpis.anio));
-  setEl('kpi-pendientes',  fmtShort(STATE.kpis.pendientes));
+  setEl('kpi-gastos-hoy',  fmt(STATE.kpis.hoy));
+  setEl('kpi-gastos-mes',  fmt(STATE.kpis.mes));
+  setEl('kpi-gastos-anio', fmt(STATE.kpis.anio));
+  setEl('kpi-pendientes',  fmt(STATE.kpis.pendientes));
   setEl('kpi-recurrentes', STATE.kpis.recurrentesActivos.toString());
-  setEl('kpi-salarios',    fmtShort(STATE.kpis.salariosPendientes));
+  setEl('kpi-salarios',    fmt(STATE.kpis.salariosPendientes));
 }
 
 function setEl(id, value) {
