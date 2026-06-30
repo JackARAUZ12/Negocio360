@@ -1,7 +1,14 @@
 /* =====================================================
    CAJA.JS — NEGOCIO360
    Centro financiero del sistema.
-   Versión: 1.0 — Producción
+   Versión: 1.2 — Sin duplicación de saldo
+   
+   LÓGICA DE SALDO (fuente de verdad única):
+   - STATE.caja = saldo_resultante del último movimiento completado
+   - Al poner dinero inicial → se inserta movimiento CAPITAL_AGREGADO
+     con saldo_anterior=0 y saldo_resultante=monto
+   - NO se suma capital_negocio + movimientos (eso causaba el doble)
+   - capital_negocio se usa solo como registro histórico
 ===================================================== */
 
 'use strict';
@@ -11,7 +18,8 @@
 ===================================================== */
 const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sbClient = window.__cajaSB || window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+window.__cajaSB = sbClient;
 
 /* =====================================================
    ESTADO GLOBAL
@@ -21,14 +29,14 @@ let STATE = {
   userEmail:     null,
   empresaConfig: {},
   currentUser:   {},
-  capital:       0,
+  caja:          0,   // saldo actual de caja (antes "capital")
   metodosPago:   [],
 
   // Movimientos
   movimientos:   [],
   movPage:       1,
   movPerPage:    15,
-  movFilter:     'mes',     // hoy | semana | mes | año | custom
+  movFilter:     'mes',
   movSearch:     '',
   movDateFrom:   '',
   movDateTo:     '',
@@ -38,13 +46,13 @@ let STATE = {
   cierres:       [],
 
   // UI
-  activeSection: 'resumen',  // resumen | movimientos | metodos | cierres
+  activeSection: 'movimientos',
 };
 
 /* =====================================================
    HELPERS: FECHA
 ===================================================== */
-function todayISO()       { return new Date().toISOString().split('T')[0]; }
+function todayISO()        { return new Date().toISOString().split('T')[0]; }
 function startOfMonthISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
@@ -94,12 +102,6 @@ function fmtDate(isoDate) {
   if (!isoDate) return '—';
   const d = new Date(isoDate + 'T12:00:00');
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
-}
-
-function fmtDateFull(isoDate) {
-  if (!isoDate) return '—';
-  const d = new Date(isoDate + 'T12:00:00');
-  return d.toLocaleDateString('es-NI', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 }
 
 /* =====================================================
@@ -213,85 +215,88 @@ async function checkAdminAccess(email) {
 }
 
 /* =====================================================
-   CAPITAL INICIAL
+   SALDO DE CAJA (fuente de verdad única)
+   
+   El saldo se obtiene SIEMPRE del último movimiento
+   completado. No se suma capital_negocio por separado.
+   Esto evita la duplicación que ocurría antes.
 ===================================================== */
-async function loadCapital() {
-  try {
-    const { data } = await sbClient
-      .from('capital_negocio')
-      .select('monto')
-      .eq('auth_user_id', STATE.userId)
-      .eq('is_current', true)
-      .maybeSingle();
-
-    if (data) {
-      STATE.capital = Number(data.monto) || 0;
-      return true;
-    }
-    return false;
-  } catch(e) {
-    console.warn('loadCapital:', e);
-    return false;
-  }
-}
-
-async function calcCapitalDisponible() {
-  // Capital = capital_inicial + suma de todos los ingresos - suma de todos los egresos
+async function loadCaja() {
   try {
     const { data } = await sbClient
       .from('movimientos_financieros')
-      .select('tipo_flujo, monto')
+      .select('saldo_resultante')
       .eq('auth_user_id', STATE.userId)
-      .eq('estado', 'completado');
+      .eq('estado', 'completado')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (data) {
-      const totalIng = data.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-      const totalEgr = data.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r) => s + Number(r.monto), 0);
-      STATE.capital = STATE.capital + totalIng - totalEgr;
-    }
-  } catch(e) { console.warn('calcCapital:', e); }
+    STATE.caja = data ? Number(data.saldo_resultante) : 0;
+    return STATE.caja;
+  } catch(e) {
+    console.warn('loadCaja:', e);
+    STATE.caja = 0;
+    return 0;
+  }
 }
 
-async function guardarCapitalInicial(monto) {
-  // Desactivar capital anterior
+/* =====================================================
+   VERIFICAR SI ES PRIMERA VEZ (sin movimientos)
+===================================================== */
+async function tieneMovimientos() {
+  try {
+    const { count } = await sbClient
+      .from('movimientos_financieros')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id', STATE.userId);
+    return (count || 0) > 0;
+  } catch(e) { return false; }
+}
+
+/* =====================================================
+   GUARDAR DINERO INICIAL
+   
+   Solo inserta un movimiento CAPITAL_AGREGADO con
+   saldo_anterior=0. NO toca capital_negocio para el
+   cálculo — solo lo guarda como registro histórico.
+===================================================== */
+async function guardarDineroInicial(monto) {
+  const montoNum = Number(monto);
+
+  // Guardar en capital_negocio como registro histórico
   await sbClient
     .from('capital_negocio')
     .update({ is_current: false })
     .eq('auth_user_id', STATE.userId)
     .eq('is_current', true);
 
-  // Insertar nuevo
-  const { error } = await sbClient
+  await sbClient
     .from('capital_negocio')
     .insert({
       auth_user_id: STATE.userId,
-      monto:        Number(monto),
-      concepto:     'Capital inicial',
+      monto:        montoNum,
+      concepto:     'Dinero inicial de caja',
       is_current:   true,
     });
 
-  if (error) throw error;
-
-  // Insertar movimiento de tipo CAPITAL_AGREGADO si no existe aún
-  const { count } = await sbClient
+  // El movimiento es la fuente de verdad del saldo
+  const { error } = await sbClient
     .from('movimientos_financieros')
-    .select('id', { count: 'exact', head: true })
-    .eq('auth_user_id', STATE.userId)
-    .eq('tipo_movimiento', 'CAPITAL_AGREGADO');
-
-  if (!count || count === 0) {
-    await sbClient.from('movimientos_financieros').insert({
-      auth_user_id:      STATE.userId,
-      tipo_flujo:        'INGRESO',
-      tipo_movimiento:   'CAPITAL_AGREGADO',
-      concepto:          'Capital inicial del negocio',
-      monto:             Number(monto),
-      saldo_anterior:    0,
-      saldo_resultante:  Number(monto),
+    .insert({
+      auth_user_id:       STATE.userId,
+      tipo_flujo:         'INGRESO',
+      tipo_movimiento:    'CAPITAL_AGREGADO',
+      concepto:           'Dinero inicial de caja',
+      monto:              montoNum,
+      saldo_anterior:     0,
+      saldo_resultante:   montoNum,
       metodo_pago_nombre: 'Efectivo',
-      fecha:             todayISO(),
+      fecha:              todayISO(),
+      estado:             'completado',
     });
-  }
+
+  if (error) throw error;
 }
 
 /* =====================================================
@@ -310,51 +315,51 @@ async function loadResumen() {
       .gte('fecha', monthStart)
       .lte('fecha', today);
 
-    const ingresos  = (data||[]).filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const egresos   = (data||[]).filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
-    const flujoNeto = ingresos - egresos;
-    const totalMov  = (data||[]).length;
+    const ingresos = (data||[]).filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
+    const egresos  = (data||[]).filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    const totalMov = (data||[]).length;
 
-    // KPI: Capital disponible
-    setEl('kpi-capital', fmt(STATE.capital));
-    setEl('kpi-capital-label', STATE.capital >= 0 ? 'positivo' : 'negativo', 'kpi-delta');
+    // KPI: Caja disponible (saldo actual)
+    setEl('kpi-caja', fmt(STATE.caja));
+    setDelta('kpi-caja-delta',
+      STATE.caja >= 0 ? 'Saldo positivo' : 'Saldo negativo',
+      STATE.caja >= 0);
 
     // KPI: Ingresos del mes
     setEl('kpi-ingresos', fmt(ingresos));
+    setDelta('kpi-ingresos-delta',
+      ingresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='INGRESO').length} entradas` : 'Sin ingresos este mes',
+      ingresos > 0);
 
     // KPI: Egresos del mes
     setEl('kpi-egresos', fmt(egresos));
+    setDelta('kpi-egresos-delta',
+      egresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='EGRESO').length} salidas` : 'Sin egresos este mes',
+      false);
 
-    // KPI: Flujo neto
-    setEl('kpi-flujo', fmt(flujoNeto));
-    const flujoEl = document.getElementById('kpi-flujo');
-    if (flujoEl) flujoEl.style.color = flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)';
-
-    // KPI: Movimientos
+    // KPI: Movimientos del mes
     setEl('kpi-movimientos', totalMov.toString());
+    setDelta('kpi-movimientos-delta',
+      totalMov > 0 ? 'este mes' : 'Sin movimientos',
+      totalMov > 0);
 
-    // Deltas
-    setDelta('kpi-capital-delta',    STATE.capital >= 0 ? 'Saldo positivo' : 'Saldo negativo',       STATE.capital >= 0);
-    setDelta('kpi-ingresos-delta',   ingresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='INGRESO').length} entradas` : 'Sin ingresos este mes', ingresos > 0);
-    setDelta('kpi-egresos-delta',    egresos > 0  ? `${(data||[]).filter(r=>r.tipo_flujo==='EGRESO').length} salidas`   : 'Sin egresos este mes',  false);
-    setDelta('kpi-flujo-delta',      flujoNeto >= 0 ? 'Flujo positivo' : 'Flujo negativo',            flujoNeto >= 0);
-    setDelta('kpi-movimientos-delta', totalMov > 0 ? 'este mes' : 'Sin movimientos', totalMov > 0);
+    // Color del saldo
+    const cajaEl = document.getElementById('kpi-caja');
+    if (cajaEl) cajaEl.style.color = STATE.caja >= 0 ? '' : 'var(--danger)';
 
   } catch(e) { console.warn('loadResumen:', e); }
 }
 
-function setEl(id, value, colorClass) {
+function setEl(id, value) {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = value;
-  if (colorClass) el.className = colorClass;
+  if (el) el.textContent = value;
 }
 
 function setDelta(id, text, positive) {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = text;
-  el.className = `kpi-delta ${positive ? 'positive' : positive === false && text.includes('negativo') ? 'negative' : 'neutral'}`;
+  el.className = `kpi-delta ${positive ? 'positive' : (text.includes('negativo') ? 'negative' : 'neutral')}`;
 }
 
 /* =====================================================
@@ -511,7 +516,6 @@ async function loadMovimientos() {
       query = query.ilike('concepto', `%${STATE.movSearch.trim()}%`);
     }
 
-    // Paginación
     const from_range = (STATE.movPage - 1) * STATE.movPerPage;
     const to_range   = from_range + STATE.movPerPage - 1;
     query = query.range(from_range, to_range);
@@ -582,8 +586,6 @@ function renderMovimientosError() {
 }
 
 function renderPaginacion() {
-  const el = document.getElementById('paginacion');
-  if (!el) return;
   const totalPages = Math.ceil(STATE.movTotal / STATE.movPerPage);
   const info = document.getElementById('paginacion-info');
   if (info) {
@@ -600,15 +602,15 @@ function renderPaginacion() {
 
 function tipoMovLabel(tipo) {
   const map = {
-    VENTA:          'Venta',
-    COBRO:          'Cobro',
-    CAPITAL_AGREGADO: 'Capital',
-    OTRO_INGRESO:   'Otro ingreso',
-    COMPRA:         'Compra',
-    GASTO:          'Gasto',
-    RETIRO:         'Retiro',
-    PAGO:           'Pago',
-    OTRO_EGRESO:    'Otro egreso',
+    VENTA:            'Venta',
+    COBRO:            'Cobro',
+    CAPITAL_AGREGADO: 'Caja',
+    OTRO_INGRESO:     'Otro ingreso',
+    COMPRA:           'Compra',
+    GASTO:            'Gasto',
+    RETIRO:           'Retiro',
+    PAGO:             'Pago',
+    OTRO_EGRESO:      'Otro egreso',
   };
   return map[tipo] || tipo;
 }
@@ -631,17 +633,17 @@ function toggleTipoMovimiento() {
 
   const opciones = {
     INGRESO: [
-      { v: 'VENTA',           l: 'Venta' },
-      { v: 'COBRO',           l: 'Cobro a cliente' },
-      { v: 'CAPITAL_AGREGADO',l: 'Capital agregado' },
-      { v: 'OTRO_INGRESO',    l: 'Otro ingreso' },
+      { v: 'VENTA',            l: 'Venta' },
+      { v: 'COBRO',            l: 'Cobro a cliente' },
+      { v: 'CAPITAL_AGREGADO', l: 'Ingreso a caja' },
+      { v: 'OTRO_INGRESO',     l: 'Otro ingreso' },
     ],
     EGRESO: [
-      { v: 'COMPRA',       l: 'Compra de mercancía' },
-      { v: 'GASTO',        l: 'Gasto operativo' },
-      { v: 'RETIRO',       l: 'Retiro de caja' },
-      { v: 'PAGO',         l: 'Pago a proveedor' },
-      { v: 'OTRO_EGRESO',  l: 'Otro egreso' },
+      { v: 'COMPRA',      l: 'Compra de mercancía' },
+      { v: 'GASTO',       l: 'Gasto operativo' },
+      { v: 'RETIRO',      l: 'Retiro de caja' },
+      { v: 'PAGO',        l: 'Pago a proveedor' },
+      { v: 'OTRO_EGRESO', l: 'Otro egreso' },
     ],
   };
 
@@ -650,26 +652,24 @@ function toggleTipoMovimiento() {
 }
 
 async function saveMovimiento() {
-  const flujo       = document.getElementById('mov-flujo').value;
-  const tipo        = document.getElementById('mov-tipo').value;
-  const concepto    = document.getElementById('mov-concepto').value.trim();
-  const monto       = parseFloat(document.getElementById('mov-monto').value);
+  const flujo        = document.getElementById('mov-flujo').value;
+  const tipo         = document.getElementById('mov-tipo').value;
+  const concepto     = document.getElementById('mov-concepto').value.trim();
+  const monto        = parseFloat(document.getElementById('mov-monto').value);
   const metodoPagoId = document.getElementById('mov-metodo').value;
-  const observaciones = document.getElementById('mov-obs').value.trim();
-  const fecha       = document.getElementById('mov-fecha').value || todayISO();
+  const observaciones= document.getElementById('mov-obs').value.trim();
+  const fecha        = document.getElementById('mov-fecha').value || todayISO();
 
-  // Validaciones
   if (!concepto)        { showToast('El concepto es requerido', 'error'); return; }
   if (!monto || monto <= 0) { showToast('El monto debe ser mayor a 0', 'error'); return; }
 
-  // Nombre del método de pago
-  const metodoPago = STATE.metodosPago.find(m => m.id === metodoPagoId);
+  const metodoPago       = STATE.metodosPago.find(m => m.id === metodoPagoId);
   const metodoPagoNombre = metodoPago?.nombre || 'Efectivo';
 
   try {
     setBtnLoading('btn-save-mov', true);
 
-    // Calcular saldo anterior (último movimiento del usuario)
+    // Saldo del último movimiento (fuente de verdad única)
     const { data: ultMov } = await sbClient
       .from('movimientos_financieros')
       .select('saldo_resultante')
@@ -679,7 +679,7 @@ async function saveMovimiento() {
       .limit(1)
       .maybeSingle();
 
-    const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : STATE.capital;
+    const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : 0;
     const saldoResultante = flujo === 'INGRESO'
       ? saldoAnterior + monto
       : saldoAnterior - monto;
@@ -696,16 +696,17 @@ async function saveMovimiento() {
       metodo_pago_nombre: metodoPagoNombre,
       observaciones:      observaciones || null,
       fecha,
+      estado:             'completado',
     });
 
-    // Actualizar capital en estado
-    STATE.capital = saldoResultante;
+    // Actualizar saldo en estado
+    STATE.caja = saldoResultante;
+
     closeModal('modal-movimiento');
     showToast('Movimiento registrado correctamente');
 
-    // Refrescar
     await Promise.all([loadResumen(), loadMovimientos()]);
-    actualizarDashboardStorage();
+    actualizarCacheLocal();
 
   } catch(e) {
     console.error('saveMovimiento:', e);
@@ -732,8 +733,8 @@ async function anularMovimiento() {
     await sbClient
       .from('movimientos_financieros')
       .update({
-        estado:        'anulado',
-        anulado_en:    new Date().toISOString(),
+        estado:         'anulado',
+        anulado_en:     new Date().toISOString(),
         anulado_motivo: 'Anulado manualmente',
       })
       .eq('id', movToAnular)
@@ -742,8 +743,11 @@ async function anularMovimiento() {
     closeModal('modal-confirmar');
     movToAnular = null;
     showToast('Movimiento anulado');
+
+    // Recargar saldo real desde DB
+    await loadCaja();
     await Promise.all([loadResumen(), loadMovimientos()]);
-    actualizarDashboardStorage();
+    actualizarCacheLocal();
   } catch(e) {
     showToast('Error al anular', 'error');
   } finally {
@@ -795,7 +799,6 @@ function renderCierres() {
 async function crearCierreDiario() {
   const hoy = todayISO();
 
-  // Verificar si ya existe cierre hoy
   const { data: existing } = await sbClient
     .from('cierres_caja')
     .select('id')
@@ -811,7 +814,6 @@ async function crearCierreDiario() {
   try {
     setBtnLoading('btn-cierre-diario', true);
 
-    // Obtener movimientos de hoy
     const { data: movHoy } = await sbClient
       .from('movimientos_financieros')
       .select('tipo_flujo, monto, saldo_anterior')
@@ -821,7 +823,7 @@ async function crearCierreDiario() {
       .order('created_at');
 
     const movs = movHoy || [];
-    const saldoInicial  = movs.length > 0 ? Number(movs[0].saldo_anterior) : STATE.capital;
+    const saldoInicial  = movs.length > 0 ? Number(movs[0].saldo_anterior) : STATE.caja;
     const totalIngresos = movs.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
     const totalEgresos  = movs.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
     const saldoFinal    = saldoInicial + totalIngresos - totalEgresos;
@@ -844,77 +846,65 @@ async function crearCierreDiario() {
     setBtnLoading('btn-cierre-diario', false);
   }
 }
+
 /* =====================================================
-   MODAL CAPITAL INICIAL (primera vez)
+   MODAL DINERO INICIAL (primera vez)
 ===================================================== */
-async function checkCapitalInicial() {
-  const existe = await loadCapital();
-  if (!existe) {
-    // Calcular saldo desde movimientos igualmente (por si acaso)
-    await calcCapitalDisponible();
-    // Mostrar modal obligatorio
+async function checkDineroInicial() {
+  const hayMovs = await tieneMovimientos();
+  if (!hayMovs) {
+    // Primera vez — mostrar modal
     openModal('modal-capital-inicial');
   } else {
-    await calcCapitalDisponible();
+    // Cargar saldo desde movimientos
+    await loadCaja();
   }
 }
 
 async function guardarCapitalInicialModal() {
   const monto = parseFloat(document.getElementById('capital-inicial-monto').value);
-  if (isNaN(monto) || monto < 0) { showToast('Ingresa un monto válido', 'error'); return; }
+  if (isNaN(monto) || monto < 0) {
+    showToast('Ingresa un monto válido', 'error');
+    return;
+  }
 
   try {
     setBtnLoading('btn-guardar-capital-inicial', true);
-    await guardarCapitalInicial(monto);
-    STATE.capital = monto;
+    await guardarDineroInicial(monto);
+    STATE.caja = monto;
     closeModal('modal-capital-inicial');
-    showToast('Capital inicial guardado');
+    showToast('Caja iniciada correctamente');
     await Promise.all([loadResumen(), loadMovimientos(), loadMetodosPago()]);
-    actualizarDashboardStorage();
+    actualizarCacheLocal();
   } catch(e) {
-    showToast('Error al guardar capital', 'error');
+    showToast('Error al iniciar caja', 'error');
   } finally {
     setBtnLoading('btn-guardar-capital-inicial', false);
   }
 }
 
 /* =====================================================
-   INTEGRACIÓN CON DASHBOARD
-   Esta función actualiza localStorage para que el
-   dashboard pueda leer datos de caja en tiempo real.
-   Cuando el dashboard use loadCaja(), leerá de Supabase
-   directamente, pero esto sirve como caché rápida.
+   CACHÉ LOCAL (para dashboard)
 ===================================================== */
-function actualizarDashboardStorage() {
+function actualizarCacheLocal() {
   try {
-    localStorage.setItem('n360_capital', STATE.capital.toString());
+    localStorage.setItem('n360_caja', STATE.caja.toString());
     localStorage.setItem('n360_caja_updated', new Date().toISOString());
+    // Compatibilidad con código antiguo que lea n360_capital
+    localStorage.setItem('n360_capital', STATE.caja.toString());
   } catch(e) { /* silencioso */ }
 }
 
 /* =====================================================
-   API PÚBLICA: para uso desde otros módulos
-   Ejemplo de uso desde ventas.js:
-     await CajaAPI.registrarMovimiento({
-       tipo_flujo: 'INGRESO',
-       tipo_movimiento: 'VENTA',
-       concepto: `Venta #${ventaId}`,
-       monto: totalVenta,
-       referencia_tipo: 'venta',
-       referencia_id: ventaId,
-       metodo_pago_nombre: 'Efectivo',
-       fecha: todayISO(),
-     });
+   API PÚBLICA (para ventas.js, gastos.js, compras.js)
+   Compatible con el API anterior — mismo contrato.
 ===================================================== */
 window.CajaAPI = {
-
-  // Registrar movimiento desde otro módulo
   async registrarMovimiento(params) {
     try {
       const userId = params.auth_user_id || STATE.userId;
       if (!userId) throw new Error('userId requerido');
 
-      // Obtener saldo actual
       const { data: ult } = await sbClient
         .from('movimientos_financieros')
         .select('saldo_resultante')
@@ -925,27 +915,36 @@ window.CajaAPI = {
         .maybeSingle();
 
       const saldoAnt = ult ? Number(ult.saldo_resultante) : 0;
+      const monto    = Number(params.monto);
       const saldoRes = params.tipo_flujo === 'INGRESO'
-        ? saldoAnt + Number(params.monto)
-        : saldoAnt - Number(params.monto);
+        ? saldoAnt + monto
+        : saldoAnt - monto;
 
       const { error } = await sbClient.from('movimientos_financieros').insert({
         auth_user_id:       userId,
         tipo_flujo:         params.tipo_flujo,
         tipo_movimiento:    params.tipo_movimiento,
         concepto:           params.concepto,
-        monto:              Number(params.monto),
+        monto:              monto,
         saldo_anterior:     saldoAnt,
         saldo_resultante:   saldoRes,
         metodo_pago_nombre: params.metodo_pago_nombre || 'Efectivo',
-        metodo_pago_id:     params.metodo_pago_id || null,
-        referencia_tipo:    params.referencia_tipo || null,
-        referencia_id:      params.referencia_id || null,
-        observaciones:      params.observaciones || null,
-        fecha:              params.fecha || todayISO(),
+        metodo_pago_id:     params.metodo_pago_id     || null,
+        referencia_tipo:    params.referencia_tipo    || null,
+        referencia_id:      params.referencia_id      || null,
+        observaciones:      params.observaciones      || null,
+        fecha:              params.fecha               || todayISO(),
+        estado:             'completado',
       });
 
       if (error) throw error;
+
+      try {
+        localStorage.setItem('n360_caja', saldoRes.toString());
+        localStorage.setItem('n360_capital', saldoRes.toString());
+        localStorage.setItem('n360_caja_updated', new Date().toISOString());
+      } catch (_) {}
+
       return { ok: true, saldoResultante: saldoRes };
     } catch(e) {
       console.error('CajaAPI.registrarMovimiento:', e);
@@ -953,17 +952,22 @@ window.CajaAPI = {
     }
   },
 
-  // Obtener capital actual
   async getCapital(userId) {
-    const { data } = await sbClient
-      .from('movimientos_financieros')
-      .select('saldo_resultante')
-      .eq('auth_user_id', userId || STATE.userId)
-      .eq('estado', 'completado')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return data ? Number(data.saldo_resultante) : 0;
+    try {
+      const { data } = await sbClient
+        .from('movimientos_financieros')
+        .select('saldo_resultante')
+        .eq('auth_user_id', userId || STATE.userId)
+        .eq('estado', 'completado')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data ? Number(data.saldo_resultante) : 0;
+    } catch(e) { return 0; }
+  },
+
+  async getCaja(userId) {
+    return this.getCapital(userId);
   },
 };
 
@@ -1000,7 +1004,7 @@ function paginaSiguiente() {
 }
 
 /* =====================================================
-   SECCIONES (tabs de la página)
+   SECCIONES (tabs)
 ===================================================== */
 function setSection(section) {
   STATE.activeSection = section;
@@ -1011,7 +1015,6 @@ function setSection(section) {
     p.style.display = p.dataset.section === section ? 'block' : 'none';
   });
 
-  // Cargar datos de la sección activa
   if (section === 'movimientos') loadMovimientos();
   if (section === 'metodos')     loadMetodosPago();
   if (section === 'cierres')     loadCierres();
@@ -1038,7 +1041,6 @@ function closeModal(id) {
   }
 }
 
-// Cerrar modal al hacer click fuera
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal-overlay')) {
     e.target.style.display = 'none';
@@ -1081,11 +1083,8 @@ function escHtml(str) {
    INIT PRINCIPAL
 ===================================================== */
 async function initCaja() {
-  // Tema
-  const savedTheme = localStorage.getItem('n360_theme') || 'light';
-  applyTheme(savedTheme);
+  applyTheme(localStorage.getItem('n360_theme') || 'light');
 
-  // Fecha en header
   const now = new Date();
   const fechaEl = document.getElementById('header-fecha');
   if (fechaEl) fechaEl.textContent = now.toLocaleDateString('es-NI', {
@@ -1093,7 +1092,6 @@ async function initCaja() {
   });
 
   try {
-    // 1. Sesión
     const { data: { user }, error } = await sbClient.auth.getUser();
     if (error || !user) { window.location.href = 'login.html'; return; }
 
@@ -1102,30 +1100,29 @@ async function initCaja() {
 
     if (user.email) checkAdminAccess(user.email);
 
-    // 2. Config empresa
     await loadEmpresaConfig(user.id);
 
-    // 3. Perfil usuario
     const profile = await loadUserProfile(user.id);
     if (profile) renderUserInfo(profile, user.email);
     else {
-      document.getElementById('header-name').textContent = user.email?.split('@')[0] || 'Usuario';
+      document.getElementById('header-name').textContent   = user.email?.split('@')[0] || 'Usuario';
       document.getElementById('header-avatar').textContent = (user.email || 'U')[0].toUpperCase();
     }
 
-    // 4. Mostrar app
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    // 5. Capital inicial (puede mostrar modal)
-    await checkCapitalInicial();
+    // Verificar si es primera vez (sin movimientos) o cargar saldo
+    await checkDineroInicial();
 
-    // 6. Cargar datos principales
-    await Promise.allSettled([
+    // Cargar datos principales
+    await Promise.all([
       loadResumen(),
       loadMovimientos(),
       loadMetodosPago(),
     ]);
+
+    actualizarCacheLocal();
 
   } catch(err) {
     console.error('initCaja:', err);
