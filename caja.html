@@ -792,7 +792,7 @@
        RESPONSIVE
     ===================================================== */
     @media (max-width: 1100px) {
-      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 768px) {
       #sidebar { transform: translateX(-100%); }
@@ -1012,18 +1012,7 @@
           </div>
         </div>
 
-       <div class="kpi-card fade-in stagger-4">
-          <div class="kpi-icon" style="background:var(--accent-3-soft)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Movimientos del mes</div>
-            <div class="kpi-value" id="kpi-movimientos">—</div>
-            <div class="kpi-delta neutral" id="kpi-movimientos-delta">Cargando…</div>
-          </div>
-        </div>
-
-        <div class="kpi-card fade-in stagger-5">
+        <div class="kpi-card fade-in stagger-4">
           <div class="kpi-icon" style="background:var(--accent-3-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
           </div>
@@ -1209,7 +1198,6 @@
       <div style="text-align:left;margin-bottom:4px">
         <label>Caja inicial</label>
         <input type="number" id="capital-inicial-monto" placeholder="0.00" min="0" step="0.01" style="font-size:18px;font-weight:700;text-align:center"/>
-        <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px;text-align:center">".</p>
       </div>
     </div>
     <div class="modal-footer" style="justify-content:center;padding-bottom:24px">
@@ -1219,6 +1207,7 @@
     </div>
   </div>
 </div>
+
 <!-- ===================================================
      MODAL: NUEVO MOVIMIENTO
 =================================================== -->
