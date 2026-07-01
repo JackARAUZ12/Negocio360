@@ -3,17 +3,22 @@
    Centro financiero de EGRESOS del negocio.
    Se integra con Caja a través de window.CajaAPI
    definido en cajaAPI.js (archivo independiente).
-   Versión: 1.1 — Corrección integración Caja
+   Versión: 1.2 — Fix: ya no redeclara SUPABASE_URL/KEY
+   (eso causaba un SyntaxError que rompía TODO el script
+   y dejaba todos los botones sin funcionar)
 ===================================================== */
 
 'use strict';
 
 /* =====================================================
    SUPABASE CLIENT
+   (reutiliza el cliente ya creado por cajaAPI.js para
+   evitar redeclarar SUPABASE_URL/KEY y romper el script)
 ===================================================== */
-const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-const sbClient = window.__cajaSB || window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sbClient = window.__cajaSB || window.supabase.createClient(
+  'https://zvlincmqmmoclqhykejv.supabase.co',
+  'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'
+);
 
 /* =====================================================
    CATEGORÍAS DISPONIBLES
