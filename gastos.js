@@ -3,7 +3,7 @@
    Centro financiero de EGRESOS del negocio.
    Se integra con Caja a través de window.CajaAPI
    definido en cajaAPI.js (archivo independiente).
-   Versión: 1.2 — Fix: ya no redeclara SUPABASE_URL/KEY
+   Versión: 1.3 — Fix: renombra sbClient a _sb para evitar conflicto con cajaAPI.js
    (eso causaba un SyntaxError que rompía TODO el script
    y dejaba todos los botones sin funcionar)
 ===================================================== */
@@ -15,7 +15,7 @@
    (reutiliza el cliente ya creado por cajaAPI.js para
    evitar redeclarar SUPABASE_URL/KEY y romper el script)
 ===================================================== */
-const sbClient = window.__cajaSB || window.supabase.createClient(
+const _sb = window.__cajaSB || window.supabase.createClient(
   'https://zvlincmqmmoclqhykejv.supabase.co',
   'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'
 );
@@ -165,7 +165,7 @@ function navigate(url) { window.location.href = url; }
 ===================================================== */
 async function loadEmpresaConfig(userId) {
   try {
-    const { data } = await sbClient
+    const { data } = await _sb
       .from('configuracion_empresa')
       .select('*')
       .eq('auth_user_id', userId)
@@ -190,7 +190,7 @@ async function loadEmpresaConfig(userId) {
 
 async function loadUserProfile(userId) {
   try {
-    const { data } = await sbClient
+    const { data } = await _sb
       .from('usuarios')
       .select('*')
       .eq('auth_user_id', userId)
@@ -228,7 +228,7 @@ function renderUserInfo(user, email) {
 ===================================================== */
 async function checkAdminAccess(email) {
   try {
-    const { data } = await sbClient
+    const { data } = await _sb
       .from('administradores')
       .select('email, activo')
       .eq('email', email)
@@ -246,7 +246,7 @@ async function checkAdminAccess(email) {
 ===================================================== */
 async function loadMetodosPago() {
   try {
-    const { data } = await sbClient
+    const { data } = await _sb
       .from('metodos_pago')
       .select('*')
       .eq('auth_user_id', STATE.userId)
@@ -277,11 +277,11 @@ function populateMetodoSelects() {
 async function loadKpis() {
   try {
     const [hoyRes, mesRes, anioRes, pendRes, progActRes] = await Promise.all([
-      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').eq('fecha', todayISO()),
-      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', startOfMonthISO()),
-      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', startOfYearISO()),
-      sbClient.from('gastos_programados').select('id, monto, fecha_proxima').eq('auth_user_id', STATE.userId).eq('activo', true),
-      sbClient.from('gastos_programados').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('activo', true),
+      _sb.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').eq('fecha', todayISO()),
+      _sb.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', startOfMonthISO()),
+      _sb.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', startOfYearISO()),
+      _sb.from('gastos_programados').select('id, monto, fecha_proxima').eq('auth_user_id', STATE.userId).eq('activo', true),
+      _sb.from('gastos_programados').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('activo', true),
     ]);
 
     const sum = (rows) => (rows || []).reduce((s, r) => s + Number(r.monto || 0), 0);
@@ -295,7 +295,7 @@ async function loadKpis() {
     STATE.kpis.pendientes         = sum(pendList.filter(p => p.fecha_proxima <= hoyDate));
     STATE.kpis.recurrentesActivos = progActRes.count || 0;
 
-    const { data: salariosData } = await sbClient
+    const { data: salariosData } = await _sb
       .from('gastos_programados')
       .select('monto, fecha_proxima, categoria')
       .eq('auth_user_id', STATE.userId)
@@ -327,7 +327,7 @@ function setEl(id, value) {
 ===================================================== */
 async function loadGastos() {
   try {
-    let query = sbClient
+    let query = _sb
       .from('gastos')
       .select('*', { count: 'exact' })
       .eq('auth_user_id', STATE.userId)
@@ -476,7 +476,7 @@ function buscarGastos() {
 ===================================================== */
 async function loadGastosProgramados() {
   try {
-    const { data } = await sbClient
+    const { data } = await _sb
       .from('gastos_programados')
       .select('*')
       .eq('auth_user_id', STATE.userId)
@@ -634,7 +634,7 @@ async function saveGasto() {
 ===================================================== */
 async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado }) {
   // 1. Insertar en `gastos`
-  const { data: gastoRow, error: errGasto } = await sbClient
+  const { data: gastoRow, error: errGasto } = await _sb
     .from('gastos')
     .insert({
       auth_user_id:       STATE.userId,
@@ -679,13 +679,13 @@ async function registrarGastoInmediato({ categoria, concepto, monto, fecha, meto
   // 3. Vincular movimiento al gasto
   const movId = await getUltimoMovimientoId();
   if (movId) {
-    await sbClient.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
+    await _sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
   }
 }
 
 async function getUltimoMovimientoId() {
   try {
-    const { data } = await sbClient
+    const { data } = await _sb
       .from('movimientos_financieros')
       .select('id')
       .eq('auth_user_id', STATE.userId)
@@ -700,7 +700,7 @@ async function getUltimoMovimientoId() {
    GASTO PROGRAMADO
 ===================================================== */
 async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa }) {
-  const { data: progRow, error: errProg } = await sbClient
+  const { data: progRow, error: errProg } = await _sb
     .from('gastos_programados')
     .insert({
       auth_user_id:  STATE.userId,
@@ -727,7 +727,7 @@ async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombr
   const metodoFinal = metodoNombre || 'Efectivo';
 
   // 1. Insertar en `gastos`
-  const { data: gastoRow, error: errGasto } = await sbClient
+  const { data: gastoRow, error: errGasto } = await _sb
     .from('gastos')
     .insert({
       auth_user_id:       STATE.userId,
@@ -769,12 +769,12 @@ async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombr
   } else {
     const movId = await getUltimoMovimientoId();
     if (movId) {
-      await sbClient.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
+      await _sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
     }
   }
 
   // 3. Historial de gastos
-  await sbClient.from('historial_gastos').insert({
+  await _sb.from('historial_gastos').insert({
     auth_user_id:       STATE.userId,
     gasto_programado_id: programado.id,
     gasto_id:            gastoRow.id,
@@ -784,7 +784,7 @@ async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombr
 
   // 4. Siguiente vencimiento
   const proxima = calcularProximaFecha(fechaPago, programado.frecuencia);
-  await sbClient.from('gastos_programados').update({ fecha_proxima: proxima }).eq('id', programado.id);
+  await _sb.from('gastos_programados').update({ fecha_proxima: proxima }).eq('id', programado.id);
 }
 
 /* =====================================================
@@ -876,7 +876,7 @@ async function guardarEdicionProgramado() {
 
   try {
     setBtnLoading('btn-guardar-edicion-prog', true);
-    await sbClient.from('gastos_programados').update({
+    await _sb.from('gastos_programados').update({
       nombre, categoria, monto, frecuencia,
       fecha_proxima: fechaProxima,
       observaciones: observaciones || null,
@@ -895,7 +895,7 @@ async function guardarEdicionProgramado() {
 
 async function togglePausarProgramado(id, activar) {
   try {
-    await sbClient.from('gastos_programados')
+    await _sb.from('gastos_programados')
       .update({ activo: activar })
       .eq('id', id)
       .eq('auth_user_id', STATE.userId);
@@ -918,7 +918,7 @@ async function cancelarGasto() {
   if (!gastoToCancelar) return;
   try {
     setBtnLoading('btn-confirmar-cancelar', true);
-    await sbClient.from('gastos').update({
+    await _sb.from('gastos').update({
       estado:            'cancelado',
       cancelado_en:      new Date().toISOString(),
       cancelado_motivo:  'Cancelado manualmente',
@@ -956,7 +956,7 @@ async function verDetalleGasto(id) {
     }
 
     try {
-      const { data: hist } = await sbClient
+      const { data: hist } = await _sb
         .from('historial_gastos')
         .select('monto, fecha_pago')
         .eq('gasto_programado_id', g.gasto_programado_id)
@@ -1122,7 +1122,7 @@ async function initGastos() {
   populateCategoriaSelects();
 
   try {
-    const { data: { user }, error } = await sbClient.auth.getUser();
+    const { data: { user }, error } = await _sb.auth.getUser();
     if (error || !user) { window.location.href = 'login.html'; return; }
 
     STATE.userId    = user.id;
@@ -1158,7 +1158,7 @@ async function initGastos() {
 /* =====================================================
    AUTH LISTENER
 ===================================================== */
-sbClient.auth.onAuthStateChange((event) => {
+_sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') window.location.href = 'login.html';
 });
 
