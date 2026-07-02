@@ -181,11 +181,12 @@ async function loadDashboardStats() {
   if (!user) { window.location.href = 'login.html'; return; }
 
   showSkeletons();
+  showPaymentListsLoading();
 
   try {
     const { data: usuarios, error } = await sb
       .from('usuarios')
-      .select('id, estado_cuenta, plan');
+      .select('id, nombre, apellido, email, estado_cuenta, plan, created_at, fecha_ultimo_pago');
 
     if (error) throw error;
 
@@ -203,6 +204,9 @@ async function loadDashboardStats() {
     document.getElementById('stat-prueba').textContent      = prueba;
     document.getElementById('stat-premium').textContent     = premium;
 
+    // Construir las listas informativas de pagos (próximos / pendientes / atrasados)
+    buildPaymentLists(usuarios);
+
   } catch (e) {
     toast('Error al cargar estadísticas', e.message, 'error');
   }
@@ -214,6 +218,137 @@ function showSkeletons() {
       const el = document.getElementById(id);
       if (el) { el.textContent = '—'; }
     });
+}
+
+function showPaymentListsLoading() {
+  ['list-proximos', 'list-pendientes', 'list-atrasados'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="payment-empty">Cargando...</div>';
+  });
+}
+
+// ============================================================
+// SECCIÓN 1B — CONTROL DE PAGOS (Próximos / Pendientes / Atrasados)
+// ============================================================
+// La lógica se basa en el día del mes en que el usuario se registró
+// (created_at). Cada mes esa misma fecha se considera el "día de pago".
+//
+// - 3 días antes del día de pago  → aparece en "Próximos a Pagar"
+// - El día de pago (o 1 día después) → aparece en "Pendientes de Pago"
+// - 2 días o más después del día de pago → aparece en "Pago Atrasado"
+//
+// Un usuario deja de aparecer en cualquiera de las 3 listas apenas se le
+// marca "Pagado" (desde la sección Usuarios) para el ciclo correspondiente,
+// y no vuelve a aparecer hasta que se acerque su próxima fecha de pago.
+//
+// NOTA: por defecto solo se controla el pago de usuarios con plan
+// "premium" (los usuarios en "prueba" no pagan). Si tu negocio cobra
+// también el plan de prueba, quita la condición `u.plan !== 'premium'`.
+function getPaymentInfo(u, today) {
+  if (!u.created_at) return null;
+  if (u.plan !== 'premium') return null;
+  if (u.estado_cuenta === 'cancelada') return null;
+
+  const reg = new Date(u.created_at);
+  reg.setHours(0, 0, 0, 0);
+  const regDay = reg.getDate();
+
+  const t = new Date(today);
+  t.setHours(0, 0, 0, 0);
+
+  // Meses completos transcurridos desde el registro.
+  const monthsSinceReg = (t.getFullYear() - reg.getFullYear()) * 12 + (t.getMonth() - reg.getMonth());
+  if (monthsSinceReg <= 0) return null; // Aún dentro del primer mes (se "pagó" al registrarse)
+
+  // Fecha de vencimiento de este mes (ajustada si el mes tiene menos días)
+  const daysInMonth = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  const dueDay  = Math.min(regDay, daysInMonth);
+  const dueDate = new Date(t.getFullYear(), t.getMonth(), dueDay);
+
+  // ¿Ya se marcó como pagado el ciclo que corresponde a este vencimiento?
+  if (u.fecha_ultimo_pago) {
+    const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
+    if (pago.getFullYear() === dueDate.getFullYear() && pago.getMonth() === dueDate.getMonth()) {
+      return null; // ya pagado este mes
+    }
+  }
+
+  const diffDays = Math.round((t - dueDate) / 86400000);
+
+  if (diffDays < -3) return null;                                    // todavía falta más de 3 días
+  if (diffDays < 0)   return { status: 'proximo',   dueDate, diffDays };
+  if (diffDays <= 1)  return { status: 'pendiente', dueDate, diffDays };
+  return { status: 'atrasado', dueDate, diffDays };
+}
+
+function buildPaymentLists(usuarios) {
+  const today = new Date();
+  const proximos = [], pendientes = [], atrasados = [];
+
+  usuarios.forEach(u => {
+    const info = getPaymentInfo(u, today);
+    if (!info) return;
+    const entry = Object.assign({}, u, info);
+    if (info.status === 'proximo')   proximos.push(entry);
+    if (info.status === 'pendiente') pendientes.push(entry);
+    if (info.status === 'atrasado')  atrasados.push(entry);
+  });
+
+  proximos.sort((a, b) => a.dueDate - b.dueDate);
+  pendientes.sort((a, b) => a.dueDate - b.dueDate);
+  atrasados.sort((a, b) => b.diffDays - a.diffDays);
+
+  renderPaymentList('list-proximos', proximos, 'Nadie está próximo a pagar', (e) => {
+    const dias = Math.abs(e.diffDays);
+    return {
+      sub:   `Vence en ${dias} día${dias === 1 ? '' : 's'} · ${formatDate(e.dueDate)}`,
+      badge: 'info',
+      label: `${dias}d`,
+    };
+  });
+
+  renderPaymentList('list-pendientes', pendientes, 'No hay pagos pendientes hoy', (e) => {
+    const label = e.diffDays === 0 ? 'Hoy' : 'Ayer';
+    return {
+      sub:   `Vence ${label.toLowerCase()} · ${formatDate(e.dueDate)}`,
+      badge: 'warning',
+      label,
+    };
+  });
+
+  renderPaymentList('list-atrasados', atrasados, 'No hay pagos atrasados', (e) => {
+    return {
+      sub:   `Venció el ${formatDate(e.dueDate)}`,
+      badge: 'danger',
+      label: `${e.diffDays}d atraso`,
+    };
+  });
+}
+
+function renderPaymentList(containerId, items, emptyMsg, describe) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = `<div class="payment-empty">${emptyMsg}</div>`;
+    return;
+  }
+
+  el.innerHTML = items.map(u => {
+    const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Sin nombre';
+    const initial = nombreCompleto.charAt(0).toUpperCase();
+    const { sub, badge, label } = describe(u);
+    return `
+      <div class="payment-item">
+        <div class="payment-item-avatar">${escHtml(initial)}</div>
+        <div class="payment-item-info">
+          <div class="payment-item-name">${escHtml(nombreCompleto)}</div>
+          <div class="payment-item-sub">${escHtml(sub)}</div>
+        </div>
+        <span class="pago-badge ${badge}">${escHtml(label)}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 // ============================================================
@@ -228,7 +363,7 @@ async function loadUsers() {
   try {
     const { data, error } = await sb
       .from('usuarios')
-      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, onboarding_completado, created_at')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -244,7 +379,7 @@ async function loadUsers() {
 
 function showUsersLoader() {
   document.getElementById('users-tbody').innerHTML = `
-    <tr><td colspan="9" style="text-align:center; padding:48px; color:var(--text-muted)">
+    <tr><td colspan="10" style="text-align:center; padding:48px; color:var(--text-muted)">
       <div class="loader-spinner" style="margin:0 auto 12px"></div>
       <div>Cargando usuarios...</div>
     </td></tr>`;
@@ -252,7 +387,7 @@ function showUsersLoader() {
 
 function renderUsersEmpty() {
   document.getElementById('users-tbody').innerHTML = `
-    <tr><td colspan="9">
+    <tr><td colspan="10">
       <div class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -281,12 +416,19 @@ function renderUsersTable(users) {
       <td>${planBadge(u.plan)}</td>
       <td>${estadoBadge(u.estado_cuenta)}</td>
       <td>${formatDate(u.created_at)}</td>
+      <td>${u.fecha_ultimo_pago ? formatDate(u.fecha_ultimo_pago) : '<span style="color:var(--text-muted)">Sin registro</span>'}</td>
       <td>
         <div class="td-actions">
           <button class="btn-icon btn-ghost btn-sm" onclick="viewUser('${u.id}')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             Ver
           </button>
+          ${u.plan === 'premium'
+            ? `<button class="btn-icon btn-primary btn-sm" onclick="markAsPaid('${u.id}')" title="Marcar que ya pagó este mes">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Marcar Pagado
+              </button>`
+            : ''}
           ${u.estado_cuenta !== 'activa'
             ? `<button class="btn-icon btn-success btn-sm" onclick="openConfirmAction('activar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Activar</button>`
             : ''}
@@ -345,11 +487,42 @@ function viewUser(id) {
   document.getElementById('detail-plan').innerHTML         = planBadge(u.plan);
   document.getElementById('detail-estado').innerHTML       = estadoBadge(u.estado_cuenta);
   document.getElementById('detail-registro').textContent   = formatDate(u.created_at);
+  document.getElementById('detail-ultimo-pago').textContent = u.fecha_ultimo_pago ? formatDate(u.fecha_ultimo_pago) : 'Sin registro';
   document.getElementById('detail-onboarding').innerHTML   = u.onboarding_completado
     ? '<span class="badge badge-success">Completado</span>'
     : '<span class="badge badge-warning">Pendiente</span>';
 
   openModal('modal-view-user');
+}
+
+// Marcar usuario como "pagado" este ciclo — solo actualiza fecha_ultimo_pago.
+// No cambia el plan ni el estado de la cuenta: únicamente le informa a las
+// listas de pagos del dashboard que este mes ya está cubierto, para que dejen
+// de mostrarlo hasta que se acerque su próxima fecha de pago.
+async function markAsPaid(userId) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  try {
+    const hoyISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    const { error } = await sb
+      .from('usuarios')
+      .update({ fecha_ultimo_pago: hoyISO })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    const idx = allUsers.findIndex(u => u.id === userId);
+    if (idx !== -1) allUsers[idx].fecha_ultimo_pago = hoyISO;
+
+    toast('Pago registrado', 'El cliente quedó marcado como pagado este mes', 'success');
+
+    filterAndSearch();
+
+  } catch (e) {
+    toast('Error al registrar el pago', e.message, 'error');
+  }
 }
 
 // Confirmar acción sobre usuario
