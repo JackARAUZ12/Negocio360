@@ -1945,10 +1945,11 @@ async function checkAdminAccess(userEmail) {
 /* =====================================================
    THEME TOGGLE: mark as manual so config tema is not overridden
 ===================================================== */
-const _origToggleTheme = toggleTheme;
+// ORIGINAL — cámbialo a esto:
 function toggleTheme() {
-  sessionStorage.setItem('n360_theme_manual', '1');
-  _origToggleTheme();
+  sessionStorage.setItem('n360_theme_manual', '1');  // ← agrega esta línea
+  const curr = document.documentElement.getAttribute('data-theme');
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
 }
 
 /* =====================================================
