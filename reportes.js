@@ -547,7 +547,7 @@ async function fetchProductos() {
   return R.cache.productos;
 }
 
-/* ---- CAPITAL (desde movimientos_financieros — misma lógica que caja.js) ---- */
+/* ---- CAJA (desde movimientos_financieros — misma lógica que caja.js) ---- */
 async function fetchCapital() {
   const { data } = await sb.from('movimientos_financieros')
     .select('saldo_resultante')
@@ -667,7 +667,6 @@ async function loadEjecutivo() {
 
     // HERO
     setEl('eh-ventas',   fmt(vRes.total));
-    setEl('eh-compras',  fmt(totalCompras));
     setEl('eh-gastos',   fmt(totalGastos));
     setEl('eh-ganancia', fmt(gananciaNeta));
     setEl('eh-capital',  fmt(capital));
@@ -686,8 +685,6 @@ async function loadEjecutivo() {
     setEl('kpi-ticket-exec',    fmt(vRes.ticket));
 
     // KPIs fila 2
-    setEl('kpi-compras-total',    fmt(totalCompras));
-    setEl('kpi-compras-count',    `${compras.length} compra${compras.length!==1?'s':''}`);
     setEl('kpi-inventario-valor', fmt(valorInventario));
     setEl('kpi-inventario-prods', `${prods.length} productos`);
     setEl('kpi-clientes-nuevos',  clientesNuevos.toString());
@@ -1299,12 +1296,12 @@ async function loadAlertas() {
       }
     }
 
-    // CAPITAL BAJO
+    // CAJA BAJA
     const capital = await fetchCapital();
     if (capital < 500) {
       alertas.push({
         tipo:'danger', icon:'💰',
-        titulo: 'Capital disponible bajo',
+        titulo: 'Caja disponible baja',
         desc: `Saldo actual: ${fmt(capital)}. Considera revisar gastos o aumentar ventas.`,
         tag: '⚠️ Urgente', tagCls:'',
         accion: () => navigate('caja.html'),
@@ -1348,19 +1345,16 @@ function setEl(id, val) { const el = document.getElementById(id); if (el) el.tex
    ======================================================
    EXPORTACIONES
    NO guarda en Supabase. Genera dinámicamente en el browser.
+   Solo se exporta en formato PDF.
    ======================================================
    ============================================================ */
 
 async function exportar(tipo, formato) {
-  showToast(`Generando ${tipo}.${formato}…`, 'info');
+  showToast(`Generando ${tipo}.pdf…`, 'info');
   try {
     await ensureCaches();
-    switch(formato) {
-      case 'pdf':  await exportarPDF(tipo);  break;
-      case 'xlsx': await exportarXLSX(tipo); break;
-      case 'csv':  await exportarCSV(tipo);  break;
-    }
-    showToast(`✅ ${tipo}.${formato} descargado`, 'success');
+    await exportarPDF(tipo);
+    showToast(`✅ ${tipo}.pdf descargado`, 'success');
   } catch(e) {
     console.error('exportar:', e);
     showToast('Error al generar el archivo', 'error');
@@ -1465,114 +1459,6 @@ async function exportarPDF(tipo) {
   }
 
   doc.save(`negocio360_${tipo}_${todayISO()}.pdf`);
-}
-
-/* ---- XLSX ---- */
-async function exportarXLSX(tipo) {
-  const wb = XLSX.utils.book_new();
-  const h  = docHeader(tipo);
-
-  const metaRows = [
-    ['NEGOCIO360 — ' + h.biz],
-    [`Reporte: ${tituloTipo(tipo)}`],
-    [`Período: ${h.periodo}`],
-    [`Moneda: ${h.moneda}`],
-    [`Generado: ${h.ahora}`],
-    [],
-  ];
-
-  function addSheet(name, headers, rows) {
-    const data = [...metaRows, headers, ...rows];
-    const ws   = XLSX.utils.aoa_to_sheet(data);
-    // Estilo ancho columnas
-    ws['!cols'] = headers.map(()=>({wch:20}));
-    XLSX.utils.book_append_sheet(wb, ws, name);
-  }
-
-  if (tipo==='general'||tipo==='ventas') {
-    addSheet('Ventas', ['#Venta','Fecha','Cliente','Método pago','Total','Ganancia','Costo'],
-      R.cache.ventas.map(v=>[v.numero_venta,v.fecha,v.cliente_nombre||'Consumidor Final',v.metodo_pago_nombre||'—',Number(v.total),Number(v.ganancia),Number(v.costo_total)]));
-  }
-  if (tipo==='general'||tipo==='compras') {
-    addSheet('Compras', ['#Compra','Fecha','Proveedor','Total','Estado'],
-      R.cache.compras.map(c=>[c.numero,c.fecha,c.proveedor_nombre||'—',Number(c.total),c.estado]));
-  }
-  if (tipo==='general'||tipo==='clientes') {
-    addSheet('Clientes', ['Nombre','Teléfono','Email','N° Compras','Total gastado','Última compra'],
-      R.cache.clientes.map(c=>[c.nombre,c.telefono||'',c.correo||'',Number(c.num_compras),Number(c.total_compras),c.ultima_compra||'']));
-  }
-  if (tipo==='general'||tipo==='inventario') {
-    addSheet('Inventario', ['Producto','SKU','Categoría','Stock actual','Stock mín','Costo','Precio','Valor total'],
-      (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo).map(p=>[
-        p.nombre, p.sku||'', p.categoria||'', Number(p.stock_actual||0),
-        Number(p.stock_minimo||0), Number(p.costo||0), Number(p.precio||0),
-        Number(p.stock_actual||0)*Number(p.costo||0),
-      ]));
-  }
-  if (tipo==='general'||tipo==='gastos') {
-    addSheet('Gastos', ['Concepto','Categoría','Fecha','Monto','Tipo'],
-      R.cache.gastos.map(g=>[g.concepto,g.categoria||'',g.fecha,Number(g.monto),g.tipo]));
-  }
-  if (tipo==='general') {
-    const r = R.cache.resumen;
-    addSheet('Resumen financiero', ['Concepto','Valor'], [
-      ['Ventas totales',     Number(r.ventas||0)],
-      ['Compras totales',    Number(r.compras||0)],
-      ['Total gastos',       Number(r.gastos||0)],
-      ['Ganancia bruta',     Number(r.gananciaBruta||0)],
-      ['Ganancia neta',      Number(r.gananciaNeta||0)],
-      ['Capital disponible', Number(r.capital||0)],
-      ['Valor inventario',   Number(r.valorInventario||0)],
-      ['Ticket promedio',    Number(r.ticketPromedio||0)],
-      ['Margen bruto %',     Number(r.margenBruto||0)],
-      ['Margen neto %',      Number(r.margenNeto||0)],
-    ]);
-  }
-
-  XLSX.writeFile(wb, `negocio360_${tipo}_${todayISO()}.xlsx`);
-}
-
-/* ---- CSV ---- */
-async function exportarCSV(tipo) {
-  let rows = [], headers = [];
-  const h  = docHeader(tipo);
-
-  if (tipo==='ventas') {
-    headers = ['#Venta','Fecha','Cliente','Método pago','Total','Ganancia'];
-    rows    = R.cache.ventas.map(v=>[v.numero_venta,v.fecha,v.cliente_nombre||'Consumidor Final',v.metodo_pago_nombre||'—',v.total,v.ganancia]);
-  } else if (tipo==='compras') {
-    headers = ['#Compra','Fecha','Proveedor','Total','Estado'];
-    rows    = R.cache.compras.map(c=>[c.numero,c.fecha,c.proveedor_nombre||'—',c.total,c.estado]);
-  } else if (tipo==='clientes') {
-    headers = ['Nombre','Teléfono','Email','N° Compras','Total gastado','Última compra'];
-    rows    = R.cache.clientes.map(c=>[c.nombre,c.telefono||'',c.correo||'',c.num_compras,c.total_compras,c.ultima_compra||'']);
-  } else if (tipo==='inventario') {
-    headers = ['Producto','SKU','Categoría','Stock','Costo','Precio','Valor total'];
-    rows    = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo)
-      .map(p=>[p.nombre,p.sku||'',p.categoria||'',p.stock_actual,p.costo,p.precio,Number(p.stock_actual||0)*Number(p.costo||0)]);
-  } else if (tipo==='gastos') {
-    headers = ['Concepto','Categoría','Fecha','Monto','Tipo'];
-    rows    = R.cache.gastos.map(g=>[g.concepto,g.categoria||'',g.fecha,g.monto,g.tipo]);
-  } else { // general
-    headers = ['Módulo','Concepto','Fecha','Monto','Extra'];
-    rows    = [
-      ...R.cache.ventas.map(v=>['Venta',v.numero_venta,v.fecha,v.total,v.cliente_nombre||'']),
-      ...R.cache.compras.map(c=>['Compra',c.numero,c.fecha,c.total,c.proveedor_nombre||'']),
-      ...R.cache.gastos.map(g=>['Gasto',g.concepto,g.fecha,g.monto,g.categoria||'']),
-    ];
-  }
-
-  const meta  = `# ${h.biz}\n# Reporte: ${tituloTipo(tipo)}\n# Período: ${h.periodo}\n# Moneda: ${h.moneda}\n# Generado: ${h.ahora}\n\n`;
-  const csvContent = meta + [headers, ...rows]
-    .map(r => r.map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','))
-    .join('\n');
-
-  const blob = new Blob([csvContent], { type:'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url; link.download = `negocio360_${tipo}_${todayISO()}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function tituloTipo(tipo) {
