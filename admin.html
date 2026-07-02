@@ -211,6 +211,66 @@
         </div>
       </div>
 
+      <!-- ═══ CONTROL DE PAGOS (Próximos / Pendientes / Atrasados) ═══ -->
+      <div class="payment-lists-grid">
+        <div class="card payment-card proximos">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                Próximos a Pagar
+              </div>
+              <div class="card-subtitle">Vencen en los próximos 3 días · solo informativo</div>
+            </div>
+          </div>
+          <div class="card-body no-pad">
+            <div class="payment-list" id="list-proximos">
+              <div class="payment-empty">Cargando...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card payment-card pendientes">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                  <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                </svg>
+                Pendientes de Pago
+              </div>
+              <div class="card-subtitle">Su fecha de pago es hoy o fue ayer</div>
+            </div>
+          </div>
+          <div class="card-body no-pad">
+            <div class="payment-list" id="list-pendientes">
+              <div class="payment-empty">Cargando...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card payment-card atrasados">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Pago Atrasado
+              </div>
+              <div class="card-subtitle">2 o más días de atraso</div>
+            </div>
+          </div>
+          <div class="card-body no-pad">
+            <div class="payment-list" id="list-atrasados">
+              <div class="payment-empty">Cargando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Info rápida -->
       <div class="card">
         <div class="card-header">
@@ -296,6 +356,7 @@
                   <th>Plan</th>
                   <th>Estado</th>
                   <th>Fecha Registro</th>
+                  <th>Último Pago</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -406,6 +467,10 @@
         <div class="detail-item">
           <label>Fecha de Registro</label>
           <span id="detail-registro">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Último Pago</label>
+          <span id="detail-ultimo-pago">—</span>
         </div>
         <div class="detail-item">
           <label>Onboarding</label>
