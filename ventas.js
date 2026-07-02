@@ -84,6 +84,7 @@ function getFilterDates() {
 
 function fmtFecha(iso) {
   if (!iso) return '—';
+   const dateOnly = iso.split('T')[0];
   const d = new Date(iso+'T12:00:00');
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
 }
