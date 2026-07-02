@@ -1410,7 +1410,7 @@ async function exportarPDF(tipo) {
     const finRows = [
       ['Ventas totales', fmt(r.ventas)], ['Compras totales', fmt(r.compras)],
       ['Total gastos', fmt(r.gastos)], ['Ganancia bruta', fmt(r.gananciaBruta)],
-      ['Ganancia neta', fmt(r.gananciaNeta)], ['Capital disponible', fmt(r.capital)],
+      ['Ganancia neta', fmt(r.gananciaNeta)], ['Caja disponible', fmt(r.capital)],
     ];
     doc.autoTable({ startY, head:[['Concepto','Monto']], body:finRows, theme:'striped',
       headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:9} });
