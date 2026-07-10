@@ -950,11 +950,17 @@
        validarCodigoAcceso(codigo)
        Consulta Supabase. Devuelve el objeto del código si es válido,
        o null si no lo es.
+
+       FIX: se agrega "plan" al select. Sin este campo, el plan
+       configurado en el código (prueba/premium) nunca llegaba al
+       registro del usuario, y por eso todas las cuentas terminaban
+       con el plan por defecto de la base de datos en vez del plan
+       real del código usado.
     ---------------------------------------------------------------- */
     async function validarCodigoAcceso(codigo) {
       const { data, error } = await supabase
         .from('codigos_acceso')
-        .select('id, codigo, activo, usos_maximos, usos_actuales')
+        .select('id, codigo, activo, usos_maximos, usos_actuales, plan')
         .eq('codigo', codigo.trim().toUpperCase())
         .single();
 
@@ -1003,6 +1009,19 @@
        registrarUsuario(payload, codigoData)
        1. Crea el usuario en Supabase Auth.
        2. Consume el código (incremento atómico + desactivación si agotado).
+
+       FIX: ahora se manda "plan: codigoData.plan" dentro de
+       options.data del signUp. Esto hace que el plan del código
+       (prueba/premium) viaje como metadata del usuario nuevo, para
+       que el trigger/función en Supabase que crea la fila en
+       "usuarios" pueda leerlo (via raw_user_meta_data->>'plan') y
+       asignar el plan correcto en vez de un valor por defecto fijo.
+
+       IMPORTANTE: este cambio, por sí solo, es "aditivo": no rompe
+       nada del flujo actual. Pero para que el plan realmente quede
+       bien guardado en la tabla "usuarios", la función/trigger que
+       crea esa fila en Supabase (fuera de estos archivos) también
+       debe leer ese metadata. Ver instrucciones en el chat.
     ---------------------------------------------------------------- */
     async function registrarUsuario(payload, codigoData) {
       const { nombre, apellido, negocio, email, whatsapp, password } = payload;
@@ -1016,7 +1035,8 @@
             nombre,
             apellido,
             nombre_negocio: negocio,
-            whatsapp
+            whatsapp,
+            plan: codigoData.plan || 'premium'
           }
         }
       });
