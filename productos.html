@@ -131,6 +131,21 @@
       padding: 3px 10px;
       font-weight: 600;
     }
+
+    /* ── Caja de impacto en caja (nuevo producto) ── */
+    .caja-impacto-hint {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      background: var(--bg-app);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .caja-impacto-hint svg { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
   </style>
 </head>
 <body>
@@ -150,8 +165,8 @@
     <div class="sidebar-logo">
       <div class="sidebar-logo-icon">⚡</div>
       <div>
-        <div class="sidebar-logo-text">BizFlow</div>
-        <div class="sidebar-logo-sub">Dashboard</div>
+        <div class="sidebar-logo-text" id="sidebarLogoText">Mi Negocio</div>
+        <div class="sidebar-logo-sub">Panel de gestión</div>
       </div>
     </div>
 
@@ -166,14 +181,11 @@
         <span class="sidebar-badge" id="badgeStockBajo" style="display:none">0</span>
       </a>
       <div class="sidebar-section-label">Operaciones</div>
-      <a href="inventario.html"    class="sidebar-item"><span class="sidebar-icon">🏭</span>Inventario</a>
       <a href="compras.html"       class="sidebar-item"><span class="sidebar-icon">🛒</span>Compras</a>
       <a href="gastos.html"        class="sidebar-item"><span class="sidebar-icon">💸</span>Gastos</a>
       <a href="caja.html"          class="sidebar-item"><span class="sidebar-icon">🏦</span>Caja / Pagos</a>
       <div class="sidebar-section-label">Análisis</div>
       <a href="reportes.html"      class="sidebar-item"><span class="sidebar-icon">📊</span>Reportes</a>
-      <div class="sidebar-section-label">Sistema</div>
-      <a href="configuracion.html" class="sidebar-item"><span class="sidebar-icon">⚙️</span>Configuración</a>
     </nav>
 
     <div class="sidebar-footer">
@@ -411,13 +423,27 @@
             <div class="form-group">
               <label class="form-label" for="inputStockActual">Stock inicial</label>
               <input type="number" class="form-input" id="inputStockActual"
-                     placeholder="0" min="0" step="0.01" />
+                     placeholder="0" min="0" step="0.01" oninput="actualizarCajaImpactoPreview()" />
             </div>
             <div class="form-group">
               <label class="form-label" for="inputStockMinimo">Stock mínimo</label>
               <input type="number" class="form-input" id="inputStockMinimo"
                      placeholder="0" min="0" step="0.01" />
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
+            </div>
+          </div>
+
+          <!-- ¿Cómo afecta esto tu caja? -->
+          <div class="form-group full" style="margin-top:14px">
+            <label class="form-label">¿Cómo afecta esto tu caja? <span>*</span></label>
+            <div class="type-toggle">
+              <button type="button" class="type-toggle-btn active" id="toggleDescontarCaja">💸 Descontar de caja</button>
+              <button type="button" class="type-toggle-btn" id="toggleNoDescontarCaja">📦 Ya lo tenía</button>
+            </div>
+            <input type="hidden" id="inputDescontarCaja" value="true" />
+            <div class="caja-impacto-hint" style="margin-top:8px" id="cajaImpactoHintBox">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span id="cajaImpactoHint">Se registrará un gasto en Caja por el costo total del stock inicial. Úsalo cuando estés comprando este producto ahora.</span>
             </div>
           </div>
         </div>
