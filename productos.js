@@ -198,6 +198,8 @@ async function checkAuth() {
 // CARGAR DATOS EMPRESA
 // FIX: Búsqueda robusta de moneda en múltiples fuentes,
 //      incluyendo preferencias jsonb de la tabla usuarios
+// FIX: nombre del negocio también se refleja en el logo del
+//      sidebar (antes decía "BizFlow" fijo)
 // ============================================================
 async function cargarDatosEmpresa() {
   try {
@@ -249,9 +251,14 @@ async function cargarDatosEmpresa() {
     });
     // ─────────────────────────────────────────────────────────
 
+    const nombreNegocio = empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
+
     const nombreEl = $('nombreEmpresa');
-    if (nombreEl) nombreEl.textContent =
-      empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
+    if (nombreEl) nombreEl.textContent = nombreNegocio;
+
+    // FIX: nombre del negocio también en el logo del sidebar (antes "BizFlow" fijo)
+    const logoTextEl = $('sidebarLogoText');
+    if (logoTextEl) logoTextEl.textContent = nombreNegocio;
 
     const planEl = $('planBadge');
     if (planEl) planEl.textContent = empresa.plan || perfil.plan || 'Free';
@@ -534,6 +541,95 @@ function mostrarErrorTabla() {
 }
 
 // ============================================================
+// IMPACTO EN CAJA (nuevo producto)
+// Toggle: "Descontar de caja" (compra nueva) vs "Ya lo tenía"
+// (inventario físico previo, útil al iniciar con el sistema)
+// ============================================================
+function setCajaImpacto(descontar) {
+  const input = $('inputDescontarCaja');
+  if (input) input.value = descontar ? 'true' : 'false';
+
+  const btnSi = $('toggleDescontarCaja');
+  const btnNo = $('toggleNoDescontarCaja');
+  if (btnSi) btnSi.classList.toggle('active', descontar);
+  if (btnNo) btnNo.classList.toggle('active', !descontar);
+
+  actualizarCajaImpactoPreview();
+}
+
+function actualizarCajaImpactoPreview() {
+  const hint = $('cajaImpactoHint');
+  if (!hint) return;
+
+  const descontar   = $('inputDescontarCaja')?.value !== 'false';
+  const costo       = parseFloat($('inputCosto')?.value) || 0;
+  const stockActual = parseFloat($('inputStockActual')?.value) || 0;
+  const monto       = costo * stockActual;
+
+  if (!descontar) {
+    hint.textContent = 'No se afectará tu caja. Úsalo para productos que ya tenías en tu inventario físico antes de empezar a usar el sistema.';
+    return;
+  }
+
+  hint.textContent = monto > 0
+    ? `Se descontará ${fmtMoney(monto)} de tu caja al guardar (costo × cantidad). Úsalo cuando estés comprando este producto ahora.`
+    : 'Se registrará un gasto en Caja por el costo total del stock inicial. Úsalo cuando estés comprando este producto ahora.';
+}
+
+// ============================================================
+// REGISTRAR COMPRA EN CAJA
+// Inserta un movimiento EGRESO en movimientos_financieros,
+// con la misma lógica/estructura que usa el módulo de Caja
+// (saldo_anterior / saldo_resultante como fuente de verdad).
+// No depende de caja.js/cajaAPI.js — autocontenido para no
+// arriesgar nada del módulo de Caja.
+// ============================================================
+async function registrarCompraEnCaja(nombreProducto, monto, productoId) {
+  try {
+    const { data: ultMov } = await supabaseClient
+      .from('movimientos_financieros')
+      .select('saldo_resultante')
+      .eq('auth_user_id', STATE.user.id)
+      .eq('estado', 'completado')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    const saldoResultante = saldoAnterior - monto;
+
+    const { error } = await supabaseClient.from('movimientos_financieros').insert({
+      auth_user_id:       STATE.user.id,
+      tipo_flujo:         'EGRESO',
+      tipo_movimiento:    'COMPRA',
+      concepto:           `Compra de inventario: ${nombreProducto}`,
+      monto:               monto,
+      saldo_anterior:      saldoAnterior,
+      saldo_resultante:    saldoResultante,
+      metodo_pago_nombre: 'Efectivo',
+      referencia_tipo:    'producto',
+      referencia_id:       productoId || null,
+      fecha:               new Date().toISOString().split('T')[0],
+      estado:              'completado',
+    });
+
+    if (error) throw error;
+
+    // Mantener sincronizado el caché local que usan dashboard/caja
+    try {
+      localStorage.setItem('n360_caja', saldoResultante.toString());
+      localStorage.setItem('n360_capital', saldoResultante.toString());
+      localStorage.setItem('n360_caja_updated', new Date().toISOString());
+    } catch (_) { /* silencioso */ }
+
+    return { ok: true, saldoResultante };
+  } catch (e) {
+    console.warn('registrarCompraEnCaja:', e);
+    return { ok: false, error: e.message };
+  }
+}
+
+// ============================================================
 // MODAL NUEVO / EDITAR
 // ============================================================
 function abrirModalNuevo(tipo = 'producto') {
@@ -605,7 +701,8 @@ function setTipoModal(tipo, habilitarToggle = true) {
   if (btnProd)      btnProd.classList.toggle('active', tipo === 'producto');
   if (btnServ)      btnServ.classList.toggle('active', tipo === 'servicio');
 
-  // Solo mostrar stock si es producto Y estamos en modo creación/duplicación
+  // Solo mostrar stock (y el toggle de impacto en caja, que vive dentro)
+  // si es producto Y estamos en modo creación/duplicación
   if (stockSection) {
     const mostrar = tipo === 'producto' && STATE.modalMode !== 'editar';
     stockSection.style.display = mostrar ? '' : 'none';
@@ -626,6 +723,8 @@ function resetFormulario() {
     avisoStock.classList.remove('visible');
     avisoStock.style.display = 'none';
   }
+  // Por defecto: "Descontar de caja" (caso más común — compra nueva)
+  setCajaImpacto(true);
 }
 
 function cargarFormulario(p) {
@@ -689,6 +788,7 @@ async function guardarProducto() {
 
   try {
     let error = null;
+    let cajaInfo = null; // { montoDescontado } si se registró movimiento de caja
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
       const stockActualRaw = $('inputStockActual')?.value;
@@ -710,8 +810,21 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         activo,
       };
-      const res = await supabaseClient.from('productos').insert([payload]);
+      const res = await supabaseClient.from('productos').insert([payload]).select();
       error = res.error;
+
+      // Impacto en caja: solo para productos con costo × cantidad > 0,
+      // y solo si el usuario eligió "Descontar de caja"
+      if (!error && tipo === 'producto') {
+        const descontarCaja = $('inputDescontarCaja')?.value !== 'false';
+        const montoCompra   = (isNaN(costo) ? 0 : costo) * (isNaN(stockActual) ? 0 : stockActual);
+
+        if (descontarCaja && montoCompra > 0) {
+          const insertedId = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
+          const resultCaja = await registrarCompraEnCaja(nombre, montoCompra, insertedId);
+          if (resultCaja.ok) cajaInfo = { montoDescontado: montoCompra };
+        }
+      }
 
     } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
       // En edición: NUNCA actualizar stock_actual — solo desde movimientos especiales
@@ -741,7 +854,7 @@ async function guardarProducto() {
     showToast(
       'success',
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
-      nombre
+      cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre
     );
     await cargarProductos();
 
@@ -879,6 +992,7 @@ async function duplicarProducto(id) {
 
   setTipoModal(p.tipo, false);
   configurarCamposSegunModo('crear'); // duplicar actúa como crear
+  actualizarCajaImpactoPreview();
 
   $('modalProductoTitle').textContent = `Duplicar: ${p.nombre}`;
   $('btnGuardarProducto').textContent = 'Crear copia';
@@ -1136,6 +1250,12 @@ function initEventos() {
   if (btnProd) btnProd.addEventListener('click', () => setTipoModal('producto', true));
   if (btnServ) btnServ.addEventListener('click', () => setTipoModal('servicio', true));
 
+  // Toggle de impacto en caja (nuevo producto)
+  const btnDescontarCaja   = $('toggleDescontarCaja');
+  const btnNoDescontarCaja = $('toggleNoDescontarCaja');
+  if (btnDescontarCaja)   btnDescontarCaja.addEventListener('click', () => setCajaImpacto(true));
+  if (btnNoDescontarCaja) btnNoDescontarCaja.addEventListener('click', () => setCajaImpacto(false));
+
   const btnGuardar = $('btnGuardarProducto');
   if (btnGuardar) btnGuardar.addEventListener('click', guardarProducto);
 
@@ -1204,6 +1324,11 @@ function initEventos() {
       if (errEl) errEl.textContent = '';
     });
   }
+
+  // Actualizar preview de caja cuando cambia el costo (el stock ya
+  // dispara actualizarCajaImpactoPreview() vía oninput en el HTML)
+  const inputCostoEl = $('inputCosto');
+  if (inputCostoEl) inputCostoEl.addEventListener('input', actualizarCajaImpactoPreview);
 }
 
 // ============================================================
