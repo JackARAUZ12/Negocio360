@@ -144,14 +144,48 @@ function toggleTheme() {
 
 /* ============================================================
    SIDEBAR
+   FIX: antes toggleSidebar() solo alternaba el modo "colapsado"
+   (ícono-solo) de escritorio. En pantallas móviles (≤768px) el
+   sidebar queda oculto por CSS (transform:translateX(-100%)) y
+   nada lo mostraba nunca — el menú era inaccesible en celular.
+   Ahora se detecta el viewport: en móvil abre/cierra un drawer
+   con overlay; en escritorio conserva el comportamiento
+   original de colapsar/expandir.
    ============================================================ */
 let sidebarCollapsed = false;
+const MOBILE_BREAKPOINT = 768;
+
+function isMobileView() { return window.innerWidth <= MOBILE_BREAKPOINT; }
+
 function toggleSidebar() {
-  sidebarCollapsed = !sidebarCollapsed;
-  document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
-  document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  if (isMobileView()) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.toggle('mobile-open');
+    if (overlay) overlay.classList.toggle('active', isOpen);
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
+    document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  }
 }
-function navigate(url) { window.location.href = url; }
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('active');
+}
+
+window.addEventListener('resize', () => {
+  if (!isMobileView()) closeMobileSidebar();
+});
+
+function navigate(url) {
+  closeMobileSidebar();
+  window.location.href = url;
+}
 
 /* ============================================================
    MODALES
@@ -194,6 +228,11 @@ async function checkAdminAccess(email) {
 
 /* ============================================================
    EMPRESA CONFIG
+   FIX: el nombre del negocio se guarda en personalizacion.html
+   dentro de configuracion_empresa.nombre_comercial. Aquí se
+   buscaba primero "nombre_negocio" (campo que no existe en esa
+   tabla), por lo que casi siempre caía al valor genérico por
+   defecto. Ahora se prioriza nombre_comercial.
    ============================================================ */
 async function loadEmpresaConfig(userId) {
   try {
@@ -202,7 +241,7 @@ async function loadEmpresaConfig(userId) {
     if (data) {
       CS.empresaConfig = data;
       CS.moneda = data.moneda || 'C$';
-      const bizName = data.nombre_negocio || data.nombre || 'Negocio360';
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
       const lt = document.getElementById('sidebar-logo-text');
       if (lt) lt.textContent = bizName;
       if (data.color_primario) {
@@ -230,7 +269,9 @@ function renderUserInfo(user, email) {
   if (!user) return;
   const nombre   = user.nombre   || email?.split('@')[0] || 'Usuario';
   const apellido = user.apellido || '';
-  const biz      = CS.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
+  // FIX: priorizar nombre_comercial de configuracion_empresa (el campo real
+  // guardado por personalizacion.html) en vez de "Mi negocio" fijo.
+  const biz      = CS.empresaConfig?.nombre_comercial || CS.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
   const plan     = user.plan || 'Gratuito';
   const initials = ((nombre[0]||'') + (apellido[0]||'')).toUpperCase();
 
@@ -238,11 +279,6 @@ function renderUserInfo(user, email) {
   document.getElementById('header-biz').textContent    = biz;
   document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
   document.getElementById('plan-text').textContent     = plan.charAt(0).toUpperCase() + plan.slice(1);
-
-  if (plan === 'pro' || plan === 'enterprise') {
-    const box = document.getElementById('upgrade-box');
-    if (box) box.style.display = 'none';
-  }
 }
 
 /* ============================================================
@@ -746,22 +782,24 @@ async function verDetalleVentaPerfil(ventaId) {
         <div class="detalle-divider"></div>
         <div class="detalle-item full">
           <div class="detalle-label">Productos y servicios</div>
-          <table class="detalle-items-table">
-            <thead>
-              <tr><th>Ítem</th><th>Tipo</th><th>Qty</th><th>Precio</th><th>Desc.</th><th>Subtotal</th></tr>
-            </thead>
-            <tbody>
-              ${its.map(it => `
-              <tr>
-                <td style="font-weight:500">${esc(it.producto_nombre)}</td>
-                <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
-                <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
-                <td>${fmt(it.precio)}</td>
-                <td>${Number(it.descuento)>0 ? fmt(it.descuento) : '—'}</td>
-                <td style="font-weight:600">${fmt(it.subtotal)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
+          <div class="table-wrap">
+            <table class="detalle-items-table">
+              <thead>
+                <tr><th>Ítem</th><th>Tipo</th><th>Qty</th><th>Precio</th><th>Desc.</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                ${its.map(it => `
+                <tr>
+                  <td style="font-weight:500">${esc(it.producto_nombre)}</td>
+                  <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
+                  <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
+                  <td>${fmt(it.precio)}</td>
+                  <td>${Number(it.descuento)>0 ? fmt(it.descuento) : '—'}</td>
+                  <td style="font-weight:600">${fmt(it.subtotal)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="detalle-divider"></div>
         <div class="detalle-item">
@@ -1008,6 +1046,7 @@ async function sincronizarStats() {
    ============================================================ */
 window.toggleTheme          = toggleTheme;
 window.toggleSidebar        = toggleSidebar;
+window.closeMobileSidebar   = closeMobileSidebar;
 window.navigate             = navigate;
 window.openModal            = openModal;
 window.closeModal           = closeModal;
