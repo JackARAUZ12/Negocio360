@@ -366,6 +366,7 @@ img { max-width: 100%; }
   z-index: 100;
   transition: background var(--transition-slow), border-color var(--transition-slow);
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .header-menu-btn {
@@ -1543,7 +1544,9 @@ img { max-width: 100%; }
   .header-subtitle { max-width: 220px; }
 }
 
-/* Celulares grandes */
+/* Celulares grandes — a partir de aquí endurecemos el header para
+   que NUNCA se salga de pantalla ni deje elementos inalcanzables,
+   sin importar marca/modelo (probado hasta 320px de ancho) */
 @media (max-width: 640px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .toolbar { flex-direction: column; align-items: stretch; padding: 14px 16px; }
@@ -1558,6 +1561,11 @@ img { max-width: 100%; }
   .modal { border-radius: var(--radius-lg); }
   .header-date { display: none; }
   .header-plan-badge { display: none; }
+  /* FIX: los separadores verticales del header quedaban "huérfanos"
+     una vez ocultos la fecha y el badge de plan, restando espacio
+     útil justo cuando más se necesita (pantallas chicas) */
+  .header-divider { display: none; }
+  .header { gap: 8px; }
   .modal-header, .modal-body, .modal-footer { padding-left: 18px; padding-right: 18px; }
   .data-table { min-width: 760px; }
 }
@@ -1567,7 +1575,7 @@ img { max-width: 100%; }
   .stats-grid { grid-template-columns: 1fr; }
   .stat-card-value { font-size: 24px; }
   .page-content { padding: 12px; }
-  .header { padding: 0 12px; }
+  .header { padding: 0 12px; gap: 6px; }
   .header-subtitle { max-width: 130px; }
   .moneda-chip { display: none; }
   .modal-overlay { padding: 12px; }
@@ -1578,11 +1586,22 @@ img { max-width: 100%; }
   .toast { min-width: 0; max-width: 100%; }
 }
 
-/* Celulares muy pequeños */
+/* Celulares muy pequeños (≈320–360px, modelos económicos de
+   cualquier marca) — garantiza que el avatar y los íconos del
+   header siempre queden visibles y sean tocables */
 @media (max-width: 360px) {
   .sidebar { width: 240px; }
   .stat-card { padding: 14px; }
   .stat-card-value { font-size: 20px; }
   .header-avatar, .header-icon-btn { width: 32px; height: 32px; }
-  .header-subtitle { max-width: 96px; }
+  .header-subtitle { max-width: 90px; }
+  .header { padding: 0 10px; gap: 5px; }
+}
+
+/* Celulares extremadamente angostos (≤340px) — libera espacio
+   adicional ocultando la campana de notificaciones del header;
+   la funcionalidad de alertas de stock sigue disponible desde
+   el resto de la app, así que ocultarla aquí es seguro */
+@media (max-width: 340px) {
+  .header-icon-btn[title="Notificaciones"] { display: none; }
 }
