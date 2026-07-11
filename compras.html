@@ -5,414 +5,926 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Compras — Negocio360</title>
 
+  <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
   <style>
     /* =====================================================
-       CSS VARIABLES — idénticas al resto del sistema
+       CSS VARIABLES — Idéntico a caja.html
     ===================================================== */
     :root {
-      --bg-base:#f5f5f7;--bg-surface:#ffffff;--bg-surface-2:#fafafa;
-      --bg-sidebar:#ffffff;--bg-header:rgba(255,255,255,0.85);
-      --bg-hover:#f0f0f5;--bg-active:#eff0ff;
-      --text-primary:#0d0d14;--text-secondary:#60607a;
-      --text-muted:#9999b3;--text-accent:#5a5af4;
-      --border:#e8e8ef;--border-focus:#5a5af4;
-      --accent:#5a5af4;--accent-soft:#eff0ff;
-      --accent-2:#22c55e;--accent-2-soft:#f0fdf4;
-      --accent-3:#f97316;--accent-3-soft:#fff7ed;
-      --accent-4:#8b5cf6;--accent-4-soft:#f5f3ff;
-      --accent-5:#06b6d4;--accent-5-soft:#ecfeff;
-      --danger:#ef4444;--danger-soft:#fef2f2;
-      --warning:#f59e0b;--warning-soft:#fffbeb;
-      --success:#22c55e;--success-soft:#f0fdf4;
-      --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-      --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
-      --shadow-lg:0 12px 32px rgba(0,0,0,.1),0 4px 8px rgba(0,0,0,.05);
-      --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px;
-      --sidebar-w:240px;--header-h:64px;
-      --font-main:'Plus Jakarta Sans',sans-serif;
-      --font-mono:'JetBrains Mono',monospace;
-      --transition:0.2s cubic-bezier(0.4,0,0.2,1);
+      --bg-base:        #f5f5f7;
+      --bg-surface:     #ffffff;
+      --bg-surface-2:   #fafafa;
+      --bg-sidebar:     #ffffff;
+      --bg-header:      rgba(255,255,255,0.85);
+      --bg-hover:       #f0f0f5;
+      --bg-active:      #eff0ff;
+
+      --text-primary:   #0d0d14;
+      --text-secondary: #60607a;
+      --text-muted:     #9999b3;
+      --text-accent:    #5a5af4;
+
+      --border:         #e8e8ef;
+      --border-focus:   #5a5af4;
+
+      --accent:         #5a5af4;
+      --accent-soft:    #eff0ff;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #f0fdf4;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #fff7ed;
+      --accent-4:       #8b5cf6;
+      --accent-4-soft:  #f5f3ff;
+      --accent-5:       #06b6d4;
+      --accent-5-soft:  #ecfeff;
+
+      --danger:         #ef4444;
+      --danger-soft:    #fef2f2;
+      --warning:        #f59e0b;
+      --warning-soft:   #fffbeb;
+      --success:        #22c55e;
+      --success-soft:   #f0fdf4;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.05);
+
+      --radius-sm:      8px;
+      --radius-md:      12px;
+      --radius-lg:      16px;
+      --radius-xl:      20px;
+
+      --sidebar-w:      240px;
+      --header-h:       64px;
+
+      --font-main:      'Plus Jakarta Sans', sans-serif;
+      --font-mono:      'JetBrains Mono', monospace;
+      --transition:     0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
+
     [data-theme="dark"] {
-      --bg-base:#0c0c14;--bg-surface:#13131f;--bg-surface-2:#1a1a2a;
-      --bg-sidebar:#13131f;--bg-header:rgba(19,19,31,.9);
-      --bg-hover:#1e1e30;--bg-active:#1e1e40;
-      --text-primary:#f0f0fa;--text-secondary:#9090b0;
-      --text-muted:#5a5a7a;--text-accent:#7b7bff;
-      --border:#1e1e30;--border-focus:#7b7bff;
-      --accent:#7b7bff;--accent-soft:#1e1e40;
-      --accent-2:#22c55e;--accent-2-soft:#0f2a1a;
-      --accent-3:#f97316;--accent-3-soft:#2a1a0a;
-      --accent-4:#a78bfa;--accent-4-soft:#1e1530;
-      --accent-5:#22d3ee;--accent-5-soft:#0a1e25;
-      --danger:#f87171;--danger-soft:#2a0f0f;
-      --warning:#fbbf24;--warning-soft:#2a200a;
-      --success:#4ade80;--success-soft:#0f2a1a;
-      --shadow-sm:0 1px 3px rgba(0,0,0,.3);
-      --shadow-md:0 4px 12px rgba(0,0,0,.4);
-      --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+      --bg-base:        #0c0c14;
+      --bg-surface:     #13131f;
+      --bg-surface-2:   #1a1a2a;
+      --bg-sidebar:     #13131f;
+      --bg-header:      rgba(19,19,31,0.9);
+      --bg-hover:       #1e1e30;
+      --bg-active:      #1e1e40;
+
+      --text-primary:   #f0f0fa;
+      --text-secondary: #9090b0;
+      --text-muted:     #5a5a7a;
+      --text-accent:    #7b7bff;
+
+      --border:         #1e1e30;
+      --border-focus:   #7b7bff;
+
+      --accent:         #7b7bff;
+      --accent-soft:    #1e1e40;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #0f2a1a;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #2a1a0a;
+      --accent-4:       #a78bfa;
+      --accent-4-soft:  #1e1530;
+      --accent-5:       #22d3ee;
+      --accent-5-soft:  #0a1e25;
+
+      --danger:         #f87171;
+      --danger-soft:    #2a0f0f;
+      --warning:        #fbbf24;
+      --warning-soft:   #2a200a;
+      --success:        #4ade80;
+      --success-soft:   #0f2a1a;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.5);
     }
-
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    html{scroll-behavior:smooth}
-    body{font-family:var(--font-main);background:var(--bg-base);color:var(--text-primary);
-      font-size:14px;line-height:1.5;transition:background var(--transition),color var(--transition);overflow-x:hidden}
-    a{text-decoration:none;color:inherit}
-    button{cursor:pointer;border:none;background:none;font-family:inherit}
-    ul,ol{list-style:none}
-    input,select,textarea{font-family:var(--font-main);font-size:13.5px;color:var(--text-primary);
-      background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-sm);
-      padding:9px 12px;width:100%;transition:border-color var(--transition),box-shadow var(--transition);outline:none}
-    input:focus,select:focus,textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-soft)}
-    select{appearance:none;
-      background-image:url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-      background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
-    label{font-size:12.5px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:5px}
-    textarea{resize:vertical;min-height:72px}
-
-    /* LAYOUT */
-    #app{display:flex;min-height:100vh}
-
-    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
-      z-index:90;opacity:0;transition:opacity var(--transition)}
-    .sidebar-overlay.active{display:block;opacity:1}
-
-    #sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg-sidebar);
-      border-right:1px solid var(--border);display:flex;flex-direction:column;
-      position:fixed;top:0;left:0;z-index:100;
-      transition:width var(--transition),transform var(--transition),background var(--transition);overflow:hidden}
-    #sidebar.collapsed{width:64px}
-    .sidebar-logo{display:flex;align-items:center;gap:10px;padding:18px 20px;
-      border-bottom:1px solid var(--border);min-height:var(--header-h)}
-    .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;
-      display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .logo-icon svg{color:#fff}
-    .logo-text{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap;transition:opacity var(--transition);
-      overflow:hidden;text-overflow:ellipsis;max-width:170px}
-    #sidebar.collapsed .logo-text,#sidebar.collapsed .nav-label,
-    #sidebar.collapsed .nav-section-title{opacity:0;pointer-events:none;width:0;overflow:hidden}
-    .sidebar-nav{flex:1;padding:12px;overflow-y:auto;overflow-x:hidden}
-    .nav-section-title{font-size:10px;font-weight:700;text-transform:uppercase;
-      letter-spacing:.1em;color:var(--text-muted);padding:12px 8px 6px;white-space:nowrap}
-    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;
-      border-radius:var(--radius-sm);color:var(--text-secondary);transition:all var(--transition);
-      cursor:pointer;white-space:nowrap;margin-bottom:2px}
-    .nav-item:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
-    .nav-item svg{flex-shrink:0;width:18px;height:18px}
-    .nav-label{font-size:13.5px;font-weight:500}
-
-    #main{flex:1;margin-left:var(--sidebar-w);transition:margin-left var(--transition);
-      min-height:100vh;display:flex;flex-direction:column;min-width:0}
-    #main.sidebar-collapsed{margin-left:64px}
-
-    /* HEADER */
-    #header{height:var(--header-h);background:var(--bg-header);backdrop-filter:blur(12px);
-      border-bottom:1px solid var(--border);display:flex;align-items:center;
-      padding:0 24px;gap:12px;position:sticky;top:0;z-index:50;overflow:hidden}
-    .header-toggle{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
-      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
-    .header-toggle:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .header-title{font-size:16px;font-weight:700;color:var(--text-primary);white-space:nowrap}
-    .header-spacer{flex:1;min-width:8px}
-    .plan-badge{display:flex;align-items:center;gap:6px;padding:6px 14px;
-      background:var(--accent-soft);border:1px solid var(--border);
-      border-radius:100px;font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap;flex-shrink:0}
-    .theme-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
-      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
-    .theme-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .user-menu{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;
-      border:1px solid var(--border);border-radius:100px;transition:all var(--transition);flex-shrink:0}
-    .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);
-      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
-    .user-name{font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.2;
-      max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .user-biz{font-size:11px;color:var(--text-muted);line-height:1.2;
-      max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-    /* PAGE CONTENT */
-    #content{flex:1;padding:28px 28px 60px;max-width:1440px;width:100%;margin:0 auto;min-width:0}
-
-    /* GREETING */
-    .greeting-row{display:flex;align-items:flex-start;justify-content:space-between;
-      margin-bottom:28px;flex-wrap:wrap;gap:12px}
-    .greeting-text h1{font-size:22px;font-weight:800;color:var(--text-primary);margin-bottom:3px}
-    .greeting-text p{font-size:13.5px;color:var(--text-secondary)}
-    .greeting-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-
-    /* KPI CARDS */
-    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
-    .kpi-card{background:var(--bg-surface);border:1px solid var(--border);
-      border-radius:var(--radius-lg);padding:18px 20px;display:flex;align-items:flex-start;
-      gap:14px;box-shadow:var(--shadow-sm);transition:all var(--transition);min-width:0}
-    .kpi-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
-    .kpi-icon{width:44px;height:44px;border-radius:var(--radius-sm);
-      display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .kpi-body{flex:1;min-width:0}
-    .kpi-label{font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .kpi-value{font-size:20px;font-weight:800;color:var(--text-primary);line-height:1.1;
-      margin-bottom:4px;font-variant-numeric:tabular-nums;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .kpi-sub{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-    /* PANEL CARD */
-    .panel-card{background:var(--bg-surface);border:1px solid var(--border);
-      border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:24px}
-    .panel-header{display:flex;align-items:center;justify-content:space-between;
-      padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
-    .panel-title{font-size:15px;font-weight:700;color:var(--text-primary);
-      display:flex;align-items:center;gap:8px}
-    .panel-title svg{width:16px;height:16px;color:var(--accent)}
-    .panel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-
-    /* BUTTONS */
-    .btn-primary{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
-      background:var(--accent);color:#fff;border-radius:var(--radius-sm);
-      font-size:13.5px;font-weight:600;transition:opacity var(--transition),transform var(--transition)}
-    .btn-primary:hover{opacity:.88;transform:translateY(-1px)}
-    .btn-primary svg{width:15px;height:15px}
-    .btn-secondary{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
-      background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-secondary);
-      border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:all var(--transition)}
-    .btn-secondary:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
-    .btn-ghost{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;
-      color:var(--text-secondary);border-radius:var(--radius-sm);font-size:12.5px;font-weight:600;
-      transition:all var(--transition)}
-    .btn-ghost:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .btn-danger-outline{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
-      background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);
-      border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:all var(--transition)}
-    .btn-danger-outline:hover{background:var(--danger);color:#fff}
-    .btn-icon-add{width:32px;height:32px;display:flex;align-items:center;justify-content:center;
-      border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent);
-      transition:all var(--transition);flex-shrink:0}
-    .btn-icon-add:hover{background:var(--accent);color:#fff}
-
-    /* FILTROS */
-    .filtros-row{display:flex;align-items:center;gap:8px;padding:14px 20px;
-      border-bottom:1px solid var(--border);flex-wrap:wrap}
-    .filter-btn{padding:6px 12px;border:1px solid var(--border);border-radius:6px;
-      font-size:12.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-surface-2);
-      transition:all var(--transition);cursor:pointer;white-space:nowrap;flex-shrink:0}
-    .filter-btn:hover{border-color:var(--accent);color:var(--accent)}
-    .filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-    .search-wrap{display:flex;align-items:center;gap:0;border:1px solid var(--border);
-      border-radius:var(--radius-sm);background:var(--bg-surface);overflow:hidden;
-      transition:border-color var(--transition);flex:1;max-width:300px}
-    .search-wrap:focus-within{border-color:var(--border-focus)}
-    .search-wrap svg{flex-shrink:0;margin-left:10px;color:var(--text-muted);width:14px;height:14px}
-    .search-wrap input{border:none;box-shadow:none;padding:8px 10px;background:transparent}
-    .search-wrap input:focus{box-shadow:none;border-color:transparent}
-
-    /* TABLA */
-    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-    table{width:100%;border-collapse:collapse}
-    thead th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;
-      letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border);
-      text-align:left;white-space:nowrap;background:var(--bg-surface-2)}
-    tbody td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);
-      vertical-align:middle;color:var(--text-primary)}
-    tbody tr:last-child td{border-bottom:none}
-    tbody tr:hover{background:var(--bg-hover)}
-
-    .estado-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
-      border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap}
-    .estado-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
-    .estado-completada{background:var(--success-soft);color:var(--success)}
-    .estado-anulada{background:var(--bg-hover);color:var(--text-muted)}
-    .estado-pendiente{background:var(--warning-soft);color:var(--warning)}
-
-    .btn-icon-sm{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
-      border-radius:6px;color:var(--text-muted);transition:all var(--transition);cursor:pointer;flex-shrink:0}
-    .btn-icon-sm:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .btn-icon-sm.del:hover{background:var(--danger-soft);color:var(--danger)}
-    .td-actions{white-space:nowrap}
-    .td-money{font-family:var(--font-mono);font-weight:700;white-space:nowrap}
-
-    /* PAGINACIÓN */
-    .paginacion-row{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 20px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px}
-    .pag-btns{display:flex;gap:6px}
-    .pag-btns button{padding:6px 12px;border:1px solid var(--border);border-radius:6px;
-      font-size:12.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-surface);
-      cursor:pointer;transition:all var(--transition)}
-    .pag-btns button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-    .pag-btns button:disabled{opacity:.4;cursor:not-allowed}
-
-    /* EMPTY */
-    .empty-cell{text-align:center;padding:40px;color:var(--text-muted);font-size:13px}
-    .empty-icon{font-size:36px;opacity:.35;margin-bottom:8px}
-    .loading-row td{text-align:center;padding:32px;color:var(--text-muted)}
 
     /* =====================================================
-       MODAL BASE
+       RESET & BASE
     ===================================================== */
-    .modal-overlay{display:none;position:fixed;inset:0;
-      background:rgba(0,0,0,.45);backdrop-filter:blur(4px);
-      z-index:500;align-items:flex-start;justify-content:center;
-      padding:20px;overflow-y:auto}
-    .modal-overlay.modal-open{display:flex}
-    .modal-box{background:var(--bg-surface);border:1px solid var(--border);
-      border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);
-      width:100%;max-width:780px;margin:auto;
-      animation:modalIn .22s cubic-bezier(.34,1.56,.64,1) forwards}
-    .modal-box.modal-sm{max-width:440px}
-    .modal-box.modal-md{max-width:600px}
-    .modal-box.modal-lg{max-width:900px}
-    @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
-    .modal-header{display:flex;align-items:center;justify-content:space-between;
-      padding:20px 24px 16px;border-bottom:1px solid var(--border);gap:12px}
-    .modal-title{font-size:17px;font-weight:700;color:var(--text-primary);overflow-wrap:anywhere}
-    .modal-subtitle{font-size:12.5px;color:var(--text-muted);margin-top:2px}
-    .modal-close{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-      border-radius:7px;color:var(--text-muted);transition:all var(--transition);cursor:pointer;flex-shrink:0}
-    .modal-close:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .modal-body{padding:20px 24px}
-    .modal-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;
-      padding:14px 24px 20px;border-top:1px solid var(--border);flex-wrap:wrap}
-
-    /* FORM */
-    .form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .form-group{margin-bottom:14px}
-    .form-group:last-child{margin-bottom:0}
-    .full-col{grid-column:1/-1}
-
-    /* ITEMS DE COMPRA */
-    .items-table-wrap{border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-top:8px}
-    .items-table{width:100%;border-collapse:collapse;font-size:12.5px}
-    .items-table th{padding:8px 10px;background:var(--bg-surface-2);font-size:10.5px;
-      font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);
-      border-bottom:1px solid var(--border);white-space:nowrap;text-align:left}
-    .items-table td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
-    .items-table tr:last-child td{border-bottom:none}
-    .items-table input,.items-table select{padding:6px 8px;font-size:12.5px}
-    .items-empty{text-align:center;padding:20px;color:var(--text-muted);font-size:12.5px}
-    .item-remove-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;
-      border-radius:6px;color:var(--danger);transition:all var(--transition)}
-    .item-remove-btn:hover{background:var(--danger-soft)}
-
-    .totales-box{background:var(--bg-surface-2);border:1px solid var(--border);
-      border-radius:var(--radius-md);padding:14px 16px;margin-top:14px}
-    .totales-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px}
-    .totales-row.total{font-size:16px;font-weight:800;border-top:1px solid var(--border);
-      margin-top:6px;padding-top:10px;color:var(--accent)}
-
-    /* Caja impacto toggle (mismo lenguaje visual que productos.html) */
-    .type-toggle{display:flex;gap:0;border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border)}
-    .type-toggle-btn{flex:1;padding:9px 14px;font-size:12.5px;font-weight:600;border:none;
-      background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;
-      transition:all var(--transition);display:flex;align-items:center;justify-content:center;
-      gap:6px;text-align:center;min-width:0}
-    .type-toggle-btn:first-child{border-right:1px solid var(--border)}
-    .type-toggle-btn.active{background:var(--accent);color:#fff}
-    .caja-impacto-hint{display:flex;align-items:flex-start;gap:8px;background:var(--bg-surface-2);
-      border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;
-      font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:8px}
-    .caja-impacto-hint svg{flex-shrink:0;margin-top:1px;color:var(--accent)}
-
-    /* DETALLE GRID */
-    .detalle-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    .detalle-item{display:flex;flex-direction:column;gap:3px;min-width:0}
-    .detalle-item.full{grid-column:1/-1}
-    .detalle-label{font-size:11px;font-weight:700;color:var(--text-muted);
-      text-transform:uppercase;letter-spacing:.06em}
-    .detalle-value{font-size:14px;color:var(--text-primary);font-weight:500;overflow-wrap:anywhere}
-    .detalle-divider{grid-column:1/-1;height:1px;background:var(--border);margin:4px 0}
-
-    /* CONFIRM MODAL */
-    .confirm-icon{width:52px;height:52px;border-radius:50%;background:var(--danger-soft);
-      display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
-
-    /* TOAST */
-    .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;
-      border-radius:var(--radius-md);font-size:13.5px;font-weight:600;
-      box-shadow:var(--shadow-lg);z-index:1000;max-width:360px;
-      opacity:0;transform:translateY(12px);transition:all .3s cubic-bezier(.34,1.56,.64,1);
-      pointer-events:none;display:flex;align-items:center;gap:10px}
-    .toast.show{opacity:1;transform:translateY(0)}
-    .toast-success{background:var(--success);color:#fff}
-    .toast-error{background:var(--danger);color:#fff}
-    .toast-info{background:var(--accent);color:#fff}
-    .toast-warning{background:var(--warning);color:#fff}
-
-    /* LOADER */
-    #loader{position:fixed;inset:0;background:var(--bg-base);z-index:1000;
-      display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;transition:opacity .4s}
-    #loader.hidden{opacity:0;pointer-events:none}
-    .loader-logo{width:48px;height:48px;background:var(--accent);border-radius:12px;
-      display:flex;align-items:center;justify-content:center}
-    .loader-spinner{width:24px;height:24px;border:3px solid var(--border);
-      border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-
-    ::-webkit-scrollbar{width:5px;height:5px}
-    ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
-
-    .fade-in{animation:fadeIn .4s ease forwards}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-    .stagger-1{animation-delay:.05s}.stagger-2{animation-delay:.1s}
-    .stagger-3{animation-delay:.15s}.stagger-4{animation-delay:.2s}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      transition: background var(--transition), color var(--transition);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    ul, ol { list-style: none; }
+    input, select, textarea {
+      font-family: var(--font-main);
+      font-size: 13.5px;
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      width: 100%;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+    label { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 5px; }
+    textarea { resize: vertical; min-height: 72px; }
 
     /* =====================================================
-       RESPONSIVE — TRUE fluid layout para teléfono / tablet /
-       laptop / computadora de escritorio / TV, sea cual sea
-       la marca o modelo
+       APP LAYOUT
     ===================================================== */
-    @media(min-width:1900px){ #content{padding:36px 44px 70px} }
+    #app { display: flex; min-height: 100vh; }
 
-    @media(max-width:1400px){ .kpi-grid{grid-template-columns:repeat(2,1fr)} }
+    /* =====================================================
+       SIDEBAR — idéntico a caja.html
+    ===================================================== */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 100;
+      transition: width var(--transition), transform var(--transition), background var(--transition);
+      overflow: hidden;
+    }
+    #sidebar.collapsed { width: 64px; }
 
-    @media(max-width:900px){ .kpi-grid{grid-template-columns:repeat(2,1fr)} }
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 10px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      min-height: var(--header-h);
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-icon svg { color: #fff; }
+    .logo-text { font-size: 16px; font-weight: 800; color: var(--text-primary); white-space: nowrap; transition: opacity var(--transition); }
 
-    /* Tablet horizontal — sidebar pasa a menú deslizable con overlay */
-    @media(max-width:768px){
-      #sidebar{transform:translateX(-100%);width:250px!important;box-shadow:var(--shadow-lg)}
-      #sidebar.mobile-open{transform:translateX(0)}
-      #sidebar.collapsed{width:250px}
-      #sidebar.collapsed .logo-text,
-      #sidebar.collapsed .nav-label,
-      #sidebar.collapsed .nav-section-title{opacity:1;width:auto;pointer-events:auto;overflow:visible}
-      #main,#main.sidebar-collapsed{margin-left:0!important}
-      #header{padding:0 14px;gap:8px}
-      .header-title{display:none}
-      #header-fecha{display:none}
-      #content{padding:16px 16px 40px}
-      .kpi-grid{grid-template-columns:repeat(2,1fr)}
-      .form-grid-2{grid-template-columns:1fr}
-      .detalle-grid{grid-template-columns:1fr}
-      .filtros-row{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
-      .search-wrap{max-width:none;width:100%;margin-left:0!important;order:99;flex-basis:100%}
-      .greeting-actions{width:100%}
-      .greeting-actions .btn-primary,.greeting-actions .btn-secondary{flex:1;justify-content:center}
-      .table-wrap table{min-width:720px}
-      .items-table-wrap{overflow-x:auto}
-      .items-table{min-width:520px}
-      .modal-header,.modal-body,.modal-footer{padding-left:18px;padding-right:18px}
+    #sidebar.collapsed .logo-text,
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,
+    #sidebar.collapsed .nav-badge { opacity: 0; pointer-events: none; width: 0; overflow: hidden; }
+
+    .sidebar-nav { flex: 1; padding: 12px; overflow-y: auto; overflow-x: hidden; }
+    .nav-section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--text-muted);
+      padding: 12px 8px 6px; white-space: nowrap;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      transition: all var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item svg { flex-shrink: 0; width: 18px; height: 18px; }
+    .nav-label { font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+
+    /* =====================================================
+       MAIN
+    ===================================================== */
+    #main {
+      flex: 1;
+      margin-left: var(--sidebar-w);
+      transition: margin-left var(--transition);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #main.sidebar-collapsed { margin-left: 64px; }
+
+    /* =====================================================
+       HEADER
+    ===================================================== */
+    #header {
+      height: var(--header-h);
+      background: var(--bg-header);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .header-toggle {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .header-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .header-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .header-spacer { flex: 1; }
+    .plan-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: var(--accent-soft); border: 1px solid var(--border);
+      border-radius: 100px; font-size: 12px; font-weight: 600; color: var(--accent);
+    }
+    .theme-btn {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .theme-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .user-menu {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid var(--border); border-radius: 100px;
+    }
+    .user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%; background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .user-info { display: flex; flex-direction: column; min-width: 0; }
+    .user-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); line-height: 1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 140px; }
+    .user-biz  { font-size: 11px; color: var(--text-muted); line-height: 1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 140px; }
+
+    /* =====================================================
+       PAGE CONTENT
+    ===================================================== */
+    #content { flex: 1; padding: 28px 28px 60px; max-width: 1440px; width: 100%; }
+
+    /* =====================================================
+       GREETING
+    ===================================================== */
+    .greeting-row {
+      display: flex; align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+    }
+    .greeting-text h1 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 3px; }
+    .greeting-text p  { font-size: 13.5px; color: var(--text-secondary); }
+    .greeting-actions { display: flex; align-items: center; gap: 10px; }
+
+    /* =====================================================
+       KPI GRID
+    ===================================================== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      display: flex; align-items: flex-start; gap: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      min-width: 0;
+    }
+    .kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .kpi-icon {
+      width: 40px; height: 40px;
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .kpi-body { flex: 1; min-width: 0; }
+    .kpi-label { font-size: 11.5px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; }
+    .kpi-value { font-size: 18px; font-weight: 800; color: var(--text-primary); line-height: 1.1; margin-bottom: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .kpi-delta { font-size: 11px; color: var(--text-muted); }
+
+    /* =====================================================
+       SECTION TABS
+    ===================================================== */
+    .section-tabs {
+      display: flex; gap: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      width: fit-content;
+      margin-bottom: 24px;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    .section-tab {
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .section-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .section-tab.active { background: var(--accent); color: #fff; }
+    .section-tab svg { width: 14px; height: 14px; }
+
+    /* =====================================================
+       PANEL CARD
+    ===================================================== */
+    .panel-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: 10px;
+    }
+    .panel-title {
+      font-size: 15px; font-weight: 700; color: var(--text-primary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-title svg { width: 16px; height: 16px; color: var(--accent); }
+    .panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* =====================================================
+       BOTONES
+    ===================================================== */
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      background: var(--accent); color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      transition: opacity var(--transition), transform var(--transition);
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-primary svg { width: 14px; height: 14px; }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 10px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 12.5px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .btn-ghost.btn-sm { padding: 4px 8px; font-size: 12px; }
+
+    .btn-icon {
+      width: 28px; height: 28px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .btn-icon-danger:hover  { background: var(--danger-soft);  color: var(--danger); }
+    .btn-icon-success:hover { background: var(--success-soft); color: var(--success); }
+
+    /* =====================================================
+       FILTROS
+    ===================================================== */
+    .filtros-row {
+      display: flex; align-items: center;
+      gap: 8px; padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--bg-surface-2);
+      transition: all var(--transition);
+      cursor: pointer;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .search-wrap {
+      display: flex; align-items: center;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-surface); overflow: hidden;
+      transition: border-color var(--transition);
+      flex: 1; max-width: 280px;
+      min-width: 160px;
+    }
+    .search-wrap:focus-within { border-color: var(--border-focus); }
+    .search-wrap svg { flex-shrink: 0; margin-left: 10px; color: var(--text-muted); width: 14px; height: 14px; }
+    .search-wrap input { border: none; box-shadow: none; padding: 8px 10px; background: transparent; }
+    .search-wrap input:focus { box-shadow: none; border-color: transparent; }
+
+    #custom-dates { display: none; align-items: center; gap: 6px; flex-wrap: wrap; }
+    #custom-dates input { width: auto; padding: 6px 8px; font-size: 12.5px; }
+
+    /* =====================================================
+       TABLA
+    ===================================================== */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 10px 14px;
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+      background: var(--bg-surface-2);
+    }
+    thead th.th-right { text-align: right; }
+    tbody td {
+      padding: 11px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text-primary);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.compra-row:hover { background: var(--bg-hover); }
+    tbody tr.row-anulada { opacity: 0.5; }
+    .td-fecha { white-space: nowrap; color: var(--text-secondary); font-size: 12.5px; }
+    .td-right { text-align: right; }
+    .td-money { font-family: var(--font-mono); font-weight: 600; }
+    .td-actions { white-space: nowrap; }
+    .anulado-label { font-size: 11px; color: var(--text-muted); }
+
+    /* =====================================================
+       BADGES
+    ===================================================== */
+    .numero-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 12px; font-weight: 700;
+      background: var(--accent-soft); color: var(--accent);
+      padding: 2px 8px; border-radius: 5px;
+    }
+    .status-badge {
+      display: inline-block; padding: 3px 9px; border-radius: 5px;
+      font-size: 11px; font-weight: 700;
+    }
+    .badge-completada { background: var(--success-soft); color: var(--success); }
+    .badge-pendiente  { background: var(--warning-soft); color: var(--warning); }
+    .badge-anulada    { background: var(--danger-soft);  color: var(--danger); }
+    .badge-activo     { background: var(--success-soft); color: var(--success); }
+    .badge-inactivo   { background: var(--bg-hover);     color: var(--text-muted); }
+
+    /* =====================================================
+       PAGINACIÓN
+    ===================================================== */
+    .paginacion-row {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap; gap: 8px;
+    }
+    #paginacion-info { font-size: 12.5px; color: var(--text-muted); }
+    .pag-btns { display: flex; gap: 6px; }
+    .pag-btns button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--bg-surface);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .pag-btns button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pag-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* =====================================================
+       EMPTY STATES
+    ===================================================== */
+    .empty-cell { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+    .empty-state-mini { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+    /* =====================================================
+       MODALES — BASE
+    ===================================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      z-index: 500;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.modal-open { display: flex; }
+
+    .modal-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modalIn 0.22s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
+    .modal-box.modal-sm  { max-width: 380px; }
+    .modal-box.modal-lg  { max-width: 680px; }
+    .modal-box.modal-xl  { max-width: 900px; }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.94) translateY(12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
     }
 
-    @media(max-width:480px){
-      .kpi-grid{grid-template-columns:1fr}
-      .plan-badge{display:none}
-      #header{padding:0 12px;gap:6px}
-      .user-name,.user-biz{max-width:90px}
-      .greeting-text h1{font-size:19px}
-      #content{padding:12px 12px 36px}
-      .modal-overlay{padding:12px}
-      .modal-header,.modal-body,.modal-footer{padding-left:14px;padding-right:14px}
-      .type-toggle-btn{font-size:11.5px;padding:8px 10px}
+    .modal-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .modal-close {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 7px; color: var(--text-muted);
+      transition: all var(--transition); cursor: pointer;
+    }
+    .modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .modal-body { padding: 20px 24px; }
+    .modal-body .form-group { margin-bottom: 14px; }
+    .modal-body .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-footer {
+      display: flex; align-items: center;
+      justify-content: flex-end; gap: 8px;
+      padding: 14px 24px 20px;
+      border-top: 1px solid var(--border);
     }
 
-    @media(max-width:360px){
-      #sidebar{width:240px!important}
-      .header-avatar,.theme-btn,.header-toggle{width:32px;height:32px}
-      .user-name,.user-biz{max-width:70px}
+    /* =====================================================
+       MODAL NUEVA COMPRA — MULTI-PASO
+    ===================================================== */
+    .nc-wizard {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* Indicadores de paso */
+    .nc-steps {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .paso-indicator {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .paso-indicator .paso-num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-hover);
+      font-size: 11px; font-weight: 700;
+      transition: all var(--transition);
+    }
+    .paso-indicator.active { color: var(--accent); }
+    .paso-indicator.active .paso-num { background: var(--accent); color: #fff; }
+    .paso-indicator.completado .paso-num { background: var(--success); color: #fff; }
+    .paso-indicator.completado { color: var(--success); }
+    .paso-sep {
+      width: 24px; height: 1px; background: var(--border); flex-shrink: 0; margin: 0 4px;
+    }
+
+    /* Cuerpo del wizard */
+    .nc-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+
+    .nc-paso { display: none; }
+    .nc-paso[data-paso="1"] { display: block; }
+
+    .nc-paso-title {
+      font-size: 14px; font-weight: 700; color: var(--text-primary);
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); }
+
+    /* Nuevo proveedor rápido */
+    #nc-nuevo-proveedor-form {
+      margin-top: 14px;
+      padding: 14px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
+    #nc-nuevo-proveedor-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* Búsqueda de productos */
+    .search-productos {
+      position: relative;
+    }
+    .search-productos .search-icon-inner {
+      position: absolute; left: 10px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .search-productos input {
+      padding-left: 34px;
+    }
+    #nc-search-results {
+      margin-top: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      overflow: hidden;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .search-result-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: background var(--transition);
+      border-bottom: 1px solid var(--border);
+      gap: 10px;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background: var(--bg-hover); }
+    .sri-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .sri-nombre { font-size: 13px; font-weight: 600; }
+    .sri-meta { font-size: 11.5px; color: var(--text-muted); }
+    .sri-costo { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent); flex-shrink:0; }
+    .search-no-results { padding: 14px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+    /* Carrito */
+    .carrito-input {
+      padding: 5px 8px;
+      font-size: 13px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      width: 100%;
+    }
+    .carrito-input:focus { border-color: var(--border-focus); outline: none; }
+
+    /* IVA toggle */
+    .iva-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .iva-row input[type="checkbox"] {
+      width: 16px; height: 16px; padding: 0; cursor: pointer; accent-color: var(--accent);
+    }
+    .iva-row label { margin: 0; cursor: pointer; font-size: 13.5px; }
+    #nc-iva-porcentaje-wrap {
+      display: none;
+      align-items: center; gap: 8px;
+      margin-top: 10px;
+    }
+    #nc-iva-porcentaje-wrap input { width: 90px; }
+
+    /* Resumen */
+    .resumen-card {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+    .resumen-fila {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      gap: 8px;
+    }
+    .resumen-fila:last-child { border-bottom: none; }
+    .resumen-fila.resumen-total {
+      font-size: 16px; font-weight: 800;
+      padding-top: 12px;
+      border-top: 2px solid var(--border);
+    }
+    .resumen-fila.resumen-total .resumen-val { color: var(--accent); }
+    .resumen-label { color: var(--text-secondary); }
+    .resumen-val { font-family: var(--font-mono); font-weight: 600; }
+
+    /* Footer wizard */
+    .nc-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px;
+      border-top: 1px solid var(--border);
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .nc-footer-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* =====================================================
+       DETALLE COMPRA
+    ===================================================== */
+    .detalle-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .detalle-fila { display: flex; flex-direction: column; gap: 3px; min-width:0; }
+    .detalle-fila.full { grid-column: 1/-1; }
+    .detalle-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+    .detalle-valor { font-size: 13.5px; color: var(--text-primary); font-weight: 500; word-break: break-word; }
+
+    /* =====================================================
+       LOADER
+    ===================================================== */
+    #loader {
+      position: fixed; inset: 0;
+      background: var(--bg-base);
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+      transition: opacity 0.4s;
+    }
+    #loader.hidden { opacity: 0; pointer-events: none; }
+    .loader-logo {
+      width: 48px; height: 48px;
+      background: var(--accent); border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .loader-spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* =====================================================
+       TOAST
+    ===================================================== */
+    .toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius-md);
+      font-size: 13.5px; font-weight: 600;
+      box-shadow: var(--shadow-lg);
+      z-index: 999;
+      max-width: 340px;
+      opacity: 0; transform: translateY(12px);
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .toast.toast-show { opacity: 1; transform: translateY(0); }
+    .toast-success { background: var(--success); color: #fff; }
+    .toast-error   { background: var(--danger);  color: #fff; }
+
+    /* =====================================================
+       SCROLLBAR
+    ===================================================== */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* =====================================================
+       ANIMATE IN
+    ===================================================== */
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .stagger-1 { animation-delay: 0.05s; }
+    .stagger-2 { animation-delay: 0.10s; }
+    .stagger-3 { animation-delay: 0.15s; }
+    .stagger-4 { animation-delay: 0.20s; }
+    .stagger-5 { animation-delay: 0.25s; }
+    .stagger-6 { animation-delay: 0.30s; }
+
+    /* =====================================================
+       OVERLAY MÓVIL PARA SIDEBAR
+    ===================================================== */
+    #mobile-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 99;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+    #mobile-overlay.show { display: block; opacity: 1; }
+
+    /* =====================================================
+       RESPONSIVE — universal, cualquier dispositivo
+    ===================================================== */
+    @media (max-width: 1200px) {
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 900px) {
+      #content { padding: 20px 18px 50px; }
+    }
+    @media (max-width: 768px) {
+      #sidebar { transform: translateX(-100%); box-shadow: var(--shadow-lg); }
+      #sidebar.mobile-open { transform: translateX(0); }
+      #main { margin-left: 0 !important; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      #content { padding: 16px 16px 40px; }
+      .modal-body .form-row { grid-template-columns: 1fr; }
+      .filtros-row { gap: 6px; }
+      .detalle-grid { grid-template-columns: 1fr; }
+
+      .greeting-row { flex-direction: column; align-items: stretch; }
+      .greeting-actions { width: 100%; }
+      .greeting-actions .btn-primary { width: 100%; justify-content: center; }
+
+      .panel-header { flex-direction: column; align-items: stretch; }
+      .panel-actions { width: 100%; }
+      .panel-actions .btn-primary { width: 100%; justify-content: center; }
+
+      .search-wrap { max-width: 100%; width: 100%; margin-left: 0 !important; flex-basis: 100%; order: 5; }
+
+      .header-title { display: none; }
+      .user-info { display: none; }
+      .plan-badge span:last-child { display: none; }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .nc-steps { padding: 12px 16px; }
+      .nc-body  { padding: 16px; }
+      .nc-footer { padding: 12px 16px; }
+      .nc-footer-right { width: 100%; justify-content: stretch; }
+      .nc-footer-right .btn-ghost,
+      .nc-footer-right .btn-primary { flex: 1; justify-content: center; }
+      #header { padding: 0 14px; gap: 8px; }
+      .modal-box.modal-xl,
+      .modal-box.modal-lg { max-width: 100vw; width: 100vw; max-height: 100vh; height: 100vh; border-radius: 0; margin: 0; }
+      .modal-overlay { padding: 0; }
+    }
+    @media (max-width: 360px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .kpi-card { padding: 12px; }
+      .kpi-value { font-size: 15px; }
+    }
+
+    /* Pantallas muy grandes: evita que todo se estire feo */
+    @media (min-width: 1800px) {
+      #content { max-width: 1600px; margin: 0 auto; }
     }
   </style>
 </head>
@@ -432,13 +944,13 @@
 </div>
 
 <!-- TOAST -->
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast toast-success"></div>
+
+<!-- OVERLAY MÓVIL -->
+<div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
 <!-- APP -->
 <div id="app" style="display:none">
-
-  <!-- OVERLAY SIDEBAR MÓVIL -->
-  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
 
   <!-- SIDEBAR -->
   <aside id="sidebar">
@@ -454,47 +966,56 @@
 
     <nav class="sidebar-nav">
       <div class="nav-section-title">PRINCIPAL</div>
-      <div class="nav-item" onclick="navigate('dashboard.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+
+      <div class="nav-item" onclick="navigate('dashboard.html')" data-tooltip="Dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
         <span class="nav-label">Dashboard</span>
       </div>
+
       <div class="nav-item" onclick="navigate('ventas.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
         <span class="nav-label">Ventas</span>
       </div>
+
       <div class="nav-item" onclick="navigate('clientes.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="nav-label">Clientes</span>
       </div>
+
       <div class="nav-item" onclick="navigate('productos.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
         <span class="nav-label">Productos / Servicios</span>
       </div>
+
       <div class="nav-item active" onclick="navigate('compras.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
         <span class="nav-label">Compras</span>
       </div>
+
       <div class="nav-item" onclick="navigate('gastos.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         <span class="nav-label">Gastos</span>
       </div>
+
       <div class="nav-item" onclick="navigate('caja.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         <span class="nav-label">Caja / Pagos</span>
       </div>
+
       <div class="nav-item" onclick="navigate('reportes.html')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         <span class="nav-label">Reportes</span>
       </div>
+
       <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
-      <div class="nav-item" onclick="navigate('productos.html?action=new')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span class="nav-label">Nuevo producto</span>
+      <div class="nav-item" onclick="abrirNuevaCompra()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="nav-label">Nueva compra</span>
       </div>
-      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')"
-        style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        <span class="nav-label">⚙️ Panel Admin</span>
+
+      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')" style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">⚙️ Admin</span>
       </div>
     </nav>
   </aside>
@@ -505,9 +1026,7 @@
     <!-- HEADER -->
     <header id="header">
       <button class="header-toggle" onclick="toggleSidebar()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <span class="header-title">Compras</span>
       <div class="header-spacer"></div>
@@ -516,43 +1035,34 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         <span id="plan-text">Plan</span>
       </div>
-      <button class="theme-btn" onclick="toggleTheme()" title="Cambiar tema">
+      <button class="theme-btn" onclick="toggleTheme()">
         <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
       <div class="user-menu">
         <div class="user-avatar" id="header-avatar">--</div>
-        <div style="display:flex;flex-direction:column;min-width:0">
+        <div class="user-info">
           <span class="user-name" id="header-name">Cargando…</span>
           <span class="user-biz"  id="header-biz">—</span>
         </div>
       </div>
     </header>
 
-    <!-- CONTENT -->
+    <!-- PAGE CONTENT -->
     <div id="content">
 
       <!-- GREETING -->
       <div class="greeting-row fade-in">
         <div class="greeting-text">
           <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"
-              style="display:inline-block;vertical-align:middle;margin-right:6px">
-              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-              <line x1="3" y1="6" x2="21" y2="6"/>
-              <path d="M16 10a4 4 0 0 1-8 0"/>
-            </svg>
-            Compras
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <span id="greeting-text">Compras</span>
           </h1>
-          <p>Registra tus compras de inventario y mantén tu stock y tu caja siempre al día.</p>
+          <p>Abastece tu inventario y controla tus compras a proveedores.</p>
         </div>
         <div class="greeting-actions">
-          <button class="btn-secondary" onclick="loadCompras()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Actualizar
-          </button>
-          <button class="btn-primary" onclick="abrirModalNuevaCompra()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <button class="btn-primary" onclick="abrirNuevaCompra()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva Compra
           </button>
         </div>
@@ -561,97 +1071,201 @@
       <!-- KPI CARDS -->
       <div class="kpi-grid">
         <div class="kpi-card fade-in stagger-1">
-          <div class="kpi-icon" style="background:var(--accent-3-soft)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          <div class="kpi-icon" style="background:var(--accent-soft)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Monto invertido</div>
-            <div class="kpi-value" id="kpi-monto">—</div>
-            <div class="kpi-sub" id="kpi-count">0 compras</div>
+            <div class="kpi-label">Compras hoy</div>
+            <div class="kpi-value" id="kpi-hoy">—</div>
+            <div class="kpi-delta" id="kpi-hoy-delta">—</div>
           </div>
         </div>
+
         <div class="kpi-card fade-in stagger-2">
           <div class="kpi-icon" style="background:var(--accent-4-soft)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Compra promedio</div>
-            <div class="kpi-value" id="kpi-promedio">—</div>
-            <div class="kpi-sub">por compra</div>
+            <div class="kpi-label">Compras del mes</div>
+            <div class="kpi-value" id="kpi-mes">—</div>
+            <div class="kpi-delta" id="kpi-mes-delta">—</div>
           </div>
         </div>
+
         <div class="kpi-card fade-in stagger-3">
           <div class="kpi-icon" style="background:var(--accent-5-soft)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Proveedor principal</div>
-            <div class="kpi-value" id="kpi-proveedor" style="font-size:15px">—</div>
-            <div class="kpi-sub" id="kpi-proveedor-monto">mayor monto</div>
+            <div class="kpi-label">Cantidad compras</div>
+            <div class="kpi-value" id="kpi-cantidad">—</div>
+            <div class="kpi-delta" id="kpi-cantidad-delta">—</div>
           </div>
         </div>
+
         <div class="kpi-card fade-in stagger-4">
-          <div class="kpi-icon" style="background:var(--success-soft)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <div class="kpi-icon" style="background:var(--accent-2-soft)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Unidades ingresadas</div>
+            <div class="kpi-label">Productos ingresados</div>
             <div class="kpi-value" id="kpi-unidades">—</div>
-            <div class="kpi-sub">a inventario</div>
+            <div class="kpi-delta" id="kpi-unidades-delta">—</div>
+          </div>
+        </div>
+
+        <div class="kpi-card fade-in stagger-5">
+          <div class="kpi-icon" style="background:var(--accent-3-soft)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Inversión inventario</div>
+            <div class="kpi-value" id="kpi-inventario">—</div>
+            <div class="kpi-delta" id="kpi-inventario-delta">—</div>
+          </div>
+        </div>
+
+        <div class="kpi-card fade-in stagger-6">
+          <div class="kpi-icon" style="background:var(--danger-soft)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Proveedores activos</div>
+            <div class="kpi-value" id="kpi-proveedores">—</div>
+            <div class="kpi-delta" id="kpi-proveedores-delta">—</div>
           </div>
         </div>
       </div>
 
-      <!-- PANEL: LISTA DE COMPRAS -->
-      <div class="panel-card fade-in">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-            Historial de compras
+      <!-- TABS -->
+      <div class="section-tabs fade-in">
+        <button class="section-tab active" data-section="compras" onclick="setSeccion('compras')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+          Historial de compras
+        </button>
+        <button class="section-tab" data-section="proveedores" onclick="setSeccion('proveedores')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Proveedores
+        </button>
+      </div>
+
+      <!-- ===== PANEL: HISTORIAL COMPRAS ===== -->
+      <div class="section-panel fade-in" data-section="compras">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+              Historial de compras
+            </div>
+            <div class="panel-actions">
+              <button class="btn-primary" onclick="abrirNuevaCompra()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Nueva Compra
+              </button>
+            </div>
           </div>
-          <div class="panel-actions">
-            <span style="font-size:12.5px;color:var(--text-muted)" id="compras-count-label">0 compras</span>
+
+          <!-- FILTROS -->
+          <div class="filtros-row">
+            <button class="filter-btn" data-filtro="hoy"    onclick="setFiltro('hoy')">Hoy</button>
+            <button class="filter-btn" data-filtro="semana" onclick="setFiltro('semana')">Semana</button>
+            <button class="filter-btn active" data-filtro="mes" onclick="setFiltro('mes')">Mes</button>
+            <button class="filter-btn" data-filtro="año"    onclick="setFiltro('año')">Año</button>
+            <button class="filter-btn" data-filtro="custom" onclick="setFiltro('custom')">Personalizado</button>
+
+            <div id="custom-dates">
+              <input type="date" id="date-from" onchange="STATE.comprasDateFrom=this.value;loadCompras()" style="width:140px"/>
+              <span style="color:var(--text-muted);font-size:12px">—</span>
+              <input type="date" id="date-to"   onchange="STATE.comprasDateTo=this.value;loadCompras()"   style="width:140px"/>
+            </div>
+
+            <select id="filtro-estado" style="width:140px;font-size:12.5px"
+              onchange="STATE.filtroEstado=this.value;STATE.comprasPage=1;loadCompras()">
+              <option value="">Todos los estados</option>
+              <option value="completada">Completada</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="anulada">Anulada</option>
+            </select>
+
+            <div class="search-wrap" style="margin-left:auto">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="compras-search" placeholder="Buscar compra, proveedor…" oninput="buscarCompras()" />
+            </div>
+          </div>
+
+          <!-- TABLA -->
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>N° Compra</th>
+                  <th>Fecha</th>
+                  <th>Proveedor</th>
+                  <th>Productos</th>
+                  <th class="th-right">Unidades</th>
+                  <th class="th-right">Total</th>
+                  <th>Método pago</th>
+                  <th>Estado</th>
+                  <th>Usuario</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="compras-tbody">
+                <tr><td colspan="10" class="empty-cell">Cargando compras…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- PAGINACIÓN -->
+          <div class="paginacion-row">
+            <span id="paginacion-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
+            <div class="pag-btns">
+              <button id="btn-pag-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
+              <button id="btn-pag-next" onclick="paginaSiguiente()">Siguiente →</button>
+            </div>
           </div>
         </div>
+      </div>
 
-        <!-- FILTROS -->
-        <div class="filtros-row">
-          <button class="filter-btn active" data-f="todos"      onclick="setFiltro('todos')">Todas</button>
-          <button class="filter-btn" data-f="completada"        onclick="setFiltro('completada')">Completadas</button>
-          <button class="filter-btn" data-f="anulada"           onclick="setFiltro('anulada')">Anuladas</button>
-          <button class="filter-btn" data-f="mes"               onclick="setFiltro('mes')">Este mes</button>
-          <div class="search-wrap" style="margin-left:auto">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="compra-search" placeholder="Número, proveedor…" oninput="buscarCompras()"/>
+      <!-- ===== PANEL: PROVEEDORES ===== -->
+      <div class="section-panel" data-section="proveedores" style="display:none">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              Proveedores
+            </div>
+            <div class="panel-actions">
+              <div class="search-wrap" style="max-width:220px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" placeholder="Buscar proveedor…"
+                  oninput="STATE.proveedoresSearch=this.value;renderProveedoresList()"/>
+              </div>
+              <button class="btn-primary" onclick="abrirNuevoProveedor()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Nuevo proveedor
+              </button>
+            </div>
           </div>
-        </div>
 
-        <!-- TABLA -->
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>N° Compra</th>
-                <th>Fecha</th>
-                <th>Proveedor</th>
-                <th>Método de pago</th>
-                <th>Total</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="compras-tbody">
-              <tr class="loading-row"><td colspan="7">Cargando compras…</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- PAGINACIÓN -->
-        <div class="paginacion-row">
-          <span id="pag-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
-          <div class="pag-btns">
-            <button id="btn-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
-            <button id="btn-next" onclick="paginaSiguiente()">Siguiente →</button>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Teléfono</th>
+                  <th>Email</th>
+                  <th>Dirección</th>
+                  <th>Última compra</th>
+                  <th class="th-right">Monto acumulado</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="proveedores-tbody">
+                <tr><td colspan="8" class="empty-cell">Cargando proveedores…</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -661,153 +1275,429 @@
 </div><!-- /app -->
 
 
-<!-- =====================================================
-     MODAL: NUEVA COMPRA
-===================================================== -->
-<div class="modal-overlay" id="modal-compra" onclick="if(event.target===this)closeModal('modal-compra')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <div class="modal-title">Nueva Compra</div>
-      <button class="modal-close" onclick="closeModal('modal-compra')">
+<!-- ===================================================
+     MODAL: NUEVA COMPRA (wizard multi-paso)
+=================================================== -->
+<div class="modal-overlay" id="modal-nueva-compra">
+  <div class="modal-box modal-xl" style="display:flex;flex-direction:column;max-height:92vh">
+
+    <!-- Header fijo -->
+    <div class="modal-header" style="flex-shrink:0">
+      <span class="modal-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline;vertical-align:middle;margin-right:6px"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+        Nueva Compra
+      </span>
+      <button class="modal-close" onclick="closeModal('modal-nueva-compra')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="modal-body" style="max-height:72vh;overflow-y:auto">
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label>Proveedor <span style="color:var(--danger)">*</span></label>
-          <input type="text" id="fc-proveedor" placeholder="Nombre del proveedor"/>
+
+    <!-- Indicadores de paso -->
+    <div class="nc-steps" style="flex-shrink:0">
+      <div class="paso-indicator active" data-paso="1">
+        <div class="paso-num">1</div> Proveedor
+      </div>
+      <div class="paso-sep"></div>
+      <div class="paso-indicator" data-paso="2">
+        <div class="paso-num">2</div> Productos
+      </div>
+      <div class="paso-sep"></div>
+      <div class="paso-indicator" data-paso="3">
+        <div class="paso-num">3</div> Carrito
+      </div>
+      <div class="paso-sep"></div>
+      <div class="paso-indicator" data-paso="4">
+        <div class="paso-num">4</div> Resumen
+      </div>
+      <div class="paso-sep"></div>
+      <div class="paso-indicator" data-paso="5">
+        <div class="paso-num">5</div> Pago
+      </div>
+      <div class="paso-sep"></div>
+      <div class="paso-indicator" data-paso="6">
+        <div class="paso-num">6</div> Estado
+      </div>
+      <div class="paso-sep"></div>
+      <div class="paso-indicator" data-paso="7">
+        <div class="paso-num">7</div> Confirmar
+      </div>
+    </div>
+
+    <!-- Cuerpo scrollable -->
+    <div class="nc-body" style="flex:1;overflow-y:auto">
+
+      <!-- PASO 1: PROVEEDOR -->
+      <div class="nc-paso" data-paso="1">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Seleccionar proveedor
         </div>
+
         <div class="form-group">
-          <label>Método de pago</label>
-          <select id="fc-metodo-pago">
-            <option value="Efectivo">Efectivo</option>
-            <option value="Transferencia">Transferencia</option>
-            <option value="Tarjeta">Tarjeta</option>
-            <option value="Crédito">Crédito con proveedor</option>
+          <label>Proveedor</label>
+          <select id="nc-proveedor-select" onchange="onSelectProveedor()">
+            <option value="">— Sin proveedor —</option>
           </select>
         </div>
-        <div class="form-group full-col">
-          <label>Notas (opcional)</label>
-          <input type="text" id="fc-notas" placeholder="Referencia, número de factura, etc."/>
+
+        <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <span style="font-size:12px;color:var(--text-muted)">o</span>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
+
+        <button class="btn-secondary" style="width:100%;justify-content:center"
+          onclick="toggleNuevoProveedor(true)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Crear nuevo proveedor
+        </button>
+
+        <div id="nc-nuevo-proveedor-form" style="display:none">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px;margin-top:4px;color:var(--text-primary)">Datos del nuevo proveedor</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nombre *</label>
+              <input type="text" id="nc-prov-nombre" placeholder="Nombre o razón social"/>
+            </div>
+            <div class="form-group">
+              <label>Teléfono</label>
+              <input type="text" id="nc-prov-telefono" placeholder="+505 0000-0000"/>
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="nc-prov-email" placeholder="proveedor@email.com"/>
+            </div>
+            <div class="form-group">
+              <label>Dirección</label>
+              <input type="text" id="nc-prov-direccion" placeholder="Ciudad, país"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Observaciones</label>
+            <textarea id="nc-prov-obs" rows="2" placeholder="Notas sobre el proveedor…"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+            <button class="btn-ghost" onclick="toggleNuevoProveedor(false)">Cancelar</button>
+            <button class="btn-primary" id="btn-guardar-proveedor-rapido" onclick="guardarNuevoProveedorRapido()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Guardar proveedor
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="form-group full-col" style="margin-top:4px">
-        <label style="display:flex;align-items:center;justify-content:space-between">
-          <span>Productos de la compra</span>
-          <button type="button" class="btn-icon-add" onclick="agregarItemCompra()" title="Agregar producto">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-        </label>
-        <div class="items-table-wrap">
-          <table class="items-table">
+      <!-- PASO 2: BUSCAR PRODUCTOS -->
+      <div class="nc-paso" data-paso="2">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Buscar productos
+        </div>
+        <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+          Solo se muestran registros de tipo <strong>Producto</strong>. Los servicios no aplican.
+        </p>
+        <div class="search-productos">
+          <svg class="search-icon-inner" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="nc-producto-search"
+            placeholder="Nombre, SKU o categoría…"
+            oninput="buscarProductoNuevaCompra()"/>
+        </div>
+        <div id="nc-search-results"></div>
+
+        <div style="margin-top:14px;padding:12px;background:var(--accent-soft);border-radius:var(--radius-md);font-size:12.5px;color:var(--accent)">
+          💡 Haz clic en un producto para agregarlo al carrito. Puedes agregar varios.
+        </div>
+      </div>
+
+      <!-- PASO 3: CARRITO -->
+      <div class="nc-paso" data-paso="3">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/></svg>
+          Carrito de compra
+        </div>
+
+        <!-- IVA -->
+        <div class="iva-row">
+          <input type="checkbox" id="nc-iva-activo"
+            onchange="toggleIVA(this.checked)"/>
+          <label for="nc-iva-activo" style="font-size:13.5px;font-weight:500">Aplicar IVA a esta compra</label>
+        </div>
+        <div id="nc-iva-porcentaje-wrap">
+          <label style="white-space:nowrap;margin:0">Porcentaje IVA:</label>
+          <input type="number" id="nc-iva-porcentaje" value="15" min="0" max="100" step="0.01"
+            oninput="actualizarIVAPorcentaje()"/>
+          <span style="color:var(--text-muted);font-size:13px">%</span>
+        </div>
+
+        <div style="overflow-x:auto;margin-top:12px">
+          <table>
             <thead>
               <tr>
-                <th style="width:34%">Producto</th>
-                <th style="width:14%">Cantidad</th>
-                <th style="width:18%">Costo unit.</th>
-                <th style="width:18%">Subtotal</th>
-                <th style="width:6%"></th>
+                <th>Producto</th>
+                <th class="th-right">Cantidad</th>
+                <th class="th-right">Costo unit.</th>
+                <th class="th-right">Descuento</th>
+                <th class="th-right">IVA</th>
+                <th class="th-right">Subtotal</th>
+                <th></th>
               </tr>
             </thead>
-            <tbody id="items-compra-tbody">
-              <tr><td colspan="5" class="items-empty">Agrega al menos un producto</td></tr>
+            <tbody id="carrito-tbody">
+              <tr><td colspan="7" class="empty-cell">Sin productos en el carrito</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
 
-      <div class="totales-box">
-        <div class="totales-row"><span>Subtotal</span><span id="fc-subtotal">—</span></div>
-        <div class="totales-row total"><span>Total</span><span id="fc-total">—</span></div>
-      </div>
-
-      <!-- Impacto en caja -->
-      <div class="form-group full-col" style="margin-top:16px">
-        <label>¿Cómo afecta esto tu caja? <span style="color:var(--danger)">*</span></label>
-        <div class="type-toggle">
-          <button type="button" class="type-toggle-btn active" id="toggleDescontarCaja">💸 Descontar de caja</button>
-          <button type="button" class="type-toggle-btn" id="toggleNoDescontarCaja">📦 Ya lo tenía</button>
-        </div>
-        <input type="hidden" id="inputDescontarCaja" value="true"/>
-        <div class="caja-impacto-hint">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          <span id="cajaImpactoHint">Se registrará un egreso en Caja por el total de esta compra. Úsalo cuando estés comprando este inventario ahora.</span>
+        <div style="text-align:right;margin-top:8px">
+          <button class="btn-ghost" style="font-size:12px" onclick="irAPaso(2)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Agregar más productos
+          </button>
         </div>
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-compra')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-compra" onclick="guardarCompra()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        Registrar compra
+
+      <!-- PASO 4: RESUMEN -->
+      <div class="nc-paso" data-paso="4">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/></svg>
+          Resumen de la compra
+        </div>
+        <div class="resumen-card">
+          <div class="resumen-fila">
+            <span class="resumen-label">Subtotal</span>
+            <span class="resumen-val" id="resumen-subtotal">—</span>
+          </div>
+          <div class="resumen-fila">
+            <span class="resumen-label">Descuento total</span>
+            <span class="resumen-val" id="resumen-descuento" style="color:var(--danger)">—</span>
+          </div>
+          <div class="resumen-fila">
+            <span class="resumen-label">IVA</span>
+            <span class="resumen-val" id="resumen-iva">—</span>
+          </div>
+          <div class="resumen-fila resumen-total">
+            <span class="resumen-label" style="font-size:16px;font-weight:800;color:var(--text-primary)">Total compra</span>
+            <span class="resumen-val" id="resumen-total" style="font-size:20px">—</span>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding:12px 14px;background:var(--warning-soft);border-radius:var(--radius-md);border:1px solid rgba(249,115,22,0.2);font-size:12.5px;color:var(--warning)">
+          ⚡ Una compra transforma <strong>Dinero → Inventario</strong>. No genera ingresos ni ganancias.
+        </div>
+      </div>
+
+      <!-- PASO 5: MÉTODO DE PAGO -->
+      <div class="nc-paso" data-paso="5">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Método de pago
+        </div>
+        <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+          Métodos leídos desde Caja / Pagos. Para agregar más, visita ese módulo.
+        </p>
+        <div class="form-group">
+          <label>Método de pago *</label>
+          <select id="nc-metodo-pago"></select>
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label>Fecha de compra</label>
+          <input type="date" id="nc-fecha"/>
+        </div>
+      </div>
+
+      <!-- PASO 6: ESTADO -->
+      <div class="nc-paso" data-paso="6">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Estado de la compra
+        </div>
+        <div class="form-group">
+          <label>Estado</label>
+          <select id="nc-estado">
+            <option value="completada">✅ Completada — Pago realizado, stock actualizado</option>
+            <option value="pendiente">⏳ Pendiente — Recibido pero pago pendiente</option>
+          </select>
+        </div>
+        <div style="margin-top:12px;padding:12px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md);font-size:12.5px;color:var(--text-secondary)">
+          <strong>Completada:</strong> El movimiento de caja se registra inmediatamente.<br>
+          <strong>Pendiente:</strong> El stock se actualiza pero no se registra salida de caja aún.<br>
+          <span style="color:var(--text-muted);font-size:11.5px">(Cuentas por pagar disponibles en futuras versiones)</span>
+        </div>
+      </div>
+
+      <!-- PASO 7: OBSERVACIONES + CONFIRMAR -->
+      <div class="nc-paso" data-paso="7">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Confirmar y guardar
+        </div>
+
+        <div class="form-group">
+          <label>Observaciones</label>
+          <textarea id="nc-observaciones" rows="3"
+            placeholder="Notas adicionales sobre esta compra…"></textarea>
+        </div>
+
+        <!-- Resumen final compacto -->
+        <div class="resumen-card" style="margin-top:4px">
+          <div class="resumen-fila">
+            <span class="resumen-label">Total a pagar</span>
+            <span class="resumen-val" id="resumen-total-final" style="font-size:18px;font-weight:800;color:var(--accent)">—</span>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding:14px;background:var(--success-soft);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius-md);font-size:12.5px;color:var(--success)">
+          ✅ Al guardar:<br>
+          • El <strong>stock de los productos</strong> se actualizará automáticamente.<br>
+          • Se creará un <strong>movimiento EGRESO en Caja</strong> (si estado = Completada).<br>
+          • El Dashboard reflejará los cambios desde Productos y Caja.
+        </div>
+      </div>
+
+    </div><!-- /nc-body -->
+
+    <!-- Footer wizard -->
+    <div class="nc-footer" style="flex-shrink:0">
+      <button id="nc-btn-prev" class="btn-secondary" onclick="pasoAnterior()" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Anterior
       </button>
+      <div style="flex:1"></div>
+      <div class="nc-footer-right">
+        <button class="btn-ghost" onclick="closeModal('modal-nueva-compra')">Cancelar</button>
+        <button id="nc-btn-next" class="btn-primary" onclick="pasoSiguiente()">
+          Siguiente
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button id="nc-btn-save" class="btn-primary" onclick="guardarCompra()" style="display:none;background:var(--success)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Guardar compra
+          <span id="nc-total-preview" style="opacity:0.8;font-size:12px"></span>
+        </button>
+      </div>
     </div>
+
   </div>
 </div>
 
 
-<!-- =====================================================
-     MODAL: DETALLE DE COMPRA
-===================================================== -->
+<!-- ===================================================
+     MODAL: DETALLE COMPRA
+=================================================== -->
 <div class="modal-overlay" id="modal-detalle" onclick="if(event.target===this)closeModal('modal-detalle')">
-  <div class="modal-box modal-md">
+  <div class="modal-box modal-xl">
     <div class="modal-header">
-      <div style="min-width:0">
-        <div class="modal-title" id="det-title">Detalle de compra</div>
-        <div class="modal-subtitle" id="det-subtitle">—</div>
-      </div>
+      <span class="modal-title">Detalle de compra</span>
       <button class="modal-close" onclick="closeModal('modal-detalle')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="modal-body" id="det-body" style="max-height:70vh;overflow-y:auto">
-      <p style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</p>
-    </div>
+    <div class="modal-body" id="detalle-content"></div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-detalle')">Cerrar</button>
-      <button class="btn-danger-outline" id="btn-anular-desde-detalle" onclick="confirmarAnularDesdeDetalle()">
-        Anular compra
-      </button>
     </div>
   </div>
 </div>
 
 
-<!-- =====================================================
-     MODAL: CONFIRMAR ANULAR
-===================================================== -->
-<div class="modal-overlay" id="modal-anular" onclick="if(event.target===this)closeModal('modal-anular')">
-  <div class="modal-box modal-sm">
+<!-- ===================================================
+     MODAL: PROVEEDOR (crear/editar)
+=================================================== -->
+<div class="modal-overlay" id="modal-proveedor" onclick="if(event.target===this)closeModal('modal-proveedor')">
+  <div class="modal-box">
     <div class="modal-header">
-      <span class="modal-title">Anular compra</span>
-      <button class="modal-close" onclick="closeModal('modal-anular')">
+      <span class="modal-title" id="prov-modal-title">Nuevo proveedor</span>
+      <button class="modal-close" onclick="closeModal('modal-proveedor')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="modal-body" style="text-align:center;padding:24px">
-      <div class="confirm-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
+    <div class="modal-body">
+      <input type="hidden" id="prov-id"/>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nombre *</label>
+          <input type="text" id="prov-nombre" placeholder="Nombre o razón social"/>
+        </div>
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="text" id="prov-telefono" placeholder="+505 0000-0000"/>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="prov-email" placeholder="proveedor@email.com"/>
+        </div>
+        <div class="form-group">
+          <label>Dirección</label>
+          <input type="text" id="prov-direccion" placeholder="Ciudad, país"/>
+        </div>
       </div>
-      <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">¿Anular esta compra?</h3>
-      <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
-        La compra <strong id="confirm-anular-numero">—</strong> se marcará como anulada.
-        El stock que ingresó y el egreso de caja (si aplicó) se revertirán automáticamente.
-      </p>
+      <div class="form-group">
+        <label>Observaciones</label>
+        <textarea id="prov-obs" rows="3" placeholder="Notas sobre este proveedor…"></textarea>
+      </div>
     </div>
-    <div class="modal-footer" style="justify-content:flex-end">
-      <button class="btn-ghost" onclick="closeModal('modal-anular')">Cancelar</button>
-      <button class="btn-danger-outline" id="btn-confirmar-anular" onclick="ejecutarAnular()">
-        Sí, anular
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-proveedor')">Cancelar</button>
+      <button class="btn-primary" id="btn-save-proveedor" onclick="saveProveedor()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Guardar
       </button>
     </div>
   </div>
 </div>
 
+
+<!-- ===================================================
+     MODAL: CONFIRMAR ANULAR COMPRA
+=================================================== -->
+<div class="modal-overlay" id="modal-confirmar-anular" onclick="if(event.target===this)closeModal('modal-confirmar-anular')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Anular compra</span>
+      <button class="modal-close" onclick="closeModal('modal-confirmar-anular')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13.5px;line-height:1.6">
+        ¿Confirmas que deseas anular esta compra? La acción:
+      </p>
+      <ul style="margin-top:10px;font-size:13px;color:var(--text-secondary);display:flex;flex-direction:column;gap:6px;padding-left:16px;list-style:disc">
+        <li>Revertirá el stock de los productos</li>
+        <li>Anulará el movimiento de caja</li>
+        <li>Mantendrá el historial marcado como Anulada</li>
+      </ul>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-confirmar-anular')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-anular" onclick="anularCompra()" style="background:var(--danger)">
+        Sí, anular compra
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPT -->
 <script src="compras.js"></script>
+<script>
+  // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
+  const _nc7Sync = setInterval(() => {
+    const src = document.getElementById('resumen-total');
+    const dst = document.getElementById('resumen-total-final');
+    if (src && dst && src.textContent !== dst.textContent) {
+      dst.textContent = src.textContent;
+    }
+    const prev = document.getElementById('nc-total-preview');
+    if (src && prev && src.textContent !== '—') {
+      prev.textContent = ' · ' + src.textContent;
+    }
+  }, 500);
+
+  // Inicializar fecha actual en selector de compra
+  document.addEventListener('DOMContentLoaded', () => {
+    const fechaEl = document.getElementById('nc-fecha');
+    if (fechaEl) fechaEl.valueAsDate = new Date();
+  });
+</script>
+
 </body>
 </html>
