@@ -48,7 +48,29 @@ const R = {
 
 /* ============================================================
    HELPERS FECHA
+   FIX: parseFechaSegura() ahora acepta tanto fechas simples
+   "YYYY-MM-DD" (columnas tipo date) como timestamps completos
+   con hora/zona horaria (columnas tipo timestamptz). Antes se
+   concatenaba siempre "T12:00:00" a lo que viniera, y si el
+   valor ya traía hora/zona (ej. "2026-07-01T00:00:00+00:00")
+   el resultado quedaba mal formado y Date() devolvía
+   "Invalid Date" — eso es lo que se veía en la sección de
+   Ventas.
    ============================================================ */
+function parseFechaSegura(input) {
+  if (!input) return null;
+  const str = String(input);
+  // Si ya trae información de hora (timestamp completo), la usamos tal cual
+  if (str.includes('T')) {
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Fecha simple "YYYY-MM-DD" → forzamos mediodía para evitar
+  // desfaces de zona horaria al mostrarla
+  const d = new Date(str + 'T12:00:00');
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function todayISO() { return new Date().toISOString().split('T')[0]; }
 function yesterdayISO() {
   const d = new Date(); d.setDate(d.getDate()-1);
@@ -79,14 +101,14 @@ function getDateRange() {
 }
 
 function fmtFecha(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso + 'T12:00:00');
+  const d = parseFechaSegura(iso);
+  if (!d) return '—';
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
 }
 
 function fmtFechaCorta(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso + 'T12:00:00');
+  const d = parseFechaSegura(iso);
+  if (!d) return '—';
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short' });
 }
 
@@ -162,14 +184,48 @@ function updateChartTheme(chart) {
 
 /* ============================================================
    SIDEBAR / NAVEGACIÓN
+   FIX: antes toggleSidebar() solo alternaba el modo "colapsado"
+   (ícono-solo) de escritorio. En pantallas móviles (≤768px) el
+   sidebar queda oculto por CSS (transform:translateX(-100%)) y
+   nada lo mostraba nunca — el menú era inaccesible en celular.
+   Ahora se detecta el viewport: en móvil abre/cierra un drawer
+   con overlay; en escritorio conserva el comportamiento
+   original de colapsar/expandir.
    ============================================================ */
 let sidebarCollapsed = false;
+const MOBILE_BREAKPOINT = 768;
+
+function isMobileView() { return window.innerWidth <= MOBILE_BREAKPOINT; }
+
 function toggleSidebar() {
-  sidebarCollapsed = !sidebarCollapsed;
-  document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
-  document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  if (isMobileView()) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.toggle('mobile-open');
+    if (overlay) overlay.classList.toggle('active', isOpen);
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
+    document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  }
 }
-function navigate(url) { window.location.href = url; }
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('active');
+}
+
+window.addEventListener('resize', () => {
+  if (!isMobileView()) closeMobileSidebar();
+});
+
+function navigate(url) {
+  closeMobileSidebar();
+  window.location.href = url;
+}
 
 /* ============================================================
    TOAST
@@ -186,6 +242,11 @@ function showToast(msg, type='success') {
 
 /* ============================================================
    EMPRESA CONFIG
+   FIX: el nombre del negocio se guarda en personalizacion.html
+   dentro de configuracion_empresa.nombre_comercial. Aquí se
+   estaba buscando primero "nombre_negocio" (campo que no existe
+   en esa tabla), por lo que casi siempre caía al valor por
+   defecto genérico. Ahora se prioriza nombre_comercial.
    ============================================================ */
 async function loadEmpresaConfig(userId) {
   try {
@@ -194,7 +255,7 @@ async function loadEmpresaConfig(userId) {
     if (data) {
       R.empresaConfig = data;
       R.moneda = data.moneda || 'C$';
-      const biz = data.nombre_negocio || data.nombre || 'Negocio360';
+      const biz = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
       const lt  = document.getElementById('sidebar-logo-text');
       if (lt) lt.textContent = biz;
       if (data.color_primario) {
@@ -223,7 +284,9 @@ function renderUserInfo(user, email) {
   R.currentUser = user;
   const nombre   = user.nombre   || email?.split('@')[0] || 'Usuario';
   const apellido = user.apellido || '';
-  const biz      = R.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
+  // FIX: priorizar nombre_comercial de configuracion_empresa (el campo real
+  // guardado por personalizacion.html) en vez de "Mi negocio" fijo.
+  const biz      = R.empresaConfig?.nombre_comercial || R.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
   const plan     = user.plan || 'Gratuito';
   const initials = ((nombre[0]||'')+(apellido[0]||'')).toUpperCase();
 
@@ -587,7 +650,9 @@ async function fetchGastosProgramados() {
 }
 
 /* ============================================================
-   GENERAR DATOS PARA 12 MESES (para gráficas comparativas)
+   GENERAR DATOS PARA 12 MESES (para gráfica "Comparación
+   mensual" — SIEMPRE por mes del año en curso, sin importar
+   el período seleccionado arriba. Esto es intencional.)
    ============================================================ */
 async function fetchDatosMensuales() {
   const year = new Date().getFullYear();
@@ -613,16 +678,22 @@ async function fetchDatosMensuales() {
   const ganancias= new Array(12).fill(0);
 
   (resV.data||[]).forEach(r => {
-    const m = new Date(r.fecha+'T12:00:00').getMonth();
+    const d = parseFechaSegura(r.fecha);
+    if (!d) return;
+    const m = d.getMonth();
     ventas[m]    += Number(r.total);
     ganancias[m] += Number(r.ganancia);
   });
   (resC.data||[]).forEach(r => {
-    const m = new Date(r.fecha+'T12:00:00').getMonth();
+    const d = parseFechaSegura(r.fecha);
+    if (!d) return;
+    const m = d.getMonth();
     compras[m] += Number(r.total);
   });
   (resG.data||[]).forEach(r => {
-    const m = new Date(r.fecha+'T12:00:00').getMonth();
+    const d = parseFechaSegura(r.fecha);
+    if (!d) return;
+    const m = d.getMonth();
     gastos[m] += Number(r.monto);
   });
 
@@ -817,18 +888,25 @@ async function loadFinanciero() {
     const gnEl = document.getElementById('fin-ganancia-neta');
     if (gnEl) gnEl.style.color = gananciaNeta>=0 ? 'var(--success)' : 'var(--danger)';
 
-    // Gráfica comparación mensual
+    // Gráfica comparación mensual — SIEMPRE por mes del año en curso,
+    // independiente del período seleccionado arriba (comportamiento
+    // intencional, no cambia con día/semana/año).
     createBarChart('chart-comparacion-mensual', mensual.meses, [
       { label:'Ingresos', data:mensual.ventas,   backgroundColor:'rgba(90,90,244,0.7)' },
       { label:'Compras',  data:mensual.compras,  backgroundColor:'rgba(249,115,22,0.6)' },
       { label:'Gastos',   data:mensual.gastos,   backgroundColor:'rgba(239,68,68,0.6)' },
     ], 'comparacion-mensual');
 
-    // Gráfica ganancia neta mensual
-    createLineChart('chart-ganancia-evolucion', mensual.meses,
-      [{ label:'Ganancia neta', data:mensual.ganancias.map((_,i)=>mensual.ganancias[i]-mensual.gastos[i]),
-        borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,0.08)', fill:true }],
-      'ganancia-evolucion');
+    // FIX: Gráfica "Evolución de ganancia neta"
+    // Antes usaba siempre 12 meses fijos del año en curso (no
+    // respetaba el filtro de período) y el cálculo, al depender de
+    // un arreglo de ganancias que en la práctica quedaba en 0,
+    // terminaba mostrando visualmente la curva de gastos invertida.
+    // Ahora se calcula la verdadera ganancia neta día por día
+    // (ganancia bruta de ventas − gastos) usando los datos YA
+    // filtrados por el período seleccionado (día/semana/mes/año/
+    // personalizado), igual que el resto de gráficas de esta pestaña.
+    renderGraficaGananciaNeta(ventas, gastos);
 
     // Gráfica métodos de pago
     const metodosMap = {};
@@ -857,6 +935,21 @@ async function loadFinanciero() {
     ], 'flujo-caja');
 
   } catch(e) { console.error('loadFinanciero:', e); }
+}
+
+/* Verdadera ganancia neta por día, dentro del período seleccionado */
+function renderGraficaGananciaNeta(ventas, gastos) {
+  const mapGan = {}, mapGas = {};
+  (ventas||[]).forEach(v => { mapGan[v.fecha] = (mapGan[v.fecha]||0) + Number(v.ganancia); });
+  (gastos||[]).forEach(g => { mapGas[g.fecha] = (mapGas[g.fecha]||0) + Number(g.monto); });
+
+  const allDates = [...new Set([...Object.keys(mapGan), ...Object.keys(mapGas)])].sort();
+  const labels = allDates.map(d => fmtFechaCorta(d));
+  const data   = allDates.map(d => (mapGan[d]||0) - (mapGas[d]||0));
+
+  createLineChart('chart-ganancia-evolucion', labels,
+    [{ label:'Ganancia neta', data, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,0.08)', fill:true }],
+    'ganancia-evolucion');
 }
 
 /* ============================================================
@@ -1284,7 +1377,8 @@ async function loadAlertas() {
     // DÍAS SIN VENTAS
     const ultimaVenta = (ventas||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
     if (ultimaVenta) {
-      const diffDias = Math.floor((new Date()-new Date(ultimaVenta.fecha+'T12:00:00'))/86400000);
+      const fechaUlt = parseFechaSegura(ultimaVenta.fecha);
+      const diffDias = fechaUlt ? Math.floor((new Date()-fechaUlt)/86400000) : 0;
       if (diffDias >= 3) {
         alertas.push({
           tipo:'info', icon:'📉',
@@ -1367,10 +1461,24 @@ async function ensureCaches() {
   if (!R.cache.gastos.length)    await fetchGastos();
   if (!R.cache.clientes.length)  await fetchClientes();
   if (!R.cache.productos.length) await fetchProductos();
+  // El "Reporte General" necesita el resumen financiero calculado —
+  // si el usuario exporta sin haber visitado antes la pestaña
+  // Ejecutivo/Financiero, R.cache.resumen puede estar vacío.
+  if (!R.cache.resumen || Object.keys(R.cache.resumen).length === 0) {
+    const vRes = calcVentasResumen(R.cache.ventas);
+    const totalComp = R.cache.compras.reduce((s,c)=>s+Number(c.total),0);
+    const totalGast = R.cache.gastos.reduce((s,g)=>s+Number(g.monto),0);
+    const capital   = await fetchCapital();
+    R.cache.resumen = {
+      ventas: vRes.total, compras: totalComp, gastos: totalGast,
+      gananciaBruta: vRes.ganancia, gananciaNeta: vRes.ganancia - totalGast, capital,
+    };
+  }
 }
 
 function docHeader(tipo) {
-  const biz    = R.empresaConfig?.nombre_negocio || 'Mi Negocio';
+  // FIX: priorizar nombre_comercial (campo real guardado por personalizacion.html)
+  const biz    = R.empresaConfig?.nombre_comercial || R.empresaConfig?.nombre_negocio || 'Mi Negocio';
   const moneda = sym();
   const { from, to } = getDateRange();
   const periodo = from===to ? fmtFecha(from) : `${fmtFecha(from)} — ${fmtFecha(to)}`;
@@ -1379,28 +1487,47 @@ function docHeader(tipo) {
 }
 
 /* ---- PDF ---- */
+/* FIX: el "Reporte General" solo mostraba el resumen financiero y
+   ventas — al llegar a la sección de ventas se reasignaba la
+   variable `tipo` a 'ventas-section', y como los bloques de
+   compras/clientes/inventario/gastos comparaban contra el `tipo`
+   original ('general'), esa comparación ya nunca coincidía y esas
+   secciones se saltaban por completo. Ahora se usa una bandera
+   `esGeneral` separada que nunca se sobreescribe, y cada sección
+   se agrega en una página nueva para que todo quede legible.
+   Los reportes individuales (ventas, compras, etc. por separado)
+   se comportan exactamente igual que antes. */
 async function exportarPDF(tipo) {
   const { jsPDF } = window.jspdf;
   const doc  = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
   const h    = docHeader(tipo);
   const W    = doc.internal.pageSize.getWidth();
+  const esGeneral = tipo === 'general';
 
-  // Cabecera
-  doc.setFillColor(90, 90, 244);
-  doc.rect(0,0,W,20,'F');
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(14); doc.setFont(undefined,'bold');
-  doc.text(`${h.biz} — Reporte de ${tituloTipo(tipo)}`, 10, 13);
-  doc.setFontSize(9); doc.setFont(undefined,'normal');
-  doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora}`, W-10, 13, { align:'right' });
+  function pintarCabecera() {
+    doc.setFillColor(90, 90, 244);
+    doc.rect(0,0,W,20,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(14); doc.setFont(undefined,'bold');
+    doc.text(`${h.biz} — Reporte ${esGeneral ? 'General (Completo)' : `de ${tituloTipo(tipo)}`}`, 10, 13);
+    doc.setFontSize(9); doc.setFont(undefined,'normal');
+    doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora}`, W-10, 13, { align:'right' });
+  }
 
+  pintarCabecera();
   let startY = 28;
 
-  if (tipo==='general') {
+  function tituloSeccion(txt) {
     doc.setTextColor(30,30,40);
-    // Resumen financiero
-    const r = R.cache.resumen;
-    doc.setFontSize(11); doc.setFont(undefined,'bold'); doc.text('Resumen Financiero', 10, startY); startY+=6;
+    doc.setFontSize(11); doc.setFont(undefined,'bold');
+    doc.text(txt, 10, startY);
+    startY += 6;
+  }
+
+  // ---- RESUMEN FINANCIERO (solo en reporte general) ----
+  if (esGeneral) {
+    const r = R.cache.resumen || {};
+    tituloSeccion('Resumen Financiero');
     const finRows = [
       ['Ventas totales', fmt(r.ventas)], ['Compras totales', fmt(r.compras)],
       ['Total gastos', fmt(r.gastos)], ['Ganancia bruta', fmt(r.gananciaBruta)],
@@ -1409,41 +1536,72 @@ async function exportarPDF(tipo) {
     doc.autoTable({ startY, head:[['Concepto','Monto']], body:finRows, theme:'striped',
       headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:9} });
     startY = doc.lastAutoTable.finalY + 10;
-    tipo = 'ventas-section';
   }
 
-  if (tipo==='ventas'||tipo==='ventas-section'||tipo==='general') {
+  // ---- VENTAS ----
+  if (tipo==='ventas' || esGeneral) {
+    if (esGeneral) tituloSeccion('Ventas');
     const rows = R.cache.ventas.map(v => [v.numero_venta, fmtFecha(v.fecha), v.cliente_nombre||'Consumidor Final', v.metodo_pago_nombre||'—', fmt(v.total), fmt(v.ganancia)]);
-    doc.setFontSize(11); doc.setFont(undefined,'bold'); doc.setTextColor(30,30,40); doc.text('Ventas', 10, startY); startY+=6;
     doc.autoTable({ startY, head:[['#Venta','Fecha','Cliente','Método','Total','Ganancia']],
       body:rows.length?rows:[['Sin datos en este período','','','','','']], theme:'striped',
       headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:8} });
     startY = doc.lastAutoTable.finalY + 10;
   }
 
-  if (tipo==='compras') {
+  // ---- COMPRAS ----
+  if (tipo==='compras' || esGeneral) {
+    if (esGeneral) {
+      doc.addPage();
+      pintarCabecera();
+      startY = 28;
+      tituloSeccion('Compras');
+    }
     const rows = R.cache.compras.map(c=>[c.numero,fmtFecha(c.fecha),c.proveedor_nombre||'—',fmt(c.total),c.estado]);
     doc.autoTable({ startY, head:[['#Compra','Fecha','Proveedor','Total','Estado']],
       body:rows.length?rows:[['Sin datos','','','','']], theme:'striped',
       headStyles:{fillColor:[249,115,22]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    startY = doc.lastAutoTable.finalY + 10;
   }
 
-  if (tipo==='clientes') {
+  // ---- CLIENTES ----
+  if (tipo==='clientes' || esGeneral) {
+    if (esGeneral) {
+      doc.addPage();
+      pintarCabecera();
+      startY = 28;
+      tituloSeccion('Clientes');
+    }
     const rows = R.cache.clientes.map(c=>[c.nombre,c.telefono||'—',c.correo||'—',c.num_compras,fmt(c.total_compras),fmtFecha(c.ultima_compra)]);
     doc.autoTable({ startY, head:[['Nombre','Teléfono','Email','Compras','Total gastado','Última compra']],
       body:rows.length?rows:[['Sin datos','','','','','']], theme:'striped',
       headStyles:{fillColor:[34,197,94]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    startY = doc.lastAutoTable.finalY + 10;
   }
 
-  if (tipo==='inventario') {
+  // ---- INVENTARIO ----
+  if (tipo==='inventario' || esGeneral) {
+    if (esGeneral) {
+      doc.addPage();
+      pintarCabecera();
+      startY = 28;
+      tituloSeccion('Inventario');
+    }
     const prods = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
     const rows  = prods.map(p=>[p.nombre,p.sku||'—',p.categoria||'—',fmtNum(p.stock_actual),fmt(p.costo),fmt(p.precio),fmt(Number(p.stock_actual||0)*Number(p.costo||0))]);
     doc.autoTable({ startY, head:[['Producto','SKU','Categoría','Stock','Costo','Precio','Valor total']],
       body:rows.length?rows:[['Sin datos','','','','','','']], theme:'striped',
       headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    startY = doc.lastAutoTable.finalY + 10;
   }
 
-  if (tipo==='gastos') {
+  // ---- GASTOS ----
+  if (tipo==='gastos' || esGeneral) {
+    if (esGeneral) {
+      doc.addPage();
+      pintarCabecera();
+      startY = 28;
+      tituloSeccion('Gastos');
+    }
     const rows = R.cache.gastos.map(g=>[g.concepto,g.categoria||'—',fmtFecha(g.fecha),fmt(g.monto),g.tipo]);
     doc.autoTable({ startY, head:[['Concepto','Categoría','Fecha','Monto','Tipo']],
       body:rows.length?rows:[['Sin datos','','','','']], theme:'striped',
