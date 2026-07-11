@@ -93,6 +93,13 @@
     ===================================================== */
     #app{display:flex;min-height:100vh}
 
+    /* SIDEBAR OVERLAY (móvil) */
+    .sidebar-overlay{
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+      z-index:90;opacity:0;transition:opacity var(--transition)
+    }
+    .sidebar-overlay.active{display:block;opacity:1}
+
     /* SIDEBAR */
     #sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg-sidebar);
       border-right:1px solid var(--border);display:flex;flex-direction:column;
@@ -104,7 +111,8 @@
     .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;
       display:flex;align-items:center;justify-content:center;flex-shrink:0}
     .logo-icon svg{color:#fff}
-    .logo-text{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap;transition:opacity var(--transition)}
+    .logo-text{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap;transition:opacity var(--transition);
+      overflow:hidden;text-overflow:ellipsis;max-width:170px}
     #sidebar.collapsed .logo-text,#sidebar.collapsed .nav-label,
     #sidebar.collapsed .nav-section-title,#sidebar.collapsed .sidebar-upgrade{opacity:0;pointer-events:none;width:0;overflow:hidden}
     .sidebar-nav{flex:1;padding:12px;overflow-y:auto;overflow-x:hidden}
@@ -129,7 +137,7 @@
 
     /* MAIN */
     #main{flex:1;margin-left:var(--sidebar-w);transition:margin-left var(--transition);
-      min-height:100vh;display:flex;flex-direction:column}
+      min-height:100vh;display:flex;flex-direction:column;min-width:0}
     #main.sidebar-collapsed{margin-left:64px}
 
     /* HEADER */
@@ -137,26 +145,26 @@
       border-bottom:1px solid var(--border);display:flex;align-items:center;
       padding:0 24px;gap:12px;position:sticky;top:0;z-index:50}
     .header-toggle{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
-      border-radius:8px;color:var(--text-secondary);transition:all var(--transition)}
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
     .header-toggle:hover{background:var(--bg-hover);color:var(--text-primary)}
-    .header-title{font-size:16px;font-weight:700;color:var(--text-primary)}
-    .header-spacer{flex:1}
+    .header-title{font-size:16px;font-weight:700;color:var(--text-primary);white-space:nowrap}
+    .header-spacer{flex:1;min-width:8px}
     .plan-badge{display:flex;align-items:center;gap:6px;padding:6px 14px;
       background:var(--accent-soft);border:1px solid var(--border);
-      border-radius:100px;font-size:12px;font-weight:600;color:var(--accent)}
+      border-radius:100px;font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap;flex-shrink:0}
     .theme-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
-      border-radius:8px;color:var(--text-secondary);transition:all var(--transition)}
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
     .theme-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
     .user-menu{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;
-      border:1px solid var(--border);border-radius:100px;cursor:pointer;transition:all var(--transition)}
+      border:1px solid var(--border);border-radius:100px;cursor:pointer;transition:all var(--transition);flex-shrink:0}
     .user-menu:hover{background:var(--bg-hover)}
     .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);
-      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
     .user-name{font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.2}
     .user-biz{font-size:11px;color:var(--text-muted);line-height:1.2}
 
     /* PAGE CONTENT */
-    #content{flex:1;padding:28px 28px 60px;max-width:1600px;width:100%}
+    #content{flex:1;padding:28px 28px 60px;max-width:1600px;width:100%;margin:0 auto;min-width:0}
 
     /* =====================================================
        GREETING
@@ -196,7 +204,7 @@
       box-shadow:var(--shadow-sm)}
     .main-tab{padding:9px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;
       color:var(--text-secondary);cursor:pointer;transition:all var(--transition);
-      display:flex;align-items:center;gap:6px;white-space:nowrap}
+      display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
     .main-tab:hover{color:var(--text-primary);background:var(--bg-hover)}
     .main-tab.active{background:var(--accent);color:#fff}
     .main-tab svg{width:14px;height:14px}
@@ -213,11 +221,12 @@
     .kpi-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px}
     .kpi-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
     .kpi-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+    .kpi-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
     .kpi-grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:24px}
 
     .kpi-card{background:var(--bg-surface);border:1px solid var(--border);
       border-radius:var(--radius-lg);padding:18px 20px;display:flex;align-items:flex-start;
-      gap:14px;box-shadow:var(--shadow-sm);transition:all var(--transition)}
+      gap:14px;box-shadow:var(--shadow-sm);transition:all var(--transition);min-width:0}
     .kpi-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
     .kpi-icon{width:44px;height:44px;border-radius:var(--radius-sm);
       display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -225,7 +234,7 @@
     .kpi-label{font-size:11.5px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .kpi-value{font-size:19px;font-weight:800;color:var(--text-primary);line-height:1.1;
-      margin-bottom:4px;font-variant-numeric:tabular-nums}
+      margin-bottom:4px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
     .kpi-sub{font-size:11.5px;color:var(--text-muted)}
     .kpi-delta{font-size:11.5px;font-weight:600}
     .kpi-delta.positive{color:var(--success)}
@@ -260,7 +269,7 @@
     /* =====================================================
        TABLA ESTÁNDAR
     ===================================================== */
-    .table-wrap{overflow-x:auto}
+    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
     table{width:100%;border-collapse:collapse}
     thead th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;
       letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border);
@@ -270,7 +279,7 @@
       vertical-align:middle;color:var(--text-primary)}
     tbody tr:last-child td{border-bottom:none}
     tbody tr:hover{background:var(--bg-hover)}
-    .td-mono{font-family:var(--font-mono);font-weight:600;font-variant-numeric:tabular-nums}
+    .td-mono{font-family:var(--font-mono);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
     .td-right{text-align:right}
     .td-muted{color:var(--text-secondary);font-size:12.5px}
     .td-rank{width:36px;text-align:center;font-weight:800;color:var(--text-muted)}
@@ -279,7 +288,7 @@
        BADGES
     ===================================================== */
     .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
-      border-radius:5px;font-size:11px;font-weight:700}
+      border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap}
     .badge-success{background:var(--success-soft);color:var(--success)}
     .badge-danger{background:var(--danger-soft);color:var(--danger)}
     .badge-warning{background:var(--warning-soft);color:var(--warning)}
@@ -336,13 +345,13 @@
     .financial-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;
       border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
     .financial-cell{padding:20px;border-right:1px solid var(--border);
-      border-bottom:1px solid var(--border)}
+      border-bottom:1px solid var(--border);min-width:0}
     .financial-cell:nth-child(4n){border-right:none}
     .financial-cell:nth-last-child(-n+4){border-bottom:none}
     .financial-label{font-size:11.5px;color:var(--text-muted);font-weight:600;
       text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
     .financial-value{font-size:22px;font-weight:800;color:var(--text-primary);
-      font-variant-numeric:tabular-nums;line-height:1.1}
+      font-variant-numeric:tabular-nums;line-height:1.1;overflow-wrap:anywhere}
     .financial-sub{font-size:12px;color:var(--text-muted);margin-top:4px}
 
     /* =====================================================
@@ -384,10 +393,10 @@
       text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
     .exec-hero-period{font-size:22px;font-weight:800;margin-bottom:20px}
     .exec-hero-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;position:relative}
-    .exec-hero-stat{text-align:center}
+    .exec-hero-stat{text-align:center;min-width:0}
     .exec-hero-stat-label{font-size:11px;opacity:.75;font-weight:600;
       text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
-    .exec-hero-stat-value{font-size:17px;font-weight:800;line-height:1.1}
+    .exec-hero-stat-value{font-size:17px;font-weight:800;line-height:1.1;overflow-wrap:anywhere}
 
     /* =====================================================
        EMPTY STATES
@@ -442,38 +451,77 @@
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
     /* =====================================================
-       RESPONSIVE
+       RESPONSIVE — TRUE fluid layout para teléfono / tablet /
+       laptop / computadora de escritorio / TV, sea cual sea
+       la marca o modelo
     ===================================================== */
+
+    /* Pantallas grandes / TV */
+    @media(min-width:1900px){
+      #content{padding:36px 44px 70px}
+    }
+
     @media(max-width:1400px){
-      .kpi-grid-6{grid-template-columns:repeat(3,1fr)}
+      .kpi-grid-5,.kpi-grid-6{grid-template-columns:repeat(3,1fr)}
       .financial-grid{grid-template-columns:repeat(2,1fr)}
       .exec-hero-grid{grid-template-columns:repeat(3,1fr)}
+      .financial-cell:nth-child(4n){border-right:1px solid var(--border)}
+      .financial-cell:nth-child(2n){border-right:none}
+      .financial-cell:nth-last-child(-n+4){border-bottom:1px solid var(--border)}
+      .financial-cell:nth-last-child(-n+2){border-bottom:none}
+    }
+    @media(max-width:1300px){
+      .export-grid{grid-template-columns:repeat(2,1fr)}
     }
     @media(max-width:1100px){
-      .kpi-grid-4{grid-template-columns:repeat(2,1fr)}
+      .kpi-grid-4,.kpi-grid-5{grid-template-columns:repeat(2,1fr)}
       .three-col{grid-template-columns:1fr}
       .two-col{grid-template-columns:1fr}
     }
     @media(max-width:900px){
       .kpi-grid-3{grid-template-columns:repeat(2,1fr)}
       .alertas-grid{grid-template-columns:1fr}
-      .export-grid{grid-template-columns:1fr}
+      .main-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+      .main-tabs::-webkit-scrollbar{height:4px}
     }
     @media(max-width:768px){
-      #sidebar{transform:translateX(-100%)}
+      #sidebar{transform:translateX(-100%);width:250px!important;box-shadow:var(--shadow-lg)}
       #sidebar.mobile-open{transform:translateX(0)}
-      #main{margin-left:0!important}
+      #sidebar.collapsed{width:250px}
+      #sidebar.collapsed .logo-text,
+      #sidebar.collapsed .nav-label,
+      #sidebar.collapsed .nav-section-title{opacity:1;width:auto;pointer-events:auto;overflow:visible}
+      #main,#main.sidebar-collapsed{margin-left:0!important}
       #content{padding:16px 16px 40px}
-      .kpi-grid-2,.kpi-grid-3,.kpi-grid-4,.kpi-grid-6{grid-template-columns:1fr 1fr}
+      #header{padding:0 14px;gap:8px}
+      .header-title{display:none}
+      #header-fecha{display:none}
+      .plan-badge{display:none}
+      .user-biz{display:none}
+      .kpi-grid-2,.kpi-grid-3,.kpi-grid-4,.kpi-grid-5,.kpi-grid-6{grid-template-columns:1fr 1fr}
       .financial-grid{grid-template-columns:1fr 1fr}
       .exec-hero-grid{grid-template-columns:repeat(2,1fr)}
-      .periodo-bar{flex-wrap:wrap}
+      .periodo-bar{flex-wrap:wrap;padding:12px 14px}
+      .periodo-info{margin-left:0;width:100%}
+      .table-wrap table{min-width:640px}
+      .export-grid{grid-template-columns:1fr}
     }
     @media(max-width:480px){
-      .kpi-grid-2,.kpi-grid-3,.kpi-grid-4,.kpi-grid-6{grid-template-columns:1fr}
+      .kpi-grid-2,.kpi-grid-3,.kpi-grid-4,.kpi-grid-5,.kpi-grid-6{grid-template-columns:1fr}
       .financial-grid{grid-template-columns:1fr}
+      .financial-cell{border-right:none!important}
+      .financial-cell:not(:last-child){border-bottom:1px solid var(--border)}
+      .financial-cell:last-child{border-bottom:none}
       .exec-hero{padding:20px}
       .exec-hero-grid{grid-template-columns:1fr 1fr}
+      .exec-hero-period{font-size:18px}
+      .greeting-text h1{font-size:19px}
+      #content{padding:12px 12px 36px}
+      .user-menu .user-name{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+    }
+    @media(max-width:360px){
+      .exec-hero-grid{grid-template-columns:1fr}
+      .kpi-value{font-size:17px}
     }
   </style>
 </head>
@@ -496,6 +544,9 @@
 
 <!-- APP -->
 <div id="app" style="display:none">
+
+  <!-- OVERLAY SIDEBAR MÓVIL -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
 
   <!-- SIDEBAR -->
   <aside id="sidebar">
@@ -752,7 +803,7 @@
         </div>
 
         <!-- Segunda fila KPIs ejecutivos -->
-        <div class="kpi-grid-6 fade-in" style="grid-template-columns:repeat(5,1fr)">
+        <div class="kpi-grid-5 fade-in">
           <div class="kpi-card">
             <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
             <div class="kpi-body">
