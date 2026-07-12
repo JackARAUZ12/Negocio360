@@ -131,15 +131,50 @@ function toggleTheme() {
 }
 
 /* ============================================================
-   SIDEBAR
+   SIDEBAR — Escritorio (colapsar) y Móvil (overlay deslizante)
    ============================================================ */
 let sidebarCollapsed = false;
-function toggleSidebar() {
-  sidebarCollapsed = !sidebarCollapsed;
-  document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
-  document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+
+function isMobileViewport() {
+  return window.innerWidth <= 768;
 }
-function navigate(url) { window.location.href = url; }
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('mobile-overlay');
+  if (!sidebar) return;
+
+  if (isMobileViewport()) {
+    // En móvil: el sidebar se desliza encima del contenido con overlay
+    const abrir = !sidebar.classList.contains('mobile-open');
+    sidebar.classList.toggle('mobile-open', abrir);
+    if (overlay) overlay.classList.toggle('show', abrir);
+    document.body.style.overflow = abrir ? 'hidden' : '';
+  } else {
+    // En escritorio: colapsar/expandir sidebar
+    sidebarCollapsed = !sidebarCollapsed;
+    sidebar.classList.toggle('collapsed', sidebarCollapsed);
+    document.getElementById('main')?.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  }
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('mobile-overlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+// Cierra el sidebar móvil automáticamente al redimensionar a escritorio
+window.addEventListener('resize', () => {
+  if (!isMobileViewport()) closeMobileSidebar();
+});
+
+function navigate(url) {
+  closeMobileSidebar();
+  window.location.href = url;
+}
 
 /* ============================================================
    MODALES (genéricos)
@@ -232,11 +267,6 @@ function renderUserInfo(user, email) {
   const h = new Date().getHours();
   const g = h<12 ? 'Buenos días' : h<19 ? 'Buenas tardes' : 'Buenas noches';
   document.getElementById('greeting-text').textContent = `${g}, ${nombre}`;
-
-  if (plan==='pro'||plan==='enterprise') {
-    const box = document.getElementById('upgrade-box');
-    if (box) box.style.display = 'none';
-  }
 }
 
 /* ============================================================
