@@ -1,8 +1,14 @@
 /* =====================================================
    CAJA.JS — NEGOCIO360
    Centro financiero del sistema.
-   Versión: 1.3 — Responsive + nombre de negocio correcto
-   
+   Versión: 2.0 — Reescrito desde cero:
+     - Menú móvil (drawer) simple y confiable, con botón
+       de cierre (✕) siempre visible dentro del panel,
+       así nunca te quedas "atrapado" sin poder cerrarlo.
+     - Nombre del negocio tomado de configuracion_empresa
+       .nombre_comercial (campo real usado por
+       personalizacion.html).
+
    LÓGICA DE SALDO (fuente de verdad única):
    - STATE.caja = saldo_resultante del último movimiento completado
    - Al poner dinero inicial → se inserta movimiento CAPITAL_AGREGADO
@@ -90,14 +96,6 @@ function fmt(amount) {
   return `${sym()} ${Number(amount).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtShort(amount) {
-  const n = Number(amount || 0);
-  const s = sym();
-  if (n >= 1_000_000) return `${s}${(n/1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `${s}${(n/1_000).toFixed(1)}k`;
-  return `${s}${n.toLocaleString('es-NI', { minimumFractionDigits: 0 })}`;
-}
-
 function fmtDate(isoDate) {
   if (!isoDate) return '—';
   const d = new Date(isoDate + 'T12:00:00');
@@ -107,37 +105,24 @@ function fmtDate(isoDate) {
 /* =====================================================
    NOMBRE DEL NEGOCIO
    El onboarding (personalizacion.html) guarda el nombre
-   comercial en la columna `nombre_comercial` de
-   `configuracion_empresa`. Revisamos esa primero y
-   dejamos las otras variantes como respaldo.
+   comercial que escribe el cliente en el input
+   #nombre_comercial, y lo sube a Supabase en la columna
+   `nombre_comercial` de la tabla `configuracion_empresa`
+   (ver función collectStep()/finalizarOnboarding() de
+   personalizacion.html). Por eso esa es la prioridad #1.
 ===================================================== */
 function nombreNegocio() {
   const cfg  = STATE.empresaConfig || {};
   const user = STATE.currentUser   || {};
-  const nombre =
-    cfg.nombre_comercial ||
+  return (
+    cfg.nombre_comercial ||   // ← campo real de personalizacion.html
     cfg.nombre_negocio   ||
     cfg.nombre_empresa   ||
-    cfg.empresa          ||
-    cfg.nombre           ||
     cfg.razon_social     ||
+    cfg.nombre           ||
     user.nombre_negocio  ||
-    user.nombre_empresa  ||
-    user.empresa         ||
-    null;
-
-  if (!nombre) {
-    // Ayuda de diagnóstico: si sigue saliendo "Mi negocio", abre la
-    // consola del navegador (F12) y revisa este log para ver
-    // exactamente qué columnas llegaron desde configuracion_empresa.
-    console.warn(
-      '[Negocio360] No se encontró el nombre del negocio en configuracion_empresa ni en usuarios. ' +
-      'Columnas recibidas de configuracion_empresa:', cfg,
-      '— Columnas recibidas de usuarios:', user
-    );
-  }
-
-  return nombre || 'Mi negocio';
+    'Mi negocio'
+  );
 }
 
 /* =====================================================
@@ -158,109 +143,74 @@ function toggleTheme() {
 }
 
 /* =====================================================
-   SIDEBAR (con soporte responsive para móvil)
+   SIDEBAR — menú de módulos (Ventas, Compras, etc.)
 
-   IMPORTANTE: esta versión NO depende de que caja.html
-   tenga el div #sidebar-overlay ni las media queries de
-   ".mobile-open" — si no existen, los crea/fuerza por
-   JavaScript. Así el menú funciona en el teléfono aunque
-   solo se haya actualizado este archivo caja.js.
+   Comportamiento simple y explícito, sin trucos de estilo
+   inline: usa únicamente clases CSS que ya vienen
+   definidas en caja.html (#sidebar.mobile-open y
+   #sidebar-overlay.show). Además, el propio panel trae un
+   botón "✕" (sidebar-close-btn) siempre alcanzable, así
+   el usuario NUNCA se queda sin forma de cerrarlo.
 ===================================================== */
 let sidebarCollapsed = false;
 
-// window.innerWidth es más fiable que matchMedia en algunos
-// navegadores móviles (WebViews de Android, Safari viejo, etc.)
 function isMobileViewport() {
   return window.innerWidth <= 768;
 }
 
-// Crea el overlay oscuro de fondo si no existe en el HTML,
-// y le aplica estilos inline (no depende del CSS del archivo).
-function ensureSidebarOverlay() {
-  let ov = document.getElementById('sidebar-overlay');
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = 'sidebar-overlay';
-    ov.addEventListener('click', closeMobileSidebar);
-    document.body.appendChild(ov);
-  }
-  Object.assign(ov.style, {
-    position:   'fixed',
-    top: '0', left: '0', right: '0', bottom: '0',
-    background: 'rgba(0,0,0,0.45)',
-    zIndex:     '9998',
-  });
-  if (!ov.dataset.n360Init) {
-    ov.style.display = 'none';
-    ov.dataset.n360Init = '1';
-  }
-  return ov;
-}
-
-// Aplica el estado correcto del sidebar según el tamaño de
-// pantalla actual, forzando estilos inline (por encima de
-// cualquier CSS externo, exista o no).
-function applySidebarResponsiveState() {
+// Abre/cierra el menú. En escritorio colapsa/expande
+// (icono only vs texto); en móvil abre/cierra el drawer.
+function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   if (!sb) return;
-  const ov = ensureSidebarOverlay();
 
   if (isMobileViewport()) {
-    sb.style.position   = 'fixed';
-    sb.style.top        = '0';
-    sb.style.left       = '0';
-    sb.style.height     = '100vh';
-    sb.style.zIndex     = '9999';
-    sb.style.transition = 'transform 0.25s ease';
-    sb.style.width      = '240px';
-    const isOpen = sb.dataset.mobileOpen === 'true';
-    sb.style.transform = isOpen ? 'translateX(0)' : 'translateX(-100%)';
-    ov.style.display    = isOpen ? 'block' : 'none';
-    document.body.style.overflow = isOpen ? 'hidden' : '';
+    if (sb.classList.contains('mobile-open')) {
+      closeMobileSidebar();
+    } else {
+      openMobileSidebar();
+    }
   } else {
-    // En escritorio limpiamos todo lo forzado para móvil y
-    // dejamos que el CSS normal (o el estado "collapsed") mande.
-    sb.style.transform = '';
-    sb.style.zIndex     = '';
-    sb.dataset.mobileOpen = 'false';
-    ov.style.display = 'none';
-    document.body.style.overflow = '';
-  }
-}
-
-function toggleSidebar() {
-  const sb   = document.getElementById('sidebar');
-  const main = document.getElementById('main');
-  if (!sb) return;
-
-  if (isMobileViewport()) {
-    const isOpen = sb.dataset.mobileOpen !== 'true';
-    sb.dataset.mobileOpen = isOpen ? 'true' : 'false';
-    applySidebarResponsiveState();
-  } else {
-    sb.style.transform = '';
     sidebarCollapsed = !sidebarCollapsed;
     sb.classList.toggle('collapsed', sidebarCollapsed);
+    const main = document.getElementById('main');
     if (main) main.classList.toggle('sidebar-collapsed', sidebarCollapsed);
   }
 }
 
-function closeMobileSidebar() {
+function openMobileSidebar() {
   const sb = document.getElementById('sidebar');
-  if (sb) sb.dataset.mobileOpen = 'false';
-  applySidebarResponsiveState();
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.add('mobile-open');
+  if (ov) ov.classList.add('show');
+  document.body.style.overflow = 'hidden';
 }
 
-// Estado inicial correcto al cargar la página y al rotar /
-// redimensionar (por ejemplo, girar el teléfono).
-window.addEventListener('DOMContentLoaded', applySidebarResponsiveState);
-window.addEventListener('resize', applySidebarResponsiveState);
-window.addEventListener('orientationchange', applySidebarResponsiveState);
+function closeMobileSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.remove('mobile-open');
+  if (ov) ov.classList.remove('show');
+  document.body.style.overflow = '';
+}
 
 function navigate(url) {
   closeMobileSidebar();
   window.location.href = url;
 }
+
+// Si la pantalla deja de ser móvil (por ejemplo al rotar
+// el teléfono a horizontal en una tablet, o redimensionar
+// la ventana en una PC), limpiamos el estado del drawer
+// para que no quede "medio abierto".
+window.addEventListener('resize', () => {
+  if (!isMobileViewport()) closeMobileSidebar();
+});
+
+// Cerrar el menú con la tecla Escape (accesibilidad / respaldo extra)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMobileSidebar();
+});
 
 /* =====================================================
    EMPRESA CONFIG
@@ -342,10 +292,6 @@ async function checkAdminAccess(email) {
 
 /* =====================================================
    SALDO DE CAJA (fuente de verdad única)
-   
-   El saldo se obtiene SIEMPRE del último movimiento
-   completado. No se suma capital_negocio por separado.
-   Esto evita la duplicación que ocurría antes.
 ===================================================== */
 async function loadCaja() {
   try {
@@ -382,15 +328,10 @@ async function tieneMovimientos() {
 
 /* =====================================================
    GUARDAR DINERO INICIAL
-   
-   Solo inserta un movimiento CAPITAL_AGREGADO con
-   saldo_anterior=0. NO toca capital_negocio para el
-   cálculo — solo lo guarda como registro histórico.
 ===================================================== */
 async function guardarDineroInicial(monto) {
   const montoNum = Number(monto);
 
-  // Guardar en capital_negocio como registro histórico
   await sbClient
     .from('capital_negocio')
     .update({ is_current: false })
@@ -406,7 +347,6 @@ async function guardarDineroInicial(monto) {
       is_current:   true,
     });
 
-  // El movimiento es la fuente de verdad del saldo
   const { error } = await sbClient
     .from('movimientos_financieros')
     .insert({
@@ -445,31 +385,26 @@ async function loadResumen() {
     const egresos  = (data||[]).filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
     const totalMov = (data||[]).length;
 
-    // KPI: Caja disponible (saldo actual)
     setEl('kpi-caja', fmt(STATE.caja));
     setDelta('kpi-caja-delta',
       STATE.caja >= 0 ? 'Saldo positivo' : 'Saldo negativo',
       STATE.caja >= 0);
 
-    // KPI: Ingresos del mes
     setEl('kpi-ingresos', fmt(ingresos));
     setDelta('kpi-ingresos-delta',
       ingresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='INGRESO').length} entradas` : 'Sin ingresos este mes',
       ingresos > 0);
 
-    // KPI: Egresos del mes
     setEl('kpi-egresos', fmt(egresos));
     setDelta('kpi-egresos-delta',
       egresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='EGRESO').length} salidas` : 'Sin egresos este mes',
       false);
 
-    // KPI: Movimientos del mes
     setEl('kpi-movimientos', totalMov.toString());
     setDelta('kpi-movimientos-delta',
       totalMov > 0 ? 'este mes' : 'Sin movimientos',
       totalMov > 0);
 
-    // Color del saldo
     const cajaEl = document.getElementById('kpi-caja');
     if (cajaEl) cajaEl.style.color = STATE.caja >= 0 ? '' : 'var(--danger)';
 
@@ -795,7 +730,6 @@ async function saveMovimiento() {
   try {
     setBtnLoading('btn-save-mov', true);
 
-    // Saldo del último movimiento (fuente de verdad única)
     const { data: ultMov } = await sbClient
       .from('movimientos_financieros')
       .select('saldo_resultante')
@@ -825,7 +759,6 @@ async function saveMovimiento() {
       estado:             'completado',
     });
 
-    // Actualizar saldo en estado
     STATE.caja = saldoResultante;
 
     closeModal('modal-movimiento');
@@ -870,7 +803,6 @@ async function anularMovimiento() {
     movToAnular = null;
     showToast('Movimiento anulado');
 
-    // Recargar saldo real desde DB
     await loadCaja();
     await Promise.all([loadResumen(), loadMovimientos()]);
     actualizarCacheLocal();
@@ -979,10 +911,8 @@ async function crearCierreDiario() {
 async function checkDineroInicial() {
   const hayMovs = await tieneMovimientos();
   if (!hayMovs) {
-    // Primera vez — mostrar modal
     openModal('modal-capital-inicial');
   } else {
-    // Cargar saldo desde movimientos
     await loadCaja();
   }
 }
@@ -1016,14 +946,12 @@ function actualizarCacheLocal() {
   try {
     localStorage.setItem('n360_caja', STATE.caja.toString());
     localStorage.setItem('n360_caja_updated', new Date().toISOString());
-    // Compatibilidad con código antiguo que lea n360_capital
     localStorage.setItem('n360_capital', STATE.caja.toString());
   } catch(e) { /* silencioso */ }
 }
 
 /* =====================================================
    API PÚBLICA (para ventas.js, gastos.js, compras.js)
-   Compatible con el API anterior — mismo contrato.
 ===================================================== */
 window.CajaAPI = {
   async registrarMovimiento(params) {
@@ -1239,10 +1167,8 @@ async function initCaja() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    // Verificar si es primera vez (sin movimientos) o cargar saldo
     await checkDineroInicial();
 
-    // Cargar datos principales
     await Promise.all([
       loadResumen(),
       loadMovimientos(),
