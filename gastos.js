@@ -1,5 +1,5 @@
 /* =====================================================
-   GASTOS.JS — NEGOCIO360  v1.4
+   GASTOS.JS — NEGOCIO360  v1.5
    IIFE wrapper: todas las variables son privadas al
    módulo y no chocan con las de cajaAPI.js (STATE,
    sbClient, SUPABASE_URL, SUPABASE_KEY, etc.)
@@ -110,6 +110,23 @@
   function setEl(id, value) { const e = document.getElementById(id); if (e) e.textContent = value; }
 
   /* ===================================================
+     NOMBRE DEL NEGOCIO
+     El onboarding (personalizacion.html) guarda el nombre
+     comercial en la columna `nombre_comercial` de
+     `configuracion_empresa`. Aceptamos también variantes
+     por si el esquema cambia (nombre_negocio / nombre).
+  =================================================== */
+  function nombreNegocio() {
+    return (
+      GS.empresaConfig?.nombre_comercial ||
+      GS.empresaConfig?.nombre_negocio ||
+      GS.empresaConfig?.nombre ||
+      GS.currentUser?.nombre_negocio ||
+      'Mi negocio'
+    );
+  }
+
+  /* ===================================================
      CAJA API
   =================================================== */
   async function _registrarEnCaja(params) {
@@ -136,15 +153,46 @@
   }
 
   /* ===================================================
-     SIDEBAR / NAV
+     SIDEBAR / NAV (con soporte responsive para móvil)
   =================================================== */
   let _sidebarCollapsed = false;
-  function toggleSidebar() {
-    _sidebarCollapsed = !_sidebarCollapsed;
-    document.getElementById('sidebar').classList.toggle('collapsed', _sidebarCollapsed);
-    document.getElementById('main').classList.toggle('sidebar-collapsed', _sidebarCollapsed);
+
+  function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
   }
-  function navigate(url) { window.location.href = url; }
+
+  function toggleSidebar() {
+    if (isMobileViewport()) {
+      // En móvil, el sidebar es un drawer que se superpone
+      const sb = document.getElementById('sidebar');
+      const ov = document.getElementById('sidebar-overlay');
+      const isOpen = sb.classList.toggle('mobile-open');
+      if (ov) ov.classList.toggle('show', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    } else {
+      _sidebarCollapsed = !_sidebarCollapsed;
+      document.getElementById('sidebar').classList.toggle('collapsed', _sidebarCollapsed);
+      document.getElementById('main').classList.toggle('sidebar-collapsed', _sidebarCollapsed);
+    }
+  }
+
+  function closeMobileSidebar() {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebar-overlay');
+    sb.classList.remove('mobile-open');
+    if (ov) ov.classList.remove('show');
+    document.body.style.overflow = '';
+  }
+
+  function navigate(url) {
+    closeMobileSidebar();
+    window.location.href = url;
+  }
+
+  // Si la ventana pasa de móvil a escritorio (o rota), limpiar estado del drawer
+  window.addEventListener('resize', () => {
+    if (!isMobileViewport()) closeMobileSidebar();
+  });
 
   /* ===================================================
      EMPRESA CONFIG / PERFIL
@@ -155,15 +203,19 @@
       if (data) {
         GS.empresaConfig = data;
         const logoText = document.getElementById('sidebar-logo-text');
-        if (logoText) logoText.textContent = data.nombre_negocio || data.nombre || 'Mi negocio';
-        if (data.color_primario) {
+        if (logoText) logoText.textContent = nombreNegocio();
+        if (data.color_principal) {
+          document.documentElement.style.setProperty('--accent', data.color_principal);
+          document.documentElement.style.setProperty('--accent-soft', data.color_principal + '22');
+          document.documentElement.style.setProperty('--border-focus', data.color_principal);
+        } else if (data.color_primario) {
           document.documentElement.style.setProperty('--accent', data.color_primario);
           document.documentElement.style.setProperty('--accent-soft', data.color_primario + '22');
           document.documentElement.style.setProperty('--border-focus', data.color_primario);
         }
-        if (data.logo_url) {
+        if (data.logo_principal_url || data.logo_url) {
           const li = document.querySelector('.logo-icon');
-          if (li) li.innerHTML = `<img src="${data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+          if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
         }
       }
     } catch(e) { console.warn('loadEmpresaConfig:', e); }
@@ -184,16 +236,12 @@
     const plan     = user.plan || 'Gratuito';
     const initials = ((nombre[0]||'') + (apellido[0]||'')).toUpperCase();
     document.getElementById('header-name').textContent   = `${nombre} ${apellido}`.trim();
-    document.getElementById('header-biz').textContent    = GS.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
+    document.getElementById('header-biz').textContent    = nombreNegocio();
     document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
     document.getElementById('plan-text').textContent     = plan.charAt(0).toUpperCase() + plan.slice(1);
     const hour = new Date().getHours();
     const greet = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
     document.getElementById('greeting-text').textContent = `${greet}, ${nombre}`;
-    if (plan === 'pro' || plan === 'enterprise') {
-      const box = document.getElementById('upgrade-box');
-      if (box) box.style.display = 'none';
-    }
   }
 
   async function checkAdminAccess(email) {
@@ -797,6 +845,7 @@
       else {
         document.getElementById('header-name').textContent   = user.email?.split('@')[0]||'Usuario';
         document.getElementById('header-avatar').textContent = (user.email||'U')[0].toUpperCase();
+        document.getElementById('header-biz').textContent    = nombreNegocio();
       }
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('app').style.display = 'flex';
@@ -839,6 +888,7 @@
   window.cancelarGasto           = cancelarGasto;
   window.verDetalleGasto         = verDetalleGasto;
   window.toggleSidebar           = toggleSidebar;
+  window.closeMobileSidebar      = closeMobileSidebar;
   window.toggleTheme             = toggleTheme;
   window.navigate                = navigate;
 
