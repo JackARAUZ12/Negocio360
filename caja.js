@@ -112,13 +112,32 @@ function fmtDate(isoDate) {
    dejamos las otras variantes como respaldo.
 ===================================================== */
 function nombreNegocio() {
-  return (
-    STATE.empresaConfig?.nombre_comercial ||
-    STATE.empresaConfig?.nombre_negocio ||
-    STATE.empresaConfig?.nombre ||
-    STATE.currentUser?.nombre_negocio ||
-    'Mi negocio'
-  );
+  const cfg  = STATE.empresaConfig || {};
+  const user = STATE.currentUser   || {};
+  const nombre =
+    cfg.nombre_comercial ||
+    cfg.nombre_negocio   ||
+    cfg.nombre_empresa   ||
+    cfg.empresa          ||
+    cfg.nombre           ||
+    cfg.razon_social     ||
+    user.nombre_negocio  ||
+    user.nombre_empresa  ||
+    user.empresa         ||
+    null;
+
+  if (!nombre) {
+    // Ayuda de diagnóstico: si sigue saliendo "Mi negocio", abre la
+    // consola del navegador (F12) y revisa este log para ver
+    // exactamente qué columnas llegaron desde configuracion_empresa.
+    console.warn(
+      '[Negocio360] No se encontró el nombre del negocio en configuracion_empresa ni en usuarios. ' +
+      'Columnas recibidas de configuracion_empresa:', cfg,
+      '— Columnas recibidas de usuarios:', user
+    );
+  }
+
+  return nombre || 'Mi negocio';
 }
 
 /* =====================================================
@@ -140,6 +159,12 @@ function toggleTheme() {
 
 /* =====================================================
    SIDEBAR (con soporte responsive para móvil)
+
+   IMPORTANTE: esta versión NO depende de que caja.html
+   tenga el div #sidebar-overlay ni las media queries de
+   ".mobile-open" — si no existen, los crea/fuerza por
+   JavaScript. Así el menú funciona en el teléfono aunque
+   solo se haya actualizado este archivo caja.js.
 ===================================================== */
 let sidebarCollapsed = false;
 
@@ -149,25 +174,69 @@ function isMobileViewport() {
   return window.innerWidth <= 768;
 }
 
+// Crea el overlay oscuro de fondo si no existe en el HTML,
+// y le aplica estilos inline (no depende del CSS del archivo).
+function ensureSidebarOverlay() {
+  let ov = document.getElementById('sidebar-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'sidebar-overlay';
+    ov.addEventListener('click', closeMobileSidebar);
+    document.body.appendChild(ov);
+  }
+  Object.assign(ov.style, {
+    position:   'fixed',
+    top: '0', left: '0', right: '0', bottom: '0',
+    background: 'rgba(0,0,0,0.45)',
+    zIndex:     '9998',
+  });
+  if (!ov.dataset.n360Init) {
+    ov.style.display = 'none';
+    ov.dataset.n360Init = '1';
+  }
+  return ov;
+}
+
+// Aplica el estado correcto del sidebar según el tamaño de
+// pantalla actual, forzando estilos inline (por encima de
+// cualquier CSS externo, exista o no).
+function applySidebarResponsiveState() {
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  const ov = ensureSidebarOverlay();
+
+  if (isMobileViewport()) {
+    sb.style.position   = 'fixed';
+    sb.style.top        = '0';
+    sb.style.left       = '0';
+    sb.style.height     = '100vh';
+    sb.style.zIndex     = '9999';
+    sb.style.transition = 'transform 0.25s ease';
+    sb.style.width      = '240px';
+    const isOpen = sb.dataset.mobileOpen === 'true';
+    sb.style.transform = isOpen ? 'translateX(0)' : 'translateX(-100%)';
+    ov.style.display    = isOpen ? 'block' : 'none';
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  } else {
+    // En escritorio limpiamos todo lo forzado para móvil y
+    // dejamos que el CSS normal (o el estado "collapsed") mande.
+    sb.style.transform = '';
+    sb.style.zIndex     = '';
+    sb.dataset.mobileOpen = 'false';
+    ov.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+}
+
 function toggleSidebar() {
   const sb   = document.getElementById('sidebar');
-  const ov   = document.getElementById('sidebar-overlay');
   const main = document.getElementById('main');
   if (!sb) return;
 
   if (isMobileViewport()) {
-    // En móvil, el sidebar es un drawer que se superpone.
-    // Forzamos el estilo inline además de la clase CSS para
-    // que funcione aunque alguna hoja de estilos falle o
-    // se cargue tarde en el dispositivo.
-    const isOpen = !sb.classList.contains('mobile-open');
-    sb.classList.toggle('mobile-open', isOpen);
-    sb.style.transform = isOpen ? 'translateX(0)' : 'translateX(-100%)';
-    if (ov) {
-      ov.classList.toggle('show', isOpen);
-      ov.style.display = isOpen ? 'block' : 'none';
-    }
-    document.body.style.overflow = isOpen ? 'hidden' : '';
+    const isOpen = sb.dataset.mobileOpen !== 'true';
+    sb.dataset.mobileOpen = isOpen ? 'true' : 'false';
+    applySidebarResponsiveState();
   } else {
     sb.style.transform = '';
     sidebarCollapsed = !sidebarCollapsed;
@@ -178,28 +247,20 @@ function toggleSidebar() {
 
 function closeMobileSidebar() {
   const sb = document.getElementById('sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  if (sb) {
-    sb.classList.remove('mobile-open');
-    // En móvil forzamos oculto; en escritorio limpiamos el
-    // inline style para que mande el CSS normal de nuevo.
-    sb.style.transform = isMobileViewport() ? 'translateX(-100%)' : '';
-  }
-  if (ov) {
-    ov.classList.remove('show');
-    ov.style.display = 'none';
-  }
-  document.body.style.overflow = '';
+  if (sb) sb.dataset.mobileOpen = 'false';
+  applySidebarResponsiveState();
 }
+
+// Estado inicial correcto al cargar la página y al rotar /
+// redimensionar (por ejemplo, girar el teléfono).
+window.addEventListener('DOMContentLoaded', applySidebarResponsiveState);
+window.addEventListener('resize', applySidebarResponsiveState);
+window.addEventListener('orientationchange', applySidebarResponsiveState);
 
 function navigate(url) {
   closeMobileSidebar();
   window.location.href = url;
 }
-
-window.addEventListener('resize', () => {
-  if (!isMobileViewport()) closeMobileSidebar();
-});
 
 /* =====================================================
    EMPRESA CONFIG
