@@ -143,30 +143,52 @@ function toggleTheme() {
 ===================================================== */
 let sidebarCollapsed = false;
 
+// window.innerWidth es más fiable que matchMedia en algunos
+// navegadores móviles (WebViews de Android, Safari viejo, etc.)
 function isMobileViewport() {
-  return window.matchMedia('(max-width: 768px)').matches;
+  return window.innerWidth <= 768;
 }
 
 function toggleSidebar() {
+  const sb   = document.getElementById('sidebar');
+  const ov   = document.getElementById('sidebar-overlay');
+  const main = document.getElementById('main');
+  if (!sb) return;
+
   if (isMobileViewport()) {
-    // En móvil, el sidebar es un drawer que se superpone
-    const sb = document.getElementById('sidebar');
-    const ov = document.getElementById('sidebar-overlay');
-    const isOpen = sb.classList.toggle('mobile-open');
-    if (ov) ov.classList.toggle('show', isOpen);
+    // En móvil, el sidebar es un drawer que se superpone.
+    // Forzamos el estilo inline además de la clase CSS para
+    // que funcione aunque alguna hoja de estilos falle o
+    // se cargue tarde en el dispositivo.
+    const isOpen = !sb.classList.contains('mobile-open');
+    sb.classList.toggle('mobile-open', isOpen);
+    sb.style.transform = isOpen ? 'translateX(0)' : 'translateX(-100%)';
+    if (ov) {
+      ov.classList.toggle('show', isOpen);
+      ov.style.display = isOpen ? 'block' : 'none';
+    }
     document.body.style.overflow = isOpen ? 'hidden' : '';
   } else {
+    sb.style.transform = '';
     sidebarCollapsed = !sidebarCollapsed;
-    document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
-    document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+    sb.classList.toggle('collapsed', sidebarCollapsed);
+    if (main) main.classList.toggle('sidebar-collapsed', sidebarCollapsed);
   }
 }
 
 function closeMobileSidebar() {
   const sb = document.getElementById('sidebar');
   const ov = document.getElementById('sidebar-overlay');
-  if (sb) sb.classList.remove('mobile-open');
-  if (ov) ov.classList.remove('show');
+  if (sb) {
+    sb.classList.remove('mobile-open');
+    // En móvil forzamos oculto; en escritorio limpiamos el
+    // inline style para que mande el CSS normal de nuevo.
+    sb.style.transform = isMobileViewport() ? 'translateX(-100%)' : '';
+  }
+  if (ov) {
+    ov.classList.remove('show');
+    ov.style.display = 'none';
+  }
   document.body.style.overflow = '';
 }
 
