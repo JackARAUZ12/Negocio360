@@ -524,7 +524,7 @@ function emptyRow(cols, msg) {
 async function fetchVentas() {
   const { from, to } = getDateRange();
   const { data } = await sb.from('ventas')
-    .select('id,numero_venta,fecha,cliente_id,cliente_nombre,total,ganancia,costo_total,subtotal,descuento,metodo_pago_nombre,estado')
+    .select('id,numero_venta,fecha,cliente_id,cliente_nombre,total,ganancia,costo_total,subtotal,descuento,impuesto,metodo_pago_nombre,estado')
     .eq('auth_user_id', R.userId)
     .eq('estado', 'completada')
     .gte('fecha', from).lte('fecha', to)
@@ -543,12 +543,23 @@ async function fetchVentasDetalles() {
   return data || [];
 }
 
+/* FIX IVA: "total" NO debe usarse tal cual — incluye el IVA cobrado al
+   cliente, que no es ingreso del negocio (se recauda para el fisco y se
+   contabiliza aparte en Impuestos). Se resta "impuesto" para obtener el
+   ingreso neto real, igual que en dashboard.html y caja.js.
+   FIX GANANCIA: la "ganancia bruta" ahora se calcula SIEMPRE como
+   ingreso neto - costo (no se suma el campo "ganancia" guardado por cada
+   venta), para que cuadre exacto con Ingresos - Costos, igual que se
+   corrigió en el Dashboard. */
 function calcVentasResumen(ventas) {
-  const total    = ventas.reduce((s,v) => s+Number(v.total),0);
-  const ganancia = ventas.reduce((s,v) => s+Number(v.ganancia),0);
+  const total    = ventas.reduce((s,v) => s + (Number(v.total) - Number(v.impuesto||0)), 0);
   const costo    = ventas.reduce((s,v) => s+Number(v.costo_total),0);
+  const ganancia = total - costo;
   const count    = ventas.length;
   const ticket   = count>0 ? total/count : 0;
+  // "Venta mayor" usa el total real cobrado al cliente (con IVA incluido),
+  // igual que la columna "Total" del historial de Ventas — es el monto
+  // real de una transacción individual, no un agregado de ingresos.
   const mayor    = ventas.reduce((m,v) => Number(v.total)>Number(m.total) ? v : m, ventas[0]||{total:0});
   return { total, ganancia, costo, count, ticket, mayor };
 }
@@ -626,6 +637,65 @@ async function fetchCapital() {
   return cap ? Number(cap.monto) : 0;
 }
 
+/* ---- OTROS INGRESOS / OTROS EGRESOS (Caja) ----
+   Misma lógica que caja.js y dashboard.html: movimientos
+   registrados manualmente desde Caja ("Nuevo movimiento") que
+   NO están ligados a una venta, compra ni gasto (referencia_tipo
+   es null). No se recalculan aparte — se leen de la misma
+   fuente y con el mismo criterio para que los tres módulos
+   siempre muestren el mismo número. */
+async function fetchOtrosMovimientos() {
+  const { from, to } = getDateRange();
+  try {
+    const { data } = await sb.from('movimientos_financieros')
+      .select('tipo_flujo, monto, referencia_tipo')
+      .eq('auth_user_id', R.userId)
+      .eq('estado', 'completado')
+      .is('referencia_tipo', null)
+      .gte('fecha', from).lte('fecha', to);
+
+    const movs = data || [];
+    const otrosIngresos = movs.filter(m => m.tipo_flujo === 'INGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
+    const otrosEgresos  = movs.filter(m => m.tipo_flujo === 'EGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
+    return { otrosIngresos, otrosEgresos };
+  } catch(e) {
+    console.warn('fetchOtrosMovimientos:', e);
+    return { otrosIngresos: 0, otrosEgresos: 0 };
+  }
+}
+
+/* ---- IVA / IMPUESTOS (desde movimientos_impuestos — misma
+   lógica que impuestos.html) ----
+   Reportes solo LEE esta tabla, nunca calcula ni escribe IVA
+   por su cuenta: el IVA se genera en ventas.js al confirmar una
+   venta y se paga desde impuestos.html. Aquí solo se muestra. */
+async function fetchImpuestos() {
+  try {
+    const { data } = await sb.from('movimientos_impuestos')
+      .select('tipo_movimiento, monto, fecha, saldo_resultante, created_at')
+      .eq('auth_user_id', R.userId)
+      .order('created_at', { ascending:false })
+      .limit(300);
+    return data || [];
+  } catch(e) {
+    console.warn('fetchImpuestos:', e);
+    return [];
+  }
+}
+
+function calcImpuestosResumen(movs) {
+  const { from, to } = getDateRange();
+  const saldoActual = movs.length ? Number(movs[0].saldo_resultante) || 0 : 0;
+  const generadoPeriodo = movs
+    .filter(m => m.tipo_movimiento==='IVA_VENTA' && (m.fecha||'')>=from && (m.fecha||'')<=to)
+    .reduce((s,m) => s+Number(m.monto||0), 0);
+  const pagadoTotal = movs
+    .filter(m => m.tipo_movimiento==='PAGO_IMPUESTO')
+    .reduce((s,m) => s+Number(m.monto||0), 0);
+  const ultimoPago = movs.find(m => m.tipo_movimiento==='PAGO_IMPUESTO');
+  return { saldoActual, generadoPeriodo, pagadoTotal, ultimoPago };
+}
+
 /* ---- MOVIMIENTOS (para flujo de caja) ---- */
 async function fetchMovimientos() {
   const { from, to } = getDateRange();
@@ -660,7 +730,7 @@ async function fetchDatosMensuales() {
   const end   = todayISO();
 
   const [resV, resC, resG] = await Promise.all([
-    sb.from('ventas').select('fecha,total,ganancia')
+    sb.from('ventas').select('fecha,total,ganancia,impuesto')
       .eq('auth_user_id', R.userId).eq('estado','completada')
       .gte('fecha', start).lte('fecha', end),
     sb.from('compras').select('fecha,total')
@@ -681,7 +751,10 @@ async function fetchDatosMensuales() {
     const d = parseFechaSegura(r.fecha);
     if (!d) return;
     const m = d.getMonth();
-    ventas[m]    += Number(r.total);
+    // FIX: netear IVA también en la serie mensual (ventas[] alimenta la
+    // gráfica "Comparación mensual de ingresos y gastos")
+    const totalNeto = Number(r.total) - Number(r.impuesto||0);
+    ventas[m]    += totalNeto;
     ganancias[m] += Number(r.ganancia);
   });
   (resC.data||[]).forEach(r => {
@@ -702,18 +775,27 @@ async function fetchDatosMensuales() {
 
 /* ============================================================
    TAB: RESUMEN EJECUTIVO
+   FIX: ahora incluye Otros ingresos/egresos (leídos de Caja,
+   igual que en Dashboard) en el cálculo de ganancia neta, y
+   agrega el mismo "Resumen financiero" que tiene el Dashboard
+   (mismas fórmulas, mismas fuentes — no se recalcula distinto).
    ============================================================ */
 async function loadEjecutivo() {
   try {
-    const [ventas, compras, gastos, clientes, productos, capital, movs, detalles] = await Promise.all([
+    const [ventas, compras, gastos, clientes, productos, capital, movs, detalles, otros] = await Promise.all([
       fetchVentas(), fetchCompras(), fetchGastos(), fetchClientes(),
       fetchProductos(), fetchCapital(), fetchMovimientos(), fetchVentasDetalles(),
+      fetchOtrosMovimientos(),
     ]);
 
     const vRes = calcVentasResumen(ventas);
     const totalCompras  = compras.reduce((s,c)  => s+Number(c.total),0);
     const totalGastos   = gastos.reduce((s,g)   => s+Number(g.monto),0);
-    const gananciaNeta  = vRes.ganancia - totalGastos;
+    const otrosIngresos = otros.otrosIngresos;
+    const otrosEgresos  = otros.otrosEgresos;
+    // FIX: ganancia neta ahora incluye Otros ingresos/egresos de Caja,
+    // igual que en el Dashboard.
+    const gananciaNeta  = vRes.ganancia - totalGastos + otrosIngresos - otrosEgresos;
     const margenBruto   = vRes.total>0 ? ((vRes.ganancia/vRes.total)*100).toFixed(1) : 0;
     const margenNeto    = vRes.total>0 ? ((gananciaNeta/vRes.total)*100).toFixed(1) : 0;
 
@@ -731,6 +813,7 @@ async function loadEjecutivo() {
     R.cache.resumen = {
       ventas: vRes.total, compras: totalCompras, gastos: totalGastos,
       gananciaBruta: vRes.ganancia, gananciaNeta, capital,
+      otrosIngresos, otrosEgresos,
       margenBruto, margenNeto, valorInventario, clientesNuevos,
       ticketPromedio: vRes.ticket, ventasCount: vRes.count,
       stockBajoCount: stockBajo.length, unidsVendidas,
@@ -742,6 +825,21 @@ async function loadEjecutivo() {
     setEl('eh-ganancia', fmt(gananciaNeta));
     setEl('eh-capital',  fmt(capital));
     setEl('eh-clientes', clientesNuevos.toString());
+
+    // ── NUEVO: Resumen financiero (idéntico al del Dashboard) ──
+    setEl('exec-fin-ingresos',        fmt(vRes.total));
+    setEl('exec-fin-costo',           fmt(vRes.costo));
+    setEl('exec-fin-ganancia-bruta',  fmt(vRes.ganancia));
+    setEl('exec-fin-gastos',          fmt(totalGastos));
+    setEl('exec-fin-otros-ingresos',  fmt(otrosIngresos));
+    setEl('exec-fin-otros-egresos',   fmt(otrosEgresos));
+    setEl('exec-fin-ganancia-neta',   fmt(gananciaNeta));
+    setEl('exec-fin-margen',          `${margenNeto}%`);
+    const efGB = document.getElementById('exec-fin-ganancia-bruta');
+    if (efGB) efGB.style.color = vRes.ganancia >= 0 ? 'var(--success)' : 'var(--danger)';
+    const efGN = document.getElementById('exec-fin-ganancia-neta');
+    if (efGN) efGN.style.color = gananciaNeta >= 0 ? 'var(--success)' : 'var(--danger)';
+    // ─────────────────────────────────────────────────────────
 
     // KPIs fila 1
     setEl('kpi-ventas-total',   fmt(vRes.total));
@@ -763,6 +861,10 @@ async function loadEjecutivo() {
     setEl('kpi-venta-mayor',      fmt(vRes.mayor?.total||0));
     setEl('kpi-stock-bajo',       stockBajo.length.toString());
     setEl('kpi-prods-vendidos',   fmtNum(unidsVendidas));
+
+    // NUEVO: KPIs fila 3 — Otros ingresos / Otros egresos
+    setEl('kpi-otros-ingresos', fmt(otrosIngresos));
+    setEl('kpi-otros-egresos',  fmt(otrosEgresos));
 
     // Colores ganancia neta
     const gnEl = document.getElementById('kpi-ganancia-neta');
@@ -856,18 +958,24 @@ async function renderTopClientesExec(clientes) {
 
 /* ============================================================
    TAB: FINANCIERO
+   FIX: Otros ingresos/egresos incluidos en ganancia neta y en
+   la grilla financiera; nueva sección de IVA/Impuestos que solo
+   LEE de movimientos_impuestos (misma tabla que impuestos.html).
    ============================================================ */
 async function loadFinanciero() {
   try {
-    const [ventas, compras, gastos, capital, productos, movs, mensual] = await Promise.all([
+    const [ventas, compras, gastos, capital, productos, movs, mensual, otros, impMovs] = await Promise.all([
       fetchVentas(), fetchCompras(), fetchGastos(), fetchCapital(),
       fetchProductos(), fetchMovimientos(), fetchDatosMensuales(),
+      fetchOtrosMovimientos(), fetchImpuestos(),
     ]);
 
     const vRes = calcVentasResumen(ventas);
     const totalCompras = compras.reduce((s,c)=>s+Number(c.total),0);
     const totalGastos  = gastos.reduce((s,g)=>s+Number(g.monto),0);
-    const gananciaNeta = vRes.ganancia - totalGastos;
+    const otrosIngresos = otros.otrosIngresos;
+    const otrosEgresos  = otros.otrosEgresos;
+    const gananciaNeta = vRes.ganancia - totalGastos + otrosIngresos - otrosEgresos;
     const margenBruto  = vRes.total>0 ? ((vRes.ganancia/vRes.total)*100).toFixed(1) : 0;
     const margenNeto   = vRes.total>0 ? ((gananciaNeta/vRes.total)*100).toFixed(1) : 0;
     const valorInv     = (productos||[]).filter(p=>p.tipo==='producto')
@@ -884,9 +992,20 @@ async function loadFinanciero() {
     setEl('fin-margen-neto',    `${margenNeto}% margen neto`);
     setEl('fin-capital',        fmt(capital));
     setEl('fin-inventario',     fmt(valorInv));
+    // NUEVO: Otros ingresos / egresos en la grilla financiera
+    setEl('fin-otros-ingresos', fmt(otrosIngresos));
+    setEl('fin-otros-egresos',  fmt(otrosEgresos));
 
     const gnEl = document.getElementById('fin-ganancia-neta');
     if (gnEl) gnEl.style.color = gananciaNeta>=0 ? 'var(--success)' : 'var(--danger)';
+
+    // ── NUEVO: sección IVA / Impuestos (solo lectura) ──
+    const iva = calcImpuestosResumen(impMovs);
+    setEl('fin-iva-saldo',    fmt(iva.saldoActual));
+    setEl('fin-iva-generado', fmt(iva.generadoPeriodo));
+    setEl('fin-iva-pagado',   fmt(iva.pagadoTotal));
+    setEl('fin-iva-ultimo',   iva.ultimoPago ? fmtFecha(iva.ultimoPago.created_at || iva.ultimoPago.fecha) : 'Sin pagos aún');
+    // ─────────────────────────────────────────────────
 
     // Gráfica comparación mensual — SIEMPRE por mes del año en curso,
     // independiente del período seleccionado arriba (comportamiento
@@ -940,7 +1059,12 @@ async function loadFinanciero() {
 /* Verdadera ganancia neta por día, dentro del período seleccionado */
 function renderGraficaGananciaNeta(ventas, gastos) {
   const mapGan = {}, mapGas = {};
-  (ventas||[]).forEach(v => { mapGan[v.fecha] = (mapGan[v.fecha]||0) + Number(v.ganancia); });
+  (ventas||[]).forEach(v => {
+    // FIX: ganancia por venta neta de IVA (total - impuesto - costo),
+    // no el campo "ganancia" guardado (podía desincuadrar).
+    const netoDia = (Number(v.total) - Number(v.impuesto||0)) - Number(v.costo_total||0);
+    mapGan[v.fecha] = (mapGan[v.fecha]||0) + netoDia;
+  });
   (gastos||[]).forEach(g => { mapGas[g.fecha] = (mapGas[g.fecha]||0) + Number(g.monto); });
 
   const allDates = [...new Set([...Object.keys(mapGan), ...Object.keys(mapGas)])].sort();
@@ -1469,9 +1593,12 @@ async function ensureCaches() {
     const totalComp = R.cache.compras.reduce((s,c)=>s+Number(c.total),0);
     const totalGast = R.cache.gastos.reduce((s,g)=>s+Number(g.monto),0);
     const capital   = await fetchCapital();
+    const otros     = await fetchOtrosMovimientos();
     R.cache.resumen = {
       ventas: vRes.total, compras: totalComp, gastos: totalGast,
-      gananciaBruta: vRes.ganancia, gananciaNeta: vRes.ganancia - totalGast, capital,
+      gananciaBruta: vRes.ganancia,
+      gananciaNeta: vRes.ganancia - totalGast + otros.otrosIngresos - otros.otrosEgresos,
+      capital, otrosIngresos: otros.otrosIngresos, otrosEgresos: otros.otrosEgresos,
     };
   }
 }
@@ -1531,6 +1658,7 @@ async function exportarPDF(tipo) {
     const finRows = [
       ['Ventas totales', fmt(r.ventas)], ['Compras totales', fmt(r.compras)],
       ['Total gastos', fmt(r.gastos)], ['Ganancia bruta', fmt(r.gananciaBruta)],
+      ['Otros ingresos', fmt(r.otrosIngresos)], ['Otros egresos', fmt(r.otrosEgresos)],
       ['Ganancia neta', fmt(r.gananciaNeta)], ['Caja disponible', fmt(r.capital)],
     ];
     doc.autoTable({ startY, head:[['Concepto','Monto']], body:finRows, theme:'striped',
@@ -1643,12 +1771,15 @@ window.ReportesAPI = {
       const totalComp = compras.reduce((s,c)=>s+Number(c.total),0);
       const totalGast = gastos.reduce((s,g)=>s+Number(g.monto),0);
       const capital = await fetchCapital();
+      const otros   = await fetchOtrosMovimientos();
       const prods   = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
       const valorInv= prods.reduce((s,p)=>s+(Number(p.stock_actual||0)*Number(p.costo||0)),0);
       return {
         ventas: vRes.total, ventasCount: vRes.count, gananciaEstimada: vRes.ganancia,
         compras: totalComp, gastos: totalGast, capital, valorInventario: valorInv,
-        gananciaNeta: vRes.ganancia - totalGast, ticketPromedio: vRes.ticket,
+        otrosIngresos: otros.otrosIngresos, otrosEgresos: otros.otrosEgresos,
+        gananciaNeta: vRes.ganancia - totalGast + otros.otrosIngresos - otros.otrosEgresos,
+        ticketPromedio: vRes.ticket,
       };
     } catch(e) { console.error('ReportesAPI.getResumenEjecutivo:', e); return {}; }
   },
