@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Términos y Condiciones · Negocio360</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+
+/* ============ TOKENS ============ */
+:root{
+  --bg: #F6F7FA;
+  --surface: #FFFFFF;
+  --surface-2: #EFF1F6;
+  --text: #1B2233;
+  --text-muted: #5B6478;
+  --border: #E1E4EC;
+  --accent: #1F6F5C;
+  --accent-2: #2D5BFF;
+  --accent-soft: rgba(31,111,92,0.10);
+  --ring-track: #E1E4EC;
+  --shadow: 0 8px 30px rgba(20,30,50,0.06);
+  --radius: 14px;
+  color-scheme: light;
+}
+
+html[data-theme="dark"]{
+  --bg: #0D1119;
+  --surface: #141926;
+  --surface-2: #1B2233;
+  --text: #E9ECF4;
+  --text-muted: #8D96AC;
+  --border: #262E42;
+  --accent: #35B08A;
+  --accent-2: #6C8CFF;
+  --accent-soft: rgba(53,176,138,0.12);
+  --ring-track: #262E42;
+  --shadow: 0 8px 30px rgba(0,0,0,0.35);
+  color-scheme: dark;
+}
+
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; }
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Inter', system-ui, sans-serif;
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  transition:background .3s ease, color .3s ease;
+}
+
+h1,h2,h3,.brand{
+  font-family:'Space Grotesk', sans-serif;
+}
+
+a{ color:var(--accent-2); }
+
+::selection{ background:var(--accent-soft); }
+
+.mono{ font-family:'IBM Plex Mono', monospace; }
+
+/* ============ TOP BAR ============ */
+.topbar{
+  position:sticky; top:0; z-index:40;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 20px;
+  background:color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+}
+
+.brand{
+  display:flex; align-items:center; gap:10px;
+  font-weight:700; font-size:1.05rem; letter-spacing:-0.01em;
+  color:var(--text);
+  text-decoration:none;
+}
+
+.brand-mark{
+  width:30px; height:30px; border-radius:50%;
+  background:conic-gradient(var(--accent), var(--accent-2), var(--accent));
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.brand-mark::after{
+  content:"";
+  width:14px; height:14px; border-radius:50%;
+  background:var(--surface);
+}
+
+.brand small{
+  display:block;
+  font-family:'Inter',sans-serif;
+  font-weight:500;
+  font-size:0.68rem;
+  color:var(--text-muted);
+  letter-spacing:.03em;
+}
+
+.topbar-actions{ display:flex; align-items:center; gap:10px; }
+
+.icon-btn{
+  width:40px; height:40px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--surface-2);
+  color:var(--text);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  transition:transform .15s ease, background .2s ease, border-color .2s ease;
+}
+.icon-btn:hover{ background:var(--accent-soft); border-color:var(--accent); }
+.icon-btn:active{ transform:scale(0.92); }
+.icon-btn svg{ width:19px; height:19px; }
+
+.menu-toggle{ display:none; }
+
+/* ============ LAYOUT ============ */
+.shell{
+  display:grid;
+  grid-template-columns:280px minmax(0,760px) 200px;
+  gap:36px;
+  max-width:1360px;
+  margin:0 auto;
+  padding:36px 24px 100px;
+  justify-content:center;
+}
+
+/* ---- Sidebar (TOC) ---- */
+.sidebar{
+  position:sticky;
+  top:88px;
+  align-self:start;
+  max-height:calc(100vh - 110px);
+  overflow-y:auto;
+  padding-right:6px;
+}
+.sidebar::-webkit-scrollbar{ width:5px; }
+.sidebar::-webkit-scrollbar-thumb{ background:var(--border); border-radius:10px; }
+
+.toc-title{
+  font-size:0.72rem;
+  font-weight:600;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--text-muted);
+  margin:0 0 14px 4px;
+}
+
+.toc-list{ list-style:none; margin:0; padding:0; }
+.toc-list a{
+  display:flex;
+  gap:10px;
+  align-items:baseline;
+  padding:7px 10px;
+  border-radius:8px;
+  text-decoration:none;
+  color:var(--text-muted);
+  font-size:0.87rem;
+  line-height:1.4;
+  transition:background .15s ease, color .15s ease;
+}
+.toc-list a .n{
+  font-family:'IBM Plex Mono', monospace;
+  font-size:0.72rem;
+  color:var(--text-muted);
+  flex-shrink:0;
+  width:20px;
+}
+.toc-list a:hover{ background:var(--surface-2); color:var(--text); }
+.toc-list a.active{
+  background:var(--accent-soft);
+  color:var(--accent);
+  font-weight:600;
+}
+.toc-list a.active .n{ color:var(--accent); }
+
+/* ---- Main content ---- */
+main{ min-width:0; }
+
+.doc-header{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:38px 34px;
+  margin-bottom:28px;
+  box-shadow:var(--shadow);
+  position:relative;
+  overflow:hidden;
+}
+.doc-header::before{
+  content:"";
+  position:absolute; top:-60px; right:-60px;
+  width:220px; height:220px; border-radius:50%;
+  background:radial-gradient(circle, var(--accent-soft), transparent 70%);
+}
+.eyebrow{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:'IBM Plex Mono', monospace;
+  font-size:0.72rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--accent);
+  background:var(--accent-soft);
+  padding:6px 12px;
+  border-radius:999px;
+  margin-bottom:16px;
+}
+.doc-header h1{
+  font-size:clamp(1.7rem, 3.4vw, 2.35rem);
+  font-weight:700;
+  letter-spacing:-0.02em;
+  margin:0 0 12px;
+  line-height:1.15;
+}
+.doc-header p{
+  color:var(--text-muted);
+  max-width:56ch;
+  margin:0 0 18px;
+  font-size:0.98rem;
+}
+.updated-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:0.82rem;
+  color:var(--text-muted);
+  border-top:1px solid var(--border);
+  padding-top:16px;
+  width:100%;
+}
+.dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); }
+
+/* ---- Sections ---- */
+.section{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:30px 32px;
+  margin-bottom:16px;
+  scroll-margin-top:88px;
+  transition:border-color .2s ease;
+}
+
+.section-head{
+  display:flex;
+  align-items:baseline;
+  gap:14px;
+  margin-bottom:14px;
+}
+.section-num{
+  font-family:'IBM Plex Mono', monospace;
+  font-size:0.85rem;
+  color:var(--accent);
+  background:var(--accent-soft);
+  border-radius:7px;
+  padding:3px 9px;
+  flex-shrink:0;
+}
+.section h2{
+  font-size:1.18rem;
+  font-weight:600;
+  letter-spacing:-0.01em;
+  margin:0;
+  color:var(--text);
+}
+
+.section p{ margin:0 0 12px; color:var(--text); }
+.section p:last-child{ margin-bottom:0; }
+.section p.lead-muted{ color:var(--text-muted); }
+
+.section ul{ margin:0 0 12px; padding-left:0; list-style:none; }
+.section ul:last-child{ margin-bottom:0; }
+.section li{
+  position:relative;
+  padding-left:22px;
+  margin-bottom:8px;
+  color:var(--text);
+}
+.section li::before{
+  content:"";
+  position:absolute; left:2px; top:9px;
+  width:6px; height:6px;
+  border-radius:1.5px;
+  background:var(--accent-2);
+  transform:rotate(45deg);
+}
+
+.def-grid{
+  display:grid;
+  gap:12px;
+}
+.def-item{
+  display:grid;
+  grid-template-columns:150px 1fr;
+  gap:14px;
+  padding:12px 0;
+  border-bottom:1px dashed var(--border);
+}
+.def-item:last-child{ border-bottom:none; }
+.def-term{
+  font-weight:600;
+  color:var(--accent);
+  font-size:0.92rem;
+}
+.def-desc{ color:var(--text-muted); font-size:0.92rem; }
+
+/* ---- Footer / acceptance card ---- */
+.accept-card{
+  background:linear-gradient(155deg, var(--accent-soft), transparent 60%), var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:32px 34px;
+  margin-top:24px;
+  text-align:center;
+}
+.accept-card h3{
+  margin:0 0 10px;
+  font-size:1.15rem;
+}
+.accept-card p{
+  color:var(--text-muted);
+  max-width:52ch;
+  margin:0 auto;
+  font-size:0.93rem;
+}
+
+.page-footer{
+  text-align:center;
+  color:var(--text-muted);
+  font-size:0.82rem;
+  margin-top:30px;
+}
+
+/* ---- Right rail: progress dial ---- */
+.rail{
+  position:sticky;
+  top:88px;
+  align-self:start;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+}
+
+.dial-wrap{ position:relative; width:120px; height:120px; }
+.dial-wrap svg{ transform:rotate(-90deg); width:120px; height:120px; }
+.dial-track{ fill:none; stroke:var(--ring-track); stroke-width:8; }
+.dial-progress{
+  fill:none;
+  stroke:url(#dialGradient);
+  stroke-width:8;
+  stroke-linecap:round;
+  transition:stroke-dashoffset .1s linear;
+}
+.dial-center{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+}
+.dial-deg{
+  font-family:'IBM Plex Mono', monospace;
+  font-weight:500;
+  font-size:1.05rem;
+  color:var(--text);
+}
+.dial-label{
+  font-size:0.62rem;
+  color:var(--text-muted);
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  margin-top:2px;
+}
+
+.rail-caption{
+  font-size:0.76rem;
+  color:var(--text-muted);
+  text-align:center;
+  max-width:150px;
+  line-height:1.5;
+}
+
+.to-top{
+  margin-top:6px;
+  display:flex; align-items:center; gap:6px;
+  font-size:0.8rem;
+  color:var(--accent);
+  background:none;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:8px 14px;
+  cursor:pointer;
+  transition:border-color .2s ease, background .2s ease;
+}
+.to-top:hover{ border-color:var(--accent); background:var(--accent-soft); }
+.to-top svg{ width:13px; height:13px; }
+
+/* ============ MOBILE TOC DRAWER ============ */
+.toc-overlay{
+  display:none;
+  position:fixed; inset:0;
+  background:rgba(10,14,22,0.5);
+  z-index:45;
+}
+.toc-overlay.open{ display:block; }
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 1180px){
+  .shell{ grid-template-columns:260px minmax(0,1fr); }
+  .rail{ display:none; }
+}
+
+@media (max-width: 860px){
+  .menu-toggle{ display:flex; }
+  .shell{
+    grid-template-columns:1fr;
+    padding:22px 16px 80px;
+    gap:0;
+  }
+  .sidebar{
+    position:fixed;
+    top:0; left:0;
+    height:100vh;
+    width:82%;
+    max-width:320px;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    padding:80px 18px 24px;
+    max-height:none;
+    transform:translateX(-105%);
+    transition:transform .28s ease;
+    z-index:46;
+  }
+  .sidebar.open{ transform:translateX(0); }
+  .doc-header{ padding:28px 22px; }
+  .section{ padding:24px 20px; }
+  .def-item{ grid-template-columns:1fr; gap:4px; }
+}
+
+@media (max-width: 480px){
+  .topbar{ padding:12px 14px; }
+  .brand small{ display:none; }
+  .doc-header h1{ font-size:1.5rem; }
+  .section h2{ font-size:1.05rem; }
+  .eyebrow{ font-size:0.66rem; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  html{ scroll-behavior:auto; }
+  *{ transition:none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- SVG gradient defs (hidden) -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="dialGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="var(--accent)"/>
+      <stop offset="100%" stop-color="var(--accent-2)"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <a href="#top" class="brand">
+    <span class="brand-mark"></span>
+    <span>
+      Negocio360
+      <small>Términos y Condiciones</small>
+    </span>
+  </a>
+  <div class="topbar-actions">
+    <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir índice">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+    </button>
+    <button class="icon-btn" id="themeToggle" aria-label="Cambiar tema">
+      <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="toc-overlay" id="tocOverlay"></div>
+
+<div class="shell" id="top">
+
+  <!-- SIDEBAR TOC -->
+  <nav class="sidebar" id="sidebar">
+    <p class="toc-title">Índice del documento</p>
+    <ul class="toc-list" id="tocList">
+      <li><a href="#s1"><span class="n">01</span>Aceptación</a></li>
+      <li><a href="#s2"><span class="n">02</span>Definiciones</a></li>
+      <li><a href="#s3"><span class="n">03</span>Descripción del servicio</a></li>
+      <li><a href="#s4"><span class="n">04</span>Registro de usuarios</a></li>
+      <li><a href="#s5"><span class="n">05</span>Seguridad de la cuenta</a></li>
+      <li><a href="#s6"><span class="n">06</span>Uso permitido</a></li>
+      <li><a href="#s7"><span class="n">07</span>Propiedad intelectual</a></li>
+      <li><a href="#s8"><span class="n">08</span>Licencia de uso</a></li>
+      <li><a href="#s9"><span class="n">09</span>Suscripciones y pagos</a></li>
+      <li><a href="#s10"><span class="n">10</span>Facturación</a></li>
+      <li><a href="#s11"><span class="n">11</span>Cancelación</a></li>
+      <li><a href="#s12"><span class="n">12</span>Reembolsos</a></li>
+      <li><a href="#s13"><span class="n">13</span>Disponibilidad del servicio</a></li>
+      <li><a href="#s14"><span class="n">14</span>Copias de seguridad</a></li>
+      <li><a href="#s15"><span class="n">15</span>Datos del usuario</a></li>
+      <li><a href="#s16"><span class="n">16</span>Privacidad</a></li>
+      <li><a href="#s17"><span class="n">17</span>Eliminación de datos</a></li>
+      <li><a href="#s18"><span class="n">18</span>Limitación de responsabilidad</a></li>
+      <li><a href="#s19"><span class="n">19</span>Suspensión de cuentas</a></li>
+      <li><a href="#s20"><span class="n">20</span>Actualizaciones del servicio</a></li>
+      <li><a href="#s21"><span class="n">21</span>Modificación de los términos</a></li>
+      <li><a href="#s22"><span class="n">22</span>Servicios de terceros</a></li>
+      <li><a href="#s23"><span class="n">23</span>Fuerza mayor</a></li>
+      <li><a href="#s24"><span class="n">24</span>Indemnización</a></li>
+      <li><a href="#s25"><span class="n">25</span>Terminación</a></li>
+      <li><a href="#s26"><span class="n">26</span>Legislación aplicable</a></li>
+      <li><a href="#s27"><span class="n">27</span>Divisibilidad</a></li>
+      <li><a href="#s28"><span class="n">28</span>Acuerdo completo</a></li>
+      <li><a href="#s29"><span class="n">29</span>Contacto</a></li>
+      <li><a href="#s30"><span class="n">30</span>Aceptación final</a></li>
+    </ul>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <main>
+
+    <div class="doc-header">
+      <span class="eyebrow">30 secciones · lectura ~14 min</span>
+      <h1>Términos y Condiciones de Uso</h1>
+      <p>Estas condiciones regulan el acceso, registro y uso de la plataforma Negocio360 y de todos los servicios ofrecidos a través de ella. Léelas con atención antes de utilizar la plataforma.</p>
+      <div class="updated-pill">
+        <span class="dot"></span>
+        Última actualización: 16 de julio de 2026
+      </div>
+    </div>
+
+    <section class="section" id="s1">
+      <div class="section-head"><span class="section-num">01</span><h2>Aceptación de los términos</h2></div>
+      <p>Bienvenido a Negocio360. Los presentes Términos y Condiciones regulan el acceso, registro y uso de la plataforma Negocio360, así como todos los servicios ofrecidos por medio de ella.</p>
+      <p>Al crear una cuenta, acceder o utilizar la plataforma, el usuario declara haber leído, comprendido y aceptado íntegramente estos Términos y Condiciones.</p>
+      <p class="lead-muted">Si el usuario no está de acuerdo con cualquiera de las disposiciones aquí establecidas, deberá abstenerse de utilizar la plataforma.</p>
+    </section>
+
+    <section class="section" id="s2">
+      <div class="section-head"><span class="section-num">02</span><h2>Definiciones</h2></div>
+      <p class="lead-muted">Para efectos del presente documento:</p>
+      <div class="def-grid">
+        <div class="def-item"><span class="def-term">Negocio360</span><span class="def-desc">Plataforma de software como servicio (SaaS) destinada a facilitar la administración de negocios.</span></div>
+        <div class="def-item"><span class="def-term">Plataforma</span><span class="def-desc">Sitio web, aplicaciones, panel administrativo, servicios digitales, APIs y demás herramientas proporcionadas por Negocio360.</span></div>
+        <div class="def-item"><span class="def-term">Usuario</span><span class="def-desc">Persona natural o jurídica registrada en la plataforma.</span></div>
+        <div class="def-item"><span class="def-term">Cuenta</span><span class="def-desc">Registro creado por un usuario para acceder a los servicios.</span></div>
+        <div class="def-item"><span class="def-term">Suscripción</span><span class="def-desc">Plan contratado que permite utilizar las funciones disponibles según el plan adquirido.</span></div>
+        <div class="def-item"><span class="def-term">Contenido del usuario</span><span class="def-desc">Toda información cargada por el usuario dentro de la plataforma.</span></div>
+        <div class="def-item"><span class="def-term">Empresa</span><span class="def-desc">Persona natural o jurídica propietaria de Negocio360.</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="s3">
+      <div class="section-head"><span class="section-num">03</span><h2>Descripción del servicio</h2></div>
+      <p>Negocio360 proporciona herramientas para la administración empresarial, incluyendo, entre otras:</p>
+      <ul>
+        <li>Gestión de clientes</li>
+        <li>Gestión de ventas</li>
+        <li>Inventario</li>
+        <li>Productos y servicios</li>
+        <li>Facturación</li>
+        <li>Reportes</li>
+        <li>Estadísticas</li>
+        <li>Administración financiera</li>
+        <li>Gestión de empleados</li>
+        <li>Control de gastos</li>
+        <li>Herramientas administrativas</li>
+        <li>Funciones que sean incorporadas en futuras actualizaciones</li>
+      </ul>
+      <p class="lead-muted">Negocio360 podrá agregar, modificar o eliminar funcionalidades cuando resulte necesario para mejorar el servicio.</p>
+    </section>
+
+    <section class="section" id="s4">
+      <div class="section-head"><span class="section-num">04</span><h2>Registro de usuarios</h2></div>
+      <p>Para utilizar la plataforma será necesario crear una cuenta. El usuario acepta proporcionar información:</p>
+      <ul>
+        <li>Verdadera</li>
+        <li>Completa</li>
+        <li>Actualizada</li>
+        <li>Exacta</li>
+      </ul>
+      <p>El usuario será responsable de mantener actualizada dicha información.</p>
+      <p class="lead-muted">Negocio360 podrá suspender cuentas que contengan información falsa o engañosa.</p>
+    </section>
+
+    <section class="section" id="s5">
+      <div class="section-head"><span class="section-num">05</span><h2>Seguridad de la cuenta</h2></div>
+      <p>Cada usuario es responsable de:</p>
+      <ul>
+        <li>Mantener la confidencialidad de su contraseña</li>
+        <li>Evitar compartir sus credenciales</li>
+        <li>Notificar inmediatamente cualquier acceso no autorizado</li>
+        <li>Cerrar sesión en dispositivos públicos</li>
+      </ul>
+      <p class="lead-muted">Toda actividad realizada desde una cuenta será considerada realizada por su titular.</p>
+    </section>
+
+    <section class="section" id="s6">
+      <div class="section-head"><span class="section-num">06</span><h2>Uso permitido</h2></div>
+      <p>El usuario podrá utilizar la plataforma únicamente para fines legales. Está prohibido:</p>
+      <ul>
+        <li>Utilizar la plataforma para actividades ilícitas</li>
+        <li>Distribuir malware</li>
+        <li>Intentar vulnerar la seguridad</li>
+        <li>Acceder sin autorización a cuentas de terceros</li>
+        <li>Alterar el funcionamiento del sistema</li>
+        <li>Copiar el software</li>
+        <li>Revender la plataforma sin autorización</li>
+        <li>Realizar ingeniería inversa</li>
+        <li>Automatizar accesos mediante bots sin autorización</li>
+        <li>Suplantar la identidad de terceros</li>
+        <li>Utilizar la plataforma para cometer fraude</li>
+      </ul>
+    </section>
+
+    <section class="section" id="s7">
+      <div class="section-head"><span class="section-num">07</span><h2>Propiedad intelectual</h2></div>
+      <p>Todo el software, código fuente, interfaces, logotipos, marcas, bases de datos, diseños, documentación, gráficos y demás elementos pertenecen exclusivamente a Negocio360 o a sus respectivos licenciantes.</p>
+      <p>El usuario no adquiere ningún derecho de propiedad sobre el software.</p>
+      <p class="lead-muted">Queda prohibida la reproducción, distribución, modificación, comercialización o copia del software sin autorización expresa y por escrito.</p>
+    </section>
+
+    <section class="section" id="s8">
+      <div class="section-head"><span class="section-num">08</span><h2>Licencia de uso</h2></div>
+      <p>Negocio360 concede al usuario una licencia:</p>
+      <ul>
+        <li>Limitada</li>
+        <li>Revocable</li>
+        <li>No exclusiva</li>
+        <li>Intransferible</li>
+      </ul>
+      <p class="lead-muted">Esta licencia únicamente permite utilizar la plataforma conforme a estos Términos y Condiciones.</p>
+    </section>
+
+    <section class="section" id="s9">
+      <div class="section-head"><span class="section-num">09</span><h2>Suscripciones y pagos</h2></div>
+      <p>El acceso a determinadas funciones podrá requerir una suscripción de pago. El usuario acepta pagar las tarifas correspondientes al plan contratado.</p>
+      <p>Los pagos podrán realizarse mediante los métodos habilitados por Negocio360. Las suscripciones podrán renovarse automáticamente cuando así se indique durante el proceso de contratación.</p>
+      <p class="lead-muted">El usuario es responsable de mantener vigente su método de pago. El incumplimiento del pago podrá ocasionar la suspensión o cancelación del servicio.</p>
+    </section>
+
+    <section class="section" id="s10">
+      <div class="section-head"><span class="section-num">10</span><h2>Facturación</h2></div>
+      <p>Cuando corresponda, Negocio360 emitirá los comprobantes o facturas conforme a la legislación aplicable.</p>
+      <p class="lead-muted">El usuario será responsable del cumplimiento de sus obligaciones tributarias.</p>
+    </section>
+
+    <section class="section" id="s11">
+      <div class="section-head"><span class="section-num">11</span><h2>Cancelación</h2></div>
+      <p>El usuario podrá cancelar su suscripción en cualquier momento.</p>
+      <p class="lead-muted">La cancelación impedirá futuras renovaciones, pero no generará el reembolso automático de pagos ya efectuados, salvo disposición legal aplicable o política expresa de Negocio360.</p>
+    </section>
+
+    <section class="section" id="s12">
+      <div class="section-head"><span class="section-num">12</span><h2>Reembolsos</h2></div>
+      <p>Salvo que la legislación aplicable disponga lo contrario o exista una promoción específica, los pagos realizados no son reembolsables.</p>
+      <p class="lead-muted">Negocio360 podrá evaluar solicitudes excepcionales de forma individual.</p>
+    </section>
+
+    <section class="section" id="s13">
+      <div class="section-head"><span class="section-num">13</span><h2>Disponibilidad del servicio</h2></div>
+      <p>Negocio360 procurará mantener la plataforma disponible de forma continua. No obstante, podrán presentarse interrupciones debido a:</p>
+      <ul>
+        <li>Mantenimiento</li>
+        <li>Actualizaciones</li>
+        <li>Fallas técnicas</li>
+        <li>Ataques informáticos</li>
+        <li>Problemas de conectividad</li>
+        <li>Servicios de terceros</li>
+        <li>Casos fortuitos o fuerza mayor</li>
+      </ul>
+      <p class="lead-muted">No se garantiza una disponibilidad ininterrumpida del servicio.</p>
+    </section>
+
+    <section class="section" id="s14">
+      <div class="section-head"><span class="section-num">14</span><h2>Copias de seguridad</h2></div>
+      <p>Negocio360 podrá realizar copias de seguridad para proteger la información. Sin embargo, el usuario reconoce que ningún sistema puede garantizar una recuperación absoluta ante cualquier incidente.</p>
+      <p class="lead-muted">Se recomienda al usuario mantener copias independientes de la información crítica para su negocio.</p>
+    </section>
+
+    <section class="section" id="s15">
+      <div class="section-head"><span class="section-num">15</span><h2>Datos del usuario</h2></div>
+      <p>Toda la información cargada por el usuario seguirá siendo de su propiedad.</p>
+      <p class="lead-muted">El usuario concede a Negocio360 autorización para almacenar, procesar y utilizar dichos datos únicamente con el fin de prestar el servicio contratado, mejorar la plataforma, realizar respaldos, brindar soporte técnico y cumplir obligaciones legales.</p>
+    </section>
+
+    <section class="section" id="s16">
+      <div class="section-head"><span class="section-num">16</span><h2>Privacidad</h2></div>
+      <p class="lead-muted">El tratamiento de los datos personales se regula mediante la Política de Privacidad de Negocio360, la cual forma parte integral de estos Términos y Condiciones.</p>
+    </section>
+
+    <section class="section" id="s17">
+      <div class="section-head"><span class="section-num">17</span><h2>Eliminación de datos</h2></div>
+      <p>Cuando una cuenta sea cancelada, Negocio360 podrá conservar la información durante un período razonable para cumplir obligaciones legales, resolver disputas, prevenir fraude o permitir la recuperación de la cuenta cuando sea técnicamente posible.</p>
+      <p class="lead-muted">Finalizado dicho período, los datos podrán eliminarse de forma permanente.</p>
+    </section>
+
+    <section class="section" id="s18">
+      <div class="section-head"><span class="section-num">18</span><h2>Limitación de responsabilidad</h2></div>
+      <p>Negocio360 proporciona herramientas administrativas. El usuario reconoce que:</p>
+      <ul>
+        <li>Es responsable de las decisiones que adopte utilizando la información de la plataforma</li>
+        <li>Es responsable del cumplimiento de las obligaciones fiscales, laborales, contables y legales de su negocio</li>
+        <li>Negocio360 no sustituye el asesoramiento profesional de abogados, contadores o asesores tributarios</li>
+      </ul>
+      <p>Negocio360 no garantiza:</p>
+      <ul>
+        <li>Incremento de ventas</li>
+        <li>Incremento de utilidades</li>
+        <li>Eliminación de pérdidas</li>
+        <li>Cumplimiento automático de obligaciones fiscales</li>
+        <li>Ausencia total de errores</li>
+        <li>Disponibilidad permanente</li>
+      </ul>
+      <p class="lead-muted">En la máxima medida permitida por la ley, Negocio360 no será responsable por daños indirectos, lucro cesante, pérdida de ingresos, pérdida de datos, interrupción del negocio, daños consecuenciales o cualquier perjuicio derivado del uso o imposibilidad de uso de la plataforma.</p>
+    </section>
+
+    <section class="section" id="s19">
+      <div class="section-head"><span class="section-num">19</span><h2>Suspensión de cuentas</h2></div>
+      <p>Negocio360 podrá suspender temporal o definitivamente una cuenta cuando exista:</p>
+      <ul>
+        <li>Incumplimiento de estos términos</li>
+        <li>Actividad fraudulenta</li>
+        <li>Incumplimiento de pagos</li>
+        <li>Uso indebido de la plataforma</li>
+        <li>Riesgo para la seguridad del sistema</li>
+        <li>Orden judicial o requerimiento de autoridad competente</li>
+      </ul>
+    </section>
+
+    <section class="section" id="s20">
+      <div class="section-head"><span class="section-num">20</span><h2>Actualizaciones del servicio</h2></div>
+      <p>Negocio360 podrá:</p>
+      <ul>
+        <li>Incorporar nuevas funciones</li>
+        <li>Modificar funcionalidades existentes</li>
+        <li>Corregir errores</li>
+        <li>Cambiar diseños</li>
+        <li>Mejorar la seguridad</li>
+        <li>Eliminar funciones obsoletas</li>
+      </ul>
+      <p class="lead-muted">Estas modificaciones no generarán derecho a compensación.</p>
+    </section>
+
+    <section class="section" id="s21">
+      <div class="section-head"><span class="section-num">21</span><h2>Modificación de los términos</h2></div>
+      <p>Negocio360 podrá actualizar estos Términos y Condiciones en cualquier momento. Las modificaciones entrarán en vigor desde su publicación o desde la fecha indicada en el documento.</p>
+      <p class="lead-muted">El uso continuado de la plataforma implicará la aceptación de los nuevos términos.</p>
+    </section>
+
+    <section class="section" id="s22">
+      <div class="section-head"><span class="section-num">22</span><h2>Servicios de terceros</h2></div>
+      <p>La plataforma podrá integrarse con servicios de terceros, incluyendo pasarelas de pago, servicios de almacenamiento, proveedores de correo electrónico, herramientas de análisis u otros servicios externos.</p>
+      <p class="lead-muted">Negocio360 no controla ni garantiza el funcionamiento de dichos servicios.</p>
+    </section>
+
+    <section class="section" id="s23">
+      <div class="section-head"><span class="section-num">23</span><h2>Fuerza mayor</h2></div>
+      <p class="lead-muted">Negocio360 no será responsable por incumplimientos ocasionados por eventos fuera de su control razonable, incluyendo desastres naturales, incendios, pandemias, conflictos armados, actos gubernamentales, huelgas, fallas masivas de internet o interrupciones eléctricas.</p>
+    </section>
+
+    <section class="section" id="s24">
+      <div class="section-head"><span class="section-num">24</span><h2>Indemnización</h2></div>
+      <p class="lead-muted">El usuario acepta indemnizar y mantener indemne a Negocio360 frente a cualquier reclamación, daño, gasto o responsabilidad derivada del uso indebido de la plataforma o del incumplimiento de estos Términos y Condiciones.</p>
+    </section>
+
+    <section class="section" id="s25">
+      <div class="section-head"><span class="section-num">25</span><h2>Terminación</h2></div>
+      <p>Negocio360 podrá finalizar la relación contractual cuando:</p>
+      <ul>
+        <li>El usuario lo solicite</li>
+        <li>Exista incumplimiento grave</li>
+        <li>Se detecte fraude</li>
+        <li>Exista orden legal</li>
+        <li>El servicio sea descontinuado</li>
+      </ul>
+      <p class="lead-muted">La terminación no exime al usuario de las obligaciones pendientes.</p>
+    </section>
+
+    <section class="section" id="s26">
+      <div class="section-head"><span class="section-num">26</span><h2>Legislación aplicable</h2></div>
+      <p>Estos Términos y Condiciones se regirán e interpretarán conforme a las leyes de la República de Nicaragua, salvo que una norma imperativa aplicable disponga lo contrario.</p>
+      <p class="lead-muted">Cualquier controversia será sometida a los tribunales competentes de Nicaragua, sin perjuicio de los derechos irrenunciables que pudieran corresponder a los consumidores conforme a la legislación aplicable.</p>
+    </section>
+
+    <section class="section" id="s27">
+      <div class="section-head"><span class="section-num">27</span><h2>Divisibilidad</h2></div>
+      <p class="lead-muted">Si alguna disposición de estos Términos y Condiciones fuera declarada inválida o inaplicable por una autoridad competente, las demás disposiciones permanecerán plenamente vigentes.</p>
+    </section>
+
+    <section class="section" id="s28">
+      <div class="section-head"><span class="section-num">28</span><h2>Acuerdo completo</h2></div>
+      <p class="lead-muted">Estos Términos y Condiciones constituyen el acuerdo completo entre Negocio360 y el usuario respecto del uso de la plataforma.</p>
+    </section>
+
+    <section class="section" id="s29">
+      <div class="section-head"><span class="section-num">29</span><h2>Contacto</h2></div>
+      <p class="lead-muted">Para consultas relacionadas con estos Términos y Condiciones, el usuario podrá comunicarse mediante los canales oficiales publicados por Negocio360.</p>
+    </section>
+
+    <section class="section" id="s30">
+      <div class="section-head"><span class="section-num">30</span><h2>Aceptación</h2></div>
+      <p class="lead-muted">Al crear una cuenta, contratar un plan o utilizar cualquier servicio de Negocio360, el usuario declara que ha leído, comprendido y aceptado íntegramente estos Términos y Condiciones de Uso.</p>
+    </section>
+
+    <div class="accept-card">
+      <h3>Has llegado al final del documento</h3>
+      <p>El uso continuado de Negocio360 confirma que aceptas la totalidad de estos Términos y Condiciones, incluidas las actualizaciones futuras publicadas en esta misma página.</p>
+    </div>
+
+    <p class="page-footer">© 2026 Negocio360. Todos los derechos reservados.</p>
+
+  </main>
+
+  <!-- RIGHT RAIL: progress dial -->
+  <aside class="rail">
+    <div class="dial-wrap">
+      <svg viewBox="0 0 120 120">
+        <circle class="dial-track" cx="60" cy="60" r="52"/>
+        <circle class="dial-progress" id="dialProgress" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+      </svg>
+      <div class="dial-center">
+        <span class="dial-deg mono" id="dialDeg">0°</span>
+        <span class="dial-label">Leído</span>
+      </div>
+    </div>
+    <p class="rail-caption">Tu progreso por los 360° del documento</p>
+    <button class="to-top" id="toTop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+      Volver arriba
+    </button>
+  </aside>
+
+</div>
+
+<script>
+// ===== THEME =====
+const root = document.documentElement;
+const themeBtn = document.getElementById('themeToggle');
+const iconSun = document.getElementById('iconSun');
+const iconMoon = document.getElementById('iconMoon');
+
+function applyTheme(theme){
+  root.setAttribute('data-theme', theme);
+  iconSun.style.display = theme === 'dark' ? 'none' : 'block';
+  iconMoon.style.display = theme === 'dark' ? 'block' : 'none';
+  try{ localStorage.setItem('negocio360-theme', theme); }catch(e){}
+}
+
+(function initTheme(){
+  let saved = null;
+  try{ saved = localStorage.getItem('negocio360-theme'); }catch(e){}
+  if(saved){ applyTheme(saved); }
+  else{
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(prefersDark ? 'dark' : 'light');
+  }
+})();
+
+themeBtn.addEventListener('click', () => {
+  const current = root.getAttribute('data-theme');
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+});
+
+// ===== MOBILE TOC DRAWER =====
+const sidebar = document.getElementById('sidebar');
+const menuToggle = document.getElementById('menuToggle');
+const overlay = document.getElementById('tocOverlay');
+
+function openDrawer(){ sidebar.classList.add('open'); overlay.classList.add('open'); }
+function closeDrawer(){ sidebar.classList.remove('open'); overlay.classList.remove('open'); }
+
+menuToggle.addEventListener('click', () => {
+  sidebar.classList.contains('open') ? closeDrawer() : openDrawer();
+});
+overlay.addEventListener('click', closeDrawer);
+sidebar.addEventListener('click', (e) => {
+  if(e.target.tagName === 'A') closeDrawer();
+});
+
+// ===== SCROLLSPY + 360° DIAL =====
+const sections = Array.from(document.querySelectorAll('.section'));
+const tocLinks = Array.from(document.querySelectorAll('.toc-list a'));
+const dialProgress = document.getElementById('dialProgress');
+const dialDeg = document.getElementById('dialDeg');
+const CIRC = 2 * Math.PI * 52;
+
+function updateOnScroll(){
+  // scroll progress 0..1 across whole doc
+  const scrollTop = window.scrollY;
+  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  const progress = docHeight > 0 ? Math.min(Math.max(scrollTop / docHeight, 0), 1) : 0;
+  const degrees = Math.round(progress * 360);
+
+  dialProgress.style.strokeDashoffset = CIRC - (progress * CIRC);
+  dialDeg.textContent = degrees + '°';
+
+  // active section
+  let activeId = sections[0].id;
+  const triggerLine = window.innerHeight * 0.3;
+  for(const sec of sections){
+    const rect = sec.getBoundingClientRect();
+    if(rect.top <= triggerLine){ activeId = sec.id; }
+  }
+  tocLinks.forEach(link => {
+    link.classList.toggle('active', link.getAttribute('href') === '#' + activeId);
+  });
+}
+
+let ticking = false;
+window.addEventListener('scroll', () => {
+  if(!ticking){
+    requestAnimationFrame(() => { updateOnScroll(); ticking = false; });
+    ticking = true;
+  }
+});
+window.addEventListener('resize', updateOnScroll);
+updateOnScroll();
+
+// ===== BACK TO TOP =====
+document.getElementById('toTop').addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+</script>
+
+</body>
+</html>
