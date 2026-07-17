@@ -1513,11 +1513,13 @@ async function loadKPIs(userId) {
 
   // Ventas del día
   try {
-    const { data } = await sbClient.from('ventas').select('total')
+    const { data } = await sbClient.from('ventas').select('total, impuesto')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', today).lte('fecha', today + 'T23:59:59');
     if (data) {
-      const total = data.reduce((s, r) => s + (r.total || 0), 0);
+      // FIX: usar ingreso NETO (total - impuesto), el IVA no es ingreso propio,
+      // es dinero recaudado para el fisco y ya se contabiliza aparte en Impuestos.
+      const total = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       document.getElementById('kpi-ventas-dia').innerHTML =
         `<span class="currency-symbol">${sym}</span>${total.toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
       const delta = document.getElementById('kpi-ventas-dia-delta');
@@ -1528,11 +1530,12 @@ async function loadKPIs(userId) {
 
   // Ventas del mes
   try {
-    const { data } = await sbClient.from('ventas').select('total, fecha')
+    const { data } = await sbClient.from('ventas').select('total, impuesto, fecha')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
     if (data) {
-      const total = data.reduce((s, r) => s + (r.total || 0), 0);
+      // FIX: ingreso NETO (sin IVA), igual que en "Ventas del día"
+      const total = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       document.getElementById('kpi-ventas-mes').innerHTML =
         `<span class="currency-symbol">${sym}</span>${total.toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
       const delta = document.getElementById('kpi-ventas-mes-delta');
@@ -1546,11 +1549,13 @@ async function loadKPIs(userId) {
   // "Ganancia del mes" se actualiza con la ganancia NETA una vez que
   // los gastos se hayan cargado, ver actualizarGananciaMesKPI())
   try {
-    const { data } = await sbClient.from('ventas').select('total, costo_total, ganancia')
+    const { data } = await sbClient.from('ventas').select('total, impuesto, costo_total, ganancia')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
     if (data) {
-      const ingresos = data.reduce((s, r) => s + (r.total || 0), 0);
+      // FIX: ingresos = total NETO de IVA (total - impuesto), no el total cobrado
+      // al cliente. El IVA se recauda para el fisco, no es ingreso del negocio.
+      const ingresos = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       const costos   = data.reduce((s, r) => s + (r.costo_total || 0), 0);
       // Use ganancia field directly if available, otherwise calculate
       const ganancia = data.reduce((s, r) => s + (r.ganancia || (r.total - r.costo_total) || 0), 0);
