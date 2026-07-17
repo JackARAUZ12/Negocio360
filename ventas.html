@@ -365,6 +365,23 @@
     .resumen-row.total-row .value{font-size:18px;color:var(--accent)}
     .resumen-row .ganancia-val{color:var(--success)}
 
+    /* IVA TOGGLE BLOCK */
+    .iva-block{display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:12px 14px;background:var(--bg-surface-2);border:1px solid var(--border);
+      border-radius:var(--radius-md);margin-bottom:14px;flex-wrap:wrap}
+    .iva-left{display:flex;align-items:center;gap:10px}
+    .iva-label{font-size:13px;font-weight:700;color:var(--text-primary)}
+    .iva-sub{font-size:11.5px;color:var(--text-muted)}
+    .iva-switch{position:relative;width:42px;height:24px;border-radius:100px;background:var(--border);
+      transition:background var(--transition);flex-shrink:0;cursor:pointer}
+    .iva-switch.on{background:var(--accent)}
+    .iva-switch::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;
+      border-radius:50%;background:#fff;transition:transform var(--transition);box-shadow:var(--shadow-sm)}
+    .iva-switch.on::after{transform:translateX(18px)}
+    .iva-right{display:flex;align-items:center;gap:6px}
+    .iva-right input{width:70px;padding:6px 8px;text-align:center;font-weight:700}
+    .iva-right span{font-size:12.5px;color:var(--text-secondary);font-weight:600}
+
     /* METODOS DE PAGO CARDS */
     .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
     @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
@@ -467,6 +484,9 @@
       .table-hint{display:block}
 
       .modal-overlay{padding:12px}
+
+      .iva-block{flex-direction:column;align-items:stretch}
+      .iva-right{justify-content:flex-end}
     }
 
     @media(max-width:480px){
@@ -588,6 +608,10 @@
       <div class="nav-item" onclick="navigate('caja.html')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         <span class="nav-label">Caja / Pagos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('impuestos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
       </div>
       <div class="nav-item" onclick="navigate('reportes.html')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -927,6 +951,23 @@
         <div id="resumen-items-preview" style="margin-bottom:16px;overflow-x:auto">
           <!-- tabla dinámica -->
         </div>
+
+        <!-- BLOQUE IVA -->
+        <div class="iva-block">
+          <div class="iva-left">
+            <div class="iva-switch" id="iva-switch" onclick="toggleIva()"></div>
+            <div>
+              <div class="iva-label">Cobrar impuesto (IVA)</div>
+              <div class="iva-sub">Se suma al total y se acumula en Impuestos</div>
+            </div>
+          </div>
+          <div class="iva-right">
+            <input type="number" id="iva-porcentaje" value="15" min="0" max="100" step="0.01"
+              onchange="cambiarIvaPorcentaje(this.value)" disabled/>
+            <span>%</span>
+          </div>
+        </div>
+
         <div style="max-width:380px;margin-left:auto">
           <div class="resumen-row">
             <span class="label">Subtotal</span>
@@ -937,7 +978,7 @@
             <span class="value" id="res-descuento">—</span>
           </div>
           <div class="resumen-row">
-            <span class="label">Impuestos</span>
+            <span class="label" id="res-impuestos-label">Impuestos (IVA)</span>
             <span class="value" style="color:var(--text-muted)" id="res-impuestos">C$ 0.00</span>
           </div>
           <div class="resumen-row total-row">
