@@ -1211,6 +1211,14 @@
             <span class="financial-value negative" id="fin-gastos">—</span>
           </div>
           <div class="financial-row">
+            <span class="financial-label">Otros ingresos</span>
+            <span class="financial-value positive" id="fin-otros-ingresos">—</span>
+          </div>
+          <div class="financial-row">
+            <span class="financial-label">Otros egresos</span>
+            <span class="financial-value negative" id="fin-otros-egresos">—</span>
+          </div>
+          <div class="financial-row">
             <span class="financial-label">Ganancia neta</span>
             <span class="financial-value positive" id="fin-ganancia-neta">—</span>
           </div>
@@ -1651,6 +1659,49 @@ async function loadCaja(userId) {
 }
 
 /* =====================================================
+   OTROS INGRESOS / OTROS EGRESOS (Caja)
+   Movimientos registrados manualmente desde el módulo de
+   Caja ("Nuevo movimiento") que NO están ligados a una
+   venta, compra de producto ni gasto — es decir, no tienen
+   referencia_tipo. Esos movimientos solo viven en
+   movimientos_financieros y por eso no aparecían en el
+   resumen financiero (que se calcula desde las tablas
+   ventas/gastos). También se excluye CAPITAL_AGREGADO,
+   porque eso es capital inicial/aportado, no ingreso
+   operativo del mes.
+===================================================== */
+async function loadOtrosMovimientosCaja(userId) {
+  const monthStart = startOfMonthISO();
+  const today      = todayISO();
+
+  try {
+    const { data } = await sbClient
+      .from('movimientos_financieros')
+      .select('tipo_flujo, monto, referencia_tipo, tipo_movimiento')
+      .eq('auth_user_id', userId)
+      .eq('estado', 'completado')
+      .is('referencia_tipo', null)
+      .gte('fecha', monthStart)
+      .lte('fecha', today);
+
+    const movs = data || [];
+
+    dashData.otrosIngresosM = movs
+      .filter(r => r.tipo_flujo === 'INGRESO' && r.tipo_movimiento !== 'CAPITAL_AGREGADO')
+      .reduce((s, r) => s + Number(r.monto || 0), 0);
+
+    dashData.otrosEgresosM = movs
+      .filter(r => r.tipo_flujo === 'EGRESO')
+      .reduce((s, r) => s + Number(r.monto || 0), 0);
+
+  } catch(e) {
+    console.warn('loadOtrosMovimientosCaja:', e);
+    dashData.otrosIngresosM = 0;
+    dashData.otrosEgresosM  = 0;
+  }
+}
+
+/* =====================================================
    FINANCIAL SUMMARY
 ===================================================== */
 function renderFinancial() {
@@ -1659,10 +1710,12 @@ function renderFinancial() {
   const cos  = dashData.costosM       || 0;
   const brut = dashData.gananciaBruta || (ing - cos);
   const gas  = dashData.gastosM       || 0;
-  const net  = brut - gas;
+  const otrosIng = dashData.otrosIngresosM || 0;
+  const otrosEgr = dashData.otrosEgresosM  || 0;
+  const net  = brut - gas + otrosIng - otrosEgr;
   const mar  = ing > 0 ? ((net / ing) * 100).toFixed(1) : 0;
   const cap  = dashData.capital;
-  const noData = ing === 0 && gas === 0;
+  const noData = ing === 0 && gas === 0 && otrosIng === 0 && otrosEgr === 0;
 
   const setVal = (id, val, cls) => {
     const el = document.getElementById(id);
@@ -1672,6 +1725,8 @@ function renderFinancial() {
   setVal('fin-costo-ventas',   noData ? '—' : fmt(cos, sym));
   setVal('fin-ganancia-bruta', noData ? '—' : fmt(brut, sym), brut >= 0 ? 'positive' : 'negative');
   setVal('fin-gastos',         noData ? '—' : fmt(gas, sym), 'negative');
+  setVal('fin-otros-ingresos', noData ? '—' : fmt(otrosIng, sym), 'positive');
+  setVal('fin-otros-egresos',  noData ? '—' : fmt(otrosEgr, sym), 'negative');
   setVal('fin-ganancia-neta',  noData ? '—' : fmt(net, sym), net >= 0 ? 'positive' : 'negative');
   setVal('fin-capital',        cap !== null ? fmt(cap, sym) : '—', 'accent');
   setVal('fin-margen',         noData ? '—' : `${mar}%`);
@@ -2038,6 +2093,7 @@ async function initDashboard() {
       loadKPIs(userId),
       loadGastos(userId),
       loadCaja(userId),
+      loadOtrosMovimientosCaja(userId),
       loadImpuestosPendientes(userId),
       loadVentasPorDia(userId, 7),
       loadVentasCategorias(userId),
