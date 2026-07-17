@@ -1,7 +1,7 @@
 /* ============================================================
    VENTAS.JS — NEGOCIO360
    Módulo central de ventas. Integra: Productos, Caja,
-   Dashboard, Clientes. RLS + Supabase Auth.
+   Dashboard, Clientes, Impuestos. RLS + Supabase Auth.
    ============================================================ */
 
 'use strict';
@@ -46,6 +46,10 @@ const S = {
   metodoPagoNombre: 'Efectivo',
   observaciones: '',
   numeroVenta:   '',
+
+  // IVA / Impuestos
+  ivaActivo:      false,
+  ivaPorcentaje:  15,
 
   // Venta activa en detalle/anular
   ventaDetalleId: null,
@@ -533,7 +537,7 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-value">${fmt(venta.descuento)}</div>
         </div>
         <div class="detalle-item">
-          <div class="detalle-label">Impuestos</div>
+          <div class="detalle-label">Impuestos${venta.iva_porcentaje ? ` (${Number(venta.iva_porcentaje)}%)` : ''}</div>
           <div class="detalle-value">${fmt(venta.impuesto)}</div>
         </div>
         <div class="detalle-item">
@@ -640,6 +644,8 @@ async function abrirNuevaVenta() {
   S.metodoPagoNombre = 'Efectivo';
   S.observaciones = '';
   S.numeroVenta   = '';
+  S.ivaActivo     = false;
+  S.ivaPorcentaje = S.empresaConfig?.iva_porcentaje_default ? Number(S.empresaConfig.iva_porcentaje_default) : 15;
 
   // Limpiar campos
   const qi = document.getElementById('cliente-search-input');  if(qi) qi.value='';
@@ -649,6 +655,12 @@ async function abrirNuevaVenta() {
   const ob = document.getElementById('venta-observaciones');   if(ob) ob.value='';
   const ps = document.getElementById('prod-search-input');     if(ps) ps.value='';
   const ss = document.getElementById('serv-search-input');     if(ss) ss.value='';
+
+  // Reset UI de IVA
+  const ivaSwitch = document.getElementById('iva-switch');
+  const ivaInput  = document.getElementById('iva-porcentaje');
+  if (ivaSwitch) ivaSwitch.classList.remove('on');
+  if (ivaInput)  { ivaInput.value = S.ivaPorcentaje; ivaInput.disabled = true; }
 
   // Selección inicial cliente
   selectClienteOpcion('final');
@@ -1015,12 +1027,32 @@ function renderCarrito(tipo) {
 }
 
 /* ============================================================
-   PASO 4 — RESUMEN
+   PASO 4 — RESUMEN + IVA
    ============================================================ */
+function toggleIva() {
+  S.ivaActivo = !S.ivaActivo;
+  const sw    = document.getElementById('iva-switch');
+  const input = document.getElementById('iva-porcentaje');
+  if (sw)    sw.classList.toggle('on', S.ivaActivo);
+  if (input) input.disabled = !S.ivaActivo;
+  calcularResumen();
+}
+
+function cambiarIvaPorcentaje(val) {
+  let n = parseFloat(val);
+  if (isNaN(n) || n < 0) n = 0;
+  if (n > 100) n = 100;
+  S.ivaPorcentaje = n;
+  const input = document.getElementById('iva-porcentaje');
+  if (input) input.value = n;
+  calcularResumen();
+}
+
 function calcularResumen() {
   const subtotal  = S.carrito.reduce((s,i) => s+i.cantidad*i.precio, 0);
   const descuento = S.carrito.reduce((s,i) => s+i.descuento, 0);
-  const impuestos = 0; // preparado para futuros impuestos
+  const baseImponible = Math.max(subtotal - descuento, 0);
+  const impuestos = S.ivaActivo ? +(baseImponible * (S.ivaPorcentaje/100)).toFixed(2) : 0;
   const total     = subtotal - descuento + impuestos;
   const ganancia  = S.carrito.reduce((s,i) => s+i.ganancia, 0);
   const costoTotal= S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0);
@@ -1045,6 +1077,9 @@ function calcularResumen() {
         </tbody>
       </table>`;
   }
+
+  const lbl = document.getElementById('res-impuestos-label');
+  if (lbl) lbl.textContent = S.ivaActivo ? `Impuestos (IVA ${S.ivaPorcentaje}%)` : 'Impuestos';
 
   setEl2('res-subtotal',  fmt(subtotal));
   setEl2('res-descuento', descuento>0 ? `-${fmt(descuento)}` : fmt(0));
@@ -1119,6 +1154,9 @@ function renderResumenFinal() {
       ${(r.descuento||0)>0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
         <span>Descuento</span><strong style="color:var(--warning)">-${fmt(r.descuento)}</strong>
       </div>` : ''}
+      ${S.ivaActivo ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span>IVA (${S.ivaPorcentaje}%)</span><strong>${fmt(r.impuestos||0)}</strong>
+      </div>` : ''}
       <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;margin-top:8px">
         <span>TOTAL</span><strong style="color:var(--accent)">${fmt(r.total||0)}</strong>
       </div>
@@ -1127,6 +1165,35 @@ function renderResumenFinal() {
         <strong style="color:var(--success)">${fmt(r.ganancia||0)}</strong>
       </div>
     </div>`;
+}
+
+/* ============================================================
+   REGISTRAR MOVIMIENTO DE IMPUESTOS (IVA acumulado)
+   ============================================================ */
+async function registrarMovimientoImpuesto(userId, montoIva, ventaId, numeroVenta) {
+  if (!montoIva || montoIva <= 0) return;
+  try {
+    const { data: ultMov } = await sb.from('movimientos_impuestos')
+      .select('saldo_resultante')
+      .eq('auth_user_id', userId)
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+
+    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    const saldoRes = saldoAnt + montoIva;
+
+    await sb.from('movimientos_impuestos').insert({
+      auth_user_id:     userId,
+      tipo_movimiento:  'IVA_VENTA',
+      concepto:         `IVA de venta ${numeroVenta}`,
+      monto:            montoIva,
+      saldo_anterior:   saldoAnt,
+      saldo_resultante: saldoRes,
+      referencia_venta_id: ventaId,
+      fecha:            todayISO(),
+    });
+  } catch(e) {
+    console.warn('No se pudo registrar el movimiento de impuestos:', e);
+  }
 }
 
 /* ============================================================
@@ -1180,7 +1247,7 @@ async function confirmarVenta() {
       fecha:              todayISO(),
       subtotal:           r.subtotal,
       descuento:          r.descuento,
-      impuesto:          r.impuestos,
+      impuesto:           r.impuestos,
       total:              r.total,
       costo_total:        r.costoTotal,
       metodo_pago_id:     S.metodoPagoId || null,
@@ -1189,8 +1256,23 @@ async function confirmarVenta() {
       observaciones:      S.observaciones || null,
     };
 
-    const { data: ventaNueva, error: errVenta } = await sb
-      .from('ventas').insert(ventaPayload).select('id').single();
+    // Campos opcionales de IVA (si la columna no existe en la tabla, Supabase
+    // devolverá error de columna desconocida; en ese caso reintentamos sin ellos)
+    const ventaPayloadConIva = {
+      ...ventaPayload,
+      iva_activo:      S.ivaActivo,
+      iva_porcentaje:  S.ivaActivo ? S.ivaPorcentaje : 0,
+    };
+
+    let ventaNueva, errVenta;
+    ({ data: ventaNueva, error: errVenta } = await sb
+      .from('ventas').insert(ventaPayloadConIva).select('id').single());
+
+    if (errVenta) {
+      // Reintentar sin columnas iva_* por si no existen en el esquema
+      ({ data: ventaNueva, error: errVenta } = await sb
+        .from('ventas').insert(ventaPayload).select('id').single());
+    }
     if (errVenta) throw errVenta;
 
     const ventaId = ventaNueva.id;
@@ -1234,7 +1316,12 @@ async function confirmarVenta() {
 
     /* ----------------------------------------------------------
        PASO F: Registrar movimiento en Caja
+       (El monto que entra a caja es el TOTAL menos el IVA — el IVA
+       se acumula aparte en el módulo de Impuestos, no en caja)
     ---------------------------------------------------------- */
+    const montoIva  = Number(r.impuestos) || 0;
+    const montoCaja = Number(r.total) - montoIva;
+
     try {
       // Obtener saldo actual de caja
       const { data: ultMov } = await sb.from('movimientos_financieros')
@@ -1243,14 +1330,14 @@ async function confirmarVenta() {
         .order('created_at',{ ascending:false }).limit(1).maybeSingle();
 
       const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-      const saldoRes = saldoAnt + r.total;
+      const saldoRes = saldoAnt + montoCaja;
 
       const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
         auth_user_id:       S.userId,
         tipo_flujo:         'INGRESO',
         tipo_movimiento:    'VENTA',
-        concepto:           `Venta ${S.numeroVenta}`,
-        monto:              r.total,
+        concepto:           montoIva>0 ? `Venta ${S.numeroVenta} (neto de IVA)` : `Venta ${S.numeroVenta}`,
+        monto:              montoCaja,
         saldo_anterior:     saldoAnt,
         saldo_resultante:   saldoRes,
         metodo_pago_id:     S.metodoPagoId || null,
@@ -1267,6 +1354,13 @@ async function confirmarVenta() {
       }
     } catch(eCaja) {
       console.warn('No se pudo registrar en caja (caja.js lo manejará):', eCaja);
+    }
+
+    /* ----------------------------------------------------------
+       PASO F-2: Registrar el IVA en el módulo de Impuestos
+    ---------------------------------------------------------- */
+    if (montoIva > 0) {
+      await registrarMovimientoImpuesto(S.userId, montoIva, ventaId, S.numeroVenta);
     }
 
     /* ----------------------------------------------------------
@@ -1301,7 +1395,7 @@ async function confirmarVenta() {
 
     // Notificar al localStorage para que el dashboard se entere
     localStorage.setItem('n360_venta_nueva', JSON.stringify({
-      ventaId, numero: S.numeroVenta, total: r.total, ganancia: r.ganancia, ts: Date.now()
+      ventaId, numero: S.numeroVenta, total: r.total, ganancia: r.ganancia, iva: montoIva, ts: Date.now()
     }));
 
   } catch(e) {
@@ -1341,6 +1435,8 @@ window.abrirConfirmarAnular = abrirConfirmarAnular;
 window.toggleTheme    = toggleTheme;
 window.toggleSidebar  = toggleSidebar;
 window.navigate       = navigate;
+window.toggleIva       = toggleIva;
+window.cambiarIvaPorcentaje = cambiarIvaPorcentaje;
 
 /* ============================================================
    CERRAR DROPDOWNS AL HACER CLICK FUERA
