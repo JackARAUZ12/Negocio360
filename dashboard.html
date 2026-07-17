@@ -861,6 +861,11 @@
         <span class="nav-label">Caja / Pagos</span>
       </div>
 
+      <div class="nav-item" onclick="navigate('impuestos.html')" data-tooltip="Impuestos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
+      </div>
+
       <div class="nav-item" onclick="navigate('reportes.html')" data-tooltip="Reportes">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         <span class="nav-label">Reportes</span>
@@ -1112,12 +1117,12 @@
               <span class="action-desc">Agregar producto/servicio</span>
             </div>
 
-            <div class="action-btn" onclick="navigate('gastos.html?action=new')">
+            <div class="action-btn" onclick="navigate('impuestos.html')">
               <div class="action-icon" style="background:var(--accent-3-soft)">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               </div>
-              <span class="action-name">Nuevo gasto</span>
-              <span class="action-desc">Registrar un gasto</span>
+              <span class="action-name">Impuestos</span>
+              <span class="action-desc">Ver IVA acumulado</span>
             </div>
           </div>
         </div>
@@ -1156,6 +1161,17 @@
               <div class="alert-body">
                 <div class="alert-title" id="alert-cobros-title">Cobros pendientes</div>
                 <div class="alert-desc" id="alert-cobros-desc">Ventas no cobradas</div>
+              </div>
+              <svg class="alert-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+
+            <div class="alert-item" onclick="navigate('impuestos.html')">
+              <div class="alert-icon" style="background:var(--accent-3-soft)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div class="alert-body">
+                <div class="alert-title" id="alert-impuestos-title">Impuestos acumulados</div>
+                <div class="alert-desc" id="alert-impuestos-desc">IVA pendiente de pagar</div>
               </div>
               <svg class="alert-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
@@ -1518,7 +1534,9 @@ async function loadKPIs(userId) {
     }
   } catch(e) { console.warn('kpi-mes:', e); }
 
-  // Ganancia del mes
+  // Ganancia bruta del mes (se usa como referencia interna; la tarjeta
+  // "Ganancia del mes" se actualiza con la ganancia NETA una vez que
+  // los gastos se hayan cargado, ver actualizarGananciaMesKPI())
   try {
     const { data } = await sbClient.from('ventas').select('total, costo_total, ganancia')
       .eq('auth_user_id', userId).eq('estado','completada')
@@ -1528,12 +1546,6 @@ async function loadKPIs(userId) {
       const costos   = data.reduce((s, r) => s + (r.costo_total || 0), 0);
       // Use ganancia field directly if available, otherwise calculate
       const ganancia = data.reduce((s, r) => s + (r.ganancia || (r.total - r.costo_total) || 0), 0);
-      document.getElementById('kpi-ganancia-mes').innerHTML =
-        `<span class="currency-symbol">${sym}</span>${ganancia.toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
-      const pct = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : 0;
-      const delta = document.getElementById('kpi-ganancia-mes-delta');
-      delta.className = 'kpi-delta ' + (ganancia > 0 ? 'positive' : ganancia < 0 ? 'negative' : 'neutral');
-      delta.textContent = ingresos > 0 ? `Margen ${pct}%` : 'Sin datos aún';
       dashData.ingresosM    = ingresos;
       dashData.costosM      = costos;
       dashData.gananciaBruta = ganancia;
@@ -1604,6 +1616,26 @@ async function loadGastos(userId) {
 }
 
 /* =====================================================
+   IMPUESTOS (IVA acumulado pendiente de pago)
+===================================================== */
+async function loadImpuestosPendientes(userId) {
+  try {
+    const { data } = await sbClient.from('movimientos_impuestos')
+      .select('saldo_resultante')
+      .eq('auth_user_id', userId)
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    dashData.impuestosPendientes = data ? Number(data.saldo_resultante) || 0 : 0;
+  } catch(e) { dashData.impuestosPendientes = 0; }
+
+  const sym = empresaConfig?.moneda || 'C$';
+  const titleEl = document.getElementById('alert-impuestos-title');
+  const descEl  = document.getElementById('alert-impuestos-desc');
+  const monto   = dashData.impuestosPendientes || 0;
+  if (titleEl) titleEl.textContent = monto > 0 ? `${fmt(monto, sym)} en IVA pendiente` : 'Sin impuestos acumulados';
+  if (descEl)  descEl.textContent  = monto > 0 ? 'Ve a Impuestos para pagarlo' : 'Todo al día';
+}
+
+/* =====================================================
    CAJA / CAPITAL
 ===================================================== */
 async function loadCaja(userId) {
@@ -1643,6 +1675,32 @@ function renderFinancial() {
   setVal('fin-ganancia-neta',  noData ? '—' : fmt(net, sym), net >= 0 ? 'positive' : 'negative');
   setVal('fin-capital',        cap !== null ? fmt(cap, sym) : '—', 'accent');
   setVal('fin-margen',         noData ? '—' : `${mar}%`);
+
+  // Actualiza la tarjeta principal "Ganancia del mes" con la GANANCIA NETA
+  // (después de costos Y gastos). Esto es más justo para negocios de
+  // servicios, donde el costo de venta puede ser 0 y la ganancia bruta
+  // sola no refleja la rentabilidad real.
+  actualizarGananciaMesKPI(ing, net, noData);
+}
+
+function actualizarGananciaMesKPI(ingresos, gananciaNeta, noData) {
+  const sym = empresaConfig?.moneda || 'C$';
+  const el  = document.getElementById('kpi-ganancia-mes');
+  const dd  = document.getElementById('kpi-ganancia-mes-delta');
+  if (!el) return;
+
+  if (noData) {
+    el.innerHTML = `<span class="currency-symbol">${sym}</span>0.00`;
+    if (dd) { dd.className = 'kpi-delta neutral'; dd.textContent = 'Sin datos aún'; }
+    return;
+  }
+
+  el.innerHTML = `<span class="currency-symbol">${sym}</span>${Number(gananciaNeta).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const margenNeto = ingresos > 0 ? ((gananciaNeta / ingresos) * 100).toFixed(1) : 0;
+  if (dd) {
+    dd.className = 'kpi-delta ' + (gananciaNeta > 0 ? 'positive' : gananciaNeta < 0 ? 'negative' : 'neutral');
+    dd.textContent = ingresos > 0 ? `Margen neto ${margenNeto}%` : 'Sin datos aún';
+  }
 }
 
 /* =====================================================
@@ -1980,6 +2038,7 @@ async function initDashboard() {
       loadKPIs(userId),
       loadGastos(userId),
       loadCaja(userId),
+      loadImpuestosPendientes(userId),
       loadVentasPorDia(userId, 7),
       loadVentasCategorias(userId),
       loadTopProductos(userId),
