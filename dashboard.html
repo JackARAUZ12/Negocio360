@@ -995,6 +995,18 @@
           </div>
         </div>
 
+        <!-- NUEVO: Caja disponible movida aquí desde el Resumen financiero -->
+        <div class="kpi-card fade-in stagger-3">
+          <div class="kpi-icon" style="background:var(--accent-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Caja disponible</div>
+            <div class="kpi-value" id="kpi-caja-disponible"><span class="currency-symbol" id="sym-caja">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-caja-disponible-delta">Sin datos aún</div>
+          </div>
+        </div>
+
         <div class="kpi-card fade-in stagger-4">
           <div class="kpi-icon" style="background:var(--accent-4-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1221,10 +1233,6 @@
           <div class="financial-row">
             <span class="financial-label">Ganancia neta</span>
             <span class="financial-value positive" id="fin-ganancia-neta">—</span>
-          </div>
-          <div class="financial-row">
-            <span class="financial-label">Caja disponible</span>
-            <span class="financial-value accent" id="fin-capital">—</span>
           </div>
           <div class="financial-row">
             <span class="financial-label">Margen de ganancia</span>
@@ -1661,11 +1669,40 @@ async function loadCaja(userId) {
     const { data: ultMov } = await sbClient.from('movimientos_financieros')
       .select('saldo_resultante').eq('auth_user_id', userId).eq('estado', 'completado')
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    if (ultMov) { dashData.capital = Number(ultMov.saldo_resultante) || 0; return; }
-    const { data: cap } = await sbClient.from('capital_negocio')
-      .select('monto').eq('auth_user_id', userId).eq('is_current', true).maybeSingle();
-    dashData.capital = cap ? Number(cap.monto) || 0 : null;
+    if (ultMov) {
+      dashData.capital = Number(ultMov.saldo_resultante) || 0;
+    } else {
+      const { data: cap } = await sbClient.from('capital_negocio')
+        .select('monto').eq('auth_user_id', userId).eq('is_current', true).maybeSingle();
+      dashData.capital = cap ? Number(cap.monto) || 0 : null;
+    }
   } catch(e) { console.warn('loadCaja:', e); dashData.capital = null; }
+  renderCajaKPI();
+}
+
+/* NUEVO: renderiza la tarjeta "Caja disponible" en el grid de KPIs principal
+   (antes vivía dentro del Resumen financiero como "fin-capital") */
+function renderCajaKPI() {
+  const sym = empresaConfig?.moneda || 'C$';
+  const cap = dashData.capital;
+  const el  = document.getElementById('kpi-caja-disponible');
+  const dd  = document.getElementById('kpi-caja-disponible-delta');
+
+  if (el) {
+    el.innerHTML = cap !== null
+      ? `<span class="currency-symbol" id="sym-caja">${sym}</span>${Number(cap).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`
+      : `<span class="currency-symbol" id="sym-caja">${sym}</span>—`;
+    el.style.color = (cap !== null && cap < 0) ? 'var(--danger)' : '';
+  }
+  if (dd) {
+    if (cap === null) {
+      dd.className = 'kpi-delta neutral';
+      dd.textContent = 'Sin datos aún';
+    } else {
+      dd.className = 'kpi-delta ' + (cap >= 0 ? 'positive' : 'negative');
+      dd.textContent = cap >= 0 ? 'Saldo positivo' : 'Saldo negativo';
+    }
+  }
 }
 
 /* =====================================================
@@ -1724,7 +1761,6 @@ function renderFinancial() {
   const otrosEgr = dashData.otrosEgresosM  || 0;
   const net  = brut - gas + otrosIng - otrosEgr;
   const mar  = ing > 0 ? ((net / ing) * 100).toFixed(1) : 0;
-  const cap  = dashData.capital;
   const noData = ing === 0 && gas === 0 && otrosIng === 0 && otrosEgr === 0;
 
   const setVal = (id, val, cls) => {
@@ -1738,7 +1774,6 @@ function renderFinancial() {
   setVal('fin-otros-ingresos', noData ? '—' : fmt(otrosIng, sym), 'positive');
   setVal('fin-otros-egresos',  noData ? '—' : fmt(otrosEgr, sym), 'negative');
   setVal('fin-ganancia-neta',  noData ? '—' : fmt(net, sym), net >= 0 ? 'positive' : 'negative');
-  setVal('fin-capital',        cap !== null ? fmt(cap, sym) : '—', 'accent');
   setVal('fin-margen',         noData ? '—' : `${mar}%`);
 
   // Actualiza la tarjeta principal "Ganancia del mes" con la GANANCIA NETA
