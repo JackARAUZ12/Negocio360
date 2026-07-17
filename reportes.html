@@ -750,6 +750,52 @@
           </div>
         </div>
 
+        <!-- NUEVO: Resumen financiero — idéntico al del Dashboard, mismas
+             fuentes y fórmulas (solo lectura, no recalcula distinto) -->
+        <div class="panel-card fade-in">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Resumen financiero
+            </div>
+            <span style="font-size:12px;color:var(--text-muted)">Mismo cálculo que el Dashboard</span>
+          </div>
+          <div class="financial-grid" style="border:none;border-radius:0">
+            <div class="financial-cell">
+              <div class="financial-label">Ingresos brutos</div>
+              <div class="financial-value" id="exec-fin-ingresos">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Costo de ventas</div>
+              <div class="financial-value" id="exec-fin-costo" style="color:var(--danger)">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Ganancia bruta</div>
+              <div class="financial-value" id="exec-fin-ganancia-bruta">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Gastos operativos</div>
+              <div class="financial-value" id="exec-fin-gastos" style="color:var(--danger)">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Otros ingresos</div>
+              <div class="financial-value" id="exec-fin-otros-ingresos" style="color:var(--success)">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Otros egresos</div>
+              <div class="financial-value" id="exec-fin-otros-egresos" style="color:var(--danger)">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Ganancia neta</div>
+              <div class="financial-value" id="exec-fin-ganancia-neta">—</div>
+            </div>
+            <div class="financial-cell">
+              <div class="financial-label">Margen de ganancia</div>
+              <div class="financial-value" id="exec-fin-margen">—</div>
+            </div>
+          </div>
+        </div>
+
         <!-- KPIs ejecutivos -->
         <div class="kpi-grid-6 fade-in">
           <div class="kpi-card">
@@ -842,6 +888,26 @@
               <div class="kpi-label">Productos vendidos</div>
               <div class="kpi-value" id="kpi-prods-vendidos">—</div>
               <div class="kpi-sub">unidades</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- NUEVO: Tercera fila — Otros ingresos / Otros egresos (Caja) -->
+        <div class="kpi-grid-2 fade-in">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-5-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><polyline points="17 5 12 1 7 5"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Otros ingresos</div>
+              <div class="kpi-value" id="kpi-otros-ingresos">—</div>
+              <div class="kpi-sub">movimientos manuales de Caja</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-4-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><line x1="12" y1="23" x2="12" y2="1"/><polyline points="17 19 12 23 7 19"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Otros egresos</div>
+              <div class="kpi-value" id="kpi-otros-egresos">—</div>
+              <div class="kpi-sub">movimientos manuales de Caja</div>
             </div>
           </div>
         </div>
@@ -952,6 +1018,67 @@
             <div class="financial-label">Valor inventario</div>
             <div class="financial-value" id="fin-inventario">—</div>
             <div class="financial-sub">activo en stock</div>
+          </div>
+          <!-- NUEVO: Otros ingresos / egresos (movimientos manuales de Caja) -->
+          <div class="financial-cell">
+            <div class="financial-label">Otros ingresos</div>
+            <div class="financial-value" id="fin-otros-ingresos" style="color:var(--success)">—</div>
+            <div class="financial-sub">movimientos manuales de Caja</div>
+          </div>
+          <div class="financial-cell">
+            <div class="financial-label">Otros egresos</div>
+            <div class="financial-value" id="fin-otros-egresos" style="color:var(--danger)">—</div>
+            <div class="financial-sub">movimientos manuales de Caja</div>
+          </div>
+        </div>
+
+        <!-- NUEVO: IVA / Impuestos — solo lectura, misma tabla que impuestos.html -->
+        <div class="panel-card fade-in">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              IVA / Impuestos
+            </div>
+            <button class="btn-secondary btn-sm" onclick="navigate('impuestos.html')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+              Ir a Impuestos
+            </button>
+          </div>
+          <div class="panel-body">
+            <div class="kpi-grid-4" style="margin-bottom:0">
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div>
+                <div class="kpi-body">
+                  <div class="kpi-label">IVA acumulado pendiente</div>
+                  <div class="kpi-value" id="fin-iva-saldo">—</div>
+                  <div class="kpi-sub">saldo actual, no depende del período</div>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background:var(--accent-3-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+                <div class="kpi-body">
+                  <div class="kpi-label">IVA generado en el período</div>
+                  <div class="kpi-value" id="fin-iva-generado">—</div>
+                  <div class="kpi-sub">según filtro de arriba</div>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background:var(--success-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div>
+                <div class="kpi-body">
+                  <div class="kpi-label">Total pagado histórico</div>
+                  <div class="kpi-value" id="fin-iva-pagado">—</div>
+                  <div class="kpi-sub">todos los pagos registrados</div>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background:var(--bg-hover)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+                <div class="kpi-body">
+                  <div class="kpi-label">Último pago</div>
+                  <div class="kpi-value" id="fin-iva-ultimo" style="font-size:14px">—</div>
+                  <div class="kpi-sub">fecha del pago más reciente</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
