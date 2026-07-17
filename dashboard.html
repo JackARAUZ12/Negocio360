@@ -1558,7 +1558,11 @@ async function loadKPIs(userId) {
       const ingresos = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       const costos   = data.reduce((s, r) => s + (r.costo_total || 0), 0);
       // Use ganancia field directly if available, otherwise calculate
-      const ganancia = data.reduce((s, r) => s + (r.ganancia || (r.total - r.costo_total) || 0), 0);
+      // FIX: el fallback también debe usar el total NETO de IVA (total - impuesto).
+      // Antes, si una venta tenía ganancia=0 (ej. vendida al costo), el fallback
+      // usaba r.total (con IVA incluido) - r.costo_total, colando el IVA dentro
+      // de la ganancia bruta cada vez que ese caso ocurría.
+      const ganancia = data.reduce((s, r) => s + (r.ganancia || ((r.total - (r.impuesto || 0)) - r.costo_total) || 0), 0);
       dashData.ingresosM    = ingresos;
       dashData.costosM      = costos;
       dashData.gananciaBruta = ganancia;
