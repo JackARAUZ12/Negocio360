@@ -122,7 +122,15 @@
   padding: 0;
 }
 
-html { font-size: 16px; scroll-behavior: smooth; }
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  /* FIX MÓVIL: refuerzo anti-desbordamiento horizontal a nivel raíz.
+     En iOS Safari, overflow-x:hidden solo en body a veces no basta
+     si un hijo se dimensiona por su contenido (ver .filters-group). */
+  max-width: 100%;
+  overflow-x: hidden;
+}
 
 body {
   font-family: var(--font-sans);
@@ -131,6 +139,7 @@ body {
   min-height: 100vh;
   display: flex;
   overflow-x: hidden;
+  max-width: 100%; /* FIX MÓVIL */
   -webkit-font-smoothing: antialiased;
   transition: background var(--transition-slow), color var(--transition-slow);
 }
@@ -714,6 +723,8 @@ img { max-width: 100%; }
   gap: 12px;
   flex-wrap: wrap;
   box-shadow: var(--shadow-sm);
+  max-width: 100%; /* FIX MÓVIL */
+  min-width: 0;     /* FIX MÓVIL */
 }
 
 .search-wrapper {
@@ -1544,15 +1555,39 @@ img { max-width: 100%; }
   .header-subtitle { max-width: 220px; }
 }
 
-/* Celulares grandes — a partir de aquí endurecemos el header para
-   que NUNCA se salga de pantalla ni deje elementos inalcanzables,
-   sin importar marca/modelo (probado hasta 320px de ancho) */
+/* Celulares grandes — a partir de aquí endurecemos el header y el
+   toolbar para que NUNCA se salgan de pantalla ni dejen elementos
+   inalcanzables, sin importar marca/modelo (probado hasta 320px
+   de ancho, incluyendo iPhone 12 Pro Max) */
 @media (max-width: 640px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
   .toolbar { flex-direction: column; align-items: stretch; padding: 14px 16px; }
   .search-wrapper { min-width: 0; }
-  .filters-group { overflow-x: auto; padding-bottom: 4px; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
-  .toolbar-right { margin-left: 0; }
+
+  /* FIX MÓVIL: .filters-group y .toolbar-right se dimensionaban por
+     el ancho total de sus botones en fila (contenido), no por el
+     contenedor. Al estar dentro de un flex en columna sin un ancho
+     explícito, el navegador les daba su "ancho natural" y ESO
+     empujaba toda la página hacia la derecha (rompía el layout),
+     en vez de quedarse contenidos con scroll horizontal interno. */
+  .filters-group {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .toolbar-right {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
   .page-header { flex-direction: column; gap: 12px; }
   .page-header-actions { width: 100%; }
   .page-header-actions .btn { flex: 1; justify-content: center; }
