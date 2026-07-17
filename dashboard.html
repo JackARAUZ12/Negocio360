@@ -1549,7 +1549,7 @@ async function loadKPIs(userId) {
   // "Ganancia del mes" se actualiza con la ganancia NETA una vez que
   // los gastos se hayan cargado, ver actualizarGananciaMesKPI())
   try {
-    const { data } = await sbClient.from('ventas').select('total, impuesto, costo_total, ganancia')
+    const { data } = await sbClient.from('ventas').select('total, impuesto, costo_total')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
     if (data) {
@@ -1557,12 +1557,13 @@ async function loadKPIs(userId) {
       // al cliente. El IVA se recauda para el fisco, no es ingreso del negocio.
       const ingresos = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       const costos   = data.reduce((s, r) => s + (r.costo_total || 0), 0);
-      // Use ganancia field directly if available, otherwise calculate
-      // FIX: el fallback también debe usar el total NETO de IVA (total - impuesto).
-      // Antes, si una venta tenía ganancia=0 (ej. vendida al costo), el fallback
-      // usaba r.total (con IVA incluido) - r.costo_total, colando el IVA dentro
-      // de la ganancia bruta cada vez que ese caso ocurría.
-      const ganancia = data.reduce((s, r) => s + (r.ganancia || ((r.total - (r.impuesto || 0)) - r.costo_total) || 0), 0);
+      // FIX DEFINITIVO: la Ganancia bruta ya NO se toma del campo "ganancia"
+      // guardado por cada venta (que podía desincuadrar con lo mostrado arriba
+      // por redondeos, descuentos o datos históricos). Ahora es SIEMPRE el
+      // resultado matemático exacto de Ingresos - Costos, para que la tarjeta
+      // del resumen financiero cuadre perfecto: Ingresos brutos - Costo de
+      // ventas = Ganancia bruta, sin excepción.
+      const ganancia = ingresos - costos;
       dashData.ingresosM    = ingresos;
       dashData.costosM      = costos;
       dashData.gananciaBruta = ganancia;
