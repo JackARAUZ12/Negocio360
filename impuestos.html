@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Impuestos — Negocio360</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ===================================================== 
+       CSS VARIABLES — idénticas a dashboard / ventas / caja
+    ===================================================== */
+    :root {
+      --bg-base:#f5f5f7;--bg-surface:#ffffff;--bg-surface-2:#fafafa;
+      --bg-sidebar:#ffffff;--bg-header:rgba(255,255,255,0.85);
+      --bg-hover:#f0f0f5;--bg-active:#eff0ff;
+      --text-primary:#0d0d14;--text-secondary:#60607a;
+      --text-muted:#9999b3;--text-accent:#5a5af4;
+      --border:#e8e8ef;--border-focus:#5a5af4;
+      --accent:#5a5af4;--accent-soft:#eff0ff;
+      --accent-2:#22c55e;--accent-2-soft:#f0fdf4;
+      --accent-3:#f97316;--accent-3-soft:#fff7ed;
+      --accent-4:#8b5cf6;--accent-4-soft:#f5f3ff;
+      --accent-5:#06b6d4;--accent-5-soft:#ecfeff;
+      --danger:#ef4444;--danger-soft:#fef2f2;
+      --warning:#f59e0b;--warning-soft:#fffbeb;
+      --success:#22c55e;--success-soft:#f0fdf4;
+      --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
+      --shadow-lg:0 12px 32px rgba(0,0,0,.1),0 4px 8px rgba(0,0,0,.05);
+      --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px;
+      --sidebar-w:240px;--header-h:64px;
+      --font-main:'Plus Jakarta Sans',sans-serif;
+      --font-mono:'JetBrains Mono',monospace;
+      --transition:0.2s cubic-bezier(0.4,0,0.2,1);
+    }
+    [data-theme="dark"] {
+      --bg-base:#0c0c14;--bg-surface:#13131f;--bg-surface-2:#1a1a2a;
+      --bg-sidebar:#13131f;--bg-header:rgba(19,19,31,.9);
+      --bg-hover:#1e1e30;--bg-active:#1e1e40;
+      --text-primary:#f0f0fa;--text-secondary:#9090b0;
+      --text-muted:#5a5a7a;--text-accent:#7b7bff;
+      --border:#1e1e30;--border-focus:#7b7bff;
+      --accent:#7b7bff;--accent-soft:#1e1e40;
+      --accent-2:#22c55e;--accent-2-soft:#0f2a1a;
+      --accent-3:#f97316;--accent-3-soft:#2a1a0a;
+      --accent-4:#a78bfa;--accent-4-soft:#1e1530;
+      --accent-5:#22d3ee;--accent-5-soft:#0a1e25;
+      --danger:#f87171;--danger-soft:#2a0f0f;
+      --warning:#fbbf24;--warning-soft:#2a200a;
+      --success:#4ade80;--success-soft:#0f2a1a;
+      --shadow-sm:0 1px 3px rgba(0,0,0,.3);
+      --shadow-md:0 4px 12px rgba(0,0,0,.4);
+      --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+    }
+
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth;overflow-x:hidden;width:100%;max-width:100%}
+    body{font-family:var(--font-main);background:var(--bg-base);color:var(--text-primary);
+      font-size:14px;line-height:1.5;transition:background var(--transition),color var(--transition);
+      overflow-x:hidden;width:100%;max-width:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+    a{text-decoration:none;color:inherit}
+    button{cursor:pointer;border:none;background:none;font-family:inherit}
+    ul,ol{list-style:none}
+    img,svg{max-width:100%}
+
+    #app{display:flex;min-height:100vh;width:100%;max-width:100vw}
+
+    /* SIDEBAR */
+    #sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg-sidebar);
+      border-right:1px solid var(--border);display:flex;flex-direction:column;
+      position:fixed;top:0;left:0;z-index:100;
+      transition:width var(--transition),transform var(--transition),background var(--transition);overflow:hidden}
+    #sidebar.collapsed{width:64px}
+    .sidebar-logo{display:flex;align-items:center;gap:10px;padding:18px 20px;
+      border-bottom:1px solid var(--border);min-height:var(--header-h)}
+    .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .logo-icon svg{color:#fff}
+    .logo-text{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap;transition:opacity var(--transition)}
+    #sidebar.collapsed .logo-text,#sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,
+    #sidebar.collapsed .nav-badge{opacity:0;pointer-events:none;width:0;overflow:hidden}
+    .sidebar-nav{flex:1;padding:12px;overflow-y:auto;overflow-x:hidden}
+    .nav-section-title{font-size:10px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.1em;color:var(--text-muted);padding:12px 8px 6px;white-space:nowrap;transition:opacity var(--transition)}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;
+      border-radius:var(--radius-sm);color:var(--text-secondary);transition:all var(--transition);
+      cursor:pointer;white-space:nowrap;margin-bottom:2px}
+    .nav-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+    .nav-item svg{flex-shrink:0;width:18px;height:18px}
+    .nav-label{font-size:13.5px;font-weight:500;white-space:nowrap}
+
+    /* MAIN */
+    #main{flex:1;margin-left:var(--sidebar-w);transition:margin-left var(--transition);
+      min-height:100vh;display:flex;flex-direction:column;min-width:0;max-width:100%}
+    #main.sidebar-collapsed{margin-left:64px}
+
+    /* HEADER */
+    #header{height:var(--header-h);background:var(--bg-header);backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--border);display:flex;align-items:center;
+      padding:0 24px;gap:12px;position:sticky;top:0;z-index:50;min-width:0}
+    .header-toggle{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
+    .header-toggle:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .header-title{font-size:16px;font-weight:700;color:var(--text-primary)}
+    .header-spacer{flex:1;min-width:0}
+    .plan-badge{display:flex;align-items:center;gap:6px;padding:6px 14px;
+      background:var(--accent-soft);border:1px solid var(--border);
+      border-radius:100px;font-size:12px;font-weight:600;color:var(--accent);flex-shrink:0}
+    .theme-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
+    .theme-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .user-menu{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;
+      border:1px solid var(--border);border-radius:100px;flex-shrink:0}
+    .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);
+      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+    .user-info{display:flex;flex-direction:column;min-width:0}
+    .user-name{font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.2;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+    .user-biz{font-size:11px;color:var(--text-muted);line-height:1.2;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+
+    /* CONTENT */
+    #content{flex:1;padding:28px 28px 60px;max-width:1100px;width:100%;min-width:0;margin:0 auto}
+
+    .greeting-row{display:flex;align-items:flex-start;justify-content:space-between;
+      margin-bottom:28px;flex-wrap:wrap;gap:12px}
+    .greeting-text{min-width:0}
+    .greeting-text h1{font-size:22px;font-weight:800;color:var(--text-primary);margin-bottom:3px;
+      display:flex;align-items:center;gap:8px}
+    .greeting-text p{font-size:13.5px;color:var(--text-secondary)}
+    .greeting-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+    .btn-primary{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
+      background:var(--accent);color:#fff;border-radius:var(--radius-sm);
+      font-size:13.5px;font-weight:600;transition:opacity var(--transition),transform var(--transition)}
+    .btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+    .btn-primary svg{width:15px;height:15px}
+    .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    .btn-secondary{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;
+      background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-secondary);
+      border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;transition:all var(--transition)}
+    .btn-secondary:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+    .btn-ghost{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;
+      color:var(--text-secondary);border-radius:var(--radius-sm);font-size:12.5px;font-weight:600;
+      transition:all var(--transition)}
+    .btn-ghost:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .btn-danger-outline{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;
+      background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);
+      border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;transition:all var(--transition)}
+    .btn-danger-outline:hover{background:var(--danger);color:#fff}
+    .btn-danger-outline:disabled{opacity:.5;cursor:not-allowed}
+
+    /* HERO CARD — IVA ACUMULADO */
+    .iva-hero{background:linear-gradient(135deg,var(--accent) 0%,var(--accent-4) 100%);
+      border-radius:var(--radius-xl);padding:32px 28px;color:#fff;box-shadow:var(--shadow-lg);
+      margin-bottom:24px;position:relative;overflow:hidden}
+    .iva-hero::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;
+      background:rgba(255,255,255,.08);border-radius:50%}
+    .iva-hero::after{content:'';position:absolute;bottom:-60px;left:-30px;width:160px;height:160px;
+      background:rgba(255,255,255,.06);border-radius:50%}
+    .iva-hero-inner{position:relative;z-index:1}
+    .iva-hero-label{font-size:13px;font-weight:600;opacity:.85;text-transform:uppercase;letter-spacing:.06em;
+      display:flex;align-items:center;gap:8px;margin-bottom:10px}
+    .iva-hero-value{font-size:40px;font-weight:800;line-height:1.1;margin-bottom:6px;
+      font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+    .iva-hero-value .currency-symbol{font-size:.5em;font-weight:700;opacity:.85;vertical-align:super}
+    .iva-hero-sub{font-size:13px;opacity:.85;margin-bottom:22px}
+    .iva-hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .iva-hero-actions .btn-hero-pagar{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
+      background:#fff;color:var(--accent);border-radius:var(--radius-sm);font-size:14px;font-weight:700;
+      transition:all var(--transition);box-shadow:0 4px 14px rgba(0,0,0,.15)}
+    .iva-hero-actions .btn-hero-pagar:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.2)}
+    .iva-hero-actions .btn-hero-pagar:disabled{opacity:.6;cursor:not-allowed;transform:none}
+    .iva-hero-actions .btn-hero-dash{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
+      background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);color:#fff;
+      border-radius:var(--radius-sm);font-size:14px;font-weight:600;transition:all var(--transition)}
+    .iva-hero-actions .btn-hero-dash:hover{background:rgba(255,255,255,.22)}
+
+    /* MINI KPI ROW */
+    .mini-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+    .mini-kpi-card{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-lg);padding:16px 18px;box-shadow:var(--shadow-sm);
+      transition:all var(--transition);min-width:0}
+    .mini-kpi-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+    .mini-kpi-label{font-size:11.5px;color:var(--text-secondary);font-weight:600;margin-bottom:6px;
+      display:flex;align-items:center;gap:6px}
+    .mini-kpi-value{font-size:18px;font-weight:800;color:var(--text-primary);
+      font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+    /* PANEL / HISTORIAL */
+    .panel-card{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:24px;max-width:100%}
+    .panel-header{display:flex;align-items:center;justify-content:space-between;
+      padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+    .panel-title{font-size:15px;font-weight:700;color:var(--text-primary);
+      display:flex;align-items:center;gap:8px}
+    .panel-title svg{width:16px;height:16px;color:var(--accent)}
+
+    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:100%}
+    table{width:100%;border-collapse:collapse}
+    thead th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border);
+      text-align:left;white-space:nowrap;background:var(--bg-surface-2)}
+    tbody td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);
+      vertical-align:middle;color:var(--text-primary)}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover{background:var(--bg-hover)}
+    .td-fecha{white-space:nowrap;color:var(--text-secondary);font-size:12.5px}
+    .td-monto{font-family:var(--font-mono);font-weight:700;white-space:nowrap}
+    .td-monto.in{color:var(--success)}
+    .td-monto.out{color:var(--danger)}
+    .td-saldo{font-family:var(--font-mono);font-weight:600;color:var(--text-primary);white-space:nowrap}
+    .tipo-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+      border-radius:5px;font-size:11px;font-weight:700}
+    .tipo-badge.iva{background:var(--accent-soft);color:var(--accent)}
+    .tipo-badge.pago{background:var(--success-soft);color:var(--success)}
+
+    .empty-cell{text-align:center;padding:40px;color:var(--text-muted);font-size:13px}
+    .empty-icon{font-size:36px;opacity:.35;margin-bottom:8px}
+
+    /* INFO BOX */
+    .info-box{display:flex;gap:12px;padding:16px 18px;background:var(--accent-soft);
+      border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:24px;align-items:flex-start}
+    .info-box svg{flex-shrink:0;color:var(--accent);margin-top:1px}
+    .info-box p{font-size:12.5px;color:var(--text-secondary);line-height:1.6}
+    .info-box strong{color:var(--text-primary)}
+
+    /* MODAL */
+    .modal-overlay{display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,.45);backdrop-filter:blur(4px);
+      z-index:500;align-items:center;justify-content:center;
+      padding:20px;overflow-y:auto}
+    .modal-overlay.modal-open{display:flex}
+    .modal-box{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);
+      width:100%;max-width:440px;margin:auto;overflow-x:hidden;
+      animation:modalIn .22s cubic-bezier(.34,1.56,.64,1) forwards}
+    @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;
+      padding:20px 24px 16px;border-bottom:1px solid var(--border);gap:10px}
+    .modal-title{font-size:17px;font-weight:700;color:var(--text-primary);min-width:0}
+    .modal-close{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+      border-radius:7px;color:var(--text-muted);transition:all var(--transition);cursor:pointer;flex-shrink:0}
+    .modal-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .modal-body{padding:20px 24px}
+    .modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;
+      padding:14px 24px 20px;border-top:1px solid var(--border);flex-wrap:wrap}
+    .confirm-icon{width:52px;height:52px;border-radius:50%;background:var(--success-soft);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+
+    /* TOAST */
+    .toast{position:fixed;bottom:24px;right:24px;left:24px;margin:0 auto;padding:12px 20px;
+      border-radius:var(--radius-md);font-size:13.5px;font-weight:600;
+      box-shadow:var(--shadow-lg);z-index:1000;max-width:360px;
+      opacity:0;transform:translateY(12px);transition:all .3s cubic-bezier(.34,1.56,.64,1);
+      pointer-events:none;display:flex;align-items:center;gap:10px}
+    .toast.show{opacity:1;transform:translateY(0)}
+    .toast-success{background:var(--success);color:#fff}
+    .toast-error{background:var(--danger);color:#fff}
+    .toast-info{background:var(--accent);color:#fff}
+    .toast-warning{background:var(--warning);color:#fff}
+
+    /* LOADER */
+    #loader{position:fixed;inset:0;background:var(--bg-base);z-index:1000;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;
+      gap:16px;transition:opacity .4s}
+    #loader.hidden{opacity:0;pointer-events:none}
+    .loader-logo{width:48px;height:48px;background:var(--accent);border-radius:12px;
+      display:flex;align-items:center;justify-content:center}
+    .loader-spinner{width:24px;height:24px;border:3px solid var(--border);
+      border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+
+    #mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+      z-index:99;opacity:0;transition:opacity var(--transition)}
+    #mobile-overlay.show{display:block;opacity:1}
+
+    .fade-in{animation:fadeIn .4s ease forwards}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .stagger-1{animation-delay:.05s}.stagger-2{animation-delay:.1s}.stagger-3{animation-delay:.15s}
+
+    /* =====================================================
+       RESPONSIVE — cualquier dispositivo, tamaño u orientación
+    ===================================================== */
+    @media(max-width:768px){
+      #sidebar{transform:translateX(-100%);box-shadow:var(--shadow-lg)}
+      #sidebar.mobile-open{transform:translateX(0)}
+      #main{margin-left:0!important}
+      #content{padding:16px 16px 40px}
+      .header-title{display:none}
+      .user-info{display:none}
+      .plan-badge span:last-child{display:none}
+      .greeting-row{flex-direction:column;align-items:stretch}
+      .greeting-actions{width:100%}
+      .greeting-actions .btn-secondary{width:100%;justify-content:center}
+      .mini-kpi-grid{grid-template-columns:1fr}
+      .iva-hero{padding:24px 20px}
+      .iva-hero-value{font-size:32px}
+      .iva-hero-actions{flex-direction:column;align-items:stretch}
+      .iva-hero-actions .btn-hero-pagar,
+      .iva-hero-actions .btn-hero-dash{justify-content:center}
+      .modal-overlay{padding:12px}
+    }
+    @media(max-width:480px){
+      #header{padding:0 14px;gap:8px}
+      .modal-body{padding:16px}
+      .modal-header{padding:16px 16px 12px}
+      .modal-footer{padding:12px 16px 16px}
+      .toast{left:16px;right:16px;bottom:16px;max-width:none}
+      .iva-hero-value{font-size:26px}
+    }
+    @media(min-width:1800px){#content{max-width:1200px}}
+  </style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+      <path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    </svg>
+  </div>
+  <div class="loader-spinner"></div>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Impuestos…</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- OVERLAY MÓVIL -->
+<div id="mobile-overlay" onclick="toggleSidebar()"></div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <span class="logo-text" id="sidebar-logo-text">Negocio360</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">PRINCIPAL</div>
+      <div class="nav-item" onclick="navigate('dashboard.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </div>
+      <div class="nav-item" onclick="navigate('ventas.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Ventas</span>
+      </div>
+      <div class="nav-item" onclick="navigate('clientes.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Clientes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('productos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span class="nav-label">Productos / Servicios</span>
+      </div>
+      <div class="nav-item" onclick="navigate('compras.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-label">Compras</span>
+      </div>
+      <div class="nav-item" onclick="navigate('gastos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="nav-label">Gastos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('caja.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span class="nav-label">Caja / Pagos</span>
+      </div>
+      <div class="nav-item active" onclick="navigate('impuestos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('reportes.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-label">Reportes</span>
+      </div>
+      <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
+      <div class="nav-item" onclick="navigate('ventas.html?action=new')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Nueva venta</span>
+      </div>
+      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')"
+        style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nav-label">⚙️ Panel Admin</span>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- HEADER -->
+    <header id="header">
+      <button class="header-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="header-title">Impuestos</span>
+      <div class="header-spacer"></div>
+      <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
+      <div class="plan-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span id="plan-text">Plan</span>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
+        <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="user-menu">
+        <div class="user-avatar" id="header-avatar">--</div>
+        <div class="user-info">
+          <span class="user-name" id="header-name">Cargando…</span>
+          <span class="user-biz"  id="header-biz">—</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div id="content">
+
+      <!-- GREETING -->
+      <div class="greeting-row fade-in">
+        <div class="greeting-text">
+          <h1>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Impuestos
+          </h1>
+          <p>Control del IVA acumulado por tus ventas. Se separa automáticamente de tu Caja.</p>
+        </div>
+        <div class="greeting-actions">
+          <button class="btn-secondary" onclick="navigate('dashboard.html')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Volver a Dashboard
+          </button>
+        </div>
+      </div>
+
+      <!-- INFO BOX -->
+      <div class="info-box">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <p>Cuando activas el <strong>IVA</strong> en una venta, ese monto no entra a tu Caja: se acumula aquí. Usa el botón <strong>Pagar</strong> cuando hagas el pago de impuestos a la entidad correspondiente — esto reiniciará el conteo a cero y quedará registrado en el historial.</p>
+      </div>
+
+      <!-- HERO: TOTAL ACUMULADO -->
+      <div class="iva-hero fade-in">
+        <div class="iva-hero-inner">
+          <div class="iva-hero-label">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            IVA acumulado pendiente de pago
+          </div>
+          <div class="iva-hero-value" id="iva-total"><span class="currency-symbol">C$</span>0.00</div>
+          <div class="iva-hero-sub" id="iva-total-sub">Aún no se ha acumulado impuesto</div>
+          <div class="iva-hero-actions">
+            <button class="btn-hero-pagar" id="btn-pagar-iva" onclick="abrirConfirmarPago()" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Pagar impuestos
+            </button>
+            <button class="btn-hero-dash" onclick="navigate('dashboard.html')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              Ir al Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MINI KPIs -->
+      <div class="mini-kpi-grid">
+        <div class="mini-kpi-card fade-in stagger-1">
+          <div class="mini-kpi-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            IVA generado este mes
+          </div>
+          <div class="mini-kpi-value" id="iva-mes">—</div>
+        </div>
+        <div class="mini-kpi-card fade-in stagger-2">
+          <div class="mini-kpi-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+            Total pagado histórico
+          </div>
+          <div class="mini-kpi-value" id="iva-pagado-total">—</div>
+        </div>
+        <div class="mini-kpi-card fade-in stagger-3">
+          <div class="mini-kpi-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Último pago
+          </div>
+          <div class="mini-kpi-value" id="iva-ultimo-pago" style="font-size:14px">—</div>
+        </div>
+      </div>
+
+      <!-- HISTORIAL -->
+      <div class="panel-card fade-in">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Historial de movimientos
+          </div>
+          <button class="btn-secondary" onclick="cargarImpuestos()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Actualizar
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Concepto</th>
+                <th>Monto</th>
+                <th>Saldo resultante</th>
+              </tr>
+            </thead>
+            <tbody id="impuestos-tbody">
+              <tr><td colspan="5" class="empty-cell">Cargando movimientos…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- =====================================================
+     MODAL: CONFIRMAR PAGO DE IMPUESTOS
+===================================================== -->
+<div class="modal-overlay" id="modal-pagar" onclick="if(event.target===this)closeModal('modal-pagar')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Pagar impuestos</span>
+      <button class="modal-close" onclick="closeModal('modal-pagar')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:24px">
+      <div class="confirm-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">¿Confirmar el pago?</h3>
+      <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
+        Se registrará el pago de <strong id="modal-pagar-monto">—</strong> y el conteo de impuestos acumulados volverá a <strong>C$ 0.00</strong>. Esta acción queda guardada en el historial y no se puede deshacer.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-pagar')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-pago" onclick="pagarImpuestos()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Sí, pagar
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* =====================================================
+   SUPABASE
+===================================================== */
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const S = { userId:null, userEmail:null, moneda:'C$', empresaConfig:{}, saldoActual:0, movimientos:[] };
+
+/* HELPERS */
+function todayISO() { return new Date().toISOString().split('T')[0]; }
+function startOfMonthISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+}
+function sym() { return S.moneda || 'C$'; }
+function fmt(n) {
+  const v = parseFloat(n || 0);
+  return `${sym()} ${v.toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+}
+function fmtFecha(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* THEME */
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('n360_theme', t);
+  const sun  = document.getElementById('icon-sun');
+  const moon = document.getElementById('icon-moon');
+  if (sun)  sun.style.display  = t==='dark'  ? 'block' : 'none';
+  if (moon) moon.style.display = t==='light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  const c = document.documentElement.getAttribute('data-theme');
+  applyTheme(c==='dark' ? 'light' : 'dark');
+}
+
+/* SIDEBAR */
+let sidebarCollapsed = false;
+function isMobileViewport() { return window.innerWidth <= 768; }
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('mobile-overlay');
+  if (!sidebar) return;
+  if (isMobileViewport()) {
+    const abrir = !sidebar.classList.contains('mobile-open');
+    sidebar.classList.toggle('mobile-open', abrir);
+    if (overlay) overlay.classList.toggle('show', abrir);
+    document.body.style.overflow = abrir ? 'hidden' : '';
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    sidebar.classList.toggle('collapsed', sidebarCollapsed);
+    document.getElementById('main')?.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar')?.classList.remove('mobile-open');
+  document.getElementById('mobile-overlay')?.classList.remove('show');
+  document.body.style.overflow = '';
+}
+window.addEventListener('resize', () => { if (!isMobileViewport()) closeMobileSidebar(); });
+function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+
+/* MODALES */
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('modal-open'); document.body.style.overflow = 'hidden'; }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.remove('modal-open'); document.body.style.overflow = ''; }
+}
+
+/* TOAST */
+let toastTimer = null;
+function showToast(msg, type='success') {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `toast toast-${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
+}
+
+/* ADMIN */
+async function checkAdminAccess(email) {
+  try {
+    const { data } = await sb.from('administradores').select('email,activo')
+      .eq('email', email).eq('activo', true).maybeSingle();
+    if (data) { const el = document.getElementById('nav-admin'); if (el) el.style.display = 'flex'; }
+  } catch { /* silencioso */ }
+}
+
+/* EMPRESA CONFIG */
+async function loadEmpresaConfig(userId) {
+  try {
+    const { data } = await sb.from('configuracion_empresa').select('*')
+      .eq('auth_user_id', userId).maybeSingle();
+    if (data) {
+      S.empresaConfig = data;
+      S.moneda = data.moneda || 'C$';
+      const bizName = data.nombre_negocio || data.nombre || 'Negocio360';
+      const lt = document.getElementById('sidebar-logo-text');
+      if (lt) lt.textContent = bizName;
+      if (data.color_primario) {
+        document.documentElement.style.setProperty('--accent', data.color_primario);
+        document.documentElement.style.setProperty('--accent-soft', data.color_primario+'22');
+        document.documentElement.style.setProperty('--border-focus', data.color_primario);
+      }
+      if (data.logo_url) {
+        const li = document.querySelector('.logo-icon');
+        if (li) li.innerHTML = `<img src="${data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+      }
+    }
+  } catch(e) { console.warn('loadEmpresaConfig:', e); }
+}
+
+async function loadUserProfile(userId) {
+  try { const { data } = await sb.from('usuarios').select('*').eq('auth_user_id', userId).maybeSingle(); return data; }
+  catch { return null; }
+}
+
+function renderUserInfo(user, email) {
+  if (!user) return;
+  const nombre   = user.nombre   || email?.split('@')[0] || 'Usuario';
+  const apellido = user.apellido || '';
+  const biz      = S.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
+  const plan     = user.plan || 'Gratuito';
+  const initials = ((nombre[0]||'')+(apellido[0]||'')).toUpperCase();
+  document.getElementById('header-name').textContent   = `${nombre} ${apellido}`.trim();
+  document.getElementById('header-biz').textContent    = biz;
+  document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
+  document.getElementById('plan-text').textContent     = plan.charAt(0).toUpperCase()+plan.slice(1);
+}
+
+/* =====================================================
+   CARGAR IMPUESTOS (historial + saldo)
+===================================================== */
+async function cargarImpuestos() {
+  const tbody = document.getElementById('impuestos-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Cargando movimientos…</td></tr>';
+
+  try {
+    const { data, error } = await sb.from('movimientos_impuestos').select('*')
+      .eq('auth_user_id', S.userId)
+      .order('created_at', { ascending:false })
+      .limit(100);
+
+    if (error) throw error;
+    S.movimientos = data || [];
+
+    // Saldo actual = saldo_resultante del movimiento más reciente
+    S.saldoActual = S.movimientos.length ? Number(S.movimientos[0].saldo_resultante) || 0 : 0;
+
+    renderHero();
+    renderTabla();
+    renderMiniKPIs();
+  } catch(e) {
+    console.warn('cargarImpuestos:', e);
+    S.movimientos = [];
+    S.saldoActual = 0;
+    renderHero();
+    if (tbody) tbody.innerHTML = `
+      <tr><td colspan="5" class="empty-cell">
+        <div class="empty-icon">📋</div>
+        <p>Aún no hay movimientos de impuestos registrados.</p>
+      </td></tr>`;
+  }
+}
+
+function renderHero() {
+  const totalEl = document.getElementById('iva-total');
+  const subEl   = document.getElementById('iva-total-sub');
+  const btnPagar= document.getElementById('btn-pagar-iva');
+
+  totalEl.innerHTML = `<span class="currency-symbol">${sym()}</span>${Number(S.saldoActual).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  if (S.saldoActual > 0) {
+    subEl.textContent = 'Este monto se ha acumulado a partir del IVA cobrado en tus ventas';
+    if (btnPagar) btnPagar.disabled = false;
+  } else {
+    subEl.textContent = 'Aún no se ha acumulado impuesto';
+    if (btnPagar) btnPagar.disabled = true;
+  }
+}
+
+function renderMiniKPIs() {
+  const mesStart = startOfMonthISO();
+  const ivaMes = S.movimientos
+    .filter(m => m.tipo_movimiento === 'IVA_VENTA' && (m.fecha||'') >= mesStart)
+    .reduce((s,m) => s + (Number(m.monto)||0), 0);
+
+  const pagosTotal = S.movimientos
+    .filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO')
+    .reduce((s,m) => s + (Number(m.monto)||0), 0);
+
+  const ultimoPago = S.movimientos.find(m => m.tipo_movimiento === 'PAGO_IMPUESTO');
+
+  document.getElementById('iva-mes').textContent = fmt(ivaMes);
+  document.getElementById('iva-pagado-total').textContent = fmt(pagosTotal);
+  document.getElementById('iva-ultimo-pago').textContent = ultimoPago ? fmtFecha(ultimoPago.created_at || ultimoPago.fecha) : 'Sin pagos aún';
+}
+
+function renderTabla() {
+  const tbody = document.getElementById('impuestos-tbody');
+  if (!tbody) return;
+
+  if (!S.movimientos.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="5" class="empty-cell">
+        <div class="empty-icon">📋</div>
+        <p>Aún no hay movimientos de impuestos registrados.</p>
+      </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = S.movimientos.map(m => {
+    const esPago = m.tipo_movimiento === 'PAGO_IMPUESTO';
+    return `
+    <tr>
+      <td class="td-fecha">${fmtFecha(m.created_at || m.fecha)}</td>
+      <td><span class="tipo-badge ${esPago?'pago':'iva'}">${esPago?'Pago':'IVA venta'}</span></td>
+      <td>${esc(m.concepto||'—')}</td>
+      <td class="td-monto ${esPago?'out':'in'}">${esPago?'-':'+'}${fmt(m.monto)}</td>
+      <td class="td-saldo">${fmt(m.saldo_resultante)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* =====================================================
+   PAGAR IMPUESTOS
+===================================================== */
+function abrirConfirmarPago() {
+  if (S.saldoActual <= 0) return;
+  document.getElementById('modal-pagar-monto').textContent = fmt(S.saldoActual);
+  openModal('modal-pagar');
+}
+
+async function pagarImpuestos() {
+  const btn = document.getElementById('btn-confirmar-pago');
+  if (btn) btn.disabled = true;
+
+  try {
+    const montoPagado = S.saldoActual;
+    if (montoPagado <= 0) { closeModal('modal-pagar'); return; }
+
+    const { error } = await sb.from('movimientos_impuestos').insert({
+      auth_user_id:     S.userId,
+      tipo_movimiento:  'PAGO_IMPUESTO',
+      concepto:         'Pago de impuestos (IVA)',
+      monto:            montoPagado,
+      saldo_anterior:   montoPagado,
+      saldo_resultante: 0,
+      fecha:            todayISO(),
+    });
+    if (error) throw error;
+
+    closeModal('modal-pagar');
+    showToast(`✅ Pago de ${fmt(montoPagado)} registrado. Saldo en cero.`, 'success');
+    await cargarImpuestos();
+  } catch(e) {
+    console.error('pagarImpuestos:', e);
+    showToast('Error al registrar el pago: ' + (e.message||'intenta de nuevo'), 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+window.navigate = navigate;
+window.toggleSidebar = toggleSidebar;
+window.toggleTheme = toggleTheme;
+window.closeModal = closeModal;
+window.cargarImpuestos = cargarImpuestos;
+window.abrirConfirmarPago = abrirConfirmarPago;
+window.pagarImpuestos = pagarImpuestos;
+
+/* KEYBOARD */
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal('modal-pagar'); });
+
+/* =====================================================
+   INIT
+===================================================== */
+async function initImpuestos() {
+  applyTheme(localStorage.getItem('n360_theme') || 'light');
+
+  const now = new Date();
+  const fechaEl = document.getElementById('header-fecha');
+  if (fechaEl) fechaEl.textContent = now.toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  try {
+    const { data:{ user }, error } = await sb.auth.getUser();
+    if (error || !user) { window.location.href = 'login.html'; return; }
+
+    S.userId = user.id;
+    S.userEmail = user.email;
+
+    if (user.email) checkAdminAccess(user.email);
+
+    await loadEmpresaConfig(user.id);
+
+    const profile = await loadUserProfile(user.id);
+    if (profile) renderUserInfo(profile, user.email);
+    else {
+      document.getElementById('header-name').textContent   = user.email?.split('@')[0] || 'Usuario';
+      document.getElementById('header-avatar').textContent = (user.email||'U')[0].toUpperCase();
+    }
+
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+
+    await cargarImpuestos();
+
+  } catch(err) {
+    console.error('initImpuestos:', err);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+sb.auth.onAuthStateChange((event) => { if (event==='SIGNED_OUT') window.location.href = 'login.html'; });
+
+document.addEventListener('DOMContentLoaded', () => {
+  initImpuestos();
+  if (window.lucide) lucide.createIcons();
+});
+</script>
+</body>
+</html>
