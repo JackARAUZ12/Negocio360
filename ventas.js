@@ -282,20 +282,24 @@ async function loadKPIs() {
 
   try {
     // Ventas del día
-    const { data: dia } = await sb.from('ventas').select('total,ganancia')
+    // FIX: se pide también "impuesto" para poder mostrar el ingreso NETO
+    // (sin IVA). El IVA no es ingreso del negocio, es dinero recaudado
+    // para el fisco y ya se contabiliza aparte en el módulo de Impuestos.
+    const { data: dia } = await sb.from('ventas').select('total,ganancia,impuesto')
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', today).lte('fecha', today);
 
-    const totalDia = (dia||[]).reduce((s,r) => s+Number(r.total),0);
+    const totalDia = (dia||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     setKPI('kpi-dia', fmt(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
       dia?.length > 0 ? `${dia.length} venta${dia.length!==1?'s':''} hoy` : 'Sin ventas hoy', 'sym-dia');
 
     // Ventas del mes
-    const { data: mes } = await sb.from('ventas').select('total,ganancia,fecha')
+    // FIX: mismo criterio — ingreso NETO de IVA
+    const { data: mes } = await sb.from('ventas').select('total,ganancia,fecha,impuesto')
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', mesStart).lte('fecha', today);
 
-    const totalMes = (mes||[]).reduce((s,r) => s+Number(r.total),0);
+    const totalMes = (mes||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     const ganMes   = (mes||[]).reduce((s,r) => s+Number(r.ganancia),0);
     const cnt      = mes?.length || 0;
     const ticket   = cnt > 0 ? totalMes/cnt : 0;
