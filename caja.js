@@ -425,10 +425,12 @@ async function loadResumen() {
     // (referencia_tipo es null). Esos son los que hoy no se ven ni en
     // Ventas ni en Gastos, así que se muestran aparte aquí y también
     // se reflejan en el resumen financiero del Dashboard.
-    // Se excluye CAPITAL_AGREGADO del lado ingreso porque es capital
-    // aportado, no ingreso operativo del mes.
+    // Cuentan TODAS las categorías manuales (venta, cobro, ingreso a
+    // caja, otro ingreso, etc.) — lo que define si algo es "otro
+    // ingreso/egreso" es que no tenga referencia_tipo, no la categoría
+    // elegida en el formulario.
     const otrosIngresos = movs
-      .filter(r => r.tipo_flujo === 'INGRESO' && !r.referencia_tipo && r.tipo_movimiento !== 'CAPITAL_AGREGADO')
+      .filter(r => r.tipo_flujo === 'INGRESO' && !r.referencia_tipo)
       .reduce((s, r) => s + Number(r.monto || 0), 0);
 
     const otrosEgresos = movs
