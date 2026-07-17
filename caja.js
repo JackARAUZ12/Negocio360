@@ -383,8 +383,17 @@ async function loadResumen() {
 
     const movs = data || [];
 
-    const ingresos = movs.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const egresos  = movs.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    // "Ingresos del mes" / "Egresos del mes" reflejan solo movimientos
+    // LIGADOS a otra parte del sistema (venta, compra de producto, etc.
+    // — tienen referencia_tipo). Los movimientos manuales de Caja
+    // (referencia_tipo null) ya NO se cuentan aquí: esos van
+    // exclusivamente en "Otros ingresos" / "Otros egresos" más abajo,
+    // para no duplicarlos entre las dos tarjetas.
+    const movsIngresoRef = movs.filter(r => r.tipo_flujo === 'INGRESO' && r.referencia_tipo);
+    const movsEgresoRef  = movs.filter(r => r.tipo_flujo === 'EGRESO'  && r.referencia_tipo);
+
+    const ingresos = movsIngresoRef.reduce((s,r) => s + Number(r.monto), 0);
+    const egresos  = movsEgresoRef.reduce((s,r)  => s + Number(r.monto), 0);
     const totalMov = movs.length;
 
     setEl('kpi-caja', fmt(STATE.caja));
@@ -394,12 +403,12 @@ async function loadResumen() {
 
     setEl('kpi-ingresos', fmt(ingresos));
     setDelta('kpi-ingresos-delta',
-      ingresos > 0 ? `${movs.filter(r=>r.tipo_flujo==='INGRESO').length} entradas` : 'Sin ingresos este mes',
+      ingresos > 0 ? `${movsIngresoRef.length} entradas` : 'Sin ingresos este mes',
       ingresos > 0);
 
     setEl('kpi-egresos', fmt(egresos));
     setDelta('kpi-egresos-delta',
-      egresos > 0 ? `${movs.filter(r=>r.tipo_flujo==='EGRESO').length} salidas` : 'Sin egresos este mes',
+      egresos > 0 ? `${movsEgresoRef.length} salidas` : 'Sin egresos este mes',
       false);
 
     setEl('kpi-movimientos', totalMov.toString());
