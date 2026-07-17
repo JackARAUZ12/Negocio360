@@ -375,15 +375,17 @@ async function loadResumen() {
   try {
     const { data } = await sbClient
       .from('movimientos_financieros')
-      .select('tipo_flujo, monto, fecha')
+      .select('tipo_flujo, monto, fecha, referencia_tipo, tipo_movimiento')
       .eq('auth_user_id', STATE.userId)
       .eq('estado', 'completado')
       .gte('fecha', monthStart)
       .lte('fecha', today);
 
-    const ingresos = (data||[]).filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const egresos  = (data||[]).filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
-    const totalMov = (data||[]).length;
+    const movs = data || [];
+
+    const ingresos = movs.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
+    const egresos  = movs.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    const totalMov = movs.length;
 
     setEl('kpi-caja', fmt(STATE.caja));
     setDelta('kpi-caja-delta',
@@ -392,12 +394,12 @@ async function loadResumen() {
 
     setEl('kpi-ingresos', fmt(ingresos));
     setDelta('kpi-ingresos-delta',
-      ingresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='INGRESO').length} entradas` : 'Sin ingresos este mes',
+      ingresos > 0 ? `${movs.filter(r=>r.tipo_flujo==='INGRESO').length} entradas` : 'Sin ingresos este mes',
       ingresos > 0);
 
     setEl('kpi-egresos', fmt(egresos));
     setDelta('kpi-egresos-delta',
-      egresos > 0 ? `${(data||[]).filter(r=>r.tipo_flujo==='EGRESO').length} salidas` : 'Sin egresos este mes',
+      egresos > 0 ? `${movs.filter(r=>r.tipo_flujo==='EGRESO').length} salidas` : 'Sin egresos este mes',
       false);
 
     setEl('kpi-movimientos', totalMov.toString());
@@ -407,6 +409,33 @@ async function loadResumen() {
 
     const cajaEl = document.getElementById('kpi-caja');
     if (cajaEl) cajaEl.style.color = STATE.caja >= 0 ? '' : 'var(--danger)';
+
+    // ── NUEVO: "Otros ingresos" / "Otros egresos" ─────────────────
+    // Movimientos registrados manualmente desde Caja ("Nuevo movimiento")
+    // que NO están ligados a una venta, compra de producto ni gasto
+    // (referencia_tipo es null). Esos son los que hoy no se ven ni en
+    // Ventas ni en Gastos, así que se muestran aparte aquí y también
+    // se reflejan en el resumen financiero del Dashboard.
+    // Se excluye CAPITAL_AGREGADO del lado ingreso porque es capital
+    // aportado, no ingreso operativo del mes.
+    const otrosIngresos = movs
+      .filter(r => r.tipo_flujo === 'INGRESO' && !r.referencia_tipo && r.tipo_movimiento !== 'CAPITAL_AGREGADO')
+      .reduce((s, r) => s + Number(r.monto || 0), 0);
+
+    const otrosEgresos = movs
+      .filter(r => r.tipo_flujo === 'EGRESO' && !r.referencia_tipo)
+      .reduce((s, r) => s + Number(r.monto || 0), 0);
+
+    setEl('kpi-otros-ingresos', fmt(otrosIngresos));
+    setDelta('kpi-otros-ingresos-delta',
+      otrosIngresos > 0 ? 'Movimientos manuales de Caja' : 'Sin otros ingresos',
+      otrosIngresos > 0);
+
+    setEl('kpi-otros-egresos', fmt(otrosEgresos));
+    setDelta('kpi-otros-egresos-delta',
+      otrosEgresos > 0 ? 'Movimientos manuales de Caja' : 'Sin otros egresos',
+      false);
+    // ────────────────────────────────────────────────────────────
 
   } catch(e) { console.warn('loadResumen:', e); }
 }
