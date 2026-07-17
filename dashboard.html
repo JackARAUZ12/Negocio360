@@ -1687,7 +1687,7 @@ async function loadOtrosMovimientosCaja(userId) {
     const movs = data || [];
 
     dashData.otrosIngresosM = movs
-      .filter(r => r.tipo_flujo === 'INGRESO' && r.tipo_movimiento !== 'CAPITAL_AGREGADO')
+      .filter(r => r.tipo_flujo === 'INGRESO')
       .reduce((s, r) => s + Number(r.monto || 0), 0);
 
     dashData.otrosEgresosM = movs
