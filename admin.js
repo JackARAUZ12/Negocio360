@@ -19,6 +19,16 @@ let allCodes      = [];
 let userFilter    = 'all';
 let pendingAction = null;  // función pendiente de confirmación
 
+// Estado del chat / atención al cliente
+let allConversaciones   = [];
+let chatFilter          = 'activas';
+let currentConvId       = null;
+let currentConvUsuario  = null;
+let soporteMsgChannel   = null;
+let soporteConvChannel  = null;
+let soporteGlobalChannel = null;
+let soporteSeenIds      = new Set();
+
 // ── HELPERS DOM ────────────────────────────────────────────
 const $  = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
@@ -84,6 +94,7 @@ function navigate(section) {
   if (section === 'dashboard') loadDashboardStats();
   if (section === 'users')     loadUsers();
   if (section === 'codes')     loadCodes();
+  if (section === 'soporte')   loadConversaciones();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
@@ -827,6 +838,289 @@ async function createCode() {
   }
 }
 
+// ============================================================
+// SECCIÓN 4 — ATENCIÓN AL CLIENTE (CHAT)
+// ============================================================
+
+// Carga la lista de conversaciones y las cruza con los datos del usuario
+async function loadConversaciones() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const listEl = document.getElementById('conv-list');
+  if (listEl) listEl.innerHTML = '<div class="payment-empty">Cargando...</div>';
+
+  try {
+    const { data: convs, error } = await sb
+      .from('conversaciones_chat')
+      .select('*')
+      .order('ultimo_mensaje_at', { ascending: false });
+
+    if (error) throw error;
+
+    const userIds = [...new Set((convs || []).map(c => c.auth_user_id))];
+    let usuariosMap = {};
+    if (userIds.length) {
+      const { data: usuarios } = await sb
+        .from('usuarios')
+        .select('auth_user_id, nombre, apellido, email, nombre_negocio')
+        .in('auth_user_id', userIds);
+      (usuarios || []).forEach(u => { usuariosMap[u.auth_user_id] = u; });
+    }
+
+    allConversaciones = (convs || []).map(c => ({
+      ...c,
+      _usuario: usuariosMap[c.auth_user_id] || null
+    }));
+
+    renderConvList();
+    updateSoporteBadge();
+    subscribeSoporteGlobal();
+
+  } catch (e) {
+    toast('Error al cargar conversaciones', e.message, 'error');
+    if (listEl) listEl.innerHTML = '<div class="payment-empty">No se pudieron cargar las conversaciones</div>';
+  }
+}
+
+function updateSoporteBadge() {
+  const activas = allConversaciones.filter(c => c.estado === 'activa').length;
+  const badge = document.getElementById('soporte-nav-badge');
+  if (!badge) return;
+  if (activas > 0) {
+    badge.textContent = activas;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function applyChatFilter(filter) {
+  chatFilter = filter;
+  $$('[data-chatfilter]').forEach(b => b.classList.toggle('active', b.dataset.chatfilter === filter));
+  renderConvList();
+}
+
+function renderConvList() {
+  const el = document.getElementById('conv-list');
+  if (!el) return;
+
+  const filtered = allConversaciones.filter(c =>
+    chatFilter === 'activas' ? c.estado === 'activa' : c.estado === 'finalizada'
+  );
+
+  if (!filtered.length) {
+    el.innerHTML = `<div class="payment-empty">${chatFilter === 'activas' ? 'No hay conversaciones activas' : 'No hay conversaciones finalizadas'}</div>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map(c => {
+    const u = c._usuario;
+    const nombre = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email) : 'Cliente';
+    const initial = (nombre || 'C').charAt(0).toUpperCase();
+    const selected = c.id === currentConvId ? 'selected' : '';
+    return `
+      <div class="conv-item ${selected}" onclick="selectConversation('${c.id}')">
+        <div class="conv-item-avatar">${escHtml(initial)}</div>
+        <div class="conv-item-info">
+          <div class="conv-item-name">${escHtml(nombre)}</div>
+          <div class="conv-item-preview">${u ? escHtml(u.nombre_negocio || u.email) : ''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="conv-item-dot ${c.estado}"></span>
+          <span class="conv-item-time">${formatDateTimeShort(c.ultimo_mensaje_at)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Selecciona una conversación y carga sus mensajes
+async function selectConversation(convId) {
+  currentConvId = convId;
+  soporteSeenIds = new Set();
+  renderConvList();
+
+  const conv = allConversaciones.find(c => c.id === convId);
+  if (!conv) return;
+  currentConvUsuario = conv._usuario;
+
+  document.getElementById('soporte-empty').style.display = 'none';
+  document.getElementById('soporte-active').style.display = 'flex';
+
+  const nombre = currentConvUsuario
+    ? ([currentConvUsuario.nombre, currentConvUsuario.apellido].filter(Boolean).join(' ') || currentConvUsuario.email)
+    : 'Cliente';
+  document.getElementById('chat-cliente-nombre').textContent = nombre;
+  document.getElementById('chat-cliente-sub').textContent = currentConvUsuario
+    ? (currentConvUsuario.nombre_negocio || currentConvUsuario.email || '')
+    : '';
+
+  document.getElementById('soporte-messages').innerHTML = '';
+  setSoporteInputState(conv.estado === 'activa');
+
+  await loadSoporteMessages(convId);
+  subscribeSoporteConversacion(convId);
+}
+
+async function loadSoporteMessages(convId) {
+  try {
+    const { data, error } = await sb
+      .from('mensajes_chat')
+      .select('*')
+      .eq('conversacion_id', convId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    (data || []).forEach(renderSoporteMessage);
+  } catch (e) {
+    toast('Error al cargar mensajes', e.message, 'error');
+  }
+}
+
+function setSoporteInputState(activa) {
+  document.getElementById('soporte-input-bar').style.display = activa ? 'flex' : 'none';
+  document.getElementById('soporte-finalizada-banner').style.display = activa ? 'none' : 'block';
+  const btnFinalizar = document.getElementById('btn-finalizar-chat');
+  if (btnFinalizar) btnFinalizar.style.display = activa ? 'flex' : 'none';
+}
+
+function renderSoporteMessage(m) {
+  if (soporteSeenIds.has(m.id)) return;
+  soporteSeenIds.add(m.id);
+
+  const row = document.createElement('div');
+  row.className = 'chat-msg-row ' + m.remitente;
+
+  let inner = '';
+  if (m.tipo === 'texto') {
+    inner = `<div>${escHtml(m.contenido).replace(/\n/g, '<br>')}</div>`;
+  } else if (m.tipo === 'imagen') {
+    inner = `<img src="${m.archivo_url}" alt="imagen" onclick="window.open('${m.archivo_url}','_blank')">`;
+  } else if (m.tipo === 'documento') {
+    inner = `<a class="doc-link" href="${m.archivo_url}" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      ${escHtml(m.archivo_nombre || 'Documento')}
+    </a>`;
+  } else if (m.tipo === 'audio') {
+    inner = `<audio controls src="${m.archivo_url}"></audio>`;
+  }
+
+  row.innerHTML = `<div><div class="chat-msg-bubble">${inner}</div><div class="chat-msg-time">${formatTime(m.created_at)}</div></div>`;
+  const container = document.getElementById('soporte-messages');
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendAdminMessage() {
+  const input = document.getElementById('soporte-input');
+  const text = input.value.trim();
+  if (!text || !currentConvId) return;
+
+  const conv = allConversaciones.find(c => c.id === currentConvId);
+  if (!conv || conv.estado !== 'activa') { toast('Esta conversación ya fue finalizada', '', 'warning'); return; }
+
+  input.value = '';
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { data, error } = await sb
+      .from('mensajes_chat')
+      .insert({
+        conversacion_id: currentConvId,
+        auth_user_id: conv.auth_user_id,
+        remitente: 'admin',
+        tipo: 'texto',
+        contenido: text
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    renderSoporteMessage(data);
+  } catch (e) {
+    toast('No se pudo enviar el mensaje', e.message, 'error');
+  }
+}
+
+// Botón "Finalizar conversación" — solo visible/usable por administradores
+// (esta sección completa ya está protegida por verifyAdmin() al cargar la página)
+function confirmFinalizarChat() {
+  if (!currentConvId) return;
+
+  document.getElementById('confirm-icon').className = 'confirm-icon danger';
+  document.getElementById('confirm-icon').textContent = '✕';
+  document.getElementById('confirm-title').textContent = '¿Finalizar esta conversación?';
+  document.getElementById('confirm-sub').innerHTML = 'El cliente ya no podrá enviar más mensajes en esta conversación. Se eliminará automáticamente 72 horas después de finalizada. Si el cliente quiere hablar de nuevo, deberá iniciar una nueva conversación.';
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-danger';
+  btn.textContent = 'Sí, finalizar';
+
+  window._pendingAction = { accion: 'finalizar-chat', convId: currentConvId };
+  openModal('modal-confirm');
+}
+
+async function executeFinalizarChat(convId) {
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('conversaciones_chat')
+      .update({ estado: 'finalizada', finalizada_at: new Date().toISOString() })
+      .eq('id', convId);
+    if (error) throw error;
+
+    closeModal('modal-confirm');
+    toast('Conversación finalizada', 'El cliente ya no puede enviar mensajes', 'success');
+
+    const idx = allConversaciones.findIndex(c => c.id === convId);
+    if (idx !== -1) allConversaciones[idx].estado = 'finalizada';
+
+    if (currentConvId === convId) setSoporteInputState(false);
+
+    renderConvList();
+    updateSoporteBadge();
+
+  } catch (e) {
+    toast('Error al finalizar la conversación', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+// Realtime: nuevos mensajes en la conversación abierta
+function subscribeSoporteConversacion(convId) {
+  if (soporteMsgChannel) sb.removeChannel(soporteMsgChannel);
+  if (soporteConvChannel) sb.removeChannel(soporteConvChannel);
+
+  soporteMsgChannel = sb.channel('admin-msgs-' + convId)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_chat', filter: `conversacion_id=eq.${convId}` },
+      payload => renderSoporteMessage(payload.new))
+    .subscribe();
+
+  soporteConvChannel = sb.channel('admin-conv-' + convId)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversaciones_chat', filter: `id=eq.${convId}` },
+      payload => {
+        const idx = allConversaciones.findIndex(c => c.id === convId);
+        if (idx !== -1) allConversaciones[idx].estado = payload.new.estado;
+        if (currentConvId === convId) setSoporteInputState(payload.new.estado === 'activa');
+        renderConvList();
+      })
+    .subscribe();
+}
+
+// Realtime: nuevas conversaciones / cambios generales (para refrescar la lista y el badge)
+function subscribeSoporteGlobal() {
+  if (soporteGlobalChannel) return; // ya suscrito
+  soporteGlobalChannel = sb.channel('admin-conv-global')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones_chat' },
+      () => loadConversaciones())
+    .subscribe();
+}
+
 // ── CONFIRM DISPATCHER ─────────────────────────────────────
 async function dispatchConfirm() {
   const pending = window._pendingAction;
@@ -834,6 +1128,8 @@ async function dispatchConfirm() {
 
   if (pending.accion === 'delete-code') {
     await executeConfirmDeleteCode(pending.codeId);
+  } else if (pending.accion === 'finalizar-chat') {
+    await executeFinalizarChat(pending.convId);
   } else {
     await executeConfirmAction();
   }
@@ -857,6 +1153,25 @@ function formatDate(iso) {
       day: '2-digit', month: 'short', year: 'numeric'
     });
   } catch { return '—'; }
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+function formatDateTimeShort(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    return sameDay
+      ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+  } catch { return ''; }
 }
 
 function estadoBadge(estado) {
@@ -913,6 +1228,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   $$('#page-users .filter-btn').forEach(btn => {
     btn.addEventListener('click', () => applyUserFilter(btn.dataset.filter));
   });
+
+  // Evento: filtros de conversaciones (Activas / Finalizadas)
+  $$('[data-chatfilter]').forEach(btn => {
+    btn.addEventListener('click', () => applyChatFilter(btn.dataset.chatfilter));
+  });
+
+  // Evento: enviar mensaje de soporte
+  document.getElementById('btn-send-admin').addEventListener('click', sendAdminMessage);
+  document.getElementById('soporte-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); sendAdminMessage(); }
+  });
+
+  // Evento: finalizar conversación (solo visible para administradores autenticados)
+  document.getElementById('btn-finalizar-chat').addEventListener('click', confirmFinalizarChat);
 
   // Evento: cerrar modales con X
   $$('.modal-close').forEach(btn => {
