@@ -11,6 +11,11 @@ const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'; // �
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ── CONFIGURACIÓN DE COBRO ─────────────────────────────────
+// Precio mensual del plan Premium usado en el comprobante de pago.
+// Cambia este valor si el precio de la suscripción cambia.
+const PRECIO_PREMIUM_USD = 10.00;
+
 // ── ESTADO GLOBAL ──────────────────────────────────────────
 let currentUser   = null;
 let adminRecord   = null;
@@ -255,6 +260,46 @@ function showPaymentListsLoading() {
 // NOTA: por defecto solo se controla el pago de usuarios con plan
 // "premium" (los usuarios en "prueba" no pagan). Si tu negocio cobra
 // también el plan de prueba, quita la condición `u.plan !== 'premium'`.
+
+// Calcula la fecha de vencimiento ("día de pago") para un año/mes dados,
+// a partir del día de registro del usuario. Se reutiliza tanto para el
+// ciclo actual como para calcular el próximo ciclo, así ambos cálculos
+// quedan siempre alineados con la misma lógica.
+function calcDueDateForMonth(regDate, year, month) {
+  const regDay = regDate.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dueDay = Math.min(regDay, daysInMonth);
+  return new Date(year, month, dueDay);
+}
+
+// Fecha de vencimiento del ciclo correspondiente al mes de "today".
+function getCurrentCycleDueDate(u, today) {
+  if (!u.created_at) return null;
+  const reg = new Date(u.created_at);
+  const t = new Date(today);
+  return calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
+}
+
+// Fecha de vencimiento del ciclo siguiente (un mes después del actual).
+// Se usa para mostrarle al administrador cuándo tocará el próximo pago
+// justo antes/después de marcar el pago actual como recibido.
+function getNextCycleDueDate(u, today) {
+  const current = getCurrentCycleDueDate(u, today);
+  if (!current) return null;
+  const reg = new Date(u.created_at);
+  const nextMonthIndex = current.getMonth() + 1;
+  const year  = current.getFullYear() + Math.floor(nextMonthIndex / 12);
+  const month = ((nextMonthIndex % 12) + 12) % 12;
+  return calcDueDateForMonth(reg, year, month);
+}
+
+// Nombre de mes + año, con la primera letra en mayúscula (ej. "Julio 2026")
+function formatMesAnio(date) {
+  if (!date) return '—';
+  const txt = date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
 function getPaymentInfo(u, today) {
   if (!u.created_at) return null;
   if (u.plan !== 'premium') return null;
@@ -262,7 +307,6 @@ function getPaymentInfo(u, today) {
 
   const reg = new Date(u.created_at);
   reg.setHours(0, 0, 0, 0);
-  const regDay = reg.getDate();
 
   const t = new Date(today);
   t.setHours(0, 0, 0, 0);
@@ -272,9 +316,7 @@ function getPaymentInfo(u, today) {
   if (monthsSinceReg <= 0) return null; // Aún dentro del primer mes (se "pagó" al registrarse)
 
   // Fecha de vencimiento de este mes (ajustada si el mes tiene menos días)
-  const daysInMonth = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
-  const dueDay  = Math.min(regDay, daysInMonth);
-  const dueDate = new Date(t.getFullYear(), t.getMonth(), dueDay);
+  const dueDate = calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
 
   // ¿Ya se marcó como pagado el ciclo que corresponde a este vencimiento?
   if (u.fecha_ultimo_pago) {
@@ -417,6 +459,8 @@ function renderUsersTable(users) {
 
   if (!users.length) { renderUsersEmpty(); return; }
 
+  const today = new Date();
+
   tbody.innerHTML = users.map(u => `
     <tr>
       <td>${escHtml(u.nombre || '—')}</td>
@@ -435,10 +479,13 @@ function renderUsersTable(users) {
             Ver
           </button>
           ${u.plan === 'premium'
-            ? `<button class="btn-icon btn-primary btn-sm" onclick="markAsPaid('${u.id}')" title="Marcar que ya pagó este mes">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Marcar Pagado
-              </button>`
+            ? `<div class="marcar-pagado-wrap">
+                <button class="btn-icon btn-primary btn-sm" onclick="openConfirmMarkPaid('${u.id}')" title="Marcar que ya pagó este mes y enviarle el comprobante">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Marcar Pagado
+                </button>
+                ${u.created_at ? `<span class="next-pago-hint">Próx. pago: ${formatDate(getNextCycleDueDate(u, today))}</span>` : ''}
+              </div>`
             : ''}
           ${u.estado_cuenta !== 'activa'
             ? `<button class="btn-icon btn-success btn-sm" onclick="openConfirmAction('activar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Activar</button>`
@@ -506,37 +553,266 @@ function viewUser(id) {
   openModal('modal-view-user');
 }
 
-// Marcar usuario como "pagado" este ciclo — solo actualiza fecha_ultimo_pago.
-// No cambia el plan ni el estado de la cuenta: únicamente le informa a las
-// listas de pagos del dashboard que este mes ya está cubierto, para que dejen
-// de mostrarlo hasta que se acerque su próxima fecha de pago.
-async function markAsPaid(userId) {
+// ============================================================
+// MARCAR PAGADO → genera comprobante PDF y lo envía por chat
+// ============================================================
+// Flujo:
+//   1. El admin hace clic en "Marcar Pagado" → openConfirmMarkPaid()
+//      muestra un modal de confirmación con el nombre del cliente,
+//      el mes que se está pagando, el monto y la fecha del próximo pago.
+//   2. Al confirmar → executeMarkAsPaid():
+//        a) Actualiza fecha_ultimo_pago en la tabla "usuarios".
+//        b) Genera un comprobante de pago en PDF (jsPDF).
+//        c) Busca (o crea) una conversación activa de soporte para ese
+//           cliente y sube el PDF al bucket "chat-archivos".
+//        d) Inserta un mensaje de texto + el documento (comprobante)
+//           en esa conversación, como si el administrador se los
+//           enviara al cliente por el chat de Atención al Cliente.
+//
+// NOTA IMPORTANTE SOBRE PERMISOS (Supabase):
+// Para que el paso (c) funcione, el bucket de Storage "chat-archivos"
+// debe permitir que un administrador (no el dueño del archivo) suba
+// documentos dentro de la carpeta del cliente. Si tu bucket restringe
+// las subidas a "auth.uid() = carpeta raíz del archivo", agrega esta
+// política en el SQL Editor de Supabase:
+//
+//   create policy "Admins pueden subir comprobantes para cualquier usuario"
+//   on storage.objects
+//   for insert
+//   to authenticated
+//   with check (
+//     bucket_id = 'chat-archivos'
+//     and exists (
+//       select 1 from public.administradores a
+//       where a.email = auth.email() and a.activo = true
+//     )
+//   );
+//
+// Si esa política ya existe o el bucket no tiene RLS restrictivo,
+// no necesitas hacer nada más.
+
+function openConfirmMarkPaid(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  if (!u.auth_user_id) {
+    toast('No se puede procesar', 'Este usuario no tiene una cuenta de acceso vinculada (auth_user_id), así que no se le puede enviar el comprobante por chat.', 'warning');
+    return;
+  }
+
+  const today = new Date();
+  const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'este cliente';
+  const cicloDueDate   = getCurrentCycleDueDate(u, today);
+  const mesPagadoTexto = cicloDueDate ? formatMesAnio(cicloDueDate) : formatMesAnio(today);
+  const nextDue        = getNextCycleDueDate(u, today);
+
+  document.getElementById('confirm-icon').className = 'confirm-icon success';
+  document.getElementById('confirm-icon').textContent = '✓';
+  document.getElementById('confirm-title').textContent = '¿Confirmar pago recibido?';
+  document.getElementById('confirm-sub').innerHTML =
+    `Se registrará el pago de <strong>${escHtml(nombreCompleto)}</strong> correspondiente a <strong>${escHtml(mesPagadoTexto)}</strong> por <strong>$${PRECIO_PREMIUM_USD.toFixed(2)} USD</strong>.<br><br>` +
+    `Se le enviará automáticamente un comprobante en su chat de soporte.` +
+    (nextDue ? `<br>Su próximo pago será el <strong>${escHtml(formatDate(nextDue))}</strong>.` : '');
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-success';
+  btn.textContent = 'Sí, marcar como pagado';
+
+  window._pendingAction = { accion: 'marcar-pagado', userId };
+  openModal('modal-confirm');
+}
+
+// Busca una conversación activa existente para el usuario; si no hay
+// ninguna, crea una nueva (igual que startConversation() en chat.html).
+async function getOrCreateActiveConversacion(authUserId) {
+  const { data: existing, error: errFind } = await sb
+    .from('conversaciones_chat')
+    .select('id')
+    .eq('auth_user_id', authUserId)
+    .eq('estado', 'activa')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (errFind) throw errFind;
+  if (existing) return existing.id;
+
+  const { data: created, error: errCreate } = await sb
+    .from('conversaciones_chat')
+    .insert({ auth_user_id: authUserId, estado: 'activa' })
+    .select('id')
+    .single();
+
+  if (errCreate) throw errCreate;
+  return created.id;
+}
+
+// Genera el PDF del comprobante de pago. Devuelve { blob, filename }.
+function generarComprobantePDF({ nombreCompleto, email, negocio, mesPagadoTexto, fechaPago, monto, proximoPago }) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const numero = 'CMP-' + Date.now().toString().slice(-8);
+
+  // Encabezado
+  doc.setFillColor(108, 99, 255);
+  doc.rect(0, 0, W, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20); doc.setFont(undefined, 'bold');
+  doc.text('Negocio360', 14, 20);
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+  doc.text('Comprobante de Pago', 14, 29);
+  doc.setFontSize(9);
+  doc.text(`N.º ${numero}`, W - 14, 18, { align: 'right' });
+  doc.text(`Emitido: ${fechaPago.toLocaleString('es-NI')}`, W - 14, 24, { align: 'right' });
+
+  let y = 52;
+  doc.setTextColor(20, 20, 30);
+  doc.setFontSize(12); doc.setFont(undefined, 'bold');
+  doc.text('Detalle del pago', 14, y);
+
+  const rows = [
+    ['Pago del mes',  mesPagadoTexto],
+    ['Fecha de pago', fechaPago.toLocaleDateString('es-NI', { day: '2-digit', month: 'long', year: 'numeric' })],
+    ['A nombre de',   nombreCompleto],
+    ['Correo',        email || '—'],
+    ['Negocio',       negocio || '—'],
+    ['Recibe',        'Negocio360'],
+    ['Monto',         `$${monto.toFixed(2)} USD`],
+  ];
+
+  doc.autoTable({
+    startY: y + 6,
+    body: rows,
+    theme: 'plain',
+    styles: { fontSize: 11, cellPadding: 4 },
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: [90, 90, 110], cellWidth: 55 },
+      1: { textColor: [20, 20, 30] },
+    },
+    didParseCell: (data) => {
+      if (data.row.index === rows.length - 1) {
+        data.cell.styles.fontSize = 14;
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.textColor = [108, 99, 255];
+      }
+    },
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 14;
+  doc.setDrawColor(230, 230, 235);
+  doc.line(14, finalY, W - 14, finalY);
+  finalY += 10;
+
+  doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.setTextColor(90, 90, 110);
+  if (proximoPago) {
+    doc.text(`Tu próximo pago será el ${proximoPago.toLocaleDateString('es-NI', { day: '2-digit', month: 'long', year: 'numeric' })}.`, 14, finalY);
+    finalY += 14;
+  }
+
+  doc.setFontSize(8.5); doc.setTextColor(140, 140, 160);
+  doc.text('Este comprobante fue generado automáticamente por Negocio360 y no requiere firma.', 14, finalY);
+
+  const filename = `comprobante_${numero}.pdf`;
+  const blob = doc.output('blob');
+  return { blob, filename };
+}
+
+// Ejecuta la acción completa al confirmar "Marcar Pagado"
+async function executeMarkAsPaid(userId) {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
 
-  try {
-    const hoyISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) { toast('Error', 'No se encontró el usuario', 'error'); return; }
+  if (!u.auth_user_id) {
+    toast('No se pudo enviar el comprobante', 'Este usuario no tiene una cuenta vinculada para chat', 'error');
+    return;
+  }
 
-    const { error } = await sb
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const today  = new Date();
+    const hoyISO = today.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // 1) Registrar el pago (solo actualiza fecha_ultimo_pago, igual que antes)
+    const { error: errPago } = await sb
       .from('usuarios')
       .update({ fecha_ultimo_pago: hoyISO })
       .eq('id', userId);
+    if (errPago) throw errPago;
 
-    if (error) throw error;
+    // 2) Generar el comprobante en PDF
+    const cicloDueDate   = getCurrentCycleDueDate(u, today);
+    const mesPagadoTexto = cicloDueDate ? formatMesAnio(cicloDueDate) : formatMesAnio(today);
+    const nextDue        = getNextCycleDueDate(u, today);
+    const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
 
-    const idx = allUsers.findIndex(u => u.id === userId);
+    const { blob, filename } = generarComprobantePDF({
+      nombreCompleto,
+      email: u.email,
+      negocio: u.nombre_negocio,
+      mesPagadoTexto,
+      fechaPago: today,
+      monto: PRECIO_PREMIUM_USD,
+      proximoPago: nextDue,
+    });
+
+    // 3) Buscar o crear una conversación activa para este cliente
+    const convId = await getOrCreateActiveConversacion(u.auth_user_id);
+
+    // 4) Subir el PDF al bucket de archivos del chat
+    const path = `${u.auth_user_id}/${convId}/${Date.now()}-${filename}`;
+    const { error: upErr } = await sb.storage
+      .from('chat-archivos')
+      .upload(path, blob, { contentType: 'application/pdf' });
+    if (upErr) throw upErr;
+
+    const { data: pub } = sb.storage.from('chat-archivos').getPublicUrl(path);
+
+    // 5) Enviar el mensaje de texto + el comprobante en el chat
+    const { error: errMsgTxt } = await sb.from('mensajes_chat').insert({
+      conversacion_id: convId,
+      auth_user_id: u.auth_user_id,
+      remitente: 'admin',
+      tipo: 'texto',
+      contenido: `¡Gracias por tu pago! Aquí tienes tu comprobante correspondiente a ${mesPagadoTexto}.`,
+    });
+    if (errMsgTxt) throw errMsgTxt;
+
+    const { error: errMsgDoc } = await sb.from('mensajes_chat').insert({
+      conversacion_id: convId,
+      auth_user_id: u.auth_user_id,
+      remitente: 'admin',
+      tipo: 'documento',
+      archivo_url: pub.publicUrl,
+      archivo_nombre: filename,
+    });
+    if (errMsgDoc) throw errMsgDoc;
+
+    // Actualizar copia local
+    const idx = allUsers.findIndex(x => x.id === userId);
     if (idx !== -1) allUsers[idx].fecha_ultimo_pago = hoyISO;
 
-    toast('Pago registrado', 'El cliente quedó marcado como pagado este mes', 'success');
+    closeModal('modal-confirm');
+    toast('Pago registrado y comprobante enviado', `Se envió el comprobante a ${nombreCompleto} por su chat de soporte`, 'success');
 
     filterAndSearch();
+    loadDashboardStats();
 
   } catch (e) {
-    toast('Error al registrar el pago', e.message, 'error');
+    toast('Error al procesar el pago', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
   }
 }
 
-// Confirmar acción sobre usuario
+// Confirmar acción sobre usuario (activar / suspender / cancelar)
 function openConfirmAction(accion, userId, nombre) {
   const msgs = {
     activar:   { title: '¿Activar esta cuenta?',   sub: `Se activará la cuenta de <strong>${nombre}</strong>.`,   icon: '✓', cls: 'success', btn: 'btn-success', label: 'Sí, activar'    },
@@ -1130,6 +1406,8 @@ async function dispatchConfirm() {
     await executeConfirmDeleteCode(pending.codeId);
   } else if (pending.accion === 'finalizar-chat') {
     await executeFinalizarChat(pending.convId);
+  } else if (pending.accion === 'marcar-pagado') {
+    await executeMarkAsPaid(pending.userId);
   } else {
     await executeConfirmAction();
   }
