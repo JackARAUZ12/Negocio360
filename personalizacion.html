@@ -351,24 +351,6 @@ textarea { resize:vertical; min-height:88px }
 .toggle-row.active .toggle-switch::after { left:21px; background:var(--accent) }
 
 /* ═══════════════════════════════════════════════════════════
-   TARJETAS DE TAMAÑO
-═══════════════════════════════════════════════════════════ */
-.size-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px }
-@media(max-width:640px) { .size-grid { grid-template-columns:repeat(2,1fr) } }
-.size-card {
-  padding:18px 14px; border-radius:var(--radius);
-  border:1px solid var(--border); background:var(--glass2);
-  text-align:center; cursor:pointer;
-  transition:border-color .2s, background .2s, transform .2s, box-shadow .2s;
-}
-.size-card:hover { transform:translateY(-3px); border-color:rgba(255,255,255,.2); box-shadow:0 8px 24px rgba(0,0,0,.15) }
-[data-theme="light"] .size-card:hover { border-color:rgba(0,0,0,.15) }
-.size-card.selected { border-color:var(--accent); background:rgba(110,231,183,.08) }
-.size-icon { font-size:1.9rem; margin-bottom:9px }
-.size-label { font-family:var(--font-head); font-size:.87rem; font-weight:700 }
-.size-range { font-size:.72rem; color:var(--muted); margin-top:3px }
-
-/* ═══════════════════════════════════════════════════════════
    COLOR PICKER
 ═══════════════════════════════════════════════════════════ */
 .color-row { display:flex; align-items:center; gap:10px }
@@ -414,7 +396,7 @@ textarea { resize:vertical; min-height:88px }
 .chip.selected { border-color:var(--accent); background:rgba(110,231,183,.12); color:var(--accent) }
 
 /* ═══════════════════════════════════════════════════════════
-   TARJETAS DE TEMA (dentro del paso 8)
+   TARJETAS DE TEMA (dentro del paso de identidad visual)
 ═══════════════════════════════════════════════════════════ */
 .theme-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px }
 .theme-card {
@@ -432,23 +414,6 @@ textarea { resize:vertical; min-height:88px }
 .theme-preview.dark  { background:linear-gradient(135deg,#0f172a,#1e293b) }
 .theme-name { font-weight:600; font-size:.88rem }
 .theme-desc { font-size:.74rem; color:var(--muted); margin-top:2px }
-
-/* ═══════════════════════════════════════════════════════════
-   OBJETIVOS IA
-═══════════════════════════════════════════════════════════ */
-.goals-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:9px }
-@media(max-width:480px) { .goals-grid { grid-template-columns:1fr } }
-.goal-card {
-  padding:14px 16px; border-radius:var(--radius);
-  border:1px solid var(--border); background:var(--glass2);
-  cursor:pointer; display:flex; align-items:center; gap:11px;
-  transition:border-color .2s, background .2s, transform .15s;
-}
-.goal-card:hover { transform:translateY(-2px); border-color:rgba(255,255,255,.2) }
-[data-theme="light"] .goal-card:hover { border-color:rgba(0,0,0,.15) }
-.goal-card.selected { border-color:var(--accent); background:rgba(110,231,183,.08) }
-.goal-icon { font-size:1.35rem; flex-shrink:0 }
-.goal-text { font-size:.86rem; font-weight:500 }
 
 /* ═══════════════════════════════════════════════════════════
    UPLOAD DE LOGOS
@@ -489,16 +454,6 @@ textarea { resize:vertical; min-height:88px }
 .section-divider::before,.section-divider::after {
   content:''; flex:1; height:1px; background:var(--border);
 }
-
-/* ═══════════════════════════════════════════════════════════
-   CONDICIONALES (desplegables)
-═══════════════════════════════════════════════════════════ */
-.conditional {
-  overflow:hidden; max-height:0;
-  transition:max-height .4s ease, opacity .4s ease;
-  opacity:0;
-}
-.conditional.show { max-height:300px; opacity:1 }
 
 /* ═══════════════════════════════════════════════════════════
    FOOTER DE CARD / BOTONES
@@ -605,17 +560,6 @@ textarea { resize:vertical; min-height:88px }
 @keyframes spin { to { transform:rotate(360deg) } }
 .saving-text { color:var(--muted); font-size:.88rem }
 
-/* ── Caja de info IA ── */
-.ia-info-box {
-  margin-top:26px; padding:18px 20px;
-  background:rgba(110,231,183,.06);
-  border:1px solid rgba(110,231,183,.18);
-  border-radius:var(--radius);
-  display:flex; align-items:flex-start; gap:12px;
-}
-.ia-info-title { font-size:.88rem; font-weight:600; margin-bottom:5px; color:var(--accent) }
-.ia-info-desc  { font-size:.8rem; color:var(--muted); line-height:1.6 }
-
 /* ═══════════════════════════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════════════════════════ */
@@ -673,7 +617,7 @@ textarea { resize:vertical; min-height:88px }
     <div class="progress-wrap">
       <div class="progress-header">
         <div class="progress-title">Personaliza tu espacio de trabajo</div>
-        <div class="progress-count" id="progressCount">Paso 1 de 9</div>
+        <div class="progress-count" id="progressCount">Paso 1 de 5</div>
       </div>
       <div class="step-track" id="stepTrack"></div>
       <div class="step-labels" id="stepLabels"></div>
@@ -753,39 +697,13 @@ textarea { resize:vertical; min-height:88px }
 
           <div class="section-divider"><span>Tamaño del equipo</span></div>
 
-          <div class="field" style="margin-bottom:18px">
+          <div class="field">
             <label>Cantidad aproximada de empleados <span class="opt">(opcional)</span></label>
             <input type="number" id="cantidad_empleados" placeholder="Ej: 5" min="1" style="max-width:200px">
           </div>
-
-          <div class="field">
-            <label>Tamaño del negocio <span class="req">*</span></label>
-            <div class="size-grid" style="margin-top:4px">
-              <div class="size-card" data-size="micro" onclick="selectSize(this)">
-                <div class="size-icon">🌱</div>
-                <div class="size-label">Microempresa</div>
-                <div class="size-range">1–10 empleados</div>
-              </div>
-              <div class="size-card" data-size="pequena" onclick="selectSize(this)">
-                <div class="size-icon">🚀</div>
-                <div class="size-label">Pequeña</div>
-                <div class="size-range">11–50 empleados</div>
-              </div>
-              <div class="size-card" data-size="mediana" onclick="selectSize(this)">
-                <div class="size-icon">🏗️</div>
-                <div class="size-label">Mediana</div>
-                <div class="size-range">51–250 empleados</div>
-              </div>
-              <div class="size-card" data-size="grande" onclick="selectSize(this)">
-                <div class="size-icon">🏛️</div>
-                <div class="size-label">Grande</div>
-                <div class="size-range">250+ empleados</div>
-              </div>
-            </div>
-          </div>
         </div>
         <div class="card-footer">
-          <div class="step-indicator">Paso 1 de 9</div>
+          <div class="step-indicator">Paso 1 de 5</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -872,7 +790,7 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 2 de 9</div>
+          <div class="step-indicator">Paso 2 de 5</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -960,7 +878,7 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 3 de 9</div>
+          <div class="step-indicator">Paso 3 de 5</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -973,7 +891,7 @@ textarea { resize:vertical; min-height:88px }
           <div class="step-icon gold">💰</div>
           <div>
             <div class="card-title">Configuración financiera</div>
-            <div class="card-subtitle">Define cómo manejará el sistema los importes, impuestos y crédito comercial.</div>
+            <div class="card-subtitle">Define la moneda con la que operará tu negocio dentro de la plataforma.</div>
           </div>
         </div>
         <div class="card-body">
@@ -997,211 +915,18 @@ textarea { resize:vertical; min-height:88px }
               </select>
             </div>
           </div>
-          <div class="section-divider"><span>Impuestos y descuentos</span></div>
-          <div class="toggle-group">
-            <div class="toggle-row" id="toggle_iva" onclick="toggleSwitch('iva')">
-              <div class="toggle-info">
-                <div class="toggle-name">Maneja IVA / impuesto de ventas</div>
-                <div class="toggle-desc">Calcula y muestra impuesto sobre cada venta</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="conditional" id="cond_iva">
-              <div class="field" style="padding:8px 0 12px">
-                <label>Porcentaje de IVA (%)</label>
-                <input type="number" id="porcentaje_iva" placeholder="15" min="0" max="100" step="0.1" style="max-width:160px">
-              </div>
-            </div>
-            <div class="toggle-row" id="toggle_descuentos" onclick="toggleSwitch('descuentos')">
-              <div class="toggle-info">
-                <div class="toggle-name">Maneja descuentos</div>
-                <div class="toggle-desc">Aplica descuentos por porcentaje o monto fijo</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-          </div>
-          <div class="section-divider"><span>Crédito comercial</span></div>
-          <div class="toggle-group">
-            <div class="toggle-row" id="toggle_cxc" onclick="toggleSwitch('cxc')">
-              <div class="toggle-info">
-                <div class="toggle-name">Cuentas por cobrar</div>
-                <div class="toggle-desc">Registra ventas a crédito y da seguimiento a pagos</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_cxp" onclick="toggleSwitch('cxp')">
-              <div class="toggle-info">
-                <div class="toggle-name">Cuentas por pagar</div>
-                <div class="toggle-desc">Controla deudas con proveedores y vencimientos</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-          </div>
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 4 de 9</div>
+          <div class="step-indicator">Paso 4 de 5</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
 
       <!-- ═══════════════════════════════════════════
-           PASO 5 — INVENTARIO
+           PASO 5 — IDENTIDAD VISUAL
       ═══════════════════════════════════════════ -->
       <div class="card-step" id="step-5">
-        <div class="card-header">
-          <div class="step-icon blue">📦</div>
-          <div>
-            <div class="card-title">Control de inventario</div>
-            <div class="card-subtitle">Configura cómo el sistema gestionará tu stock de productos y materiales.</div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="toggle-group">
-            <div class="toggle-row" id="toggle_inventario" onclick="toggleSwitch('inventario')">
-              <div class="toggle-info">
-                <div class="toggle-name">Activar control de inventario</div>
-                <div class="toggle-desc">Lleva registro de entradas, salidas y existencias</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_lotes" onclick="toggleSwitch('lotes')">
-              <div class="toggle-info">
-                <div class="toggle-name">Control por lotes / series</div>
-                <div class="toggle-desc">Rastrea lotes de producción o números de serie</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_categorias" onclick="toggleSwitch('categorias')">
-              <div class="toggle-info">
-                <div class="toggle-name">Organizar por categorías</div>
-                <div class="toggle-desc">Agrupa productos en familias y categorías</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_stock_bajo" onclick="toggleSwitch('stock_bajo')">
-              <div class="toggle-info">
-                <div class="toggle-name">Alertas de stock bajo</div>
-                <div class="toggle-desc">Recibe notificaciones cuando un producto esté por agotarse</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-          </div>
-        </div>
-        <div class="card-footer">
-          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 5 de 9</div>
-          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
-        </div>
-      </div>
-
-      <!-- ═══════════════════════════════════════════
-           PASO 6 — CLIENTES
-      ═══════════════════════════════════════════ -->
-      <div class="card-step" id="step-6">
-        <div class="card-header">
-          <div class="step-icon purple">👥</div>
-          <div>
-            <div class="card-title">Gestión de clientes</div>
-            <div class="card-subtitle">Personaliza el módulo CRM según las necesidades de tu negocio.</div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="toggle-group">
-            <div class="toggle-row" id="toggle_clientes" onclick="toggleSwitch('clientes')">
-              <div class="toggle-info">
-                <div class="toggle-name">Gestión de clientes</div>
-                <div class="toggle-desc">Ficha de clientes con datos de contacto y actividad</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_frecuentes" onclick="toggleSwitch('frecuentes')">
-              <div class="toggle-info">
-                <div class="toggle-name">Clientes frecuentes / VIP</div>
-                <div class="toggle-desc">Identifica y diferencia a tus mejores clientes</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_fidelizacion" onclick="toggleSwitch('fidelizacion')">
-              <div class="toggle-info">
-                <div class="toggle-name">Programa de fidelización</div>
-                <div class="toggle-desc">Puntos, recompensas y beneficios para clientes leales</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-            <div class="toggle-row" id="toggle_historial" onclick="toggleSwitch('historial')">
-              <div class="toggle-info">
-                <div class="toggle-name">Historial de compras</div>
-                <div class="toggle-desc">Registro completo de transacciones por cliente</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-          </div>
-        </div>
-        <div class="card-footer">
-          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 6 de 9</div>
-          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
-        </div>
-      </div>
-
-      <!-- ═══════════════════════════════════════════
-           PASO 7 — EMPLEADOS
-      ═══════════════════════════════════════════ -->
-      <div class="card-step" id="step-7">
-        <div class="card-header">
-          <div class="step-icon rose">👤</div>
-          <div>
-            <div class="card-title">Gestión de empleados</div>
-            <div class="card-subtitle">Configura el módulo de recursos humanos para tu equipo.</div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="toggle-group">
-            <div class="toggle-row" id="toggle_empleados" onclick="toggleSwitch('empleados')">
-              <div class="toggle-info">
-                <div class="toggle-name">Tiene empleados a cargo</div>
-                <div class="toggle-desc">Activa la gestión del equipo de trabajo</div>
-              </div>
-              <div class="toggle-switch"></div>
-            </div>
-          </div>
-          <div class="conditional" id="cond_empleados" style="margin-top:14px">
-            <div class="fields-grid" style="margin-bottom:14px">
-              <div class="field">
-                <label>Cantidad de empleados</label>
-                <input type="number" id="num_empleados" placeholder="Ej: 8" min="1" style="max-width:200px">
-              </div>
-            </div>
-            <div class="toggle-group">
-              <div class="toggle-row" id="toggle_salarios" onclick="toggleSwitch('salarios')">
-                <div class="toggle-info">
-                  <div class="toggle-name">Manejo de salarios y nómina</div>
-                  <div class="toggle-desc">Cálculo de salarios, deducciones y liquidaciones</div>
-                </div>
-                <div class="toggle-switch"></div>
-              </div>
-              <div class="toggle-row" id="toggle_asistencia" onclick="toggleSwitch('asistencia')">
-                <div class="toggle-info">
-                  <div class="toggle-name">Control de asistencia</div>
-                  <div class="toggle-desc">Registro de entradas, salidas y horas trabajadas</div>
-                </div>
-                <div class="toggle-switch"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="card-footer">
-          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 7 de 9</div>
-          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
-        </div>
-      </div>
-
-      <!-- ═══════════════════════════════════════════
-           PASO 8 — IDENTIDAD VISUAL
-      ═══════════════════════════════════════════ -->
-      <div class="card-step" id="step-8">
         <div class="card-header">
           <div class="step-icon gold">🎨</div>
           <div>
@@ -1315,47 +1040,7 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 8 de 9</div>
-          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
-        </div>
-      </div>
-
-      <!-- ═══════════════════════════════════════════
-           PASO 9 — OBJETIVOS IA
-      ═══════════════════════════════════════════ -->
-      <div class="card-step" id="step-9">
-        <div class="card-header">
-          <div class="step-icon purple">🤖</div>
-          <div>
-            <div class="card-title">Inteligencia artificial</div>
-            <div class="card-subtitle">Selecciona tus objetivos. La IA personalizará reportes, alertas y recomendaciones.</div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="field">
-            <label>¿Qué deseas lograr con Negocio360? <span class="opt">(elige todos los que apliquen)</span></label>
-          </div>
-          <div class="goals-grid" style="margin-top:14px">
-            <div class="goal-card" data-goal="ventas"       onclick="toggleGoal(this)"><div class="goal-icon">📈</div><div class="goal-text">Aumentar ventas</div></div>
-            <div class="goal-card" data-goal="gastos"       onclick="toggleGoal(this)"><div class="goal-icon">💸</div><div class="goal-text">Controlar gastos</div></div>
-            <div class="goal-card" data-goal="inventario"   onclick="toggleGoal(this)"><div class="goal-icon">📦</div><div class="goal-text">Controlar inventario</div></div>
-            <div class="goal-card" data-goal="clientes"     onclick="toggleGoal(this)"><div class="goal-icon">👥</div><div class="goal-text">Administrar clientes</div></div>
-            <div class="goal-card" data-goal="rentabilidad" onclick="toggleGoal(this)"><div class="goal-icon">💎</div><div class="goal-text">Mejorar rentabilidad</div></div>
-            <div class="goal-card" data-goal="automatizar"  onclick="toggleGoal(this)"><div class="goal-icon">⚙️</div><div class="goal-text">Automatizar procesos</div></div>
-            <div class="goal-card" data-goal="reportes"     onclick="toggleGoal(this)"><div class="goal-icon">📊</div><div class="goal-text">Obtener reportes inteligentes</div></div>
-            <div class="goal-card" data-goal="empleados"    onclick="toggleGoal(this)"><div class="goal-icon">🧑‍💼</div><div class="goal-text">Gestionar empleados</div></div>
-          </div>
-          <div class="ia-info-box">
-            <span style="font-size:1.35rem">✨</span>
-            <div>
-              <div class="ia-info-title">La IA adaptará tu experiencia</div>
-              <div class="ia-info-desc">Según tus objetivos, el dashboard mostrará widgets relevantes, el asistente tendrá contexto de tu negocio y recibirás recomendaciones personalizadas cada semana.</div>
-            </div>
-          </div>
-        </div>
-        <div class="card-footer">
-          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 9 de 9</div>
+          <div class="step-indicator">Paso 5 de 5</div>
           <button class="btn btn-finish" id="btnFinish" onclick="finalizarOnboarding()">🚀 Ir a mi Dashboard</button>
         </div>
       </div>
@@ -1397,23 +1082,19 @@ const STEPS = [
   { label: 'Ubicación'  },
   { label: 'Contacto'   },
   { label: 'Finanzas'   },
-  { label: 'Inventario' },
-  { label: 'Clientes'   },
-  { label: 'Empleados'  },
   { label: 'Visual'     },
-  { label: 'IA'         },
 ];
 
 /* ════════════════════════════════════════════════════════════
    3. ESTADO GLOBAL
    ════════════════════════════════════════════════════════════ */
-let currentStep  = 1;      // Paso actual (1–9)
+let currentStep  = 1;      // Paso actual (1–5)
 let formData     = {};      // Acumula todos los campos del formulario
 let logoFiles    = {        // Archivos de logo seleccionados
   principal:   null,
   alternativo: null,
 };
-let selectedThemeValue = 'dark'; // Tema seleccionado en el paso 8
+let selectedThemeValue = 'dark'; // Tema seleccionado en el paso de identidad visual
 let currentUser  = null;   // Usuario autenticado de Supabase
 
 /* ════════════════════════════════════════════════════════════
@@ -1448,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 4c. Si hay progreso previo, restaurar paso
   if (existing?.onboarding_step && existing.onboarding_step > 1) {
-    const resumeStep = existing.onboarding_step;
+    const resumeStep = Math.min(existing.onboarding_step, STEPS.length);
     showToast(`Continuando desde el paso ${resumeStep}`, 'info');
     goToStep(resumeStep);
   }
@@ -1531,8 +1212,6 @@ function validateStep(step) {
     1: [
       { id: 'nombre_comercial', msg: 'El nombre comercial es obligatorio' },
       { id: 'tipo_negocio',     msg: 'Selecciona el tipo de negocio' },
-      { custom: () => document.querySelector('.size-card.selected'),
-        msg: 'Selecciona el tamaño del negocio' },
     ],
     2: [
       { id: 'pais',          msg: 'Selecciona el país' },
@@ -1542,10 +1221,6 @@ function validateStep(step) {
     ],
     4: [
       { id: 'moneda', msg: 'Selecciona la moneda principal' },
-    ],
-    9: [
-      { custom: () => document.querySelector('.goal-card.selected'),
-        msg: 'Selecciona al menos un objetivo' },
     ],
   };
 
@@ -1571,8 +1246,6 @@ function validateStep(step) {
 // Helpers internos
 const g  = (id) => document.getElementById(id)?.value?.trim() ?? '';
 const gi = (id) => { const v = g(id); return v ? parseInt(v) : null; };
-const gf = (id) => { const v = g(id); return v ? parseFloat(v) : null; };
-const gb = (id) => document.getElementById('toggle_' + id)?.classList.contains('active') ?? false;
 
 function collectStep(step) {
   if (step === 1) {
@@ -1583,7 +1256,6 @@ function collectStep(step) {
       descripcion:        g('descripcion')          || null,
       anio_fundacion:     gi('anio_fundacion'),
       cantidad_empleados: gi('cantidad_empleados'),
-      tamano_negocio:     document.querySelector('.size-card.selected')?.dataset.size || null,
     });
   }
   if (step === 2) {
@@ -1610,50 +1282,16 @@ function collectStep(step) {
   }
   if (step === 4) {
     Object.assign(formData, {
-      moneda:            g('moneda') || null,
-      maneja_iva:        gb('iva'),
-      porcentaje_iva:    gb('iva') ? (gf('porcentaje_iva') ?? 15) : null,
-      maneja_descuentos: gb('descuentos'),
-      maneja_cxc:        gb('cxc'),
-      maneja_cxp:        gb('cxp'),
+      moneda: g('moneda') || null,
     });
   }
   if (step === 5) {
-    Object.assign(formData, {
-      control_inventario: gb('inventario'),
-      control_lotes:      gb('lotes'),
-      control_categorias: gb('categorias'),
-      alerta_stock_bajo:  gb('stock_bajo'),
-    });
-  }
-  if (step === 6) {
-    Object.assign(formData, {
-      gestiona_clientes:     gb('clientes'),
-      clientes_frecuentes:   gb('frecuentes'),
-      programa_fidelizacion: gb('fidelizacion'),
-      historial_compras:     gb('historial'),
-    });
-  }
-  if (step === 7) {
-    Object.assign(formData, {
-      tiene_empleados:   gb('empleados'),
-      num_empleados:     gb('empleados') ? gi('num_empleados') : null,
-      manejo_salarios:   gb('salarios'),
-      control_asistencia:gb('asistencia'),
-    });
-  }
-  if (step === 8) {
     Object.assign(formData, {
       color_principal:  document.getElementById('color_principal').value,
       color_secundario: document.getElementById('color_secundario').value,
       color_acento:     document.getElementById('color_acento').value,
       tema:             selectedThemeValue,
     });
-  }
-  if (step === 9) {
-    formData.objetivos = Array.from(
-      document.querySelectorAll('.goal-card.selected')
-    ).map(el => el.dataset.goal);
   }
 }
 
@@ -1717,9 +1355,9 @@ async function uploadLogo(file, key) {
    11. FINALIZACIÓN DEL ONBOARDING
    ════════════════════════════════════════════════════════════ */
 async function finalizarOnboarding() {
-  // Validar paso 9
-  if (!validateStep(9)) return;
-  collectStep(9);
+  // Validar último paso (Identidad visual)
+  if (!validateStep(STEPS.length)) return;
+  collectStep(STEPS.length);
 
   // Deshabilitar botón para evitar doble envío
   const btnFinish = document.getElementById('btnFinish');
@@ -1748,7 +1386,7 @@ async function finalizarOnboarding() {
         {
           auth_user_id:          currentUser.id,
           ...formData,
-          onboarding_step:       9,
+          onboarding_step:       STEPS.length,
           onboarding_completado: true,
         },
         { onConflict: 'auth_user_id' }
@@ -1775,7 +1413,6 @@ async function finalizarOnboarding() {
       moneda:           formData.moneda,
       logo_url:         formData.logo_principal_url,
       tipo_negocio:     formData.tipo_negocio,
-      objetivos:        formData.objetivos,
     }));
 
     // 11e. Ocultar overlay, mostrar pantalla de éxito
@@ -1808,11 +1445,11 @@ function toggleGlobalTheme() {
   const current = document.body.getAttribute('data-theme') || 'dark';
   const next    = current === 'dark' ? 'light' : 'dark';
   applyThemeToPage(next);
-  // Si estamos en paso 8, sincronizar la selección de tarjeta de tema
+  // Si estamos en el paso de identidad visual, sincronizar la selección de tarjeta de tema
   selectTheme(next);
 }
 
-// Selección de tema dentro del paso 8
+// Selección de tema dentro del paso de identidad visual
 function selectTheme(t) {
   selectedThemeValue = t;
   document.getElementById('theme_dark').classList.toggle('selected', t === 'dark');
@@ -1822,32 +1459,7 @@ function selectTheme(t) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   13. TOGGLES
-   ════════════════════════════════════════════════════════════ */
-function toggleSwitch(key) {
-  const row  = document.getElementById('toggle_' + key);
-  row.classList.toggle('active');
-  const cond = document.getElementById('cond_' + key);
-  if (cond) cond.classList.toggle('show', row.classList.contains('active'));
-}
-
-/* ════════════════════════════════════════════════════════════
-   14. SELECCIÓN DE TAMAÑO
-   ════════════════════════════════════════════════════════════ */
-function selectSize(el) {
-  document.querySelectorAll('.size-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-}
-
-/* ════════════════════════════════════════════════════════════
-   15. OBJETIVOS IA
-   ════════════════════════════════════════════════════════════ */
-function toggleGoal(el) {
-  el.classList.toggle('selected');
-}
-
-/* ════════════════════════════════════════════════════════════
-   16. COLOR PICKERS
+   13. COLOR PICKERS
    ════════════════════════════════════════════════════════════ */
 function syncColor(colorId, hexId, swatchId) {
   const val = document.getElementById(colorId).value;
@@ -1901,7 +1513,7 @@ function renderColorPresets() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   17. ZONA HORARIA AUTO-SELECCIÓN
+   14. ZONA HORARIA AUTO-SELECCIÓN
    ════════════════════════════════════════════════════════════ */
 const TIMEZONE_MAP = {
   NI: 'America/Managua',
@@ -1933,7 +1545,7 @@ function autoTimezone() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   18. SUBIDA Y PREVIEW DE LOGOS
+   15. SUBIDA Y PREVIEW DE LOGOS
    ════════════════════════════════════════════════════════════ */
 function previewLogo(input, zoneId, key) {
   const file = input.files[0];
@@ -1976,7 +1588,7 @@ function dropFile(e, inputId, zoneId) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   19. OVERLAY DE GUARDADO
+   16. OVERLAY DE GUARDADO
    ════════════════════════════════════════════════════════════ */
 function showSaving(msg = 'Guardando…') {
   document.getElementById('savingText').textContent = msg;
@@ -1990,7 +1602,7 @@ function hideSaving() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   20. TOAST DE NOTIFICACIONES
+   17. TOAST DE NOTIFICACIONES
    ════════════════════════════════════════════════════════════ */
 let toastTimer = null;
 
