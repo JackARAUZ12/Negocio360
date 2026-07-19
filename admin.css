@@ -720,6 +720,19 @@ body {
   flex-wrap: nowrap;
 }
 
+/* Botón "Marcar Pagado" + aviso de próximo pago */
+.marcar-pagado-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.next-pago-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding-left: 2px;
+}
+
 /* ---------- BADGES ---------- */
 .badge {
   display: inline-flex;
@@ -893,7 +906,7 @@ body {
 .confirm-icon.success { background: var(--success-light); }
 .confirm-text { text-align: center; }
 .confirm-text h3 { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-.confirm-text p  { font-size: 13px; color: var(--text-secondary); }
+.confirm-text p  { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
 
 /* ---------- TOAST ---------- */
 .toast-container {
