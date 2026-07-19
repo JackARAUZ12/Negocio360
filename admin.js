@@ -257,6 +257,12 @@ function showPaymentListsLoading() {
 // marca "Pagado" (desde la sección Usuarios) para el ciclo correspondiente,
 // y no vuelve a aparecer hasta que se acerque su próxima fecha de pago.
 //
+// "fecha_ultimo_pago" representa el CICLO cubierto (hasta qué vencimiento
+// está al día el usuario), no necesariamente la fecha exacta en que se dio
+// clic en "Marcar Pagado". Esto permite pagos adelantados: si el cliente
+// paga julio y luego, ese mismo día, adelanta agosto, "fecha_ultimo_pago"
+// pasa a ser el vencimiento de agosto y julio queda cubierto igual.
+//
 // NOTA: por defecto solo se controla el pago de usuarios con plan
 // "premium" (los usuarios en "prueba" no pagan). Si tu negocio cobra
 // también el plan de prueba, quita la condición `u.plan !== 'premium'`.
@@ -272,6 +278,12 @@ function calcDueDateForMonth(regDate, year, month) {
   return new Date(year, month, dueDay);
 }
 
+// Índice absoluto de mes (año*12 + mes), útil para comparar "cuál ciclo
+// es más reciente" sin preocuparse por el día exacto.
+function monthIndex(d) {
+  return d.getFullYear() * 12 + d.getMonth();
+}
+
 // Fecha de vencimiento del ciclo correspondiente al mes de "today".
 function getCurrentCycleDueDate(u, today) {
   if (!u.created_at) return null;
@@ -280,17 +292,45 @@ function getCurrentCycleDueDate(u, today) {
   return calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
 }
 
-// Fecha de vencimiento del ciclo siguiente (un mes después del actual).
-// Se usa para mostrarle al administrador cuándo tocará el próximo pago
-// justo antes/después de marcar el pago actual como recibido.
+// Ciclo inmediatamente siguiente a una fecha de vencimiento dada.
+// A diferencia de getNextCycleDueDate, no parte de "hoy" sino de
+// cualquier fecha de vencimiento que le pases, así se puede encadenar
+// para calcular varios meses hacia adelante (pagos adelantados).
+function getNextCycleAfter(u, dueDate) {
+  if (!dueDate) return null;
+  const reg = new Date(u.created_at);
+  const nextMonthIndex = dueDate.getMonth() + 1;
+  const year  = dueDate.getFullYear() + Math.floor(nextMonthIndex / 12);
+  const month = ((nextMonthIndex % 12) + 12) % 12;
+  return calcDueDateForMonth(reg, year, month);
+}
+
+// Fecha de vencimiento del ciclo siguiente al ciclo actual (un mes
+// después de "hoy"). Se usa para mostrarle al administrador cuándo
+// tocará el próximo pago justo antes/después de marcar el pago actual
+// como recibido.
 function getNextCycleDueDate(u, today) {
   const current = getCurrentCycleDueDate(u, today);
   if (!current) return null;
-  const reg = new Date(u.created_at);
-  const nextMonthIndex = current.getMonth() + 1;
-  const year  = current.getFullYear() + Math.floor(nextMonthIndex / 12);
-  const month = ((nextMonthIndex % 12) + 12) % 12;
-  return calcDueDateForMonth(reg, year, month);
+  return getNextCycleAfter(u, current);
+}
+
+// Encuentra el próximo ciclo que TODAVÍA no ha sido cubierto por
+// fecha_ultimo_pago. Si el usuario ya pagó julio y el admin quiere
+// adelantar el pago de agosto, esta función devuelve agosto (no julio
+// de nuevo), permitiendo pagos adelantados ilimitados.
+function getCicloAPagar(u, today) {
+  if (!u.created_at) return null;
+  let candidate = getCurrentCycleDueDate(u, today);
+  if (!candidate) return null;
+
+  if (u.fecha_ultimo_pago) {
+    const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
+    while (monthIndex(pago) >= monthIndex(candidate)) {
+      candidate = getNextCycleAfter(u, candidate);
+    }
+  }
+  return candidate;
 }
 
 // Nombre de mes + año, con la primera letra en mayúscula (ej. "Julio 2026")
@@ -318,11 +358,13 @@ function getPaymentInfo(u, today) {
   // Fecha de vencimiento de este mes (ajustada si el mes tiene menos días)
   const dueDate = calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
 
-  // ¿Ya se marcó como pagado el ciclo que corresponde a este vencimiento?
+  // ¿Ya se marcó como pagado (o adelantado) el ciclo que corresponde a
+  // este vencimiento? Se compara por mes/año, no por igualdad exacta,
+  // para que un pago adelantado (ej. agosto) cubra también julio.
   if (u.fecha_ultimo_pago) {
     const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
-    if (pago.getFullYear() === dueDate.getFullYear() && pago.getMonth() === dueDate.getMonth()) {
-      return null; // ya pagado este mes
+    if (monthIndex(pago) >= monthIndex(dueDate)) {
+      return null; // este ciclo (o uno posterior) ya está cubierto
     }
   }
 
@@ -480,7 +522,7 @@ function renderUsersTable(users) {
           </button>
           ${u.plan === 'premium'
             ? `<div class="marcar-pagado-wrap">
-                <button class="btn-icon btn-primary btn-sm" onclick="openConfirmMarkPaid('${u.id}')" title="Marcar que ya pagó este mes y enviarle el comprobante">
+                <button class="btn-icon btn-primary btn-sm" onclick="openConfirmMarkPaid('${u.id}')" title="Marcar que ya pagó (o adelantó) su próximo mes y enviarle el comprobante">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                   Marcar Pagado
                 </button>
@@ -558,10 +600,14 @@ function viewUser(id) {
 // ============================================================
 // Flujo:
 //   1. El admin hace clic en "Marcar Pagado" → openConfirmMarkPaid()
-//      muestra un modal de confirmación con el nombre del cliente,
-//      el mes que se está pagando, el monto y la fecha del próximo pago.
+//      calcula el PRÓXIMO CICLO AÚN NO CUBIERTO (permite pagos
+//      adelantados) y muestra un modal de confirmación con el nombre
+//      del cliente, el mes que se está pagando, el monto y la fecha
+//      del próximo pago después de este.
 //   2. Al confirmar → executeMarkAsPaid():
-//        a) Actualiza fecha_ultimo_pago en la tabla "usuarios".
+//        a) Actualiza fecha_ultimo_pago en la tabla "usuarios" con la
+//           fecha del CICLO pagado (no la fecha real de hoy), lo que
+//           permite adelantar varios meses seguidos.
 //        b) Genera un comprobante de pago en PDF (jsPDF).
 //        c) Busca (o crea) una conversación activa de soporte para ese
 //           cliente y sube el PDF al bucket "chat-archivos".
@@ -602,9 +648,9 @@ function openConfirmMarkPaid(userId) {
 
   const today = new Date();
   const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'este cliente';
-  const cicloDueDate   = getCurrentCycleDueDate(u, today);
-  const mesPagadoTexto = cicloDueDate ? formatMesAnio(cicloDueDate) : formatMesAnio(today);
-  const nextDue        = getNextCycleDueDate(u, today);
+  const cicloAPagar    = getCicloAPagar(u, today);
+  const mesPagadoTexto = cicloAPagar ? formatMesAnio(cicloAPagar) : formatMesAnio(today);
+  const nextDue        = cicloAPagar ? getNextCycleAfter(u, cicloAPagar) : null;
 
   document.getElementById('confirm-icon').className = 'confirm-icon success';
   document.getElementById('confirm-icon').textContent = '✓';
@@ -618,7 +664,7 @@ function openConfirmMarkPaid(userId) {
   btn.className = 'btn-icon btn-success';
   btn.textContent = 'Sí, marcar como pagado';
 
-  window._pendingAction = { accion: 'marcar-pagado', userId };
+  window._pendingAction = { accion: 'marcar-pagado', userId, cicloAPagar };
   openModal('modal-confirm');
 }
 
@@ -718,8 +764,10 @@ function generarComprobantePDF({ nombreCompleto, email, negocio, mesPagadoTexto,
   return { blob, filename };
 }
 
-// Ejecuta la acción completa al confirmar "Marcar Pagado"
-async function executeMarkAsPaid(userId) {
+// Ejecuta la acción completa al confirmar "Marcar Pagado".
+// cicloAPagar es la fecha de vencimiento del ciclo que se está pagando
+// (calculada en openConfirmMarkPaid), permitiendo pagos adelantados.
+async function executeMarkAsPaid(userId, cicloAPagar) {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
 
@@ -735,10 +783,15 @@ async function executeMarkAsPaid(userId) {
   btn.disabled = true;
 
   try {
-    const today  = new Date();
-    const hoyISO = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = new Date();
 
-    // 1) Registrar el pago (solo actualiza fecha_ultimo_pago, igual que antes)
+    // El ciclo a registrar es el que se calculó al abrir el modal de
+    // confirmación; si por alguna razón no llegó, se recalcula aquí
+    // como respaldo (equivalente al comportamiento anterior).
+    const cicloDueDate = cicloAPagar || getCicloAPagar(u, today) || getCurrentCycleDueDate(u, today);
+    const hoyISO = cicloDueDate.toISOString().split('T')[0]; // fecha del CICLO pagado (no la fecha real de hoy)
+
+    // 1) Registrar el pago
     const { error: errPago } = await sb
       .from('usuarios')
       .update({ fecha_ultimo_pago: hoyISO })
@@ -746,9 +799,8 @@ async function executeMarkAsPaid(userId) {
     if (errPago) throw errPago;
 
     // 2) Generar el comprobante en PDF
-    const cicloDueDate   = getCurrentCycleDueDate(u, today);
-    const mesPagadoTexto = cicloDueDate ? formatMesAnio(cicloDueDate) : formatMesAnio(today);
-    const nextDue        = getNextCycleDueDate(u, today);
+    const mesPagadoTexto = formatMesAnio(cicloDueDate);
+    const nextDue        = getNextCycleAfter(u, cicloDueDate);
     const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
 
     const { blob, filename } = generarComprobantePDF({
@@ -1407,7 +1459,7 @@ async function dispatchConfirm() {
   } else if (pending.accion === 'finalizar-chat') {
     await executeFinalizarChat(pending.convId);
   } else if (pending.accion === 'marcar-pagado') {
-    await executeMarkAsPaid(pending.userId);
+    await executeMarkAsPaid(pending.userId, pending.cicloAPagar);
   } else {
     await executeConfirmAction();
   }
