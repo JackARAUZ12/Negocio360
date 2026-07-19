@@ -294,11 +294,6 @@ function renderUserInfo(user, email) {
   document.getElementById('header-biz').textContent    = biz;
   document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
   document.getElementById('plan-text').textContent     = plan.charAt(0).toUpperCase()+plan.slice(1);
-
-  if (plan==='pro'||plan==='enterprise') {
-    const box = document.getElementById('upgrade-box');
-    if (box) box.style.display = 'none';
-  }
 }
 
 async function checkAdminAccess(email) {
@@ -775,10 +770,14 @@ async function fetchDatosMensuales() {
 
 /* ============================================================
    TAB: RESUMEN EJECUTIVO
-   FIX: ahora incluye Otros ingresos/egresos (leídos de Caja,
-   igual que en Dashboard) en el cálculo de ganancia neta, y
-   agrega el mismo "Resumen financiero" que tiene el Dashboard
-   (mismas fórmulas, mismas fuentes — no se recalcula distinto).
+   FIX: en vez de repetir las mismas tarjetas de KPIs que ya
+   aparecen en la pestaña Financiero (y en Ventas/Inventario/
+   Clientes), este apartado ahora presenta un análisis narrativo
+   (texto) de cómo va el negocio, calculado con los mismos datos
+   y fórmulas que usa la pestaña Financiero (mismas fuentes,
+   nada se recalcula distinto). Esto no afecta a los reportes
+   PDF: la exportación sigue usando R.cache y sus propias
+   consultas, independientemente de lo que se muestre aquí.
    ============================================================ */
 async function loadEjecutivo() {
   try {
@@ -793,8 +792,8 @@ async function loadEjecutivo() {
     const totalGastos   = gastos.reduce((s,g)   => s+Number(g.monto),0);
     const otrosIngresos = otros.otrosIngresos;
     const otrosEgresos  = otros.otrosEgresos;
-    // FIX: ganancia neta ahora incluye Otros ingresos/egresos de Caja,
-    // igual que en el Dashboard.
+    // Ganancia neta incluye Otros ingresos/egresos de Caja, igual que
+    // en la pestaña Financiero y en el Dashboard.
     const gananciaNeta  = vRes.ganancia - totalGastos + otrosIngresos - otrosEgresos;
     const margenBruto   = vRes.total>0 ? ((vRes.ganancia/vRes.total)*100).toFixed(1) : 0;
     const margenNeto    = vRes.total>0 ? ((gananciaNeta/vRes.total)*100).toFixed(1) : 0;
@@ -809,7 +808,7 @@ async function loadEjecutivo() {
     // Unidades vendidas
     const unidsVendidas = detalles.filter(d=>d.tipo_item==='producto').reduce((s,d) => s+Number(d.cantidad),0);
 
-    // Guardar en resumen global (para que dashboard pueda leer)
+    // Guardar en resumen global (para que dashboard/exportación puedan leer)
     R.cache.resumen = {
       ventas: vRes.total, compras: totalCompras, gastos: totalGastos,
       gananciaBruta: vRes.ganancia, gananciaNeta, capital,
@@ -826,49 +825,15 @@ async function loadEjecutivo() {
     setEl('eh-capital',  fmt(capital));
     setEl('eh-clientes', clientesNuevos.toString());
 
-    // ── NUEVO: Resumen financiero (idéntico al del Dashboard) ──
-    setEl('exec-fin-ingresos',        fmt(vRes.total));
-    setEl('exec-fin-costo',           fmt(vRes.costo));
-    setEl('exec-fin-ganancia-bruta',  fmt(vRes.ganancia));
-    setEl('exec-fin-gastos',          fmt(totalGastos));
-    setEl('exec-fin-otros-ingresos',  fmt(otrosIngresos));
-    setEl('exec-fin-otros-egresos',   fmt(otrosEgresos));
-    setEl('exec-fin-ganancia-neta',   fmt(gananciaNeta));
-    setEl('exec-fin-margen',          `${margenNeto}%`);
-    const efGB = document.getElementById('exec-fin-ganancia-bruta');
-    if (efGB) efGB.style.color = vRes.ganancia >= 0 ? 'var(--success)' : 'var(--danger)';
-    const efGN = document.getElementById('exec-fin-ganancia-neta');
-    if (efGN) efGN.style.color = gananciaNeta >= 0 ? 'var(--success)' : 'var(--danger)';
-    // ─────────────────────────────────────────────────────────
-
-    // KPIs fila 1
-    setEl('kpi-ventas-total',   fmt(vRes.total));
-    setEl('kpi-ventas-count',   `${vRes.count} venta${vRes.count!==1?'s':''}`);
-    setEl('kpi-ganancia-bruta', fmt(vRes.ganancia));
-    setEl('kpi-margen-bruto',   `${margenBruto}% margen`);
-    setEl('kpi-ganancia-neta',  fmt(gananciaNeta));
-    setEl('kpi-margen-neto',    `${margenNeto}% margen neto`);
-    setEl('kpi-gastos-total',   fmt(totalGastos));
-    setEl('kpi-gastos-count',   `${gastos.length} gasto${gastos.length!==1?'s':''}`);
-    setEl('kpi-capital',        fmt(capital));
-    setEl('kpi-ticket-exec',    fmt(vRes.ticket));
-
-    // KPIs fila 2
-    setEl('kpi-inventario-valor', fmt(valorInventario));
-    setEl('kpi-inventario-prods', `${prods.length} productos`);
-    setEl('kpi-clientes-nuevos',  clientesNuevos.toString());
-    setEl('kpi-clientes-activos', `${(clientes||[]).filter(c=>c.num_compras>0).length} activos`);
-    setEl('kpi-venta-mayor',      fmt(vRes.mayor?.total||0));
-    setEl('kpi-stock-bajo',       stockBajo.length.toString());
-    setEl('kpi-prods-vendidos',   fmtNum(unidsVendidas));
-
-    // NUEVO: KPIs fila 3 — Otros ingresos / Otros egresos
-    setEl('kpi-otros-ingresos', fmt(otrosIngresos));
-    setEl('kpi-otros-egresos',  fmt(otrosEgresos));
-
-    // Colores ganancia neta
-    const gnEl = document.getElementById('kpi-ganancia-neta');
-    if (gnEl) gnEl.style.color = gananciaNeta>=0 ? 'var(--success)' : 'var(--danger)';
+    // NUEVO: análisis narrativo del negocio (basado en los datos financieros)
+    renderAnalisisNegocio({
+      ventasTotal: vRes.total, ventasCount: vRes.count, ticket: vRes.ticket,
+      gananciaBruta: vRes.ganancia, margenBruto,
+      gananciaNeta, margenNeto,
+      totalGastos, capital, otrosIngresos, otrosEgresos,
+      stockBajoCount: stockBajo.length, clientesNuevos,
+      valorInventario,
+    });
 
     // Gráfica: evolución ventas por día
     await renderGraficaEvolucion(ventas);
@@ -883,6 +848,69 @@ async function loadEjecutivo() {
     await renderTopClientesExec(clientes);
 
   } catch(e) { console.error('loadEjecutivo:', e); }
+}
+
+/* Genera el texto de análisis del negocio para el Resumen Ejecutivo.
+   Usa exactamente los mismos números que ya se calcularon con los
+   datos de Financiero (no se recalcula nada aparte). Solo afecta al
+   texto mostrado en pantalla — no toca R.cache ni la exportación PDF. */
+function renderAnalisisNegocio(d) {
+  const el = document.getElementById('analisis-negocio-contenido');
+  if (!el) return;
+
+  const parrafos = [];
+  const periodo = periodLabel().toLowerCase();
+
+  // ---- Ventas ----
+  if (d.ventasCount === 0) {
+    parrafos.push(`<p>No se registraron ventas durante <strong>${periodo}</strong>. Podría ser un buen momento para revisar tu estrategia comercial, lanzar una promoción o contactar a clientes frecuentes.</p>`);
+  } else {
+    parrafos.push(`<p>Durante <strong>${periodo}</strong> tu negocio generó <strong>${fmt(d.ventasTotal)}</strong> en ventas, a través de <strong>${d.ventasCount}</strong> transacción${d.ventasCount!==1?'es':''}, con un ticket promedio de <strong>${fmt(d.ticket)}</strong>.</p>`);
+  }
+
+  // ---- Margen y ganancia neta ----
+  const margenNum = parseFloat(d.margenNeto);
+  let margenTxt, margenColor;
+  if (d.ventasCount === 0) {
+    margenTxt = null;
+  } else if (margenNum >= 30) {
+    margenTxt = 'lo cual refleja una salud financiera muy sólida';
+    margenColor = 'var(--success)';
+  } else if (margenNum >= 15) {
+    margenTxt = 'lo cual indica una operación financieramente saludable';
+    margenColor = 'var(--success)';
+  } else if (margenNum >= 0) {
+    margenTxt = 'un margen ajustado — conviene vigilar de cerca los gastos operativos';
+    margenColor = 'var(--warning)';
+  } else {
+    margenTxt = 'el negocio cerró el período con pérdidas: los gastos superaron a los ingresos';
+    margenColor = 'var(--danger)';
+  }
+
+  if (margenTxt) {
+    parrafos.push(`<p>Tu margen neto es de <strong style="color:${margenColor}">${d.margenNeto}%</strong>, ${margenTxt}. La ganancia neta del período es de <strong style="color:${d.gananciaNeta>=0?'var(--success)':'var(--danger)'}">${fmt(d.gananciaNeta)}</strong>, luego de restar <strong>${fmt(d.totalGastos)}</strong> en gastos operativos${d.otrosEgresos>0?` y ${fmt(d.otrosEgresos)} en otros egresos de caja`:''}${d.otrosIngresos>0?`, y sumar ${fmt(d.otrosIngresos)} de otros ingresos de caja`:''}.</p>`);
+  }
+
+  // ---- Caja disponible ----
+  if (d.capital <= 0) {
+    parrafos.push(`<p>⚠️ Tu caja disponible es de <strong style="color:var(--danger)">${fmt(d.capital)}</strong>. Es recomendable actuar pronto para evitar problemas de liquidez.</p>`);
+  } else if (d.capital < d.totalGastos) {
+    parrafos.push(`<p>Tu caja disponible (<strong>${fmt(d.capital)}</strong>) es menor que tus gastos del período. Vale la pena monitorear de cerca el flujo de efectivo en los próximos días.</p>`);
+  } else {
+    parrafos.push(`<p>Tu caja disponible es de <strong style="color:var(--accent)">${fmt(d.capital)}</strong>, un nivel saludable frente a los gastos del período.</p>`);
+  }
+
+  // ---- Inventario ----
+  if (d.stockBajoCount > 0) {
+    parrafos.push(`<p>📦 Tienes <strong>${d.stockBajoCount}</strong> producto${d.stockBajoCount!==1?'s':''} con stock bajo. Revisa la pestaña de Inventario para reabastecer a tiempo y no perder ventas.</p>`);
+  }
+
+  // ---- Clientes ----
+  if (d.clientesNuevos > 0) {
+    parrafos.push(`<p>👥 Sumaste <strong>${d.clientesNuevos}</strong> cliente${d.clientesNuevos!==1?'s':''} nuevo${d.clientesNuevos!==1?'s':''} durante este período. Sigue cultivando esas relaciones para convertirlos en clientes frecuentes.</p>`);
+  }
+
+  el.innerHTML = parrafos.join('');
 }
 
 async function renderGraficaEvolucion(ventas) {
@@ -992,14 +1020,14 @@ async function loadFinanciero() {
     setEl('fin-margen-neto',    `${margenNeto}% margen neto`);
     setEl('fin-capital',        fmt(capital));
     setEl('fin-inventario',     fmt(valorInv));
-    // NUEVO: Otros ingresos / egresos en la grilla financiera
+    // Otros ingresos / egresos en la grilla financiera
     setEl('fin-otros-ingresos', fmt(otrosIngresos));
     setEl('fin-otros-egresos',  fmt(otrosEgresos));
 
     const gnEl = document.getElementById('fin-ganancia-neta');
     if (gnEl) gnEl.style.color = gananciaNeta>=0 ? 'var(--success)' : 'var(--danger)';
 
-    // ── NUEVO: sección IVA / Impuestos (solo lectura) ──
+    // ── Sección IVA / Impuestos (solo lectura) ──
     const iva = calcImpuestosResumen(impMovs);
     setEl('fin-iva-saldo',    fmt(iva.saldoActual));
     setEl('fin-iva-generado', fmt(iva.generadoPeriodo));
@@ -1564,6 +1592,9 @@ function setEl(id, val) { const el = document.getElementById(id); if (el) el.tex
    EXPORTACIONES
    NO guarda en Supabase. Genera dinámicamente en el browser.
    Solo se exporta en formato PDF.
+   Esta sección NO fue modificada por los cambios del Resumen
+   Ejecutivo: sigue usando sus propias consultas y R.cache, tal
+   como estaba antes.
    ======================================================
    ============================================================ */
 
