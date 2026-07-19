@@ -526,7 +526,7 @@ function renderUsersTable(users) {
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                   Marcar Pagado
                 </button>
-                ${u.created_at ? `<span class="next-pago-hint">Próx. pago: ${formatDate(getNextCycleDueDate(u, today))}</span>` : ''}
+                ${u.created_at ? `<span class="next-pago-hint">Próx. pago: ${formatDate(getCicloAPagar(u, today))}</span>` : ''}
               </div>`
             : ''}
           ${u.estado_cuenta !== 'activa'
