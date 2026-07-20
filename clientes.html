@@ -965,7 +965,20 @@
                 </select>
               </div>
             </div>
-            <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
+
+            <div class="form-group full-col" id="wrap-ya-pago-actual" style="margin-top:6px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+                <input type="checkbox" id="fc-ya-pago-actual" onchange="toggleYaPagoActualHint()"/>
+                El cliente ya pagó el periodo actual
+              </label>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px" id="ya-pago-actual-hint">
+                Si NO ha pagado todavía, el pago quedará pendiente desde HOY y aparecerá de una vez en
+                Ventas → Clientes con pago recurrente. Si marcas esta casilla, se asume que ya pagó y la
+                próxima fecha de cobro será el siguiente ciclo.
+              </div>
+            </div>
+
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:8px">
               La próxima fecha de pago se calcula automáticamente y siempre respeta este día fijo del ciclo,
               aunque el cliente pague parcial en otra fecha.
             </div>
