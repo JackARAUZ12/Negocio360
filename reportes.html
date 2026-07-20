@@ -1071,6 +1071,15 @@
           </div>
         </div>
 
+        <!-- Ventas por marca / proveedor (panel opcional — solo visible si hay
+             productos con marca/proveedor asignado en el módulo de Productos) -->
+        <div class="panel-card fade-in" id="marcas-ventas-wrap" style="display:none">
+          <div class="panel-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Ventas por marca / proveedor</div>
+          </div>
+          <div class="panel-body" id="marcas-ventas-list"></div>
+        </div>
+
       </div><!-- /panel-ventas -->
 
       <!-- =====================================================
@@ -1210,10 +1219,24 @@
           </div>
         </div>
 
+        <!-- Valor de inventario por marca / proveedor (panel opcional — solo
+             visible si hay productos con marca/proveedor asignado) -->
+        <div class="panel-card fade-in" id="inv-marcas-wrap" style="display:none">
+          <div class="panel-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Valor de inventario por marca / proveedor</div>
+          </div>
+          <div class="panel-body" id="inv-marcas-list"></div>
+        </div>
+
         <!-- Tabla completa inventario -->
         <div class="panel-card fade-in">
           <div class="panel-header">
             <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Inventario completo</div>
+            <div id="inv-filtro-marca-wrap" style="display:none">
+              <select id="inv-filtro-marca" class="form-select" style="height:32px;font-size:12.5px;max-width:200px">
+                <option value="">Todas las marcas</option>
+              </select>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
