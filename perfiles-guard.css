@@ -1,0 +1,280 @@
+/* ============================================================
+   PERFILES-GUARD.CSS
+   Selector de usuario obligatorio + PIN + gestión de permisos.
+   Usa variables del tema con fallback para funcionar en cualquier
+   página, tenga o no definidas las variables --accent, etc.
+   ============================================================ */
+
+#pg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 20, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity .22s ease;
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+}
+#pg-overlay.pg-visible { opacity: 1; }
+#pg-overlay * { box-sizing: border-box; }
+
+.pg-card {
+  background: var(--bg-card, #fff);
+  border-radius: 20px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.35);
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 32px 28px;
+  transform: translateY(12px) scale(.98);
+  transition: transform .22s ease;
+}
+#pg-overlay.pg-visible .pg-card { transform: translateY(0) scale(1); }
+
+.pg-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary, #1A1D2E);
+  text-align: center;
+  margin: 0 0 4px;
+}
+.pg-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary, #6B7280);
+  text-align: center;
+  margin: 0 0 24px;
+}
+
+/* Grid de perfiles */
+.pg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.pg-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 2px;
+  border-radius: 12px;
+  transition: transform .15s ease;
+}
+.pg-profile:hover { transform: translateY(-3px); }
+.pg-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+  border: 2px solid transparent;
+}
+.pg-profile:hover .pg-avatar { border-color: var(--accent, #6C63FF); }
+.pg-avatar.pg-avatar-add {
+  background: var(--bg-app, #F0F2F5);
+  color: var(--text-muted, #9CA3AF);
+  border: 2px dashed var(--border, #E5E7EB);
+  font-size: 26px;
+  font-weight: 400;
+}
+.pg-profile-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary, #1A1D2E);
+  text-align: center;
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-profile-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent, #6C63FF);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.pg-manage-link {
+  display: block;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted, #9CA3AF);
+  margin-top: 22px;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+.pg-manage-link:hover { color: var(--accent, #6C63FF); }
+
+/* PIN */
+.pg-pin-wrap { text-align: center; }
+.pg-pin-avatar {
+  width: 72px; height: 72px; border-radius: 18px;
+  margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 800; color: #fff;
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+}
+.pg-pin-input {
+  width: 100%;
+  max-width: 220px;
+  margin: 18px auto 6px;
+  display: block;
+  text-align: center;
+  font-size: 26px;
+  letter-spacing: 12px;
+  font-weight: 700;
+  padding: 12px 10px 12px 22px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-input, #D1D5DB);
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #1A1D2E);
+  outline: none;
+}
+.pg-pin-input:focus { border-color: var(--accent, #6C63FF); }
+.pg-error {
+  color: var(--danger, #EF4444);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  min-height: 18px;
+  margin: 6px 0 0;
+}
+.pg-hint {
+  color: var(--text-muted, #9CA3AF);
+  font-size: 12px;
+  text-align: center;
+  margin: 2px 0 0;
+}
+
+.pg-btn-row { display: flex; gap: 10px; margin-top: 20px; }
+.pg-btn {
+  flex: 1;
+  padding: 11px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: filter .15s ease, background .15s ease;
+}
+.pg-btn-primary { background: var(--accent, #6C63FF); color: #fff; }
+.pg-btn-primary:hover { filter: brightness(1.07); }
+.pg-btn-primary:disabled { opacity: .55; cursor: not-allowed; filter: none; }
+.pg-btn-ghost { background: var(--bg-app, #F0F2F5); color: var(--text-secondary, #6B7280); }
+.pg-btn-ghost:hover { filter: brightness(0.97); }
+.pg-btn-danger { background: var(--danger-light, #FEE2E2); color: var(--danger, #EF4444); }
+
+/* Gestión de usuarios */
+.pg-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #9CA3AF);
+  margin: 18px 0 10px;
+}
+.pg-user-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #E5E7EB);
+  margin-bottom: 8px;
+}
+.pg-user-row .pg-avatar { width: 40px; height: 40px; font-size: 15px; border-radius: 10px; }
+.pg-user-row-info { flex: 1; min-width: 0; }
+.pg-user-row-name { font-size: 13px; font-weight: 700; color: var(--text-primary, #1A1D2E); }
+.pg-user-row-mods { font-size: 11.5px; color: var(--text-muted, #9CA3AF); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-icon-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: none;
+  background: var(--bg-app, #F0F2F5); color: var(--text-secondary, #6B7280);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.pg-icon-btn:hover { background: var(--accent-light, #EEF0FF); color: var(--accent, #6C63FF); }
+.pg-icon-btn.pg-icon-danger:hover { background: var(--danger-light, #FEE2E2); color: var(--danger, #EF4444); }
+
+.pg-field { margin-bottom: 14px; }
+.pg-field label {
+  display: block; font-size: 12px; font-weight: 700;
+  color: var(--text-secondary, #6B7280); margin-bottom: 5px;
+}
+.pg-field input[type="text"], .pg-field input[type="password"] {
+  width: 100%; padding: 10px 12px; border-radius: 9px;
+  border: 1.5px solid var(--border-input, #D1D5DB);
+  background: var(--bg-input, #fff); color: var(--text-primary, #1A1D2E);
+  font-size: 13.5px; outline: none;
+}
+.pg-field input:focus { border-color: var(--accent, #6C63FF); }
+
+.pg-mods-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pg-mod-check {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 9px;
+  border: 1.5px solid var(--border, #E5E7EB);
+  font-size: 12.5px; font-weight: 600; color: var(--text-primary, #1A1D2E);
+  cursor: pointer; user-select: none;
+}
+.pg-mod-check input { accent-color: var(--accent, #6C63FF); width: 15px; height: 15px; }
+.pg-mod-check.pg-mod-checked { border-color: var(--accent, #6C63FF); background: var(--accent-light, #EEF0FF); }
+
+.pg-back-arrow {
+  cursor: pointer; font-size: 13px; font-weight: 700;
+  color: var(--text-muted, #9CA3AF); margin-bottom: 10px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.pg-back-arrow:hover { color: var(--accent, #6C63FF); }
+
+/* Botón flotante "Cambiar de usuario" */
+#pg-switch-btn {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card, #1A1D2E);
+  color: var(--text-sidebar, #CBD5E1);
+  border: 1px solid rgba(255,255,255,.08);
+  padding: 9px 14px 9px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+#pg-switch-btn:hover { filter: brightness(1.15); }
+#pg-switch-btn .pg-switch-avatar {
+  width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: #fff;
+}
+
+@media (max-width: 480px) {
+  .pg-card { max-width: 94vw; padding: 24px 18px; }
+  .pg-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pg-mods-grid { grid-template-columns: 1fr; }
+  #pg-switch-btn .pg-switch-label { display: none; }
+}
