@@ -295,6 +295,10 @@
           <button class="filter-btn" data-filtro="stock_bajo">⚠️ Stock bajo</button>
         </div>
         <div class="toolbar-right">
+          <select class="form-select" id="filtroMarca" title="Filtrar por marca / proveedor"
+                  style="max-width:180px;height:36px;font-size:12.5px">
+            <option value="">Todas las marcas</option>
+          </select>
           <span class="results-count" id="resultadosCount">0 resultados</span>
           <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">🔄 Actualizar</button>
         </div>
@@ -388,6 +392,12 @@
             <label class="form-label" for="inputSku">SKU</label>
             <input type="text" class="form-input" id="inputSku"
                    placeholder="Ej: CAM-POLO-M-001" maxlength="100" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputMarca">Marca / Proveedor <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <select class="form-select" id="inputMarca">
+              <option value="">Sin marca / proveedor</option>
+            </select>
           </div>
           <div class="form-group full">
             <label class="form-label" for="inputCodBarras">Código de barras</label>
