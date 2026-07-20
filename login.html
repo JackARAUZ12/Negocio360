@@ -788,7 +788,7 @@
     }
     clearAlert();
     const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/login.html'
+      redirectTo: window.location.origin + '/reset-password.html'
     });
     if (error) {
       showError('No se pudo enviar el correo de recuperación. Intenta de nuevo.');
