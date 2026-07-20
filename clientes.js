@@ -137,6 +137,31 @@ function toggleTipoClienteUI() {
   const tipo = document.getElementById('fc-tipo-cliente')?.value;
   const bloque = document.getElementById('bloque-cliente-recurrente');
   if (bloque) bloque.style.display = (tipo === 'recurrente') ? '' : 'none';
+  toggleYaPagoActualVisibility();
+}
+
+/**
+ * El checkbox "El cliente ya pagó el periodo actual" solo aplica cuando se
+ * está por definir un ciclo NUEVO (cliente nuevo, o que se está convirtiendo
+ * de aleatorio a recurrente). Si ya tenía un ciclo activo, se oculta porque
+ * no debe alterarse desde aquí (eso se maneja desde Ventas → Crear pago).
+ */
+function toggleYaPagoActualVisibility() {
+  const tipoEl = document.getElementById('fc-tipo-cliente');
+  const wrap = document.getElementById('wrap-ya-pago-actual');
+  if (!wrap || !tipoEl) return;
+  const esRecurrente = tipoEl.value === 'recurrente';
+  const cicloYaActivo = !!(CS.clienteActivo && CS.clienteActivo.tipo_cliente === 'recurrente' && CS.clienteActivo.fecha_proxima_pago);
+  wrap.style.display = (esRecurrente && !cicloYaActivo) ? '' : 'none';
+}
+
+function toggleYaPagoActualHint() {
+  const checked = document.getElementById('fc-ya-pago-actual')?.checked;
+  const hint = document.getElementById('ya-pago-actual-hint');
+  if (!hint) return;
+  hint.textContent = checked
+    ? 'Se asume que el periodo actual ya está cubierto. La próxima fecha de cobro será el siguiente ciclo.'
+    : 'Si NO ha pagado todavía, el pago quedará pendiente desde HOY y aparecerá de una vez en Ventas → Clientes con pago recurrente.';
 }
 
 function toggleFrecuenciaUI() {
@@ -604,6 +629,9 @@ function limpiarFormCliente() {
   if (freqEl) freqEl.value = 'mensual';
   const diaSemEl = document.getElementById('fc-dia-semana');
   if (diaSemEl) diaSemEl.value = '1';
+  const yaPagoEl = document.getElementById('fc-ya-pago-actual');
+  if (yaPagoEl) yaPagoEl.checked = false;
+  toggleYaPagoActualHint();
   toggleTipoClienteUI();
   toggleFrecuenciaUI();
 }
@@ -635,6 +663,9 @@ function rellenarFormCliente(c) {
     set('fc-dia-mes', c.dia_pago || '');
   }
 
+  const yaPagoEl = document.getElementById('fc-ya-pago-actual');
+  if (yaPagoEl) yaPagoEl.checked = false;
+  toggleYaPagoActualHint();
   toggleTipoClienteUI();
   toggleFrecuenciaUI();
 }
@@ -670,13 +701,24 @@ async function guardarCliente() {
     payload.monto_recurrente = monto || 0;
     payload.dia_pago         = diaPago;
 
-    // Solo se calcula la primera "próxima fecha de pago" si el cliente no
+    // Solo se define la primera "próxima fecha de pago" si el cliente no
     // tenía ninguna todavía (cliente nuevo, o recién convertido a recurrente).
     // Si ya tenía un ciclo activo, NO se pisa para no romper el pago en curso.
     const yaTeniaFecha = CS.clienteActivo?.fecha_proxima_pago && CS.clienteActivo?.tipo_cliente === 'recurrente';
     if (!yaTeniaFecha) {
-      payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago);
-      payload.saldo_pendiente    = 0;
+      const yaPagoPeriodoActual = document.getElementById('fc-ya-pago-actual')?.checked || false;
+      if (yaPagoPeriodoActual) {
+        // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo.
+        payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago);
+        payload.fecha_ultimo_pago  = todayISO();
+      } else {
+        // No ha pagado todavía: el pago queda pendiente DESDE HOY, mismo día
+        // en que se crea el cliente, y aparece de inmediato en
+        // Ventas → Clientes con pago recurrente.
+        payload.fecha_proxima_pago = todayISO();
+        payload.fecha_ultimo_pago  = null;
+      }
+      payload.saldo_pendiente = 0;
     }
   } else {
     // Cliente aleatorio: limpiar configuración recurrente
