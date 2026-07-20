@@ -609,7 +609,7 @@ async function fetchClientes() {
 /* ---- PRODUCTOS ---- */
 async function fetchProductos() {
   const { data } = await sb.from('productos')
-    .select('id,nombre,sku,tipo,categoria,precio,costo,stock_actual,stock_minimo,activo')
+    .select('id,nombre,sku,tipo,categoria,proveedor_id,proveedor_nombre,precio,costo,stock_actual,stock_minimo,activo')
     .eq('auth_user_id', R.userId)
     .order('nombre');
   R.cache.productos = data || [];
@@ -1176,6 +1176,41 @@ async function loadVentasTab() {
         : '<p style="color:var(--text-muted);font-size:13px">Sin datos</p>';
     }
 
+    // Marcas / Proveedores (opcional — solo aparece si hay productos con marca asignada)
+    const marcaEl = document.getElementById('marcas-ventas-list');
+    if (marcaEl) {
+      const marcaMap = {};
+      detalles.forEach(d => {
+        const prod  = (R.cache.productos||[]).find(p=>p.id===d.producto_id);
+        if (!prod?.proveedor_nombre) return; // sin marca asignada: no se cuenta como grupo
+        const marca = prod.proveedor_nombre;
+        marcaMap[marca] = (marcaMap[marca]||0) + Number(d.subtotal);
+      });
+      const marcaEntries = Object.entries(marcaMap);
+      const wrap = document.getElementById('marcas-ventas-wrap');
+      if (!marcaEntries.length) {
+        // No hay marcas configuradas todavía: ocultar el panel en vez de mostrarlo vacío
+        if (wrap) wrap.style.display = 'none';
+      } else {
+        if (wrap) wrap.style.display = '';
+        const marcaTotal  = marcaEntries.reduce((a,[,v])=>a+v,0);
+        const marcaSorted = marcaEntries.sort((a,b)=>b[1]-a[1]);
+        marcaEl.innerHTML = marcaSorted.map(([marca,val],i) => `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12.5px;font-weight:600;color:var(--text-primary)">🏷️ ${esc(marca)}</span>
+              <span style="font-size:12.5px;font-weight:700;font-family:var(--font-mono)">${fmt(val)}</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar">
+                <div class="progress-bar-fill" style="width:${marcaTotal>0?(val/marcaTotal*100).toFixed(0):0}%;background:${CHART_COLORS[i%10]}"></div>
+              </div>
+              <span class="progress-label">${marcaTotal>0?((val/marcaTotal)*100).toFixed(0):0}%</span>
+            </div>
+          </div>`).join('');
+      }
+    }
+
     // Métodos de pago
     const metEl = document.getElementById('metodos-ventas-list');
     if (metEl) {
@@ -1315,29 +1350,92 @@ async function loadInventario() {
       }).join('') : emptyRow(4,'Sin productos con stock bajo ✅');
     }
 
-    // Tabla completa
-    const tbodyFull = document.getElementById('inv-tabla-completa');
-    if (tbodyFull) {
-      const sorted = activos.sort((a,b)=>a.nombre.localeCompare(b.nombre));
-      tbodyFull.innerHTML = sorted.length ? sorted.map(p => {
-        const precio = Number(p.precio||0), costo = Number(p.costo||0);
-        const margen = precio>0 ? ((precio-costo)/precio*100).toFixed(1) : 0;
-        const margenCls = margen>=40?'style="color:var(--success);font-weight:700"' : margen>=20?'style="color:var(--warning);font-weight:700"' : 'style="color:var(--danger);font-weight:700"';
-        const valor = Number(p.stock_actual||0)*costo;
-        return `<tr>
-          <td style="font-weight:500">${esc(p.nombre)}</td>
-          <td class="td-muted" style="font-family:var(--font-mono);font-size:12px">${esc(p.sku||'—')}</td>
-          <td class="td-muted">${esc(p.categoria||'—')}</td>
-          <td class="td-right td-mono">${fmtNum(p.stock_actual)}</td>
-          <td class="td-right td-mono">${fmt(costo)}</td>
-          <td class="td-right td-mono">${fmt(precio)}</td>
-          <td class="td-right" ${margenCls}>${margen}%</td>
-          <td class="td-right td-mono" style="color:var(--accent)">${fmt(valor)}</td>
-        </tr>`;
-      }).join('') : emptyRow(8,'Sin productos registrados');
+    // Filtro secundario "Marca / Proveedor" — solo se muestra si hay marcas configuradas
+    const marcasUnicas = [...new Map(
+      activos.filter(p=>p.proveedor_id).map(p=>[p.proveedor_id, p.proveedor_nombre])
+    ).entries()];
+    const filtroMarcaWrap = document.getElementById('inv-filtro-marca-wrap');
+    const filtroMarcaSel  = document.getElementById('inv-filtro-marca');
+    if (filtroMarcaWrap && filtroMarcaSel) {
+      if (!marcasUnicas.length) {
+        filtroMarcaWrap.style.display = 'none';
+      } else {
+        filtroMarcaWrap.style.display = '';
+        if (!filtroMarcaSel.dataset.bound) {
+          filtroMarcaSel.innerHTML = '<option value="">Todas las marcas</option>' +
+            marcasUnicas.map(([id,nombre]) => `<option value="${id}">${esc(nombre)}</option>`).join('');
+          filtroMarcaSel.addEventListener('change', () => renderInventarioTablaCompleta(activos, filtroMarcaSel.value));
+          filtroMarcaSel.dataset.bound = '1';
+        }
+      }
     }
 
+    // Valor de inventario por marca / proveedor (panel opcional)
+    const marcaValorEl  = document.getElementById('inv-marcas-list');
+    const marcaValorWrap = document.getElementById('inv-marcas-wrap');
+    if (marcaValorEl && marcaValorWrap) {
+      const marcaMap = {};
+      activos.forEach(p => {
+        if (!p.proveedor_nombre) return;
+        marcaMap[p.proveedor_nombre] = (marcaMap[p.proveedor_nombre]||0) + (Number(p.stock_actual||0)*Number(p.costo||0));
+      });
+      const entries = Object.entries(marcaMap);
+      if (!entries.length) {
+        marcaValorWrap.style.display = 'none';
+      } else {
+        marcaValorWrap.style.display = '';
+        const total  = entries.reduce((a,[,v])=>a+v,0);
+        const sorted = entries.sort((a,b)=>b[1]-a[1]);
+        marcaValorEl.innerHTML = sorted.map(([marca,val],i) => `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12.5px;font-weight:600;color:var(--text-primary)">🏷️ ${esc(marca)}</span>
+              <span style="font-size:12.5px;font-weight:700;font-family:var(--font-mono)">${fmt(val)}</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar">
+                <div class="progress-bar-fill" style="width:${total>0?(val/total*100).toFixed(0):0}%;background:${CHART_COLORS[i%10]}"></div>
+              </div>
+              <span class="progress-label">${total>0?((val/total)*100).toFixed(0):0}%</span>
+            </div>
+          </div>`).join('');
+      }
+    }
+
+    // Tabla completa
+    renderInventarioTablaCompleta(activos, '');
+
   } catch(e) { console.error('loadInventario:', e); }
+}
+
+// Tabla completa de inventario — separada para poder re-renderizar al
+// cambiar el filtro secundario de Marca/Proveedor sin duplicar lógica.
+function renderInventarioTablaCompleta(activos, filtroProveedorId) {
+  const tbodyFull = document.getElementById('inv-tabla-completa');
+  if (!tbodyFull) return;
+  const lista = filtroProveedorId
+    ? activos.filter(p => p.proveedor_id === filtroProveedorId)
+    : activos;
+  const sorted = [...lista].sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  tbodyFull.innerHTML = sorted.length ? sorted.map(p => {
+    const precio = Number(p.precio||0), costo = Number(p.costo||0);
+    const margen = precio>0 ? ((precio-costo)/precio*100).toFixed(1) : 0;
+    const margenCls = margen>=40?'style="color:var(--success);font-weight:700"' : margen>=20?'style="color:var(--warning);font-weight:700"' : 'style="color:var(--danger);font-weight:700"';
+    const valor = Number(p.stock_actual||0)*costo;
+    return `<tr>
+      <td style="font-weight:500">${esc(p.nombre)}</td>
+      <td class="td-muted" style="font-family:var(--font-mono);font-size:12px">${esc(p.sku||'—')}</td>
+      <td class="td-muted">
+        ${esc(p.categoria||'—')}
+        ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted)">🏷️ ${esc(p.proveedor_nombre)}</div>` : ''}
+      </td>
+      <td class="td-right td-mono">${fmtNum(p.stock_actual)}</td>
+      <td class="td-right td-mono">${fmt(costo)}</td>
+      <td class="td-right td-mono">${fmt(precio)}</td>
+      <td class="td-right" ${margenCls}>${margen}%</td>
+      <td class="td-right td-mono" style="color:var(--accent)">${fmt(valor)}</td>
+    </tr>`;
+  }).join('') : emptyRow(8,'Sin productos registrados');
 }
 
 /* ============================================================
@@ -1746,9 +1844,9 @@ async function exportarPDF(tipo) {
       tituloSeccion('Inventario');
     }
     const prods = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
-    const rows  = prods.map(p=>[p.nombre,p.sku||'—',p.categoria||'—',fmtNum(p.stock_actual),fmt(p.costo),fmt(p.precio),fmt(Number(p.stock_actual||0)*Number(p.costo||0))]);
-    doc.autoTable({ startY, head:[['Producto','SKU','Categoría','Stock','Costo','Precio','Valor total']],
-      body:rows.length?rows:[['Sin datos','','','','','','']], theme:'striped',
+    const rows  = prods.map(p=>[p.nombre,p.sku||'—',p.categoria||'—',p.proveedor_nombre||'—',fmtNum(p.stock_actual),fmt(p.costo),fmt(p.precio),fmt(Number(p.stock_actual||0)*Number(p.costo||0))]);
+    doc.autoTable({ startY, head:[['Producto','SKU','Categoría','Marca/Proveedor','Stock','Costo','Precio','Valor total']],
+      body:rows.length?rows:[['Sin datos','','','','','','','']], theme:'striped',
       headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
     startY = doc.lastAutoTable.finalY + 10;
   }
