@@ -88,6 +88,72 @@ function startOfMonthISO() {
 }
 
 /* ============================================================
+   PAGOS RECURRENTES — helpers de fecha
+   (misma lógica duplicada en ventas.js a propósito, igual que
+   el resto de helpers de este archivo)
+   ============================================================ */
+function clampDia(anio, mes /*0-based*/, dia) {
+  const ultimoDiaMes = new Date(anio, mes + 1, 0).getDate();
+  return Math.min(Math.max(1, dia || 1), ultimoDiaMes);
+}
+
+/** Calcula la PRIMERA próxima fecha de pago (al crear/editar un cliente recurrente) */
+function calcularPrimeraFechaProxima(frecuencia, diaPago) {
+  const hoy = new Date();
+  const anio = hoy.getFullYear(), mes = hoy.getMonth();
+
+  if (frecuencia === 'semanal') {
+    const objetivo = Number(diaPago ?? 1); // 0=domingo..6=sábado
+    const d = new Date(hoy);
+    let delta = (objetivo - d.getDay() + 7) % 7;
+    if (delta === 0) delta = 7; // si hoy es el día, la próxima es en 7 días
+    d.setDate(d.getDate() + delta);
+    return d.toISOString().split('T')[0];
+  }
+
+  if (frecuencia === 'quincenal') {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() + 15);
+    return d.toISOString().split('T')[0];
+  }
+
+  if (frecuencia === 'anual') {
+    const dia = clampDia(anio + 1, mes, diaPago);
+    const d = new Date(anio + 1, mes, dia);
+    return d.toISOString().split('T')[0];
+  }
+
+  // mensual (default)
+  const diaObjetivo = clampDia(anio, mes, diaPago);
+  let d = new Date(anio, mes, diaObjetivo);
+  if (d <= hoy) d = new Date(anio, mes + 1, clampDia(anio, mes + 1, diaPago));
+  return d.toISOString().split('T')[0];
+}
+
+/* ============================================================
+   TIPO DE CLIENTE — mostrar/ocultar bloque recurrente
+   ============================================================ */
+function toggleTipoClienteUI() {
+  const tipo = document.getElementById('fc-tipo-cliente')?.value;
+  const bloque = document.getElementById('bloque-cliente-recurrente');
+  if (bloque) bloque.style.display = (tipo === 'recurrente') ? '' : 'none';
+}
+
+function toggleFrecuenciaUI() {
+  const freq = document.getElementById('fc-frecuencia-pago')?.value;
+  const wrapMes    = document.getElementById('wrap-dia-mes');
+  const wrapSemana = document.getElementById('wrap-dia-semana');
+  if (!wrapMes || !wrapSemana) return;
+  if (freq === 'semanal') {
+    wrapMes.style.display = 'none';
+    wrapSemana.style.display = '';
+  } else {
+    wrapMes.style.display = '';
+    wrapSemana.style.display = 'none';
+  }
+}
+
+/* ============================================================
    CALCULAR ESTADO CLIENTE (automático)
    ============================================================ */
 function calcularEstado(cliente) {
@@ -432,7 +498,10 @@ function renderTablaClientes() {
         <div style="display:flex;align-items:center;gap:10px">
           <div class="cli-avatar-sm" style="background:${color}">${ini}</div>
           <div>
-            <div style="font-weight:600;color:var(--text-primary)">${esc(c.nombre)}</div>
+            <div style="font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px">
+              ${esc(c.nombre)}
+              ${c.tipo_cliente === 'recurrente' ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent)">RECURRENTE</span>` : ''}
+            </div>
             ${c.empresa ? `<div style="font-size:11.5px;color:var(--text-muted)">${esc(c.empresa)}</div>` : ''}
           </div>
         </div>
@@ -521,12 +590,22 @@ function abrirEditar(clienteId) {
 }
 
 function limpiarFormCliente() {
-  ['fc-nombre','fc-telefono','fc-correo','fc-empresa','fc-direccion','fc-observaciones'].forEach(id => {
+  ['fc-nombre','fc-telefono','fc-correo','fc-empresa','fc-direccion','fc-observaciones',
+   'fc-monto-recurrente','fc-dia-mes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
   const est = document.getElementById('fc-estado');
   if (est) est.value = 'activo';
+
+  const tipoEl = document.getElementById('fc-tipo-cliente');
+  if (tipoEl) tipoEl.value = 'aleatorio';
+  const freqEl = document.getElementById('fc-frecuencia-pago');
+  if (freqEl) freqEl.value = 'mensual';
+  const diaSemEl = document.getElementById('fc-dia-semana');
+  if (diaSemEl) diaSemEl.value = '1';
+  toggleTipoClienteUI();
+  toggleFrecuenciaUI();
 }
 
 function rellenarFormCliente(c) {
@@ -539,11 +618,33 @@ function rellenarFormCliente(c) {
   set('fc-observaciones',c.observaciones);
   const est = document.getElementById('fc-estado');
   if (est) est.value = c.estado || 'activo';
+
+  const tipoEl = document.getElementById('fc-tipo-cliente');
+  if (tipoEl) tipoEl.value = (c.tipo_cliente === 'recurrente') ? 'recurrente' : 'aleatorio';
+
+  const freq = c.frecuencia_pago || 'mensual';
+  const freqEl = document.getElementById('fc-frecuencia-pago');
+  if (freqEl) freqEl.value = freq;
+
+  set('fc-monto-recurrente', c.monto_recurrente);
+
+  if (freq === 'semanal') {
+    const diaSemEl = document.getElementById('fc-dia-semana');
+    if (diaSemEl) diaSemEl.value = (c.dia_pago ?? 1).toString();
+  } else {
+    set('fc-dia-mes', c.dia_pago || '');
+  }
+
+  toggleTipoClienteUI();
+  toggleFrecuenciaUI();
 }
 
 async function guardarCliente() {
   const nombre = document.getElementById('fc-nombre')?.value.trim();
   if (!nombre) { showToast('El nombre es obligatorio', 'error'); return; }
+
+  const tipoCliente = document.getElementById('fc-tipo-cliente')?.value || 'aleatorio';
+  const esRecurrente = tipoCliente === 'recurrente';
 
   const payload = {
     auth_user_id: CS.userId,
@@ -555,7 +656,36 @@ async function guardarCliente() {
     observaciones: document.getElementById('fc-observaciones')?.value.trim() || null,
     estado:        document.getElementById('fc-estado')?.value || 'activo',
     activo:        true,
+    tipo_cliente:  tipoCliente,
   };
+
+  if (esRecurrente) {
+    const freq   = document.getElementById('fc-frecuencia-pago')?.value || 'mensual';
+    const monto  = parseFloat(document.getElementById('fc-monto-recurrente')?.value || 0);
+    const diaPago = (freq === 'semanal')
+      ? parseInt(document.getElementById('fc-dia-semana')?.value ?? '1', 10)
+      : parseInt(document.getElementById('fc-dia-mes')?.value || '1', 10);
+
+    payload.frecuencia_pago  = freq;
+    payload.monto_recurrente = monto || 0;
+    payload.dia_pago         = diaPago;
+
+    // Solo se calcula la primera "próxima fecha de pago" si el cliente no
+    // tenía ninguna todavía (cliente nuevo, o recién convertido a recurrente).
+    // Si ya tenía un ciclo activo, NO se pisa para no romper el pago en curso.
+    const yaTeniaFecha = CS.clienteActivo?.fecha_proxima_pago && CS.clienteActivo?.tipo_cliente === 'recurrente';
+    if (!yaTeniaFecha) {
+      payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago);
+      payload.saldo_pendiente    = 0;
+    }
+  } else {
+    // Cliente aleatorio: limpiar configuración recurrente
+    payload.frecuencia_pago    = null;
+    payload.monto_recurrente   = 0;
+    payload.dia_pago           = null;
+    payload.fecha_proxima_pago = null;
+    payload.saldo_pendiente    = 0;
+  }
 
   const btn = document.getElementById('btn-guardar-cliente');
   if (btn) btn.disabled = true;
