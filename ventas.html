@@ -251,6 +251,9 @@
     .estado-completada{background:var(--success-soft);color:var(--success)}
     .estado-anulada{background:var(--bg-hover);color:var(--text-muted)}
     .estado-devuelta{background:var(--warning-soft);color:var(--warning)}
+    .estado-aldia{background:var(--success-soft);color:var(--success)}
+    .estado-atrasado{background:var(--danger-soft);color:var(--danger)}
+    .estado-parcial{background:var(--warning-soft);color:var(--warning)}
 
     /* ICON BTNS */
     .btn-icon-sm{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
@@ -732,6 +735,43 @@
         </div>
       </div>
 
+      <!-- CLIENTES CON PAGO RECURRENTE -->
+      <div class="panel-card fade-in" id="panel-recurrentes">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Clientes con pago recurrente
+          </div>
+          <div class="panel-actions">
+            <span style="font-size:12.5px;color:var(--text-muted)" id="recurrentes-count-label">0 clientes</span>
+            <button class="btn-secondary" onclick="loadClientesRecurrentes()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Frecuencia</th>
+                <th>Último pago</th>
+                <th>Próxima fecha a pagar</th>
+                <th>Debe pagar</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="recurrentes-tbody">
+              <tr class="loading-row"><td colspan="7">Cargando clientes recurrentes…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-hint">← Desliza la tabla para ver más columnas →</div>
+      </div>
+
       <!-- HISTORIAL DE VENTAS -->
       <div class="panel-card fade-in">
         <div class="panel-header">
@@ -1095,6 +1135,105 @@
       <button class="btn-ghost" onclick="closeModal('modal-anular')">Cancelar</button>
       <button class="btn-danger-outline" id="btn-confirmar-anular" onclick="anularVenta()">
         Sí, anular
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: REGISTRAR PAGO DE CLIENTE RECURRENTE
+===================================================== -->
+<div class="modal-overlay" id="modal-pago-recurrente" onclick="if(event.target===this)cerrarModalPagoRecurrente()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Registrar pago</div>
+        <div class="modal-subtitle" id="pr-cliente-nombre">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalPagoRecurrente()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Info del ciclo -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;
+        padding:12px 14px;background:var(--bg-surface-2);border-radius:var(--radius-md);font-size:13px">
+        <div><span style="color:var(--text-muted)">Frecuencia:</span> <strong id="pr-frecuencia">—</strong></div>
+        <div><span style="color:var(--text-muted)">Próxima fecha:</span> <strong id="pr-fecha-proxima">—</strong></div>
+        <div><span style="color:var(--text-muted)">Último pago:</span> <strong id="pr-ultimo-pago">—</strong></div>
+        <div><span style="color:var(--text-muted)">Estado:</span> <strong id="pr-estado-badge">—</strong></div>
+      </div>
+
+      <div style="text-align:center;padding:14px;background:var(--accent-soft);border-radius:var(--radius-md);margin-bottom:16px">
+        <div style="font-size:12px;color:var(--text-secondary)">Monto que debe pagar</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent)" id="pr-monto-debido">C$ 0.00</div>
+      </div>
+
+      <!-- Tipo de pago -->
+      <div class="form-group full-col">
+        <label>Tipo de pago</label>
+        <div style="display:flex;gap:10px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;flex:1;
+            padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md)">
+            <input type="radio" name="pr-tipo" value="completo" checked onchange="onCambioTipoPagoRecurrente()"/>
+            Pago completo
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;flex:1;
+            padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md)">
+            <input type="radio" name="pr-tipo" value="parcial" onchange="onCambioTipoPagoRecurrente()"/>
+            Pago parcial
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group full-col" id="pr-wrap-monto-parcial" style="display:none">
+        <label>Monto a pagar ahora</label>
+        <input type="number" id="pr-monto-parcial" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenPagoRecurrente()"/>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>Método de pago</label>
+          <select id="pr-metodo-pago"></select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="pr-iva-activo" onchange="actualizarResumenPagoRecurrente()"/>
+            Aplicar IVA
+          </label>
+          <input type="number" id="pr-iva-porcentaje" min="0" max="100" step="0.01" value="15"
+            style="margin-top:6px" oninput="actualizarResumenPagoRecurrente()" disabled/>
+        </div>
+      </div>
+
+      <div class="form-group full-col">
+        <label>Observaciones</label>
+        <textarea id="pr-observaciones" placeholder="Nota interna sobre este pago (opcional)"></textarea>
+      </div>
+
+      <!-- Resumen -->
+      <div style="margin-top:6px;padding:12px 14px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px">
+          <span>Monto a cobrar ahora</span><strong id="pr-r-total">C$ 0.00</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px" id="pr-r-iva-row">
+          <span style="color:var(--text-muted)">IVA (va a Impuestos, no a Caja)</span><strong id="pr-r-iva">C$ 0.00</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px">
+          <span style="color:var(--success)">Ingresa a Caja</span><strong style="color:var(--success)" id="pr-r-caja">C$ 0.00</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+          <span>Saldo restante del periodo</span><strong id="pr-r-restante">C$ 0.00</strong>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarModalPagoRecurrente()">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-pago-recurrente" onclick="confirmarPagoRecurrente()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Registrar pago
       </button>
     </div>
   </div>
