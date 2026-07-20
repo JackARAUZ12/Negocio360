@@ -911,6 +911,67 @@
           <label>Dirección</label>
           <input type="text" id="fc-direccion" placeholder="Dirección física (opcional)"/>
         </div>
+
+        <!-- ============================================
+             TIPO DE CLIENTE — Recurrente vs Aleatorio
+             ============================================ -->
+        <div class="form-group full-col">
+          <label>Tipo de cliente</label>
+          <select id="fc-tipo-cliente" onchange="toggleTipoClienteUI()">
+            <option value="aleatorio">Aleatorio</option>
+            <option value="recurrente">Recurrente</option>
+          </select>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.5">
+            <strong>Recurrente:</strong> el cliente paga bajo un ciclo fijo (mensualidad, semanal, quincenal o anual) —
+            ideal para membresías, rentas o servicios contratados. <strong>Aleatorio:</strong> el cliente compra de forma
+            ocasional, sin un ciclo de pago fijo, cada vez que desea adquirir un producto o servicio.
+          </div>
+        </div>
+
+        <!-- Sub-panel: solo visible si tipo_cliente = recurrente -->
+        <div class="form-group full-col" id="bloque-cliente-recurrente" style="display:none">
+          <div style="border:1px dashed var(--border);border-radius:var(--radius-md);padding:14px;background:var(--bg-surface-2)">
+            <div style="font-size:12.5px;font-weight:700;color:var(--text-secondary);margin-bottom:10px">
+              Configuración del pago recurrente
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>Frecuencia de pago</label>
+                <select id="fc-frecuencia-pago" onchange="toggleFrecuenciaUI()">
+                  <option value="mensual">Mensual</option>
+                  <option value="semanal">Semanal</option>
+                  <option value="quincenal">Quincenal</option>
+                  <option value="anual">Anual</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Monto a pagar cada periodo</label>
+                <input type="number" id="fc-monto-recurrente" min="0" step="0.01" placeholder="0.00"/>
+              </div>
+              <div class="form-group" id="wrap-dia-mes">
+                <label>Día de pago (día del mes)</label>
+                <input type="number" id="fc-dia-mes" min="1" max="31" placeholder="Ej: 20"/>
+              </div>
+              <div class="form-group" id="wrap-dia-semana" style="display:none">
+                <label>Día de pago (día de la semana)</label>
+                <select id="fc-dia-semana">
+                  <option value="1">Lunes</option>
+                  <option value="2">Martes</option>
+                  <option value="3">Miércoles</option>
+                  <option value="4">Jueves</option>
+                  <option value="5">Viernes</option>
+                  <option value="6">Sábado</option>
+                  <option value="0">Domingo</option>
+                </select>
+              </div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
+              La próxima fecha de pago se calcula automáticamente y siempre respeta este día fijo del ciclo,
+              aunque el cliente pague parcial en otra fecha.
+            </div>
+          </div>
+        </div>
+
         <div class="form-group full-col">
           <label>Observaciones</label>
           <textarea id="fc-observaciones" placeholder="Notas internas, preferencias, información relevante…"></textarea>
