@@ -57,6 +57,11 @@ const S = {
   // Productos/Clientes cargados
   productosCache: [],
   clientesCache:  [],
+
+  // Clientes con pago recurrente
+  clientesRecurrentes: [],
+  pagoRecurrenteActivo: null, // cliente completo (objeto) que se está cobrando
+  pagoRecurrenteMontoDebido: 0,
 };
 
 /* ============================================================
@@ -631,6 +636,436 @@ async function loadClientesCache() {
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
+}
+
+/* ============================================================
+   CLIENTES CON PAGO RECURRENTE
+   (mensualidad / semanal / quincenal / anual)
+   ============================================================ */
+const FRECUENCIA_LABEL = { mensual:'Mensual', semanal:'Semanal', quincenal:'Quincenal', anual:'Anual' };
+const DIAS_SEMANA_LABEL = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+function clampDia(anio, mes /*0-based*/, dia) {
+  const ultimoDiaMes = new Date(anio, mes + 1, 0).getDate();
+  return Math.min(Math.max(1, dia || 1), ultimoDiaMes);
+}
+
+/**
+ * Calcula la SIGUIENTE fecha de pago a partir de la fecha ancla actual
+ * (la fecha que ya vencía), NO desde la fecha en que se pagó.
+ * Así, si el ciclo es "siempre el día 20", la próxima fecha sigue
+ * siendo el 20 del mes siguiente, sin importar si el cliente completó
+ * su pago el 20, el 25 o el 28.
+ */
+function calcularSiguienteFecha(fechaAnclaISO, frecuencia, diaPago) {
+  const [y, m, d] = fechaAnclaISO.split('-').map(Number);
+  const ancla = new Date(y, m - 1, d);
+
+  if (frecuencia === 'semanal') {
+    const next = new Date(ancla);
+    next.setDate(next.getDate() + 7);
+    return next.toISOString().split('T')[0];
+  }
+  if (frecuencia === 'quincenal') {
+    const next = new Date(ancla);
+    next.setDate(next.getDate() + 15);
+    return next.toISOString().split('T')[0];
+  }
+  if (frecuencia === 'anual') {
+    const anio = ancla.getFullYear() + 1;
+    const dia  = clampDia(anio, ancla.getMonth(), diaPago ?? ancla.getDate());
+    return new Date(anio, ancla.getMonth(), dia).toISOString().split('T')[0];
+  }
+  // mensual (default)
+  const anio = ancla.getFullYear();
+  const mesSig = ancla.getMonth() + 1;
+  const anioSig = anio + Math.floor(mesSig / 12);
+  const mesSigNorm = mesSig % 12;
+  const dia = clampDia(anioSig, mesSigNorm, diaPago ?? ancla.getDate());
+  return new Date(anioSig, mesSigNorm, dia).toISOString().split('T')[0];
+}
+
+/** Devuelve { montoDebido, atrasado, diasAtraso, alDia, esParcial } para un cliente recurrente */
+function calcularEstadoPagoCliente(c) {
+  const montoRecurrente = Number(c.monto_recurrente || 0);
+  const saldoPendiente  = Number(c.saldo_pendiente  || 0);
+  const montoDebido     = saldoPendiente > 0 ? saldoPendiente : montoRecurrente;
+  const esParcial       = saldoPendiente > 0 && saldoPendiente < montoRecurrente;
+
+  let atrasado = false, diasAtraso = 0;
+  if (c.fecha_proxima_pago) {
+    const hoy = new Date(todayISO() + 'T00:00:00');
+    const prox = new Date(c.fecha_proxima_pago + 'T00:00:00');
+    if (prox < hoy) {
+      atrasado = true;
+      diasAtraso = Math.floor((hoy - prox) / 86400000);
+    }
+  }
+  return { montoDebido, atrasado, diasAtraso, esParcial };
+}
+
+async function loadClientesRecurrentes() {
+  const tbody = document.getElementById('recurrentes-tbody');
+  if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Cargando clientes recurrentes…</td></tr>';
+  try {
+    const { data, error } = await sb.from('clientes')
+      .select('id,nombre,telefono,correo,tipo_cliente,frecuencia_pago,monto_recurrente,dia_pago,fecha_ultimo_pago,fecha_proxima_pago,saldo_pendiente')
+      .eq('auth_user_id', S.userId)
+      .eq('tipo_cliente', 'recurrente')
+      .eq('activo', true)
+      .order('fecha_proxima_pago', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    S.clientesRecurrentes = data || [];
+    renderClientesRecurrentes();
+  } catch(e) {
+    console.warn('loadClientesRecurrentes:', e);
+    S.clientesRecurrentes = [];
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">No se pudo cargar la lista de clientes recurrentes.</td></tr>`;
+  }
+}
+
+function renderClientesRecurrentes() {
+  const tbody = document.getElementById('recurrentes-tbody');
+  const label = document.getElementById('recurrentes-count-label');
+  if (label) label.textContent = `${S.clientesRecurrentes.length} cliente${S.clientesRecurrentes.length===1?'':'s'}`;
+  if (!tbody) return;
+
+  if (!S.clientesRecurrentes.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">
+      <div class="empty-icon">🔁</div>
+      <p>Aún no tienes clientes marcados como "Recurrente". Configúralos desde el módulo de Clientes.</p>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = S.clientesRecurrentes.map(c => {
+    const est = calcularEstadoPagoCliente(c);
+    const freqLabel = FRECUENCIA_LABEL[c.frecuencia_pago] || '—';
+    let estadoHtml;
+    if (est.atrasado) {
+      estadoHtml = `<span class="estado-badge estado-atrasado">Atrasado (${est.diasAtraso}d)</span>`;
+    } else if (est.esParcial) {
+      estadoHtml = `<span class="estado-badge estado-parcial">Pago parcial</span>`;
+    } else {
+      estadoHtml = `<span class="estado-badge estado-aldia">Al día</span>`;
+    }
+    return `
+    <tr>
+      <td>
+        <div style="font-weight:600;color:var(--text-primary)">${esc(c.nombre)}</div>
+        <div class="td-cliente-sub">${esc(c.telefono || c.correo || '')}</div>
+      </td>
+      <td style="color:var(--text-secondary);font-size:13px">${freqLabel}</td>
+      <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(c.fecha_ultimo_pago)}</td>
+      <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(c.fecha_proxima_pago)}</td>
+      <td class="td-total">${fmt(est.montoDebido)}</td>
+      <td>${estadoHtml}</td>
+      <td class="td-actions">
+        <button class="btn-primary" style="padding:6px 12px;font-size:12.5px" onclick="abrirModalPagoRecurrente('${c.id}')">
+          Crear pago
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/* ------------------------------------------------------------
+   MODAL: REGISTRAR PAGO
+------------------------------------------------------------ */
+function abrirModalPagoRecurrente(clienteId) {
+  const c = S.clientesRecurrentes.find(x => x.id === clienteId);
+  if (!c) return;
+  S.pagoRecurrenteActivo = c;
+
+  const est = calcularEstadoPagoCliente(c);
+  S.pagoRecurrenteMontoDebido = est.montoDebido;
+
+  document.getElementById('pr-cliente-nombre').textContent = c.nombre;
+  document.getElementById('pr-frecuencia').textContent = FRECUENCIA_LABEL[c.frecuencia_pago] || '—';
+  document.getElementById('pr-fecha-proxima').textContent = fmtFecha(c.fecha_proxima_pago);
+  document.getElementById('pr-ultimo-pago').textContent = fmtFecha(c.fecha_ultimo_pago);
+  document.getElementById('pr-estado-badge').innerHTML = est.atrasado
+    ? `<span class="estado-badge estado-atrasado">Atrasado (${est.diasAtraso}d)</span>`
+    : (est.esParcial ? `<span class="estado-badge estado-parcial">Pago parcial</span>` : `<span class="estado-badge estado-aldia">Al día</span>`);
+  document.getElementById('pr-monto-debido').textContent = fmt(est.montoDebido);
+
+  // Reset formulario
+  document.querySelector('input[name="pr-tipo"][value="completo"]').checked = true;
+  document.getElementById('pr-wrap-monto-parcial').style.display = 'none';
+  document.getElementById('pr-monto-parcial').value = '';
+  document.getElementById('pr-observaciones').value = '';
+  document.getElementById('pr-iva-activo').checked = false;
+  document.getElementById('pr-iva-porcentaje').disabled = true;
+  document.getElementById('pr-iva-porcentaje').value = S.empresaConfig?.porcentaje_iva ? Number(S.empresaConfig.porcentaje_iva) : 15;
+
+  // Métodos de pago
+  const sel = document.getElementById('pr-metodo-pago');
+  if (sel) {
+    sel.innerHTML = S.metodosPago.map(m => `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  }
+
+  actualizarResumenPagoRecurrente();
+  openModal('modal-pago-recurrente');
+}
+
+function cerrarModalPagoRecurrente() {
+  closeModal('modal-pago-recurrente');
+  S.pagoRecurrenteActivo = null;
+}
+
+function onCambioTipoPagoRecurrente() {
+  const tipo = document.querySelector('input[name="pr-tipo"]:checked')?.value;
+  const wrap = document.getElementById('pr-wrap-monto-parcial');
+  wrap.style.display = (tipo === 'parcial') ? '' : 'none';
+  actualizarResumenPagoRecurrente();
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'pr-iva-activo') {
+    document.getElementById('pr-iva-porcentaje').disabled = !e.target.checked;
+  }
+});
+
+function actualizarResumenPagoRecurrente() {
+  const tipo = document.querySelector('input[name="pr-tipo"]:checked')?.value || 'completo';
+  const montoDebido = S.pagoRecurrenteMontoDebido || 0;
+
+  let montoAhora;
+  if (tipo === 'completo') {
+    montoAhora = montoDebido;
+  } else {
+    montoAhora = parseFloat(document.getElementById('pr-monto-parcial')?.value || 0) || 0;
+    if (montoAhora > montoDebido) montoAhora = montoDebido;
+  }
+
+  const ivaActivo = document.getElementById('pr-iva-activo')?.checked;
+  const ivaPct = parseFloat(document.getElementById('pr-iva-porcentaje')?.value || 0) || 0;
+
+  // El IVA se extrae del monto cobrado (no se suma aparte): el cliente paga
+  // el monto acordado, y de ahí se separa la porción de IVA hacia Impuestos.
+  const montoIva = ivaActivo && ivaPct > 0
+    ? montoAhora - (montoAhora / (1 + ivaPct / 100))
+    : 0;
+  const montoCaja = montoAhora - montoIva;
+  const restante  = Math.max(0, montoDebido - montoAhora);
+
+  document.getElementById('pr-r-total').textContent = fmt(montoAhora);
+  document.getElementById('pr-r-iva-row').style.display = ivaActivo ? '' : 'none';
+  document.getElementById('pr-r-iva').textContent = fmt(montoIva);
+  document.getElementById('pr-r-caja').textContent = fmt(montoCaja);
+  document.getElementById('pr-r-restante').textContent = fmt(restante);
+}
+
+/* ------------------------------------------------------------
+   CONFIRMAR PAGO — crea la venta (viaja a Caja, Reportes,
+   Dashboard e Impuestos, igual que confirmarVenta())
+------------------------------------------------------------ */
+async function confirmarPagoRecurrente() {
+  const c = S.pagoRecurrenteActivo;
+  if (!c) return;
+
+  const tipo = document.querySelector('input[name="pr-tipo"]:checked')?.value || 'completo';
+  const montoDebido = S.pagoRecurrenteMontoDebido || 0;
+
+  let montoAhora;
+  if (tipo === 'completo') {
+    montoAhora = montoDebido;
+  } else {
+    montoAhora = parseFloat(document.getElementById('pr-monto-parcial')?.value || 0) || 0;
+  }
+
+  if (!montoAhora || montoAhora <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
+  if (montoAhora > montoDebido + 0.01) { showToast('El monto no puede ser mayor a lo que debe', 'error'); return; }
+
+  const ivaActivo = document.getElementById('pr-iva-activo')?.checked || false;
+  const ivaPct = parseFloat(document.getElementById('pr-iva-porcentaje')?.value || 0) || 0;
+  const observaciones = document.getElementById('pr-observaciones')?.value.trim() || null;
+
+  const metodoSel = document.getElementById('pr-metodo-pago');
+  const metodoPagoId = metodoSel?.value || null;
+  const metodoPagoNombre = metodoSel?.selectedOptions?.[0]?.dataset?.nombre || 'Efectivo';
+
+  const montoIva = ivaActivo && ivaPct > 0
+    ? montoAhora - (montoAhora / (1 + ivaPct / 100))
+    : 0;
+  const montoCaja = montoAhora - montoIva;
+  const restante  = Math.max(0, montoDebido - montoAhora);
+  const esCompleto = restante <= 0.01;
+
+  const btn = document.getElementById('btn-confirmar-pago-recurrente');
+  const btnHtmlOriginal = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+  try {
+    /* ----------------------------------------------------------
+       PASO A: Número de venta
+    ---------------------------------------------------------- */
+    let numeroVenta;
+    try {
+      const { data: nv } = await sb.rpc('generar_numero_venta', { p_user_id: S.userId });
+      numeroVenta = nv || `V-${Date.now()}`;
+    } catch { numeroVenta = `V-${Date.now()}`; }
+
+    /* ----------------------------------------------------------
+       PASO B: Insertar la venta (el pago SIEMPRE se registra
+       como venta para que viaje a Caja, Reportes, Dashboard e
+       Impuestos automáticamente)
+    ---------------------------------------------------------- */
+    const concepto = esCompleto
+      ? `Pago recurrente completo — ${c.nombre}`
+      : `Pago recurrente parcial — ${c.nombre}`;
+
+    const ventaPayload = {
+      auth_user_id:       S.userId,
+      numero_venta:       numeroVenta,
+      cliente_id:         c.id,
+      cliente_nombre:     c.nombre,
+      fecha:              todayISO(),
+      subtotal:           montoCaja,
+      descuento:          0,
+      impuesto:           montoIva,
+      total:              montoAhora,
+      costo_total:        0,
+      metodo_pago_id:      metodoPagoId,
+      metodo_pago_nombre:  metodoPagoNombre,
+      categoria:          'Pago recurrente',
+      estado:             'completada',
+      observaciones:      observaciones,
+    };
+    const ventaPayloadConIva = { ...ventaPayload, iva_activo: ivaActivo, iva_porcentaje: ivaActivo ? ivaPct : 0 };
+
+    let ventaNueva, errVenta;
+    ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayloadConIva).select('id').single());
+    if (errVenta) {
+      ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayload).select('id').single());
+    }
+    if (errVenta) throw errVenta;
+    const ventaId = ventaNueva.id;
+
+    /* ----------------------------------------------------------
+       PASO C: Detalle de venta (un ítem tipo servicio)
+    ---------------------------------------------------------- */
+    await sb.from('venta_detalles').insert({
+      auth_user_id:    S.userId,
+      venta_id:        ventaId,
+      producto_nombre: concepto,
+      tipo_item:       'servicio',
+      cantidad:        1,
+      precio:          montoAhora,
+      costo:           0,
+      descuento:       0,
+      subtotal:        montoAhora,
+      ganancia:        montoCaja,
+    });
+
+    /* ----------------------------------------------------------
+       PASO D: Caja — igual que una venta normal: entra el monto
+       neto de IVA (el IVA se registra aparte en Impuestos)
+    ---------------------------------------------------------- */
+    try {
+      const { data: ultMov } = await sb.from('movimientos_financieros')
+        .select('saldo_resultante')
+        .eq('auth_user_id', S.userId).eq('estado', 'completado')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+      const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      const saldoRes = saldoAnt + montoCaja;
+
+      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+        auth_user_id:       S.userId,
+        tipo_flujo:         'INGRESO',
+        tipo_movimiento:    'COBRO',
+        concepto:           `${concepto} (${numeroVenta})`,
+        monto:              montoCaja,
+        saldo_anterior:     saldoAnt,
+        saldo_resultante:   saldoRes,
+        metodo_pago_id:     metodoPagoId,
+        metodo_pago_nombre: metodoPagoNombre,
+        referencia_tipo:    'venta',
+        referencia_id:      ventaId,
+        observaciones:      observaciones,
+        fecha:              todayISO(),
+      }).select('id').single();
+
+      if (movNuevo?.id) {
+        await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+      }
+    } catch(eCaja) {
+      console.warn('No se pudo registrar en caja:', eCaja);
+    }
+
+    /* ----------------------------------------------------------
+       PASO E: IVA — aparte, a Impuestos, NO se suma a Caja
+    ---------------------------------------------------------- */
+    if (montoIva > 0) {
+      await registrarMovimientoImpuesto(S.userId, montoIva, ventaId, numeroVenta);
+    }
+
+    /* ----------------------------------------------------------
+       PASO F: Actualizar cliente — saldo, fechas y contador
+    ---------------------------------------------------------- */
+    const updateCliente = {
+      fecha_ultimo_pago: todayISO(),
+      total_compras:     Number(c.total_compras || 0) + montoAhora,
+      num_compras:       Number(c.num_compras   || 0) + (esCompleto ? 1 : 0),
+    };
+
+    if (esCompleto) {
+      // Se cerró el periodo: el saldo vuelve a 0 y la próxima fecha
+      // avanza SIEMPRE desde la fecha ancla (nunca desde hoy), para
+      // que el día de pago (ej. el 20) nunca se mueva.
+      updateCliente.saldo_pendiente = 0;
+      updateCliente.fecha_proxima_pago = calcularSiguienteFecha(
+        c.fecha_proxima_pago || todayISO(), c.frecuencia_pago, c.dia_pago
+      );
+    } else {
+      // Pago parcial: la fecha de pago NO se mueve, solo baja el saldo.
+      updateCliente.saldo_pendiente = restante;
+    }
+
+    await sb.from('clientes').update(updateCliente).eq('id', c.id).eq('auth_user_id', S.userId);
+
+    /* ----------------------------------------------------------
+       PASO G: Historial de auditoría del pago
+    ---------------------------------------------------------- */
+    await sb.from('pagos_clientes_recurrentes').insert({
+      auth_user_id:       S.userId,
+      cliente_id:         c.id,
+      venta_id:           ventaId,
+      periodo_fecha:       c.fecha_proxima_pago || todayISO(),
+      monto_periodo:       montoDebido,
+      monto_pagado:        montoAhora,
+      saldo_restante:      restante,
+      tipo_pago:           esCompleto ? 'completo' : 'parcial',
+      iva_activo:          ivaActivo,
+      iva_porcentaje:      ivaActivo ? ivaPct : 0,
+      iva_monto:           montoIva,
+      metodo_pago_nombre:  metodoPagoNombre,
+      fecha_pago:          todayISO(),
+    });
+
+    /* ----------------------------------------------------------
+       ÉXITO
+    ---------------------------------------------------------- */
+    cerrarModalPagoRecurrente();
+    showToast(`✅ Pago registrado — ${fmt(montoAhora)}`, 'success');
+
+    await Promise.allSettled([
+      loadClientesRecurrentes(),
+      loadVentas(),
+      loadKPIs(),
+    ]);
+
+    try {
+      localStorage.setItem('n360_caja_updated', new Date().toISOString());
+    } catch(_) {}
+
+  } catch(e) {
+    console.error('confirmarPagoRecurrente:', e);
+    showToast('Error al registrar el pago: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = btnHtmlOriginal; }
+  }
 }
 
 /* ============================================================
@@ -1519,6 +1954,7 @@ async function initVentas() {
     await Promise.allSettled([
       loadKPIs(),
       loadVentas(),
+      loadClientesRecurrentes(),
     ]);
 
     // 7. Si vienen de otro módulo con ?action=new, abrir modal
