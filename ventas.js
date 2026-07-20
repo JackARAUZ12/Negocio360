@@ -794,8 +794,7 @@ function abrirModalPagoRecurrente(clienteId) {
   document.getElementById('pr-wrap-monto-parcial').style.display = 'none';
   document.getElementById('pr-monto-parcial').value = '';
   document.getElementById('pr-observaciones').value = '';
-  document.getElementById('pr-iva-activo').checked = false;
-  document.getElementById('pr-iva-porcentaje').disabled = true;
+  document.getElementById('pr-iva-activo').checked = true;
   document.getElementById('pr-iva-porcentaje').value = S.empresaConfig?.porcentaje_iva ? Number(S.empresaConfig.porcentaje_iva) : 15;
 
   // Métodos de pago
@@ -820,40 +819,72 @@ function onCambioTipoPagoRecurrente() {
   actualizarResumenPagoRecurrente();
 }
 
-document.addEventListener('change', (e) => {
-  if (e.target && e.target.id === 'pr-iva-activo') {
-    document.getElementById('pr-iva-porcentaje').disabled = !e.target.checked;
-  }
-});
-
-function actualizarResumenPagoRecurrente() {
+/**
+ * Calcula lo que va a suceder con este pago SIN tocar el estado global:
+ * cuánto se abona ahora, si con eso el periodo queda liquidado, y — solo
+ * si queda liquidado — cuánto IVA se suma (sobre la cuota completa del
+ * periodo, no solo sobre el remanente que se esté cobrando ahora mismo).
+ *
+ * REGLA DE NEGOCIO: el IVA nunca se cobra en un pago parcial. Solo se
+ * habilita cuando el pago que se está registrando deja el periodo en
+ * C$0 pendiente — ya sea porque el cliente pagó todo de una vez, o
+ * porque este pago es el que completa un saldo que venía de un abono
+ * parcial anterior. En ese caso se detecta automáticamente y se suma.
+ */
+function calcularPagoRecurrente() {
+  const c = S.pagoRecurrenteActivo;
   const tipo = document.querySelector('input[name="pr-tipo"]:checked')?.value || 'completo';
   const montoDebido = S.pagoRecurrenteMontoDebido || 0;
 
-  let montoAhora;
+  let montoBase; // lo que se abona ahora a la deuda, SIN impuesto
   if (tipo === 'completo') {
-    montoAhora = montoDebido;
+    montoBase = montoDebido;
   } else {
-    montoAhora = parseFloat(document.getElementById('pr-monto-parcial')?.value || 0) || 0;
-    if (montoAhora > montoDebido) montoAhora = montoDebido;
+    montoBase = parseFloat(document.getElementById('pr-monto-parcial')?.value || 0) || 0;
+    if (montoBase > montoDebido) montoBase = montoDebido;
   }
 
-  const ivaActivo = document.getElementById('pr-iva-activo')?.checked;
-  const ivaPct = parseFloat(document.getElementById('pr-iva-porcentaje')?.value || 0) || 0;
+  const restante  = Math.max(0, montoDebido - montoBase);
+  const esCompleto = restante <= 0.01; // este pago deja el periodo en cero
 
-  // El IVA se extrae del monto cobrado (no se suma aparte): el cliente paga
-  // el monto acordado, y de ahí se separa la porción de IVA hacia Impuestos.
-  const montoIva = ivaActivo && ivaPct > 0
-    ? montoAhora - (montoAhora / (1 + ivaPct / 100))
-    : 0;
-  const montoCaja = montoAhora - montoIva;
-  const restante  = Math.max(0, montoDebido - montoAhora);
+  const ivaActivo = esCompleto && (document.getElementById('pr-iva-activo')?.checked || false);
+  const ivaPct    = parseFloat(document.getElementById('pr-iva-porcentaje')?.value || 0) || 0;
 
-  document.getElementById('pr-r-total').textContent = fmt(montoAhora);
-  document.getElementById('pr-r-iva-row').style.display = ivaActivo ? '' : 'none';
-  document.getElementById('pr-r-iva').textContent = fmt(montoIva);
-  document.getElementById('pr-r-caja').textContent = fmt(montoCaja);
-  document.getElementById('pr-r-restante').textContent = fmt(restante);
+  // El IVA se calcula sobre la CUOTA COMPLETA del periodo (monto_recurrente),
+  // no solo sobre el remanente — así, si hubo un abono parcial sin IVA antes,
+  // el IVA de todo el periodo se suma completo en el pago que lo liquida.
+  const baseIva = Number(c?.monto_recurrente || montoDebido);
+  const montoIva = ivaActivo && ivaPct > 0 ? baseIva * (ivaPct / 100) : 0;
+
+  const totalACobrar = montoBase + montoIva; // el IVA SE SUMA al total, no se resta
+  const montoCaja    = montoBase;            // a Caja entra el neto (sin IVA)
+
+  return { tipo, montoBase, restante, esCompleto, ivaActivo, ivaPct, montoIva, totalACobrar, montoCaja };
+}
+
+function actualizarResumenPagoRecurrente() {
+  const r = calcularPagoRecurrente();
+
+  const wrapIva  = document.getElementById('pr-wrap-iva');
+  const hintSin  = document.getElementById('pr-hint-sin-iva');
+  const filaIva  = document.getElementById('pr-r-iva-row');
+
+  if (r.esCompleto) {
+    // El pago liquida el periodo: se habilita la opción de IVA.
+    if (wrapIva)  wrapIva.style.display  = '';
+    if (hintSin)  hintSin.style.display  = 'none';
+  } else {
+    // Pago parcial que NO liquida el periodo: sin opción de IVA.
+    if (wrapIva)  wrapIva.style.display  = 'none';
+    if (hintSin)  hintSin.style.display  = '';
+  }
+
+  document.getElementById('pr-r-base').textContent  = fmt(r.montoBase);
+  filaIva.style.display = r.ivaActivo ? 'flex' : 'none';
+  document.getElementById('pr-r-iva').textContent   = fmt(r.montoIva);
+  document.getElementById('pr-r-total').textContent = fmt(r.totalACobrar);
+  document.getElementById('pr-r-caja').textContent  = fmt(r.montoCaja);
+  document.getElementById('pr-r-restante').textContent = fmt(r.restante);
 }
 
 /* ------------------------------------------------------------
@@ -864,33 +895,17 @@ async function confirmarPagoRecurrente() {
   const c = S.pagoRecurrenteActivo;
   if (!c) return;
 
-  const tipo = document.querySelector('input[name="pr-tipo"]:checked')?.value || 'completo';
+  const r = calcularPagoRecurrente();
+  const { montoBase, restante, esCompleto, ivaActivo, ivaPct, montoIva, totalACobrar, montoCaja } = r;
   const montoDebido = S.pagoRecurrenteMontoDebido || 0;
 
-  let montoAhora;
-  if (tipo === 'completo') {
-    montoAhora = montoDebido;
-  } else {
-    montoAhora = parseFloat(document.getElementById('pr-monto-parcial')?.value || 0) || 0;
-  }
+  if (!montoBase || montoBase <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
+  if (montoBase > montoDebido + 0.01) { showToast('El monto no puede ser mayor a lo que debe', 'error'); return; }
 
-  if (!montoAhora || montoAhora <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
-  if (montoAhora > montoDebido + 0.01) { showToast('El monto no puede ser mayor a lo que debe', 'error'); return; }
-
-  const ivaActivo = document.getElementById('pr-iva-activo')?.checked || false;
-  const ivaPct = parseFloat(document.getElementById('pr-iva-porcentaje')?.value || 0) || 0;
   const observaciones = document.getElementById('pr-observaciones')?.value.trim() || null;
-
   const metodoSel = document.getElementById('pr-metodo-pago');
   const metodoPagoId = metodoSel?.value || null;
   const metodoPagoNombre = metodoSel?.selectedOptions?.[0]?.dataset?.nombre || 'Efectivo';
-
-  const montoIva = ivaActivo && ivaPct > 0
-    ? montoAhora - (montoAhora / (1 + ivaPct / 100))
-    : 0;
-  const montoCaja = montoAhora - montoIva;
-  const restante  = Math.max(0, montoDebido - montoAhora);
-  const esCompleto = restante <= 0.01;
 
   const btn = document.getElementById('btn-confirmar-pago-recurrente');
   const btnHtmlOriginal = btn ? btn.innerHTML : '';
@@ -921,10 +936,10 @@ async function confirmarPagoRecurrente() {
       cliente_id:         c.id,
       cliente_nombre:     c.nombre,
       fecha:              todayISO(),
-      subtotal:           montoCaja,
+      subtotal:           montoBase,
       descuento:          0,
       impuesto:           montoIva,
-      total:              montoAhora,
+      total:              totalACobrar,
       costo_total:        0,
       metodo_pago_id:      metodoPagoId,
       metodo_pago_nombre:  metodoPagoNombre,
@@ -951,11 +966,11 @@ async function confirmarPagoRecurrente() {
       producto_nombre: concepto,
       tipo_item:       'servicio',
       cantidad:        1,
-      precio:          montoAhora,
+      precio:          montoBase,
       costo:           0,
       descuento:       0,
-      subtotal:        montoAhora,
-      ganancia:        montoCaja,
+      subtotal:        montoBase,
+      ganancia:        montoBase,
     });
 
     /* ----------------------------------------------------------
@@ -1006,7 +1021,7 @@ async function confirmarPagoRecurrente() {
     ---------------------------------------------------------- */
     const updateCliente = {
       fecha_ultimo_pago: todayISO(),
-      total_compras:     Number(c.total_compras || 0) + montoAhora,
+      total_compras:     Number(c.total_compras || 0) + totalACobrar,
       num_compras:       Number(c.num_compras   || 0) + (esCompleto ? 1 : 0),
     };
 
@@ -1034,7 +1049,7 @@ async function confirmarPagoRecurrente() {
       venta_id:           ventaId,
       periodo_fecha:       c.fecha_proxima_pago || todayISO(),
       monto_periodo:       montoDebido,
-      monto_pagado:        montoAhora,
+      monto_pagado:        montoBase,
       saldo_restante:      restante,
       tipo_pago:           esCompleto ? 'completo' : 'parcial',
       iva_activo:          ivaActivo,
@@ -1048,7 +1063,7 @@ async function confirmarPagoRecurrente() {
        ÉXITO
     ---------------------------------------------------------- */
     cerrarModalPagoRecurrente();
-    showToast(`✅ Pago registrado — ${fmt(montoAhora)}`, 'success');
+    showToast(`✅ Pago registrado — ${fmt(totalACobrar)}`, 'success');
 
     await Promise.allSettled([
       loadClientesRecurrentes(),
