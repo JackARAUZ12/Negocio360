@@ -1651,6 +1651,185 @@ async function registrarMovimientoImpuesto(userId, montoIva, ventaId, numeroVent
 }
 
 /* ============================================================
+   RECIBO PDF — se genera automáticamente por cada venta
+   Formato tipo "ticket" (80mm), profesional y ligero.
+   No participa en el guardado de la venta: si falla, la venta
+   ya quedó registrada igual (solo se avisa por toast).
+   ============================================================ */
+function dibujarRecibo(doc, venta, items) {
+  const W = 80;               // ancho del ticket (mm)
+  const M = 5;                 // margen lateral (mm)
+  const CX = W / 2;
+  let y = 8;
+
+  const linea = (h = 4.6) => { y += h; };
+  const centrado = (txt, size = 9, bold = false) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(String(txt), CX, y, { align: 'center' });
+  };
+  const filaTexto = (izq, der, size = 8, bold = false) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(String(izq), M, y);
+    if (der !== undefined && der !== null && der !== '') {
+      doc.text(String(der), W - M, y, { align: 'right' });
+    }
+  };
+  const divisor = () => {
+    doc.setLineDashPattern([0.8, 0.8], 0);
+    doc.line(M, y, W - M, y);
+    doc.setLineDashPattern([], 0);
+    linea(4.5);
+  };
+
+  const biz = venta._negocio;
+
+  // ---- Encabezado ----
+  centrado(biz.nombre || 'Mi Negocio', 11.5, true);
+  linea(5.2);
+  if (biz.direccion) { centrado(biz.direccion, 7.5); linea(4); }
+  if (biz.telefono)  { centrado(`Tel: ${biz.telefono}`, 7.5); linea(4); }
+  if (biz.ruc)       { centrado(`RUC: ${biz.ruc}`, 7.5); linea(4); }
+  linea(1.5);
+  divisor();
+
+  centrado('RECIBO DE VENTA', 9.5, true);
+  linea(5.5);
+  filaTexto('No. Venta:', venta.numero_venta || '—', 8, true);
+  linea();
+  filaTexto('Fecha:', fmtFecha(venta.fecha) + '  ' + (venta._hora || ''), 7.5);
+  linea();
+  filaTexto('Método de pago:', venta.metodo_pago_nombre || '—', 7.5);
+  linea(5);
+  divisor();
+
+  // ---- Cliente ----
+  // Si no hay cliente específico seleccionado en la venta, se usa el
+  // texto genérico "Cliente" y se identifica con el número de venta.
+  const tieneClienteEspecifico = !!venta.cliente_id;
+  filaTexto('Cliente:', tieneClienteEspecifico ? (venta.cliente_nombre || 'Cliente') : 'Cliente', 8, true);
+  linea();
+  if (tieneClienteEspecifico && venta._clienteTelefono) {
+    filaTexto('Teléfono:', venta._clienteTelefono, 7.5);
+    linea();
+  }
+  filaTexto('N° Cliente:', tieneClienteEspecifico ? (venta._clienteNumero || '—') : (venta.numero_venta || '—'), 7.5);
+  linea(5);
+  divisor();
+
+  // ---- Items ----
+  filaTexto('Descripción', 'Subtotal', 7.5, true);
+  linea(4.2);
+  doc.setLineDashPattern([0.8, 0.8], 0);
+  doc.line(M, y, W - M, y);
+  doc.setLineDashPattern([], 0);
+  linea(4.5);
+
+  (items || []).forEach(it => {
+    const nombreLineas = doc.splitTextToSize(it.producto_nombre || 'Ítem', W - M*2 - 2);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    nombreLineas.forEach((ln, i) => {
+      doc.text(ln, M, y);
+      if (i === nombreLineas.length - 1) {
+        doc.text(fmt(it.subtotal), W - M, y, { align: 'right' });
+      }
+      linea(3.9);
+    });
+    const cant = Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 });
+    doc.setFontSize(7.3);
+    doc.setTextColor(110, 110, 110);
+    doc.text(`${cant} x ${fmt(it.precio)}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
+    doc.setTextColor(0, 0, 0);
+    linea(4.6);
+  });
+
+  linea(1);
+  divisor();
+
+  // ---- Totales ----
+  filaTexto('Subtotal:', fmt(venta.subtotal), 8); linea();
+  if (Number(venta.descuento) > 0) { filaTexto('Descuento:', '-' + fmt(venta.descuento), 8); linea(); }
+  if (Number(venta.impuesto) > 0) {
+    filaTexto(`Impuesto${venta.iva_porcentaje ? ` (${Number(venta.iva_porcentaje)}%)` : ''}:`, fmt(venta.impuesto), 8);
+    linea();
+  }
+  linea(1.2);
+  filaTexto('TOTAL:', fmt(venta.total), 12, true);
+  linea(7);
+  divisor();
+
+  if (venta.observaciones) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.3);
+    const obsLineas = doc.splitTextToSize(`Nota: ${venta.observaciones}`, W - M*2);
+    obsLineas.forEach(ln => { doc.text(ln, M, y); linea(3.8); });
+    linea(1.5);
+  }
+
+  linea(2);
+  centrado('¡Gracias por su compra!', 8.5, true);
+  linea(4.5);
+  centrado('Generado por Negocio360', 6.5);
+  linea(5);
+
+  return y; // alto total usado (mm)
+}
+
+function generarPDFRecibo(venta, items) {
+  if (!window.jspdf) throw new Error('jsPDF no está disponible');
+  const { jsPDF } = window.jspdf;
+
+  // Datos del negocio, tomados de la config ya cargada en el módulo
+  venta._negocio = {
+    nombre:    S.empresaConfig?.nombre_comercial || S.currentUser?.nombre_negocio || 'Mi Negocio',
+    direccion: S.empresaConfig?.direccion || '',
+    telefono:  S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
+    ruc:       S.empresaConfig?.ruc || '',
+  };
+  venta._hora = new Date().toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' });
+
+  // 1ª pasada (documento "borrador") solo para medir el alto necesario
+  const draft = new jsPDF({ unit: 'mm', format: [80, 1000] });
+  const altoUsado = dibujarRecibo(draft, venta, items);
+
+  // 2ª pasada: documento final con el alto exacto (ticket compacto, sin espacio sobrante)
+  const doc = new jsPDF({ unit: 'mm', format: [80, altoUsado + 6] });
+  dibujarRecibo(doc, venta, items);
+  return doc;
+}
+
+/* Descarga el recibo justo después de registrar la venta. Nunca
+   interrumpe el flujo de guardado: cualquier error aquí solo se
+   registra en consola y se avisa con un toast, la venta ya está guardada. */
+function descargarReciboDeVenta(venta, items) {
+  try {
+    const doc = generarPDFRecibo(venta, items);
+    doc.save(`Recibo_${(venta.numero_venta || 'venta').replace(/[^\w\-]/g, '')}.pdf`);
+  } catch (e) {
+    console.error('generar recibo PDF:', e);
+    showToast('Venta guardada, pero no se pudo generar el recibo PDF', 'warning');
+  }
+}
+
+/* Botón "🧾 Descargar recibo" del modal de detalle — reimprime el
+   recibo de cualquier venta pasada, no solo la recién creada. */
+async function descargarReciboActual() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  try {
+    const { data: items } = await sb.from('venta_detalles').select('*')
+      .eq('venta_id', S.ventaDetalleId).eq('auth_user_id', S.userId);
+    descargarReciboDeVenta(venta, items || []);
+  } catch (e) {
+    console.error('descargarReciboActual:', e);
+    showToast('No se pudo generar el recibo', 'error');
+  }
+}
+window.descargarReciboActual = descargarReciboActual;
+
+/* ============================================================
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
    ============================================================ */
 async function confirmarVenta() {
@@ -1839,6 +2018,12 @@ async function confirmarVenta() {
     ---------------------------------------------------------- */
     cerrarModalVenta();
     showToast(`✅ Venta ${S.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
+
+    // Recibo PDF automático de esta venta (no bloquea ni afecta lo ya guardado)
+    descargarReciboDeVenta(
+      { ...ventaPayloadConIva, cliente_telefono: null, _clienteTelefono: S.clienteObjeto?.telefono || null },
+      detallesPayload
+    );
 
     // Refrescar todo
     await Promise.allSettled([
