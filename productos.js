@@ -40,6 +40,8 @@ const STATE = {
   productos:    [],
   filtrados:    [],
   filtroActivo: 'todos',
+  filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
+  proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
   busqueda:     '',
   cargando:     false,
   modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
@@ -301,6 +303,44 @@ async function cargarProductos() {
 }
 
 // ============================================================
+// MARCAS / PROVEEDORES (feature secundaria/opcional)
+// Reutiliza la tabla "proveedores" ya existente para el módulo de
+// Compras. Un proveedor = una "marca" dentro del colectivo.
+// No es obligatorio: un producto puede no tener marca asignada.
+// ============================================================
+async function cargarProveedores() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('proveedores')
+      .select('id,nombre')
+      .eq('auth_user_id', STATE.user.id)
+      .eq('activo', true)
+      .order('nombre');
+
+    if (error) throw error;
+    STATE.proveedores = data || [];
+
+    // Select del formulario (crear/editar producto)
+    const selForm = $('inputMarca');
+    if (selForm) {
+      selForm.innerHTML = '<option value="">Sin marca / proveedor</option>' +
+        STATE.proveedores.map(pr => `<option value="${pr.id}">${escHtml(pr.nombre)}</option>`).join('');
+    }
+
+    // Filtro secundario de la tabla
+    const selFiltro = $('filtroMarca');
+    if (selFiltro) {
+      selFiltro.innerHTML = '<option value="">Todas las marcas</option>' +
+        STATE.proveedores.map(pr => `<option value="${pr.id}">${escHtml(pr.nombre)}</option>`).join('');
+    }
+  } catch (e) {
+    console.error('cargarProveedores:', e);
+    // Falla silenciosa: la marca es una función opcional, no debe
+    // bloquear la carga normal del módulo de productos.
+  }
+}
+
+// ============================================================
 // HELPER: determinar si un producto tiene stock bajo real
 // FIX: solo aplica cuando stock_minimo > 0 para evitar
 //      falsos positivos cuando ambos valores son 0
@@ -386,10 +426,11 @@ function aplicarFiltros() {
 
   if (q) {
     lista = lista.filter(p =>
-      (p.nombre      || '').toLowerCase().includes(q) ||
-      (p.sku         || '').toLowerCase().includes(q) ||
-      (p.categoria   || '').toLowerCase().includes(q) ||
-      (p.descripcion || '').toLowerCase().includes(q)
+      (p.nombre           || '').toLowerCase().includes(q) ||
+      (p.sku              || '').toLowerCase().includes(q) ||
+      (p.categoria        || '').toLowerCase().includes(q) ||
+      (p.proveedor_nombre || '').toLowerCase().includes(q) ||
+      (p.descripcion      || '').toLowerCase().includes(q)
     );
   }
 
@@ -401,6 +442,11 @@ function aplicarFiltros() {
     // FIX: usa helper para evitar falsos positivos (0 <= 0)
     case 'stock_bajo': lista = lista.filter(esStockBajo);                 break;
     default: break;
+  }
+
+  // Filtro secundario: Marca / Proveedor (opcional, independiente de filtroActivo)
+  if (STATE.filtroMarca) {
+    lista = lista.filter(p => p.proveedor_id === STATE.filtroMarca);
   }
 
   STATE.filtrados = lista;
@@ -471,7 +517,10 @@ function renderTabla() {
           <div class="td-nombre">${escHtml(p.nombre)}</div>
           ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
         </td>
-        <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>
+          ${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}
+          ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}
+        </td>
         <td class="td-money">${fmtMoney(p.precio)}</td>
         <td class="td-money">${fmtMoney(p.costo)}</td>
         <td>${renderMargen(p.precio, p.costo)}</td>
@@ -732,6 +781,7 @@ function cargarFormulario(p) {
     ['inputNombre',          p.nombre        || ''],
     ['inputDescripcion',     p.descripcion   || ''],
     ['inputCategoria',       p.categoria     || ''],
+    ['inputMarca',           p.proveedor_id  || ''],
     ['inputSku',             p.sku           || ''],
     ['inputCodBarras',       p.codigo_barras || ''],
     ['inputCosto',           p.costo         ?? ''],
@@ -759,6 +809,10 @@ async function guardarProducto() {
   const nombre      = ($('inputNombre')?.value || '').trim();
   const descripcion = ($('inputDescripcion')?.value || '').trim();
   const categoria   = ($('inputCategoria')?.value || '').trim();
+  const proveedorId = ($('inputMarca')?.value || '').trim() || null;
+  const proveedorNombre = proveedorId
+    ? (STATE.proveedores.find(pr => pr.id === proveedorId)?.nombre || null)
+    : null;
   const sku         = ($('inputSku')?.value || '').trim();
   const codBarras   = ($('inputCodBarras')?.value || '').trim();
   const costoRaw    = $('inputCosto')?.value;
@@ -802,6 +856,8 @@ async function guardarProducto() {
         nombre,
         descripcion:   descripcion || null,
         categoria:     categoria   || null,
+        proveedor_id:      proveedorId,
+        proveedor_nombre:  proveedorNombre,
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
         costo:         isNaN(costo)       ? 0 : costo,
@@ -833,6 +889,8 @@ async function guardarProducto() {
         nombre,
         descripcion:   descripcion || null,
         categoria:     categoria   || null,
+        proveedor_id:      proveedorId,
+        proveedor_nombre:  proveedorNombre,
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
         costo:         isNaN(costo)  ? 0 : costo,
@@ -907,6 +965,10 @@ function abrirDetalle(id) {
       <div class="detail-item">
         <div class="detail-label">Categoría</div>
         <div class="detail-value">${p.categoria ? escHtml(p.categoria) : '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Marca / Proveedor</div>
+        <div class="detail-value">${p.proveedor_nombre ? `🏷️ ${escHtml(p.proveedor_nombre)}` : '—'}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">SKU</div>
@@ -1245,6 +1307,14 @@ function initEventos() {
     });
   }
 
+  const filtroMarca = $('filtroMarca');
+  if (filtroMarca) {
+    filtroMarca.addEventListener('change', (e) => {
+      STATE.filtroMarca = e.target.value;
+      aplicarFiltros();
+    });
+  }
+
   const btnProd = $('toggleProducto');
   const btnServ = $('toggleServicio');
   if (btnProd) btnProd.addEventListener('click', () => setTipoModal('producto', true));
@@ -1364,6 +1434,9 @@ async function init() {
 
   // 2) Luego los productos, que ya usarán MONEDA_SIMBOLO correcta
   await cargarProductos();
+
+  // 3) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
+  cargarProveedores();
 
   initNotificaciones();
 }
