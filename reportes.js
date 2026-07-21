@@ -1330,7 +1330,33 @@ async function loadInventario() {
     setEl('inv-valor',   fmt(valorInv));
     setEl('inv-total',   activos.length.toString());
     setEl('inv-servicios', `${servicios.length} servicios`);
-    setEl('inv-bajo',    stockBajo.length.toString());
+    // "Stock bajo" en 0 es algo BUENO (nada requiere atención), pero un "0"
+    // solo puede leerse como "tu stock está en cero" — se aclara con texto
+    // y color en vez de dejar solo el número.
+    const bajoEl    = document.getElementById('inv-bajo');
+    const bajoSubEl = document.getElementById('inv-bajo-sub');
+    const bajoIconWrap = document.getElementById('inv-bajo-icon-wrap');
+    if (bajoEl) {
+      if (stockBajo.length === 0) {
+        bajoEl.textContent = '✅';
+        bajoEl.style.color = 'var(--success)';
+        if (bajoSubEl) bajoSubEl.textContent = 'Todo en orden, ningún producto bajo';
+        if (bajoIconWrap) {
+          bajoIconWrap.style.background = 'var(--success-soft)';
+          const svgStroke = bajoIconWrap.querySelector('svg');
+          if (svgStroke) svgStroke.setAttribute('stroke', 'var(--success)');
+        }
+      } else {
+        bajoEl.textContent = stockBajo.length.toString();
+        bajoEl.style.color = 'var(--danger)';
+        if (bajoSubEl) bajoSubEl.textContent = 'requieren atención';
+        if (bajoIconWrap) {
+          bajoIconWrap.style.background = 'var(--danger-soft)';
+          const svgStroke = bajoIconWrap.querySelector('svg');
+          if (svgStroke) svgStroke.setAttribute('stroke', 'var(--danger)');
+        }
+      }
+    }
     setEl('inv-sin-mov', sinMovimiento.length.toString());
 
     // Mayor valor en inventario
