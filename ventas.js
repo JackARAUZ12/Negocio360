@@ -2664,7 +2664,8 @@ async function confirmarVentaRapida() {
 
 function imprimirTicketVentaRapida(venta, items, resumen) {
   const cfg   = VR.config || {};
-  const ancho = cfg.ancho_ticket === '58mm' ? '58mm' : '80mm';
+  const anchosValidos = ['58mm','76mm','80mm'];
+  const ancho = anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm';
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
   const fechaTxt = new Date().toLocaleString('es-NI');
 
