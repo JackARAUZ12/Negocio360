@@ -1058,7 +1058,13 @@ async function guardarProducto() {
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
       cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre
     );
-    await Promise.all([cargarProductos(), cargarEscalas()]);
+    // Importante: primero las escalas y DESPUÉS los productos —
+    // cargarProductos() dibuja la tabla de inmediato, así que si corriera
+    // en paralelo con cargarEscalas() podría pintar la tabla con el mapa
+    // de escalas todavía viejo (por eso aparecía "Sin precios configurados"
+    // hasta editar y volver a guardar).
+    await cargarEscalas();
+    await cargarProductos();
 
   } catch (e) {
     console.error('guardarProducto:', e);
@@ -1589,12 +1595,16 @@ async function init() {
   // 1) Primero la moneda/configuración de empresa (asigna MONEDA_SIMBOLO)
   await cargarDatosEmpresa();
 
-  // 2) Luego los productos, que ya usarán MONEDA_SIMBOLO correcta
+  // 2) Escalas de precio ANTES que productos: cargarProductos() dibuja la
+  // tabla de inmediato usando STATE.escalasPorProducto, así que si se
+  // cargara después, la tabla se pintaría con el mapa todavía vacío.
+  await cargarEscalas();
+
+  // 3) Luego los productos, que ya usarán MONEDA_SIMBOLO y escalas correctas
   await cargarProductos();
 
-  // 3) Catálogo de marcas/proveedores y escalas de precio (opcional, no bloquea la carga)
+  // 4) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
   cargarProveedores();
-  cargarEscalas();
 
   initNotificaciones();
 }
