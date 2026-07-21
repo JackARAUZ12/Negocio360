@@ -69,6 +69,7 @@
   const PG = {
     client: null,
     authUserId: null,
+    authEmail: null,
     perfiles: [],
     overlayEl: null,
   };
@@ -192,9 +193,9 @@
   // ------------------------------------------------------------
   // Vista: PIN (establecer o ingresar)
   // ------------------------------------------------------------
-  function renderPin(perfil, { onSuccess, tituloExtra } = {}) {
+  function renderPin(perfil, { onSuccess, tituloExtra, forzarNuevo } = {}) {
     const c = card();
-    const esNuevo = perfil.tipo === 'admin' && !perfil.codigo_configurado;
+    const esNuevo = !!forzarNuevo || (perfil.tipo === 'admin' && !perfil.codigo_configurado);
     c.innerHTML = `
       <div class="pg-back-arrow" id="pg-back">← Volver</div>
       <div class="pg-pin-wrap">
@@ -203,7 +204,7 @@
         </div>
         <div class="pg-title" style="margin-bottom:2px">${esc(perfil.nombre)}</div>
         <div class="pg-subtitle" style="margin-bottom:4px">
-          ${esNuevo ? 'Primera vez — crea tu código de acceso' : (tituloExtra || 'Ingresa tu código de acceso')}
+          ${esNuevo ? (tituloExtra || 'Crea tu nuevo código de acceso') : (tituloExtra || 'Ingresa tu código de acceso')}
         </div>
         <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6"
                class="pg-pin-input" id="pg-pin-1" placeholder="••••" autocomplete="off" />
@@ -215,10 +216,13 @@
           <button class="pg-btn pg-btn-ghost" id="pg-pin-cancel">Cancelar</button>
           <button class="pg-btn pg-btn-primary" id="pg-pin-ok">${esNuevo ? 'Crear código' : 'Entrar'}</button>
         </div>
+        ${!esNuevo ? '<div class="pg-manage-link" id="pg-forgot">¿Olvidaste tu código?</div>' : ''}
       </div>
     `;
     document.getElementById('pg-back').addEventListener('click', renderSelector);
     document.getElementById('pg-pin-cancel').addEventListener('click', renderSelector);
+    const forgotEl = document.getElementById('pg-forgot');
+    if (forgotEl) forgotEl.addEventListener('click', () => renderOlvideCodigo(perfil, { onSuccess }));
 
     const input1 = document.getElementById('pg-pin-1');
     const input2 = document.getElementById('pg-pin-2');
@@ -239,6 +243,7 @@
           .eq('id', perfil.id);
         if (error) { errEl.textContent = 'No se pudo guardar el código. Intenta de nuevo.'; return; }
         perfil.codigo_configurado = true;
+        perfil.codigo_hash = hash;
         onSuccess && onSuccess(perfil);
         return;
       }
@@ -258,6 +263,112 @@
       if (!el) return;
       el.addEventListener('keydown', e => { if (e.key === 'Enter') intentar(); });
     });
+  }
+
+  // ------------------------------------------------------------
+  // Vista: "¿Olvidaste tu código?" — restablecimiento seguro
+  // ------------------------------------------------------------
+  // Admin: solo puede restablecer su propio código si confirma la
+  //        contraseña de su cuenta (Supabase Auth) — es la credencial
+  //        más fuerte del sistema y solo la conoce el dueño de la cuenta.
+  // Restringido: requiere que un administrador ingrese SU código para
+  //        autorizar el cambio, igual que ya ocurre en "Gestionar usuarios".
+  // En ningún caso se revela el código anterior ni se debilita RLS:
+  // solo se reemplaza codigo_hash tras una verificación explícita.
+  // ------------------------------------------------------------
+  function renderOlvideCodigo(perfil, { onSuccess } = {}) {
+    const c = card();
+
+    if (perfil.tipo === 'admin') {
+      c.innerHTML = `
+        <div class="pg-back-arrow" id="pg-back">← Volver</div>
+        <div class="pg-title">Recuperar código de administrador</div>
+        <div class="pg-subtitle">Confirma la contraseña de tu cuenta para crear un nuevo código</div>
+        <div class="pg-field">
+          <label>Correo</label>
+          <input type="email" id="pg-of-email" value="${esc(PG.authEmail || '')}" disabled />
+        </div>
+        <div class="pg-field">
+          <label>Contraseña de tu cuenta</label>
+          <input type="password" id="pg-of-pass" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <div class="pg-error" id="pg-of-error"></div>
+        <div class="pg-btn-row">
+          <button class="pg-btn pg-btn-ghost" id="pg-of-cancel">Cancelar</button>
+          <button class="pg-btn pg-btn-primary" id="pg-of-ok">Verificar</button>
+        </div>
+      `;
+      document.getElementById('pg-back').addEventListener('click', () => renderPin(perfil, { onSuccess }));
+      document.getElementById('pg-of-cancel').addEventListener('click', () => renderPin(perfil, { onSuccess }));
+      const passEl = document.getElementById('pg-of-pass');
+      const errEl  = document.getElementById('pg-of-error');
+      const okBtn  = document.getElementById('pg-of-ok');
+      passEl.focus();
+
+      async function verificar() {
+        errEl.textContent = '';
+        const pass = passEl.value || '';
+        if (!pass) { errEl.textContent = 'Ingresa tu contraseña'; return; }
+        if (!PG.authEmail) { errEl.textContent = 'No se pudo confirmar tu correo. Recarga la página e intenta de nuevo.'; return; }
+        okBtn.disabled = true; okBtn.textContent = 'Verificando…';
+        try {
+          const { error } = await PG.client.auth.signInWithPassword({ email: PG.authEmail, password: pass });
+          if (error) {
+            errEl.textContent = 'Contraseña incorrecta';
+            okBtn.disabled = false; okBtn.textContent = 'Verificar';
+            return;
+          }
+          renderPin(perfil, { onSuccess, forzarNuevo: true, tituloExtra: 'Crea tu nuevo código de acceso' });
+        } catch (e) {
+          console.error('renderOlvideCodigo (admin):', e);
+          errEl.textContent = 'No se pudo verificar. Intenta de nuevo.';
+          okBtn.disabled = false; okBtn.textContent = 'Verificar';
+        }
+      }
+      okBtn.addEventListener('click', verificar);
+      passEl.addEventListener('keydown', e => { if (e.key === 'Enter') verificar(); });
+      return;
+    }
+
+    // Perfil restringido
+    const admin = PG.perfiles.find(p => p.tipo === 'admin');
+    if (!admin || !admin.codigo_configurado) {
+      // Sin administrador configurado no hay a quién pedirle autorización
+      renderPin(perfil, { onSuccess });
+      return;
+    }
+    c.innerHTML = `
+      <div class="pg-back-arrow" id="pg-back">← Volver</div>
+      <div class="pg-title">Restablecer código</div>
+      <div class="pg-subtitle">Pide al administrador que ingrese su código para autorizar el cambio de "${esc(perfil.nombre)}"</div>
+      <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+             class="pg-pin-input" id="pg-of-admin-pin" placeholder="Código de administrador" autocomplete="off" />
+      <div class="pg-error" id="pg-of-error"></div>
+      <div class="pg-btn-row">
+        <button class="pg-btn pg-btn-ghost" id="pg-of-cancel">Cancelar</button>
+        <button class="pg-btn pg-btn-primary" id="pg-of-ok">Autorizar</button>
+      </div>
+    `;
+    document.getElementById('pg-back').addEventListener('click', () => renderPin(perfil, { onSuccess }));
+    document.getElementById('pg-of-cancel').addEventListener('click', () => renderPin(perfil, { onSuccess }));
+    const pinEl = document.getElementById('pg-of-admin-pin');
+    const errEl = document.getElementById('pg-of-error');
+    pinEl.focus();
+
+    async function autorizar() {
+      errEl.textContent = '';
+      const val = (pinEl.value || '').trim();
+      if (!val) { errEl.textContent = 'Ingresa el código de administrador'; return; }
+      const hash = await hashPin(val, admin.id);
+      if (hash !== admin.codigo_hash) {
+        errEl.textContent = 'Código de administrador incorrecto';
+        pinEl.value = ''; pinEl.focus();
+        return;
+      }
+      renderPin(perfil, { onSuccess, forzarNuevo: true, tituloExtra: `Crea el nuevo código para ${esc(perfil.nombre)}` });
+    }
+    document.getElementById('pg-of-ok').addEventListener('click', autorizar);
+    pinEl.addEventListener('keydown', e => { if (e.key === 'Enter') autorizar(); });
   }
 
   function onLoginExitoso(perfil) {
@@ -494,6 +605,7 @@
     if (!session) return; // el propio checkAuth() de cada página se encargará del login
 
     PG.authUserId = session.user.id;
+    PG.authEmail  = session.user.email || null;
     PG.perfiles = await cargarPerfiles();
 
     const sesionActiva = getSesion();
