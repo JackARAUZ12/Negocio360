@@ -687,6 +687,14 @@
           <p>Centro operativo de ventas. Registra, controla y analiza cada transacción.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" id="btn-venta-rapida" onclick="abrirVentaRapida()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/>
+              <path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/>
+              <line x1="7" y1="12" x2="17" y2="12"/>
+            </svg>
+            Venta rápida
+          </button>
           <button class="btn-primary" onclick="abrirNuevaVenta()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva Venta
@@ -1097,6 +1105,180 @@
     </div>
   </div>
 </div>
+
+<!-- =====================================================
+     MODAL: CONFIGURACIÓN DE VENTA RÁPIDA (solo primera vez,
+     o al presionar el ícono de ajustes dentro de Venta rápida)
+===================================================== -->
+<div class="modal-overlay" id="modal-vr-config" onclick="if(event.target===this)cerrarConfigVentaRapida()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Configurar Venta rápida</div>
+        <div class="modal-subtitle">Impuestos y formato de ticket para tu impresora térmica</div>
+      </div>
+      <button class="modal-close" onclick="cerrarConfigVentaRapida()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+
+      <div class="form-section-title">Impuesto (IVA)</div>
+      <div class="iva-block">
+        <div class="iva-left">
+          <div class="iva-switch" id="vrc-iva-switch" onclick="vrToggleIvaConfig()"></div>
+          <div>
+            <div class="iva-label">Cobrar IVA en Venta rápida</div>
+            <div class="iva-sub">Se calcula automáticamente sobre cada venta</div>
+          </div>
+        </div>
+        <div class="iva-right">
+          <input type="number" id="vrc-iva-porcentaje" value="15" min="0" max="100" step="0.01" disabled/>
+          <span>%</span>
+        </div>
+      </div>
+
+      <div class="form-section-title" style="margin-top:18px">Ticket / comprobante</div>
+      <div class="form-grid-2">
+        <div class="form-group full-col">
+          <label>Ancho del papel (impresora térmica)</label>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="58mm"> 58mm
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="80mm" checked> 80mm
+            </label>
+          </div>
+        </div>
+        <div class="form-group full-col">
+          <label>Nombre del negocio en el ticket</label>
+          <input type="text" class="form-input" id="vrc-nombre" placeholder="Ej: Mi Tienda S.A."/>
+        </div>
+        <div class="form-group">
+          <label>RUC / Cédula (opcional)</label>
+          <input type="text" class="form-input" id="vrc-ruc" placeholder="Opcional"/>
+        </div>
+        <div class="form-group">
+          <label>Teléfono (opcional)</label>
+          <input type="text" class="form-input" id="vrc-telefono" placeholder="Opcional"/>
+        </div>
+        <div class="form-group full-col">
+          <label>Dirección (opcional)</label>
+          <input type="text" class="form-input" id="vrc-direccion" placeholder="Opcional"/>
+        </div>
+        <div class="form-group full-col">
+          <label>Mensaje al pie del ticket</label>
+          <input type="text" class="form-input" id="vrc-mensaje" placeholder="Ej: ¡Gracias por su compra!"/>
+        </div>
+        <div class="form-group full-col" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="vrc-autoimprimir" style="width:16px;height:16px" checked/>
+          <label for="vrc-autoimprimir" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
+            Imprimir el ticket automáticamente al cerrar cada venta
+          </label>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarConfigVentaRapida()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarConfigVentaRapida()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Guardar y continuar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: VENTA RÁPIDA (pantalla tipo caja de supermercado,
+     opera con lector de código de barras USB/Bluetooth que
+     funciona como teclado: escribe el código y envía Enter)
+===================================================== -->
+<div class="modal-overlay modal-md" id="modal-vr-pos" onclick="if(event.target===this)confirmarCerrarVentaRapida()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Venta rápida</div>
+        <div class="modal-subtitle" id="vr-num">Generando número…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="modal-close" title="Configuración" onclick="abrirConfigVentaRapida(true)" style="position:static">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="modal-close" onclick="confirmarCerrarVentaRapida()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body">
+
+      <div class="prod-search-wrap" style="position:relative">
+        <label>Escanea el producto</label>
+        <input type="text" id="vr-scan-input" autocomplete="off"
+          placeholder="Esperando lectura del escáner… (o escribe el código y presiona Enter)"
+          style="font-family:var(--font-mono);font-size:15px;letter-spacing:.5px"/>
+        <div id="vr-scan-status" style="margin-top:6px;font-size:12.5px;color:var(--text-muted)">
+          📡 Listo para escanear
+        </div>
+      </div>
+
+      <div style="margin-top:14px;overflow-x:auto">
+        <table class="carrito-tabla">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Código</th>
+              <th>Qty</th>
+              <th>Precio</th>
+              <th>Subtotal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="vr-carrito-tbody">
+            <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+              Escanea el primer producto para comenzar
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="max-width:380px;margin-left:auto;margin-top:16px">
+        <div class="resumen-row">
+          <span class="label">Subtotal</span>
+          <span class="value" id="vr-res-subtotal">—</span>
+        </div>
+        <div class="resumen-row" id="vr-res-iva-row" style="display:none">
+          <span class="label">IVA</span>
+          <span class="value" id="vr-res-iva">—</span>
+        </div>
+        <div class="resumen-row total-row">
+          <span class="label" style="font-weight:700;font-size:15px">TOTAL</span>
+          <span class="value" id="vr-res-total">—</span>
+        </div>
+      </div>
+
+      <div class="form-section-title" style="margin-top:16px">Método de pago</div>
+      <div class="metodos-grid" id="vr-metodos-grid">
+        <div style="color:var(--text-muted);font-size:13px;grid-column:1/-1;padding:10px;text-align:center">
+          Cargando métodos de pago…
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="confirmarCerrarVentaRapida()">Cancelar</button>
+      <div style="flex:1"></div>
+      <button class="btn-primary" id="btn-vr-cobrar" style="background:var(--success)" onclick="confirmarVentaRapida()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Cobrar y cerrar venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Contenedor oculto usado solo para armar el HTML del ticket
+     térmico antes de enviarlo al diálogo de impresión del navegador -->
+<div id="vr-print-area" style="display:none"></div>
 
 <!-- =====================================================
      MODAL: DETALLE VENTA
