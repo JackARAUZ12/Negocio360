@@ -11,6 +11,8 @@
 
   <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- SheetJS: lee el archivo .xlsx que el usuario sube para la importación masiva -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- Estilos extra para modal de movimientos -->
   <style>
@@ -238,6 +240,8 @@
           <p>Administra tu catálogo, precios, costos y stock</p>
         </div>
         <div class="page-header-actions">
+          <a class="btn btn-secondary" href="plantilla_productos_negocio360.xlsx" download="plantilla_productos_negocio360.xlsx">📥 Descargar plantilla</a>
+          <button class="btn btn-secondary" onclick="abrirModalImportar()">📤 Importar Excel</button>
           <button class="btn btn-secondary" onclick="abrirModalNuevo('servicio')">🔧 Nuevo Servicio</button>
           <button class="btn btn-primary"   onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>
         </div>
@@ -644,6 +648,26 @@
 
 
 <!-- ============================================================
+     MODAL: IMPORTAR EXCEL (masivo)
+     ============================================================ -->
+<div class="modal-overlay" id="modalImportar" role="dialog" aria-modal="true" aria-labelledby="modalImportarTitle">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalImportarTitle">📤 Importar Productos/Servicios desde Excel</h2>
+      <button class="modal-close" onclick="cerrarModalImportar()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body" id="importarBody">
+      <!-- contenido dinámico: paso 1 (subir), errores, o vista previa -->
+    </div>
+    <div class="modal-footer" id="importarFooter">
+      <!-- botones dinámicos según el paso -->
+    </div>
+  </div>
+</div>
+<input type="file" id="inputImportarExcel" accept=".xlsx" style="display:none" onchange="onArchivoImportSeleccionado(event)" />
+
+
+<!-- ============================================================
      TOASTS
      ============================================================ -->
 <div class="toast-container" id="toastContainer" aria-live="polite"></div>
@@ -653,6 +677,7 @@
      SCRIPT PRINCIPAL
      ============================================================ -->
 <script src="productos.js"></script>
+<script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
 <script>
