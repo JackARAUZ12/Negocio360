@@ -158,10 +158,35 @@ function toggleYaPagoActualVisibility() {
 function toggleYaPagoActualHint() {
   const checked = document.getElementById('fc-ya-pago-actual')?.checked;
   const hint = document.getElementById('ya-pago-actual-hint');
-  if (!hint) return;
-  hint.textContent = checked
-    ? 'Se asume que el periodo actual ya está cubierto. La próxima fecha de cobro será el siguiente ciclo.'
-    : 'Si NO ha pagado todavía, el pago quedará pendiente desde HOY y aparecerá de una vez en Ventas → Clientes con pago recurrente.';
+  if (hint) {
+    hint.textContent = checked
+      ? 'Se asume que el periodo actual ya está cubierto. La próxima fecha de cobro será el siguiente ciclo.'
+      : 'Si NO ha pagado todavía, el pago quedará pendiente desde HOY y aparecerá de una vez en Ventas → Clientes con pago recurrente.';
+  }
+
+  // Bloque de IVA: solo tiene sentido si se marcó "Ya pagó" (porque ese
+  // pago se va a registrar de una vez como venta real).
+  const wrapIva = document.getElementById('wrap-ya-pago-iva');
+  if (!wrapIva) return;
+  wrapIva.style.display = checked ? '' : 'none';
+
+  if (checked) {
+    // Prellenar con la configuración de impuestos del negocio (misma lógica
+    // de siempre), pero el usuario puede cambiarla para este pago puntual.
+    const ivaActivoEl = document.getElementById('fc-ya-pago-iva-activo');
+    const ivaPctEl    = document.getElementById('fc-ya-pago-iva-pct');
+    if (ivaActivoEl && ivaPctEl) {
+      ivaActivoEl.checked = !!CS.empresaConfig?.maneja_iva;
+      ivaPctEl.value = CS.empresaConfig?.porcentaje_iva ?? 15;
+      ivaPctEl.disabled = !ivaActivoEl.checked;
+    }
+  }
+}
+
+function toggleYaPagoIvaInput() {
+  const activo = document.getElementById('fc-ya-pago-iva-activo')?.checked || false;
+  const pctEl  = document.getElementById('fc-ya-pago-iva-pct');
+  if (pctEl) pctEl.disabled = !activo;
 }
 
 function toggleFrecuenciaUI() {
@@ -690,6 +715,11 @@ async function guardarCliente() {
     tipo_cliente:  tipoCliente,
   };
 
+  // Si se marca "Ya pagó" en un ciclo nuevo, además de anotar la fecha,
+  // este pago debe registrarse como venta real (Caja, Reportes, Impuestos).
+  // Se captura aquí y se ejecuta DESPUÉS de guardar el cliente exitosamente.
+  let datosPagoInicial = null;
+
   if (esRecurrente) {
     const freq   = document.getElementById('fc-frecuencia-pago')?.value || 'mensual';
     const monto  = parseFloat(document.getElementById('fc-monto-recurrente')?.value || 0);
@@ -711,6 +741,13 @@ async function guardarCliente() {
         // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo.
         payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago);
         payload.fecha_ultimo_pago  = todayISO();
+        if (monto > 0) {
+          const ivaActivo = document.getElementById('fc-ya-pago-iva-activo')?.checked || false;
+          let ivaPct = parseFloat(document.getElementById('fc-ya-pago-iva-pct')?.value);
+          if (isNaN(ivaPct) || ivaPct < 0) ivaPct = 0;
+          if (ivaPct > 100) ivaPct = 100;
+          datosPagoInicial = { monto, ivaActivo, ivaPct: ivaActivo ? ivaPct : 0 };
+        }
       } else {
         // No ha pagado todavía: el pago queda pendiente DESDE HOY, mismo día
         // en que se crea el cliente, y aparece de inmediato en
@@ -733,11 +770,13 @@ async function guardarCliente() {
   if (btn) btn.disabled = true;
 
   try {
+    let clienteId;
     if (CS.clienteActivo) {
       // EDITAR
+      clienteId = CS.clienteActivo.id;
       const { error } = await sb.from('clientes')
         .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('id', CS.clienteActivo.id)
+        .eq('id', clienteId)
         .eq('auth_user_id', CS.userId);
       if (error) throw error;
       showToast('Cliente actualizado', 'success');
@@ -754,9 +793,24 @@ async function guardarCliente() {
           return;
         }
       }
-      const { error } = await sb.from('clientes').insert(payload);
+      const { data: nuevoCliente, error } = await sb.from('clientes').insert(payload).select('id').single();
       if (error) throw error;
+      clienteId = nuevoCliente.id;
       showToast('Cliente creado', 'success');
+    }
+
+    // Registrar el pago inicial ("Ya pagó") como venta real, para que
+    // se refleje en Ventas, Caja, Reportes e Impuestos. Si esto llegara
+    // a fallar, el cliente YA quedó guardado — solo se avisa aparte,
+    // nunca se revierte ni se bloquea el guardado del cliente.
+    if (datosPagoInicial && clienteId) {
+      await registrarPagoInicialRecurrente({
+        clienteId,
+        clienteNombre: nombre,
+        monto: datosPagoInicial.monto,
+        ivaActivo: datosPagoInicial.ivaActivo,
+        ivaPct: datosPagoInicial.ivaPct,
+      });
     }
 
     closeModal('modal-cliente');
@@ -766,6 +820,154 @@ async function guardarCliente() {
     showToast('Error: ' + e.message, 'error');
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+/* ============================================================
+   REGISTRAR EL PAGO INICIAL ("YA PAGÓ") COMO VENTA REAL
+   Mismo patrón exacto que confirmarPagoRecurrente() en ventas.js:
+   crea venta + detalle + movimiento de caja + movimiento de
+   impuestos (si aplica) + historial de pagos_clientes_recurrentes,
+   y actualiza el contador de compras del cliente.
+   ============================================================ */
+async function registrarPagoInicialRecurrente({ clienteId, clienteNombre, monto, ivaActivo, ivaPct }) {
+  if (!monto || monto <= 0) return;
+  try {
+    ivaActivo = !!ivaActivo;
+    ivaPct    = ivaActivo ? (Number(ivaPct) || 0) : 0;
+    const montoIva  = ivaActivo ? +(monto * (ivaPct / 100)).toFixed(2) : 0;
+    const total     = monto + montoIva;
+
+    let numeroVenta;
+    try {
+      const { data: nv } = await sb.rpc('generar_numero_venta', { p_user_id: CS.userId });
+      numeroVenta = nv || `V-${Date.now()}`;
+    } catch { numeroVenta = `V-${Date.now()}`; }
+
+    const concepto = `Pago recurrente completo — ${clienteNombre} (registrado al guardar cliente)`;
+
+    const ventaPayload = {
+      auth_user_id:       CS.userId,
+      numero_venta:       numeroVenta,
+      cliente_id:         clienteId,
+      cliente_nombre:     clienteNombre,
+      fecha:              todayISO(),
+      subtotal:           monto,
+      descuento:          0,
+      impuesto:           montoIva,
+      total:              total,
+      costo_total:        0,
+      metodo_pago_nombre: 'Efectivo',
+      categoria:          'Pago recurrente',
+      estado:             'completada',
+      observaciones:      'Pago del periodo actual, cobrado antes de registrar/activar al cliente en el sistema.',
+    };
+    const ventaPayloadConIva = { ...ventaPayload, iva_activo: ivaActivo, iva_porcentaje: ivaActivo ? ivaPct : 0 };
+
+    let ventaNueva, errVenta;
+    ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayloadConIva).select('id').single());
+    if (errVenta) {
+      ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayload).select('id').single());
+    }
+    if (errVenta) throw errVenta;
+    const ventaId = ventaNueva.id;
+
+    await sb.from('venta_detalles').insert({
+      auth_user_id:    CS.userId,
+      venta_id:        ventaId,
+      producto_nombre: concepto,
+      tipo_item:       'servicio',
+      cantidad:        1,
+      precio:          monto,
+      costo:           0,
+      descuento:       0,
+      subtotal:        monto,
+      ganancia:        monto,
+    });
+
+    // Caja — igual que una venta normal: entra el monto neto de IVA
+    try {
+      const { data: ultMov } = await sb.from('movimientos_financieros')
+        .select('saldo_resultante').eq('auth_user_id', CS.userId).eq('estado', 'completado')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const saldoAnt  = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      const montoCaja = total - montoIva;
+      const saldoRes  = saldoAnt + montoCaja;
+      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+        auth_user_id:       CS.userId,
+        tipo_flujo:         'INGRESO',
+        tipo_movimiento:    'COBRO',
+        concepto:           `${concepto} (${numeroVenta})`,
+        monto:              montoCaja,
+        saldo_anterior:     saldoAnt,
+        saldo_resultante:   saldoRes,
+        metodo_pago_nombre: 'Efectivo',
+        referencia_tipo:    'venta',
+        referencia_id:      ventaId,
+        fecha:              todayISO(),
+      }).select('id').single();
+      if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+    } catch(eCaja) {
+      console.warn('No se pudo registrar en caja:', eCaja);
+    }
+
+    // Impuestos — aparte, NO se suma a Caja
+    if (montoIva > 0) {
+      try {
+        const { data: ultMov } = await sb.from('movimientos_impuestos')
+          .select('saldo_resultante').eq('auth_user_id', CS.userId)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+        const saldoRes = saldoAnt + montoIva;
+        await sb.from('movimientos_impuestos').insert({
+          auth_user_id:        CS.userId,
+          tipo_movimiento:     'IVA_VENTA',
+          concepto:            `IVA de venta ${numeroVenta}`,
+          monto:               montoIva,
+          saldo_anterior:      saldoAnt,
+          saldo_resultante:    saldoRes,
+          referencia_venta_id: ventaId,
+          fecha:               todayISO(),
+        });
+      } catch(eImp) {
+        console.warn('No se pudo registrar el IVA:', eImp);
+      }
+    }
+
+    // Contador de compras del cliente (se incrementa, nunca se pisa)
+    try {
+      const { data: clienteActual } = await sb.from('clientes')
+        .select('total_compras,num_compras').eq('id', clienteId).maybeSingle();
+      await sb.from('clientes').update({
+        total_compras: (Number(clienteActual?.total_compras) || 0) + total,
+        num_compras:   (Number(clienteActual?.num_compras)   || 0) + 1,
+      }).eq('id', clienteId).eq('auth_user_id', CS.userId);
+    } catch(eCliente) {
+      console.warn('No se pudo actualizar el contador de compras:', eCliente);
+    }
+
+    // Historial de auditoría del pago (igual que en Ventas → pago recurrente)
+    await sb.from('pagos_clientes_recurrentes').insert({
+      auth_user_id:       CS.userId,
+      cliente_id:         clienteId,
+      venta_id:           ventaId,
+      periodo_fecha:      todayISO(),
+      monto_periodo:      monto,
+      monto_pagado:       monto,
+      saldo_restante:     0,
+      tipo_pago:          'completo',
+      iva_activo:         ivaActivo,
+      iva_porcentaje:     ivaActivo ? ivaPct : 0,
+      iva_monto:          montoIva,
+      metodo_pago_nombre: 'Efectivo',
+      fecha_pago:         todayISO(),
+    });
+
+    showToast(`✅ Pago inicial registrado como venta — ${fmt(total)}`, 'success');
+
+  } catch(e) {
+    console.error('registrarPagoInicialRecurrente:', e);
+    showToast('El cliente se guardó, pero no se pudo registrar el pago inicial como venta: ' + (e.message || ''), 'error');
   }
 }
 
