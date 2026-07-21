@@ -2151,6 +2151,584 @@ async function confirmarVenta() {
 }
 
 /* ============================================================
+   VENTA RÁPIDA — modo "caja de supermercado" con lector de
+   código de barras (USB/Bluetooth, funciona como teclado: el
+   lector escribe el código y envía Enter automáticamente).
+
+   Módulo AISLADO: usa su propio estado VR y su propia tabla de
+   configuración (configuracion_venta_rapida). No toca el estado
+   S ni el wizard "Nueva Venta" — ambos flujos coexisten sin
+   interferirse. Reutiliza exactamente el mismo patrón de guardado
+   (ventas, venta_detalles, stock, caja, impuestos) que ya usa
+   confirmarVenta(), para que ambos flujos generen datos 100%
+   consistentes en reportes, caja e impuestos.
+   ============================================================ */
+const VR = {
+  config:           null,   // fila de configuracion_venta_rapida
+  carrito:          [],     // { id, nombre, sku, codigo_barras, cantidad, precio, costo }
+  metodoPagoId:     null,
+  metodoPagoNombre: 'Efectivo',
+  numeroVenta:      '',
+  procesando:       false,
+  scannerListo:     false,  // evita adjuntar el listener del input más de una vez
+  _editandoDesdePos:false,
+};
+
+/* ---------- Configuración (primer uso / ajustes) ---------- */
+
+async function cargarConfigVentaRapida() {
+  try {
+    const { data, error } = await sb.from('configuracion_venta_rapida')
+      .select('*').eq('auth_user_id', S.userId).maybeSingle();
+    if (error) throw error;
+    VR.config = data || null;
+  } catch(e) {
+    console.warn('cargarConfigVentaRapida:', e);
+    VR.config = null;
+  }
+}
+
+async function abrirVentaRapida() {
+  if (!S.userId) { showToast('Espera a que cargue tu sesión…', 'error'); return; }
+  await cargarConfigVentaRapida();
+  if (!VR.config || !VR.config.configurado) {
+    abrirConfigVentaRapida(false);
+  } else {
+    abrirPantallaVentaRapida();
+  }
+}
+
+function abrirConfigVentaRapida(esAjusteManual) {
+  // Si el POS estaba abierto (el usuario dio clic en el ícono de ajustes), lo
+  // ocultamos temporalmente y lo reabrimos al cerrar/guardar esta configuración.
+  VR._editandoDesdePos = !!esAjusteManual;
+  if (esAjusteManual) closeModal('modal-vr-pos');
+
+  const c = VR.config || {};
+  const ivaActivo = c.iva_activo != null ? !!c.iva_activo : !!(S.empresaConfig?.maneja_iva);
+  const ivaPct    = c.iva_porcentaje ?? (S.empresaConfig?.porcentaje_iva ?? 15);
+
+  const sw  = document.getElementById('vrc-iva-switch');
+  const inp = document.getElementById('vrc-iva-porcentaje');
+  if (sw)  sw.classList.toggle('on', ivaActivo);
+  if (inp) { inp.value = ivaPct; inp.disabled = !ivaActivo; }
+
+  document.querySelectorAll('input[name="vrc-ancho"]').forEach(r => {
+    r.checked = r.value === (c.ancho_ticket || '80mm');
+  });
+
+  setEl2Value('vrc-nombre',    c.nombre_ticket    || S.empresaConfig?.nombre_comercial || '');
+  setEl2Value('vrc-ruc',       c.ruc_ticket       || S.empresaConfig?.ruc              || '');
+  setEl2Value('vrc-telefono',  c.telefono_ticket  || S.empresaConfig?.telefono         || '');
+  setEl2Value('vrc-direccion', c.direccion_ticket || S.empresaConfig?.direccion        || '');
+  setEl2Value('vrc-mensaje',   c.mensaje_pie_ticket || 'Gracias por su compra');
+  const auto = document.getElementById('vrc-autoimprimir');
+  if (auto) auto.checked = c.imprimir_automatico !== false;
+
+  openModal('modal-vr-config');
+}
+
+function setEl2Value(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+}
+
+function cerrarConfigVentaRapida() {
+  closeModal('modal-vr-config');
+  // Si veníamos del ícono de ajustes dentro del POS y se cancela, regresamos al POS.
+  // Si era la primera vez (aún no configurado) y se cancela, simplemente no se abre nada.
+  if (VR._editandoDesdePos && VR.config?.configurado) openModal('modal-vr-pos');
+}
+
+function vrToggleIvaConfig() {
+  const sw  = document.getElementById('vrc-iva-switch');
+  const inp = document.getElementById('vrc-iva-porcentaje');
+  if (!sw || !inp) return;
+  const activo = !sw.classList.contains('on');
+  sw.classList.toggle('on', activo);
+  inp.disabled = !activo;
+}
+
+async function guardarConfigVentaRapida() {
+  const ivaActivo = document.getElementById('vrc-iva-switch')?.classList.contains('on') || false;
+  let ivaPct = parseFloat(document.getElementById('vrc-iva-porcentaje')?.value);
+  if (isNaN(ivaPct) || ivaPct < 0) ivaPct = 0;
+  if (ivaPct > 100) ivaPct = 100;
+  const ancho = document.querySelector('input[name="vrc-ancho"]:checked')?.value || '80mm';
+
+  const payload = {
+    auth_user_id:        S.userId,
+    configurado:         true,
+    iva_activo:          ivaActivo,
+    iva_porcentaje:      ivaPct,
+    ancho_ticket:        ancho,
+    nombre_ticket:       document.getElementById('vrc-nombre')?.value.trim()   || null,
+    ruc_ticket:          document.getElementById('vrc-ruc')?.value.trim()      || null,
+    telefono_ticket:     document.getElementById('vrc-telefono')?.value.trim() || null,
+    direccion_ticket:    document.getElementById('vrc-direccion')?.value.trim()|| null,
+    mensaje_pie_ticket:  document.getElementById('vrc-mensaje')?.value.trim()  || 'Gracias por su compra',
+    imprimir_automatico: document.getElementById('vrc-autoimprimir')?.checked ?? true,
+    updated_at:          new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await sb.from('configuracion_venta_rapida')
+      .upsert(payload, { onConflict: 'auth_user_id' })
+      .select('*').single();
+    if (error) throw error;
+    VR.config = data;
+    showToast('✅ Configuración de Venta rápida guardada', 'success');
+    closeModal('modal-vr-config');
+    abrirPantallaVentaRapida();
+  } catch(e) {
+    console.error('guardarConfigVentaRapida:', e);
+    showToast('Error al guardar configuración: ' + (e.message||'intenta de nuevo'), 'error');
+  }
+}
+
+/* ---------- Pantalla de escaneo (POS) ---------- */
+
+function abrirPantallaVentaRapida() {
+  VR.carrito          = [];
+  const metodoDefault  = S.metodosPago.find(m => m.es_default) || S.metodosPago[0];
+  VR.metodoPagoId      = metodoDefault?.id     || null;
+  VR.metodoPagoNombre  = metodoDefault?.nombre || 'Efectivo';
+  VR.numeroVenta       = '';
+
+  renderCarritoVentaRapida();
+  renderMetodosPagoVR();
+
+  const numEl = document.getElementById('vr-num');
+  if (numEl) numEl.textContent = 'Generando número…';
+  const status = document.getElementById('vr-scan-status');
+  if (status) status.textContent = '📡 Listo para escanear';
+  const input = document.getElementById('vr-scan-input');
+  if (input) input.value = '';
+
+  initScannerVR();
+  openModal('modal-vr-pos');
+  generarNumeroVentaRapida();
+  setTimeout(enfocarScannerVR, 150);
+}
+
+async function generarNumeroVentaRapida() {
+  try {
+    const { data, error } = await sb.rpc('generar_numero_venta', { p_user_id: S.userId });
+    if (error) throw error;
+    VR.numeroVenta = data || `V-${Date.now()}`;
+  } catch(e) {
+    VR.numeroVenta = `V-TMP-${Date.now()}`;
+  }
+  const el = document.getElementById('vr-num');
+  if (el) el.textContent = VR.numeroVenta;
+}
+
+function enfocarScannerVR() {
+  const modal = document.getElementById('modal-vr-pos');
+  const input = document.getElementById('vr-scan-input');
+  if (input && modal?.classList.contains('modal-open')) input.focus();
+}
+
+// El listener se adjunta UNA sola vez (scannerListo evita duplicados si el
+// usuario abre/cierra Venta rápida varias veces en la misma sesión).
+function initScannerVR() {
+  if (VR.scannerListo) return;
+  const input = document.getElementById('vr-scan-input');
+  if (!input) return;
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const codigo = input.value.trim();
+    input.value = '';
+    if (!codigo) return;
+    procesarCodigoEscaneado(codigo);
+  });
+
+  // Si el cajero hace clic en cualquier parte del POS (fuera de un botón),
+  // devolvemos el foco al input para que el lector siga funcionando.
+  document.getElementById('modal-vr-pos')?.addEventListener('click', (e) => {
+    if (e.target.closest('button, input, .metodo-card')) return;
+    enfocarScannerVR();
+  });
+
+  VR.scannerListo = true;
+}
+
+async function procesarCodigoEscaneado(codigo) {
+  const status = document.getElementById('vr-scan-status');
+  if (status) status.textContent = `🔎 Buscando "${codigo}"…`;
+
+  try {
+    // Búsqueda por código de barras exacto (solo productos activos del usuario)
+    let { data: prod } = await sb.from('productos')
+      .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo')
+      .eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true)
+      .maybeSingle();
+
+    // Respaldo: si no hay coincidencia por código de barras, probar por SKU
+    // (útil si el negocio todavía no ha cargado códigos de barra a todo su catálogo)
+    if (!prod) {
+      const { data: bySku } = await sb.from('productos')
+        .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo')
+        .eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true)
+        .maybeSingle();
+      prod = bySku || null;
+    }
+
+    if (!prod) {
+      showToast(`❌ No se encontró ningún producto con el código "${codigo}"`, 'error');
+      if (status) status.textContent = '📡 Listo para escanear';
+      enfocarScannerVR();
+      return;
+    }
+
+    if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0) {
+      showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
+      if (status) status.textContent = '📡 Listo para escanear';
+      enfocarScannerVR();
+      return;
+    }
+
+    agregarAlCarritoVR(prod);
+    if (status) status.textContent = `✅ ${prod.nombre} agregado`;
+  } catch(e) {
+    console.error('procesarCodigoEscaneado:', e);
+    showToast('Error buscando el producto: ' + (e.message||''), 'error');
+    if (status) status.textContent = '📡 Listo para escanear';
+  } finally {
+    enfocarScannerVR();
+  }
+}
+
+function agregarAlCarritoVR(prod) {
+  const existente = VR.carrito.find(i => i.id === prod.id);
+  if (existente) {
+    // No exceder el stock disponible
+    if (prod.tipo === 'producto' && existente.cantidad + 1 > Number(prod.stock_actual)) {
+      showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
+      return;
+    }
+    existente.cantidad += 1;
+  } else {
+    VR.carrito.push({
+      id:            prod.id,
+      nombre:        prod.nombre,
+      sku:           prod.sku || null,
+      codigo_barras: prod.codigo_barras || null,
+      tipo:          prod.tipo,
+      cantidad:      1,
+      precio:        Number(prod.precio)  || 0,
+      costo:         Number(prod.costo)   || 0,
+      stockDisponible: Number(prod.stock_actual) || 0,
+    });
+  }
+  renderCarritoVentaRapida();
+}
+
+function cambiarCantidadVR(id, val) {
+  const item = VR.carrito.find(i => i.id === id);
+  if (!item) return;
+  let n = parseFloat(val);
+  if (isNaN(n) || n <= 0) n = 1;
+  if (item.tipo === 'producto' && n > item.stockDisponible) {
+    showToast(`⚠️ Stock máximo disponible: ${item.stockDisponible}`, 'error');
+    n = item.stockDisponible;
+  }
+  item.cantidad = n;
+  renderCarritoVentaRapida();
+}
+
+function removeFromCarritoVR(id) {
+  VR.carrito = VR.carrito.filter(i => i.id !== id);
+  renderCarritoVentaRapida();
+}
+
+function calcularResumenVR() {
+  const subtotal = VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0);
+  const ivaActivo = !!VR.config?.iva_activo;
+  const ivaPct    = Number(VR.config?.iva_porcentaje) || 0;
+  const impuesto  = ivaActivo ? +(subtotal * (ivaPct/100)).toFixed(2) : 0;
+  const total     = subtotal + impuesto;
+  const costoTotal= VR.carrito.reduce((s,i) => s + i.cantidad*i.costo, 0);
+  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct };
+}
+
+function renderCarritoVentaRapida() {
+  const tbody = document.getElementById('vr-carrito-tbody');
+  if (!tbody) return;
+
+  if (!VR.carrito.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+      Escanea el primer producto para comenzar
+    </td></tr>`;
+  } else {
+    tbody.innerHTML = VR.carrito.map(item => `
+      <tr>
+        <td style="font-weight:500">${esc(item.nombre)}</td>
+        <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
+        <td>
+          <input type="number" min="1" step="1" value="${item.cantidad}"
+            style="width:56px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
+            onchange="cambiarCantidadVR('${item.id}', this.value)"/>
+        </td>
+        <td>${fmt(item.precio)}</td>
+        <td style="font-weight:700">${fmt(item.cantidad*item.precio)}</td>
+        <td>
+          <button type="button" class="btn-ghost" style="padding:4px 8px" onclick="removeFromCarritoVR('${item.id}')">✕</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  const r = calcularResumenVR();
+  setEl2('vr-res-subtotal', fmt(r.subtotal));
+  setEl2('vr-res-total',    fmt(r.total));
+  const ivaRow = document.getElementById('vr-res-iva-row');
+  if (ivaRow) ivaRow.style.display = r.ivaActivo ? 'flex' : 'none';
+  if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%)`);
+}
+
+function renderMetodosPagoVR() {
+  const grid = document.getElementById('vr-metodos-grid');
+  if (!grid) return;
+  const iconos = { 'Efectivo':'💵','Transferencia':'🏦','Tarjeta':'💳','PayPal':'🅿️','Cheque':'📄','Débito':'💳' };
+
+  if (!S.metodosPago.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:10px;color:var(--text-muted)">
+      Sin métodos de pago configurados. Configúralos en Caja.
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = S.metodosPago.map(m => `
+    <div class="metodo-card ${VR.metodoPagoId===m.id ? 'selected' : ''}"
+      onclick="seleccionarMetodoPagoVR('${m.id}','${esc(m.nombre)}')">
+      <span class="mc-icon">${iconos[m.nombre] || '💰'}</span>
+      <span class="mc-name">${esc(m.nombre)}</span>
+    </div>`).join('');
+}
+
+function seleccionarMetodoPagoVR(id, nombre) {
+  VR.metodoPagoId     = id;
+  VR.metodoPagoNombre = nombre;
+  renderMetodosPagoVR();
+  enfocarScannerVR();
+}
+
+function confirmarCerrarVentaRapida() {
+  if (VR.carrito.length && !VR.procesando) {
+    if (!confirm('Hay productos escaneados sin cobrar. ¿Cerrar Venta rápida de todos modos?')) return;
+  }
+  closeModal('modal-vr-pos');
+}
+
+/* ---------- Guardar la venta (mismo patrón que confirmarVenta) ---------- */
+
+async function confirmarVentaRapida() {
+  if (VR.procesando) return;
+  if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
+
+  VR.procesando = true;
+  const btn = document.getElementById('btn-vr-cobrar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+  try {
+    const r = calcularResumenVR();
+
+    if (!VR.numeroVenta || VR.numeroVenta.startsWith('V-TMP')) {
+      try {
+        const { data: nv } = await sb.rpc('generar_numero_venta', { p_user_id: S.userId });
+        if (nv) VR.numeroVenta = nv;
+      } catch { VR.numeroVenta = `V-${Date.now()}`; }
+    }
+
+    const ventaPayload = {
+      auth_user_id:       S.userId,
+      numero_venta:       VR.numeroVenta,
+      cliente_id:         null,
+      cliente_nombre:     'Consumidor Final',
+      fecha:              todayISO(),
+      subtotal:           r.subtotal,
+      descuento:          0,
+      impuesto:           r.impuesto,
+      total:              r.total,
+      costo_total:        r.costoTotal,
+      metodo_pago_id:     VR.metodoPagoId || null,
+      metodo_pago_nombre: VR.metodoPagoNombre,
+      estado:             'completada',
+      observaciones:      'Venta rápida (escáner)',
+      categoria:          'venta_rapida',
+    };
+    const ventaPayloadConIva = {
+      ...ventaPayload,
+      iva_activo:     r.ivaActivo,
+      iva_porcentaje: r.ivaActivo ? r.ivaPct : 0,
+    };
+
+    let ventaNueva, errVenta;
+    ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayloadConIva).select('id').single());
+    if (errVenta) {
+      ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayload).select('id').single());
+    }
+    if (errVenta) throw errVenta;
+    const ventaId = ventaNueva.id;
+
+    const detallesPayload = VR.carrito.map(item => ({
+      auth_user_id:    S.userId,
+      venta_id:        ventaId,
+      producto_id:     item.id,
+      producto_nombre: item.nombre,
+      producto_sku:    item.sku || null,
+      tipo_item:       item.tipo,
+      cantidad:        item.cantidad,
+      precio:          item.precio,
+      costo:           item.costo,
+      descuento:       0,
+      subtotal:        item.cantidad*item.precio,
+      ganancia:        item.cantidad*(item.precio-item.costo),
+    }));
+    const { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
+    if (errDetalles) throw errDetalles;
+
+    // Actualizar stock (solo productos, no servicios)
+    for (const item of VR.carrito.filter(i => i.tipo==='producto')) {
+      const nuevoStock = Math.max(0, item.stockDisponible - item.cantidad);
+      const { error: errStock } = await sb.from('productos')
+        .update({ stock_actual: nuevoStock }).eq('id', item.id).eq('auth_user_id', S.userId);
+      if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
+    }
+
+    // Movimiento de caja (igual que en Nueva Venta)
+    const montoIva  = Number(r.impuesto) || 0;
+    const montoCaja = Number(r.total) - montoIva;
+    try {
+      const { data: ultMov } = await sb.from('movimientos_financieros')
+        .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado','completado')
+        .order('created_at',{ ascending:false }).limit(1).maybeSingle();
+      const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      const saldoRes = saldoAnt + montoCaja;
+      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+        auth_user_id:       S.userId,
+        tipo_flujo:         'INGRESO',
+        tipo_movimiento:    'VENTA',
+        concepto:           montoIva>0 ? `Venta rápida ${VR.numeroVenta} (neto de IVA)` : `Venta rápida ${VR.numeroVenta}`,
+        monto:              montoCaja,
+        saldo_anterior:     saldoAnt,
+        saldo_resultante:   saldoRes,
+        metodo_pago_id:     VR.metodoPagoId || null,
+        metodo_pago_nombre: VR.metodoPagoNombre,
+        referencia_tipo:    'venta',
+        referencia_id:      ventaId,
+        fecha:              todayISO(),
+      }).select('id').single();
+      if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+    } catch(eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
+
+    if (montoIva > 0) {
+      await registrarMovimientoImpuesto(S.userId, montoIva, ventaId, VR.numeroVenta);
+    }
+
+    showToast(`✅ Venta rápida ${VR.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
+
+    // Imprimir ticket térmico (no bloquea ni afecta lo ya guardado)
+    if (VR.config?.imprimir_automatico !== false) {
+      imprimirTicketVentaRapida(ventaPayloadConIva, VR.carrito, r);
+    }
+
+    localStorage.setItem('n360_venta_nueva', JSON.stringify({
+      ventaId, numero: VR.numeroVenta, total: r.total, iva: montoIva, ts: Date.now()
+    }));
+
+    await Promise.allSettled([ loadVentas(), loadKPIs(), loadProductosCache() ]);
+
+    // Preparar el POS para la siguiente venta (no cerramos el modal, tal como
+    // funciona una caja registradora real: se sigue escaneando)
+    VR.carrito = [];
+    VR.numeroVenta = '';
+    renderCarritoVentaRapida();
+    const numEl = document.getElementById('vr-num');
+    if (numEl) numEl.textContent = 'Generando número…';
+    generarNumeroVentaRapida();
+    enfocarScannerVR();
+
+  } catch(e) {
+    console.error('confirmarVentaRapida:', e);
+    showToast('Error al registrar la venta: ' + (e.message||'intenta de nuevo'), 'error');
+  } finally {
+    VR.procesando = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Cobrar y cerrar venta'; }
+  }
+}
+
+/* ---------- Ticket térmico (58mm/80mm) vía diálogo de impresión ---------- */
+
+function imprimirTicketVentaRapida(venta, items, resumen) {
+  const cfg   = VR.config || {};
+  const ancho = cfg.ancho_ticket === '58mm' ? '58mm' : '80mm';
+  const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
+  const fechaTxt = new Date().toLocaleString('es-NI');
+
+  const filas = items.map(i => `
+    <tr>
+      <td colspan="2">${esc(i.nombre)}</td>
+    </tr>
+    <tr>
+      <td>${i.cantidad} x ${fmt(i.precio)}</td>
+      <td style="text-align:right">${fmt(i.cantidad*i.precio)}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Ticket ${esc(venta.numero_venta)}</title>
+<style>
+  @page { size: ${ancho} auto; margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    width: ${ancho}; margin: 0 auto; padding: 6px 8px;
+    font-family: 'Courier New', monospace; font-size: 11px; color: #000;
+  }
+  .centro { text-align: center; }
+  .negrita { font-weight: 700; }
+  .linea { border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1px 0; font-size: 11px; }
+  .total-row td { font-weight: 700; font-size: 13px; padding-top: 4px; }
+</style></head>
+<body>
+  <div class="centro negrita" style="font-size:13px">${esc(nombreNegocio)}</div>
+  ${cfg.ruc_ticket ? `<div class="centro">RUC: ${esc(cfg.ruc_ticket)}</div>` : ''}
+  ${cfg.direccion_ticket ? `<div class="centro">${esc(cfg.direccion_ticket)}</div>` : ''}
+  ${cfg.telefono_ticket ? `<div class="centro">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
+  <div class="linea"></div>
+  <div>Venta: ${esc(venta.numero_venta)}</div>
+  <div>Fecha: ${esc(fechaTxt)}</div>
+  <div>Cliente: ${esc(venta.cliente_nombre)}</div>
+  <div>Pago: ${esc(venta.metodo_pago_nombre)}</div>
+  <div class="linea"></div>
+  <table>${filas}</table>
+  <div class="linea"></div>
+  <table>
+    <tr><td>Subtotal</td><td style="text-align:right">${fmt(resumen.subtotal)}</td></tr>
+    ${resumen.ivaActivo ? `<tr><td>IVA (${resumen.ivaPct}%)</td><td style="text-align:right">${fmt(resumen.impuesto)}</td></tr>` : ''}
+    <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${fmt(resumen.total)}</td></tr>
+  </table>
+  <div class="linea"></div>
+  <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=380,height=600');
+  if (!win) {
+    showToast('⚠️ El navegador bloqueó la ventana de impresión (permite pop-ups para imprimir el ticket)', 'error');
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+  // Respaldo por si onload no dispara en algunos navegadores
+  setTimeout(() => { try { win.focus(); win.print(); } catch{} }, 400);
+}
+
+/* ============================================================
    FILTROS Y BÚSQUEDA
    ============================================================ */
 window.setFiltro      = setFiltro;
@@ -2181,6 +2759,20 @@ window.toggleSidebar  = toggleSidebar;
 window.navigate       = navigate;
 window.toggleIva       = toggleIva;
 window.cambiarIvaPorcentaje = cambiarIvaPorcentaje;
+
+/* ============================================================
+   VENTA RÁPIDA — exports
+   ============================================================ */
+window.abrirVentaRapida         = abrirVentaRapida;
+window.abrirConfigVentaRapida   = abrirConfigVentaRapida;
+window.cerrarConfigVentaRapida  = cerrarConfigVentaRapida;
+window.vrToggleIvaConfig        = vrToggleIvaConfig;
+window.guardarConfigVentaRapida = guardarConfigVentaRapida;
+window.cambiarCantidadVR        = cambiarCantidadVR;
+window.removeFromCarritoVR      = removeFromCarritoVR;
+window.seleccionarMetodoPagoVR  = seleccionarMetodoPagoVR;
+window.confirmarCerrarVentaRapida = confirmarCerrarVentaRapida;
+window.confirmarVentaRapida     = confirmarVentaRapida;
 
 /* ============================================================
    CERRAR DROPDOWNS AL HACER CLICK FUERA
