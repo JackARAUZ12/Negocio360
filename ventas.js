@@ -2724,9 +2724,17 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   win.document.open();
   win.document.write(html);
   win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
-  // Respaldo por si onload no dispara en algunos navegadores
-  setTimeout(() => { try { win.focus(); win.print(); } catch{} }, 400);
+  let yaImprimio = false;
+  const imprimirUnaVez = () => {
+    if (yaImprimio) return;
+    yaImprimio = true;
+    win.focus();
+    win.print();
+  };
+  win.onload = imprimirUnaVez;
+  // Respaldo por si onload no dispara en algunos navegadores (no duplica
+  // la impresión gracias a la bandera "yaImprimio")
+  setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 400);
 }
 
 /* ============================================================
