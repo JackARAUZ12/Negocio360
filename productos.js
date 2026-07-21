@@ -42,6 +42,8 @@ const STATE = {
   filtroActivo: 'todos',
   filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
   proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
+  escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
+  formEscalas:  [],       // filas en edición dentro del modal de producto (antes de guardar)
   busqueda:     '',
   cargando:     false,
   modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
@@ -341,6 +343,107 @@ async function cargarProveedores() {
 }
 
 // ============================================================
+// ESCALA DE PRECIOS (feature opcional por producto)
+// Un producto sigue siendo de precio fijo por defecto. Solo si
+// STATE.formEscalas / producto.tipo_precio = 'escala' se usa esta tabla.
+// ============================================================
+async function cargarEscalas() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('precios_escala')
+      .select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.user.id)
+      .order('orden');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(e => {
+      if (!map[e.producto_id]) map[e.producto_id] = [];
+      map[e.producto_id].push(e);
+    });
+    STATE.escalasPorProducto = map;
+  } catch (e) {
+    console.error('cargarEscalas:', e);
+    // Falla silenciosa: no debe bloquear la carga normal de productos.
+  }
+}
+
+function setTipoPrecio(tipo) {
+  $('inputTipoPrecio').value = tipo;
+  $('toggleTipoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('toggleTipoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrapFijo   = $('wrapPrecioFijo');
+  const wrapEscala = $('wrapEscalaPrecios');
+  if (wrapFijo)   wrapFijo.style.display   = tipo === 'fijo'   ? '' : 'none';
+  if (wrapEscala) wrapEscala.style.display = tipo === 'escala' ? '' : 'none';
+  if (tipo === 'escala') {
+    const wrapMargen = $('margenPreviewWrap');
+    if (wrapMargen) wrapMargen.style.display = 'none';
+    if (!STATE.formEscalas.length) agregarFilaEscala();
+  }
+}
+
+function renderEscalasEditor() {
+  const cont = $('escalasEditorBody');
+  if (!cont) return;
+  cont.innerHTML = STATE.formEscalas.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Mayorista"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaEscala(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaEscala(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar precio"
+              onclick="eliminarFilaEscala(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún precio.</p>';
+}
+
+function agregarFilaEscala() {
+  STATE.formEscalas.push({ nombre: '', precio: '' });
+  renderEscalasEditor();
+}
+function actualizarFilaEscala(i, campo, valor) {
+  if (!STATE.formEscalas[i]) return;
+  STATE.formEscalas[i][campo] = valor;
+}
+function eliminarFilaEscala(i) {
+  STATE.formEscalas.splice(i, 1);
+  renderEscalasEditor();
+}
+
+async function sincronizarEscalas(productoId, filas) {
+  const limpias = (filas || [])
+    .filter(f => (f.nombre || '').trim())
+    .map((f, i) => ({
+      auth_user_id: STATE.user.id,
+      producto_id:  productoId,
+      nombre:       f.nombre.trim(),
+      precio:       isNaN(parseFloat(f.precio)) ? 0 : parseFloat(f.precio),
+      orden:        i,
+    }));
+
+  // Reemplaza el set completo de escalas de este producto (simple y seguro
+  // para listas pequeñas/medianas; evita lógica de diff propensa a errores).
+  const { error: errDel } = await supabaseClient
+    .from('precios_escala').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('precios_escala').insert(limpias);
+    if (errIns) throw errIns;
+  }
+}
+
+function fmtRangoEscala(lista) {
+  if (!lista || !lista.length) return 'Sin precios configurados';
+  const precios = lista.map(e => Number(e.precio) || 0);
+  const min = Math.min(...precios), max = Math.max(...precios);
+  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+}
+
+// ============================================================
 // HELPER: determinar si un producto tiene stock bajo real
 // FIX: solo aplica cuando stock_minimo > 0 para evitar
 //      falsos positivos cuando ambos valores son 0
@@ -521,7 +624,11 @@ function renderTabla() {
           ${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}
           ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}
         </td>
-        <td class="td-money">${fmtMoney(p.precio)}</td>
+        <td class="td-money">
+          ${p.tipo_precio === 'escala'
+            ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
+            : fmtMoney(p.precio)}
+        </td>
         <td class="td-money">${fmtMoney(p.costo)}</td>
         <td>${renderMargen(p.precio, p.costo)}</td>
         <td>${stockHtml}</td>
@@ -772,6 +879,10 @@ function resetFormulario() {
     avisoStock.classList.remove('visible');
     avisoStock.style.display = 'none';
   }
+  // Tipo de precio: por defecto siempre "Precio fijo" (comportamiento actual)
+  STATE.formEscalas = [];
+  setTipoPrecio('fijo');
+  renderEscalasEditor();
   // Por defecto: "Descontar de caja" (caso más común — compra nueva)
   setCajaImpacto(true);
 }
@@ -795,6 +906,12 @@ function cargarFormulario(p) {
     const el = $(id);
     if (el) el.value = val;
   });
+
+  // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
+  const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
+  STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
+  setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
+  renderEscalasEditor();
 }
 
 // ============================================================
@@ -819,8 +936,19 @@ async function guardarProducto() {
   const precioRaw   = $('inputPrecio')?.value;
   const costo       = costoRaw  !== '' ? parseFloat(costoRaw)  : 0;
   const precio      = precioRaw !== '' ? parseFloat(precioRaw) : 0;
+  const tipoPrecio  = $('inputTipoPrecio')?.value === 'escala' ? 'escala' : 'fijo';
   const activoVal   = $('inputActivo')?.value;
   const activo      = activoVal === 'true';
+
+  const errEscalas = $('errEscalas');
+  if (errEscalas) errEscalas.textContent = '';
+  if (tipoPrecio === 'escala') {
+    const escalasValidas = STATE.formEscalas.filter(f => (f.nombre || '').trim());
+    if (!escalasValidas.length) {
+      if (errEscalas) errEscalas.textContent = 'Agrega al menos un precio en la escala';
+      return;
+    }
+  }
 
   // Stock mínimo: usar el campo visible según el modo
   const stockMinimoEl  = STATE.modalMode === 'editar' ? $('inputStockMinimoEdit') : $('inputStockMinimo');
@@ -843,6 +971,7 @@ async function guardarProducto() {
   try {
     let error = null;
     let cajaInfo = null; // { montoDescontado } si se registró movimiento de caja
+    let productoIdGuardado = null;
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
       const stockActualRaw = $('inputStockActual')?.value;
@@ -861,13 +990,15 @@ async function guardarProducto() {
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
         costo:         isNaN(costo)       ? 0 : costo,
-        precio:        isNaN(precio)      ? 0 : precio,
+        precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
+        tipo_precio:   tipoPrecio,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         activo,
       };
       const res = await supabaseClient.from('productos').insert([payload]).select();
       error = res.error;
+      productoIdGuardado = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
 
       // Impacto en caja: solo para productos con costo × cantidad > 0,
       // y solo si el usuario eligió "Descontar de caja"
@@ -894,7 +1025,8 @@ async function guardarProducto() {
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
         costo:         isNaN(costo)  ? 0 : costo,
-        precio:        isNaN(precio) ? 0 : precio,
+        precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
+        tipo_precio:   tipoPrecio,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         activo,
       };
@@ -904,9 +1036,21 @@ async function guardarProducto() {
         .eq('id', STATE.editTarget.id)
         .eq('auth_user_id', STATE.user.id);
       error = res.error;
+      productoIdGuardado = STATE.editTarget.id;
     }
 
     if (error) throw error;
+
+    // Sincronizar escalas de precio (crea/actualiza/elimina filas según corresponda).
+    // Si falla, el producto YA quedó guardado — solo se avisa, no se revierte nada.
+    if (productoIdGuardado) {
+      try {
+        await sincronizarEscalas(productoIdGuardado, tipoPrecio === 'escala' ? STATE.formEscalas : []);
+      } catch (eEscalas) {
+        console.error('sincronizarEscalas:', eEscalas);
+        showToast('warning', 'Producto guardado', 'No se pudieron guardar los precios de la escala, intenta editarlo de nuevo.');
+      }
+    }
 
     cerrarModalProducto();
     showToast(
@@ -914,7 +1058,7 @@ async function guardarProducto() {
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
       cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre
     );
-    await cargarProductos();
+    await Promise.all([cargarProductos(), cargarEscalas()]);
 
   } catch (e) {
     console.error('guardarProducto:', e);
@@ -983,6 +1127,18 @@ function abrirDetalle(id) {
         <div class="detail-label">Costo</div>
         <div class="detail-value detail-money" style="color:var(--text-secondary)">${fmtMoney(p.costo)}</div>
       </div>
+      ${p.tipo_precio === 'escala' ? `
+      <div class="detail-item full">
+        <div class="detail-label">Escala de precios</div>
+        <div class="detail-value">
+          ${(STATE.escalasPorProducto[p.id] || []).map(e => `
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span>${escHtml(e.nombre)}</span>
+              <span style="font-weight:700;color:var(--accent)">${fmtMoney(e.precio)}</span>
+            </div>`).join('') || '<span style="color:var(--text-muted)">Sin precios configurados</span>'}
+        </div>
+      </div>
+      ` : `
       <div class="detail-item">
         <div class="detail-label">Precio de Venta</div>
         <div class="detail-value detail-money" style="color:var(--accent)">${fmtMoney(p.precio)}</div>
@@ -991,6 +1147,7 @@ function abrirDetalle(id) {
         <div class="detail-label">Margen</div>
         <div class="detail-value">${margenHtml}</div>
       </div>
+      `}
       <div class="detail-item">
         <div class="detail-label">Estado</div>
         <div class="detail-value">
@@ -1435,8 +1592,9 @@ async function init() {
   // 2) Luego los productos, que ya usarán MONEDA_SIMBOLO correcta
   await cargarProductos();
 
-  // 3) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
+  // 3) Catálogo de marcas/proveedores y escalas de precio (opcional, no bloquea la carga)
   cargarProveedores();
+  cargarEscalas();
 
   initNotificaciones();
 }
