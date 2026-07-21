@@ -616,6 +616,20 @@ async function fetchProductos() {
   return R.cache.productos;
 }
 
+/**
+ * Un producto está en "stock bajo" si:
+ *  - tiene stock_minimo definido (no null/undefined) → stock_actual <= stock_minimo
+ *  - NO tiene stock_minimo definido → se usa el mismo respaldo que Dashboard: stock_actual < 5
+ * (antes, Reportes exigía stock_minimo > 0, así que un producto sin mínimo
+ * configurado NUNCA contaba como stock bajo, aunque estuviera en 0 unidades)
+ */
+function esStockBajo(p) {
+  const actual = Number(p.stock_actual || 0);
+  return (p.stock_minimo !== null && p.stock_minimo !== undefined)
+    ? actual <= Number(p.stock_minimo || 0)
+    : actual < 5;
+}
+
 /* ---- CAJA (desde movimientos_financieros — misma lógica que caja.js) ---- */
 async function fetchCapital() {
   const { data } = await sb.from('movimientos_financieros')
@@ -800,7 +814,7 @@ async function loadEjecutivo() {
 
     const prods = (productos||[]).filter(p => p.tipo==='producto');
     const valorInventario = prods.reduce((s,p) => s+(Number(p.stock_actual||0)*Number(p.costo||0)),0);
-    const stockBajo = prods.filter(p => Number(p.stock_minimo||0)>0 && Number(p.stock_actual||0)<=Number(p.stock_minimo||0));
+    const stockBajo = prods.filter(esStockBajo);
 
     const { from } = getDateRange();
     const clientesNuevos = (clientes||[]).filter(c => c.created_at?.slice(0,10) >= from).length;
@@ -1307,7 +1321,7 @@ async function loadInventario() {
     const servicios= (productos||[]).filter(p=>p.tipo==='servicio');
     const activos  = prods.filter(p=>p.activo);
     const valorInv = activos.reduce((s,p)=>s+(Number(p.stock_actual||0)*Number(p.costo||0)),0);
-    const stockBajo= activos.filter(p=>Number(p.stock_minimo||0)>0 && Number(p.stock_actual||0)<=Number(p.stock_minimo||0));
+    const stockBajo= activos.filter(esStockBajo);
 
     // Productos sin movimiento (sin ventas en este período)
     const prodsConVentas = new Set((detalles||[]).map(d=>d.producto_id));
@@ -1577,7 +1591,7 @@ async function loadAlertas() {
 
     // STOCK BAJO
     const prods = (productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
-    const stockBajo = prods.filter(p=>Number(p.stock_minimo||0)>0 && Number(p.stock_actual||0)<=Number(p.stock_minimo||0));
+    const stockBajo = prods.filter(esStockBajo);
     if (stockBajo.length) {
       alertas.push({
         tipo:'danger', icon:'📦',
