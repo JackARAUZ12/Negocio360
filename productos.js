@@ -868,6 +868,59 @@ function setTipoModal(tipo, habilitarToggle = true) {
   if (btnServ) btnServ.disabled = !habilitarToggle;
 }
 
+/* ============================================================
+   CÓDIGO DE BARRAS — modo "Escanear"
+   El input ya admite escritura manual normalmente. Este modo solo
+   agrega una ayuda visual + evita que el Enter del lector dispare
+   el guardado accidental del formulario completo.
+   ============================================================ */
+let cbModoEscaneo = false;
+
+function toggleModoEscaneoCB() {
+  const input = $('inputCodBarras');
+  const btn   = $('btnEscanearCB');
+  const label = $('btnEscanearCBLabel');
+  const hint  = $('cbScanHint');
+  if (!input) return;
+
+  cbModoEscaneo = !cbModoEscaneo;
+
+  if (cbModoEscaneo) {
+    btn?.classList.add('scanning');
+    if (label) label.textContent = 'Cancelar';
+    if (hint) hint.style.display = 'block';
+    input.value = '';
+    input.focus();
+  } else {
+    btn?.classList.remove('scanning');
+    if (label) label.textContent = 'Escanear';
+    if (hint) hint.style.display = 'none';
+  }
+}
+
+function initEscaneoCodigoBarras() {
+  const input = $('inputCodBarras');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    // Nunca dejar que el Enter del lector (o del teclado) llegue al
+    // listener del <form> y dispare guardarProducto() sin querer.
+    e.preventDefault();
+    e.stopPropagation();
+    if (cbModoEscaneo) {
+      if (input.value.trim()) {
+        showToast?.('✅ Código capturado', 'success');
+        toggleModoEscaneoCB();
+        // Pasar el foco al siguiente campo lógico del formulario
+        $('inputCosto')?.focus();
+      }
+    } else {
+      // Modo manual: Enter simplemente confirma el campo, no guarda todo el form
+      input.blur();
+    }
+  });
+}
+
 function resetFormulario() {
   const form = $('formProducto');
   if (form) form.reset();
@@ -1501,6 +1554,9 @@ function initEventos() {
       }
     });
   }
+
+  // Código de barras: modo escaneo (ver initEscaneoCodigoBarras)
+  initEscaneoCodigoBarras();
 
   // Movimiento: cantidad cambia → actualizar preview de caja
   const movCantidad = $('movCantidad');
