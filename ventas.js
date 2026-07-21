@@ -57,6 +57,8 @@ const S = {
   // Productos/Clientes cargados
   productosCache: [],
   clientesCache:  [],
+  escalasPorProducto: {}, // { producto_id: [{id,nombre,precio}, ...] } — solo productos tipo_precio='escala'
+  escalaPendiente: null,  // { productoId, tipo } mientras el selector de escala está abierto
 
   // Clientes con pago recurrente
   clientesRecurrentes: [],
@@ -525,7 +527,7 @@ async function abrirDetalle(ventaId) {
             <tbody>
               ${(items||[]).map(it => `
               <tr>
-                <td style="font-weight:500">${esc(it.producto_nombre)}</td>
+                <td style="font-weight:500">${esc(it.producto_nombre)}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
                 <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
                 <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
                 <td>${fmt(it.precio)}</td>
@@ -623,7 +625,7 @@ async function loadMetodosPago() {
    ============================================================ */
 async function loadProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,tipo,precio,costo,stock_actual,activo')
+    const { data } = await sb.from('productos').select('id,nombre,sku,tipo,precio,costo,tipo_precio,stock_actual,activo')
       .eq('auth_user_id', S.userId).eq('activo', true)
       .order('nombre');
     S.productosCache = data || [];
@@ -636,6 +638,19 @@ async function loadClientesCache() {
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
+}
+
+async function loadEscalasCache() {
+  try {
+    const { data } = await sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', S.userId).order('orden');
+    const map = {};
+    (data || []).forEach(e => {
+      if (!map[e.producto_id]) map[e.producto_id] = [];
+      map[e.producto_id].push(e);
+    });
+    S.escalasPorProducto = map;
+  } catch(e) { S.escalasPorProducto = {}; }
 }
 
 /* ============================================================
@@ -1342,15 +1357,25 @@ function buscarProductosParaVenta(q, tipo) {
       stockLabel = `Stock: ${stockNum}`; stockCls = 'stock-ok';
     }
     const disabled = tipo==='producto' && stockNum<=0;
+    const esEscala = p.tipo_precio === 'escala';
+    const precioLabel = esEscala
+      ? (() => {
+          const escalas = S.escalasPorProducto[p.id] || [];
+          if (!escalas.length) return 'Sin precios';
+          const precios = escalas.map(e => Number(e.precio)||0);
+          const min = Math.min(...precios);
+          return `Desde ${fmt(min)}`;
+        })()
+      : fmt(p.precio);
     return `
     <div class="prod-result-item" onclick="${disabled ? '' : `agregarAlCarrito('${p.id}','${tipo}')`}"
       style="${disabled ? 'opacity:.45;cursor:not-allowed;' : ''}">
       <div style="flex:1">
-        <div class="pri-name">${esc(p.nombre)}</div>
+        <div class="pri-name">${esc(p.nombre)} ${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
       </div>
       <span class="pri-stock ${stockCls}">${stockLabel}</span>
-      <span class="pri-precio">${fmt(p.precio)}</span>
+      <span class="pri-precio">${precioLabel}</span>
     </div>`;
   }).join('');
   results.classList.add('open');
@@ -1359,6 +1384,70 @@ function buscarProductosParaVenta(q, tipo) {
 function agregarAlCarrito(productoId, tipo) {
   const prod = S.productosCache.find(p => p.id===productoId);
   if (!prod) return;
+
+  // Si ya está en el carrito, no se vuelve a preguntar la escala:
+  // se respeta el precio ya elegido para esa línea.
+  const yaEnCarrito = S.carrito.find(c => c.id===productoId);
+
+  if (!yaEnCarrito && prod.tipo_precio === 'escala') {
+    abrirSelectorEscala(productoId, tipo);
+    return;
+  }
+
+  agregarAlCarritoConPrecio(productoId, tipo, null);
+}
+
+/* ============================================================
+   SELECTOR DE ESCALA DE PRECIOS
+   Se muestra únicamente cuando el producto tiene tipo_precio='escala'.
+   Los productos de precio fijo NUNCA pasan por aquí — su flujo actual
+   no cambia en absoluto.
+   ============================================================ */
+function abrirSelectorEscala(productoId, tipo) {
+  const prod = S.productosCache.find(p => p.id===productoId);
+  const escalas = S.escalasPorProducto[productoId] || [];
+  if (!prod || !escalas.length) {
+    showToast('Este producto no tiene precios de escala configurados', 'error');
+    return;
+  }
+
+  S.escalaPendiente = { productoId, tipo };
+
+  document.getElementById('esc-precio-title').textContent = prod.nombre;
+  document.getElementById('esc-precio-lista').innerHTML = escalas.map((e, i) => `
+    <label class="esc-precio-opcion">
+      <input type="radio" name="esc-precio-radio" value="${e.id}" ${i===0 ? 'checked' : ''} />
+      <span class="esc-precio-nombre">${esc(e.nombre)}</span>
+      <span class="esc-precio-valor">${fmt(e.precio)}</span>
+    </label>
+  `).join('');
+
+  openModal('modal-escala-precio');
+}
+
+function confirmarSeleccionEscala() {
+  const pend = S.escalaPendiente;
+  if (!pend) return;
+  const radio = document.querySelector('input[name="esc-precio-radio"]:checked');
+  if (!radio) { showToast('Selecciona un precio', 'error'); return; }
+
+  const escalas = S.escalasPorProducto[pend.productoId] || [];
+  const escalaElegida = escalas.find(e => e.id === radio.value);
+  if (!escalaElegida) return;
+
+  agregarAlCarritoConPrecio(pend.productoId, pend.tipo, escalaElegida);
+  closeModal('modal-escala-precio');
+  S.escalaPendiente = null;
+}
+window.confirmarSeleccionEscala = confirmarSeleccionEscala;
+window.abrirSelectorEscala      = abrirSelectorEscala;
+
+function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
+  const prod = S.productosCache.find(p => p.id===productoId);
+  if (!prod) return;
+
+  // Precio a usar: el de la escala elegida, o el precio fijo del producto
+  const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
 
   // Ver si ya está en carrito
   const existente = S.carrito.find(c => c.id===productoId);
@@ -1379,12 +1468,16 @@ function agregarAlCarrito(productoId, tipo) {
       sku:      prod.sku || '',
       tipo:     prod.tipo,
       cantidad: 1,
-      precio:   parseFloat(prod.precio||0),
+      precio:   precioUsar,
       costo:    parseFloat(prod.costo||0),
       descuento:0,
-      subtotal: parseFloat(prod.precio||0),
-      ganancia: parseFloat(prod.precio||0) - parseFloat(prod.costo||0),
+      subtotal: precioUsar,
+      ganancia: precioUsar - parseFloat(prod.costo||0),
       stockMax: tipo==='producto' ? parseFloat(prod.stock_actual||0) : Infinity,
+      // Trazabilidad de la escala usada (null si es precio fijo) — se guarda
+      // en venta_detalles para poder reportar por escala en el futuro.
+      escalaId:     escalaElegida ? escalaElegida.id     : null,
+      escalaNombre: escalaElegida ? escalaElegida.nombre : null,
     };
     S.carrito.push(item);
   }
@@ -1398,7 +1491,7 @@ function agregarAlCarrito(productoId, tipo) {
   if (i) { i.value=''; }
 
   renderCarrito(tipo);
-  showToast(`${prod.nombre} agregado`, 'success');
+  showToast(`${prod.nombre}${escalaElegida ? ' · '+escalaElegida.nombre : ''} agregado`, 'success');
 }
 
 function recalcItem(item) {
@@ -1459,6 +1552,7 @@ function renderCarrito(tipo) {
       <td>
         <div style="font-weight:600;font-size:13px">${esc(item.nombre)}</div>
         ${item.sku ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${esc(item.sku)}</div>` : ''}
+        ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
       </td>
       <td>
         <input type="number" class="cart-qty-input" value="${item.cantidad}"
@@ -1727,7 +1821,10 @@ function dibujarRecibo(doc, venta, items) {
   linea(4.5);
 
   (items || []).forEach(it => {
-    const nombreLineas = doc.splitTextToSize(it.producto_nombre || 'Ítem', W - M*2 - 2);
+    const nombreLineas = doc.splitTextToSize(
+      (it.producto_nombre || 'Ítem') + (it.escala_nombre ? ` (${it.escala_nombre})` : ''),
+      W - M*2 - 2
+    );
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     nombreLineas.forEach((ln, i) => {
@@ -1926,9 +2023,17 @@ async function confirmarVenta() {
       descuento:      item.descuento,
       subtotal:       item.subtotal,
       ganancia:       item.ganancia,
+      escala_id:      item.escalaId || null,
+      escala_nombre:  item.escalaNombre || null,
     }));
 
-    const { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
+    let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
+    if (errDetalles) {
+      // Reintentar sin columnas escala_* por si la migración aún no llegó a este entorno
+      ({ error: errDetalles } = await sb.from('venta_detalles').insert(
+        detallesPayload.map(({ escala_id, escala_nombre, ...resto }) => resto)
+      ));
+    }
     if (errDetalles) throw errDetalles;
 
     /* ----------------------------------------------------------
@@ -2148,6 +2253,7 @@ async function initVentas() {
       loadMetodosPago(),
       loadProductosCache(),
       loadClientesCache(),
+      loadEscalasCache(),
     ]);
 
     // 6. Cargar KPIs y tabla
