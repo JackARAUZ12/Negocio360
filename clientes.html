@@ -977,6 +977,18 @@
                 Ventas → Clientes con pago recurrente. Si marcas esta casilla, se asume que ya pagó y la
                 próxima fecha de cobro será el siguiente ciclo.
               </div>
+
+              <div id="wrap-ya-pago-iva" style="display:none;margin-top:10px;background:var(--bg-app);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px">
+                  <input type="checkbox" id="fc-ya-pago-iva-activo" onchange="toggleYaPagoIvaInput()"/>
+                  Aplicar IVA a este pago
+                </label>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                  <input type="number" id="fc-ya-pago-iva-pct" value="15" min="0" max="100" step="0.01" disabled
+                    style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);color:var(--text-primary)"/>
+                  <span style="font-size:12.5px;color:var(--text-muted)">% de IVA sobre el monto recurrente</span>
+                </div>
+              </div>
             </div>
 
             <div style="font-size:11.5px;color:var(--text-muted);margin-top:8px">
