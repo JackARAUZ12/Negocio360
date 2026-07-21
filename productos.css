@@ -1640,3 +1640,52 @@ img { max-width: 100%; }
 @media (max-width: 340px) {
   .header-icon-btn[title="Notificaciones"] { display: none; }
 }
+
+/* ============================================================
+   CÓDIGO DE BARRAS — botón "Escanear" (aditivo, no altera
+   estilos existentes de .form-input)
+   ============================================================ */
+.cb-input-group {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.cb-input-group .form-input {
+  flex: 1;
+}
+.btn-cb-scan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btn-cb-scan:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.btn-cb-scan.scanning {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.cb-scan-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--accent);
+  font-weight: 600;
+  animation: cbPulse 1.2s ease-in-out infinite;
+}
+@keyframes cbPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
