@@ -33,13 +33,14 @@ const R = {
 
   // Cache de datos por módulo (para exportaciones y re-renders sin consultar de nuevo)
   cache: {
-    ventas:        [],
-    compras:       [],
-    gastos:        [],
-    clientes:      [],
-    productos:     [],
-    movimientos:   [],
-    resumen:       {},
+    ventas:         [],
+    ventasDetalles: [], // NUEVO: detalles (líneas) de venta, para saber cuántos productos se vendieron por venta
+    compras:        [],
+    gastos:         [],
+    clientes:       [],
+    productos:      [],
+    movimientos:    [],
+    resumen:        {},
   },
 
   // Referencias a instancias de Chart.js (para destruir antes de re-crear)
@@ -557,6 +558,21 @@ function calcVentasResumen(ventas) {
   // real de una transacción individual, no un agregado de ingresos.
   const mayor    = ventas.reduce((m,v) => Number(v.total)>Number(m.total) ? v : m, ventas[0]||{total:0});
   return { total, ganancia, costo, count, ticket, mayor };
+}
+
+/* FIX: para saber "cuántos productos se vendieron" por cada venta, se
+   agrupan las líneas de venta_detalles por venta_id, sumando la cantidad
+   SOLO de líneas con tipo_item==='producto' (se excluyen los servicios,
+   que no son "productos" vendidos). Se usa en los reportes de Ventas
+   (PDF y Excel) y en el Reporte General. */
+function calcProductosPorVenta(detalles) {
+  const map = {};
+  (detalles || []).forEach(d => {
+    const vid = d.venta_id;
+    if (!map[vid]) map[vid] = 0;
+    if (d.tipo_item === 'producto') map[vid] += Number(d.cantidad || 0);
+  });
+  return map;
 }
 
 /* ---- COMPRAS ---- */
@@ -1729,19 +1745,22 @@ function setEl(id, val) { const el = document.getElementById(id); if (el) el.tex
    ======================================================
    EXPORTACIONES
    NO guarda en Supabase. Genera dinámicamente en el browser.
-   Solo se exporta en formato PDF.
-   Esta sección NO fue modificada por los cambios del Resumen
-   Ejecutivo: sigue usando sus propias consultas y R.cache, tal
-   como estaba antes.
+   Se exporta en formato PDF o Excel (.xlsx).
+   Esta sección sigue usando sus propias consultas y R.cache,
+   tal como estaba antes; el soporte de Excel reutiliza
+   exactamente las mismas cachés que ya llenaba ensureCaches(),
+   así que no se agregan nuevas consultas a Supabase para esto.
    ======================================================
    ============================================================ */
 
 async function exportar(tipo, formato) {
-  showToast(`Generando ${tipo}.pdf…`, 'info');
+  const ext = formato === 'xlsx' ? 'xlsx' : 'pdf';
+  showToast(`Generando ${tipo}.${ext}…`, 'info');
   try {
     await ensureCaches();
-    await exportarPDF(tipo);
-    showToast(`✅ ${tipo}.pdf descargado`, 'success');
+    if (ext === 'xlsx') await exportarExcel(tipo);
+    else                await exportarPDF(tipo);
+    showToast(`✅ ${tipo}.${ext} descargado`, 'success');
   } catch(e) {
     console.error('exportar:', e);
     showToast('Error al generar el archivo', 'error');
@@ -1750,6 +1769,10 @@ async function exportar(tipo, formato) {
 
 async function ensureCaches() {
   if (!R.cache.ventas.length)    await fetchVentas();
+  // NUEVO: detalles de venta (para el conteo de "Productos vendidos" en Ventas/General)
+  if (!R.cache.ventasDetalles || !R.cache.ventasDetalles.length) {
+    R.cache.ventasDetalles = await fetchVentasDetalles();
+  }
   if (!R.cache.compras.length)   await fetchCompras();
   if (!R.cache.gastos.length)    await fetchGastos();
   if (!R.cache.clientes.length)  await fetchClientes();
@@ -1838,10 +1861,21 @@ async function exportarPDF(tipo) {
   // ---- VENTAS ----
   if (tipo==='ventas' || esGeneral) {
     if (esGeneral) tituloSeccion('Ventas');
-    const rows = R.cache.ventas.map(v => [v.numero_venta, fmtFecha(v.fecha), v.cliente_nombre||'Consumidor Final', v.metodo_pago_nombre||'—', fmt(v.total), fmt(v.ganancia)]);
-    doc.autoTable({ startY, head:[['#Venta','Fecha','Cliente','Método','Total','Ganancia']],
-      body:rows.length?rows:[['Sin datos en este período','','','','','']], theme:'striped',
-      headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    const prodPorVenta = calcProductosPorVenta(R.cache.ventasDetalles);
+    const rows = R.cache.ventas.map(v => [
+      v.numero_venta, fmtFecha(v.fecha), v.cliente_nombre||'Consumidor Final',
+      v.metodo_pago_nombre||'—', fmtNum(prodPorVenta[v.id]||0),
+      fmt(v.total), fmt(v.ganancia),
+    ]);
+    const totProductos = Object.values(prodPorVenta).reduce((s,n)=>s+n,0);
+    const totMonto     = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
+    const totGanancia  = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
+    doc.autoTable({ startY, head:[['#Venta','Fecha','Cliente','Método','Productos','Total','Ganancia']],
+      body:rows.length?rows:[['Sin datos en este período','','','','','','']],
+      foot:rows.length?[['','','','Totales:', fmtNum(totProductos), fmt(totMonto), fmt(totGanancia)]]:[],
+      theme:'striped', headStyles:{fillColor:[90,90,244]},
+      footStyles:{fillColor:[230,230,250], textColor:[30,30,40], fontStyle:'bold'},
+      margin:{left:10,right:10}, styles:{fontSize:8} });
     startY = doc.lastAutoTable.finalY + 10;
   }
 
@@ -1914,6 +1948,129 @@ async function exportarPDF(tipo) {
   }
 
   doc.save(`negocio360_${tipo}_${todayISO()}.pdf`);
+}
+
+/* ---- EXCEL (.xlsx) ---- */
+/* Usa la librería SheetJS (window.XLSX), que ya se carga en reportes.html.
+   Genera un libro bien estructurado: encabezados claros, columnas de
+   moneda/cantidad como NÚMEROS reales (no texto) con formato numérico
+   aplicado, ancho de columna autoajustado ("escalado") según el
+   contenido, fila de encabezado congelada y autofiltro activado.
+   No reemplaza ni modifica la exportación en PDF: es un camino
+   totalmente independiente que reutiliza las mismas cachés. */
+
+/* Crea y agrega una hoja a partir de encabezados + filas, aplicando
+   formato numérico por columna, ancho autoajustado, fila fija y
+   autofiltro. `formatos` es un array paralelo a `headers`: null para
+   texto, o un formato numérico de Excel (ej. '#,##0.00') para números. */
+function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos) {
+  const aoa = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Formato numérico por celda de datos (no toca el encabezado)
+  rows.forEach((row, ri) => {
+    formatos.forEach((f, ci) => {
+      if (!f) return;
+      const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+      if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = f;
+    });
+  });
+
+  // Ancho de columna autoajustado ("escalado") según el contenido real
+  ws['!cols'] = headers.map((h, ci) => {
+    const maxLen = rows.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), h.length);
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 42) };
+  });
+
+  // Fila de encabezado congelada, para desplazarse sin perderla de vista
+  ws['!freeze'] = { xSplit: '0', ySplit: '1', topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+
+  // Autofiltro en la fila de encabezado (permite ordenar/filtrar en Excel)
+  if (headers.length && rows.length) {
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length,c:headers.length-1} }) };
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, nombreHoja.slice(0, 31));
+  return ws;
+}
+
+const NUM_MONEDA = '#,##0.00';
+const NUM_ENTERO = '#,##0';
+const NUM_CANT   = '#,##0.##';
+
+function hojaVentasXLSX(wb) {
+  const prodPorVenta = calcProductosPorVenta(R.cache.ventasDetalles);
+  const headers = ['#Venta','Fecha','Cliente','Método de pago','Productos vendidos',`Total (${sym()})`,`Ganancia (${sym()})`];
+  const rows = R.cache.ventas.map(v => [
+    v.numero_venta || '', fmtFecha(v.fecha), v.cliente_nombre || 'Consumidor Final',
+    v.metodo_pago_nombre || '—', Number(prodPorVenta[v.id] || 0),
+    Number(v.total || 0), Number(v.ganancia || 0),
+  ]);
+  if (rows.length) {
+    const totProductos = Object.values(prodPorVenta).reduce((s,n)=>s+n,0);
+    const totMonto      = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
+    const totGanancia   = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
+    rows.push(['', '', '', 'TOTALES', totProductos, totMonto, totGanancia]);
+  }
+  appendSheetXLSX(wb, 'Ventas', headers, rows.length?rows:[['Sin datos en este período','','','','','','']],
+    [null,null,null,null,NUM_CANT,NUM_MONEDA,NUM_MONEDA]);
+}
+
+function hojaComprasXLSX(wb) {
+  const headers = ['#Compra','Fecha','Proveedor',`Total (${sym()})`,'Estado'];
+  const rows = R.cache.compras.map(c => [c.numero || '', fmtFecha(c.fecha), c.proveedor_nombre || '—', Number(c.total||0), c.estado || '']);
+  appendSheetXLSX(wb, 'Compras', headers, rows.length?rows:[['Sin datos','','','','']], [null,null,null,NUM_MONEDA,null]);
+}
+
+function hojaClientesXLSX(wb) {
+  const headers = ['Nombre','Teléfono','Email','Compras',`Total gastado (${sym()})`,'Última compra'];
+  const rows = R.cache.clientes.map(c => [c.nombre || '', c.telefono || '—', c.correo || '—', Number(c.num_compras||0), Number(c.total_compras||0), fmtFecha(c.ultima_compra)]);
+  appendSheetXLSX(wb, 'Clientes', headers, rows.length?rows:[['Sin datos','','','','','']], [null,null,null,NUM_ENTERO,NUM_MONEDA,null]);
+}
+
+function hojaInventarioXLSX(wb) {
+  const headers = ['Producto','SKU','Categoría','Marca/Proveedor','Stock',`Costo (${sym()})`,`Precio (${sym()})`,`Valor total (${sym()})`];
+  const prods = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
+  const rows = prods.map(p => [
+    p.nombre || '', p.sku || '—', p.categoria || '—', p.proveedor_nombre || '—',
+    Number(p.stock_actual||0), Number(p.costo||0), Number(p.precio||0),
+    Number(p.stock_actual||0) * Number(p.costo||0),
+  ]);
+  appendSheetXLSX(wb, 'Inventario', headers, rows.length?rows:[['Sin datos','','','','','','','']],
+    [null,null,null,null,NUM_CANT,NUM_MONEDA,NUM_MONEDA,NUM_MONEDA]);
+}
+
+function hojaGastosXLSX(wb) {
+  const headers = ['Concepto','Categoría','Fecha',`Monto (${sym()})`,'Tipo'];
+  const rows = R.cache.gastos.map(g => [g.concepto || '', g.categoria || '—', fmtFecha(g.fecha), Number(g.monto||0), g.tipo || '']);
+  appendSheetXLSX(wb, 'Gastos', headers, rows.length?rows:[['Sin datos','','','','']], [null,null,null,NUM_MONEDA,null]);
+}
+
+function hojaResumenXLSX(wb) {
+  const r = R.cache.resumen || {};
+  const headers = ['Concepto', `Monto (${sym()})`];
+  const rows = [
+    ['Ventas totales', Number(r.ventas||0)], ['Compras totales', Number(r.compras||0)],
+    ['Total gastos', Number(r.gastos||0)], ['Ganancia bruta', Number(r.gananciaBruta||0)],
+    ['Otros ingresos', Number(r.otrosIngresos||0)], ['Otros egresos', Number(r.otrosEgresos||0)],
+    ['Ganancia neta', Number(r.gananciaNeta||0)], ['Caja disponible', Number(r.capital||0)],
+  ];
+  appendSheetXLSX(wb, 'Resumen', headers, rows, [null, NUM_MONEDA]);
+}
+
+async function exportarExcel(tipo) {
+  if (!window.XLSX) throw new Error('Librería XLSX no disponible');
+  const wb = XLSX.utils.book_new();
+  const esGeneral = tipo === 'general';
+
+  if (esGeneral) hojaResumenXLSX(wb);
+  if (tipo==='ventas'     || esGeneral) hojaVentasXLSX(wb);
+  if (tipo==='compras'    || esGeneral) hojaComprasXLSX(wb);
+  if (tipo==='clientes'   || esGeneral) hojaClientesXLSX(wb);
+  if (tipo==='inventario' || esGeneral) hojaInventarioXLSX(wb);
+  if (tipo==='gastos'     || esGeneral) hojaGastosXLSX(wb);
+
+  XLSX.writeFile(wb, `negocio360_${tipo}_${todayISO()}.xlsx`);
 }
 
 function tituloTipo(tipo) {
