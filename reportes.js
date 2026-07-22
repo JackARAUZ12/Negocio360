@@ -20,6 +20,7 @@ const R = {
   userId:        null,
   userEmail:     null,
   empresaConfig: {},
+  exportConfig:  {}, // NUEVO: qué columnas mostrar en PDF/Excel por tipo de reporte (elegido por el cliente)
   currentUser:   {},
   moneda:        'C$',
 
@@ -256,6 +257,10 @@ async function loadEmpresaConfig(userId) {
     if (data) {
       R.empresaConfig = data;
       R.moneda = data.moneda || 'C$';
+      // NUEVO: configuración de columnas de exportación guardada por el cliente.
+      // Si nunca configuró nada (o metadata viene vacío/null), queda {} y
+      // todas las columnas se consideran activas por defecto (ver colActiva()).
+      R.exportConfig = (data.metadata && typeof data.metadata === 'object' && data.metadata.exportConfig) || {};
       const biz = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
       const lt  = document.getElementById('sidebar-logo-text');
       if (lt) lt.textContent = biz;
@@ -360,7 +365,7 @@ async function loadTab(tab) {
     case 'clientes':    await loadClientesTab(); break;
     case 'gastos':      await loadGastosTab();   break;
     case 'alertas':     await loadAlertas();     break;
-    case 'exportar':    /* ya está renderizado */ break;
+    case 'exportar':    renderConfigExportar();  break;
   }
 }
 
@@ -1827,6 +1832,199 @@ async function ensureCaches() {
   }
 }
 
+/* ============================================================
+   CONFIGURAR EXPORTACIONES — columnas elegibles por el cliente
+   El cliente decide, por cada tipo de reporte, qué columnas
+   quiere ver en el PDF y en el Excel. La selección se guarda en
+   configuracion_empresa.metadata.exportConfig (columna jsonb que
+   ya existía y no se usaba en ningún otro módulo del sistema),
+   así que no hace falta ninguna migración ni tabla nueva.
+   Si el cliente nunca configuró nada, TODAS las columnas quedan
+   activas por defecto — el comportamiento es idéntico al de
+   antes de este cambio.
+   ============================================================ */
+
+// Definición de columnas disponibles por reporte. El orden aquí
+// define el orden en el PDF/Excel. `tipo` sirve para dar formato:
+// 'texto' (tal cual), 'moneda' (símbolo + 2 decimales), 'entero'
+// (sin decimales) o 'cantidad' (hasta 2 decimales, sin símbolo).
+const COLUMNAS_REPORTES = {
+  ventas: [
+    { key:'numero',    label:'#Venta',            tipo:'texto' },
+    { key:'fecha',     label:'Fecha',              tipo:'texto' },
+    { key:'cliente',   label:'Cliente',            tipo:'texto' },
+    { key:'metodo',    label:'Método de pago',     tipo:'texto' },
+    { key:'productos', label:'Productos vendidos', tipo:'texto' },
+    { key:'servicios', label:'Servicios vendidos', tipo:'texto' },
+    { key:'total',     label:'Total',              tipo:'moneda' },
+    { key:'ganancia',  label:'Ganancia',           tipo:'moneda' },
+  ],
+  compras: [
+    { key:'numero',    label:'#Compra',   tipo:'texto' },
+    { key:'fecha',     label:'Fecha',     tipo:'texto' },
+    { key:'proveedor', label:'Proveedor', tipo:'texto' },
+    { key:'total',     label:'Total',     tipo:'moneda' },
+    { key:'estado',    label:'Estado',    tipo:'texto' },
+  ],
+  clientes: [
+    { key:'nombre',       label:'Nombre',        tipo:'texto' },
+    { key:'telefono',     label:'Teléfono',      tipo:'texto' },
+    { key:'email',        label:'Email',         tipo:'texto' },
+    { key:'compras',      label:'Compras',       tipo:'entero' },
+    { key:'totalGastado', label:'Total gastado', tipo:'moneda' },
+    { key:'ultimaCompra', label:'Última compra', tipo:'texto' },
+  ],
+  inventario: [
+    { key:'producto',   label:'Producto',        tipo:'texto' },
+    { key:'sku',        label:'SKU',             tipo:'texto' },
+    { key:'categoria',  label:'Categoría',       tipo:'texto' },
+    { key:'marca',      label:'Marca/Proveedor', tipo:'texto' },
+    { key:'stock',      label:'Stock',           tipo:'cantidad' },
+    { key:'costo',      label:'Costo',           tipo:'moneda' },
+    { key:'precio',     label:'Precio',          tipo:'moneda' },
+    { key:'valorTotal', label:'Valor total',     tipo:'moneda' },
+  ],
+  gastos: [
+    { key:'concepto',  label:'Concepto',  tipo:'texto' },
+    { key:'categoria', label:'Categoría', tipo:'texto' },
+    { key:'fecha',     label:'Fecha',     tipo:'texto' },
+    { key:'monto',     label:'Monto',     tipo:'moneda' },
+    { key:'tipo',      label:'Tipo',      tipo:'texto' },
+  ],
+};
+
+const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', gastos:'💸' };
+const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', gastos:'Gastos' };
+
+// ¿Está activa la columna `key` del reporte `tipoReporte`? Por defecto
+// (si el cliente no ha guardado configuración, o esta columna es nueva
+// y no existía cuando guardó) la columna está ACTIVA.
+function colActiva(tipoReporte, key) {
+  const cfg = R.exportConfig?.[tipoReporte];
+  if (!cfg) return true;
+  return cfg[key] !== false;
+}
+
+function columnasActivas(tipoReporte) {
+  return (COLUMNAS_REPORTES[tipoReporte]||[]).filter(c => colActiva(tipoReporte, c.key));
+}
+
+// ---- Construcción de filas (independiente del formato de salida) ----
+function filaVenta(v, detMap) {
+  const info = detMap[v.id];
+  return {
+    numero: v.numero_venta, fecha: fmtFecha(v.fecha),
+    cliente: v.cliente_nombre||'Consumidor Final', metodo: v.metodo_pago_nombre||'—',
+    productos: fmtProductosVenta(info), servicios: fmtServiciosVenta(info),
+    total: Number(v.total||0), ganancia: Number(v.ganancia||0),
+  };
+}
+function filaCompra(c) {
+  return { numero:c.numero, fecha:fmtFecha(c.fecha), proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
+}
+function filaCliente(c) {
+  return { nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra) };
+}
+function filaProducto(p) {
+  return { producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
+    stock:Number(p.stock_actual||0), costo:Number(p.costo||0), precio:Number(p.precio||0),
+    valorTotal:Number(p.stock_actual||0)*Number(p.costo||0) };
+}
+function filaGasto(g) {
+  return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), monto:Number(g.monto||0), tipo:g.tipo||'' };
+}
+
+// Fila de "Totales" del reporte de Ventas, respetando solo las columnas
+// activas. La etiqueta "TOTALES" se coloca en la primera columna de
+// texto disponible que no sea numérica.
+function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExcel) {
+  let etiquetaPuesta = false;
+  return cols.map(c => {
+    if (c.key === 'productos') return `Uds. producto: ${fmtNum(totUnidadesProd)}`;
+    if (c.key === 'total')     return paraExcel ? totMonto : fmt(totMonto);
+    if (c.key === 'ganancia')  return paraExcel ? totGanancia : fmt(totGanancia);
+    if (!etiquetaPuesta) { etiquetaPuesta = true; return 'TOTALES'; }
+    return '';
+  });
+}
+
+// ---- Formateo de celdas según destino (PDF = texto, Excel = número) ----
+function celdaPDF(valor, tipoCol) {
+  if (tipoCol === 'moneda') return fmt(valor);
+  if (tipoCol === 'entero' || tipoCol === 'cantidad') return fmtNum(valor);
+  return valor ?? '';
+}
+function celdaXLSX(valor, tipoCol) {
+  if (tipoCol === 'moneda' || tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
+  return valor ?? '';
+}
+function filaAPDF(fila, cols)  { return cols.map(c => celdaPDF(fila[c.key], c.tipo)); }
+function filaAXLSX(fila, cols) { return cols.map(c => celdaXLSX(fila[c.key], c.tipo)); }
+function headersPDF(cols)  { return cols.map(c => c.label); }
+function headersXLSX(cols) { return cols.map(c => c.tipo==='moneda' ? `${c.label} (${sym()})` : c.label); }
+function formatosXLSX(cols) {
+  return cols.map(c => c.tipo==='moneda' ? NUM_MONEDA : c.tipo==='entero' ? NUM_ENTERO : c.tipo==='cantidad' ? NUM_CANT : null);
+}
+
+/* ---- UI: pintar los checkboxes de configuración en la pestaña Exportar ---- */
+function renderConfigExportar() {
+  const cont = document.getElementById('config-exportar-grid');
+  if (!cont) return;
+  cont.innerHTML = Object.keys(COLUMNAS_REPORTES).map(tipoReporte => {
+    const cols = COLUMNAS_REPORTES[tipoReporte];
+    const items = cols.map(c => {
+      const activa = colActiva(tipoReporte, c.key);
+      return `<label class="config-col-item${activa?'':' disabled'}">
+        <input type="checkbox" ${activa?'checked':''}
+          onchange="toggleColumnaExportar('${tipoReporte}','${c.key}',this.checked,this)">
+        ${c.label}
+      </label>`;
+    }).join('');
+    return `<div class="config-exportar-modulo">
+      <div class="config-exportar-modulo-title"><span class="icon">${ICONO_MODULO[tipoReporte]}</span> ${NOMBRE_MODULO[tipoReporte]}</div>
+      <div class="config-col-list">${items}</div>
+    </div>`;
+  }).join('');
+}
+
+// Marca/desmarca en memoria (aún no guarda en Supabase — eso ocurre al
+// presionar "Guardar configuración", para poder cambiar varias casillas
+// sin disparar una escritura por cada clic).
+function toggleColumnaExportar(tipoReporte, key, activa, checkboxEl) {
+  if (!R.exportConfig[tipoReporte]) R.exportConfig[tipoReporte] = {};
+  R.exportConfig[tipoReporte][key] = !!activa;
+  const label = checkboxEl?.closest('.config-col-item');
+  if (label) label.classList.toggle('disabled', !activa);
+}
+
+// Guarda R.exportConfig dentro de configuracion_empresa.metadata, sin
+// tocar ninguna otra clave que ya exista en ese campo jsonb.
+async function guardarConfigExportar() {
+  try {
+    const metadataActual = (R.empresaConfig && typeof R.empresaConfig.metadata === 'object' && R.empresaConfig.metadata) || {};
+    const nuevaMetadata  = { ...metadataActual, exportConfig: R.exportConfig };
+    const { error } = await sb.from('configuracion_empresa')
+      .update({ metadata: nuevaMetadata })
+      .eq('auth_user_id', R.userId);
+    if (error) throw error;
+    R.empresaConfig.metadata = nuevaMetadata;
+    showToast('✅ Configuración de exportaciones guardada', 'success');
+    const badge = document.getElementById('config-exportar-guardado');
+    if (badge) { badge.classList.add('show'); setTimeout(()=>badge.classList.remove('show'), 2500); }
+  } catch(e) {
+    console.error('guardarConfigExportar:', e);
+    showToast('Error al guardar la configuración', 'error');
+  }
+}
+
+// Restaura todas las columnas de todos los reportes a "activas" (el
+// comportamiento por defecto) y guarda ese estado.
+async function restaurarConfigExportar() {
+  R.exportConfig = {};
+  renderConfigExportar();
+  await guardarConfigExportar();
+}
+
 function docHeader(tipo) {
   // FIX: priorizar nombre_comercial (campo real guardado por personalizacion.html)
   const biz    = R.empresaConfig?.nombre_comercial || R.empresaConfig?.nombre_negocio || 'Mi Negocio';
@@ -1893,26 +2091,26 @@ async function exportarPDF(tipo) {
   // ---- VENTAS ----
   if (tipo==='ventas' || esGeneral) {
     if (esGeneral) tituloSeccion('Ventas');
-    const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
-    const rows = R.cache.ventas.map(v => {
-      const info = detMap[v.id];
-      return [
-        v.numero_venta, fmtFecha(v.fecha), v.cliente_nombre||'Consumidor Final',
-        v.metodo_pago_nombre||'—', fmtProductosVenta(info), fmtServiciosVenta(info),
-        fmt(v.total), fmt(v.ganancia),
-      ];
-    });
-    const totUnidadesProd = totalUnidadesProducto(detMap);
-    const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
-    const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
-    doc.autoTable({ startY, head:[['#Venta','Fecha','Cliente','Método','Productos','Servicios','Total','Ganancia']],
-      body:rows.length?rows:[['Sin datos en este período','','','','','','','']],
-      foot:rows.length?[['','','','', `Uds. producto: ${fmtNum(totUnidadesProd)}`, 'Totales:', fmt(totMonto), fmt(totGanancia)]]:[],
-      theme:'striped', headStyles:{fillColor:[90,90,244]},
-      footStyles:{fillColor:[230,230,250], textColor:[30,30,40], fontStyle:'bold'},
-      margin:{left:10,right:10}, styles:{fontSize:8, overflow:'linebreak'},
-      columnStyles:{ 4:{cellWidth:55}, 5:{cellWidth:45} } });
-    startY = doc.lastAutoTable.finalY + 10;
+    const cols = columnasActivas('ventas');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Ventas (revisa "Configurar exportaciones").', 10, startY);
+      startY += 10;
+    } else {
+      const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
+      const filas  = R.cache.ventas.map(v => filaVenta(v, detMap));
+      const rows   = filas.map(f => filaAPDF(f, cols));
+      const totUnidadesProd = totalUnidadesProducto(detMap);
+      const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
+      const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]],
+        foot:rows.length?[filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, false)]:[],
+        theme:'striped', headStyles:{fillColor:[90,90,244]},
+        footStyles:{fillColor:[230,230,250], textColor:[30,30,40], fontStyle:'bold'},
+        margin:{left:10,right:10}, styles:{fontSize:8, overflow:'linebreak'} });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
   }
 
   // ---- COMPRAS ----
@@ -1923,11 +2121,18 @@ async function exportarPDF(tipo) {
       startY = 28;
       tituloSeccion('Compras');
     }
-    const rows = R.cache.compras.map(c=>[c.numero,fmtFecha(c.fecha),c.proveedor_nombre||'—',fmt(c.total),c.estado]);
-    doc.autoTable({ startY, head:[['#Compra','Fecha','Proveedor','Total','Estado']],
-      body:rows.length?rows:[['Sin datos','','','','']], theme:'striped',
-      headStyles:{fillColor:[249,115,22]}, margin:{left:10,right:10}, styles:{fontSize:8} });
-    startY = doc.lastAutoTable.finalY + 10;
+    const cols = columnasActivas('compras');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Compras (revisa "Configurar exportaciones").', 10, startY);
+      startY += 10;
+    } else {
+      const rows = R.cache.compras.map(c => filaAPDF(filaCompra(c), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[249,115,22]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
   }
 
   // ---- CLIENTES ----
@@ -1938,11 +2143,18 @@ async function exportarPDF(tipo) {
       startY = 28;
       tituloSeccion('Clientes');
     }
-    const rows = R.cache.clientes.map(c=>[c.nombre,c.telefono||'—',c.correo||'—',c.num_compras,fmt(c.total_compras),fmtFecha(c.ultima_compra)]);
-    doc.autoTable({ startY, head:[['Nombre','Teléfono','Email','Compras','Total gastado','Última compra']],
-      body:rows.length?rows:[['Sin datos','','','','','']], theme:'striped',
-      headStyles:{fillColor:[34,197,94]}, margin:{left:10,right:10}, styles:{fontSize:8} });
-    startY = doc.lastAutoTable.finalY + 10;
+    const cols = columnasActivas('clientes');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Clientes (revisa "Configurar exportaciones").', 10, startY);
+      startY += 10;
+    } else {
+      const rows = R.cache.clientes.map(c => filaAPDF(filaCliente(c), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[34,197,94]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
   }
 
   // ---- INVENTARIO ----
@@ -1954,11 +2166,18 @@ async function exportarPDF(tipo) {
       tituloSeccion('Inventario');
     }
     const prods = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
-    const rows  = prods.map(p=>[p.nombre,p.sku||'—',p.categoria||'—',p.proveedor_nombre||'—',fmtNum(p.stock_actual),fmt(p.costo),fmt(p.precio),fmt(Number(p.stock_actual||0)*Number(p.costo||0))]);
-    doc.autoTable({ startY, head:[['Producto','SKU','Categoría','Marca/Proveedor','Stock','Costo','Precio','Valor total']],
-      body:rows.length?rows:[['Sin datos','','','','','','','']], theme:'striped',
-      headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
-    startY = doc.lastAutoTable.finalY + 10;
+    const cols = columnasActivas('inventario');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Inventario (revisa "Configurar exportaciones").', 10, startY);
+      startY += 10;
+    } else {
+      const rows = prods.map(p => filaAPDF(filaProducto(p), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
   }
 
   // ---- GASTOS ----
@@ -1969,10 +2188,16 @@ async function exportarPDF(tipo) {
       startY = 28;
       tituloSeccion('Gastos');
     }
-    const rows = R.cache.gastos.map(g=>[g.concepto,g.categoria||'—',fmtFecha(g.fecha),fmt(g.monto),g.tipo]);
-    doc.autoTable({ startY, head:[['Concepto','Categoría','Fecha','Monto','Tipo']],
-      body:rows.length?rows:[['Sin datos','','','','']], theme:'striped',
-      headStyles:{fillColor:[239,68,68]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    const cols = columnasActivas('gastos');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Gastos (revisa "Configurar exportaciones").', 10, startY);
+    } else {
+      const rows = R.cache.gastos.map(g => filaAPDF(filaGasto(g), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[239,68,68]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    }
   }
 
   // Pie de página
@@ -2035,54 +2260,67 @@ const NUM_ENTERO = '#,##0';
 const NUM_CANT   = '#,##0.##';
 
 function hojaVentasXLSX(wb) {
+  const cols = columnasActivas('ventas');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Ventas', ['Aviso'], [['No hay columnas seleccionadas para Ventas (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
   const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
-  const headers = ['#Venta','Fecha','Cliente','Método de pago','Productos vendidos','Servicios vendidos',`Total (${sym()})`,`Ganancia (${sym()})`];
-  const rows = R.cache.ventas.map(v => {
-    const info = detMap[v.id];
-    return [
-      v.numero_venta || '', fmtFecha(v.fecha), v.cliente_nombre || 'Consumidor Final',
-      v.metodo_pago_nombre || '—', fmtProductosVenta(info), fmtServiciosVenta(info),
-      Number(v.total || 0), Number(v.ganancia || 0),
-    ];
-  });
+  const filas  = R.cache.ventas.map(v => filaVenta(v, detMap));
+  const rows   = filas.map(f => filaAXLSX(f, cols));
   if (rows.length) {
     const totUnidadesProd = totalUnidadesProducto(detMap);
     const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
     const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
-    rows.push(['', '', '', 'TOTALES', `Uds. producto: ${fmtNum(totUnidadesProd)}`, '', totMonto, totGanancia]);
+    rows.push(filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, true));
   }
-  appendSheetXLSX(wb, 'Ventas', headers, rows.length?rows:[['Sin datos en este período','','','','','','','']],
-    [null,null,null,null,null,null,NUM_MONEDA,NUM_MONEDA]);
+  appendSheetXLSX(wb, 'Ventas', headersXLSX(cols),
+    rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
 function hojaComprasXLSX(wb) {
-  const headers = ['#Compra','Fecha','Proveedor',`Total (${sym()})`,'Estado'];
-  const rows = R.cache.compras.map(c => [c.numero || '', fmtFecha(c.fecha), c.proveedor_nombre || '—', Number(c.total||0), c.estado || '']);
-  appendSheetXLSX(wb, 'Compras', headers, rows.length?rows:[['Sin datos','','','','']], [null,null,null,NUM_MONEDA,null]);
+  const cols = columnasActivas('compras');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Compras', ['Aviso'], [['No hay columnas seleccionadas para Compras (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
+  const rows = R.cache.compras.map(c => filaAXLSX(filaCompra(c), cols));
+  appendSheetXLSX(wb, 'Compras', headersXLSX(cols),
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
 function hojaClientesXLSX(wb) {
-  const headers = ['Nombre','Teléfono','Email','Compras',`Total gastado (${sym()})`,'Última compra'];
-  const rows = R.cache.clientes.map(c => [c.nombre || '', c.telefono || '—', c.correo || '—', Number(c.num_compras||0), Number(c.total_compras||0), fmtFecha(c.ultima_compra)]);
-  appendSheetXLSX(wb, 'Clientes', headers, rows.length?rows:[['Sin datos','','','','','']], [null,null,null,NUM_ENTERO,NUM_MONEDA,null]);
+  const cols = columnasActivas('clientes');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Clientes', ['Aviso'], [['No hay columnas seleccionadas para Clientes (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
+  const rows = R.cache.clientes.map(c => filaAXLSX(filaCliente(c), cols));
+  appendSheetXLSX(wb, 'Clientes', headersXLSX(cols),
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
 function hojaInventarioXLSX(wb) {
-  const headers = ['Producto','SKU','Categoría','Marca/Proveedor','Stock',`Costo (${sym()})`,`Precio (${sym()})`,`Valor total (${sym()})`];
+  const cols = columnasActivas('inventario');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Inventario', ['Aviso'], [['No hay columnas seleccionadas para Inventario (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
   const prods = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
-  const rows = prods.map(p => [
-    p.nombre || '', p.sku || '—', p.categoria || '—', p.proveedor_nombre || '—',
-    Number(p.stock_actual||0), Number(p.costo||0), Number(p.precio||0),
-    Number(p.stock_actual||0) * Number(p.costo||0),
-  ]);
-  appendSheetXLSX(wb, 'Inventario', headers, rows.length?rows:[['Sin datos','','','','','','','']],
-    [null,null,null,null,NUM_CANT,NUM_MONEDA,NUM_MONEDA,NUM_MONEDA]);
+  const rows = prods.map(p => filaAXLSX(filaProducto(p), cols));
+  appendSheetXLSX(wb, 'Inventario', headersXLSX(cols),
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
 function hojaGastosXLSX(wb) {
-  const headers = ['Concepto','Categoría','Fecha',`Monto (${sym()})`,'Tipo'];
-  const rows = R.cache.gastos.map(g => [g.concepto || '', g.categoria || '—', fmtFecha(g.fecha), Number(g.monto||0), g.tipo || '']);
-  appendSheetXLSX(wb, 'Gastos', headers, rows.length?rows:[['Sin datos','','','','']], [null,null,null,NUM_MONEDA,null]);
+  const cols = columnasActivas('gastos');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Gastos', ['Aviso'], [['No hay columnas seleccionadas para Gastos (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
+  const rows = R.cache.gastos.map(g => filaAXLSX(filaGasto(g), cols));
+  appendSheetXLSX(wb, 'Gastos', headersXLSX(cols),
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
 function hojaResumenXLSX(wb) {
