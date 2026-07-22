@@ -576,13 +576,23 @@ function calcVentasResumen(ventas) {
    Se usa en los reportes de Ventas (PDF y Excel) y en el Reporte
    General. */
 function detalleVentaPorVenta(detalles) {
+  // NUEVO: mapa producto_id -> proveedor_nombre (a partir del catálogo de
+  // productos ya cacheado por ensureCaches/fetchProductos) para poder
+  // indicar de qué proveedor(es) vinieron los productos de cada venta.
+  const proveedorPorProducto = {};
+  (R.cache.productos || []).forEach(p => {
+    if (p.proveedor_nombre) proveedorPorProducto[p.id] = p.proveedor_nombre;
+  });
+
   const map = {};
   (detalles || []).forEach(d => {
     const vid = d.venta_id;
-    if (!map[vid]) map[vid] = { productos: [], servicios: new Set() };
+    if (!map[vid]) map[vid] = { productos: [], servicios: new Set(), proveedores: new Set() };
     const nombre = d.producto_nombre || (d.tipo_item==='servicio' ? 'Servicio' : 'Producto');
     if (d.tipo_item === 'producto') {
       map[vid].productos.push({ nombre, cantidad: Number(d.cantidad || 0) });
+      const prov = proveedorPorProducto[d.producto_id];
+      if (prov) map[vid].proveedores.add(prov);
     } else {
       map[vid].servicios.add(nombre);
     }
@@ -603,6 +613,15 @@ function fmtProductosVenta(info) {
 function fmtServiciosVenta(info) {
   if (!info || !info.servicios.size) return '—';
   return Array.from(info.servicios).join(', ');
+}
+
+// Texto para la casilla "Proveedor" de una venta puntual. Si los
+// productos de la venta vienen de varios proveedores distintos, se
+// indica "Varios"; si ninguno tiene proveedor asignado, se deja "—".
+function fmtProveedorVenta(info) {
+  if (!info || !info.proveedores.size) return '—';
+  if (info.proveedores.size === 1) return Array.from(info.proveedores)[0];
+  return 'Varios';
 }
 
 // Total de UNIDADES de producto (no de servicios) vendidas en el
@@ -1856,6 +1875,7 @@ const COLUMNAS_REPORTES = {
     { key:'metodo',    label:'Método de pago',     tipo:'texto' },
     { key:'productos', label:'Productos vendidos', tipo:'texto' },
     { key:'servicios', label:'Servicios vendidos', tipo:'texto' },
+    { key:'proveedor', label:'Proveedor',           tipo:'texto' },
     { key:'total',     label:'Total',              tipo:'moneda' },
     { key:'ganancia',  label:'Ganancia',           tipo:'moneda' },
   ],
@@ -1916,6 +1936,7 @@ function filaVenta(v, detMap) {
     numero: v.numero_venta, fecha: fmtFecha(v.fecha),
     cliente: v.cliente_nombre||'Consumidor Final', metodo: v.metodo_pago_nombre||'—',
     productos: fmtProductosVenta(info), servicios: fmtServiciosVenta(info),
+    proveedor: fmtProveedorVenta(info),
     total: Number(v.total||0), ganancia: Number(v.ganancia||0),
   };
 }
