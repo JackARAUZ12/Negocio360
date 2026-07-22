@@ -1423,7 +1423,7 @@
           </div>
           <div class="panel-body">
             <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:20px;max-width:600px;line-height:1.7">
-              Exporta los reportes de tu negocio en formato PDF. Los documentos se generan en tiempo real desde tu navegador con los datos actuales del período seleccionado. Incluyen logo, nombre del negocio y período consultado.
+              Exporta los reportes de tu negocio en formato PDF o Excel. Los documentos se generan en tiempo real desde tu navegador con los datos actuales del período seleccionado. Incluyen logo, nombre del negocio y período consultado.
             </p>
             <div class="export-grid">
               <!-- Reporte General -->
@@ -1433,6 +1433,7 @@
                 <div class="export-card-desc">Incluye todos los módulos: ventas, compras, gastos, inventario, clientes y finanzas en un solo documento.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('general','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('general','xlsx')">Excel</button>
                 </div>
               </div>
               <!-- Ventas -->
@@ -1442,6 +1443,7 @@
                 <div class="export-card-desc">Historial completo de ventas del período con número, cliente, método de pago, total y ganancia.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('ventas','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('ventas','xlsx')">Excel</button>
                 </div>
               </div>
               <!-- Compras -->
@@ -1451,6 +1453,7 @@
                 <div class="export-card-desc">Registro de todas las compras realizadas con proveedor, productos y montos invertidos.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('compras','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('compras','xlsx')">Excel</button>
                 </div>
               </div>
               <!-- Clientes -->
@@ -1460,6 +1463,7 @@
                 <div class="export-card-desc">Lista de clientes con historial de compras, montos gastados y fechas de última visita.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('clientes','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('clientes','xlsx')">Excel</button>
                 </div>
               </div>
               <!-- Inventario -->
@@ -1469,6 +1473,7 @@
                 <div class="export-card-desc">Catálogo completo de productos con stock, costos, precios y valor total del inventario.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('inventario','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('inventario','xlsx')">Excel</button>
                 </div>
               </div>
               <!-- Gastos -->
@@ -1478,6 +1483,7 @@
                 <div class="export-card-desc">Detalle de todos los gastos del período agrupados por categoría con totales y análisis.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('gastos','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('gastos','xlsx')">Excel</button>
                 </div>
               </div>
             </div>
