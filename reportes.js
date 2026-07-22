@@ -560,19 +560,51 @@ function calcVentasResumen(ventas) {
   return { total, ganancia, costo, count, ticket, mayor };
 }
 
-/* FIX: para saber "cuántos productos se vendieron" por cada venta, se
-   agrupan las líneas de venta_detalles por venta_id, sumando la cantidad
-   SOLO de líneas con tipo_item==='producto' (se excluyen los servicios,
-   que no son "productos" vendidos). Se usa en los reportes de Ventas
-   (PDF y Excel) y en el Reporte General. */
-function calcProductosPorVenta(detalles) {
+/* FIX: no basta con saber CUÁNTOS productos se vendieron — hay que saber
+   CUÁLES. Se agrupan las líneas de venta_detalles por venta_id y se
+   separan en dos listas:
+     - productos: nombre + cantidad (sí se cuentan como unidades, porque
+       son artículos físicos: 2 camisas son 2 camisas).
+     - servicios: solo el nombre, SIN sumar cantidades — un servicio no
+       se "cuenta" como 20 unidades de producto; cada servicio es una
+       prestación individual, así que solo se listan los nombres.
+   Se usa en los reportes de Ventas (PDF y Excel) y en el Reporte
+   General. */
+function detalleVentaPorVenta(detalles) {
   const map = {};
   (detalles || []).forEach(d => {
     const vid = d.venta_id;
-    if (!map[vid]) map[vid] = 0;
-    if (d.tipo_item === 'producto') map[vid] += Number(d.cantidad || 0);
+    if (!map[vid]) map[vid] = { productos: [], servicios: new Set() };
+    const nombre = d.producto_nombre || (d.tipo_item==='servicio' ? 'Servicio' : 'Producto');
+    if (d.tipo_item === 'producto') {
+      map[vid].productos.push({ nombre, cantidad: Number(d.cantidad || 0) });
+    } else {
+      map[vid].servicios.add(nombre);
+    }
   });
   return map;
+}
+
+// Texto para la casilla "Productos" de una venta puntual.
+// Si la venta NO tuvo productos (solo servicios), se indica "No producto"
+// en lugar de dejar la casilla vacía o en 0.
+function fmtProductosVenta(info) {
+  if (!info || !info.productos.length) return 'No producto';
+  return info.productos.map(p => `${p.nombre} x${fmtNum(p.cantidad)}`).join(', ');
+}
+
+// Texto para la casilla "Servicios" de una venta puntual. Solo nombres,
+// sin cantidades sumadas (cada servicio es individual).
+function fmtServiciosVenta(info) {
+  if (!info || !info.servicios.size) return '—';
+  return Array.from(info.servicios).join(', ');
+}
+
+// Total de UNIDADES de producto (no de servicios) vendidas en el
+// período, para la fila de totales del reporte de Ventas.
+function totalUnidadesProducto(detalleMap) {
+  return Object.values(detalleMap).reduce((s, info) =>
+    s + info.productos.reduce((s2,p) => s2 + p.cantidad, 0), 0);
 }
 
 /* ---- COMPRAS ---- */
@@ -1861,21 +1893,25 @@ async function exportarPDF(tipo) {
   // ---- VENTAS ----
   if (tipo==='ventas' || esGeneral) {
     if (esGeneral) tituloSeccion('Ventas');
-    const prodPorVenta = calcProductosPorVenta(R.cache.ventasDetalles);
-    const rows = R.cache.ventas.map(v => [
-      v.numero_venta, fmtFecha(v.fecha), v.cliente_nombre||'Consumidor Final',
-      v.metodo_pago_nombre||'—', fmtNum(prodPorVenta[v.id]||0),
-      fmt(v.total), fmt(v.ganancia),
-    ]);
-    const totProductos = Object.values(prodPorVenta).reduce((s,n)=>s+n,0);
-    const totMonto     = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
-    const totGanancia  = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
-    doc.autoTable({ startY, head:[['#Venta','Fecha','Cliente','Método','Productos','Total','Ganancia']],
-      body:rows.length?rows:[['Sin datos en este período','','','','','','']],
-      foot:rows.length?[['','','','Totales:', fmtNum(totProductos), fmt(totMonto), fmt(totGanancia)]]:[],
+    const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
+    const rows = R.cache.ventas.map(v => {
+      const info = detMap[v.id];
+      return [
+        v.numero_venta, fmtFecha(v.fecha), v.cliente_nombre||'Consumidor Final',
+        v.metodo_pago_nombre||'—', fmtProductosVenta(info), fmtServiciosVenta(info),
+        fmt(v.total), fmt(v.ganancia),
+      ];
+    });
+    const totUnidadesProd = totalUnidadesProducto(detMap);
+    const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
+    const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
+    doc.autoTable({ startY, head:[['#Venta','Fecha','Cliente','Método','Productos','Servicios','Total','Ganancia']],
+      body:rows.length?rows:[['Sin datos en este período','','','','','','','']],
+      foot:rows.length?[['','','','', `Uds. producto: ${fmtNum(totUnidadesProd)}`, 'Totales:', fmt(totMonto), fmt(totGanancia)]]:[],
       theme:'striped', headStyles:{fillColor:[90,90,244]},
       footStyles:{fillColor:[230,230,250], textColor:[30,30,40], fontStyle:'bold'},
-      margin:{left:10,right:10}, styles:{fontSize:8} });
+      margin:{left:10,right:10}, styles:{fontSize:8, overflow:'linebreak'},
+      columnStyles:{ 4:{cellWidth:55}, 5:{cellWidth:45} } });
     startY = doc.lastAutoTable.finalY + 10;
   }
 
@@ -1999,21 +2035,24 @@ const NUM_ENTERO = '#,##0';
 const NUM_CANT   = '#,##0.##';
 
 function hojaVentasXLSX(wb) {
-  const prodPorVenta = calcProductosPorVenta(R.cache.ventasDetalles);
-  const headers = ['#Venta','Fecha','Cliente','Método de pago','Productos vendidos',`Total (${sym()})`,`Ganancia (${sym()})`];
-  const rows = R.cache.ventas.map(v => [
-    v.numero_venta || '', fmtFecha(v.fecha), v.cliente_nombre || 'Consumidor Final',
-    v.metodo_pago_nombre || '—', Number(prodPorVenta[v.id] || 0),
-    Number(v.total || 0), Number(v.ganancia || 0),
-  ]);
+  const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
+  const headers = ['#Venta','Fecha','Cliente','Método de pago','Productos vendidos','Servicios vendidos',`Total (${sym()})`,`Ganancia (${sym()})`];
+  const rows = R.cache.ventas.map(v => {
+    const info = detMap[v.id];
+    return [
+      v.numero_venta || '', fmtFecha(v.fecha), v.cliente_nombre || 'Consumidor Final',
+      v.metodo_pago_nombre || '—', fmtProductosVenta(info), fmtServiciosVenta(info),
+      Number(v.total || 0), Number(v.ganancia || 0),
+    ];
+  });
   if (rows.length) {
-    const totProductos = Object.values(prodPorVenta).reduce((s,n)=>s+n,0);
-    const totMonto      = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
-    const totGanancia   = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
-    rows.push(['', '', '', 'TOTALES', totProductos, totMonto, totGanancia]);
+    const totUnidadesProd = totalUnidadesProducto(detMap);
+    const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
+    const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
+    rows.push(['', '', '', 'TOTALES', `Uds. producto: ${fmtNum(totUnidadesProd)}`, '', totMonto, totGanancia]);
   }
-  appendSheetXLSX(wb, 'Ventas', headers, rows.length?rows:[['Sin datos en este período','','','','','','']],
-    [null,null,null,null,NUM_CANT,NUM_MONEDA,NUM_MONEDA]);
+  appendSheetXLSX(wb, 'Ventas', headers, rows.length?rows:[['Sin datos en este período','','','','','','','']],
+    [null,null,null,null,null,null,NUM_MONEDA,NUM_MONEDA]);
 }
 
 function hojaComprasXLSX(wb) {
