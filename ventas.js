@@ -365,7 +365,7 @@ async function loadVentas() {
     updateVentasCountLabel();
   } catch(e) {
     console.error('loadVentas:', e);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="empty-cell">Error al cargar ventas.</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="empty-cell">Error al cargar ventas.</td></tr>`;
   }
 }
 
@@ -375,7 +375,7 @@ function renderTablaVentas() {
 
   if (!S.ventas.length) {
     tbody.innerHTML = `
-      <tr><td colspan="9" class="empty-cell">
+      <tr><td colspan="10" class="empty-cell">
         <div class="empty-icon">🛒</div>
         <p>Sin ventas en este período</p>
         <button class="btn-primary" style="margin-top:12px" onclick="abrirNuevaVenta()">+ Nueva venta</button>
@@ -396,6 +396,9 @@ function renderTablaVentas() {
       <td class="td-productos" id="prod-preview-${v.id}">
         <span style="color:var(--text-muted);font-size:12px">Cargando…</span>
       </td>
+      <td class="td-proveedor" id="prov-preview-${v.id}">
+        <span style="color:var(--text-muted);font-size:12px">Cargando…</span>
+      </td>
       <td class="td-total">${fmt(v.total)}</td>
       <td class="td-ganancia">${fmt(v.ganancia)}</td>
       <td><span class="estado-badge ${estadoCls}">${v.estado}</span></td>
@@ -409,6 +412,71 @@ function renderTablaVentas() {
 
   // Cargar preview de productos (en paralelo, sin bloquear render)
   S.ventas.forEach(v => loadProductosPreview(v.id));
+
+  // Cargar proveedor(es) de cada venta en LOTE (una sola consulta para
+  // toda la página, en vez de una por fila) para no sobrecargar la BD.
+  cargarProveedoresPreview(S.ventas.map(v => v.id));
+}
+
+// NUEVO: muestra en la columna "Proveedor" del historial el/los
+// proveedor(es) de los productos vendidos en cada venta. Una venta
+// puede tener productos de distintos proveedores (o ninguno):
+//  - Sin productos con proveedor asignado -> "—"
+//  - Un solo proveedor entre todos los productos -> su nombre
+//  - Más de un proveedor distinto -> "Varios" (con el detalle en el title)
+async function cargarProveedoresPreview(ventaIds) {
+  if (!ventaIds || !ventaIds.length) return;
+
+  const marcarVacio = () => ventaIds.forEach(id => {
+    const el = document.getElementById(`prov-preview-${id}`);
+    if (el) el.innerHTML = '<span style="color:var(--text-muted)">—</span>';
+  });
+
+  try {
+    const { data: detalles } = await sb.from('venta_detalles')
+      .select('venta_id,producto_id')
+      .eq('auth_user_id', S.userId)
+      .eq('tipo_item', 'producto')
+      .in('venta_id', ventaIds);
+
+    const productoIds = [...new Set((detalles||[]).map(d => d.producto_id).filter(Boolean))];
+    if (!productoIds.length) { marcarVacio(); return; }
+
+    const { data: productos } = await sb.from('productos')
+      .select('id,proveedor_nombre')
+      .eq('auth_user_id', S.userId)
+      .in('id', productoIds);
+
+    const proveedorPorProducto = {};
+    (productos||[]).forEach(p => { if (p.proveedor_nombre) proveedorPorProducto[p.id] = p.proveedor_nombre; });
+
+    const proveedoresPorVenta = {};
+    (detalles||[]).forEach(d => {
+      const nombre = proveedorPorProducto[d.producto_id];
+      if (!nombre) return;
+      if (!proveedoresPorVenta[d.venta_id]) proveedoresPorVenta[d.venta_id] = new Set();
+      proveedoresPorVenta[d.venta_id].add(nombre);
+    });
+
+    ventaIds.forEach(id => {
+      const el = document.getElementById(`prov-preview-${id}`);
+      if (!el) return;
+      const set = proveedoresPorVenta[id];
+      if (!set || !set.size) {
+        el.innerHTML = '<span style="color:var(--text-muted)">—</span>';
+      } else if (set.size === 1) {
+        const nombre = [...set][0];
+        el.textContent = nombre;
+        el.title = nombre;
+      } else {
+        el.textContent = 'Varios';
+        el.title = [...set].join(', ');
+      }
+    });
+  } catch(e) {
+    console.warn('cargarProveedoresPreview:', e);
+    marcarVacio();
+  }
 }
 
 async function loadProductosPreview(ventaId) {
