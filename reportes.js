@@ -73,15 +73,23 @@ function parseFechaSegura(input) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function todayISO() { return new Date().toISOString().split('T')[0]; }
+// FIX CRÍTICO DE ZONA HORARIA: `new Date().toISOString()` da la fecha
+// en UTC. Nicaragua es UTC-6, así que desde las 6:00 PM hora local la
+// fecha en UTC ya es el día siguiente, lo que hacía que reportes y
+// filtros de "hoy"/"esta semana" no encontraran ventas registradas por
+// la noche. Ahora se usa la fecha calendario LOCAL del dispositivo.
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todayISO() { return ymd(new Date()); }
 function yesterdayISO() {
   const d = new Date(); d.setDate(d.getDate()-1);
-  return d.toISOString().split('T')[0];
+  return ymd(d);
 }
 function startOfWeekISO() {
   const d = new Date(), day = d.getDay();
   d.setDate(d.getDate() - day + (day===0 ? -6 : 1));
-  return d.toISOString().split('T')[0];
+  return ymd(d);
 }
 function startOfMonthISO() {
   const d = new Date();
@@ -1557,7 +1565,7 @@ async function loadClientesTab() {
   try {
     const [clientes] = await Promise.all([fetchClientes()]);
     const { from } = getDateRange();
-    const hace60   = new Date(Date.now()-60*86400000).toISOString().split('T')[0];
+    const hace60   = ymd(new Date(Date.now()-60*86400000));
 
     const nuevos    = (clientes||[]).filter(c=>c.created_at?.slice(0,10)>=from).length;
     const activos   = (clientes||[]).filter(c=>c.ultima_compra && c.ultima_compra>=hace60).length;
@@ -1684,8 +1692,8 @@ async function loadAlertas() {
 
     const alertas = [];
     const today = todayISO();
-    const hace60 = new Date(Date.now()-60*86400000).toISOString().split('T')[0];
-    const hace3  = new Date(Date.now()-3*86400000).toISOString().split('T')[0];
+    const hace60 = ymd(new Date(Date.now()-60*86400000));
+    const hace3  = ymd(new Date(Date.now()-3*86400000));
 
     // STOCK BAJO
     const prods = (productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
