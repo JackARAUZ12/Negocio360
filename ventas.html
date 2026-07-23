@@ -1349,14 +1349,14 @@
      de precios" configurada en Productos. Los productos de
      precio fijo nunca muestran este modal.
 ===================================================== -->
-<div class="modal-overlay" id="modal-escala-precio" onclick="if(event.target===this)closeModal('modal-escala-precio')">
+<div class="modal-overlay" id="modal-escala-precio" onclick="if(event.target===this)cerrarSelectorEscala()">
   <div class="modal-box modal-sm">
     <div class="modal-header">
       <div>
         <span class="modal-title">Seleccionar precio</span>
         <div class="modal-subtitle" id="esc-precio-title">—</div>
       </div>
-      <button class="modal-close" onclick="closeModal('modal-escala-precio')">
+      <button class="modal-close" onclick="cerrarSelectorEscala()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -1364,7 +1364,7 @@
       <!-- dinámico -->
     </div>
     <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-escala-precio')">Cancelar</button>
+      <button class="btn-ghost" onclick="cerrarSelectorEscala()">Cancelar</button>
       <button class="btn-primary" onclick="confirmarSeleccionEscala()">Aceptar</button>
     </div>
   </div>
