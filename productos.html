@@ -30,6 +30,11 @@
       margin-bottom: 4px;
     }
     .edit-lock-notice.visible { display: flex; }
+    .edit-lock-notice.info-mode {
+      background: var(--info-light);
+      border-color: rgba(59,130,246,0.3);
+      color: var(--info);
+    }
 
     /* ── Tarjetas de razón de merma ── */
     .razones-grid {
@@ -495,13 +500,20 @@
           </div>
         </div>
 
-        <!-- Aviso modo edición: stock bloqueado -->
-        <div class="edit-lock-notice" id="avisoStockBloqueado">
-          🔒 El stock solo se puede ajustar desde <strong>Movimientos especiales</strong> (botón 📉 en la tabla).
-          Aquí solo puedes cambiar el stock mínimo de alerta.
+        <!-- Aviso modo edición: stock editable directamente -->
+        <div class="edit-lock-notice info-mode" id="avisoStockBloqueado">
+          ✏️ Puedes editar el stock actual directamente aquí. Para bajas con motivo (robo, daño, merma, etc.)
+          sigue usando <strong>Movimientos especiales</strong> (botón 📉 en la tabla), que además registra el
+          motivo y puede descontar el costo de caja automáticamente.
           <div class="form-grid" style="margin-top:12px">
             <div class="form-group">
-              <label class="form-label" for="inputStockMinimo">Stock mínimo</label>
+              <label class="form-label" for="inputStockActualEdit">Stock actual</label>
+              <input type="number" class="form-input" id="inputStockActualEdit"
+                     placeholder="0" min="0" step="0.01" />
+              <span class="form-hint">Ajusta el stock si es necesario</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inputStockMinimoEdit">Stock mínimo</label>
               <input type="number" class="form-input" id="inputStockMinimoEdit"
                      placeholder="0" min="0" step="0.01" />
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
