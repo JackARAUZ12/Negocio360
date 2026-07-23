@@ -30,8 +30,11 @@
   const sb = window.__cajaSB || window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   window.__cajaSB = sb;
 
+  // FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC;
+  // en Nicaragua (UTC-6) eso adelanta el "día" a las 6 PM hora local.
   function todayISO() {
-    return new Date().toISOString().split('T')[0];
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
   async function currentUserId() {
