@@ -68,8 +68,13 @@ let STATE = {
 
 /* =====================================================
    HELPERS: FECHA
+   FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC;
+   en Nicaragua (UTC-6) eso adelanta el "día" a las 6 PM hora local.
 ===================================================== */
-function todayISO() { return new Date().toISOString().split('T')[0]; }
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todayISO() { return ymd(new Date()); }
 function startOfMonthISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
@@ -79,7 +84,7 @@ function startOfWeekISO() {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().split('T')[0];
+  return ymd(d);
 }
 function startOfYearISO() { return `${new Date().getFullYear()}-01-01`; }
 
