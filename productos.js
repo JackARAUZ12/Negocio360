@@ -110,6 +110,15 @@ function fmtFecha(ts) {
   });
 }
 
+// Versión corta (sin hora) para las columnas de la tabla — el detalle del
+// producto sigue mostrando fecha+hora completa con fmtFecha().
+function fmtFechaCorta(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-NI', {
+    year: 'numeric', month: 'short', day: 'numeric'
+  });
+}
+
 // ============================================================
 // MODO OSCURO
 // ============================================================
@@ -378,7 +387,18 @@ function setTipoPrecio(tipo) {
   if (tipo === 'escala') {
     const wrapMargen = $('margenPreviewWrap');
     if (wrapMargen) wrapMargen.style.display = 'none';
-    if (!STATE.formEscalas.length) agregarFilaEscala();
+    if (!STATE.formEscalas.length) {
+      // Si el producto ya tenía un precio fijo cargado, se usa como primera
+      // fila ("Precio base") en vez de partir de una fila vacía — así no se
+      // pierde el precio que ya existía al cambiar de modo.
+      const precioFijoActual = parseFloat($('inputPrecio')?.value);
+      if (!isNaN(precioFijoActual) && precioFijoActual > 0) {
+        STATE.formEscalas.push({ nombre: 'Precio base', precio: precioFijoActual });
+        renderEscalasEditor();
+      } else {
+        agregarFilaEscala();
+      }
+    }
   }
 }
 
@@ -574,7 +594,7 @@ function renderTabla() {
 
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="9">
+      <tr><td colspan="11">
         <div class="empty-state">
           <div class="empty-state-icon">📦</div>
           <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin productos aún'}</h3>
@@ -616,6 +636,8 @@ function renderTabla() {
             ${p.tipo === 'producto' ? '📦' : '🔧'} ${p.tipo}
           </span>
         </td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
         <td>
           <div class="td-nombre">${escHtml(p.nombre)}</div>
           ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
@@ -669,6 +691,8 @@ function mostrarSkeletons() {
   tbody.innerHTML = Array(6).fill('').map(() => `
     <tr class="skeleton-row">
       <td><div class="skeleton skel-badge"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
       <td><div class="skeleton skel-line" style="width:140px"></div></td>
       <td><div class="skeleton skel-line" style="width:80px"></div></td>
       <td><div class="skeleton skel-line" style="width:70px"></div></td>
@@ -685,7 +709,7 @@ function mostrarErrorTabla() {
   const tbody = $('productosTbody');
   if (!tbody) return;
   tbody.innerHTML = `
-    <tr><td colspan="9">
+    <tr><td colspan="11">
       <div class="empty-state">
         <div class="empty-state-icon">⚠️</div>
         <h3>Error al cargar datos</h3>
@@ -938,6 +962,10 @@ function resetFormulario() {
   renderEscalasEditor();
   // Por defecto: "Descontar de caja" (caso más común — compra nueva)
   setCajaImpacto(true);
+  // Fecha de creación: hoy por defecto, pero editable — útil cuando el
+  // producto ya existía antes de usar el sistema (inventario histórico).
+  const inputFecha = $('inputFechaCreacion');
+  if (inputFecha) inputFecha.value = new Date().toISOString().slice(0, 10);
 }
 
 function cargarFormulario(p) {
@@ -965,6 +993,17 @@ function cargarFormulario(p) {
   STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
   setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
   renderEscalasEditor();
+
+  // Fecha de creación: editable, para poder corregirla cuando el producto
+  // ya existía antes de usar el sistema (no siempre coincide con "hoy").
+  // Al duplicar, se trata como producto nuevo: por defecto hoy, no la
+  // fecha del original (igual se puede corregir a mano si hace falta).
+  const inputFecha = $('inputFechaCreacion');
+  if (inputFecha) {
+    inputFecha.value = (p.created_at && STATE.modalMode !== 'duplicar')
+      ? new Date(p.created_at).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+  }
 }
 
 // ============================================================
@@ -992,6 +1031,7 @@ async function guardarProducto() {
   const tipoPrecio  = $('inputTipoPrecio')?.value === 'escala' ? 'escala' : 'fijo';
   const activoVal   = $('inputActivo')?.value;
   const activo      = activoVal === 'true';
+  const fechaCreacionRaw = ($('inputFechaCreacion')?.value || '').trim(); // yyyy-mm-dd
 
   const errEscalas = $('errEscalas');
   if (errEscalas) errEscalas.textContent = '';
@@ -1049,7 +1089,16 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         activo,
       };
-      const res = await supabaseClient.from('productos').insert([payload]).select();
+      // Fecha de creación manual (producto que ya existía antes del sistema).
+      // Si el usuario no la tocó, queda con el default de la base de datos.
+      if (fechaCreacionRaw) payload.created_at = fechaCreacionRaw;
+
+      let res = await supabaseClient.from('productos').insert([payload]).select();
+      if (res.error && fechaCreacionRaw) {
+        // Reintentar sin la fecha manual, por si la columna no la acepta en este entorno
+        const { created_at, ...payloadSinFecha } = payload;
+        res = await supabaseClient.from('productos').insert([payloadSinFecha]).select();
+      }
       error = res.error;
       productoIdGuardado = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
 
@@ -1083,11 +1132,24 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         activo,
       };
-      const res = await supabaseClient
+      // Fecha de creación corregible a mano (ej: producto que ya existía
+      // antes del sistema y quedó registrado con la fecha de "hoy").
+      if (fechaCreacionRaw) updatePayload.created_at = fechaCreacionRaw;
+
+      let res = await supabaseClient
         .from('productos')
         .update(updatePayload)
         .eq('id', STATE.editTarget.id)
         .eq('auth_user_id', STATE.user.id);
+      if (res.error && fechaCreacionRaw) {
+        // Reintentar sin la fecha manual, por si la columna no la acepta en este entorno
+        const { created_at, ...updateSinFecha } = updatePayload;
+        res = await supabaseClient
+          .from('productos')
+          .update(updateSinFecha)
+          .eq('id', STATE.editTarget.id)
+          .eq('auth_user_id', STATE.user.id);
+      }
       error = res.error;
       productoIdGuardado = STATE.editTarget.id;
     }
