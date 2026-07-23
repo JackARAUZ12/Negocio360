@@ -57,8 +57,16 @@ let STATE = {
 
 /* =====================================================
    HELPERS: FECHA
+   FIX CRÍTICO DE ZONA HORARIA: se usaba toISOString() (UTC).
+   En Nicaragua (UTC-6) eso hacía que la fecha cambiara a las
+   6:00 PM hora local en vez de medianoche, archivando movimientos
+   de caja nocturnos con la fecha de mañana. Ahora se usa la
+   fecha calendario LOCAL del dispositivo.
 ===================================================== */
-function todayISO()        { return new Date().toISOString().split('T')[0]; }
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todayISO()        { return ymd(new Date()); }
 function startOfMonthISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
@@ -68,7 +76,7 @@ function startOfWeekISO() {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().split('T')[0];
+  return ymd(d);
 }
 function startOfYearISO() {
   return `${new Date().getFullYear()}-01-01`;
