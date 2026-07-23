@@ -58,7 +58,7 @@ const S = {
   productosCache: [],
   clientesCache:  [],
   escalasPorProducto: {}, // { producto_id: [{id,nombre,precio}, ...] } — solo productos tipo_precio='escala'
-  escalaPendiente: null,  // { productoId, tipo } mientras el selector de escala está abierto
+  escalaPendiente: null,  // { productoId, tipo, modo } mientras el selector de escala está abierto — modo: 'normal' (Nueva Venta) o 'vr' (Venta rápida)
 
   // Clientes con pago recurrente
   clientesRecurrentes: [],
@@ -1471,15 +1471,16 @@ function agregarAlCarrito(productoId, tipo) {
    Los productos de precio fijo NUNCA pasan por aquí — su flujo actual
    no cambia en absoluto.
    ============================================================ */
-function abrirSelectorEscala(productoId, tipo) {
+function abrirSelectorEscala(productoId, tipo, modo='normal') {
   const prod = S.productosCache.find(p => p.id===productoId);
   const escalas = S.escalasPorProducto[productoId] || [];
   if (!prod || !escalas.length) {
     showToast('Este producto no tiene precios de escala configurados', 'error');
+    if (modo === 'vr') enfocarScannerVR(); // no dejar el escáner "muerto" si falla
     return;
   }
 
-  S.escalaPendiente = { productoId, tipo };
+  S.escalaPendiente = { productoId, tipo, modo };
 
   document.getElementById('esc-precio-title').textContent = prod.nombre;
   document.getElementById('esc-precio-lista').innerHTML = escalas.map((e, i) => `
@@ -1503,12 +1504,28 @@ function confirmarSeleccionEscala() {
   const escalaElegida = escalas.find(e => e.id === radio.value);
   if (!escalaElegida) return;
 
-  agregarAlCarritoConPrecio(pend.productoId, pend.tipo, escalaElegida);
+  if (pend.modo === 'vr') {
+    agregarAlCarritoVRConEscala(pend.productoId, escalaElegida);
+  } else {
+    agregarAlCarritoConPrecio(pend.productoId, pend.tipo, escalaElegida);
+  }
+
   closeModal('modal-escala-precio');
   S.escalaPendiente = null;
+  if (pend.modo === 'vr') enfocarScannerVR(); // el lector sigue funcionando tras elegir precio
+}
+
+// Cancelar/cerrar el selector de escala: si veníamos de Venta rápida,
+// devolvemos el foco al input del escáner para no dejarlo "muerto".
+function cerrarSelectorEscala() {
+  const modo = S.escalaPendiente?.modo;
+  closeModal('modal-escala-precio');
+  S.escalaPendiente = null;
+  if (modo === 'vr') enfocarScannerVR();
 }
 window.confirmarSeleccionEscala = confirmarSeleccionEscala;
 window.abrirSelectorEscala      = abrirSelectorEscala;
+window.cerrarSelectorEscala     = cerrarSelectorEscala;
 
 function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   const prod = S.productosCache.find(p => p.id===productoId);
@@ -1560,6 +1577,42 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
 
   renderCarrito(tipo);
   showToast(`${prod.nombre}${escalaElegida ? ' · '+escalaElegida.nombre : ''} agregado`, 'success');
+}
+
+// Equivalente a agregarAlCarritoConPrecio, pero para el carrito de Venta
+// rápida (VR.carrito), que tiene su propia forma de ítem. No comparte
+// estado con S.carrito, así que no puede afectar el flujo de Nueva Venta.
+function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
+  const prod = S.productosCache.find(p => p.id === productoId);
+  if (!prod) return;
+
+  const precioUsar = parseFloat(escalaElegida.precio || 0);
+  const existente   = VR.carrito.find(i => i.id === productoId);
+
+  if (existente) {
+    if (prod.tipo === 'producto' && existente.cantidad + 1 > Number(prod.stock_actual)) {
+      showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
+      return;
+    }
+    existente.cantidad += 1;
+  } else {
+    VR.carrito.push({
+      id:              prod.id,
+      nombre:          prod.nombre,
+      sku:             prod.sku || null,
+      codigo_barras:   prod.codigo_barras || null,
+      tipo:            prod.tipo,
+      cantidad:        1,
+      precio:          precioUsar,
+      costo:           Number(prod.costo) || 0,
+      stockDisponible: Number(prod.stock_actual) || 0,
+      escalaId:        escalaElegida.id,
+      escalaNombre:    escalaElegida.nombre,
+    });
+  }
+
+  renderCarritoVentaRapida();
+  showToast(`${prod.nombre} · ${escalaElegida.nombre} agregado`, 'success');
 }
 
 function recalcItem(item) {
@@ -2426,11 +2479,12 @@ function initScannerVR() {
 async function procesarCodigoEscaneado(codigo) {
   const status = document.getElementById('vr-scan-status');
   if (status) status.textContent = `🔎 Buscando "${codigo}"…`;
+  let abrioSelector = false; // si abrimos el selector de escala, no reenfocamos el input aquí
 
   try {
     // Búsqueda por código de barras exacto (solo productos activos del usuario)
     let { data: prod } = await sb.from('productos')
-      .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo')
+      .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio')
       .eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true)
       .maybeSingle();
 
@@ -2438,7 +2492,7 @@ async function procesarCodigoEscaneado(codigo) {
     // (útil si el negocio todavía no ha cargado códigos de barra a todo su catálogo)
     if (!prod) {
       const { data: bySku } = await sb.from('productos')
-        .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo')
+        .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio')
         .eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true)
         .maybeSingle();
       prod = bySku || null;
@@ -2447,14 +2501,27 @@ async function procesarCodigoEscaneado(codigo) {
     if (!prod) {
       showToast(`❌ No se encontró ningún producto con el código "${codigo}"`, 'error');
       if (status) status.textContent = '📡 Listo para escanear';
-      enfocarScannerVR();
       return;
     }
 
     if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0) {
       showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
       if (status) status.textContent = '📡 Listo para escanear';
-      enfocarScannerVR();
+      return;
+    }
+
+    // PRODUCTOS DE ESCALA (precio por niveles): igual que en "Nueva Venta",
+    // se pregunta qué precio aplicar — pero solo la PRIMERA vez que se
+    // escanea ese producto en esta venta. Si ya está en el carrito, se
+    // respeta el precio ya elegido y solo se suma cantidad. Los productos
+    // de precio fijo nunca entran aquí: su flujo actual no cambia en nada.
+    const yaEnCarritoVR = VR.carrito.find(i => i.id === prod.id);
+    const tieneEscalas  = prod.tipo_precio === 'escala' && (S.escalasPorProducto[prod.id]||[]).length > 0;
+
+    if (!yaEnCarritoVR && tieneEscalas) {
+      if (status) status.textContent = `📊 "${prod.nombre}" — elige un precio`;
+      abrirSelectorEscala(prod.id, prod.tipo, 'vr');
+      abrioSelector = true;
       return;
     }
 
@@ -2465,7 +2532,10 @@ async function procesarCodigoEscaneado(codigo) {
     showToast('Error buscando el producto: ' + (e.message||''), 'error');
     if (status) status.textContent = '📡 Listo para escanear';
   } finally {
-    enfocarScannerVR();
+    // Si se abrió el selector de escala, el foco se devuelve al cerrarlo
+    // (confirmarSeleccionEscala / cerrarSelectorEscala), no aquí — así el
+    // lector físico no dispara otro escaneo mientras el cajero elige precio.
+    if (!abrioSelector) enfocarScannerVR();
   }
 }
 
@@ -2533,7 +2603,7 @@ function renderCarritoVentaRapida() {
   } else {
     tbody.innerHTML = VR.carrito.map(item => `
       <tr>
-        <td style="font-weight:500">${esc(item.nombre)}</td>
+        <td style="font-weight:500">${esc(item.nombre)}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
         <td>
           <input type="number" min="1" step="1" value="${item.cantidad}"
@@ -2654,8 +2724,16 @@ async function confirmarVentaRapida() {
       descuento:       0,
       subtotal:        item.cantidad*item.precio,
       ganancia:        item.cantidad*(item.precio-item.costo),
+      escala_id:       item.escalaId || null,
+      escala_nombre:   item.escalaNombre || null,
     }));
-    const { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
+    let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
+    if (errDetalles) {
+      // Reintentar sin columnas escala_* por si la migración aún no llegó a este entorno
+      ({ error: errDetalles } = await sb.from('venta_detalles').insert(
+        detallesPayload.map(({ escala_id, escala_nombre, ...resto }) => resto)
+      ));
+    }
     if (errDetalles) throw errDetalles;
 
     // Actualizar stock (solo productos, no servicios)
@@ -2739,7 +2817,7 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
 
   const filas = items.map(i => `
     <tr>
-      <td colspan="2">${esc(i.nombre)}</td>
+      <td colspan="2">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</td>
     </tr>
     <tr>
       <td>${i.cantidad} x ${fmt(i.precio)}</td>
