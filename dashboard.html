@@ -1029,7 +1029,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Productos</div>
+            <div class="kpi-label">Productos en stock</div>
             <div class="kpi-value" id="kpi-productos">0</div>
             <div class="kpi-delta neutral" id="kpi-productos-delta">Sin datos aún</div>
           </div>
@@ -1040,7 +1040,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Servicios</div>
+            <div class="kpi-label">Servicios activos</div>
             <div class="kpi-value" id="kpi-servicios">0</div>
             <div class="kpi-delta neutral" id="kpi-servicios-delta">Sin datos aún</div>
           </div>
@@ -1847,18 +1847,41 @@ async function loadVentasPorDia(userId, days = 7) {
 ===================================================== */
 async function loadVentasCategorias(userId) {
   try {
-    // Try ventas_items first (in case it exists under that name)
-    let map = {};
-    const { data, error } = await sbClient.from('venta_detalles').select('producto_nombre, subtotal, tipo_item')
-      .eq('auth_user_id', userId);
+    const monthStart = startOfMonthISO();
+    const today      = todayISO();
+
+    // FIX: antes esta gráfica traía TODO el histórico de venta_detalles,
+    // sin importar el período. Eso hacía que no cuadrara con el resto del
+    // dashboard (que sí se limita al mes actual) y daba la impresión de
+    // que ventas de servicios o recurrentes "no aparecían". Ahora se
+    // limita al mes actual igual que las demás tarjetas y gráficas.
+    // Nota: los pagos recurrentes SÍ quedan incluidos aquí, porque cada
+    // pago recurrente crea una fila en venta_detalles con tipo_item
+    // 'servicio' (ver ventas.js, registro de pago recurrente).
+    const { data: ventasMes, error: errV } = await sbClient
+      .from('ventas')
+      .select('id')
+      .eq('auth_user_id', userId)
+      .eq('estado', 'completada')
+      .gte('fecha', monthStart)
+      .lte('fecha', today);
+
+    if (errV || !ventasMes || ventasMes.length === 0) { renderDonutChart({}); return; }
+
+    const ventaIds = ventasMes.map(v => v.id);
+    const map = {};
+    const { data, error } = await sbClient.from('venta_detalles')
+      .select('producto_nombre, subtotal, tipo_item')
+      .eq('auth_user_id', userId)
+      .in('venta_id', ventaIds);
 
     if (!error && data && data.length > 0) {
       data.forEach(r => {
         const cat = r.tipo_item === 'servicio' ? 'Servicios' : 'Productos';
         map[cat] = (map[cat] || 0) + (r.subtotal || 0);
       });
-      renderDonutChart(map);
     }
+    renderDonutChart(map);
   } catch(e) { console.warn('categorias:', e); }
 }
 
