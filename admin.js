@@ -789,7 +789,9 @@ async function executeMarkAsPaid(userId, cicloAPagar) {
     // confirmación; si por alguna razón no llegó, se recalcula aquí
     // como respaldo (equivalente al comportamiento anterior).
     const cicloDueDate = cicloAPagar || getCicloAPagar(u, today) || getCurrentCycleDueDate(u, today);
-    const hoyISO = cicloDueDate.toISOString().split('T')[0]; // fecha del CICLO pagado (no la fecha real de hoy)
+    // FIX zona horaria: toISOString() es UTC y puede correr la fecha en
+    // Nicaragua (UTC-6); se usa la fecha calendario local del ciclo.
+    const hoyISO = `${cicloDueDate.getFullYear()}-${String(cicloDueDate.getMonth()+1).padStart(2,'0')}-${String(cicloDueDate.getDate()).padStart(2,'0')}`; // fecha del CICLO pagado (no la fecha real de hoy)
 
     // 1) Registrar el pago
     const { error: errPago } = await sb
