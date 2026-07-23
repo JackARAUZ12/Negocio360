@@ -72,8 +72,14 @@ function fmtFecha(iso) {
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
 }
 
+// FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC; en
+// Nicaragua (UTC-6) eso adelanta el "día" a las 6 PM hora local, lo
+// que desalineaba las fechas de próximo pago de clientes recurrentes.
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function todayISO() {
-  return new Date().toISOString().split('T')[0];
+  return ymd(new Date());
 }
 
 function diasDesde(iso) {
@@ -108,26 +114,26 @@ function calcularPrimeraFechaProxima(frecuencia, diaPago) {
     let delta = (objetivo - d.getDay() + 7) % 7;
     if (delta === 0) delta = 7; // si hoy es el día, la próxima es en 7 días
     d.setDate(d.getDate() + delta);
-    return d.toISOString().split('T')[0];
+    return ymd(d);
   }
 
   if (frecuencia === 'quincenal') {
     const d = new Date(hoy);
     d.setDate(d.getDate() + 15);
-    return d.toISOString().split('T')[0];
+    return ymd(d);
   }
 
   if (frecuencia === 'anual') {
     const dia = clampDia(anio + 1, mes, diaPago);
     const d = new Date(anio + 1, mes, dia);
-    return d.toISOString().split('T')[0];
+    return ymd(d);
   }
 
   // mensual (default)
   const diaObjetivo = clampDia(anio, mes, diaPago);
   let d = new Date(anio, mes, diaObjetivo);
   if (d <= hoy) d = new Date(anio, mes + 1, clampDia(anio, mes + 1, diaPago));
-  return d.toISOString().split('T')[0];
+  return ymd(d);
 }
 
 /* ============================================================
@@ -418,7 +424,7 @@ async function loadKPIs() {
 
     const mesStart = startOfMonthISO();
     const ahora    = new Date();
-    const hace30   = new Date(ahora - 30*86400000).toISOString().split('T')[0];
+    const hace30   = ymd(new Date(ahora - 30*86400000));
 
     const total    = clientes?.length || 0;
     const activos  = (clientes||[]).filter(c => c.ultima_compra && c.ultima_compra >= hace30).length;
@@ -1306,7 +1312,7 @@ async function loadInactivos() {
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando…</td></tr>';
 
   const dias = diasInactividadFiltro;
-  const corte = new Date(Date.now() - dias * 86400000).toISOString().split('T')[0];
+  const corte = ymd(new Date(Date.now() - dias * 86400000));
 
   try {
     const { data } = await sb.from('clientes')
