@@ -247,7 +247,8 @@ function showPaymentListsLoading() {
 // SECCIÓN 1B — CONTROL DE PAGOS (Próximos / Pendientes / Atrasados)
 // ============================================================
 // La lógica se basa en el día del mes en que el usuario se registró
-// (created_at). Cada mes esa misma fecha se considera el "día de pago".
+// (created_at). Esa misma fecha es el "día de pago" desde el primer mes
+// (SIN período de gracia: el cobro corre desde el día del registro).
 //
 // - 3 días antes del día de pago  → aparece en "Próximos a Pagar"
 // - El día de pago (o 1 día después) → aparece en "Pendientes de Pago"
@@ -351,11 +352,10 @@ function getPaymentInfo(u, today) {
   const t = new Date(today);
   t.setHours(0, 0, 0, 0);
 
-  // Meses completos transcurridos desde el registro.
-  const monthsSinceReg = (t.getFullYear() - reg.getFullYear()) * 12 + (t.getMonth() - reg.getMonth());
-  if (monthsSinceReg <= 0) return null; // Aún dentro del primer mes (se "pagó" al registrarse)
-
-  // Fecha de vencimiento de este mes (ajustada si el mes tiene menos días)
+  // Sin período de gracia para nadie: el primer "día de pago" es el mismo
+  // día del registro (esa fecha se repite cada mes en adelante). Antes se
+  // ignoraba por completo el primer mes asumiendo "se pagó al registrarse",
+  // pero el negocio cobra desde el inicio, así que ese descuento se quita.
   const dueDate = calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
 
   // ¿Ya se marcó como pagado (o adelantado) el ciclo que corresponde a
@@ -369,6 +369,13 @@ function getPaymentInfo(u, today) {
   }
 
   const diffDays = Math.round((t - dueDate) / 86400000);
+
+  // Una cuenta SUSPENDIDA ya es, por definición, un pago sin resolver
+  // (se suspende justamente por falta de pago) — se muestra siempre en
+  // "Atrasados", sin importar cuántos días exactos han pasado.
+  if (u.estado_cuenta === 'suspendida') {
+    return { status: 'atrasado', dueDate, diffDays: Math.max(diffDays, 0) };
+  }
 
   if (diffDays < -3) return null;                                    // todavía falta más de 3 días
   if (diffDays < 0)   return { status: 'proximo',   dueDate, diffDays };
@@ -415,7 +422,7 @@ function buildPaymentLists(usuarios) {
     return {
       sub:   `Venció el ${formatDate(e.dueDate)}`,
       badge: 'danger',
-      label: `${e.diffDays}d atraso`,
+      label: e.diffDays > 0 ? `${e.diffDays}d atraso` : 'Atrasado',
     };
   });
 }
