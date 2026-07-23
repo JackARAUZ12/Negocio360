@@ -973,7 +973,7 @@ function resetFormulario() {
   // Fecha de creación: hoy por defecto, pero editable — útil cuando el
   // producto ya existía antes de usar el sistema (inventario histórico).
   const inputFecha = $('inputFechaCreacion');
-  if (inputFecha) inputFecha.value = new Date().toISOString().slice(0, 10);
+  if (inputFecha) inputFecha.value = ymdLocal(new Date());
 }
 
 function cargarFormulario(p) {
@@ -1010,7 +1010,7 @@ function cargarFormulario(p) {
   if (inputFecha) {
     inputFecha.value = (p.created_at && STATE.modalMode !== 'duplicar')
       ? new Date(p.created_at).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
+      : ymdLocal(new Date());
   }
 }
 
@@ -1099,7 +1099,13 @@ async function guardarProducto() {
       };
       // Fecha de creación manual (producto que ya existía antes del sistema).
       // Si el usuario no la tocó, queda con el default de la base de datos.
-      if (fechaCreacionRaw) payload.created_at = fechaCreacionRaw;
+      // FIX: antes se guardaba la fecha "pelada" (ej. "2026-07-08"), y
+      // Postgres la interpreta como medianoche UTC. En Nicaragua (UTC-6)
+      // esa medianoche cae en las 6:00 PM del día ANTERIOR hora local, así
+      // que al mostrarla se veía un día atrás (8 de julio → aparecía 7).
+      // Anclando a las 12:00 del mediodía UTC, la fecha elegida se mantiene
+      // igual sin importar la zona horaria de quien la vea.
+      if (fechaCreacionRaw) payload.created_at = fechaCreacionRaw + 'T12:00:00Z';
 
       let res = await supabaseClient.from('productos').insert([payload]).select();
       if (res.error && fechaCreacionRaw) {
@@ -1142,7 +1148,8 @@ async function guardarProducto() {
       };
       // Fecha de creación corregible a mano (ej: producto que ya existía
       // antes del sistema y quedó registrado con la fecha de "hoy").
-      if (fechaCreacionRaw) updatePayload.created_at = fechaCreacionRaw;
+      // FIX: mismo anclaje a mediodía UTC que en creación, ver nota arriba.
+      if (fechaCreacionRaw) updatePayload.created_at = fechaCreacionRaw + 'T12:00:00Z';
 
       let res = await supabaseClient
         .from('productos')
