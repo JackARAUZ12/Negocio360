@@ -68,8 +68,19 @@ const S = {
 
 /* ============================================================
    HELPERS FECHA
+   FIX CRÍTICO DE ZONA HORARIA: antes se usaba
+   `new Date().toISOString().split('T')[0]`, que da la fecha en
+   UTC. Nicaragua es UTC-6, así que a partir de las 6:00 PM hora
+   local, la fecha en UTC YA ES EL DÍA SIGUIENTE. Resultado: toda
+   venta registrada después de las 6 PM se guardaba con la fecha
+   de mañana, y por eso no aparecía en "Ventas del día" ni en
+   reportes al revisar el mismo día. Ahora se usa la fecha
+   calendario LOCAL del dispositivo, sin pasar por UTC.
    ============================================================ */
-function todayISO()        { return new Date().toISOString().split('T')[0]; }
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todayISO()        { return ymd(new Date()); }
 function startOfMonthISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
@@ -77,7 +88,7 @@ function startOfMonthISO() {
 function startOfWeekISO() {
   const d = new Date(), day = d.getDay();
   d.setDate(d.getDate() - day + (day===0 ? -6 : 1));
-  return d.toISOString().split('T')[0];
+  return ymd(d);
 }
 function startOfYearISO() { return `${new Date().getFullYear()}-01-01`; }
 
@@ -747,17 +758,17 @@ function calcularSiguienteFecha(fechaAnclaISO, frecuencia, diaPago) {
   if (frecuencia === 'semanal') {
     const next = new Date(ancla);
     next.setDate(next.getDate() + 7);
-    return next.toISOString().split('T')[0];
+    return ymd(next);
   }
   if (frecuencia === 'quincenal') {
     const next = new Date(ancla);
     next.setDate(next.getDate() + 15);
-    return next.toISOString().split('T')[0];
+    return ymd(next);
   }
   if (frecuencia === 'anual') {
     const anio = ancla.getFullYear() + 1;
     const dia  = clampDia(anio, ancla.getMonth(), diaPago ?? ancla.getDate());
-    return new Date(anio, ancla.getMonth(), dia).toISOString().split('T')[0];
+    return ymd(new Date(anio, ancla.getMonth(), dia));
   }
   // mensual (default)
   const anio = ancla.getFullYear();
@@ -765,7 +776,7 @@ function calcularSiguienteFecha(fechaAnclaISO, frecuencia, diaPago) {
   const anioSig = anio + Math.floor(mesSig / 12);
   const mesSigNorm = mesSig % 12;
   const dia = clampDia(anioSig, mesSigNorm, diaPago ?? ancla.getDate());
-  return new Date(anioSig, mesSigNorm, dia).toISOString().split('T')[0];
+  return ymd(new Date(anioSig, mesSigNorm, dia));
 }
 
 /** Devuelve { montoDebido, atrasado, diasAtraso, alDia, esParcial } para un cliente recurrente */
