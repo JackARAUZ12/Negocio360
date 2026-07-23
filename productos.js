@@ -988,9 +988,9 @@ function cargarFormulario(p) {
     ['inputPrecio',          p.precio        ?? ''],
     ['inputStockMinimo',     p.stock_minimo  ?? ''],
     ['inputStockMinimoEdit', p.stock_minimo  ?? ''],
+    ['inputStockActualEdit', p.stock_actual  ?? ''],
     ['inputActivo',          p.activo ? 'true' : 'false'],
   ];
-  // NUNCA cargar stock_actual en edición — solo en creación
   campos.forEach(([id, val]) => {
     const el = $(id);
     if (el) el.value = val;
@@ -1058,6 +1058,16 @@ async function guardarProducto() {
     ? parseFloat(stockMinimoRaw)
     : 0;
 
+  // Stock actual: usar el campo visible según el modo. En edición ahora
+  // también es editable directamente (antes solo se podía desde
+  // Movimientos especiales); ese botón se mantiene igual para bajas
+  // con motivo registrado y descuento de caja.
+  const stockActualEl  = STATE.modalMode === 'editar' ? $('inputStockActualEdit') : $('inputStockActual');
+  const stockActualRaw = stockActualEl?.value;
+  const stockActual     = stockActualRaw !== '' && stockActualRaw !== undefined
+    ? parseFloat(stockActualRaw)
+    : 0;
+
   if (!nombre) {
     if (errEl) errEl.textContent = 'El nombre es obligatorio';
     $('inputNombre')?.focus();
@@ -1075,11 +1085,6 @@ async function guardarProducto() {
     let productoIdGuardado = null;
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
-      const stockActualRaw = $('inputStockActual')?.value;
-      const stockActual    = stockActualRaw !== '' && stockActualRaw !== undefined
-        ? parseFloat(stockActualRaw)
-        : 0;
-
       const payload = {
         auth_user_id:  STATE.user.id,
         tipo,
@@ -1130,7 +1135,12 @@ async function guardarProducto() {
       }
 
     } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
-      // En edición: NUNCA actualizar stock_actual — solo desde movimientos especiales
+      // En edición: el stock actual ahora SÍ se puede ajustar directamente
+      // desde aquí. "Movimientos especiales" se mantiene intacto para bajas
+      // con motivo (robo, daño, merma, etc.) que además pueden descontar
+      // de caja automáticamente — ese flujo no cambia.
+      const stockAntes = parseFloat(STATE.editTarget.stock_actual ?? 0);
+
       const updatePayload = {
         tipo,
         nombre,
@@ -1146,6 +1156,10 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         activo,
       };
+      // Solo tocar stock_actual para productos (los servicios no manejan stock)
+      if (tipo === 'producto') {
+        updatePayload.stock_actual = isNaN(stockActual) ? 0 : stockActual;
+      }
       // Fecha de creación corregible a mano (ej: producto que ya existía
       // antes del sistema y quedó registrado con la fecha de "hoy").
       // FIX: mismo anclaje a mediodía UTC que en creación, ver nota arriba.
@@ -1167,6 +1181,28 @@ async function guardarProducto() {
       }
       error = res.error;
       productoIdGuardado = STATE.editTarget.id;
+
+      // Dejar rastro del ajuste manual de stock (auditoría), igual que hacen
+      // los Movimientos especiales. Si la tabla no existe o falla, no se
+      // interrumpe el guardado del producto — solo se registra en consola.
+      if (!error && tipo === 'producto' && updatePayload.stock_actual !== undefined
+          && updatePayload.stock_actual !== stockAntes) {
+        try {
+          await supabaseClient.from('movimientos_inventario').insert([{
+            auth_user_id:   STATE.user.id,
+            producto_id:    STATE.editTarget.id,
+            tipo:           'ajuste_manual',
+            razon:          'edicion_producto',
+            cantidad:       updatePayload.stock_actual - stockAntes,
+            stock_antes:    stockAntes,
+            stock_despues:  updatePayload.stock_actual,
+            nota:           'Editado directamente desde el formulario de producto',
+            descuenta_caja: false,
+          }]);
+        } catch (_) {
+          console.warn('Tabla movimientos_inventario no disponible aún');
+        }
+      }
     }
 
     if (error) throw error;
