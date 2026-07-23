@@ -1124,9 +1124,11 @@ async function guardarCompra() {
 
       // b. Actualizar stock del producto
       // Compras → Productos (la arquitectura correcta)
+      // Se marca updated_at explícitamente: una compra SÍ cuenta como una
+      // actualización del producto, aunque no se haya tocado desde Productos.
       const { error: errStock } = await sbClient
         .from('productos')
-        .update({ stock_actual: stockDespues })
+        .update({ stock_actual: stockDespues, updated_at: new Date().toISOString() })
         .eq('id', linea.producto.id)
         .eq('auth_user_id', STATE.userId);
       if (errStock) throw errStock;
@@ -1243,7 +1245,7 @@ async function anularCompra() {
       if (prod) {
         const stockRevertido = Math.max(0, Number(prod.stock_actual) - Number(linea.cantidad));
         await sbClient.from('productos')
-          .update({ stock_actual: stockRevertido })
+          .update({ stock_actual: stockRevertido, updated_at: new Date().toISOString() })
           .eq('id', linea.producto_id)
           .eq('auth_user_id', STATE.userId);
       }
