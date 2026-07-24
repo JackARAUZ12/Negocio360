@@ -1305,8 +1305,21 @@
         </div>
         <div id="nc-fin-impuestos-wrap" style="margin-top:4px;display:none">
           <label>Impuestos sobre el interés (opcional)</label>
-          <p style="font-size:12px;color:var(--text-muted);margin:-2px 0 6px">El impuesto se calcula solo sobre el interés generado, nunca sobre el capital.</p>
-          <div id="nc-impuestos-check" style="display:flex;flex-wrap:wrap;gap:10px">—</div>
+          <p style="font-size:12px;color:var(--text-muted);margin:-2px 0 6px">El impuesto se calcula solo sobre el interés generado, nunca sobre el capital. El IVA también aparece aquí como una opción más.</p>
+          <div id="nc-impuestos-check" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">—</div>
+          <div class="form-row" style="align-items:end">
+            <div><input type="text" id="nc-nuevo-impuesto-nombre" placeholder="Nombre del impuesto nuevo (ej: Retención)" /></div>
+            <div>
+              <select id="nc-nuevo-impuesto-tipo">
+                <option value="porcentaje">%</option>
+                <option value="fijo">Monto fijo</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px">
+              <input type="number" id="nc-nuevo-impuesto-valor" placeholder="Valor" min="0" step="0.01" />
+              <button type="button" class="btn-ghost" onclick="agregarImpuestoInline()">+ Crear</button>
+            </div>
+          </div>
         </div>
       </div>
 
