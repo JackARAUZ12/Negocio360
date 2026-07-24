@@ -776,6 +776,43 @@
     .stagger-5 { animation-delay: 0.25s; }
 
     .currency-symbol { font-size: 0.75em; font-weight: 600; opacity: 0.8; vertical-align: super; }
+
+    /* ANUNCIO DEL SISTEMA (modal de novedades, una vez por usuario) */
+    #anuncio-overlay {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: rgba(10,10,20,0.55); backdrop-filter: blur(3px);
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #anuncio-overlay.show { display: flex; }
+    .anuncio-box {
+      background: var(--bg-surface); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg); max-width: 440px; width: 100%;
+      overflow: hidden; animation: fadeInUp 0.25s ease;
+    }
+    .anuncio-header {
+      background: linear-gradient(135deg, var(--accent), var(--accent-4, var(--accent)));
+      padding: 22px 24px; color: #fff;
+    }
+    .anuncio-badge {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em; background: rgba(255,255,255,0.2);
+      padding: 4px 10px; border-radius: 100px; margin-bottom: 10px;
+    }
+    .anuncio-titulo { font-size: 17px; font-weight: 800; line-height: 1.35; }
+    .anuncio-body { padding: 20px 24px; }
+    .anuncio-lista { list-style: none; padding: 0; margin: 0; }
+    .anuncio-lista li {
+      display: flex; gap: 10px; align-items: flex-start; padding: 9px 0;
+      font-size: 13.5px; color: var(--text-secondary); line-height: 1.5;
+    }
+    .anuncio-lista li svg { flex-shrink: 0; margin-top: 2px; color: var(--accent); }
+    .anuncio-footer { padding: 0 24px 22px; }
+    .anuncio-btn {
+      width: 100%; padding: 11px; border-radius: var(--radius-md); border: none;
+      background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .anuncio-btn:hover { opacity: 0.9; }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -2200,6 +2237,8 @@ async function initDashboard() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
+    verificarAnuncioSistema(userId);
+
     await Promise.allSettled([
       loadKPIs(userId),
       loadGastos(userId),
@@ -2222,6 +2261,50 @@ async function initDashboard() {
 }
 
 /* =====================================================
+   ANUNCIO DEL SISTEMA
+   Muestra el anuncio activo (creado desde el Panel de
+   Administración) una sola vez por usuario. Al cerrarlo,
+   se registra en anuncios_vistos y nunca vuelve a aparecer
+   para ese usuario (a menos que se lance un anuncio nuevo).
+===================================================== */
+let _anuncioActivoId = null;
+
+async function verificarAnuncioSistema(userId) {
+  try {
+    const { data: anuncio } = await sbClient.from('anuncios_sistema')
+      .select('id,titulo,items').eq('activo', true)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (!anuncio) return;
+
+    const { data: visto } = await sbClient.from('anuncios_vistos')
+      .select('anuncio_id').eq('anuncio_id', anuncio.id).eq('auth_user_id', userId).maybeSingle();
+    if (visto) return;
+
+    _anuncioActivoId = anuncio.id;
+    document.getElementById('anuncio-titulo').textContent = anuncio.titulo;
+    const items = Array.isArray(anuncio.items) ? anuncio.items : [];
+    document.getElementById('anuncio-lista').innerHTML = items.map(txt => `
+      <li>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>${String(txt).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+      </li>`).join('');
+    document.getElementById('anuncio-overlay').classList.add('show');
+  } catch (e) { console.warn('verificarAnuncioSistema:', e); }
+}
+
+async function cerrarAnuncioSistema() {
+  document.getElementById('anuncio-overlay').classList.remove('show');
+  if (!_anuncioActivoId) return;
+  try {
+    const { data: { user } } = await sbClient.auth.getUser();
+    if (!user) return;
+    await sbClient.from('anuncios_vistos').insert({ anuncio_id: _anuncioActivoId, auth_user_id: user.id });
+  } catch (e) { console.warn('cerrarAnuncioSistema:', e); }
+  _anuncioActivoId = null;
+}
+window.cerrarAnuncioSistema = cerrarAnuncioSistema;
+
+/* =====================================================
    AUTH LISTENER
 ===================================================== */
 sbClient.auth.onAuthStateChange((event) => {
@@ -2234,5 +2317,26 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script src="perfiles-guard.js"></script>
+
+<!-- =====================================================
+     ANUNCIO DEL SISTEMA (novedades, una vez por usuario)
+===================================================== -->
+<div id="anuncio-overlay" onclick="if(event.target===this) cerrarAnuncioSistema()">
+  <div class="anuncio-box">
+    <div class="anuncio-header">
+      <div class="anuncio-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Novedades
+      </div>
+      <div class="anuncio-titulo" id="anuncio-titulo">—</div>
+    </div>
+    <div class="anuncio-body">
+      <ul class="anuncio-lista" id="anuncio-lista"></ul>
+    </div>
+    <div class="anuncio-footer">
+      <button class="anuncio-btn" onclick="cerrarAnuncioSistema()">Entendido</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
