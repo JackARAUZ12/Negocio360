@@ -859,6 +859,17 @@
     }
     .sidebar-overlay.show { display: block; }
     @media (min-width: 769px) { .sidebar-overlay { display: none !important; } }
+
+    /* SELECTOR DE ESCALA DE PRECIOS (idéntico a Ventas) */
+    .esc-precio-opcion{display:flex;align-items:center;gap:10px;padding:12px 14px;
+      border:1.5px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;
+      cursor:pointer;transition:border-color .15s ease,background .15s ease}
+    .esc-precio-opcion:hover{border-color:var(--accent)}
+    .esc-precio-opcion input[type="radio"]{accent-color:var(--accent);width:16px;height:16px}
+    .esc-precio-opcion:has(input:checked){border-color:var(--accent);background:var(--accent-soft, rgba(90,90,244,.06))}
+    .esc-precio-nombre{flex:1;font-size:13.5px;font-weight:600}
+    .esc-precio-valor{font-family:var(--font-mono);font-weight:700;color:var(--accent)}
+
     .stat-readonly {
       background: var(--bg-surface-2);
       border: 1px solid var(--border);
@@ -1528,6 +1539,30 @@
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-detalle-credito')">Cerrar</button>
       <button class="btn-primary" onclick="abrirRegistrarPago(_creditoDetalleActual)">Registrar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: SELECCIONAR PRECIO DE ESCALA
+     Solo aparece cuando el producto agregado tiene tipo_precio='escala'.
+     Los productos de precio fijo nunca muestran este modal.
+=================================================== -->
+<div class="modal-overlay" id="modal-escala-precio-credito" onclick="if(event.target===this)cerrarSelectorEscalaCredito()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <h3>Seleccionar precio</h3>
+        <div style="font-size:12.5px;color:var(--text-muted)" id="esc-precio-title">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorEscalaCredito()">&times;</button>
+    </div>
+    <div class="modal-body" id="esc-precio-lista" style="max-height:50vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorEscalaCredito()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionEscalaCredito()">Aceptar</button>
     </div>
   </div>
 </div>
