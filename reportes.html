@@ -730,6 +730,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           Clientes
         </div>
+        <div class="main-tab" data-tab="creditos" onclick="switchTab('creditos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+          Créditos
+        </div>
         <div class="main-tab" data-tab="gastos" onclick="switchTab('gastos')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Gastos
@@ -1333,6 +1337,90 @@
         </div>
 
       </div><!-- /panel-clientes -->
+
+      <!-- =====================================================
+           TAB: CRÉDITOS
+      ===================================================== -->
+      <div class="tab-panel" id="panel-creditos">
+
+        <div class="kpi-grid-4 fade-in">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Capital colocado</div>
+              <div class="kpi-value" id="cr-capital">—</div>
+              <div class="kpi-sub">ventas a crédito + préstamos, según filtro</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-3-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Total en cuotas (con intereses e impuestos)</div>
+              <div class="kpi-value" id="cr-total-cuotas">—</div>
+              <div class="kpi-sub">suma de todas las cuotas de cada crédito</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--success-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Ganancia estimada por intereses</div>
+              <div class="kpi-value" id="cr-ganancia">—</div>
+              <div class="kpi-sub">intereses menos impuestos, sin contar el valor del producto</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--warning-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Créditos activos</div>
+              <div class="kpi-value" id="cr-activos">—</div>
+              <div class="kpi-sub"><span id="cr-atraso">0</span> con atraso</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="charts-grid fade-in" style="margin-top:20px">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Ventas a crédito por mes
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-creditos-mes"></canvas></div>
+            <p style="font-size:11.5px;color:var(--text-muted);padding:0 16px 14px">
+              Monto del valor de los productos/servicios vendidos a crédito, agrupado por mes (este año), sin incluir intereses ni impuestos.
+            </p>
+          </div>
+        </div>
+
+        <div class="panel-card fade-in" style="margin-top:20px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              Detalle por crédito
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>N° crédito</th>
+                  <th>Cliente</th>
+                  <th>Tipo</th>
+                  <th>Monto producto/capital</th>
+                  <th>Total con impuestos e intereses</th>
+                  <th>Ganancia estimada</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="creditos-reporte-tbody">
+                <tr><td colspan="7" class="empty-cell">Cargando créditos…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /panel-creditos -->
 
       <!-- =====================================================
            TAB: GASTOS
