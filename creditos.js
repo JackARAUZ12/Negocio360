@@ -801,6 +801,15 @@
     const montoOriginal = calcularMontoOriginal();
     if (montoOriginal <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
 
+    // Un préstamo/financiamiento sale de Caja: si no hay fondos suficientes, no se crea el crédito.
+    if (tipo === 'financiero') {
+      const saldoCaja = await window.CajaAPI.getCapital(CS.userId);
+      if (montoOriginal > saldoCaja + 0.01) {
+        showToast(`Fondos insuficientes en caja para este préstamo. Saldo disponible: ${fmt(saldoCaja)}`, 'error');
+        return;
+      }
+    }
+
     const primaTipo = document.getElementById('nc-prima-tipo').value;
     const primaValor = parseFloat(document.getElementById('nc-prima-valor').value) || 0;
     const primaMonto = calcularPrima(montoOriginal, primaTipo, primaValor);
@@ -908,6 +917,22 @@
       // 4) Activar el crédito y registrar historial
       await _sb.from('creditos').update({ estado: 'activo' }).eq('id', credito.id);
       await registrarHistorial(credito.id, 'creado', `Crédito ${numeroCredito} creado (${tipo}) por ${fmt(totalFinanciado)}`, { numeroCredito, tipo, totalFinanciado });
+
+      // 5) Si es un préstamo financiero, el monto entregado sale de Caja (egreso).
+      //    El saldo ya se validó al inicio, así que esto no debería fallar por fondos
+      //    insuficientes, pero se avisa igual si CajaAPI no pudo registrar el movimiento.
+      if (tipo === 'financiero') {
+        const cajaRes = await registrarEnCaja({
+          auth_user_id: CS.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'CREDITO_OTORGADO',
+          concepto: `Préstamo otorgado — crédito ${numeroCredito}`, monto: montoOriginal,
+          referencia_tipo: 'credito', referencia_id: credito.id, observaciones,
+        });
+        if (!cajaRes.ok) {
+          showToast('El crédito se creó, pero no se pudo descontar de caja: ' + cajaRes.error, 'error');
+        } else {
+          await registrarHistorial(credito.id, 'desembolso', `Se descontaron ${fmt(montoOriginal)} de Caja por el préstamo otorgado`, {});
+        }
+      }
 
       showToast(`Crédito ${numeroCredito} creado correctamente`, 'success');
       closeModal('modal-nuevo-credito');
