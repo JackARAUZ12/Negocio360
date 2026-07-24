@@ -191,7 +191,7 @@
      saldo_anterior/saldo_resultante. Solo se llama con la porción de impuesto
      efectivamente cobrada en cada pago de cuota, nunca con el total del crédito.
   =================================================== */
-  async function registrarImpuestoCredito(montoImpuesto, credito) {
+  async function registrarImpuestoCredito(montoImpuesto, credito, impuestoNombre, impuestoId) {
     if (!montoImpuesto || montoImpuesto <= 0) return;
     try {
       const { data: ultMov } = await _sb.from('movimientos_impuestos')
@@ -201,8 +201,9 @@
       const saldoRes = round2(saldoAnt + montoImpuesto);
       await _sb.from('movimientos_impuestos').insert({
         auth_user_id: CS.userId, tipo_movimiento: 'IVA_VENTA',
-        concepto: `Impuesto cobrado en cuota de crédito ${credito.numero_credito}`,
+        concepto: `${impuestoNombre || 'Impuesto'} cobrado en cuota de crédito ${credito.numero_credito}`,
         monto: montoImpuesto, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
+        impuesto_id: impuestoId || null, impuesto_nombre: impuestoNombre || null,
         referencia_venta_id: credito.venta_id || null, fecha: todayISO(),
       });
     } catch (e) { console.warn('registrarImpuestoCredito:', e); }
@@ -245,19 +246,70 @@
   }
 
   async function loadImpuestos() {
+    await asegurarIvaEnCatalogo();
     const { data } = await _sb.from('impuestos').select('*').eq('auth_user_id', CS.userId).eq('estado', true).order('nombre');
     CS.impuestos = data || [];
+    renderImpuestosCheck();
+  }
+
+  // El IVA ahora vive dentro del mismo catálogo flexible de impuestos (tabla `impuestos`),
+  // así aparece como una opción más — seleccionable o editable — igual que cualquier
+  // impuesto personalizado. Solo se crea una vez por negocio, la primera vez que hace falta.
+  async function asegurarIvaEnCatalogo() {
+    try {
+      const { data: existente } = await _sb.from('impuestos').select('id')
+        .eq('auth_user_id', CS.userId).ilike('nombre', 'IVA').limit(1).maybeSingle();
+      if (existente) return;
+      await _sb.from('impuestos').insert({
+        auth_user_id: CS.userId, nombre: 'IVA', categoria: 'iva', tipo_valor: 'porcentaje',
+        valor: Number(CS.empresaConfig?.porcentaje_iva) || 15, estado: true,
+        descripcion: 'Impuesto al Valor Agregado',
+      });
+    } catch (e) { console.warn('asegurarIvaEnCatalogo:', e); }
+  }
+
+  function renderImpuestosCheck() {
     const wrap = document.getElementById('nc-impuestos-check');
-    if (wrap) {
-      wrap.innerHTML = CS.impuestos.length
-        ? CS.impuestos.map(i => `
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--text-secondary)">
-              <input type="checkbox" class="nc-impuesto-chk" value="${i.id}" data-valor="${i.valor}" data-tipo="${i.tipo_valor}" data-nombre="${esc(i.nombre)}" style="width:auto" onchange="recalcularCredito()" />
-              ${esc(i.nombre)} (${i.tipo_valor==='porcentaje' ? i.valor+'%' : fmt(i.valor)})
-            </label>`).join('')
-        : '<span style="font-size:12.5px;color:var(--text-muted)">No hay impuestos creados. Ve al módulo Impuestos para crear uno (opcional). Solo se aplica sobre el interés generado.</span>';
+    if (!wrap) return;
+    wrap.innerHTML = CS.impuestos.length
+      ? CS.impuestos.map(i => `
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--text-secondary)">
+            <input type="checkbox" class="nc-impuesto-chk" value="${i.id}" data-valor="${i.valor}" data-tipo="${i.tipo_valor}" data-nombre="${esc(i.nombre)}" style="width:auto" onchange="recalcularCredito()" />
+            ${esc(i.nombre)} (${i.tipo_valor==='porcentaje' ? i.valor+'%' : fmt(i.valor)})
+          </label>`).join('')
+      : '<span style="font-size:12.5px;color:var(--text-muted)">Sin impuestos disponibles.</span>';
+  }
+
+  // Crear un impuesto nuevo sin salir del modal de Nuevo Crédito (igual que el
+  // producto financiero: el usuario lo nombra ahí mismo). También queda disponible
+  // de inmediato en el módulo Impuestos.
+  async function agregarImpuestoInline() {
+    const nombre = document.getElementById('nc-nuevo-impuesto-nombre').value.trim();
+    const tipoValor = document.getElementById('nc-nuevo-impuesto-tipo').value;
+    const valor = parseFloat(document.getElementById('nc-nuevo-impuesto-valor').value) || 0;
+    if (!nombre) { showToast('Escribe el nombre del impuesto', 'error'); return; }
+    if (valor <= 0) { showToast('El valor del impuesto debe ser mayor a cero', 'error'); return; }
+    try {
+      const { data, error } = await _sb.from('impuestos').insert({
+        auth_user_id: CS.userId, nombre, categoria: 'otro', tipo_valor: tipoValor, valor, estado: true,
+      }).select().single();
+      if (error) throw error;
+      CS.impuestos.push(data);
+      renderImpuestosCheck();
+      document.getElementById('nc-nuevo-impuesto-nombre').value = '';
+      document.getElementById('nc-nuevo-impuesto-valor').value = '';
+      // Deja el nuevo impuesto ya seleccionado
+      const chk = wrapQuery(`.nc-impuesto-chk[value="${data.id}"]`);
+      if (chk) chk.checked = true;
+      recalcularCredito();
+      showToast(`Impuesto "${nombre}" creado`, 'success');
+    } catch (e) {
+      console.error('agregarImpuestoInline:', e);
+      showToast('Error al crear el impuesto: ' + (e.message||e), 'error');
     }
   }
+  window.agregarImpuestoInline = agregarImpuestoInline;
+  function wrapQuery(sel) { return document.querySelector(sel); }
 
   /* ===================================================
      MOTOR DE AMORTIZACIÓN
@@ -273,12 +325,35 @@
     return 0;
   }
 
-  function generarAmortizacion({ capitalFinanciado, tipoFinanciamiento, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio, impuestoPct, baseImpuesto }) {
+  function prorratearFijo(total, numCuotas) {
+    const base = round2(Number(total||0) / numCuotas);
+    const arr = new Array(numCuotas).fill(base);
+    arr[numCuotas-1] = round2(Number(total||0) - base*(numCuotas-1));
+    return arr;
+  }
+
+  function generarAmortizacion({ capitalFinanciado, tipoFinanciamiento, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto }) {
     capitalFinanciado = Number(capitalFinanciado)||0;
     numCuotas = Math.max(1, parseInt(numCuotas)||1);
     tasaInteres = Number(tasaInteres)||0;
-    impuestoPct = Number(impuestoPct)||0;
     baseImpuesto = baseImpuesto || 'capital'; // 'capital' (créditos por venta) | 'interes' (créditos financieros)
+    impuestosLista = impuestosLista || [];
+
+    // Impuestos de monto fijo (no porcentuales) se prorratean en partes iguales entre
+    // las cuotas, igual que el capital; los porcentuales se calculan cuota por cuota.
+    const fijosPorCuota = {};
+    impuestosLista.forEach(t => { if (t.tipo_valor === 'fijo') fijosPorCuota[t.id || t.nombre] = prorratearFijo(t.valor, numCuotas); });
+
+    function detalleImpuestos(base, indiceCuota) {
+      const detalle = []; let total = 0;
+      impuestosLista.forEach(t => {
+        const key = t.id || t.nombre;
+        const monto = t.tipo_valor === 'fijo' ? fijosPorCuota[key][indiceCuota-1] : round2(base * (Number(t.valor)||0) / 100);
+        if (monto) { detalle.push({ impuesto_id: t.id||null, nombre: t.nombre, tipo_valor: t.tipo_valor, valor: t.valor, monto }); total = round2(total+monto); }
+      });
+      return { detalle, total };
+    }
+
     const cuotas = [];
     let totalIntereses = 0;
 
@@ -288,12 +363,12 @@
       for (let i = 1; i <= numCuotas; i++) {
         const esUltima = i === numCuotas;
         const cap = esUltima ? round2(saldo) : capitalCuota;
-        const impuesto = round2(cap * impuestoPct / 100);
+        const { detalle, total: impuesto } = detalleImpuestos(cap, i);
         saldo = round2(saldo - cap);
         cuotas.push({
           numero: i,
           fecha_vencimiento: sumarFrecuencia(fechaInicio, frecuencia, i),
-          capital: cap, interes: 0, impuesto,
+          capital: cap, interes: 0, impuesto, impuestos_detalle: detalle,
           monto_total: round2(cap + impuesto),
           saldo: saldo,
         });
@@ -314,11 +389,11 @@
         if (esUltima) cap = round2(saldo);
         saldo = round2(saldo - cap);
         totalIntereses += interes;
-        const impuesto = round2((baseImpuesto === 'interes' ? interes : cap) * impuestoPct / 100);
+        const { detalle, total: impuesto } = detalleImpuestos(baseImpuesto === 'interes' ? interes : cap, i);
         cuotas.push({
           numero: i,
           fecha_vencimiento: sumarFrecuencia(fechaInicio, frecuencia, i),
-          capital: cap, interes, impuesto,
+          capital: cap, interes, impuesto, impuestos_detalle: detalle,
           monto_total: round2(cap + interes + impuesto),
           saldo: saldo,
         });
@@ -333,12 +408,12 @@
         const esUltima = i === numCuotas;
         const cap = esUltima ? round2(saldo) : capitalCuota;
         const interes = esUltima ? round2(totalIntereses - interesCuota*(numCuotas-1)) : interesCuota;
-        const impuesto = round2((baseImpuesto === 'interes' ? interes : cap) * impuestoPct / 100);
+        const { detalle, total: impuesto } = detalleImpuestos(baseImpuesto === 'interes' ? interes : cap, i);
         saldo = round2(saldo - cap);
         cuotas.push({
           numero: i,
           fecha_vencimiento: sumarFrecuencia(fechaInicio, frecuencia, i),
-          capital: cap, interes, impuesto,
+          capital: cap, interes, impuesto, impuestos_detalle: detalle,
           monto_total: round2(cap + interes + impuesto),
           saldo: saldo,
         });
@@ -478,20 +553,22 @@
     return parseFloat(document.getElementById('nc-monto-financiero').value) || 0;
   }
 
-  function calcularImpuestoPctSeleccionado() {
+  function obtenerImpuestosSeleccionados() {
     const tipo = document.getElementById('nc-tipo').value;
     if (tipo === 'venta') {
       const ivaActivo = document.getElementById('nc-iva-activo')?.checked;
-      return ivaActivo ? Number(CS.empresaConfig?.porcentaje_iva || 15) : 0;
+      if (!ivaActivo) return [];
+      const ivaCatalogo = CS.impuestos.find(i => (i.nombre||'').toLowerCase() === 'iva');
+      return [{ id: ivaCatalogo?.id || null, nombre: 'IVA', tipo_valor: 'porcentaje', valor: Number(CS.empresaConfig?.porcentaje_iva || 15) }];
     }
     // financiero: el impuesto solo aplica sobre el interés, y solo si hay interés
     const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
-    if (tipoFin !== 'con_interes') return 0;
-    let pct = 0;
+    if (tipoFin !== 'con_interes') return [];
+    const seleccionados = [];
     document.querySelectorAll('.nc-impuesto-chk:checked').forEach(chk => {
-      if (chk.dataset.tipo === 'porcentaje') pct += Number(chk.dataset.valor)||0;
+      seleccionados.push({ id: chk.value, nombre: chk.dataset.nombre, tipo_valor: chk.dataset.tipo, valor: Number(chk.dataset.valor)||0 });
     });
-    return pct;
+    return seleccionados;
   }
 
   function baseImpuestoActual() {
@@ -520,10 +597,10 @@
     const frecuencia = document.getElementById('nc-frecuencia').value;
     const numCuotas = parseInt(document.getElementById('nc-num-cuotas').value) || 1;
     const fechaInicio = document.getElementById('nc-fecha-inicio').value || todayISO();
-    const impuestoPct = calcularImpuestoPctSeleccionado();
+    const impuestosLista = obtenerImpuestosSeleccionados();
 
     const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
-      capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestoPct, baseImpuesto: baseImpuestoActual(),
+      capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto: baseImpuestoActual(),
     });
     CS.ncAmortizacionPreview = cuotas;
     document.getElementById('nc-total-intereses').textContent = fmt(totalIntereses);
@@ -652,11 +729,11 @@
     const frecuencia = document.getElementById('nc-frecuencia').value;
     const numCuotas = parseInt(document.getElementById('nc-num-cuotas').value) || 1;
     const fechaInicio = document.getElementById('nc-fecha-inicio').value || todayISO();
-    const impuestoPct = calcularImpuestoPctSeleccionado();
+    const impuestosLista = obtenerImpuestosSeleccionados();
     const observaciones = document.getElementById('nc-observaciones').value.trim() || null;
 
     const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
-      capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestoPct, baseImpuesto: baseImpuestoActual(),
+      capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto: baseImpuestoActual(),
     });
 
     btn.disabled = true; btn.textContent = 'Creando…';
@@ -740,7 +817,7 @@
       const cuotasInsert = cuotas.map(c => ({
         auth_user_id: CS.userId, credito_id: credito.id, numero: c.numero,
         fecha_vencimiento: c.fecha_vencimiento, capital: c.capital, interes: c.interes,
-        impuesto: c.impuesto, monto_total: c.monto_total, saldo: c.saldo, estado: 'pendiente',
+        impuesto: c.impuesto, impuestos_detalle: c.impuestos_detalle || [], monto_total: c.monto_total, saldo: c.saldo, estado: 'pendiente',
       }));
       const { error: errCuotas } = await _sb.from('creditos_cuotas').insert(cuotasInsert);
       if (errCuotas) throw errCuotas;
@@ -843,6 +920,7 @@
 
       let restante = monto;
       let impuestoAcreditadoEstaVez = 0;
+      const porImpuesto = new Map(); // key: impuesto_id||nombre -> { nombre, id, monto }
       for (const cuota of (cuotasPendientes||[])) {
         if (restante <= 0) break;
         const debeCuota = round2(cuota.monto_total - cuota.monto_pagado);
@@ -853,11 +931,26 @@
 
         // El impuesto de la cuota se acredita en la misma proporción en que se está
         // pagando su saldo (no todo de una vez): así, si el cliente paga en abonos,
-        // el impuesto también se acumula a impuestos.html en abonos.
+        // el impuesto también se acumula a impuestos.html en abonos. Si la cuota tiene
+        // más de un impuesto (ej. IVA + otro), cada uno se reparte y se registra por separado.
         const impuestoPendienteCuota = round2((cuota.impuesto||0) - (cuota.impuesto_acreditado||0));
         const fraccionPagada = aplicar / debeCuota;
         const impuestoEstaVez = round2(impuestoPendienteCuota * fraccionPagada);
         impuestoAcreditadoEstaVez = round2(impuestoAcreditadoEstaVez + impuestoEstaVez);
+
+        const detalle = Array.isArray(cuota.impuestos_detalle) ? cuota.impuestos_detalle : [];
+        if (detalle.length && impuestoEstaVez > 0) {
+          detalle.forEach(d => {
+            // Reparte impuestoEstaVez entre los impuestos de la cuota según su peso relativo
+            const peso = (cuota.impuesto > 0) ? (Number(d.monto)||0) / cuota.impuesto : 0;
+            const parte = round2(impuestoEstaVez * peso);
+            if (parte <= 0) return;
+            const key = d.impuesto_id || d.nombre;
+            const acc = porImpuesto.get(key) || { nombre: d.nombre, id: d.impuesto_id, monto: 0 };
+            acc.monto = round2(acc.monto + parte);
+            porImpuesto.set(key, acc);
+          });
+        }
 
         await _sb.from('creditos_cuotas').update({
           monto_pagado: nuevoPagado, estado: nuevoEstado,
@@ -881,9 +974,10 @@
       if (!cajaRes.ok) console.warn('No se pudo registrar en caja:', cajaRes.error);
 
       // El impuesto NO se manda completo a impuestos.html al crear el crédito: solo la
-      // porción correspondiente a lo efectivamente cobrado en este pago.
-      if (impuestoAcreditadoEstaVez > 0) {
-        await registrarImpuestoCredito(impuestoAcreditadoEstaVez, credito);
+      // porción correspondiente a lo efectivamente cobrado en este pago, y cada impuesto
+      // (IVA, retención, u otro) se registra en su propia línea, no mezclados.
+      for (const { nombre, id, monto: montoTax } of porImpuesto.values()) {
+        await registrarImpuestoCredito(montoTax, credito, nombre, id);
       }
 
       const comprobanteNumero = `PAG-${credito.numero_credito}-${Date.now().toString().slice(-5)}`;
