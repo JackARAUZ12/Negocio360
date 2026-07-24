@@ -371,6 +371,7 @@ async function loadTab(tab) {
     case 'compras':     await loadComprasTab();  break;
     case 'inventario':  await loadInventario();  break;
     case 'clientes':    await loadClientesTab(); break;
+    case 'creditos':    await loadCreditosTab(); break;
     case 'gastos':      await loadGastosTab();   break;
     case 'alertas':     await loadAlertas();     break;
     case 'exportar':    renderConfigExportar();  break;
@@ -1607,6 +1608,119 @@ async function loadClientesTab() {
     }
 
   } catch(e) { console.error('loadClientesTab:', e); }
+}
+
+/* ============================================================
+   TAB: CRÉDITOS
+   - "Monto producto/capital": lo que vale el producto/servicio (venta)
+     o el capital financiado (préstamo), SIN intereses ni impuestos.
+   - "Total con impuestos e intereses": suma de todas las cuotas del
+     crédito (capital + interés + impuesto de cada cuota).
+   - "Ganancia estimada": solo el interés generado, menos el impuesto
+     que se cobró sobre ese interés (nunca incluye el valor del
+     producto ni los impuestos sobre el capital).
+   ============================================================ */
+async function fetchCreditosReporte() {
+  const { data: creditos } = await sb.from('creditos').select('*')
+    .eq('auth_user_id', R.userId)
+    .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
+    .lte('fecha_inicio', R.fechaHasta || todayISO());
+
+  const lista = creditos || [];
+  if (!lista.length) return [];
+
+  const ids = lista.map(c => c.id);
+  const { data: cuotas } = await sb.from('creditos_cuotas')
+    .select('credito_id,monto_total,impuesto')
+    .in('credito_id', ids);
+
+  const clienteIds = [...new Set(lista.map(c => c.cliente_id))];
+  const { data: clientesData } = await sb.from('clientes').select('id,nombre,apellido')
+    .in('id', clienteIds.length ? clienteIds : ['00000000-0000-0000-0000-000000000000']);
+  const clienteMap = new Map((clientesData||[]).map(c => [c.id, c]));
+
+  const sumaPorCredito = new Map(); // credito_id -> { totalCuotas, totalImpuesto }
+  (cuotas||[]).forEach(c => {
+    const acc = sumaPorCredito.get(c.credito_id) || { totalCuotas: 0, totalImpuesto: 0 };
+    acc.totalCuotas += Number(c.monto_total||0);
+    acc.totalImpuesto += Number(c.impuesto||0);
+    sumaPorCredito.set(c.credito_id, acc);
+  });
+
+  return lista.map(c => {
+    const sum = sumaPorCredito.get(c.id) || { totalCuotas: Number(c.total_financiado||0), totalImpuesto: 0 };
+    const cliente = clienteMap.get(c.cliente_id);
+    // El impuesto de un crédito por venta se cobra sobre el capital (no es parte de la
+    // ganancia por interés); el de un crédito financiero se cobra sobre el interés.
+    const impuestoSobreInteres = c.tipo === 'financiero' ? sum.totalImpuesto : 0;
+    const gananciaEstimada = Math.max(0, Number(c.total_intereses||0) - impuestoSobreInteres);
+    return {
+      id: c.id,
+      numero_credito: c.numero_credito,
+      cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}`.trim() : '—',
+      tipo: c.tipo,
+      fecha_inicio: c.fecha_inicio,
+      montoProducto: Number(c.capital_financiado||0),
+      totalCuotas: sum.totalCuotas,
+      gananciaEstimada,
+      estado: c.estado,
+    };
+  });
+}
+
+async function loadCreditosTab() {
+  const tbody = document.getElementById('creditos-reporte-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">Cargando créditos…</td></tr>';
+
+  try {
+    const filas = await fetchCreditosReporte();
+
+    const capitalTotal   = filas.reduce((s,f)=>s+f.montoProducto, 0);
+    const cuotasTotal    = filas.reduce((s,f)=>s+f.totalCuotas, 0);
+    const gananciaTotal  = filas.reduce((s,f)=>s+f.gananciaEstimada, 0);
+    const activos        = filas.filter(f => ['activo','al_dia','con_atraso','en_proceso'].includes(f.estado)).length;
+    const conAtraso      = filas.filter(f => f.estado === 'con_atraso').length;
+
+    setEl('cr-capital',      fmt(capitalTotal));
+    setEl('cr-total-cuotas', fmt(cuotasTotal));
+    setEl('cr-ganancia',     fmt(gananciaTotal));
+    setEl('cr-activos',      activos.toString());
+    setEl('cr-atraso',       conAtraso.toString());
+
+    // Ventas a crédito por mes (solo tipo='venta', este año, monto del producto sin intereses/impuestos)
+    const year = new Date().getFullYear();
+    const { data: creditosAnio } = await sb.from('creditos').select('tipo,capital_financiado,fecha_inicio')
+      .eq('auth_user_id', R.userId).eq('tipo','venta')
+      .gte('fecha_inicio', `${year}-01-01`).lte('fecha_inicio', `${year}-12-31`);
+    const mesesLabel = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const porMes = new Array(12).fill(0);
+    (creditosAnio||[]).forEach(c => {
+      const d = parseFechaSegura(c.fecha_inicio);
+      if (!d) return;
+      porMes[d.getMonth()] += Number(c.capital_financiado||0);
+    });
+    createBarChart('chart-creditos-mes', mesesLabel,
+      [{ label:'Ventas a crédito', data:porMes, backgroundColor:'rgba(90,90,244,0.6)' }],
+      'creditos-mes');
+
+    if (tbody) {
+      tbody.innerHTML = filas.length ? filas
+        .sort((a,b) => (b.fecha_inicio||'').localeCompare(a.fecha_inicio||''))
+        .map(f => `
+        <tr>
+          <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(f.numero_credito)}</span></td>
+          <td>${esc(f.cliente)}</td>
+          <td><span class="badge ${f.tipo==='venta'?'badge-success':'badge-accent'}">${f.tipo==='venta'?'Por venta':'Financiero'}</span></td>
+          <td class="td-mono">${fmt(f.montoProducto)}</td>
+          <td class="td-mono">${fmt(f.totalCuotas)}</td>
+          <td class="td-mono" style="color:var(--success);font-weight:700">${fmt(f.gananciaEstimada)}</td>
+          <td>${esc(f.estado)}</td>
+        </tr>`).join('') : emptyRow(7,'No hay créditos en este período');
+    }
+  } catch(e) {
+    console.error('loadCreditosTab:', e);
+    if (tbody) tbody.innerHTML = emptyRow(7,'No se pudo cargar el reporte de créditos');
+  }
 }
 
 /* ============================================================
