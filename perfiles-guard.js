@@ -606,6 +606,16 @@
 
     PG.authUserId = session.user.id;
     PG.authEmail  = session.user.email || null;
+
+    // Si el dueño de la cuenta desactivó el sistema multiusuario en
+    // configuración.html, no se pide selector ni PIN: se entra directo.
+    const { data: cfgUsuario } = await PG.client
+      .from('usuarios')
+      .select('multiusuario_activo')
+      .eq('auth_user_id', PG.authUserId)
+      .maybeSingle();
+    if (cfgUsuario && cfgUsuario.multiusuario_activo === false) return;
+
     PG.perfiles = await cargarPerfiles();
 
     const sesionActiva = getSesion();
