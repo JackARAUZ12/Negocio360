@@ -89,6 +89,13 @@
         Códigos de Acceso
       </button>
 
+      <button class="nav-item" data-section="anuncios">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        Anuncios
+      </button>
+
       <div class="nav-divider"></div>
     </nav>
 
@@ -491,6 +498,57 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: ANUNCIOS DEL SISTEMA
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-anuncios">
+      <div class="page-header">
+        <h1>Anuncios del sistema</h1>
+        <p>Lanza un aviso de novedades a todos los usuarios. Cada usuario lo ve una sola vez; al lanzar uno nuevo, reemplaza al anterior.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Componer anuncio</div>
+            <div class="card-subtitle">Se mostrará como ventana emergente en el Dashboard de cada usuario</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="anuncio-form-titulo" class="form-control" placeholder="Ej: Nueva actualización: Nuevo módulo de Crédito" />
+          </div>
+
+          <div class="form-group">
+            <label>Puntos del anuncio</label>
+            <div id="anuncio-form-items"></div>
+            <button type="button" class="btn-icon btn-ghost" onclick="agregarItemAnuncio()" style="margin-top:8px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Agregar punto
+            </button>
+          </div>
+
+          <button class="btn-icon btn-primary" onclick="lanzarAnuncio()" style="margin-top:18px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Lanzar a todos los usuarios
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Anuncio activo actual</div>
+            <div class="card-subtitle">Esto es lo que ven los usuarios que aún no lo han cerrado</div>
+          </div>
+        </div>
+        <div class="card-body" id="anuncio-activo-preview">
+          <p style="color:var(--text-muted, #888)">Cargando…</p>
         </div>
       </div>
     </section>
