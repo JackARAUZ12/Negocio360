@@ -36,6 +36,8 @@
     ncItems: [],          // ítems agregados al crédito por venta en curso
     ncAmortizacionPreview: [],
     ultimoComprobante: null,
+    escalasPorProducto: {}, // { producto_id: [{id,nombre,precio}, ...] } — solo tipo_precio='escala'
+    escalaPendiente: null,  // { productoId, cantidad } mientras el selector de escala está abierto
   };
 
   /* ===================================================
@@ -222,7 +224,7 @@
   }
 
   async function loadProductosYServicios() {
-    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku')
+    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio')
       .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
     const todos = data || [];
     CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
@@ -234,8 +236,25 @@
     const selProd = document.getElementById('nc-producto-select');
     if (selProd) {
       selProd.innerHTML = '<option value="">Selecciona producto o servicio…</option>' +
-        CS.productos.map(p => `<option value="${p.id}">${esc(p.nombre)} — ${fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${p.stock_actual||0})` : ''}</option>`).join('');
+        CS.productos.map(p => `<option value="${p.id}">${esc(p.nombre)}${p.tipo_precio==='escala' ? ' — 📊 Precio por escala' : ' — '+fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${p.stock_actual||0})` : ''}</option>`).join('');
     }
+
+    await loadEscalasDePrecios();
+  }
+
+  // Precios por escala (Detalle/Mayorista/etc.) — mismo patrón que Ventas: los productos
+  // con tipo_precio='escala' no tienen un precio único en `productos.precio` (queda en 0),
+  // el precio real vive en `precios_escala` y el usuario debe elegir cuál usar.
+  async function loadEscalasDePrecios() {
+    CS.escalasPorProducto = {};
+    const idsConEscala = CS.productos.filter(p => p.tipo_precio === 'escala').map(p => p.id);
+    if (!idsConEscala.length) return;
+    const { data } = await _sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .in('producto_id', idsConEscala).order('orden');
+    (data || []).forEach(e => {
+      if (!CS.escalasPorProducto[e.producto_id]) CS.escalasPorProducto[e.producto_id] = [];
+      CS.escalasPorProducto[e.producto_id].push(e);
+    });
   }
 
   async function loadMetodosPago() {
@@ -514,17 +533,79 @@
     if (prod.tipo === 'producto' && cantidad > Number(prod.stock_actual||0)) {
       showToast(`Stock insuficiente (disponible: ${prod.stock_actual||0})`, 'error'); return;
     }
-    const existente = CS.ncItems.find(i => i.producto_id === prodId);
+
+    // Si ya está en el carrito, no se vuelve a preguntar la escala: se respeta el
+    // precio ya elegido para esa línea (igual que en Ventas).
+    const yaEnCarrito = CS.ncItems.find(i => i.producto_id === prodId);
+    if (!yaEnCarrito && prod.tipo_precio === 'escala') {
+      abrirSelectorEscalaCredito(prodId, cantidad);
+      return;
+    }
+
+    agregarItemCreditoConPrecio(prod, cantidad, null);
+  }
+  window.agregarItemCredito = agregarItemCredito;
+
+  function agregarItemCreditoConPrecio(prod, cantidad, escalaElegida) {
+    const precioUsar = escalaElegida ? Number(escalaElegida.precio||0) : Number(prod.precio||0);
+    const existente = CS.ncItems.find(i => i.producto_id === prod.id);
     if (existente) existente.cantidad += cantidad;
     else CS.ncItems.push({
       producto_id: prod.id, nombre: prod.nombre, tipo_item: prod.tipo,
-      precio: Number(prod.precio)||0, costo: Number(prod.costo)||0, cantidad,
+      precio: precioUsar, costo: Number(prod.costo)||0, cantidad,
+      escala_id: escalaElegida ? escalaElegida.id : null,
+      escala_nombre: escalaElegida ? escalaElegida.nombre : null,
     });
     document.getElementById('nc-producto-cantidad').value = 1;
     renderNCItems();
     recalcularCredito();
   }
-  window.agregarItemCredito = agregarItemCredito;
+
+  /* ===================================================
+     SELECTOR DE ESCALA DE PRECIOS (crédito por venta)
+     Se muestra únicamente cuando el producto tiene tipo_precio='escala';
+     antes esos productos quedaban en C$0.00 porque su precio no vive en
+     productos.precio sino en precios_escala. Mismo patrón que Ventas.
+  =================================================== */
+  function abrirSelectorEscalaCredito(productoId, cantidad) {
+    const prod = CS.productos.find(p => p.id === productoId);
+    const escalas = CS.escalasPorProducto[productoId] || [];
+    if (!prod || !escalas.length) {
+      showToast('Este producto no tiene precios de escala configurados', 'error');
+      return;
+    }
+    CS.escalaPendiente = { productoId, cantidad };
+    document.getElementById('esc-precio-title').textContent = prod.nombre;
+    document.getElementById('esc-precio-lista').innerHTML = escalas.map((e, i) => `
+      <label class="esc-precio-opcion">
+        <input type="radio" name="esc-precio-radio-credito" value="${e.id}" ${i===0 ? 'checked' : ''} />
+        <span class="esc-precio-nombre">${esc(e.nombre)}</span>
+        <span class="esc-precio-valor">${fmt(e.precio)}</span>
+      </label>`).join('');
+    openModal('modal-escala-precio-credito');
+  }
+  window.abrirSelectorEscalaCredito = abrirSelectorEscalaCredito;
+
+  function confirmarSeleccionEscalaCredito() {
+    const pend = CS.escalaPendiente;
+    if (!pend) return;
+    const radio = document.querySelector('input[name="esc-precio-radio-credito"]:checked');
+    if (!radio) { showToast('Selecciona un precio', 'error'); return; }
+    const escalas = CS.escalasPorProducto[pend.productoId] || [];
+    const escalaElegida = escalas.find(e => e.id === radio.value);
+    const prod = CS.productos.find(p => p.id === pend.productoId);
+    if (!escalaElegida || !prod) return;
+    agregarItemCreditoConPrecio(prod, pend.cantidad, escalaElegida);
+    closeModal('modal-escala-precio-credito');
+    CS.escalaPendiente = null;
+  }
+  window.confirmarSeleccionEscalaCredito = confirmarSeleccionEscalaCredito;
+
+  function cerrarSelectorEscalaCredito() {
+    closeModal('modal-escala-precio-credito');
+    CS.escalaPendiente = null;
+  }
+  window.cerrarSelectorEscalaCredito = cerrarSelectorEscalaCredito;
 
   function quitarItemCredito(idx) { CS.ncItems.splice(idx,1); renderNCItems(); recalcularCredito(); }
   window.quitarItemCredito = quitarItemCredito;
@@ -534,7 +615,7 @@
     if (!CS.ncItems.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin ítems agregados</td></tr>'; return; }
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
-        <td>${esc(it.nombre)}</td>
+        <td>${esc(it.nombre)}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
         <td>${it.cantidad}</td>
         <td>${fmt(it.precio)}</td>
         <td>${fmt(it.precio * it.cantidad)}</td>
@@ -628,6 +709,7 @@
   =================================================== */
   function abrirNuevoCredito() {
     CS.ncItems = [];
+    CS.escalaPendiente = null;
     renderNCItems();
     document.getElementById('nc-fecha-inicio').value = todayISO();
     document.getElementById('nc-monto-financiero').value = '';
@@ -766,6 +848,7 @@
           producto_nombre: it.nombre, tipo_item: it.tipo_item, cantidad: it.cantidad,
           precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
           ganancia: round2((it.precio-it.costo)*it.cantidad),
+          escala_id: it.escala_id || null, escala_nombre: it.escala_nombre || null,
         }));
         const { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
         if (errDet) throw errDet;
