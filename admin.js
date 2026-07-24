@@ -100,6 +100,7 @@ function navigate(section) {
   if (section === 'users')     loadUsers();
   if (section === 'codes')     loadCodes();
   if (section === 'soporte')   loadConversaciones();
+  if (section === 'anuncios')  loadAnunciosSection();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
@@ -952,6 +953,105 @@ async function executeConfirmAction() {
 // ============================================================
 // SECCIÓN 3 — CÓDIGOS DE ACCESO
 // ============================================================
+/* ══════════════════════════════════════════
+   ANUNCIOS DEL SISTEMA
+   Permite lanzar un aviso de novedades a todos los usuarios
+   desde el Panel de Administración, sin tocar código. Cada
+   usuario lo ve una sola vez (tabla anuncios_vistos, que llena
+   dashboard.html). Al lanzar uno nuevo, se desactivan los
+   anteriores para que solo exista un anuncio activo a la vez.
+   ══════════════════════════════════════════ */
+let anuncioItemsCount = 0;
+
+function renderAnuncioItemRow(valor = '') {
+  anuncioItemsCount++;
+  const id = `anuncio-item-${anuncioItemsCount}`;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+  wrap.innerHTML = `
+    <input type="text" class="form-control anuncio-item-input" id="${id}" value="${valor.replace(/"/g,'&quot;')}" placeholder="Ej: Ya puedes importar clientes masivamente desde Excel" />
+    <button type="button" class="btn-icon btn-ghost" onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.getElementById('anuncio-form-items').appendChild(wrap);
+}
+function agregarItemAnuncio() { renderAnuncioItemRow(); }
+
+function limpiarFormAnuncio() {
+  document.getElementById('anuncio-form-titulo').value = '';
+  document.getElementById('anuncio-form-items').innerHTML = '';
+  anuncioItemsCount = 0;
+  renderAnuncioItemRow();
+  renderAnuncioItemRow();
+}
+
+async function loadAnunciosSection() {
+  limpiarFormAnuncio();
+  await renderAnuncioActivoPreview();
+}
+
+async function renderAnuncioActivoPreview() {
+  const el = document.getElementById('anuncio-activo-preview');
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  try {
+    const { data, error } = await sb.from('anuncios_sistema')
+      .select('*').eq('activo', true).order('created_at', { ascending:false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!data) { el.innerHTML = '<p style="color:var(--text-muted)">No hay ningún anuncio activo en este momento.</p>'; return; }
+
+    const items = Array.isArray(data.items) ? data.items : [];
+    el.innerHTML = `
+      <div style="font-weight:700;font-size:15px;margin-bottom:10px">${escAnuncio(data.titulo)}</div>
+      <ul style="margin:0;padding-left:18px;color:var(--text-secondary)">
+        ${items.map(i => `<li style="margin-bottom:6px">${escAnuncio(i)}</li>`).join('')}
+      </ul>
+      <div style="margin-top:14px;font-size:12px;color:var(--text-muted)">
+        Lanzado el ${new Date(data.created_at).toLocaleString('es-NI')}${data.created_by ? ' · por ' + escAnuncio(data.created_by) : ''}
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '<p style="color:var(--text-muted)">No se pudo cargar el anuncio activo.</p>';
+    console.error('renderAnuncioActivoPreview:', e);
+  }
+}
+
+function escAnuncio(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function lanzarAnuncio() {
+  const titulo = document.getElementById('anuncio-form-titulo').value.trim();
+  const items = Array.from(document.querySelectorAll('.anuncio-item-input'))
+    .map(i => i.value.trim()).filter(Boolean);
+
+  if (!titulo) { toast('Falta el título', 'Escribe un título para el anuncio', 'warning'); return; }
+  if (!items.length) { toast('Falta al menos un punto', 'Agrega al menos un punto al anuncio', 'warning'); return; }
+
+  const btn = event?.target?.closest('button');
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+
+    // Solo puede existir un anuncio activo a la vez: se desactivan los anteriores.
+    await sb.from('anuncios_sistema').update({ activo: false }).eq('activo', true);
+
+    const { error } = await sb.from('anuncios_sistema').insert({
+      titulo, items, activo: true, created_by: user?.email || null,
+    });
+    if (error) throw error;
+
+    toast('Anuncio lanzado', 'Todos los usuarios lo verán la próxima vez que entren al Dashboard', 'success');
+    limpiarFormAnuncio();
+    await renderAnuncioActivoPreview();
+  } catch (e) {
+    console.error('lanzarAnuncio:', e);
+    toast('Error al lanzar el anuncio', e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function loadCodes() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
