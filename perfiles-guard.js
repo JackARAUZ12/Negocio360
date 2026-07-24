@@ -32,6 +32,7 @@
     'compras.html':        { key: 'compras',        label: 'Compras',             icon: '🛒' },
     'gastos.html':         { key: 'gastos',         label: 'Gastos',              icon: '💸' },
     'caja.html':           { key: 'caja',           label: 'Caja / Pagos',        icon: '🏦' },
+    'creditos.html':       { key: 'creditos',       label: 'Créditos',            icon: '🧾' },
     'impuestos.html':      { key: 'impuestos',      label: 'Impuestos',           icon: '🧾' },
     'reportes.html':       { key: 'reportes',       label: 'Reportes',            icon: '📊' },
     'chat.html':           { key: 'chat',           label: 'Chat',                icon: '💬' },
