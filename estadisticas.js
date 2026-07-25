@@ -216,16 +216,19 @@ async function cargarTodo() {
   const uid = EST.userId;
 
   const [
-    ventas, ventasAnt, ventaDetalles,
+    ventas, ventasAnt,
     compras, gastos, gastosAnt,
     creditos, creditosCuotas,
     movFin, movFinAnt,
-    capital, productos, clientes,
+    capital, saldoReciente, productos, clientes,
     movImpuestos,
   ] = await Promise.all([
     sb.from('ventas').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to + 'T23:59:59'),
-    sb.from('ventas').select('total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', anterior.from).lte('fecha', anterior.to + 'T23:59:59'),
-    sb.from('venta_detalles').select('*').eq('auth_user_id', uid).gte('created_at', from).lte('created_at', to + 'T23:59:59'),
+    // FIX: se agregan impuesto y costo_total del período anterior — antes
+    // solo se traía "total" (con IVA incluido), así que la comparación de
+    // tendencia de ingresos no era manzanas-con-manzanas frente al período
+    // actual (que sí descuenta el IVA más abajo).
+    sb.from('ventas').select('total,impuesto,costo_total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', anterior.from).lte('fecha', anterior.to + 'T23:59:59'),
     sb.from('compras').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to),
     sb.from('gastos').select('*').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', from).lte('fecha', to),
     sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', anterior.from).lte('fecha', anterior.to),
@@ -234,10 +237,28 @@ async function cargarTodo() {
     sb.from('movimientos_financieros').select('*').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', from).lte('fecha', to).order('fecha', { ascending: true }),
     sb.from('movimientos_financieros').select('tipo_flujo, monto').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', anterior.from).lte('fecha', anterior.to),
     sb.from('capital_negocio').select('*').eq('auth_user_id', uid).eq('is_current', true).maybeSingle(),
+    // FIX: saldo de caja REAL más reciente — igual criterio que Reportes y
+    // el Dashboard. NO se limita al período de análisis seleccionado arriba,
+    // porque el saldo de caja "ahora mismo" no depende de qué rango de
+    // fechas estés mirando (antes sí dependía, y podía mostrar un saldo
+    // viejo o en 0 si no había movimientos dentro del período elegido).
+    sb.from('movimientos_financieros').select('saldo_resultante').eq('auth_user_id', uid).eq('estado', 'completado').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('productos').select('*').eq('auth_user_id', uid).eq('activo', true),
     sb.from('clientes').select('*').eq('auth_user_id', uid).eq('activo', true),
     sb.from('movimientos_impuestos').select('*').eq('auth_user_id', uid).gte('fecha', from).lte('fecha', to),
   ]);
+
+  // FIX: los detalles de venta se traen a partir de los venta_id que ya
+  // quedaron filtrados por "fecha" (arriba) — antes se filtraban aparte por
+  // "created_at", lo que podía traer un conjunto de líneas distinto al de
+  // las ventas del período (ganancia y rankings por producto/categoría
+  // quedaban descuadrados). Ahora ambos conjuntos siempre coinciden.
+  const ventaIds = (ventas.data || []).map(v => v.id);
+  let ventaDetalles = [];
+  if (ventaIds.length) {
+    const { data } = await sb.from('venta_detalles').select('*').eq('auth_user_id', uid).in('venta_id', ventaIds);
+    ventaDetalles = data || [];
+  }
 
   // Nombres de clientes para cruzar con creditos_cuotas.creditos.cliente_id
   const clienteIdsCred = [...new Set((creditosCuotas.data || []).map(c => c.creditos?.cliente_id).filter(Boolean))];
@@ -247,10 +268,17 @@ async function cargarTodo() {
     (cli || []).forEach(c => { clientesMap[c.id] = `${c.nombre || ''} ${c.apellido || ''}`.trim(); });
   }
 
+  // FIX: mapa producto_id → categoria para el ranking por categoría.
+  // venta_detalles NO guarda la categoría del producto (nunca la guardó),
+  // así que antes ese ranking siempre agrupaba todo en "Sin categoría".
+  // Se cruza con el catálogo de productos ya cargado.
+  const categoriaPorProducto = {};
+  (productos.data || []).forEach(p => { if (p.categoria) categoriaPorProducto[p.id] = p.categoria; });
+
   EST.data = {
     ventas: ventas.data || [],
     ventasAnt: ventasAnt.data || [],
-    ventaDetalles: ventaDetalles.data || [],
+    ventaDetalles,
     compras: compras.data || [],
     gastos: gastos.data || [],
     gastosAnt: gastosAnt.data || [],
@@ -260,10 +288,22 @@ async function cargarTodo() {
     movFin: movFin.data || [],
     movFinAnt: movFinAnt.data || [],
     capital: capital.data || null,
+    saldoActualReal: saldoReciente.data ? Number(saldoReciente.data.saldo_resultante) : null,
     productos: productos.data || [],
+    categoriaPorProducto,
     clientes: clientes.data || [],
     movImpuestos: movImpuestos.data || [],
   };
+}
+
+// Saldo de caja real a mostrar: prioriza el movimiento más reciente de
+// movimientos_financieros (sin filtrar por período) y, si no hay ninguno
+// aún, cae al registro de capital_negocio — mismo orden de prioridad que
+// usan Reportes y el Dashboard, para que los tres módulos siempre muestren
+// el mismo número.
+function saldoCajaActual(d) {
+  if (d.saldoActualReal !== null && d.saldoActualReal !== undefined) return d.saldoActualReal;
+  return d.capital?.monto ? parseFloat(d.capital.monto) : 0;
 }
 
 /* ============================================================
@@ -271,11 +311,27 @@ async function cargarTodo() {
    ============================================================ */
 function calcularSalud() {
   const d = EST.data;
-  const ingresos = d.ventas.reduce((s, v) => s + parseFloat(v.total || 0), 0);
-  const egresos  = d.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0)
-                  + d.compras.reduce((s, c) => s + parseFloat(c.total || 0), 0);
-  const ingresosAnt = d.ventasAnt.reduce((s, v) => s + parseFloat(v.total || 0), 0);
-  const egresosAnt  = d.gastosAnt.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
+
+  // FIX IVA: "total" de una venta incluye el IVA cobrado al cliente, que
+  // no es ingreso del negocio (se recauda para el fisco, se contabiliza
+  // aparte en Impuestos) — se resta, mismo criterio que ya corrigió
+  // Reportes. Antes esta pantalla inflaba los ingresos con el IVA incluido.
+  const ingresos = d.ventas.reduce((s, v) => s + (parseFloat(v.total || 0) - parseFloat(v.impuesto || 0)), 0);
+  // FIX MARGEN: el costo de lo vendido se toma de ventas.costo_total (el
+  // costo real de los productos/servicios efectivamente vendidos en el
+  // período). Antes se sumaban los gastos operativos MÁS las compras de
+  // inventario — pero una compra no es necesariamente el costo de lo que
+  // se vendió en este período (puede ser stock para vender después), así
+  // que mezclarla aquí inflaba o desinflaba el margen sin relación real
+  // con las ventas del período. Se usa el mismo criterio de "Ganancia
+  // Neta" que ya usa Reportes.
+  const costoVentas = d.ventas.reduce((s, v) => s + parseFloat(v.costo_total || 0), 0);
+  const gastosOp = d.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
+  const egresos  = costoVentas + gastosOp;
+
+  const ingresosAnt   = d.ventasAnt.reduce((s, v) => s + (parseFloat(v.total || 0) - parseFloat(v.impuesto || 0)), 0);
+  const costoVentasAnt = d.ventasAnt.reduce((s, v) => s + parseFloat(v.costo_total || 0), 0);
+  const egresosAnt    = costoVentasAnt + d.gastosAnt.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
 
   const margen = ingresos > 0 ? ((ingresos - egresos) / ingresos) * 100 : 0;
   const tendenciaIngresos = ingresosAnt > 0 ? ((ingresos - ingresosAnt) / ingresosAnt) * 100 : (ingresos > 0 ? 100 : 0);
@@ -285,7 +341,9 @@ function calcularSalud() {
   const cuotasTotal = d.creditosCuotas.length || 1;
   const morosidad = (cuotasVencidas.length / cuotasTotal) * 100;
 
-  const saldoCaja = d.capital?.monto ? parseFloat(d.capital.monto) : (d.movFin.length ? parseFloat(d.movFin[d.movFin.length - 1].saldo_resultante || 0) : 0);
+  // FIX: saldo de caja real, no limitado al período de análisis (ver
+  // saldoCajaActual arriba).
+  const saldoCaja = saldoCajaActual(d);
 
   // Puntaje 0-100: 40% margen, 25% tendencia de ingresos, 20% morosidad (invertida), 15% liquidez
   let score = 50;
@@ -348,7 +406,7 @@ function renderInsightsSalud(s) {
   const items = [];
 
   if (s.margen >= 20) {
-    items.push({ icon: '💚', bg: 'var(--success-soft)', title: 'Tu margen es saludable', text: `Por cada ${sym()} 100 que entra, te queda cerca de ${sym()} ${s.margen.toFixed(0)} de ganancia después de gastos y compras. Es un buen colchón para invertir o ahorrar.` });
+    items.push({ icon: '💚', bg: 'var(--success-soft)', title: 'Tu margen es saludable', text: `Por cada ${sym()} 100 que entra, te queda cerca de ${sym()} ${s.margen.toFixed(0)} de ganancia después de costos y gastos. Es un buen colchón para invertir o ahorrar.` });
   } else if (s.margen >= 0) {
     items.push({ icon: '🟡', bg: 'var(--warning-soft)', title: 'Margen ajustado', text: `Tu ganancia neta ronda el ${s.margen.toFixed(1)}% de lo que vendes. Cualquier gasto inesperado puede dejarte sin excedente. Vale la pena revisar tus gastos operativos.` });
   } else {
@@ -422,9 +480,15 @@ function renderChartIngresosEgresos() {
    ============================================================ */
 function renderRentabilidad() {
   const d = EST.data;
-  const ingresos = d.ventas.reduce((s, v) => s + parseFloat(v.total || 0), 0);
-  const ganancia = d.ventaDetalles.reduce((s, i) => s + parseFloat(i.ganancia || 0), 0);
-  const costoTotal = d.ventaDetalles.reduce((s, i) => s + (parseFloat(i.costo || 0) * parseFloat(i.cantidad || 0)), 0);
+  // FIX: ingresos, ganancia y costo se calculan a partir de la tabla
+  // "ventas" (igual que Reportes), no de venta_detalles:
+  //  - "total" incluye IVA, así que se resta "impuesto" para el ingreso real.
+  //  - la ganancia se recalcula SIEMPRE como ingreso neto - costo (no se usa
+  //    ningún campo de ganancia ya guardado), para que no se descuadre si
+  //    algún registro antiguo quedó con un valor desactualizado.
+  const ingresos = d.ventas.reduce((s, v) => s + (parseFloat(v.total || 0) - parseFloat(v.impuesto || 0)), 0);
+  const costoTotal = d.ventas.reduce((s, v) => s + parseFloat(v.costo_total || 0), 0);
+  const ganancia = ingresos - costoTotal;
   const margenGlobal = ingresos > 0 ? (ganancia / ingresos) * 100 : 0;
   const ticketPromedio = d.ventas.length ? ingresos / d.ventas.length : 0;
 
@@ -450,9 +514,13 @@ function renderRentabilidad() {
   renderRankingBars('ranking-productos', rankingProductos, 'ganancia');
 
   // Ranking por categoría (margen %)
+  // FIX: venta_detalles no guarda la categoría del producto — se cruza con
+  // d.categoriaPorProducto (armado en cargarTodo desde el catálogo). Antes
+  // se leía "i.categoria", un campo que nunca existió en esta tabla, así
+  // que todo caía siempre en "Sin categoría".
   const porCategoria = {};
   d.ventaDetalles.forEach(i => {
-    const key = i.categoria || 'Sin categoría';
+    const key = d.categoriaPorProducto[i.producto_id] || 'Sin categoría';
     if (!porCategoria[key]) porCategoria[key] = { ganancia: 0, subtotal: 0 };
     porCategoria[key].ganancia += parseFloat(i.ganancia || 0);
     porCategoria[key].subtotal += parseFloat(i.subtotal || 0);
@@ -607,7 +675,9 @@ function renderFlujo() {
 
   const dias = Math.max(1, diasEnRango());
   const promedioDiario = neto / dias;
-  const saldoActual = d.capital?.monto ? parseFloat(d.capital.monto) : (d.movFin.length ? parseFloat(d.movFin[d.movFin.length - 1].saldo_resultante || 0) : 0);
+  // FIX: saldo de caja real (ver saldoCajaActual), no limitado al período
+  // de análisis seleccionado.
+  const saldoActual = saldoCajaActual(d);
   const proyeccion30 = saldoActual + (promedioDiario * 30);
 
   document.getElementById('kpis-flujo').innerHTML = `
