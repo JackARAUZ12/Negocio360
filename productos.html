@@ -247,7 +247,19 @@
           <p>Administra tu catálogo, precios, costos y stock</p>
         </div>
         <div class="page-header-actions">
-          <a class="btn btn-secondary" href="plantilla_productos_negocio360.xlsx" download="plantilla_productos_negocio360.xlsx">📥 Descargar plantilla</a>
+          <div class="plantilla-dropdown" id="plantillaDropdown">
+            <button type="button" class="btn btn-secondary" onclick="togglePlantillaDropdown(event)">📥 Descargar plantilla ▾</button>
+            <div class="plantilla-dropdown-menu" id="plantillaDropdownMenu">
+              <a href="plantilla_productos_precio_fijo_negocio360.xlsx" download="plantilla_productos_precio_fijo_negocio360.xlsx">
+                <strong>Precio fijo</strong>
+                <span>Un solo precio de venta por producto/servicio</span>
+              </a>
+              <a href="plantilla_productos_escala_precios_negocio360.xlsx" download="plantilla_productos_escala_precios_negocio360.xlsx">
+                <strong>Escala de precios</strong>
+                <span>Varios precios (mayoreo, rangos, etc.) hasta 5 escalas</span>
+              </a>
+            </div>
+          </div>
           <button class="btn btn-secondary" onclick="abrirModalImportar()">📤 Importar Excel</button>
           <button class="btn btn-secondary" onclick="abrirModalNuevo('servicio')">🔧 Nuevo Servicio</button>
           <button class="btn btn-primary"   onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>
@@ -710,6 +722,18 @@
 <!-- ============================================================
      SCRIPT PRINCIPAL
      ============================================================ -->
+<script>
+  // Menú desplegable "Descargar plantilla" (Precio fijo / Escala de precios)
+  function togglePlantillaDropdown(ev) {
+    ev.stopPropagation();
+    document.getElementById('plantillaDropdownMenu')?.classList.toggle('open');
+  }
+  document.addEventListener('click', (ev) => {
+    const wrap = document.getElementById('plantillaDropdown');
+    const menu = document.getElementById('plantillaDropdownMenu');
+    if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
+  });
+</script>
 <script src="productos.js"></script>
 <script src="productos-importar.js"></script>
 
