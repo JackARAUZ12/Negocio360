@@ -1204,6 +1204,23 @@ async function abrirNuevaVenta() {
   const ps = document.getElementById('prod-search-input');     if(ps) ps.value='';
   const ss = document.getElementById('serv-search-input');     if(ss) ss.value='';
 
+  // Limpiar resultados de búsqueda abiertos de la venta anterior
+  const prodResults = document.getElementById('prod-results');
+  if (prodResults) { prodResults.innerHTML=''; prodResults.classList.remove('open'); }
+  const servResults = document.getElementById('serv-results');
+  if (servResults) { servResults.innerHTML=''; servResults.classList.remove('open'); }
+  const clientesResults = document.getElementById('clientes-results');
+  if (clientesResults) { clientesResults.innerHTML=''; clientesResults.classList.remove('open'); }
+  const clienteInfo = document.getElementById('cliente-seleccionado-info');
+  if (clienteInfo) { clienteInfo.style.display='none'; clienteInfo.innerHTML=''; }
+
+  // IMPORTANTE: refrescar el carrito visual (tablas de productos/servicios)
+  // para que no se siga mostrando el contenido de la venta anterior. Sin
+  // esto, S.carrito quedaba vacío pero el HTML aún mostraba las filas
+  // viejas, y al validar el paso 3 aparecía "Agrega al menos un producto"
+  // aunque en pantalla pareciera que sí había uno.
+  renderCarritoAmbos();
+
   // Reset UI de IVA
   const ivaSwitch = document.getElementById('iva-switch');
   const ivaInput  = document.getElementById('iva-porcentaje');
@@ -1274,13 +1291,15 @@ function actualizarStepsNav() {
 }
 
 function actualizarBotones() {
-  const btnAnt = document.getElementById('btn-anterior');
-  const btnSig = document.getElementById('btn-siguiente');
-  const btnCon = document.getElementById('btn-confirmar-venta');
+  const btnAnt    = document.getElementById('btn-anterior');
+  const btnSig    = document.getElementById('btn-siguiente');
+  const btnCon    = document.getElementById('btn-confirmar-venta');
+  const btnConImp = document.getElementById('btn-confirmar-venta-imprimir');
 
-  if (btnAnt) btnAnt.style.display = S.paso > 1 ? '' : 'none';
-  if (btnSig) btnSig.style.display = S.paso < S.totalPasos ? '' : 'none';
-  if (btnCon) btnCon.style.display = S.paso === S.totalPasos ? '' : 'none';
+  if (btnAnt)    btnAnt.style.display    = S.paso > 1 ? '' : 'none';
+  if (btnSig)    btnSig.style.display    = S.paso < S.totalPasos ? '' : 'none';
+  if (btnCon)    btnCon.style.display    = S.paso === S.totalPasos ? '' : 'none';
+  if (btnConImp) btnConImp.style.display = S.paso === S.totalPasos ? '' : 'none';
 }
 
 function pasoSiguiente() {
@@ -2061,12 +2080,18 @@ window.descargarReciboActual = descargarReciboActual;
 /* ============================================================
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
    ============================================================ */
-async function confirmarVenta() {
+async function confirmarVenta(conImpresion) {
+  conImpresion = !!conImpresion;
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
 
-  const btn = document.getElementById('btn-confirmar-venta');
-  if (btn) { btn.disabled=true; btn.textContent='Guardando…'; }
+  const btnDigital  = document.getElementById('btn-confirmar-venta');
+  const btnImprimir = document.getElementById('btn-confirmar-venta-imprimir');
+  const btn = conImpresion ? btnImprimir : btnDigital; // botón que disparó la acción
+  const btnTextoOriginal = btn ? btn.innerHTML : '';
+  if (btnDigital)  btnDigital.disabled  = true;
+  if (btnImprimir) btnImprimir.disabled = true;
+  if (btn) btn.textContent = 'Guardando…';
 
   try {
     S.observaciones = document.getElementById('venta-observaciones')?.value.trim() || '';
@@ -2262,6 +2287,19 @@ async function confirmarVenta() {
       detallesPayload
     );
 
+    // Si el usuario eligió "Cerrar venta e imprimir", abrir el ticket
+    // térmico con el mismo formato configurable de Venta rápida
+    // (no bloquea ni afecta lo ya guardado si algo sale mal aquí)
+    if (conImpresion) {
+      try {
+        await cargarConfigVentaRapida();
+        imprimirTicketNuevaVenta(ventaPayloadConIva, S.carrito, r);
+      } catch (eTicket) {
+        console.warn('No se pudo abrir el ticket de impresión:', eTicket);
+        showToast('La venta se guardó, pero no se pudo abrir el ticket de impresión', 'error');
+      }
+    }
+
     // Refrescar todo
     await Promise.allSettled([
       loadVentas(),
@@ -2278,7 +2316,9 @@ async function confirmarVenta() {
     console.error('confirmarVenta:', e);
     showToast('Error al registrar la venta: ' + (e.message||'intenta de nuevo'), 'error');
   } finally {
-    if (btn) { btn.disabled=false; btn.textContent='Confirmar venta'; }
+    if (btnDigital)  btnDigital.disabled  = false;
+    if (btnImprimir) btnImprimir.disabled = false;
+    if (btn) btn.innerHTML = btnTextoOriginal;
   }
 }
 
@@ -2330,11 +2370,39 @@ async function abrirVentaRapida() {
   }
 }
 
-function abrirConfigVentaRapida(esAjusteManual) {
+function abrirConfigVentaRapida(esAjusteManual, origen) {
   // Si el POS estaba abierto (el usuario dio clic en el ícono de ajustes), lo
   // ocultamos temporalmente y lo reabrimos al cerrar/guardar esta configuración.
   VR._editandoDesdePos = !!esAjusteManual;
-  if (esAjusteManual) closeModal('modal-vr-pos');
+  // origen: 'vr' (Venta rápida, comportamiento por defecto/original) o
+  // 'nv' (se abrió desde el engranaje de Nueva Venta). Determina a qué
+  // pantalla se debe volver al cerrar/guardar esta configuración.
+  VR._origen = origen === 'nv' ? 'nv' : 'vr';
+
+  if (VR._origen === 'nv') {
+    closeModal('modal-venta');
+  } else if (esAjusteManual) {
+    closeModal('modal-vr-pos');
+  }
+
+  // Título y secciones visibles: desde Nueva Venta solo tiene sentido
+  // configurar el formato del ticket (papel, datos del negocio, mensaje),
+  // no el IVA automático ni el auto-imprimir de Venta rápida.
+  const tituloEl    = document.getElementById('vrc-modal-title');
+  const subtituloEl = document.getElementById('vrc-modal-subtitle');
+  const seccionIva   = document.getElementById('vrc-seccion-iva');
+  const filaAutoImp  = document.getElementById('vrc-fila-autoimprimir');
+  if (VR._origen === 'nv') {
+    if (tituloEl)    tituloEl.textContent    = 'Configurar ticket de impresión';
+    if (subtituloEl) subtituloEl.textContent = 'Formato del ticket para tu impresora térmica (se usa en Venta rápida y en Nueva venta)';
+    if (seccionIva)  seccionIva.style.display  = 'none';
+    if (filaAutoImp) filaAutoImp.style.display = 'none';
+  } else {
+    if (tituloEl)    tituloEl.textContent    = 'Configurar Venta rápida';
+    if (subtituloEl) subtituloEl.textContent = 'Impuestos y formato de ticket para tu impresora térmica';
+    if (seccionIva)  seccionIva.style.display  = '';
+    if (filaAutoImp) filaAutoImp.style.display = '';
+  }
 
   const c = VR.config || {};
   const ivaActivo = c.iva_activo != null ? !!c.iva_activo : !!(S.empresaConfig?.maneja_iva);
@@ -2367,6 +2435,11 @@ function setEl2Value(id, val) {
 
 function cerrarConfigVentaRapida() {
   closeModal('modal-vr-config');
+  if (VR._origen === 'nv') {
+    // Veníamos del engranaje de Nueva Venta: volver al wizard tal como estaba.
+    openModal('modal-venta');
+    return;
+  }
   // Si veníamos del ícono de ajustes dentro del POS y se cancela, regresamos al POS.
   // Si era la primera vez (aún no configurado) y se cancela, simplemente no se abre nada.
   if (VR._editandoDesdePos && VR.config?.configurado) openModal('modal-vr-pos');
@@ -2409,9 +2482,14 @@ async function guardarConfigVentaRapida() {
       .select('*').single();
     if (error) throw error;
     VR.config = data;
-    showToast('✅ Configuración de Venta rápida guardada', 'success');
     closeModal('modal-vr-config');
-    abrirPantallaVentaRapida();
+    if (VR._origen === 'nv') {
+      showToast('✅ Configuración del ticket guardada', 'success');
+      openModal('modal-venta');
+    } else {
+      showToast('✅ Configuración de Venta rápida guardada', 'success');
+      abrirPantallaVentaRapida();
+    }
   } catch(e) {
     console.error('guardarConfigVentaRapida:', e);
     showToast('Error al guardar configuración: ' + (e.message||'intenta de nuevo'), 'error');
@@ -2895,6 +2973,97 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
 }
 
 /* ============================================================
+   TICKET DE IMPRESIÓN — "Nueva Venta" (wizard manual)
+   Reutiliza la MISMA configuración de ticket que Venta rápida
+   (tabla configuracion_venta_rapida: ancho de papel, nombre del
+   negocio, RUC, teléfono, dirección y mensaje al pie), para que
+   configurar el ticket desde cualquiera de los dos módulos
+   aplique a ambos. Es una función aislada e independiente de
+   imprimirTicketVentaRapida(): no la modifica ni depende de ella,
+   para no arriesgar el funcionamiento ya probado de Venta rápida.
+   ============================================================ */
+function imprimirTicketNuevaVenta(venta, items, resumen) {
+  const cfg   = VR.config || {};
+  const anchosValidos = ['58mm','76mm','80mm'];
+  const ancho = anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm';
+  const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
+  const fechaTxt = new Date().toLocaleString('es-NI');
+
+  const filas = (items||[]).map(i => `
+    <tr>
+      <td colspan="2">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</td>
+    </tr>
+    <tr>
+      <td>${i.cantidad} x ${fmt(i.precio)}</td>
+      <td style="text-align:right">${fmt(i.subtotal!=null ? i.subtotal : i.cantidad*i.precio)}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Ticket ${esc(venta.numero_venta)}</title>
+<style>
+  @page { size: ${ancho} auto; margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    width: ${ancho}; margin: 0 auto; padding: 6px 8px;
+    font-family: 'Courier New', monospace; font-size: 11px; color: #000;
+  }
+  .centro { text-align: center; }
+  .negrita { font-weight: 700; }
+  .linea { border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1px 0; font-size: 11px; }
+  .total-row td { font-weight: 700; font-size: 13px; padding-top: 4px; }
+</style></head>
+<body>
+  <div class="centro negrita" style="font-size:13px">${esc(nombreNegocio)}</div>
+  ${cfg.ruc_ticket ? `<div class="centro">RUC: ${esc(cfg.ruc_ticket)}</div>` : ''}
+  ${cfg.direccion_ticket ? `<div class="centro">${esc(cfg.direccion_ticket)}</div>` : ''}
+  ${cfg.telefono_ticket ? `<div class="centro">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
+  <div class="linea"></div>
+  <div>Venta: ${esc(venta.numero_venta)}</div>
+  <div>Fecha: ${esc(fechaTxt)}</div>
+  <div>Cliente: ${esc(venta.cliente_nombre)}</div>
+  <div>Pago: ${esc(venta.metodo_pago_nombre)}</div>
+  <div class="linea"></div>
+  <table>${filas}</table>
+  <div class="linea"></div>
+  <table>
+    <tr><td>Subtotal</td><td style="text-align:right">${fmt(resumen.subtotal)}</td></tr>
+    ${resumen.descuento>0 ? `<tr><td>Descuento</td><td style="text-align:right">-${fmt(resumen.descuento)}</td></tr>` : ''}
+    ${S.ivaActivo ? `<tr><td>IVA (${S.ivaPorcentaje}%)</td><td style="text-align:right">${fmt(resumen.impuestos)}</td></tr>` : ''}
+    <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${fmt(resumen.total)}</td></tr>
+  </table>
+  <div class="linea"></div>
+  <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=380,height=600');
+  if (!win) {
+    showToast('⚠️ El navegador bloqueó la ventana de impresión (permite pop-ups para imprimir el ticket)', 'error');
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  let yaImprimio = false;
+  const imprimirUnaVez = () => {
+    if (yaImprimio) return;
+    yaImprimio = true;
+    win.focus();
+    win.print();
+  };
+  win.onload = imprimirUnaVez;
+  setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 400);
+}
+
+/* ---------- Abrir configuración del ticket desde "Nueva Venta" ---------- */
+async function abrirConfigTicketNuevaVenta() {
+  if (!S.userId) { showToast('Espera a que cargue tu sesión…', 'error'); return; }
+  await cargarConfigVentaRapida();
+  abrirConfigVentaRapida(true, 'nv');
+}
+
+/* ============================================================
    FILTROS Y BÚSQUEDA
    ============================================================ */
 window.setFiltro      = setFiltro;
@@ -2918,6 +3087,8 @@ window.pasoSiguiente  = pasoSiguiente;
 window.pasoAnterior   = pasoAnterior;
 window.seleccionarMetodoPago = seleccionarMetodoPago;
 window.confirmarVenta = confirmarVenta;
+window.abrirConfigTicketNuevaVenta = abrirConfigTicketNuevaVenta;
+window.imprimirTicketNuevaVenta    = imprimirTicketNuevaVenta;
 window.anularVenta    = anularVenta;
 window.abrirConfirmarAnular = abrirConfirmarAnular;
 window.toggleTheme    = toggleTheme;
