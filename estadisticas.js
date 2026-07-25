@@ -193,6 +193,31 @@ function rangoPeriodo() {
   return { from: desde, to };
 }
 function rangoPeriodoAnterior() {
+  const hoy = new Date();
+
+  // FIX RAREZA: "mes" y "año" son períodos anclados al calendario (van del
+  // día 1 hasta hoy), así que su "período anterior" debe ser el mes/año
+  // calendario anterior COMPLETO — no una ventana de la misma cantidad de
+  // días. Antes, el día 1 de cada mes, rangoPeriodo() daba un rango de un
+  // solo día (ej: 1 ago – 1 ago), y esta función restaba esa misma cantidad
+  // de días (1) hacia atrás, comparando "hoy" contra "ayer" en vez de
+  // "este mes" contra "el mes pasado completo". Esto hacía que las
+  // variaciones (%) mostradas en Estadísticas el día 1 de cada mes fueran
+  // erráticas y engañosas.
+  if (EST.periodo === 'mes') {
+    const y = hoy.getFullYear(), m = hoy.getMonth(); // m es 0-indexado
+    const desdeAnt = new Date(y, m - 1, 1);
+    const hastaAnt = new Date(y, m, 0); // día 0 del mes actual = último día del mes anterior
+    return { from: ymd(desdeAnt), to: ymd(hastaAnt) };
+  }
+  if (EST.periodo === 'anio') {
+    const y = hoy.getFullYear();
+    return { from: `${y-1}-01-01`, to: `${y-1}-12-31` };
+  }
+
+  // "Trimestre" es una ventana móvil (últimos 3 meses hasta hoy), no un
+  // período anclado al calendario — ahí sí tiene sentido comparar contra
+  // la misma cantidad de días inmediatamente anteriores.
   const { from, to } = rangoPeriodo();
   const dFrom = new Date(from + 'T12:00:00'), dTo = new Date(to + 'T12:00:00');
   const diasMs = dTo - dFrom;
