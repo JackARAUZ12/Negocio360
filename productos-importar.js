@@ -1,16 +1,21 @@
 /* ============================================================
    PRODUCTOS-IMPORTAR.JS
-   Importación masiva de Productos/Servicios desde la plantilla
-   oficial de Negocio360 (.xlsx).
+   Importación masiva de Productos/Servicios desde las plantillas
+   oficiales de Negocio360 (.xlsx).
 
-   Módulo independiente y separado por responsabilidad, tal como
-   se pidió en la arquitectura:
+   Hay DOS plantillas oficiales, cada una con sus propias columnas:
+     - "Precio fijo"        → un único PrecioVenta por registro.
+     - "Escala de precios"  → hasta 5 escalas (Nombre + Precio) por registro.
+   El sistema detecta automáticamente cuál de las dos subió el usuario
+   (por una firma oculta dentro del archivo) y valida/importa según
+   corresponda. No es necesario elegir nada manualmente.
+
+   Módulo independiente y separado por responsabilidad:
      1) Servicio lector de Excel   → leerArchivoExcel()
-     2) DTO de importación         → filaAJson() / construirPayloadRpc()
-     3) Servicio de validación     → validarFilas()
-     4) Servicio de vista previa   → construirVistaPrevia()
-     5) Reporte de errores         → (usa los errores de validarFilas)
-     6) Servicio de importación    → ejecutarImportacion()
+     2) Servicio de validación     → validarFilas()
+     3) Servicio de vista previa   → construirVistaPrevia()
+     4) Reporte de errores         → (usa los errores de validarFilas)
+     5) Servicio de importación    → ejecutarImportacion()
 
    No modifica productos.js. Reutiliza sus variables globales
    (supabaseClient, STATE, showToast, cargarProductos, etc.) porque
@@ -19,33 +24,57 @@
 'use strict';
 
 /* ============================================================
-   1) CONFIGURACIÓN — debe calzar EXACTO con generar_plantilla.py
+   1) CONFIGURACIÓN — debe calzar EXACTO con generar_plantillas.py
    ============================================================ */
-const IMPORT_COLUMNAS = [
-  'TipoRegistro', 'Nombre', 'Descripcion', 'Categoria', 'SKU',
-  'MarcaProveedor', 'CodigoBarras', 'Costo', 'TipoPrecio', 'PrecioVenta',
-  'Escala1Cantidad', 'Escala1Precio', 'Escala2Cantidad', 'Escala2Precio',
-  'Escala3Cantidad', 'Escala3Precio', 'Escala4Cantidad', 'Escala4Precio',
-  'Escala5Cantidad', 'Escala5Precio', 'StockInicial', 'StockMinimo',
-];
-const IMPORT_FIRMA_PLANTILLA = 'NEGOCIO360_PLANTILLA_PRODUCTOS_V1';
 const IMPORT_MAX_ESCALAS = 5;
+
+const IMPORT_PLANTILLAS = {
+  FIJO: {
+    firma: 'NEGOCIO360_PLANTILLA_PRODUCTOS_FIJO_V1',
+    nombre: 'Precio fijo',
+    columnas: [
+      'TipoRegistro', 'Nombre', 'Descripcion', 'Categoria', 'SKU',
+      'MarcaProveedor', 'CodigoBarras', 'Costo', 'PrecioVenta',
+      'StockInicial', 'StockMinimo',
+    ],
+  },
+  ESCALA: {
+    firma: 'NEGOCIO360_PLANTILLA_PRODUCTOS_ESCALA_V1',
+    nombre: 'Escala de precios',
+    columnas: (() => {
+      const base = ['TipoRegistro', 'Nombre', 'Descripcion', 'Categoria', 'SKU',
+                    'MarcaProveedor', 'CodigoBarras', 'Costo'];
+      for (let n = 1; n <= IMPORT_MAX_ESCALAS; n++) base.push('Escala' + n + 'Nombre', 'Escala' + n + 'Precio');
+      base.push('StockInicial', 'StockMinimo');
+      return base;
+    })(),
+  },
+};
 
 const IMPORT_STATE = {
   filasValidas: [],   // DTOs listos para enviar al RPC
   errores: [],        // [{fila, campo, motivo}]
   preview: null,
   procesando: false,
+  tipoPlantilla: null, // 'FIJO' | 'ESCALA'
 };
 
 /* ============================================================
    2) SERVICIO LECTOR DE EXCEL
-   Solo acepta la plantilla oficial: valida firma oculta + encabezados.
+   Detecta automáticamente cuál plantilla oficial es (por firma
+   oculta) y valida que sus encabezados coincidan exactamente.
    ============================================================ */
+function detectarPlantilla(wb) {
+  const metaSheet = wb.Sheets['_plantilla_meta'];
+  const firma = metaSheet ? metaSheet['B1']?.v : null;
+  if (!firma) return null;
+  return Object.keys(IMPORT_PLANTILLAS).find(key => IMPORT_PLANTILLAS[key].firma === firma) || null;
+}
+
 function leerArchivoExcel(file) {
   return new Promise((resolve, reject) => {
     if (!window.XLSX) { reject(new Error('No se pudo cargar el lector de Excel. Recarga la página e intenta de nuevo.')); return; }
-    if (!/\.xlsx$/i.test(file.name)) { reject(new Error('El archivo debe tener extensión .xlsx (la de la plantilla oficial).')); return; }
+    if (!/\.xlsx$/i.test(file.name)) { reject(new Error('El archivo debe tener extensión .xlsx (la de alguna de las plantillas oficiales).')); return; }
 
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
@@ -53,26 +82,25 @@ function leerArchivoExcel(file) {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' });
 
-        // Firma de plantilla oficial (hoja muy oculta)
-        const metaSheet = wb.Sheets['_plantilla_meta'];
-        const firma = metaSheet ? metaSheet['B1']?.v : null;
-        if (firma !== IMPORT_FIRMA_PLANTILLA) {
-          reject(new Error('Este archivo no es la plantilla oficial de Negocio360. Descarga la plantilla actual con el botón "📥 Descargar plantilla" y no cambies su estructura.'));
+        const tipoPlantilla = detectarPlantilla(wb);
+        if (!tipoPlantilla) {
+          reject(new Error('Este archivo no es ninguna de las plantillas oficiales de Negocio360. Descarga la plantilla "Precio fijo" o "Escala de precios" con el botón "📥 Descargar plantilla" y no cambies su estructura.'));
           return;
         }
+        const plantilla = IMPORT_PLANTILLAS[tipoPlantilla];
 
         const sheet = wb.Sheets['Productos'];
         if (!sheet) {
-          reject(new Error('El archivo no contiene la hoja "Productos" de la plantilla oficial.'));
+          reject(new Error('El archivo no contiene la hoja "Productos" de la plantilla "' + plantilla.nombre + '".'));
           return;
         }
 
         // Encabezados (fila 1) — deben coincidir exacto, en el mismo orden
         const filasArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
         const encabezado = (filasArray[0] || []).map(h => String(h).trim());
-        const encabezadoOk = IMPORT_COLUMNAS.every((col, i) => encabezado[i] === col);
+        const encabezadoOk = plantilla.columnas.every((col, i) => encabezado[i] === col);
         if (!encabezadoOk) {
-          reject(new Error('Las columnas del archivo no coinciden con la plantilla oficial. Descarga la plantilla actual e intenta de nuevo sin modificar los encabezados.'));
+          reject(new Error('Las columnas del archivo no coinciden con la plantilla "' + plantilla.nombre + '". Descarga la plantilla actual e intenta de nuevo sin modificar los encabezados.'));
           return;
         }
 
@@ -83,14 +111,14 @@ function leerArchivoExcel(file) {
           const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
           if (vacio) continue;
           const obj = { _filaExcel: r + 1 }; // fila 1 = encabezado, así que datos empiezan en fila 2
-          IMPORT_COLUMNAS.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
+          plantilla.columnas.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
           filas.push(obj);
         }
 
-        resolve(filas);
+        resolve({ tipoPlantilla, filas });
       } catch (err) {
         console.error('leerArchivoExcel:', err);
-        reject(new Error('No se pudo procesar el archivo. Verifica que sea un .xlsx válido de la plantilla oficial.'));
+        reject(new Error('No se pudo procesar el archivo. Verifica que sea un .xlsx válido de alguna plantilla oficial.'));
       }
     };
     reader.readAsArrayBuffer(file);
@@ -101,17 +129,20 @@ function leerArchivoExcel(file) {
    3) SERVICIO DE VALIDACIÓN
    Aplica todas las reglas del negocio y arma el reporte de errores
    fila por fila, además de las filas válidas ya normalizadas (DTO).
+   Las reglas de precio cambian según tipoPlantilla ('FIJO'/'ESCALA'),
+   ya que cada plantilla solo trae las columnas que le corresponden.
    ============================================================ */
 function esVacio(v) { return v === '' || v === null || v === undefined; }
 function numeroValido(v) { const n = parseFloat(v); return !isNaN(n) && isFinite(n); }
 
-function validarFilas(filas) {
+function validarFilas(filas, tipoPlantilla) {
   const errores = [];
   const validas = [];
+  const esEscala = tipoPlantilla === 'ESCALA';
 
   // Para detectar SKU duplicado dentro del propio archivo
   const skusEnArchivo = new Set();
-  // SKUs y marcas ya existentes en el catálogo del usuario (cache ya cargado por productos.js)
+  // SKUs ya existentes en el catálogo del usuario (cache ya cargado por productos.js)
   const skusExistentes = new Set(
     (STATE.productos || []).filter(p => p.sku).map(p => p.sku.trim().toLowerCase())
   );
@@ -141,55 +172,42 @@ function validarFilas(filas) {
       costo = parseFloat(costoRaw);
     }
 
-    // --- TipoPrecio ---
-    const tipoPrecioRaw = String(row.TipoPrecio || '').trim().toUpperCase();
-    if (!['FIJO', 'ESCALA'].includes(tipoPrecioRaw)) {
-      agregarError('TipoPrecio', 'Debe ser FIJO o ESCALA');
-    }
-    const esEscala = tipoPrecioRaw === 'ESCALA';
-
-    // --- PrecioVenta (solo si FIJO) ---
+    // --- Precio (FIJO) o Escalas (ESCALA) — según la plantilla usada ---
     let precioVenta = 0;
-    if (tipoPrecioRaw === 'FIJO') {
+    const escalas = [];
+
+    if (!esEscala) {
+      // Plantilla "Precio fijo"
       if (esVacio(row.PrecioVenta) || !numeroValido(row.PrecioVenta) || parseFloat(row.PrecioVenta) < 0) {
-        agregarError('PrecioVenta', 'PrecioVenta requerido (≥ 0) cuando TipoPrecio = FIJO');
+        agregarError('PrecioVenta', 'PrecioVenta es obligatorio y debe ser ≥ 0');
       } else {
         precioVenta = parseFloat(row.PrecioVenta);
       }
-    }
-
-    // --- Escalas (solo si ESCALA; se ignoran por completo si FIJO) ---
-    const escalas = [];
-    if (esEscala) {
+    } else {
+      // Plantilla "Escala de precios"
       for (let n = 1; n <= IMPORT_MAX_ESCALAS; n++) {
-        const cRaw = row[`Escala${n}Cantidad`];
-        const pRaw = row[`Escala${n}Precio`];
-        const cLlena = !esVacio(cRaw);
-        const pLlena = !esVacio(pRaw);
-        if (!cLlena && !pLlena) continue; // no se llenó esta escala, se omite
+        const nomRaw = row['Escala' + n + 'Nombre'];
+        const precRaw = row['Escala' + n + 'Precio'];
+        const nomLlena = !esVacio(nomRaw) && String(nomRaw).trim() !== '';
+        const precLlena = !esVacio(precRaw);
+        if (!nomLlena && !precLlena) continue; // no se llenó esta escala, se omite
 
-        if (cLlena !== pLlena) {
-          agregarError(`Escala${n}`, `Escala ${n} incompleta (falta Cantidad o Precio)`);
+        if (nomLlena !== precLlena) {
+          agregarError('Escala' + n, 'Escala ' + n + ' incompleta (falta Nombre o Precio)');
           continue;
         }
-        if (!numeroValido(cRaw) || parseFloat(cRaw) <= 0) {
-          agregarError(`Escala${n}Cantidad`, `Escala ${n}: la cantidad debe ser mayor a 0`);
+        if (!numeroValido(precRaw) || parseFloat(precRaw) < 0) {
+          agregarError('Escala' + n + 'Precio', 'Escala ' + n + ': el precio debe ser un número ≥ 0');
           continue;
         }
-        if (!numeroValido(pRaw) || parseFloat(pRaw) < 0) {
-          agregarError(`Escala${n}Precio`, `Escala ${n}: el precio debe ser mayor o igual a 0`);
-          continue;
-        }
-        const cantidad = parseFloat(cRaw);
         escalas.push({
-          cantidad,
-          precio: parseFloat(pRaw),
-          nombre: `Desde ${cantidad % 1 === 0 ? cantidad : cantidad.toFixed(2)} unidades`,
+          nombre: String(nomRaw).trim(),
+          precio: parseFloat(precRaw),
           orden: n - 1,
         });
       }
       if (!escalas.length) {
-        agregarError('Escalas', 'Agrega al menos una escala completa (Cantidad y Precio) cuando TipoPrecio = ESCALA');
+        agregarError('Escalas', 'Agrega al menos una escala completa (Nombre y Precio)');
       }
     }
 
@@ -229,7 +247,7 @@ function validarFilas(filas) {
       return; // esta fila no se agrega a "validas"
     }
 
-    // --- DTO normalizado ---
+    // --- DTO normalizado (idéntico sin importar de qué plantilla vino) ---
     validas.push({
       tipo:             esProducto ? 'producto' : 'servicio',
       nombre,
@@ -281,7 +299,7 @@ function construirVistaPrevia(validas) {
 }
 
 /* ============================================================
-   6) SERVICIO DE IMPORTACIÓN
+   5) SERVICIO DE IMPORTACIÓN
    Una sola llamada RPC = una sola transacción en la base de datos.
    Si cualquier registro falla, NADA queda guardado.
    ============================================================ */
@@ -315,6 +333,7 @@ function abrirModalImportar() {
   IMPORT_STATE.errores = [];
   IMPORT_STATE.preview = null;
   IMPORT_STATE.procesando = false;
+  IMPORT_STATE.tipoPlantilla = null;
   const inputFile = document.getElementById('inputImportarExcel');
   if (inputFile) inputFile.value = '';
   renderPasoInicial();
@@ -333,9 +352,10 @@ function renderPasoInicial() {
       <div style="font-size:40px;margin-bottom:8px">📊</div>
       <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Importa muchos productos o servicios a la vez</h3>
       <p style="font-size:13px;color:var(--text-secondary);max-width:440px;margin:0 auto 20px;line-height:1.6">
-        Solo se acepta la <strong>plantilla oficial de Negocio360</strong>. Descárgala, complétala
-        y súbela aquí. El sistema valida todo antes de guardar nada — si algún registro tiene un
-        error, no se importa ningún producto hasta que lo corrijas.
+        Solo se aceptan las <strong>plantillas oficiales de Negocio360</strong>: "Precio fijo" o
+        "Escala de precios" (botón "📥 Descargar plantilla"). El sistema detecta solo cuál de las
+        dos subiste y valida todo antes de guardar nada — si algún registro tiene un error, no se
+        importa ningún producto hasta que lo corrijas.
       </p>
       <button class="btn btn-primary" onclick="document.getElementById('inputImportarExcel').click()">
         📤 Seleccionar archivo .xlsx
@@ -388,16 +408,17 @@ function renderPasoErrores(errores) {
   `;
 }
 
-function renderPasoPreview(preview) {
+function renderPasoPreview(preview, tipoPlantilla) {
   const tarjeta = (label, valor, color) => `
     <div style="flex:1;min-width:120px;background:var(--bg-app);border-radius:var(--radius-md);padding:14px;text-align:center">
       <div style="font-size:22px;font-weight:800;color:${color}">${valor}</div>
       <div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px">${label}</div>
     </div>`;
+  const nombrePlantilla = (IMPORT_PLANTILLAS[tipoPlantilla] && IMPORT_PLANTILLAS[tipoPlantilla].nombre) || tipoPlantilla;
 
   document.getElementById('importarBody').innerHTML = `
     <div style="margin-bottom:14px;padding:10px 14px;background:var(--success-soft, #DCFCE7);border-radius:var(--radius-md);color:var(--success);font-size:13px;font-weight:600">
-      ✅ El archivo es válido. Revisa el resumen antes de confirmar.
+      ✅ El archivo es válido (plantilla "${escHtml(nombrePlantilla)}"). Revisa el resumen antes de confirmar.
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${tarjeta('Registros totales', preview.total, 'var(--accent)')}
@@ -425,7 +446,7 @@ function renderPasoExito(resultado) {
       <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">¡Importación completada!</h3>
       <p style="font-size:13px;color:var(--text-secondary)">
         ${resultado.productos} producto${resultado.productos===1?'':'s'} y ${resultado.servicios} servicio${resultado.servicios===1?'':'s'} agregados
-        ${resultado.marcas_creadas ? `· ${resultado.marcas_creadas} marca${resultado.marcas_creadas===1?'':'s'}/proveedor${resultado.marcas_creadas===1?'':'es'} nuevos` : ''}
+        ${resultado.marcas_creadas ? '· ' + resultado.marcas_creadas + ' marca' + (resultado.marcas_creadas===1?'':'s') + '/proveedor' + (resultado.marcas_creadas===1?'':'es') + ' nuevos' : ''}
       </p>
     </div>
   `;
@@ -444,14 +465,15 @@ async function onArchivoImportSeleccionado(ev) {
   renderPasoProcesando('Leyendo y validando el archivo…');
 
   try {
-    const filas = await leerArchivoExcel(file);
+    const { tipoPlantilla, filas } = await leerArchivoExcel(file);
+    IMPORT_STATE.tipoPlantilla = tipoPlantilla;
 
     if (!filas.length) {
       renderPasoErrores([{ fila: '—', campo: 'Archivo', motivo: 'No se encontraron filas con datos para importar' }]);
       return;
     }
 
-    const { errores, validas } = validarFilas(filas);
+    const { errores, validas } = validarFilas(filas, tipoPlantilla);
     IMPORT_STATE.errores = errores;
     IMPORT_STATE.filasValidas = validas;
 
@@ -462,7 +484,7 @@ async function onArchivoImportSeleccionado(ev) {
 
     const preview = construirVistaPrevia(validas);
     IMPORT_STATE.preview = preview;
-    renderPasoPreview(preview);
+    renderPasoPreview(preview, tipoPlantilla);
 
   } catch (e) {
     console.error('onArchivoImportSeleccionado:', e);
@@ -481,7 +503,7 @@ async function confirmarImportacionFinal() {
   try {
     const resultado = await ejecutarImportacion(IMPORT_STATE.filasValidas);
     renderPasoExito(resultado);
-    showToast('success', 'Importación completada', `${resultado.productos} productos y ${resultado.servicios} servicios agregados`);
+    showToast('success', 'Importación completada', resultado.productos + ' productos y ' + resultado.servicios + ' servicios agregados');
 
     // Refrescar el catálogo, escalas y marcas para reflejar lo recién importado
     await Promise.all([cargarProductos(), cargarEscalas()]);
