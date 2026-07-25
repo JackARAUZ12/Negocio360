@@ -96,6 +96,13 @@
         Anuncios
       </button>
 
+      <button class="nav-item" data-section="notificaciones">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notificaciones
+      </button>
+
       <div class="nav-divider"></div>
     </nav>
 
@@ -380,6 +387,7 @@
                   <th>Teléfono</th>
                   <th>Plan</th>
                   <th>Estado</th>
+                  <th>Conexión</th>
                   <th>Fecha Registro</th>
                   <th>Último Pago</th>
                   <th>Acciones</th>
@@ -549,6 +557,75 @@
         </div>
         <div class="card-body" id="anuncio-activo-preview">
           <p style="color:var(--text-muted, #888)">Cargando…</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: NOTIFICACIONES (feed de actualizaciones)
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-notificaciones">
+      <div class="page-header">
+        <h1>Notificaciones</h1>
+        <p>Publica actualizaciones que se acumulan en el módulo "Notificaciones" del cliente. Se eliminan automáticamente pasados 30 días.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Publicar notificación</div>
+            <div class="card-subtitle">Todos los usuarios la verán acumulada junto a las anteriores, con badge de "no leída"</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="notif-form-titulo" class="form-control" placeholder="Ej: Nuevo módulo de Estadísticas disponible" />
+          </div>
+          <div class="form-group">
+            <label>Mensaje</label>
+            <textarea id="notif-form-mensaje" class="form-control" rows="4" placeholder="Describe la actualización, aviso o mantenimiento..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="notif-form-tipo" class="form-control">
+              <option value="actualizacion">Actualización</option>
+              <option value="nueva_funcion">Nueva función</option>
+              <option value="mantenimiento">Mantenimiento</option>
+              <option value="aviso">Aviso</option>
+              <option value="urgente">Urgente</option>
+            </select>
+          </div>
+          <button class="btn-icon btn-primary" onclick="publicarNotificacion()" style="margin-top:6px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            Publicar a todos los usuarios
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Historial publicado</div>
+            <div class="card-subtitle">Últimas notificaciones (se eliminan automáticamente a los 30 días)</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Tipo</th>
+                  <th>Publicado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="notificaciones-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
