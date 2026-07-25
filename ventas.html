@@ -888,9 +888,14 @@
         <div class="modal-title" id="mv-title">Nueva Venta</div>
         <div class="modal-subtitle" id="mv-num">Generando número…</div>
       </div>
-      <button class="modal-close" onclick="cerrarModalVenta()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="modal-close" title="Configurar ticket de impresión" onclick="abrirConfigTicketNuevaVenta()" style="position:static">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="modal-close" onclick="cerrarModalVenta()" style="position:static">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
     </div>
     <div class="modal-body">
 
@@ -1107,10 +1112,15 @@
       <button class="btn-primary" id="btn-siguiente" onclick="pasoSiguiente()">
         Siguiente →
       </button>
+      <button class="btn-ghost" id="btn-confirmar-venta-imprimir" style="display:none"
+        onclick="confirmarVenta(true)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Cerrar venta e imprimir
+      </button>
       <button class="btn-primary" id="btn-confirmar-venta" style="display:none;background:var(--success)"
-        onclick="confirmarVenta()">
+        onclick="confirmarVenta(false)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        Confirmar venta
+        Cerrar venta
       </button>
     </div>
   </div>
@@ -1124,8 +1134,8 @@
   <div class="modal-box">
     <div class="modal-header">
       <div>
-        <div class="modal-title">Configurar Venta rápida</div>
-        <div class="modal-subtitle">Impuestos y formato de ticket para tu impresora térmica</div>
+        <div class="modal-title" id="vrc-modal-title">Configurar Venta rápida</div>
+        <div class="modal-subtitle" id="vrc-modal-subtitle">Impuestos y formato de ticket para tu impresora térmica</div>
       </div>
       <button class="modal-close" onclick="cerrarConfigVentaRapida()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1133,6 +1143,7 @@
     </div>
     <div class="modal-body">
 
+      <div id="vrc-seccion-iva">
       <div class="form-section-title">Impuesto (IVA)</div>
       <div class="iva-block">
         <div class="iva-left">
@@ -1146,6 +1157,7 @@
           <input type="number" id="vrc-iva-porcentaje" value="15" min="0" max="100" step="0.01" disabled/>
           <span>%</span>
         </div>
+      </div>
       </div>
 
       <div class="form-section-title" style="margin-top:18px">Ticket / comprobante</div>
@@ -1184,7 +1196,7 @@
           <label>Mensaje al pie del ticket</label>
           <input type="text" class="form-input" id="vrc-mensaje" placeholder="Ej: ¡Gracias por su compra!"/>
         </div>
-        <div class="form-group full-col" style="display:flex;align-items:center;gap:10px">
+        <div class="form-group full-col" id="vrc-fila-autoimprimir" style="display:flex;align-items:center;gap:10px">
           <input type="checkbox" id="vrc-autoimprimir" style="width:16px;height:16px" checked/>
           <label for="vrc-autoimprimir" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
             Imprimir el ticket automáticamente al cerrar cada venta
