@@ -35,7 +35,9 @@
     'creditos.html':       { key: 'creditos',       label: 'Créditos',            icon: '🧾' },
     'impuestos.html':      { key: 'impuestos',      label: 'Impuestos',           icon: '🧾' },
     'reportes.html':       { key: 'reportes',       label: 'Reportes',            icon: '📊' },
+    'estadisticas.html':   { key: 'estadisticas',   label: 'Estadísticas',        icon: '📈' },
     'chat.html':           { key: 'chat',           label: 'Chat',                icon: '💬' },
+    'notificaciones.html': { key: 'notificaciones', label: 'Notificaciones',      icon: '🔔' },
     'personalizacion.html':{ key: 'personalizacion',label: 'Personalización',     icon: '🎨' },
   };
   const MODULO_ORDEN = Object.values(MODULOS).map(m => m.key);
@@ -596,6 +598,113 @@
   }
 
   // ------------------------------------------------------------
+  // Presencia: marca "ultima_conexion" en usuarios cada cierto
+  // tiempo mientras la pestaña esté abierta, para que admin.html
+  // pueda mostrar "en línea" / "última conexión" por usuario.
+  // ------------------------------------------------------------
+  const PG_HEARTBEAT_MS = 45000; // 45s
+
+  async function latirPresencia() {
+    try {
+      if (!PG.client || !PG.authUserId) return;
+      await PG.client
+        .from('usuarios')
+        .update({ ultima_conexion: new Date().toISOString() })
+        .eq('auth_user_id', PG.authUserId);
+    } catch (e) { /* best-effort: nunca interrumpe la página */ }
+  }
+
+  function iniciarHeartbeat() {
+    if (PG._heartbeatIniciado) return;
+    PG._heartbeatIniciado = true;
+    latirPresencia();
+    setInterval(() => {
+      if (document.visibilityState === 'visible') latirPresencia();
+    }, PG_HEARTBEAT_MS);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') latirPresencia();
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Badge flotante de notificaciones: cuenta cuántos avisos
+  // publicados por el admin (tabla notificaciones) aún no ha
+  // leído este usuario, y enlaza a notificaciones.html.
+  // No se muestra en notificaciones.html (ya está ahí adentro).
+  // ------------------------------------------------------------
+  const PG_NOTIF_POLL_MS = 60000; // 60s
+
+  async function contarNoLeidas() {
+    if (!PG.client || !PG.authUserId) return 0;
+    const { data: todas, error: e1 } = await PG.client
+      .from('notificaciones')
+      .select('id')
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    if (e1 || !todas) return 0;
+    if (todas.length === 0) return 0;
+    const { data: leidas, error: e2 } = await PG.client
+      .from('notificaciones_leidas')
+      .select('notificacion_id')
+      .eq('auth_user_id', PG.authUserId);
+    if (e2) return 0;
+    const idsLeidas = new Set((leidas || []).map(l => l.notificacion_id));
+    return todas.filter(n => !idsLeidas.has(n.id)).length;
+  }
+
+  function renderBadge(count) {
+    let btn = document.getElementById('pg-notif-badge');
+    if (!btn) {
+      btn = document.createElement('div');
+      btn.id = 'pg-notif-badge';
+      btn.title = 'Notificaciones';
+      btn.style.cssText = `
+        position:fixed; bottom:22px; right:22px; z-index:9998;
+        width:52px; height:52px; border-radius:50%;
+        background:#5a5af4; color:#fff; display:flex;
+        align-items:center; justify-content:center;
+        box-shadow:0 6px 20px rgba(90,90,244,0.35);
+        cursor:pointer; font-size:22px; user-select:none;
+        transition:transform .15s ease;
+      `;
+      btn.onmouseenter = () => btn.style.transform = 'scale(1.08)';
+      btn.onmouseleave = () => btn.style.transform = 'scale(1)';
+      btn.innerHTML = `
+        <span style="pointer-events:none;">🔔</span>
+        <span id="pg-notif-count" style="
+          position:absolute; top:-4px; right:-4px;
+          background:#ef4444; color:#fff; font-size:11px;
+          font-weight:700; line-height:1; padding:4px 6px;
+          border-radius:999px; display:none;
+        "></span>
+      `;
+      btn.addEventListener('click', () => { location.href = 'notificaciones.html'; });
+      document.body.appendChild(btn);
+    }
+    const countEl = btn.querySelector('#pg-notif-count');
+    if (count > 0) {
+      countEl.textContent = count > 99 ? '99+' : String(count);
+      countEl.style.display = 'block';
+    } else {
+      countEl.style.display = 'none';
+    }
+  }
+
+  async function actualizarBadge() {
+    try {
+      const n = await contarNoLeidas();
+      renderBadge(n);
+    } catch (e) { /* best-effort */ }
+  }
+
+  function iniciarBadgeNotificaciones() {
+    if (currentFile() === 'notificaciones.html') return; // no se muestra dentro del propio módulo
+    if (PG._badgeIniciado) return;
+    PG._badgeIniciado = true;
+    actualizarBadge();
+    setInterval(actualizarBadge, PG_NOTIF_POLL_MS);
+  }
+
+  // ------------------------------------------------------------
   // Arranque
   // ------------------------------------------------------------
   async function init() {
@@ -607,6 +716,12 @@
 
     PG.authUserId = session.user.id;
     PG.authEmail  = session.user.email || null;
+
+    // Presencia (última conexión / en línea) y badge de notificaciones:
+    // corren siempre que haya sesión, independientemente del sistema de
+    // perfiles/PIN. Best-effort: cualquier fallo se ignora en silencio.
+    iniciarHeartbeat();
+    iniciarBadgeNotificaciones();
 
     // Si el dueño de la cuenta desactivó el sistema multiusuario en
     // configuración.html, no se pide selector ni PIN: se entra directo.
