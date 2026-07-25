@@ -183,6 +183,34 @@
       border-radius:var(--radius-sm);font-size:14px;font-weight:600;transition:all var(--transition)}
     .iva-hero-actions .btn-hero-dash:hover{background:rgba(255,255,255,.22)}
 
+    /* ===================================================== 
+       ACUMULADORES POR IMPUESTO — una tarjeta por cada impuesto
+       del catálogo (IVA siempre primero, con badge "Principal").
+       Reemplaza al único hero combinado de antes.
+    ===================================================== */
+    .acum-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;margin-bottom:20px}
+    .acum-card{background:linear-gradient(135deg,var(--accent) 0%,var(--accent-4) 100%);
+      color:#fff;border-radius:var(--radius-lg);padding:20px 22px;position:relative;overflow:hidden;
+      box-shadow:var(--shadow-md);display:flex;flex-direction:column}
+    .acum-card::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;
+      background:rgba(255,255,255,.08);border-radius:50%}
+    .acum-card.otro{background:linear-gradient(135deg,var(--accent-5) 0%,var(--accent-4) 100%)}
+    .acum-badge{position:relative;z-index:1;display:inline-flex;align-self:flex-start;padding:2px 9px;
+      background:rgba(255,255,255,.22);border-radius:100px;font-size:10.5px;font-weight:700;
+      text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+    .acum-nombre{position:relative;z-index:1;font-size:13px;font-weight:700;opacity:.9;margin-bottom:8px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .acum-valor{position:relative;z-index:1;font-size:26px;font-weight:800;line-height:1.15;margin-bottom:4px;
+      font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+    .acum-valor .currency-symbol{font-size:.55em;font-weight:700;opacity:.85;vertical-align:super}
+    .acum-sub{position:relative;z-index:1;font-size:11.5px;opacity:.8;margin-bottom:16px}
+    .btn-acum-pagar{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;
+      gap:6px;padding:9px 16px;background:#fff;color:var(--accent);border-radius:var(--radius-sm);
+      font-size:12.5px;font-weight:700;transition:all var(--transition);width:100%}
+    .btn-acum-pagar:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.18)}
+    .btn-acum-pagar:disabled{opacity:.55;cursor:not-allowed;transform:none}
+    .catalogo-limite{font-size:11.5px;color:var(--text-muted);padding:0 20px 4px}
+
     /* MINI KPI ROW */
     .mini-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
     .mini-kpi-card{background:var(--bg-surface);border:1px solid var(--border);
@@ -482,28 +510,14 @@
       <!-- INFO BOX -->
       <div class="info-box">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <p>Cuando activas el <strong>IVA</strong> en una venta, ese monto no entra a tu Caja: se acumula aquí. Usa el botón <strong>Pagar</strong> cuando hagas el pago de impuestos a la entidad correspondiente — esto reiniciará el conteo a cero y quedará registrado en el historial.</p>
+        <p>Cada impuesto tiene su <strong>propio acumulador</strong>, separado de los demás. Cuando activas un impuesto en una venta o en un crédito, ese monto no entra a tu Caja: se acumula en la tarjeta de ese impuesto específico. Usa su botón <strong>Pagar</strong> cuando hagas el pago a la entidad correspondiente — esto reinicia solo ese acumulador a cero y queda registrado en el historial.</p>
       </div>
 
-      <!-- HERO: TOTAL ACUMULADO -->
-      <div class="iva-hero fade-in">
-        <div class="iva-hero-inner">
-          <div class="iva-hero-label">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            IVA acumulado pendiente de pago
-          </div>
-          <div class="iva-hero-value" id="iva-total"><span class="currency-symbol">C$</span>0.00</div>
-          <div class="iva-hero-sub" id="iva-total-sub">Aún no se ha acumulado impuesto</div>
-          <div class="iva-hero-actions">
-            <button class="btn-hero-pagar" id="btn-pagar-iva" onclick="abrirConfirmarPago()" disabled>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Pagar impuestos
-            </button>
-            <button class="btn-hero-dash" onclick="navigate('dashboard.html')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-              Ir al Dashboard
-            </button>
-          </div>
+      <!-- ACUMULADORES POR IMPUESTO (IVA primero, luego los demás) -->
+      <div class="acum-grid" id="acumuladores-grid">
+        <div class="acum-card">
+          <div class="acum-nombre">Cargando…</div>
+          <div class="acum-valor"><span class="currency-symbol">C$</span>0.00</div>
         </div>
       </div>
 
@@ -549,14 +563,15 @@
             <thead>
               <tr>
                 <th>Fecha</th>
+                <th>Impuesto</th>
                 <th>Tipo</th>
                 <th>Concepto</th>
                 <th>Monto</th>
-                <th>Saldo resultante</th>
+                <th>Saldo global</th>
               </tr>
             </thead>
             <tbody id="impuestos-tbody">
-              <tr><td colspan="5" class="empty-cell">Cargando movimientos…</td></tr>
+              <tr><td colspan="6" class="empty-cell">Cargando movimientos…</td></tr>
             </tbody>
           </table>
         </div>
@@ -569,13 +584,14 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             Catálogo de impuestos
           </div>
-          <button class="btn-secondary" onclick="abrirNuevoImpuesto()">
+          <button class="btn-secondary" id="btn-nuevo-impuesto" onclick="abrirNuevoImpuesto()">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo impuesto
           </button>
         </div>
+        <p class="catalogo-limite" id="catalogo-contador">Cargando…</p>
         <p style="font-size:12.5px;color:var(--text-muted);padding:0 20px 12px">
-          El IVA es solo uno más de estos impuestos — puedes crear otros (retenciones, impuestos municipales, etc.) y usarlos también desde el módulo de Créditos.
+          El IVA es solo uno más de estos impuestos — puedes crear otros (retenciones, impuestos municipales, etc.) y usarlos también desde el módulo de Créditos. Cada impuesto que crees tendrá su propio acumulador arriba, hasta un máximo de 10 impuestos en total.
         </p>
         <div class="table-wrap">
           <table>
@@ -629,7 +645,7 @@
 <div class="modal-overlay" id="modal-pagar" onclick="if(event.target===this)closeModal('modal-pagar')">
   <div class="modal-box">
     <div class="modal-header">
-      <span class="modal-title">Pagar impuestos</span>
+      <span class="modal-title">Pagar impuesto: <span id="modal-pagar-nombre">—</span></span>
       <button class="modal-close" onclick="closeModal('modal-pagar')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -640,7 +656,7 @@
       </div>
       <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">¿Confirmar el pago?</h3>
       <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
-        Se registrará el pago de <strong id="modal-pagar-monto">—</strong> y el conteo de impuestos acumulados volverá a <strong>C$ 0.00</strong>. Esta acción queda guardada en el historial y no se puede deshacer.
+        Se registrará el pago de <strong id="modal-pagar-monto">—</strong> de <strong id="modal-pagar-nombre-2">este impuesto</strong> y su acumulador volverá a <strong>C$ 0.00</strong>. Los demás impuestos no se ven afectados. Esta acción queda guardada en el historial y no se puede deshacer.
       </p>
     </div>
     <div class="modal-footer">
@@ -663,7 +679,7 @@ const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const S = { userId:null, userEmail:null, moneda:'C$', empresaConfig:{}, saldoActual:0, movimientos:[] };
+const S = { userId:null, userEmail:null, moneda:'C$', empresaConfig:{}, saldoActual:0, movimientos:[], movimientosTodos:[], catalogoImpuestos:[], ivaCatalogoId:null, pagando:null };
 
 /* HELPERS
    FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC;
@@ -688,6 +704,7 @@ function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function round2(n) { return Math.round((Number(n||0) + Number.EPSILON) * 100) / 100; }
 
 /* THEME */
 function applyTheme(t) {
@@ -806,7 +823,7 @@ function renderUserInfo(user, email) {
 ===================================================== */
 async function cargarImpuestos() {
   const tbody = document.getElementById('impuestos-tbody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Cargando movimientos…</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Cargando movimientos…</td></tr>';
 
   try {
     const { data, error } = await sb.from('movimientos_impuestos').select('*')
@@ -817,47 +834,119 @@ async function cargarImpuestos() {
     if (error) throw error;
     S.movimientos = data || [];
 
-    // Saldo actual = saldo_resultante del movimiento más reciente
+    // Saldo GLOBAL (todos los impuestos combinados) = saldo_resultante del
+    // movimiento más reciente. Se conserva igual que antes porque Dashboard
+    // y Reportes ya dependen de este número para el total general pendiente.
     S.saldoActual = S.movimientos.length ? Number(S.movimientos[0].saldo_resultante) || 0 : 0;
 
-    renderHero();
+    // NUEVO: traer TODOS los movimientos (sin límite de 100, solo las
+    // columnas necesarias) para poder calcular el saldo acumulado REAL de
+    // cada impuesto por separado. Es una tabla de bajo volumen (un registro
+    // por venta con impuesto o por cuota de crédito con impuesto), así que
+    // traerla completa es seguro y no afecta el rendimiento del historial
+    // visible (que se sigue mostrando limitado a 100 filas).
+    const { data: todosData, error: errTodos } = await sb.from('movimientos_impuestos')
+      .select('tipo_movimiento, monto, impuesto_id, impuesto_nombre, fecha')
+      .eq('auth_user_id', S.userId);
+    if (errTodos) throw errTodos;
+    S.movimientosTodos = todosData || [];
+
+    renderAcumuladores();
     renderTabla();
     renderMiniKPIs();
   } catch(e) {
     console.warn('cargarImpuestos:', e);
     S.movimientos = [];
+    S.movimientosTodos = [];
     S.saldoActual = 0;
-    renderHero();
+    renderAcumuladores();
     if (tbody) tbody.innerHTML = `
-      <tr><td colspan="5" class="empty-cell">
+      <tr><td colspan="6" class="empty-cell">
         <div class="empty-icon">📋</div>
         <p>Aún no hay movimientos de impuestos registrados.</p>
       </td></tr>`;
   }
 }
 
-function renderHero() {
-  const totalEl = document.getElementById('iva-total');
-  const subEl   = document.getElementById('iva-total-sub');
-  const btnPagar= document.getElementById('btn-pagar-iva');
+/* =====================================================
+   AGRUPACIÓN POR IMPUESTO ("bucket")
+   - impuesto_id vacío  → IVA (así lo insertan ventas.js/clientes.js)
+   - impuesto_id = id de IVA en catálogo → también IVA (por si un crédito
+     usó explícitamente el impuesto "IVA" del catálogo)
+   - impuesto_id de cualquier otro impuesto → ese impuesto específico
+===================================================== */
+function esImpuestoIva(imp) {
+  if (!imp) return false;
+  return imp.categoria === 'iva' || (imp.nombre||'').trim().toLowerCase() === 'iva';
+}
+function bucketDeMovimiento(m) {
+  if (!m.impuesto_id) return 'IVA';
+  if (S.ivaCatalogoId && m.impuesto_id === S.ivaCatalogoId) return 'IVA';
+  return m.impuesto_id;
+}
+function calcularSaldoBucket(bucketKey) {
+  const lista = S.movimientosTodos || [];
+  const entradas = lista.filter(m => m.tipo_movimiento === 'IVA_VENTA' && bucketDeMovimiento(m) === bucketKey)
+    .reduce((s,m) => s + Number(m.monto||0), 0);
+  const salidas = lista.filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO' && bucketDeMovimiento(m) === bucketKey)
+    .reduce((s,m) => s + Number(m.monto||0), 0);
+  return round2(entradas - salidas);
+}
 
-  totalEl.innerHTML = `<span class="currency-symbol">${sym()}</span>${Number(S.saldoActual).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  if (S.saldoActual > 0) {
-    subEl.textContent = 'Este monto se ha acumulado a partir del IVA cobrado en tus ventas';
-    if (btnPagar) btnPagar.disabled = false;
-  } else {
-    subEl.textContent = 'Aún no se ha acumulado impuesto';
-    if (btnPagar) btnPagar.disabled = true;
+function renderAcumuladores() {
+  const cont = document.getElementById('acumuladores-grid');
+  if (!cont) return;
+
+  const lista = S.catalogoImpuestos || [];
+  if (!lista.length) {
+    cont.innerHTML = `<div class="acum-card"><div class="acum-nombre">IVA</div>
+      <div class="acum-valor"><span class="currency-symbol">${sym()}</span>0.00</div>
+      <div class="acum-sub">Cargando…</div></div>`;
+    return;
   }
+
+  // IVA siempre primero; el resto, en el orden en que el usuario los creó
+  // (si la fila trae created_at) o, si no, en el orden ya devuelto.
+  const iva   = lista.find(esImpuestoIva);
+  const otros = lista.filter(i => !esImpuestoIva(i));
+  if (otros.every(i => i.created_at)) {
+    otros.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+  }
+  const ordenados = iva ? [iva, ...otros] : otros;
+
+  cont.innerHTML = ordenados.map(imp => {
+    const esIva      = esImpuestoIva(imp);
+    const bucketKey  = esIva ? 'IVA' : imp.id;
+    const saldo      = calcularSaldoBucket(bucketKey);
+    const disabled   = saldo <= 0;
+    return `
+      <div class="acum-card ${esIva ? '' : 'otro'}">
+        ${esIva ? '<div class="acum-badge">Principal</div>' : ''}
+        <div class="acum-nombre" title="${esc(imp.nombre)}">${esc(imp.nombre)}</div>
+        <div class="acum-valor"><span class="currency-symbol">${sym()}</span>${Number(saldo).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        <div class="acum-sub">${saldo>0 ? 'Pendiente de pago' : 'Sin saldo acumulado'}</div>
+        <button class="btn-acum-pagar" ${disabled?'disabled':''} onclick="abrirConfirmarPago('${bucketKey}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Pagar
+        </button>
+      </div>`;
+  }).join('');
 }
 
 function renderMiniKPIs() {
   const mesStart = startOfMonthISO();
-  const ivaMes = S.movimientos
-    .filter(m => m.tipo_movimiento === 'IVA_VENTA' && (m.fecha||'') >= mesStart)
+  const todos = S.movimientosTodos || [];
+
+  // FIX: antes este KPI sumaba CUALQUIER movimiento tipo 'IVA_VENTA' sin
+  // importar el impuesto (mezclaba IVA con otros impuestos personalizados
+  // cobrados desde Créditos). Ahora filtra solo el bucket de IVA.
+  const ivaMes = todos
+    .filter(m => m.tipo_movimiento === 'IVA_VENTA' && bucketDeMovimiento(m) === 'IVA' && (m.fecha||'') >= mesStart)
     .reduce((s,m) => s + (Number(m.monto)||0), 0);
 
-  const pagosTotal = S.movimientos
+  // Total pagado histórico: combinado de TODOS los impuestos (resumen
+  // general), usando el histórico completo (no solo las últimas 100 filas).
+  const pagosTotal = todos
     .filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO')
     .reduce((s,m) => s + (Number(m.monto)||0), 0);
 
@@ -868,13 +957,21 @@ function renderMiniKPIs() {
   document.getElementById('iva-ultimo-pago').textContent = ultimoPago ? fmtFecha(ultimoPago.created_at || ultimoPago.fecha) : 'Sin pagos aún';
 }
 
+function nombreImpuestoDeMovimiento(m) {
+  if (!m.impuesto_id) return 'IVA';
+  if (S.ivaCatalogoId && m.impuesto_id === S.ivaCatalogoId) return 'IVA';
+  if (m.impuesto_nombre) return m.impuesto_nombre;
+  const found = (S.catalogoImpuestos||[]).find(i => i.id === m.impuesto_id);
+  return found ? found.nombre : 'Otro impuesto';
+}
+
 function renderTabla() {
   const tbody = document.getElementById('impuestos-tbody');
   if (!tbody) return;
 
   if (!S.movimientos.length) {
     tbody.innerHTML = `
-      <tr><td colspan="5" class="empty-cell">
+      <tr><td colspan="6" class="empty-cell">
         <div class="empty-icon">📋</div>
         <p>Aún no hay movimientos de impuestos registrados.</p>
       </td></tr>`;
@@ -883,10 +980,11 @@ function renderTabla() {
 
   tbody.innerHTML = S.movimientos.map(m => {
     const esPago = m.tipo_movimiento === 'PAGO_IMPUESTO';
-    const etiqueta = esPago ? 'Pago' : (m.impuesto_nombre || 'IVA venta');
+    const etiqueta = esPago ? 'Pago' : 'Acumulación';
     return `
     <tr>
       <td class="td-fecha">${fmtFecha(m.created_at || m.fecha)}</td>
+      <td><b>${esc(nombreImpuestoDeMovimiento(m))}</b></td>
       <td><span class="tipo-badge ${esPago?'pago':'iva'}">${esc(etiqueta)}</span></td>
       <td>${esc(m.concepto||'—')}</td>
       <td class="td-monto ${esPago?'out':'in'}">${esPago?'-':'+'}${fmt(m.monto)}</td>
@@ -899,7 +997,6 @@ function renderTabla() {
    CATÁLOGO DE IMPUESTOS (IVA + personalizados)
    Misma tabla `impuestos` que usa el módulo de Créditos.
 ===================================================== */
-S.catalogoImpuestos = [];
 
 async function asegurarIvaEnCatalogo() {
   try {
@@ -921,15 +1018,32 @@ async function cargarCatalogoImpuestos() {
     const { data, error } = await sb.from('impuestos').select('*').eq('auth_user_id', S.userId).order('nombre');
     if (error) throw error;
     S.catalogoImpuestos = data || [];
-    if (!tbody) return;
-    tbody.innerHTML = S.catalogoImpuestos.length ? S.catalogoImpuestos.map(i => `
-      <tr>
-        <td><b>${esc(i.nombre)}</b></td>
-        <td>${esc(i.categoria||'—')}</td>
-        <td>${i.tipo_valor==='porcentaje' ? Number(i.valor)+'%' : fmt(i.valor)}</td>
-        <td><span class="badge-estado ${i.estado?'on':'off'}">${i.estado?'Activo':'Inactivo'}</span></td>
-        <td><button class="btn-ghost" onclick="toggleEstadoImpuesto('${i.id}', ${!i.estado})">${i.estado?'Desactivar':'Activar'}</button></td>
-      </tr>`).join('') : '<tr><td colspan="5" class="empty-cell">Sin impuestos registrados</td></tr>';
+    S.ivaCatalogoId = (S.catalogoImpuestos.find(esImpuestoIva) || {}).id || null;
+
+    const LIMITE = 10;
+    const contadorEl = document.getElementById('catalogo-contador');
+    const btnNuevo    = document.getElementById('btn-nuevo-impuesto');
+    if (contadorEl) {
+      contadorEl.textContent = `${S.catalogoImpuestos.length}/${LIMITE} impuestos creados` +
+        (S.catalogoImpuestos.length >= LIMITE ? ' — límite alcanzado' : '');
+    }
+    if (btnNuevo) btnNuevo.disabled = S.catalogoImpuestos.length >= LIMITE;
+
+    if (tbody) {
+      tbody.innerHTML = S.catalogoImpuestos.length ? S.catalogoImpuestos.map(i => `
+        <tr>
+          <td><b>${esc(i.nombre)}</b></td>
+          <td>${esc(i.categoria||'—')}</td>
+          <td>${i.tipo_valor==='porcentaje' ? Number(i.valor)+'%' : fmt(i.valor)}</td>
+          <td><span class="badge-estado ${i.estado?'on':'off'}">${i.estado?'Activo':'Inactivo'}</span></td>
+          <td><button class="btn-ghost" onclick="toggleEstadoImpuesto('${i.id}', ${!i.estado})">${i.estado?'Desactivar':'Activar'}</button></td>
+        </tr>`).join('') : '<tr><td colspan="5" class="empty-cell">Sin impuestos registrados</td></tr>';
+    }
+
+    // El catálogo pudo cargar después que los movimientos (o cambiar tras
+    // crear/activar un impuesto) — refrescar las tarjetas de acumuladores
+    // para que reflejen el catálogo actual.
+    renderAcumuladores();
   } catch (e) {
     console.warn('cargarCatalogoImpuestos:', e);
     if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">No se pudo cargar el catálogo</td></tr>';
@@ -937,6 +1051,11 @@ async function cargarCatalogoImpuestos() {
 }
 
 function abrirNuevoImpuesto() {
+  const LIMITE = 10;
+  if ((S.catalogoImpuestos||[]).length >= LIMITE) {
+    showToast(`Ya tienes ${LIMITE} impuestos creados (el máximo permitido). Desactiva o elimina uno para poder crear otro.`, 'error');
+    return;
+  }
   document.getElementById('ni-nombre').value = '';
   document.getElementById('ni-categoria').value = '';
   document.getElementById('ni-tipo-valor').value = 'porcentaje';
@@ -946,6 +1065,12 @@ function abrirNuevoImpuesto() {
 }
 
 async function guardarImpuesto() {
+  const LIMITE = 10;
+  if ((S.catalogoImpuestos||[]).length >= LIMITE) {
+    showToast(`Ya tienes ${LIMITE} impuestos creados (el máximo permitido).`, 'error');
+    closeModal('modal-nuevo-impuesto');
+    return;
+  }
   const nombre = document.getElementById('ni-nombre').value.trim();
   const categoria = document.getElementById('ni-categoria').value.trim() || 'otro';
   const tipoValor = document.getElementById('ni-tipo-valor').value;
@@ -980,9 +1105,22 @@ async function toggleEstadoImpuesto(id, activar) {
 /* =====================================================
    PAGAR IMPUESTOS
 ===================================================== */
-function abrirConfirmarPago() {
-  if (S.saldoActual <= 0) return;
-  document.getElementById('modal-pagar-monto').textContent = fmt(S.saldoActual);
+function abrirConfirmarPago(bucketKey) {
+  if (!bucketKey) return;
+  const imp = bucketKey === 'IVA'
+    ? (S.catalogoImpuestos||[]).find(esImpuestoIva) || { nombre: 'IVA' }
+    : (S.catalogoImpuestos||[]).find(i => i.id === bucketKey);
+  if (!imp) return;
+
+  const saldo = calcularSaldoBucket(bucketKey);
+  if (saldo <= 0) return;
+
+  S.pagando = { bucketKey, nombre: imp.nombre, monto: saldo };
+  document.getElementById('modal-pagar-monto').textContent = fmt(saldo);
+  const nombreEl  = document.getElementById('modal-pagar-nombre');
+  const nombreEl2 = document.getElementById('modal-pagar-nombre-2');
+  if (nombreEl)  nombreEl.textContent  = imp.nombre;
+  if (nombreEl2) nombreEl2.textContent = imp.nombre;
   openModal('modal-pagar');
 }
 
@@ -991,22 +1129,38 @@ async function pagarImpuestos() {
   if (btn) btn.disabled = true;
 
   try {
-    const montoPagado = S.saldoActual;
-    if (montoPagado <= 0) { closeModal('modal-pagar'); return; }
+    if (!S.pagando) { closeModal('modal-pagar'); return; }
+    const { bucketKey, nombre, monto: montoPagado } = S.pagando;
+    if (!montoPagado || montoPagado <= 0) { closeModal('modal-pagar'); return; }
+
+    // La cadena global saldo_anterior/saldo_resultante se mantiene intacta
+    // (Dashboard y Reportes dependen de ella para el "total pendiente"
+    // combinado de TODOS los impuestos): solo se le resta la porción de
+    // este impuesto específico, sin afectar el saldo de los demás.
+    const { data: ultMov } = await sb.from('movimientos_impuestos')
+      .select('saldo_resultante').eq('auth_user_id', S.userId)
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    const saldoGlobalAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    const saldoGlobalRes = Math.max(0, round2(saldoGlobalAnt - montoPagado));
+
+    const impuestoId = bucketKey === 'IVA' ? null : bucketKey;
 
     const { error } = await sb.from('movimientos_impuestos').insert({
       auth_user_id:     S.userId,
       tipo_movimiento:  'PAGO_IMPUESTO',
-      concepto:         'Pago de impuestos (IVA)',
+      concepto:         `Pago de impuesto: ${nombre}`,
       monto:            montoPagado,
-      saldo_anterior:   montoPagado,
-      saldo_resultante: 0,
+      saldo_anterior:   saldoGlobalAnt,
+      saldo_resultante: saldoGlobalRes,
+      impuesto_id:      impuestoId,
+      impuesto_nombre:  nombre,
       fecha:            todayISO(),
     });
     if (error) throw error;
 
     closeModal('modal-pagar');
-    showToast(`✅ Pago de ${fmt(montoPagado)} registrado. Saldo en cero.`, 'success');
+    showToast(`✅ Pago de ${fmt(montoPagado)} (${nombre}) registrado. Su acumulador volvió a cero.`, 'success');
+    S.pagando = null;
     await cargarImpuestos();
   } catch(e) {
     console.error('pagarImpuestos:', e);
@@ -1061,8 +1215,8 @@ async function initImpuestos() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    await cargarImpuestos();
     await cargarCatalogoImpuestos();
+    await cargarImpuestos();
 
   } catch(err) {
     console.error('initImpuestos:', err);
