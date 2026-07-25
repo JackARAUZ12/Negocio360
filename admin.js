@@ -101,6 +101,7 @@ function navigate(section) {
   if (section === 'codes')     loadCodes();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
+  if (section === 'notificaciones') loadNotificacionesSection();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
@@ -466,7 +467,7 @@ async function loadUsers() {
   try {
     const { data, error } = await sb
       .from('usuarios')
-      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -482,7 +483,7 @@ async function loadUsers() {
 
 function showUsersLoader() {
   document.getElementById('users-tbody').innerHTML = `
-    <tr><td colspan="10" style="text-align:center; padding:48px; color:var(--text-muted)">
+    <tr><td colspan="11" style="text-align:center; padding:48px; color:var(--text-muted)">
       <div class="loader-spinner" style="margin:0 auto 12px"></div>
       <div>Cargando usuarios...</div>
     </td></tr>`;
@@ -490,7 +491,7 @@ function showUsersLoader() {
 
 function renderUsersEmpty() {
   document.getElementById('users-tbody').innerHTML = `
-    <tr><td colspan="10">
+    <tr><td colspan="11">
       <div class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -520,6 +521,7 @@ function renderUsersTable(users) {
       <td>${escHtml(u.telefono || '—')}</td>
       <td>${planBadge(u.plan)}</td>
       <td>${estadoBadge(u.estado_cuenta)}</td>
+      <td>${conexionBadge(u.ultima_conexion)}</td>
       <td>${formatDate(u.created_at)}</td>
       <td>${u.fecha_ultimo_pago ? formatDate(u.fecha_ultimo_pago) : '<span style="color:var(--text-muted)">Sin registro</span>'}</td>
       <td>
@@ -1049,6 +1051,103 @@ async function lanzarAnuncio() {
     toast('Error al lanzar el anuncio', e.message, 'error');
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// ── NOTIFICACIONES (feed de actualizaciones para los clientes) ─────
+const NOTIF_TIPO_LABEL = {
+  actualizacion:  { label: 'Actualización',  cls: 'badge-info' },
+  nueva_funcion:  { label: 'Nueva función',  cls: 'badge-success' },
+  mantenimiento:  { label: 'Mantenimiento',  cls: 'badge-warning' },
+  aviso:          { label: 'Aviso',          cls: 'badge-purple' },
+  urgente:        { label: 'Urgente',        cls: 'badge-danger' },
+};
+
+async function loadNotificacionesSection() {
+  const tbody = document.getElementById('notificaciones-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-muted)">
+    <div class="loader-spinner" style="margin:0 auto 10px"></div>Cargando…</td></tr>`;
+  try {
+    const { data, error } = await sb.from('notificaciones')
+      .select('*').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    renderNotificacionesTabla(data || []);
+  } catch (e) {
+    console.error('loadNotificacionesSection:', e);
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-muted)">
+      No se pudo cargar el historial de notificaciones.</td></tr>`;
+  }
+}
+
+function renderNotificacionesTabla(items) {
+  const tbody = document.getElementById('notificaciones-tbody');
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-muted)">
+      Aún no has publicado ninguna notificación.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items.map(n => {
+    const tipo = NOTIF_TIPO_LABEL[n.tipo] || { label: n.tipo, cls: 'badge' };
+    return `
+      <tr>
+        <td>
+          <div style="font-weight:600">${escHtml(n.titulo)}</div>
+          <div style="font-size:12px;color:var(--text-muted);max-width:420px;white-space:normal">${escHtml(n.mensaje)}</div>
+        </td>
+        <td><span class="badge ${tipo.cls}">${escHtml(tipo.label)}</span></td>
+        <td>${formatDateTimeShort(n.created_at)}<div style="font-size:11px;color:var(--text-muted)">${escHtml(n.creado_por || '')}</div></td>
+        <td>
+          <button class="btn-icon btn-danger btn-sm" onclick="eliminarNotificacion('${n.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Eliminar
+          </button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+async function publicarNotificacion() {
+  const titulo  = document.getElementById('notif-form-titulo').value.trim();
+  const mensaje = document.getElementById('notif-form-mensaje').value.trim();
+  const tipo    = document.getElementById('notif-form-tipo').value;
+
+  if (!titulo)  { toast('Falta el título', 'Escribe un título para la notificación', 'warning'); return; }
+  if (!mensaje) { toast('Falta el mensaje', 'Escribe el contenido de la notificación', 'warning'); return; }
+
+  const btn = event?.target?.closest('button');
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('notificaciones').insert({
+      titulo, mensaje, tipo, creado_por: user?.email || null,
+    });
+    if (error) throw error;
+
+    toast('Notificación publicada', 'Todos los usuarios la verán en su módulo de Notificaciones', 'success');
+    document.getElementById('notif-form-titulo').value = '';
+    document.getElementById('notif-form-mensaje').value = '';
+    document.getElementById('notif-form-tipo').value = 'actualizacion';
+    await loadNotificacionesSection();
+  } catch (e) {
+    console.error('publicarNotificacion:', e);
+    toast('Error al publicar', e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function eliminarNotificacion(id) {
+  if (!confirm('¿Eliminar esta notificación? Los usuarios ya no la verán.')) return;
+  try {
+    const { error } = await sb.from('notificaciones').delete().eq('id', id);
+    if (error) throw error;
+    toast('Notificación eliminada', '', 'success');
+    await loadNotificacionesSection();
+  } catch (e) {
+    console.error('eliminarNotificacion:', e);
+    toast('Error al eliminar', e.message, 'error');
   }
 }
 
@@ -1630,6 +1729,44 @@ function planBadge(plan) {
   return map[plan] || `<span class="badge">${escHtml(plan || '—')}</span>`;
 }
 
+// Estado de conexión de un usuario a partir de usuarios.ultima_conexion
+// (actualizado por el heartbeat de perfiles-guard.js cada ~45s mientras
+// el usuario tiene la app abierta). Se considera "en línea" si el último
+// latido llegó hace menos de 2 minutos.
+const CONEXION_ONLINE_MS = 2 * 60 * 1000;
+
+function conexionBadge(ultimaConexionIso) {
+  if (!ultimaConexionIso) {
+    return '<span class="badge" style="color:var(--text-muted)">Sin registro</span>';
+  }
+  const ultima = new Date(ultimaConexionIso);
+  if (isNaN(ultima.getTime())) {
+    return '<span class="badge" style="color:var(--text-muted)">Sin registro</span>';
+  }
+  const diffMs = Date.now() - ultima.getTime();
+
+  if (diffMs <= CONEXION_ONLINE_MS) {
+    return `<span class="badge badge-success badge-dot" title="Última actividad: ${escHtml(ultima.toLocaleString('es-NI'))}">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:4px"></span>En línea
+    </span>`;
+  }
+
+  return `<span class="badge" style="color:var(--text-muted)" title="${escHtml(ultima.toLocaleString('es-NI'))}">
+    Hace ${tiempoRelativo(diffMs)}
+  </span>`;
+}
+
+function tiempoRelativo(diffMs) {
+  const min = Math.floor(diffMs / 60000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d} d`;
+  const mo = Math.floor(d / 30);
+  return `${mo} mes${mo === 1 ? '' : 'es'}`;
+}
+
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
@@ -1722,4 +1859,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Ocultar loader
   hideLoader();
+
+  // Refrescar la columna "Conexión" (en línea / última conexión) cada 30s
+  // mientras el admin tenga abierta la sección de Usuarios. No vuelve a
+  // consultar la base de datos: solo recalcula el tiempo transcurrido
+  // sobre los datos ya cargados en memoria (allUsers).
+  setInterval(() => {
+    const pageUsers = document.getElementById('page-users');
+    if (pageUsers && pageUsers.classList.contains('active')) {
+      filterAndSearch();
+    }
+  }, 30000);
 });
