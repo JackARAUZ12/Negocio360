@@ -16,6 +16,21 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Cambia este valor si el precio de la suscripción cambia.
 const PRECIO_PREMIUM_USD = 10.00;
 
+// Precio a cobrar a un cliente puntual: su precio personalizado si el
+// admin le asignó uno, o el precio por defecto del plan si no.
+function precioDe(u) {
+  return (u.precio_personalizado !== null && u.precio_personalizado !== undefined && u.precio_personalizado !== '')
+    ? Number(u.precio_personalizado)
+    : PRECIO_PREMIUM_USD;
+}
+
+// Etiqueta legible del ciclo de facturación de un cliente.
+function cicloLabel(u) {
+  if (u.ciclo_facturacion === 'anual') return 'Anual';
+  if (u.ciclo_facturacion === 'unico') return 'Pago único';
+  return 'Mensual';
+}
+
 // ── ESTADO GLOBAL ──────────────────────────────────────────
 let currentUser   = null;
 let adminRecord   = null;
@@ -102,6 +117,7 @@ function navigate(section) {
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
   if (section === 'notificaciones') loadNotificacionesSection();
+  if (section === 'chats-grupales') loadChatsGrupales();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
@@ -281,34 +297,58 @@ function calcDueDateForMonth(regDate, year, month) {
   return new Date(year, month, dueDay);
 }
 
+// Igual que calcDueDateForMonth pero para ciclo ANUAL: conserva el mismo
+// día/mes de registro, repitiéndolo una vez al año en el "year" dado.
+function calcDueDateForYear(regDate, year) {
+  const month = regDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dueDay = Math.min(regDate.getDate(), daysInMonth);
+  return new Date(year, month, dueDay);
+}
+
 // Índice absoluto de mes (año*12 + mes), útil para comparar "cuál ciclo
 // es más reciente" sin preocuparse por el día exacto.
 function monthIndex(d) {
   return d.getFullYear() * 12 + d.getMonth();
 }
 
-// Fecha de vencimiento del ciclo correspondiente al mes de "today".
+// Índice de ciclo comparable, según el ciclo de facturación del cliente:
+// mensual → índice de mes; anual → año. "unico" no tiene ciclo (se maneja
+// aparte en getCicloAPagar/getPaymentInfo).
+function cicloIndexOf(u, date) {
+  return u.ciclo_facturacion === 'anual' ? date.getFullYear() : monthIndex(date);
+}
+
+// Fecha de vencimiento del ciclo correspondiente a "today", según el
+// ciclo de facturación del cliente (mensual por defecto, o anual).
 function getCurrentCycleDueDate(u, today) {
   if (!u.created_at) return null;
   const reg = new Date(u.created_at);
   const t = new Date(today);
+  if (u.ciclo_facturacion === 'anual') {
+    return calcDueDateForYear(reg, t.getFullYear());
+  }
   return calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
 }
 
-// Ciclo inmediatamente siguiente a una fecha de vencimiento dada.
-// A diferencia de getNextCycleDueDate, no parte de "hoy" sino de
-// cualquier fecha de vencimiento que le pases, así se puede encadenar
-// para calcular varios meses hacia adelante (pagos adelantados).
+// Ciclo inmediatamente siguiente a una fecha de vencimiento dada, según el
+// ciclo de facturación del cliente. A diferencia de getNextCycleDueDate,
+// no parte de "hoy" sino de cualquier fecha de vencimiento que le pases,
+// así se puede encadenar para calcular varios ciclos hacia adelante
+// (pagos adelantados).
 function getNextCycleAfter(u, dueDate) {
   if (!dueDate) return null;
   const reg = new Date(u.created_at);
+  if (u.ciclo_facturacion === 'anual') {
+    return calcDueDateForYear(reg, dueDate.getFullYear() + 1);
+  }
   const nextMonthIndex = dueDate.getMonth() + 1;
   const year  = dueDate.getFullYear() + Math.floor(nextMonthIndex / 12);
   const month = ((nextMonthIndex % 12) + 12) % 12;
   return calcDueDateForMonth(reg, year, month);
 }
 
-// Fecha de vencimiento del ciclo siguiente al ciclo actual (un mes
+// Fecha de vencimiento del ciclo siguiente al ciclo actual (un ciclo
 // después de "hoy"). Se usa para mostrarle al administrador cuándo
 // tocará el próximo pago justo antes/después de marcar el pago actual
 // como recibido.
@@ -322,14 +362,28 @@ function getNextCycleDueDate(u, today) {
 // fecha_ultimo_pago. Si el usuario ya pagó julio y el admin quiere
 // adelantar el pago de agosto, esta función devuelve agosto (no julio
 // de nuevo), permitiendo pagos adelantados ilimitados.
+//
+// Si el cliente es de "pago único" (ciclo_facturacion = 'unico'), no hay
+// ciclos que se repitan: una vez que fecha_ultimo_pago tiene algún valor,
+// ya no hay nada más que cobrar (se devuelve null para siempre). Si nunca
+// se ha pagado, el "ciclo a pagar" es la fecha de registro (vence de
+// inmediato, como un pago pendiente desde el día 1).
 function getCicloAPagar(u, today) {
   if (!u.created_at) return null;
+
+  if (u.ciclo_facturacion === 'unico') {
+    if (u.fecha_ultimo_pago) return null; // ya se pagó una vez: nunca más
+    const reg = new Date(u.created_at);
+    reg.setHours(0, 0, 0, 0);
+    return reg;
+  }
+
   let candidate = getCurrentCycleDueDate(u, today);
   if (!candidate) return null;
 
   if (u.fecha_ultimo_pago) {
     const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
-    while (monthIndex(pago) >= monthIndex(candidate)) {
+    while (cicloIndexOf(u, pago) >= cicloIndexOf(u, candidate)) {
       candidate = getNextCycleAfter(u, candidate);
     }
   }
@@ -348,24 +402,41 @@ function getPaymentInfo(u, today) {
   if (u.plan !== 'premium') return null;
   if (u.estado_cuenta === 'cancelada') return null;
 
-  const reg = new Date(u.created_at);
-  reg.setHours(0, 0, 0, 0);
-
   const t = new Date(today);
   t.setHours(0, 0, 0, 0);
 
+  // "Pago único" (de por vida): si ya se pagó alguna vez, esta cuenta
+  // nunca vuelve a aparecer como pendiente. Si nunca se ha pagado, se
+  // trata como vencido desde el día de registro (sin ciclos que se
+  // repitan cada mes/año).
+  if (u.ciclo_facturacion === 'unico') {
+    if (u.fecha_ultimo_pago) return null;
+    const dueDate = new Date(u.created_at);
+    dueDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((t - dueDate) / 86400000);
+    if (u.estado_cuenta === 'suspendida') {
+      return { status: 'atrasado', dueDate, diffDays: Math.max(diffDays, 0) };
+    }
+    if (diffDays < -3) return null;
+    if (diffDays < 0)   return { status: 'proximo',   dueDate, diffDays };
+    if (diffDays <= 1)  return { status: 'pendiente', dueDate, diffDays };
+    return { status: 'atrasado', dueDate, diffDays };
+  }
+
   // Sin período de gracia para nadie: el primer "día de pago" es el mismo
-  // día del registro (esa fecha se repite cada mes en adelante). Antes se
+  // día del registro (esa fecha se repite cada ciclo en adelante). Antes se
   // ignoraba por completo el primer mes asumiendo "se pagó al registrarse",
   // pero el negocio cobra desde el inicio, así que ese descuento se quita.
-  const dueDate = calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
+  const dueDate = getCurrentCycleDueDate(u, t);
+  if (!dueDate) return null;
 
   // ¿Ya se marcó como pagado (o adelantado) el ciclo que corresponde a
-  // este vencimiento? Se compara por mes/año, no por igualdad exacta,
-  // para que un pago adelantado (ej. agosto) cubra también julio.
+  // este vencimiento? Se compara por ciclo (mes o año, según corresponda),
+  // no por igualdad exacta, para que un pago adelantado cubra también el
+  // ciclo anterior.
   if (u.fecha_ultimo_pago) {
     const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
-    if (monthIndex(pago) >= monthIndex(dueDate)) {
+    if (cicloIndexOf(u, pago) >= cicloIndexOf(u, dueDate)) {
       return null; // este ciclo (o uno posterior) ya está cubierto
     }
   }
@@ -467,7 +538,7 @@ async function loadUsers() {
   try {
     const { data, error } = await sb
       .from('usuarios')
-      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion, ciclo_facturacion, precio_personalizado')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -483,7 +554,7 @@ async function loadUsers() {
 
 function showUsersLoader() {
   document.getElementById('users-tbody').innerHTML = `
-    <tr><td colspan="11" style="text-align:center; padding:48px; color:var(--text-muted)">
+    <tr><td colspan="12" style="text-align:center; padding:48px; color:var(--text-muted)">
       <div class="loader-spinner" style="margin:0 auto 12px"></div>
       <div>Cargando usuarios...</div>
     </td></tr>`;
@@ -491,7 +562,7 @@ function showUsersLoader() {
 
 function renderUsersEmpty() {
   document.getElementById('users-tbody').innerHTML = `
-    <tr><td colspan="11">
+    <tr><td colspan="12">
       <div class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -520,6 +591,9 @@ function renderUsersTable(users) {
       <td>${escHtml(u.email || '—')}</td>
       <td>${escHtml(u.telefono || '—')}</td>
       <td>${planBadge(u.plan)}</td>
+      <td>${u.plan === 'premium'
+            ? `<span class="badge badge-info">${escHtml(cicloLabel(u))}</span><br><span style="font-size:11px;color:var(--text-muted)">$${precioDe(u).toFixed(2)}</span>`
+            : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>${estadoBadge(u.estado_cuenta)}</td>
       <td>${conexionBadge(u.ultima_conexion)}</td>
       <td>${formatDate(u.created_at)}</td>
@@ -531,12 +605,18 @@ function renderUsersTable(users) {
             Ver
           </button>
           ${u.plan === 'premium'
+            ? `<button class="btn-icon btn-ghost btn-sm" onclick="openEditBilling('${u.id}')" title="Editar ciclo de facturación y precio de este cliente">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Editar
+              </button>`
+            : ''}
+          ${u.plan === 'premium'
             ? `<div class="marcar-pagado-wrap">
                 <button class="btn-icon btn-primary btn-sm" onclick="openConfirmMarkPaid('${u.id}')" title="Marcar que ya pagó (o adelantó) su próximo mes y enviarle el comprobante">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                   Marcar Pagado
                 </button>
-                ${u.created_at ? `<span class="next-pago-hint">Próx. pago: ${formatDate(getCicloAPagar(u, today))}</span>` : ''}
+                ${u.created_at ? `<span class="next-pago-hint">Próx. pago: ${getCicloAPagar(u, today) ? formatDate(getCicloAPagar(u, today)) : 'N/A (pago único ya cubierto)'}</span>` : ''}
               </div>`
             : ''}
           ${u.estado_cuenta !== 'activa'
@@ -606,6 +686,90 @@ function viewUser(id) {
 }
 
 // ============================================================
+// EDITAR FACTURACIÓN DE UN CLIENTE (ciclo + precio personalizado)
+// ============================================================
+function actualizarPreviewBilling() {
+  const u = window._editingBillingUser;
+  if (!u) return;
+  const cicloSel = document.getElementById('eb-ciclo').value;
+  const uPreview = { ...u, ciclo_facturacion: cicloSel };
+  const previewEl = document.getElementById('eb-preview');
+
+  if (cicloSel === 'unico') {
+    if (u.fecha_ultimo_pago) {
+      previewEl.textContent = 'Ya se pagó — no habrá más pagos para este cliente';
+    } else {
+      previewEl.textContent = `Pendiente desde ${formatDate(u.created_at)} (pago único)`;
+    }
+    return;
+  }
+
+  const today = new Date();
+  const ciclo = getCicloAPagar(uPreview, today);
+  previewEl.textContent = ciclo ? formatDate(ciclo) : '—';
+}
+
+function openEditBilling(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  window._editingBillingUser = u;
+  document.getElementById('eb-nombre-cliente').textContent =
+    [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+  document.getElementById('eb-ciclo').value = u.ciclo_facturacion || 'mensual';
+  document.getElementById('eb-precio').value = (u.precio_personalizado !== null && u.precio_personalizado !== undefined)
+    ? Number(u.precio_personalizado) : '';
+  document.getElementById('eb-precio').placeholder = `Precio por defecto ($${PRECIO_PREMIUM_USD.toFixed(2)})`;
+
+  actualizarPreviewBilling();
+  openModal('modal-edit-billing');
+}
+
+async function guardarEditBilling() {
+  const u = window._editingBillingUser;
+  if (!u) return;
+
+  const ciclo = document.getElementById('eb-ciclo').value;
+  const precioRaw = document.getElementById('eb-precio').value.trim();
+  const precio = precioRaw === '' ? null : Number(precioRaw);
+
+  if (precio !== null && (isNaN(precio) || precio < 0)) {
+    toast('Precio inválido', 'Ingresa un número mayor o igual a cero, o deja el campo vacío.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-billing');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ ciclo_facturacion: ciclo, precio_personalizado: precio })
+      .eq('id', u.id);
+    if (error) throw error;
+
+    // Actualizar copia local sin recargar toda la tabla
+    const idx = allUsers.findIndex(x => x.id === u.id);
+    if (idx !== -1) {
+      allUsers[idx].ciclo_facturacion = ciclo;
+      allUsers[idx].precio_personalizado = precio;
+    }
+
+    closeModal('modal-edit-billing');
+    toast('Facturación actualizada', `Se guardaron los cambios de ${u.nombre || u.email}`, 'success');
+    filterAndSearch();
+  } catch (e) {
+    console.error('guardarEditBilling:', e);
+    toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
 // MARCAR PAGADO → genera comprobante PDF y lo envía por chat
 // ============================================================
 // Flujo:
@@ -659,16 +823,20 @@ function openConfirmMarkPaid(userId) {
   const today = new Date();
   const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'este cliente';
   const cicloAPagar    = getCicloAPagar(u, today);
-  const mesPagadoTexto = cicloAPagar ? formatMesAnio(cicloAPagar) : formatMesAnio(today);
-  const nextDue        = cicloAPagar ? getNextCycleAfter(u, cicloAPagar) : null;
+  const mesPagadoTexto = u.ciclo_facturacion === 'unico'
+    ? 'pago único'
+    : (cicloAPagar ? formatMesAnio(cicloAPagar) : formatMesAnio(today));
+  const esUnico        = u.ciclo_facturacion === 'unico';
+  const nextDue        = (!esUnico && cicloAPagar) ? getNextCycleAfter(u, cicloAPagar) : null;
 
   document.getElementById('confirm-icon').className = 'confirm-icon success';
   document.getElementById('confirm-icon').textContent = '✓';
   document.getElementById('confirm-title').textContent = '¿Confirmar pago recibido?';
   document.getElementById('confirm-sub').innerHTML =
-    `Se registrará el pago de <strong>${escHtml(nombreCompleto)}</strong> correspondiente a <strong>${escHtml(mesPagadoTexto)}</strong> por <strong>$${PRECIO_PREMIUM_USD.toFixed(2)} USD</strong>.<br><br>` +
+    `Se registrará el pago de <strong>${escHtml(nombreCompleto)}</strong> correspondiente a <strong>${escHtml(mesPagadoTexto)}</strong> por <strong>$${precioDe(u).toFixed(2)} USD</strong>.<br><br>` +
     `Se le enviará automáticamente un comprobante en su chat de soporte.` +
-    (nextDue ? `<br>Su próximo pago será el <strong>${escHtml(formatDate(nextDue))}</strong>.` : '');
+    (esUnico ? `<br>Al ser un <strong>pago único</strong>, este cliente no volverá a aparecer como pendiente de pago.`
+             : (nextDue ? `<br>Su próximo pago será el <strong>${escHtml(formatDate(nextDue))}</strong>.` : ''));
 
   const btn = document.getElementById('btn-confirm-action');
   btn.className = 'btn-icon btn-success';
@@ -811,8 +979,8 @@ async function executeMarkAsPaid(userId, cicloAPagar) {
     if (errPago) throw errPago;
 
     // 2) Generar el comprobante en PDF
-    const mesPagadoTexto = formatMesAnio(cicloDueDate);
-    const nextDue        = getNextCycleAfter(u, cicloDueDate);
+    const mesPagadoTexto = u.ciclo_facturacion === 'unico' ? 'pago único' : formatMesAnio(cicloDueDate);
+    const nextDue        = u.ciclo_facturacion === 'unico' ? null : getNextCycleAfter(u, cicloDueDate);
     const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
 
     const { blob, filename } = generarComprobantePDF({
@@ -821,7 +989,7 @@ async function executeMarkAsPaid(userId, cicloAPagar) {
       negocio: u.nombre_negocio,
       mesPagadoTexto,
       fechaPago: today,
-      monto: PRECIO_PREMIUM_USD,
+      monto: precioDe(u),
       proximoPago: nextDue,
     });
 
@@ -1657,6 +1825,332 @@ function subscribeSoporteGlobal() {
     .subscribe();
 }
 
+// ============================================================
+// CHATS GRUPALES — el admin crea chats grupales y agrega a los
+// clientes que quiera. Los mensajes se eliminan automáticamente
+// 72 horas después de enviados (limpieza perezosa, mismo patrón
+// que public.notificaciones / notificaciones.js).
+// ============================================================
+let allChatsGrupales           = [];
+let currentChatGrupalId        = null;
+let currentChatGrupalMiembros  = []; // filas de chats_grupales_miembros + nombre resuelto
+let gcMsgChannel                = null;
+let gcSeenIds                   = new Set();
+let gcSelectedNewChat           = new Set(); // auth_user_id seleccionados al crear un chat
+let gcSelectedAdd               = new Set(); // auth_user_id seleccionados al agregar miembro
+
+// ── LIMPIEZA AUTOMÁTICA (best-effort, permitida por RLS) ───
+async function limpiarMensajesGrupalesViejos() {
+  try {
+    const limite = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await sb.from('mensajes_chat_grupal').delete().lt('created_at', limite);
+  } catch (e) {
+    // Best-effort: si falla, simplemente no se limpia en este momento.
+    console.warn('limpiarMensajesGrupalesViejos:', e);
+  }
+}
+
+// ── LISTA DE CHATS GRUPALES ─────────────────────────────────
+async function loadChatsGrupales() {
+  limpiarMensajesGrupalesViejos(); // no bloquea la carga de la lista
+
+  const list = document.getElementById('gc-list');
+  if (list) list.innerHTML = '<div class="payment-empty">Cargando...</div>';
+
+  try {
+    const { data: chats, error } = await sb
+      .from('chats_grupales')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const { data: miembros, error: errM } = await sb
+      .from('chats_grupales_miembros')
+      .select('chat_id, auth_user_id');
+    if (errM) throw errM;
+
+    const conteo = {};
+    (miembros || []).forEach(m => { conteo[m.chat_id] = (conteo[m.chat_id] || 0) + 1; });
+
+    allChatsGrupales = (chats || []).map(c => ({ ...c, _numMiembros: conteo[c.id] || 0 }));
+    renderChatsGrupalesList();
+  } catch (e) {
+    console.error('loadChatsGrupales:', e);
+    if (list) list.innerHTML = '<div class="payment-empty">No se pudieron cargar los chats</div>';
+  }
+}
+
+function renderChatsGrupalesList() {
+  const list = document.getElementById('gc-list');
+  if (!list) return;
+
+  if (!allChatsGrupales.length) {
+    list.innerHTML = '<div class="payment-empty">Aún no has creado ningún chat grupal</div>';
+    return;
+  }
+
+  list.innerHTML = allChatsGrupales.map(c => `
+    <div class="conv-item ${c.id === currentChatGrupalId ? 'selected' : ''}" onclick="abrirChatGrupal('${c.id}')">
+      <div class="conv-item-avatar">${escHtml((c.nombre || '?').charAt(0).toUpperCase())}</div>
+      <div class="conv-item-info">
+        <div class="conv-item-name">${escHtml(c.nombre)}</div>
+        <div class="conv-item-preview">${c._numMiembros} miembro${c._numMiembros === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── ABRIR UN CHAT GRUPAL ─────────────────────────────────────
+async function abrirChatGrupal(chatId) {
+  currentChatGrupalId = chatId;
+  const chat = allChatsGrupales.find(c => c.id === chatId);
+  if (!chat) return;
+
+  renderChatsGrupalesList(); // refresca cuál queda marcado como "selected"
+
+  document.getElementById('gc-empty').style.display = 'none';
+  document.getElementById('gc-active').style.display = 'flex';
+  document.getElementById('gc-nombre').textContent = chat.nombre;
+  document.getElementById('gc-sub').textContent = 'Cargando miembros...';
+  document.getElementById('gc-messages').innerHTML = '';
+  gcSeenIds = new Set();
+
+  await Promise.all([cargarMiembrosChatGrupal(chatId), cargarMensajesChatGrupal(chatId)]);
+  subscribeChatGrupal(chatId);
+}
+
+async function cargarMiembrosChatGrupal(chatId) {
+  try {
+    const { data, error } = await sb
+      .from('chats_grupales_miembros')
+      .select('id, auth_user_id')
+      .eq('chat_id', chatId);
+    if (error) throw error;
+
+    currentChatGrupalMiembros = (data || []).map(m => {
+      const u = allUsers.find(x => x.auth_user_id === m.auth_user_id);
+      const nombre = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email) : 'Cliente';
+      return { ...m, nombre };
+    });
+
+    document.getElementById('gc-sub').textContent =
+      `${currentChatGrupalMiembros.length} miembro${currentChatGrupalMiembros.length === 1 ? '' : 's'}`;
+    renderMiembrosBar();
+  } catch (e) {
+    console.error('cargarMiembrosChatGrupal:', e);
+  }
+}
+
+function renderMiembrosBar() {
+  const bar = document.getElementById('gc-members-bar');
+  if (!bar) return;
+  if (!currentChatGrupalMiembros.length) {
+    bar.innerHTML = '<span style="font-size:11.5px;color:var(--text-muted)">Sin miembros todavía — usa "Agregar miembro"</span>';
+    return;
+  }
+  bar.innerHTML = currentChatGrupalMiembros.map(m => `
+    <span class="gc-member-chip">
+      ${escHtml(m.nombre)}
+      <button onclick="quitarMiembroChatGrupal('${m.id}')" title="Quitar del chat">&times;</button>
+    </span>
+  `).join('');
+}
+
+async function quitarMiembroChatGrupal(miembroId) {
+  if (!confirm('¿Quitar a este cliente del chat grupal?')) return;
+  try {
+    const { error } = await sb.from('chats_grupales_miembros').delete().eq('id', miembroId);
+    if (error) throw error;
+    currentChatGrupalMiembros = currentChatGrupalMiembros.filter(m => m.id !== miembroId);
+    document.getElementById('gc-sub').textContent =
+      `${currentChatGrupalMiembros.length} miembro${currentChatGrupalMiembros.length === 1 ? '' : 's'}`;
+    renderMiembrosBar();
+    loadChatsGrupales(); // refresca el conteo en la lista de la izquierda
+  } catch (e) {
+    toast('No se pudo quitar al miembro', e.message, 'error');
+  }
+}
+
+// ── MENSAJES DEL CHAT GRUPAL ─────────────────────────────────
+async function cargarMensajesChatGrupal(chatId) {
+  try {
+    const { data, error } = await sb
+      .from('mensajes_chat_grupal')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    (data || []).forEach(renderMensajeGrupal);
+  } catch (e) {
+    console.error('cargarMensajesChatGrupal:', e);
+  }
+}
+
+function renderMensajeGrupal(m) {
+  if (gcSeenIds.has(m.id)) return;
+  gcSeenIds.add(m.id);
+
+  const esAdmin = m.auth_user_id === currentUser?.id;
+  const row = document.createElement('div');
+  row.className = 'chat-msg-row ' + (esAdmin ? 'admin' : 'cliente');
+
+  let nombreRemitente = 'Tú (admin)';
+  if (!esAdmin) {
+    const miembro = currentChatGrupalMiembros.find(x => x.auth_user_id === m.auth_user_id);
+    nombreRemitente = miembro ? miembro.nombre : 'Cliente';
+  }
+
+  row.innerHTML = `<div>
+    <div class="chat-msg-sender">${escHtml(nombreRemitente)}</div>
+    <div class="chat-msg-bubble">${escHtml(m.contenido).replace(/\n/g, '<br>')}</div>
+    <div class="chat-msg-time">${formatTime(m.created_at)}</div>
+  </div>`;
+  const container = document.getElementById('gc-messages');
+  if (!container) return;
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function enviarMensajeGrupal() {
+  const input = document.getElementById('gc-input');
+  const text = input.value.trim();
+  if (!text || !currentChatGrupalId) return;
+  input.value = '';
+
+  try {
+    const { data, error } = await sb.from('mensajes_chat_grupal').insert({
+      chat_id: currentChatGrupalId,
+      auth_user_id: currentUser.id,
+      contenido: text,
+    }).select().single();
+    if (error) throw error;
+    renderMensajeGrupal(data);
+  } catch (e) {
+    toast('No se pudo enviar el mensaje', e.message, 'error');
+  }
+}
+
+// Tiempo real: nuevos mensajes en el chat grupal abierto
+function subscribeChatGrupal(chatId) {
+  if (gcMsgChannel) { sb.removeChannel(gcMsgChannel); gcMsgChannel = null; }
+  gcMsgChannel = sb.channel(`admin-chat-grupal-${chatId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_chat_grupal', filter: `chat_id=eq.${chatId}` },
+      (payload) => renderMensajeGrupal(payload.new))
+    .subscribe();
+}
+
+// ── SELECTOR DE CLIENTES (crear chat / agregar miembro) ─────
+// Muestra solo clientes con auth_user_id (requisito para ser miembro),
+// excluyendo los que ya están en "excluirIds" — así, quien ya está
+// unido a un chat NO vuelve a aparecer en la lista de personas a unir.
+function renderPickerClientes(containerId, selectedSet, excluirIds) {
+  const cont = document.getElementById(containerId);
+  if (!cont) return;
+  const excluir = new Set(excluirIds);
+  const disponibles = allUsers.filter(u => u.auth_user_id && !excluir.has(u.auth_user_id));
+
+  if (!disponibles.length) {
+    cont.innerHTML = '<div class="payment-empty">No hay clientes disponibles para agregar</div>';
+    return;
+  }
+
+  cont.innerHTML = disponibles.map(u => {
+    const nombre = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+    const checked = selectedSet.has(u.auth_user_id) ? 'checked' : '';
+    return `
+      <label class="gc-picker-item">
+        <input type="checkbox" ${checked} onchange="togglePickerSeleccion('${containerId}','${u.auth_user_id}', this.checked)">
+        <div>
+          <div class="gc-picker-name">${escHtml(nombre)}</div>
+          <div class="gc-picker-sub">${escHtml(u.nombre_negocio || u.email || '')}</div>
+        </div>
+      </label>`;
+  }).join('');
+}
+
+function togglePickerSeleccion(containerId, authUserId, checked) {
+  const set = containerId === 'ncg-picker' ? gcSelectedNewChat : gcSelectedAdd;
+  if (checked) set.add(authUserId); else set.delete(authUserId);
+}
+
+// ── CREAR CHAT GRUPAL ─────────────────────────────────────
+function abrirNuevoChatGrupal() {
+  document.getElementById('ncg-nombre').value = '';
+  gcSelectedNewChat = new Set();
+  renderPickerClientes('ncg-picker', gcSelectedNewChat, []);
+  openModal('modal-nuevo-chat-grupal');
+}
+
+async function crearChatGrupal() {
+  const nombre = document.getElementById('ncg-nombre').value.trim();
+  if (!nombre) { toast('Falta el nombre', 'Escribe un nombre para el chat grupal', 'warning'); return; }
+
+  const btn = document.getElementById('btn-crear-chat-grupal');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { data: chat, error } = await sb.from('chats_grupales')
+      .insert({ nombre, creado_por: currentUser?.email || null })
+      .select().single();
+    if (error) throw error;
+
+    const miembrosSeleccionados = [...gcSelectedNewChat];
+    if (miembrosSeleccionados.length) {
+      const rows = miembrosSeleccionados.map(authUserId => ({ chat_id: chat.id, auth_user_id: authUserId }));
+      const { error: errM } = await sb.from('chats_grupales_miembros').insert(rows);
+      if (errM) throw errM;
+    }
+
+    closeModal('modal-nuevo-chat-grupal');
+    toast('Chat grupal creado', `"${nombre}" está listo`, 'success');
+    await loadChatsGrupales();
+    abrirChatGrupal(chat.id);
+  } catch (e) {
+    console.error('crearChatGrupal:', e);
+    toast('Error al crear el chat', e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Crear chat';
+  }
+}
+
+// ── AGREGAR MIEMBRO A UN CHAT EXISTENTE ───────────────────
+function abrirAgregarMiembro() {
+  if (!currentChatGrupalId) return;
+  gcSelectedAdd = new Set();
+  const yaMiembros = currentChatGrupalMiembros.map(m => m.auth_user_id);
+  renderPickerClientes('am-picker', gcSelectedAdd, yaMiembros);
+  openModal('modal-agregar-miembro');
+}
+
+async function agregarMiembroSeleccionado() {
+  if (!currentChatGrupalId) return;
+  const seleccionados = [...gcSelectedAdd];
+  if (!seleccionados.length) { toast('Selecciona al menos un cliente', '', 'warning'); return; }
+
+  const btn = document.getElementById('btn-agregar-miembro');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const rows = seleccionados.map(authUserId => ({ chat_id: currentChatGrupalId, auth_user_id: authUserId }));
+    const { error } = await sb.from('chats_grupales_miembros').insert(rows);
+    if (error) throw error;
+
+    closeModal('modal-agregar-miembro');
+    toast('Miembros agregados', '', 'success');
+    await cargarMiembrosChatGrupal(currentChatGrupalId);
+    loadChatsGrupales();
+  } catch (e) {
+    console.error('agregarMiembroSeleccionado:', e);
+    toast('Error al agregar miembros', e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Agregar seleccionados';
+  }
+}
+
 // ── CONFIRM DISPATCHER ─────────────────────────────────────
 async function dispatchConfirm() {
   const pending = window._pendingAction;
@@ -1818,6 +2312,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Evento: finalizar conversación (solo visible para administradores autenticados)
   document.getElementById('btn-finalizar-chat').addEventListener('click', confirmFinalizarChat);
+
+  // Evento: enviar mensaje en chat grupal
+  document.getElementById('btn-send-grupal').addEventListener('click', enviarMensajeGrupal);
+  document.getElementById('gc-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); enviarMensajeGrupal(); }
+  });
 
   // Evento: cerrar modales con X
   $$('.modal-close').forEach(btn => {
