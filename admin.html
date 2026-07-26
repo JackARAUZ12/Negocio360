@@ -103,6 +103,15 @@
         Notificaciones
       </button>
 
+      <button class="nav-item" data-section="chats-grupales">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          <path d="M17 8h.01"/>
+        </svg>
+        Chats Grupales
+      </button>
+
       <div class="nav-divider"></div>
     </nav>
 
@@ -386,6 +395,7 @@
                   <th>Email</th>
                   <th>Teléfono</th>
                   <th>Plan</th>
+                  <th>Facturación</th>
                   <th>Estado</th>
                   <th>Conexión</th>
                   <th>Fecha Registro</th>
@@ -464,8 +474,66 @@
     </section>
 
     <!-- ══════════════════════════════════
-         PÁGINA: CÓDIGOS DE ACCESO
+         PÁGINA: CHATS GRUPALES
     ══════════════════════════════════ -->
+    <section class="page-content" id="page-chats-grupales">
+      <div class="page-header">
+        <h1>Chats Grupales</h1>
+        <p>Crea chats grupales entre tus clientes y agrégalos cuando quieras. Los mensajes se eliminan automáticamente después de 72 horas.</p>
+      </div>
+
+      <div class="soporte-layout">
+        <div class="card soporte-list-card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Chats grupales</div>
+              <div class="card-subtitle">Selecciona uno para ver la conversación</div>
+            </div>
+            <button class="btn-icon btn-primary btn-sm" onclick="abrirNuevoChatGrupal()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nuevo
+            </button>
+          </div>
+          <div class="soporte-conv-list" id="gc-list">
+            <div class="payment-empty">Cargando...</div>
+          </div>
+        </div>
+
+        <div class="card soporte-chat-card">
+          <div class="soporte-chat-empty" id="gc-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <p>Selecciona un chat grupal o crea uno nuevo</p>
+          </div>
+
+          <div class="soporte-chat-active" id="gc-active" style="display:none">
+            <div class="soporte-chat-header">
+              <div>
+                <div class="soporte-chat-name" id="gc-nombre">—</div>
+                <div class="soporte-chat-sub" id="gc-sub">—</div>
+              </div>
+              <button class="btn-icon btn-ghost btn-sm" onclick="abrirAgregarMiembro()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                Agregar miembro
+              </button>
+            </div>
+
+            <div class="gc-members-bar" id="gc-members-bar"></div>
+
+            <div class="gc-notice">Los mensajes de este chat se eliminan automáticamente 72 horas después de enviarse.</div>
+
+            <div class="soporte-messages" id="gc-messages"></div>
+
+            <div class="soporte-input-bar" id="gc-input-bar">
+              <input type="text" id="gc-input" class="form-control" placeholder="Escribe un mensaje..." />
+              <button class="btn-icon btn-primary" id="btn-send-grupal">Enviar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="page-content" id="page-codes">
       <div class="page-header">
         <h1>Códigos de Acceso</h1>
@@ -694,6 +762,108 @@
     </div>
     <div class="modal-footer">
       <button class="btn-icon btn-ghost" onclick="closeModal('modal-view-user')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: EDITAR FACTURACIÓN DE UN CLIENTE
+     (ciclo de pago y precio personalizado)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-edit-billing">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Editar facturación — <span id="eb-nombre-cliente">—</span></span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Ciclo de facturación</label>
+        <select id="eb-ciclo" class="form-control" onchange="actualizarPreviewBilling()">
+          <option value="mensual">Mensual (se repite cada mes)</option>
+          <option value="anual">Anual (se repite una vez al año)</option>
+          <option value="unico">Pago único (de por vida, no se repite)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Precio de este cliente (USD)</label>
+        <input type="number" id="eb-precio" class="form-control" min="0" step="0.01"
+          placeholder="Precio por defecto del plan" />
+        <span style="font-size:11.5px;color:var(--text-muted)">Déjalo vacío para usar el precio por defecto del plan.</span>
+      </div>
+      <div class="form-group" style="background:var(--bg-hover);border-radius:8px;padding:10px 12px;margin-top:4px">
+        <label style="margin-bottom:2px">Próximo pago con estos cambios</label>
+        <span id="eb-preview" style="font-weight:600">—</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-edit-billing')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-guardar-billing" onclick="guardarEditBilling()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: NUEVO CHAT GRUPAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-nuevo-chat-grupal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo chat grupal</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nombre del chat</label>
+        <input type="text" id="ncg-nombre" class="form-control" placeholder="Ej: Clientes de Managua" />
+      </div>
+      <div class="form-group">
+        <label>Agregar clientes</label>
+        <div class="gc-picker" id="ncg-picker">
+          <div class="payment-empty">Cargando clientes...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-nuevo-chat-grupal')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-crear-chat-grupal" onclick="crearChatGrupal()">Crear chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: AGREGAR MIEMBRO A UN CHAT GRUPAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-agregar-miembro">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Agregar miembro</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Clientes disponibles</label>
+        <div class="gc-picker" id="am-picker">
+          <div class="payment-empty">Cargando clientes...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-agregar-miembro')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-agregar-miembro" onclick="agregarMiembroSeleccionado()">Agregar seleccionados</button>
     </div>
   </div>
 </div>
