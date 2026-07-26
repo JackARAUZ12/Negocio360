@@ -42,6 +42,10 @@ const R = {
     productos:      [],
     movimientos:    [],
     resumen:        {},
+    // NUEVO: historial de pagos de créditos (una fila por cuota, con
+    // datos del cliente) — alimenta la tabla en pantalla y las
+    // exportaciones (individual y Reporte General) del módulo Créditos.
+    creditosPagos:  [],
   },
 
   // Referencias a instancias de Chart.js (para destruir antes de re-crear)
@@ -1668,12 +1672,107 @@ async function fetchCreditosReporte() {
   });
 }
 
+/* ------------------------------------------------------------
+   HISTORIAL DE PAGOS — una fila por cuota, con datos del cliente.
+   Solo incluye créditos del cliente (nunca clientes sin crédito).
+   Cubre tanto cuotas ya pagadas como las que faltan (pendiente,
+   vencida, parcial), que es justo el "historial de pagos" que se
+   muestra en pantalla y se usa para exportar (individual y en el
+   Reporte General).
+   ------------------------------------------------------------ */
+async function fetchCreditosHistorialPagos() {
+  const { data: creditos } = await sb.from('creditos').select('id,numero_credito,tipo,cliente_id,num_cuotas')
+    .eq('auth_user_id', R.userId)
+    .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
+    .lte('fecha_inicio', R.fechaHasta || todayISO());
+
+  const lista = creditos || [];
+  if (!lista.length) return [];
+
+  const creditoMap = new Map(lista.map(c => [c.id, c]));
+  const ids = lista.map(c => c.id);
+
+  const { data: cuotas } = await sb.from('creditos_cuotas')
+    .select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,saldo,estado,updated_at')
+    .in('credito_id', ids)
+    .order('numero');
+
+  const clienteIds = [...new Set(lista.map(c => c.cliente_id))];
+  const { data: clientesData } = await sb.from('clientes').select('id,nombre,apellido,telefono,correo')
+    .in('id', clienteIds.length ? clienteIds : ['00000000-0000-0000-0000-000000000000']);
+  const clienteMap = new Map((clientesData||[]).map(c => [c.id, c]));
+
+  return (cuotas||[]).map(cu => {
+    const credito = creditoMap.get(cu.credito_id) || {};
+    const cliente  = clienteMap.get(credito.cliente_id);
+    return {
+      cliente:        cliente ? `${cliente.nombre} ${cliente.apellido||''}`.trim() : '—',
+      telefono:       cliente?.telefono || '—',
+      email:          cliente?.correo || '—',
+      numero_credito: credito.numero_credito || '—',
+      cuota:          `${cu.numero}/${credito.num_cuotas||'?'}`,
+      fecha_venc:     cu.fecha_vencimiento,
+      monto_cuota:    Number(cu.monto_total||0),
+      pagado:         Number(cu.monto_pagado||0),
+      saldo:          Number(cu.saldo||0),
+      estado:         cu.estado,
+      fecha_estado:   cu.updated_at,
+    };
+  });
+}
+
+// Etiqueta legible + clase de badge para el estado de una cuota.
+function estadoCuotaInfo(estado) {
+  const map = {
+    pagada:    { label:'Pagada',        badge:'badge-success' },
+    pendiente: { label:'Pendiente',     badge:'badge-neutral' },
+    vencida:   { label:'Vencida',       badge:'badge-danger'  },
+    parcial:   { label:'Pago parcial',  badge:'badge-warning' },
+  };
+  return map[estado] || { label: estado || '—', badge:'badge-neutral' };
+}
+
+function renderHistorialPagosCreditos(filtroEstado) {
+  const tbody = document.getElementById('creditos-historial-pagos-tbody');
+  if (!tbody) return;
+  const filas = (R.cache.creditosPagos||[])
+    .filter(f => !filtroEstado || f.estado === filtroEstado)
+    .sort((a,b) => (a.fecha_venc||'').localeCompare(b.fecha_venc||''));
+
+  tbody.innerHTML = filas.length ? filas.map(f => {
+    const info = estadoCuotaInfo(f.estado);
+    return `
+    <tr>
+      <td style="font-weight:500">${esc(f.cliente)}</td>
+      <td>${esc(f.telefono)}</td>
+      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(f.numero_credito)}</span></td>
+      <td class="td-mono">${esc(f.cuota)}</td>
+      <td>${fmtFecha(f.fecha_venc)}</td>
+      <td class="td-mono">${fmt(f.monto_cuota)}</td>
+      <td class="td-mono">${fmt(f.pagado)}</td>
+      <td class="td-mono">${fmt(f.saldo)}</td>
+      <td><span class="badge ${info.badge}">${info.label}</span></td>
+    </tr>`;
+  }).join('') : emptyRow(9, 'No hay cuotas de crédito en este período');
+}
+
+function filtrarHistorialPagosCreditos() {
+  const sel = document.getElementById('cr-filtro-estado');
+  renderHistorialPagosCreditos(sel ? sel.value : '');
+}
+
 async function loadCreditosTab() {
   const tbody = document.getElementById('creditos-reporte-tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">Cargando créditos…</td></tr>';
 
   try {
     const filas = await fetchCreditosReporte();
+
+    // Historial de pagos (cuotas pagadas y faltantes) para la tabla de abajo
+    // y para que quede en caché disponible al exportar (individual/general).
+    R.cache.creditosPagos = await fetchCreditosHistorialPagos();
+    const selEstado = document.getElementById('cr-filtro-estado');
+    renderHistorialPagosCreditos(selEstado ? selEstado.value : '');
 
     const capitalTotal   = filas.reduce((s,f)=>s+f.montoProducto, 0);
     const cuotasTotal    = filas.reduce((s,f)=>s+f.totalCuotas, 0);
@@ -1720,6 +1819,8 @@ async function loadCreditosTab() {
   } catch(e) {
     console.error('loadCreditosTab:', e);
     if (tbody) tbody.innerHTML = emptyRow(7,'No se pudo cargar el reporte de créditos');
+    const tbodyHist = document.getElementById('creditos-historial-pagos-tbody');
+    if (tbodyHist) tbodyHist.innerHTML = emptyRow(9,'No se pudo cargar el historial de pagos');
   }
 }
 
@@ -1955,6 +2056,12 @@ async function ensureCaches() {
   if (!R.cache.gastos.length)    await fetchGastos();
   if (!R.cache.clientes.length)  await fetchClientes();
   if (!R.cache.productos.length) await fetchProductos();
+  // Historial de pagos de créditos (cuotas pagadas/pendientes con datos
+  // del cliente), necesario tanto para el reporte individual de Créditos
+  // como para la sección de Créditos dentro del Reporte General.
+  if (!R.cache.creditosPagos || !R.cache.creditosPagos.length) {
+    R.cache.creditosPagos = await fetchCreditosHistorialPagos();
+  }
   // El "Reporte General" necesita el resumen financiero calculado —
   // si el usuario exporta sin haber visitado antes la pestaña
   // Ejecutivo/Financiero, R.cache.resumen puede estar vacío.
@@ -2033,10 +2140,24 @@ const COLUMNAS_REPORTES = {
     { key:'monto',     label:'Monto',     tipo:'moneda' },
     { key:'tipo',      label:'Tipo',      tipo:'texto' },
   ],
+  // Historial de pagos de créditos: una fila por cuota. Solo aparecen
+  // clientes que adquirieron un crédito, con su información y el
+  // detalle de cuotas ya pagadas y las que faltan (pendiente/vencida/parcial).
+  creditos: [
+    { key:'cliente',        label:'Cliente',         tipo:'texto' },
+    { key:'telefono',       label:'Teléfono',        tipo:'texto' },
+    { key:'numero_credito', label:'N° crédito',      tipo:'texto' },
+    { key:'cuota',          label:'Cuota',           tipo:'texto' },
+    { key:'fecha_venc',     label:'Vencimiento',     tipo:'texto' },
+    { key:'monto_cuota',    label:'Monto cuota',     tipo:'moneda' },
+    { key:'pagado',         label:'Pagado',          tipo:'moneda' },
+    { key:'saldo',          label:'Saldo',           tipo:'moneda' },
+    { key:'estado',         label:'Estado',          tipo:'texto' },
+  ],
 };
 
-const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', gastos:'💸' };
-const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', gastos:'Gastos' };
+const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', gastos:'💸', creditos:'💳' };
+const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', gastos:'Gastos', creditos:'Créditos' };
 
 // ¿Está activa la columna `key` del reporte `tipoReporte`? Por defecto
 // (si el cliente no ha guardado configuración, o esta columna es nueva
@@ -2075,6 +2196,14 @@ function filaProducto(p) {
 }
 function filaGasto(g) {
   return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), monto:Number(g.monto||0), tipo:g.tipo||'' };
+}
+function filaCreditoPago(f) {
+  return {
+    cliente: f.cliente||'', telefono: f.telefono||'—', numero_credito: f.numero_credito||'',
+    cuota: f.cuota||'', fecha_venc: fmtFecha(f.fecha_venc),
+    monto_cuota: Number(f.monto_cuota||0), pagado: Number(f.pagado||0), saldo: Number(f.saldo||0),
+    estado: estadoCuotaInfo(f.estado).label,
+  };
 }
 
 // Fila de "Totales" del reporte de Ventas, respetando solo las columnas
@@ -2343,6 +2472,28 @@ async function exportarPDF(tipo) {
     }
   }
 
+  // ---- CRÉDITOS (historial de pagos: cuotas pagadas y faltantes) ----
+  if (tipo==='creditos' || esGeneral) {
+    if (esGeneral) {
+      doc.addPage();
+      pintarCabecera();
+      startY = 28;
+      tituloSeccion('Créditos — Historial de pagos');
+    }
+    const cols = columnasActivas('creditos');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Créditos (revisa "Configurar exportaciones").', 10, startY);
+      startY += 10;
+    } else {
+      const rows = (R.cache.creditosPagos||[]).map(f => filaAPDF(filaCreditoPago(f), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin créditos en este período', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[168,85,247]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
+  }
+
   // Pie de página
   const pages = doc.internal.getNumberOfPages();
   for (let i=1;i<=pages;i++) {
@@ -2466,6 +2617,17 @@ function hojaGastosXLSX(wb) {
     rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
+function hojaCreditosXLSX(wb) {
+  const cols = columnasActivas('creditos');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Créditos', ['Aviso'], [['No hay columnas seleccionadas para Créditos (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
+  const rows = (R.cache.creditosPagos||[]).map(f => filaAXLSX(filaCreditoPago(f), cols));
+  appendSheetXLSX(wb, 'Créditos', headersXLSX(cols),
+    rows.length?rows:[['Sin créditos en este período', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+}
+
 function hojaResumenXLSX(wb) {
   const r = R.cache.resumen || {};
   const headers = ['Concepto', `Monto (${sym()})`];
@@ -2489,13 +2651,14 @@ async function exportarExcel(tipo) {
   if (tipo==='clientes'   || esGeneral) hojaClientesXLSX(wb);
   if (tipo==='inventario' || esGeneral) hojaInventarioXLSX(wb);
   if (tipo==='gastos'     || esGeneral) hojaGastosXLSX(wb);
+  if (tipo==='creditos'   || esGeneral) hojaCreditosXLSX(wb);
 
   XLSX.writeFile(wb, `negocio360_${tipo}_${todayISO()}.xlsx`);
 }
 
 function tituloTipo(tipo) {
   const m = { ventas:'Ventas', compras:'Compras', clientes:'Clientes',
-    inventario:'Inventario', gastos:'Gastos', general:'General (Completo)',
+    inventario:'Inventario', gastos:'Gastos', creditos:'Créditos', general:'General (Completo)',
     financiero:'Finanzas' };
   return m[tipo] || tipo;
 }
