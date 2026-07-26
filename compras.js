@@ -307,17 +307,22 @@ async function loadMetodosPago() {
 }
 
 function populateMetodosSelect() {
-  const sel = document.getElementById('nc-metodo-pago');
-  if (!sel) return;
   const metodos = STATE.metodosPago.length
     ? STATE.metodosPago
     : [{ id: null, nombre: 'Efectivo', es_default: true }];
-  sel.innerHTML = metodos.map(m =>
+  const opciones = metodos.map(m =>
     `<option value="${m.id || ''}" data-nombre="${escHtml(m.nombre)}">${escHtml(m.nombre)}</option>`
   ).join('');
-  // Seleccionar el default
   const def = metodos.find(m => m.es_default);
-  if (def) sel.value = def.id || '';
+
+  // Se llenan ambos selects (el del wizard normal y el del formulario
+  // rápido de "Producto nuevo"); si alguno no existe en el DOM, se ignora.
+  ['nc-metodo-pago', 'pn-metodo-pago'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = opciones;
+    if (def) sel.value = def.id || '';
+  });
 }
 
 /* =====================================================
@@ -700,8 +705,170 @@ function abrirNuevaCompra() {
 
   // Reset UI
   resetNuevaCompraUI();
-  irAPaso(1);
+  resetFormProductoNuevo();
+  mostrarPasoSeleccion();
   openModal('modal-nueva-compra');
+}
+
+// ── PASO 0: elegir "producto existente" vs "producto nuevo" ──────────────
+function mostrarPasoSeleccion() {
+  document.getElementById('nc-paso-0').style.display = '';
+  document.getElementById('nc-form-producto-nuevo').style.display = 'none';
+  document.getElementById('nc-wizard-body').style.display = 'none';
+  document.getElementById('nc-steps').style.display = 'none';
+  document.getElementById('nc-mobile-step-info').style.display = 'none';
+  document.getElementById('nc-btn-prev').style.display = 'none';
+  document.getElementById('nc-btn-next').style.display = 'none';
+  document.getElementById('nc-btn-save').style.display = 'none';
+  document.getElementById('nc-btn-comprar-nuevo').style.display = 'none';
+}
+
+function elegirTipoNuevaCompra(tipo) {
+  document.getElementById('nc-paso-0').style.display = 'none';
+
+  if (tipo === 'existente') {
+    // Comportamiento de siempre, sin ningún cambio.
+    document.getElementById('nc-wizard-body').style.display = '';
+    document.getElementById('nc-steps').style.display = '';
+    document.getElementById('nc-mobile-step-info').style.display = ''; // deja que la media query original decida (solo se ve en móvil)
+    irAPaso(1);
+  } else {
+    // Formulario rápido de producto nuevo.
+    document.getElementById('nc-form-producto-nuevo').style.display = '';
+    document.getElementById('nc-btn-comprar-nuevo').style.display = 'inline-flex';
+    llenarSelectProveedores();
+    populateMetodosSelect();
+    document.getElementById('pn-nombre')?.focus();
+  }
+}
+
+// ── FORMULARIO "PRODUCTO NUEVO" ───────────────────────────────────────────
+function resetFormProductoNuevo() {
+  ['pn-nombre','pn-categoria','pn-sku','pn-costo','pn-precio','pn-stock'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const err = document.getElementById('pn-error');
+  if (err) err.textContent = '';
+  actualizarPreviewProductoNuevo();
+}
+
+function actualizarPreviewProductoNuevo() {
+  const costo = parseFloat(document.getElementById('pn-costo')?.value) || 0;
+  const stock = parseFloat(document.getElementById('pn-stock')?.value) || 0;
+  const total = costo * stock;
+  const el = document.getElementById('pn-total-preview');
+  if (el) el.textContent = `Total a descontar de caja: ${fmt(total)}`;
+}
+
+async function crearProductoYComprar() {
+  const errEl = document.getElementById('pn-error');
+  if (errEl) errEl.textContent = '';
+
+  const nombre    = (document.getElementById('pn-nombre')?.value || '').trim();
+  const categoria = (document.getElementById('pn-categoria')?.value || '').trim();
+  const sku       = (document.getElementById('pn-sku')?.value || '').trim();
+  const costo     = parseFloat(document.getElementById('pn-costo')?.value);
+  const precio    = parseFloat(document.getElementById('pn-precio')?.value);
+  const stock     = parseFloat(document.getElementById('pn-stock')?.value);
+  const provSel   = document.getElementById('pn-proveedor-select');
+  const proveedorId     = provSel?.value || null;
+  const proveedorNombre = proveedorId
+    ? (STATE.proveedores.find(p => p.id === proveedorId)?.nombre || null)
+    : null;
+  const metodoSel = document.getElementById('pn-metodo-pago');
+  const metodoPagoId     = metodoSel?.value || null;
+  const metodoPagoNombre = metodoSel?.options[metodoSel.selectedIndex]?.getAttribute('data-nombre') || 'Efectivo';
+
+  if (!nombre) { if (errEl) errEl.textContent = 'El nombre del producto es obligatorio'; return; }
+  if (isNaN(costo) || costo <= 0) { if (errEl) errEl.textContent = 'El costo debe ser mayor a 0'; return; }
+  if (isNaN(precio) || precio < 0) { if (errEl) errEl.textContent = 'El precio de venta no es válido'; return; }
+  if (isNaN(stock) || stock <= 0) { if (errEl) errEl.textContent = 'La cantidad/stock inicial debe ser mayor a 0'; return; }
+
+  // Mismo límite que ya existe en Productos/Servicios para el monto que
+  // puede registrarse en Caja (columna numeric(14,2)).
+  const montoCompra = costo * stock;
+  const LIMITE_MONTO_CAJA = 999999999999.99;
+  if (montoCompra > LIMITE_MONTO_CAJA) {
+    if (errEl) errEl.textContent = `El total (${fmt(montoCompra)}) es demasiado grande para registrarse en Caja. Ajusta el costo o la cantidad.`;
+    return;
+  }
+
+  const btn = document.getElementById('nc-btn-comprar-nuevo');
+  btn.disabled = true;
+  const textoOriginal = btn.innerHTML;
+  btn.innerHTML = '<span class="btn-spinner"></span> Comprando...';
+
+  try {
+    // 1. Crear el producto (mismo esquema que usa Productos/Servicios),
+    // con stock_actual en 0: la cantidad comprada la asigna guardarCompra()
+    // más abajo, igual que con cualquier otra compra de producto existente,
+    // para no duplicar la lógica de actualización de stock.
+    const { data: nuevoProd, error: errProd } = await sbClient
+      .from('productos')
+      .insert({
+        auth_user_id:     STATE.userId,
+        tipo:             'producto',
+        nombre,
+        descripcion:      null,
+        categoria:        categoria || null,
+        proveedor_id:     proveedorId,
+        proveedor_nombre: proveedorNombre,
+        sku:              sku || null,
+        codigo_barras:    null,
+        costo,
+        precio,
+        tipo_precio:      'fijo',
+        stock_actual:     0,
+        stock_minimo:     0,
+        activo:           true,
+      })
+      .select()
+      .single();
+
+    if (errProd) throw errProd;
+
+    // 2. Seleccionar este mismo proveedor para la compra (si se eligió uno)
+    if (proveedorId) {
+      STATE.proveedorSeleccionado = STATE.proveedores.find(p => p.id === proveedorId) || null;
+    }
+
+    // 3. Armar el carrito con esta única línea y reutilizar EXACTAMENTE la
+    // misma lógica de guardado que ya usa el resto del módulo de Compras
+    // (crea la cabecera de compra, el detalle, actualiza el stock del
+    // producto, y registra el egreso en Caja) — así se garantiza que quede
+    // igual de consistente que cualquier otra compra.
+    STATE.carrito = [{
+      producto: { id: nuevoProd.id, nombre: nuevoProd.nombre, sku: nuevoProd.sku, stock_actual: 0 },
+      cantidad: stock,
+      costoUnitario: costo,
+      descuento: 0,
+      ivaPorc: 0,
+      ivaMonto: 0,
+      subtotal: montoCompra,
+    }];
+    STATE.ivaActivo = false;
+    STATE.ivaPorcentaje = 0;
+
+    // Método de pago / estado / fecha que guardarCompra() lee del wizard
+    // normal — se fuerzan aquí ya que este formulario los pide directamente.
+    const selWizardMetodo = document.getElementById('nc-metodo-pago');
+    if (selWizardMetodo) selWizardMetodo.value = metodoPagoId || '';
+    const estadoEl = document.getElementById('nc-estado');
+    if (estadoEl) estadoEl.value = 'completada'; // siempre descuenta de caja, sin excepción
+    const fechaEl = document.getElementById('nc-fecha');
+    if (fechaEl && !fechaEl.value) fechaEl.value = todayISO();
+    const obsEl = document.getElementById('nc-observaciones');
+    if (obsEl) obsEl.value = 'Producto nuevo creado directamente desde Compras';
+
+    await guardarCompra(); // ya cierra el modal y refresca todo por su cuenta
+  } catch (e) {
+    console.error('crearProductoYComprar:', e);
+    if (errEl) errEl.textContent = 'Error al crear el producto: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = textoOriginal;
+  }
 }
 
 function resetNuevaCompraUI() {
@@ -804,12 +971,17 @@ async function loadProveedores() {
 }
 
 function llenarSelectProveedores() {
-  const sel = document.getElementById('nc-proveedor-select');
-  if (!sel) return;
-  sel.innerHTML = `<option value="">— Sin proveedor / Seleccionar —</option>` +
+  const opciones = `<option value="">— Sin proveedor / Seleccionar —</option>` +
     (STATE.proveedores.filter(p => p.activo).map(p =>
       `<option value="${p.id}">${escHtml(p.nombre)}${p.telefono ? ' — '+escHtml(p.telefono) : ''}</option>`
     ).join(''));
+
+  // Se llenan ambos selects (wizard normal + formulario rápido de
+  // "Producto nuevo"); si alguno no existe en el DOM, se ignora.
+  ['nc-proveedor-select', 'pn-proveedor-select'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.innerHTML = opciones;
+  });
 }
 
 function onSelectProveedor() {
