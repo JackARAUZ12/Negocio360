@@ -34,6 +34,7 @@
     'caja.html':           { key: 'caja',           label: 'Caja / Pagos',        icon: '🏦' },
     'creditos.html':       { key: 'creditos',       label: 'Créditos',            icon: '🧾' },
     'cuentas-por-pagar.html': { key: 'cuentas_por_pagar', label: 'Cuentas por Pagar', icon: '📇' },
+    'salarios.html':       { key: 'salarios',       label: 'Salarios',            icon: '🧑‍💼' },
     'impuestos.html':      { key: 'impuestos',      label: 'Impuestos',           icon: '🧾' },
     'reportes.html':       { key: 'reportes',       label: 'Reportes',            icon: '📊' },
     'estadisticas.html':   { key: 'estadisticas',   label: 'Estadísticas',        icon: '📈' },
