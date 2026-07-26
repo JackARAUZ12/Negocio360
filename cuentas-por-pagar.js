@@ -303,6 +303,65 @@ function agregarProductoAlCarritoCxP(productoId) {
   const sp = document.getElementById('np-producto-search'); if (sp) sp.value = '';
   const sr = document.getElementById('np-search-results');  if (sr) sr.innerHTML = '';
 }
+
+/* ------------------------------------------------------------
+   PRODUCTO NUEVO — misma idea que "Comprar y agregar al inventario"
+   de Compras: crea el producto sin salir del flujo de compra. Aquí
+   se agrega como una línea más del carrito (stock_actual arranca en
+   0 y la cantidad de esta compra se suma al guardar, igual que con
+   cualquier otro producto — incluyendo el costo promedio ponderado).
+   ------------------------------------------------------------ */
+function toggleProductoNuevoCxP(mostrar) {
+  const form = document.getElementById('np-producto-nuevo-form');
+  if (!form) return;
+  const mostrarForm = mostrar !== undefined ? mostrar : form.style.display === 'none';
+  form.style.display = mostrarForm ? 'block' : 'none';
+  if (mostrarForm) {
+    ['pn-nombre','pn-categoria','pn-sku','pn-costo','pn-precio'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+    const cant = document.getElementById('pn-cantidad'); if (cant) cant.value = '1';
+    const err = document.getElementById('pn-error'); if (err) err.textContent = '';
+  }
+}
+
+async function crearProductoNuevoCxP() {
+  const errEl = document.getElementById('pn-error');
+  errEl.textContent = '';
+
+  const nombre = document.getElementById('pn-nombre')?.value.trim();
+  const categoria = document.getElementById('pn-categoria')?.value.trim() || null;
+  const sku = document.getElementById('pn-sku')?.value.trim() || null;
+  const costo = parseFloat(document.getElementById('pn-costo')?.value);
+  const precio = parseFloat(document.getElementById('pn-precio')?.value);
+  const cantidad = parseFloat(document.getElementById('pn-cantidad')?.value);
+
+  if (!nombre) { errEl.textContent = 'El nombre del producto es requerido.'; return; }
+  if (isNaN(costo) || costo < 0) { errEl.textContent = 'Indica un costo unitario válido.'; return; }
+  if (isNaN(precio) || precio < 0) { errEl.textContent = 'Indica un precio de venta válido.'; return; }
+  if (!(cantidad > 0)) { errEl.textContent = 'La cantidad debe ser mayor a cero.'; return; }
+
+  setBtnLoading('btn-crear-producto-cxp', true);
+  try {
+    const { data: nuevoProd, error } = await sbClient.from('productos').insert({
+      auth_user_id: STATE.userId, tipo: 'producto', nombre, categoria, sku,
+      costo, precio, stock_actual: 0, activo: true,
+    }).select().single();
+    if (error) throw error;
+
+    STATE.productos.push(nuevoProd);
+    const linea = { producto: nuevoProd, cantidad, precioUnitario: costo, descuento: 0, ivaPorc: STATE.ivaActivo?STATE.ivaPorcentaje:0 };
+    recalcularLineaCxP(linea);
+    STATE.carrito.push(linea);
+    renderCarritoCxP();
+
+    toggleProductoNuevoCxP(false);
+    showToast(`Producto "${nombre}" creado y agregado al carrito`);
+  } catch (e) {
+    console.error('crearProductoNuevoCxP:', e);
+    errEl.textContent = 'Error al crear el producto: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-crear-producto-cxp', false);
+  }
+}
 function recalcularLineaCxP(linea) {
   const base = linea.cantidad * linea.precioUnitario;
   const baseDesc = base - (linea.descuento||0);
@@ -431,6 +490,7 @@ function resetFormNuevaCuentaCxP() {
 
   const sp = document.getElementById('np-producto-search'); if (sp) sp.value='';
   const sr = document.getElementById('np-search-results');  if (sr) sr.innerHTML='';
+  toggleProductoNuevoCxP(false);
   renderCarritoCxP();
 
   const ivaCheck = document.getElementById('np-iva-activo'); if (ivaCheck) ivaCheck.checked=false;
@@ -525,10 +585,22 @@ async function guardarNuevaCuentaCxP() {
     }).select().single();
     if (errCompra) throw errCompra;
 
-    // 2) Detalle + stock (igual que Compras: SIEMPRE aumenta inventario)
+    // 2) Detalle + stock + COSTO PROMEDIO PONDERADO.
+    //    Aunque una compra a crédito no descuenta Caja de inmediato, el
+    //    inventario que entra sí tiene un valor — si no se actualizara el
+    //    costo, "Productos/Servicios" seguiría mostrando el valor de
+    //    inventario con el costo viejo, subestimando lo que en realidad
+    //    vale el stock después de esta compra.
+    //    Fórmula: nuevo_costo = (stock_antes×costo_antes + cantidad×precio_compra) / stock_después
     for (const l of STATE.carrito) {
       const stockAntes = Number(l.producto.stock_actual||0);
-      const stockDespues = stockAntes + Number(l.cantidad);
+      const costoAntes = Number(l.producto.costo||0);
+      const cantidadComprada = Number(l.cantidad);
+      const stockDespues = stockAntes + cantidadComprada;
+      const nuevoCosto = stockDespues > 0
+        ? round2((stockAntes*costoAntes + cantidadComprada*l.precioUnitario) / stockDespues)
+        : l.precioUnitario;
+
       const { error: errDet } = await sbClient.from('detalle_compras').insert({
         auth_user_id: STATE.userId, compra_id: compra.id, producto_id: l.producto.id,
         producto_nombre: l.producto.nombre, producto_sku: l.producto.sku||null,
@@ -538,7 +610,7 @@ async function guardarNuevaCuentaCxP() {
       });
       if (errDet) throw errDet;
       const { error: errStock } = await sbClient.from('productos')
-        .update({ stock_actual: stockDespues, updated_at: new Date().toISOString() })
+        .update({ stock_actual: stockDespues, costo: nuevoCosto, updated_at: new Date().toISOString() })
         .eq('id', l.producto.id).eq('auth_user_id', STATE.userId);
       if (errStock) throw errStock;
     }
