@@ -8,8 +8,10 @@
                                      única puerta de entrada para compras
                                      a crédito; Compras solo la muestra
                                      como historial, nunca la duplica)
-     Cuentas por Pagar → Caja      (solo si "Contado", o al registrar un
-                                     pago de una cuenta a crédito — usa
+     Cuentas por Pagar → Caja      (NUNCA al crear la compra — este módulo
+                                     es 100% a crédito, por eso se llama
+                                     "Cuentas por Pagar". Caja solo se
+                                     toca al registrar un pago, vía
                                      window.CajaAPI, igual que Créditos)
      Por ahora este módulo solo se abre desde el Dashboard (no tiene
      ítem propio en el sidebar todavía).
@@ -45,7 +47,6 @@ let STATE = {
   proveedorSeleccionado: null,
   ivaActivo: false,
   ivaPorcentaje: 15,
-  tipoPago: 'contado',      // contado | credito
   tipoCredito: 'fecha_fija',// fecha_fija | cuotas
 
   // Pagar / detalle
@@ -371,13 +372,6 @@ function actualizarResumenCxP() {
 /* =====================================================
    TIPO DE PAGO / TIPO DE CRÉDITO
 ===================================================== */
-function seleccionarTipoPagoCxP(tipo) {
-  STATE.tipoPago = tipo;
-  document.getElementById('tp-opt-contado').classList.toggle('activo', tipo==='contado');
-  document.getElementById('tp-opt-credito').classList.toggle('activo', tipo==='credito');
-  const bloque = document.getElementById('np-bloque-credito');
-  if (bloque) bloque.style.display = tipo==='credito' ? 'block' : 'none';
-}
 function seleccionarTipoCreditoCxP(tipo) {
   STATE.tipoCredito = tipo;
   document.getElementById('tc-opt-fecha_fija').classList.toggle('activo', tipo==='fecha_fija');
@@ -405,7 +399,7 @@ function generarCuotasCxP(total, numCuotas, fechaInicio, frecuencia) {
 }
 function previewCuotasCxP() {
   const el = document.getElementById('np-cuotas-preview');
-  if (!el || STATE.tipoPago!=='credito' || STATE.tipoCredito!=='cuotas') { if(el) el.textContent=''; return; }
+  if (!el || STATE.tipoCredito!=='cuotas') { if(el) el.textContent=''; return; }
   const { total } = calcularTotalesCxP();
   const numCuotas = parseInt(document.getElementById('np-num-cuotas')?.value)||0;
   const fechaInicio = document.getElementById('np-fecha-primera-cuota')?.value;
@@ -426,7 +420,7 @@ function resetFormNuevaCuentaCxP() {
   STATE.carrito = [];
   STATE.proveedorSeleccionado = null;
   STATE.ivaActivo = false; STATE.ivaPorcentaje = 15;
-  STATE.tipoPago = 'contado'; STATE.tipoCredito = 'fecha_fija';
+  STATE.tipoCredito = 'fecha_fija';
 
   const sel = document.getElementById('np-proveedor-select'); if (sel) sel.value = '';
   toggleNuevoProveedorCxP(false);
@@ -443,8 +437,6 @@ function resetFormNuevaCuentaCxP() {
   const ivaPorc  = document.getElementById('np-iva-porcentaje'); if (ivaPorc) ivaPorc.value='15';
   toggleIVACxP(false);
 
-  document.querySelector('input[name="np-tipo-pago"][value="contado"]').checked = true;
-  seleccionarTipoPagoCxP('contado');
   document.querySelector('input[name="np-tipo-credito"][value="fecha_fija"]').checked = true;
   seleccionarTipoCreditoCxP('fecha_fija');
 
@@ -494,25 +486,23 @@ async function guardarNuevaCuentaCxP() {
   const observaciones = document.getElementById('np-observaciones')?.value.trim() || null;
 
   let fechaVencimiento = null, numCuotas = null, frecuencia = null, cuotasGeneradas = [];
-  if (STATE.tipoPago === 'credito') {
-    if (STATE.tipoCredito === 'fecha_fija') {
-      fechaVencimiento = document.getElementById('np-fecha-vencimiento')?.value;
-      if (!fechaVencimiento) { errEl.textContent = 'Indica la fecha de vencimiento.'; return; }
-      if (fechaVencimiento < fecha) { errEl.textContent = 'La fecha de vencimiento no puede ser anterior a la fecha de compra.'; return; }
-    } else {
-      numCuotas = parseInt(document.getElementById('np-num-cuotas')?.value) || 0;
-      const fechaPrimeraCuota = document.getElementById('np-fecha-primera-cuota')?.value;
-      frecuencia = document.getElementById('np-frecuencia')?.value || 'mensual';
-      if (numCuotas < 1) { errEl.textContent = 'El número de cuotas debe ser al menos 1.'; return; }
-      if (!fechaPrimeraCuota) { errEl.textContent = 'Indica la fecha de la primera cuota.'; return; }
-      if (fechaPrimeraCuota < fecha) { errEl.textContent = 'La fecha de la primera cuota no puede ser anterior a la fecha de compra.'; return; }
-    }
+  if (STATE.tipoCredito === 'fecha_fija') {
+    fechaVencimiento = document.getElementById('np-fecha-vencimiento')?.value;
+    if (!fechaVencimiento) { errEl.textContent = 'Indica la fecha de vencimiento.'; return; }
+    if (fechaVencimiento < fecha) { errEl.textContent = 'La fecha de vencimiento no puede ser anterior a la fecha de compra.'; return; }
+  } else {
+    numCuotas = parseInt(document.getElementById('np-num-cuotas')?.value) || 0;
+    const fechaPrimeraCuota = document.getElementById('np-fecha-primera-cuota')?.value;
+    frecuencia = document.getElementById('np-frecuencia')?.value || 'mensual';
+    if (numCuotas < 1) { errEl.textContent = 'El número de cuotas debe ser al menos 1.'; return; }
+    if (!fechaPrimeraCuota) { errEl.textContent = 'Indica la fecha de la primera cuota.'; return; }
+    if (fechaPrimeraCuota < fecha) { errEl.textContent = 'La fecha de la primera cuota no puede ser anterior a la fecha de compra.'; return; }
   }
 
   const { subtotal, descTotal, ivaTotal, total } = calcularTotalesCxP();
   if (total <= 0) { errEl.textContent = 'El total debe ser mayor a cero.'; return; }
 
-  if (STATE.tipoPago === 'credito' && STATE.tipoCredito === 'cuotas') {
+  if (STATE.tipoCredito === 'cuotas') {
     const fechaPrimeraCuota = document.getElementById('np-fecha-primera-cuota').value;
     cuotasGeneradas = generarCuotasCxP(total, numCuotas, fechaPrimeraCuota, frecuencia);
     fechaVencimiento = cuotasGeneradas[cuotasGeneradas.length-1].fecha_vencimiento; // informativo
@@ -521,15 +511,15 @@ async function guardarNuevaCuentaCxP() {
   setBtnLoading('np-btn-guardar', true);
   try {
     const numero = await generarNumeroCompraCxP();
-    const esContado = STATE.tipoPago === 'contado';
 
-    // 1) Cabecera de compra (misma tabla que usa el módulo Compras)
+    // 1) Cabecera de compra (misma tabla que usa el módulo Compras).
+    //    Cuentas por Pagar SIEMPRE es a crédito, así que la compra
+    //    siempre queda "pendiente" (nunca descuenta Caja al crearla).
     const { data: compra, error: errCompra } = await sbClient.from('compras').insert({
       auth_user_id: STATE.userId, numero,
       proveedor_id: STATE.proveedorSeleccionado.id, proveedor_nombre: STATE.proveedorSeleccionado.nombre,
       fecha, subtotal, descuento_total: descTotal, iva_porcentaje: STATE.ivaActivo?STATE.ivaPorcentaje:0, iva_monto: ivaTotal, total,
-      metodo_pago_nombre: esContado ? 'Efectivo' : 'Crédito',
-      estado: esContado ? 'completada' : 'pendiente',
+      metodo_pago_nombre: 'Crédito', estado: 'pendiente',
       observaciones: factura ? `Factura ${factura}${observaciones?' — '+observaciones:''}` : observaciones,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
@@ -553,49 +543,40 @@ async function guardarNuevaCuentaCxP() {
       if (errStock) throw errStock;
     }
 
-    let cuenta = null;
+    // 3) Crea la cuenta por pagar — NUNCA descuenta Caja al crearla
+    //    (eso solo pasa cuando se registra un pago, en confirmarPagoCxP).
+    const numeroCxP = await generarNumeroCxP();
+    const { data: cuenta, error: errCuenta } = await sbClient.from('cuentas_por_pagar').insert({
+      auth_user_id: STATE.userId, numero: numeroCxP,
+      proveedor_id: STATE.proveedorSeleccionado.id, proveedor_nombre: STATE.proveedorSeleccionado.nombre,
+      compra_id: compra.id, tipo_credito: STATE.tipoCredito, fecha_compra: fecha,
+      fecha_vencimiento: fechaVencimiento, num_cuotas: STATE.tipoCredito==='cuotas'?numCuotas:null,
+      frecuencia: STATE.tipoCredito==='cuotas'?frecuencia:null,
+      monto_total: total, monto_pagado: 0, saldo_pendiente: total, estado: 'pendiente',
+      observaciones, usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+    }).select().single();
+    if (errCuenta) throw errCuenta;
 
-    if (esContado) {
-      // 3a) CONTADO → descuenta Caja de inmediato, no crea cuenta por pagar
-      const cajaRes = await window.CajaAPI.registrarMovimiento({
-        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
-        concepto: `Compra ${numero} — ${STATE.proveedorSeleccionado.nombre}`, monto: total,
-        referencia_tipo: 'compra', referencia_id: compra.id, fecha,
-      });
-      if (!cajaRes.ok) showToast('La compra se guardó, pero no se pudo descontar de caja: ' + cajaRes.error, 'error');
-    } else {
-      // 3b) CRÉDITO → crea la cuenta por pagar, NO descuenta caja
-      const numeroCxP = await generarNumeroCxP();
-      const { data: nuevaCuenta, error: errCuenta } = await sbClient.from('cuentas_por_pagar').insert({
-        auth_user_id: STATE.userId, numero: numeroCxP,
-        proveedor_id: STATE.proveedorSeleccionado.id, proveedor_nombre: STATE.proveedorSeleccionado.nombre,
-        compra_id: compra.id, tipo_credito: STATE.tipoCredito, fecha_compra: fecha,
-        fecha_vencimiento: fechaVencimiento, num_cuotas: STATE.tipoCredito==='cuotas'?numCuotas:null,
-        frecuencia: STATE.tipoCredito==='cuotas'?frecuencia:null,
-        monto_total: total, monto_pagado: 0, saldo_pendiente: total, estado: 'pendiente',
-        observaciones, usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
-      }).select().single();
-      if (errCuenta) throw errCuenta;
-      cuenta = nuevaCuenta;
-
-      if (STATE.tipoCredito === 'cuotas') {
-        const cuotasInsert = cuotasGeneradas.map(c => ({ auth_user_id: STATE.userId, cuenta_id: cuenta.id, ...c }));
-        const { error: errCuotas } = await sbClient.from('cuentas_por_pagar_cuotas').insert(cuotasInsert);
-        if (errCuotas) throw errCuotas;
-      }
+    if (STATE.tipoCredito === 'cuotas') {
+      const cuotasInsert = cuotasGeneradas.map(c => ({ auth_user_id: STATE.userId, cuenta_id: cuenta.id, ...c }));
+      const { error: errCuotas } = await sbClient.from('cuentas_por_pagar_cuotas').insert(cuotasInsert);
+      if (errCuotas) throw errCuotas;
     }
 
-    // 4) Métricas del proveedor (igual que Compras)
+    // 4) El IVA de la compra se registra en Impuestos como crédito fiscal
+    //    (IVA_COMPRA): reduce el IVA neto a pagar, igual que Créditos ya
+    //    hace con el IVA_VENTA para las ventas a crédito.
+    if (ivaTotal > 0) await registrarImpuestoCompra(ivaTotal, compra, numeroCxP);
+
+    // 5) Métricas del proveedor (igual que Compras)
     await sbClient.from('proveedores').update({
       ultima_compra: fecha,
       monto_acumulado: Number(STATE.proveedorSeleccionado.monto_acumulado||0) + total,
       total_compras: Number(STATE.proveedorSeleccionado.total_compras||0) + 1,
     }).eq('id', STATE.proveedorSeleccionado.id).eq('auth_user_id', STATE.userId);
 
-    try { localStorage.setItem('n360_caja_updated', new Date().toISOString()); } catch(e) {}
-
     closeModal('modal-nueva-cuenta');
-    showToast(`Compra ${numero} registrada correctamente${cuenta ? ' — Cuenta '+cuenta.numero+' creada' : ''}`);
+    showToast(`Compra ${numero} registrada — Cuenta ${cuenta.numero} creada`);
     await Promise.allSettled([loadKPIsCxP(), loadCuentasCxP(), loadProveedores(), loadProductosDisponibles()]);
   } catch (e) {
     console.error('guardarNuevaCuentaCxP:', e);
@@ -603,6 +584,27 @@ async function guardarNuevaCuentaCxP() {
   } finally {
     setBtnLoading('np-btn-guardar', false);
   }
+}
+
+// Registra el IVA de una compra a crédito como crédito fiscal (IVA_COMPRA)
+// en el mismo libro que usa Impuestos, encadenando el saldo igual que
+// Créditos hace con registrarImpuestoCredito — pero restando, porque el
+// IVA pagado a un proveedor reduce el IVA neto que se debe, no lo aumenta.
+async function registrarImpuestoCompra(montoImpuesto, compra, numeroCxP) {
+  if (!montoImpuesto || montoImpuesto <= 0) return;
+  try {
+    const { data: ultMov } = await sbClient.from('movimientos_impuestos')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId)
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    const saldoRes = round2(saldoAnt - montoImpuesto);
+    await sbClient.from('movimientos_impuestos').insert({
+      auth_user_id: STATE.userId, tipo_movimiento: 'IVA_COMPRA',
+      concepto: `IVA pagado en compra ${compra.numero} (cuenta ${numeroCxP})`,
+      monto: montoImpuesto, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
+      fecha: todayISO(),
+    });
+  } catch (e) { console.warn('registrarImpuestoCompra:', e); }
 }
 
 /* =====================================================
@@ -888,12 +890,12 @@ async function confirmarPagoCxP() {
 
     // Egreso en Caja: pagar a un proveedor es SALIDA de dinero
     const cajaRes = await window.CajaAPI.registrarMovimiento({
-      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_CXP',
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
       concepto: `Pago a proveedor — ${cuentaFresca.numero}`, monto,
       metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
       referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
     });
-    if (!cajaRes.ok) console.warn('No se pudo registrar en caja:', cajaRes.error);
+    if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
 
     const comprobanteNumero = `PAG-${cuentaFresca.numero}-${Date.now().toString().slice(-5)}`;
     await sbClient.from('cuentas_por_pagar_pagos').insert({
