@@ -1378,8 +1378,90 @@
       </button>
     </div>
 
+    <!-- ══════════════════════════════════════
+         PASO 0: ¿PRODUCTO EXISTENTE O NUEVO?
+         Se muestra primero, antes que el wizard normal.
+    ══════════════════════════════════════ -->
+    <div class="nc-body" id="nc-paso-0" style="flex:1;overflow-y:auto;padding:24px 20px">
+      <div class="nc-paso-title" style="margin-bottom:18px">¿Qué vas a comprar?</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <button type="button" onclick="elegirTipoNuevaCompra('existente')"
+          style="text-align:left;padding:20px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg-surface);transition:all .15s;cursor:pointer"
+          onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="font-size:26px;margin-bottom:8px">📦</div>
+          <div style="font-size:14.5px;font-weight:700;color:var(--text-primary);margin-bottom:4px">Producto existente</div>
+          <div style="font-size:12.5px;color:var(--text-muted)">Ya está registrado en Productos/Servicios. Busca y agrega al carrito como siempre.</div>
+        </button>
+        <button type="button" onclick="elegirTipoNuevaCompra('nuevo')"
+          style="text-align:left;padding:20px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--bg-surface);transition:all .15s;cursor:pointer"
+          onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="font-size:26px;margin-bottom:8px">✨</div>
+          <div style="font-size:14.5px;font-weight:700;color:var(--text-primary);margin-bottom:4px">Producto nuevo</div>
+          <div style="font-size:12.5px;color:var(--text-muted)">No existe todavía. Se crea, se descuenta de caja y queda registrado como compra — todo en un solo paso.</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         PRODUCTO NUEVO: formulario simplificado
+         (crea el producto + la compra + el egreso
+         de caja, todo de una vez)
+    ══════════════════════════════════════ -->
+    <div class="nc-body" id="nc-form-producto-nuevo" style="flex:1;overflow-y:auto;padding:20px;display:none">
+      <div class="nc-paso-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Producto nuevo
+      </div>
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+        Esto crea el producto en tu inventario, registra la compra y descuenta el costo de Caja automáticamente. A diferencia de Productos/Servicios, aquí <strong>siempre se descuenta de caja</strong> (no hay opción "ya lo tenía").
+      </p>
+
+      <div class="form-group">
+        <label>Proveedor (opcional)</label>
+        <select id="pn-proveedor-select">
+          <option value="">— Sin proveedor —</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nombre del producto *</label>
+          <input type="text" id="pn-nombre" placeholder="Ej: Taladro inalámbrico"/>
+        </div>
+        <div class="form-group">
+          <label>Categoría</label>
+          <input type="text" id="pn-categoria" placeholder="Ej: Herramientas"/>
+        </div>
+        <div class="form-group">
+          <label>SKU / código (opcional)</label>
+          <input type="text" id="pn-sku" placeholder="Ej: TAL-001"/>
+        </div>
+        <div class="form-group">
+          <label>Método de pago *</label>
+          <select id="pn-metodo-pago"></select>
+        </div>
+        <div class="form-group">
+          <label>Costo unitario (compra) *</label>
+          <input type="number" id="pn-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarPreviewProductoNuevo()"/>
+        </div>
+        <div class="form-group">
+          <label>Precio de venta *</label>
+          <input type="number" id="pn-precio" min="0" step="0.01" placeholder="0.00"/>
+        </div>
+        <div class="form-group">
+          <label>Cantidad / stock inicial *</label>
+          <input type="number" id="pn-stock" min="0" step="1" placeholder="0" oninput="actualizarPreviewProductoNuevo()"/>
+        </div>
+      </div>
+
+      <div id="pn-total-preview" style="margin-top:6px;padding:12px;background:var(--accent-soft);border-radius:var(--radius-md);font-size:13px;color:var(--accent);font-weight:600">
+        Total a descontar de caja: —
+      </div>
+      <p id="pn-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+
     <!-- Indicadores de paso -->
-    <div class="nc-steps" style="flex-shrink:0">
+    <div class="nc-steps" id="nc-steps" style="flex-shrink:0;display:none">
       <div class="paso-indicator active" data-paso="1">
         <div class="paso-num">1</div> <span class="paso-label">Proveedor</span>
       </div>
@@ -1413,7 +1495,7 @@
     <div class="nc-mobile-step-info" id="nc-mobile-step-info" style="flex-shrink:0">Paso 1 de 7 — Proveedor</div>
 
     <!-- Cuerpo scrollable -->
-    <div class="nc-body" style="flex:1;overflow-y:auto">
+    <div class="nc-body" id="nc-wizard-body" style="flex:1;overflow-y:auto;display:none">
 
       <!-- PASO 1: PROVEEDOR -->
       <div class="nc-paso" data-paso="1">
@@ -1654,7 +1736,7 @@
       <div style="flex:1"></div>
       <div class="nc-footer-right">
         <button class="btn-ghost" onclick="closeModal('modal-nueva-compra')">Cancelar</button>
-        <button id="nc-btn-next" class="btn-primary" onclick="pasoSiguiente()">
+        <button id="nc-btn-next" class="btn-primary" onclick="pasoSiguiente()" style="display:none">
           Siguiente
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
@@ -1662,6 +1744,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
           Guardar compra
           <span id="nc-total-preview" style="opacity:0.8;font-size:12px"></span>
+        </button>
+        <button id="nc-btn-comprar-nuevo" class="btn-primary" onclick="crearProductoYComprar()" style="display:none;background:var(--success)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Comprar y agregar al inventario
         </button>
       </div>
     </div>
