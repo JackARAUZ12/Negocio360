@@ -18,6 +18,7 @@ const NOTIF = {
   empresaConfig: {},
   items: [],
   leidas: new Set(),
+  vistosAnuncios: new Set(),
 };
 
 function esc(s) {
@@ -126,6 +127,7 @@ const TIPO_INFO = {
   mantenimiento:   { icon: '🛠️', bg: 'var(--warning-soft)', color: 'var(--warning)', label: 'Mantenimiento' },
   aviso:           { icon: 'ℹ️', bg: 'var(--accent-4-soft)', color: 'var(--accent-4)', label: 'Aviso' },
   urgente:         { icon: '🚨', bg: 'var(--danger-soft)',  color: 'var(--danger)',  label: 'Urgente' },
+  anuncio:         { icon: '📢', bg: 'var(--accent-5-soft)', color: 'var(--accent-5)', label: 'Anuncio' },
 };
 function tipoInfo(tipo) { return TIPO_INFO[tipo] || TIPO_INFO.aviso; }
 
@@ -162,18 +164,55 @@ function fmtFechaNotif(iso) {
 }
 
 async function cargarNotificaciones() {
-  const { data: notifs, error } = await sb
-    .from('notificaciones')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  NOTIF.items = notifs || [];
+  // Se traen en paralelo: notificaciones normales y anuncios del sistema
+  // (misma tabla que usa el aviso emergente del Dashboard). Si los anuncios
+  // fallan por cualquier razón, no debe tumbar las notificaciones normales.
+  const [notifsRes, anunciosRes] = await Promise.all([
+    sb.from('notificaciones').select('*').order('created_at', { ascending: false }),
+    sb.from('anuncios_sistema').select('*').order('created_at', { ascending: false }).limit(50),
+  ]);
+  if (notifsRes.error) throw notifsRes.error;
+  if (anunciosRes.error) console.warn('cargarNotificaciones (anuncios):', anunciosRes.error);
 
-  const { data: leidas } = await sb
-    .from('notificaciones_leidas')
-    .select('notificacion_id')
-    .eq('auth_user_id', NOTIF.userId);
+  const notifsNormalizadas = (notifsRes.data || []).map(n => ({
+    id: n.id,
+    origen: 'notificacion',
+    tipo: n.tipo,
+    titulo: n.titulo,
+    mensaje: n.mensaje,
+    items: null,
+    created_at: n.created_at,
+  }));
+
+  const anunciosNormalizados = (anunciosRes.data || []).map(a => ({
+    id: a.id,
+    origen: 'anuncio',
+    tipo: 'anuncio',
+    titulo: a.titulo,
+    mensaje: null,
+    items: Array.isArray(a.items) ? a.items : [],
+    created_at: a.created_at,
+  }));
+
+  // Un solo feed, ordenado por fecha (lo más nuevo primero), sin importar
+  // si es notificación o anuncio.
+  NOTIF.items = [...notifsNormalizadas, ...anunciosNormalizados]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const [{ data: leidas }, { data: vistos }] = await Promise.all([
+    sb.from('notificaciones_leidas').select('notificacion_id').eq('auth_user_id', NOTIF.userId),
+    sb.from('anuncios_vistos').select('anuncio_id').eq('auth_user_id', NOTIF.userId),
+  ]);
   NOTIF.leidas = new Set((leidas || []).map(l => l.notificacion_id));
+  NOTIF.vistosAnuncios = new Set((vistos || []).map(v => v.anuncio_id));
+}
+
+// Un ítem del feed está "leído" según su origen: notificaciones usan
+// notificaciones_leidas, anuncios usan anuncios_vistos (la misma tabla que
+// ya usa el aviso emergente del Dashboard — si ya lo viste ahí, aquí
+// también aparece como leído).
+function estaLeido(item) {
+  return item.origen === 'anuncio' ? NOTIF.vistosAnuncios.has(item.id) : NOTIF.leidas.has(item.id);
 }
 
 function renderNotificaciones() {
@@ -182,7 +221,7 @@ function renderNotificaciones() {
     el.innerHTML = `
       <div class="notif-empty">
         <div class="notif-empty-icon">🔔</div>
-        <p>No hay notificaciones por ahora. Aquí verás los próximos avisos y actualizaciones de Negocio360.</p>
+        <p>No hay notificaciones por ahora. Aquí verás los próximos avisos, anuncios y actualizaciones de Negocio360.</p>
       </div>`;
     actualizarBadgeSidebar();
     return;
@@ -190,9 +229,14 @@ function renderNotificaciones() {
 
   el.innerHTML = NOTIF.items.map(n => {
     const info = tipoInfo(n.tipo);
-    const noLeida = !NOTIF.leidas.has(n.id);
+    const noLeida = !estaLeido(n);
+    // Los anuncios traen una lista de puntos (items); las notificaciones
+    // normales traen un solo mensaje de texto.
+    const cuerpo = Array.isArray(n.items)
+      ? `<ul class="notif-anuncio-items">${n.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`
+      : `<div class="notif-mensaje">${esc(n.mensaje)}</div>`;
     return `
-      <div class="notif-item ${noLeida ? 'no-leida' : ''}" data-id="${n.id}" onclick="NOTIF.marcarLeida('${n.id}')">
+      <div class="notif-item ${noLeida ? 'no-leida' : ''}" data-id="${n.id}" onclick="NOTIF.marcarLeida('${n.id}', '${n.origen}')">
         <div class="notif-icon" style="background:${info.bg}">${info.icon}</div>
         <div class="notif-body">
           <div class="notif-top">
@@ -201,7 +245,7 @@ function renderNotificaciones() {
             <span class="notif-tipo-badge" style="background:${info.bg};color:${info.color}">${info.label}</span>
             <span class="notif-fecha">${fmtFechaNotif(n.created_at)}</span>
           </div>
-          <div class="notif-mensaje">${esc(n.mensaje)}</div>
+          ${cuerpo}
         </div>
       </div>
     `;
@@ -211,7 +255,7 @@ function renderNotificaciones() {
 }
 
 function actualizarBadgeSidebar() {
-  const noLeidas = NOTIF.items.filter(n => !NOTIF.leidas.has(n.id)).length;
+  const noLeidas = NOTIF.items.filter(n => !estaLeido(n)).length;
   const badge = document.getElementById('nav-notif-count');
   if (!badge) return;
   if (noLeidas > 0) {
@@ -222,7 +266,18 @@ function actualizarBadgeSidebar() {
   }
 }
 
-async function marcarLeida(id) {
+async function marcarLeida(id, origen) {
+  if (origen === 'anuncio') {
+    if (NOTIF.vistosAnuncios.has(id)) return; // ya estaba visto
+    try {
+      NOTIF.vistosAnuncios.add(id); // optimista
+      renderNotificaciones();
+      await sb.from('anuncios_vistos').insert([{ anuncio_id: id, auth_user_id: NOTIF.userId }]);
+    } catch (e) {
+      console.warn('marcarLeida (anuncio):', e);
+    }
+    return;
+  }
   if (NOTIF.leidas.has(id)) return; // ya estaba leída
   try {
     NOTIF.leidas.add(id); // optimista
@@ -234,13 +289,24 @@ async function marcarLeida(id) {
 }
 
 async function marcarTodasLeidas() {
-  const pendientes = NOTIF.items.filter(n => !NOTIF.leidas.has(n.id)).map(n => n.id);
-  if (!pendientes.length) { showToast('Ya tienes todo leído', 'info'); return; }
+  const pendientesNotif   = NOTIF.items.filter(n => n.origen === 'notificacion' && !NOTIF.leidas.has(n.id)).map(n => n.id);
+  const pendientesAnuncio = NOTIF.items.filter(n => n.origen === 'anuncio'      && !NOTIF.vistosAnuncios.has(n.id)).map(n => n.id);
+  if (!pendientesNotif.length && !pendientesAnuncio.length) { showToast('Ya tienes todo leído', 'info'); return; }
   try {
-    pendientes.forEach(id => NOTIF.leidas.add(id)); // optimista
+    pendientesNotif.forEach(id => NOTIF.leidas.add(id));
+    pendientesAnuncio.forEach(id => NOTIF.vistosAnuncios.add(id));
     renderNotificaciones();
-    const filas = pendientes.map(id => ({ notificacion_id: id, auth_user_id: NOTIF.userId }));
-    await sb.from('notificaciones_leidas').upsert(filas, { onConflict: 'notificacion_id,auth_user_id' });
+
+    const ops = [];
+    if (pendientesNotif.length) {
+      const filas = pendientesNotif.map(id => ({ notificacion_id: id, auth_user_id: NOTIF.userId }));
+      ops.push(sb.from('notificaciones_leidas').upsert(filas, { onConflict: 'notificacion_id,auth_user_id' }));
+    }
+    if (pendientesAnuncio.length) {
+      const filasA = pendientesAnuncio.map(id => ({ anuncio_id: id, auth_user_id: NOTIF.userId }));
+      ops.push(sb.from('anuncios_vistos').upsert(filasA, { onConflict: 'anuncio_id,auth_user_id' }));
+    }
+    await Promise.all(ops);
     showToast('Notificaciones marcadas como leídas');
   } catch (e) {
     console.warn('marcarTodasLeidas:', e);
