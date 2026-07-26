@@ -1,1260 +1,1799 @@
-/* =====================================================
-   CAJA.JS — NEGOCIO360
-   Centro financiero del sistema.
-   Versión: 2.0 — Reescrito desde cero:
-     - Menú móvil (drawer) simple y confiable, con botón
-       de cierre (✕) siempre visible dentro del panel,
-       así nunca te quedas "atrapado" sin poder cerrarlo.
-     - Nombre del negocio tomado de configuracion_empresa
-       .nombre_comercial (campo real usado por
-       personalizacion.html).
-
-   LÓGICA DE SALDO (fuente de verdad única):
-   - STATE.caja = saldo_resultante del último movimiento completado
-   - Al poner dinero inicial → se inserta movimiento CAPITAL_AGREGADO
-     con saldo_anterior=0 y saldo_resultante=monto
-   - NO se suma capital_negocio + movimientos (eso causaba el doble)
-   - capital_negocio se usa solo como registro histórico
-===================================================== */
+/* ============================================================
+   PRODUCTOS.JS — Módulo Productos/Servicios
+   Supabase Auth + RLS + Vanilla JS
+   ============================================================ */
 
 'use strict';
 
-/* =====================================================
-   SUPABASE CLIENT
-===================================================== */
-const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-const sbClient = window.__cajaSB || window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-window.__cajaSB = sbClient;
-
-/* =====================================================
-   ESTADO GLOBAL
-===================================================== */
-let STATE = {
-  userId:        null,
-  userEmail:     null,
-  empresaConfig: {},
-  currentUser:   {},
-  caja:          0,   // saldo actual de caja (antes "capital")
-  metodosPago:   [],
-
-  // Movimientos
-  movimientos:   [],
-  movPage:       1,
-  movPerPage:    15,
-  movFilter:     'mes',
-  movSearch:     '',
-  movDateFrom:   '',
-  movDateTo:     '',
-  movTotal:      0,
-
-  // Cierres
-  cierres:       [],
-
-  // UI
-  activeSection: 'movimientos',
-};
-
-/* =====================================================
-   HELPERS: FECHA
-   FIX CRÍTICO DE ZONA HORARIA: se usaba toISOString() (UTC).
-   En Nicaragua (UTC-6) eso hacía que la fecha cambiara a las
-   6:00 PM hora local en vez de medianoche, archivando movimientos
-   de caja nocturnos con la fecha de mañana. Ahora se usa la
-   fecha calendario LOCAL del dispositivo.
-===================================================== */
-function ymd(d) {
+// FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC; en
+// Nicaragua (UTC-6) eso adelanta el "día" a las 6 PM hora local, y los
+// movimientos de caja por compra de inventario quedaban con fecha de
+// mañana. Se usa la fecha calendario LOCAL del dispositivo.
+function ymdLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-function todayISO()        { return ymd(new Date()); }
-function startOfMonthISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
-}
-function startOfWeekISO() {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  return ymd(d);
-}
-function startOfYearISO() {
-  return `${new Date().getFullYear()}-01-01`;
+
+// ============================================================
+// CONFIG SUPABASE
+// ============================================================
+const SUPABASE_URL      = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+
+let supabaseClient = null;
+
+function initSupabase() {
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return supabaseClient;
 }
 
-function getFilterDates(filter, from, to) {
-  const today = todayISO();
-  switch (filter) {
-    case 'hoy':    return { from: today,             to: today };
-    case 'semana': return { from: startOfWeekISO(),  to: today };
-    case 'mes':    return { from: startOfMonthISO(), to: today };
-    case 'año':    return { from: startOfYearISO(),  to: today };
-    case 'custom': return { from: from || today,     to: to || today };
-    default:       return { from: startOfMonthISO(), to: today };
+// ============================================================
+// MONEDAS — Símbolo dinámico según configuración de empresa
+// ============================================================
+const CURRENCY_SYMBOLS = {
+  NIO: 'C$', USD: '$',  GTQ: 'Q',   HNL: 'L',
+  CRC: '₡',  PAB: 'B/', MXN: '$',   COP: '$',
+  PEN: 'S/', CLP: '$',  ARS: '$',   EUR: '€',
+};
+
+// Se cargará desde Supabase en cargarDatosEmpresa()
+let MONEDA_CODIGO  = 'USD';
+let MONEDA_SIMBOLO = '$';
+
+// ============================================================
+// ESTADO GLOBAL
+// ============================================================
+const STATE = {
+  user:         null,
+  empresa:      null,
+  productos:    [],
+  filtrados:    [],
+  filtroActivo: 'todos',
+  filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
+  proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
+  escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
+  formEscalas:  [],       // filas en edición dentro del modal de producto (antes de guardar)
+  busqueda:     '',
+  cargando:     false,
+  modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
+  editTarget:   null,
+  movTarget:    null,
+};
+
+// ============================================================
+// DOM HELPERS
+// ============================================================
+const $  = id  => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
+
+// ============================================================
+// FORMATO MONEDA
+// ============================================================
+function fmtMoney(val) {
+  if (val === null || val === undefined || val === '') return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '—';
+  return MONEDA_SIMBOLO + n.toLocaleString('es-NI', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtNum(val) {
+  if (val === null || val === undefined) return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+// ============================================================
+// CALCULAR MARGEN
+// ============================================================
+function calcMargen(precio, costo) {
+  const p = parseFloat(precio);
+  const c = parseFloat(costo);
+  if (!p || p === 0) return null;
+  return ((p - (isNaN(c) ? 0 : c)) / p) * 100;
+}
+
+function renderMargen(precio, costo) {
+  const m = calcMargen(precio, costo);
+  if (m === null) return '<span class="td-money" style="color:var(--text-muted)">—</span>';
+  const cls = m >= 40 ? 'margin-good' : m >= 20 ? 'margin-mid' : 'margin-low';
+  return `<span class="td-margin ${cls}">${m.toFixed(1)}%</span>`;
+}
+
+// ============================================================
+// FECHA ACTUAL
+// ============================================================
+function fechaActual() {
+  return new Date().toLocaleDateString('es-NI', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+function fmtFecha(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-NI', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// Versión corta (sin hora) para las columnas de la tabla — el detalle del
+// producto sigue mostrando fecha+hora completa con fmtFecha().
+function fmtFechaCorta(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-NI', {
+    year: 'numeric', month: 'short', day: 'numeric'
+  });
+}
+
+// ============================================================
+// MODO OSCURO
+// ============================================================
+function initTema() {
+  const saved = localStorage.getItem('tema') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  actualizarIconoTema(saved);
+  const btn = $('btnTema');
+  if (btn) btn.addEventListener('click', toggleTema);
+}
+
+function toggleTema() {
+  const actual = document.documentElement.getAttribute('data-theme');
+  const nuevo  = actual === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', nuevo);
+  localStorage.setItem('tema', nuevo);
+  actualizarIconoTema(nuevo);
+}
+
+function actualizarIconoTema(tema) {
+  const btn = $('btnTema');
+  if (btn) btn.textContent = tema === 'dark' ? '☀️' : '🌙';
+}
+
+// ============================================================
+// SIDEBAR MÓVIL
+// ============================================================
+function initSidebar() {
+  const btn     = $('menuToggle');
+  const overlay = $('sidebarOverlay');
+  const sidebar = $('sidebar');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+    });
+  }
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('active');
+    });
   }
 }
 
-/* =====================================================
-   HELPERS: FORMATO
-===================================================== */
-function sym() { return STATE.empresaConfig?.moneda || 'C$'; }
-
-function fmt(amount) {
-  if (amount === null || amount === undefined) return `${sym()} —`;
-  return `${sym()} ${Number(amount).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ============================================================
+// TOASTS
+// ============================================================
+function showToast(tipo, titulo, mensaje, duracion = 3500) {
+  const container = $('toastContainer');
+  if (!container) return;
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  const toast = document.createElement('div');
+  toast.className = `toast ${tipo}`;
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[tipo] || 'ℹ️'}</span>
+    <div class="toast-body">
+      <div class="toast-title">${titulo}</div>
+      ${mensaje ? `<div class="toast-msg">${mensaje}</div>` : ''}
+    </div>
+    <button class="toast-close" onclick="removeToast(this.parentElement)">✕</button>
+  `;
+  container.appendChild(toast);
+  setTimeout(() => removeToast(toast), duracion);
 }
 
-function fmtDate(isoDate) {
-  if (!isoDate) return '—';
-  const d = new Date(isoDate + 'T12:00:00');
-  return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+function removeToast(toast) {
+  if (!toast) return;
+  toast.classList.add('removing');
+  setTimeout(() => toast.remove(), 300);
 }
 
-/* =====================================================
-   NOMBRE DEL NEGOCIO
-   El onboarding (personalizacion.html) guarda el nombre
-   comercial que escribe el cliente en el input
-   #nombre_comercial, y lo sube a Supabase en la columna
-   `nombre_comercial` de la tabla `configuracion_empresa`
-   (ver función collectStep()/finalizarOnboarding() de
-   personalizacion.html). Por eso esa es la prioridad #1.
-===================================================== */
-function nombreNegocio() {
-  const cfg  = STATE.empresaConfig || {};
-  const user = STATE.currentUser   || {};
+// ============================================================
+// AUTENTICACIÓN
+// ============================================================
+async function checkAuth() {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = 'index.html'; return false; }
+    STATE.user = session.user;
+    return true;
+  } catch (e) {
+    console.error('checkAuth error:', e);
+    window.location.href = 'index.html';
+    return false;
+  }
+}
+
+// ============================================================
+// CARGAR DATOS EMPRESA
+// FIX: Búsqueda robusta de moneda en múltiples fuentes,
+//      incluyendo preferencias jsonb de la tabla usuarios
+// FIX: nombre del negocio también se refleja en el logo del
+//      sidebar (antes decía "BizFlow" fijo)
+// ============================================================
+async function cargarDatosEmpresa() {
+  try {
+    const [resUsuario, resEmpresa] = await Promise.all([
+      supabaseClient
+        .from('usuarios')
+        .select('*')
+        .eq('auth_user_id', STATE.user.id)
+        .maybeSingle(),
+      supabaseClient
+        .from('configuracion_empresa')
+        .select('*')
+        .eq('auth_user_id', STATE.user.id)
+        .maybeSingle(),
+    ]);
+
+    const perfil  = resUsuario.data  || {};
+    const empresa = resEmpresa.data  || {};
+
+    STATE.perfil  = perfil;
+    STATE.empresa = empresa;
+
+    // ── FIX MONEDA ────────────────────────────────────────────
+    // Orden de prioridad:
+    // 1. configuracion_empresa.moneda  (fuente principal del onboarding)
+    // 2. usuarios.preferencias.moneda  (jsonb — el schema NO tiene columna moneda directa)
+    // 3. Fallback a 'USD'
+    // NOTA: usuarios NO tiene columna 'moneda', tiene 'preferencias' jsonb
+    const monedaDeEmpresa      = (empresa.moneda || '').trim();
+    const monedaDePreferencias = (perfil.preferencias?.moneda || '').trim();
+
+    const monedaCodigo =
+      monedaDeEmpresa      !== '' ? monedaDeEmpresa      :
+      monedaDePreferencias !== '' ? monedaDePreferencias :
+      'USD';
+
+    MONEDA_CODIGO  = monedaCodigo;
+    MONEDA_SIMBOLO = CURRENCY_SYMBOLS[monedaCodigo] || monedaCodigo;
+
+    // Actualizar indicador de moneda en header
+    const monedaEl = $('monedaIndicador');
+    if (monedaEl) monedaEl.textContent = `${MONEDA_SIMBOLO} (${MONEDA_CODIGO})`;
+
+    console.log('[Moneda]', {
+      monedaCodigo,
+      MONEDA_SIMBOLO,
+      empresa_raw:      empresa.moneda,
+      preferencias_raw: perfil.preferencias,
+    });
+    // ─────────────────────────────────────────────────────────
+
+    const nombreNegocio = empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
+
+    const nombreEl = $('nombreEmpresa');
+    if (nombreEl) nombreEl.textContent = nombreNegocio;
+
+    // FIX: nombre del negocio también en el logo del sidebar (antes "BizFlow" fijo)
+    const logoTextEl = $('sidebarLogoText');
+    if (logoTextEl) logoTextEl.textContent = nombreNegocio;
+
+    const planEl = $('planBadge');
+    if (planEl) planEl.textContent = empresa.plan || perfil.plan || 'Free';
+
+    const avatarEls = $$('.header-avatar, .sidebar-user-avatar');
+    const inicial = (perfil.nombre || STATE.user.email || 'U').charAt(0).toUpperCase();
+    avatarEls.forEach(el => { el.textContent = inicial; });
+
+    const sidebarName = $('sidebarUserName');
+    if (sidebarName) sidebarName.textContent = perfil.nombre || STATE.user.email;
+
+  } catch (e) {
+    console.warn('cargarDatosEmpresa:', e.message);
+  }
+}
+
+// ============================================================
+// CARGAR PRODUCTOS
+// ============================================================
+async function cargarProductos() {
+  try {
+    mostrarSkeletons();
+    const { data, error } = await supabaseClient
+      .from('productos')
+      .select('*')
+      .eq('auth_user_id', STATE.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    STATE.productos = data || [];
+    aplicarFiltros();
+    actualizarStats();
+
+  } catch (e) {
+    console.error('cargarProductos:', e);
+    showToast('error', 'Error al cargar', e.message);
+    mostrarErrorTabla();
+  }
+}
+
+// ============================================================
+// MARCAS / PROVEEDORES (feature secundaria/opcional)
+// Reutiliza la tabla "proveedores" ya existente para el módulo de
+// Compras. Un proveedor = una "marca" dentro del colectivo.
+// No es obligatorio: un producto puede no tener marca asignada.
+// ============================================================
+async function cargarProveedores() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('proveedores')
+      .select('id,nombre')
+      .eq('auth_user_id', STATE.user.id)
+      .eq('activo', true)
+      .order('nombre');
+
+    if (error) throw error;
+    STATE.proveedores = data || [];
+
+    // Select del formulario (crear/editar producto)
+    const selForm = $('inputMarca');
+    if (selForm) {
+      selForm.innerHTML = '<option value="">Sin marca / proveedor</option>' +
+        STATE.proveedores.map(pr => `<option value="${pr.id}">${escHtml(pr.nombre)}</option>`).join('');
+    }
+
+    // Filtro secundario de la tabla
+    const selFiltro = $('filtroMarca');
+    if (selFiltro) {
+      selFiltro.innerHTML = '<option value="">Todas las marcas</option>' +
+        STATE.proveedores.map(pr => `<option value="${pr.id}">${escHtml(pr.nombre)}</option>`).join('');
+    }
+  } catch (e) {
+    console.error('cargarProveedores:', e);
+    // Falla silenciosa: la marca es una función opcional, no debe
+    // bloquear la carga normal del módulo de productos.
+  }
+}
+
+// ============================================================
+// ESCALA DE PRECIOS (feature opcional por producto)
+// Un producto sigue siendo de precio fijo por defecto. Solo si
+// STATE.formEscalas / producto.tipo_precio = 'escala' se usa esta tabla.
+// ============================================================
+async function cargarEscalas() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('precios_escala')
+      .select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.user.id)
+      .order('orden');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(e => {
+      if (!map[e.producto_id]) map[e.producto_id] = [];
+      map[e.producto_id].push(e);
+    });
+    STATE.escalasPorProducto = map;
+  } catch (e) {
+    console.error('cargarEscalas:', e);
+    // Falla silenciosa: no debe bloquear la carga normal de productos.
+  }
+}
+
+function setTipoPrecio(tipo) {
+  $('inputTipoPrecio').value = tipo;
+  $('toggleTipoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('toggleTipoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrapFijo   = $('wrapPrecioFijo');
+  const wrapEscala = $('wrapEscalaPrecios');
+  if (wrapFijo)   wrapFijo.style.display   = tipo === 'fijo'   ? '' : 'none';
+  if (wrapEscala) wrapEscala.style.display = tipo === 'escala' ? '' : 'none';
+  if (tipo === 'escala') {
+    const wrapMargen = $('margenPreviewWrap');
+    if (wrapMargen) wrapMargen.style.display = 'none';
+    if (!STATE.formEscalas.length) {
+      // Si el producto ya tenía un precio fijo cargado, se usa como primera
+      // fila ("Precio base") en vez de partir de una fila vacía — así no se
+      // pierde el precio que ya existía al cambiar de modo.
+      const precioFijoActual = parseFloat($('inputPrecio')?.value);
+      if (!isNaN(precioFijoActual) && precioFijoActual > 0) {
+        STATE.formEscalas.push({ nombre: 'Precio base', precio: precioFijoActual });
+        renderEscalasEditor();
+      } else {
+        agregarFilaEscala();
+      }
+    }
+  }
+}
+
+function renderEscalasEditor() {
+  const cont = $('escalasEditorBody');
+  if (!cont) return;
+  cont.innerHTML = STATE.formEscalas.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Mayorista"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaEscala(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaEscala(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar precio"
+              onclick="eliminarFilaEscala(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún precio.</p>';
+}
+
+function agregarFilaEscala() {
+  STATE.formEscalas.push({ nombre: '', precio: '' });
+  renderEscalasEditor();
+}
+function actualizarFilaEscala(i, campo, valor) {
+  if (!STATE.formEscalas[i]) return;
+  STATE.formEscalas[i][campo] = valor;
+}
+function eliminarFilaEscala(i) {
+  STATE.formEscalas.splice(i, 1);
+  renderEscalasEditor();
+}
+
+async function sincronizarEscalas(productoId, filas) {
+  const limpias = (filas || [])
+    .filter(f => (f.nombre || '').trim())
+    .map((f, i) => ({
+      auth_user_id: STATE.user.id,
+      producto_id:  productoId,
+      nombre:       f.nombre.trim(),
+      precio:       isNaN(parseFloat(f.precio)) ? 0 : parseFloat(f.precio),
+      orden:        i,
+    }));
+
+  // Reemplaza el set completo de escalas de este producto (simple y seguro
+  // para listas pequeñas/medianas; evita lógica de diff propensa a errores).
+  const { error: errDel } = await supabaseClient
+    .from('precios_escala').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('precios_escala').insert(limpias);
+    if (errIns) throw errIns;
+  }
+}
+
+function fmtRangoEscala(lista) {
+  if (!lista || !lista.length) return 'Sin precios configurados';
+  const precios = lista.map(e => Number(e.precio) || 0);
+  const min = Math.min(...precios), max = Math.max(...precios);
+  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+}
+
+// ============================================================
+// HELPER: determinar si un producto tiene stock bajo real
+// FIX: solo aplica cuando stock_minimo > 0 para evitar
+//      falsos positivos cuando ambos valores son 0
+// ============================================================
+function esStockBajo(p) {
   return (
-    cfg.nombre_comercial ||   // ← campo real de personalizacion.html
-    cfg.nombre_negocio   ||
-    cfg.nombre_empresa   ||
-    cfg.razon_social     ||
-    cfg.nombre           ||
-    user.nombre_negocio  ||
-    'Mi negocio'
+    p.tipo === 'producto' &&
+    p.activo === true &&
+    parseFloat(p.stock_minimo ?? 0) > 0 &&
+    parseFloat(p.stock_actual  ?? 0) <= parseFloat(p.stock_minimo ?? 0)
   );
 }
 
-/* =====================================================
-   THEME
-===================================================== */
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem('n360_theme', theme);
-  const sun  = document.getElementById('icon-sun');
-  const moon = document.getElementById('icon-moon');
-  if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
-  if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
-}
+// ============================================================
+// STATS
+// FIX: usa helper esStockBajo() para evitar falsos positivos
+// ============================================================
+function actualizarStats() {
+  const todos   = STATE.productos;
+  const activos = todos.filter(p => p.activo === true);
+  const prods   = activos.filter(p => p.tipo === 'producto');
+  const servs   = activos.filter(p => p.tipo === 'servicio');
 
-function toggleTheme() {
-  const curr = document.documentElement.getAttribute('data-theme');
-  applyTheme(curr === 'dark' ? 'light' : 'dark');
-}
+  // FIX: solo productos de ESTE usuario (ya filtrado por cargarProductos)
+  // y solo cuando stock_minimo está configurado > 0
+  const stockBajoList = todos.filter(esStockBajo);
 
-/* =====================================================
-   SIDEBAR — menú de módulos (Ventas, Compras, etc.)
+  const valorInventario = todos
+    .filter(p => p.tipo === 'producto')
+    .reduce((acc, p) => acc + (parseFloat(p.stock_actual || 0) * parseFloat(p.costo || 0)), 0);
 
-   Comportamiento simple y explícito, sin trucos de estilo
-   inline: usa únicamente clases CSS que ya vienen
-   definidas en caja.html (#sidebar.mobile-open y
-   #sidebar-overlay.show). Además, el propio panel trae un
-   botón "✕" (sidebar-close-btn) siempre alcanzable, así
-   el usuario NUNCA se queda sin forma de cerrarlo.
-===================================================== */
-let sidebarCollapsed = false;
+  const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 
-function isMobileViewport() {
-  return window.innerWidth <= 768;
-}
+  set('statProductos',  prods.length);
+  set('statServicios',  servs.length);
+  set('statInventario', fmtMoney(valorInventario));
+  set('statStockBajo',  stockBajoList.length);
 
-// Abre/cierra el menú. En escritorio colapsa/expande
-// (icono only vs texto); en móvil abre/cierra el drawer.
-function toggleSidebar() {
-  const sb = document.getElementById('sidebar');
-  if (!sb) return;
+  // Badge sidebar — siempre actualizar (mostrar/ocultar)
+  const badge = $('badgeStockBajo');
+  if (badge) {
+    badge.textContent   = stockBajoList.length;
+    badge.style.display = stockBajoList.length > 0 ? 'inline-flex' : 'none';
+  }
 
-  if (isMobileViewport()) {
-    if (sb.classList.contains('mobile-open')) {
-      closeMobileSidebar();
+  // Card stat-red — cambiar TODA la apariencia según si hay stock bajo o no
+  const cardStockBajo = document.querySelector('.stat-card.stat-red');
+  if (cardStockBajo) {
+    const iconEl     = cardStockBajo.querySelector('.stat-card-icon');
+    const subEl      = cardStockBajo.querySelector('.stat-card-sub');
+    const valueEl    = cardStockBajo.querySelector('.stat-card-value');
+    const labelEl    = cardStockBajo.querySelector('.stat-card-label');
+
+    if (stockBajoList.length > 0) {
+      // HAY stock bajo → apariencia de alerta roja
+      cardStockBajo.style.opacity        = '1';
+      cardStockBajo.style.setProperty('--stat-accent',   'var(--danger)');
+      cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--danger-light)');
+      if (labelEl) labelEl.textContent   = 'Stock bajo';
+      if (iconEl)  iconEl.textContent    = '⚠️';
+      if (subEl)   subEl.textContent     = 'Requieren atención';
+      if (valueEl) valueEl.style.color   = 'var(--danger)';
     } else {
-      openMobileSidebar();
+      // SIN stock bajo → apariencia neutra/verde
+      cardStockBajo.style.opacity        = '1';
+      cardStockBajo.style.setProperty('--stat-accent',   'var(--success)');
+      cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--success-light)');
+      if (labelEl) labelEl.textContent   = 'Inventario OK';
+      if (iconEl)  iconEl.textContent    = '✅';
+      if (subEl)   subEl.textContent     = 'Todo en orden';
+      if (valueEl) valueEl.style.color   = 'var(--success)';
     }
-  } else {
-    sidebarCollapsed = !sidebarCollapsed;
-    sb.classList.toggle('collapsed', sidebarCollapsed);
-    const main = document.getElementById('main');
-    if (main) main.classList.toggle('sidebar-collapsed', sidebarCollapsed);
   }
 }
 
-function openMobileSidebar() {
-  const sb = document.getElementById('sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  if (sb) sb.classList.add('mobile-open');
-  if (ov) ov.classList.add('show');
-  document.body.style.overflow = 'hidden';
-}
+// ============================================================
+// FILTROS Y BÚSQUEDA
+// FIX: caso stock_bajo usa helper esStockBajo()
+// ============================================================
+function aplicarFiltros() {
+  let lista = [...STATE.productos];
+  const q   = STATE.busqueda.toLowerCase().trim();
 
-function closeMobileSidebar() {
-  const sb = document.getElementById('sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  if (sb) sb.classList.remove('mobile-open');
-  if (ov) ov.classList.remove('show');
-  document.body.style.overflow = '';
-}
-
-function navigate(url) {
-  closeMobileSidebar();
-  window.location.href = url;
-}
-
-// Si la pantalla deja de ser móvil (por ejemplo al rotar
-// el teléfono a horizontal en una tablet, o redimensionar
-// la ventana en una PC), limpiamos el estado del drawer
-// para que no quede "medio abierto".
-window.addEventListener('resize', () => {
-  if (!isMobileViewport()) closeMobileSidebar();
-});
-
-// Cerrar el menú con la tecla Escape (accesibilidad / respaldo extra)
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeMobileSidebar();
-});
-
-/* =====================================================
-   EMPRESA CONFIG
-===================================================== */
-async function loadEmpresaConfig(userId) {
-  try {
-    const { data } = await sbClient
-      .from('configuracion_empresa')
-      .select('*')
-      .eq('auth_user_id', userId)
-      .maybeSingle();
-    if (data) {
-      STATE.empresaConfig = data;
-      const logoText = document.getElementById('sidebar-logo-text');
-      if (logoText) logoText.textContent = nombreNegocio();
-      if (data.color_principal) {
-        document.documentElement.style.setProperty('--accent', data.color_principal);
-        document.documentElement.style.setProperty('--accent-soft', data.color_principal + '22');
-        document.documentElement.style.setProperty('--border-focus', data.color_principal);
-      } else if (data.color_primario) {
-        document.documentElement.style.setProperty('--accent', data.color_primario);
-        document.documentElement.style.setProperty('--accent-soft', data.color_primario + '22');
-        document.documentElement.style.setProperty('--border-focus', data.color_primario);
-      }
-      if (data.logo_principal_url || data.logo_url) {
-        const logoIcon = document.querySelector('.logo-icon');
-        if (logoIcon) logoIcon.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
-      }
-    }
-  } catch(e) { console.warn('loadEmpresaConfig:', e); }
-}
-
-async function loadUserProfile(userId) {
-  try {
-    const { data } = await sbClient
-      .from('usuarios')
-      .select('*')
-      .eq('auth_user_id', userId)
-      .maybeSingle();
-    return data;
-  } catch(e) { return null; }
-}
-
-function renderUserInfo(user, email) {
-  if (!user) return;
-  STATE.currentUser = user;
-  const nombre   = user.nombre   || email?.split('@')[0] || 'Usuario';
-  const apellido = user.apellido || '';
-  const plan     = user.plan || 'Gratuito';
-  const initials = ((nombre[0]||'') + (apellido[0]||'')).toUpperCase();
-
-  document.getElementById('header-name').textContent = `${nombre} ${apellido}`.trim();
-  document.getElementById('header-biz').textContent  = nombreNegocio();
-  document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
-  document.getElementById('plan-text').textContent   = plan.charAt(0).toUpperCase() + plan.slice(1);
-
-  const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
-  document.getElementById('greeting-text').textContent = `${greet}, ${nombre}`;
-}
-
-/* =====================================================
-   ADMIN ACCESS
-===================================================== */
-async function checkAdminAccess(email) {
-  try {
-    const { data } = await sbClient
-      .from('administradores')
-      .select('email, activo')
-      .eq('email', email)
-      .eq('activo', true)
-      .maybeSingle();
-    if (data) {
-      const el = document.getElementById('nav-admin');
-      if (el) el.style.display = 'flex';
-    }
-  } catch(e) { console.debug('Admin check done.'); }
-}
-
-/* =====================================================
-   SALDO DE CAJA (fuente de verdad única)
-===================================================== */
-async function loadCaja() {
-  try {
-    const { data } = await sbClient
-      .from('movimientos_financieros')
-      .select('saldo_resultante')
-      .eq('auth_user_id', STATE.userId)
-      .eq('estado', 'completado')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    STATE.caja = data ? Number(data.saldo_resultante) : 0;
-    return STATE.caja;
-  } catch(e) {
-    console.warn('loadCaja:', e);
-    STATE.caja = 0;
-    return 0;
+  if (q) {
+    lista = lista.filter(p =>
+      (p.nombre           || '').toLowerCase().includes(q) ||
+      (p.sku              || '').toLowerCase().includes(q) ||
+      (p.categoria        || '').toLowerCase().includes(q) ||
+      (p.proveedor_nombre || '').toLowerCase().includes(q) ||
+      (p.descripcion      || '').toLowerCase().includes(q)
+    );
   }
+
+  switch (STATE.filtroActivo) {
+    case 'productos':  lista = lista.filter(p => p.tipo === 'producto');  break;
+    case 'servicios':  lista = lista.filter(p => p.tipo === 'servicio');  break;
+    case 'activos':    lista = lista.filter(p => p.activo === true);      break;
+    case 'inactivos':  lista = lista.filter(p => p.activo === false);     break;
+    // FIX: usa helper para evitar falsos positivos (0 <= 0)
+    case 'stock_bajo': lista = lista.filter(esStockBajo);                 break;
+    default: break;
+  }
+
+  // Filtro secundario: Marca / Proveedor (opcional, independiente de filtroActivo)
+  if (STATE.filtroMarca) {
+    lista = lista.filter(p => p.proveedor_id === STATE.filtroMarca);
+  }
+
+  STATE.filtrados = lista;
+  renderTabla();
+
+  const pieEl = $('tablePie');
+  if (pieEl) pieEl.textContent =
+    `${lista.length} registro${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`;
 }
 
-/* =====================================================
-   VERIFICAR SI ES PRIMERA VEZ (sin movimientos)
-===================================================== */
-async function tieneMovimientos() {
-  try {
-    const { count } = await sbClient
-      .from('movimientos_financieros')
-      .select('id', { count: 'exact', head: true })
-      .eq('auth_user_id', STATE.userId);
-    return (count || 0) > 0;
-  } catch(e) { return false; }
-}
-
-/* =====================================================
-   GUARDAR DINERO INICIAL
-===================================================== */
-async function guardarDineroInicial(monto) {
-  const montoNum = Number(monto);
-
-  await sbClient
-    .from('capital_negocio')
-    .update({ is_current: false })
-    .eq('auth_user_id', STATE.userId)
-    .eq('is_current', true);
-
-  await sbClient
-    .from('capital_negocio')
-    .insert({
-      auth_user_id: STATE.userId,
-      monto:        montoNum,
-      concepto:     'Dinero inicial de caja',
-      is_current:   true,
-    });
-
-  const { error } = await sbClient
-    .from('movimientos_financieros')
-    .insert({
-      auth_user_id:       STATE.userId,
-      tipo_flujo:         'INGRESO',
-      tipo_movimiento:    'CAPITAL_AGREGADO',
-      concepto:           'Dinero inicial de caja',
-      monto:              montoNum,
-      saldo_anterior:     0,
-      saldo_resultante:   montoNum,
-      metodo_pago_nombre: 'Efectivo',
-      fecha:              todayISO(),
-      estado:             'completado',
-    });
-
-  if (error) throw error;
-}
-
-/* =====================================================
-   RESUMEN FINANCIERO (KPIs del mes)
-===================================================== */
-async function loadResumen() {
-  const monthStart = startOfMonthISO();
-  const today      = todayISO();
-
-  try {
-    const { data } = await sbClient
-      .from('movimientos_financieros')
-      .select('tipo_flujo, monto, fecha, referencia_tipo, tipo_movimiento')
-      .eq('auth_user_id', STATE.userId)
-      .eq('estado', 'completado')
-      .gte('fecha', monthStart)
-      .lte('fecha', today);
-
-    const movs = data || [];
-
-    // "Ingresos del mes" / "Egresos del mes" reflejan solo movimientos
-    // LIGADOS a otra parte del sistema (venta, compra de producto, etc.
-    // — tienen referencia_tipo). Los movimientos manuales de Caja
-    // (referencia_tipo null) ya NO se cuentan aquí: esos van
-    // exclusivamente en "Otros ingresos" / "Otros egresos" más abajo,
-    // para no duplicarlos entre las dos tarjetas.
-    const movsIngresoRef = movs.filter(r => r.tipo_flujo === 'INGRESO' && r.referencia_tipo);
-    const movsEgresoRef  = movs.filter(r => r.tipo_flujo === 'EGRESO'  && r.referencia_tipo);
-
-    const ingresos = movsIngresoRef.reduce((s,r) => s + Number(r.monto), 0);
-    const egresos  = movsEgresoRef.reduce((s,r)  => s + Number(r.monto), 0);
-    const totalMov = movs.length;
-
-    setEl('kpi-caja', fmt(STATE.caja));
-    setDelta('kpi-caja-delta',
-      STATE.caja >= 0 ? 'Saldo positivo' : 'Saldo negativo',
-      STATE.caja >= 0);
-
-    setEl('kpi-ingresos', fmt(ingresos));
-    setDelta('kpi-ingresos-delta',
-      ingresos > 0 ? `${movsIngresoRef.length} entradas` : 'Sin ingresos este mes',
-      ingresos > 0);
-
-    setEl('kpi-egresos', fmt(egresos));
-    setDelta('kpi-egresos-delta',
-      egresos > 0 ? `${movsEgresoRef.length} salidas` : 'Sin egresos este mes',
-      false);
-
-    setEl('kpi-movimientos', totalMov.toString());
-    setDelta('kpi-movimientos-delta',
-      totalMov > 0 ? 'este mes' : 'Sin movimientos',
-      totalMov > 0);
-
-    const cajaEl = document.getElementById('kpi-caja');
-    if (cajaEl) cajaEl.style.color = STATE.caja >= 0 ? '' : 'var(--danger)';
-
-    // ── NUEVO: "Otros ingresos" / "Otros egresos" ─────────────────
-    // Movimientos registrados manualmente desde Caja ("Nuevo movimiento")
-    // que NO están ligados a una venta, compra de producto ni gasto
-    // (referencia_tipo es null). Esos son los que hoy no se ven ni en
-    // Ventas ni en Gastos, así que se muestran aparte aquí y también
-    // se reflejan en el resumen financiero del Dashboard.
-    // Cuentan TODAS las categorías manuales (venta, cobro, ingreso a
-    // caja, otro ingreso, etc.) — lo que define si algo es "otro
-    // ingreso/egreso" es que no tenga referencia_tipo, no la categoría
-    // elegida en el formulario.
-    const otrosIngresos = movs
-      .filter(r => r.tipo_flujo === 'INGRESO' && !r.referencia_tipo)
-      .reduce((s, r) => s + Number(r.monto || 0), 0);
-
-    const otrosEgresos = movs
-      .filter(r => r.tipo_flujo === 'EGRESO' && !r.referencia_tipo)
-      .reduce((s, r) => s + Number(r.monto || 0), 0);
-
-    setEl('kpi-otros-ingresos', fmt(otrosIngresos));
-    setDelta('kpi-otros-ingresos-delta',
-      otrosIngresos > 0 ? 'Movimientos manuales de Caja' : 'Sin otros ingresos',
-      otrosIngresos > 0);
-
-    setEl('kpi-otros-egresos', fmt(otrosEgresos));
-    setDelta('kpi-otros-egresos-delta',
-      otrosEgresos > 0 ? 'Movimientos manuales de Caja' : 'Sin otros egresos',
-      false);
-    // ────────────────────────────────────────────────────────────
-
-  } catch(e) { console.warn('loadResumen:', e); }
-}
-
-function setEl(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = value;
-}
-
-function setDelta(id, text, positive) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = text;
-  el.className = `kpi-delta ${positive ? 'positive' : (text.includes('negativo') ? 'negative' : 'neutral')}`;
-}
-
-/* =====================================================
-   MÉTODOS DE PAGO
-===================================================== */
-async function loadMetodosPago() {
-  try {
-    const { data } = await sbClient
-      .from('metodos_pago')
-      .select('*')
-      .eq('auth_user_id', STATE.userId)
-      .order('orden');
-    STATE.metodosPago = data || [];
-    renderMetodosPago();
-    populateMetodoSelect();
-  } catch(e) { console.warn('loadMetodosPago:', e); }
-}
-
-function renderMetodosPago() {
-  const tbody = document.getElementById('metodos-tbody');
+// ============================================================
+// RENDER TABLA
+// FIX: usa helper esStockBajo() para bandera por fila
+// ============================================================
+function renderTabla() {
+  const tbody = $('productosTbody');
   if (!tbody) return;
 
-  if (!STATE.metodosPago.length) {
-    tbody.innerHTML = `<tr><td colspan="4" class="empty-cell">Sin métodos de pago registrados</td></tr>`;
+  const countEl = $('resultadosCount');
+  if (countEl) countEl.textContent =
+    `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
+
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = `
+      <tr><td colspan="11">
+        <div class="empty-state">
+          <div class="empty-state-icon">📦</div>
+          <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin productos aún'}</h3>
+          <p>${STATE.busqueda
+            ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
+            : 'Agrega tu primer producto o servicio para comenzar.'}</p>
+          ${!STATE.busqueda
+            ? `<button class="btn btn-primary" onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>`
+            : ''}
+        </div>
+      </td></tr>
+    `;
     return;
   }
 
-  tbody.innerHTML = STATE.metodosPago.map(m => `
-    <tr>
-      <td>
-        <div class="metodo-name-cell">
-          <div class="metodo-dot" style="background:${m.activo ? 'var(--success)' : 'var(--text-muted)'}"></div>
-          ${escHtml(m.nombre)}
-          ${m.es_default ? '<span class="badge-default">default</span>' : ''}
-        </div>
-      </td>
-      <td>${escHtml(m.descripcion || '—')}</td>
-      <td>
-        <span class="status-badge ${m.activo ? 'badge-active' : 'badge-inactive'}">
-          ${m.activo ? 'Activo' : 'Inactivo'}
-        </span>
-      </td>
-      <td>
-        <div class="action-cell">
-          <button class="btn-icon" onclick="editMetodo('${m.id}')" title="Editar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
-          <button class="btn-icon ${m.activo ? 'btn-icon-danger' : 'btn-icon-success'}"
-            onclick="toggleMetodo('${m.id}', ${!m.activo})" title="${m.activo ? 'Desactivar' : 'Activar'}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              ${m.activo
-                ? '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
-                : '<polyline points="20 6 9 17 4 12"/>'}
-            </svg>
-          </button>
-        </div>
-      </td>
+  tbody.innerHTML = STATE.filtrados.map(p => {
+    // FIX: helper centralizado, evita 0 <= 0 falso positivo
+    const stockBajo = esStockBajo(p);
+
+    const stockHtml = p.tipo === 'servicio'
+      ? '<span style="color:var(--text-muted);font-size:12px">N/A</span>'
+      : `<div class="td-stock">
+           <span>${fmtNum(p.stock_actual)}</span>
+           ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
+         </div>`;
+
+    // Botón 📉 siempre visible para productos
+    const movBtn = p.tipo === 'producto'
+      ? `<button class="row-action-btn mov-btn-especial"
+            title="Movimiento especial (merma)"
+            onclick="abrirMovimiento('${p.id}')"
+            style="opacity:1;color:var(--warning);">📉</button>`
+      : '<span style="width:30px;display:inline-block"></span>';
+
+    return `
+      <tr data-id="${p.id}">
+        <td>
+          <span class="tipo-badge ${p.tipo === 'producto' ? 'tipo-producto' : 'tipo-servicio'}">
+            ${p.tipo === 'producto' ? '📦' : '🔧'} ${p.tipo}
+          </span>
+        </td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
+        <td>
+          <div class="td-nombre">${escHtml(p.nombre)}</div>
+          ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+        </td>
+        <td>
+          ${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}
+          ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}
+        </td>
+        <td class="td-money">
+          ${p.tipo_precio === 'escala'
+            ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
+            : fmtMoney(p.precio)}
+        </td>
+        <td class="td-money">${fmtMoney(p.costo)}</td>
+        <td>${renderMargen(p.precio, p.costo)}</td>
+        <td>${stockHtml}</td>
+        <td>
+          <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+            ${p.activo ? 'Activo' : 'Inactivo'}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+              <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
+              <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
+              <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
+            </div>
+            ${movBtn}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Hover para row-actions (el movBtn queda siempre visible separado)
+  tbody.querySelectorAll('tr[data-id]').forEach(row => {
+    const actions = row.querySelector('.row-actions');
+    if (!actions) return;
+    row.addEventListener('mouseenter', () => actions.style.opacity = '1');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '0');
+  });
+}
+
+// ============================================================
+// SKELETONS
+// ============================================================
+function mostrarSkeletons() {
+  const tbody = $('productosTbody');
+  if (!tbody) return;
+  tbody.innerHTML = Array(6).fill('').map(() => `
+    <tr class="skeleton-row">
+      <td><div class="skeleton skel-badge"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:140px"></div></td>
+      <td><div class="skeleton skel-line" style="width:80px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:50px"></div></td>
+      <td><div class="skeleton skel-line" style="width:50px"></div></td>
+      <td><div class="skeleton skel-badge"></div></td>
+      <td></td>
     </tr>
   `).join('');
 }
 
-function populateMetodoSelect() {
-  const sel = document.getElementById('mov-metodo');
-  if (!sel) return;
-  const activos = STATE.metodosPago.filter(m => m.activo);
-  sel.innerHTML = `<option value="">Seleccionar método</option>` +
-    activos.map(m => `<option value="${m.id}" data-nombre="${escHtml(m.nombre)}">${escHtml(m.nombre)}</option>`).join('');
-}
-
-async function toggleMetodo(id, nuevoEstado) {
-  try {
-    await sbClient.from('metodos_pago').update({ activo: nuevoEstado }).eq('id', id).eq('auth_user_id', STATE.userId);
-    await loadMetodosPago();
-    showToast(nuevoEstado ? 'Método activado' : 'Método desactivado');
-  } catch(e) { showToast('Error al actualizar método', 'error'); }
-}
-
-function editMetodo(id) {
-  const m = STATE.metodosPago.find(x => x.id === id);
-  if (!m) return;
-  document.getElementById('metodo-modal-title').textContent = 'Editar método de pago';
-  document.getElementById('metodo-id').value          = m.id;
-  document.getElementById('metodo-nombre').value      = m.nombre;
-  document.getElementById('metodo-descripcion').value = m.descripcion || '';
-  document.getElementById('metodo-default').checked   = m.es_default;
-  openModal('modal-metodo');
-}
-
-function newMetodo() {
-  document.getElementById('metodo-modal-title').textContent = 'Nuevo método de pago';
-  document.getElementById('metodo-id').value          = '';
-  document.getElementById('metodo-nombre').value      = '';
-  document.getElementById('metodo-descripcion').value = '';
-  document.getElementById('metodo-default').checked   = false;
-  openModal('modal-metodo');
-}
-
-async function saveMetodo() {
-  const id          = document.getElementById('metodo-id').value.trim();
-  const nombre      = document.getElementById('metodo-nombre').value.trim();
-  const descripcion = document.getElementById('metodo-descripcion').value.trim();
-  const esDefault   = document.getElementById('metodo-default').checked;
-
-  if (!nombre) { showToast('El nombre es requerido', 'error'); return; }
-
-  try {
-    setBtnLoading('btn-save-metodo', true);
-
-    if (esDefault) {
-      await sbClient.from('metodos_pago')
-        .update({ es_default: false })
-        .eq('auth_user_id', STATE.userId);
-    }
-
-    if (id) {
-      await sbClient.from('metodos_pago')
-        .update({ nombre, descripcion, es_default: esDefault })
-        .eq('id', id)
-        .eq('auth_user_id', STATE.userId);
-    } else {
-      const orden = STATE.metodosPago.length + 1;
-      await sbClient.from('metodos_pago')
-        .insert({ auth_user_id: STATE.userId, nombre, descripcion, es_default: esDefault, orden });
-    }
-
-    closeModal('modal-metodo');
-    await loadMetodosPago();
-    showToast(id ? 'Método actualizado' : 'Método creado');
-  } catch(e) {
-    showToast('Error al guardar método', 'error');
-  } finally {
-    setBtnLoading('btn-save-metodo', false);
-  }
-}
-
-/* =====================================================
-   MOVIMIENTOS
-===================================================== */
-async function loadMovimientos() {
-  const { from, to } = getFilterDates(STATE.movFilter, STATE.movDateFrom, STATE.movDateTo);
-
-  try {
-    let query = sbClient
-      .from('movimientos_financieros')
-      .select('*', { count: 'exact' })
-      .eq('auth_user_id', STATE.userId)
-      .gte('fecha', from)
-      .lte('fecha', to)
-      .neq('estado', 'anulado')
-      .order('fecha', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    if (STATE.movSearch.trim()) {
-      query = query.ilike('concepto', `%${STATE.movSearch.trim()}%`);
-    }
-
-    const from_range = (STATE.movPage - 1) * STATE.movPerPage;
-    const to_range   = from_range + STATE.movPerPage - 1;
-    query = query.range(from_range, to_range);
-
-    const { data, count } = await query;
-    STATE.movimientos = data || [];
-    STATE.movTotal    = count || 0;
-
-    renderMovimientos();
-    renderPaginacion();
-  } catch(e) {
-    console.warn('loadMovimientos:', e);
-    renderMovimientosError();
-  }
-}
-
-function renderMovimientos() {
-  const tbody = document.getElementById('mov-tbody');
+function mostrarErrorTabla() {
+  const tbody = $('productosTbody');
   if (!tbody) return;
+  tbody.innerHTML = `
+    <tr><td colspan="11">
+      <div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <h3>Error al cargar datos</h3>
+        <p>No se pudieron obtener los productos. Verifica tu conexión.</p>
+        <button class="btn btn-secondary" onclick="cargarProductos()">🔄 Reintentar</button>
+      </div>
+    </td></tr>
+  `;
+}
 
-  if (!STATE.movimientos.length) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="empty-cell">
-          <div class="empty-state-mini">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-            <p>Sin movimientos en este período</p>
-          </div>
-        </td>
-      </tr>`;
+// ============================================================
+// IMPACTO EN CAJA (nuevo producto)
+// Toggle: "Descontar de caja" (compra nueva) vs "Ya lo tenía"
+// (inventario físico previo, útil al iniciar con el sistema)
+// ============================================================
+function setCajaImpacto(descontar) {
+  const input = $('inputDescontarCaja');
+  if (input) input.value = descontar ? 'true' : 'false';
+
+  const btnSi = $('toggleDescontarCaja');
+  const btnNo = $('toggleNoDescontarCaja');
+  if (btnSi) btnSi.classList.toggle('active', descontar);
+  if (btnNo) btnNo.classList.toggle('active', !descontar);
+
+  actualizarCajaImpactoPreview();
+}
+
+function actualizarCajaImpactoPreview() {
+  const hint = $('cajaImpactoHint');
+  if (!hint) return;
+
+  const descontar   = $('inputDescontarCaja')?.value !== 'false';
+  const costo       = parseFloat($('inputCosto')?.value) || 0;
+  const stockActual = parseFloat($('inputStockActual')?.value) || 0;
+  const monto       = costo * stockActual;
+
+  if (!descontar) {
+    hint.textContent = 'No se afectará tu caja. Úsalo para productos que ya tenías en tu inventario físico antes de empezar a usar el sistema.';
     return;
   }
 
-  tbody.innerHTML = STATE.movimientos.map(m => {
-    const isIngreso = m.tipo_flujo === 'INGRESO';
-    const badgeClass = isIngreso ? 'badge-ingreso' : 'badge-egreso';
-    const tipoLabel  = tipoMovLabel(m.tipo_movimiento);
-
-    return `
-    <tr class="mov-row ${m.estado === 'anulado' ? 'mov-anulado' : ''}">
-      <td class="td-fecha">${fmtDate(m.fecha)}</td>
-      <td>
-        <span class="tipo-badge ${badgeClass}">${tipoLabel}</span>
-      </td>
-      <td class="td-concepto">
-        <span class="concepto-text">${escHtml(m.concepto)}</span>
-        ${m.observaciones ? `<span class="concepto-obs">${escHtml(m.observaciones)}</span>` : ''}
-        ${m.referencia_tipo ? `<span class="ref-badge">Ref: ${escHtml(m.referencia_tipo)}</span>` : ''}
-      </td>
-      <td class="td-metodo">${escHtml(m.metodo_pago_nombre || '—')}</td>
-      <td class="td-monto td-entrada">${isIngreso ? fmt(m.monto) : '—'}</td>
-      <td class="td-monto td-salida">${!isIngreso ? fmt(m.monto) : '—'}</td>
-      <td class="td-monto td-saldo">${fmt(m.saldo_resultante)}</td>
-      <td class="td-actions">
-        ${m.estado !== 'anulado' ? `
-          <button class="btn-icon btn-icon-danger" onclick="confirmarAnular('${m.id}')" title="Anular">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        ` : '<span class="anulado-label">Anulado</span>'}
-      </td>
-    </tr>`;
-  }).join('');
+  hint.textContent = monto > 0
+    ? `Se descontará ${fmtMoney(monto)} de tu caja al guardar (costo × cantidad). Úsalo cuando estés comprando este producto ahora.`
+    : 'Se registrará un gasto en Caja por el costo total del stock inicial. Úsalo cuando estés comprando este producto ahora.';
 }
 
-function renderMovimientosError() {
-  const tbody = document.getElementById('mov-tbody');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Error al cargar movimientos. Intenta de nuevo.</td></tr>`;
-}
-
-function renderPaginacion() {
-  const totalPages = Math.ceil(STATE.movTotal / STATE.movPerPage);
-  const info = document.getElementById('paginacion-info');
-  if (info) {
-    const from = Math.min((STATE.movPage - 1) * STATE.movPerPage + 1, STATE.movTotal);
-    const to   = Math.min(STATE.movPage * STATE.movPerPage, STATE.movTotal);
-    info.textContent = STATE.movTotal > 0 ? `Mostrando ${from}–${to} de ${STATE.movTotal}` : 'Sin resultados';
-  }
-
-  const btnPrev = document.getElementById('btn-pag-prev');
-  const btnNext = document.getElementById('btn-pag-next');
-  if (btnPrev) btnPrev.disabled = STATE.movPage <= 1;
-  if (btnNext) btnNext.disabled = STATE.movPage >= totalPages;
-}
-
-function tipoMovLabel(tipo) {
-  const map = {
-    VENTA:            'Venta',
-    COBRO:            'Cobro',
-    CAPITAL_AGREGADO: 'Caja',
-    OTRO_INGRESO:     'Otro ingreso',
-    COMPRA:           'Compra',
-    GASTO:            'Gasto',
-    RETIRO:           'Retiro',
-    PAGO:             'Pago',
-    OTRO_EGRESO:      'Otro egreso',
-  };
-  return map[tipo] || tipo;
-}
-
-/* =====================================================
-   NUEVO MOVIMIENTO
-===================================================== */
-function openNuevoMovimiento() {
-  document.getElementById('mov-form').reset();
-  document.getElementById('mov-id').value = '';
-  document.getElementById('mov-fecha').value = todayISO();
-  toggleTipoMovimiento();
-  openModal('modal-movimiento');
-}
-
-function toggleTipoMovimiento() {
-  const flujo = document.getElementById('mov-flujo').value;
-  const selTipo = document.getElementById('mov-tipo');
-  if (!selTipo) return;
-
-  const opciones = {
-    INGRESO: [
-      { v: 'VENTA',            l: 'Venta' },
-      { v: 'COBRO',            l: 'Cobro a cliente' },
-      { v: 'CAPITAL_AGREGADO', l: 'Ingreso a caja' },
-      { v: 'OTRO_INGRESO',     l: 'Otro ingreso' },
-    ],
-    EGRESO: [
-      { v: 'COMPRA',      l: 'Compra de mercancía' },
-      { v: 'GASTO',       l: 'Gasto operativo' },
-      { v: 'RETIRO',      l: 'Retiro de caja' },
-      { v: 'PAGO',        l: 'Pago a proveedor' },
-      { v: 'OTRO_EGRESO', l: 'Otro egreso' },
-    ],
-  };
-
-  const list = opciones[flujo] || opciones.INGRESO;
-  selTipo.innerHTML = list.map(o => `<option value="${o.v}">${o.l}</option>`).join('');
-}
-
-async function saveMovimiento() {
-  const flujo        = document.getElementById('mov-flujo').value;
-  const tipo         = document.getElementById('mov-tipo').value;
-  const concepto     = document.getElementById('mov-concepto').value.trim();
-  const monto        = parseFloat(document.getElementById('mov-monto').value);
-  const metodoPagoId = document.getElementById('mov-metodo').value;
-  const observaciones= document.getElementById('mov-obs').value.trim();
-  const fecha        = document.getElementById('mov-fecha').value || todayISO();
-
-  if (!concepto)        { showToast('El concepto es requerido', 'error'); return; }
-  if (!monto || monto <= 0) { showToast('El monto debe ser mayor a 0', 'error'); return; }
-
-  const metodoPago       = STATE.metodosPago.find(m => m.id === metodoPagoId);
-  const metodoPagoNombre = metodoPago?.nombre || 'Efectivo';
-
+// ============================================================
+// REGISTRAR COMPRA EN CAJA
+// Inserta un movimiento EGRESO en movimientos_financieros,
+// con la misma lógica/estructura que usa el módulo de Caja
+// (saldo_anterior / saldo_resultante como fuente de verdad).
+// No depende de caja.js/cajaAPI.js — autocontenido para no
+// arriesgar nada del módulo de Caja.
+// ============================================================
+async function registrarCompraEnCaja(nombreProducto, monto, productoId) {
   try {
-    setBtnLoading('btn-save-mov', true);
-
-    const { data: ultMov } = await sbClient
+    const { data: ultMov } = await supabaseClient
       .from('movimientos_financieros')
       .select('saldo_resultante')
-      .eq('auth_user_id', STATE.userId)
+      .eq('auth_user_id', STATE.user.id)
       .eq('estado', 'completado')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
     const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : 0;
-    const saldoResultante = flujo === 'INGRESO'
-      ? saldoAnterior + monto
-      : saldoAnterior - monto;
+    const saldoResultante = saldoAnterior - monto;
 
-    await sbClient.from('movimientos_financieros').insert({
-      auth_user_id:       STATE.userId,
-      tipo_flujo:         flujo,
-      tipo_movimiento:    tipo,
-      concepto,
-      monto,
-      saldo_anterior:     saldoAnterior,
-      saldo_resultante:   saldoResultante,
-      metodo_pago_id:     metodoPagoId || null,
-      metodo_pago_nombre: metodoPagoNombre,
-      observaciones:      observaciones || null,
-      fecha,
-      estado:             'completado',
+    const { error } = await supabaseClient.from('movimientos_financieros').insert({
+      auth_user_id:       STATE.user.id,
+      tipo_flujo:         'EGRESO',
+      tipo_movimiento:    'COMPRA',
+      concepto:           `Compra de inventario: ${nombreProducto}`,
+      monto:               monto,
+      saldo_anterior:      saldoAnterior,
+      saldo_resultante:    saldoResultante,
+      metodo_pago_nombre: 'Efectivo',
+      referencia_tipo:    'producto',
+      referencia_id:       productoId || null,
+      fecha:               ymdLocal(new Date()),
+      estado:              'completado',
     });
-
-    STATE.caja = saldoResultante;
-
-    closeModal('modal-movimiento');
-    showToast('Movimiento registrado correctamente');
-
-    await Promise.all([loadResumen(), loadMovimientos()]);
-    actualizarCacheLocal();
-
-  } catch(e) {
-    console.error('saveMovimiento:', e);
-    showToast('Error al guardar el movimiento', 'error');
-  } finally {
-    setBtnLoading('btn-save-mov', false);
-  }
-}
-
-/* =====================================================
-   ANULAR MOVIMIENTO
-===================================================== */
-let movToAnular = null;
-
-function confirmarAnular(id) {
-  movToAnular = id;
-  openModal('modal-confirmar');
-}
-
-async function anularMovimiento() {
-  if (!movToAnular) return;
-  try {
-    setBtnLoading('btn-confirmar-anular', true);
-
-    // FIX: antes no se revisaba el resultado de este update — si fallaba
-    // (por RLS, conexión, etc.) el sistema igual mostraba "Movimiento
-    // anulado" sin haber cambiado nada en la base de datos, y el egreso
-    // seguía contando en Caja y en "Otros egresos" como si nada. Ahora se
-    // verifica el error Y que realmente se haya actualizado una fila
-    // (.select() para confirmarlo) antes de dar el aviso de éxito.
-    const { data, error } = await sbClient
-      .from('movimientos_financieros')
-      .update({
-        estado:         'anulado',
-        anulado_en:     new Date().toISOString(),
-        anulado_motivo: 'Anulado manualmente',
-      })
-      .eq('id', movToAnular)
-      .eq('auth_user_id', STATE.userId)
-      .select('id');
 
     if (error) throw error;
-    if (!data || !data.length) throw new Error('No se encontró el movimiento a anular (puede que ya no exista o no te pertenezca).');
 
-    closeModal('modal-confirmar');
-    movToAnular = null;
-    showToast('Movimiento anulado');
-
-    await loadCaja();
-    await Promise.all([loadResumen(), loadMovimientos()]);
-    actualizarCacheLocal();
-  } catch(e) {
-    console.error('anularMovimiento:', e);
-    showToast('Error al anular: ' + (e.message || 'intenta de nuevo'), 'error');
-  } finally {
-    setBtnLoading('btn-confirmar-anular', false);
-  }
-}
-
-/* =====================================================
-   CIERRES DE CAJA
-===================================================== */
-async function loadCierres() {
-  try {
-    const { data } = await sbClient
-      .from('cierres_caja')
-      .select('*')
-      .eq('auth_user_id', STATE.userId)
-      .order('fecha', { ascending: false })
-      .limit(30);
-    STATE.cierres = data || [];
-    renderCierres();
-  } catch(e) { console.warn('loadCierres:', e); }
-}
-
-function renderCierres() {
-  const tbody = document.getElementById('cierres-tbody');
-  if (!tbody) return;
-
-  if (!STATE.cierres.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">Sin cierres registrados</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = STATE.cierres.map(c => {
-    const flujoNeto = c.total_ingresos - c.total_egresos;
-    return `
-    <tr>
-      <td>${fmtDate(c.fecha)}</td>
-      <td>${fmt(c.saldo_inicial)}</td>
-      <td class="td-entrada">${fmt(c.total_ingresos)}</td>
-      <td class="td-salida">${fmt(c.total_egresos)}</td>
-      <td style="color:${flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${fmt(c.saldo_final)}</td>
-      <td class="td-actions">
-        <span class="badge-movs">${c.movimientos_count} mov.</span>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-async function crearCierreDiario() {
-  const hoy = todayISO();
-
-  const { data: existing } = await sbClient
-    .from('cierres_caja')
-    .select('id')
-    .eq('auth_user_id', STATE.userId)
-    .eq('fecha', hoy)
-    .maybeSingle();
-
-  if (existing) {
-    showToast('Ya existe un cierre para hoy', 'error');
-    return;
-  }
-
-  try {
-    setBtnLoading('btn-cierre-diario', true);
-
-    const { data: movHoy } = await sbClient
-      .from('movimientos_financieros')
-      .select('tipo_flujo, monto, saldo_anterior')
-      .eq('auth_user_id', STATE.userId)
-      .eq('estado', 'completado')
-      .eq('fecha', hoy)
-      .order('created_at');
-
-    const movs = movHoy || [];
-    const saldoInicial  = movs.length > 0 ? Number(movs[0].saldo_anterior) : STATE.caja;
-    const totalIngresos = movs.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const totalEgresos  = movs.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
-    const saldoFinal    = saldoInicial + totalIngresos - totalEgresos;
-
-    await sbClient.from('cierres_caja').insert({
-      auth_user_id:     STATE.userId,
-      fecha:            hoy,
-      saldo_inicial:    saldoInicial,
-      total_ingresos:   totalIngresos,
-      total_egresos:    totalEgresos,
-      saldo_final:      saldoFinal,
-      movimientos_count: movs.length,
-    });
-
-    showToast('Cierre diario creado correctamente');
-    await loadCierres();
-  } catch(e) {
-    showToast('Error al crear cierre', 'error');
-  } finally {
-    setBtnLoading('btn-cierre-diario', false);
-  }
-}
-
-/* =====================================================
-   MODAL DINERO INICIAL (primera vez)
-===================================================== */
-async function checkDineroInicial() {
-  const hayMovs = await tieneMovimientos();
-  if (!hayMovs) {
-    openModal('modal-capital-inicial');
-  } else {
-    await loadCaja();
-  }
-}
-
-async function guardarCapitalInicialModal() {
-  const monto = parseFloat(document.getElementById('capital-inicial-monto').value);
-  if (isNaN(monto) || monto < 0) {
-    showToast('Ingresa un monto válido', 'error');
-    return;
-  }
-
-  try {
-    setBtnLoading('btn-guardar-capital-inicial', true);
-    await guardarDineroInicial(monto);
-    STATE.caja = monto;
-    closeModal('modal-capital-inicial');
-    showToast('Caja iniciada correctamente');
-    await Promise.all([loadResumen(), loadMovimientos(), loadMetodosPago()]);
-    actualizarCacheLocal();
-  } catch(e) {
-    showToast('Error al iniciar caja', 'error');
-  } finally {
-    setBtnLoading('btn-guardar-capital-inicial', false);
-  }
-}
-
-/* =====================================================
-   CACHÉ LOCAL (para dashboard)
-===================================================== */
-function actualizarCacheLocal() {
-  try {
-    localStorage.setItem('n360_caja', STATE.caja.toString());
-    localStorage.setItem('n360_caja_updated', new Date().toISOString());
-    localStorage.setItem('n360_capital', STATE.caja.toString());
-  } catch(e) { /* silencioso */ }
-}
-
-/* =====================================================
-   API PÚBLICA (para ventas.js, gastos.js, compras.js)
-===================================================== */
-window.CajaAPI = {
-  async registrarMovimiento(params) {
+    // Mantener sincronizado el caché local que usan dashboard/caja
     try {
-      const userId = params.auth_user_id || STATE.userId;
-      if (!userId) throw new Error('userId requerido');
+      localStorage.setItem('n360_caja', saldoResultante.toString());
+      localStorage.setItem('n360_capital', saldoResultante.toString());
+      localStorage.setItem('n360_caja_updated', new Date().toISOString());
+    } catch (_) { /* silencioso */ }
 
-      const { data: ult } = await sbClient
-        .from('movimientos_financieros')
-        .select('saldo_resultante')
-        .eq('auth_user_id', userId)
-        .eq('estado', 'completado')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    return { ok: true, saldoResultante };
+  } catch (e) {
+    console.warn('registrarCompraEnCaja:', e);
+    return { ok: false, error: e.message };
+  }
+}
 
-      const saldoAnt = ult ? Number(ult.saldo_resultante) : 0;
-      const monto    = Number(params.monto);
-      const saldoRes = params.tipo_flujo === 'INGRESO'
-        ? saldoAnt + monto
-        : saldoAnt - monto;
+// ============================================================
+// MODAL NUEVO / EDITAR
+// ============================================================
+function abrirModalNuevo(tipo = 'producto') {
+  STATE.modalMode  = 'crear';
+  STATE.editTarget = null;
 
-      const { error } = await sbClient.from('movimientos_financieros').insert({
-        auth_user_id:       userId,
-        tipo_flujo:         params.tipo_flujo,
-        tipo_movimiento:    params.tipo_movimiento,
-        concepto:           params.concepto,
-        monto:              monto,
-        saldo_anterior:     saldoAnt,
-        saldo_resultante:   saldoRes,
-        metodo_pago_nombre: params.metodo_pago_nombre || 'Efectivo',
-        metodo_pago_id:     params.metodo_pago_id     || null,
-        referencia_tipo:    params.referencia_tipo    || null,
-        referencia_id:      params.referencia_id      || null,
-        observaciones:      params.observaciones      || null,
-        fecha:              params.fecha               || todayISO(),
-        estado:             'completado',
-      });
+  resetFormulario();
+  setTipoModal(tipo, true);
+  configurarCamposSegunModo('crear');
 
-      if (error) throw error;
+  $('modalProductoTitle').textContent = tipo === 'producto' ? '+ Nuevo Producto' : '+ Nuevo Servicio';
+  $('btnGuardarProducto').textContent = 'Crear';
+  $('modalProducto').classList.add('open');
 
-      try {
-        localStorage.setItem('n360_caja', saldoRes.toString());
-        localStorage.setItem('n360_capital', saldoRes.toString());
-        localStorage.setItem('n360_caja_updated', new Date().toISOString());
-      } catch (_) {}
+  setTimeout(() => $('inputNombre')?.focus(), 100);
+}
 
-      return { ok: true, saldoResultante: saldoRes };
-    } catch(e) {
-      console.error('CajaAPI.registrarMovimiento:', e);
-      return { ok: false, error: e.message };
+function abrirEditar(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  STATE.modalMode  = 'editar';
+  STATE.editTarget = p;
+
+  resetFormulario();
+  cargarFormulario(p);
+  setTipoModal(p.tipo, false);
+  configurarCamposSegunModo('editar');
+
+  $('modalProductoTitle').textContent = `Editar: ${p.nombre}`;
+  $('btnGuardarProducto').textContent = 'Guardar cambios';
+  $('modalProducto').classList.add('open');
+}
+
+function cerrarModalProducto() {
+  $('modalProducto').classList.remove('open');
+  STATE.editTarget = null;
+  STATE.modalMode  = null;
+}
+
+// En modo editar → ocultar stockSection completo, mostrar aviso con solo stock_minimo
+function configurarCamposSegunModo(modo) {
+  const esEdicion  = modo === 'editar';
+  const stockWrap  = $('stockSection');
+  const avisoStock = $('avisoStockBloqueado');
+
+  if (esEdicion) {
+    if (stockWrap)  stockWrap.style.display  = 'none';
+    if (avisoStock) {
+      avisoStock.classList.add('visible');
+      avisoStock.style.display = 'flex';
     }
-  },
+  } else {
+    if (stockWrap)  stockWrap.style.display  = '';
+    if (avisoStock) {
+      avisoStock.classList.remove('visible');
+      avisoStock.style.display = 'none';
+    }
+  }
+}
 
-  async getCapital(userId) {
+function setTipoModal(tipo, habilitarToggle = true) {
+  const btnProd      = $('toggleProducto');
+  const btnServ      = $('toggleServicio');
+  const inputTipo    = $('inputTipo');
+  const stockSection = $('stockSection');
+
+  if (inputTipo)    inputTipo.value = tipo;
+  if (btnProd)      btnProd.classList.toggle('active', tipo === 'producto');
+  if (btnServ)      btnServ.classList.toggle('active', tipo === 'servicio');
+
+  // Solo mostrar stock (y el toggle de impacto en caja, que vive dentro)
+  // si es producto Y estamos en modo creación/duplicación
+  if (stockSection) {
+    const mostrar = tipo === 'producto' && STATE.modalMode !== 'editar';
+    stockSection.style.display = mostrar ? '' : 'none';
+  }
+
+  if (btnProd) btnProd.disabled = !habilitarToggle;
+  if (btnServ) btnServ.disabled = !habilitarToggle;
+}
+
+/* ============================================================
+   CÓDIGO DE BARRAS — modo "Escanear"
+   El input ya admite escritura manual normalmente. Este modo solo
+   agrega una ayuda visual + evita que el Enter del lector dispare
+   el guardado accidental del formulario completo.
+   ============================================================ */
+let cbModoEscaneo = false;
+
+function toggleModoEscaneoCB() {
+  const input = $('inputCodBarras');
+  const btn   = $('btnEscanearCB');
+  const label = $('btnEscanearCBLabel');
+  const hint  = $('cbScanHint');
+  if (!input) return;
+
+  cbModoEscaneo = !cbModoEscaneo;
+
+  if (cbModoEscaneo) {
+    btn?.classList.add('scanning');
+    if (label) label.textContent = 'Cancelar';
+    if (hint) hint.style.display = 'block';
+    input.value = '';
+    input.focus();
+  } else {
+    btn?.classList.remove('scanning');
+    if (label) label.textContent = 'Escanear';
+    if (hint) hint.style.display = 'none';
+  }
+}
+
+function initEscaneoCodigoBarras() {
+  const input = $('inputCodBarras');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    // Nunca dejar que el Enter del lector (o del teclado) llegue al
+    // listener del <form> y dispare guardarProducto() sin querer.
+    e.preventDefault();
+    e.stopPropagation();
+    if (cbModoEscaneo) {
+      if (input.value.trim()) {
+        showToast?.('✅ Código capturado', 'success');
+        toggleModoEscaneoCB();
+        // Pasar el foco al siguiente campo lógico del formulario
+        $('inputCosto')?.focus();
+      }
+    } else {
+      // Modo manual: Enter simplemente confirma el campo, no guarda todo el form
+      input.blur();
+    }
+  });
+}
+
+function resetFormulario() {
+  const form = $('formProducto');
+  if (form) form.reset();
+  $$('.form-error').forEach(el => el.textContent = '');
+  const wrap = $('margenPreviewWrap');
+  if (wrap) wrap.style.display = 'none';
+  const avisoStock = $('avisoStockBloqueado');
+  if (avisoStock) {
+    avisoStock.classList.remove('visible');
+    avisoStock.style.display = 'none';
+  }
+  // Tipo de precio: por defecto siempre "Precio fijo" (comportamiento actual)
+  STATE.formEscalas = [];
+  setTipoPrecio('fijo');
+  renderEscalasEditor();
+  // Por defecto: "Descontar de caja" (caso más común — compra nueva)
+  setCajaImpacto(true);
+  // Fecha de creación: hoy por defecto, pero editable — útil cuando el
+  // producto ya existía antes de usar el sistema (inventario histórico).
+  const inputFecha = $('inputFechaCreacion');
+  if (inputFecha) inputFecha.value = ymdLocal(new Date());
+}
+
+function cargarFormulario(p) {
+  const campos = [
+    ['inputNombre',          p.nombre        || ''],
+    ['inputDescripcion',     p.descripcion   || ''],
+    ['inputCategoria',       p.categoria     || ''],
+    ['inputMarca',           p.proveedor_id  || ''],
+    ['inputSku',             p.sku           || ''],
+    ['inputCodBarras',       p.codigo_barras || ''],
+    ['inputCosto',           p.costo         ?? ''],
+    ['inputPrecio',          p.precio        ?? ''],
+    ['inputStockMinimo',     p.stock_minimo  ?? ''],
+    ['inputStockMinimoEdit', p.stock_minimo  ?? ''],
+    ['inputStockActualEdit', p.stock_actual  ?? ''],
+    ['inputActivo',          p.activo ? 'true' : 'false'],
+  ];
+  campos.forEach(([id, val]) => {
+    const el = $(id);
+    if (el) el.value = val;
+  });
+
+  // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
+  const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
+  STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
+  setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
+  renderEscalasEditor();
+
+  // Fecha de creación: editable, para poder corregirla cuando el producto
+  // ya existía antes de usar el sistema (no siempre coincide con "hoy").
+  // Al duplicar, se trata como producto nuevo: por defecto hoy, no la
+  // fecha del original (igual se puede corregir a mano si hace falta).
+  const inputFecha = $('inputFechaCreacion');
+  if (inputFecha) {
+    inputFecha.value = (p.created_at && STATE.modalMode !== 'duplicar')
+      ? new Date(p.created_at).toISOString().slice(0, 10)
+      : ymdLocal(new Date());
+  }
+}
+
+// ============================================================
+// GUARDAR PRODUCTO
+// ============================================================
+async function guardarProducto() {
+  const btn   = $('btnGuardarProducto');
+  const errEl = $('errNombre');
+  if (errEl) errEl.textContent = '';
+
+  const tipo        = $('inputTipo')?.value || 'producto';
+  const nombre      = ($('inputNombre')?.value || '').trim();
+  const descripcion = ($('inputDescripcion')?.value || '').trim();
+  const categoria   = ($('inputCategoria')?.value || '').trim();
+  const proveedorId = ($('inputMarca')?.value || '').trim() || null;
+  const proveedorNombre = proveedorId
+    ? (STATE.proveedores.find(pr => pr.id === proveedorId)?.nombre || null)
+    : null;
+  const sku         = ($('inputSku')?.value || '').trim();
+  const codBarras   = ($('inputCodBarras')?.value || '').trim();
+  const costoRaw    = $('inputCosto')?.value;
+  const precioRaw   = $('inputPrecio')?.value;
+  const costo       = costoRaw  !== '' ? parseFloat(costoRaw)  : 0;
+  const precio      = precioRaw !== '' ? parseFloat(precioRaw) : 0;
+  const tipoPrecio  = $('inputTipoPrecio')?.value === 'escala' ? 'escala' : 'fijo';
+  const activoVal   = $('inputActivo')?.value;
+  const activo      = activoVal === 'true';
+  const fechaCreacionRaw = ($('inputFechaCreacion')?.value || '').trim(); // yyyy-mm-dd
+
+  const errEscalas = $('errEscalas');
+  if (errEscalas) errEscalas.textContent = '';
+  if (tipoPrecio === 'escala') {
+    const escalasValidas = STATE.formEscalas.filter(f => (f.nombre || '').trim());
+    if (!escalasValidas.length) {
+      if (errEscalas) errEscalas.textContent = 'Agrega al menos un precio en la escala';
+      return;
+    }
+  }
+
+  // Stock mínimo: usar el campo visible según el modo
+  const stockMinimoEl  = STATE.modalMode === 'editar' ? $('inputStockMinimoEdit') : $('inputStockMinimo');
+  const stockMinimoRaw = stockMinimoEl?.value;
+  const stockMinimo    = stockMinimoRaw !== '' && stockMinimoRaw !== undefined
+    ? parseFloat(stockMinimoRaw)
+    : 0;
+
+  // Stock actual: usar el campo visible según el modo. En edición ahora
+  // también es editable directamente (antes solo se podía desde
+  // Movimientos especiales); ese botón se mantiene igual para bajas
+  // con motivo registrado y descuento de caja.
+  const stockActualEl  = STATE.modalMode === 'editar' ? $('inputStockActualEdit') : $('inputStockActual');
+  const stockActualRaw = stockActualEl?.value;
+  const stockActual     = stockActualRaw !== '' && stockActualRaw !== undefined
+    ? parseFloat(stockActualRaw)
+    : 0;
+
+  if (!nombre) {
+    if (errEl) errEl.textContent = 'El nombre es obligatorio';
+    $('inputNombre')?.focus();
+    return;
+  }
+  if (!btn) return;
+
+  const textoOriginal = btn.textContent;
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+
+  try {
+    let error = null;
+    let cajaInfo = null; // { montoDescontado } si se registró movimiento de caja
+    let productoIdGuardado = null;
+
+    if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
+      const payload = {
+        auth_user_id:  STATE.user.id,
+        tipo,
+        nombre,
+        descripcion:   descripcion || null,
+        categoria:     categoria   || null,
+        proveedor_id:      proveedorId,
+        proveedor_nombre:  proveedorNombre,
+        sku:           sku         || null,
+        codigo_barras: codBarras   || null,
+        costo:         isNaN(costo)       ? 0 : costo,
+        precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
+        tipo_precio:   tipoPrecio,
+        stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
+        stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
+        activo,
+      };
+      // Fecha de creación manual (producto que ya existía antes del sistema).
+      // Si el usuario no la tocó, queda con el default de la base de datos.
+      // FIX: antes se guardaba la fecha "pelada" (ej. "2026-07-08"), y
+      // Postgres la interpreta como medianoche UTC. En Nicaragua (UTC-6)
+      // esa medianoche cae en las 6:00 PM del día ANTERIOR hora local, así
+      // que al mostrarla se veía un día atrás (8 de julio → aparecía 7).
+      // Anclando a las 12:00 del mediodía UTC, la fecha elegida se mantiene
+      // igual sin importar la zona horaria de quien la vea.
+      if (fechaCreacionRaw) payload.created_at = fechaCreacionRaw + 'T12:00:00Z';
+
+      let res = await supabaseClient.from('productos').insert([payload]).select();
+      if (res.error && fechaCreacionRaw) {
+        // Reintentar sin la fecha manual, por si la columna no la acepta en este entorno
+        const { created_at, ...payloadSinFecha } = payload;
+        res = await supabaseClient.from('productos').insert([payloadSinFecha]).select();
+      }
+      error = res.error;
+      productoIdGuardado = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
+
+      // Impacto en caja: solo para productos con costo × cantidad > 0,
+      // y solo si el usuario eligió "Descontar de caja"
+      if (!error && tipo === 'producto') {
+        const descontarCaja = $('inputDescontarCaja')?.value !== 'false';
+        const montoCompra   = (isNaN(costo) ? 0 : costo) * (isNaN(stockActual) ? 0 : stockActual);
+
+        // FIX: la columna "monto" de movimientos_financieros solo admite
+        // hasta 999,999,999,999.99 (numeric 14,2). Si costo × cantidad la
+        // supera, Postgres rechazaba el insert y el error quedaba oculto
+        // (el producto se guardaba bien, pero el descuento de caja fallaba
+        // sin ningún aviso). Ahora se valida ANTES de intentarlo, con un
+        // mensaje claro, y si aun así falla por otra razón, se avisa.
+        const LIMITE_MONTO_CAJA = 999999999999.99;
+
+        if (descontarCaja && montoCompra > LIMITE_MONTO_CAJA) {
+          showToast('warning', 'Producto guardado, pero NO se descontó de caja',
+            `El monto (costo × cantidad = ${fmtMoney(montoCompra)}) es demasiado grande para registrarse en Caja. Ajusta el costo o la cantidad y descuenta el movimiento manualmente si hace falta.`);
+        } else if (descontarCaja && montoCompra > 0) {
+          const insertedId = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
+          const resultCaja = await registrarCompraEnCaja(nombre, montoCompra, insertedId);
+          if (resultCaja.ok) {
+            cajaInfo = { montoDescontado: montoCompra };
+          } else {
+            // FIX: antes, si esto fallaba, no se avisaba nada — el
+            // producto quedaba creado pero caja nunca se enteraba.
+            showToast('warning', 'Producto guardado, pero NO se descontó de caja',
+              `Hubo un problema al registrar el movimiento en Caja${resultCaja.error ? ': ' + resultCaja.error : ''}. Puedes registrarlo manualmente desde el módulo de Caja.`);
+          }
+        }
+      }
+
+    } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
+      // En edición: el stock actual ahora SÍ se puede ajustar directamente
+      // desde aquí. "Movimientos especiales" se mantiene intacto para bajas
+      // con motivo (robo, daño, merma, etc.) que además pueden descontar
+      // de caja automáticamente — ese flujo no cambia.
+      const stockAntes = parseFloat(STATE.editTarget.stock_actual ?? 0);
+
+      const updatePayload = {
+        tipo,
+        nombre,
+        descripcion:   descripcion || null,
+        categoria:     categoria   || null,
+        proveedor_id:      proveedorId,
+        proveedor_nombre:  proveedorNombre,
+        sku:           sku         || null,
+        codigo_barras: codBarras   || null,
+        costo:         isNaN(costo)  ? 0 : costo,
+        precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
+        tipo_precio:   tipoPrecio,
+        stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
+        activo,
+      };
+      // Solo tocar stock_actual para productos (los servicios no manejan stock)
+      if (tipo === 'producto') {
+        updatePayload.stock_actual = isNaN(stockActual) ? 0 : stockActual;
+      }
+      // Fecha de creación corregible a mano (ej: producto que ya existía
+      // antes del sistema y quedó registrado con la fecha de "hoy").
+      // FIX: mismo anclaje a mediodía UTC que en creación, ver nota arriba.
+      if (fechaCreacionRaw) updatePayload.created_at = fechaCreacionRaw + 'T12:00:00Z';
+
+      let res = await supabaseClient
+        .from('productos')
+        .update(updatePayload)
+        .eq('id', STATE.editTarget.id)
+        .eq('auth_user_id', STATE.user.id);
+      if (res.error && fechaCreacionRaw) {
+        // Reintentar sin la fecha manual, por si la columna no la acepta en este entorno
+        const { created_at, ...updateSinFecha } = updatePayload;
+        res = await supabaseClient
+          .from('productos')
+          .update(updateSinFecha)
+          .eq('id', STATE.editTarget.id)
+          .eq('auth_user_id', STATE.user.id);
+      }
+      error = res.error;
+      productoIdGuardado = STATE.editTarget.id;
+
+      // Dejar rastro del ajuste manual de stock (auditoría), igual que hacen
+      // los Movimientos especiales. Si la tabla no existe o falla, no se
+      // interrumpe el guardado del producto — solo se registra en consola.
+      if (!error && tipo === 'producto' && updatePayload.stock_actual !== undefined
+          && updatePayload.stock_actual !== stockAntes) {
+        try {
+          await supabaseClient.from('movimientos_inventario').insert([{
+            auth_user_id:   STATE.user.id,
+            producto_id:    STATE.editTarget.id,
+            tipo:           'ajuste_manual',
+            razon:          'edicion_producto',
+            cantidad:       updatePayload.stock_actual - stockAntes,
+            stock_antes:    stockAntes,
+            stock_despues:  updatePayload.stock_actual,
+            nota:           'Editado directamente desde el formulario de producto',
+            descuenta_caja: false,
+          }]);
+        } catch (_) {
+          console.warn('Tabla movimientos_inventario no disponible aún');
+        }
+      }
+    }
+
+    if (error) throw error;
+
+    // Sincronizar escalas de precio (crea/actualiza/elimina filas según corresponda).
+    // Si falla, el producto YA quedó guardado — solo se avisa, no se revierte nada.
+    if (productoIdGuardado) {
+      try {
+        await sincronizarEscalas(productoIdGuardado, tipoPrecio === 'escala' ? STATE.formEscalas : []);
+      } catch (eEscalas) {
+        console.error('sincronizarEscalas:', eEscalas);
+        showToast('warning', 'Producto guardado', 'No se pudieron guardar los precios de la escala, intenta editarlo de nuevo.');
+      }
+    }
+
+    cerrarModalProducto();
+    showToast(
+      'success',
+      STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
+      cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre
+    );
+    // Importante: primero las escalas y DESPUÉS los productos —
+    // cargarProductos() dibuja la tabla de inmediato, así que si corriera
+    // en paralelo con cargarEscalas() podría pintar la tabla con el mapa
+    // de escalas todavía viejo (por eso aparecía "Sin precios configurados"
+    // hasta editar y volver a guardar).
+    await cargarEscalas();
+    await cargarProductos();
+
+  } catch (e) {
+    console.error('guardarProducto:', e);
+    showToast('error', 'Error al guardar', e.message || 'Verifica los datos e intenta de nuevo.');
+  } finally {
+    btn.classList.remove('btn-loading');
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// VER DETALLE
+// FIX: usa helper esStockBajo()
+// ============================================================
+function abrirDetalle(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  const m = calcMargen(p.precio, p.costo);
+  const margenHtml = m !== null
+    ? `<span class="td-margin ${m >= 40 ? 'margin-good' : m >= 20 ? 'margin-mid' : 'margin-low'}">${m.toFixed(2)}%</span>`
+    : '—';
+
+  // FIX: usar helper centralizado
+  const stockBajo = esStockBajo(p);
+
+  $('detalleContent').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-item full">
+        <div class="detail-label">Nombre</div>
+        <div class="detail-value" style="font-size:18px;font-weight:700">${escHtml(p.nombre)}</div>
+      </div>
+      ${p.descripcion ? `
+      <div class="detail-item full">
+        <div class="detail-label">Descripción</div>
+        <div class="detail-value">${escHtml(p.descripcion)}</div>
+      </div>` : ''}
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Tipo</div>
+        <div class="detail-value">
+          <span class="tipo-badge ${p.tipo === 'producto' ? 'tipo-producto' : 'tipo-servicio'}">
+            ${p.tipo === 'producto' ? '📦' : '🔧'} ${p.tipo}
+          </span>
+        </div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Categoría</div>
+        <div class="detail-value">${p.categoria ? escHtml(p.categoria) : '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Marca / Proveedor</div>
+        <div class="detail-value">${p.proveedor_nombre ? `🏷️ ${escHtml(p.proveedor_nombre)}` : '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">SKU</div>
+        <div class="detail-value" style="font-family:var(--font-mono)">${p.sku || '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Código de Barras</div>
+        <div class="detail-value" style="font-family:var(--font-mono)">${p.codigo_barras || '—'}</div>
+      </div>
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Costo</div>
+        <div class="detail-value detail-money" style="color:var(--text-secondary)">${fmtMoney(p.costo)}</div>
+      </div>
+      ${p.tipo_precio === 'escala' ? `
+      <div class="detail-item full">
+        <div class="detail-label">Escala de precios</div>
+        <div class="detail-value">
+          ${(STATE.escalasPorProducto[p.id] || []).map(e => `
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span>${escHtml(e.nombre)}</span>
+              <span style="font-weight:700;color:var(--accent)">${fmtMoney(e.precio)}</span>
+            </div>`).join('') || '<span style="color:var(--text-muted)">Sin precios configurados</span>'}
+        </div>
+      </div>
+      ` : `
+      <div class="detail-item">
+        <div class="detail-label">Precio de Venta</div>
+        <div class="detail-value detail-money" style="color:var(--accent)">${fmtMoney(p.precio)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Margen</div>
+        <div class="detail-value">${margenHtml}</div>
+      </div>
+      `}
+      <div class="detail-item">
+        <div class="detail-label">Estado</div>
+        <div class="detail-value">
+          <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+            ${p.activo ? 'Activo' : 'Inactivo'}
+          </span>
+        </div>
+      </div>
+      ${p.tipo === 'producto' ? `
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Stock Actual</div>
+        <div class="detail-value" style="font-size:18px;font-weight:700">
+          ${fmtNum(p.stock_actual)}
+          ${stockBajo ? '<span class="stock-warn" style="font-size:12px">⚠ Stock bajo</span>' : ''}
+        </div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Stock Mínimo</div>
+        <div class="detail-value">${fmtNum(p.stock_minimo)}</div>
+      </div>` : ''}
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Creado</div>
+        <div class="detail-value" style="font-size:12px">${fmtFecha(p.created_at)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Última actualización</div>
+        <div class="detail-value" style="font-size:12px">${fmtFecha(p.updated_at)}</div>
+      </div>
+    </div>
+  `;
+
+  $('btnEditarDesdeDetalle').onclick = () => {
+    cerrarDetalle();
+    abrirEditar(id);
+  };
+
+  $('modalDetalle').classList.add('open');
+}
+
+function cerrarDetalle() {
+  $('modalDetalle').classList.remove('open');
+}
+
+// ============================================================
+// DUPLICAR
+// ============================================================
+async function duplicarProducto(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  STATE.modalMode  = 'duplicar';
+  STATE.editTarget = null;
+
+  resetFormulario();
+  cargarFormulario({ ...p, nombre: p.nombre + ' — Copia' });
+
+  const stockField = $('inputStockActual');
+  if (stockField) { stockField.disabled = false; stockField.value = p.stock_actual ?? 0; }
+
+  setTipoModal(p.tipo, false);
+  configurarCamposSegunModo('crear'); // duplicar actúa como crear
+  actualizarCajaImpactoPreview();
+
+  $('modalProductoTitle').textContent = `Duplicar: ${p.nombre}`;
+  $('btnGuardarProducto').textContent = 'Crear copia';
+  $('modalProducto').classList.add('open');
+}
+
+// ============================================================
+// MOVIMIENTOS ESPECIALES — Modal completo
+// ============================================================
+const RAZONES_MERMA = [
+  { id: 'robo',           label: 'Robo',           icon: '🔓' },
+  { id: 'dano',           label: 'Daño',           icon: '💥' },
+  { id: 'vencimiento',    label: 'Vencimiento',    icon: '🗓️' },
+  { id: 'uso_interno',    label: 'Uso interno',    icon: '🏭' },
+  { id: 'conteo_fisico',  label: 'Conteo físico',  icon: '🔢' },
+  { id: 'error_anterior', label: 'Error anterior', icon: '↩️' },
+];
+
+function abrirMovimiento(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+  STATE.movTarget = p;
+
+  const nombreEl = $('movProductoNombre');
+  if (nombreEl) nombreEl.textContent = p.nombre;
+
+  const stockEl = $('movStockActual');
+  if (stockEl) stockEl.textContent = `Stock actual: ${fmtNum(p.stock_actual)}`;
+
+  const cantEl = $('movCantidad');
+  const notaEl = $('movNota');
+  const cajaCh = $('movDescontarCaja');
+  if (cantEl) cantEl.value = '';
+  if (notaEl) notaEl.value = '';
+  if (cajaCh) cajaCh.checked = false;
+
+  $$('.razon-card').forEach(c => c.classList.remove('selected'));
+  $('movRazonSeleccionada').value = '';
+
+  const errEl = $('movError');
+  if (errEl) errEl.textContent = '';
+
+  const prevEl = $('movCajaPreview');
+  if (prevEl) prevEl.textContent = '';
+
+  actualizarAvisoCaja();
+
+  $('modalMovimiento').classList.add('open');
+}
+
+function cerrarMovimiento() {
+  $('modalMovimiento').classList.remove('open');
+  STATE.movTarget = null;
+}
+
+function seleccionarRazon(el, razonId) {
+  $$('.razon-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  $('movRazonSeleccionada').value = razonId;
+
+  const errEl = $('movError');
+  if (errEl) errEl.textContent = '';
+
+  actualizarAvisoCaja();
+}
+
+function actualizarAvisoCaja() {
+  const razon    = $('movRazonSeleccionada')?.value;
+  const cajaRow  = $('movCajaRow');
+  const cajaInfo = $('movCajaRowInfo');
+  if (!cajaRow) return;
+
+  const requiereCaja = ['robo', 'dano', 'vencimiento', 'uso_interno'];
+  const esSoloAjuste = ['conteo_fisico', 'error_anterior'];
+
+  cajaRow.style.display  = requiereCaja.includes(razon) ? '' : 'none';
+  if (cajaInfo) cajaInfo.style.display = esSoloAjuste.includes(razon) ? '' : 'none';
+
+  const cajaCh = $('movDescontarCaja');
+  if (cajaCh && !requiereCaja.includes(razon)) cajaCh.checked = false;
+}
+
+async function confirmarMovimiento() {
+  const p = STATE.movTarget;
+  if (!p) return;
+
+  const razon   = $('movRazonSeleccionada')?.value;
+  const cantRaw = $('movCantidad')?.value;
+  const nota    = ($('movNota')?.value || '').trim();
+  const desCaja = $('movDescontarCaja')?.checked ?? false;
+  const errEl   = $('movError');
+
+  if (!razon) {
+    if (errEl) errEl.textContent = 'Selecciona la razón del movimiento.';
+    return;
+  }
+
+  const cantidad = parseFloat(cantRaw);
+  if (!cantRaw || isNaN(cantidad) || cantidad <= 0) {
+    if (errEl) errEl.textContent = 'Ingresa una cantidad válida mayor a 0.';
+    $('movCantidad')?.focus();
+    return;
+  }
+
+  const stockActual = parseFloat(p.stock_actual ?? 0);
+  if (cantidad > stockActual) {
+    if (errEl) errEl.textContent =
+      `No puedes descontar ${fmtNum(cantidad)} — stock disponible: ${fmtNum(stockActual)}.`;
+    return;
+  }
+
+  const btn = $('btnConfirmarMovimiento');
+  const textoOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.classList.add('btn-loading'); }
+
+  try {
+    const nuevoStock = stockActual - cantidad;
+
+    const { error: stockErr } = await supabaseClient
+      .from('productos')
+      .update({ stock_actual: nuevoStock })
+      .eq('id', p.id)
+      .eq('auth_user_id', STATE.user.id);
+
+    if (stockErr) throw stockErr;
+
+    // Registrar en tabla de movimientos (si existe)
     try {
-      const { data } = await sbClient
-        .from('movimientos_financieros')
-        .select('saldo_resultante')
-        .eq('auth_user_id', userId || STATE.userId)
-        .eq('estado', 'completado')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      return data ? Number(data.saldo_resultante) : 0;
-    } catch(e) { return 0; }
-  },
+      await supabaseClient.from('movimientos_inventario').insert([{
+        auth_user_id:   STATE.user.id,
+        producto_id:    p.id,
+        tipo:           'merma',
+        razon,
+        cantidad:       -cantidad,
+        stock_antes:    stockActual,
+        stock_despues:  nuevoStock,
+        nota:           nota || null,
+        descuenta_caja: desCaja,
+        costo_unitario: desCaja ? parseFloat(p.costo || 0) : null,
+        costo_total:    desCaja ? (parseFloat(p.costo || 0) * cantidad) : null,
+      }]);
+    } catch (_) {
+      console.warn('Tabla movimientos_inventario no disponible aún');
+    }
 
-  async getCaja(userId) {
-    return this.getCapital(userId);
-  },
-};
+    // Descontar de caja si aplica
+    if (desCaja && p.costo) {
+      const costoTotal  = parseFloat(p.costo) * cantidad;
+      const razonLabel  = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
+      try {
+        await supabaseClient.from('gastos').insert([{
+          auth_user_id: STATE.user.id,
+          descripcion:  `Merma de inventario — ${razonLabel}: ${p.nombre} (${fmtNum(cantidad)} u.)`,
+          monto:        costoTotal,
+          categoria:    'Merma de inventario',
+          tipo:         'merma',
+          notas:        nota || null,
+          fecha:        ymdLocal(new Date()),
+        }]);
+      } catch (_) {
+        console.warn('No se pudo registrar en gastos');
+      }
+    }
 
-/* =====================================================
-   FILTROS DE MOVIMIENTOS
-===================================================== */
-function setFiltro(filtro) {
-  STATE.movFilter = filtro;
-  STATE.movPage   = 1;
+    cerrarMovimiento();
 
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.filtro === filtro);
-  });
+    const razonLabel = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
+    const cajaMsg    = desCaja ? ` · ${fmtMoney((p.costo || 0) * cantidad)} descontados de caja` : '';
+    showToast('warning', 'Movimiento registrado',
+      `${razonLabel}: −${fmtNum(cantidad)} u. de ${p.nombre}${cajaMsg}`);
 
-  const customDates = document.getElementById('custom-dates');
-  if (customDates) customDates.style.display = filtro === 'custom' ? 'flex' : 'none';
+    await cargarProductos();
 
-  loadMovimientos();
-}
-
-function buscarMovimientos() {
-  STATE.movSearch = document.getElementById('mov-search')?.value || '';
-  STATE.movPage   = 1;
-  loadMovimientos();
-}
-
-function paginaAnterior() {
-  if (STATE.movPage > 1) { STATE.movPage--; loadMovimientos(); }
-}
-
-function paginaSiguiente() {
-  const totalPages = Math.ceil(STATE.movTotal / STATE.movPerPage);
-  if (STATE.movPage < totalPages) { STATE.movPage++; loadMovimientos(); }
-}
-
-/* =====================================================
-   SECCIONES (tabs)
-===================================================== */
-function setSection(section) {
-  STATE.activeSection = section;
-  document.querySelectorAll('.section-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.section === section);
-  });
-  document.querySelectorAll('.section-panel').forEach(p => {
-    p.style.display = p.dataset.section === section ? 'block' : 'none';
-  });
-
-  if (section === 'movimientos') loadMovimientos();
-  if (section === 'metodos')     loadMetodosPago();
-  if (section === 'cierres')     loadCierres();
-}
-
-/* =====================================================
-   MODALES
-===================================================== */
-function openModal(id) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.style.display = 'flex';
-    el.classList.add('modal-open');
-    document.body.style.overflow = 'hidden';
+  } catch (e) {
+    console.error('confirmarMovimiento:', e);
+    if (errEl) errEl.textContent = 'Error al guardar: ' + (e.message || 'inténtalo de nuevo');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('btn-loading');
+      btn.textContent = textoOriginal;
+    }
   }
 }
 
-function closeModal(id) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.style.display = 'none';
-    el.classList.remove('modal-open');
-    document.body.style.overflow = '';
-  }
+// ============================================================
+// NOTIFICACIONES
+// FIX: usa helper esStockBajo()
+// ============================================================
+function initNotificaciones() {
+  const btnNotif = document.querySelector('.header-icon-btn[title="Notificaciones"]');
+  if (!btnNotif) return;
+  btnNotif.addEventListener('click', () => {
+    const stockBajo = STATE.productos.filter(esStockBajo);
+    if (stockBajo.length > 0) {
+      showToast('warning',
+        `${stockBajo.length} producto${stockBajo.length !== 1 ? 's' : ''} con stock bajo`,
+        stockBajo.slice(0, 3).map(p => `• ${p.nombre}`).join('<br>'));
+    } else {
+      showToast('info', 'Sin notificaciones', 'Todo tu inventario está en orden.');
+    }
+  });
 }
 
-document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-overlay')) {
-    e.target.style.display = 'none';
-    document.body.style.overflow = '';
-  }
-});
-
-/* =====================================================
-   TOAST
-===================================================== */
-function showToast(msg, type = 'success') {
-  const el = document.getElementById('toast');
-  if (!el) return;
-  el.textContent = msg;
-  el.className = `toast toast-${type} toast-show`;
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => el.classList.remove('toast-show'), 3500);
-}
-
-/* =====================================================
-   HELPERS UI
-===================================================== */
-function setBtnLoading(id, loading) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.disabled = loading;
-  el.style.opacity = loading ? '0.6' : '1';
-}
-
+// ============================================================
+// ESCAPE HTML
+// ============================================================
 function escHtml(str) {
   if (!str) return '';
-  return String(str)
+  return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-/* =====================================================
-   INIT PRINCIPAL
-===================================================== */
-async function initCaja() {
-  applyTheme(localStorage.getItem('n360_theme') || 'light');
+// ============================================================
+// EVENTOS
+// ============================================================
+function initEventos() {
+  const searchInput = $('searchInput');
+  const searchClear = $('searchClear');
 
-  const now = new Date();
-  const fechaEl = document.getElementById('header-fecha');
-  if (fechaEl) fechaEl.textContent = now.toLocaleDateString('es-NI', {
-    day:'numeric', month:'long', year:'numeric'
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      STATE.busqueda = e.target.value;
+      if (searchClear) searchClear.classList.toggle('visible', STATE.busqueda.length > 0);
+      aplicarFiltros();
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      STATE.busqueda = '';
+      searchClear.classList.remove('visible');
+      aplicarFiltros();
+    });
+  }
+
+  const filtersGroup = document.querySelector('.filters-group');
+  if (filtersGroup) {
+    filtersGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      $$('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      STATE.filtroActivo = btn.dataset.filtro;
+      aplicarFiltros();
+    });
+  }
+
+  const filtroMarca = $('filtroMarca');
+  if (filtroMarca) {
+    filtroMarca.addEventListener('change', (e) => {
+      STATE.filtroMarca = e.target.value;
+      aplicarFiltros();
+    });
+  }
+
+  const btnProd = $('toggleProducto');
+  const btnServ = $('toggleServicio');
+  if (btnProd) btnProd.addEventListener('click', () => setTipoModal('producto', true));
+  if (btnServ) btnServ.addEventListener('click', () => setTipoModal('servicio', true));
+
+  // Toggle de impacto en caja (nuevo producto)
+  const btnDescontarCaja   = $('toggleDescontarCaja');
+  const btnNoDescontarCaja = $('toggleNoDescontarCaja');
+  if (btnDescontarCaja)   btnDescontarCaja.addEventListener('click', () => setCajaImpacto(true));
+  if (btnNoDescontarCaja) btnNoDescontarCaja.addEventListener('click', () => setCajaImpacto(false));
+
+  const btnGuardar = $('btnGuardarProducto');
+  if (btnGuardar) btnGuardar.addEventListener('click', guardarProducto);
+
+  const formProducto = $('formProducto');
+  if (formProducto) {
+    formProducto.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        guardarProducto();
+      }
+    });
+  }
+
+  // Código de barras: modo escaneo (ver initEscaneoCodigoBarras)
+  initEscaneoCodigoBarras();
+
+  // Movimiento: cantidad cambia → actualizar preview de caja
+  const movCantidad = $('movCantidad');
+  if (movCantidad) {
+    movCantidad.addEventListener('input', () => {
+      const p      = STATE.movTarget;
+      const cant   = parseFloat(movCantidad.value) || 0;
+      const prevEl = $('movCajaPreview');
+      if (prevEl && p && p.costo && cant > 0) {
+        prevEl.textContent = `Se registrará ${fmtMoney(parseFloat(p.costo) * cant)} como gasto de merma`;
+      } else if (prevEl) {
+        prevEl.textContent = '';
+      }
+    });
+  }
+
+  const cajaCh = $('movDescontarCaja');
+  if (cajaCh) {
+    cajaCh.addEventListener('change', () => {
+      const prevEl = $('movCajaPreview');
+      const p      = STATE.movTarget;
+      const cant   = parseFloat($('movCantidad')?.value) || 0;
+      if (prevEl) {
+        prevEl.textContent = (cajaCh.checked && p && p.costo && cant > 0)
+          ? `Se registrará ${fmtMoney(parseFloat(p.costo) * cant)} como gasto de merma`
+          : '';
+      }
+    });
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      cerrarModalProducto();
+      cerrarDetalle();
+      cerrarMovimiento();
+    }
   });
 
-  try {
-    const { data: { user }, error } = await sbClient.auth.getUser();
-    if (error || !user) { window.location.href = 'login.html'; return; }
+  $$('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) {
+        overlay.classList.remove('open');
+        STATE.editTarget = null;
+        STATE.modalMode  = null;
+        STATE.movTarget  = null;
+      }
+    });
+  });
 
-    STATE.userId    = user.id;
-    STATE.userEmail = user.email;
-
-    if (user.email) checkAdminAccess(user.email);
-
-    await loadEmpresaConfig(user.id);
-
-    const profile = await loadUserProfile(user.id);
-    if (profile) renderUserInfo(profile, user.email);
-    else {
-      document.getElementById('header-name').textContent   = user.email?.split('@')[0] || 'Usuario';
-      document.getElementById('header-avatar').textContent = (user.email || 'U')[0].toUpperCase();
-      document.getElementById('header-biz').textContent    = nombreNegocio();
-    }
-
-    document.getElementById('loader').classList.add('hidden');
-    document.getElementById('app').style.display = 'flex';
-
-    await checkDineroInicial();
-
-    await Promise.all([
-      loadResumen(),
-      loadMovimientos(),
-      loadMetodosPago(),
-    ]);
-
-    actualizarCacheLocal();
-
-  } catch(err) {
-    console.error('initCaja:', err);
-    document.getElementById('loader').classList.add('hidden');
-    document.getElementById('app').style.display = 'flex';
+  const inputNombre = $('inputNombre');
+  if (inputNombre) {
+    inputNombre.addEventListener('input', () => {
+      const errEl = $('errNombre');
+      if (errEl) errEl.textContent = '';
+    });
   }
+
+  // Actualizar preview de caja cuando cambia el costo (el stock ya
+  // dispara actualizarCajaImpactoPreview() vía oninput en el HTML)
+  const inputCostoEl = $('inputCosto');
+  if (inputCostoEl) inputCostoEl.addEventListener('input', actualizarCajaImpactoPreview);
 }
 
-/* =====================================================
-   AUTH LISTENER
-===================================================== */
-sbClient.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') window.location.href = 'login.html';
-});
+// ============================================================
+// FECHA EN HEADER
+// ============================================================
+function actualizarFecha() {
+  const el = $('fechaActual');
+  if (el) el.textContent = fechaActual();
+}
 
-/* =====================================================
-   ARRANQUE
-===================================================== */
-document.addEventListener('DOMContentLoaded', () => {
-  initCaja();
-  if (window.lucide) lucide.createIcons();
-});
+// ============================================================
+// INIT PRINCIPAL
+// FIX: cargar moneda/empresa ANTES de cargar productos.
+//      Antes ambas corrían en Promise.all (en paralelo), lo que
+//      generaba una condición de carrera: si cargarProductos()
+//      terminaba primero, actualizarStats() -> fmtMoney() usaba
+//      el símbolo por defecto ('$' / USD) en vez de la moneda
+//      configurada (ej. 'C$' / NIO), provocando el bug aleatorio
+//      al recargar la página.
+// ============================================================
+async function init() {
+  initSupabase();
+  initTema();
+  initSidebar();
+  actualizarFecha();
+  initEventos();
+
+  const autenticado = await checkAuth();
+  if (!autenticado) return;
+
+  // 1) Primero la moneda/configuración de empresa (asigna MONEDA_SIMBOLO)
+  await cargarDatosEmpresa();
+
+  // 2) Escalas de precio ANTES que productos: cargarProductos() dibuja la
+  // tabla de inmediato usando STATE.escalasPorProducto, así que si se
+  // cargara después, la tabla se pintaría con el mapa todavía vacío.
+  await cargarEscalas();
+
+  // 3) Luego los productos, que ya usarán MONEDA_SIMBOLO y escalas correctas
+  await cargarProductos();
+
+  // 4) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
+  cargarProveedores();
+
+  initNotificaciones();
+}
+
+document.addEventListener('DOMContentLoaded', init);
