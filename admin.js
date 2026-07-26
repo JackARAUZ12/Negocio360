@@ -1858,15 +1858,16 @@ async function loadChatsGrupales() {
   if (list) list.innerHTML = '<div class="payment-empty">Cargando...</div>';
 
   try {
-    const { data: chats, error } = await sb
-      .from('chats_grupales')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // FIX: si esta sección se abre sin haber visitado antes "Usuarios",
+    // allUsers estaba vacío — eso hacía que el selector de "Agregar
+    // miembro"/"Nuevo chat" pareciera no tener clientes disponibles, y que
+    // los nombres de los miembros no se resolvieran. Se carga en paralelo.
+    const [_, { data: chats, error }, { data: miembros, error: errM }] = await Promise.all([
+      loadUsers(),
+      sb.from('chats_grupales').select('*').order('created_at', { ascending: false }),
+      sb.from('chats_grupales_miembros').select('chat_id, auth_user_id'),
+    ]);
     if (error) throw error;
-
-    const { data: miembros, error: errM } = await sb
-      .from('chats_grupales_miembros')
-      .select('chat_id, auth_user_id');
     if (errM) throw errM;
 
     const conteo = {};
@@ -2074,11 +2075,19 @@ function togglePickerSeleccion(containerId, authUserId, checked) {
 }
 
 // ── CREAR CHAT GRUPAL ─────────────────────────────────────
-function abrirNuevoChatGrupal() {
+async function abrirNuevoChatGrupal() {
   document.getElementById('ncg-nombre').value = '';
   gcSelectedNewChat = new Set();
-  renderPickerClientes('ncg-picker', gcSelectedNewChat, []);
+
+  // FIX: si el admin entra directo a "Chats Grupales" sin haber visitado
+  // antes la sección "Usuarios", allUsers estaba vacío y el selector
+  // mostraba "no hay clientes" aunque sí existieran. Se asegura tener la
+  // lista cargada (o refrescada, por si hay clientes nuevos) antes de
+  // abrir el selector.
+  document.getElementById('ncg-picker').innerHTML = '<div class="payment-empty">Cargando clientes...</div>';
   openModal('modal-nuevo-chat-grupal');
+  await loadUsers();
+  renderPickerClientes('ncg-picker', gcSelectedNewChat, []);
 }
 
 async function crearChatGrupal() {
@@ -2116,12 +2125,17 @@ async function crearChatGrupal() {
 }
 
 // ── AGREGAR MIEMBRO A UN CHAT EXISTENTE ───────────────────
-function abrirAgregarMiembro() {
+async function abrirAgregarMiembro() {
   if (!currentChatGrupalId) return;
   gcSelectedAdd = new Set();
+
+  // Mismo fix que abrirNuevoChatGrupal: refrescar allUsers antes de armar
+  // el selector, para no depender de haber visitado antes "Usuarios".
+  document.getElementById('am-picker').innerHTML = '<div class="payment-empty">Cargando clientes...</div>';
+  openModal('modal-agregar-miembro');
+  await loadUsers();
   const yaMiembros = currentChatGrupalMiembros.map(m => m.auth_user_id);
   renderPickerClientes('am-picker', gcSelectedAdd, yaMiembros);
-  openModal('modal-agregar-miembro');
 }
 
 async function agregarMiembroSeleccionado() {
