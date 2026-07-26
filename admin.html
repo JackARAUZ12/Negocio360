@@ -622,6 +622,10 @@
             <div class="card-title">Anuncio activo actual</div>
             <div class="card-subtitle">Esto es lo que ven los usuarios que aún no lo han cerrado</div>
           </div>
+          <button class="btn-icon btn-ghost" id="btn-ver-lectores-anuncio" onclick="abrirVerLectoresAnuncio()" style="display:none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Ver quién lo vio
+          </button>
         </div>
         <div class="card-body" id="anuncio-activo-preview">
           <p style="color:var(--text-muted, #888)">Cargando…</p>
@@ -701,6 +705,46 @@
   </div><!-- /main-content -->
 </div><!-- /app-wrapper -->
 
+
+<!-- ══════════════════════════════════════════
+     MODAL: VER QUIÉN VIO UN ANUNCIO / NOTIFICACIÓN
+     Reutilizado tanto para "Anuncios" (anuncios_vistos) como para
+     "Notificaciones" (notificaciones_leidas) — mismo formato: quién,
+     su negocio/correo, y a qué hora lo vio.
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-ver-lectores">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="lectores-modal-title">¿Quién lo vio?</span>
+      <button class="modal-close" aria-label="Cerrar" onclick="closeModal('modal-ver-lectores')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="card-subtitle" id="lectores-modal-resumen" style="margin-bottom:14px">—</p>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Negocio / Correo</th>
+              <th>Visto</th>
+            </tr>
+          </thead>
+          <tbody id="lectores-tbody">
+            <tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-ver-lectores')">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════
      MODAL: VER USUARIO
