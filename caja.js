@@ -719,6 +719,7 @@ function tipoMovLabel(tipo) {
     GASTO:            'Gasto',
     RETIRO:           'Retiro',
     PAGO:             'Pago',
+    PAGO_SALARIO:     'Pago de salario',
     OTRO_EGRESO:      'Otro egreso',
   };
   return map[tipo] || tipo;
@@ -748,11 +749,12 @@ function toggleTipoMovimiento() {
       { v: 'OTRO_INGRESO',     l: 'Otro ingreso' },
     ],
     EGRESO: [
-      { v: 'COMPRA',      l: 'Compra de mercancía' },
-      { v: 'GASTO',       l: 'Gasto operativo' },
-      { v: 'RETIRO',      l: 'Retiro de caja' },
-      { v: 'PAGO',        l: 'Pago a proveedor' },
-      { v: 'OTRO_EGRESO', l: 'Otro egreso' },
+      { v: 'COMPRA',       l: 'Compra de mercancía' },
+      { v: 'GASTO',        l: 'Gasto operativo' },
+      { v: 'RETIRO',       l: 'Retiro de caja' },
+      { v: 'PAGO',         l: 'Pago a proveedor' },
+      { v: 'PAGO_SALARIO', l: 'Pago de salario' },
+      { v: 'OTRO_EGRESO',  l: 'Otro egreso' },
     ],
   };
 
