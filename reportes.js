@@ -691,6 +691,25 @@ async function fetchGastos() {
   return R.cache.gastos;
 }
 
+/* ---- SALARIOS (pagos ya realizados) ----
+   Se suman a los gastos operativos para que la ganancia neta refleje
+   la nómina, igual que ya pasa con la tabla "gastos". Solo LEE de
+   empleados_pagos — el módulo Salarios es quien crea esos registros
+   (y su propio egreso en Caja); aquí no se duplica ni se modifica nada. */
+async function fetchSalariosPagados() {
+  const { from, to } = getDateRange();
+  try {
+    const { data } = await sb.from('empleados_pagos')
+      .select('total_pagado, fecha')
+      .eq('auth_user_id', R.userId)
+      .gte('fecha', from).lte('fecha', to);
+    return (data || []).reduce((s,p) => s+Number(p.total_pagado||0), 0);
+  } catch (e) {
+    console.warn('fetchSalariosPagados:', e);
+    return 0;
+  }
+}
+
 /* ---- CLIENTES ---- */
 async function fetchClientes() {
   const { data } = await sb.from('clientes')
@@ -891,15 +910,15 @@ async function fetchDatosMensuales() {
    ============================================================ */
 async function loadEjecutivo() {
   try {
-    const [ventas, compras, gastos, clientes, productos, capital, movs, detalles, otros] = await Promise.all([
+    const [ventas, compras, gastos, clientes, productos, capital, movs, detalles, otros, salariosPagados] = await Promise.all([
       fetchVentas(), fetchCompras(), fetchGastos(), fetchClientes(),
       fetchProductos(), fetchCapital(), fetchMovimientos(), fetchVentasDetalles(),
-      fetchOtrosMovimientos(),
+      fetchOtrosMovimientos(), fetchSalariosPagados(),
     ]);
 
     const vRes = calcVentasResumen(ventas);
     const totalCompras  = compras.reduce((s,c)  => s+Number(c.total),0);
-    const totalGastos   = gastos.reduce((s,g)   => s+Number(g.monto),0);
+    const totalGastos   = gastos.reduce((s,g)   => s+Number(g.monto),0) + salariosPagados;
     const otrosIngresos = otros.otrosIngresos;
     const otrosEgresos  = otros.otrosEgresos;
     // Ganancia neta incluye Otros ingresos/egresos de Caja, igual que
@@ -1102,15 +1121,15 @@ async function renderTopClientesExec(clientes) {
    ============================================================ */
 async function loadFinanciero() {
   try {
-    const [ventas, compras, gastos, capital, productos, movs, mensual, otros, impMovs] = await Promise.all([
+    const [ventas, compras, gastos, capital, productos, movs, mensual, otros, impMovs, salariosPagados] = await Promise.all([
       fetchVentas(), fetchCompras(), fetchGastos(), fetchCapital(),
       fetchProductos(), fetchMovimientos(), fetchDatosMensuales(),
-      fetchOtrosMovimientos(), fetchImpuestos(),
+      fetchOtrosMovimientos(), fetchImpuestos(), fetchSalariosPagados(),
     ]);
 
     const vRes = calcVentasResumen(ventas);
     const totalCompras = compras.reduce((s,c)=>s+Number(c.total),0);
-    const totalGastos  = gastos.reduce((s,g)=>s+Number(g.monto),0);
+    const totalGastos  = gastos.reduce((s,g)=>s+Number(g.monto),0) + salariosPagados;
     const otrosIngresos = otros.otrosIngresos;
     const otrosEgresos  = otros.otrosEgresos;
     const gananciaNeta = vRes.ganancia - totalGastos + otrosIngresos - otrosEgresos;
@@ -2185,7 +2204,7 @@ async function ensureCaches() {
   if (!R.cache.resumen || Object.keys(R.cache.resumen).length === 0) {
     const vRes = calcVentasResumen(R.cache.ventas);
     const totalComp = R.cache.compras.reduce((s,c)=>s+Number(c.total),0);
-    const totalGast = R.cache.gastos.reduce((s,g)=>s+Number(g.monto),0);
+    const totalGast = R.cache.gastos.reduce((s,g)=>s+Number(g.monto),0) + await fetchSalariosPagados();
     const capital   = await fetchCapital();
     const otros     = await fetchOtrosMovimientos();
     R.cache.resumen = {
