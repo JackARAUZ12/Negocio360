@@ -705,6 +705,65 @@
   }
 
   // ------------------------------------------------------------
+  // API pública: candado de "Configuración" con el código de
+  // administrador (el MISMO código que ya protege "Gestionar
+  // usuarios" — perfiles_acceso.tipo = 'admin'). No crea ningún
+  // sistema nuevo, solo reutiliza el existente para una página más.
+  //
+  // Uso desde configuracion.html:
+  //   PerfilesGuardConfig.requerirCodigoAdmin(() => { ...mostrar la página... });
+  //
+  // Si el administrador aún no tiene código configurado, se le
+  // pide crearlo en ese momento (mismo flujo que ya existe). Una
+  // vez desbloqueado, no se vuelve a pedir en la misma pestaña
+  // del navegador (sessionStorage), igual que el resto del
+  // sistema de perfiles.
+  // ------------------------------------------------------------
+  const PG_CFG_KEY = 'n360_cfg_desbloqueado';
+
+  window.PerfilesGuardConfig = {
+    async requerirCodigoAdmin(onDesbloqueado) {
+      try {
+        if (typeof onDesbloqueado !== 'function') return;
+        if (!window.supabase) { onDesbloqueado(); return; }
+        if (!PG.client) PG.client = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY);
+
+        const { data: { session } } = await PG.client.auth.getSession();
+        if (!session) { onDesbloqueado(); return; } // el checkAuth propio de la página manda a login
+
+        PG.authUserId = session.user.id;
+        PG.authEmail  = session.user.email || null;
+
+        // Ya se desbloqueó antes en esta misma pestaña: no se vuelve a pedir.
+        try {
+          const raw = sessionStorage.getItem(PG_CFG_KEY);
+          if (raw) {
+            const s = JSON.parse(raw);
+            if (s && s.authUserId === PG.authUserId) { onDesbloqueado(); return; }
+          }
+        } catch (_) { /* ignorar y seguir pidiendo el código */ }
+
+        PG.perfiles = await cargarPerfiles();
+        const admin = PG.perfiles.find(p => p.tipo === 'admin');
+        if (!admin) { onDesbloqueado(); return; } // no debería pasar: cargarPerfiles siempre crea uno
+
+        showOverlay();
+        renderPin(admin, {
+          tituloExtra: 'Ingresa el código de administrador para entrar a Configuración',
+          onSuccess: () => {
+            try { sessionStorage.setItem(PG_CFG_KEY, JSON.stringify({ authUserId: PG.authUserId })); } catch (_) {}
+            hideOverlay();
+            onDesbloqueado();
+          },
+        });
+      } catch (e) {
+        console.error('PerfilesGuardConfig.requerirCodigoAdmin:', e);
+        onDesbloqueado(); // nunca bloquear el acceso del dueño por un error de red/consulta
+      }
+    },
+  };
+
+  // ------------------------------------------------------------
   // Arranque
   // ------------------------------------------------------------
   async function init() {
