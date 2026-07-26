@@ -1316,6 +1316,34 @@
         <div id="np-search-results" style="position:relative"></div>
       </div>
 
+      <div style="text-align:right;margin-top:-6px;margin-bottom:10px">
+        <button class="btn-ghost" type="button" style="font-size:12px" onclick="toggleProductoNuevoCxP()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Producto nuevo
+        </button>
+      </div>
+
+      <!-- PRODUCTO NUEVO — misma idea que en Compras: crea el producto en
+           el inventario sin salir del flujo de compra. La diferencia es
+           que aquí se agrega como una línea más del carrito (no compra
+           de una vez), para que el stock y el costo promedio se
+           actualicen igual que con cualquier otro producto al guardar. -->
+      <div id="np-producto-nuevo-form" style="display:none;margin:-4px 0 14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
+        <div class="form-row">
+          <div class="form-group"><label>Nombre del producto *</label><input type="text" id="pn-nombre" placeholder="Ej: Taladro inalámbrico"/></div>
+          <div class="form-group"><label>Categoría</label><input type="text" id="pn-categoria" placeholder="Ej: Herramientas"/></div>
+          <div class="form-group"><label>SKU / código (opcional)</label><input type="text" id="pn-sku" placeholder="Ej: TAL-001"/></div>
+          <div class="form-group"><label>Costo unitario (compra) *</label><input type="number" id="pn-costo" min="0" step="0.01" placeholder="0.00"/></div>
+          <div class="form-group"><label>Precio de venta *</label><input type="number" id="pn-precio" min="0" step="0.01" placeholder="0.00"/></div>
+          <div class="form-group"><label>Cantidad en esta compra *</label><input type="number" id="pn-cantidad" min="0.01" step="0.01" value="1"/></div>
+        </div>
+        <p id="pn-error" style="color:var(--danger);font-size:12.5px;margin-bottom:8px"></p>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn-ghost" type="button" onclick="toggleProductoNuevoCxP(false)">Cancelar</button>
+          <button class="btn-primary" id="btn-crear-producto-cxp" type="button" onclick="crearProductoNuevoCxP()">Crear y agregar al carrito</button>
+        </div>
+      </div>
+
       <div class="iva-row">
         <input type="checkbox" id="np-iva-activo" onchange="toggleIVACxP(this.checked)"/>
         <label for="np-iva-activo" style="font-size:13.5px;font-weight:500">Aplicar impuesto a esta compra</label>
