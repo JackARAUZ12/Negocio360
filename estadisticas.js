@@ -352,7 +352,19 @@ function calcularSalud() {
   // Neta" que ya usa Reportes.
   const costoVentas = d.ventas.reduce((s, v) => s + parseFloat(v.costo_total || 0), 0);
   const gastosOp = d.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
-  const egresos  = costoVentas + gastosOp;
+
+  // FIX MARGEN: se incluyen también "otros ingresos/egresos de caja"
+  // (movimientos manuales sin referencia a venta/compra/gasto), igual
+  // criterio que usa Dashboard para su margen neto — así ambas pantallas
+  // siempre coinciden en el mismo número.
+  const otrosIngresos = d.movFin
+    .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo)
+    .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
+  const otrosEgresosCaja = d.movFin
+    .filter(m => m.tipo_flujo === 'EGRESO' && !m.referencia_tipo)
+    .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
+
+  const egresos  = costoVentas + gastosOp + otrosEgresosCaja - otrosIngresos;
 
   const ingresosAnt   = d.ventasAnt.reduce((s, v) => s + (parseFloat(v.total || 0) - parseFloat(v.impuesto || 0)), 0);
   const costoVentasAnt = d.ventasAnt.reduce((s, v) => s + parseFloat(v.costo_total || 0), 0);
@@ -505,21 +517,35 @@ function renderChartIngresosEgresos() {
    ============================================================ */
 function renderRentabilidad() {
   const d = EST.data;
-  // FIX: ingresos, ganancia y costo se calculan a partir de la tabla
-  // "ventas" (igual que Reportes), no de venta_detalles:
-  //  - "total" incluye IVA, así que se resta "impuesto" para el ingreso real.
-  //  - la ganancia se recalcula SIEMPRE como ingreso neto - costo (no se usa
-  //    ningún campo de ganancia ya guardado), para que no se descuadre si
-  //    algún registro antiguo quedó con un valor desactualizado.
+  // FIX: ingresos y costo se calculan a partir de la tabla "ventas" (igual
+  // que Reportes): "total" incluye IVA, así que se resta "impuesto" para
+  // el ingreso real.
   const ingresos = d.ventas.reduce((s, v) => s + (parseFloat(v.total || 0) - parseFloat(v.impuesto || 0)), 0);
   const costoTotal = d.ventas.reduce((s, v) => s + parseFloat(v.costo_total || 0), 0);
-  const ganancia = ingresos - costoTotal;
-  const margenGlobal = ingresos > 0 ? (ganancia / ingresos) * 100 : 0;
+  const gananciaBruta = ingresos - costoTotal;
+
+  // FIX MARGEN: "Margen promedio" mostraba margen BRUTO (ingresos - costo
+  // de lo vendido), sin restar nunca los gastos operativos — por eso daba
+  // 100% siempre que costo_total de las ventas fuera 0 (por ejemplo, si
+  // los productos no tienen costo registrado). Ahora se calcula como
+  // margen NETO con el mismo criterio que ya usan Dashboard y Reportes:
+  // ganancia bruta − gastos operativos + otros ingresos de caja − otros
+  // egresos de caja, todo sobre los ingresos del período.
+  const gastosOp = d.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
+  const otrosIngresos = d.movFin
+    .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo)
+    .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
+  const otrosEgresos = d.movFin
+    .filter(m => m.tipo_flujo === 'EGRESO' && !m.referencia_tipo)
+    .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
+
+  const gananciaNeta  = gananciaBruta - gastosOp + otrosIngresos - otrosEgresos;
+  const margenGlobal  = ingresos > 0 ? (gananciaNeta / ingresos) * 100 : 0;
   const ticketPromedio = d.ventas.length ? ingresos / d.ventas.length : 0;
 
   document.getElementById('kpis-rentabilidad').innerHTML = `
-    ${kpiCard('💰', 'var(--success-soft)', 'var(--success)', 'Ganancia bruta del período', fmt(ganancia))}
-    ${kpiCard('📊', 'var(--accent-soft)', 'var(--accent)', 'Margen promedio', fmtPct(margenGlobal))}
+    ${kpiCard('💰', 'var(--success-soft)', 'var(--success)', 'Ganancia neta del período', fmt(gananciaNeta))}
+    ${kpiCard('📊', 'var(--accent-soft)', 'var(--accent)', 'Margen neto', fmtPct(margenGlobal))}
     ${kpiCard('🧾', 'var(--warning-soft)', 'var(--warning)', 'Ticket promedio', fmt(ticketPromedio))}
     ${kpiCard('📦', 'var(--accent-4-soft)', 'var(--accent-4)', 'Costo de lo vendido', fmt(costoTotal))}
   `;
