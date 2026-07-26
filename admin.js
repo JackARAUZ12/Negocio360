@@ -1159,15 +1159,22 @@ async function loadAnunciosSection() {
   await renderAnuncioActivoPreview();
 }
 
+let anuncioActivoActual = null;
+
 async function renderAnuncioActivoPreview() {
   const el = document.getElementById('anuncio-activo-preview');
+  const btnVerLectores = document.getElementById('btn-ver-lectores-anuncio');
   if (!el) return;
   el.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  if (btnVerLectores) btnVerLectores.style.display = 'none';
   try {
     const { data, error } = await sb.from('anuncios_sistema')
       .select('*').eq('activo', true).order('created_at', { ascending:false }).limit(1).maybeSingle();
     if (error) throw error;
+    anuncioActivoActual = data || null;
     if (!data) { el.innerHTML = '<p style="color:var(--text-muted)">No hay ningún anuncio activo en este momento.</p>'; return; }
+
+    if (btnVerLectores) btnVerLectores.style.display = 'inline-flex';
 
     const items = Array.isArray(data.items) ? data.items : [];
     el.innerHTML = `
@@ -1266,6 +1273,10 @@ function renderNotificacionesTabla(items) {
         <td><span class="badge ${tipo.cls}">${escHtml(tipo.label)}</span></td>
         <td>${formatDateTimeShort(n.created_at)}<div style="font-size:11px;color:var(--text-muted)">${escHtml(n.creado_por || '')}</div></td>
         <td>
+          <button class="btn-icon btn-ghost btn-sm" onclick="abrirVerLectoresNotificacion('${n.id}', '${escHtml(n.titulo).replace(/'/g,"\\'")}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Ver lectores
+          </button>
           <button class="btn-icon btn-danger btn-sm" onclick="eliminarNotificacion('${n.id}')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             Eliminar
@@ -1316,6 +1327,80 @@ async function eliminarNotificacion(id) {
   } catch (e) {
     console.error('eliminarNotificacion:', e);
     toast('Error al eliminar', e.message, 'error');
+  }
+}
+
+/* ══════════════════════════════════════════
+   VER QUIÉN VIO UN ANUNCIO / NOTIFICACIÓN
+   Reutiliza la misma tabla usuarios (auth_user_id → nombre/negocio/
+   correo) para mostrar quién, y a qué hora, vio cada envío global.
+   Solo LEE de anuncios_vistos / notificaciones_leidas — ambas ya
+   las llena el propio dashboard.html / notificaciones.js del
+   cliente; aquí no se inserta ni modifica nada.
+   ══════════════════════════════════════════ */
+async function abrirVerLectoresAnuncio() {
+  if (!anuncioActivoActual) return;
+  await abrirVerLectores({
+    titulo: `¿Quién vio? — ${anuncioActivoActual.titulo}`,
+    tabla: 'anuncios_vistos',
+    columnaId: 'anuncio_id',
+    valorId: anuncioActivoActual.id,
+    columnaFecha: 'visto_at',
+  });
+}
+
+async function abrirVerLectoresNotificacion(notificacionId, titulo) {
+  await abrirVerLectores({
+    titulo: `¿Quién la leyó? — ${titulo}`,
+    tabla: 'notificaciones_leidas',
+    columnaId: 'notificacion_id',
+    valorId: notificacionId,
+    columnaFecha: 'leida_at',
+  });
+}
+
+async function abrirVerLectores({ titulo, tabla, columnaId, valorId, columnaFecha }) {
+  document.getElementById('lectores-modal-title').textContent = titulo;
+  document.getElementById('lectores-modal-resumen').textContent = 'Cargando…';
+  document.getElementById('lectores-tbody').innerHTML =
+    `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>`;
+  openModal('modal-ver-lectores');
+
+  try {
+    const [{ data: vistos, error: errVistos }, { count: totalUsuarios }] = await Promise.all([
+      sb.from(tabla).select(`auth_user_id, ${columnaFecha}`).eq(columnaId, valorId).order(columnaFecha, { ascending: false }),
+      sb.from('usuarios').select('id', { count: 'exact', head: true }).eq('estado_cuenta', 'activa'),
+    ]);
+    if (errVistos) throw errVistos;
+
+    const lista = vistos || [];
+    document.getElementById('lectores-modal-resumen').textContent =
+      `${lista.length} de ${totalUsuarios ?? '—'} clientes activos lo han visto.`;
+
+    if (!lista.length) {
+      document.getElementById('lectores-tbody').innerHTML =
+        `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">Todavía nadie lo ha visto.</td></tr>`;
+      return;
+    }
+
+    // Trae nombre/negocio/correo de cada usuario que lo vio, en un solo query.
+    const ids = [...new Set(lista.map(v => v.auth_user_id))];
+    const { data: usuarios } = await sb.from('usuarios')
+      .select('auth_user_id, nombre, apellido, nombre_negocio, email').in('auth_user_id', ids);
+    const porId = new Map((usuarios || []).map(u => [u.auth_user_id, u]));
+
+    document.getElementById('lectores-tbody').innerHTML = lista.map(v => {
+      const u = porId.get(v.auth_user_id);
+      const nombre = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente') : 'Cliente eliminado';
+      const negocio = u ? (u.nombre_negocio || u.email || '—') : '—';
+      const fecha = v[columnaFecha] ? new Date(v[columnaFecha]).toLocaleString('es-NI') : '—';
+      return `<tr><td>${escHtml(nombre)}</td><td>${escHtml(negocio)}</td><td>${fecha}</td></tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('abrirVerLectores:', e);
+    document.getElementById('lectores-modal-resumen').textContent = '';
+    document.getElementById('lectores-tbody').innerHTML =
+      `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">No se pudo cargar la lista.</td></tr>`;
   }
 }
 
