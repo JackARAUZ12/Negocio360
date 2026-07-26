@@ -295,6 +295,42 @@
     .badge-accent{background:var(--accent-soft);color:var(--accent)}
     .badge-neutral{background:var(--bg-hover);color:var(--text-muted)}
 
+    /* =====================================================
+       BUSCADOR DE CLIENTE (Créditos) — combobox simple con
+       lista desplegable filtrable, usado tanto en la pestaña
+       Créditos como en el modal de exportación.
+    ===================================================== */
+    .buscador-cliente-wrap{position:relative;max-width:420px;margin-bottom:14px}
+    .buscador-cliente-wrap input{width:100%}
+    .buscador-cliente-lista{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
+      background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md,8px);
+      box-shadow:var(--shadow-md);max-height:260px;overflow-y:auto;z-index:60}
+    .buscador-cliente-lista.show{display:block}
+    .buscador-cliente-item{display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:9px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
+    .buscador-cliente-item:last-child{border-bottom:none}
+    .buscador-cliente-item:hover{background:var(--bg-hover)}
+    .buscador-cliente-tel{font-size:11.5px;color:var(--text-muted)}
+    .buscador-cliente-vacio{padding:14px;font-size:12.5px;color:var(--text-muted);text-align:center}
+
+    /* =====================================================
+       MODAL (Exportar historial de crédito)
+    ===================================================== */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);
+      backdrop-filter:blur(4px);z-index:500;align-items:center;justify-content:center;padding:20px}
+    .modal-overlay.modal-open{display:flex}
+    .modal-box{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-xl);
+      box-shadow:var(--shadow-lg);width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;
+      padding:18px 22px 14px;border-bottom:1px solid var(--border)}
+    .modal-title{font-size:15.5px;font-weight:700;color:var(--text-primary)}
+    .modal-close{width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+      border-radius:7px;color:var(--text-muted);cursor:pointer}
+    .modal-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .modal-body{padding:18px 22px}
+    .modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;
+      padding:14px 22px 20px;border-top:1px solid var(--border);flex-wrap:wrap}
+
     /* MEDALS */
     .medal-gold{color:#f59e0b;font-size:16px}
     .medal-silver{color:#94a3b8;font-size:16px}
@@ -1432,22 +1468,38 @@
           <div class="panel-header">
             <div class="panel-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
-              Historial de pagos (cuotas pagadas y pendientes)
+              Historial de pagos por cliente
             </div>
-            <select id="cr-filtro-estado" style="width:auto;min-width:150px" onchange="filtrarHistorialPagosCreditos()">
-              <option value="">Todos los estados</option>
-              <option value="pagada">Pagadas</option>
-              <option value="pendiente">Pendientes</option>
-              <option value="vencida">Vencidas</option>
-              <option value="parcial">Pago parcial</option>
-            </select>
+          </div>
+          <div class="panel-body" style="padding:16px 20px 4px">
+            <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
+              Busca y elige un cliente con crédito para ver su historial: cuotas ya pagadas y cuotas pendientes/vencidas.
+            </p>
+
+            <div id="cr-buscador-wrap" class="buscador-cliente-wrap">
+              <input type="text" id="cr-buscar-cliente" placeholder="Busca un cliente con crédito por nombre…"
+                autocomplete="off" oninput="buscarClienteCredito(this.value)" onfocus="buscarClienteCredito(this.value)">
+              <div id="cr-lista-clientes" class="buscador-cliente-lista"></div>
+            </div>
+
+            <div id="cr-cliente-activo" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+              <span class="badge badge-accent" style="font-size:13px;padding:6px 12px">
+                👤 <span id="cr-cliente-activo-nombre"></span>
+              </span>
+              <button class="btn-secondary btn-sm" onclick="limpiarClienteCredito()">Cambiar cliente</button>
+              <select id="cr-filtro-estado" style="width:auto;min-width:150px" onchange="renderHistorialPagosCreditos()">
+                <option value="">Todos los estados</option>
+                <option value="pagada">Pagadas</option>
+                <option value="pendiente">Pendientes</option>
+                <option value="vencida">Vencidas</option>
+                <option value="parcial">Pago parcial</option>
+              </select>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Cliente</th>
-                  <th>Teléfono</th>
                   <th>N° crédito</th>
                   <th>Cuota</th>
                   <th>Vencimiento</th>
@@ -1458,7 +1510,7 @@
                 </tr>
               </thead>
               <tbody id="creditos-historial-pagos-tbody">
-                <tr><td colspan="9" class="empty-cell">Cargando historial…</td></tr>
+                <tr><td colspan="7" class="empty-cell">Busca y elige un cliente arriba para ver su historial de pagos</td></tr>
               </tbody>
             </table>
           </div>
@@ -1683,6 +1735,36 @@
 
     </div><!-- /content -->
   </div><!-- /main -->
+
+  <!-- MODAL: Exportar historial de crédito (elige de qué cliente) -->
+  <div class="modal-overlay" id="modal-exportar-credito" onclick="if(event.target===this)cerrarModalExportarCredito()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">Exportar historial de crédito</div>
+        <div class="modal-close" onclick="cerrarModalExportarCredito()">✕</div>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
+          Elige de qué cliente quieres exportar el historial de pagos (cuotas pagadas y pendientes).
+        </p>
+        <div class="buscador-cliente-wrap" style="max-width:none">
+          <input type="text" id="modal-cr-buscar" placeholder="Busca un cliente por nombre…"
+            autocomplete="off" oninput="buscarClienteExportModal(this.value)" onfocus="buscarClienteExportModal(this.value)">
+          <div id="modal-cr-lista" class="buscador-cliente-lista"></div>
+        </div>
+        <div id="modal-cr-seleccionado" style="display:none;margin-top:12px">
+          <span class="badge badge-accent" style="font-size:13px;padding:6px 12px">
+            👤 <span id="modal-cr-seleccionado-nombre"></span>
+          </span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary btn-sm" onclick="cerrarModalExportarCredito()">Cancelar</button>
+        <button class="btn-primary btn-sm" id="modal-cr-btn-exportar" onclick="confirmarExportarCredito()" disabled>Exportar</button>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /app -->
 
 <script src="reportes.js"></script>
