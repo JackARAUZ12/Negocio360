@@ -91,12 +91,17 @@
       if (!estaActivo(cfg, mod.key)) {
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
+        item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar
       }
     });
 
-    // Igual que perfiles-guard.js: oculta/muestra títulos de sección según
-    // si les queda algún item visible (recalcula sobre el DOM actual, así
-    // que da igual si perfiles-guard.js corrió antes o después).
+    recalcularTitulosSidebar();
+  }
+
+  // Oculta/muestra títulos de sección de sidebar según si les queda algún
+  // item visible. Se usa tanto al desactivar módulos como al buscar, para
+  // que ambos comportamientos queden siempre consistentes entre sí.
+  function recalcularTitulosSidebar() {
     document.querySelectorAll('.nav-section-title, .sidebar-section-label').forEach(title => {
       let n = title.nextElementSibling;
       let algunoVisible = false;
@@ -106,6 +111,52 @@
       }
       title.style.display = algunoVisible ? '' : 'none';
     });
+  }
+
+  /* ============================================================
+     BUSCADOR DE MÓDULOS EN EL SIDEBAR
+     Cada vez hay más módulos (obligatorios + opcionales), así que
+     se agrega un campo de búsqueda arriba del menú para filtrar por
+     nombre en vez de tener que desplazarse por toda la lista. No
+     toca nunca los items ya ocultos por un módulo desactivado.
+     ============================================================ */
+  function inyectarBuscadorSidebar() {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav || !nav.parentElement || document.getElementById('mg-sidebar-search')) return;
+
+    // Estilos del buscador (inyectados una sola vez; así no hace falta
+    // tocar el <style> de cada una de las páginas del sistema).
+    if (!document.getElementById('mg-sidebar-search-style')) {
+      const style = document.createElement('style');
+      style.id = 'mg-sidebar-search-style';
+      style.textContent = `
+        .mg-sidebar-search-wrap{padding:0 16px 10px}
+        .mg-sidebar-search-wrap input{width:100%;padding:8px 10px;font-size:12.5px;
+          border:1px solid var(--border,#e8e8ef);border-radius:8px;background:var(--bg-surface,#fff);
+          color:var(--text-primary,#0d0d14);outline:none;transition:border-color .15s}
+        .mg-sidebar-search-wrap input:focus{border-color:var(--border-focus,var(--accent,#5a5af4))}
+        #sidebar.collapsed .mg-sidebar-search-wrap{display:none}
+        .sidebar-nav{max-height:calc(100vh - 160px);overflow-y:auto}
+      `;
+      document.head.appendChild(style);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mg-sidebar-search-wrap';
+    wrap.innerHTML = `<input type="text" id="mg-sidebar-search" placeholder="🔎 Buscar módulo…" autocomplete="off" />`;
+    nav.parentElement.insertBefore(wrap, nav);
+    wrap.querySelector('#mg-sidebar-search').addEventListener('input', e => filtrarSidebarPorTexto(e.target.value));
+  }
+
+  function filtrarSidebarPorTexto(q) {
+    const query = (q || '').trim().toLowerCase();
+    const items = document.querySelectorAll('.sidebar-nav .nav-item, .sidebar-nav .sidebar-item');
+    items.forEach(el => {
+      if (el.classList.contains('mg-oculto-modulo')) return; // módulo desactivado: nunca se muestra
+      const label = (el.querySelector('.nav-label, .sidebar-label')?.textContent || el.textContent || '').trim().toLowerCase();
+      el.style.display = (!query || label.includes(query)) ? '' : 'none';
+    });
+    recalcularTitulosSidebar();
   }
 
   // Si la página actual ES un módulo opcional desactivado, no se deja
@@ -128,6 +179,7 @@
     const cfg = await cargarConfigModulos(client, session.user.id);
     if (protegerPaginaActual(cfg)) return;
     ocultarEnSidebar(cfg);
+    inyectarBuscadorSidebar();
   }
 
   if (document.readyState === 'loading') {
