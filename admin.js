@@ -1924,14 +1924,19 @@ async function cargarMiembrosChatGrupal(chatId) {
   try {
     const { data, error } = await sb
       .from('chats_grupales_miembros')
-      .select('id, auth_user_id')
-      .eq('chat_id', chatId);
+      .select('id, auth_user_id, agregado_at')
+      .eq('chat_id', chatId)
+      .order('agregado_at', { ascending: true });
     if (error) throw error;
 
-    currentChatGrupalMiembros = (data || []).map(m => {
+    // Etiqueta anónima "Usuario N" según el orden en que cada quien fue
+    // agregado al chat (mismo criterio que usa la función de Supabase
+    // para el lado del cliente). El nombre real solo se guarda para
+    // mostrarlo como tooltip al admin, nunca como texto visible del chat.
+    currentChatGrupalMiembros = (data || []).map((m, idx) => {
       const u = allUsers.find(x => x.auth_user_id === m.auth_user_id);
-      const nombre = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email) : 'Cliente';
-      return { ...m, nombre };
+      const nombreReal = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email) : 'Cliente';
+      return { ...m, etiqueta: `Usuario ${idx + 1}`, nombreReal };
     });
 
     document.getElementById('gc-sub').textContent =
@@ -1950,8 +1955,8 @@ function renderMiembrosBar() {
     return;
   }
   bar.innerHTML = currentChatGrupalMiembros.map(m => `
-    <span class="gc-member-chip">
-      ${escHtml(m.nombre)}
+    <span class="gc-member-chip" title="${escHtml(m.nombreReal)}">
+      ${escHtml(m.etiqueta)}
       <button onclick="quitarMiembroChatGrupal('${m.id}')" title="Quitar del chat">&times;</button>
     </span>
   `).join('');
@@ -1998,7 +2003,7 @@ function renderMensajeGrupal(m) {
   let nombreRemitente = 'Tú (admin)';
   if (!esAdmin) {
     const miembro = currentChatGrupalMiembros.find(x => x.auth_user_id === m.auth_user_id);
-    nombreRemitente = miembro ? miembro.nombre : 'Cliente';
+    nombreRemitente = miembro ? miembro.etiqueta : 'Usuario';
   }
 
   row.innerHTML = `<div>
