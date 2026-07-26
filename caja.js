@@ -837,7 +837,14 @@ async function anularMovimiento() {
   if (!movToAnular) return;
   try {
     setBtnLoading('btn-confirmar-anular', true);
-    await sbClient
+
+    // FIX: antes no se revisaba el resultado de este update — si fallaba
+    // (por RLS, conexión, etc.) el sistema igual mostraba "Movimiento
+    // anulado" sin haber cambiado nada en la base de datos, y el egreso
+    // seguía contando en Caja y en "Otros egresos" como si nada. Ahora se
+    // verifica el error Y que realmente se haya actualizado una fila
+    // (.select() para confirmarlo) antes de dar el aviso de éxito.
+    const { data, error } = await sbClient
       .from('movimientos_financieros')
       .update({
         estado:         'anulado',
@@ -845,7 +852,11 @@ async function anularMovimiento() {
         anulado_motivo: 'Anulado manualmente',
       })
       .eq('id', movToAnular)
-      .eq('auth_user_id', STATE.userId);
+      .eq('auth_user_id', STATE.userId)
+      .select('id');
+
+    if (error) throw error;
+    if (!data || !data.length) throw new Error('No se encontró el movimiento a anular (puede que ya no exista o no te pertenezca).');
 
     closeModal('modal-confirmar');
     movToAnular = null;
@@ -855,7 +866,8 @@ async function anularMovimiento() {
     await Promise.all([loadResumen(), loadMovimientos()]);
     actualizarCacheLocal();
   } catch(e) {
-    showToast('Error al anular', 'error');
+    console.error('anularMovimiento:', e);
+    showToast('Error al anular: ' + (e.message || 'intenta de nuevo'), 'error');
   } finally {
     setBtnLoading('btn-confirmar-anular', false);
   }
