@@ -995,8 +995,30 @@
           <div class="cfg-status" id="mu-status"></div>
         </div>
 
-        <!-- CERRAR SESIÓN -->
+        <!-- EDITAR MÓDULOS -->
         <div class="cfg-card fade-in stagger-2">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Editar módulos</div>
+              <div class="cfg-card-desc">
+                Activa o desactiva los módulos opcionales de tu negocio. Al desactivarlos se ocultan del menú lateral.
+                Los módulos obligatorios (Dashboard, Ventas, Clientes, Productos/Servicios, Compras, Gastos, Caja/Pagos,
+                Reportes, Chat con Negocio360 y Configuración) siempre están disponibles y no se pueden quitar.
+              </div>
+            </div>
+          </div>
+
+          <div id="cfg-modulos-lista">
+            <div style="font-size:12.5px;color:var(--text-muted);padding:14px 0">Cargando módulos…</div>
+          </div>
+          <div class="cfg-status" id="modulos-status"></div>
+        </div>
+
+        <!-- CERRAR SESIÓN -->
+        <div class="cfg-card fade-in stagger-3">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1023,7 +1045,7 @@
         </div>
 
         <!-- ELIMINAR CUENTA -->
-        <div class="cfg-card danger fade-in stagger-3">
+        <div class="cfg-card danger fade-in stagger-4">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -1186,6 +1208,114 @@ async function guardarMultiusuario(activo) {
 }
 
 /* =====================================================
+   EDITAR MÓDULOS — activar/desactivar módulos opcionales
+   La lista de módulos sale de modulos-guard.js (ModulosGuard),
+   así que agregar un módulo opcional nuevo en el futuro NO
+   requiere tocar este archivo: basta con agregarlo allá.
+   Se guarda en configuracion_empresa.metadata.modulosOpcionales
+   (misma columna jsonb "metadata" que ya usa Reportes para su
+   configuración de exportaciones, cada quien con su propia clave).
+===================================================== */
+let modulosOpcionalesCfg = {};
+
+async function cargarModulosOpcionales() {
+  const cont = document.getElementById('cfg-modulos-lista');
+  if (!cont) return;
+
+  if (!window.ModulosGuard) {
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted);padding:14px 0">No se pudo cargar el listado de módulos. Recarga la página.</div>';
+    return;
+  }
+
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('metadata')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+
+    modulosOpcionalesCfg = (data?.metadata && typeof data.metadata === 'object' && data.metadata.modulosOpcionales) || {};
+    pintarModulosOpcionales();
+  } catch (e) {
+    console.error('cargarModulosOpcionales:', e);
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--danger);padding:14px 0">No se pudo cargar el estado de los módulos. Intenta recargar la página.</div>';
+  }
+}
+
+function pintarModulosOpcionales() {
+  const cont = document.getElementById('cfg-modulos-lista');
+  if (!cont) return;
+  const modulos = Object.values(window.ModulosGuard.MODULOS_OPCIONALES);
+
+  cont.innerHTML = modulos.map(m => {
+    const activo = window.ModulosGuard.estaActivo(modulosOpcionalesCfg, m.key);
+    return `
+    <div class="cfg-row" data-modulo-row="${m.key}">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:19px;line-height:1">${m.icon}</span>
+        <div>
+          <div class="cfg-row-label">${m.label}</div>
+          <div class="cfg-row-sub">${m.desc || ''}</div>
+        </div>
+      </div>
+      <label class="cfg-switch">
+        <input type="checkbox" ${activo ? 'checked' : ''} data-modulo-input="${m.key}" disabled />
+        <span class="cfg-switch-track" onclick="onToggleModuloClick(event,'${m.key}')"></span>
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function onToggleModuloClick(evt, key) {
+  const input = document.querySelector(`input[data-modulo-input="${key}"]`);
+  if (!input || input.disabled) { evt.preventDefault(); return; }
+  input.checked = !input.checked;
+  guardarModulo(key, input.checked);
+}
+
+async function guardarModulo(key, activo) {
+  const input   = document.querySelector(`input[data-modulo-input="${key}"]`);
+  const statusEl = document.getElementById('modulos-status');
+  const modulo  = window.ModulosGuard.MODULOS_OPCIONALES[key];
+  if (input) input.disabled = true;
+
+  try {
+    const metadataActual = await metadataActualEmpresa();
+    const nuevaCfg = { ...(metadataActual.modulosOpcionales || {}), [key]: activo };
+    const nuevaMetadata = { ...metadataActual, modulosOpcionales: nuevaCfg };
+
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ metadata: nuevaMetadata, updated_at: new Date().toISOString() })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+
+    modulosOpcionalesCfg = nuevaCfg;
+    setStatus(statusEl, `${modulo?.label || 'Módulo'} ${activo ? 'activado' : 'desactivado'} correctamente.`, true);
+  } catch (e) {
+    console.error('guardarModulo:', e);
+    if (input) input.checked = !activo; // revertir visualmente
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    if (input) input.disabled = false;
+  }
+}
+
+// Lee metadata actual "fresca" desde Supabase antes de escribir, para no
+// pisar cambios guardados por otra pestaña/sección entre que se cargó la
+// página y que se tocó el interruptor.
+async function metadataActualEmpresa() {
+  try {
+    const { data } = await sbClient.from('configuracion_empresa')
+      .select('metadata').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    return (data && typeof data.metadata === 'object' && data.metadata) || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/* =====================================================
    CERRAR SESIÓN
 ===================================================== */
 function confirmarCerrarSesion() {
@@ -1294,10 +1424,23 @@ async function initConfiguracion() {
       if (estado === 'cancelada')  { document.getElementById('screen-cancelled').classList.add('active'); return; }
     }
 
-    document.getElementById('loader').classList.add('hidden');
-    document.getElementById('app').style.display = 'flex';
+    // A partir de aquí ya se puede entrar a Configuración — pero antes se
+    // exige el código de administrador (mismo código de "Gestionar
+    // usuarios"). Si perfiles-guard.js no llegó a cargar por algún motivo,
+    // mostrarApp() se llama igual: nunca se bloquea el acceso por un
+    // fallo externo.
+    const mostrarApp = () => {
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('app').style.display = 'flex';
+      cargarMultiusuario();
+      cargarModulosOpcionales();
+    };
 
-    await cargarMultiusuario();
+    if (window.PerfilesGuardConfig) {
+      window.PerfilesGuardConfig.requerirCodigoAdmin(mostrarApp);
+    } else {
+      mostrarApp();
+    }
 
   } catch (err) {
     console.error('Configuración init error:', err);
@@ -1313,5 +1456,7 @@ sbClient.auth.onAuthStateChange((event) => {
 document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
+<script src="perfiles-guard.js"></script>
+<script src="modulos-guard.js"></script>
 </body>
 </html>
