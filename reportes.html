@@ -1428,6 +1428,42 @@
           </div>
         </div>
 
+        <div class="panel-card fade-in" style="margin-top:20px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+              Historial de pagos (cuotas pagadas y pendientes)
+            </div>
+            <select id="cr-filtro-estado" style="width:auto;min-width:150px" onchange="filtrarHistorialPagosCreditos()">
+              <option value="">Todos los estados</option>
+              <option value="pagada">Pagadas</option>
+              <option value="pendiente">Pendientes</option>
+              <option value="vencida">Vencidas</option>
+              <option value="parcial">Pago parcial</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Teléfono</th>
+                  <th>N° crédito</th>
+                  <th>Cuota</th>
+                  <th>Vencimiento</th>
+                  <th>Monto cuota</th>
+                  <th>Pagado</th>
+                  <th>Saldo</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="creditos-historial-pagos-tbody">
+                <tr><td colspan="9" class="empty-cell">Cargando historial…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div><!-- /panel-creditos -->
 
       <!-- =====================================================
@@ -1544,7 +1580,7 @@
               <div class="export-card">
                 <div class="export-card-icon">📊</div>
                 <div class="export-card-title">Reporte General</div>
-                <div class="export-card-desc">Incluye todos los módulos: ventas, compras, gastos, inventario, clientes y finanzas en un solo documento.</div>
+                <div class="export-card-desc">Incluye todos los módulos: ventas, compras, gastos, inventario, clientes, créditos y finanzas en un solo documento.</div>
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('general','pdf')">PDF</button>
                   <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('general','xlsx')">Excel</button>
@@ -1598,6 +1634,16 @@
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('gastos','pdf')">PDF</button>
                   <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('gastos','xlsx')">Excel</button>
+                </div>
+              </div>
+
+              <div class="export-card">
+                <div class="export-card-icon">💳</div>
+                <div class="export-card-title">Créditos</div>
+                <div class="export-card-desc">Clientes con crédito y su historial de pagos: cuotas ya pagadas y cuotas pendientes/vencidas, con datos del cliente.</div>
+                <div class="export-btns">
+                  <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('creditos','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('creditos','xlsx')">Excel</button>
                 </div>
               </div>
             </div>
