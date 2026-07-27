@@ -38,17 +38,15 @@
   const MG_SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
   const MG_SUPABASE_KEY  = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
 
-  // ---- ÚNICA fuente de verdad de los módulos OPCIONALES ----
-  const MODULOS_OPCIONALES = {
-    creditos:       { key: 'creditos',       archivo: 'creditos.html',       label: 'Créditos',       icon: '🧾',
-                      desc: 'Ventas y préstamos a crédito, cuotas y cobros.' },
-    estadisticas:   { key: 'estadisticas',   archivo: 'estadisticas.html',   label: 'Estadísticas',   icon: '📈',
-                      desc: 'Gráficas y tendencias adicionales del negocio.' },
-    notificaciones: { key: 'notificaciones', archivo: 'notificaciones.html', label: 'Notificaciones', icon: '🔔',
-                      desc: 'Centro de avisos y alertas del sistema.' },
-    impuestos:      { key: 'impuestos',      archivo: 'impuestos.html',      label: 'Impuestos',      icon: '🧮',
-                      desc: 'Catálogo de impuestos aplicados a ventas y créditos.' },
-  };
+  // ÚNICA fuente de verdad: modulos-registro.js (se carga antes que este
+  // archivo). Cualquier módulo marcado obligatorio:false aparece aquí
+  // solo con agregarlo allá — nada que tocar en este archivo nunca más.
+  const MODULOS_OPCIONALES = {};
+  Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
+    if (!m.obligatorio) {
+      MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '' };
+    }
+  });
   const MODULOS_POR_ARCHIVO = {};
   Object.values(MODULOS_OPCIONALES).forEach(m => { MODULOS_POR_ARCHIVO[m.archivo] = m; });
 
