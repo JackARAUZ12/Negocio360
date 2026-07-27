@@ -32,7 +32,10 @@
   // Tablas que NUNCA se auditan: la propia bitácora (evita bucles),
   // y tablas con datos sensibles de autenticación que no aportan
   // nada útil a un rastro de auditoría de negocio.
-  const TABLAS_EXCLUIDAS = new Set(['auditoria_log', 'perfiles_acceso', 'codigos_acceso', 'admin_usuarios']);
+  // 'usuarios' se excluye porque perfiles-guard.js la actualiza cada ~45s
+  // (latido de presencia / última conexión) — eso no es un "movimiento"
+  // que le importe al dueño del negocio, solo ensuciaría el registro.
+  const TABLAS_EXCLUIDAS = new Set(['auditoria_log', 'perfiles_acceso', 'codigos_acceso', 'admin_usuarios', 'usuarios']);
 
   // Campos que sí sirven como "resumen" legible de un movimiento.
   // Deliberadamente NO se incluye el payload completo (podría traer
