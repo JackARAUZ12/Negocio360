@@ -134,27 +134,37 @@ function calcularPrimeraFechaProxima(frecuencia, diaPago, personalizado) {
     const intervalo = Math.max(1, parseInt(personalizado.intervalo) || 1);
 
     if (unidad === 'semana') {
-      // "Cada N lunes": la primera ocurrencia es el próximo día objetivo
-      // (ej. el próximo lunes); a partir de ahí, cada pago salta N semanas.
+      // "Cada N lunes": la primera fecha ya debe estar a N semanas de
+      // distancia (ej. con N=4 y hoy es cualquier día, cae en el 4° sábado
+      // contando desde hoy) — NO en el próximo sábado sin más.
       const objetivo = Number(diaPago ?? 1);
       const d = new Date(hoy);
       let delta = (objetivo - d.getDay() + 7) % 7;
-      if (delta === 0) delta = 7;
+      if (delta === 0) delta = 7; // si hoy es el día, cuenta desde la próxima ocurrencia
+      delta += 7 * (intervalo - 1);
       d.setDate(d.getDate() + delta);
       return ymd(d);
     }
 
-    // unidad === 'mes' — "cada N meses": si el día de este mes ya pasó,
-    // salta N meses (no solo 1) para mantener el ciclo de N en N.
+    // unidad === 'mes' — "cada N meses": toma la ocurrencia más próxima
+    // (este mes si el día no ha pasado, si no el que sigue) y desde ahí
+    // suma los (N-1) meses restantes del ciclo, para que la primera fecha
+    // ya quede a N meses de distancia cuando corresponda.
     const diaObjetivoEsteMes = clampDia(anio, mes, diaPago);
-    let d = new Date(anio, mes, diaObjetivoEsteMes);
-    if (d <= hoy) {
-      const mesSig = mes + intervalo;
+    let base = new Date(anio, mes, diaObjetivoEsteMes);
+    if (base <= hoy) {
+      const mesSig = mes + 1;
       const anioSig = anio + Math.floor(mesSig / 12);
-      const mesSigNorm = ((mesSig % 12) + 12) % 12;
-      d = new Date(anioSig, mesSigNorm, clampDia(anioSig, mesSigNorm, diaPago));
+      const mesSigNorm = mesSig % 12;
+      base = new Date(anioSig, mesSigNorm, clampDia(anioSig, mesSigNorm, diaPago));
     }
-    return ymd(d);
+    if (intervalo > 1) {
+      const mesFinal = base.getMonth() + (intervalo - 1);
+      const anioFinal = base.getFullYear() + Math.floor(mesFinal / 12);
+      const mesFinalNorm = ((mesFinal % 12) + 12) % 12;
+      base = new Date(anioFinal, mesFinalNorm, clampDia(anioFinal, mesFinalNorm, diaPago));
+    }
+    return ymd(base);
   }
 
   // mensual (default)
@@ -198,13 +208,33 @@ function toggleYaPagoActualHint() {
       : 'Si NO ha pagado todavía, el pago quedará pendiente desde HOY y aparecerá de una vez en Ventas → Clientes con pago recurrente.';
   }
 
-  // Bloque de IVA: solo tiene sentido si se marcó "Ya pagó" (porque ese
-  // pago se va a registrar de una vez como venta real).
+  // "¿Qué hacemos con ese dinero?" solo aplica si se marcó "Ya pagó".
+  const wrapDestino = document.getElementById('wrap-ya-pago-destino');
+  if (wrapDestino) {
+    wrapDestino.style.display = checked ? '' : 'none';
+    if (checked) {
+      // Por defecto siempre vuelve a "Agregar a Caja" (la opción más común:
+      // un cliente nuevo pagando en el momento), el usuario cambia si hace falta.
+      const radioCaja = document.querySelector('input[name="fc-ya-pago-destino"][value="caja"]');
+      if (radioCaja) radioCaja.checked = true;
+    }
+  }
+  toggleYaPagoDestino();
+}
+
+// Controla el bloque de IVA según si el dinero se va a agregar a Caja
+// ahora mismo (sí aplica, porque se registra como venta real) o si ya
+// estaba agregado de antes (no aplica, no se crea ninguna venta nueva).
+function toggleYaPagoDestino() {
+  const checked = document.getElementById('fc-ya-pago-actual')?.checked;
+  const destino = document.querySelector('input[name="fc-ya-pago-destino"]:checked')?.value || 'caja';
   const wrapIva = document.getElementById('wrap-ya-pago-iva');
   if (!wrapIva) return;
-  wrapIva.style.display = checked ? '' : 'none';
 
-  if (checked) {
+  const mostrarIva = checked && destino === 'caja';
+  wrapIva.style.display = mostrarIva ? '' : 'none';
+
+  if (mostrarIva) {
     // Prellenar con la configuración de impuestos del negocio (misma lógica
     // de siempre), pero el usuario puede cambiarla para este pago puntual.
     const ivaActivoEl = document.getElementById('fc-ya-pago-iva-activo');
@@ -831,7 +861,12 @@ async function guardarCliente() {
         // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo.
         payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago, personalizado);
         payload.fecha_ultimo_pago  = todayISO();
-        if (monto > 0) {
+
+        // ¿Ese dinero hay que agregarlo a Caja ahora, o ya estaba agregado?
+        // Si ya estaba agregado (cliente existente), NO se crea ninguna
+        // venta nueva — solo se actualizan las fechas de arriba.
+        const destinoDinero = document.querySelector('input[name="fc-ya-pago-destino"]:checked')?.value || 'caja';
+        if (destinoDinero === 'caja' && monto > 0) {
           const ivaActivo = document.getElementById('fc-ya-pago-iva-activo')?.checked || false;
           let ivaPct = parseFloat(document.getElementById('fc-ya-pago-iva-pct')?.value);
           if (isNaN(ivaPct) || ivaPct < 0) ivaPct = 0;
