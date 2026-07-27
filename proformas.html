@@ -12,6 +12,7 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -1378,7 +1379,6 @@
     <div class="modal-body" id="detalle-prof-body">Cargando…</div>
     <div class="modal-footer" style="flex-wrap:wrap">
       <button class="btn-ghost" onclick="closeModal('modal-detalle-proforma')">Cerrar</button>
-      <button class="btn-secondary" onclick="descargarPdfProformaActual()">📄 Descargar PDF</button>
       <button class="btn-secondary" onclick="compartirProformaActual()">🔗 Compartir</button>
       <button class="btn-primary" id="det-prof-btn-convertir" onclick="abrirConvertirDesdeDetalle()">Convertir a Venta</button>
     </div>
