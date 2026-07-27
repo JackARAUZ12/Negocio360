@@ -647,6 +647,10 @@ async function verDetalleProf(id) {
     const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
 
     let html = `
+      <button class="btn-primary" style="width:100%;justify-content:center;padding:16px;font-size:15px;font-weight:700;margin-bottom:18px;gap:10px" onclick="descargarPdfProformaActual()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+        Generar PDF de Proforma
+      </button>
       <div class="form-row">
         <div><label>Cliente</label><div class="stat-readonly">${esc(p.cliente_nombre||'Cliente final')}</div></div>
         <div><label>Fecha</label><div class="stat-readonly">${fmtFecha(p.fecha)}</div></div>
@@ -808,76 +812,124 @@ async function confirmarConvertirAVenta() {
 }
 
 /* =====================================================
-   PDF (mismo motor/estilo que el recibo de Ventas, cambiando
-   "RECIBO DE VENTA" por "PROFORMA")
+   PDF — hoja completa tamaño carta/A4, con toda la información
+   de la proforma (mismo estilo de marca que usa el sistema:
+   franja de color con el nombre del negocio + tabla de ítems).
 ===================================================== */
-function dibujarProforma(doc, p, items) {
-  const W = 80, M = 5, CX = W/2;
-  let y = 8;
-  const linea = (h=4.6) => { y += h; };
-  const centrado = (txt, size=9, bold=false) => { doc.setFont('helvetica', bold?'bold':'normal'); doc.setFontSize(size); doc.text(String(txt), CX, y, {align:'center'}); };
-  const filaTexto = (izq, der, size=8, bold=false) => {
-    doc.setFont('helvetica', bold?'bold':'normal'); doc.setFontSize(size);
-    doc.text(String(izq), M, y);
-    if (der!==undefined && der!==null && der!=='') doc.text(String(der), W-M, y, {align:'right'});
-  };
-  const divisor = () => { doc.setLineDashPattern([0.8,0.8],0); doc.line(M,y,W-M,y); doc.setLineDashPattern([],0); linea(4.5); };
-
-  const biz = {
-    nombre: STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
-    direccion: STATE.empresaConfig?.direccion || '', telefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
-    ruc: STATE.empresaConfig?.ruc || '',
-  };
-
-  centrado(biz.nombre, 11.5, true); linea(5.2);
-  if (biz.direccion) { centrado(biz.direccion, 7.5); linea(4); }
-  if (biz.telefono)  { centrado(`Tel: ${biz.telefono}`, 7.5); linea(4); }
-  if (biz.ruc)       { centrado(`RUC: ${biz.ruc}`, 7.5); linea(4); }
-  linea(1.5); divisor();
-
-  centrado('PROFORMA', 9.5, true); linea(5.5);
-  filaTexto('N° Proforma:', p.numero_proforma || '—', 8, true); linea();
-  filaTexto('Fecha:', fmtFecha(p.fecha), 7.5); linea();
-  if (p.fecha_vencimiento) { filaTexto('Válida hasta:', fmtFecha(p.fecha_vencimiento), 7.5); linea(); }
-  linea(5); divisor();
-
-  filaTexto('Cliente:', p.cliente_nombre || 'Cliente final', 8, true); linea(5); divisor();
-
-  filaTexto('Descripción', 'Subtotal', 7.5, true); linea(4.2);
-  doc.setLineDashPattern([0.8,0.8],0); doc.line(M,y,W-M,y); doc.setLineDashPattern([],0); linea(4.5);
-  (items||[]).forEach(it => {
-    const nombreLineas = doc.splitTextToSize(it.producto_nombre || 'Ítem', W-M*2-2);
-    doc.setFont('helvetica','normal'); doc.setFontSize(8);
-    nombreLineas.forEach((ln,i) => { doc.text(ln, M, y); if (i===nombreLineas.length-1) doc.text(fmt(it.subtotal), W-M, y, {align:'right'}); linea(3.9); });
-    doc.setFontSize(7.3); doc.setTextColor(110,110,110);
-    doc.text(`${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:2})} x ${fmt(it.precio)}`, M, y);
-    doc.setTextColor(0,0,0); linea(4.6);
-  });
-  linea(1); divisor();
-
-  filaTexto('Subtotal:', fmt(p.subtotal), 8); linea();
-  if (Number(p.descuento)>0) { filaTexto('Descuento:', '-'+fmt(p.descuento), 8); linea(); }
-  if (Number(p.impuesto)>0) { filaTexto(`Impuesto${p.iva_porcentaje?` (${Number(p.iva_porcentaje)}%)`:''}:`, fmt(p.impuesto), 8); linea(); }
-  linea(1.2);
-  filaTexto('TOTAL:', fmt(p.total), 12, true); linea(7); divisor();
-
-  if (p.observaciones) {
-    doc.setFont('helvetica','italic'); doc.setFontSize(7.3);
-    doc.splitTextToSize(`Nota: ${p.observaciones}`, W-M*2).forEach(ln => { doc.text(ln, M, y); linea(3.8); });
-    linea(1.5);
-  }
-  linea(2);
-  centrado('Cotización sujeta a disponibilidad', 8, false); linea(4.5);
-  centrado('Generado por Negocio360', 6.5); linea(5);
-  return y;
-}
-function generarPDFProforma(p, items) {
+function generarPDFProforma(p, items, cliente) {
   if (!window.jspdf) throw new Error('jsPDF no está disponible');
   const { jsPDF } = window.jspdf;
-  const draft = new jsPDF({ unit:'mm', format:[80,1000] });
-  const alto = dibujarProforma(draft, p, items);
-  const doc = new jsPDF({ unit:'mm', format:[80, alto+6] });
-  dibujarProforma(doc, p, items);
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 14;
+
+  const biz = {
+    nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
+    direccion: STATE.empresaConfig?.direccion || '',
+    telefono:  STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
+    ruc:       STATE.empresaConfig?.ruc || '',
+  };
+
+  // ---- Encabezado (franja de color, igual que el resto de comprobantes del sistema) ----
+  doc.setFillColor(108, 99, 255);
+  doc.rect(0, 0, W, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20); doc.setFont(undefined, 'bold');
+  doc.text(biz.nombre, M, 20);
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+  doc.text('Proforma / Cotización', M, 29);
+  doc.setFontSize(9);
+  doc.text(`N.º ${p.numero_proforma || '—'}`, W - M, 18, { align: 'right' });
+  doc.text(`Fecha: ${fmtFecha(p.fecha)}`, W - M, 24, { align: 'right' });
+  if (p.fecha_vencimiento) doc.text(`Válida hasta: ${fmtFecha(p.fecha_vencimiento)}`, W - M, 30, { align: 'right' });
+
+  let y = 50;
+  doc.setTextColor(20, 20, 30);
+
+  // ---- Datos del negocio (dirección/teléfono/RUC) y del cliente, lado a lado ----
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+  const infoNegocio = [biz.direccion, biz.telefono ? `Tel: ${biz.telefono}` : '', biz.ruc ? `RUC: ${biz.ruc}` : ''].filter(Boolean);
+  infoNegocio.forEach((linea, i) => doc.text(linea, M, y + i*5));
+
+  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
+  doc.text('Cliente', W - M - 70, y);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+  const infoCliente = [
+    p.cliente_nombre || 'Cliente final',
+    cliente?.telefono ? `Tel: ${cliente.telefono}` : '',
+    cliente?.correo ? cliente.correo : '',
+  ].filter(Boolean);
+  infoCliente.forEach((linea, i) => doc.text(linea, W - M - 70, y + 5 + i*5));
+
+  y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + 10;
+  doc.setDrawColor(230,230,235);
+  doc.line(M, y, W - M, y);
+  y += 8;
+
+  // ---- Estado ----
+  const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
+  doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(108,99,255);
+  doc.text(`Estado: ${ei.label}`, M, y);
+  y += 10;
+
+  // ---- Tabla de ítems ----
+  const filas = (items||[]).map(it => [
+    it.producto_nombre || 'Ítem',
+    Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
+    fmt(it.precio),
+    Number(it.descuento) > 0 ? fmt(it.descuento) : '—',
+    fmt(it.subtotal),
+  ]);
+  doc.autoTable({
+    startY: y,
+    head: [['Descripción', 'Cant.', 'Precio unit.', 'Descuento', 'Subtotal']],
+    body: filas,
+    theme: 'striped',
+    headStyles: { fillColor: [108, 99, 255] },
+    styles: { fontSize: 9.5, cellPadding: 3.5 },
+    columnStyles: { 1: { halign:'right' }, 2: { halign:'right' }, 3: { halign:'right' }, 4: { halign:'right' } },
+    margin: { left: M, right: M },
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 10;
+
+  // ---- Totales (alineados a la derecha) ----
+  const anchoTotales = 75;
+  const xEtiqueta = W - M - anchoTotales, xValor = W - M;
+  const filaTotal = (label, val, big) => {
+    doc.setFontSize(big ? 13 : 10);
+    doc.setFont(undefined, big ? 'bold' : 'normal');
+    doc.setTextColor(big ? 108 : 90, big ? 99 : 90, big ? 255 : 110);
+    doc.text(label, xEtiqueta, finalY);
+    doc.text(val, xValor, finalY, { align: 'right' });
+    finalY += big ? 8 : 6.5;
+  };
+  filaTotal('Subtotal:', fmt(p.subtotal));
+  if (Number(p.descuento) > 0) filaTotal('Descuento:', '-' + fmt(p.descuento));
+  if (Number(p.impuesto) > 0) filaTotal(`Impuesto${p.iva_porcentaje?` (${Number(p.iva_porcentaje)}%)`:''}:`, fmt(p.impuesto));
+  doc.setDrawColor(230,230,235);
+  doc.line(xEtiqueta, finalY - 4, xValor, finalY - 4);
+  filaTotal('TOTAL:', fmt(p.total), true);
+
+  finalY += 6;
+  doc.setTextColor(20,20,30);
+
+  // ---- Observaciones ----
+  if (p.observaciones) {
+    doc.setFontSize(10); doc.setFont(undefined, 'bold');
+    doc.text('Observaciones', M, finalY);
+    finalY += 6;
+    doc.setFontSize(9.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+    doc.splitTextToSize(p.observaciones, W - M*2).forEach(ln => { doc.text(ln, M, finalY); finalY += 5; });
+    finalY += 4;
+  }
+
+  // ---- Pie de página ----
+  const alturaPagina = doc.internal.pageSize.getHeight();
+  doc.setFontSize(8.5); doc.setTextColor(150,150,170);
+  doc.text('Cotización sujeta a disponibilidad. Precios expresados en ' + sym() + '.', M, alturaPagina - 16);
+  doc.text('Generado por Negocio360', M, alturaPagina - 10);
+
   return doc;
 }
 async function descargarPdfProformaActual() {
@@ -885,7 +937,12 @@ async function descargarPdfProformaActual() {
   if (!p) return;
   try {
     const items = STATE.detalleActual || (await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id)).data || [];
-    const doc = generarPDFProforma(p, items);
+    let cliente = null;
+    if (p.cliente_id) {
+      const { data } = await sbClient.from('clientes').select('telefono,correo').eq('id', p.cliente_id).maybeSingle();
+      cliente = data || null;
+    }
+    const doc = generarPDFProforma(p, items, cliente);
     doc.save(`Proforma_${(p.numero_proforma||'proforma').replace(/[^\w\-]/g,'')}.pdf`);
   } catch (e) {
     console.error('descargarPdfProformaActual:', e);
