@@ -975,6 +975,7 @@
                   <option value="semanal">Semanal</option>
                   <option value="quincenal">Quincenal</option>
                   <option value="anual">Anual</option>
+                  <option value="personalizado">Personalizado</option>
                 </select>
               </div>
               <div class="form-group">
@@ -996,6 +997,28 @@
                   <option value="6">Sábado</option>
                   <option value="0">Domingo</option>
                 </select>
+              </div>
+            </div>
+
+            <!-- PERSONALIZADO: cada N semanas (un día fijo) o cada N meses -->
+            <div class="form-group full-col" id="wrap-personalizado" style="display:none;margin-top:6px">
+              <div style="border-top:1px dashed var(--border);padding-top:12px">
+                <label>¿Cada cuánto se repite?</label>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <select id="fc-personalizado-unidad" onchange="toggleFrecuenciaUI()">
+                      <option value="semana">Por día de la semana (ej. cada 4 lunes)</option>
+                      <option value="mes">Por meses (ej. cada 3 o 6 meses)</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label id="lbl-personalizado-intervalo">Repetir cada (n° de semanas)</label>
+                    <input type="number" id="fc-personalizado-intervalo" min="1" step="1" value="4" placeholder="Ej: 4"/>
+                  </div>
+                </div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px" id="hint-personalizado">
+                  Ej: con "4" y "Lunes", cobra cada 4 semanas ese día (cada 4 lunes).
+                </div>
               </div>
             </div>
 
