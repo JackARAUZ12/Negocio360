@@ -29,9 +29,6 @@
 (function () {
   if (!window.supabase || typeof window.supabase.createClient !== 'function') return;
 
-  const AG_SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
-  const AG_SUPABASE_KEY  = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-
   // Tablas que NUNCA se auditan: la propia bitácora (evita bucles),
   // y tablas con datos sensibles de autenticación que no aportan
   // nada útil a un rastro de auditoría de negocio.
@@ -70,19 +67,15 @@
     return partes.join(' · ') || null;
   }
 
-  // Cliente propio, solo para escribir en la bitácora — así nunca
-  // depende de que el cliente del módulo siga vivo/autenticado de
-  // cierta forma particular.
-  let auditClient = null;
-  function getAuditClient() {
-    if (!auditClient) auditClient = window.supabase.createClient(AG_SUPABASE_URL, AG_SUPABASE_KEY);
-    return auditClient;
-  }
-
-  async function registrar(authUserId, tabla, accion, datos) {
+  async function registrar(client, authUserId, tabla, accion, datos) {
     try {
       const perfil = getPerfilActivo();
-      await getAuditClient().from('auditoria_log').insert({
+      // Se usa el MISMO cliente que ya hizo la operación real — ya está
+      // autenticado, sin depender de que un cliente nuevo alcance a
+      // restaurar la sesión a tiempo. 'auditoria_log' está en
+      // TABLAS_EXCLUIDAS, así que este .from() no vuelve a envolverse
+      // (sin riesgo de bucle).
+      await client.from('auditoria_log').insert({
         auth_user_id: authUserId,
         perfil_nombre: perfil?.nombre || 'Admin',
         perfil_tipo: perfil?.tipo === 'restringido' ? 'restringido' : 'admin',
@@ -111,7 +104,7 @@
         // suma una llamada extra de red a cada escritura del sistema.
         client.auth.getSession().then(({ data }) => {
           const uid = data?.session?.user?.id;
-          if (uid) registrar(uid, tabla, metodo.toUpperCase(), args[0]);
+          if (uid) registrar(client, uid, tabla, metodo.toUpperCase(), args[0]);
         }).catch(() => {});
         return resultado;
       };
@@ -120,6 +113,8 @@
   }
 
   function envolverCliente(client) {
+    if (client.__n360Auditado) return client; // ya envuelto: nunca dos veces el mismo cliente
+    client.__n360Auditado = true;
     const originalFrom = client.from.bind(client);
     client.from = function (tabla) {
       return envolverQueryBuilder(client, tabla, originalFrom(tabla));
