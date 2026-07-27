@@ -6,6 +6,10 @@
   <title>Clientes — Negocio360</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="modulos-registro.js"></script>
+  <script src="auditoria-guard.js"></script>
+  <script src="modulos-registro.js"></script>
+  <script src="auditoria-guard.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -564,6 +568,11 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
         <span class="nav-label">Salarios</span>
       </div>
+
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">Auditoría</span>
+      </div>
       <div class="nav-item" onclick="navigate('reportes.html')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         <span class="nav-label">Reportes</span>
@@ -784,7 +793,7 @@
                   <th>Email</th>
                   <th>Última compra</th>
                   <th style="text-align:center">Compras</th>
-                  <th>Total gastado</th>
+                  <th title="Suma de ventas ya registradas para este cliente (no es la cuota recurrente configurada)">Total gastado</th>
                   <th>Estado</th>
                   <th></th>
                 </tr>
