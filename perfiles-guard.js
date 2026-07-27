@@ -22,26 +22,15 @@
   const PG_SUPABASE_KEY  = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
   const PG_SESSION_KEY   = 'n360_perfil_activo';
 
-  // Módulos reconocidos por archivo. Si agregas una página nueva,
-  // solo hace falta agregar una línea aquí.
-  const MODULOS = {
-    'dashboard.html':      { key: 'dashboard',      label: 'Dashboard',           icon: '🏠' },
-    'ventas.html':         { key: 'ventas',         label: 'Ventas',              icon: '💰' },
-    'clientes.html':       { key: 'clientes',       label: 'Clientes',            icon: '👥' },
-    'productos.html':      { key: 'productos',      label: 'Productos/Servicios', icon: '📦' },
-    'compras.html':        { key: 'compras',        label: 'Compras',             icon: '🛒' },
-    'gastos.html':         { key: 'gastos',         label: 'Gastos',              icon: '💸' },
-    'caja.html':           { key: 'caja',           label: 'Caja / Pagos',        icon: '🏦' },
-    'creditos.html':       { key: 'creditos',       label: 'Créditos',            icon: '🧾' },
-    'cuentas-por-pagar.html': { key: 'cuentas_por_pagar', label: 'Cuentas por Pagar', icon: '📇' },
-    'salarios.html':       { key: 'salarios',       label: 'Salarios',            icon: '🧑‍💼' },
-    'impuestos.html':      { key: 'impuestos',      label: 'Impuestos',           icon: '🧾' },
-    'reportes.html':       { key: 'reportes',       label: 'Reportes',            icon: '📊' },
-    'estadisticas.html':   { key: 'estadisticas',   label: 'Estadísticas',        icon: '📈' },
-    'chat.html':           { key: 'chat',           label: 'Chat',                icon: '💬' },
-    'notificaciones.html': { key: 'notificaciones', label: 'Notificaciones',      icon: '🔔' },
-    'personalizacion.html':{ key: 'personalizacion',label: 'Personalización',     icon: '🎨' },
-  };
+  // Módulos reconocidos por archivo. ÚNICA fuente de verdad:
+  // modulos-registro.js (se carga antes que este archivo). Se excluyen
+  // los "soloAdmin" (Configuración, Auditoría) porque tienen su propio
+  // candado de código de administrador — nunca tiene sentido asignarlos
+  // por perfil, el candado los bloquearía de todas formas.
+  const MODULOS = {};
+  Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
+    if (!m.soloAdmin) MODULOS[archivo] = { key: m.key, label: m.label, icon: m.icon };
+  });
   const MODULO_ORDEN = Object.values(MODULOS).map(m => m.key);
   const AVATAR_COLORS = ['#6C63FF','#F59E0B','#10B981','#EF4444','#3B82F6','#EC4899','#14B8A6','#8B5CF6'];
 
@@ -548,6 +537,7 @@
 
   function aplicarRestricciones(perfil) {
     inyectarBotonCambiarUsuario(perfil);
+    forzarNombrePerfilEnUI(perfil);
     if (perfil.tipo === 'admin') return;
 
     const permitidos = new Set(perfil.modulos || []);
@@ -580,6 +570,51 @@
       }
       title.style.display = algunoVisible ? '' : 'none';
     });
+  }
+
+  // ------------------------------------------------------------
+  // Corrige el saludo ("¡Buenas noches, ...!") y el nombre del
+  // encabezado para que muestren el PERFIL que entró por PIN, no
+  // siempre el dueño de la cuenta. Solo aplica a perfiles
+  // restringidos: el perfil "Admin" ES el dueño de la cuenta, así
+  // que su nombre real (el que ya muestra cada módulo) es correcto
+  // tal cual y no se toca.
+  //
+  // Usa MutationObserver en vez de fijar el texto una sola vez,
+  // porque cada módulo carga sus propios datos de forma asíncrona
+  // y podría "pisar" el nombre después de que este script corra.
+  // Así, sin importar el orden de carga, el nombre correcto siempre
+  // queda como última palabra — y esto funciona en CUALQUIER módulo
+  // nuevo que use los mismos IDs, sin tener que tocarlo nunca.
+  // ------------------------------------------------------------
+  function forzarNombrePerfilEnUI(perfil) {
+    if (!perfil || perfil.tipo === 'admin' || !perfil.nombre) return;
+    const nombre = perfil.nombre;
+
+    function vigilar(selector, calcularTexto) {
+      const el = document.querySelector(selector);
+      if (!el) return;
+      let aplicando = false;
+      const aplicar = () => {
+        if (aplicando) return;
+        const deseado = calcularTexto(el.textContent || '');
+        if (deseado != null && el.textContent !== deseado) {
+          aplicando = true;
+          el.textContent = deseado;
+          aplicando = false;
+        }
+      };
+      aplicar();
+      new MutationObserver(aplicar).observe(el, { childList: true, characterData: true, subtree: true });
+    }
+
+    // "¡Buenas noches, Carlos! 👋" → "¡Buenas noches, María! 👋"
+    vigilar('#greeting-text', (actual) => {
+      if (!/,/.test(actual)) return null; // formato inesperado: no tocar
+      return actual.replace(/,\s*[^!,]+!/, `, ${nombre}!`);
+    });
+    // Nombre en el encabezado (avatar/menú de usuario)
+    vigilar('#header-name', () => nombre);
   }
 
   function inyectarBotonCambiarUsuario(perfil) {
