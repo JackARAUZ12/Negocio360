@@ -7,6 +7,10 @@
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="modulos-registro.js"></script>
+  <script src="auditoria-guard.js"></script>
+  <script src="modulos-registro.js"></script>
+  <script src="auditoria-guard.js"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <!-- Lucide Icons -->
@@ -909,6 +913,11 @@
         <span class="nav-label">Salarios</span>
       </div>
 
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">Auditoría</span>
+      </div>
+
       <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
         <span class="nav-label">Créditos</span>
@@ -1224,6 +1233,14 @@
               </div>
               <span class="action-name">Salarios</span>
               <span class="action-desc">Empleados y pago de salarios</span>
+            </div>
+
+            <div class="action-btn" onclick="navigate('auditoria.html')">
+              <div class="action-icon" style="background:var(--bg-hover)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </div>
+              <span class="action-name">Auditoría</span>
+              <span class="action-desc">Quién hizo qué — solo administrador</span>
             </div>
 
             <div class="action-btn" onclick="navigate('impuestos.html')">
