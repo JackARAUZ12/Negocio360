@@ -1885,10 +1885,14 @@
     }
   }, 500);
 
-  // Inicializar fecha actual en selector de compra
+  // Inicializar fecha actual en selector de compra.
+  // OJO: nunca usar fechaEl.valueAsDate = new Date() aquí — valueAsDate
+  // interpreta la fecha en UTC, así que después de las 6pm (hora
+  // Nicaragua) adelanta la fecha un día y la compra/movimiento de caja
+  // quedan fuera del rango "hasta hoy" del historial por defecto.
   document.addEventListener('DOMContentLoaded', () => {
     const fechaEl = document.getElementById('nc-fecha');
-    if (fechaEl) fechaEl.valueAsDate = new Date();
+    if (fechaEl) fechaEl.value = todayISO();
   });
 
   // Texto compacto "Paso X de 7 — Nombre" para móvil: se actualiza
