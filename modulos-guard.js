@@ -131,7 +131,10 @@
         .mg-sidebar-search-wrap{padding:0 16px 10px}
         .mg-sidebar-search-wrap input{width:100%;padding:8px 10px;font-size:12.5px;
           border:1px solid var(--border,#e8e8ef);border-radius:8px;background:var(--bg-surface,#fff);
-          color:var(--text-primary,#0d0d14);outline:none;transition:border-color .15s}
+          color:var(--text-primary,#0d0d14);outline:none;transition:border-color .15s;
+          -webkit-appearance:none;appearance:none}
+        .mg-sidebar-search-wrap input::-webkit-search-cancel-button,
+        .mg-sidebar-search-wrap input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
         .mg-sidebar-search-wrap input:focus{border-color:var(--border-focus,var(--accent,#5a5af4))}
         #sidebar.collapsed .mg-sidebar-search-wrap{display:none}
         .sidebar-nav{max-height:calc(100vh - 160px);overflow-y:auto}
@@ -141,7 +144,9 @@
 
     const wrap = document.createElement('div');
     wrap.className = 'mg-sidebar-search-wrap';
-    wrap.innerHTML = `<input type="text" id="mg-sidebar-search" placeholder="🔎 Buscar módulo…" autocomplete="off" />`;
+    wrap.innerHTML = `<input type="search" id="mg-sidebar-search" placeholder="🔎 Buscar módulo…"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+      data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="mg-buscador-no-autofill" />`;
     nav.parentElement.insertBefore(wrap, nav);
     wrap.querySelector('#mg-sidebar-search').addEventListener('input', e => filtrarSidebarPorTexto(e.target.value));
   }
