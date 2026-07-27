@@ -1033,6 +1033,24 @@
                 próxima fecha de cobro será el siguiente ciclo.
               </div>
 
+              <!-- Solo tiene sentido preguntar esto si se marcó "ya pagó": ese
+                   dinero, ¿hay que sumarlo a Caja ahora, o ya estaba contado? -->
+              <div id="wrap-ya-pago-destino" style="display:none;margin-top:10px;background:var(--bg-app);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+                <div style="font-size:12.5px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">¿Qué hacemos con ese dinero?</div>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;margin-bottom:8px">
+                  <input type="radio" name="fc-ya-pago-destino" value="caja" checked onchange="toggleYaPagoDestino()" style="margin-top:2px"/>
+                  <span><strong>Agregar el dinero a Caja</strong><br/>
+                    <span style="font-size:11.5px;color:var(--text-muted)">Úsalo si la clienta está pagando justo en este momento — se registra como venta real (Caja, Reportes e Impuestos).</span>
+                  </span>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px">
+                  <input type="radio" name="fc-ya-pago-destino" value="ya_agregado" onchange="toggleYaPagoDestino()" style="margin-top:2px"/>
+                  <span><strong>El dinero ya está agregado</strong><br/>
+                    <span style="font-size:11.5px;color:var(--text-muted)">Úsalo si estás registrando una clienta ya existente cuyo pago ya se contó antes — solo se actualiza la fecha, sin duplicar nada en Caja.</span>
+                  </span>
+                </label>
+              </div>
+
               <div id="wrap-ya-pago-iva" style="display:none;margin-top:10px;background:var(--bg-app);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px">
                   <input type="checkbox" id="fc-ya-pago-iva-activo" onchange="toggleYaPagoIvaInput()"/>
