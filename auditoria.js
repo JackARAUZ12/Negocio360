@@ -129,6 +129,20 @@ function rangoFechasPorDefecto() {
   if (hastaEl && !hastaEl.value) hastaEl.value = todayISO();
 }
 
+// Convierte una fecha "YYYY-MM-DD" (elegida en el filtro, en hora LOCAL)
+// al instante UTC real de su inicio o fin de día — así la comparación
+// contra created_at (guardado en UTC) siempre cae en el día correcto,
+// sin importar el huso horario del navegador. Sin esto, cualquier
+// movimiento después de las 6pm en Nicaragua (UTC-6) queda con fecha
+// UTC del día siguiente y el filtro "hasta hoy" lo excluía.
+function limiteDiaLocalISO(fechaStr, finDelDia) {
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  const dt = finDelDia
+    ? new Date(y, m - 1, d, 23, 59, 59, 999)
+    : new Date(y, m - 1, d, 0, 0, 0, 0);
+  return dt.toISOString();
+}
+
 async function cargarAuditoria() {
   const tbody = document.getElementById('aud-tbody');
   if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando auditoría…</td></tr>`;
@@ -140,8 +154,8 @@ async function cargarAuditoria() {
       .eq('auth_user_id', STATE.userId)
       .order('created_at', { ascending: false })
       .limit(1000);
-    if (desde) q = q.gte('created_at', `${desde}T00:00:00`);
-    if (hasta) q = q.lte('created_at', `${hasta}T23:59:59`);
+    if (desde) q = q.gte('created_at', limiteDiaLocalISO(desde, false));
+    if (hasta) q = q.lte('created_at', limiteDiaLocalISO(hasta, true));
 
     const { data, error } = await q;
     if (error) throw error;
@@ -250,9 +264,18 @@ function paginaSiguiente() { STATE.page++; renderTablaAud(); }
 /* =====================================================
    KPIs
 ===================================================== */
+// Compara si un timestamp (guardado en UTC) cae HOY en la fecha
+// LOCAL del navegador — evita el mismo problema de huso horario
+// que el filtro de fechas.
+function esHoyLocal(iso) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const hoy = new Date();
+  return d.getFullYear() === hoy.getFullYear() && d.getMonth() === hoy.getMonth() && d.getDate() === hoy.getDate();
+}
+
 function renderKPIsAud() {
-  const hoy = todayISO();
-  const deHoy = STATE.logs.filter(l => (l.created_at||'').slice(0,10) === hoy);
+  const deHoy = STATE.logs.filter(l => esHoyLocal(l.created_at));
   const usuariosHoy = new Set(deHoy.map(l => l.perfil_nombre)).size;
   const ultimo = STATE.logs[0]; // ya viene ordenado desc
 
