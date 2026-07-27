@@ -145,6 +145,12 @@
   background: var(--bg-input, #fff);
   color: var(--text-primary, #1A1D2E);
   outline: none;
+  /* Es type="text" (no "password") a propósito, para que Chrome no
+     ofrezca su gestor de contraseñas aquí ni "adivine" otro campo
+     cercano como si fuera el usuario de un login. Esto lo enmascara
+     visualmente igual que un campo de contraseña. */
+  -webkit-text-security: disc;
+  text-security: disc;
 }
 .pg-pin-input:focus { border-color: var(--accent, #6C63FF); }
 .pg-error {
