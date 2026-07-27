@@ -65,6 +65,8 @@
                                desc: 'Registro de movimientos por usuario, con fecha y hora. Requiere código de administrador.' },
     'personalizacion.html':  { key: 'personalizacion',  label: 'Personalización',     icon: '🎨', obligatorio: false,
                                desc: 'Colores, logo y tema visual del negocio.' },
+    'proformas.html':        { key: 'proformas',        label: 'Proformas',           icon: '📄', obligatorio: false,
+                               desc: 'Cotizaciones para clientes, convertibles a venta con un clic.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
