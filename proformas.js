@@ -532,7 +532,11 @@ function renderTablaProf() {
         <td>${p.fecha_vencimiento?fmtFecha(p.fecha_vencimiento):'—'}</td>
         <td class="td-right td-money">${fmt(p.total)}</td>
         <td><span class="status-badge ${ei.badge}">${ei.label}</span></td>
-        <td class="td-actions">
+        <td class="td-actions" style="white-space:nowrap">
+          <button class="btn-primary" style="padding:5px 10px;font-size:11.5px;gap:5px" title="Exportar Proforma" onclick="exportarProformaDesdeTabla('${p.id}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+            Exportar Proforma
+          </button>
           <button class="btn-icon" title="Ver" onclick="verDetalleProf('${p.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
           ${puedeConvertir ? `<button class="btn-icon" title="Convertir a Venta" onclick="abrirConvertirAVenta('${p.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>` : ''}
           ${puedeEditar ? `<button class="btn-icon" title="Editar" onclick="abrirEditarProforma('${p.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
@@ -630,6 +634,16 @@ async function loadKPIsProf() {
 /* =====================================================
    VER DETALLE
 ===================================================== */
+// Exporta el PDF directo desde el botón de la tabla, sin necesidad de
+// abrir el modal de detalle primero.
+function exportarProformaDesdeTabla(id) {
+  const p = STATE.proformas.find(x => x.id === id);
+  if (!p) return;
+  STATE.proformaActual = p;
+  showToast(`Generando PDF de ${p.numero_proforma}…`);
+  descargarPdfProformaActual();
+}
+
 async function verDetalleProf(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
@@ -647,10 +661,6 @@ async function verDetalleProf(id) {
     const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
 
     let html = `
-      <button class="btn-primary" style="width:100%;justify-content:center;padding:16px;font-size:15px;font-weight:700;margin-bottom:18px;gap:10px" onclick="descargarPdfProformaActual()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
-        Generar PDF de Proforma
-      </button>
       <div class="form-row">
         <div><label>Cliente</label><div class="stat-readonly">${esc(p.cliente_nombre||'Cliente final')}</div></div>
         <div><label>Fecha</label><div class="stat-readonly">${fmtFecha(p.fecha)}</div></div>
@@ -936,7 +946,10 @@ async function descargarPdfProformaActual() {
   const p = STATE.proformaActual;
   if (!p) return;
   try {
-    const items = STATE.detalleActual || (await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id)).data || [];
+    // Siempre se pide fresco por proforma_id — nunca se reutiliza
+    // STATE.detalleActual (podría ser el de OTRA proforma vista antes).
+    const { data: itemsFrescos } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
+    const items = itemsFrescos || [];
     let cliente = null;
     if (p.cliente_id) {
       const { data } = await sbClient.from('clientes').select('telefono,correo').eq('id', p.cliente_id).maybeSingle();
