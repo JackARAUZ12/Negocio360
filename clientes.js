@@ -81,6 +81,12 @@ function ymd(d) {
 function todayISO() {
   return ymd(new Date());
 }
+// Convierte "YYYY-MM-DD" a un Date LOCAL a medianoche (sin el bug de huso
+// horario de `new Date(iso)`, que la interpreta en UTC).
+function parseISOLocal(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
 function diasDesde(iso) {
   if (!iso) return null;
@@ -103,9 +109,13 @@ function clampDia(anio, mes /*0-based*/, dia) {
   return Math.min(Math.max(1, dia || 1), ultimoDiaMes);
 }
 
-/** Calcula la PRIMERA próxima fecha de pago (al crear/editar un cliente recurrente) */
-function calcularPrimeraFechaProxima(frecuencia, diaPago, personalizado) {
-  const hoy = new Date();
+/**
+ * Calcula la PRIMERA próxima fecha de pago (al crear/editar un cliente recurrente).
+ * Por defecto cuenta desde HOY, pero si se indica `fechaInicioISO` (cliente que ya
+ * tenías antes de registrarlo), cuenta desde esa fecha en su lugar.
+ */
+function calcularPrimeraFechaProxima(frecuencia, diaPago, personalizado, fechaInicioISO) {
+  const hoy = fechaInicioISO ? parseISOLocal(fechaInicioISO) : new Date();
   const anio = hoy.getFullYear(), mes = hoy.getMonth();
 
   if (frecuencia === 'semanal') {
@@ -744,6 +754,8 @@ function limpiarFormCliente() {
   if (persUnidadEl) persUnidadEl.value = 'semana';
   const persIntervaloEl = document.getElementById('fc-personalizado-intervalo');
   if (persIntervaloEl) persIntervaloEl.value = '4';
+  const fechaInicioEl = document.getElementById('fc-fecha-inicio-ciclo');
+  if (fechaInicioEl) fechaInicioEl.value = '';
   const yaPagoEl = document.getElementById('fc-ya-pago-actual');
   if (yaPagoEl) yaPagoEl.checked = false;
   toggleYaPagoActualHint();
@@ -791,6 +803,8 @@ function rellenarFormCliente(c) {
 
   const yaPagoEl = document.getElementById('fc-ya-pago-actual');
   if (yaPagoEl) yaPagoEl.checked = false;
+  const fechaInicioElEdit = document.getElementById('fc-fecha-inicio-ciclo');
+  if (fechaInicioElEdit) fechaInicioElEdit.value = '';
   toggleYaPagoActualHint();
   toggleTipoClienteUI();
   toggleFrecuenciaUI();
@@ -850,6 +864,7 @@ async function guardarCliente() {
     payload.frecuencia_personalizada_intervalo  = personalizadoIntervalo;
 
     const personalizado = { unidad: personalizadoUnidad, intervalo: personalizadoIntervalo };
+    const fechaInicioCiclo = document.getElementById('fc-fecha-inicio-ciclo')?.value || null;
 
     // Solo se define la primera "próxima fecha de pago" si el cliente no
     // tenía ninguna todavía (cliente nuevo, o recién convertido a recurrente).
@@ -858,9 +873,10 @@ async function guardarCliente() {
     if (!yaTeniaFecha) {
       const yaPagoPeriodoActual = document.getElementById('fc-ya-pago-actual')?.checked || false;
       if (yaPagoPeriodoActual) {
-        // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo.
-        payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago, personalizado);
-        payload.fecha_ultimo_pago  = todayISO();
+        // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo,
+        // contado desde la fecha de inicio indicada (o desde hoy si no se puso ninguna).
+        payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago, personalizado, fechaInicioCiclo);
+        payload.fecha_ultimo_pago  = fechaInicioCiclo || todayISO();
 
         // ¿Ese dinero hay que agregarlo a Caja ahora, o ya estaba agregado?
         // Si ya estaba agregado (cliente existente), NO se crea ninguna
@@ -874,10 +890,10 @@ async function guardarCliente() {
           datosPagoInicial = { monto, ivaActivo, ivaPct: ivaActivo ? ivaPct : 0 };
         }
       } else {
-        // No ha pagado todavía: el pago queda pendiente DESDE HOY, mismo día
-        // en que se crea el cliente, y aparece de inmediato en
-        // Ventas → Clientes con pago recurrente.
-        payload.fecha_proxima_pago = todayISO();
+        // No ha pagado todavía: el pago queda pendiente desde la fecha de
+        // inicio indicada (cliente existente) o desde HOY (cliente nuevo),
+        // y aparece de inmediato en Ventas → Clientes con pago recurrente.
+        payload.fecha_proxima_pago = fechaInicioCiclo || todayISO();
         payload.fecha_ultimo_pago  = null;
       }
       payload.saldo_pendiente = 0;
