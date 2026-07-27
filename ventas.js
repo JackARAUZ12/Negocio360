@@ -739,6 +739,18 @@ async function loadEscalasCache() {
 const FRECUENCIA_LABEL = { mensual:'Mensual', semanal:'Semanal', quincenal:'Quincenal', anual:'Anual' };
 const DIAS_SEMANA_LABEL = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
+// Etiqueta legible de la frecuencia de un cliente recurrente, incluyendo
+// "personalizado" (cada N semanas en un día fijo, o cada N meses).
+function frecuenciaLabel(c) {
+  if (c.frecuencia_pago !== 'personalizado') return FRECUENCIA_LABEL[c.frecuencia_pago] || '—';
+  const intervalo = c.frecuencia_personalizada_intervalo || 1;
+  if (c.frecuencia_personalizada_unidad === 'mes') {
+    return intervalo === 1 ? 'Cada mes' : `Cada ${intervalo} meses`;
+  }
+  const dia = DIAS_SEMANA_LABEL[c.dia_pago ?? 1];
+  return `Cada ${intervalo} ${dia}`;
+}
+
 function clampDia(anio, mes /*0-based*/, dia) {
   const ultimoDiaMes = new Date(anio, mes + 1, 0).getDate();
   return Math.min(Math.max(1, dia || 1), ultimoDiaMes);
@@ -751,7 +763,7 @@ function clampDia(anio, mes /*0-based*/, dia) {
  * siendo el 20 del mes siguiente, sin importar si el cliente completó
  * su pago el 20, el 25 o el 28.
  */
-function calcularSiguienteFecha(fechaAnclaISO, frecuencia, diaPago) {
+function calcularSiguienteFecha(fechaAnclaISO, frecuencia, diaPago, personalizado) {
   const [y, m, d] = fechaAnclaISO.split('-').map(Number);
   const ancla = new Date(y, m - 1, d);
 
@@ -769,6 +781,22 @@ function calcularSiguienteFecha(fechaAnclaISO, frecuencia, diaPago) {
     const anio = ancla.getFullYear() + 1;
     const dia  = clampDia(anio, ancla.getMonth(), diaPago ?? ancla.getDate());
     return ymd(new Date(anio, ancla.getMonth(), dia));
+  }
+  if (frecuencia === 'personalizado' && personalizado) {
+    const intervalo = Math.max(1, parseInt(personalizado.intervalo) || 1);
+    if (personalizado.unidad === 'semana') {
+      const next = new Date(ancla);
+      next.setDate(next.getDate() + 7 * intervalo);
+      return ymd(next);
+    }
+    // unidad === 'mes' — avanza N meses desde la fecha ancla (no solo 1),
+    // para mantener el ciclo de cada N meses (trimestral, semestral, etc.)
+    const anio = ancla.getFullYear();
+    const mesSig = ancla.getMonth() + intervalo;
+    const anioSig = anio + Math.floor(mesSig / 12);
+    const mesSigNorm = ((mesSig % 12) + 12) % 12;
+    const dia = clampDia(anioSig, mesSigNorm, diaPago ?? ancla.getDate());
+    return ymd(new Date(anioSig, mesSigNorm, dia));
   }
   // mensual (default)
   const anio = ancla.getFullYear();
@@ -803,7 +831,7 @@ async function loadClientesRecurrentes() {
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Cargando clientes recurrentes…</td></tr>';
   try {
     const { data, error } = await sb.from('clientes')
-      .select('id,nombre,telefono,correo,tipo_cliente,frecuencia_pago,monto_recurrente,dia_pago,fecha_ultimo_pago,fecha_proxima_pago,saldo_pendiente')
+      .select('id,nombre,telefono,correo,tipo_cliente,frecuencia_pago,monto_recurrente,dia_pago,fecha_ultimo_pago,fecha_proxima_pago,saldo_pendiente,frecuencia_personalizada_unidad,frecuencia_personalizada_intervalo')
       .eq('auth_user_id', S.userId)
       .eq('tipo_cliente', 'recurrente')
       .eq('activo', true)
@@ -834,7 +862,7 @@ function renderClientesRecurrentes() {
 
   tbody.innerHTML = S.clientesRecurrentes.map(c => {
     const est = calcularEstadoPagoCliente(c);
-    const freqLabel = FRECUENCIA_LABEL[c.frecuencia_pago] || '—';
+    const freqLabel = frecuenciaLabel(c);
     let estadoHtml;
     if (est.atrasado) {
       estadoHtml = `<span class="estado-badge estado-atrasado">Atrasado (${est.diasAtraso}d)</span>`;
@@ -875,7 +903,7 @@ function abrirModalPagoRecurrente(clienteId) {
   S.pagoRecurrenteMontoDebido = est.montoDebido;
 
   document.getElementById('pr-cliente-nombre').textContent = c.nombre;
-  document.getElementById('pr-frecuencia').textContent = FRECUENCIA_LABEL[c.frecuencia_pago] || '—';
+  document.getElementById('pr-frecuencia').textContent = frecuenciaLabel(c);
   document.getElementById('pr-fecha-proxima').textContent = fmtFecha(c.fecha_proxima_pago);
   document.getElementById('pr-ultimo-pago').textContent = fmtFecha(c.fecha_ultimo_pago);
   document.getElementById('pr-estado-badge').innerHTML = est.atrasado
@@ -1125,7 +1153,8 @@ async function confirmarPagoRecurrente() {
       // que el día de pago (ej. el 20) nunca se mueva.
       updateCliente.saldo_pendiente = 0;
       updateCliente.fecha_proxima_pago = calcularSiguienteFecha(
-        c.fecha_proxima_pago || todayISO(), c.frecuencia_pago, c.dia_pago
+        c.fecha_proxima_pago || todayISO(), c.frecuencia_pago, c.dia_pago,
+        { unidad: c.frecuencia_personalizada_unidad, intervalo: c.frecuencia_personalizada_intervalo }
       );
     } else {
       // Pago parcial: la fecha de pago NO se mueve, solo baja el saldo.
