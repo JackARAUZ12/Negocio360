@@ -21,6 +21,7 @@ let STATE = {
   userId: null, userEmail: null, empresaConfig: {}, currentUser: {},
 
   logs: [],
+  eventos: [],          // logs agrupados en eventos de negocio (para mostrar)
   filtro: 'todos',      // todos | INSERT | UPDATE | DELETE
   filtroUsuario: '',
   filtroModulo: '',
@@ -145,7 +146,7 @@ function limiteDiaLocalISO(fechaStr, finDelDia) {
 
 async function cargarAuditoria() {
   const tbody = document.getElementById('aud-tbody');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando auditoría…</td></tr>`;
+  if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Cargando auditoría…</td></tr>`;
   try {
     const desde = document.getElementById('aud-fecha-desde')?.value;
     const hasta = document.getElementById('aud-fecha-hasta')?.value;
@@ -161,13 +162,17 @@ async function cargarAuditoria() {
     if (error) throw error;
 
     STATE.logs = data || [];
+    // Un solo clic del usuario (ej. "Registrar venta") suele generar VARIAS
+    // escrituras internas (venta, detalle, caja, impuestos…). Se agrupan en
+    // UN solo evento para que se lea "Luis vendió esto", no 5 líneas técnicas.
+    STATE.eventos = agruparEventos(STATE.logs);
     STATE.page = 1;
     poblarFiltrosAud();
     renderTablaAud();
     renderKPIsAud();
   } catch (e) {
     console.error('cargarAuditoria:', e);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">No se pudo cargar la auditoría</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No se pudo cargar la auditoría</td></tr>`;
   }
 }
 
@@ -179,8 +184,8 @@ function poblarFiltrosAud() {
   const selModulo  = document.getElementById('aud-filtro-modulo');
   if (!selUsuario || !selModulo) return;
 
-  const usuarios = [...new Set(STATE.logs.map(l => l.perfil_nombre).filter(Boolean))].sort();
-  const modulos  = [...new Set(STATE.logs.map(l => l.modulo).filter(Boolean))].sort();
+  const usuarios = [...new Set(STATE.eventos.map(l => l.perfil_nombre).filter(Boolean))].sort();
+  const modulos  = [...new Set(STATE.eventos.map(l => l.modulo).filter(Boolean))].sort();
 
   const valUsuarioActual = selUsuario.value;
   selUsuario.innerHTML = `<option value="">Todos los usuarios</option>` +
@@ -194,50 +199,139 @@ function poblarFiltrosAud() {
 }
 
 /* =====================================================
-   FILTROS / BÚSQUEDA / TABLA
-===================================================== */
-function logsFiltrados() {
-  const q = STATE.search.toLowerCase().trim();
-  return STATE.logs.filter(l => {
-    if (STATE.filtro !== 'todos' && l.accion !== STATE.filtro) return false;
-    if (STATE.filtroUsuario && l.perfil_nombre !== STATE.filtroUsuario) return false;
-    if (STATE.filtroModulo && l.modulo !== STATE.filtroModulo) return false;
-    if (!q) return true;
-    return (l.resumen || '').toLowerCase().includes(q) || (l.tabla || '').toLowerCase().includes(q);
-  });
+   AGRUPAR ESCRITURAS TÉCNICAS EN UN SOLO EVENTO DE NEGOCIO
+   Una sola acción del usuario (ej. registrar una venta) casi
+   siempre dispara varias escrituras: la venta, sus líneas, el
+   movimiento de caja, el impuesto, el contador del cliente…
+   Cada una queda en auditoria_log por separado (así funciona el
+   interceptor genérico, sin que ningún módulo tenga que avisar
+   nada). Aquí, solo para MOSTRAR, se agrupan las escrituras del
+   MISMO usuario + MISMO módulo que ocurren a pocos segundos de
+   diferencia, y se elige la más representativa (la tabla
+   "principal" de esa operación) para redactar UNA sola frase.
+   ===================================================== */
+// Tablas que representan la acción principal que le importa al
+// dueño del negocio. Las que no están aquí (detalles, caja,
+// impuestos, cuotas, etc.) solo se usan como respaldo si no hay
+// ninguna tabla principal en el mismo grupo.
+const TABLA_INFO = {
+  ventas:                     { nombre: 'una venta',                 principal: true,  crear: 'vendió' },
+  compras:                    { nombre: 'una compra',                principal: true,  crear: 'compró' },
+  clientes:                   { nombre: 'un cliente',                principal: true,  crear: 'registró un cliente' },
+  productos:                  { nombre: 'un producto/servicio',      principal: true,  crear: 'agregó un producto/servicio' },
+  gastos:                     { nombre: 'un gasto',                  principal: true,  crear: 'registró un gasto' },
+  proveedores:                { nombre: 'un proveedor',              principal: true,  crear: 'registró un proveedor' },
+  creditos:                   { nombre: 'un crédito',                principal: true,  crear: 'creó un crédito' },
+  creditos_pagos:             { nombre: 'un pago de crédito',        principal: true,  crear: 'cobró un pago de crédito' },
+  cuentas_por_pagar:          { nombre: 'una cuenta por pagar',      principal: true,  crear: 'registró una compra a crédito' },
+  cuentas_por_pagar_pagos:    { nombre: 'un pago a proveedor',       principal: true,  crear: 'pagó a un proveedor' },
+  empleados:                  { nombre: 'un empleado',               principal: true,  crear: 'registró un empleado' },
+  empleados_pagos:            { nombre: 'un pago de salario',        principal: true,  crear: 'pagó un salario' },
+  empleados_adelantos:        { nombre: 'un adelanto de salario',    principal: true,  crear: 'registró un adelanto' },
+  configuracion_empresa:      { nombre: 'la configuración del negocio', principal: true, crear: 'ajustó la configuración' },
+  metodos_pago:               { nombre: 'un método de pago',         principal: true,  crear: 'agregó un método de pago' },
+  impuestos:                  { nombre: 'un impuesto',               principal: true,  crear: 'agregó un impuesto' },
+  notificaciones:             { nombre: 'una notificación',          principal: true,  crear: 'publicó una notificación' },
+  anuncios_sistema:           { nombre: 'un anuncio',                principal: true,  crear: 'publicó un anuncio' },
+  // Secundarias: efecto de la acción principal, no se muestran si ya
+  // hay una tabla principal en el mismo grupo.
+  venta_detalles:             { nombre: 'un detalle de venta' },
+  detalle_compras:            { nombre: 'un detalle de compra' },
+  creditos_cuotas:            { nombre: 'una cuota de crédito' },
+  cuentas_por_pagar_cuotas:   { nombre: 'una cuota de cuenta por pagar' },
+  movimientos_financieros:    { nombre: 'un movimiento de caja' },
+  movimientos_impuestos:      { nombre: 'un movimiento de impuestos' },
+  pagos_clientes_recurrentes: { nombre: 'un pago recurrente' },
+};
+const VERBO_ACCION = { INSERT: 'creó', UPDATE: 'editó', DELETE: 'eliminó' };
+const VENTANA_AGRUPACION_MS = 6000; // escrituras a ≤6s de la anterior = mismo evento
+
+function infoTabla(tabla) {
+  return TABLA_INFO[tabla] || { nombre: tabla };
 }
 
-const ACCION_INFO = {
-  INSERT: { label: 'Creó',      badge: 'badge-insert' },
-  UPDATE: { label: 'Editó',     badge: 'badge-update' },
-  DELETE: { label: 'Eliminó',   badge: 'badge-delete' },
-};
+// Redacta la frase final: "vendió (numero_venta: V-1, total: 100)",
+// "editó un cliente (nombre: Ana)", "eliminó un gasto", etc.
+function fraseEvento(ev) {
+  const info = infoTabla(ev.tabla);
+  let verbo;
+  if (ev.accion === 'INSERT' && info.crear) verbo = info.crear;
+  else verbo = `${VERBO_ACCION[ev.accion] || ev.accion.toLowerCase()} ${info.nombre}`;
+  return ev.resumen ? `${verbo} — ${ev.resumen}` : verbo;
+}
+
+// STATE.logs viene ordenado por created_at DESC (el más reciente primero).
+function agruparEventos(logs) {
+  const eventos = [];
+  let grupo = null;
+  let tUltimo = null;
+  for (const l of logs) {
+    const t = new Date(l.created_at).getTime();
+    if (grupo && grupo.perfil_nombre === l.perfil_nombre && grupo.modulo === l.modulo &&
+        Math.abs(tUltimo - t) <= VENTANA_AGRUPACION_MS) {
+      grupo._entradas.push(l);
+    } else {
+      if (grupo) eventos.push(cerrarGrupoEvento(grupo));
+      grupo = { perfil_nombre: l.perfil_nombre, perfil_tipo: l.perfil_tipo, modulo: l.modulo, created_at: l.created_at, _entradas: [l] };
+    }
+    tUltimo = t;
+  }
+  if (grupo) eventos.push(cerrarGrupoEvento(grupo));
+  return eventos;
+}
+
+function cerrarGrupoEvento(g) {
+  const entradas = g._entradas;
+  const mejor =
+    entradas.find(e => infoTabla(e.tabla).principal && e.accion === 'INSERT') ||
+    entradas.find(e => infoTabla(e.tabla).principal) ||
+    entradas[0];
+  return {
+    created_at: g.created_at,
+    perfil_nombre: g.perfil_nombre,
+    perfil_tipo: g.perfil_tipo,
+    modulo: g.modulo,
+    tabla: mejor.tabla,
+    accion: mejor.accion,
+    resumen: mejor.resumen,
+    cantidadEscrituras: entradas.length,
+  };
+}
+
+/* =====================================================
+   FILTROS / BÚSQUEDA / TABLA
+===================================================== */
+function eventosFiltrados() {
+  const q = STATE.search.toLowerCase().trim();
+  return STATE.eventos.filter(ev => {
+    if (STATE.filtro !== 'todos' && ev.accion !== STATE.filtro) return false;
+    if (STATE.filtroUsuario && ev.perfil_nombre !== STATE.filtroUsuario) return false;
+    if (STATE.filtroModulo && ev.modulo !== STATE.filtroModulo) return false;
+    if (!q) return true;
+    return fraseEvento(ev).toLowerCase().includes(q);
+  });
+}
 
 function renderTablaAud() {
   const tbody = document.getElementById('aud-tbody');
   if (!tbody) return;
-  const filtrados = logsFiltrados();
+  const filtrados = eventosFiltrados();
   const totalPag = Math.max(1, Math.ceil(filtrados.length / STATE.perPage));
   STATE.page = Math.min(STATE.page, totalPag);
   const inicio = (STATE.page-1)*STATE.perPage;
   const pagina = filtrados.slice(inicio, inicio+STATE.perPage);
 
   if (!pagina.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">No hay movimientos con estos filtros</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No hay movimientos con estos filtros</td></tr>`;
   } else {
-    tbody.innerHTML = pagina.map(l => {
-      const ai = ACCION_INFO[l.accion] || { label: l.accion, badge: 'badge-pendiente' };
-      return `
+    tbody.innerHTML = pagina.map(ev => `
       <tr>
-        <td>${fmtFecha(l.created_at)}</td>
-        <td style="font-family:var(--font-mono);font-size:12.5px">${fmtHora(l.created_at)}</td>
-        <td style="font-weight:500">${esc(l.perfil_nombre)}${l.perfil_tipo==='admin'?' <span style="font-size:10px;color:var(--text-muted)">(admin)</span>':''}</td>
-        <td>${esc(labelModulo(l.modulo))}</td>
-        <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(l.tabla)}</td>
-        <td><span class="status-badge ${ai.badge}">${ai.label}</span></td>
-        <td style="font-size:12.5px;color:var(--text-secondary)">${esc(l.resumen || '—')}</td>
-      </tr>`;
-    }).join('');
+        <td>${fmtFecha(ev.created_at)}</td>
+        <td style="font-family:var(--font-mono);font-size:12.5px">${fmtHora(ev.created_at)}</td>
+        <td style="font-weight:500">${esc(ev.perfil_nombre)}${ev.perfil_tipo==='admin'?' <span style="font-size:10px;color:var(--text-muted)">(admin)</span>':''}</td>
+        <td>${esc(labelModulo(ev.modulo))}</td>
+        <td style="font-size:13px;color:var(--text-secondary)">${esc(fraseEvento(ev))}</td>
+      </tr>`).join('');
   }
 
   const info = document.getElementById('paginacion-info');
@@ -275,13 +369,13 @@ function esHoyLocal(iso) {
 }
 
 function renderKPIsAud() {
-  const deHoy = STATE.logs.filter(l => esHoyLocal(l.created_at));
-  const usuariosHoy = new Set(deHoy.map(l => l.perfil_nombre)).size;
-  const ultimo = STATE.logs[0]; // ya viene ordenado desc
+  const deHoy = STATE.eventos.filter(ev => esHoyLocal(ev.created_at));
+  const usuariosHoy = new Set(deHoy.map(ev => ev.perfil_nombre)).size;
+  const ultimo = STATE.eventos[0]; // ya viene ordenado desc
 
   const set = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
   set('kpi-hoy', fmtNum(deHoy.length));
-  set('kpi-mes', fmtNum(STATE.logs.length));
+  set('kpi-mes', fmtNum(STATE.eventos.length));
   set('kpi-usuarios', fmtNum(usuariosHoy));
   set('kpi-ultimo', ultimo ? `${esc(ultimo.perfil_nombre)} · ${fmtHora(ultimo.created_at)}` : '—');
 }
