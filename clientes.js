@@ -104,7 +104,7 @@ function clampDia(anio, mes /*0-based*/, dia) {
 }
 
 /** Calcula la PRIMERA próxima fecha de pago (al crear/editar un cliente recurrente) */
-function calcularPrimeraFechaProxima(frecuencia, diaPago) {
+function calcularPrimeraFechaProxima(frecuencia, diaPago, personalizado) {
   const hoy = new Date();
   const anio = hoy.getFullYear(), mes = hoy.getMonth();
 
@@ -126,6 +126,34 @@ function calcularPrimeraFechaProxima(frecuencia, diaPago) {
   if (frecuencia === 'anual') {
     const dia = clampDia(anio + 1, mes, diaPago);
     const d = new Date(anio + 1, mes, dia);
+    return ymd(d);
+  }
+
+  if (frecuencia === 'personalizado' && personalizado) {
+    const unidad = personalizado.unidad;
+    const intervalo = Math.max(1, parseInt(personalizado.intervalo) || 1);
+
+    if (unidad === 'semana') {
+      // "Cada N lunes": la primera ocurrencia es el próximo día objetivo
+      // (ej. el próximo lunes); a partir de ahí, cada pago salta N semanas.
+      const objetivo = Number(diaPago ?? 1);
+      const d = new Date(hoy);
+      let delta = (objetivo - d.getDay() + 7) % 7;
+      if (delta === 0) delta = 7;
+      d.setDate(d.getDate() + delta);
+      return ymd(d);
+    }
+
+    // unidad === 'mes' — "cada N meses": si el día de este mes ya pasó,
+    // salta N meses (no solo 1) para mantener el ciclo de N en N.
+    const diaObjetivoEsteMes = clampDia(anio, mes, diaPago);
+    let d = new Date(anio, mes, diaObjetivoEsteMes);
+    if (d <= hoy) {
+      const mesSig = mes + intervalo;
+      const anioSig = anio + Math.floor(mesSig / 12);
+      const mesSigNorm = ((mesSig % 12) + 12) % 12;
+      d = new Date(anioSig, mesSigNorm, clampDia(anioSig, mesSigNorm, diaPago));
+    }
     return ymd(d);
   }
 
@@ -199,7 +227,29 @@ function toggleFrecuenciaUI() {
   const freq = document.getElementById('fc-frecuencia-pago')?.value;
   const wrapMes    = document.getElementById('wrap-dia-mes');
   const wrapSemana = document.getElementById('wrap-dia-semana');
+  const wrapPersonalizado = document.getElementById('wrap-personalizado');
   if (!wrapMes || !wrapSemana) return;
+
+  if (freq === 'personalizado') {
+    wrapPersonalizado.style.display = '';
+    const unidad = document.getElementById('fc-personalizado-unidad')?.value || 'semana';
+    const lbl  = document.getElementById('lbl-personalizado-intervalo');
+    const hint = document.getElementById('hint-personalizado');
+    if (unidad === 'semana') {
+      wrapMes.style.display = 'none';
+      wrapSemana.style.display = '';
+      if (lbl)  lbl.textContent  = 'Repetir cada (n° de semanas)';
+      if (hint) hint.textContent = 'Ej: con "4" y "Lunes", cobra cada 4 semanas ese día (cada 4 lunes).';
+    } else {
+      wrapMes.style.display = '';
+      wrapSemana.style.display = 'none';
+      if (lbl)  lbl.textContent  = 'Repetir cada (n° de meses)';
+      if (hint) hint.textContent = 'Ej: con "3", cobra cada 3 meses el día del mes indicado (trimestral). Con "6", semestral.';
+    }
+    return;
+  }
+
+  wrapPersonalizado.style.display = 'none';
   if (freq === 'semanal') {
     wrapMes.style.display = 'none';
     wrapSemana.style.display = '';
@@ -660,6 +710,10 @@ function limpiarFormCliente() {
   if (freqEl) freqEl.value = 'mensual';
   const diaSemEl = document.getElementById('fc-dia-semana');
   if (diaSemEl) diaSemEl.value = '1';
+  const persUnidadEl = document.getElementById('fc-personalizado-unidad');
+  if (persUnidadEl) persUnidadEl.value = 'semana';
+  const persIntervaloEl = document.getElementById('fc-personalizado-intervalo');
+  if (persIntervaloEl) persIntervaloEl.value = '4';
   const yaPagoEl = document.getElementById('fc-ya-pago-actual');
   if (yaPagoEl) yaPagoEl.checked = false;
   toggleYaPagoActualHint();
@@ -687,7 +741,18 @@ function rellenarFormCliente(c) {
 
   set('fc-monto-recurrente', c.monto_recurrente);
 
-  if (freq === 'semanal') {
+  if (freq === 'personalizado') {
+    const unidad = c.frecuencia_personalizada_unidad || 'semana';
+    const unidadEl = document.getElementById('fc-personalizado-unidad');
+    if (unidadEl) unidadEl.value = unidad;
+    set('fc-personalizado-intervalo', c.frecuencia_personalizada_intervalo || 4);
+    if (unidad === 'semana') {
+      const diaSemEl = document.getElementById('fc-dia-semana');
+      if (diaSemEl) diaSemEl.value = (c.dia_pago ?? 1).toString();
+    } else {
+      set('fc-dia-mes', c.dia_pago || '');
+    }
+  } else if (freq === 'semanal') {
     const diaSemEl = document.getElementById('fc-dia-semana');
     if (diaSemEl) diaSemEl.value = (c.dia_pago ?? 1).toString();
   } else {
@@ -729,13 +794,32 @@ async function guardarCliente() {
   if (esRecurrente) {
     const freq   = document.getElementById('fc-frecuencia-pago')?.value || 'mensual';
     const monto  = parseFloat(document.getElementById('fc-monto-recurrente')?.value || 0);
-    const diaPago = (freq === 'semanal')
-      ? parseInt(document.getElementById('fc-dia-semana')?.value ?? '1', 10)
-      : parseInt(document.getElementById('fc-dia-mes')?.value || '1', 10);
+
+    let personalizadoUnidad = null, personalizadoIntervalo = null;
+    let diaPago;
+    if (freq === 'personalizado') {
+      personalizadoUnidad = document.getElementById('fc-personalizado-unidad')?.value || 'semana';
+      personalizadoIntervalo = parseInt(document.getElementById('fc-personalizado-intervalo')?.value, 10);
+      if (!(personalizadoIntervalo >= 1)) {
+        showToast('Indica cada cuántas semanas o meses se repite (mínimo 1)', 'error');
+        return;
+      }
+      diaPago = (personalizadoUnidad === 'semana')
+        ? parseInt(document.getElementById('fc-dia-semana')?.value ?? '1', 10)
+        : parseInt(document.getElementById('fc-dia-mes')?.value || '1', 10);
+    } else {
+      diaPago = (freq === 'semanal')
+        ? parseInt(document.getElementById('fc-dia-semana')?.value ?? '1', 10)
+        : parseInt(document.getElementById('fc-dia-mes')?.value || '1', 10);
+    }
 
     payload.frecuencia_pago  = freq;
     payload.monto_recurrente = monto || 0;
     payload.dia_pago         = diaPago;
+    payload.frecuencia_personalizada_unidad     = personalizadoUnidad;
+    payload.frecuencia_personalizada_intervalo  = personalizadoIntervalo;
+
+    const personalizado = { unidad: personalizadoUnidad, intervalo: personalizadoIntervalo };
 
     // Solo se define la primera "próxima fecha de pago" si el cliente no
     // tenía ninguna todavía (cliente nuevo, o recién convertido a recurrente).
@@ -745,7 +829,7 @@ async function guardarCliente() {
       const yaPagoPeriodoActual = document.getElementById('fc-ya-pago-actual')?.checked || false;
       if (yaPagoPeriodoActual) {
         // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo.
-        payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago);
+        payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago, personalizado);
         payload.fecha_ultimo_pago  = todayISO();
         if (monto > 0) {
           const ivaActivo = document.getElementById('fc-ya-pago-iva-activo')?.checked || false;
@@ -768,6 +852,8 @@ async function guardarCliente() {
     payload.frecuencia_pago    = null;
     payload.monto_recurrente   = 0;
     payload.dia_pago           = null;
+    payload.frecuencia_personalizada_unidad    = null;
+    payload.frecuencia_personalizada_intervalo = null;
     payload.fecha_proxima_pago = null;
     payload.saldo_pendiente    = 0;
   }
