@@ -233,10 +233,42 @@
     // Aquí solo se cachean para reutilizar el mismo registro si el usuario repite un nombre.
     CS.productosFinancieros = todos.filter(p => p.tipo === 'financiero');
 
+    // Combos: se agregan al mismo catálogo (mismo patrón que Ventas y
+    // Proformas) — tipo:'producto' para que las validaciones de stock
+    // ya existentes se apliquen igual, marcados con esCombo:true.
+    try {
+      const { data: combos } = await _sb.from('combos')
+        .select('id,nombre,sku,codigo_barras,precio,costo,tipo_precio,activo')
+        .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
+      if (combos && combos.length) {
+        const comboIds = combos.map(c => c.id);
+        const { data: items } = await _sb.from('combo_items')
+          .select('combo_id, cantidad, productos(stock_actual, costo)').in('combo_id', comboIds);
+        const itemsPorCombo = {};
+        (items||[]).forEach(it => {
+          if (!itemsPorCombo[it.combo_id]) itemsPorCombo[it.combo_id] = [];
+          itemsPorCombo[it.combo_id].push(it);
+        });
+        const combosCache = combos.map(c => {
+          const suyos = itemsPorCombo[c.id] || [];
+          const stockDisponible = suyos.length
+            ? Math.min(...suyos.map(it => Math.floor(Number(it.productos?.stock_actual || 0) / (Number(it.cantidad) || 1))))
+            : 0;
+          const costoActual = suyos.reduce((s, it) => s + Number(it.cantidad||0) * Number(it.productos?.costo || 0), 0);
+          return {
+            id: c.id, nombre: c.nombre, sku: c.sku || c.codigo_barras || '',
+            tipo: 'producto', precio: c.precio, costo: costoActual, tipo_precio: c.tipo_precio,
+            stock_actual: stockDisponible, activo: c.activo, esCombo: true,
+          };
+        });
+        CS.productos = [...CS.productos, ...combosCache];
+      }
+    } catch (eCombo) { console.warn('No se pudieron cargar los combos para Créditos:', eCombo); }
+
     const selProd = document.getElementById('nc-producto-select');
     if (selProd) {
       selProd.innerHTML = '<option value="">Selecciona producto o servicio…</option>' +
-        CS.productos.map(p => `<option value="${p.id}">${esc(p.nombre)}${p.tipo_precio==='escala' ? ' — 📊 Precio por escala' : ' — '+fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${p.stock_actual||0})` : ''}</option>`).join('');
+        CS.productos.map(p => `<option value="${p.id}">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}${p.tipo_precio==='escala' ? ' — 📊 Precio por escala' : ' — '+fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${p.stock_actual||0})` : ''}</option>`).join('');
     }
 
     await loadEscalasDePrecios();
@@ -255,6 +287,21 @@
       if (!CS.escalasPorProducto[e.producto_id]) CS.escalasPorProducto[e.producto_id] = [];
       CS.escalasPorProducto[e.producto_id].push(e);
     });
+
+    // Escalas de combos (si algún combo tiene tipo_precio='escala', aunque
+    // en Créditos hoy no se usa su precio propio — solo el de sus
+    // componentes — se deja cargado por si se necesita más adelante).
+    const idsCombosConEscala = CS.productos.filter(p => p.esCombo && p.tipo_precio === 'escala').map(p => p.id);
+    if (idsCombosConEscala.length) {
+      try {
+        const { data: comboEscalas } = await _sb.from('combo_precios_escala')
+          .select('id,combo_id,nombre,precio,orden').in('combo_id', idsCombosConEscala).order('orden');
+        (comboEscalas || []).forEach(e => {
+          if (!CS.escalasPorProducto[e.combo_id]) CS.escalasPorProducto[e.combo_id] = [];
+          CS.escalasPorProducto[e.combo_id].push(e);
+        });
+      } catch (eCombo) { /* si falla, no rompe el resto */ }
+    }
   }
 
   async function loadMetodosPago() {
@@ -555,6 +602,7 @@
       precio: precioUsar, costo: Number(prod.costo)||0, cantidad,
       escala_id: escalaElegida ? escalaElegida.id : null,
       escala_nombre: escalaElegida ? escalaElegida.nombre : null,
+      esCombo: !!prod.esCombo,
     });
     document.getElementById('nc-producto-cantidad').value = 1;
     renderNCItems();
@@ -615,7 +663,7 @@
     if (!CS.ncItems.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin ítems agregados</td></tr>'; return; }
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
-        <td>${esc(it.nombre)}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
+        <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
         <td>${it.cantidad}</td>
         <td>${fmt(it.precio)}</td>
         <td>${fmt(it.precio * it.cantidad)}</td>
@@ -853,22 +901,49 @@
         ventaId = venta.id;
 
         const detalles = CS.ncItems.map(it => ({
-          venta_id: ventaId, auth_user_id: CS.userId, producto_id: it.producto_id,
-          producto_nombre: it.nombre, tipo_item: it.tipo_item, cantidad: it.cantidad,
+          venta_id: ventaId, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
+          combo_id: it.esCombo ? it.producto_id : null,
+          producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item, cantidad: it.cantidad,
           precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
           ganancia: round2((it.precio-it.costo)*it.cantidad),
           escala_id: it.escala_id || null, escala_nombre: it.escala_nombre || null,
         }));
-        const { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
+        let { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
+        if (errDet) {
+          // Reintentar sin combo_id por si la migración aún no llegó a este entorno
+          ({ error: errDet } = await _sb.from('venta_detalles').insert(
+            detalles.map(({ combo_id, ...resto }) => resto)
+          ));
+        }
         if (errDet) throw errDet;
 
-        // Descontar stock solo de productos (no servicios)
+        // Descontar stock solo de productos normales (no servicios, no combos)
         for (const it of CS.ncItems) {
-          if (it.tipo_item !== 'producto') continue;
+          if (it.tipo_item !== 'producto' || it.esCombo) continue;
           const prod = CS.productos.find(p => p.id === it.producto_id);
           if (!prod) continue;
           const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
           await _sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', it.producto_id).eq('auth_user_id', CS.userId);
+        }
+
+        // Combos vendidos a crédito: descontar el stock de CADA producto
+        // que los compone (cantidad del componente × cantidad vendida).
+        for (const it of CS.ncItems.filter(i => i.esCombo)) {
+          try {
+            const { data: itemsCombo } = await _sb.from('combo_items')
+              .select('producto_id, cantidad').eq('combo_id', it.producto_id).eq('auth_user_id', CS.userId);
+            for (const compItem of (itemsCombo || [])) {
+              const { data: prodActual } = await _sb.from('productos')
+                .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
+              if (!prodActual) continue;
+              const descuentoTotal = Number(compItem.cantidad) * it.cantidad;
+              const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
+              await _sb.from('productos').update({ stock_actual: nuevoStock })
+                .eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
+            }
+          } catch (eCombo) {
+            console.warn('No se pudo descontar el stock de los componentes del combo:', it.nombre, eCombo);
+          }
         }
       }
 
