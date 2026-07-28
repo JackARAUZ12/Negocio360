@@ -471,6 +471,186 @@ function fmtRangoEscala(lista) {
   return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
 }
 
+function fmtRangoEscala(lista) {
+  if (!lista || !lista.length) return 'Sin precios configurados';
+  const precios = lista.map(e => Number(e.precio) || 0);
+  const min = Math.min(...precios), max = Math.max(...precios);
+  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+}
+
+/* ============================================================
+   EXPORTAR INVENTARIO — PDF y Excel
+   Se exporta la lista ya filtrada (STATE.filtrados), respetando
+   cualquier búsqueda/filtro que el usuario tenga activo.
+
+   Regla de precio fijo vs. escala (pedida explícitamente):
+     - tipo_precio === 'escala'  -> "Precio fijo" queda en "-",
+       y se llenan hasta 5 columnas de escala (nombre + precio);
+       las que el producto no tenga quedan en blanco.
+     - cualquier otro caso (precio fijo) -> las 5 columnas de
+       escala quedan en "-", y "Precio fijo" muestra su precio.
+   ============================================================ */
+function filaExportInventario(p) {
+  const esEscala = p.tipo_precio === 'escala';
+  const escalas  = esEscala ? (STATE.escalasPorProducto[p.id] || []).slice(0, 5) : [];
+
+  const fila = {
+    producto: p.nombre || '—',
+    tipo: p.tipo === 'servicio' ? 'Servicio' : 'Producto',
+    sku: p.sku || '—',
+    categoria: p.categoria || '—',
+    stock: p.tipo === 'servicio' ? '—' : Number(p.stock_actual || 0),
+    costo: Number(p.costo || 0),
+    precioFijo: esEscala ? '-' : Number(p.precio || 0),
+    escala1: '', escala2: '', escala3: '', escala4: '', escala5: '',
+    estado: p.activo === false ? 'Inactivo' : 'Activo',
+  };
+
+  if (esEscala) {
+    for (let i = 0; i < 5; i++) {
+      const e = escalas[i];
+      // Escalas que el producto SÍ tiene: "Nombre — Precio". Las que
+      // no tiene (si solo configuró 2 o 3) quedan en blanco, tal como
+      // se pidió — nunca con "-", eso es solo para precio fijo.
+      fila[`escala${i+1}`] = e ? `${e.nombre} — ${fmtMoney(e.precio)}` : '';
+    }
+  } else {
+    // Precio fijo: las 5 columnas de escala se marcan con "-"
+    for (let i = 1; i <= 5; i++) fila[`escala${i}`] = '-';
+  }
+
+  return fila;
+}
+
+function abrirModalExportarInventario() {
+  const cant = $('exp-inv-cantidad');
+  if (cant) cant.textContent = (STATE.filtrados || STATE.productos || []).length;
+  $('modalExportarInventario').classList.add('open');
+}
+function cerrarModalExportarInventario() {
+  $('modalExportarInventario').classList.remove('open');
+}
+
+function datosParaExportarInventario() {
+  const lista = (STATE.filtrados && STATE.filtrados.length) ? STATE.filtrados : STATE.productos;
+  return (lista || []).map(filaExportInventario);
+}
+
+async function exportarInventarioExcel() {
+  try {
+    const filas = datosParaExportarInventario();
+    if (!filas.length) { showToast('warning', 'Sin productos', 'No hay productos para exportar'); return; }
+
+    const headers = ['Producto', 'Tipo', 'SKU', 'Categoría', 'Stock', `Costo (${MONEDA_SIMBOLO})`,
+      `Precio fijo (${MONEDA_SIMBOLO})`, 'Escala 1', 'Escala 2', 'Escala 3', 'Escala 4', 'Escala 5', 'Estado'];
+    const filasArr = filas.map(f => [
+      f.producto, f.tipo, f.sku, f.categoria, f.stock, f.costo, f.precioFijo,
+      f.escala1, f.escala2, f.escala3, f.escala4, f.escala5, f.estado,
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    const aoa = [headers, ...filasArr];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Formato numérico en columnas de costo/precio fijo/stock (cuando son
+    // números reales; "-" o texto se dejan tal cual, sin forzar formato).
+    filasArr.forEach((row, ri) => {
+      [4, 5, 6].forEach(ci => {
+        const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+        if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '#,##0.00';
+      });
+    });
+
+    // Ancho de columna autoajustado según el contenido real
+    ws['!cols'] = headers.map((h, ci) => {
+      const maxLen = filasArr.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), h.length);
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 34) };
+    });
+    // Encabezado congelado + autofiltro, para que se vea profesional y
+    // se pueda ordenar/filtrar directo en Excel.
+    ws['!freeze'] = { xSplit: '0', ySplit: '1', topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:filasArr.length,c:headers.length-1} }) };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+    const fecha = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Inventario_Negocio360_${fecha}.xlsx`);
+
+    cerrarModalExportarInventario();
+    showToast('success', 'Listo', 'Inventario exportado a Excel');
+  } catch (e) {
+    console.error('exportarInventarioExcel:', e);
+    showToast('error', 'Error', 'No se pudo exportar a Excel');
+  }
+}
+
+async function exportarInventarioPDF() {
+  try {
+    if (!window.jspdf) throw new Error('jsPDF no está disponible');
+    const filas = datosParaExportarInventario();
+    if (!filas.length) { showToast('warning', 'Sin productos', 'No hay productos para exportar'); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const nombreNegocio = ($('nombreEmpresa') && $('nombreEmpresa').textContent.trim()) || 'Negocio360';
+
+    // Encabezado con franja de color (mismo estilo que el resto de los
+    // comprobantes/PDF del sistema)
+    doc.setFillColor(108, 99, 255);
+    doc.rect(0, 0, W, 22, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(15); doc.setFont(undefined, 'bold');
+    doc.text(nombreNegocio, 12, 13);
+    doc.setFontSize(10); doc.setFont(undefined, 'normal');
+    doc.text('Inventario de Productos y Servicios', 12, 19);
+    doc.setFontSize(8.5);
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'})}`, W-12, 13, {align:'right'});
+    doc.text(`${filas.length} ítem${filas.length===1?'':'s'}`, W-12, 19, {align:'right'});
+
+    const cm = MONEDA_SIMBOLO;
+    const head = [['Producto','Tipo','SKU','Categoría','Stock',`Costo (${cm})`,`Precio fijo (${cm})`,'Escala 1','Escala 2','Escala 3','Escala 4','Escala 5','Estado']];
+    const body = filas.map(f => [
+      f.producto, f.tipo, f.sku, f.categoria, f.stock,
+      typeof f.costo === 'number' ? fmtMoney(f.costo).replace(cm,'') : f.costo,
+      typeof f.precioFijo === 'number' ? fmtMoney(f.precioFijo).replace(cm,'') : f.precioFijo,
+      f.escala1||'', f.escala2||'', f.escala3||'', f.escala4||'', f.escala5||'', f.estado,
+    ]);
+
+    doc.autoTable({
+      startY: 28,
+      head, body,
+      theme: 'striped',
+      headStyles: { fillColor: [108,99,255], fontSize: 8 },
+      styles: { fontSize: 7.3, cellPadding: 2.2, overflow: 'linebreak' },
+      columnStyles: {
+        4: { halign:'right' }, 5: { halign:'right' }, 6: { halign:'right' },
+      },
+      margin: { left: 10, right: 10 },
+      didDrawPage: () => {
+        const pageH = doc.internal.pageSize.getHeight();
+        doc.setFontSize(7.5); doc.setTextColor(150,150,170);
+        doc.text('Generado por Negocio360', 10, pageH - 6);
+      },
+    });
+
+    const pages = doc.internal.getNumberOfPages();
+    for (let i=1;i<=pages;i++) {
+      doc.setPage(i);
+      doc.setFontSize(7.5); doc.setTextColor(150,150,170);
+      doc.text(`Página ${i} de ${pages}`, W-10, doc.internal.pageSize.getHeight()-6, {align:'right'});
+    }
+
+    const fecha = new Date().toISOString().slice(0,10);
+    doc.save(`Inventario_Negocio360_${fecha}.pdf`);
+
+    cerrarModalExportarInventario();
+    showToast('success', 'Listo', 'Inventario exportado a PDF');
+  } catch (e) {
+    console.error('exportarInventarioPDF:', e);
+    showToast('error', 'Error', 'No se pudo exportar a PDF');
+  }
+}
+
 // ============================================================
 // HELPER: determinar si un producto tiene stock bajo real
 // FIX: solo aplica cuando stock_minimo > 0 para evitar
@@ -1779,3 +1959,4 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+te 
