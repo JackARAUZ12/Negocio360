@@ -461,6 +461,18 @@
     }
     .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
     .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .search-result-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; cursor: pointer; transition: background var(--transition);
+      border-bottom: 1px solid var(--border); gap: 10px;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background: var(--bg-hover); }
+    .sri-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .sri-nombre { font-size: 13px; font-weight: 600; }
+    .sri-meta { font-size: 11.5px; color: var(--text-muted); }
+    .sri-costo { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent); flex-shrink:0; }
+    .search-no-results { padding: 14px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
     .search-wrap {
       display: flex; align-items: center; gap: 0;
@@ -1308,15 +1320,11 @@
       <!-- BLOQUE: CRÉDITO POR VENTA -->
       <div id="nc-bloque-venta">
         <label style="margin-top:6px">Productos / servicios</label>
-        <div class="form-row">
-          <div style="grid-column:span 2">
-            <select id="nc-producto-select"><option value="">Selecciona producto o servicio…</option></select>
-          </div>
-          <div>
-            <input type="number" id="nc-producto-cantidad" placeholder="Cantidad" value="1" min="0.01" step="0.01" />
-          </div>
+        <div class="search-wrap" style="margin-bottom:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="nc-producto-search" placeholder="Busca un producto, servicio o combo…" oninput="buscarProductoCredito(this.value)" autocomplete="off" />
         </div>
-        <button type="button" class="btn-ghost" style="margin:8px 0" onclick="agregarItemCredito()">+ Agregar ítem</button>
+        <div id="nc-producto-resultados" style="position:relative"></div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Producto/Servicio</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th></th></tr></thead>
