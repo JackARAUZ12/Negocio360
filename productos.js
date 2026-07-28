@@ -57,6 +57,14 @@ const STATE = {
   modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
   editTarget:   null,
   movTarget:    null,
+
+  // ---- COMBOS ----
+  combos:            [],  // filas de la tabla combos
+  comboItemsPorCombo:  {}, // { combo_id: [{id, producto_id, cantidad, producto:{nombre,costo,...}}, ...] }
+  comboEscalasPorCombo: {}, // { combo_id: [{id,nombre,precio,orden}, ...] } — solo tipo_precio='escala'
+  comboFormItems:    [],  // filas en edición dentro del modal de combo (antes de guardar)
+  comboFormEscalas:  [],
+  comboEditId:       null,
 };
 
 // ============================================================
@@ -461,6 +469,387 @@ async function sincronizarEscalas(productoId, filas) {
   if (limpias.length) {
     const { error: errIns } = await supabaseClient.from('precios_escala').insert(limpias);
     if (errIns) throw errIns;
+  }
+}
+
+/* ============================================================
+   COMBOS / KITS
+   ------------------------------------------------------------
+   Un combo agrupa productos existentes bajo un nombre, SKU y
+   código de barras propios. Vive en su propio cuadro, separado
+   de la tabla de Productos/Servicios — no la modifica ni la toca.
+   ============================================================ */
+async function cargarCombos() {
+  const tbody = $('combosTbody');
+  try {
+    const { data: combos, error } = await supabaseClient
+      .from('combos').select('*').eq('auth_user_id', STATE.user.id).order('created_at', { ascending: false });
+    if (error) throw error;
+    STATE.combos = combos || [];
+
+    const ids = STATE.combos.map(c => c.id);
+    STATE.comboItemsPorCombo  = {};
+    STATE.comboEscalasPorCombo = {};
+
+    if (ids.length) {
+      const [{ data: items }, { data: escalas }] = await Promise.all([
+        supabaseClient.from('combo_items')
+          .select('id, combo_id, producto_id, cantidad, productos(nombre, costo, activo)')
+          .eq('auth_user_id', STATE.user.id).in('combo_id', ids),
+        supabaseClient.from('combo_precios_escala')
+          .select('id, combo_id, nombre, precio, orden')
+          .eq('auth_user_id', STATE.user.id).in('combo_id', ids).order('orden'),
+      ]);
+      (items || []).forEach(it => {
+        if (!STATE.comboItemsPorCombo[it.combo_id]) STATE.comboItemsPorCombo[it.combo_id] = [];
+        STATE.comboItemsPorCombo[it.combo_id].push(it);
+      });
+      (escalas || []).forEach(e => {
+        if (!STATE.comboEscalasPorCombo[e.combo_id]) STATE.comboEscalasPorCombo[e.combo_id] = [];
+        STATE.comboEscalasPorCombo[e.combo_id].push(e);
+      });
+    }
+
+    renderTablaCombos();
+  } catch (e) {
+    console.error('cargarCombos:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar los combos.</td></tr>`;
+  }
+}
+
+function costoTotalCombo(comboId) {
+  const items = STATE.comboItemsPorCombo[comboId] || [];
+  return items.reduce((s, it) => s + (Number(it.cantidad) || 0) * Number(it.productos?.costo || 0), 0);
+}
+
+function precioLabelCombo(combo) {
+  if (combo.tipo_precio === 'escala') {
+    const escalas = STATE.comboEscalasPorCombo[combo.id] || [];
+    return fmtRangoEscala(escalas);
+  }
+  return fmtMoney(combo.precio);
+}
+
+function renderTablaCombos() {
+  const tbody = $('combosTbody');
+  const countEl = $('combosCount');
+  if (countEl) countEl.textContent = `${STATE.combos.length} combo${STATE.combos.length === 1 ? '' : 's'}`;
+  if (!tbody) return;
+
+  if (!STATE.combos.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Aún no has creado ningún combo.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = STATE.combos.map(c => {
+    const items = STATE.comboItemsPorCombo[c.id] || [];
+    const costo = costoTotalCombo(c.id);
+    return `
+      <tr>
+        <td style="font-weight:600">📦 ${escHtml(c.nombre)}</td>
+        <td style="font-size:12.5px;color:var(--text-muted)">${escHtml(c.sku || c.codigo_barras || '—')}</td>
+        <td>${items.length} producto${items.length === 1 ? '' : 's'}</td>
+        <td>${fmtMoney(costo)}</td>
+        <td>${escHtml(precioLabelCombo(c))}${c.tipo_precio === 'escala' ? ' <span class="tipo-badge tipo-servicio" style="font-size:10px">📊 escala</span>' : ''}</td>
+        <td><span class="status-badge ${c.activo ? 'status-activo' : 'status-inactivo'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <button class="row-action-btn" title="Ver detalle" onclick="verDetalleCombo('${c.id}')">👁️</button>
+          <button class="row-action-btn" title="Editar" onclick="abrirEditarCombo('${c.id}')">✏️</button>
+          <button class="row-action-btn" title="Eliminar" onclick="confirmarEliminarCombo('${c.id}')" style="color:var(--danger)">🗑️</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+/* ---------- Modal crear/editar combo ---------- */
+function abrirModalCombo() {
+  STATE.comboEditId = null;
+  STATE.comboFormItems = [];
+  STATE.comboFormEscalas = [];
+  $('modalComboTitle').textContent = '+ Nuevo Combo';
+  $('comboEditId').value = '';
+  $('comboNombre').value = '';
+  $('comboSku').value = '';
+  $('comboCodigoBarras').value = '';
+  $('comboInputPrecio').value = '';
+  $('comboActivo').checked = true;
+  $('comboProductoSearch').value = '';
+  $('comboProductoResultados').innerHTML = '';
+  $('errComboNombre').textContent = '';
+  $('errComboEscalas').textContent = '';
+  setComboTipoPrecio('fijo');
+  renderComboItemsBody();
+  $('modalCombo').classList.add('open');
+}
+
+function abrirEditarCombo(id) {
+  const c = STATE.combos.find(x => x.id === id);
+  if (!c) return;
+  STATE.comboEditId = id;
+  const items = STATE.comboItemsPorCombo[id] || [];
+  STATE.comboFormItems = items.map(it => ({
+    producto_id: it.producto_id,
+    nombre: it.productos?.nombre || 'Producto eliminado',
+    costo: Number(it.productos?.costo || 0),
+    cantidad: Number(it.cantidad) || 1,
+  }));
+  const escalas = STATE.comboEscalasPorCombo[id] || [];
+  STATE.comboFormEscalas = escalas.map(e => ({ nombre: e.nombre, precio: e.precio }));
+
+  $('modalComboTitle').textContent = `Editar Combo — ${c.nombre}`;
+  $('comboEditId').value = id;
+  $('comboNombre').value = c.nombre || '';
+  $('comboSku').value = c.sku || '';
+  $('comboCodigoBarras').value = c.codigo_barras || '';
+  $('comboInputPrecio').value = c.tipo_precio === 'fijo' ? (c.precio ?? '') : '';
+  $('comboActivo').checked = c.activo !== false;
+  $('comboProductoSearch').value = '';
+  $('comboProductoResultados').innerHTML = '';
+  $('errComboNombre').textContent = '';
+  $('errComboEscalas').textContent = '';
+  setComboTipoPrecio(c.tipo_precio === 'escala' ? 'escala' : 'fijo');
+  renderComboItemsBody();
+  $('modalCombo').classList.add('open');
+}
+
+function cerrarModalCombo() {
+  $('modalCombo').classList.remove('open');
+}
+
+function setComboTipoPrecio(tipo) {
+  $('comboInputTipoPrecio').value = tipo;
+  $('comboToggleTipoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('comboToggleTipoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrapFijo = $('comboWrapPrecioFijo');
+  const wrapEscala = $('comboWrapEscalaPrecios');
+  if (wrapFijo) wrapFijo.style.display = tipo === 'fijo' ? '' : 'none';
+  if (wrapEscala) wrapEscala.style.display = tipo === 'escala' ? '' : 'none';
+  if (tipo === 'escala' && !STATE.comboFormEscalas.length) {
+    const precioFijoActual = parseFloat($('comboInputPrecio')?.value);
+    if (!isNaN(precioFijoActual) && precioFijoActual > 0) {
+      STATE.comboFormEscalas.push({ nombre: 'Precio base', precio: precioFijoActual });
+    } else {
+      STATE.comboFormEscalas.push({ nombre: '', precio: '' });
+    }
+  }
+  renderEscalasEditorCombo();
+}
+function renderEscalasEditorCombo() {
+  const cont = $('comboEscalasEditorBody');
+  if (!cont) return;
+  cont.innerHTML = STATE.comboFormEscalas.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Mayorista"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaEscalaCombo(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaEscalaCombo(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar precio"
+              onclick="eliminarFilaEscalaCombo(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún precio.</p>';
+}
+function agregarFilaEscalaCombo() { STATE.comboFormEscalas.push({ nombre: '', precio: '' }); renderEscalasEditorCombo(); }
+function actualizarFilaEscalaCombo(i, campo, valor) { if (STATE.comboFormEscalas[i]) STATE.comboFormEscalas[i][campo] = valor; }
+function eliminarFilaEscalaCombo(i) { STATE.comboFormEscalas.splice(i, 1); renderEscalasEditorCombo(); }
+
+/* ---------- Buscar y agregar productos dentro del combo ---------- */
+function buscarProductoParaCombo(q) {
+  const cont = $('comboProductoResultados');
+  if (!cont) return;
+  const texto = (q || '').trim().toLowerCase();
+  if (!texto) { cont.innerHTML = ''; return; }
+
+  const yaAgregados = new Set(STATE.comboFormItems.map(i => i.producto_id));
+  const resultados = STATE.productos.filter(p =>
+    p.activo !== false && !yaAgregados.has(p.id) &&
+    ((p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto))
+  ).slice(0, 8);
+
+  if (!resultados.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:12.5px;padding:6px 0">Sin resultados</p>`; return; }
+
+  cont.innerHTML = `<div style="position:absolute;z-index:20;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);width:100%;max-height:220px;overflow-y:auto;box-shadow:var(--shadow-md)">
+    ${resultados.map(p => `
+      <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onclick="agregarProductoACombo('${p.id}')" onmouseover="this.style.background='var(--bg-app)'" onmouseout="this.style.background=''">
+        <div style="font-weight:600;font-size:13px">${escHtml(p.nombre)}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: ' + escHtml(p.sku) + ' · ' : ''}Costo: ${fmtMoney(p.costo)} · Stock: ${fmtNum(p.stock_actual)}</div>
+      </div>`).join('')}
+  </div>`;
+}
+function agregarProductoACombo(productoId) {
+  const p = STATE.productos.find(x => x.id === productoId);
+  if (!p) return;
+  STATE.comboFormItems.push({ producto_id: p.id, nombre: p.nombre, costo: Number(p.costo || 0), cantidad: 1 });
+  $('comboProductoSearch').value = '';
+  $('comboProductoResultados').innerHTML = '';
+  renderComboItemsBody();
+}
+function actualizarCantidadComboItem(i, valor) {
+  const n = parseFloat(valor);
+  if (!STATE.comboFormItems[i]) return;
+  STATE.comboFormItems[i].cantidad = isNaN(n) || n <= 0 ? 1 : n;
+  renderComboItemsBody();
+}
+function eliminarComboItem(i) {
+  STATE.comboFormItems.splice(i, 1);
+  renderComboItemsBody();
+}
+function renderComboItemsBody() {
+  const cont = $('comboItemsBody');
+  if (!cont) return;
+  if (!STATE.comboFormItems.length) {
+    cont.innerHTML = `<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0">Aún no has agregado ningún producto a este combo.</p>`;
+  } else {
+    cont.innerHTML = STATE.comboFormItems.map((it, i) => `
+      <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--bg-app);border-radius:var(--radius-sm);margin-bottom:6px">
+        <div style="flex:1;font-size:13px;font-weight:500">${escHtml(it.nombre)}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${fmtMoney(it.costo)} c/u</div>
+        <input type="number" class="form-input" style="width:70px" min="1" step="1" value="${it.cantidad}"
+               oninput="actualizarCantidadComboItem(${i}, this.value)" />
+        <div style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
+        <button type="button" class="row-action-btn" title="Quitar" onclick="eliminarComboItem(${i})" style="opacity:1;color:var(--danger)">✕</button>
+      </div>`).join('');
+  }
+  const total = STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0);
+  const previewEl = $('comboCostoTotalPreview');
+  if (previewEl) previewEl.textContent = fmtMoney(total);
+}
+
+/* ---------- Guardar combo ---------- */
+async function guardarCombo() {
+  $('errComboNombre').textContent = '';
+  $('errComboEscalas').textContent = '';
+
+  const nombre = $('comboNombre').value.trim();
+  if (!nombre) { $('errComboNombre').textContent = 'El nombre del combo es obligatorio.'; return; }
+  if (!STATE.comboFormItems.length) { showToast('warning', 'Faltan productos', 'Agrega al menos un producto al combo.'); return; }
+
+  const tipoPrecio = $('comboInputTipoPrecio').value;
+  let precioFijo = 0;
+  let escalasValidas = [];
+  if (tipoPrecio === 'fijo') {
+    precioFijo = parseFloat($('comboInputPrecio').value);
+    if (isNaN(precioFijo) || precioFijo <= 0) { showToast('warning', 'Precio inválido', 'Ingresa un precio de venta válido para el combo.'); return; }
+  } else {
+    escalasValidas = STATE.comboFormEscalas.filter(f => (f.nombre || '').trim() && parseFloat(f.precio) > 0);
+    if (!escalasValidas.length) { $('errComboEscalas').textContent = 'Agrega al menos un precio con nombre y valor válidos.'; return; }
+  }
+
+  const costoTotal = STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0);
+  const btn = $('btnGuardarCombo');
+  if (btn) btn.disabled = true;
+
+  try {
+    const payload = {
+      auth_user_id: STATE.user.id,
+      nombre,
+      sku: $('comboSku').value.trim() || null,
+      codigo_barras: $('comboCodigoBarras').value.trim() || null,
+      tipo_precio: tipoPrecio,
+      precio: tipoPrecio === 'fijo' ? precioFijo : 0,
+      costo: costoTotal,
+      activo: $('comboActivo').checked,
+      updated_at: new Date().toISOString(),
+    };
+
+    let comboId = STATE.comboEditId;
+    if (comboId) {
+      const { error } = await supabaseClient.from('combos').update(payload).eq('id', comboId).eq('auth_user_id', STATE.user.id);
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabaseClient.from('combos').insert(payload).select('id').single();
+      if (error) throw error;
+      comboId = data.id;
+    }
+
+    // Reemplaza el set completo de productos del combo (igual patrón que
+    // sincronizarEscalas: simple y seguro para listas pequeñas).
+    await supabaseClient.from('combo_items').delete().eq('combo_id', comboId).eq('auth_user_id', STATE.user.id);
+    await supabaseClient.from('combo_items').insert(
+      STATE.comboFormItems.map(it => ({
+        auth_user_id: STATE.user.id, combo_id: comboId, producto_id: it.producto_id, cantidad: it.cantidad,
+      }))
+    );
+
+    await supabaseClient.from('combo_precios_escala').delete().eq('combo_id', comboId).eq('auth_user_id', STATE.user.id);
+    if (tipoPrecio === 'escala' && escalasValidas.length) {
+      await supabaseClient.from('combo_precios_escala').insert(
+        escalasValidas.map((f, i) => ({
+          auth_user_id: STATE.user.id, combo_id: comboId, nombre: f.nombre.trim(), precio: parseFloat(f.precio) || 0, orden: i,
+        }))
+      );
+    }
+
+    showToast('success', 'Combo guardado', `"${nombre}" se guardó correctamente.`);
+    cerrarModalCombo();
+    await cargarCombos();
+  } catch (e) {
+    console.error('guardarCombo:', e);
+    showToast('error', 'Error al guardar', e.message || 'Intenta de nuevo.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ---------- Ver detalle / eliminar ---------- */
+function verDetalleCombo(id) {
+  const c = STATE.combos.find(x => x.id === id);
+  if (!c) return;
+  const items = STATE.comboItemsPorCombo[id] || [];
+  const costo = costoTotalCombo(id);
+  const escalas = STATE.comboEscalasPorCombo[id] || [];
+
+  $('detalleComboBody').innerHTML = `
+    <div class="form-grid" style="margin-bottom:16px">
+      <div><strong>Nombre:</strong> ${escHtml(c.nombre)}</div>
+      <div><strong>SKU:</strong> ${escHtml(c.sku || '—')}</div>
+      <div><strong>Código de barras:</strong> ${escHtml(c.codigo_barras || '—')}</div>
+      <div><strong>Estado:</strong> ${c.activo ? 'Activo' : 'Inactivo'}</div>
+    </div>
+    <div class="form-section-title">Productos incluidos</div>
+    <table class="data-table" style="width:100%;margin-bottom:16px">
+      <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Subtotal costo</th></tr></thead>
+      <tbody>
+        ${items.map(it => `<tr>
+          <td>${escHtml(it.productos?.nombre || 'Producto eliminado')}</td>
+          <td>${fmtNum(it.cantidad)}</td>
+          <td>${fmtMoney(it.productos?.costo)}</td>
+          <td>${fmtMoney((Number(it.cantidad)||0) * Number(it.productos?.costo || 0))}</td>
+        </tr>`).join('') || '<tr><td colspan="4">Sin productos</td></tr>'}
+      </tbody>
+    </table>
+    <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin-bottom:12px">
+      Costo total del combo: <strong>${fmtMoney(costo)}</strong>
+    </div>
+    <div class="form-section-title">Precio de venta</div>
+    ${c.tipo_precio === 'escala'
+      ? `<table class="data-table" style="width:100%"><thead><tr><th>Nombre</th><th>Precio</th></tr></thead>
+         <tbody>${escalas.map(e => `<tr><td>${escHtml(e.nombre)}</td><td>${fmtMoney(e.precio)}</td></tr>`).join('') || '<tr><td colspan="2">Sin precios configurados</td></tr>'}</tbody></table>`
+      : `<div>Precio fijo: <strong>${fmtMoney(c.precio)}</strong></div>`
+    }
+  `;
+  $('modalDetalleCombo').classList.add('open');
+}
+function cerrarModalDetalleCombo() { $('modalDetalleCombo').classList.remove('open'); }
+
+let comboAEliminar = null;
+function confirmarEliminarCombo(id) {
+  comboAEliminar = id;
+  const c = STATE.combos.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`¿Eliminar el combo "${c.nombre}"? Esta acción no se puede deshacer (no afecta a los productos que lo componen).`)) return;
+  eliminarComboConfirmado(id);
+}
+async function eliminarComboConfirmado(id) {
+  try {
+    const { error } = await supabaseClient.from('combos').delete().eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', 'Combo eliminado', '');
+    await cargarCombos();
+  } catch (e) {
+    console.error('eliminarComboConfirmado:', e);
+    showToast('error', 'Error al eliminar', e.message || 'Intenta de nuevo.');
   }
 }
 
@@ -1951,6 +2340,9 @@ async function init() {
 
   // 3) Luego los productos, que ya usarán MONEDA_SIMBOLO y escalas correctas
   await cargarProductos();
+
+  // 3.5) Combos (independientes de productos, pero necesitan su lista ya cargada)
+  await cargarCombos();
 
   // 4) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
   cargarProveedores();
