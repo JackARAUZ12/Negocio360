@@ -118,6 +118,7 @@ function navigate(section) {
   if (section === 'anuncios')  loadAnunciosSection();
   if (section === 'notificaciones') loadNotificacionesSection();
   if (section === 'chats-grupales') loadChatsGrupales();
+  if (section === 'auditoria-global') loadAuditoriaGlobal();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
@@ -1315,6 +1316,96 @@ async function publicarNotificacion() {
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+/* ══════════════════════════════════════════
+   AUDITORÍA GLOBAL — movimientos de TODAS las cuentas del
+   sistema, con retención de 24 horas (se borran solos via
+   pg_cron; aquí solo se lee, nunca se inserta ni se borra
+   manualmente).
+   ══════════════════════════════════════════ */
+let AG_STATE = { registros: [] };
+const AG_ACCION_LABEL = { INSERT: 'Creó', UPDATE: 'Editó', DELETE: 'Eliminó' };
+
+async function loadAuditoriaGlobal() {
+  const tbody = document.getElementById('auditoria-global-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>`;
+  try {
+    const { data, error } = await sb.from('auditoria_log').select('*')
+      .order('created_at', { ascending: false }).limit(2000);
+    if (error) throw error;
+    const registros = data || [];
+
+    // Un solo query para traer el nombre de negocio/correo de cada
+    // cuenta involucrada (evita N consultas, una por registro).
+    const ids = [...new Set(registros.map(r => r.auth_user_id).filter(Boolean))];
+    let usuariosMap = new Map();
+    if (ids.length) {
+      const { data: usuarios } = await sb.from('usuarios')
+        .select('auth_user_id, nombre_negocio, email, nombre').in('auth_user_id', ids);
+      usuariosMap = new Map((usuarios || []).map(u => [u.auth_user_id, u]));
+    }
+
+    AG_STATE.registros = registros.map(r => {
+      const u = usuariosMap.get(r.auth_user_id);
+      return { ...r, negocio: u?.nombre_negocio || u?.email || 'Cuenta eliminada' };
+    });
+
+    poblarFiltroCuentasGlobal();
+    renderTablaAuditoriaGlobal();
+    renderStatsAuditoriaGlobal();
+  } catch (e) {
+    console.error('loadAuditoriaGlobal:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No se pudo cargar la auditoría</td></tr>`;
+  }
+}
+
+function poblarFiltroCuentasGlobal() {
+  const sel = document.getElementById('ag-filtro-cuenta');
+  if (!sel) return;
+  const cuentas = [...new Set(AG_STATE.registros.map(r => r.negocio))].sort();
+  const actual = sel.value;
+  sel.innerHTML = `<option value="">Todas las cuentas</option>` +
+    cuentas.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+  if (cuentas.includes(actual)) sel.value = actual;
+}
+
+function renderTablaAuditoriaGlobal() {
+  const tbody = document.getElementById('auditoria-global-tbody');
+  if (!tbody) return;
+  const filtroCuenta = document.getElementById('ag-filtro-cuenta')?.value || '';
+  const filtroAccion = document.getElementById('ag-filtro-accion')?.value || '';
+  const q = (document.getElementById('ag-search')?.value || '').toLowerCase().trim();
+
+  const filtrados = AG_STATE.registros.filter(r => {
+    if (filtroCuenta && r.negocio !== filtroCuenta) return false;
+    if (filtroAccion && r.accion !== filtroAccion) return false;
+    if (q && !`${r.negocio} ${r.modulo} ${r.resumen||''}`.toLowerCase().includes(q)) return false;
+    return true;
+  }).slice(0, 300); // límite razonable para no saturar la tabla en pantalla
+
+  if (!filtrados.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Sin movimientos con estos filtros</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtrados.map(r => `
+    <tr>
+      <td>${formatDate(r.created_at)}</td>
+      <td>${formatTime(r.created_at)}</td>
+      <td style="font-weight:600">${escHtml(r.negocio)}</td>
+      <td>${escHtml(r.perfil_nombre)}${r.perfil_tipo==='admin' ? ' <span style="font-size:10px;color:var(--text-muted)">(admin)</span>' : ''}</td>
+      <td>${escHtml(r.modulo)}</td>
+      <td>${AG_ACCION_LABEL[r.accion] || escHtml(r.accion)}</td>
+      <td style="font-size:12.5px;color:var(--text-secondary)">${escHtml(r.resumen || '—')}</td>
+    </tr>`).join('');
+}
+
+function renderStatsAuditoriaGlobal() {
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set('ag-stat-total', AG_STATE.registros.length.toLocaleString('es-NI'));
+  set('ag-stat-cuentas', new Set(AG_STATE.registros.map(r => r.auth_user_id)).size.toLocaleString('es-NI'));
+  const ultimo = AG_STATE.registros[0];
+  set('ag-stat-ultimo', ultimo ? `${ultimo.negocio} · ${formatTime(ultimo.created_at)}` : '—');
 }
 
 async function eliminarNotificacion(id) {
