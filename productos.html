@@ -704,6 +704,25 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modalEscalaComponenteCombo" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Elegir precio</h2>
+      <button class="modal-close" onclick="cerrarModalEscalaComponenteCombo()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+        <strong id="escalaComponenteNombreProducto">Este producto</strong> tiene varios precios configurados. ¿Con cuál lo agregas a este combo?
+      </p>
+      <div id="escalaComponenteOpciones"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalEscalaComponenteCombo()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEscalaComponenteCombo()">Agregar al combo</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalDetalleCombo" role="dialog" aria-modal="true">
   <div class="modal modal-lg">
     <div class="modal-header">
