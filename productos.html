@@ -378,6 +378,41 @@
         </div>
       </div>
 
+      <!-- ============================================================
+           COMBOS / KITS — cuadro separado del de Productos/Servicios
+      ============================================================ -->
+      <div class="toolbar" style="margin-top:28px">
+        <div>
+          <h2 style="font-size:16px;font-weight:700;margin:0 0 2px">📦 Combos</h2>
+          <p style="font-size:12px;color:var(--text-muted);margin:0">Agrupa varios productos bajo un mismo nombre, SKU y código de barras. Al venderse, se descuenta el stock de cada componente.</p>
+        </div>
+        <div class="toolbar-right">
+          <span class="results-count" id="combosCount">0 combos</span>
+          <button class="btn btn-primary btn-sm" onclick="abrirModalCombo()">+ Crear combo</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table class="data-table" role="table">
+            <thead>
+              <tr>
+                <th>Combo</th>
+                <th>SKU / Código de barras</th>
+                <th>Componentes</th>
+                <th>Costo</th>
+                <th>Precio</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="combosTbody">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando combos…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -599,6 +634,89 @@
 <!-- ============================================================
      MODAL: VER DETALLE
      ============================================================ -->
+<div class="modal-overlay" id="modalCombo" role="dialog" aria-modal="true" aria-labelledby="modalComboTitle">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalComboTitle">+ Nuevo Combo</h2>
+      <button class="modal-close" onclick="cerrarModalCombo()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="comboEditId" />
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label class="form-label" for="comboNombre">Nombre del combo *</label>
+          <input type="text" class="form-input" id="comboNombre" placeholder="Ej: Combo desayuno" />
+          <span class="form-error" id="errComboNombre"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="comboSku">SKU</label>
+          <input type="text" class="form-input" id="comboSku" placeholder="Opcional" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="comboCodigoBarras">Código de barras</label>
+          <input type="text" class="form-input" id="comboCodigoBarras" placeholder="Opcional" />
+        </div>
+      </div>
+
+      <div class="form-section-title">Productos incluidos</div>
+      <div class="form-group full">
+        <input type="text" class="form-input" id="comboProductoSearch" placeholder="Buscar producto por nombre o SKU…" oninput="buscarProductoParaCombo(this.value)" autocomplete="off" />
+        <div id="comboProductoResultados" style="position:relative"></div>
+      </div>
+      <div id="comboItemsBody" style="margin-bottom:10px"></div>
+      <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;color:var(--text-secondary);margin-bottom:18px">
+        Costo total del combo (suma de sus componentes): <strong id="comboCostoTotalPreview" style="color:var(--text-primary)">—</strong>
+      </div>
+
+      <div class="form-section-title">Precio de venta</div>
+      <div class="form-group full" style="margin:4px 0 16px">
+        <div class="type-toggle">
+          <button type="button" class="type-toggle-btn active" id="comboToggleTipoFijo" onclick="setComboTipoPrecio('fijo')">Precio fijo</button>
+          <button type="button" class="type-toggle-btn" id="comboToggleTipoEscala" onclick="setComboTipoPrecio('escala')">Escala de precios</button>
+        </div>
+        <input type="hidden" id="comboInputTipoPrecio" value="fijo" />
+      </div>
+
+      <div class="form-group" id="comboWrapPrecioFijo">
+        <label class="form-label" for="comboInputPrecio">Precio de venta</label>
+        <input type="number" class="form-input" id="comboInputPrecio" placeholder="0.00" min="0" step="0.01" />
+      </div>
+
+      <div class="form-group full" id="comboWrapEscalaPrecios" style="display:none;margin-bottom:16px">
+        <label class="form-label">Precios de la escala</label>
+        <div id="comboEscalasEditorBody"></div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="agregarFilaEscalaCombo()" style="margin-top:8px">+ Agregar precio</button>
+        <span class="form-error" id="errComboEscalas"></span>
+      </div>
+
+      <div class="form-group full">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
+          <input type="checkbox" id="comboActivo" checked style="width:16px;height:16px" />
+          <span>Combo activo (disponible para vender)</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalCombo()">Cancelar</button>
+      <button class="btn btn-primary" id="btnGuardarCombo" onclick="guardarCombo()">Guardar combo</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalDetalleCombo" role="dialog" aria-modal="true">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title">Detalle del combo</h2>
+      <button class="modal-close" onclick="cerrarModalDetalleCombo()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body" id="detalleComboBody">Cargando…</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalDetalleCombo()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalDetalle" role="dialog" aria-modal="true">
   <div class="modal modal-lg">
     <div class="modal-header">
