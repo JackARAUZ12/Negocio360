@@ -705,9 +705,52 @@ async function loadMetodosPago() {
 async function loadProductosCache() {
   try {
     const { data } = await sb.from('productos').select('id,nombre,sku,tipo,precio,costo,tipo_precio,stock_actual,activo')
-      .eq('auth_user_id', S.userId).eq('activo', true)
-      .order('nombre');
-    S.productosCache = data || [];
+      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
+    const productos = data || [];
+
+    // Combos: se agregan al MISMO catálogo de búsqueda/carrito que los
+    // productos — con tipo:'producto' para que las validaciones de stock
+    // ya existentes se apliquen igual (sin duplicar esa lógica), marcados
+    // aparte con esCombo:true para tratarlos distinto solo al confirmar
+    // la venta (ahí se descuenta el stock de sus componentes, no el del
+    // combo, que no existe como fila en la tabla productos).
+    let combosCache = [];
+    try {
+      const { data: combos } = await sb.from('combos')
+        .select('id,nombre,sku,codigo_barras,precio,costo,tipo_precio,activo')
+        .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
+      if (combos && combos.length) {
+        const comboIds = combos.map(c => c.id);
+        const { data: items } = await sb.from('combo_items')
+          .select('combo_id, cantidad, productos(stock_actual, costo)').in('combo_id', comboIds);
+        const itemsPorCombo = {};
+        (items || []).forEach(it => {
+          if (!itemsPorCombo[it.combo_id]) itemsPorCombo[it.combo_id] = [];
+          itemsPorCombo[it.combo_id].push(it);
+        });
+        combosCache = combos.map(c => {
+          const suyos = itemsPorCombo[c.id] || [];
+          // Cuántos combos completos se pueden armar con el stock actual
+          // de sus componentes (el más escaso manda).
+          const stockDisponible = suyos.length
+            ? Math.min(...suyos.map(it => Math.floor(Number(it.productos?.stock_actual || 0) / (Number(it.cantidad) || 1))))
+            : 0;
+          // Costo recalculado EN VIVO a partir del costo actual de cada
+          // componente (no se usa el costo guardado en "combos", que
+          // podría quedar desactualizado si el costo de un producto
+          // cambió después de crear el combo).
+          const costoActual = suyos.reduce((s, it) => s + Number(it.cantidad || 0) * Number(it.productos?.costo || 0), 0);
+          return {
+            id: c.id, nombre: c.nombre, sku: c.sku || c.codigo_barras || '',
+            tipo: 'producto', precio: c.precio, costo: costoActual, tipo_precio: c.tipo_precio,
+            stock_actual: stockDisponible, activo: c.activo,
+            esCombo: true,
+          };
+        });
+      }
+    } catch (eCombo) { console.warn('No se pudieron cargar los combos para Ventas:', eCombo); }
+
+    S.productosCache = [...productos, ...combosCache];
   } catch(e) { S.productosCache = []; }
 }
 
@@ -728,6 +771,16 @@ async function loadEscalasCache() {
       if (!map[e.producto_id]) map[e.producto_id] = [];
       map[e.producto_id].push(e);
     });
+    // Escalas de precio de COMBOS: mismo mapa (las llaves son ids de
+    // combos, que nunca chocan con ids de productos).
+    try {
+      const { data: comboEscalas } = await sb.from('combo_precios_escala')
+        .select('id,combo_id,nombre,precio,orden').eq('auth_user_id', S.userId).order('orden');
+      (comboEscalas || []).forEach(e => {
+        if (!map[e.combo_id]) map[e.combo_id] = [];
+        map[e.combo_id].push(e);
+      });
+    } catch (eCombo) { /* si falla, los combos con escala solo no muestran precios — no rompe nada más */ }
     S.escalasPorProducto = map;
   } catch(e) { S.escalasPorProducto = {}; }
 }
@@ -1498,7 +1551,7 @@ function buscarProductosParaVenta(q, tipo) {
     <div class="prod-result-item" onclick="${disabled ? '' : `agregarAlCarrito('${p.id}','${tipo}')`}"
       style="${disabled ? 'opacity:.45;cursor:not-allowed;' : ''}">
       <div style="flex:1">
-        <div class="pri-name">${esc(p.nombre)} ${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
+        <div class="pri-name">${esc(p.nombre)} ${p.esCombo ? '<span style="font-size:10px;color:var(--accent-4,var(--accent));font-weight:700">📦 COMBO</span>' : ''}${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
       </div>
       <span class="pri-stock ${stockCls}">${stockLabel}</span>
@@ -1618,6 +1671,7 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       subtotal: precioUsar,
       ganancia: precioUsar - parseFloat(prod.costo||0),
       stockMax: tipo==='producto' ? parseFloat(prod.stock_actual||0) : Infinity,
+      esCombo:  !!prod.esCombo,
       // Trazabilidad de la escala usada (null si es precio fijo) — se guarda
       // en venta_detalles para poder reportar por escala en el futuro.
       escalaId:     escalaElegida ? escalaElegida.id     : null,
@@ -1732,6 +1786,7 @@ function renderCarrito(tipo) {
       <td>
         <div style="font-weight:600;font-size:13px">${esc(item.nombre)}</div>
         ${item.sku ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${esc(item.sku)}</div>` : ''}
+        ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
         ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
       </td>
       <td>
@@ -2199,10 +2254,14 @@ async function confirmarVenta(conImpresion) {
     const detallesPayload = S.carrito.map(item => ({
       auth_user_id:   S.userId,
       venta_id:       ventaId,
-      producto_id:    item.id,
+      // Un combo no existe como fila en "productos" — se guarda su id en
+      // combo_id en vez de producto_id, para no violar la relación con
+      // productos y para poder identificarlo después en reportes.
+      producto_id:    item.esCombo ? null : item.id,
+      combo_id:       item.esCombo ? item.id : null,
       producto_nombre:item.nombre,
       producto_sku:   item.sku || null,
-      tipo_item:      item.tipo,
+      tipo_item:      item.esCombo ? 'combo' : item.tipo,
       cantidad:       item.cantidad,
       precio:         item.precio,
       costo:          item.costo,
@@ -2215,17 +2274,19 @@ async function confirmarVenta(conImpresion) {
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
-      // Reintentar sin columnas escala_* por si la migración aún no llegó a este entorno
+      // Reintentar sin columnas escala_*/combo_id por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
 
     /* ----------------------------------------------------------
-       PASO E: Actualizar stock de PRODUCTOS (no servicios)
+       PASO E: Actualizar stock de PRODUCTOS (no servicios) y, para
+       los combos vendidos, el stock de CADA producto que los compone
+       (cantidad del componente × cantidad de combos vendidos).
     ---------------------------------------------------------- */
-    const productosVendidos = S.carrito.filter(i => i.tipo==='producto');
+    const productosVendidos = S.carrito.filter(i => i.tipo==='producto' && !i.esCombo);
     for (const item of productosVendidos) {
       const prod = S.productosCache.find(p => p.id===item.id);
       if (!prod) continue;
@@ -2236,6 +2297,25 @@ async function confirmarVenta(conImpresion) {
       if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
       // Actualizar caché local
       prod.stock_actual = Math.max(0, nuevoStock);
+    }
+
+    const combosVendidos = S.carrito.filter(i => i.esCombo);
+    for (const combo of combosVendidos) {
+      try {
+        const { data: itemsCombo } = await sb.from('combo_items')
+          .select('producto_id, cantidad').eq('combo_id', combo.id).eq('auth_user_id', S.userId);
+        for (const compItem of (itemsCombo || [])) {
+          const { data: prodActual } = await sb.from('productos')
+            .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
+          if (!prodActual) continue;
+          const descuentoTotal = Number(compItem.cantidad) * combo.cantidad;
+          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
+          await sb.from('productos').update({ stock_actual: nuevoStock })
+            .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
+        }
+      } catch (eCombo) {
+        console.warn('No se pudo descontar el stock de los componentes del combo:', combo.nombre, eCombo);
+      }
     }
 
     /* ----------------------------------------------------------
@@ -3248,3 +3328,4 @@ document.addEventListener('DOMContentLoaded', () => {
   initVentas();
   if (window.lucide) lucide.createIcons();
 });
+i
