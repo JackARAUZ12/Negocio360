@@ -793,6 +793,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           Alertas inteligentes
         </div>
+        <div class="main-tab" data-tab="prediccion" onclick="EST.switchTab('prediccion')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Análisis a futuro
+        </div>
       </div>
 
       <!-- ============ TAB: SALUD FINANCIERA ============ -->
@@ -947,6 +951,75 @@
           </div>
           <div class="panel-body">
             <div class="alertas-grid" id="alertas-inteligentes"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ TAB: ANÁLISIS A FUTURO (predicción próximo mes) ============ -->
+      <div class="tab-panel" id="tab-prediccion">
+        <div class="panel-card fade-in" id="prediccion-sin-datos" style="display:none">
+          <div class="panel-body" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+            Todavía no hay suficiente historial de ventas y gastos para generar una predicción confiable.
+            Se necesitan al menos 2 meses con movimientos registrados.
+          </div>
+        </div>
+
+        <div id="prediccion-contenido">
+          <div class="kpi-grid-4 fade-in" id="kpis-prediccion"></div>
+
+          <div class="panel-card fade-in">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                Tendencia de los últimos 6 meses + proyección
+              </div>
+            </div>
+            <div class="chart-wrap tall">
+              <canvas id="chart-prediccion"></canvas>
+            </div>
+          </div>
+
+          <div class="panel-card fade-in">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Recomendaciones para el próximo mes
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="insight-list" id="prediccion-recomendaciones"></div>
+            </div>
+          </div>
+
+          <div class="panel-card fade-in">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                Productos con más movimiento (subiendo / bajando)
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="insight-list" id="prediccion-productos"></div>
+            </div>
+          </div>
+
+          <div class="panel-card fade-in">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                ¿Cómo se calcula esta predicción?
+              </div>
+            </div>
+            <div class="panel-body">
+              <p style="font-size:12.5px;color:var(--text-muted);line-height:1.6;margin:0">
+                Se toman tus últimos meses de ventas, compras y gastos reales, y se les aplica una
+                <strong>regresión lineal</strong> (una técnica estadística estándar) para detectar la tendencia de
+                cada mes y proyectarla al siguiente. La <strong>confiabilidad</strong> mostrada arriba indica qué tan
+                estable ha sido esa tendencia: entre más parejo el comportamiento mes a mes, más confiable es la
+                proyección. Es una estimación basada en tu historial, no una garantía — factores externos (temporada,
+                promociones, la economía) pueden cambiar el resultado real.
+              </p>
+            </div>
           </div>
         </div>
       </div>
