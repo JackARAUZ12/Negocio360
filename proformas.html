@@ -932,6 +932,13 @@
       background: var(--bg-surface); color: var(--text-primary); width: 100%;
     }
     .carrito-input:focus { border-color: var(--border-focus); outline: none; }
+    .esc-precio-opcion{display:flex;align-items:center;gap:10px;padding:12px 14px;
+      border:1.5px solid var(--border);border-radius:var(--radius-md);cursor:pointer;margin-bottom:8px}
+    .esc-precio-opcion:hover{border-color:var(--accent)}
+    .esc-precio-opcion input[type="radio"]{accent-color:var(--accent);width:16px;height:16px}
+    .esc-precio-opcion:has(input:checked){border-color:var(--accent);background:var(--accent-soft, rgba(90,90,244,.06))}
+    .esc-precio-nombre{flex:1;font-size:13.5px;font-weight:500}
+    .esc-precio-valor{font-family:var(--font-mono);font-weight:700;color:var(--accent)}
     .iva-row {
       display: flex; align-items: center; gap: 10px; padding: 12px 14px;
       background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -1363,6 +1370,28 @@
       <button class="btn-primary" id="np-btn-guardar" onclick="guardarProforma()">
         Guardar proforma <span id="np-total-preview" style="opacity:0.8;font-size:12px"></span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: SELECCIONAR PRECIO (productos con escala)
+=================================================== -->
+<div class="modal-overlay" id="modal-escala-precio-prof" onclick="if(event.target===this)cerrarSelectorEscalaProf()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">Seleccionar precio</span>
+        <div class="modal-subtitle" id="esc-precio-title-prof">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorEscalaProf()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="esc-precio-lista-prof" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorEscalaProf()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionEscalaProf()">Aceptar</button>
     </div>
   </div>
 </div>
