@@ -856,6 +856,266 @@ function kpiCard(icon, bg, color, label, value) {
 }
 
 /* ============================================================
+   ANÁLISIS A FUTURO — predicción del próximo mes
+   ------------------------------------------------------------
+   Toma los últimos 6 meses REALES de ventas/compras/gastos y les
+   aplica una regresión lineal (mínimos cuadrados) para proyectar
+   el mes siguiente — no es una simple extrapolación del período
+   seleccionado arriba, sino un cálculo aparte con su propia
+   ventana histórica fija, para que la tendencia tenga sentido
+   sin importar qué "período" tenga elegido el usuario.
+   ============================================================ */
+function ymdLocal(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function ultimosNMeses(n) {
+  const hoy = new Date();
+  const meses = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+    const fin = new Date(hoy.getFullYear(), hoy.getMonth() - i + 1, 0);
+    meses.push({
+      from: ymdLocal(inicio), to: ymdLocal(fin),
+      label: inicio.toLocaleDateString('es-NI', { month: 'short', year: '2-digit' }),
+    });
+  }
+  return meses;
+}
+
+// Regresión lineal simple (mínimos cuadrados): y = m·x + b, con x = 0,1,2…
+// R² (0 a 1) indica qué tan bien esa recta explica los datos reales — se
+// usa como la "confiabilidad" de la proyección.
+function regresionLineal(valores) {
+  const n = valores.length;
+  const xs = valores.map((_, i) => i);
+  const sumX = xs.reduce((a, b) => a + b, 0);
+  const sumY = valores.reduce((a, b) => a + b, 0);
+  const sumXY = xs.reduce((s, x, i) => s + x * valores[i], 0);
+  const sumX2 = xs.reduce((s, x) => s + x * x, 0);
+  const denom = (n * sumX2 - sumX * sumX) || 1;
+  const m = (n * sumXY - sumX * sumY) / denom;
+  const b = (sumY - m * sumX) / n;
+
+  const meanY = sumY / n;
+  const ssTot = valores.reduce((s, y) => s + Math.pow(y - meanY, 2), 0) || 1;
+  const ssRes = valores.reduce((s, y, i) => s + Math.pow(y - (m * i + b), 2), 0);
+  const r2 = Math.max(0, Math.min(1, 1 - ssRes / ssTot));
+
+  return { m, b, r2, predict: x => m * x + b };
+}
+
+async function cargarYRenderPrediccion() {
+  const wrapSinDatos = document.getElementById('prediccion-sin-datos');
+  const wrapContenido = document.getElementById('prediccion-contenido');
+  if (!wrapSinDatos || !wrapContenido) return; // la pestaña no está en esta página
+
+  try {
+    const uid = EST.userId;
+    const meses = ultimosNMeses(6);
+
+    const datosPorMes = await Promise.all(meses.map(async m => {
+      const [ventasM, comprasM, gastosM] = await Promise.all([
+        sb.from('ventas').select('total,impuesto').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to),
+        sb.from('compras').select('total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to),
+        sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', m.from).lte('fecha', m.to),
+      ]);
+      const ingresos = (ventasM.data || []).reduce((s, v) => s + parseFloat(v.total || 0) - parseFloat(v.impuesto || 0), 0);
+      const compras  = (comprasM.data || []).reduce((s, c) => s + parseFloat(c.total || 0), 0);
+      const gastos   = (gastosM.data || []).reduce((s, g) => s + parseFloat(g.monto || 0), 0);
+      const egresos  = compras + gastos;
+      return { label: m.label, from: m.from, to: m.to, ingresos, egresos, ganancia: ingresos - egresos };
+    }));
+
+    // Se ignoran los meses iniciales sin ningún movimiento (negocio nuevo
+    // o cuenta recién creada), para que no arrastren ceros que distorsionen
+    // la tendencia real.
+    let primerConDatos = datosPorMes.findIndex(m => m.ingresos > 0 || m.egresos > 0);
+    if (primerConDatos === -1) primerConDatos = 0;
+    const serie = datosPorMes.slice(primerConDatos);
+
+    if (serie.length < 2) {
+      wrapSinDatos.style.display = '';
+      wrapContenido.style.display = 'none';
+      return;
+    }
+    wrapSinDatos.style.display = 'none';
+    wrapContenido.style.display = '';
+
+    const regIngresos = regresionLineal(serie.map(s => s.ingresos));
+    const regEgresos  = regresionLineal(serie.map(s => s.egresos));
+    const regGanancia = regresionLineal(serie.map(s => s.ganancia));
+
+    const siguienteX = serie.length;
+    const ingresosProyectados = Math.max(0, regIngresos.predict(siguienteX));
+    const egresosProyectados  = Math.max(0, regEgresos.predict(siguienteX));
+    const gananciaProyectada  = ingresosProyectados - egresosProyectados;
+    const confiabilidad = Math.round(((regIngresos.r2 + regEgresos.r2) / 2) * 100);
+
+    EST.prediccion = { serie, regIngresos, regEgresos, regGanancia, ingresosProyectados, egresosProyectados, gananciaProyectada, confiabilidad };
+
+    renderKpisPrediccion();
+    renderChartPrediccion();
+    renderRecomendacionesPrediccion();
+    await renderProductosTendencia();
+  } catch (e) {
+    console.error('cargarYRenderPrediccion:', e);
+  }
+}
+
+function renderKpisPrediccion() {
+  const p = EST.prediccion;
+  const iconIngresos = p.regIngresos.m >= 0 ? '📈' : '📉';
+  const iconGanancia = p.regGanancia.m >= 0 ? '📈' : '📉';
+  const confNivel = p.confiabilidad >= 65 ? 'success' : p.confiabilidad >= 40 ? 'warning' : 'danger';
+
+  document.getElementById('kpis-prediccion').innerHTML = `
+    ${kpiCard(iconIngresos, 'var(--success-soft)', 'var(--success)', 'Ingresos proyectados (próx. mes)', fmt(p.ingresosProyectados))}
+    ${kpiCard('💸', 'var(--danger-soft)', 'var(--danger)', 'Gastos proyectados (próx. mes)', fmt(p.egresosProyectados))}
+    ${kpiCard(iconGanancia, p.gananciaProyectada >= 0 ? 'var(--success-soft)' : 'var(--danger-soft)', p.gananciaProyectada >= 0 ? 'var(--success)' : 'var(--danger)', 'Ganancia proyectada', fmt(p.gananciaProyectada))}
+    ${kpiCard('🎯', `var(--${confNivel}-soft)`, `var(--${confNivel})`, 'Confiabilidad de la predicción', `${p.confiabilidad}%`)}
+  `;
+}
+
+function renderChartPrediccion() {
+  const ctx = document.getElementById('chart-prediccion');
+  if (!ctx) return;
+  if (EST.charts.prediccion) EST.charts.prediccion.destroy();
+  const p = EST.prediccion;
+  const ultimoIndex = p.serie.length; // índice del punto proyectado (el último del arreglo)
+  const labels = [...p.serie.map(s => s.label), 'Próx. mes (est.)'];
+  const ingresos = [...p.serie.map(s => s.ingresos), p.ingresosProyectados];
+  const egresos  = [...p.serie.map(s => s.egresos), p.egresosProyectados];
+  const segmentoProyectado = (context) => (context.p1DataIndex === ultimoIndex ? [6, 4] : undefined);
+
+  EST.charts.prediccion = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Ingresos', data: ingresos, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', tension: 0.3, segment: { borderDash: segmentoProyectado } },
+        { label: 'Gastos', data: egresos, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', tension: 0.3, segment: { borderDash: segmentoProyectado } },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'bottom' } },
+      scales: { y: { grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } },
+    },
+  });
+}
+
+function renderRecomendacionesPrediccion() {
+  const p = EST.prediccion;
+  const el = document.getElementById('prediccion-recomendaciones');
+  const items = [];
+  const ultimo = p.serie[p.serie.length - 1];
+
+  const cambioIngresos = ultimo.ingresos > 0 ? ((p.ingresosProyectados - ultimo.ingresos) / ultimo.ingresos) * 100 : 0;
+  const cambioGastos   = ultimo.egresos  > 0 ? ((p.egresosProyectados  - ultimo.egresos)  / ultimo.egresos)  * 100 : 0;
+
+  if (p.regIngresos.m > 0) {
+    items.push({ icon: '📈', bg: 'var(--success-soft)', title: 'Tus ingresos vienen creciendo',
+      text: `Con la tendencia de los últimos meses, el próximo mes podrías vender cerca de ${fmt(p.ingresosProyectados)} (${cambioIngresos >= 0 ? '+' : ''}${cambioIngresos.toFixed(1)}% vs. el mes pasado). Aprovecha para asegurar inventario suficiente y no perder ventas por falta de stock.` });
+  } else if (p.regIngresos.m < 0) {
+    items.push({ icon: '📉', bg: 'var(--danger-soft)', title: 'Tus ingresos vienen bajando',
+      text: `La tendencia sugiere una caída hacia ${fmt(p.ingresosProyectados)} el próximo mes. Considera lanzar una promoción, contactar clientes que no compran hace tiempo, o revisar si algún producto clave dejó de venderse.` });
+  }
+
+  if (p.regEgresos.m > 0 && cambioGastos > 5) {
+    items.push({ icon: '⚠️', bg: 'var(--warning-soft)', title: 'Tus gastos vienen subiendo',
+      text: `Se proyectan gastos de ${fmt(p.egresosProyectados)} el próximo mes, un ${cambioGastos.toFixed(1)}% más que el mes pasado. Revisa tus categorías de gasto más grandes en el módulo de Gastos antes de que sigan creciendo.` });
+  }
+
+  if (p.gananciaProyectada < 0) {
+    items.push({ icon: '🚨', bg: 'var(--danger-soft)', title: 'Riesgo de pérdida el próximo mes',
+      text: `Con esta tendencia, tus gastos superarían a tus ingresos en ${fmt(Math.abs(p.gananciaProyectada))}. Conviene actuar ahora: recorta gastos no esenciales o impulsa ventas antes de que empiece el mes.` });
+  } else if (p.regGanancia.m > 0) {
+    items.push({ icon: '✅', bg: 'var(--success-soft)', title: 'Tu ganancia viene mejorando',
+      text: `Si se mantiene esta tendencia, terminarías el próximo mes con una ganancia cercana a ${fmt(p.gananciaProyectada)}.` });
+  }
+
+  if (p.confiabilidad < 40) {
+    items.push({ icon: '📊', bg: 'var(--accent-soft)', title: 'Predicción con baja confiabilidad',
+      text: 'Tus ingresos y gastos han variado bastante mes a mes, así que esta proyección es menos precisa por ahora. Entre más meses de historial acumules, más confiable será.' });
+  }
+
+  if (!items.length) {
+    items.push({ icon: 'ℹ️', bg: 'var(--accent-soft)', title: 'Comportamiento estable',
+      text: 'No se detectan cambios importantes en la tendencia — se espera un mes similar a los últimos.' });
+  }
+
+  el.innerHTML = items.map(i => `
+    <div class="insight-item">
+      <div class="insight-icon" style="background:${i.bg}">${i.icon}</div>
+      <div class="insight-body">
+        <div class="insight-title">${esc(i.title)}</div>
+        <div class="insight-text">${esc(i.text)}</div>
+      </div>
+    </div>`).join('');
+}
+
+// Compara las unidades vendidas del último mes completo contra el
+// anterior, producto por producto, para detectar cuáles van subiendo o
+// bajando (útil para decidir qué reabastecer o qué promocionar).
+async function obtenerCantidadesPorProducto(uid, from, to) {
+  const { data: ventas } = await sb.from('ventas').select('id').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to);
+  const ids = (ventas || []).map(v => v.id);
+  if (!ids.length) return {};
+  const { data: detalles } = await sb.from('venta_detalles').select('producto_nombre,cantidad').eq('auth_user_id', uid).in('venta_id', ids);
+  const map = {};
+  (detalles || []).forEach(d => { map[d.producto_nombre] = (map[d.producto_nombre] || 0) + Number(d.cantidad || 0); });
+  return map;
+}
+
+async function renderProductosTendencia() {
+  const el = document.getElementById('prediccion-productos');
+  if (!el) return;
+  const serie = EST.prediccion?.serie;
+  if (!serie || serie.length < 2) { el.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">No hay suficiente historial todavía.</p>'; return; }
+
+  try {
+    const meses = ultimosNMeses(6);
+    const mesActual   = meses[meses.length - 1];
+    const mesAnterior = meses[meses.length - 2];
+    const uid = EST.userId;
+
+    const [actual, anterior] = await Promise.all([
+      obtenerCantidadesPorProducto(uid, mesActual.from, mesActual.to),
+      obtenerCantidadesPorProducto(uid, mesAnterior.from, mesAnterior.to),
+    ]);
+
+    const nombres = new Set([...Object.keys(actual), ...Object.keys(anterior)]);
+    const cambios = [...nombres].map(nombre => {
+      const a = actual[nombre] || 0, ant = anterior[nombre] || 0;
+      const delta = a - ant;
+      const pct = ant > 0 ? (delta / ant) * 100 : (a > 0 ? 100 : 0);
+      return { nombre, actual: a, anterior: ant, delta, pct };
+    }).filter(c => c.actual > 0 || c.anterior > 0);
+
+    const subiendo = cambios.filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 3);
+    const bajando  = cambios.filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 3);
+
+    const items = [];
+    subiendo.forEach(c => items.push({ icon: '📈', bg: 'var(--success-soft)', title: `${c.nombre} — en aumento`,
+      text: `Vendiste ${fmtCant(c.actual)} unidades este mes vs ${fmtCant(c.anterior)} el mes anterior (${c.pct >= 0 ? '+' : ''}${c.pct.toFixed(0)}%). Asegura tener buen stock disponible.` }));
+    bajando.forEach(c => items.push({ icon: '📉', bg: 'var(--danger-soft)', title: `${c.nombre} — en descenso`,
+      text: `Vendiste ${fmtCant(c.actual)} unidades este mes vs ${fmtCant(c.anterior)} el mes anterior (${c.pct.toFixed(0)}%). Podría necesitar una promoción o revisar su precio.` }));
+
+    el.innerHTML = items.length ? items.map(i => `
+      <div class="insight-item">
+        <div class="insight-icon" style="background:${i.bg}">${i.icon}</div>
+        <div class="insight-body">
+          <div class="insight-title">${esc(i.title)}</div>
+          <div class="insight-text">${esc(i.text)}</div>
+        </div>
+      </div>`).join('') : '<p style="color:var(--text-muted);font-size:12.5px">No hay suficientes ventas de productos en los últimos 2 meses para comparar.</p>';
+  } catch (e) {
+    console.error('renderProductosTendencia:', e);
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">No se pudo calcular la tendencia de productos.</p>';
+  }
+}
+function fmtCant(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
+
+/* ============================================================
    TABS
    ============================================================ */
 function switchTab(tab) {
@@ -881,6 +1141,7 @@ async function recargar() {
     renderClientes();
     renderFlujo();
     renderAlertas();
+    await cargarYRenderPrediccion();
     if (window.lucide) lucide.createIcons();
   } catch (err) {
     console.error('estadisticas recargar:', err);
