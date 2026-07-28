@@ -116,6 +116,7 @@ function navigate(section) {
   if (section === 'codes')     loadCodes();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
+  if (section === 'encuestas') cargarResultadosEncuesta();
   if (section === 'notificaciones') loadNotificacionesSection();
   if (section === 'chats-grupales') loadChatsGrupales();
   if (section === 'auditoria-global') loadAuditoriaGlobal();
@@ -1227,6 +1228,105 @@ async function lanzarAnuncio() {
     toast('Error al lanzar el anuncio', e.message, 'error');
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// ── ENCUESTAS (satisfacción del usuario, 1-5 estrellas) ────────────
+async function publicarEncuesta() {
+  const pregunta = document.getElementById('encuesta-form-pregunta').value.trim();
+  if (!pregunta) { toast('Falta la pregunta', 'Escribe la pregunta de la encuesta', 'warning'); return; }
+
+  const btn = event?.target?.closest('button');
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+
+    // Solo puede existir una encuesta activa a la vez.
+    await sb.from('encuestas_sistema').update({ activa: false }).eq('activa', true);
+
+    const { error } = await sb.from('encuestas_sistema').insert({
+      pregunta, activa: true, created_by: user?.email || null,
+    });
+    if (error) throw error;
+
+    toast('Encuesta publicada', 'Los usuarios la verán la próxima vez que entren al Dashboard', 'success');
+    document.getElementById('encuesta-form-pregunta').value = '';
+    await cargarResultadosEncuesta();
+  } catch (e) {
+    console.error('publicarEncuesta:', e);
+    toast('Error al publicar la encuesta', e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function cargarResultadosEncuesta() {
+  const cont = document.getElementById('encuesta-resultados');
+  if (!cont) return;
+  cont.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  try {
+    const { data: encuesta, error } = await sb.from('encuestas_sistema')
+      .select('id,pregunta,created_at').eq('activa', true)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!encuesta) { cont.innerHTML = '<p style="color:var(--text-muted)">No hay ninguna encuesta activa en este momento.</p>'; return; }
+
+    const { data: respuestas, error: errR } = await sb.from('encuestas_respuestas')
+      .select('estrellas, comentario, created_at').eq('encuesta_id', encuesta.id)
+      .order('created_at', { ascending: false });
+    if (errR) throw errR;
+
+    const lista = respuestas || [];
+    const calificadas = lista.filter(r => r.estrellas != null);
+    const soloAceptaron = lista.length - calificadas.length;
+    const promedio = calificadas.length
+      ? (calificadas.reduce((s, r) => s + r.estrellas, 0) / calificadas.length)
+      : 0;
+    const distribucion = [5, 4, 3, 2, 1].map(n => calificadas.filter(r => r.estrellas === n).length);
+    const maxDist = Math.max(1, ...distribucion);
+
+    const comentarios = calificadas.filter(r => r.comentario && r.comentario.trim());
+
+    cont.innerHTML = `
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${escHtml(encuesta.pregunta)}</div>
+        <div style="font-size:12px;color:var(--text-muted)">Publicada el ${formatDate(encuesta.created_at)}</div>
+      </div>
+
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-bottom:20px">
+        <div style="text-align:center">
+          <div style="font-size:36px;font-weight:800;color:#F5A623">${promedio.toFixed(1)}<span style="font-size:18px;color:var(--text-muted)">/5</span></div>
+          <div style="font-size:11px;color:var(--text-muted)">${calificadas.length} calificación${calificadas.length===1?'':'es'}</div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          ${[5,4,3,2,1].map((n,i) => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="font-size:11.5px;color:var(--text-muted);width:34px">${n} ★</span>
+              <div style="flex:1;height:8px;background:var(--bg-hover,#eee);border-radius:100px;overflow:hidden">
+                <div style="width:${(distribucion[i]/maxDist*100)}%;height:100%;background:#F5A623"></div>
+              </div>
+              <span style="font-size:11.5px;color:var(--text-muted);width:20px;text-align:right">${distribucion[i]}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+        ${soloAceptaron} usuario${soloAceptaron===1?'':'s'} presionó "Aceptar" sin calificar.
+      </div>
+
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Comentarios (${comentarios.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px;max-height:320px;overflow-y:auto">
+        ${comentarios.length ? comentarios.map(r => `
+          <div style="padding:10px 12px;background:var(--bg-hover,#f7f7fa);border-radius:8px">
+            <div style="color:#F5A623;font-size:13px;margin-bottom:4px">${'★'.repeat(r.estrellas)}${'☆'.repeat(5-r.estrellas)}</div>
+            <div style="font-size:13px;color:var(--text-secondary)">${escHtml(r.comentario)}</div>
+          </div>`).join('') : '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay comentarios.</p>'}
+      </div>
+    `;
+  } catch (e) {
+    console.error('cargarResultadosEncuesta:', e);
+    cont.innerHTML = '<p style="color:var(--text-muted)">No se pudieron cargar los resultados.</p>';
   }
 }
 
