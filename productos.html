@@ -13,8 +13,11 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js"></script>
   <script src="auditoria-guard.js"></script>
-  <!-- SheetJS: lee el archivo .xlsx que el usuario sube para la importación masiva -->
+  <!-- SheetJS: lee el archivo .xlsx que el usuario sube para la importación masiva (y ahora también exporta el inventario) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- jsPDF + autoTable: exportar inventario en PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
 
   <!-- Estilos extra para modal de movimientos -->
   <style>
@@ -330,6 +333,7 @@
             <option value="">Todas las marcas</option>
           </select>
           <span class="results-count" id="resultadosCount">0 resultados</span>
+          <button class="btn btn-secondary btn-sm" onclick="abrirModalExportarInventario()" title="Exportar inventario">📤 Exportar inventario</button>
           <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">🔄 Actualizar</button>
         </div>
       </div>
@@ -382,6 +386,30 @@
 <!-- ============================================================
      MODAL: NUEVO / EDITAR PRODUCTO
      ============================================================ -->
+<div class="modal-overlay" id="modalExportarInventario" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Exportar inventario</h2>
+      <button class="modal-close" onclick="cerrarModalExportarInventario()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:16px">
+        Se exportarán <strong><span id="exp-inv-cantidad">0</span> productos</strong> (según los filtros que tengas aplicados). Elige el formato:
+      </p>
+      <div style="display:flex;gap:12px">
+        <button class="btn btn-secondary" style="flex:1;flex-direction:column;gap:6px;padding:18px 10px;height:auto" onclick="exportarInventarioPDF()">
+          <span style="font-size:26px">📄</span>
+          <span>PDF</span>
+        </button>
+        <button class="btn btn-secondary" style="flex:1;flex-direction:column;gap:6px;padding:18px 10px;height:auto" onclick="exportarInventarioExcel()">
+          <span style="font-size:26px">📊</span>
+          <span>Excel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalProducto" role="dialog" aria-modal="true" aria-labelledby="modalProductoTitle">
   <div class="modal modal-lg">
     <div class="modal-header">
