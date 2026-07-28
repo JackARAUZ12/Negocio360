@@ -265,12 +265,6 @@
       }
     } catch (eCombo) { console.warn('No se pudieron cargar los combos para Créditos:', eCombo); }
 
-    const selProd = document.getElementById('nc-producto-select');
-    if (selProd) {
-      selProd.innerHTML = '<option value="">Selecciona producto o servicio…</option>' +
-        CS.productos.map(p => `<option value="${p.id}">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}${p.tipo_precio==='escala' ? ' — 📊 Precio por escala' : ' — '+fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${p.stock_actual||0})` : ''}</option>`).join('');
-    }
-
     await loadEscalasDePrecios();
   }
 
@@ -570,26 +564,56 @@
   }
   window.toggleNCPrima = toggleNCPrima;
 
-  function agregarItemCredito() {
-    const selEl = document.getElementById('nc-producto-select');
-    const prodId = selEl.value;
-    const cantidad = parseFloat(document.getElementById('nc-producto-cantidad').value) || 1;
-    if (!prodId) { showToast('Selecciona un producto o servicio', 'error'); return; }
+  function buscarProductoCredito(q) {
+    const cont = document.getElementById('nc-producto-resultados');
+    if (!cont) return;
+    const texto = (q || '').trim().toLowerCase();
+    if (!texto) { cont.innerHTML = ''; return; }
+
+    const resultados = CS.productos.filter(p =>
+      (p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto)
+    ).slice(0, 10);
+
+    if (!resultados.length) { cont.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(texto)}"</div>`; return; }
+
+    cont.innerHTML = resultados.map(p => {
+      const esEscala = p.tipo_precio === 'escala';
+      return `
+      <div class="search-result-item" onclick="agregarItemCredito('${p.id}')">
+        <div class="sri-info">
+          <span class="sri-nombre">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}${esEscala ? ' <span style="font-size:10px;color:var(--accent)">📊 escala</span>' : ''}</span>
+          <span class="sri-meta">${p.esCombo ? 'Combo' : (p.tipo === 'servicio' ? 'Servicio' : 'Producto')}${p.sku ? ' · SKU: ' + esc(p.sku) : ''}${p.tipo === 'producto' ? ' · Stock: ' + (p.stock_actual || 0) : ''}</span>
+        </div>
+        <span class="sri-costo">${esEscala ? 'Elegir precio' : fmt(p.precio)}</span>
+      </div>`;
+    }).join('');
+  }
+  window.buscarProductoCredito = buscarProductoCredito;
+
+  function limpiarBusquedaProductoCredito() {
+    const s = document.getElementById('nc-producto-search'); if (s) s.value = '';
+    const r = document.getElementById('nc-producto-resultados'); if (r) r.innerHTML = '';
+  }
+
+  function agregarItemCredito(prodId) {
     const prod = CS.productos.find(p => p.id === prodId);
     if (!prod) return;
-    if (prod.tipo === 'producto' && cantidad > Number(prod.stock_actual||0)) {
-      showToast(`Stock insuficiente (disponible: ${prod.stock_actual||0})`, 'error'); return;
+    if (prod.tipo === 'producto' && Number(prod.stock_actual || 0) <= 0) {
+      showToast(`"${prod.nombre}" no tiene stock disponible`, 'error'); return;
     }
 
     // Si ya está en el carrito, no se vuelve a preguntar la escala: se respeta el
-    // precio ya elegido para esa línea (igual que en Ventas).
+    // precio ya elegido para esa línea (igual que en Ventas). Se agrega de a 1;
+    // la cantidad se ajusta después directo en la tabla de ítems.
     const yaEnCarrito = CS.ncItems.find(i => i.producto_id === prodId);
     if (!yaEnCarrito && prod.tipo_precio === 'escala') {
-      abrirSelectorEscalaCredito(prodId, cantidad);
+      abrirSelectorEscalaCredito(prodId, 1);
+      limpiarBusquedaProductoCredito();
       return;
     }
 
-    agregarItemCreditoConPrecio(prod, cantidad, null);
+    agregarItemCreditoConPrecio(prod, 1, null);
+    limpiarBusquedaProductoCredito();
   }
   window.agregarItemCredito = agregarItemCredito;
 
@@ -604,10 +628,30 @@
       escala_nombre: escalaElegida ? escalaElegida.nombre : null,
       esCombo: !!prod.esCombo,
     });
-    document.getElementById('nc-producto-cantidad').value = 1;
     renderNCItems();
     recalcularCredito();
   }
+
+  // Cambiar la cantidad directo en la tabla de ítems ya agregados (antes
+  // se fijaba solo al agregar; ahora que se agrega de a 1 con un clic,
+  // esto es lo que reemplaza al campo "Cantidad" que tenía el selector).
+  function actualizarCantidadItemCredito(idx, valor) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    let n = parseFloat(valor);
+    if (isNaN(n) || n <= 0) n = 1;
+    if (!it.esCombo) {
+      const prod = CS.productos.find(p => p.id === it.producto_id);
+      if (prod && prod.tipo === 'producto' && n > Number(prod.stock_actual||0)) {
+        showToast(`Stock insuficiente (disponible: ${prod.stock_actual||0})`, 'error');
+        n = Number(prod.stock_actual||0) || 1;
+      }
+    }
+    it.cantidad = n;
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.actualizarCantidadItemCredito = actualizarCantidadItemCredito;
 
   /* ===================================================
      SELECTOR DE ESCALA DE PRECIOS (crédito por venta)
@@ -664,7 +708,9 @@
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
         <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
-        <td>${it.cantidad}</td>
+        <td><input type="number" value="${it.cantidad}" min="0.01" step="0.01"
+              style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
+              onchange="actualizarCantidadItemCredito(${idx}, this.value)"/></td>
         <td>${fmt(it.precio)}</td>
         <td>${fmt(it.precio * it.cantidad)}</td>
         <td><button class="btn-ghost" style="padding:3px 8px" onclick="quitarItemCredito(${idx})">✕</button></td>
