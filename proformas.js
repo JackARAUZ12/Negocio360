@@ -39,6 +39,8 @@ let STATE = {
   perPage: 15,
 
   carrito: [],
+  escalasPorProducto: {}, // { producto_id: [{id,nombre,precio}, ...] }
+  escalaPendiente: null,  // { productoId } mientras el selector está abierto
   clienteSeleccionado: null,
   ivaActivo: false,
   ivaPorcentaje: 15,
@@ -206,10 +208,28 @@ async function guardarNuevoClienteProf() {
 async function loadProductos() {
   try {
     const { data } = await sbClient.from('productos')
-      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo')
+      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio')
       .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
     STATE.productos = data || [];
   } catch (e) { console.warn('loadProductos:', e); }
+  await loadEscalasCache();
+}
+
+// Mismo patrón que ventas.js: un producto con tipo_precio='escala' no
+// tiene un precio único, sino varios (mayoreo, detalle, etc.) guardados
+// en precios_escala. Se cargan todos de una vez para no consultar por
+// producto cada vez que se agrega al carrito.
+async function loadEscalasCache() {
+  try {
+    const { data } = await sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.userId).order('orden');
+    const map = {};
+    (data||[]).forEach(e => {
+      if (!map[e.producto_id]) map[e.producto_id] = [];
+      map[e.producto_id].push(e);
+    });
+    STATE.escalasPorProducto = map;
+  } catch (e) { STATE.escalasPorProducto = {}; }
 }
 
 /* =====================================================
@@ -224,27 +244,98 @@ function buscarProductoProf() {
     p.nombre.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.categoria||'').toLowerCase().includes(q)
   ).slice(0, 10);
   if (!filtrados.length) { res.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(q)}"</div>`; return; }
-  res.innerHTML = filtrados.map(p => `
+  res.innerHTML = filtrados.map(p => {
+    const esEscala = p.tipo_precio === 'escala';
+    let precioLabel;
+    if (esEscala) {
+      const escalas = STATE.escalasPorProducto[p.id] || [];
+      if (!escalas.length) precioLabel = 'Sin precios';
+      else {
+        const precios = escalas.map(e => Number(e.precio)||0);
+        const min = Math.min(...precios), max = Math.max(...precios);
+        precioLabel = min===max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+      }
+    } else {
+      precioLabel = fmt(p.precio);
+    }
+    return `
     <div class="search-result-item" onclick="agregarAlCarritoProf('${p.id}')">
       <div class="sri-info">
-        <span class="sri-nombre">${esc(p.nombre)}</span>
+        <span class="sri-nombre">${esc(p.nombre)}${esEscala?' <span style="font-size:10px;color:var(--accent)">📊 escala</span>':''}</span>
         <span class="sri-meta">${p.tipo==='servicio'?'Servicio':'Producto'}${p.sku?' · SKU: '+esc(p.sku):''}${p.tipo==='producto'?' · Stock: '+fmtNum(p.stock_actual):''}</span>
       </div>
-      <span class="sri-costo">${fmt(p.precio)}</span>
-    </div>`).join('');
+      <span class="sri-costo">${precioLabel}</span>
+    </div>`;
+  }).join('');
 }
 function agregarAlCarritoProf(productoId) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
+
+  // Si ya está en el carrito, no se vuelve a preguntar el precio: se
+  // respeta el que ya se eligió para esa línea (igual que en Ventas).
+  const yaEnCarrito = STATE.carrito.find(l => l.id === productoId);
+  if (!yaEnCarrito && p.tipo_precio === 'escala') {
+    abrirSelectorEscalaProf(productoId);
+    return;
+  }
+  agregarAlCarritoConPrecioProf(productoId, null);
+}
+
+/* ============================================================
+   SELECTOR DE ESCALA DE PRECIOS — igual que en Ventas: solo se
+   muestra para productos con tipo_precio='escala'. Los de precio
+   fijo nunca pasan por aquí, su flujo no cambia en nada.
+   ============================================================ */
+function abrirSelectorEscalaProf(productoId) {
+  const prod = STATE.productos.find(p => p.id === productoId);
+  const escalas = STATE.escalasPorProducto[productoId] || [];
+  if (!prod || !escalas.length) { showToast('Este producto no tiene precios de escala configurados', 'error'); return; }
+
+  STATE.escalaPendiente = { productoId };
+  document.getElementById('esc-precio-title-prof').textContent = prod.nombre;
+  document.getElementById('esc-precio-lista-prof').innerHTML = escalas.map((e,i) => `
+    <label class="esc-precio-opcion">
+      <input type="radio" name="esc-precio-radio-prof" value="${e.id}" ${i===0?'checked':''}/>
+      <span class="esc-precio-nombre">${esc(e.nombre)}</span>
+      <span class="esc-precio-valor">${fmt(e.precio)}</span>
+    </label>`).join('');
+  openModal('modal-escala-precio-prof');
+}
+function confirmarSeleccionEscalaProf() {
+  const pend = STATE.escalaPendiente;
+  if (!pend) return;
+  const radio = document.querySelector('input[name="esc-precio-radio-prof"]:checked');
+  if (!radio) { showToast('Selecciona un precio', 'error'); return; }
+  const escalas = STATE.escalasPorProducto[pend.productoId] || [];
+  const escalaElegida = escalas.find(e => e.id === radio.value);
+  if (!escalaElegida) return;
+  agregarAlCarritoConPrecioProf(pend.productoId, escalaElegida);
+  closeModal('modal-escala-precio-prof');
+  STATE.escalaPendiente = null;
+}
+function cerrarSelectorEscalaProf() {
+  closeModal('modal-escala-precio-prof');
+  STATE.escalaPendiente = null;
+}
+
+function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
+  const p = STATE.productos.find(x => x.id === productoId);
+  if (!p) return;
+  const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(p.precio||0);
+
   const existente = STATE.carrito.find(l => l.id === productoId);
   if (existente) { existente.cantidad++; recalcularLineaProf(existente); }
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
-      cantidad: 1, precio: Number(p.precio||0), descuento: 0 };
+      cantidad: 1, precio: precioUsar, descuento: 0,
+      escalaId: escalaElegida ? escalaElegida.id : null,
+      escalaNombre: escalaElegida ? escalaElegida.nombre : null };
     recalcularLineaProf(linea);
     STATE.carrito.push(linea);
   }
   renderCarritoProf();
+  showToast(`${p.nombre}${escalaElegida ? ' · '+escalaElegida.nombre : ''} agregado`);
   const sp = document.getElementById('np-producto-search'); if (sp) sp.value = '';
   const sr = document.getElementById('np-search-results');  if (sr) sr.innerHTML = '';
 }
@@ -262,7 +353,7 @@ function renderCarritoProf() {
   }
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
-      <td style="font-weight:500">${esc(l.nombre)}</td>
+      <td style="font-weight:500">${esc(l.nombre)}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
       <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'precio',this.value)" style="width:90px"/></td>
       <td><input type="number" class="carrito-input" value="${l.descuento}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'descuento',this.value)" style="width:80px"/></td>
@@ -367,6 +458,7 @@ function abrirEditarProforma(id) {
     STATE.carrito = (detalles||[]).map(d => ({
       id: d.producto_id, nombre: d.producto_nombre, sku: d.producto_sku, tipo: d.tipo_item,
       costo: Number(d.costo||0), cantidad: Number(d.cantidad), precio: Number(d.precio), descuento: Number(d.descuento||0),
+      escalaId: d.escala_id || null, escalaNombre: d.escala_nombre || null,
     }));
     STATE.carrito.forEach(recalcularLineaProf);
     renderCarritoProf();
@@ -439,7 +531,8 @@ async function guardarProforma() {
       auth_user_id: STATE.userId, proforma_id: proformaId,
       producto_id: l.id, producto_nombre: l.nombre, producto_sku: l.sku || null, tipo_item: l.tipo,
       cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: l.descuento || 0,
-      subtotal: l.subtotal, ganancia: l.ganancia,
+      subtotal: l.subtotal, ganancia: l.ganancia || 0,
+      escala_id: l.escalaId || null, escala_nombre: l.escalaNombre || null,
     }));
     const { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
     if (errDet) throw errDet;
