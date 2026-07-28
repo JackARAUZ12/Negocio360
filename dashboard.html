@@ -815,6 +815,53 @@
       cursor: pointer; transition: opacity 0.2s;
     }
     .anuncio-btn:hover { opacity: 0.9; }
+
+    /* ENCUESTA */
+    #encuesta-overlay {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: rgba(10,10,20,0.55); backdrop-filter: blur(3px);
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #encuesta-overlay.show { display: flex; }
+    .encuesta-box {
+      background: var(--bg-surface); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg); max-width: 420px; width: 100%;
+      overflow: hidden; animation: fadeInUp 0.25s ease; text-align: center;
+    }
+    .encuesta-header {
+      background: linear-gradient(135deg, var(--accent), var(--accent-4, var(--accent)));
+      padding: 24px; color: #fff;
+    }
+    .encuesta-badge {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em; background: rgba(255,255,255,0.2);
+      padding: 4px 10px; border-radius: 100px; margin-bottom: 10px;
+    }
+    .encuesta-pregunta { font-size: 16.5px; font-weight: 800; line-height: 1.4; }
+    .encuesta-body { padding: 22px 24px 6px; }
+    .encuesta-estrellas { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
+    .encuesta-estrella {
+      font-size: 34px; line-height: 1; cursor: pointer; user-select: none;
+      color: var(--border); transition: color 0.15s, transform 0.1s;
+    }
+    .encuesta-estrella:hover { transform: scale(1.12); }
+    .encuesta-estrella.activa { color: #F5A623; }
+    .encuesta-razon-label {
+      font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px; text-align: left;
+    }
+    .encuesta-razon {
+      width: 100%; min-height: 70px; resize: vertical; padding: 10px 12px;
+      border-radius: var(--radius-md); border: 1px solid var(--border);
+      background: var(--bg-app); color: var(--text-primary); font-family: inherit;
+      font-size: 13.5px; margin-bottom: 8px;
+    }
+    .encuesta-footer { padding: 14px 24px 22px; }
+    .encuesta-btn {
+      width: 100%; padding: 11px; border-radius: var(--radius-md); border: none;
+      background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .encuesta-btn:hover { opacity: 0.9; }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -2300,6 +2347,7 @@ async function initDashboard() {
     document.getElementById('app').style.display = 'flex';
 
     verificarAnuncioSistema(userId);
+    verificarEncuestaSistema(userId);
 
     await Promise.allSettled([
       loadKPIs(userId),
@@ -2356,6 +2404,11 @@ async function verificarAnuncioSistema(userId) {
 
 async function cerrarAnuncioSistema() {
   document.getElementById('anuncio-overlay').classList.remove('show');
+  if (_encuestaPendienteMostrar) {
+    const encuesta = _encuestaPendienteMostrar;
+    _encuestaPendienteMostrar = null;
+    setTimeout(() => mostrarEncuestaSistema(encuesta), 250);
+  }
   if (!_anuncioActivoId) return;
   try {
     const { data: { user } } = await sbClient.auth.getUser();
@@ -2365,6 +2418,81 @@ async function cerrarAnuncioSistema() {
   _anuncioActivoId = null;
 }
 window.cerrarAnuncioSistema = cerrarAnuncioSistema;
+
+/* =====================================================
+   ENCUESTA DEL SISTEMA
+   Igual patrón que el anuncio: se muestra la encuesta activa una
+   sola vez por usuario. El usuario puede calificar 1-5 estrellas +
+   dejar un comentario, o simplemente presionar "Aceptar" sin
+   calificar — en ambos casos se registra que ya respondió y no
+   vuelve a aparecer para él (a menos que se publique una nueva).
+===================================================== */
+let _encuestaActivaId = null;
+let _encuestaEstrellasElegidas = 0;
+let _encuestaPendienteMostrar = null; // se llena si el anuncio del sistema está abierto primero
+
+async function verificarEncuestaSistema(userId) {
+  try {
+    const { data: encuesta } = await sbClient.from('encuestas_sistema')
+      .select('id,pregunta').eq('activa', true)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (!encuesta) return;
+
+    const { data: respondida } = await sbClient.from('encuestas_respuestas')
+      .select('id').eq('encuesta_id', encuesta.id).eq('auth_user_id', userId).maybeSingle();
+    if (respondida) return;
+
+    // Si el anuncio del sistema está abierto, se espera a que el usuario
+    // lo cierre primero — así nunca se amontonan dos ventanas encima.
+    const anuncioAbierto = document.getElementById('anuncio-overlay')?.classList.contains('show');
+    if (anuncioAbierto) { _encuestaPendienteMostrar = encuesta; return; }
+
+    mostrarEncuestaSistema(encuesta);
+  } catch (e) { console.warn('verificarEncuestaSistema:', e); }
+}
+
+function mostrarEncuestaSistema(encuesta) {
+  _encuestaActivaId = encuesta.id;
+  _encuestaEstrellasElegidas = 0;
+  document.getElementById('encuesta-pregunta').textContent = encuesta.pregunta;
+  document.getElementById('encuesta-razon').value = '';
+  document.querySelectorAll('.encuesta-estrella').forEach(el => {
+    el.classList.remove('activa');
+    el.onclick = () => seleccionarEstrellaEncuesta(Number(el.dataset.valor));
+  });
+  document.getElementById('encuesta-overlay').classList.add('show');
+}
+
+function seleccionarEstrellaEncuesta(valor) {
+  _encuestaEstrellasElegidas = valor;
+  document.querySelectorAll('.encuesta-estrella').forEach(el => {
+    el.classList.toggle('activa', Number(el.dataset.valor) <= valor);
+  });
+}
+
+// "Aceptar": si calificó, se guarda la calificación + comentario. Si no
+// calificó nada, igual se guarda la respuesta (sin estrellas) para que
+// no se le vuelva a mostrar — cualquiera de las dos formas cierra la encuesta.
+async function responderEncuestaSistema() {
+  const overlay = document.getElementById('encuesta-overlay');
+  const encuestaId = _encuestaActivaId;
+  overlay.classList.remove('show');
+  if (!encuestaId) return;
+
+  try {
+    const { data: { user } } = await sbClient.auth.getUser();
+    if (!user) return;
+    const comentario = document.getElementById('encuesta-razon')?.value.trim() || null;
+    await sbClient.from('encuestas_respuestas').insert({
+      encuesta_id: encuestaId, auth_user_id: user.id,
+      estrellas: _encuestaEstrellasElegidas > 0 ? _encuestaEstrellasElegidas : null,
+      comentario: _encuestaEstrellasElegidas > 0 ? comentario : null,
+    });
+  } catch (e) { console.warn('responderEncuestaSistema:', e); }
+  _encuestaActivaId = null;
+  _encuestaEstrellasElegidas = 0;
+}
+window.responderEncuestaSistema = responderEncuestaSistema;
 
 /* =====================================================
    AUTH LISTENER
@@ -2398,6 +2526,31 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="anuncio-footer">
       <button class="anuncio-btn" onclick="cerrarAnuncioSistema()">Entendido</button>
+    </div>
+  </div>
+</div>
+<div id="encuesta-overlay">
+  <div class="encuesta-box">
+    <div class="encuesta-header">
+      <div class="encuesta-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Tu opinión nos importa
+      </div>
+      <div class="encuesta-pregunta" id="encuesta-pregunta">—</div>
+    </div>
+    <div class="encuesta-body">
+      <div class="encuesta-estrellas" id="encuesta-estrellas">
+        <span class="encuesta-estrella" data-valor="1">★</span>
+        <span class="encuesta-estrella" data-valor="2">★</span>
+        <span class="encuesta-estrella" data-valor="3">★</span>
+        <span class="encuesta-estrella" data-valor="4">★</span>
+        <span class="encuesta-estrella" data-valor="5">★</span>
+      </div>
+      <div class="encuesta-razon-label">¿Por qué esa puntuación? (opcional)</div>
+      <textarea class="encuesta-razon" id="encuesta-razon" placeholder="Cuéntanos qué te gusta o qué podríamos mejorar…"></textarea>
+    </div>
+    <div class="encuesta-footer">
+      <button class="encuesta-btn" onclick="responderEncuestaSistema()">Aceptar</button>
     </div>
   </div>
 </div>
