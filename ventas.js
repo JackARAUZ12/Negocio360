@@ -1721,6 +1721,7 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
       stockDisponible: Number(prod.stock_actual) || 0,
       escalaId:        escalaElegida.id,
       escalaNombre:    escalaElegida.nombre,
+      esCombo:         !!prod.esCombo,
     });
   }
 
@@ -2696,6 +2697,20 @@ async function procesarCodigoEscaneado(codigo) {
       prod = bySku || null;
     }
 
+    // Respaldo final: buscar en COMBOS por código de barras o SKU. Se
+    // reutiliza la ficha ya calculada en S.productosCache (stock y costo
+    // en vivo a partir de sus componentes), en vez de recalcular aquí.
+    if (!prod) {
+      let { data: combo } = await sb.from('combos')
+        .select('id').eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true).maybeSingle();
+      if (!combo) {
+        const { data: comboBySku } = await sb.from('combos')
+          .select('id').eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true).maybeSingle();
+        combo = comboBySku || null;
+      }
+      if (combo) prod = S.productosCache.find(p => p.id === combo.id && p.esCombo) || null;
+    }
+
     if (!prod) {
       showToast(`❌ No se encontró ningún producto con el código "${codigo}"`, 'error');
       if (status) status.textContent = '📡 Listo para escanear';
@@ -2757,6 +2772,7 @@ function agregarAlCarritoVR(prod) {
       precio:        Number(prod.precio)  || 0,
       costo:         Number(prod.costo)   || 0,
       stockDisponible: Number(prod.stock_actual) || 0,
+      esCombo:       !!prod.esCombo,
     });
   }
   renderCarritoVentaRapida();
@@ -2801,7 +2817,7 @@ function renderCarritoVentaRapida() {
   } else {
     tbody.innerHTML = VR.carrito.map(item => `
       <tr>
-        <td style="font-weight:500">${esc(item.nombre)}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}</td>
+        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
         <td>
           <input type="number" min="1" step="1" value="${item.cantidad}"
@@ -2912,10 +2928,11 @@ async function confirmarVentaRapida() {
     const detallesPayload = VR.carrito.map(item => ({
       auth_user_id:    S.userId,
       venta_id:        ventaId,
-      producto_id:     item.id,
+      producto_id:     item.esCombo ? null : item.id,
+      combo_id:        item.esCombo ? item.id : null,
       producto_nombre: item.nombre,
       producto_sku:    item.sku || null,
-      tipo_item:       item.tipo,
+      tipo_item:       item.esCombo ? 'combo' : item.tipo,
       cantidad:        item.cantidad,
       precio:          item.precio,
       costo:           item.costo,
@@ -2927,19 +2944,39 @@ async function confirmarVentaRapida() {
     }));
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
-      // Reintentar sin columnas escala_* por si la migración aún no llegó a este entorno
+      // Reintentar sin columnas escala_*/combo_id por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
 
-    // Actualizar stock (solo productos, no servicios)
-    for (const item of VR.carrito.filter(i => i.tipo==='producto')) {
+    // Actualizar stock (solo productos normales, no servicios ni combos)
+    for (const item of VR.carrito.filter(i => i.tipo==='producto' && !i.esCombo)) {
       const nuevoStock = Math.max(0, item.stockDisponible - item.cantidad);
       const { error: errStock } = await sb.from('productos')
         .update({ stock_actual: nuevoStock }).eq('id', item.id).eq('auth_user_id', S.userId);
       if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
+    }
+
+    // Combos vendidos: descontar el stock de CADA producto que los
+    // compone (cantidad del componente × cantidad de combos vendidos).
+    for (const combo of VR.carrito.filter(i => i.esCombo)) {
+      try {
+        const { data: itemsCombo } = await sb.from('combo_items')
+          .select('producto_id, cantidad').eq('combo_id', combo.id).eq('auth_user_id', S.userId);
+        for (const compItem of (itemsCombo || [])) {
+          const { data: prodActual } = await sb.from('productos')
+            .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
+          if (!prodActual) continue;
+          const descuentoTotal = Number(compItem.cantidad) * combo.cantidad;
+          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
+          await sb.from('productos').update({ stock_actual: nuevoStock })
+            .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
+        }
+      } catch (eCombo) {
+        console.warn('No se pudo descontar el stock de los componentes del combo:', combo.nombre, eCombo);
+      }
     }
 
     // Movimiento de caja (igual que en Nueva Venta)
