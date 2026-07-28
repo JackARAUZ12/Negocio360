@@ -114,6 +114,13 @@
         Chats Grupales
       </button>
 
+      <button class="nav-item" data-section="auditoria-global">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        Auditoría Global
+      </button>
+
       <div class="nav-divider"></div>
     </nav>
 
@@ -536,6 +543,85 @@
         </div>
       </div>
     </section>
+
+    <section class="page-content" id="page-auditoria-global">
+      <div class="page-header">
+        <h1>Auditoría Global</h1>
+        <p>Movimientos de todas las cuentas del sistema, con qué usuario los hizo y cuándo. Se eliminan automáticamente 24 horas después de registrarse, para ahorrar almacenamiento.</p>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card total">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="stat-value" id="ag-stat-total">—</div>
+          <div class="stat-label">Movimientos (últimas 24h)</div>
+        </div>
+        <div class="stat-card active">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="stat-value" id="ag-stat-cuentas">—</div>
+          <div class="stat-label">Cuentas con actividad</div>
+        </div>
+        <div class="stat-card suspended">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="stat-value" id="ag-stat-ultimo" style="font-size:14px">—</div>
+          <div class="stat-label">Último movimiento</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Movimientos</div>
+            <div class="card-subtitle">De todas las cuentas — solo las últimas 24 horas quedan guardadas</div>
+          </div>
+          <button class="btn-icon btn-ghost" onclick="loadAuditoriaGlobal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Actualizar
+          </button>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            <select id="ag-filtro-cuenta" class="form-control" style="width:auto;min-width:180px" onchange="renderTablaAuditoriaGlobal()">
+              <option value="">Todas las cuentas</option>
+            </select>
+            <select id="ag-filtro-accion" class="form-control" style="width:auto;min-width:160px" onchange="renderTablaAuditoriaGlobal()">
+              <option value="">Todas las acciones</option>
+              <option value="INSERT">Creaciones</option>
+              <option value="UPDATE">Ediciones</option>
+              <option value="DELETE">Eliminaciones</option>
+            </select>
+            <input type="search" id="ag-search" class="form-control" style="flex:1;min-width:200px" placeholder="Buscar por negocio, módulo o resumen…" autocomplete="off" oninput="renderTablaAuditoriaGlobal()" />
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Negocio / Cuenta</th>
+                  <th>Usuario</th>
+                  <th>Módulo</th>
+                  <th>Acción</th>
+                  <th>Resumen</th>
+                </tr>
+              </thead>
+              <tbody id="auditoria-global-tbody">
+                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="page-content" id="page-codes">
       <div class="page-header">
         <h1>Códigos de Acceso</h1>
