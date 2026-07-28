@@ -494,7 +494,7 @@ async function cargarCombos() {
     if (ids.length) {
       const [{ data: items }, { data: escalas }] = await Promise.all([
         supabaseClient.from('combo_items')
-          .select('id, combo_id, producto_id, cantidad, productos(nombre, costo, activo)')
+          .select('id, combo_id, producto_id, cantidad, precio_unitario, escala_id, escala_nombre, productos(nombre, costo, activo)')
           .eq('auth_user_id', STATE.user.id).in('combo_id', ids),
         supabaseClient.from('combo_precios_escala')
           .select('id, combo_id, nombre, precio, orden')
@@ -592,6 +592,9 @@ function abrirEditarCombo(id) {
     nombre: it.productos?.nombre || 'Producto eliminado',
     costo: Number(it.productos?.costo || 0),
     cantidad: Number(it.cantidad) || 1,
+    precio: Number(it.precio_unitario || 0),
+    escalaId: it.escala_id || null,
+    escalaNombre: it.escala_nombre || null,
   }));
   const escalas = STATE.comboEscalasPorCombo[id] || [];
   STATE.comboFormEscalas = escalas.map(e => ({ nombre: e.nombre, precio: e.precio }));
@@ -677,12 +680,62 @@ function buscarProductoParaCombo(q) {
       </div>`).join('')}
   </div>`;
 }
+let _comboEscalaPendiente = null; // producto mientras el selector de precio está abierto
+
 function agregarProductoACombo(productoId) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
-  STATE.comboFormItems.push({ producto_id: p.id, nombre: p.nombre, costo: Number(p.costo || 0), cantidad: 1 });
   $('comboProductoSearch').value = '';
   $('comboProductoResultados').innerHTML = '';
+
+  // Si el producto tiene escala de precios, se pregunta con cuál se
+  // agrega al combo (es solo de referencia — el combo sigue teniendo
+  // su propio precio de venta, fijo o de escala).
+  if (p.tipo_precio === 'escala') {
+    abrirSelectorEscalaComponenteCombo(p);
+    return;
+  }
+  agregarItemComboConPrecio(p, { precio: Number(p.precio || 0), escalaId: null, escalaNombre: null });
+}
+
+function abrirSelectorEscalaComponenteCombo(producto) {
+  const escalas = STATE.escalasPorProducto[producto.id] || [];
+  if (!escalas.length) {
+    // Tiene el modo "escala" activado pero sin ningún precio cargado
+    // todavía: se agrega igual, sin precio individual definido.
+    agregarItemComboConPrecio(producto, { precio: 0, escalaId: null, escalaNombre: null });
+    return;
+  }
+  _comboEscalaPendiente = producto;
+  $('escalaComponenteNombreProducto').textContent = producto.nombre;
+  $('escalaComponenteOpciones').innerHTML = escalas.map((e, i) => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-md);cursor:pointer;margin-bottom:8px">
+      <input type="radio" name="escalaComponenteRadio" value="${e.id}" ${i===0?'checked':''} style="accent-color:var(--accent);width:16px;height:16px"/>
+      <span style="flex:1;font-size:13.5px;font-weight:500">${escHtml(e.nombre)}</span>
+      <span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${fmtMoney(e.precio)}</span>
+    </label>`).join('');
+  $('modalEscalaComponenteCombo').classList.add('open');
+}
+function cerrarModalEscalaComponenteCombo() {
+  $('modalEscalaComponenteCombo').classList.remove('open');
+  _comboEscalaPendiente = null;
+}
+function confirmarEscalaComponenteCombo() {
+  const producto = _comboEscalaPendiente;
+  if (!producto) return;
+  const radio = document.querySelector('input[name="escalaComponenteRadio"]:checked');
+  if (!radio) { showToast('warning', 'Falta elegir', 'Selecciona un precio para continuar.'); return; }
+  const escalas = STATE.escalasPorProducto[producto.id] || [];
+  const elegida = escalas.find(e => e.id === radio.value);
+  if (!elegida) return;
+  agregarItemComboConPrecio(producto, { precio: Number(elegida.precio || 0), escalaId: elegida.id, escalaNombre: elegida.nombre });
+  cerrarModalEscalaComponenteCombo();
+}
+function agregarItemComboConPrecio(p, precioInfo) {
+  STATE.comboFormItems.push({
+    producto_id: p.id, nombre: p.nombre, costo: Number(p.costo || 0), cantidad: 1,
+    precio: precioInfo.precio, escalaId: precioInfo.escalaId, escalaNombre: precioInfo.escalaNombre,
+  });
   renderComboItemsBody();
 }
 function actualizarCantidadComboItem(i, valor) {
@@ -703,8 +756,10 @@ function renderComboItemsBody() {
   } else {
     cont.innerHTML = STATE.comboFormItems.map((it, i) => `
       <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--bg-app);border-radius:var(--radius-sm);margin-bottom:6px">
-        <div style="flex:1;font-size:13px;font-weight:500">${escHtml(it.nombre)}</div>
-        <div style="font-size:11.5px;color:var(--text-muted)">${fmtMoney(it.costo)} c/u</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">${escHtml(it.nombre)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">Costo: ${fmtMoney(it.costo)} c/u · Precio: ${fmtMoney(it.precio)} c/u${it.escalaNombre ? ` <span style="color:var(--accent)">(${escHtml(it.escalaNombre)})</span>` : ''}</div>
+        </div>
         <input type="number" class="form-input" style="width:70px" min="1" step="1" value="${it.cantidad}"
                oninput="actualizarCantidadComboItem(${i}, this.value)" />
         <div style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
@@ -769,6 +824,7 @@ async function guardarCombo() {
     await supabaseClient.from('combo_items').insert(
       STATE.comboFormItems.map(it => ({
         auth_user_id: STATE.user.id, combo_id: comboId, producto_id: it.producto_id, cantidad: it.cantidad,
+        precio_unitario: it.precio || 0, escala_id: it.escalaId || null, escala_nombre: it.escalaNombre || null,
       }))
     );
 
@@ -809,14 +865,15 @@ function verDetalleCombo(id) {
     </div>
     <div class="form-section-title">Productos incluidos</div>
     <table class="data-table" style="width:100%;margin-bottom:16px">
-      <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Subtotal costo</th></tr></thead>
+      <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Precio venta individual</th><th>Subtotal costo</th></tr></thead>
       <tbody>
         ${items.map(it => `<tr>
           <td>${escHtml(it.productos?.nombre || 'Producto eliminado')}</td>
           <td>${fmtNum(it.cantidad)}</td>
           <td>${fmtMoney(it.productos?.costo)}</td>
+          <td>${fmtMoney(it.precio_unitario)}${it.escala_nombre ? ` <span style="font-size:11px;color:var(--accent)">(${escHtml(it.escala_nombre)})</span>` : ''}</td>
           <td>${fmtMoney((Number(it.cantidad)||0) * Number(it.productos?.costo || 0))}</td>
-        </tr>`).join('') || '<tr><td colspan="4">Sin productos</td></tr>'}
+        </tr>`).join('') || '<tr><td colspan="5">Sin productos</td></tr>'}
       </tbody>
     </table>
     <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin-bottom:12px">
