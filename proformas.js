@@ -210,7 +210,43 @@ async function loadProductos() {
     const { data } = await sbClient.from('productos')
       .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio')
       .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
-    STATE.productos = data || [];
+    const productos = data || [];
+
+    // Combos: se agregan al mismo catálogo de búsqueda/carrito que los
+    // productos (mismo patrón que en ventas.js) — tipo:'producto' para
+    // que las validaciones de stock ya existentes se apliquen igual,
+    // marcados con esCombo:true para tratarlos distinto solo al
+    // convertir la proforma en venta.
+    let combosCache = [];
+    try {
+      const { data: combos } = await sbClient.from('combos')
+        .select('id,nombre,sku,codigo_barras,precio,costo,tipo_precio,activo')
+        .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+      if (combos && combos.length) {
+        const comboIds = combos.map(c => c.id);
+        const { data: items } = await sbClient.from('combo_items')
+          .select('combo_id, cantidad, productos(stock_actual, costo)').in('combo_id', comboIds);
+        const itemsPorCombo = {};
+        (items||[]).forEach(it => {
+          if (!itemsPorCombo[it.combo_id]) itemsPorCombo[it.combo_id] = [];
+          itemsPorCombo[it.combo_id].push(it);
+        });
+        combosCache = combos.map(c => {
+          const suyos = itemsPorCombo[c.id] || [];
+          const stockDisponible = suyos.length
+            ? Math.min(...suyos.map(it => Math.floor(Number(it.productos?.stock_actual || 0) / (Number(it.cantidad) || 1))))
+            : 0;
+          const costoActual = suyos.reduce((s, it) => s + Number(it.cantidad||0) * Number(it.productos?.costo || 0), 0);
+          return {
+            id: c.id, nombre: c.nombre, sku: c.sku || c.codigo_barras || '',
+            tipo: 'producto', precio: c.precio, costo: costoActual, tipo_precio: c.tipo_precio,
+            stock_actual: stockDisponible, activo: c.activo, esCombo: true,
+          };
+        });
+      }
+    } catch (eCombo) { console.warn('No se pudieron cargar los combos para Proformas:', eCombo); }
+
+    STATE.productos = [...productos, ...combosCache];
   } catch (e) { console.warn('loadProductos:', e); }
   await loadEscalasCache();
 }
@@ -228,6 +264,16 @@ async function loadEscalasCache() {
       if (!map[e.producto_id]) map[e.producto_id] = [];
       map[e.producto_id].push(e);
     });
+    // Escalas de precio de COMBOS: mismo mapa (llaves de combo nunca
+    // chocan con llaves de producto).
+    try {
+      const { data: comboEscalas } = await sbClient.from('combo_precios_escala')
+        .select('id,combo_id,nombre,precio,orden').eq('auth_user_id', STATE.userId).order('orden');
+      (comboEscalas||[]).forEach(e => {
+        if (!map[e.combo_id]) map[e.combo_id] = [];
+        map[e.combo_id].push(e);
+      });
+    } catch (eCombo) { /* si falla, los combos con escala solo no muestran precios */ }
     STATE.escalasPorProducto = map;
   } catch (e) { STATE.escalasPorProducto = {}; }
 }
@@ -261,8 +307,8 @@ function buscarProductoProf() {
     return `
     <div class="search-result-item" onclick="agregarAlCarritoProf('${p.id}')">
       <div class="sri-info">
-        <span class="sri-nombre">${esc(p.nombre)}${esEscala?' <span style="font-size:10px;color:var(--accent)">📊 escala</span>':''}</span>
-        <span class="sri-meta">${p.tipo==='servicio'?'Servicio':'Producto'}${p.sku?' · SKU: '+esc(p.sku):''}${p.tipo==='producto'?' · Stock: '+fmtNum(p.stock_actual):''}</span>
+        <span class="sri-nombre">${esc(p.nombre)}${p.esCombo?' <span style="font-size:10px;color:var(--accent-4,var(--accent))">📦 combo</span>':''}${esEscala?' <span style="font-size:10px;color:var(--accent)">📊 escala</span>':''}</span>
+        <span class="sri-meta">${p.esCombo?'Combo':(p.tipo==='servicio'?'Servicio':'Producto')}${p.sku?' · SKU: '+esc(p.sku):''}${p.tipo==='producto'?' · Stock: '+fmtNum(p.stock_actual):''}</span>
       </div>
       <span class="sri-costo">${precioLabel}</span>
     </div>`;
@@ -328,7 +374,7 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   if (existente) { existente.cantidad++; recalcularLineaProf(existente); }
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
-      cantidad: 1, precio: precioUsar, descuento: 0,
+      cantidad: 1, precio: precioUsar, descuento: 0, esCombo: !!p.esCombo,
       escalaId: escalaElegida ? escalaElegida.id : null,
       escalaNombre: escalaElegida ? escalaElegida.nombre : null };
     recalcularLineaProf(linea);
@@ -353,7 +399,7 @@ function renderCarritoProf() {
   }
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
-      <td style="font-weight:500">${esc(l.nombre)}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}</td>
+      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
       <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'precio',this.value)" style="width:90px"/></td>
       <td><input type="number" class="carrito-input" value="${l.descuento}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'descuento',this.value)" style="width:80px"/></td>
@@ -456,7 +502,8 @@ function abrirEditarProforma(id) {
   (async () => {
     const { data: detalles } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
     STATE.carrito = (detalles||[]).map(d => ({
-      id: d.producto_id, nombre: d.producto_nombre, sku: d.producto_sku, tipo: d.tipo_item,
+      id: d.combo_id || d.producto_id, nombre: d.producto_nombre, sku: d.producto_sku,
+      tipo: d.tipo_item === 'combo' ? 'producto' : d.tipo_item, esCombo: d.tipo_item === 'combo' || !!d.combo_id,
       costo: Number(d.costo||0), cantidad: Number(d.cantidad), precio: Number(d.precio), descuento: Number(d.descuento||0),
       escalaId: d.escala_id || null, escalaNombre: d.escala_nombre || null,
     }));
@@ -529,12 +576,19 @@ async function guardarProforma() {
 
     const detallesPayload = STATE.carrito.map(l => ({
       auth_user_id: STATE.userId, proforma_id: proformaId,
-      producto_id: l.id, producto_nombre: l.nombre, producto_sku: l.sku || null, tipo_item: l.tipo,
+      producto_id: l.esCombo ? null : l.id, combo_id: l.esCombo ? l.id : null,
+      producto_nombre: l.nombre, producto_sku: l.sku || null, tipo_item: l.esCombo ? 'combo' : l.tipo,
       cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: l.descuento || 0,
       subtotal: l.subtotal, ganancia: l.ganancia || 0,
       escala_id: l.escalaId || null, escala_nombre: l.escalaNombre || null,
     }));
-    const { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
+    let { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
+    if (errDet) {
+      // Reintentar sin combo_id por si la migración aún no llegó a este entorno
+      ({ error: errDet } = await sbClient.from('proforma_detalles').insert(
+        detallesPayload.map(({ combo_id, ...resto }) => resto)
+      ));
+    }
     if (errDet) throw errDet;
 
     closeModal('modal-nueva-proforma');
@@ -829,20 +883,46 @@ async function confirmarConvertirAVenta() {
 
     // ---- D: detalles de venta ----
     const detallesVenta = detalles.map(d => ({
-      auth_user_id: STATE.userId, venta_id: ventaId, producto_id: d.producto_id,
+      auth_user_id: STATE.userId, venta_id: ventaId, producto_id: d.producto_id, combo_id: d.combo_id || null,
       producto_nombre: d.producto_nombre, producto_sku: d.producto_sku, tipo_item: d.tipo_item,
       cantidad: d.cantidad, precio: d.precio, costo: d.costo, descuento: d.descuento,
       subtotal: d.subtotal, ganancia: d.ganancia, escala_id: d.escala_id, escala_nombre: d.escala_nombre,
     }));
-    const { error: errDetV } = await sbClient.from('venta_detalles').insert(detallesVenta);
+    let { error: errDetV } = await sbClient.from('venta_detalles').insert(detallesVenta);
+    if (errDetV) {
+      // Reintentar sin combo_id por si la migración aún no llegó a este entorno
+      ({ error: errDetV } = await sbClient.from('venta_detalles').insert(
+        detallesVenta.map(({ combo_id, ...resto }) => resto)
+      ));
+    }
     if (errDetV) throw errDetV;
 
-    // ---- E: descontar stock (solo productos) ----
+    // ---- E: descontar stock (productos normales) ----
     for (const d of detalles.filter(x => x.tipo_item === 'producto' && x.producto_id)) {
       const { data: prod } = await sbClient.from('productos').select('stock_actual').eq('id', d.producto_id).maybeSingle();
       if (prod) {
         const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - Number(d.cantidad));
         await sbClient.from('productos').update({ stock_actual: nuevoStock }).eq('id', d.producto_id).eq('auth_user_id', STATE.userId);
+      }
+    }
+
+    // ---- E-2: combos — descontar el stock de CADA producto que los
+    // compone (cantidad del componente × cantidad de combos vendidos).
+    for (const d of detalles.filter(x => x.tipo_item === 'combo' && x.combo_id)) {
+      try {
+        const { data: itemsCombo } = await sbClient.from('combo_items')
+          .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', STATE.userId);
+        for (const compItem of (itemsCombo || [])) {
+          const { data: prodActual } = await sbClient.from('productos')
+            .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', STATE.userId).maybeSingle();
+          if (!prodActual) continue;
+          const descuentoTotal = Number(compItem.cantidad) * Number(d.cantidad);
+          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
+          await sbClient.from('productos').update({ stock_actual: nuevoStock })
+            .eq('id', compItem.producto_id).eq('auth_user_id', STATE.userId);
+        }
+      } catch (eCombo) {
+        console.warn('No se pudo descontar el stock de los componentes del combo:', d.producto_nombre, eCombo);
       }
     }
 
