@@ -1014,12 +1014,43 @@ async function confirmarConvertirAVenta() {
    de la proforma (mismo estilo de marca que usa el sistema:
    franja de color con el nombre del negocio + tabla de ítems).
 ===================================================== */
-function generarPDFProforma(p, items, cliente) {
+/* ---- LOGO EN PDF ----
+   Descarga el logo del negocio (Personalización/Editar Perfil) y lo
+   convierte a base64 para dibujarlo con doc.addImage(). Si falla por
+   cualquier motivo (sin logo, SVG no soportado, error de red), se
+   devuelve null y el PDF se genera igual, solo sin la imagen.
+===================================================== */
+async function cargarLogoParaPDF() {
+  const url = STATE.empresaConfig?.logo_principal_url || STATE.empresaConfig?.logo_url;
+  if (!url) return null;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const m = /^data:image\/(\w+);base64,/.exec(dataUrl || '');
+    const tipo = m ? m[1].toLowerCase() : '';
+    const formato = tipo === 'png' ? 'PNG' : (tipo === 'jpeg' || tipo === 'jpg') ? 'JPEG' : tipo === 'webp' ? 'WEBP' : null;
+    if (!formato) return null;
+    return { dataUrl, formato };
+  } catch (e) {
+    console.warn('No se pudo cargar el logo para el PDF:', e);
+    return null;
+  }
+}
+
+async function generarPDFProforma(p, items, cliente) {
   if (!window.jspdf) throw new Error('jsPDF no está disponible');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
   const M = 14;
+  const logo = await cargarLogoParaPDF();
 
   const biz = {
     nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
@@ -1031,11 +1062,15 @@ function generarPDFProforma(p, items, cliente) {
   // ---- Encabezado (franja de color, igual que el resto de comprobantes del sistema) ----
   doc.setFillColor(108, 99, 255);
   doc.rect(0, 0, W, 38, 'F');
+  let textoX = M;
+  if (logo) {
+    try { doc.addImage(logo.dataUrl, logo.formato, M, 8, 22, 22); textoX = M + 27; } catch (e) { /* si falla, se sigue sin logo */ }
+  }
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(20); doc.setFont(undefined, 'bold');
-  doc.text(biz.nombre, M, 20);
+  doc.text(biz.nombre, textoX, 20);
   doc.setFontSize(11); doc.setFont(undefined, 'normal');
-  doc.text('Proforma / Cotización', M, 29);
+  doc.text('Proforma / Cotización', textoX, 29);
   doc.setFontSize(9);
   doc.text(`N.º ${p.numero_proforma || '—'}`, W - M, 18, { align: 'right' });
   doc.text(`Fecha: ${fmtFecha(p.fecha)}`, W - M, 24, { align: 'right' });
@@ -1143,7 +1178,7 @@ async function descargarPdfProformaActual() {
       const { data } = await sbClient.from('clientes').select('telefono,correo').eq('id', p.cliente_id).maybeSingle();
       cliente = data || null;
     }
-    const doc = generarPDFProforma(p, items, cliente);
+    const doc = await generarPDFProforma(p, items, cliente);
     doc.save(`Proforma_${(p.numero_proforma||'proforma').replace(/[^\w\-]/g,'')}.pdf`);
   } catch (e) {
     console.error('descargarPdfProformaActual:', e);
