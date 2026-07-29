@@ -2688,14 +2688,14 @@ function abrirSelectorProductoDuplicado(productos, codigo) {
       <input type="radio" name="dup-producto-radio" value="${i}" ${i===0?'checked':''}/>
       <span style="flex:1">
         <div style="font-weight:600;font-size:13.5px">${esc(p.nombre)}${p.esCombo?' <span style="font-size:10px;color:var(--accent-4,var(--accent))">📦 combo</span>':''}</div>
-        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku?'SKU: '+esc(p.sku)+' · ':''}${p.tipo==='producto'?'Stock: '+fmtNum(p.stock_actual||0):'Servicio'}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku?'SKU: '+esc(p.sku)+' · ':''}${p.tipo==='producto'?'Stock: '+Number(p.stock_actual||0).toLocaleString('es-NI',{maximumFractionDigits:2}):'Servicio'}</div>
       </span>
       <span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${fmt(p.precio)}</span>
     </label>`).join('');
-  document.getElementById('modal-producto-duplicado').classList.add('show');
+  openModal('modal-producto-duplicado');
 }
 function cerrarSelectorProductoDuplicado() {
-  document.getElementById('modal-producto-duplicado').classList.remove('show');
+  closeModal('modal-producto-duplicado');
   _duplicadoPendiente = null;
   enfocarScannerVR();
 }
@@ -2706,7 +2706,7 @@ function confirmarSeleccionProductoDuplicado() {
   if (!radio) { showToast('Selecciona un producto', 'error'); return; }
   const prod = pend.productos[Number(radio.value)];
   if (!prod) return;
-  document.getElementById('modal-producto-duplicado').classList.remove('show');
+  closeModal('modal-producto-duplicado');
   _duplicadoPendiente = null;
   continuarEscaneoConProducto(prod);
 }
