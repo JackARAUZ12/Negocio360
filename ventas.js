@@ -247,17 +247,18 @@ async function loadEmpresaConfig(userId) {
     if (data) {
       S.empresaConfig = data;
       S.moneda = data.moneda || 'C$';
-      const bizName = data.nombre_negocio || data.nombre || 'Negocio360';
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Negocio360';
       const lt = document.getElementById('sidebar-logo-text');
       if (lt) lt.textContent = bizName;
-      if (data.color_primario) {
-        document.documentElement.style.setProperty('--accent', data.color_primario);
-        document.documentElement.style.setProperty('--accent-soft', data.color_primario+'22');
-        document.documentElement.style.setProperty('--border-focus', data.color_primario);
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col+'22');
+        document.documentElement.style.setProperty('--border-focus', col);
       }
-      if (data.logo_url) {
+      if (data.logo_principal_url || data.logo_url) {
         const li = document.querySelector('.logo-icon');
-        if (li) li.innerHTML = `<img src="${data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
       }
       // Actualizar símbolos de moneda en KPIs
       document.querySelectorAll('[id^="sym-"]').forEach(el => el.textContent = S.moneda);
