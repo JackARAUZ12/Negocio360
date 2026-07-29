@@ -287,14 +287,15 @@ async function loadEmpresaConfig(userId) {
       const biz = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
       const lt  = document.getElementById('sidebar-logo-text');
       if (lt) lt.textContent = biz;
-      if (data.color_primario) {
-        document.documentElement.style.setProperty('--accent', data.color_primario);
-        document.documentElement.style.setProperty('--accent-soft', data.color_primario+'22');
-        document.documentElement.style.setProperty('--border-focus', data.color_primario);
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col+'22');
+        document.documentElement.style.setProperty('--border-focus', col);
       }
-      if (data.logo_url) {
+      if (data.logo_principal_url || data.logo_url) {
         const li = document.querySelector('.logo-icon');
-        if (li) li.innerHTML = `<img src="${data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
       }
     }
   } catch(e) { console.warn('loadEmpresaConfig:', e); }
