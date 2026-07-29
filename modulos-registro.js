@@ -67,6 +67,8 @@
                                desc: 'Colores, logo y tema visual del negocio.' },
     'proformas.html':        { key: 'proformas',        label: 'Proformas',           icon: '📄', obligatorio: false,
                                desc: 'Cotizaciones para clientes, convertibles a venta con un clic.' },
+    'codigos-barras.html':   { key: 'codigos_barras',    label: 'Códigos de Barras',   icon: '📊', obligatorio: false,
+                               desc: 'Crear, administrar e imprimir códigos de barras (Code 128), de forma independiente.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
