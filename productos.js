@@ -2025,22 +2025,14 @@ async function confirmarEliminarProducto(id) {
   } catch (e) { /* si falla esta verificación, se sigue con la confirmación normal */ }
 
   const confirmado = confirm(
-    `¿Eliminar "${p.nombre}" definitivamente?\n\nEsta acción no se puede deshacer y restará su valor del inventario.${advertenciaCombo}`
+    `¿Eliminar "${p.nombre}" definitivamente?\n\nRestará su valor del inventario. Su historial en Compras y Créditos se conserva (con su nombre y datos tal como quedaron), esta acción solo no se puede deshacer para el producto en sí.${advertenciaCombo}`
   );
   if (!confirmado) return;
 
   try {
     const { error } = await supabaseClient.from('productos').delete()
       .eq('id', id).eq('auth_user_id', STATE.user.id);
-    if (error) {
-      // Restricción de la base de datos: no se puede eliminar un producto
-      // que ya tiene compras registradas (para no perder ese historial).
-      if (error.code === '23503') {
-        showToast('error', 'No se puede eliminar', 'Este producto ya tiene compras registradas en su historial. Márcalo como "Inactivo" en vez de eliminarlo.');
-        return;
-      }
-      throw error;
-    }
+    if (error) throw error;
     showToast('success', 'Producto eliminado', `"${p.nombre}" se eliminó correctamente.`);
     await cargarProductos(); // recarga la lista y recalcula el valor de inventario
   } catch (e) {
