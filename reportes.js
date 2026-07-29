@@ -2499,6 +2499,37 @@ async function restaurarConfigExportar() {
   await guardarConfigExportar();
 }
 
+/* ---- LOGO EN PDF ----
+   Descarga el logo del negocio (guardado en Personalización/Editar
+   Perfil) y lo convierte a base64 para poder dibujarlo con
+   doc.addImage(). Si falla por cualquier motivo (sin logo, formato
+   no soportado como SVG, error de red), se devuelve null y el PDF
+   se sigue generando normal, solo sin la imagen — nunca rompe la
+   exportación por esto. */
+async function cargarLogoParaPDF() {
+  const url = R.empresaConfig?.logo_principal_url || R.empresaConfig?.logo_url;
+  if (!url) return null;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const m = /^data:image\/(\w+);base64,/.exec(dataUrl || '');
+    const tipo = m ? m[1].toLowerCase() : '';
+    const formato = tipo === 'png' ? 'PNG' : (tipo === 'jpeg' || tipo === 'jpg') ? 'JPEG' : tipo === 'webp' ? 'WEBP' : null;
+    if (!formato) return null; // SVG u otro formato que jsPDF no puede dibujar directo
+    return { dataUrl, formato };
+  } catch (e) {
+    console.warn('No se pudo cargar el logo para el PDF:', e);
+    return null;
+  }
+}
+
 function docHeader(tipo) {
   // FIX: priorizar nombre_comercial (campo real guardado por personalizacion.html)
   const biz    = R.empresaConfig?.nombre_comercial || R.empresaConfig?.nombre_negocio || 'Mi Negocio';
@@ -2526,13 +2557,18 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
   const h    = docHeader(tipo);
   const W    = doc.internal.pageSize.getWidth();
   const esGeneral = tipo === 'general';
+  const logo = await cargarLogoParaPDF();
 
   function pintarCabecera() {
     doc.setFillColor(90, 90, 244);
     doc.rect(0,0,W,20,'F');
+    let textoX = 10;
+    if (logo) {
+      try { doc.addImage(logo.dataUrl, logo.formato, 8, 3, 14, 14); textoX = 26; } catch (e) { /* si falla, se sigue sin logo */ }
+    }
     doc.setTextColor(255,255,255);
     doc.setFontSize(14); doc.setFont(undefined,'bold');
-    doc.text(`${h.biz} — Reporte ${esGeneral ? 'General (Completo)' : `de ${tituloTipo(tipo)}`}`, 10, 13);
+    doc.text(`${h.biz} — Reporte ${esGeneral ? 'General (Completo)' : `de ${tituloTipo(tipo)}`}`, textoX, 13);
     doc.setFontSize(9); doc.setFont(undefined,'normal');
     doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora}`, W-10, 13, { align:'right' });
   }
