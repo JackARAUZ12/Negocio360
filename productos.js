@@ -1311,6 +1311,7 @@ function renderTabla() {
               <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
               <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
               <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
+              <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
             </div>
             ${movBtn}
           </div>
@@ -2006,6 +2007,48 @@ function cerrarDetalle() {
 // ============================================================
 // DUPLICAR
 // ============================================================
+/* ---------- Eliminar producto (individual, con confirmación) ---------- */
+async function confirmarEliminarProducto(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  // Aviso extra si el producto está metido dentro de algún combo — borrarlo
+  // rompería ese combo en silencio (la relación se elimina en cascada).
+  let advertenciaCombo = '';
+  try {
+    const { data: enCombos } = await supabaseClient
+      .from('combo_items').select('combos(nombre)').eq('producto_id', id);
+    const nombresCombos = [...new Set((enCombos || []).map(it => it.combos?.nombre).filter(Boolean))];
+    if (nombresCombos.length) {
+      advertenciaCombo = `\n\n⚠️ Este producto forma parte de: ${nombresCombos.join(', ')}. Si lo eliminas, se quitará también de ese/esos combo(s).`;
+    }
+  } catch (e) { /* si falla esta verificación, se sigue con la confirmación normal */ }
+
+  const confirmado = confirm(
+    `¿Eliminar "${p.nombre}" definitivamente?\n\nEsta acción no se puede deshacer y restará su valor del inventario.${advertenciaCombo}`
+  );
+  if (!confirmado) return;
+
+  try {
+    const { error } = await supabaseClient.from('productos').delete()
+      .eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) {
+      // Restricción de la base de datos: no se puede eliminar un producto
+      // que ya tiene compras registradas (para no perder ese historial).
+      if (error.code === '23503') {
+        showToast('error', 'No se puede eliminar', 'Este producto ya tiene compras registradas en su historial. Márcalo como "Inactivo" en vez de eliminarlo.');
+        return;
+      }
+      throw error;
+    }
+    showToast('success', 'Producto eliminado', `"${p.nombre}" se eliminó correctamente.`);
+    await cargarProductos(); // recarga la lista y recalcula el valor de inventario
+  } catch (e) {
+    console.error('confirmarEliminarProducto:', e);
+    showToast('error', 'Error al eliminar', e.message || 'Intenta de nuevo.');
+  }
+}
+
 async function duplicarProducto(id) {
   const p = STATE.productos.find(x => x.id === id);
   if (!p) return;
