@@ -2676,71 +2676,129 @@ function initScannerVR() {
   VR.scannerListo = true;
 }
 
+// Se guarda aquí el código escaneado mientras el cajero decide cuál de
+// los productos duplicados es el correcto.
+let _duplicadoPendiente = null; // { productos: [...] }
+
+function abrirSelectorProductoDuplicado(productos, codigo) {
+  _duplicadoPendiente = { productos };
+  document.getElementById('dup-producto-codigo').textContent = `Código escaneado: ${codigo}`;
+  document.getElementById('dup-producto-lista').innerHTML = productos.map((p, i) => `
+    <label class="esc-precio-opcion">
+      <input type="radio" name="dup-producto-radio" value="${i}" ${i===0?'checked':''}/>
+      <span style="flex:1">
+        <div style="font-weight:600;font-size:13.5px">${esc(p.nombre)}${p.esCombo?' <span style="font-size:10px;color:var(--accent-4,var(--accent))">📦 combo</span>':''}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku?'SKU: '+esc(p.sku)+' · ':''}${p.tipo==='producto'?'Stock: '+fmtNum(p.stock_actual||0):'Servicio'}</div>
+      </span>
+      <span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${fmt(p.precio)}</span>
+    </label>`).join('');
+  document.getElementById('modal-producto-duplicado').classList.add('show');
+}
+function cerrarSelectorProductoDuplicado() {
+  document.getElementById('modal-producto-duplicado').classList.remove('show');
+  _duplicadoPendiente = null;
+  enfocarScannerVR();
+}
+function confirmarSeleccionProductoDuplicado() {
+  const pend = _duplicadoPendiente;
+  if (!pend) return;
+  const radio = document.querySelector('input[name="dup-producto-radio"]:checked');
+  if (!radio) { showToast('Selecciona un producto', 'error'); return; }
+  const prod = pend.productos[Number(radio.value)];
+  if (!prod) return;
+  document.getElementById('modal-producto-duplicado').classList.remove('show');
+  _duplicadoPendiente = null;
+  continuarEscaneoConProducto(prod);
+}
+
+// Mismo flujo que ya existía después de encontrar el producto (stock,
+// escala de precios, agregar al carrito) — se separó en su propia
+// función para poder reutilizarlo tanto cuando hay una sola coincidencia
+// como cuando el cajero elige entre varias.
+function continuarEscaneoConProducto(prod) {
+  const status = document.getElementById('vr-scan-status');
+  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0) {
+    showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
+    if (status) status.textContent = '📡 Listo para escanear';
+    enfocarScannerVR();
+    return;
+  }
+
+  const yaEnCarritoVR = VR.carrito.find(i => i.id === prod.id);
+  const tieneEscalas  = prod.tipo_precio === 'escala' && (S.escalasPorProducto[prod.id]||[]).length > 0;
+
+  if (!yaEnCarritoVR && tieneEscalas) {
+    if (status) status.textContent = `📊 "${prod.nombre}" — elige un precio`;
+    abrirSelectorEscala(prod.id, prod.tipo, 'vr');
+    return;
+  }
+
+  agregarAlCarritoVR(prod);
+  if (status) status.textContent = `✅ ${prod.nombre} agregado`;
+  enfocarScannerVR();
+}
+
 async function procesarCodigoEscaneado(codigo) {
   const status = document.getElementById('vr-scan-status');
   if (status) status.textContent = `🔎 Buscando "${codigo}"…`;
-  let abrioSelector = false; // si abrimos el selector de escala, no reenfocamos el input aquí
+  let abrioSelector = false; // si abrimos algún selector, no reenfocamos el input aquí
 
   try {
-    // Búsqueda por código de barras exacto (solo productos activos del usuario)
-    let { data: prod } = await sb.from('productos')
+    // Búsqueda por código de barras exacto (solo productos activos del usuario).
+    // OJO: se traen TODAS las coincidencias (no .maybeSingle()) porque un mismo
+    // código de barras puede estar repetido en varios productos (ej. "Unidad",
+    // "Docena", "Caja" del mismo artículo) — con .maybeSingle() eso provoca un
+    // error de "más de una fila" que antes se interpretaba como "no encontrado".
+    let { data: coincidencias } = await sb.from('productos')
       .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio')
-      .eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true)
-      .maybeSingle();
+      .eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true);
+    coincidencias = coincidencias || [];
 
     // Respaldo: si no hay coincidencia por código de barras, probar por SKU
     // (útil si el negocio todavía no ha cargado códigos de barra a todo su catálogo)
-    if (!prod) {
+    if (!coincidencias.length) {
       const { data: bySku } = await sb.from('productos')
         .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio')
-        .eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true)
-        .maybeSingle();
-      prod = bySku || null;
+        .eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true);
+      coincidencias = bySku || [];
     }
 
     // Respaldo final: buscar en COMBOS por código de barras o SKU. Se
     // reutiliza la ficha ya calculada en S.productosCache (stock y costo
     // en vivo a partir de sus componentes), en vez de recalcular aquí.
-    if (!prod) {
-      let { data: combo } = await sb.from('combos')
-        .select('id').eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true).maybeSingle();
-      if (!combo) {
-        const { data: comboBySku } = await sb.from('combos')
-          .select('id').eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true).maybeSingle();
-        combo = comboBySku || null;
+    if (!coincidencias.length) {
+      let { data: combosMatch } = await sb.from('combos')
+        .select('id').eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true);
+      if (!combosMatch || !combosMatch.length) {
+        const { data: combosBySku } = await sb.from('combos')
+          .select('id').eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true);
+        combosMatch = combosBySku || [];
       }
-      if (combo) prod = S.productosCache.find(p => p.id === combo.id && p.esCombo) || null;
+      coincidencias = (combosMatch || [])
+        .map(cb => S.productosCache.find(p => p.id === cb.id && p.esCombo))
+        .filter(Boolean);
     }
 
-    if (!prod) {
+    if (!coincidencias.length) {
       showToast(`❌ No se encontró ningún producto con el código "${codigo}"`, 'error');
       if (status) status.textContent = '📡 Listo para escanear';
       return;
     }
 
-    if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0) {
-      showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
-      if (status) status.textContent = '📡 Listo para escanear';
-      return;
-    }
-
-    // PRODUCTOS DE ESCALA (precio por niveles): igual que en "Nueva Venta",
-    // se pregunta qué precio aplicar — pero solo la PRIMERA vez que se
-    // escanea ese producto en esta venta. Si ya está en el carrito, se
-    // respeta el precio ya elegido y solo se suma cantidad. Los productos
-    // de precio fijo nunca entran aquí: su flujo actual no cambia en nada.
-    const yaEnCarritoVR = VR.carrito.find(i => i.id === prod.id);
-    const tieneEscalas  = prod.tipo_precio === 'escala' && (S.escalasPorProducto[prod.id]||[]).length > 0;
-
-    if (!yaEnCarritoVR && tieneEscalas) {
-      if (status) status.textContent = `📊 "${prod.nombre}" — elige un precio`;
-      abrirSelectorEscala(prod.id, prod.tipo, 'vr');
+    // Este mismo código pertenece a VARIOS productos (o combos): no hay
+    // forma de adivinar cuál — se le muestra al cajero un selector rápido
+    // en vez de agregar uno al azar o fallar.
+    if (coincidencias.length > 1) {
+      if (status) status.textContent = `🔀 "${codigo}" coincide con ${coincidencias.length} productos — elige uno`;
+      abrirSelectorProductoDuplicado(coincidencias, codigo);
       abrioSelector = true;
       return;
     }
 
-    agregarAlCarritoVR(prod);
-    if (status) status.textContent = `✅ ${prod.nombre} agregado`;
+    const prod = coincidencias[0];
+    abrioSelector = true; // el foco de aquí en adelante lo maneja continuarEscaneoConProducto()
+    continuarEscaneoConProducto(prod);
+    return;
   } catch(e) {
     console.error('procesarCodigoEscaneado:', e);
     showToast('Error buscando el producto: ' + (e.message||''), 'error');
