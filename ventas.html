@@ -1418,6 +1418,34 @@
 </div>
 
 <!-- =====================================================
+     MODAL: PRODUCTO DUPLICADO (mismo código de barras en varios)
+     Ocurre cuando el mismo código de barras quedó registrado en
+     más de un producto (ej. "Unidad", "Docena", "Caja" del mismo
+     artículo) — no hay forma de adivinar cuál, así que se le
+     pregunta al cajero.
+===================================================== -->
+<div class="modal-overlay" id="modal-producto-duplicado" onclick="if(event.target===this)cerrarSelectorProductoDuplicado()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">Este código pertenece a varios productos</span>
+        <div class="modal-subtitle" id="dup-producto-codigo">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorProductoDuplicado()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="dup-producto-lista" style="max-height:50vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorProductoDuplicado()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionProductoDuplicado()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
      MODAL: REGISTRAR PAGO DE CLIENTE RECURRENTE
 ===================================================== -->
 <div class="modal-overlay" id="modal-pago-recurrente" onclick="if(event.target===this)cerrarModalPagoRecurrente()">
