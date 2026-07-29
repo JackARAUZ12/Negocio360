@@ -94,6 +94,21 @@ async function loadEmpresaConfig(userId) {
   try {
     const { data } = await sbClient.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
     STATE.empresaConfig = data || {};
+    if (data) {
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
+      const lt = document.getElementById('sidebar-logo-text');
+      if (lt) lt.textContent = bizName;
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col + '22');
+        document.documentElement.style.setProperty('--border-focus', col);
+      }
+      if (data.logo_principal_url || data.logo_url) {
+        const li = document.querySelector('.logo-icon');
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+      }
+    }
   } catch (e) { console.warn('loadEmpresaConfig:', e); }
 }
 async function loadUserProfile(userId) {
