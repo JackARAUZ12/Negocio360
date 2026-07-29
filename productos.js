@@ -289,6 +289,18 @@ async function cargarDatosEmpresa() {
     const logoTextEl = $('sidebarLogoText');
     if (logoTextEl) logoTextEl.textContent = nombreNegocio;
 
+    // Marca personalizada (Personalización → Editar Perfil): color de acento y logo
+    if (empresa.color_principal || empresa.color_primario) {
+      const col = empresa.color_principal || empresa.color_primario;
+      document.documentElement.style.setProperty('--accent', col);
+      document.documentElement.style.setProperty('--accent-soft', col + '22');
+      document.documentElement.style.setProperty('--border-focus', col);
+    }
+    if (empresa.logo_principal_url || empresa.logo_url) {
+      const li = document.querySelector('.sidebar-logo-icon');
+      if (li) li.innerHTML = `<img src="${empresa.logo_principal_url || empresa.logo_url}" style="width:26px;height:26px;object-fit:contain;border-radius:6px" alt="logo">`;
+    }
+
     const planEl = $('planBadge');
     if (planEl) planEl.textContent = empresa.plan || perfil.plan || 'Free';
 
@@ -2408,4 +2420,4 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
-te 
+te
