@@ -1056,6 +1056,45 @@
           <div class="cfg-status" id="modulos-status"></div>
         </div>
 
+        <!-- CAMBIAR MONEDA -->
+        <div class="cfg-card fade-in stagger-3">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Cambiar moneda del sistema</div>
+              <div class="cfg-card-desc">
+                Convierte TODO el dinero ya registrado en tu cuenta (ventas, compras, gastos, caja, créditos, cuentas por pagar, salarios, proformas, precios de productos, etc.) de una moneda a otra, usando una tasa fija de <strong>C$ 36.5 por US$ 1</strong>.
+              </div>
+            </div>
+          </div>
+
+          <div style="font-size:13px;margin:6px 0 12px">
+            Moneda actual: <strong id="moneda-actual-label">Cargando…</strong>
+          </div>
+
+          <div style="background:var(--danger-soft,#fee);border:1px solid var(--danger);border-radius:var(--radius-sm);padding:12px 14px;font-size:12.5px;margin-bottom:14px">
+            ⚠️ <strong>Esta acción no se puede deshacer.</strong> Convierte los montos ya guardados en cada módulo del sistema. Antes de continuar, asegúrate de que la tasa (36.5) es la correcta en este momento.
+          </div>
+
+          <button class="cfg-btn-neutral" id="btn-abrir-conversion-moneda" onclick="abrirConversionMoneda()">
+            Convertir moneda
+          </button>
+
+          <div id="cfg-conversion-panel" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <div style="font-size:13px;margin-bottom:10px" id="conversion-direccion-texto">—</div>
+            <label style="font-size:12.5px;color:var(--text-muted)">Escribe <strong>CONVERTIR</strong> para confirmar</label>
+            <input type="text" id="conversion-confirm-input" placeholder="CONVERTIR" style="width:100%;margin:6px 0 12px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-input,#fff)" oninput="validarConfirmacionConversion()"/>
+            <div style="display:flex;gap:10px">
+              <button class="cfg-btn-neutral" style="background:var(--danger)" id="btn-confirmar-conversion-moneda" onclick="ejecutarConversionMoneda()" disabled>Sí, convertir ahora</button>
+              <button class="cfg-btn-neutral" style="background:var(--text-muted)" onclick="cerrarConversionMoneda()">Cancelar</button>
+            </div>
+          </div>
+
+          <div class="cfg-status" id="moneda-status"></div>
+        </div>
+
         <!-- CERRAR SESIÓN -->
         <div class="cfg-card fade-in stagger-3">
           <div class="cfg-card-header">
@@ -1256,6 +1295,76 @@ async function guardarMultiusuario(activo) {
    configuración de exportaciones, cada quien con su propia clave).
 ===================================================== */
 let modulosOpcionalesCfg = {};
+
+/* ============================================================
+   CAMBIAR MONEDA (USD <-> NIO) — convierte TODO el dinero ya
+   registrado en la cuenta, a una tasa fija de 36.5. Usa la función
+   convertir_moneda_negocio() de la base de datos, que corre todo en
+   una sola transacción: si algo falla, no cambia absolutamente nada.
+===================================================== */
+const TASA_USD_NIO = 36.5;
+let monedaActualCfg = 'NIO';
+let direccionConversionPendiente = null;
+
+async function cargarMonedaActual() {
+  const label = document.getElementById('moneda-actual-label');
+  try {
+    const { data } = await sbClient.from('configuracion_empresa')
+      .select('moneda').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    monedaActualCfg = (data && data.moneda) || 'NIO';
+    if (label) label.textContent = monedaActualCfg === 'USD' ? 'Dólares (US$)' : 'Córdobas (C$)';
+  } catch (e) {
+    console.error('cargarMonedaActual:', e);
+    if (label) label.textContent = 'No se pudo cargar';
+  }
+}
+
+function abrirConversionMoneda() {
+  direccionConversionPendiente = monedaActualCfg === 'USD' ? 'usd_a_nio' : 'nio_a_usd';
+  const texto = monedaActualCfg === 'USD'
+    ? `Vas a convertir TODO el dinero registrado de US$ a C$, multiplicando cada monto por ${TASA_USD_NIO}.`
+    : `Vas a convertir TODO el dinero registrado de C$ a US$, dividiendo cada monto entre ${TASA_USD_NIO}.`;
+  document.getElementById('conversion-direccion-texto').textContent = texto;
+  document.getElementById('conversion-confirm-input').value = '';
+  document.getElementById('btn-confirmar-conversion-moneda').disabled = true;
+  document.getElementById('cfg-conversion-panel').style.display = '';
+  document.getElementById('moneda-status').textContent = '';
+}
+function cerrarConversionMoneda() {
+  document.getElementById('cfg-conversion-panel').style.display = 'none';
+  direccionConversionPendiente = null;
+}
+function validarConfirmacionConversion() {
+  const val = document.getElementById('conversion-confirm-input').value.trim();
+  document.getElementById('btn-confirmar-conversion-moneda').disabled = (val !== 'CONVERTIR');
+}
+
+async function ejecutarConversionMoneda() {
+  if (!direccionConversionPendiente) return;
+  const btn = document.getElementById('btn-confirmar-conversion-moneda');
+  const status = document.getElementById('moneda-status');
+  btn.disabled = true;
+  btn.textContent = 'Convirtiendo…';
+  status.textContent = '';
+  try {
+    const { error } = await sbClient.rpc('convertir_moneda_negocio', {
+      p_user_id: currentAuthUserId,
+      p_direccion: direccionConversionPendiente,
+    });
+    if (error) throw error;
+    status.style.color = 'var(--success,#16a34a)';
+    status.textContent = '✅ Conversión completada. Todos los módulos ya reflejan la nueva moneda.';
+    cerrarConversionMoneda();
+    await cargarMonedaActual();
+  } catch (e) {
+    console.error('ejecutarConversionMoneda:', e);
+    status.style.color = 'var(--danger)';
+    status.textContent = 'Error: ' + (e.message || 'no se pudo completar la conversión. No se guardó ningún cambio.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sí, convertir ahora';
+  }
+}
 
 async function cargarModulosOpcionales() {
   const cont = document.getElementById('cfg-modulos-lista');
@@ -1473,6 +1582,7 @@ async function initConfiguracion() {
       document.getElementById('app').style.display = 'flex';
       cargarMultiusuario();
       cargarModulosOpcionales();
+      cargarMonedaActual();
     };
 
     if (window.PerfilesGuardConfig) {
