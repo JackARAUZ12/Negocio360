@@ -846,7 +846,11 @@
 
     // Sin perfil elegido en esta pestaña: si no estamos en dashboard,
     // se manda primero ahí para completar la elección obligatoria.
-    if (currentFile() !== 'dashboard.html') {
+    // EXCEPCIÓN: personalizacion.html es el asistente de bienvenida que
+    // ve un usuario recién registrado — ahí todavía no existe ninguna
+    // cuenta configurada, así que no tiene sentido (ni debe) mandarlo
+    // al dashboard antes de que termine de configurar su negocio.
+    if (currentFile() !== 'dashboard.html' && currentFile() !== 'personalizacion.html') {
       location.href = 'dashboard.html';
       return;
     }
