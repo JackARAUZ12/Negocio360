@@ -1202,6 +1202,7 @@ function aplicarFiltros() {
     lista = lista.filter(p =>
       (p.nombre           || '').toLowerCase().includes(q) ||
       (p.sku              || '').toLowerCase().includes(q) ||
+      (p.codigo_barras    || '').toLowerCase().includes(q) ||
       (p.categoria        || '').toLowerCase().includes(q) ||
       (p.proveedor_nombre || '').toLowerCase().includes(q) ||
       (p.descripcion      || '').toLowerCase().includes(q)
@@ -2299,6 +2300,49 @@ function initEventos() {
       STATE.busqueda = '';
       searchClear.classList.remove('visible');
       aplicarFiltros();
+    });
+  }
+
+  // Buscador de ESCANEO: exclusivo para el lector de código de barras
+  // (o escribiéndolo a mano + Enter). Busca coincidencia exacta y filtra
+  // la tabla a ese producto — nunca toca ni interfiere con el buscador
+  // de nombre/SKU de arriba.
+  const scanInput = $('scanInput');
+  const scanClear = $('scanClear');
+  if (scanInput) {
+    scanInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const codigo = scanInput.value.trim();
+      if (!codigo) return;
+
+      const encontrado = STATE.productos.find(p => (p.codigo_barras || '').trim() === codigo);
+      if (!encontrado) {
+        showToast('warning', 'No encontrado', `Ningún producto tiene el código "${codigo}"`);
+        scanInput.select();
+        return;
+      }
+
+      // Reutiliza el mismo buscador de nombre/SKU de arriba para filtrar
+      // la tabla — así no se duplica lógica de filtrado.
+      if (searchInput) searchInput.value = encontrado.nombre;
+      STATE.busqueda = encontrado.nombre;
+      if (searchClear) searchClear.classList.add('visible');
+      aplicarFiltros();
+
+      showToast('success', 'Encontrado', encontrado.nombre);
+      scanInput.value = '';
+      scanClear?.classList.remove('visible');
+    });
+    scanInput.addEventListener('input', () => {
+      scanClear?.classList.toggle('visible', scanInput.value.length > 0);
+    });
+  }
+  if (scanClear) {
+    scanClear.addEventListener('click', () => {
+      if (scanInput) scanInput.value = '';
+      scanClear.classList.remove('visible');
+      scanInput?.focus();
     });
   }
 
