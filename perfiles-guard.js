@@ -807,10 +807,11 @@
   };
 
   // ------------------------------------------------------------
-  // Aviso fijo "estás en la sucursal X" con botón para volver a
-  // Central — visible en CUALQUIER página del sistema, no solo en
-  // el módulo Sucursales. Nunca interfiere si la cuenta es la Central
-  // (la consulta simplemente no encuentra ninguna fila).
+  // Indicador discreto "estás en la sucursal X" — visible en
+  // cualquier página, pero pequeño y con los mismos colores/estilo
+  // del resto del sistema (no una notificación llamativa). Al tocarlo
+  // se abre el MISMO overlay/tarjeta de código que ya usa todo el
+  // sistema de perfiles — nunca un prompt() del navegador.
   // ------------------------------------------------------------
   async function mostrarAvisoSucursalSiAplica() {
     try {
@@ -818,47 +819,87 @@
         .select('nombre').eq('auth_user_id_sucursal', PG.authUserId).eq('es_central', false).maybeSingle();
       if (!data) return;
 
-      if (document.getElementById('pg-aviso-sucursal')) return; // ya está puesto
+      if (document.getElementById('pg-badge-sucursal')) return; // ya está puesto
       const style = document.createElement('style');
       style.textContent = `
-        #pg-aviso-sucursal{position:fixed;left:16px;bottom:16px;z-index:500;
-          display:flex;align-items:center;gap:10px;background:var(--accent,#6C63FF);color:#fff;
-          padding:10px 14px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);
-          font-size:12.5px;font-weight:600;max-width:calc(100vw - 32px)}
-        #pg-aviso-sucursal button{background:rgba(255,255,255,.2);color:#fff;border:none;
-          border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
-        #pg-aviso-sucursal button:hover{background:rgba(255,255,255,.32)}
-        @media (max-width:600px){#pg-aviso-sucursal{left:8px;right:8px;bottom:8px;max-width:none}}
+        #pg-badge-sucursal{position:fixed;left:16px;bottom:16px;z-index:400;
+          display:flex;align-items:center;gap:7px;background:var(--bg-surface,#fff);
+          color:var(--text-secondary,#555);border:1px solid var(--border,#e4e4ea);
+          padding:7px 12px;border-radius:100px;box-shadow:0 2px 10px rgba(0,0,0,.08);
+          font-size:12px;font-weight:600;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+        #pg-badge-sucursal:hover{box-shadow:0 4px 14px rgba(0,0,0,.12);border-color:var(--accent,#6C63FF)}
+        #pg-badge-sucursal .pg-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--accent,#6C63FF);flex-shrink:0}
+        @media (max-width:600px){#pg-badge-sucursal{left:8px;bottom:8px;max-width:calc(100vw - 16px)}
+          #pg-badge-sucursal span.pg-badge-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
       `;
       document.head.appendChild(style);
 
-      const aviso = document.createElement('div');
-      aviso.id = 'pg-aviso-sucursal';
-      aviso.innerHTML = `
-        <span>🏬 Estás en: <strong>${esc(data.nombre)}</strong></span>
-        <button id="pg-btn-salir-sucursal">Volver a mi cuenta principal</button>
-      `;
-      document.body.appendChild(aviso);
+      const badge = document.createElement('div');
+      badge.id = 'pg-badge-sucursal';
+      badge.innerHTML = `<span class="pg-badge-dot"></span><span class="pg-badge-txt">${esc(data.nombre)}</span>`;
+      document.body.appendChild(badge);
+      badge.addEventListener('click', () => renderVolverACentral(data.nombre));
+    } catch (e) { /* si falla, simplemente no se muestra el indicador — nunca bloquea la página */ }
+  }
 
-      document.getElementById('pg-btn-salir-sucursal').addEventListener('click', volverACentralConCodigo);
-    } catch (e) { /* si falla, simplemente no se muestra el aviso — nunca bloquea la página */ }
+  // Misma tarjeta visual que el resto del sistema de perfiles (avatar +
+  // título + pg-pin-input con puntitos) — solo que en vez de comparar
+  // contra un perfil ya cargado, verifica contra los perfiles reales
+  // de la cuenta Central antes de restaurar esa sesión.
+  function renderVolverACentral(nombreSucursal) {
+    showOverlay();
+    const c = card();
+    c.innerHTML = `
+      <div class="pg-back-arrow" id="pg-vc-back">← Volver</div>
+      <div class="pg-pin-wrap">
+        <div class="pg-pin-avatar" style="background:#1A1D2E">🏬</div>
+        <div class="pg-title" style="margin-bottom:2px">Volver a tu cuenta principal</div>
+        <div class="pg-subtitle" style="margin-bottom:4px">Sales de "${esc(nombreSucursal)}" — ingresa tu código de acceso</div>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+               class="pg-pin-input" id="pg-vc-pin" placeholder="••••"
+               autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false"
+               data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-vc-codigo" />
+        <div class="pg-error" id="pg-vc-error"></div>
+        <div class="pg-btn-row">
+          <button class="pg-btn pg-btn-ghost" id="pg-vc-cancel">Cancelar</button>
+          <button class="pg-btn pg-btn-primary" id="pg-vc-ok">Entrar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('pg-vc-back').addEventListener('click', hideOverlay);
+    document.getElementById('pg-vc-cancel').addEventListener('click', hideOverlay);
+    const input = document.getElementById('pg-vc-pin');
+    const errEl = document.getElementById('pg-vc-error');
+    input.focus();
+
+    async function intentar() {
+      errEl.textContent = '';
+      const pin = (input.value || '').trim();
+      if (pin.length < 4) { errEl.textContent = 'El código debe tener al menos 4 dígitos'; return; }
+      const okBtn = document.getElementById('pg-vc-ok');
+      okBtn.disabled = true;
+      const ok = await volverACentralConCodigo(pin);
+      okBtn.disabled = false;
+      if (!ok) { errEl.textContent = 'Código incorrecto'; input.value = ''; input.focus(); }
+    }
+    document.getElementById('pg-vc-ok').addEventListener('click', intentar);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') intentar(); });
   }
 
   // Pide el código de perfil (el mismo PIN de siempre) y, si coincide con
   // CUALQUIER perfil de la cuenta Central (el admin u otro autorizado),
   // restaura al instante la sesión de Central que se guardó justo antes
   // de entrar a la sucursal — sin volver a escribir correo ni contraseña.
-  async function volverACentralConCodigo() {
+  // Devuelve true/false para que la tarjeta de arriba muestre el error.
+  async function volverACentralConCodigo(pin) {
     const raw = sessionStorage.getItem('n360_central_session_backup');
     if (!raw) {
       alert('No se encontró tu sesión guardada de Central en esta pestaña. Inicia sesión de nuevo con tu correo.');
       await PG.client.auth.signOut();
       window.location.href = 'login.html';
-      return;
+      return true; // ya se está navegando fuera, no hace falta mostrar error
     }
     const backup = JSON.parse(raw);
-    const pin = prompt(`Escribe tu código de perfil para volver a "${backup.nombre_negocio}":`);
-    if (!pin) return;
 
     try {
       // Se usa un cliente APARTE (nunca el de esta página) para validar
@@ -884,7 +925,7 @@
         if (coincide) { perfilValido = p; break; }
       }
 
-      if (!perfilValido) { alert('Código incorrecto.'); return; }
+      if (!perfilValido) return false;
 
       // Código válido (es el admin u otro perfil autorizado de Central):
       // ahora sí se restaura esa sesión como la activa de esta pestaña.
@@ -896,9 +937,11 @@
       sessionStorage.removeItem('n360_central_session_backup');
       sessionStorage.removeItem('n360_sucursal_modulos');
       window.location.href = 'dashboard.html';
+      return true;
     } catch (e) {
       console.error('volverACentralConCodigo:', e);
       alert('No se pudo volver a Central: ' + (e.message || 'intenta de nuevo'));
+      return true; // ya se mostró el error arriba, no repetir "código incorrecto"
     }
   }
 
