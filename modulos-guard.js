@@ -84,7 +84,17 @@
       const raw = sessionStorage.getItem('n360_sucursal_modulos');
       if (!raw) return null;
       const lista = JSON.parse(raw);
-      return Array.isArray(lista) ? lista : null;
+      if (!Array.isArray(lista)) return null;
+
+      // Solo aplica si en este momento hay de verdad un perfil restringido
+      // activo (no el admin) — si no, es un rastro viejo de otra visita a
+      // una sucursal y NUNCA debe seguir bloqueando nada.
+      const perfilRaw = sessionStorage.getItem('n360_perfil_activo');
+      if (!perfilRaw) { sessionStorage.removeItem('n360_sucursal_modulos'); return null; }
+      const perfil = JSON.parse(perfilRaw);
+      if (!perfil || perfil.tipo === 'admin') { sessionStorage.removeItem('n360_sucursal_modulos'); return null; }
+
+      return lista;
     } catch (_) { return null; }
   }
 
