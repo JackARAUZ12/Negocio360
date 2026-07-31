@@ -69,8 +69,8 @@
                                desc: 'Cotizaciones para clientes, convertibles a venta con un clic.' },
     'codigos-barras.html':   { key: 'codigos_barras',    label: 'Códigos de Barras',   icon: '📊', obligatorio: false,
                                desc: 'Crear, administrar e imprimir códigos de barras (Code 128), de forma independiente.' },
-    'sucursales.html':       { key: 'sucursales',        label: 'Sucursales',          icon: '🏬', obligatorio: false, soloAdmin: true,
-                               desc: 'Crea y administra sucursales independientes, y controla qué perfil entra a cuál con qué módulos.' },
+    'sucursales.html':       { key: 'sucursales',        label: 'Sucursales',          icon: '🏬', obligatorio: false,
+                               desc: 'Entrar a las sucursales permitidas. Crear, configurar y eliminar sigue siendo exclusivo de la Central.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
