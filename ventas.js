@@ -116,6 +116,12 @@ function fmtFecha(iso) {
    ============================================================ */
 function sym() { return S.moneda || 'C$'; }
 
+// Aritmética de punto flotante en JS puede producir basura de decimales
+// (ej. 3.5 * 28.60 = 100.10000000000001) — TODO cálculo de dinero pasa
+// por aquí antes de guardarse o mostrarse, para que el monto sea
+// siempre exacto a los centavos, ni más ni menos.
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
 function fmt(n) {
   const v = parseFloat(n || 0);
   return `${sym()} ${v.toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
@@ -1731,8 +1737,8 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 }
 
 function recalcItem(item) {
-  item.subtotal = item.cantidad * item.precio - item.descuento;
-  item.ganancia = item.cantidad * (item.precio - item.costo) - item.descuento;
+  item.subtotal = round2(item.cantidad * item.precio - item.descuento);
+  item.ganancia = round2(item.cantidad * (item.precio - item.costo) - item.descuento);
 }
 
 function cambiarCantidad(productoId, val) {
@@ -1834,13 +1840,13 @@ function cambiarIvaPorcentaje(val) {
 }
 
 function calcularResumen() {
-  const subtotal  = S.carrito.reduce((s,i) => s+i.cantidad*i.precio, 0);
-  const descuento = S.carrito.reduce((s,i) => s+i.descuento, 0);
+  const subtotal  = round2(S.carrito.reduce((s,i) => s+i.cantidad*i.precio, 0));
+  const descuento = round2(S.carrito.reduce((s,i) => s+i.descuento, 0));
   const baseImponible = Math.max(subtotal - descuento, 0);
-  const impuestos = S.ivaActivo ? +(baseImponible * (S.ivaPorcentaje/100)).toFixed(2) : 0;
-  const total     = subtotal - descuento + impuestos;
-  const ganancia  = S.carrito.reduce((s,i) => s+i.ganancia, 0);
-  const costoTotal= S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0);
+  const impuestos = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  const total     = round2(subtotal - descuento + impuestos);
+  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0));
+  const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
   S._resumen = { subtotal, descuento, impuestos, total, ganancia, costoTotal };
@@ -2856,12 +2862,12 @@ function removeFromCarritoVR(id) {
 }
 
 function calcularResumenVR() {
-  const subtotal = VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0);
+  const subtotal = round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0));
   const ivaActivo = !!VR.config?.iva_activo;
   const ivaPct    = Number(VR.config?.iva_porcentaje) || 0;
-  const impuesto  = ivaActivo ? +(subtotal * (ivaPct/100)).toFixed(2) : 0;
-  const total     = subtotal + impuesto;
-  const costoTotal= VR.carrito.reduce((s,i) => s + i.cantidad*i.costo, 0);
+  const impuesto  = ivaActivo ? round2(subtotal * (ivaPct/100)) : 0;
+  const total     = round2(subtotal + impuesto);
+  const costoTotal= round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.costo, 0));
   return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct };
 }
 
@@ -2996,8 +3002,8 @@ async function confirmarVentaRapida() {
       precio:          item.precio,
       costo:           item.costo,
       descuento:       0,
-      subtotal:        item.cantidad*item.precio,
-      ganancia:        item.cantidad*(item.precio-item.costo),
+      subtotal:        round2(item.cantidad*item.precio),
+      ganancia:        round2(item.cantidad*(item.precio-item.costo)),
       escala_id:       item.escalaId || null,
       escala_nombre:   item.escalaNombre || null,
     }));
