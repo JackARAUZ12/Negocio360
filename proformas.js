@@ -401,8 +401,8 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   const sr = document.getElementById('np-search-results');  if (sr) sr.innerHTML = '';
 }
 function recalcularLineaProf(l) {
-  l.subtotal = l.cantidad * l.precio - (l.descuento || 0);
-  l.ganancia = l.cantidad * (l.precio - l.costo) - (l.descuento || 0);
+  l.subtotal = round2(l.cantidad * l.precio - (l.descuento || 0));
+  l.ganancia = round2(l.cantidad * (l.precio - l.costo) - (l.descuento || 0));
 }
 function renderCarritoProf() {
   const tbody = document.getElementById('np-carrito-tbody');
@@ -445,13 +445,13 @@ function actualizarIVAPorcentajeProf() {
 
 // MISMA fórmula exacta que calcularResumen() en ventas.js.
 function calcularResumenProf() {
-  const subtotal  = STATE.carrito.reduce((s,l) => s + l.cantidad*l.precio, 0);
-  const descuento = STATE.carrito.reduce((s,l) => s + (l.descuento||0), 0);
+  const subtotal  = round2(STATE.carrito.reduce((s,l) => s + l.cantidad*l.precio, 0));
+  const descuento = round2(STATE.carrito.reduce((s,l) => s + (l.descuento||0), 0));
   const baseImponible = Math.max(subtotal - descuento, 0);
   const impuesto  = STATE.ivaActivo ? round2(baseImponible * (STATE.ivaPorcentaje/100)) : 0;
-  const total     = subtotal - descuento + impuesto;
-  const costoTotal= STATE.carrito.reduce((s,l) => s + l.cantidad*l.costo, 0);
-  const ganancia  = STATE.carrito.reduce((s,l) => s + l.ganancia, 0);
+  const total     = round2(subtotal - descuento + impuesto);
+  const costoTotal= round2(STATE.carrito.reduce((s,l) => s + l.cantidad*l.costo, 0));
+  const ganancia  = round2(STATE.carrito.reduce((s,l) => s + l.ganancia, 0));
   return { subtotal, descuento, impuesto, total, costoTotal, ganancia };
 }
 function actualizarResumenProf() {
