@@ -91,18 +91,32 @@
   // ------------------------------------------------------------
   // Datos
   // ------------------------------------------------------------
+  // Se guarda una sola vez por carga de página: ¿esta cuenta es en
+  // realidad una sucursal? Se usa para no intentar crear/editar
+  // perfiles aquí — eso sigue siendo exclusivo de la Central.
+  PG.soyUnaSucursal = null;
+  async function esUnaSucursal() {
+    if (PG.soyUnaSucursal !== null) return PG.soyUnaSucursal;
+    try {
+      const { data } = await PG.client.from('sucursales')
+        .select('id').eq('auth_user_id_sucursal', PG.authUserId).eq('es_central', false).maybeSingle();
+      PG.soyUnaSucursal = !!data;
+    } catch (_) { PG.soyUnaSucursal = false; }
+    return PG.soyUnaSucursal;
+  }
+
   async function cargarPerfiles() {
-    const { data, error } = await PG.client
-      .from('perfiles_acceso')
-      .select('*')
-      .eq('auth_user_id', PG.authUserId)
-      .eq('activo', true)
-      .order('created_at', { ascending: true });
+    // Mismos perfiles (mismos nombres, mismo código) sin importar si
+    // esto corre en la Central o en cualquiera de sus sucursales — la
+    // función siempre resuelve a los perfiles reales de la Central.
+    const { data, error } = await PG.client.rpc('listar_perfiles_del_grupo');
     if (error) { console.error('perfiles-guard cargarPerfiles:', error); return []; }
     let perfiles = data || [];
 
-    // Garantiza que siempre exista el perfil Admin
-    if (!perfiles.some(p => p.tipo === 'admin')) {
+    // Garantiza que siempre exista el perfil Admin — pero crearlo solo
+    // es posible desde la propia Central (una sucursal no tiene permiso
+    // de escribir en la tabla de perfiles de otra cuenta, a propósito).
+    if (!perfiles.some(p => p.tipo === 'admin') && !(await esUnaSucursal())) {
       const { data: nuevo, error: errIns } = await PG.client
         .from('perfiles_acceso')
         .insert([{ auth_user_id: PG.authUserId, nombre: 'Admin', tipo: 'admin', modulos: [], codigo_configurado: false }])
@@ -189,7 +203,22 @@
   // ------------------------------------------------------------
   function renderPin(perfil, { onSuccess, tituloExtra, forzarNuevo } = {}) {
     const c = card();
-    const esNuevo = !!forzarNuevo || (perfil.tipo === 'admin' && !perfil.codigo_configurado);
+    const necesitaCrearCodigo = !!forzarNuevo || (perfil.tipo === 'admin' && !perfil.codigo_configurado);
+    // Configurar un código por primera vez solo se puede hacer desde la
+    // propia Central (ahí sí tiene permiso de escribir su propia tabla
+    // de perfiles) — nunca desde dentro de una sucursal.
+    if (necesitaCrearCodigo && PG.soyUnaSucursal) {
+      c.innerHTML = `
+        <div class="pg-back-arrow" id="pg-back">← Volver</div>
+        <div class="pg-pin-wrap">
+          <div class="pg-pin-avatar" style="background:#1A1D2E">👑</div>
+          <div class="pg-title" style="margin-bottom:2px">${esc(perfil.nombre)}</div>
+          <div class="pg-subtitle">Este perfil todavía no tiene un código configurado. Pídele al administrador que lo configure desde la cuenta principal.</div>
+        </div>`;
+      document.getElementById('pg-back').addEventListener('click', renderSelector);
+      return;
+    }
+    const esNuevo = necesitaCrearCodigo;
     c.innerHTML = `
       <div class="pg-back-arrow" id="pg-back">← Volver</div>
       <div class="pg-pin-wrap">
