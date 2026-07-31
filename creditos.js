@@ -723,7 +723,7 @@
   function calcularMontoOriginal() {
     const tipo = document.getElementById('nc-tipo').value;
     if (tipo === 'venta') {
-      return CS.ncItems.reduce((s,i)=>s + i.precio*i.cantidad, 0);
+      return round2(CS.ncItems.reduce((s,i)=>s + i.precio*i.cantidad, 0));
     }
     return parseFloat(document.getElementById('nc-monto-financiero').value) || 0;
   }
