@@ -602,11 +602,9 @@
       showToast(`"${prod.nombre}" no tiene stock disponible`, 'error'); return;
     }
 
-    // Si ya está en el carrito, no se vuelve a preguntar la escala: se respeta el
-    // precio ya elegido para esa línea (igual que en Ventas). Se agrega de a 1;
-    // la cantidad se ajusta después directo en la tabla de ítems.
-    const yaEnCarrito = CS.ncItems.find(i => i.producto_id === prodId);
-    if (!yaEnCarrito && prod.tipo_precio === 'escala') {
+    // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
+    // nunca se asume el que se eligió antes (igual que en Ventas).
+    if (prod.tipo_precio === 'escala') {
       abrirSelectorEscalaCredito(prodId, 1);
       limpiarBusquedaProductoCredito();
       return;
@@ -619,7 +617,7 @@
 
   function agregarItemCreditoConPrecio(prod, cantidad, escalaElegida) {
     const precioUsar = escalaElegida ? Number(escalaElegida.precio||0) : Number(prod.precio||0);
-    const existente = CS.ncItems.find(i => i.producto_id === prod.id);
+    const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null));
     if (existente) existente.cantidad += cantidad;
     else CS.ncItems.push({
       producto_id: prod.id, nombre: prod.nombre, tipo_item: prod.tipo,
