@@ -134,24 +134,30 @@ async function checkAdminAccess(email) {
 async function cargarSucursales() {
   const tbody = document.getElementById('suc-tbody');
   try {
-    // ¿Soy la Central? — solo la RLS deja ver esto como propio si de
-    // verdad lo soy (una sucursal nunca puede pasar esta consulta).
-    const { data: propia } = await sbClient.from('sucursales').select('id, es_central').eq('auth_user_id_central', STATE.userId);
-    STATE.esCentral = !!(propia && propia.length);
+    // PRIORIDAD 1, siempre: ¿tengo una fila donde YO SOY la sucursal de
+    // otra Central? Si la tengo, soy una sucursal — punto final. Esto
+    // nunca se evalúa después de "¿tengo filas propias como Central?",
+    // precisamente para que ningún registro viejo/dañado pueda hacer
+    // que una sucursal se trate a sí misma como si fuera Central.
+    const { data: miFila } = await sbClient.from('sucursales')
+      .select('id').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
 
-    if (STATE.esCentral && !propia.some(s => s.es_central)) {
-      const nombreNegocio = STATE.empresaConfig?.nombre_comercial || 'Central';
-      await sbClient.from('sucursales').insert({
-        auth_user_id_central: STATE.userId, nombre: nombreNegocio,
-        es_central: true, auth_user_id_sucursal: STATE.userId, activa: true,
-      });
-    }
+    if (miFila) {
+      STATE.esCentral = false;
+      STATE.miPropiaSucursalId = miFila.id;
+    } else {
+      // Solo si de verdad no soy sucursal de nadie, reviso si soy Central.
+      const { data: propia } = await sbClient.from('sucursales').select('id, es_central').eq('auth_user_id_central', STATE.userId);
+      STATE.esCentral = !!(propia && propia.length);
+      STATE.miPropiaSucursalId = null;
 
-    STATE.miPropiaSucursalId = null;
-    if (!STATE.esCentral) {
-      const { data: miFila } = await sbClient.from('sucursales')
-        .select('id').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
-      STATE.miPropiaSucursalId = miFila?.id || null;
+      if (STATE.esCentral && !propia.some(s => s.es_central)) {
+        const nombreNegocio = STATE.empresaConfig?.nombre_comercial || 'Central';
+        await sbClient.from('sucursales').insert({
+          auth_user_id_central: STATE.userId, nombre: nombreNegocio,
+          es_central: true, auth_user_id_sucursal: STATE.userId, activa: true,
+        });
+      }
     }
 
     // Misma consulta (vía RPC) sea Central o sucursal — cada quien ve el
