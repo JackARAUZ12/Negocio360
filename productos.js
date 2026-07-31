@@ -76,6 +76,11 @@ const $$ = sel => document.querySelectorAll(sel);
 // ============================================================
 // FORMATO MONEDA
 // ============================================================
+// Aritmética de punto flotante en JS puede producir basura de decimales
+// (ej. 3.5 * 28.60 = 100.10000000000001) — se usa antes de guardar
+// cualquier costo/precio calculado, para que quede exacto a los centavos.
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
 function fmtMoney(val) {
   if (val === null || val === undefined || val === '') return '—';
   const n = parseFloat(val);
@@ -803,7 +808,7 @@ async function guardarCombo() {
     if (!escalasValidas.length) { $('errComboEscalas').textContent = 'Agrega al menos un precio con nombre y valor válidos.'; return; }
   }
 
-  const costoTotal = STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0);
+  const costoTotal = round2(STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0));
   const btn = $('btnGuardarCombo');
   if (btn) btn.disabled = true;
 
