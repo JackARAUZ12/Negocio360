@@ -69,7 +69,24 @@
     }
   }
 
-  function estaActivo(cfg, key) { return cfg[key] !== false; }
+  function estaActivo(cfg, key) {
+    if (cfg[key] === false) return false;
+    // Restricción de Sucursales: si el perfil entró con una lista de
+    // módulos permitidos para ESTA sucursal específica, se respeta
+    // además de la config normal de módulos opcionales.
+    const restriccion = obtenerRestriccionSucursal();
+    if (restriccion && !restriccion.includes(key)) return false;
+    return true;
+  }
+
+  function obtenerRestriccionSucursal() {
+    try {
+      const raw = sessionStorage.getItem('n360_sucursal_modulos');
+      if (!raw) return null;
+      const lista = JSON.parse(raw);
+      return Array.isArray(lista) ? lista : null;
+    } catch (_) { return null; }
+  }
 
   // Oculta del sidebar los módulos opcionales desactivados. Mismo patrón de
   // detección que perfiles-guard.js, para cubrir ambos estilos de sidebar
