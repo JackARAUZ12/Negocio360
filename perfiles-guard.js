@@ -804,6 +804,15 @@
         onDesbloqueado(); // nunca bloquear el acceso del dueño por un error de red/consulta
       }
     },
+
+    // Reutilizado desde el módulo Sucursales: dispara el mismo flujo de
+    // "volver a Central con tu código" (pide PIN, verifica contra los
+    // perfiles reales de Central, restaura la sesión guardada).
+    volverACentral(nombreSucursal) {
+      if (!window.supabase) return;
+      if (!PG.client) PG.client = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY);
+      renderVolverACentral(nombreSucursal || 'tu sucursal actual');
+    },
   };
 
   // ------------------------------------------------------------
