@@ -842,6 +842,36 @@
       if (!PG.client) PG.client = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY);
       renderVolverACentral(nombreSucursal || 'tu sucursal actual');
     },
+
+    // Como requerirCodigoAdmin(), pero SIEMPRE pide el código — nunca usa
+    // la memoria de "ya desbloqueado en esta pestaña" que comparten
+    // Configuración/Auditoría. Se usa para acciones más sensibles, como
+    // otorgar accesos a una sucursal.
+    async requerirCodigoAdminSiempre(onDesbloqueado) {
+      try {
+        if (typeof onDesbloqueado !== 'function') return;
+        if (!window.supabase) { onDesbloqueado(); return; }
+        if (!PG.client) PG.client = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY);
+
+        const { data: { session } } = await PG.client.auth.getSession();
+        if (!session) { onDesbloqueado(); return; }
+        PG.authUserId = session.user.id;
+        PG.authEmail  = session.user.email || null;
+
+        PG.perfiles = await cargarPerfiles();
+        const admin = PG.perfiles.find(p => p.tipo === 'admin');
+        if (!admin) { onDesbloqueado(); return; }
+
+        showOverlay();
+        renderPin(admin, {
+          tituloExtra: 'Ingresa el código de administrador para continuar',
+          onSuccess: () => { hideOverlay(); onDesbloqueado(); },
+        });
+      } catch (e) {
+        console.error('PerfilesGuardConfig.requerirCodigoAdminSiempre:', e);
+        onDesbloqueado();
+      }
+    },
   };
 
   // ------------------------------------------------------------
