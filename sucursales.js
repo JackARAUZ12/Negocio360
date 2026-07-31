@@ -128,6 +128,18 @@ async function checkAdminAccess(email) {
    CARGA DE SUCURSALES (crea la Central automáticamente la
    primera vez que alguien visita este módulo)
 ===================================================== */
+// Detecta si la cuenta con la que se inició sesión AHORA es en realidad
+// una sucursal creada por otra Central (no la Central real). Se usa
+// para no ofrecer el módulo completo desde dentro de una sucursal, y
+// sobre todo para NUNCA crearle su propia "Central" por error.
+async function detectarSiEsSucursal() {
+  try {
+    const { data } = await sbClient.from('sucursales')
+      .select('nombre').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
+    return data || null;
+  } catch (e) { return null; }
+}
+
 async function cargarSucursales() {
   const tbody = document.getElementById('suc-tbody');
   try {
@@ -168,13 +180,19 @@ function renderTablaSucursales() {
       <td>${fmtFecha(s.created_at)}</td>
       <td><span class="status-badge ${s.activa!==false ? 'badge-activo':'badge-inactivo'}">${s.activa!==false ? 'Activa':'Inactiva'}</span></td>
       <td class="td-actions">
-        <button class="btn-icon" title="Entrar a esta sucursal" onclick="entrarASucursal('${s.id}')">🔑 Entrar</button>
-        ${!s.es_central ? `
-          <button class="btn-icon" title="Configurar accesos" onclick="abrirAccesosSucursal('${s.id}')">👥 Accesos</button>
-          <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarSucursal('${s.id}')">🗑️</button>
-        ` : `
-          <span style="font-size:11px;color:var(--text-muted);padding:0 6px">Es tu cuenta actual</span>
-        `}
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+          <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Entrar a esta sucursal" onclick="entrarASucursal('${s.id}')">
+            🔑 Entrar
+          </button>
+          ${!s.es_central ? `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Configurar accesos" onclick="abrirAccesosSucursal('${s.id}')">
+              👥 Accesos
+            </button>
+            <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarSucursal('${s.id}')">🗑️</button>
+          ` : `
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">Tu cuenta actual</span>
+          `}
+        </div>
       </td>
     </tr>`).join('');
 }
@@ -458,6 +476,27 @@ async function initSucursales() {
 
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
+
+    // Si la cuenta con la que se entró es en realidad una sucursal (no
+    // la Central), este módulo no aplica aquí — se administra siempre
+    // desde la Central. Se corta ANTES de tocar nada más, para nunca
+    // crearle una "Central" propia por error.
+    const soyUnaSucursal = await detectarSiEsSucursal();
+    if (soyUnaSucursal) {
+      document.querySelector('.panel-card').outerHTML = `
+        <div class="panel-card fade-in">
+          <div class="panel-body" style="text-align:center;padding:40px 20px">
+            <div style="font-size:32px;margin-bottom:10px">🏬</div>
+            <div style="font-weight:700;font-size:15px;margin-bottom:6px">Estás dentro de "${esc(soyUnaSucursal.nombre)}"</div>
+            <p style="font-size:13px;color:var(--text-muted);max-width:420px;margin:0 auto">
+              Las sucursales se crean y administran siempre desde la cuenta Central — no desde dentro de otra sucursal.
+              Para volver a administrarlas, inicia sesión con tu cuenta principal.
+            </p>
+          </div>
+        </div>`;
+      document.querySelector('.greeting-actions').style.display = 'none';
+      return;
+    }
 
     await loadPerfilesCentral();
     await cargarSucursales();
