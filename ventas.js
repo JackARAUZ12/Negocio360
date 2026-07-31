@@ -1572,11 +1572,11 @@ function agregarAlCarrito(productoId, tipo) {
   const prod = S.productosCache.find(p => p.id===productoId);
   if (!prod) return;
 
-  // Si ya está en el carrito, no se vuelve a preguntar la escala:
-  // se respeta el precio ya elegido para esa línea.
-  const yaEnCarrito = S.carrito.find(c => c.id===productoId);
-
-  if (!yaEnCarrito && prod.tipo_precio === 'escala') {
+  // Si es escala de precios, SIEMPRE se pregunta qué precio usar — nunca
+  // se asume el que se eligió la primera vez. Así, si el cliente quiere
+  // el mismo producto pero a otro precio de la escala (ej. mayoreo en
+  // vez de detalle), se agrega como una línea aparte, sin bloquear nada.
+  if (prod.tipo_precio === 'escala') {
     abrirSelectorEscala(productoId, tipo);
     return;
   }
@@ -1653,8 +1653,11 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   // Precio a usar: el de la escala elegida, o el precio fijo del producto
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
 
-  // Ver si ya está en carrito
-  const existente = S.carrito.find(c => c.id===productoId);
+  // Se busca una línea EXISTENTE del mismo producto Y la misma escala
+  // (o ambas sin escala, si es precio fijo) — así, el mismo producto a
+  // un precio de escala distinto se agrega como línea aparte, en vez de
+  // mezclarse o bloquear el precio ya elegido antes.
+  const existente = S.carrito.find(c => c.id===productoId && (c.escalaId || null) === (escalaElegida?.id || null));
   if (existente) {
     // Aumentar cantidad (validando stock si es producto)
     if (tipo==='producto') {
@@ -1707,7 +1710,7 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
   if (!prod) return;
 
   const precioUsar = parseFloat(escalaElegida.precio || 0);
-  const existente   = VR.carrito.find(i => i.id === productoId);
+  const existente   = VR.carrito.find(i => i.id === productoId && (i.escalaId || null) === escalaElegida.id);
 
   if (existente) {
     if (prod.tipo === 'producto' && existente.cantidad + 1 > Number(prod.stock_actual)) {
@@ -2730,10 +2733,9 @@ function continuarEscaneoConProducto(prod) {
     return;
   }
 
-  const yaEnCarritoVR = VR.carrito.find(i => i.id === prod.id);
   const tieneEscalas  = prod.tipo_precio === 'escala' && (S.escalasPorProducto[prod.id]||[]).length > 0;
 
-  if (!yaEnCarritoVR && tieneEscalas) {
+  if (tieneEscalas) {
     if (status) status.textContent = `📊 "${prod.nombre}" — elige un precio`;
     abrirSelectorEscala(prod.id, prod.tipo, 'vr');
     return;
@@ -2786,7 +2788,16 @@ async function procesarCodigoEscaneado(codigo) {
     }
 
     if (!coincidencias.length) {
-      showToast(`❌ No se encontró ningún producto con el código "${codigo}"`, 'error');
+      // Antes de decir "no existe", se revisa si el código SÍ está
+      // registrado pero en un producto inactivo — es un mensaje muy
+      // distinto y evita la confusión de "el código no está cargado".
+      const { data: inactivo } = await sb.from('productos')
+        .select('nombre').eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', false).maybeSingle();
+      if (inactivo) {
+        showToast(`⚠️ "${inactivo.nombre}" está INACTIVO — actívalo en Productos/Servicios para poder venderlo`, 'error');
+      } else {
+        showToast(`❌ No se encontró ningún producto con el código "${codigo}"`, 'error');
+      }
       if (status) status.textContent = '📡 Listo para escanear';
       return;
     }
