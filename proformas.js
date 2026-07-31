@@ -333,10 +333,9 @@ function agregarAlCarritoProf(productoId) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
 
-  // Si ya está en el carrito, no se vuelve a preguntar el precio: se
-  // respeta el que ya se eligió para esa línea (igual que en Ventas).
-  const yaEnCarrito = STATE.carrito.find(l => l.id === productoId);
-  if (!yaEnCarrito && p.tipo_precio === 'escala') {
+  // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
+  // nunca se asume el que se eligió antes (igual que en Ventas).
+  if (p.tipo_precio === 'escala') {
     abrirSelectorEscalaProf(productoId);
     return;
   }
@@ -385,7 +384,7 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   if (!p) return;
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(p.precio||0);
 
-  const existente = STATE.carrito.find(l => l.id === productoId);
+  const existente = STATE.carrito.find(l => l.id === productoId && (l.escalaId || null) === (escalaElegida?.id || null));
   if (existente) { existente.cantidad++; recalcularLineaProf(existente); }
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
