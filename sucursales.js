@@ -31,6 +31,7 @@ let STATE = {
   userId: null, userEmail: null, empresaConfig: {}, currentUser: {},
   sucursales: [], perfiles: [],
   sucursalActualParaAccesos: null,
+  esCentral: false, miPropiaSucursalId: null,
 };
 
 /* =====================================================
@@ -126,44 +127,72 @@ async function checkAdminAccess(email) {
 
 /* =====================================================
    CARGA DE SUCURSALES (crea la Central automáticamente la
-   primera vez que alguien visita este módulo)
+   primera vez que la Central visita este módulo; funciona igual
+   si quien entra es una sucursal — ve la misma lista completa,
+   pero sin las acciones de administración)
 ===================================================== */
-// Detecta si la cuenta con la que se inició sesión AHORA es en realidad
-// una sucursal creada por otra Central (no la Central real). Se usa
-// para no ofrecer el módulo completo desde dentro de una sucursal, y
-// sobre todo para NUNCA crearle su propia "Central" por error.
-async function detectarSiEsSucursal() {
-  try {
-    const { data } = await sbClient.from('sucursales')
-      .select('nombre').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
-    return data || null;
-  } catch (e) { return null; }
-}
-
 async function cargarSucursales() {
   const tbody = document.getElementById('suc-tbody');
   try {
-    let { data } = await sbClient.from('sucursales').select('*')
-      .eq('auth_user_id_central', STATE.userId).order('created_at');
+    // ¿Soy la Central? — solo la RLS deja ver esto como propio si de
+    // verdad lo soy (una sucursal nunca puede pasar esta consulta).
+    const { data: propia } = await sbClient.from('sucursales').select('id, es_central').eq('auth_user_id_central', STATE.userId);
+    STATE.esCentral = !!(propia && propia.length);
 
-    let lista = data || [];
-    const tieneCentral = lista.some(s => s.es_central);
-    if (!tieneCentral) {
+    if (STATE.esCentral && !propia.some(s => s.es_central)) {
       const nombreNegocio = STATE.empresaConfig?.nombre_comercial || 'Central';
-      const { data: nueva, error } = await sbClient.from('sucursales').insert({
+      await sbClient.from('sucursales').insert({
         auth_user_id_central: STATE.userId, nombre: nombreNegocio,
         es_central: true, auth_user_id_sucursal: STATE.userId, activa: true,
-      }).select().single();
-      if (!error && nueva) lista = [nueva, ...lista];
+      });
     }
 
-    lista.sort((a, b) => (b.es_central ? 1 : 0) - (a.es_central ? 1 : 0));
-    STATE.sucursales = lista;
+    STATE.miPropiaSucursalId = null;
+    if (!STATE.esCentral) {
+      const { data: miFila } = await sbClient.from('sucursales')
+        .select('id').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
+      STATE.miPropiaSucursalId = miFila?.id || null;
+    }
+
+    // Misma consulta (vía RPC) sea Central o sucursal — cada quien ve el
+    // grupo completo, solo cambian los botones que se muestran después.
+    const { data: lista, error } = await sbClient.rpc('listar_sucursales_grupo');
+    if (error) throw error;
+    STATE.sucursales = (lista || []).slice().sort((a, b) => (b.es_central ? 1 : 0) - (a.es_central ? 1 : 0));
     renderTablaSucursales();
+    ajustarUISegunRol();
   } catch (e) {
     console.error('cargarSucursales:', e);
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No se pudieron cargar las sucursales</td></tr>`;
   }
+}
+
+// Solo Central ve "+ Nueva sucursal" y las acciones de administración —
+// desde una sucursal solo se puede "Entrar" a otra.
+function ajustarUISegunRol() {
+  const btnNueva = document.querySelector('.greeting-actions');
+  if (btnNueva) btnNueva.style.display = STATE.esCentral ? '' : 'none';
+
+  const avisoPrevio = document.getElementById('suc-aviso-rol');
+  if (avisoPrevio) avisoPrevio.remove();
+  if (!STATE.esCentral) {
+    const panel = document.querySelector('.panel-card');
+    const aviso = document.createElement('div');
+    aviso.id = 'suc-aviso-rol';
+    aviso.className = 'panel-card fade-in';
+    aviso.style.cssText = 'background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px';
+    aviso.innerHTML = `<div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+      🔒 Crear, configurar accesos y eliminar sucursales solo se puede hacer desde la cuenta Central. Desde aquí solo puedes entrar a otra.
+    </div>`;
+    panel.parentNode.insertBefore(aviso, panel);
+  }
+}
+
+// ¿Esta fila de la lista es la cuenta con la que estoy conectado AHORA
+// mismo? (para no ofrecer "Entrar" a donde ya estoy)
+function estaAquiMismo(s) {
+  if (STATE.esCentral) return !!s.es_central;
+  return STATE.miPropiaSucursalId === s.id;
 }
 
 function renderTablaSucursales() {
@@ -181,17 +210,19 @@ function renderTablaSucursales() {
       <td><span class="status-badge ${s.activa!==false ? 'badge-activo':'badge-inactivo'}">${s.activa!==false ? 'Activa':'Inactiva'}</span></td>
       <td class="td-actions">
         <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
-          <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Entrar a esta sucursal" onclick="entrarASucursal('${s.id}')">
-            🔑 Entrar
-          </button>
-          ${!s.es_central ? `
+          ${estaAquiMismo(s) ? `
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">Estás aquí</span>
+          ` : `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Entrar a esta sucursal" onclick="entrarASucursal('${s.id}')">
+              🔑 Entrar
+            </button>
+          `}
+          ${(STATE.esCentral && !s.es_central) ? `
             <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Configurar accesos" onclick="abrirAccesosSucursal('${s.id}')">
               👥 Accesos
             </button>
             <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarSucursal('${s.id}')">🗑️</button>
-          ` : `
-            <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">Tu cuenta actual</span>
-          `}
+          ` : ''}
         </div>
       </td>
     </tr>`).join('');
@@ -201,12 +232,14 @@ function renderTablaSucursales() {
    CREAR SUCURSAL
 ===================================================== */
 function abrirNuevaSucursal() {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
   document.getElementById('ns-nombre').value = '';
   document.getElementById('ns-error').textContent = '';
   openModal('modal-nueva-sucursal');
 }
 
 async function crearSucursal() {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
   const errEl = document.getElementById('ns-error');
   errEl.textContent = '';
   const nombre = document.getElementById('ns-nombre').value.trim();
@@ -261,7 +294,18 @@ async function entrarASucursal(sucursalId) {
   const s = STATE.sucursales.find(x => x.id === sucursalId);
   if (!s) return;
 
-  if (s.es_central) { navigate('dashboard.html'); return; }
+  // Ir a la Central desde una sucursal: es el mismo flujo de "código de
+  // perfil" que ya usa el indicador fijo, nunca signInWithPassword (no
+  // existe una contraseña interna guardada para la cuenta real).
+  if (s.es_central) {
+    if (STATE.esCentral) { navigate('dashboard.html'); return; }
+    if (window.PerfilesGuardConfig?.volverACentral) {
+      window.PerfilesGuardConfig.volverACentral(s.nombre);
+    } else {
+      showToast('No se pudo abrir el acceso a Central', 'error');
+    }
+    return;
+  }
 
   // Si quien está usando el sistema en este momento es un PERFIL con PIN
   // (no el dueño directo), se valida su permiso para esta sucursal antes
@@ -286,21 +330,29 @@ async function entrarASucursal(sucursalId) {
   if (!confirm(`Vas a entrar a "${s.nombre}". ¿Continuar?`)) return;
 
   try {
-    // Se guarda la sesión actual de Central ANTES de cambiar — es lo que
-    // permite volver después con un solo clic, sin escribir correo ni
-    // contraseña otra vez. Vive solo en esta pestaña (sessionStorage),
-    // nunca se guarda en el servidor ni se comparte con la sucursal.
-    const { data: sesionActual } = await sbClient.auth.getSession();
-    if (sesionActual?.session) {
-      sessionStorage.setItem('n360_central_session_backup', JSON.stringify({
-        access_token: sesionActual.session.access_token,
-        refresh_token: sesionActual.session.refresh_token,
-        nombre_negocio: STATE.empresaConfig?.nombre_comercial || 'tu cuenta principal',
-      }));
+    // Se piden las credenciales internas de esa sucursal por RPC — nunca
+    // se leen directo de la tabla, así funciona igual si quien pregunta
+    // es la Central o una sucursal hermana del mismo grupo.
+    const { data: cred, error: errCred } = await sbClient.rpc('obtener_credenciales_sucursal', { p_sucursal_id: s.id });
+    const credencial = Array.isArray(cred) ? cred[0] : cred;
+    if (errCred || !credencial?.email_interno) throw new Error('No autorizado para entrar a esa sucursal.');
+
+    // La sesión de Central solo se respalda si de verdad se sale DESDE
+    // Central — si ya estoy en otra sucursal, se conserva el respaldo
+    // que ya existía (siempre debe apuntar a la Central real).
+    if (STATE.esCentral) {
+      const { data: sesionActual } = await sbClient.auth.getSession();
+      if (sesionActual?.session) {
+        sessionStorage.setItem('n360_central_session_backup', JSON.stringify({
+          access_token: sesionActual.session.access_token,
+          refresh_token: sesionActual.session.refresh_token,
+          nombre_negocio: STATE.empresaConfig?.nombre_comercial || 'tu cuenta principal',
+        }));
+      }
     }
 
     const { error } = await sbClient.auth.signInWithPassword({
-      email: s.email_interno, password: s.password_interno,
+      email: credencial.email_interno, password: credencial.password_interno,
     });
     if (error) throw error;
     // Sobrevive a la navegación (a diferencia de n360_perfil_activo, que
@@ -333,6 +385,7 @@ function listaModulosParaAccesos() {
 }
 
 async function abrirAccesosSucursal(sucursalId) {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede configurar accesos', 'error'); return; }
   const s = STATE.sucursales.find(x => x.id === sucursalId);
   if (!s) return;
   STATE.sucursalActualParaAccesos = s;
@@ -417,6 +470,7 @@ async function guardarAccesosSucursal() {
    ELIMINAR SUCURSAL
 ===================================================== */
 function confirmarEliminarSucursal(sucursalId) {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede eliminar sucursales', 'error'); return; }
   const s = STATE.sucursales.find(x => x.id === sucursalId);
   if (!s || s.es_central) return;
   STATE.sucursalActualParaAccesos = s; // se reutiliza el campo para saber cuál eliminar
@@ -489,27 +543,6 @@ async function initSucursales() {
 
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
-
-    // Si la cuenta con la que se entró es en realidad una sucursal (no
-    // la Central), este módulo no aplica aquí — se administra siempre
-    // desde la Central. Se corta ANTES de tocar nada más, para nunca
-    // crearle una "Central" propia por error.
-    const soyUnaSucursal = await detectarSiEsSucursal();
-    if (soyUnaSucursal) {
-      document.querySelector('.panel-card').outerHTML = `
-        <div class="panel-card fade-in">
-          <div class="panel-body" style="text-align:center;padding:40px 20px">
-            <div style="font-size:32px;margin-bottom:10px">🏬</div>
-            <div style="font-weight:700;font-size:15px;margin-bottom:6px">Estás dentro de "${esc(soyUnaSucursal.nombre)}"</div>
-            <p style="font-size:13px;color:var(--text-muted);max-width:420px;margin:0 auto">
-              Las sucursales se crean y administran siempre desde la cuenta Central — no desde dentro de otra sucursal.
-              Para volver a administrarlas, usa el botón "Volver a mi cuenta principal" (abajo a la izquierda).
-            </p>
-          </div>
-        </div>`;
-      document.querySelector('.greeting-actions').style.display = 'none';
-      return;
-    }
 
     await loadPerfilesCentral();
     await cargarSucursales();
