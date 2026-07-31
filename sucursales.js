@@ -237,11 +237,24 @@ function renderTablaSucursales() {
 /* =====================================================
    CREAR SUCURSAL
 ===================================================== */
+// Igual que en Configuración: la primera vez en esta pestaña pide el
+// código de administrador; ya desbloqueado, no lo vuelve a pedir. Si
+// quien está usando el sistema no es el admin, aquí es donde se corta.
+function conCodigoAdmin(accion) {
+  if (window.PerfilesGuardConfig?.requerirCodigoAdmin) {
+    window.PerfilesGuardConfig.requerirCodigoAdmin(accion);
+  } else {
+    accion();
+  }
+}
+
 function abrirNuevaSucursal() {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
-  document.getElementById('ns-nombre').value = '';
-  document.getElementById('ns-error').textContent = '';
-  openModal('modal-nueva-sucursal');
+  conCodigoAdmin(() => {
+    document.getElementById('ns-nombre').value = '';
+    document.getElementById('ns-error').textContent = '';
+    openModal('modal-nueva-sucursal');
+  });
 }
 
 async function crearSucursal() {
@@ -390,8 +403,12 @@ function listaModulosParaAccesos() {
   return Object.values(registro).filter(m => !m.soloAdmin);
 }
 
-async function abrirAccesosSucursal(sucursalId) {
+function abrirAccesosSucursal(sucursalId) {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede configurar accesos', 'error'); return; }
+  conCodigoAdmin(() => abrirAccesosSucursalInterno(sucursalId));
+}
+
+async function abrirAccesosSucursalInterno(sucursalId) {
   const s = STATE.sucursales.find(x => x.id === sucursalId);
   if (!s) return;
   STATE.sucursalActualParaAccesos = s;
@@ -477,10 +494,12 @@ async function guardarAccesosSucursal() {
 ===================================================== */
 function confirmarEliminarSucursal(sucursalId) {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede eliminar sucursales', 'error'); return; }
-  const s = STATE.sucursales.find(x => x.id === sucursalId);
-  if (!s || s.es_central) return;
-  STATE.sucursalActualParaAccesos = s; // se reutiliza el campo para saber cuál eliminar
-  openModal('modal-confirmar-eliminar-suc');
+  conCodigoAdmin(() => {
+    const s = STATE.sucursales.find(x => x.id === sucursalId);
+    if (!s || s.es_central) return;
+    STATE.sucursalActualParaAccesos = s; // se reutiliza el campo para saber cuál eliminar
+    openModal('modal-confirmar-eliminar-suc');
+  });
 }
 async function eliminarSucursal() {
   const s = STATE.sucursalActualParaAccesos;
