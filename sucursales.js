@@ -283,9 +283,22 @@ async function entrarASucursal(sucursalId) {
     }
   } catch (e) { console.warn('No se pudo validar el permiso del perfil activo:', e); }
 
-  if (!confirm(`Vas a entrar a "${s.nombre}". Tu sesión cambiará a esa sucursal — para volver a ${STATE.empresaConfig?.nombre_comercial || 'tu cuenta principal'} tendrás que iniciar sesión de nuevo con tu correo. ¿Continuar?`)) return;
+  if (!confirm(`Vas a entrar a "${s.nombre}". ¿Continuar?`)) return;
 
   try {
+    // Se guarda la sesión actual de Central ANTES de cambiar — es lo que
+    // permite volver después con un solo clic, sin escribir correo ni
+    // contraseña otra vez. Vive solo en esta pestaña (sessionStorage),
+    // nunca se guarda en el servidor ni se comparte con la sucursal.
+    const { data: sesionActual } = await sbClient.auth.getSession();
+    if (sesionActual?.session) {
+      sessionStorage.setItem('n360_central_session_backup', JSON.stringify({
+        access_token: sesionActual.session.access_token,
+        refresh_token: sesionActual.session.refresh_token,
+        nombre_negocio: STATE.empresaConfig?.nombre_comercial || 'tu cuenta principal',
+      }));
+    }
+
     const { error } = await sbClient.auth.signInWithPassword({
       email: s.email_interno, password: s.password_interno,
     });
@@ -490,7 +503,7 @@ async function initSucursales() {
             <div style="font-weight:700;font-size:15px;margin-bottom:6px">Estás dentro de "${esc(soyUnaSucursal.nombre)}"</div>
             <p style="font-size:13px;color:var(--text-muted);max-width:420px;margin:0 auto">
               Las sucursales se crean y administran siempre desde la cuenta Central — no desde dentro de otra sucursal.
-              Para volver a administrarlas, inicia sesión con tu cuenta principal.
+              Para volver a administrarlas, usa el botón "Volver a mi cuenta principal" (abajo a la izquierda).
             </p>
           </div>
         </div>`;
