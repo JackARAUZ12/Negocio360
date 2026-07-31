@@ -807,6 +807,102 @@
   };
 
   // ------------------------------------------------------------
+  // Aviso fijo "estás en la sucursal X" con botón para volver a
+  // Central — visible en CUALQUIER página del sistema, no solo en
+  // el módulo Sucursales. Nunca interfiere si la cuenta es la Central
+  // (la consulta simplemente no encuentra ninguna fila).
+  // ------------------------------------------------------------
+  async function mostrarAvisoSucursalSiAplica() {
+    try {
+      const { data } = await PG.client.from('sucursales')
+        .select('nombre').eq('auth_user_id_sucursal', PG.authUserId).eq('es_central', false).maybeSingle();
+      if (!data) return;
+
+      if (document.getElementById('pg-aviso-sucursal')) return; // ya está puesto
+      const style = document.createElement('style');
+      style.textContent = `
+        #pg-aviso-sucursal{position:fixed;left:16px;bottom:16px;z-index:500;
+          display:flex;align-items:center;gap:10px;background:var(--accent,#6C63FF);color:#fff;
+          padding:10px 14px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);
+          font-size:12.5px;font-weight:600;max-width:calc(100vw - 32px)}
+        #pg-aviso-sucursal button{background:rgba(255,255,255,.2);color:#fff;border:none;
+          border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+        #pg-aviso-sucursal button:hover{background:rgba(255,255,255,.32)}
+        @media (max-width:600px){#pg-aviso-sucursal{left:8px;right:8px;bottom:8px;max-width:none}}
+      `;
+      document.head.appendChild(style);
+
+      const aviso = document.createElement('div');
+      aviso.id = 'pg-aviso-sucursal';
+      aviso.innerHTML = `
+        <span>🏬 Estás en: <strong>${esc(data.nombre)}</strong></span>
+        <button id="pg-btn-salir-sucursal">Volver a mi cuenta principal</button>
+      `;
+      document.body.appendChild(aviso);
+
+      document.getElementById('pg-btn-salir-sucursal').addEventListener('click', volverACentralConCodigo);
+    } catch (e) { /* si falla, simplemente no se muestra el aviso — nunca bloquea la página */ }
+  }
+
+  // Pide el código de perfil (el mismo PIN de siempre) y, si coincide con
+  // CUALQUIER perfil de la cuenta Central (el admin u otro autorizado),
+  // restaura al instante la sesión de Central que se guardó justo antes
+  // de entrar a la sucursal — sin volver a escribir correo ni contraseña.
+  async function volverACentralConCodigo() {
+    const raw = sessionStorage.getItem('n360_central_session_backup');
+    if (!raw) {
+      alert('No se encontró tu sesión guardada de Central en esta pestaña. Inicia sesión de nuevo con tu correo.');
+      await PG.client.auth.signOut();
+      window.location.href = 'login.html';
+      return;
+    }
+    const backup = JSON.parse(raw);
+    const pin = prompt(`Escribe tu código de perfil para volver a "${backup.nombre_negocio}":`);
+    if (!pin) return;
+
+    try {
+      // Se usa un cliente APARTE (nunca el de esta página) para validar
+      // el código contra los perfiles reales de Central, sin tocar
+      // todavía la sesión activa de la sucursal.
+      const clienteCentral = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { error: errSesion } = await clienteCentral.auth.setSession({
+        access_token: backup.access_token, refresh_token: backup.refresh_token,
+      });
+      if (errSesion) throw errSesion;
+
+      const { data: { user: userCentral } } = await clienteCentral.auth.getUser();
+      const { data: perfilesCentral } = await clienteCentral.from('perfiles_acceso')
+        .select('id, nombre, tipo').eq('auth_user_id', userCentral.id).eq('activo', true);
+
+      let perfilValido = null;
+      for (const p of (perfilesCentral || [])) {
+        const hash = await hashPin(pin, p.id);
+        const { data: coincide } = await clienteCentral.from('perfiles_acceso')
+          .select('id').eq('id', p.id).eq('codigo_hash', hash).maybeSingle();
+        if (coincide) { perfilValido = p; break; }
+      }
+
+      if (!perfilValido) { alert('Código incorrecto.'); return; }
+
+      // Código válido (es el admin u otro perfil autorizado de Central):
+      // ahora sí se restaura esa sesión como la activa de esta pestaña.
+      const { error: errFinal } = await PG.client.auth.setSession({
+        access_token: backup.access_token, refresh_token: backup.refresh_token,
+      });
+      if (errFinal) throw errFinal;
+
+      sessionStorage.removeItem('n360_central_session_backup');
+      sessionStorage.removeItem('n360_sucursal_modulos');
+      window.location.href = 'dashboard.html';
+    } catch (e) {
+      console.error('volverACentralConCodigo:', e);
+      alert('No se pudo volver a Central: ' + (e.message || 'intenta de nuevo'));
+    }
+  }
+
+  // ------------------------------------------------------------
   // Arranque
   // ------------------------------------------------------------
   async function init() {
@@ -818,6 +914,12 @@
 
     PG.authUserId = session.user.id;
     PG.authEmail  = session.user.email || null;
+
+    // Si esta cuenta es en realidad una SUCURSAL (creada desde el módulo
+    // Sucursales de otra cuenta Central), se muestra un aviso fijo en
+    // toda página con un botón para salir — si no, quien entra a una
+    // sucursal se queda sin ninguna forma de volver a su cuenta principal.
+    mostrarAvisoSucursalSiAplica();
 
     // Presencia (última conexión / en línea) y badge de notificaciones:
     // corren siempre que haya sesión, independientemente del sistema de
