@@ -405,7 +405,11 @@ function listaModulosParaAccesos() {
 
 function abrirAccesosSucursal(sucursalId) {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede configurar accesos', 'error'); return; }
-  conCodigoAdmin(() => abrirAccesosSucursalInterno(sucursalId));
+  if (window.PerfilesGuardConfig?.requerirCodigoAdminSiempre) {
+    window.PerfilesGuardConfig.requerirCodigoAdminSiempre(() => abrirAccesosSucursalInterno(sucursalId));
+  } else {
+    conCodigoAdmin(() => abrirAccesosSucursalInterno(sucursalId));
+  }
 }
 
 async function abrirAccesosSucursalInterno(sucursalId) {
