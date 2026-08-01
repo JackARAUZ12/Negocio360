@@ -2363,11 +2363,27 @@ async function initDashboard() {
 
     const profile = await loadUserProfile(userId);
     if (profile) {
+      // Si nunca llegó a completar Personalización, se le manda ahí
+      // primero — antes de dejarlo entrar a un negocio sin nombre, logo
+      // ni datos.
+      if (profile.onboarding_completado === false) {
+        window.location.href = 'personalizacion.html';
+        return;
+      }
       const estado = profile.estado_cuenta || 'activa';
       if (estado === 'suspendida') { document.getElementById('screen-suspended').classList.add('active'); return; }
       if (estado === 'cancelada')  { document.getElementById('screen-cancelled').classList.add('active'); return; }
       renderUserInfo(profile, user.email);
     }
+
+    // Si esta cuenta es en realidad una BODEGA (no una sucursal ni la
+    // Central), no le corresponde el Dashboard completo — se manda
+    // directo a su página de inventario dedicada.
+    try {
+      const { data: filaBodega } = await sbClient.from('sucursales')
+        .select('id').eq('auth_user_id_sucursal', userId).eq('es_central', false).eq('tipo', 'bodega').maybeSingle();
+      if (filaBodega) { window.location.href = 'bodega.html'; return; }
+    } catch (e) { /* si falla, se sigue mostrando el Dashboard normal */ }
 
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
