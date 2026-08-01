@@ -135,10 +135,7 @@ async function cargarSucursales() {
   const tbody = document.getElementById('suc-tbody');
   try {
     // PRIORIDAD 1, siempre: ¿tengo una fila donde YO SOY la sucursal de
-    // otra Central? Si la tengo, soy una sucursal — punto final. Esto
-    // nunca se evalúa después de "¿tengo filas propias como Central?",
-    // precisamente para que ningún registro viejo/dañado pueda hacer
-    // que una sucursal se trate a sí misma como si fuera Central.
+    // otra Central? Si la tengo, soy una sucursal — punto final.
     const { data: miFila } = await sbClient.from('sucursales')
       .select('id').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
 
@@ -146,12 +143,18 @@ async function cargarSucursales() {
       STATE.esCentral = false;
       STATE.miPropiaSucursalId = miFila.id;
     } else {
-      // Solo si de verdad no soy sucursal de nadie, reviso si soy Central.
-      const { data: propia } = await sbClient.from('sucursales').select('id, es_central').eq('auth_user_id_central', STATE.userId);
-      STATE.esCentral = !!(propia && propia.length);
+      // Si NO soy sucursal de nadie, entonces SOY la Central — sin
+      // importar si ya tengo sucursales/bodegas creadas o no. Antes
+      // esto se decidía revisando "¿ya tengo filas propias?", lo cual
+      // fallaba justo la primera vez que alguien entraba a este
+      // módulo (cuenta recién creada, todavía sin ninguna fila) — se
+      // concluía por error que no era Central, y le ocultaba sus
+      // propios botones de crear.
+      STATE.esCentral = true;
       STATE.miPropiaSucursalId = null;
 
-      if (STATE.esCentral && !propia.some(s => s.es_central)) {
+      const { data: propia } = await sbClient.from('sucursales').select('id, es_central').eq('auth_user_id_central', STATE.userId);
+      if (!propia || !propia.some(s => s.es_central)) {
         const nombreNegocio = STATE.empresaConfig?.nombre_comercial || 'Central';
         await sbClient.from('sucursales').insert({
           auth_user_id_central: STATE.userId, nombre: nombreNegocio,
@@ -173,6 +176,10 @@ async function cargarSucursales() {
   } catch (e) {
     console.error('cargarSucursales:', e);
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No se pudieron cargar las sucursales</td></tr>`;
+    // Aunque algo haya fallado a mitad de camino, nunca se deja el
+    // botón "Nueva bodega"/"Nueva sucursal" en un estado indefinido —
+    // se aplica igual la regla ya conocida (solo Central los ve).
+    ajustarUISegunRol();
   }
 }
 
@@ -180,6 +187,13 @@ async function cargarSucursales() {
 // administración — desde una sucursal solo se puede "Entrar" a otra.
 function ajustarUISegunRol() {
   document.querySelectorAll('.greeting-actions').forEach(el => { el.style.display = STATE.esCentral ? '' : 'none'; });
+
+  const quienSoy = document.getElementById('suc-quien-soy');
+  if (quienSoy) {
+    quienSoy.textContent = STATE.esCentral
+      ? `👑 Estás viendo esto como la cuenta Central (${STATE.empresaConfig?.nombre_comercial || 'tu negocio'}) — puedes crear y administrar.`
+      : `🔒 Estás viendo esto desde una sucursal/bodega, no desde la Central — por eso no puedes crear ni administrar aquí.`;
+  }
 
   const avisoPrevio = document.getElementById('suc-aviso-rol');
   if (avisoPrevio) avisoPrevio.remove();
