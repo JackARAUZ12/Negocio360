@@ -443,7 +443,10 @@ async function entrarASucursal(sucursalId) {
     // en la sucursal para restringir el menú a lo permitido.
     if (modulosParaLlevar) sessionStorage.setItem('n360_sucursal_modulos', JSON.stringify(modulosParaLlevar));
     else sessionStorage.removeItem('n360_sucursal_modulos');
-    window.location.href = 'dashboard.html';
+    // Una bodega no es "otro sistema completo" — solo administra su
+    // propio inventario, así que entra directo a su página dedicada,
+    // nunca al Dashboard con todos los demás módulos.
+    window.location.href = (s.tipo === 'bodega') ? 'bodega.html' : 'dashboard.html';
   } catch (e) {
     console.error('entrarASucursal:', e);
     showToast('No se pudo entrar a la sucursal: ' + (e.message || ''), 'error');
