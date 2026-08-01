@@ -342,6 +342,7 @@
           </select>
           <span class="results-count" id="resultadosCount">0 resultados</span>
           <button class="btn btn-secondary btn-sm" onclick="abrirModalExportarInventario()" title="Exportar inventario">📤 Exportar inventario</button>
+          <button class="btn btn-secondary btn-sm" onclick="abrirModalMoverProducto()" title="Enviar stock a otra sucursal o bodega">🚚 Mover productos</button>
           <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">🔄 Actualizar</button>
         </div>
       </div>
@@ -449,6 +450,42 @@
           <span>Excel</span>
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalMoverProducto" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">🚚 Mover productos</h2>
+      <button class="modal-close" onclick="cerrarModalMoverProducto()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Producto a mover *</label>
+        <input type="text" class="form-input" id="mp-buscar-producto" placeholder="Busca por nombre o SKU…" autocomplete="off" oninput="buscarProductoParaMover(this.value)"/>
+        <div id="mp-resultados" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
+      </div>
+      <div id="mp-seleccionado" style="display:none;background:var(--bg-app);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:13px">
+        <strong id="mp-sel-nombre"></strong><br/>
+        <span style="color:var(--text-secondary);font-size:12px">Stock disponible: <span id="mp-sel-stock"></span></span>
+      </div>
+      <div class="form-group">
+        <label>Enviar a *</label>
+        <select class="form-select" id="mp-destino">
+          <option value="">Cargando sucursales y bodegas…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Cantidad a mover *</label>
+        <input type="number" class="form-input" id="mp-cantidad" min="0.01" step="0.01" placeholder="0"/>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">Se descuenta de tu inventario y se suma al destino — si el producto no existe ahí, se crea automáticamente con esa cantidad.</p>
+      <p id="mp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" onclick="cerrarModalMoverProducto()">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarMover" onclick="confirmarMoverProducto()">Mover stock</button>
     </div>
   </div>
 </div>
