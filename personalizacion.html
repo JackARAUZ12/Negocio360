@@ -1115,12 +1115,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   currentUser = session.user;
 
-  // 4b. Verificar si ya completó el onboarding
-  const { data: existing } = await db
+  // 4b. Verificar si ya completó el onboarding. Se usa maybeSingle()
+  // (no single()) y se revisa el error explícitamente — antes, si esta
+  // consulta fallaba por cualquier motivo de red, el código asumía en
+  // silencio "es cuenta nueva" y dejaba pasar a alguien que ya había
+  // completado todo, causando el bucle y errores al intentar guardar
+  // de nuevo sobre datos ya existentes.
+  const { data: existing, error: errExisting } = await db
     .from('configuracion_empresa')
     .select('onboarding_completado, onboarding_step')
     .eq('auth_user_id', currentUser.id)
-    .single();
+    .maybeSingle();
+
+  if (errExisting) {
+    showToast('No se pudo verificar tu cuenta. Revisa tu conexión e intenta de nuevo.', 'error');
+    return;
+  }
 
   if (existing?.onboarding_completado) {
     // Ya completó el onboarding, redirigir al dashboard
