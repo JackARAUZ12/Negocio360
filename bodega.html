@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bodega — Negocio360</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="productos.css" />
+
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="modulos-registro.js"></script>
+  <script src="auditoria-guard.js"></script>
+  <!-- SheetJS: lee el archivo .xlsx que el usuario sube para la importación masiva (y ahora también exporta el inventario) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- jsPDF + autoTable: exportar inventario en PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Estilos extra para modal de movimientos -->
+  <style>
+    /* ── Aviso de campos bloqueados en edición ── */
+    .edit-lock-notice {
+      display: none;
+      background: var(--warning-light);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--warning);
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .edit-lock-notice.visible { display: flex; }
+    .edit-lock-notice.info-mode {
+      background: var(--info-light);
+      border-color: rgba(59,130,246,0.3);
+      color: var(--info);
+    }
+
+    /* ── Tarjetas de razón de merma ── */
+    .razones-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    @media (max-width: 480px) { .razones-grid { grid-template-columns: repeat(2,1fr); } }
+
+    .razon-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 8px;
+      border-radius: var(--radius-md);
+      border: 1.5px solid var(--border);
+      background: var(--bg-app);
+      cursor: pointer;
+      transition: all var(--transition);
+      text-align: center;
+      user-select: none;
+    }
+    .razon-card:hover {
+      border-color: var(--warning);
+      background: var(--warning-light);
+    }
+    .razon-card.selected {
+      border-color: var(--warning);
+      background: var(--warning-light);
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
+    }
+    .razon-icon { font-size: 22px; line-height: 1; }
+    .razon-label { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
+    .razon-card.selected .razon-label { color: var(--warning); }
+
+    /* ── Caja preview en movimiento ── */
+    .mov-caja-row {
+      background: var(--bg-app);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .mov-caja-row label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text-primary);
+      flex: 1;
+    }
+    .mov-caja-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--warning);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .mov-caja-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .mov-caja-preview {
+      font-size: 12px;
+      color: var(--warning);
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    /* ── Stock actual en modal movimiento ── */
+    .mov-stock-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--info-light);
+      color: var(--info);
+      border-radius: var(--radius-full);
+      padding: 4px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    /* ── Error inline en movimiento ── */
+    .mov-error {
+      font-size: 12.5px;
+      color: var(--danger);
+      font-weight: 500;
+      min-height: 18px;
+    }
+
+    /* ── Indicador de moneda en header ── */
+    .moneda-chip {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-app);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      padding: 3px 10px;
+      font-weight: 600;
+    }
+
+    /* ── Caja de impacto en caja (nuevo producto) ── */
+    .caja-impacto-hint {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      background: var(--bg-app);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .caja-impacto-hint svg { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+  </style>
+  <link rel="stylesheet" href="perfiles-guard.css" />
+</head>
+<body>
+
+<!-- ============================================================
+     LAYOUT PRINCIPAL
+     ============================================================ -->
+<div class="app-layout">
+
+  <!-- SIDEBAR OVERLAY MÓVIL -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- ============================================================
+       SIDEBAR
+       ============================================================ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">🏭</div>
+      <div>
+        <div class="sidebar-logo-text" id="sidebarLogoText">Bodega</div>
+        <div class="sidebar-logo-sub">Solo inventario</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Esta bodega</div>
+      <a href="bodega.html" class="sidebar-item active">
+        <span class="sidebar-icon">📦</span>
+        Inventario
+        <span class="sidebar-badge" id="badgeStockBajo" style="display:none">0</span>
+      </a>
+      <div style="padding:12px 16px;font-size:11.5px;color:var(--text-muted);line-height:1.5">
+        Esta cuenta es una bodega — no tiene ventas, caja ni los demás módulos del sistema. Solo administra su propio inventario, y puede recibir o enviar stock con "Mover productos".
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar">U</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebarUserName">Cargando...</div>
+          <div class="sidebar-user-role">Bodega</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================================================
+       CONTENIDO PRINCIPAL
+       ============================================================ -->
+  <div class="main-content">
+
+    <!-- HEADER -->
+    <header class="header">
+      <button class="header-menu-btn" id="menuToggle" aria-label="Abrir menú">☰</button>
+      <div class="header-breadcrumb">
+        <span class="header-subtitle" id="nombreEmpresa">Mi Negocio</span>
+        <span class="header-breadcrumb-sep">›</span>
+        <span class="header-title">Bodega — Inventario</span>
+      </div>
+      <div class="header-divider"></div>
+      <div class="header-actions">
+        <div class="header-date">📅 <span id="fechaActual"></span></div>
+        <div class="header-divider"></div>
+        <!-- Indicador de moneda activa -->
+        <span class="moneda-chip" id="monedaIndicador" title="Moneda configurada">$ (USD)</span>
+        <span class="header-plan-badge" id="planBadge">Free</span>
+        <button class="header-icon-btn" id="btnTema" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
+        <button class="header-icon-btn" title="Notificaciones" aria-label="Notificaciones">
+          🔔<span class="notif-dot"></span>
+        </button>
+        <div class="header-avatar" title="Mi cuenta">U</div>
+      </div>
+    </header>
+
+    <!-- PAGE CONTENT -->
+    <main class="page-content">
+
+      <!-- PAGE HEADER -->
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>🏭 Bodega — Inventario</h1>
+          <p>Solo administra el inventario de esta bodega — no tiene ventas ni caja propia.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="plantilla-dropdown" id="plantillaDropdown">
+            <button type="button" class="btn btn-secondary" onclick="togglePlantillaDropdown(event)">📥 Descargar plantilla ▾</button>
+            <div class="plantilla-dropdown-menu" id="plantillaDropdownMenu">
+              <a href="plantilla_productos_precio_fijo_negocio360.xlsx" download="plantilla_productos_precio_fijo_negocio360.xlsx">
+                <strong>Precio fijo</strong>
+                <span>Un solo precio de venta por producto/servicio</span>
+              </a>
+              <a href="plantilla_productos_escala_precios_negocio360.xlsx" download="plantilla_productos_escala_precios_negocio360.xlsx">
+                <strong>Escala de precios</strong>
+                <span>Varios precios (mayoreo, rangos, etc.) hasta 5 escalas</span>
+              </a>
+            </div>
+          </div>
+          <button class="btn btn-secondary" onclick="abrirModalImportar()">📤 Importar Excel</button>
+          <button class="btn btn-secondary" onclick="abrirModalNuevo('servicio')">🔧 Nuevo Servicio</button>
+          <button class="btn btn-primary"   onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>
+        </div>
+      </div>
+
+      <!-- TARJETAS RESUMEN -->
+      <div class="stats-grid">
+        <div class="stat-card stat-purple">
+          <div class="stat-card-header">
+            <span class="stat-card-label">Productos activos</span>
+            <div class="stat-card-icon">📦</div>
+          </div>
+          <div class="stat-card-value" id="statProductos">—</div>
+          <div class="stat-card-sub">En catálogo</div>
+        </div>
+        <div class="stat-card stat-blue">
+          <div class="stat-card-header">
+            <span class="stat-card-label">Servicios activos</span>
+            <div class="stat-card-icon">🔧</div>
+          </div>
+          <div class="stat-card-value" id="statServicios">—</div>
+          <div class="stat-card-sub">Disponibles</div>
+        </div>
+        <div class="stat-card stat-green">
+          <div class="stat-card-header">
+            <span class="stat-card-label">Valor del inventario</span>
+            <div class="stat-card-icon">💵</div>
+          </div>
+          <div class="stat-card-value" id="statInventario" style="font-size:20px;letter-spacing:-0.5px">—</div>
+          <div class="stat-card-sub">Stock × Costo</div>
+        </div>
+        <div class="stat-card stat-red">
+          <div class="stat-card-header">
+            <span class="stat-card-label">Stock bajo</span>
+            <div class="stat-card-icon">⚠️</div>
+          </div>
+          <div class="stat-card-value" id="statStockBajo">—</div>
+          <div class="stat-card-sub">Requieren atención</div>
+        </div>
+      </div>
+
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput"
+                 placeholder="Buscar por nombre, SKU, categoría..." autocomplete="off" />
+          <button class="search-clear" id="searchClear" title="Limpiar búsqueda">✕</button>
+        </div>
+        <div class="search-wrapper" id="scanWrapper" title="Escanea con tu lector de código de barras, o escribe el código y presiona Enter">
+          <span class="search-icon">📷</span>
+          <input type="text" class="search-input" id="scanInput"
+                 placeholder="Escanear código de barras…" autocomplete="off" />
+          <button class="search-clear" id="scanClear" title="Limpiar escaneo">✕</button>
+        </div>
+        <div class="filters-group">
+          <button class="filter-btn active" data-filtro="todos">Todos</button>
+          <button class="filter-btn" data-filtro="productos">📦 Productos</button>
+          <button class="filter-btn" data-filtro="servicios">🔧 Servicios</button>
+          <button class="filter-btn" data-filtro="activos">✅ Activos</button>
+          <button class="filter-btn" data-filtro="inactivos">⛔ Inactivos</button>
+          <button class="filter-btn" data-filtro="stock_bajo">⚠️ Stock bajo</button>
+        </div>
+        <div class="toolbar-right">
+          <select class="form-select" id="filtroMarca" title="Filtrar por marca / proveedor"
+                  style="max-width:180px;height:36px;font-size:12.5px">
+            <option value="">Todas las marcas</option>
+          </select>
+          <span class="results-count" id="resultadosCount">0 resultados</span>
+          <button class="btn btn-secondary btn-sm" onclick="abrirModalExportarInventario()" title="Exportar inventario">📤 Exportar inventario</button>
+          <button class="btn btn-secondary btn-sm" onclick="abrirModalMoverProducto()" title="Enviar stock a otra sucursal o bodega">🚚 Mover productos</button>
+          <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">🔄 Actualizar</button>
+        </div>
+      </div>
+
+      <!-- TABLA PRINCIPAL -->
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table class="data-table" role="table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Creado</th>
+                <th>Actualizado</th>
+                <th>Nombre / SKU</th>
+                <th>Categoría</th>
+                <th>Precio</th>
+                <th>Costo</th>
+                <th>Margen</th>
+                <th>Stock</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="productosTbody">
+              <tr class="skeleton-row">
+                <td><div class="skeleton skel-badge"></div></td>
+                <td><div class="skeleton skel-line" style="width:140px"></div></td>
+                <td><div class="skeleton skel-line" style="width:80px"></div></td>
+                <td><div class="skeleton skel-line" style="width:70px"></div></td>
+                <td><div class="skeleton skel-line" style="width:70px"></div></td>
+                <td><div class="skeleton skel-line" style="width:50px"></div></td>
+                <td><div class="skeleton skel-line" style="width:50px"></div></td>
+                <td><div class="skeleton skel-badge"></div></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="tablePie">Cargando datos...</span>
+          <span style="color:var(--text-muted);font-size:11px">Datos protegidos por RLS · Solo tus registros</span>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           COMBOS / KITS — cuadro separado del de Productos/Servicios
+      ============================================================ -->
+      <div class="toolbar" style="margin-top:28px">
+        <div>
+          <h2 style="font-size:16px;font-weight:700;margin:0 0 2px">📦 Combos</h2>
+          <p style="font-size:12px;color:var(--text-muted);margin:0">Agrupa varios productos bajo un mismo nombre, SKU y código de barras. Al venderse, se descuenta el stock de cada componente.</p>
+        </div>
+        <div class="toolbar-right">
+          <span class="results-count" id="combosCount">0 combos</span>
+          <button class="btn btn-primary btn-sm" onclick="abrirModalCombo()">+ Crear combo</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table class="data-table" role="table">
+            <thead>
+              <tr>
+                <th>Combo</th>
+                <th>SKU / Código de barras</th>
+                <th>Componentes</th>
+                <th>Costo</th>
+                <th>Precio</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="combosTbody">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando combos…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     MODAL: NUEVO / EDITAR PRODUCTO
+     ============================================================ -->
+<div class="modal-overlay" id="modalExportarInventario" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Exportar inventario</h2>
+      <button class="modal-close" onclick="cerrarModalExportarInventario()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:16px">
+        Se exportarán <strong><span id="exp-inv-cantidad">0</span> productos</strong> (según los filtros que tengas aplicados). Elige el formato:
+      </p>
+      <div style="display:flex;gap:12px">
+        <button class="btn btn-secondary" style="flex:1;flex-direction:column;gap:6px;padding:18px 10px;height:auto" onclick="exportarInventarioPDF()">
+          <span style="font-size:26px">📄</span>
+          <span>PDF</span>
+        </button>
+        <button class="btn btn-secondary" style="flex:1;flex-direction:column;gap:6px;padding:18px 10px;height:auto" onclick="exportarInventarioExcel()">
+          <span style="font-size:26px">📊</span>
+          <span>Excel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalMoverProducto" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">🚚 Mover productos</h2>
+      <button class="modal-close" onclick="cerrarModalMoverProducto()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Producto a mover *</label>
+        <input type="text" class="form-input" id="mp-buscar-producto" placeholder="Busca por nombre o SKU…" autocomplete="off" oninput="buscarProductoParaMover(this.value)"/>
+        <div id="mp-resultados" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
+      </div>
+      <div id="mp-seleccionado" style="display:none;background:var(--bg-app);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:13px">
+        <strong id="mp-sel-nombre"></strong><br/>
+        <span style="color:var(--text-secondary);font-size:12px">Stock disponible: <span id="mp-sel-stock"></span></span>
+      </div>
+      <div class="form-group">
+        <label>Enviar a *</label>
+        <select class="form-select" id="mp-destino">
+          <option value="">Cargando sucursales y bodegas…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Cantidad a mover *</label>
+        <input type="number" class="form-input" id="mp-cantidad" min="0.01" step="0.01" placeholder="0"/>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">Se descuenta de tu inventario y se suma al destino — si el producto no existe ahí, se crea automáticamente con esa cantidad.</p>
+      <p id="mp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" onclick="cerrarModalMoverProducto()">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarMover" onclick="confirmarMoverProducto()">Mover stock</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalProducto" role="dialog" aria-modal="true" aria-labelledby="modalProductoTitle">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalProductoTitle">+ Nuevo Producto</h2>
+      <button class="modal-close" onclick="cerrarModalProducto()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="formProducto" novalidate autocomplete="off">
+
+        <!-- Toggle Tipo -->
+        <div class="form-group full" style="margin-bottom:16px">
+          <label class="form-label">Tipo de registro <span>*</span></label>
+          <div class="type-toggle">
+            <button type="button" class="type-toggle-btn active" id="toggleProducto">📦 Producto</button>
+            <button type="button" class="type-toggle-btn" id="toggleServicio">🔧 Servicio</button>
+          </div>
+          <input type="hidden" id="inputTipo" value="producto" />
+        </div>
+
+        <!-- INFORMACIÓN BÁSICA -->
+        <div class="form-section-title">Información básica</div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label class="form-label" for="inputNombre">Nombre <span>*</span></label>
+            <input type="text" class="form-input" id="inputNombre"
+                   placeholder="Ej: Camisa Polo Talla M" maxlength="200" />
+            <span class="form-error" id="errNombre"></span>
+          </div>
+          <div class="form-group full">
+            <label class="form-label" for="inputDescripcion">Descripción</label>
+            <textarea class="form-textarea" id="inputDescripcion"
+                      placeholder="Descripción detallada..." rows="3" maxlength="1000"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputCategoria">Categoría</label>
+            <input type="text" class="form-input" id="inputCategoria"
+                   placeholder="Ej: Ropa, Tecnología..." maxlength="100" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputSku">SKU</label>
+            <input type="text" class="form-input" id="inputSku"
+                   placeholder="Ej: CAM-POLO-M-001" maxlength="100" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputMarca">Marca / Proveedor <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <select class="form-select" id="inputMarca">
+              <option value="">Sin marca / proveedor</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label class="form-label" for="inputCodBarras">Código de barras</label>
+            <div class="cb-input-group" id="cbInputGroup">
+              <input type="text" class="form-input" id="inputCodBarras"
+                     placeholder="Ej: 7501234567890 (escribe el código o usa Escanear)" maxlength="100" autocomplete="off" />
+              <button type="button" class="btn-cb-scan" id="btnEscanearCB" onclick="toggleModoEscaneoCB()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/>
+                  <path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/>
+                  <line x1="7" y1="12" x2="17" y2="12"/>
+                </svg>
+                <span id="btnEscanearCBLabel">Escanear</span>
+              </button>
+            </div>
+            <span class="cb-scan-hint" id="cbScanHint" style="display:none">
+              📡 Esperando lectura del escáner… escanea el código o presiona Enter
+            </span>
+          </div>
+        </div>
+
+        <!-- COSTOS & PRECIOS -->
+        <div class="form-section-title">Costos &amp; Precios</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="inputCosto">Costo</label>
+            <input type="number" class="form-input" id="inputCosto"
+                   placeholder="0.00" min="0" step="0.01" oninput="actualizarMargenPreview()" />
+          </div>
+          <div class="form-group" id="wrapPrecioFijo">
+            <label class="form-label" for="inputPrecio">Precio de venta</label>
+            <input type="number" class="form-input" id="inputPrecio"
+                   placeholder="0.00" min="0" step="0.01" oninput="actualizarMargenPreview()" />
+          </div>
+          <div class="form-group full" id="margenPreviewWrap" style="display:none">
+            <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;color:var(--text-secondary)">
+              Margen calculado: <strong id="margenPreview" style="color:var(--text-primary)">—</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- TIPO DE PRECIO: fijo (actual) o escala (varios precios) -->
+        <div class="form-group full" style="margin:4px 0 16px">
+          <label class="form-label">Tipo de precio</label>
+          <div class="type-toggle">
+            <button type="button" class="type-toggle-btn active" id="toggleTipoFijo" onclick="setTipoPrecio('fijo')">Precio fijo</button>
+            <button type="button" class="type-toggle-btn" id="toggleTipoEscala" onclick="setTipoPrecio('escala')">Escala de precios</button>
+          </div>
+          <input type="hidden" id="inputTipoPrecio" value="fijo" />
+        </div>
+
+        <div class="form-group full" id="wrapEscalaPrecios" style="display:none;margin-bottom:16px">
+          <label class="form-label">Precios de la escala</label>
+          <div id="escalasEditorBody"></div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="agregarFilaEscala()" style="margin-top:8px">+ Agregar precio</button>
+          <span class="form-error" id="errEscalas"></span>
+        </div>
+
+        <!-- INVENTARIO (solo en creación/duplicación) -->
+        <div id="stockSection">
+          <div class="form-section-title">Inventario</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="inputStockActual">Stock inicial</label>
+              <input type="number" class="form-input" id="inputStockActual"
+                     placeholder="0" min="0" step="0.01" oninput="actualizarCajaImpactoPreview()" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inputStockMinimo">Stock mínimo</label>
+              <input type="number" class="form-input" id="inputStockMinimo"
+                     placeholder="0" min="0" step="0.01" />
+              <span class="form-hint">Alerta cuando llegue a este nivel</span>
+            </div>
+          </div>
+
+          <!-- ¿Cómo afecta esto tu caja? -->
+          <div class="form-group full" style="margin-top:14px">
+            <label class="form-label">¿Cómo afecta esto tu caja? <span>*</span></label>
+            <div class="type-toggle">
+              <button type="button" class="type-toggle-btn active" id="toggleDescontarCaja">💸 Descontar de caja</button>
+              <button type="button" class="type-toggle-btn" id="toggleNoDescontarCaja">📦 Ya lo tenía</button>
+            </div>
+            <input type="hidden" id="inputDescontarCaja" value="true" />
+            <div class="caja-impacto-hint" style="margin-top:8px" id="cajaImpactoHintBox">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span id="cajaImpactoHint">Se registrará un gasto en Caja por el costo total del stock inicial. Úsalo cuando estés comprando este producto ahora.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aviso modo edición: stock editable directamente -->
+        <div class="edit-lock-notice info-mode" id="avisoStockBloqueado">
+          ✏️ Puedes editar el stock actual directamente aquí. Para bajas con motivo (robo, daño, merma, etc.)
+          sigue usando <strong>Movimientos especiales</strong> (botón 📉 en la tabla), que además registra el
+          motivo y puede descontar el costo de caja automáticamente.
+          <div class="form-grid" style="margin-top:12px">
+            <div class="form-group">
+              <label class="form-label" for="inputStockActualEdit">Stock actual</label>
+              <input type="number" class="form-input" id="inputStockActualEdit"
+                     placeholder="0" min="0" step="0.01" />
+              <span class="form-hint">Ajusta el stock si es necesario</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inputStockMinimoEdit">Stock mínimo</label>
+              <input type="number" class="form-input" id="inputStockMinimoEdit"
+                     placeholder="0" min="0" step="0.01" />
+              <span class="form-hint">Alerta cuando llegue a este nivel</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ESTADO -->
+        <div class="form-section-title">Estado</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="inputActivo">Estado del registro</label>
+            <select class="form-select" id="inputActivo">
+              <option value="true">✅ Activo</option>
+              <option value="false">⛔ Inactivo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputFechaCreacion">Fecha de creación</label>
+            <input type="date" class="form-input" id="inputFechaCreacion" />
+            <span class="form-hint">Cámbiala si este producto ya existía antes de usar el sistema</span>
+          </div>
+        </div>
+
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="cerrarModalProducto()">Cancelar</button>
+      <button class="btn btn-primary" id="btnGuardarProducto">Crear</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     MODAL: VER DETALLE
+     ============================================================ -->
+<div class="modal-overlay" id="modalCombo" role="dialog" aria-modal="true" aria-labelledby="modalComboTitle">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalComboTitle">+ Nuevo Combo</h2>
+      <button class="modal-close" onclick="cerrarModalCombo()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="comboEditId" />
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label class="form-label" for="comboNombre">Nombre del combo *</label>
+          <input type="text" class="form-input" id="comboNombre" placeholder="Ej: Combo desayuno" />
+          <span class="form-error" id="errComboNombre"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="comboSku">SKU</label>
+          <input type="text" class="form-input" id="comboSku" placeholder="Opcional" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="comboCodigoBarras">Código de barras</label>
+          <input type="text" class="form-input" id="comboCodigoBarras" placeholder="Opcional" />
+        </div>
+      </div>
+
+      <div class="form-section-title">Productos incluidos</div>
+      <div class="form-group full">
+        <input type="text" class="form-input" id="comboProductoSearch" placeholder="Buscar producto por nombre o SKU…" oninput="buscarProductoParaCombo(this.value)" autocomplete="off" />
+        <div id="comboProductoResultados" style="position:relative"></div>
+      </div>
+      <div id="comboItemsBody" style="margin-bottom:10px"></div>
+      <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;color:var(--text-secondary);margin-bottom:18px">
+        Costo total del combo (suma de sus componentes): <strong id="comboCostoTotalPreview" style="color:var(--text-primary)">—</strong>
+      </div>
+
+      <div class="form-section-title">Precio de venta</div>
+      <div class="form-group full" style="margin:4px 0 16px">
+        <div class="type-toggle">
+          <button type="button" class="type-toggle-btn active" id="comboToggleTipoFijo" onclick="setComboTipoPrecio('fijo')">Precio fijo</button>
+          <button type="button" class="type-toggle-btn" id="comboToggleTipoEscala" onclick="setComboTipoPrecio('escala')">Escala de precios</button>
+        </div>
+        <input type="hidden" id="comboInputTipoPrecio" value="fijo" />
+      </div>
+
+      <div class="form-group" id="comboWrapPrecioFijo">
+        <label class="form-label" for="comboInputPrecio">Precio de venta</label>
+        <input type="number" class="form-input" id="comboInputPrecio" placeholder="0.00" min="0" step="0.01" />
+      </div>
+
+      <div class="form-group full" id="comboWrapEscalaPrecios" style="display:none;margin-bottom:16px">
+        <label class="form-label">Precios de la escala</label>
+        <div id="comboEscalasEditorBody"></div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="agregarFilaEscalaCombo()" style="margin-top:8px">+ Agregar precio</button>
+        <span class="form-error" id="errComboEscalas"></span>
+      </div>
+
+      <div class="form-group full">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
+          <input type="checkbox" id="comboActivo" checked style="width:16px;height:16px" />
+          <span>Combo activo (disponible para vender)</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalCombo()">Cancelar</button>
+      <button class="btn btn-primary" id="btnGuardarCombo" onclick="guardarCombo()">Guardar combo</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalEscalaComponenteCombo" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">Elegir precio</h2>
+      <button class="modal-close" onclick="cerrarModalEscalaComponenteCombo()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+        <strong id="escalaComponenteNombreProducto">Este producto</strong> tiene varios precios configurados. ¿Con cuál lo agregas a este combo?
+      </p>
+      <div id="escalaComponenteOpciones"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalEscalaComponenteCombo()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEscalaComponenteCombo()">Agregar al combo</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalDetalleCombo" role="dialog" aria-modal="true">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title">Detalle del combo</h2>
+      <button class="modal-close" onclick="cerrarModalDetalleCombo()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body" id="detalleComboBody">Cargando…</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalDetalleCombo()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalDetalle" role="dialog" aria-modal="true">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title">Detalle del registro</h2>
+      <button class="modal-close" onclick="cerrarDetalle()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body" id="detalleContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="cerrarDetalle()">Cerrar</button>
+      <button class="btn btn-primary" id="btnEditarDesdeDetalle">✏️ Editar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     MODAL: MOVIMIENTOS ESPECIALES (merma)
+     ============================================================ -->
+<div class="modal-overlay" id="modalMovimiento" role="dialog" aria-modal="true">
+  <div class="modal modal-lg">
+
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">📉 Movimiento especial</h2>
+        <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">
+          Descuento de stock por causa justificada
+        </div>
+      </div>
+      <button class="modal-close" onclick="cerrarMovimiento()" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Info producto -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:4px">Producto</div>
+          <div style="font-size:16px;font-weight:700" id="movProductoNombre">—</div>
+        </div>
+        <span class="mov-stock-chip" id="movStockActual">Stock actual: —</span>
+      </div>
+
+      <!-- Razón del movimiento -->
+      <div class="form-section-title" style="margin-top:0">Razón del descuento</div>
+      <input type="hidden" id="movRazonSeleccionada" value="" />
+      <div class="razones-grid">
+
+        <div class="razon-card" onclick="seleccionarRazon(this,'robo')">
+          <div class="razon-icon">🔓</div>
+          <div class="razon-label">Robo</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'dano')">
+          <div class="razon-icon">💥</div>
+          <div class="razon-label">Daño</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'vencimiento')">
+          <div class="razon-icon">🗓️</div>
+          <div class="razon-label">Vencimiento</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'uso_interno')">
+          <div class="razon-icon">🏭</div>
+          <div class="razon-label">Uso interno</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'conteo_fisico')">
+          <div class="razon-icon">🔢</div>
+          <div class="razon-label">Conteo físico</div>
+        </div>
+        <div class="razon-card" onclick="seleccionarRazon(this,'error_anterior')">
+          <div class="razon-icon">↩️</div>
+          <div class="razon-label">Error anterior</div>
+        </div>
+
+      </div>
+
+      <!-- Cantidad -->
+      <div class="form-section-title">Cantidad a descontar</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label" for="movCantidad">Unidades <span style="color:var(--danger)">*</span></label>
+          <input type="number" class="form-input" id="movCantidad"
+                 placeholder="0" min="0.01" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="movNota">Nota / observación <span style="color:var(--text-muted);font-weight:400;font-size:11px">(opcional)</span></label>
+          <input type="text" class="form-input" id="movNota"
+                 placeholder="Ej: encontrado en bodega dañado..." maxlength="300" />
+        </div>
+      </div>
+
+      <!-- Descuento de caja -->
+      <div class="form-section-title">Impacto financiero</div>
+      <div class="mov-caja-row" id="movCajaRow" style="display:none">
+        <div style="flex:1">
+          <label for="movDescontarCaja">
+            <input type="checkbox" id="movDescontarCaja" />
+            Registrar el costo como gasto de caja
+          </label>
+          <div class="mov-caja-desc">
+            Esto creará un gasto automático en el módulo de Gastos por el valor de costo del producto perdido.
+          </div>
+          <div class="mov-caja-preview" id="movCajaPreview"></div>
+        </div>
+      </div>
+      <div id="movCajaRowInfo" style="display:none">
+        <!-- Para conteo físico y error anterior -->
+        <div style="background:var(--bg-app);border-radius:var(--radius-md);border:1px solid var(--border);padding:10px 14px;font-size:12.5px;color:var(--text-muted)">
+          ℹ️ Para esta razón no se registra impacto en caja — es solo un ajuste de inventario.
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div class="mov-error" id="movError" style="margin-top:12px"></div>
+
+    </div><!-- /modal-body -->
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="cerrarMovimiento()">Cancelar</button>
+      <button class="btn" id="btnConfirmarMovimiento"
+              style="background:var(--warning);color:white;"
+              onclick="confirmarMovimiento()">
+        📉 Confirmar descuento
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     MODAL: IMPORTAR EXCEL (masivo)
+     ============================================================ -->
+<div class="modal-overlay" id="modalImportar" role="dialog" aria-modal="true" aria-labelledby="modalImportarTitle">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalImportarTitle">📤 Importar Productos/Servicios desde Excel</h2>
+      <button class="modal-close" onclick="cerrarModalImportar()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body" id="importarBody">
+      <!-- contenido dinámico: paso 1 (subir), errores, o vista previa -->
+    </div>
+    <div class="modal-footer" id="importarFooter">
+      <!-- botones dinámicos según el paso -->
+    </div>
+  </div>
+</div>
+<input type="file" id="inputImportarExcel" accept=".xlsx" style="display:none" onchange="onArchivoImportSeleccionado(event)" />
+
+
+<!-- ============================================================
+     TOASTS
+     ============================================================ -->
+<div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+
+<!-- ============================================================
+     SCRIPT PRINCIPAL
+     ============================================================ -->
+<script>
+  // Menú desplegable "Descargar plantilla" (Precio fijo / Escala de precios)
+  function togglePlantillaDropdown(ev) {
+    ev.stopPropagation();
+    document.getElementById('plantillaDropdownMenu')?.classList.toggle('open');
+  }
+  document.addEventListener('click', (ev) => {
+    const wrap = document.getElementById('plantillaDropdown');
+    const menu = document.getElementById('plantillaDropdownMenu');
+    if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
+  });
+</script>
+<script src="bodega.js"></script>
+<script src="productos-importar.js"></script>
+
+<!-- Preview margen en modal (helper inline) -->
+<script>
+function actualizarMargenPreview() {
+  const precio = parseFloat(document.getElementById('inputPrecio')?.value);
+  const costo  = parseFloat(document.getElementById('inputCosto')?.value);
+  const wrap   = document.getElementById('margenPreviewWrap');
+  const el     = document.getElementById('margenPreview');
+  if (!wrap || !el) return;
+  if (!precio || precio === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  const m     = ((precio - (costo || 0)) / precio) * 100;
+  const color = m >= 40 ? 'var(--success)' : m >= 20 ? 'var(--warning)' : 'var(--danger)';
+  el.style.color  = color;
+  el.textContent  = m.toFixed(2) + '%';
+}
+
+// Sincronizar stock mínimo entre los dos inputs del modal
+// (hay uno visible en crear y otro en editar)
+document.addEventListener('DOMContentLoaded', () => {
+  ['inputStockMinimo', 'inputStockMinimoEdit'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      const val = el.value;
+      const otro = document.getElementById(id === 'inputStockMinimo' ? 'inputStockMinimoEdit' : 'inputStockMinimo');
+      if (otro) otro.value = val;
+    });
+  });
+});
+</script>
+
+<script src="perfiles-guard.js"></script>
+<script src="modulos-guard.js"></script>
+</body>
+</html>
