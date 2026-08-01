@@ -1059,11 +1059,15 @@
 
     // Sin perfil elegido en esta pestaña: si no estamos en dashboard,
     // se manda primero ahí para completar la elección obligatoria.
-    // EXCEPCIÓN: personalizacion.html es el asistente de bienvenida que
+    // EXCEPCIÓN 1: personalizacion.html es el asistente de bienvenida que
     // ve un usuario recién registrado — ahí todavía no existe ninguna
     // cuenta configurada, así que no tiene sentido (ni debe) mandarlo
     // al dashboard antes de que termine de configurar su negocio.
-    if (currentFile() !== 'dashboard.html' && currentFile() !== 'personalizacion.html') {
+    // EXCEPCIÓN 2: bodega.html es la página propia de una cuenta de
+    // bodega — nunca tiene Dashboard completo ni necesita elegir perfil
+    // ahí primero (rebotarla a dashboard.html la mandaría, de rebote,
+    // directo a Personalización, que una bodega nunca debe ver).
+    if (currentFile() !== 'dashboard.html' && currentFile() !== 'personalizacion.html' && currentFile() !== 'bodega.html') {
       location.href = 'dashboard.html';
       return;
     }
