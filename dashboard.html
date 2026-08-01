@@ -2363,10 +2363,11 @@ async function initDashboard() {
 
     const profile = await loadUserProfile(userId);
     if (profile) {
-      // Si nunca llegó a completar Personalización, se le manda ahí
-      // primero — antes de dejarlo entrar a un negocio sin nombre, logo
-      // ni datos.
-      if (profile.onboarding_completado === false) {
+      // Misma fuente que ya usa personalizacion.html para su propia
+      // verificación de entrada (configuracion_empresa, no usuarios) —
+      // así nunca pueden quedar desincronizadas entre sí y generar un
+      // rebote entre esta página y Personalización.
+      if (empresaConfig.onboarding_completado !== true) {
         window.location.href = 'personalizacion.html';
         return;
       }
