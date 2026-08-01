@@ -994,6 +994,129 @@ function cerrarModalExportarInventario() {
   $('modalExportarInventario').classList.remove('open');
 }
 
+/* ============================================================
+   MOVER PRODUCTOS A OTRA SUCURSAL / BODEGA
+   Reutiliza el mismo mecanismo de "grupo" que ya tiene Sucursales
+   (RPC listar_sucursales_grupo / mover_stock_producto) — nunca toca
+   directo la tabla de otra cuenta, todo pasa por esas funciones ya
+   protegidas en la base de datos.
+   ============================================================ */
+let MP = { productoSel: null, destinos: [] };
+
+async function abrirModalMoverProducto() {
+  MP.productoSel = null;
+  $('mp-buscar-producto').value = '';
+  $('mp-resultados').style.display = 'none';
+  $('mp-seleccionado').style.display = 'none';
+  $('mp-cantidad').value = '';
+  $('mp-error').textContent = '';
+  $('mp-destino').innerHTML = '<option value="">Cargando sucursales y bodegas…</option>';
+  $('modalMoverProducto').classList.add('open');
+
+  try {
+    // ¿Cuál de las filas del grupo soy YO? — para no ofrecerme a mí
+    // mismo como destino. Se determina igual que en Sucursales: si
+    // tengo una fila donde figuro como sucursal/bodega de otra Central,
+    // esa es la mía; si no, soy yo mismo la Central.
+    const { data: miFila } = await supabaseClient.from('sucursales')
+      .select('id').eq('auth_user_id_sucursal', STATE.user.id).eq('es_central', false).maybeSingle();
+    const miPropioId = miFila?.id || null; // null si soy la Central
+
+    const { data, error } = await supabaseClient.rpc('listar_sucursales_grupo');
+    if (error) throw error;
+
+    MP.destinos = (data || []).filter(d => miPropioId ? d.id !== miPropioId : !d.es_central);
+    if (!MP.destinos.length) {
+      $('mp-destino').innerHTML = '<option value="">No tienes otras sucursales o bodegas creadas todavía</option>';
+      return;
+    }
+    $('mp-destino').innerHTML = MP.destinos.map(d =>
+      `<option value="${d.id}">${d.tipo === 'bodega' ? '📦' : (d.es_central ? '🏠' : '🏬')} ${escHtml(d.nombre)}${d.es_central ? ' (Central)' : ''}</option>`
+    ).join('');
+  } catch (e) {
+    console.error('abrirModalMoverProducto:', e);
+    $('mp-destino').innerHTML = '<option value="">No se pudieron cargar — revisa el módulo Sucursales</option>';
+  }
+}
+
+function cerrarModalMoverProducto() {
+  $('modalMoverProducto').classList.remove('open');
+}
+
+function buscarProductoParaMover(q) {
+  const cont = $('mp-resultados');
+  q = (q || '').trim().toLowerCase();
+  if (!q) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  const coincidencias = (STATE.productos || [])
+    .filter(p => p.tipo === 'producto' && p.activo !== false && Number(p.stock_actual) > 0)
+    .filter(p => (p.nombre || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+    .slice(0, 8);
+
+  if (!coincidencias.length) {
+    cont.style.display = 'block';
+    cont.innerHTML = `<div style="padding:10px 12px;font-size:12.5px;color:var(--text-muted)">Sin resultados (solo productos físicos con stock disponible)</div>`;
+    return;
+  }
+  cont.style.display = 'block';
+  cont.innerHTML = coincidencias.map(p => `
+    <div class="sri-item" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="seleccionarProductoParaMover('${p.id}')">
+      <strong>${escHtml(p.nombre)}</strong>
+      <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}Stock: ${fmtNumeroSimple(p.stock_actual)}</div>
+    </div>`).join('');
+}
+
+function seleccionarProductoParaMover(productoId) {
+  const p = (STATE.productos || []).find(x => x.id === productoId);
+  if (!p) return;
+  MP.productoSel = p;
+  $('mp-buscar-producto').value = '';
+  $('mp-resultados').style.display = 'none';
+  $('mp-seleccionado').style.display = 'block';
+  $('mp-sel-nombre').textContent = p.nombre;
+  $('mp-sel-stock').textContent = fmtNumeroSimple(p.stock_actual);
+  $('mp-cantidad').max = p.stock_actual;
+}
+
+async function confirmarMoverProducto() {
+  const errEl = $('mp-error');
+  errEl.textContent = '';
+
+  if (!MP.productoSel) { errEl.textContent = 'Busca y elige un producto primero.'; return; }
+  const destinoId = $('mp-destino').value;
+  if (!destinoId) { errEl.textContent = 'Elige a dónde enviarlo.'; return; }
+  const cantidad = parseFloat($('mp-cantidad').value);
+  if (!cantidad || cantidad <= 0) { errEl.textContent = 'Escribe una cantidad válida.'; return; }
+  if (cantidad > Number(MP.productoSel.stock_actual)) {
+    errEl.textContent = `No tienes suficiente stock (disponible: ${fmtNumeroSimple(MP.productoSel.stock_actual)}).`; return;
+  }
+
+  const btnMover = $('btnConfirmarMover');
+  if (btnMover) { btnMover.disabled = true; btnMover.classList.add('btn-loading'); }
+  try {
+    const { error } = await supabaseClient.rpc('mover_stock_producto', {
+      p_producto_id: MP.productoSel.id,
+      p_sucursal_destino_id: destinoId,
+      p_cantidad: cantidad,
+    });
+    if (error) throw error;
+
+    const destino = MP.destinos.find(d => d.id === destinoId);
+    showToast('success', 'Producto movido', `${cantidad} de "${MP.productoSel.nombre}" enviado a ${destino?.nombre || 'destino'}`);
+    cerrarModalMoverProducto();
+    await cargarProductos();
+  } catch (e) {
+    console.error('confirmarMoverProducto:', e);
+    errEl.textContent = 'Error al mover: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    if (btnMover) { btnMover.disabled = false; btnMover.classList.remove('btn-loading'); }
+  }
+}
+
+function fmtNumeroSimple(n) {
+  return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 });
+}
+
 function datosParaExportarInventario() {
   const lista = (STATE.filtrados && STATE.filtrados.length) ? STATE.filtrados : STATE.productos;
   return (lista || []).map(filaExportInventario);
