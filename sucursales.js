@@ -29,9 +29,9 @@ const sbClientAux = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 let STATE = {
   userId: null, userEmail: null, empresaConfig: {}, currentUser: {},
-  sucursales: [], perfiles: [],
+  sucursales: [], bodegas: [], perfiles: [],
   sucursalActualParaAccesos: null,
-  esCentral: false, miPropiaSucursalId: null,
+  esCentral: false, miPropiaSucursalId: null, tipoParaCrear: 'sucursal',
 };
 
 /* =====================================================
@@ -164,8 +164,11 @@ async function cargarSucursales() {
     // grupo completo, solo cambian los botones que se muestran después.
     const { data: lista, error } = await sbClient.rpc('listar_sucursales_grupo');
     if (error) throw error;
-    STATE.sucursales = (lista || []).slice().sort((a, b) => (b.es_central ? 1 : 0) - (a.es_central ? 1 : 0));
+    const todas = (lista || []).slice().sort((a, b) => (b.es_central ? 1 : 0) - (a.es_central ? 1 : 0));
+    STATE.sucursales = todas.filter(s => s.tipo !== 'bodega');
+    STATE.bodegas    = todas.filter(s => s.tipo === 'bodega');
     renderTablaSucursales();
+    renderTablaBodegas();
     ajustarUISegunRol();
   } catch (e) {
     console.error('cargarSucursales:', e);
@@ -173,11 +176,10 @@ async function cargarSucursales() {
   }
 }
 
-// Solo Central ve "+ Nueva sucursal" y las acciones de administración —
-// desde una sucursal solo se puede "Entrar" a otra.
+// Solo Central ve "+ Nueva sucursal"/"+ Nueva bodega" y las acciones de
+// administración — desde una sucursal solo se puede "Entrar" a otra.
 function ajustarUISegunRol() {
-  const btnNueva = document.querySelector('.greeting-actions');
-  if (btnNueva) btnNueva.style.display = STATE.esCentral ? '' : 'none';
+  document.querySelectorAll('.greeting-actions').forEach(el => { el.style.display = STATE.esCentral ? '' : 'none'; });
 
   const avisoPrevio = document.getElementById('suc-aviso-rol');
   if (avisoPrevio) avisoPrevio.remove();
@@ -188,7 +190,7 @@ function ajustarUISegunRol() {
     aviso.className = 'panel-card fade-in';
     aviso.style.cssText = 'background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px';
     aviso.innerHTML = `<div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
-      🔒 Crear, configurar accesos y eliminar sucursales solo se puede hacer desde la cuenta Central. Desde aquí solo puedes entrar a otra.
+      🔒 Crear, configurar accesos y eliminar sucursales o bodegas solo se puede hacer desde la cuenta Central. Desde aquí solo puedes entrar a otra.
     </div>`;
     panel.parentNode.insertBefore(aviso, panel);
   }
@@ -234,8 +236,40 @@ function renderTablaSucursales() {
     </tr>`).join('');
 }
 
+function renderTablaBodegas() {
+  const tbody = document.getElementById('bod-tbody');
+  if (!tbody) return;
+  if (!STATE.bodegas.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-cell">Todavía no tienes ninguna bodega — "Nueva bodega" para crear la primera.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.bodegas.map(s => `
+    <tr>
+      <td style="font-weight:600">📦 ${esc(s.nombre)}</td>
+      <td>${fmtFecha(s.created_at)}</td>
+      <td><span class="status-badge ${s.activa!==false ? 'badge-activo':'badge-inactivo'}">${s.activa!==false ? 'Activa':'Inactiva'}</span></td>
+      <td class="td-actions">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+          ${estaAquiMismo(s) ? `
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">Estás aquí</span>
+          ` : `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Entrar a esta bodega" onclick="entrarASucursal('${s.id}')">
+              🔑 Entrar
+            </button>
+          `}
+          ${STATE.esCentral ? `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Configurar accesos" onclick="abrirAccesosSucursal('${s.id}')">
+              👥 Accesos
+            </button>
+            <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarSucursal('${s.id}')">🗑️</button>
+          ` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
 /* =====================================================
-   CREAR SUCURSAL
+   CREAR SUCURSAL / BODEGA
 ===================================================== */
 // Igual que en Configuración: la primera vez en esta pestaña pide el
 // código de administrador; ya desbloqueado, no lo vuelve a pedir. Si
@@ -250,7 +284,28 @@ function conCodigoAdmin(accion) {
 
 function abrirNuevaSucursal() {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
+  STATE.tipoParaCrear = 'sucursal';
   conCodigoAdmin(() => {
+    document.getElementById('ns-modal-title').textContent = 'Nueva sucursal';
+    document.getElementById('ns-label').textContent = 'Nombre de la sucursal *';
+    document.getElementById('ns-nombre').placeholder = 'Ej: Sucursal Masaya';
+    document.getElementById('ns-desc').textContent = 'Se crea con su propio inventario, ventas y caja — totalmente en blanco, como un negocio nuevo.';
+    document.getElementById('btn-crear-sucursal').textContent = 'Crear sucursal';
+    document.getElementById('ns-nombre').value = '';
+    document.getElementById('ns-error').textContent = '';
+    openModal('modal-nueva-sucursal');
+  });
+}
+
+function abrirNuevaBodega() {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear bodegas', 'error'); return; }
+  STATE.tipoParaCrear = 'bodega';
+  conCodigoAdmin(() => {
+    document.getElementById('ns-modal-title').textContent = 'Nueva bodega';
+    document.getElementById('ns-label').textContent = 'Nombre de la bodega *';
+    document.getElementById('ns-nombre').placeholder = 'Ej: Bodega Central';
+    document.getElementById('ns-desc').textContent = 'Se crea con su propio inventario en blanco — desde Productos/Servicios, cualquier sucursal podrá enviarle o recibir stock de ella con "Mover productos".';
+    document.getElementById('btn-crear-sucursal').textContent = 'Crear bodega';
     document.getElementById('ns-nombre').value = '';
     document.getElementById('ns-error').textContent = '';
     openModal('modal-nueva-sucursal');
@@ -259,18 +314,21 @@ function abrirNuevaSucursal() {
 
 async function crearSucursal() {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
+  const tipo = STATE.tipoParaCrear || 'sucursal';
+  const esBodega = tipo === 'bodega';
   const errEl = document.getElementById('ns-error');
   errEl.textContent = '';
   const nombre = document.getElementById('ns-nombre').value.trim();
-  if (!nombre) { errEl.textContent = 'Escribe un nombre para la sucursal.'; return; }
-  if (STATE.sucursales.some(s => s.nombre.toLowerCase() === nombre.toLowerCase())) {
-    errEl.textContent = 'Ya existe una sucursal (o la Central) con ese nombre.'; return;
+  if (!nombre) { errEl.textContent = `Escribe un nombre para la ${esBodega?'bodega':'sucursal'}.`; return; }
+  const todasLasCuentas = [...STATE.sucursales, ...STATE.bodegas];
+  if (todasLasCuentas.some(s => s.nombre.toLowerCase() === nombre.toLowerCase())) {
+    errEl.textContent = 'Ya existe una sucursal, bodega (o la Central) con ese nombre.'; return;
   }
 
   setBtnLoading('btn-crear-sucursal', true);
   try {
     const idInterno = crypto.randomUUID().slice(0, 8);
-    const emailInterno = `sucursal-${idInterno}@negocio360.internal`;
+    const emailInterno = `${esBodega?'bodega':'sucursal'}-${idInterno}@negocio360.internal`;
     const passwordInterna = generarPasswordInterna();
 
     // Se crea con el signUp NORMAL de Supabase (mismo mecanismo que
@@ -281,21 +339,21 @@ async function crearSucursal() {
     });
     if (errSignUp) throw errSignUp;
     const nuevoUserId = signUpData?.user?.id;
-    if (!nuevoUserId) throw new Error('No se pudo crear la cuenta interna de la sucursal.');
+    if (!nuevoUserId) throw new Error(`No se pudo crear la cuenta interna de la ${esBodega?'bodega':'sucursal'}.`);
 
     const { error: errInsert } = await sbClient.from('sucursales').insert({
       auth_user_id_central: STATE.userId, nombre,
-      es_central: false, auth_user_id_sucursal: nuevoUserId,
+      es_central: false, auth_user_id_sucursal: nuevoUserId, tipo,
       email_interno: emailInterno, password_interno: passwordInterna, activa: true,
     });
     if (errInsert) throw errInsert;
 
-    // Nombre comercial inicial de la sucursal, para que no se vea vacía
+    // Nombre comercial inicial, para que no se vea vacía
     await sbClient.from('configuracion_empresa').upsert({
       auth_user_id: nuevoUserId, nombre_comercial: nombre,
     }, { onConflict: 'auth_user_id' }).select();
 
-    showToast(`Sucursal "${nombre}" creada`);
+    showToast(`${esBodega?'Bodega':'Sucursal'} "${nombre}" creada`);
     closeModal('modal-nueva-sucursal');
     await cargarSucursales();
   } catch (e) {
@@ -309,8 +367,14 @@ async function crearSucursal() {
 /* =====================================================
    ENTRAR A UNA SUCURSAL (cambia la sesión activa y recarga)
 ===================================================== */
+// Busca por id tanto en sucursales como en bodegas (ahora son 2 arreglos
+// separados en pantalla, pero para "Entrar/Accesos/Eliminar" da igual
+// cuál sea — el mecanismo de fondo es el mismo).
+function buscarEnGrupo(id) {
+  return STATE.sucursales.find(x => x.id === id) || STATE.bodegas.find(x => x.id === id);
+}
 async function entrarASucursal(sucursalId) {
-  const s = STATE.sucursales.find(x => x.id === sucursalId);
+  const s = buscarEnGrupo(sucursalId);
   if (!s) return;
 
   // Ir a la Central desde una sucursal: es el mismo flujo de "código de
@@ -413,7 +477,7 @@ function abrirAccesosSucursal(sucursalId) {
 }
 
 async function abrirAccesosSucursalInterno(sucursalId) {
-  const s = STATE.sucursales.find(x => x.id === sucursalId);
+  const s = buscarEnGrupo(sucursalId);
   if (!s) return;
   STATE.sucursalActualParaAccesos = s;
   document.getElementById('acc-suc-title').textContent = `Accesos — ${s.nombre}`;
@@ -499,7 +563,7 @@ async function guardarAccesosSucursal() {
 function confirmarEliminarSucursal(sucursalId) {
   if (!STATE.esCentral) { showToast('Solo la cuenta Central puede eliminar sucursales', 'error'); return; }
   conCodigoAdmin(() => {
-    const s = STATE.sucursales.find(x => x.id === sucursalId);
+    const s = buscarEnGrupo(sucursalId);
     if (!s || s.es_central) return;
     STATE.sucursalActualParaAccesos = s; // se reutiliza el campo para saber cuál eliminar
     openModal('modal-confirmar-eliminar-suc');
