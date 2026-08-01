@@ -81,6 +81,19 @@ const $$ = sel => document.querySelectorAll(sel);
 // cualquier costo/precio calculado, para que quede exacto a los centavos.
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
+// Botón visible del encabezado — reutiliza el mismo flujo de "volver a
+// Central con tu código" que ya usa la pastillita flotante. Una bodega
+// solo puede volver a la Central (desde ahí, ir a Sucursales para
+// elegir cualquier otro destino) — nunca tiene menú propio para saltar
+// directo a otra sucursal.
+function abrirVolverDesdeBodega() {
+  if (window.PerfilesGuardConfig?.volverACentral) {
+    window.PerfilesGuardConfig.volverACentral('esta bodega');
+  } else {
+    showToast('error', 'No disponible', 'No se pudo abrir la opción de volver. Recarga la página.');
+  }
+}
+
 function fmtMoney(val) {
   if (val === null || val === undefined || val === '') return '—';
   const n = parseFloat(val);
