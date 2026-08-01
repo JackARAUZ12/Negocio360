@@ -681,8 +681,15 @@
       .single();
 
     if (error || !profile) {
-      // Profile not found — send to personalizacion so it can be created
-      window.location.href = 'personalizacion.html';
+      // No se encontró el perfil: la sesión guardada en este navegador
+      // ya no corresponde a ninguna cuenta real (por ejemplo, se
+      // eliminó esa cuenta). NUNCA se asume "cuenta nueva, mándala a
+      // Personalización" aquí — eso mandaría a alguien con una sesión
+      // rota a un formulario que no puede completar. Se cierra esa
+      // sesión inválida y se muestra el login normal, listo para
+      // iniciar sesión de nuevo con una cuenta real.
+      await sb.auth.signOut();
+      hideOverlay();
       return;
     }
 
