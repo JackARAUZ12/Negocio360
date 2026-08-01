@@ -1690,9 +1690,13 @@ async function loadEmpresaConfig(userId) {
       .select('*')
       .eq('auth_user_id', userId)
       .maybeSingle();
-    if (error) { console.warn('configuracion_empresa:', error.message); return; }
+    if (error) { console.warn('configuracion_empresa:', error.message); return { ok: false, data: null }; }
     if (data) applyEmpresaConfig(data);
-  } catch (e) { console.warn('loadEmpresaConfig error:', e); }
+    return { ok: true, data: data || null };
+  } catch (e) {
+    console.warn('loadEmpresaConfig error:', e);
+    return { ok: false, data: null };
+  }
 }
 
 /* =====================================================
@@ -2359,15 +2363,16 @@ async function initDashboard() {
     if (user.email) checkAdminAccess(user.email);
 
     // Load empresa config first — this also applies tema from personalizacion
-    await loadEmpresaConfig(userId);
+    const resultConfig = await loadEmpresaConfig(userId);
 
     const profile = await loadUserProfile(userId);
     if (profile) {
-      // Misma fuente que ya usa personalizacion.html para su propia
-      // verificación de entrada (configuracion_empresa, no usuarios) —
-      // así nunca pueden quedar desincronizadas entre sí y generar un
-      // rebote entre esta página y Personalización.
-      if (empresaConfig.onboarding_completado !== true) {
+      // Solo se redirige a Personalización si la consulta SÍ se pudo
+      // hacer con éxito (resultConfig.ok) y confirmó que falta —
+      // nunca por un fallo de red o una consulta que no llegó a tiempo.
+      // Eso es justo lo que causaba el bucle: antes se asumía "falta"
+      // ante cualquier duda, en vez de solo ante una confirmación real.
+      if (resultConfig.ok && resultConfig.data?.onboarding_completado !== true) {
         window.location.href = 'personalizacion.html';
         return;
       }
