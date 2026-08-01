@@ -1180,9 +1180,43 @@
         <div class="table-hint">← Desliza para ver todas las columnas →</div>
       </div>
 
+      <div class="greeting-row fade-in" style="margin-top:24px">
+        <div class="greeting-text">
+          <h1 style="font-size:16px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M21 8L12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+            <span>Bodegas</span>
+          </h1>
+          <p>Bodegas centrales de inventario para todo el grupo — recibe y envía stock hacia cualquier sucursal.</p>
+        </div>
+        <div class="greeting-actions" id="bodega-nueva-wrap">
+          <button class="btn-primary" onclick="abrirNuevaBodega()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva bodega
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-card fade-in">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Bodega</th>
+                <th>Creada</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="bod-tbody">
+              <tr><td colspan="4" class="empty-cell">Cargando bodegas…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="panel-card fade-in" style="margin-top:16px;background:var(--bg-app);border:1px dashed var(--border)">
         <div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
-          💡 Cada sucursal es una cuenta completamente independiente por dentro (su propio inventario, ventas, caja) — nunca comparte ni mezcla datos con la Central ni con otras sucursales. El botón "Entrar" cambia tu sesión a esa sucursal al instante.
+          💡 Cada sucursal o bodega es una cuenta completamente independiente por dentro (su propio inventario, ventas, caja) — nunca comparte ni mezcla datos con la Central ni con otras. El botón "Entrar" cambia tu sesión al instante. Para mover stock entre ellas, usa el botón "Mover productos" dentro de Productos/Servicios.
         </div>
       </div>
 
@@ -1196,17 +1230,17 @@
 <div class="modal-overlay" id="modal-nueva-sucursal" onclick="if(event.target===this)closeModal('modal-nueva-sucursal')">
   <div class="modal-box modal-sm">
     <div class="modal-header">
-      <span class="modal-title">Nueva sucursal</span>
+      <span class="modal-title" id="ns-modal-title">Nueva sucursal</span>
       <button class="modal-close" onclick="closeModal('modal-nueva-sucursal')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Nombre de la sucursal *</label>
+        <label id="ns-label">Nombre de la sucursal *</label>
         <input type="text" id="ns-nombre" placeholder="Ej: Sucursal Masaya"/>
       </div>
-      <p style="font-size:12px;color:var(--text-muted)">Se crea con su propio inventario, ventas y caja — totalmente en blanco, como un negocio nuevo.</p>
+      <p style="font-size:12px;color:var(--text-muted)" id="ns-desc">Se crea con su propio inventario, ventas y caja — totalmente en blanco, como un negocio nuevo.</p>
       <p id="ns-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
     </div>
     <div class="modal-footer">
