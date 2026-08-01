@@ -1302,7 +1302,12 @@ function collectStep(step) {
 async function saveProgress() {
   if (!currentUser) return;
 
-  // Upsert usando auth_user_id como clave única
+  // Upsert usando auth_user_id como clave única. IMPORTANTE: no se
+  // incluye "onboarding_completado" aquí — si la fila ya existe y ya
+  // estaba en true (cuenta ya completada), este guardado progresivo
+  // NUNCA debe poder bajarlo a false. Para una fila nueva, la columna
+  // ya tiene su propio valor por defecto (false), así que no hace falta
+  // repetirlo aquí.
   const { error } = await db
     .from('configuracion_empresa')
     .upsert(
@@ -1310,7 +1315,6 @@ async function saveProgress() {
         auth_user_id:     currentUser.id,
         ...formData,
         onboarding_step:  currentStep,
-        onboarding_completado: false,
       },
       { onConflict: 'auth_user_id' }
     );
