@@ -348,10 +348,15 @@ async function crearSucursal() {
     });
     if (errInsert) throw errInsert;
 
-    // Nombre comercial inicial, para que no se vea vacía
+    // Nombre comercial inicial, y se marca como "onboarding completado"
+    // en ambas tablas — una sucursal/bodega nace ya configurada por el
+    // admin de la Central, nunca debe pasar por el asistente de
+    // Personalización (que es solo para cuentas recién registradas
+    // a mano por su propio dueño).
     await sbClient.from('configuracion_empresa').upsert({
-      auth_user_id: nuevoUserId, nombre_comercial: nombre,
+      auth_user_id: nuevoUserId, nombre_comercial: nombre, onboarding_completado: true, onboarding_step: 5,
     }, { onConflict: 'auth_user_id' }).select();
+    await sbClient.from('usuarios').update({ onboarding_completado: true }).eq('auth_user_id', nuevoUserId);
 
     showToast(`${esBodega?'Bodega':'Sucursal'} "${nombre}" creada`);
     closeModal('modal-nueva-sucursal');
