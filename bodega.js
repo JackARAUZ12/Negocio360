@@ -367,12 +367,10 @@ async function cargarProductos() {
 // ============================================================
 async function cargarProveedores() {
   try {
-    const { data, error } = await supabaseClient
-      .from('proveedores')
-      .select('id,nombre')
-      .eq('auth_user_id', STATE.user.id)
-      .eq('activo', true)
-      .order('nombre');
+    // Una bodega no tiene proveedores propios — reconoce los mismos
+    // que ya existen en la Central y en todas sus sucursales del
+    // mismo grupo (sin duplicar por nombre).
+    const { data, error } = await supabaseClient.rpc('listar_proveedores_grupo');
 
     if (error) throw error;
     STATE.proveedores = data || [];
@@ -1553,45 +1551,66 @@ function actualizarCajaImpactoPreview() {
 // No depende de caja.js/cajaAPI.js — autocontenido para no
 // arriesgar nada del módulo de Caja.
 // ============================================================
+// ============================================================
+// DESCONTAR DE CAJA — una bodega no tiene caja propia real, así que
+// esto SIEMPRE descuenta de la caja de una sucursal (o la Central)
+// de su mismo grupo: automático si solo hay una, o preguntando cuál
+// si hay varias. Nunca se queda "flotando" en la cuenta de la bodega.
+// ============================================================
+let ECD = { resolver: null, destinos: [] };
+
+async function elegirSucursalParaCaja() {
+  try {
+    const { data, error } = await supabaseClient.rpc('listar_sucursales_grupo');
+    if (error) throw error;
+    // Solo cuentas con caja real: la Central y las sucursales — nunca
+    // otra bodega (tampoco tiene caja propia).
+    const destinos = (data || []).filter(d => d.tipo !== 'bodega');
+    if (!destinos.length) {
+      showToast('error', 'Sin sucursales', 'No hay ninguna sucursal en tu grupo para descontar la caja.');
+      return null;
+    }
+    if (destinos.length === 1) return destinos[0].id;
+
+    // Más de una: se pregunta cuál, con un modal simple.
+    return await new Promise((resolve) => {
+      ECD.resolver = resolve;
+      ECD.destinos = destinos;
+      $('ecd-error').textContent = '';
+      $('ecd-destino').innerHTML = destinos.map(d =>
+        `<option value="${d.id}">${d.es_central ? '🏠' : '🏬'} ${escHtml(d.nombre)}${d.es_central ? ' (Central)' : ''}</option>`
+      ).join('');
+      $('modalElegirCajaDestino').classList.add('open');
+    });
+  } catch (e) {
+    console.error('elegirSucursalParaCaja:', e);
+    showToast('error', 'Error', 'No se pudo consultar las sucursales del grupo.');
+    return null;
+  }
+}
+function cerrarModalElegirCajaDestino(valor) {
+  $('modalElegirCajaDestino').classList.remove('open');
+  if (ECD.resolver) { ECD.resolver(valor); ECD.resolver = null; }
+}
+function confirmarElegirCajaDestino() {
+  const id = $('ecd-destino').value;
+  if (!id) { $('ecd-error').textContent = 'Elige una sucursal.'; return; }
+  cerrarModalElegirCajaDestino(id);
+}
+
 async function registrarCompraEnCaja(nombreProducto, monto, productoId) {
   try {
-    const { data: ultMov } = await supabaseClient
-      .from('movimientos_financieros')
-      .select('saldo_resultante')
-      .eq('auth_user_id', STATE.user.id)
-      .eq('estado', 'completado')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const destinoId = await elegirSucursalParaCaja();
+    if (!destinoId) return { ok: false };
 
-    const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : 0;
-    const saldoResultante = saldoAnterior - monto;
-
-    const { error } = await supabaseClient.from('movimientos_financieros').insert({
-      auth_user_id:       STATE.user.id,
-      tipo_flujo:         'EGRESO',
-      tipo_movimiento:    'COMPRA',
-      concepto:           `Compra de inventario: ${nombreProducto}`,
-      monto:               monto,
-      saldo_anterior:      saldoAnterior,
-      saldo_resultante:    saldoResultante,
-      metodo_pago_nombre: 'Efectivo',
-      referencia_tipo:    'producto',
-      referencia_id:       productoId || null,
-      fecha:               ymdLocal(new Date()),
-      estado:              'completado',
+    const { error } = await supabaseClient.rpc('registrar_gasto_caja_grupo', {
+      p_sucursal_destino_id: destinoId,
+      p_concepto: `Compra de inventario (bodega): ${nombreProducto}`,
+      p_monto: monto,
+      p_referencia_id: productoId || null,
     });
-
     if (error) throw error;
-
-    // Mantener sincronizado el caché local que usan dashboard/caja
-    try {
-      localStorage.setItem('n360_caja', saldoResultante.toString());
-      localStorage.setItem('n360_capital', saldoResultante.toString());
-      localStorage.setItem('n360_caja_updated', new Date().toISOString());
-    } catch (_) { /* silencioso */ }
-
-    return { ok: true, saldoResultante };
+    return { ok: true };
   } catch (e) {
     console.warn('registrarCompraEnCaja:', e);
     return { ok: false, error: e.message };
@@ -2344,20 +2363,22 @@ async function confirmarMovimiento() {
       console.warn('Tabla movimientos_inventario no disponible aún');
     }
 
-    // Descontar de caja si aplica
+    // Descontar de caja si aplica — una bodega no tiene caja propia,
+    // así que se descuenta de la sucursal elegida (automático si solo
+    // hay una, o preguntando cuál si hay varias).
     if (desCaja && p.costo) {
       const costoTotal  = parseFloat(p.costo) * cantidad;
       const razonLabel  = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
       try {
-        await supabaseClient.from('gastos').insert([{
-          auth_user_id: STATE.user.id,
-          descripcion:  `Merma de inventario — ${razonLabel}: ${p.nombre} (${fmtNum(cantidad)} u.)`,
-          monto:        costoTotal,
-          categoria:    'Merma de inventario',
-          tipo:         'merma',
-          notas:        nota || null,
-          fecha:        ymdLocal(new Date()),
-        }]);
+        const destinoId = await elegirSucursalParaCaja();
+        if (destinoId) {
+          await supabaseClient.rpc('registrar_gasto_caja_grupo', {
+            p_sucursal_destino_id: destinoId,
+            p_concepto: `Merma de inventario (bodega) — ${razonLabel}: ${p.nombre} (${fmtNum(cantidad)} u.)`,
+            p_monto: costoTotal,
+            p_referencia_id: p.id,
+          });
+        }
       } catch (_) {
         console.warn('No se pudo registrar en gastos');
       }
