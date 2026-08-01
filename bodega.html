@@ -443,6 +443,27 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modalElegirCajaDestino" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">💵 ¿A cuál caja descontar?</h2>
+      <button class="modal-close" onclick="cerrarModalElegirCajaDestino(null)" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Esta bodega no tiene caja propia — elige a cuál sucursal de tu grupo se le descuenta este monto.</p>
+      <div class="form-group">
+        <label>Sucursal *</label>
+        <select class="form-select" id="ecd-destino"></select>
+      </div>
+      <p id="ecd-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" onclick="cerrarModalElegirCajaDestino(null)">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarElegirCajaDestino()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalMoverProducto" role="dialog" aria-modal="true">
   <div class="modal modal-sm">
     <div class="modal-header">
