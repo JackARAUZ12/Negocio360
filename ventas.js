@@ -28,6 +28,7 @@ const S = {
   miSucursalId:          null, // id en la tabla "sucursales" que representa a ESTA cuenta
   stockOrigenPendiente:  null,
   origenStockElegido:    null, // se consume una sola vez al agregar al carrito
+  productosCacheGrupo:   [],   // productos de TODO el grupo (solo se llena si Stock Compartido está activo)
 
   // Lista de ventas
   ventas:        [],
@@ -1525,19 +1526,39 @@ function buscarProductosParaVenta(q, tipo) {
   if (!results) return;
 
   if (!q.trim()) { results.classList.remove('open'); return; }
+  const qLower = q.toLowerCase();
 
   const lista = S.productosCache.filter(p =>
     p.tipo === tipo &&
-    (p.nombre.toLowerCase().includes(q.toLowerCase()) || (p.sku||'').toLowerCase().includes(q.toLowerCase()))
+    (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower))
   ).slice(0, 10);
 
-  if (!lista.length) {
+  // Con Stock Compartido activo, también se muestran productos que
+  // solo existen físicamente en OTRA cuenta del grupo (Central,
+  // sucursal o bodega) — sin esto, nunca aparecerían aquí aunque el
+  // selector de "de dónde sacar stock" sí sepa encontrarlos.
+  let listaGrupo = [];
+  if (S.stockCompartidoActivo && tipo === 'producto') {
+    const nombresLocales = new Set(S.productosCache.map(p => p.nombre.trim().toLowerCase()));
+    const vistos = new Set();
+    listaGrupo = S.productosCacheGrupo.filter(p => {
+      const clave = (p.nombre||'').trim().toLowerCase();
+      if (p.tipo !== 'producto' || !clave) return false;
+      if (nombresLocales.has(clave)) return false; // ya está en la lista local, no se duplica
+      if (vistos.has(clave)) return false;
+      const coincide = clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower);
+      if (coincide) vistos.add(clave);
+      return coincide;
+    }).slice(0, 10 - lista.length);
+  }
+
+  if (!lista.length && !listaGrupo.length) {
     results.innerHTML = `<div class="prod-result-item" style="cursor:default;color:var(--text-muted)">Sin resultados</div>`;
     results.classList.add('open');
     return;
   }
 
-  results.innerHTML = lista.map(p => {
+  const htmlLocal = lista.map(p => {
     const stockNum  = parseFloat(p.stock_actual||0);
     let stockLabel, stockCls;
     if (tipo==='servicio') {
@@ -1549,7 +1570,9 @@ function buscarProductosParaVenta(q, tipo) {
     } else {
       stockLabel = `Stock: ${stockNum}`; stockCls = 'stock-ok';
     }
-    const disabled = tipo==='producto' && stockNum<=0;
+    // Con Stock Compartido activo, nunca se deshabilita por falta de
+    // stock local — siempre se puede elegir traerlo de otra cuenta.
+    const disabled = tipo==='producto' && stockNum<=0 && !S.stockCompartidoActivo;
     const esEscala = p.tipo_precio === 'escala';
     const precioLabel = esEscala
       ? (() => {
@@ -1571,7 +1594,67 @@ function buscarProductosParaVenta(q, tipo) {
       <span class="pri-precio">${precioLabel}</span>
     </div>`;
   }).join('');
+
+  const htmlGrupo = listaGrupo.map(p => `
+    <div class="prod-result-item" onclick="agregarProductoSoloEnGrupo('${esc(p.nombre).replace(/'/g,"\\'")}','${tipo}')">
+      <div style="flex:1">
+        <div class="pri-name">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b);font-weight:700">📦 EN OTRA CUENTA</span></div>
+        <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
+      </div>
+      <span class="pri-stock stock-low">Solo en otra sucursal/bodega</span>
+      <span class="pri-precio">${fmt(p.precio)}</span>
+    </div>`).join('');
+
+  results.innerHTML = htmlLocal + htmlGrupo;
   results.classList.add('open');
+}
+
+// Cuando un resultado de búsqueda (o un código escaneado) solo existe
+// en OTRA cuenta del grupo (nunca en la mía), se salta directo al
+// selector de origen — no hay ninguna fila local que buscar primero.
+function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
+  abrirSelectorStockOrigen(nombreProducto, modo, (origen) => {
+    if (!origen || origen.esLocal) {
+      if (modo === 'vr') enfocarScannerVR();
+      return;
+    }
+    const refGrupo = S.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === nombreProducto.trim().toLowerCase());
+    if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
+
+    S.origenStockElegido = origen;
+
+    if (modo === 'vr') {
+      // Venta Rápida arma su propio ítem directo (no usa productosCache).
+      agregarAlCarritoVR({
+        id: 'grupo-' + refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+        codigo_barras: refGrupo.codigo_barras, tipo: 'producto',
+        precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
+        esCombo: false,
+      });
+      const status = document.getElementById('vr-scan-status');
+      if (status) status.textContent = `✅ ${refGrupo.nombre} agregado (desde ${origen.nombreCuenta})`;
+      enfocarScannerVR();
+      return;
+    }
+
+    // Nueva Venta: se arma un "producto" temporal (mismo precio/costo
+    // que tiene en el grupo) solo para reutilizar el flujo normal de
+    // agregar al carrito — nunca se guarda como si fuera un producto local.
+    const prodTemporal = {
+      id: 'grupo-' + refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+      tipo: 'producto', tipo_precio: refGrupo.tipo_precio || 'fijo',
+      precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
+    };
+    const yaEstaEnCache = S.productosCache.some(p => p.id === prodTemporal.id);
+    if (!yaEstaEnCache) S.productosCache.push(prodTemporal);
+
+    if (prodTemporal.tipo_precio === 'escala') {
+      abrirSelectorEscala(prodTemporal.id, 'producto');
+    } else {
+      agregarAlCarritoConPrecio(prodTemporal.id, 'producto', null);
+    }
+    document.getElementById('prod-results')?.classList.remove('open');
+  });
 }
 
 /* ============================================================
@@ -1600,9 +1683,27 @@ async function cargarEstadoStockCompartido() {
     // aplica y no se le muestra nada nuevo al usuario.
     if (wrap && S.miSucursalId) { wrap.style.display = 'flex'; }
     if (chk) chk.checked = S.stockCompartidoActivo;
+
+    if (S.stockCompartidoActivo) await cargarProductosGrupo();
   } catch (e) {
     console.warn('cargarEstadoStockCompartido:', e);
     S.stockCompartidoActivo = false;
+  }
+}
+
+// Trae TODOS los productos del grupo (Central + sucursales + bodegas)
+// — es lo que permite que en Ventas aparezca un producto que solo
+// existe físicamente en otra cuenta, cuando Stock Compartido está
+// activo. Reutiliza el mismo adaptador ya probado en Reporte General.
+async function cargarProductosGrupo() {
+  try {
+    const sbGrupo = crearClienteGrupo(sb);
+    const { data, error } = await sbGrupo.from('productos').select('*');
+    if (error) throw error;
+    S.productosCacheGrupo = data || [];
+  } catch (e) {
+    console.warn('cargarProductosGrupo:', e);
+    S.productosCacheGrupo = [];
   }
 }
 
@@ -1611,6 +1712,7 @@ async function toggleStockCompartido(activo) {
     const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: activo });
     if (error) throw error;
     S.stockCompartidoActivo = activo;
+    if (activo) await cargarProductosGrupo();
     showToast(activo ? 'Stock Compartido activado para todo el grupo' : 'Stock Compartido desactivado', 'success');
   } catch (e) {
     console.error('toggleStockCompartido:', e);
@@ -2959,6 +3061,20 @@ async function procesarCodigoEscaneado(codigo) {
     }
 
     if (!coincidencias.length) {
+      // Respaldo Stock Compartido: si aquí no existe, se busca en TODO
+      // el grupo por código de barras o SKU antes de rendirse.
+      if (S.stockCompartidoActivo) {
+        const enGrupo = S.productosCacheGrupo.find(p =>
+          p.tipo === 'producto' && (p.codigo_barras === codigo || p.sku === codigo)
+        );
+        if (enGrupo) {
+          if (status) status.textContent = `📦 "${enGrupo.nombre}" — elige de dónde sacar el stock`;
+          abrioSelector = true;
+          agregarProductoSoloEnGrupo(enGrupo.nombre, 'producto', 'vr');
+          return;
+        }
+      }
+
       // Antes de decir "no existe", se revisa si el código SÍ está
       // registrado pero en un producto inactivo — es un mensaje muy
       // distinto y evita la confusión de "el código no está cargado".
