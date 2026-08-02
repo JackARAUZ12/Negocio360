@@ -1612,8 +1612,8 @@ function buscarProductosParaVenta(q, tipo) {
 // Cuando un resultado de búsqueda (o un código escaneado) solo existe
 // en OTRA cuenta del grupo (nunca en la mía), se salta directo al
 // selector de origen — no hay ninguna fila local que buscar primero.
-function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
-  abrirSelectorStockOrigen(nombreProducto, modo, (origen) => {
+async function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
+  abrirSelectorStockOrigen(nombreProducto, modo, async (origen) => {
     if (!origen || origen.esLocal) {
       if (modo === 'vr') enfocarScannerVR();
       return;
@@ -1622,38 +1622,44 @@ function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
     if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
 
     S.origenStockElegido = origen;
-
-    if (modo === 'vr') {
-      // Venta Rápida arma su propio ítem directo (no usa productosCache).
-      agregarAlCarritoVR({
-        id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
-        codigo_barras: refGrupo.codigo_barras, tipo: 'producto',
-        precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
-        esCombo: false,
-      });
-      const status = document.getElementById('vr-scan-status');
-      if (status) status.textContent = `✅ ${refGrupo.nombre} agregado (desde ${origen.nombreCuenta})`;
-      enfocarScannerVR();
-      return;
-    }
-
-    // Nueva Venta: se arma un "producto" temporal (mismo precio/costo
-    // que tiene en el grupo) solo para reutilizar el flujo normal de
-    // agregar al carrito — nunca se guarda como si fuera un producto local.
     const prodTemporal = {
       id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
-      tipo: 'producto', tipo_precio: refGrupo.tipo_precio || 'fijo',
+      codigo_barras: refGrupo.codigo_barras, tipo: 'producto',
+      tipo_precio: refGrupo.tipo_precio || 'fijo',
       precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
     };
     const yaEstaEnCache = S.productosCache.some(p => p.id === prodTemporal.id);
     if (!yaEstaEnCache) S.productosCache.push(prodTemporal);
 
     if (prodTemporal.tipo_precio === 'escala') {
-      abrirSelectorEscala(prodTemporal.id, 'producto');
+      // Traer las escalas del producto remoto — antes se quedaban
+      // vacías porque solo se cacheaban las escalas de productos de
+      // esta misma cuenta, nunca las de otra sucursal/bodega. Por eso
+      // decía "no tiene precios de escala configurados" aunque sí los
+      // tuviera del otro lado.
+      if (!S.escalasPorProducto[refGrupo.id]) {
+        try {
+          const sbGrupo = crearClienteGrupo(sb);
+          const { data } = await sbGrupo.from('precios_escala').select('*');
+          S.escalasPorProducto[refGrupo.id] = (data || []).filter(e => e.producto_id === refGrupo.id);
+        } catch (e) {
+          console.warn('No se pudieron cargar las escalas remotas:', e);
+          S.escalasPorProducto[refGrupo.id] = [];
+        }
+      }
+      abrirSelectorEscala(prodTemporal.id, 'producto', modo);
+      return;
+    }
+
+    if (modo === 'vr') {
+      agregarAlCarritoVR(prodTemporal);
+      const status = document.getElementById('vr-scan-status');
+      if (status) status.textContent = `✅ ${refGrupo.nombre} agregado (desde ${origen.nombreCuenta})`;
+      enfocarScannerVR();
     } else {
       agregarAlCarritoConPrecio(prodTemporal.id, 'producto', null);
+      document.getElementById('prod-results')?.classList.remove('open');
     }
-    document.getElementById('prod-results')?.classList.remove('open');
   });
 }
 
