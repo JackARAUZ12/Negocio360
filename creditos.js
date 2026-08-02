@@ -1440,13 +1440,66 @@
   window.confirmarRegistrarPagoCredito = confirmarRegistrarPagoCredito;
 
   /* ===================================================
+     CONFIGURAR TICKET DE IMPRESIÓN — misma tabla que usa Ventas
+     (configuracion_venta_rapida), compartida por todo el sistema.
+  =================================================== */
+  CS.configTicket = null;
+  async function cargarConfigTicket() {
+    try {
+      const { data } = await _sb.from('configuracion_venta_rapida').select('*').eq('auth_user_id', CS.userId).maybeSingle();
+      CS.configTicket = data || null;
+    } catch (e) { CS.configTicket = null; }
+  }
+  async function abrirConfigTicket() {
+    if (!CS.configTicket) await cargarConfigTicket();
+    const c = CS.configTicket || {};
+    document.querySelectorAll('input[name="ct-ancho"]').forEach(r => { r.checked = (r.value === (c.ancho_ticket || '80mm')); });
+    document.getElementById('ct-nombre').value    = c.nombre_ticket    || '';
+    document.getElementById('ct-ruc').value       = c.ruc_ticket       || '';
+    document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
+    document.getElementById('ct-direccion').value = c.direccion_ticket|| '';
+    document.getElementById('ct-mensaje').value   = c.mensaje_pie_ticket || 'Gracias por su compra';
+    openModal('modal-config-ticket');
+  }
+  window.abrirConfigTicket = abrirConfigTicket;
+
+  async function guardarConfigTicket() {
+    const ancho = document.querySelector('input[name="ct-ancho"]:checked')?.value || '80mm';
+    const payload = {
+      auth_user_id: CS.userId, configurado: true,
+      ancho_ticket: ancho,
+      nombre_ticket: document.getElementById('ct-nombre').value.trim() || null,
+      ruc_ticket: document.getElementById('ct-ruc').value.trim() || null,
+      telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
+      direccion_ticket: document.getElementById('ct-direccion').value.trim() || null,
+      mensaje_pie_ticket: document.getElementById('ct-mensaje').value.trim() || 'Gracias por su compra',
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const { data, error } = await _sb.from('configuracion_venta_rapida')
+        .upsert(payload, { onConflict: 'auth_user_id' }).select('*').single();
+      if (error) throw error;
+      CS.configTicket = data;
+      closeModal('modal-config-ticket');
+      showToast('Configuración del ticket guardada', 'success');
+    } catch (e) {
+      console.error('guardarConfigTicket:', e);
+      showToast('No se pudo guardar la configuración', 'error');
+    }
+  }
+  window.guardarConfigTicket = guardarConfigTicket;
+
+  /* ===================================================
      COMPROBANTE / TICKET
   =================================================== */
   function mostrarComprobante(c) {
     CS.ultimoComprobante = c;
     document.getElementById('comprobante-body').innerHTML = `
       <div class="ticket-print">
-        <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(nombreNegocio())}</div>
+        <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(CS.configTicket?.nombre_ticket || nombreNegocio())}</div>
+        ${CS.configTicket?.ruc_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">RUC: ${esc(CS.configTicket.ruc_ticket)}</div>` : ''}
+        ${CS.configTicket?.telefono_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">Tel: ${esc(CS.configTicket.telefono_ticket)}</div>` : ''}
+        ${CS.configTicket?.direccion_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(CS.configTicket.direccion_ticket)}</div>` : ''}
         <div style="text-align:center;color:var(--text-muted);margin-bottom:8px">${esc(c.titulo)}</div>
         <hr/>
         <div class="tp-row"><span>N° comprobante:</span><b>${esc(c.numero)}</b></div>
@@ -1462,14 +1515,17 @@
         <hr/>
         <div class="tp-row"><span>Próxima cuota:</span><b>${esc(c.proximaCuota)}</b></div>
         <div class="tp-row"><span>Estado del crédito:</span><b>${esc(c.estado)}</b></div>
+        ${CS.configTicket?.mensaje_pie_ticket ? `<hr/><div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(CS.configTicket.mensaje_pie_ticket)}</div>` : ''}
       </div>`;
     openModal('modal-comprobante');
   }
   function imprimirComprobante() {
     const html = document.getElementById('comprobante-body').innerHTML;
+    const ancho = CS.configTicket?.ancho_ticket || '80mm';
+    const anchoPx = ancho === 'carta' ? 'auto' : (ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px');
     const w = window.open('', '_blank', 'width=380,height=600');
     w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-      <style>body{font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:16px}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+      <style>body{font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:16px;max-width:${anchoPx};margin:0 auto}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
       </head><body>${html}<script>window.print();</script></body></html>`);
     w.document.close();
   }
@@ -1705,6 +1761,7 @@
       CS.userId = user.id; CS.userEmail = user.email;
       if (user.email) checkAdminAccess(user.email);
       await cargarEstadoStockCompartido();
+      await cargarConfigTicket();
       await loadEmpresaConfig(user.id);
       const profile = await loadUserProfile(user.id);
       if (profile) renderUserInfo(profile, user.email);
