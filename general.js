@@ -2274,6 +2274,196 @@ function cerrarModalExportarCredito() {
   if (overlay) overlay.classList.remove('modal-open');
 }
 
+/* ============================================================
+   COMPARACIÓN DE SUCURSALES
+   Usa el mismo período ya seleccionado en la página. Trae las ventas
+   de todo el grupo (ya vienen combinadas gracias al adaptador) y las
+   separa de nuevo por cuenta, para comparar una contra otra.
+   ============================================================ */
+async function abrirComparacionSucursales() {
+  const overlay = document.getElementById('modalComparacionSuc');
+  const body = document.getElementById('rg-comp-body');
+  if (overlay) overlay.classList.add('modal-open');
+  body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted)">Calculando…</p>';
+
+  try {
+    const { data: grupo, error: errGrupo } = await sb.rpc('listar_sucursales_grupo');
+    if (errGrupo) throw errGrupo;
+    // Las bodegas no venden — no aplican a esta comparación.
+    const cuentas = (grupo || []).filter(g => g.tipo !== 'bodega');
+
+    const { from, to } = getDateRange();
+    const { data: ventas, error: errVentas } = await sb.from('ventas')
+      .select('auth_user_id,total,ganancia,fecha')
+      .gte('fecha', from).lte('fecha', to);
+    if (errVentas) throw errVentas;
+
+    // Cada fila de "sucursales" no trae el auth_user_id directo (por
+    // seguridad), así que se resuelve "quién es quién" con una segunda
+    // consulta ligera de solo lectura, cruzando por nombre — más simple
+    // y suficiente: se usa el propio id de sucursal como referencia.
+    const idsCuentas = await mapearCuentasGrupo();
+
+    const filas = cuentas.map(c => {
+      const authId = idsCuentas[c.id];
+      const propias = (ventas || []).filter(v => v.auth_user_id === authId);
+      const totalVentas = propias.reduce((s, v) => s + Number(v.total || 0), 0);
+      const totalGanancia = propias.reduce((s, v) => s + Number(v.ganancia || 0), 0);
+      const numVentas = propias.length;
+      const ticket = numVentas ? totalVentas / numVentas : 0;
+      const margen = totalVentas ? (totalGanancia / totalVentas * 100) : 0;
+      return { nombre: c.nombre, esCentral: c.es_central, totalVentas, totalGanancia, numVentas, ticket, margen };
+    });
+
+    renderComparacionSucursales(filas);
+  } catch (e) {
+    console.error('abrirComparacionSucursales:', e);
+    body.innerHTML = `<p style="text-align:center;padding:30px;color:var(--danger)">No se pudo calcular la comparación. Intenta de nuevo.</p>`;
+  }
+}
+
+// Pequeño mapa "id de la fila en sucursales" -> "auth_user_id real" —
+// se obtiene una sola vez, en solo lectura, para poder separar los
+// datos ya combinados de vuelta por cuenta.
+async function mapearCuentasGrupo() {
+  const { data } = await sbReal.from('sucursales')
+    .select('id, auth_user_id_central, auth_user_id_sucursal, es_central')
+    .or(`auth_user_id_central.eq.${R.userId},auth_user_id_sucursal.eq.${R.userId}`);
+  const mapa = {};
+  (data || []).forEach(s => { mapa[s.id] = s.auth_user_id_sucursal; });
+  return mapa;
+}
+
+function renderComparacionSucursales(filas) {
+  const body = document.getElementById('rg-comp-body');
+  if (!filas.length) {
+    body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted)">No hay sucursales para comparar todavía.</p>';
+    return;
+  }
+
+  const totalGrupo = filas.reduce((s, f) => s + f.totalVentas, 0);
+  const promedio = totalGrupo / filas.length;
+  const ordenadas = [...filas].sort((a, b) => b.totalVentas - a.totalVentas);
+  const mejor = ordenadas[0];
+  const peor = ordenadas[ordenadas.length - 1];
+
+  let consejos = '';
+  if (filas.length > 1) {
+    if (mejor.totalVentas > 0) {
+      consejos += `<div class="rg-consejo bien">🏆 <strong>${esc(mejor.nombre)}</strong> es la que más vende en este período (${fmt(mejor.totalVentas)}) — revisa qué está haciendo bien (horario, ubicación, atención) para replicarlo en las demás.</div>`;
+    }
+    if (peor.nombre !== mejor.nombre) {
+      if (peor.totalVentas === 0) {
+        consejos += `<div class="rg-consejo alerta">⚠️ <strong>${esc(peor.nombre)}</strong> no registra ventas en este período — vale la pena revisar si está teniendo algún problema (falta de stock, poco movimiento, etc.).</div>`;
+      } else if (peor.totalVentas < promedio * 0.5) {
+        consejos += `<div class="rg-consejo alerta">⚠️ <strong>${esc(peor.nombre)}</strong> vende bastante menos que el promedio del grupo (${fmt(peor.totalVentas)} vs. ${fmt(promedio)} de promedio) — podría necesitar más atención o inventario.</div>`;
+      }
+    }
+    const margenBajo = filas.filter(f => f.numVentas > 0 && f.margen < 15);
+    margenBajo.forEach(f => {
+      consejos += `<div class="rg-consejo alerta">📉 <strong>${esc(f.nombre)}</strong> tiene un margen de ganancia bajo (${f.margen.toFixed(1)}%) — revisa si sus precios o costos necesitan ajustarse.</div>`;
+    });
+  } else {
+    consejos = `<div class="rg-consejo">Todavía solo tienes una sucursal con ventas — crea otra desde Sucursales para poder comparar.</div>`;
+  }
+
+  const filasHtml = filas.map(f => `
+    <tr>
+      <td style="font-weight:600">${f.esCentral ? '🏠 ' : '🏬 '}${esc(f.nombre)}</td>
+      <td>${fmt(f.totalVentas)}</td>
+      <td>${fmt(f.totalGanancia)}</td>
+      <td>${f.numVentas}</td>
+      <td>${fmt(f.ticket)}</td>
+      <td>${f.numVentas ? f.margen.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('rg-comp-body').innerHTML = `
+    <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">Período: <strong>${periodLabel()}</strong></p>
+    <div class="table-wrap" style="margin-bottom:18px">
+      <table class="rg-tabla-comp">
+        <thead><tr><th>Sucursal</th><th>Ventas</th><th>Ganancia</th><th># Ventas</th><th>Ticket prom.</th><th>Margen</th></tr></thead>
+        <tbody>${filasHtml}</tbody>
+      </table>
+    </div>
+    <h3 style="font-size:14px;margin-bottom:8px">💬 Comentarios y consejos</h3>
+    ${consejos}
+  `;
+}
+
+function cerrarComparacionSucursales() {
+  document.getElementById('modalComparacionSuc')?.classList.remove('modal-open');
+}
+
+/* ============================================================
+   DETALLE DE BODEGAS
+   Inventario, valor y movimientos recientes de cada bodega,
+   explicado en lenguaje simple.
+   ============================================================ */
+async function abrirDetalleBodegas() {
+  const overlay = document.getElementById('modalDetalleBodegas');
+  const body = document.getElementById('rg-bod-body');
+  if (overlay) overlay.classList.add('modal-open');
+  body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted)">Calculando…</p>';
+
+  try {
+    const { data: grupo, error: errGrupo } = await sb.rpc('listar_sucursales_grupo');
+    if (errGrupo) throw errGrupo;
+    const bodegas = (grupo || []).filter(g => g.tipo === 'bodega');
+
+    if (!bodegas.length) {
+      body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted)">Todavía no tienes ninguna bodega creada — puedes crear una desde el módulo Sucursales.</p>';
+      return;
+    }
+
+    const idsCuentas = await mapearCuentasGrupo();
+    const { data: productos, error: errProd } = await sb.from('productos').select('*');
+    if (errProd) throw errProd;
+    const { data: movimientos } = await sb.from('movimientos_inventario')
+      .select('auth_user_id,tipo,cantidad,razon,created_at').order('created_at', { ascending: false }).limit(500);
+
+    const tarjetas = bodegas.map(b => {
+      const authId = idsCuentas[b.id];
+      const propios = (productos || []).filter(p => p.auth_user_id === authId && p.tipo === 'producto');
+      const valorInventario = propios.reduce((s, p) => s + (Number(p.stock_actual || 0) * Number(p.costo || 0)), 0);
+      const stockBajo = propios.filter(p => p.stock_minimo > 0 && Number(p.stock_actual || 0) <= Number(p.stock_minimo));
+      const movsRecientes = (movimientos || []).filter(m => m.auth_user_id === authId).slice(0, 5);
+      const entradas = (movimientos || []).filter(m => m.auth_user_id === authId && m.tipo === 'entrada').length;
+      const salidas = (movimientos || []).filter(m => m.auth_user_id === authId && m.tipo === 'salida').length;
+
+      const movsHtml = movsRecientes.length
+        ? movsRecientes.map(m => `<div style="font-size:12px;color:var(--text-muted);padding:3px 0">${m.tipo === 'entrada' ? '⬇️ Entrada' : m.tipo === 'salida' ? '⬆️ Salida' : '✏️ Ajuste'} de ${Math.abs(m.cantidad)} u. — ${fmtFecha(m.created_at?.slice(0,10))}</div>`).join('')
+        : '<div style="font-size:12px;color:var(--text-muted)">Sin movimientos recientes</div>';
+
+      return `
+        <div class="rg-bod-card">
+          <h3>📦 ${esc(b.nombre)}</h3>
+          <p style="font-size:12.5px;color:var(--text-muted)">
+            ${propios.length === 0
+              ? 'Esta bodega todavía no tiene productos registrados.'
+              : `Tiene <strong>${propios.length}</strong> producto(s) registrados, con un valor total de inventario de <strong>${fmt(valorInventario)}</strong>.`}
+            ${stockBajo.length ? ` ⚠️ <strong>${stockBajo.length}</strong> producto(s) están con stock bajo y podrían necesitar reabastecerse.` : ''}
+          </p>
+          <div class="rg-bod-kpis">
+            <div class="rg-bod-kpi"><div class="lbl">Productos</div><div class="val">${propios.length}</div></div>
+            <div class="rg-bod-kpi"><div class="lbl">Valor inventario</div><div class="val">${fmt(valorInventario)}</div></div>
+            <div class="rg-bod-kpi"><div class="lbl">Stock bajo</div><div class="val">${stockBajo.length}</div></div>
+            <div class="rg-bod-kpi"><div class="lbl">Entradas / Salidas</div><div class="val">${entradas} / ${salidas}</div></div>
+          </div>
+          <div style="margin-top:8px"><strong style="font-size:12.5px">Últimos movimientos:</strong>${movsHtml}</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('rg-bod-body').innerHTML = tarjetas;
+  } catch (e) {
+    console.error('abrirDetalleBodegas:', e);
+    body.innerHTML = `<p style="text-align:center;padding:30px;color:var(--danger)">No se pudo cargar el detalle de bodegas. Intenta de nuevo.</p>`;
+  }
+}
+
+function cerrarDetalleBodegas() {
+  document.getElementById('modalDetalleBodegas')?.classList.remove('modal-open');
+}
+
 function confirmarExportarCredito() {
   if (!MX.clienteId) return;
   const { formato, clienteId, clienteNombre } = MX;
