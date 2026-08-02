@@ -43,6 +43,13 @@ let STATE = {
   escalaPendiente: null,  // { productoId } mientras el selector está abierto
   clienteSeleccionado: null,
   ivaActivo: false,
+
+  // Stock Compartido — grupo (Sucursales/Bodegas), mismo mecanismo de Ventas
+  stockCompartidoActivo: false,
+  miSucursalId:          null,
+  stockOrigenPendiente:  null,
+  origenStockElegido:    null,
+  productosCacheGrupo:   [],
   ivaPorcentaje: 15,
 
   proformaActual: null,
@@ -304,8 +311,22 @@ function buscarProductoProf() {
   const filtrados = STATE.productos.filter(p =>
     p.nombre.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.categoria||'').toLowerCase().includes(q)
   ).slice(0, 10);
-  if (!filtrados.length) { res.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(q)}"</div>`; return; }
-  res.innerHTML = filtrados.map(p => {
+
+  let filtradosGrupo = [];
+  if (STATE.stockCompartidoActivo) {
+    const nombresLocales = new Set(STATE.productos.map(p => (p.nombre||'').trim().toLowerCase()));
+    const vistos = new Set();
+    filtradosGrupo = STATE.productosCacheGrupo.filter(p => {
+      const clave = (p.nombre||'').trim().toLowerCase();
+      if (p.tipo !== 'producto' || !clave || nombresLocales.has(clave) || vistos.has(clave)) return false;
+      const coincide = clave.includes(q) || (p.sku||'').toLowerCase().includes(q);
+      if (coincide) vistos.add(clave);
+      return coincide;
+    }).slice(0, 10 - filtrados.length);
+  }
+
+  if (!filtrados.length && !filtradosGrupo.length) { res.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(q)}"</div>`; return; }
+  const htmlLocal = filtrados.map(p => {
     const esEscala = p.tipo_precio === 'escala';
     let precioLabel;
     if (esEscala) {
@@ -328,18 +349,173 @@ function buscarProductoProf() {
       <span class="sri-costo">${precioLabel}</span>
     </div>`;
   }).join('');
+
+  const htmlGrupo = filtradosGrupo.map(p => `
+    <div class="search-result-item" onclick="agregarProductoSoloEnGrupoProf('${esc(p.nombre).replace(/'/g,"\\'")}')">
+      <div class="sri-info">
+        <span class="sri-nombre">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b)">📦 en otra cuenta</span></span>
+        <span class="sri-meta">Producto · Solo en otra sucursal/bodega</span>
+      </div>
+      <span class="sri-costo">${fmt(p.precio)}</span>
+    </div>`).join('');
+
+  res.innerHTML = htmlLocal + htmlGrupo;
 }
+/* ===================================================
+   STOCK COMPARTIDO — mismo mecanismo ya construido en Ventas. Si
+   está desactivado, ninguna de estas funciones se dispara y el
+   módulo funciona exactamente como antes.
+=================================================== */
+async function cargarEstadoStockCompartido() {
+  try {
+    const { data: activo, error } = await sbClient.rpc('obtener_stock_compartido');
+    if (error) throw error;
+    STATE.stockCompartidoActivo = !!activo;
+
+    const { data: miFila } = await sbClient.from('sucursales')
+      .select('id').eq('auth_user_id_sucursal', STATE.userId).maybeSingle();
+    STATE.miSucursalId = miFila?.id || null;
+
+    const wrap = document.getElementById('stock-compartido-wrap');
+    const chk  = document.getElementById('chk-stock-compartido');
+    if (wrap && STATE.miSucursalId) wrap.style.display = 'flex';
+    if (chk) chk.checked = STATE.stockCompartidoActivo;
+
+    if (STATE.stockCompartidoActivo) await cargarProductosGrupoProf();
+  } catch (e) {
+    console.warn('cargarEstadoStockCompartido (proformas):', e);
+    STATE.stockCompartidoActivo = false;
+  }
+}
+
+async function cargarProductosGrupoProf() {
+  try {
+    const sbGrupo = crearClienteGrupo(sbClient);
+    const { data, error } = await sbGrupo.from('productos').select('*');
+    if (error) throw error;
+    STATE.productosCacheGrupo = data || [];
+  } catch (e) {
+    console.warn('cargarProductosGrupoProf:', e);
+    STATE.productosCacheGrupo = [];
+  }
+}
+
+async function toggleStockCompartido(activo) {
+  try {
+    const { error } = await sbClient.rpc('establecer_stock_compartido', { p_activo: activo });
+    if (error) throw error;
+    STATE.stockCompartidoActivo = activo;
+    if (activo) await cargarProductosGrupoProf();
+    showToast(activo ? 'Stock Compartido activado para todo el grupo' : 'Stock Compartido desactivado', 'success');
+  } catch (e) {
+    console.error('toggleStockCompartido (proformas):', e);
+    showToast('No se pudo cambiar Stock Compartido', 'error');
+    const chk = document.getElementById('chk-stock-compartido');
+    if (chk) chk.checked = !activo;
+  }
+}
+
+async function abrirSelectorStockOrigen(nombreProducto, callbackContinuar) {
+  try {
+    const { data, error } = await sbClient.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
+    if (error) throw error;
+    const opciones = data || [];
+    if (!opciones.length) { callbackContinuar(null); return; }
+
+    STATE.stockOrigenPendiente = { callback: callbackContinuar };
+    document.getElementById('stock-origen-title').textContent = nombreProducto;
+    document.getElementById('stock-origen-lista').innerHTML = opciones.map((o, i) => `
+      <label class="esc-precio-opcion" style="${o.stock_actual<=0 ? 'opacity:.5' : ''}">
+        <input type="radio" name="stock-origen-radio" value="${o.sucursal_id}"
+               data-stock="${o.stock_actual}" data-nombre="${esc(o.nombre_cuenta)}"
+               ${i===0 ? 'checked' : ''} ${o.stock_actual<=0 ? 'disabled' : ''}/>
+        <span class="esc-precio-nombre">${o.tipo_cuenta==='bodega'?'📦':(o.es_central?'🏠':'🏬')} ${esc(o.nombre_cuenta)}</span>
+        <span class="esc-precio-valor">${Number(o.stock_actual||0).toLocaleString('es-NI',{maximumFractionDigits:2})} disp.</span>
+      </label>
+    `).join('');
+    openModal('modal-stock-origen');
+  } catch (e) {
+    console.error('abrirSelectorStockOrigen (proformas):', e);
+    showToast('No se pudo consultar el stock del grupo', 'error');
+    callbackContinuar(null);
+  }
+}
+function confirmarSeleccionStockOrigen() {
+  const pend = STATE.stockOrigenPendiente;
+  if (!pend) return;
+  const radio = document.querySelector('input[name="stock-origen-radio"]:checked');
+  if (!radio) { showToast('Elige de dónde sacar el stock', 'error'); return; }
+  const stockDisp = parseFloat(radio.dataset.stock || 0);
+  if (stockDisp <= 0) { showToast('Esa cuenta no tiene stock disponible de este producto', 'error'); return; }
+
+  const origen = {
+    sucursalId: radio.value, stockDisponible: stockDisp,
+    nombreCuenta: radio.dataset.nombre, esLocal: radio.value === STATE.miSucursalId,
+  };
+  closeModal('modal-stock-origen');
+  STATE.stockOrigenPendiente = null;
+  pend.callback(origen);
+}
+function cerrarSelectorStockOrigen() {
+  const pend = STATE.stockOrigenPendiente;
+  closeModal('modal-stock-origen');
+  STATE.stockOrigenPendiente = null;
+  if (pend) pend.callback(null);
+}
+
+// Un producto que solo existe en OTRA cuenta del grupo — se salta
+// directo al selector de origen (no hay fila local que buscar).
+function agregarProductoSoloEnGrupoProf(nombreProducto) {
+  abrirSelectorStockOrigen(nombreProducto, (origen) => {
+    if (!origen || origen.esLocal) return;
+    const refGrupo = STATE.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === nombreProducto.trim().toLowerCase());
+    if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
+
+    STATE.origenStockElegido = origen;
+    const prodTemporal = {
+      id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+      tipo: 'producto', tipo_precio: refGrupo.tipo_precio || 'fijo',
+      precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
+    };
+    const yaEstaEnCache = STATE.productos.some(p => p.id === prodTemporal.id);
+    if (!yaEstaEnCache) STATE.productos.push(prodTemporal);
+
+    if (prodTemporal.tipo_precio === 'escala') {
+      abrirSelectorEscalaProf(prodTemporal.id);
+    } else {
+      agregarAlCarritoConPrecioProf(prodTemporal.id, null);
+    }
+  });
+}
+
 function agregarAlCarritoProf(productoId) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
 
-  // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
-  // nunca se asume el que se eligió antes (igual que en Ventas).
-  if (p.tipo_precio === 'escala') {
-    abrirSelectorEscalaProf(productoId);
+  const continuarNormal = () => {
+    // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
+    // nunca se asume el que se eligió antes (igual que en Ventas).
+    if (p.tipo_precio === 'escala') {
+      abrirSelectorEscalaProf(productoId);
+      return;
+    }
+    agregarAlCarritoConPrecioProf(productoId, null);
+  };
+
+  // Stock Compartido activo: se pregunta primero de cuál sucursal/
+  // bodega del grupo se va a descontar — si está desactivado, nunca
+  // se ejecuta este bloque.
+  if (STATE.stockCompartidoActivo && p.tipo === 'producto') {
+    abrirSelectorStockOrigen(p.nombre, (origen) => {
+      if (!origen) return;
+      STATE.origenStockElegido = origen;
+      continuarNormal();
+    });
     return;
   }
-  agregarAlCarritoConPrecioProf(productoId, null);
+
+  STATE.origenStockElegido = null;
+  continuarNormal();
 }
 
 /* ============================================================
@@ -382,20 +558,24 @@ function cerrarSelectorEscalaProf() {
 function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
+  const origen = STATE.origenStockElegido; STATE.origenStockElegido = null;
+  const esRemoto = !!(origen && !origen.esLocal);
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(p.precio||0);
 
-  const existente = STATE.carrito.find(l => l.id === productoId && (l.escalaId || null) === (escalaElegida?.id || null));
+  const existente = STATE.carrito.find(l => l.id === productoId && (l.escalaId || null) === (escalaElegida?.id || null) && (l.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) { existente.cantidad++; recalcularLineaProf(existente); }
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
       cantidad: 1, precio: precioUsar, descuento: 0, esCombo: !!p.esCombo,
       escalaId: escalaElegida ? escalaElegida.id : null,
-      escalaNombre: escalaElegida ? escalaElegida.nombre : null };
+      escalaNombre: escalaElegida ? escalaElegida.nombre : null,
+      origenStockId:     esRemoto ? origen.sucursalId   : null,
+      origenStockNombre: esRemoto ? origen.nombreCuenta : null };
     recalcularLineaProf(linea);
     STATE.carrito.push(linea);
   }
   renderCarritoProf();
-  showToast(`${p.nombre}${escalaElegida ? ' · '+escalaElegida.nombre : ''} agregado`);
+  showToast(`${p.nombre}${escalaElegida ? ' · '+escalaElegida.nombre : ''}${esRemoto ? ' · desde '+origen.nombreCuenta : ''} agregado`);
   const sp = document.getElementById('np-producto-search'); if (sp) sp.value = '';
   const sr = document.getElementById('np-search-results');  if (sr) sr.innerHTML = '';
 }
@@ -595,6 +775,7 @@ async function guardarProforma() {
       cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: l.descuento || 0,
       subtotal: l.subtotal, ganancia: l.ganancia || 0,
       escala_id: l.escalaId || null, escala_nombre: l.escalaNombre || null,
+      origen_stock_id: l.origenStockId || null, origen_stock_nombre: l.origenStockNombre || null,
     }));
     let { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
     if (errDet) {
@@ -913,6 +1094,16 @@ async function confirmarConvertirAVenta() {
 
     // ---- E: descontar stock (productos normales) ----
     for (const d of detalles.filter(x => x.tipo_item === 'producto' && x.producto_id)) {
+      if (d.origen_stock_id) {
+        // Stock Compartido: se descuenta de OTRA cuenta del grupo.
+        try {
+          const { error: errRemoto } = await sbClient.rpc('descontar_stock_remoto', {
+            p_sucursal_id: d.origen_stock_id, p_nombre_producto: d.producto_nombre, p_cantidad: d.cantidad,
+          });
+          if (errRemoto) console.warn('Error descontando stock remoto:', d.producto_nombre, errRemoto);
+        } catch (eRemoto) { console.warn('Error descontando stock remoto:', d.producto_nombre, eRemoto); }
+        continue;
+      }
       const { data: prod } = await sbClient.from('productos').select('stock_actual').eq('id', d.producto_id).maybeSingle();
       if (prod) {
         const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - Number(d.cantidad));
@@ -1232,6 +1423,7 @@ async function initProformas() {
     if (error || !user) { window.location.href = 'login.html'; return; }
     STATE.userId = user.id; STATE.userEmail = user.email;
     if (user.email) checkAdminAccess(user.email);
+    await cargarEstadoStockCompartido();
 
     await loadEmpresaConfig(user.id);
     const profile = await loadUserProfile(user.id);
