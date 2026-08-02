@@ -1626,7 +1626,7 @@ function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
     if (modo === 'vr') {
       // Venta Rápida arma su propio ítem directo (no usa productosCache).
       agregarAlCarritoVR({
-        id: 'grupo-' + refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+        id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
         codigo_barras: refGrupo.codigo_barras, tipo: 'producto',
         precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
         esCombo: false,
@@ -1641,7 +1641,7 @@ function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
     // que tiene en el grupo) solo para reutilizar el flujo normal de
     // agregar al carrito — nunca se guarda como si fuera un producto local.
     const prodTemporal = {
-      id: 'grupo-' + refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+      id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
       tipo: 'producto', tipo_precio: refGrupo.tipo_precio || 'fijo',
       precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
     };
