@@ -449,7 +449,7 @@
         const p = PG.perfiles.find(x => x.id === id);
         if (!p) return;
         if (!confirm(`¿Eliminar al usuario "${p.nombre}"? Ya no podrá ingresar con su código.`)) return;
-        await PG.client.from('perfiles_acceso').delete().eq('id', id);
+        await PG.client.rpc('eliminar_perfil_grupo', { p_id: id });
         PG.perfiles = await cargarPerfiles();
         renderGestionUsuarios();
       });
@@ -498,7 +498,7 @@
     const delBtn = document.getElementById('pg-f-eliminar');
     if (delBtn) delBtn.addEventListener('click', async () => {
       if (!confirm(`¿Eliminar al usuario "${perfilExistente.nombre}"?`)) return;
-      await PG.client.from('perfiles_acceso').delete().eq('id', perfilExistente.id);
+      await PG.client.rpc('eliminar_perfil_grupo', { p_id: perfilExistente.id });
       PG.perfiles = await cargarPerfiles();
       renderGestionUsuarios();
     });
@@ -539,21 +539,33 @@
 
       try {
         if (editando) {
-          const payload = { nombre, modulos: modulosSel, updated_at: new Date().toISOString() };
-          if (pin) {
-            payload.codigo_hash = await hashPin(pin, perfilExistente.id);
-            payload.codigo_configurado = true;
-          }
-          const { error } = await PG.client.from('perfiles_acceso').update(payload).eq('id', perfilExistente.id);
+          const { error } = await PG.client.rpc('editar_perfil_grupo', {
+            p_id: perfilExistente.id, p_nombre: nombre, p_modulos: modulosSel,
+          });
           if (error) throw error;
+          if (pin) {
+            const hash = await hashPin(pin, perfilExistente.id);
+            const { error: errHash } = await PG.client.rpc('actualizar_codigo_perfil_grupo', {
+              p_id: perfilExistente.id, p_hash: hash,
+            });
+            if (errHash) throw errHash;
+          }
         } else {
-          const { data: nuevo, error: errIns } = await PG.client.from('perfiles_acceso').insert([{
-            auth_user_id: PG.authUserId, nombre, tipo: 'restringido',
-            modulos: modulosSel, codigo_configurado: true,
-          }]).select().single();
+          // Se crea SIEMPRE en la Central real del grupo — sin importar
+          // si el formulario se está usando desde la Central, una
+          // sucursal o una bodega. Antes esto se guardaba en la cuenta
+          // donde se estaba parado, invisible para el resto del grupo.
+          const { data: creado, error: errIns } = await PG.client.rpc('crear_perfil_grupo', {
+            p_nombre: nombre, p_tipo: 'restringido', p_modulos: modulosSel,
+          });
           if (errIns) throw errIns;
+          const nuevo = Array.isArray(creado) ? creado[0] : creado;
+          if (!nuevo) throw new Error('No se pudo crear el usuario.');
           const hash = await hashPin(pin, nuevo.id);
-          await PG.client.from('perfiles_acceso').update({ codigo_hash: hash }).eq('id', nuevo.id);
+          const { error: errHash } = await PG.client.rpc('actualizar_codigo_perfil_grupo', {
+            p_id: nuevo.id, p_hash: hash,
+          });
+          if (errHash) throw errHash;
         }
         PG.perfiles = await cargarPerfiles();
         renderGestionUsuarios(editando ? 'Usuario actualizado' : `Usuario "${nombre}" creado correctamente`);
