@@ -11,6 +11,24 @@ const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'; // �
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Las sucursales y bodegas son cuentas internas (creadas automáticamente
+// por el módulo Sucursales) — nunca son clientes que pagan, así que se
+// excluyen de la lista y las estadísticas de usuarios/clientes. Se pide
+// una sola vez y se reutiliza el mismo resultado durante la sesión.
+let _idsSucursalesShadowCache = null;
+async function obtenerIdsSucursalesShadow() {
+  if (_idsSucursalesShadowCache) return _idsSucursalesShadowCache;
+  try {
+    const { data, error } = await sb.rpc('listar_auth_ids_sucursales_shadow');
+    if (error) throw error;
+    _idsSucursalesShadowCache = new Set((data || []).map(r => r.auth_user_id));
+  } catch (e) {
+    console.warn('obtenerIdsSucursalesShadow:', e);
+    _idsSucursalesShadowCache = new Set(); // ante cualquier falla, no se excluye nada (no se rompe el panel)
+  }
+  return _idsSucursalesShadowCache;
+}
+
 // ── CONFIGURACIÓN DE COBRO ─────────────────────────────────
 // Precio mensual del plan Premium usado en el comprobante de pago.
 // Cambia este valor si el precio de la suscripción cambia.
@@ -220,11 +238,16 @@ async function loadDashboardStats() {
   showPaymentListsLoading();
 
   try {
-    const { data: usuarios, error } = await sb
+    const { data: usuariosCrudo, error } = await sb
       .from('usuarios')
-      .select('id, nombre, apellido, email, estado_cuenta, plan, created_at, fecha_ultimo_pago');
+      .select('id, auth_user_id, nombre, apellido, email, estado_cuenta, plan, created_at, fecha_ultimo_pago');
 
     if (error) throw error;
+
+    // Las sucursales/bodegas de los clientes no son cuentas que pagan
+    // — se excluyen antes de calcular cualquier estadística.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const usuarios = usuariosCrudo.filter(u => !idsShadow.has(u.auth_user_id));
 
     const total     = usuarios.length;
     const activos   = usuarios.filter(u => u.estado_cuenta === 'activa').length;
@@ -545,7 +568,10 @@ async function loadUsers() {
 
     if (error) throw error;
 
-    allUsers = data || [];
+    // Igual que en las estadísticas: las sucursales/bodegas internas
+    // nunca aparecen en esta lista, no son clientes que pagan.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    allUsers = (data || []).filter(u => !idsShadow.has(u.auth_user_id));
     renderUsersTable(allUsers);
 
   } catch (e) {
