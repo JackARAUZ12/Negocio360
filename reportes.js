@@ -2984,6 +2984,34 @@ window.ReportesAPI = {
 /* ============================================================
    INIT PRINCIPAL
    ============================================================ */
+// El botón "REPORTE GENERAL" solo se habilita si el grupo tiene más
+// de una cuenta (Central + al menos 1 sucursal/bodega) — si solo
+// existe la Central, no hay nada que combinar, así que se queda
+// deshabilitado.
+async function activarBotonReporteGeneralSiAplica() {
+  const btn = document.getElementById('btnReporteGeneral');
+  if (!btn) return;
+  try {
+    const { data, error } = await sb.rpc('contar_grupo');
+    if (error) throw error;
+    if ((data || 1) > 1) {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+      btn.title = 'Ver el reporte combinado de toda tu Central, sucursales y bodegas';
+    } else {
+      btn.title = 'Solo existe tu cuenta Central — crea una sucursal o bodega para habilitar este reporte combinado';
+    }
+  } catch (e) {
+    console.warn('activarBotonReporteGeneralSiAplica:', e);
+    // Ante cualquier duda, se deja deshabilitado (nunca se arriesga a
+    // mostrar un reporte combinado incompleto o roto).
+  }
+}
+function irAReporteGeneral() {
+  window.location.href = 'general.html';
+}
+
 async function initReportes() {
   // Tema
   applyTheme(localStorage.getItem('n360_theme')||'light');
@@ -3002,6 +3030,8 @@ async function initReportes() {
     R.userId    = user.id;
     R.userEmail = user.email;
     if (user.email) checkAdminAccess(user.email);
+
+    activarBotonReporteGeneralSiAplica();
 
     await loadEmpresaConfig(user.id);
     const profile = await loadUserProfile(user.id);
