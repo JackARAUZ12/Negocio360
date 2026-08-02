@@ -466,7 +466,7 @@ function cerrarSelectorStockOrigen() {
 // Un producto que solo existe en OTRA cuenta del grupo — se salta
 // directo al selector de origen (no hay fila local que buscar).
 function agregarProductoSoloEnGrupoProf(nombreProducto) {
-  abrirSelectorStockOrigen(nombreProducto, (origen) => {
+  abrirSelectorStockOrigen(nombreProducto, async (origen) => {
     if (!origen || origen.esLocal) return;
     const refGrupo = STATE.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === nombreProducto.trim().toLowerCase());
     if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
@@ -481,6 +481,18 @@ function agregarProductoSoloEnGrupoProf(nombreProducto) {
     if (!yaEstaEnCache) STATE.productos.push(prodTemporal);
 
     if (prodTemporal.tipo_precio === 'escala') {
+      // Traer las escalas del producto remoto — antes se quedaban
+      // vacías porque solo se cacheaban las de esta misma cuenta.
+      if (!STATE.escalasPorProducto[refGrupo.id]) {
+        try {
+          const sbGrupo = crearClienteGrupo(sbClient);
+          const { data } = await sbGrupo.from('precios_escala').select('*');
+          STATE.escalasPorProducto[refGrupo.id] = (data || []).filter(e => e.producto_id === refGrupo.id);
+        } catch (e) {
+          console.warn('No se pudieron cargar las escalas remotas:', e);
+          STATE.escalasPorProducto[refGrupo.id] = [];
+        }
+      }
       abrirSelectorEscalaProf(prodTemporal.id);
     } else {
       agregarAlCarritoConPrecioProf(prodTemporal.id, null);
