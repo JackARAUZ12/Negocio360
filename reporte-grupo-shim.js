@@ -20,7 +20,7 @@ const TABLAS_REPORTE_GRUPO = [
   'clientes','creditos','creditos_cuotas','cuentas_por_pagar','cuentas_por_pagar_cuotas',
   'empleados','empleados_pagos','proformas','proforma_detalles','combos',
   'movimientos_financieros','movimientos_impuestos','caja','movimientos_inventario',
-  'impuestos','capital_negocio',
+  'impuestos','capital_negocio','precios_escala',
 ];
 
 class GrupoQueryBuilder {
