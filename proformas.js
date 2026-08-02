@@ -1042,6 +1042,98 @@ function abrirConvertirDesdeDetalle() {
   if (p) abrirConvertirAVenta(p.id);
 }
 
+/* ===================================================
+   CONFIGURAR TICKET DE IMPRESIÓN — misma tabla que usa Ventas
+   (configuracion_venta_rapida), compartida por todo el sistema.
+=================================================== */
+STATE.configTicket = null;
+async function cargarConfigTicket() {
+  try {
+    const { data } = await sbClient.from('configuracion_venta_rapida').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+    STATE.configTicket = data || null;
+  } catch (e) { STATE.configTicket = null; }
+}
+async function abrirConfigTicket() {
+  if (!STATE.configTicket) await cargarConfigTicket();
+  const c = STATE.configTicket || {};
+  document.querySelectorAll('input[name="ct-ancho"]').forEach(r => { r.checked = (r.value === (c.ancho_ticket || '80mm')); });
+  document.getElementById('ct-nombre').value    = c.nombre_ticket    || '';
+  document.getElementById('ct-ruc').value       = c.ruc_ticket       || '';
+  document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
+  document.getElementById('ct-direccion').value = c.direccion_ticket|| '';
+  document.getElementById('ct-mensaje').value   = c.mensaje_pie_ticket || 'Gracias por su compra';
+  openModal('modal-config-ticket');
+}
+async function guardarConfigTicket() {
+  const ancho = document.querySelector('input[name="ct-ancho"]:checked')?.value || '80mm';
+  const payload = {
+    auth_user_id: STATE.userId, configurado: true,
+    ancho_ticket: ancho,
+    nombre_ticket: document.getElementById('ct-nombre').value.trim() || null,
+    ruc_ticket: document.getElementById('ct-ruc').value.trim() || null,
+    telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
+    direccion_ticket: document.getElementById('ct-direccion').value.trim() || null,
+    mensaje_pie_ticket: document.getElementById('ct-mensaje').value.trim() || 'Gracias por su compra',
+    updated_at: new Date().toISOString(),
+  };
+  try {
+    const { data, error } = await sbClient.from('configuracion_venta_rapida')
+      .upsert(payload, { onConflict: 'auth_user_id' }).select('*').single();
+    if (error) throw error;
+    STATE.configTicket = data;
+    closeModal('modal-config-ticket');
+    showToast('Configuración del ticket guardada', 'success');
+  } catch (e) {
+    console.error('guardarConfigTicket:', e);
+    showToast('No se pudo guardar la configuración', 'error');
+  }
+}
+
+/* ===================================================
+   COMPROBANTE DE LA VENTA (al convertir una proforma) — mismo
+   formato tipo ticket que usa Créditos, respetando el tamaño de
+   papel configurado.
+=================================================== */
+function mostrarComprobanteProforma(v) {
+  const c = STATE.configTicket;
+  const filasItems = (v.items || []).map(it => `
+    <div class="tp-row"><span>${esc(it.cantidad)} × ${esc(it.producto_nombre)}</span><b>${fmt(it.subtotal)}</b></div>
+  `).join('');
+  document.getElementById('comprobante-body').innerHTML = `
+    <div class="ticket-print">
+      <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(c?.nombre_ticket || STATE.empresaConfig?.nombre_comercial || 'Mi negocio')}</div>
+      ${c?.ruc_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">RUC: ${esc(c.ruc_ticket)}</div>` : ''}
+      ${c?.telefono_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">Tel: ${esc(c.telefono_ticket)}</div>` : ''}
+      ${c?.direccion_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(c.direccion_ticket)}</div>` : ''}
+      <div style="text-align:center;color:var(--text-muted);margin-bottom:8px">Comprobante de venta ${v.origenProforma ? '(desde proforma ' + esc(v.origenProforma) + ')' : ''}</div>
+      <hr/>
+      <div class="tp-row"><span>N° venta:</span><b>${esc(v.numero)}</b></div>
+      <div class="tp-row"><span>Cliente:</span><b>${esc(v.cliente)}</b></div>
+      <div class="tp-row"><span>Fecha:</span><b>${esc(fmtFecha(v.fecha))}</b></div>
+      <div class="tp-row"><span>Usuario:</span><b>${esc(v.usuario)}</b></div>
+      <hr/>
+      ${filasItems}
+      <hr/>
+      <div class="tp-row"><span>Subtotal:</span><b>${fmt(v.subtotal)}</b></div>
+      ${v.descuento > 0 ? `<div class="tp-row"><span>Descuento:</span><b>-${fmt(v.descuento)}</b></div>` : ''}
+      ${v.impuesto > 0 ? `<div class="tp-row"><span>Impuesto:</span><b>${fmt(v.impuesto)}</b></div>` : ''}
+      <div class="tp-row" style="font-weight:800"><span>Total:</span><b>${fmt(v.total)}</b></div>
+      <div class="tp-row"><span>Método de pago:</span><b>${esc(v.metodo)}</b></div>
+      ${c?.mensaje_pie_ticket ? `<hr/><div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(c.mensaje_pie_ticket)}</div>` : ''}
+    </div>`;
+  openModal('modal-comprobante');
+}
+function imprimirComprobanteProforma() {
+  const html = document.getElementById('comprobante-body').innerHTML;
+  const ancho = STATE.configTicket?.ancho_ticket || '80mm';
+  const anchoPx = ancho === 'carta' ? 'auto' : (ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px');
+  const w = window.open('', '_blank', 'width=380,height=600');
+  w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
+    <style>body{font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:16px;max-width:${anchoPx};margin:0 auto}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+    </head><body>${html}<script>window.print();</script></body></html>`);
+  w.document.close();
+}
+
 async function confirmarConvertirAVenta() {
   const errEl = document.getElementById('cv-error');
   errEl.textContent = '';
@@ -1190,6 +1282,18 @@ async function confirmarConvertirAVenta() {
 
     showToast(`✅ Convertida a Venta ${ventaPayload.numero_venta} — ${fmt(p.total)}`);
     closeModal('modal-convertir-venta');
+
+    // Como esto ya es una venta real (con Caja e inventario afectados),
+    // se muestra el mismo tipo de comprobante que usa Ventas — con la
+    // opción de imprimir, respetando el tamaño de ticket configurado.
+    mostrarComprobanteProforma({
+      numero: ventaPayload.numero_venta, cliente: (p.cliente_nombre || 'Consumidor Final'),
+      fecha: todayISO(), usuario: STATE.currentUser?.nombre || STATE.userEmail,
+      items: detalles, subtotal: p.subtotal, descuento: p.descuento || 0,
+      impuesto: p.impuesto || 0, total: p.total, metodo: metodoNombre,
+      origenProforma: p.numero_proforma,
+    });
+
     await Promise.allSettled([loadProformas(), loadKPIsProf()]);
   } catch (e) {
     console.error('confirmarConvertirAVenta:', e);
@@ -1424,6 +1528,7 @@ async function initProformas() {
     STATE.userId = user.id; STATE.userEmail = user.email;
     if (user.email) checkAdminAccess(user.email);
     await cargarEstadoStockCompartido();
+    await cargarConfigTicket();
 
     await loadEmpresaConfig(user.id);
     const profile = await loadUserProfile(user.id);
