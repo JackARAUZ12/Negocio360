@@ -195,7 +195,7 @@
   function requerirAdminYGestionar() {
     const admin = PG.perfiles.find(p => p.tipo === 'admin');
     if (!admin) return;
-    renderPin(admin, { onSuccess: renderGestionUsuarios, tituloExtra: 'Se requiere el código de administrador' });
+    renderPin(admin, { onSuccess: () => renderGestionUsuarios(), tituloExtra: 'Se requiere el código de administrador' });
   }
 
   // ------------------------------------------------------------
