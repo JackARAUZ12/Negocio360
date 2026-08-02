@@ -2298,11 +2298,17 @@ async function abrirComparacionSucursales() {
       .gte('fecha', from).lte('fecha', to);
     if (errVentas) throw errVentas;
 
-    // Cada fila de "sucursales" no trae el auth_user_id directo (por
-    // seguridad), así que se resuelve "quién es quién" con una segunda
-    // consulta ligera de solo lectura, cruzando por nombre — más simple
-    // y suficiente: se usa el propio id de sucursal como referencia.
     const idsCuentas = await mapearCuentasGrupo();
+
+    // Días transcurridos del período, para proyectar cómo cerraría si
+    // sigue al mismo ritmo (solo tiene sentido si el período incluye
+    // el día de hoy, ej. "Este mes").
+    const hoy = new Date(todayISO());
+    const inicio = new Date(from);
+    const fin = new Date(to);
+    const diasTranscurridos = Math.max(1, Math.round((hoy - inicio) / 86400000) + 1);
+    const diasTotalesPeriodo = Math.max(diasTranscurridos, Math.round((fin - inicio) / 86400000) + 1);
+    const sePuedeProyectar = fin.getTime() === hoy.getTime() && diasTotalesPeriodo > diasTranscurridos;
 
     const filas = cuentas.map(c => {
       const authId = idsCuentas[c.id];
@@ -2312,10 +2318,11 @@ async function abrirComparacionSucursales() {
       const numVentas = propias.length;
       const ticket = numVentas ? totalVentas / numVentas : 0;
       const margen = totalVentas ? (totalGanancia / totalVentas * 100) : 0;
-      return { nombre: c.nombre, esCentral: c.es_central, totalVentas, totalGanancia, numVentas, ticket, margen };
+      const proyeccion = sePuedeProyectar ? (totalVentas / diasTranscurridos) * diasTotalesPeriodo : null;
+      return { nombre: c.nombre, esCentral: c.es_central, totalVentas, totalGanancia, numVentas, ticket, margen, proyeccion };
     });
 
-    renderComparacionSucursales(filas);
+    renderComparacionSucursales(filas, { sePuedeProyectar, diasTranscurridos, diasTotalesPeriodo });
   } catch (e) {
     console.error('abrirComparacionSucursales:', e);
     body.innerHTML = `<p style="text-align:center;padding:30px;color:var(--danger)">No se pudo calcular la comparación. Intenta de nuevo.</p>`;
@@ -2334,7 +2341,7 @@ async function mapearCuentasGrupo() {
   return mapa;
 }
 
-function renderComparacionSucursales(filas) {
+function renderComparacionSucursales(filas, proy) {
   const body = document.getElementById('rg-comp-body');
   if (!filas.length) {
     body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted)">No hay sucursales para comparar todavía.</p>';
@@ -2350,24 +2357,31 @@ function renderComparacionSucursales(filas) {
   let consejos = '';
   if (filas.length > 1) {
     if (mejor.totalVentas > 0) {
-      consejos += `<div class="rg-consejo bien">🏆 <strong>${esc(mejor.nombre)}</strong> es la que más vende en este período (${fmt(mejor.totalVentas)}) — revisa qué está haciendo bien (horario, ubicación, atención) para replicarlo en las demás.</div>`;
+      const participacionMejor = totalGrupo ? (mejor.totalVentas / totalGrupo * 100).toFixed(0) : 0;
+      consejos += `<div class="rg-consejo bien">🏆 <strong>${esc(mejor.nombre)}</strong> es la que más vende en este período: ${fmt(mejor.totalVentas)}, que representa el <strong>${participacionMejor}%</strong> de todo lo que vendió el grupo. Vale la pena revisar qué está haciendo bien esta sucursal (horario, ubicación, atención al cliente, variedad de productos) para intentar replicarlo en las demás.</div>`;
     }
     if (peor.nombre !== mejor.nombre) {
       if (peor.totalVentas === 0) {
-        consejos += `<div class="rg-consejo alerta">⚠️ <strong>${esc(peor.nombre)}</strong> no registra ventas en este período — vale la pena revisar si está teniendo algún problema (falta de stock, poco movimiento, etc.).</div>`;
+        consejos += `<div class="rg-consejo alerta">⚠️ <strong>${esc(peor.nombre)}</strong> no registra ninguna venta en este período. Esto puede significar que está cerrada, sin inventario para vender, o que necesita más atención. Te recomendamos revisarla cuanto antes.</div>`;
       } else if (peor.totalVentas < promedio * 0.5) {
-        consejos += `<div class="rg-consejo alerta">⚠️ <strong>${esc(peor.nombre)}</strong> vende bastante menos que el promedio del grupo (${fmt(peor.totalVentas)} vs. ${fmt(promedio)} de promedio) — podría necesitar más atención o inventario.</div>`;
+        consejos += `<div class="rg-consejo alerta">⚠️ <strong>${esc(peor.nombre)}</strong> vende bastante menos que el promedio del grupo (${fmt(peor.totalVentas)} contra un promedio de ${fmt(promedio)}). Podría necesitar más inventario, más promoción local, o simplemente más tiempo si es una sucursal nueva.</div>`;
       }
     }
     const margenBajo = filas.filter(f => f.numVentas > 0 && f.margen < 15);
     margenBajo.forEach(f => {
-      consejos += `<div class="rg-consejo alerta">📉 <strong>${esc(f.nombre)}</strong> tiene un margen de ganancia bajo (${f.margen.toFixed(1)}%) — revisa si sus precios o costos necesitan ajustarse.</div>`;
+      consejos += `<div class="rg-consejo alerta">📉 <strong>${esc(f.nombre)}</strong> tiene un margen de ganancia bajo (${f.margen.toFixed(1)}% de lo que vende se queda como ganancia). Esto puede pasar si los precios están muy ajustados o si los costos subieron — vale la pena revisar sus precios de venta.</div>`;
+    });
+    const margenAlto = filas.filter(f => f.numVentas > 0 && f.margen > 40);
+    margenAlto.forEach(f => {
+      consejos += `<div class="rg-consejo bien">💰 <strong>${esc(f.nombre)}</strong> tiene un margen de ganancia saludable (${f.margen.toFixed(1)}%) — sigue así.</div>`;
     });
   } else {
-    consejos = `<div class="rg-consejo">Todavía solo tienes una sucursal con ventas — crea otra desde Sucursales para poder comparar.</div>`;
+    consejos = `<div class="rg-consejo">Todavía solo tienes una sucursal con ventas registradas — crea otra desde el módulo Sucursales para poder comparar el rendimiento entre varias.</div>`;
   }
 
-  const filasHtml = filas.map(f => `
+  const filasHtml = filas.map(f => {
+    const participacion = totalGrupo ? (f.totalVentas / totalGrupo * 100).toFixed(1) : '0.0';
+    return `
     <tr>
       <td style="font-weight:600">${f.esCentral ? '🏠 ' : '🏬 '}${esc(f.nombre)}</td>
       <td>${fmt(f.totalVentas)}</td>
@@ -2375,17 +2389,29 @@ function renderComparacionSucursales(filas) {
       <td>${f.numVentas}</td>
       <td>${fmt(f.ticket)}</td>
       <td>${f.numVentas ? f.margen.toFixed(1) + '%' : '—'}</td>
-    </tr>`).join('');
+      <td>${participacion}%</td>
+      <td>${f.proyeccion != null ? fmt(f.proyeccion) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const notaProyeccion = proy.sePuedeProyectar
+    ? `<p style="font-size:12px;color:var(--text-muted);margin-top:6px">📈 La columna "Si sigue así" proyecta cómo cerraría cada sucursal el período completo, calculado con el ritmo de venta de los últimos ${proy.diasTranscurridos} día(s) — es un estimado, no una garantía.</p>`
+    : '';
 
   document.getElementById('rg-comp-body').innerHTML = `
-    <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">Período: <strong>${periodLabel()}</strong></p>
-    <div class="table-wrap" style="margin-bottom:18px">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">
+      Esta comparación te muestra, lado a lado, cómo le fue a cada sucursal durante <strong>${periodLabel()}</strong> —
+      cuánto vendió, cuánta ganancia dejó, y qué tan seguido la visitan tus clientes (número de ventas y ticket promedio).
+      Úsala para detectar rápido cuál sucursal necesita ayuda y cuál va bien.
+    </p>
+    <div class="table-wrap" style="margin-bottom:10px">
       <table class="rg-tabla-comp">
-        <thead><tr><th>Sucursal</th><th>Ventas</th><th>Ganancia</th><th># Ventas</th><th>Ticket prom.</th><th>Margen</th></tr></thead>
+        <thead><tr><th>Sucursal</th><th>Ventas</th><th>Ganancia</th><th># Ventas</th><th>Ticket prom.</th><th>Margen</th><th>% del grupo</th><th>Si sigue así</th></tr></thead>
         <tbody>${filasHtml}</tbody>
       </table>
     </div>
-    <h3 style="font-size:14px;margin-bottom:8px">💬 Comentarios y consejos</h3>
+    ${notaProyeccion}
+    <h3 style="font-size:14.5px;margin:18px 0 8px">💬 Comentarios y consejos</h3>
     ${consejos}
   `;
 }
@@ -2396,8 +2422,9 @@ function cerrarComparacionSucursales() {
 
 /* ============================================================
    DETALLE DE BODEGAS
-   Inventario, valor y movimientos recientes de cada bodega,
-   explicado en lenguaje simple.
+   Inventario, valor, movimientos y proyecciones de cada bodega,
+   explicado en lenguaje simple — para que el cliente entienda qué
+   está pasando y qué le conviene hacer.
    ============================================================ */
 async function abrirDetalleBodegas() {
   const overlay = document.getElementById('modalDetalleBodegas');
@@ -2409,51 +2436,115 @@ async function abrirDetalleBodegas() {
     const { data: grupo, error: errGrupo } = await sb.rpc('listar_sucursales_grupo');
     if (errGrupo) throw errGrupo;
     const bodegas = (grupo || []).filter(g => g.tipo === 'bodega');
+    const sucursalesVenta = (grupo || []).filter(g => g.tipo !== 'bodega');
 
     if (!bodegas.length) {
-      body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted)">Todavía no tienes ninguna bodega creada — puedes crear una desde el módulo Sucursales.</p>';
+      body.innerHTML = `
+        <p style="text-align:center;padding:30px;color:var(--text-muted)">
+          Todavía no tienes ninguna bodega creada.<br>
+          <span style="font-size:12.5px">Puedes crear una desde el módulo Sucursales → apartado Bodegas — sirve para centralizar tu inventario y repartirlo desde ahí a cualquier sucursal.</span>
+        </p>`;
       return;
     }
 
     const idsCuentas = await mapearCuentasGrupo();
     const { data: productos, error: errProd } = await sb.from('productos').select('*');
     if (errProd) throw errProd;
+    // Se trae bastante historial (hasta 2000 filas) para calcular bien
+    // el ritmo de salidas de cada producto en los últimos 30 días.
     const { data: movimientos } = await sb.from('movimientos_inventario')
-      .select('auth_user_id,tipo,cantidad,razon,created_at').order('created_at', { ascending: false }).limit(500);
+      .select('auth_user_id,producto_id,tipo,cantidad,razon,created_at')
+      .order('created_at', { ascending: false }).limit(2000);
+
+    // Valor total de inventario de TODO el grupo (bodegas + sucursales)
+    // para poder decir "esta bodega representa el X% de tu inventario".
+    const valorTotalGrupo = (productos || [])
+      .filter(p => p.tipo === 'producto')
+      .reduce((s, p) => s + (Number(p.stock_actual || 0) * Number(p.costo || 0)), 0);
+
+    const hace30dias = new Date(); hace30dias.setDate(hace30dias.getDate() - 30);
 
     const tarjetas = bodegas.map(b => {
       const authId = idsCuentas[b.id];
       const propios = (productos || []).filter(p => p.auth_user_id === authId && p.tipo === 'producto');
       const valorInventario = propios.reduce((s, p) => s + (Number(p.stock_actual || 0) * Number(p.costo || 0)), 0);
+      const participacionInv = valorTotalGrupo ? (valorInventario / valorTotalGrupo * 100).toFixed(0) : 0;
       const stockBajo = propios.filter(p => p.stock_minimo > 0 && Number(p.stock_actual || 0) <= Number(p.stock_minimo));
-      const movsRecientes = (movimientos || []).filter(m => m.auth_user_id === authId).slice(0, 5);
-      const entradas = (movimientos || []).filter(m => m.auth_user_id === authId && m.tipo === 'entrada').length;
-      const salidas = (movimientos || []).filter(m => m.auth_user_id === authId && m.tipo === 'salida').length;
+
+      const movsBodega = (movimientos || []).filter(m => m.auth_user_id === authId);
+      const movsRecientes = movsBodega.slice(0, 8);
+      const entradas30 = movsBodega.filter(m => m.tipo === 'entrada' && new Date(m.created_at) >= hace30dias).length;
+      const salidas30 = movsBodega.filter(m => m.tipo === 'salida' && new Date(m.created_at) >= hace30dias).length;
+
+      // Proyección: para cada producto con stock bajo, calcula cuántas
+      // unidades han salido en los últimos 30 días y estima en cuántos
+      // días se agotaría si sigue saliendo al mismo ritmo.
+      const proyeccionesAgotamiento = stockBajo.map(p => {
+        const salidasProducto = movsBodega
+          .filter(m => m.producto_id === p.id && m.tipo === 'salida' && new Date(m.created_at) >= hace30dias)
+          .reduce((s, m) => s + Math.abs(Number(m.cantidad || 0)), 0);
+        const ritmoDiario = salidasProducto / 30;
+        const diasRestantes = ritmoDiario > 0 ? Math.round(Number(p.stock_actual || 0) / ritmoDiario) : null;
+        return { nombre: p.nombre, stock: p.stock_actual, diasRestantes };
+      });
+
+      const listaStockBajo = stockBajo.length
+        ? `<ul style="margin:8px 0 0 18px;font-size:12.5px;line-height:1.7">
+            ${proyeccionesAgotamiento.map(p => `<li><strong>${esc(p.nombre)}</strong> — quedan ${fmtNum(p.stock)} u.${
+              p.diasRestantes != null ? ` · a este ritmo se agotaría en <strong>~${p.diasRestantes} día(s)</strong>` : ' · sin salidas recientes para estimar cuándo se agota'
+            }</li>`).join('')}
+          </ul>`
+        : '';
+
+      // Sugerencia concreta: si hay sucursales con más movimiento, se
+      // sugiere considerar enviarles stock desde aquí (solo si esta
+      // bodega SÍ tiene inventario disponible que mover).
+      let sugerenciaTraslado = '';
+      if (propios.length > 0 && valorInventario > 0 && sucursalesVenta.length) {
+        sugerenciaTraslado = `<div class="rg-consejo" style="margin-top:10px">💡 Si alguna de tus sucursales necesita reabastecerse, recuerda que puedes enviarle stock de esta bodega directamente desde <strong>Productos/Servicios → Mover productos</strong>.</div>`;
+      }
 
       const movsHtml = movsRecientes.length
-        ? movsRecientes.map(m => `<div style="font-size:12px;color:var(--text-muted);padding:3px 0">${m.tipo === 'entrada' ? '⬇️ Entrada' : m.tipo === 'salida' ? '⬆️ Salida' : '✏️ Ajuste'} de ${Math.abs(m.cantidad)} u. — ${fmtFecha(m.created_at?.slice(0,10))}</div>`).join('')
-        : '<div style="font-size:12px;color:var(--text-muted)">Sin movimientos recientes</div>';
+        ? movsRecientes.map(m => {
+            const icono = m.tipo === 'entrada' ? '⬇️' : m.tipo === 'salida' ? '⬆️' : '✏️';
+            const texto = m.tipo === 'entrada' ? 'Entrada' : m.tipo === 'salida' ? 'Salida' : 'Ajuste';
+            return `<div style="font-size:12px;color:var(--text-muted);padding:3px 0">${icono} ${texto} de ${fmtNum(Math.abs(m.cantidad))} u. — ${fmtFecha(m.created_at?.slice(0,10))}</div>`;
+          }).join('')
+        : '<div style="font-size:12px;color:var(--text-muted)">Sin movimientos registrados todavía.</div>';
+
+      const explicacion = propios.length === 0
+        ? 'Esta bodega todavía no tiene productos registrados — puedes agregarlos directamente desde su propia página, o recibir stock desde una sucursal con "Mover productos".'
+        : `Tiene <strong>${propios.length}</strong> producto(s) registrados, con un valor total de inventario de <strong>${fmt(valorInventario)}</strong> — esto representa aproximadamente el <strong>${participacionInv}%</strong> del valor total de inventario de todo tu grupo (sumando todas las sucursales y bodegas).`;
 
       return `
         <div class="rg-bod-card">
           <h3>📦 ${esc(b.nombre)}</h3>
-          <p style="font-size:12.5px;color:var(--text-muted)">
-            ${propios.length === 0
-              ? 'Esta bodega todavía no tiene productos registrados.'
-              : `Tiene <strong>${propios.length}</strong> producto(s) registrados, con un valor total de inventario de <strong>${fmt(valorInventario)}</strong>.`}
-            ${stockBajo.length ? ` ⚠️ <strong>${stockBajo.length}</strong> producto(s) están con stock bajo y podrían necesitar reabastecerse.` : ''}
-          </p>
+          <p style="font-size:13px;color:var(--text-secondary);line-height:1.5">${explicacion}</p>
           <div class="rg-bod-kpis">
             <div class="rg-bod-kpi"><div class="lbl">Productos</div><div class="val">${propios.length}</div></div>
             <div class="rg-bod-kpi"><div class="lbl">Valor inventario</div><div class="val">${fmt(valorInventario)}</div></div>
             <div class="rg-bod-kpi"><div class="lbl">Stock bajo</div><div class="val">${stockBajo.length}</div></div>
-            <div class="rg-bod-kpi"><div class="lbl">Entradas / Salidas</div><div class="val">${entradas} / ${salidas}</div></div>
+            <div class="rg-bod-kpi"><div class="lbl">Entradas / Salidas (30 días)</div><div class="val">${entradas30} / ${salidas30}</div></div>
           </div>
-          <div style="margin-top:8px"><strong style="font-size:12.5px">Últimos movimientos:</strong>${movsHtml}</div>
+          ${stockBajo.length ? `<div class="rg-consejo alerta" style="margin-top:12px">⚠️ <strong>${stockBajo.length} producto(s)</strong> están en o por debajo de su stock mínimo:${listaStockBajo}</div>` : `<div class="rg-consejo bien" style="margin-top:12px">✅ Ningún producto está con stock bajo por ahora.</div>`}
+          ${sugerenciaTraslado}
+          <div style="margin-top:14px"><strong style="font-size:12.5px">Últimos movimientos:</strong>${movsHtml}</div>
         </div>`;
     }).join('');
 
-    document.getElementById('rg-bod-body').innerHTML = tarjetas;
+    let comparacionBodegas = '';
+    if (bodegas.length > 1) {
+      comparacionBodegas = `<div class="rg-consejo" style="margin-bottom:16px">📊 Tienes <strong>${bodegas.length} bodegas</strong> activas. Revisa cuál concentra más valor de inventario — si una está casi vacía y otra muy llena, puede ser buen momento para repartir mejor el stock entre ellas.</div>`;
+    }
+
+    document.getElementById('rg-bod-body').innerHTML = `
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">
+        Aquí ves el estado real de cada una de tus bodegas: cuánto inventario tienen guardado, qué productos están por agotarse
+        (con una estimación de en cuántos días, según qué tan rápido han estado saliendo), y su actividad reciente de entradas y salidas.
+      </p>
+      ${comparacionBodegas}
+      ${tarjetas}
+    `;
   } catch (e) {
     console.error('abrirDetalleBodegas:', e);
     body.innerHTML = `<p style="text-align:center;padding:30px;color:var(--danger)">No se pudo cargar el detalle de bodegas. Intenta de nuevo.</p>`;
