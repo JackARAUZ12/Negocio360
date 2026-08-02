@@ -33,6 +33,13 @@
     pagosRecientes: [],
     kpis: {},
     activeSection: 'creditos',
+
+    // Stock Compartido — grupo (Sucursales/Bodegas), mismo mecanismo de Ventas
+    stockCompartidoActivo: false,
+    miSucursalId:          null,
+    stockOrigenPendiente:  null,
+    origenStockElegido:    null,
+    productosCacheGrupo:   [],
     ncItems: [],          // ítems agregados al crédito por venta en curso
     ncAmortizacionPreview: [],
     ultimoComprobante: null,
@@ -574,9 +581,22 @@
       (p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto)
     ).slice(0, 10);
 
-    if (!resultados.length) { cont.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(texto)}"</div>`; return; }
+    let resultadosGrupo = [];
+    if (CS.stockCompartidoActivo) {
+      const nombresLocales = new Set(CS.productos.map(p => (p.nombre||'').trim().toLowerCase()));
+      const vistos = new Set();
+      resultadosGrupo = CS.productosCacheGrupo.filter(p => {
+        const clave = (p.nombre||'').trim().toLowerCase();
+        if (p.tipo !== 'producto' || !clave || nombresLocales.has(clave) || vistos.has(clave)) return false;
+        const coincide = clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto);
+        if (coincide) vistos.add(clave);
+        return coincide;
+      }).slice(0, 10 - resultados.length);
+    }
 
-    cont.innerHTML = resultados.map(p => {
+    if (!resultados.length && !resultadosGrupo.length) { cont.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(texto)}"</div>`; return; }
+
+    const htmlLocal = resultados.map(p => {
       const esEscala = p.tipo_precio === 'escala';
       return `
       <div class="search-result-item" onclick="agregarItemCredito('${p.id}')">
@@ -587,6 +607,17 @@
         <span class="sri-costo">${esEscala ? 'Elegir precio' : fmt(p.precio)}</span>
       </div>`;
     }).join('');
+
+    const htmlGrupo = resultadosGrupo.map(p => `
+      <div class="search-result-item" onclick="agregarProductoSoloEnGrupoCredito('${esc(p.nombre).replace(/'/g,"\\'")}')">
+        <div class="sri-info">
+          <span class="sri-nombre">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b)">📦 en otra cuenta</span></span>
+          <span class="sri-meta">Producto · Solo en otra sucursal/bodega</span>
+        </div>
+        <span class="sri-costo">${fmt(p.precio)}</span>
+      </div>`).join('');
+
+    cont.innerHTML = htmlLocal + htmlGrupo;
   }
   window.buscarProductoCredito = buscarProductoCredito;
 
@@ -595,29 +626,184 @@
     const r = document.getElementById('nc-producto-resultados'); if (r) r.innerHTML = '';
   }
 
+  /* ===================================================
+     STOCK COMPARTIDO — mismo mecanismo ya construido en Ventas.
+     Si está desactivado, ninguna de estas funciones se dispara y el
+     módulo funciona exactamente como antes.
+  =================================================== */
+  async function cargarEstadoStockCompartido() {
+    try {
+      const { data: activo, error } = await _sb.rpc('obtener_stock_compartido');
+      if (error) throw error;
+      CS.stockCompartidoActivo = !!activo;
+
+      const { data: miFila } = await _sb.from('sucursales')
+        .select('id').eq('auth_user_id_sucursal', CS.userId).maybeSingle();
+      CS.miSucursalId = miFila?.id || null;
+
+      const wrap = document.getElementById('stock-compartido-wrap');
+      const chk  = document.getElementById('chk-stock-compartido');
+      if (wrap && CS.miSucursalId) wrap.style.display = 'flex';
+      if (chk) chk.checked = CS.stockCompartidoActivo;
+
+      if (CS.stockCompartidoActivo) await cargarProductosGrupoCredito();
+    } catch (e) {
+      console.warn('cargarEstadoStockCompartido (creditos):', e);
+      CS.stockCompartidoActivo = false;
+    }
+  }
+  window.cargarEstadoStockCompartido = cargarEstadoStockCompartido;
+
+  async function cargarProductosGrupoCredito() {
+    try {
+      const sbGrupo = crearClienteGrupo(_sb);
+      const { data, error } = await sbGrupo.from('productos').select('*');
+      if (error) throw error;
+      CS.productosCacheGrupo = data || [];
+    } catch (e) {
+      console.warn('cargarProductosGrupoCredito:', e);
+      CS.productosCacheGrupo = [];
+    }
+  }
+
+  async function toggleStockCompartido(activo) {
+    try {
+      const { error } = await _sb.rpc('establecer_stock_compartido', { p_activo: activo });
+      if (error) throw error;
+      CS.stockCompartidoActivo = activo;
+      if (activo) await cargarProductosGrupoCredito();
+      showToast(activo ? 'Stock Compartido activado para todo el grupo' : 'Stock Compartido desactivado', 'success');
+    } catch (e) {
+      console.error('toggleStockCompartido (creditos):', e);
+      showToast('No se pudo cambiar Stock Compartido', 'error');
+      const chk = document.getElementById('chk-stock-compartido');
+      if (chk) chk.checked = !activo;
+    }
+  }
+  window.toggleStockCompartido = toggleStockCompartido;
+
+  async function abrirSelectorStockOrigen(nombreProducto, callbackContinuar) {
+    try {
+      const { data, error } = await _sb.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
+      if (error) throw error;
+      const opciones = data || [];
+      if (!opciones.length) { callbackContinuar(null); return; }
+
+      CS.stockOrigenPendiente = { callback: callbackContinuar };
+      document.getElementById('stock-origen-title').textContent = nombreProducto;
+      document.getElementById('stock-origen-lista').innerHTML = opciones.map((o, i) => `
+        <label class="esc-precio-opcion" style="${o.stock_actual<=0 ? 'opacity:.5' : ''}">
+          <input type="radio" name="stock-origen-radio" value="${o.sucursal_id}"
+                 data-stock="${o.stock_actual}" data-nombre="${esc(o.nombre_cuenta)}"
+                 ${i===0 ? 'checked' : ''} ${o.stock_actual<=0 ? 'disabled' : ''}/>
+          <span class="esc-precio-nombre">${o.tipo_cuenta==='bodega'?'📦':(o.es_central?'🏠':'🏬')} ${esc(o.nombre_cuenta)}</span>
+          <span class="esc-precio-valor">${Number(o.stock_actual||0).toLocaleString('es-NI',{maximumFractionDigits:2})} disp.</span>
+        </label>
+      `).join('');
+      openModal('modal-stock-origen');
+    } catch (e) {
+      console.error('abrirSelectorStockOrigen (creditos):', e);
+      showToast('No se pudo consultar el stock del grupo', 'error');
+      callbackContinuar(null);
+    }
+  }
+
+  function confirmarSeleccionStockOrigen() {
+    const pend = CS.stockOrigenPendiente;
+    if (!pend) return;
+    const radio = document.querySelector('input[name="stock-origen-radio"]:checked');
+    if (!radio) { showToast('Elige de dónde sacar el stock', 'error'); return; }
+    const stockDisp = parseFloat(radio.dataset.stock || 0);
+    if (stockDisp <= 0) { showToast('Esa cuenta no tiene stock disponible de este producto', 'error'); return; }
+
+    const origen = {
+      sucursalId: radio.value, stockDisponible: stockDisp,
+      nombreCuenta: radio.dataset.nombre, esLocal: radio.value === CS.miSucursalId,
+    };
+    closeModal('modal-stock-origen');
+    CS.stockOrigenPendiente = null;
+    pend.callback(origen);
+  }
+  window.confirmarSeleccionStockOrigen = confirmarSeleccionStockOrigen;
+
+  function cerrarSelectorStockOrigen() {
+    const pend = CS.stockOrigenPendiente;
+    closeModal('modal-stock-origen');
+    CS.stockOrigenPendiente = null;
+    if (pend) pend.callback(null);
+  }
+  window.cerrarSelectorStockOrigen = cerrarSelectorStockOrigen;
+
+  // Un producto que solo existe en OTRA cuenta del grupo — se salta
+  // directo al selector de origen (no hay fila local que buscar).
+  function agregarProductoSoloEnGrupoCredito(nombreProducto) {
+    abrirSelectorStockOrigen(nombreProducto, (origen) => {
+      if (!origen || origen.esLocal) return;
+      const refGrupo = CS.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === nombreProducto.trim().toLowerCase());
+      if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
+
+      CS.origenStockElegido = origen;
+      const prodTemporal = {
+        id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+        tipo: 'producto', tipo_precio: refGrupo.tipo_precio || 'fijo',
+        precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
+      };
+      const yaEstaEnCache = CS.productos.some(p => p.id === prodTemporal.id);
+      if (!yaEstaEnCache) CS.productos.push(prodTemporal);
+
+      if (prodTemporal.tipo_precio === 'escala') {
+        abrirSelectorEscalaCredito(prodTemporal.id, 1);
+      } else {
+        agregarItemCreditoConPrecio(prodTemporal, 1, null);
+      }
+      limpiarBusquedaProductoCredito();
+    });
+  }
+  window.agregarProductoSoloEnGrupoCredito = agregarProductoSoloEnGrupoCredito;
+
   function agregarItemCredito(prodId) {
     const prod = CS.productos.find(p => p.id === prodId);
     if (!prod) return;
+
+    const continuarNormal = () => {
+      // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
+      // nunca se asume el que se eligió antes (igual que en Ventas).
+      if (prod.tipo_precio === 'escala') {
+        abrirSelectorEscalaCredito(prodId, 1);
+        limpiarBusquedaProductoCredito();
+        return;
+      }
+      agregarItemCreditoConPrecio(prod, 1, null);
+      limpiarBusquedaProductoCredito();
+    };
+
+    // Stock Compartido activo: se pregunta primero de cuál sucursal/
+    // bodega del grupo se va a descontar — si está desactivado, nunca
+    // se ejecuta este bloque.
+    if (CS.stockCompartidoActivo && prod.tipo === 'producto') {
+      abrirSelectorStockOrigen(prod.nombre, (origen) => {
+        if (!origen) return;
+        CS.origenStockElegido = origen;
+        continuarNormal();
+      });
+      return;
+    }
+
     if (prod.tipo === 'producto' && Number(prod.stock_actual || 0) <= 0) {
       showToast(`"${prod.nombre}" no tiene stock disponible`, 'error'); return;
     }
 
-    // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
-    // nunca se asume el que se eligió antes (igual que en Ventas).
-    if (prod.tipo_precio === 'escala') {
-      abrirSelectorEscalaCredito(prodId, 1);
-      limpiarBusquedaProductoCredito();
-      return;
-    }
-
-    agregarItemCreditoConPrecio(prod, 1, null);
-    limpiarBusquedaProductoCredito();
+    CS.origenStockElegido = null;
+    continuarNormal();
   }
   window.agregarItemCredito = agregarItemCredito;
 
   function agregarItemCreditoConPrecio(prod, cantidad, escalaElegida) {
+    const origen = CS.origenStockElegido; CS.origenStockElegido = null;
+    const esRemoto = !!(origen && !origen.esLocal);
+
     const precioUsar = escalaElegida ? Number(escalaElegida.precio||0) : Number(prod.precio||0);
-    const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null));
+    const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null) && (i.origen_stock_id || null) === (esRemoto ? origen.sucursalId : null));
     if (existente) existente.cantidad += cantidad;
     else CS.ncItems.push({
       producto_id: prod.id, nombre: prod.nombre, tipo_item: prod.tipo,
@@ -625,6 +811,8 @@
       escala_id: escalaElegida ? escalaElegida.id : null,
       escala_nombre: escalaElegida ? escalaElegida.nombre : null,
       esCombo: !!prod.esCombo,
+      origen_stock_id:     esRemoto ? origen.sucursalId   : null,
+      origen_stock_nombre: esRemoto ? origen.nombreCuenta : null,
     });
     renderNCItems();
     recalcularCredito();
@@ -964,6 +1152,16 @@
         // Descontar stock solo de productos normales (no servicios, no combos)
         for (const it of CS.ncItems) {
           if (it.tipo_item !== 'producto' || it.esCombo) continue;
+          if (it.origen_stock_id) {
+            // Stock Compartido: se descuenta de OTRA cuenta del grupo.
+            try {
+              const { error: errRemoto } = await _sb.rpc('descontar_stock_remoto', {
+                p_sucursal_id: it.origen_stock_id, p_nombre_producto: it.nombre, p_cantidad: it.cantidad,
+              });
+              if (errRemoto) console.warn('Error descontando stock remoto:', it.nombre, errRemoto);
+            } catch (eRemoto) { console.warn('Error descontando stock remoto:', it.nombre, eRemoto); }
+            continue;
+          }
           const prod = CS.productos.find(p => p.id === it.producto_id);
           if (!prod) continue;
           const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
@@ -1506,6 +1704,7 @@
       if (error || !user) { window.location.href = 'login.html'; return; }
       CS.userId = user.id; CS.userEmail = user.email;
       if (user.email) checkAdminAccess(user.email);
+      await cargarEstadoStockCompartido();
       await loadEmpresaConfig(user.id);
       const profile = await loadUserProfile(user.id);
       if (profile) renderUserInfo(profile, user.email);
