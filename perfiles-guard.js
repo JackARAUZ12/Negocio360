@@ -410,7 +410,7 @@
   // ------------------------------------------------------------
   // Vista: Gestión de usuarios (crear / editar / eliminar)
   // ------------------------------------------------------------
-  function renderGestionUsuarios() {
+  function renderGestionUsuarios(mensajeExito) {
     const c = card();
     const restringidos = PG.perfiles.filter(p => p.tipo === 'restringido');
     const filas = restringidos.map(p => `
@@ -428,6 +428,7 @@
     c.innerHTML = `
       <div class="pg-back-arrow" id="pg-back">← Volver</div>
       <div class="pg-title">Gestionar usuarios</div>
+      ${mensajeExito ? `<div style="background:rgba(34,197,94,.15);color:#16a34a;font-size:12.5px;font-weight:600;text-align:center;border-radius:8px;padding:8px;margin-bottom:10px">✅ ${esc(mensajeExito)}</div>` : ''}
       <div class="pg-subtitle">Crea perfiles con acceso limitado a ciertos módulos</div>
       <div class="pg-section-title">Usuarios con acceso restringido</div>
       ${filas}
@@ -518,10 +519,23 @@
       const pin    = (document.getElementById('pg-f-pin').value || '').trim();
       const modulosSel = Array.from(c.querySelectorAll('.pg-mod-check input:checked')).map(i => i.value);
 
-      if (!nombre) { errEl.textContent = 'El nombre es obligatorio'; return; }
-      if (!editando && pin.length < 4) { errEl.textContent = 'Define un código de al menos 4 dígitos'; return; }
-      if (pin && pin.length > 0 && pin.length < 4) { errEl.textContent = 'El código debe tener al menos 4 dígitos'; return; }
-      if (!modulosSel.length) { errEl.textContent = 'Selecciona al menos un módulo permitido'; return; }
+      // Si el formulario falla la validación, el aviso rojo siempre se
+      // desplaza a la vista y queda resaltado un momento — antes, si el
+      // formulario era largo (muchos módulos), el mensaje de error podía
+      // quedar fuera de la pantalla y la persona pensaba que "no pasó
+      // nada" al presionar Guardar.
+      const mostrarError = (msg) => {
+        errEl.textContent = msg;
+        errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        errEl.style.transition = 'none';
+        errEl.style.background = 'rgba(239,68,68,.15)';
+        setTimeout(() => { errEl.style.transition = 'background .6s'; errEl.style.background = 'transparent'; }, 50);
+      };
+
+      if (!nombre) { mostrarError('El nombre es obligatorio'); return; }
+      if (!editando && pin.length < 4) { mostrarError('Define un código de al menos 4 dígitos'); return; }
+      if (pin && pin.length > 0 && pin.length < 4) { mostrarError('El código debe tener al menos 4 dígitos'); return; }
+      if (!modulosSel.length) { mostrarError('Selecciona al menos un módulo permitido'); return; }
 
       try {
         if (editando) {
@@ -542,12 +556,12 @@
           await PG.client.from('perfiles_acceso').update({ codigo_hash: hash }).eq('id', nuevo.id);
         }
         PG.perfiles = await cargarPerfiles();
-        renderGestionUsuarios();
+        renderGestionUsuarios(editando ? 'Usuario actualizado' : `Usuario "${nombre}" creado correctamente`);
       } catch (e) {
         console.error('guardar usuario:', e);
-        errEl.textContent = e.message?.includes('duplicate') || e.code === '23505'
+        mostrarError(e.message?.includes('duplicate') || e.code === '23505'
           ? 'Ya existe un usuario con ese nombre'
-          : 'No se pudo guardar. Intenta de nuevo.';
+          : 'No se pudo guardar. Intenta de nuevo.');
       }
     });
   }
