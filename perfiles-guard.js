@@ -492,9 +492,9 @@
       </div>
     `;
 
-    document.getElementById('pg-back').addEventListener('click', renderGestionUsuarios);
+    document.getElementById('pg-back').addEventListener('click', () => renderGestionUsuarios());
     const cancelBtn = document.getElementById('pg-f-cancelar');
-    if (cancelBtn) cancelBtn.addEventListener('click', renderGestionUsuarios);
+    if (cancelBtn) cancelBtn.addEventListener('click', () => renderGestionUsuarios());
     const delBtn = document.getElementById('pg-f-eliminar');
     if (delBtn) delBtn.addEventListener('click', async () => {
       if (!confirm(`¿Eliminar al usuario "${perfilExistente.nombre}"?`)) return;
