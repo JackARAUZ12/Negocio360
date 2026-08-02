@@ -23,6 +23,12 @@ const S = {
   currentUser:   {},
   moneda:        'C$',
 
+  // Stock Compartido — grupo (Sucursales/Bodegas)
+  stockCompartidoActivo: false,
+  miSucursalId:          null, // id en la tabla "sucursales" que representa a ESTA cuenta
+  stockOrigenPendiente:  null,
+  origenStockElegido:    null, // se consume una sola vez al agregar al carrito
+
   // Lista de ventas
   ventas:        [],
   ventasTotal:   0,
@@ -1568,20 +1574,140 @@ function buscarProductosParaVenta(q, tipo) {
   results.classList.add('open');
 }
 
+/* ============================================================
+   STOCK COMPARTIDO
+   Se guarda a nivel de GRUPO (siempre en la fila de la Central) — si
+   se activa desde cualquier sucursal o bodega, queda activo para
+   todas. Si está desactivado, el sistema funciona exactamente como
+   antes (esta función y sus modales nunca se disparan).
+   ============================================================ */
+async function cargarEstadoStockCompartido() {
+  try {
+    const { data: activo, error } = await sb.rpc('obtener_stock_compartido');
+    if (error) throw error;
+    S.stockCompartidoActivo = !!activo;
+
+    // ¿Cuál fila de "sucursales" soy yo? — para saber cuándo la opción
+    // elegida en el selector es "aquí mismo" (no hace falta descuento remoto).
+    const { data: miFila } = await sb.from('sucursales')
+      .select('id').eq('auth_user_id_sucursal', S.userId).maybeSingle();
+    S.miSucursalId = miFila?.id || null;
+
+    const wrap = document.getElementById('stock-compartido-wrap');
+    const chk  = document.getElementById('chk-stock-compartido');
+    // El interruptor solo se muestra si esta cuenta pertenece a un
+    // grupo real (tiene al menos una sucursal/bodega) — si no, no
+    // aplica y no se le muestra nada nuevo al usuario.
+    if (wrap && S.miSucursalId) { wrap.style.display = 'flex'; }
+    if (chk) chk.checked = S.stockCompartidoActivo;
+  } catch (e) {
+    console.warn('cargarEstadoStockCompartido:', e);
+    S.stockCompartidoActivo = false;
+  }
+}
+
+async function toggleStockCompartido(activo) {
+  try {
+    const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: activo });
+    if (error) throw error;
+    S.stockCompartidoActivo = activo;
+    showToast(activo ? 'Stock Compartido activado para todo el grupo' : 'Stock Compartido desactivado', 'success');
+  } catch (e) {
+    console.error('toggleStockCompartido:', e);
+    showToast('No se pudo cambiar Stock Compartido', 'error');
+    const chk = document.getElementById('chk-stock-compartido');
+    if (chk) chk.checked = !activo; // revertir el interruptor visualmente
+  }
+}
+
+// Muestra el selector "¿de dónde sacas el stock?" — busca por nombre
+// en todo el grupo. callbackContinuar(origen) se llama al confirmar,
+// con origen=null si se canceló.
+async function abrirSelectorStockOrigen(nombreProducto, modo, callbackContinuar) {
+  try {
+    const { data, error } = await sb.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
+    if (error) throw error;
+    const opciones = data || [];
+    if (!opciones.length) { callbackContinuar(null); return; }
+
+    S.stockOrigenPendiente = { modo, callback: callbackContinuar };
+    document.getElementById('stock-origen-title').textContent = nombreProducto;
+    document.getElementById('stock-origen-lista').innerHTML = opciones.map((o, i) => `
+      <label class="esc-precio-opcion" style="${o.stock_actual<=0 ? 'opacity:.5' : ''}">
+        <input type="radio" name="stock-origen-radio" value="${o.sucursal_id}"
+               data-stock="${o.stock_actual}" data-nombre="${esc(o.nombre_cuenta)}"
+               ${i===0 ? 'checked' : ''} ${o.stock_actual<=0 ? 'disabled' : ''}/>
+        <span class="esc-precio-nombre">${o.tipo_cuenta==='bodega'?'📦':(o.es_central?'🏠':'🏬')} ${esc(o.nombre_cuenta)}</span>
+        <span class="esc-precio-valor">${fmt2(o.stock_actual)} disp.</span>
+      </label>
+    `).join('');
+    openModal('modal-stock-origen');
+  } catch (e) {
+    console.error('abrirSelectorStockOrigen:', e);
+    showToast('No se pudo consultar el stock del grupo', 'error');
+    callbackContinuar(null);
+  }
+}
+function fmt2(n) { return Number(n||0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
+
+function confirmarSeleccionStockOrigen() {
+  const pend = S.stockOrigenPendiente;
+  if (!pend) return;
+  const radio = document.querySelector('input[name="stock-origen-radio"]:checked');
+  if (!radio) { showToast('Elige de dónde sacar el stock', 'error'); return; }
+  const stockDisp = parseFloat(radio.dataset.stock || 0);
+  if (stockDisp <= 0) { showToast('Esa cuenta no tiene stock disponible de este producto', 'error'); return; }
+
+  const origen = {
+    sucursalId: radio.value,
+    stockDisponible: stockDisp,
+    nombreCuenta: radio.dataset.nombre,
+    esLocal: radio.value === S.miSucursalId,
+  };
+  closeModal('modal-stock-origen');
+  S.stockOrigenPendiente = null;
+  pend.callback(origen);
+}
+function cerrarSelectorStockOrigen() {
+  const pend = S.stockOrigenPendiente;
+  closeModal('modal-stock-origen');
+  S.stockOrigenPendiente = null;
+  if (pend?.modo === 'vr') enfocarScannerVR();
+  if (pend) pend.callback(null); // cancelar = no agregar nada
+}
+
+
 function agregarAlCarrito(productoId, tipo) {
   const prod = S.productosCache.find(p => p.id===productoId);
   if (!prod) return;
 
-  // Si es escala de precios, SIEMPRE se pregunta qué precio usar — nunca
-  // se asume el que se eligió la primera vez. Así, si el cliente quiere
-  // el mismo producto pero a otro precio de la escala (ej. mayoreo en
-  // vez de detalle), se agrega como una línea aparte, sin bloquear nada.
-  if (prod.tipo_precio === 'escala') {
-    abrirSelectorEscala(productoId, tipo);
+  const continuarNormal = () => {
+    // Si es escala de precios, SIEMPRE se pregunta qué precio usar — nunca
+    // se asume el que se eligió la primera vez. Así, si el cliente quiere
+    // el mismo producto pero a otro precio de la escala (ej. mayoreo en
+    // vez de detalle), se agrega como una línea aparte, sin bloquear nada.
+    if (prod.tipo_precio === 'escala') {
+      abrirSelectorEscala(productoId, tipo);
+      return;
+    }
+    agregarAlCarritoConPrecio(productoId, tipo, null);
+  };
+
+  // Stock Compartido activo: para productos físicos, se pregunta
+  // primero de cuál sucursal/bodega del grupo se va a descontar — si
+  // está desactivado, este bloque nunca se ejecuta y todo sigue
+  // funcionando exactamente igual que siempre.
+  if (S.stockCompartidoActivo && tipo === 'producto') {
+    abrirSelectorStockOrigen(prod.nombre, 'normal', (origen) => {
+      if (!origen) return; // canceló
+      S.origenStockElegido = origen;
+      continuarNormal();
+    });
     return;
   }
 
-  agregarAlCarritoConPrecio(productoId, tipo, null);
+  S.origenStockElegido = null;
+  continuarNormal();
 }
 
 /* ============================================================
@@ -1650,20 +1776,25 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   const prod = S.productosCache.find(p => p.id===productoId);
   if (!prod) return;
 
+  // Origen de stock elegido en el selector de Stock Compartido (si
+  // aplica) — se consume una sola vez. Si es null, es el flujo normal
+  // de siempre (stock de esta misma cuenta).
+  const origen = S.origenStockElegido; S.origenStockElegido = null;
+  const esRemoto = !!(origen && !origen.esLocal);
+  const stockReal = esRemoto ? origen.stockDisponible : parseFloat(prod.stock_actual||0);
+
   // Precio a usar: el de la escala elegida, o el precio fijo del producto
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
 
-  // Se busca una línea EXISTENTE del mismo producto Y la misma escala
-  // (o ambas sin escala, si es precio fijo) — así, el mismo producto a
-  // un precio de escala distinto se agrega como línea aparte, en vez de
-  // mezclarse o bloquear el precio ya elegido antes.
-  const existente = S.carrito.find(c => c.id===productoId && (c.escalaId || null) === (escalaElegida?.id || null));
+  // Se busca una línea EXISTENTE del mismo producto Y la misma escala Y
+  // el mismo origen de stock — así, el mismo producto con distinto
+  // origen o precio se agrega como línea aparte.
+  const existente = S.carrito.find(c => c.id===productoId && (c.escalaId || null) === (escalaElegida?.id || null) && (c.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
     // Aumentar cantidad (validando stock si es producto)
     if (tipo==='producto') {
-      const stockDisp = parseFloat(prod.stock_actual||0);
-      if (existente.cantidad >= stockDisp) {
-        showToast(`Stock insuficiente. Máximo: ${stockDisp}`, 'error'); return;
+      if (existente.cantidad >= stockReal) {
+        showToast(`Stock insuficiente. Máximo: ${stockReal}`, 'error'); return;
       }
     }
     existente.cantidad++;
@@ -1680,12 +1811,16 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       descuento:0,
       subtotal: precioUsar,
       ganancia: precioUsar - parseFloat(prod.costo||0),
-      stockMax: tipo==='producto' ? parseFloat(prod.stock_actual||0) : Infinity,
+      stockMax: tipo==='producto' ? stockReal : Infinity,
       esCombo:  !!prod.esCombo,
       // Trazabilidad de la escala usada (null si es precio fijo) — se guarda
       // en venta_detalles para poder reportar por escala en el futuro.
       escalaId:     escalaElegida ? escalaElegida.id     : null,
       escalaNombre: escalaElegida ? escalaElegida.nombre : null,
+      // Trazabilidad de Stock Compartido: de cuál sucursal/bodega se
+      // descuenta esta línea (null = esta misma cuenta, como siempre).
+      origenStockId:     esRemoto ? origen.sucursalId    : null,
+      origenStockNombre: esRemoto ? origen.nombreCuenta  : null,
     };
     S.carrito.push(item);
   }
@@ -1709,11 +1844,15 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
   const prod = S.productosCache.find(p => p.id === productoId);
   if (!prod) return;
 
+  const origen = S.origenStockElegido; S.origenStockElegido = null;
+  const esRemoto = !!(origen && !origen.esLocal);
+  const stockReal = esRemoto ? origen.stockDisponible : (Number(prod.stock_actual) || 0);
+
   const precioUsar = parseFloat(escalaElegida.precio || 0);
-  const existente   = VR.carrito.find(i => i.id === productoId && (i.escalaId || null) === escalaElegida.id);
+  const existente   = VR.carrito.find(i => i.id === productoId && (i.escalaId || null) === escalaElegida.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
 
   if (existente) {
-    if (prod.tipo === 'producto' && existente.cantidad + 1 > Number(prod.stock_actual)) {
+    if (prod.tipo === 'producto' && existente.cantidad + 1 > stockReal) {
       showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
       return;
     }
@@ -1728,15 +1867,17 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
       cantidad:        1,
       precio:          precioUsar,
       costo:           Number(prod.costo) || 0,
-      stockDisponible: Number(prod.stock_actual) || 0,
+      stockDisponible: stockReal,
       escalaId:        escalaElegida.id,
       escalaNombre:    escalaElegida.nombre,
       esCombo:         !!prod.esCombo,
+      origenStockId:     esRemoto ? origen.sucursalId   : null,
+      origenStockNombre: esRemoto ? origen.nombreCuenta : null,
     });
   }
 
   renderCarritoVentaRapida();
-  showToast(`${prod.nombre} · ${escalaElegida.nombre} agregado`, 'success');
+  showToast(`${prod.nombre} · ${escalaElegida.nombre}${esRemoto ? ' · desde '+origen.nombreCuenta : ''} agregado`, 'success');
 }
 
 function recalcItem(item) {
@@ -1799,6 +1940,7 @@ function renderCarrito(tipo) {
         ${item.sku ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${esc(item.sku)}</div>` : ''}
         ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
         ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
+        ${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}
       </td>
       <td>
         <input type="number" class="cart-qty-input" value="${item.cantidad}"
@@ -2299,6 +2441,18 @@ async function confirmarVenta(conImpresion) {
     ---------------------------------------------------------- */
     const productosVendidos = S.carrito.filter(i => i.tipo==='producto' && !i.esCombo);
     for (const item of productosVendidos) {
+      if (item.origenStockId) {
+        // Stock Compartido: esta línea se descuenta de OTRA sucursal/
+        // bodega del grupo, no de esta cuenta — la venta en sí queda
+        // igual, registrada aquí, solo cambia de dónde sale el stock.
+        try {
+          const { error: errRemoto } = await sb.rpc('descontar_stock_remoto', {
+            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: item.cantidad,
+          });
+          if (errRemoto) console.warn('Error descontando stock remoto:', item.nombre, errRemoto);
+        } catch (eRemoto) { console.warn('Error descontando stock remoto:', item.nombre, eRemoto); }
+        continue; // nunca se toca el stock local de este ítem
+      }
       const prod = S.productosCache.find(p => p.id===item.id);
       if (!prod) continue;
       const nuevoStock = parseFloat(prod.stock_actual||0) - item.cantidad;
@@ -2726,6 +2880,32 @@ function confirmarSeleccionProductoDuplicado() {
 // como cuando el cajero elige entre varias.
 function continuarEscaneoConProducto(prod) {
   const status = document.getElementById('vr-scan-status');
+
+  const continuarNormal = () => {
+    const tieneEscalas  = prod.tipo_precio === 'escala' && (S.escalasPorProducto[prod.id]||[]).length > 0;
+    if (tieneEscalas) {
+      if (status) status.textContent = `📊 "${prod.nombre}" — elige un precio`;
+      abrirSelectorEscala(prod.id, prod.tipo, 'vr');
+      return;
+    }
+    agregarAlCarritoVR(prod);
+    if (status) status.textContent = `✅ ${prod.nombre} agregado`;
+    enfocarScannerVR();
+  };
+
+  // Stock Compartido activo: se pregunta de cuál sucursal/bodega del
+  // grupo sacar el stock — esto también permite vender un producto
+  // que aquí está en 0, si otra cuenta del grupo sí tiene.
+  if (S.stockCompartidoActivo && prod.tipo === 'producto') {
+    if (status) status.textContent = `📦 "${prod.nombre}" — elige de dónde sacar el stock`;
+    abrirSelectorStockOrigen(prod.nombre, 'vr', (origen) => {
+      if (!origen) { if (status) status.textContent = '📡 Listo para escanear'; return; }
+      S.origenStockElegido = origen;
+      continuarNormal();
+    });
+    return;
+  }
+
   if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0) {
     showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
     if (status) status.textContent = '📡 Listo para escanear';
@@ -2733,17 +2913,8 @@ function continuarEscaneoConProducto(prod) {
     return;
   }
 
-  const tieneEscalas  = prod.tipo_precio === 'escala' && (S.escalasPorProducto[prod.id]||[]).length > 0;
-
-  if (tieneEscalas) {
-    if (status) status.textContent = `📊 "${prod.nombre}" — elige un precio`;
-    abrirSelectorEscala(prod.id, prod.tipo, 'vr');
-    return;
-  }
-
-  agregarAlCarritoVR(prod);
-  if (status) status.textContent = `✅ ${prod.nombre} agregado`;
-  enfocarScannerVR();
+  S.origenStockElegido = null;
+  continuarNormal();
 }
 
 async function procesarCodigoEscaneado(codigo) {
@@ -2829,10 +3000,14 @@ async function procesarCodigoEscaneado(codigo) {
 }
 
 function agregarAlCarritoVR(prod) {
-  const existente = VR.carrito.find(i => i.id === prod.id);
+  const origen = S.origenStockElegido; S.origenStockElegido = null;
+  const esRemoto = !!(origen && !origen.esLocal);
+  const stockReal = esRemoto ? origen.stockDisponible : (Number(prod.stock_actual) || 0);
+
+  const existente = VR.carrito.find(i => i.id === prod.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
     // No exceder el stock disponible
-    if (prod.tipo === 'producto' && existente.cantidad + 1 > Number(prod.stock_actual)) {
+    if (prod.tipo === 'producto' && existente.cantidad + 1 > stockReal) {
       showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
       return;
     }
@@ -2847,8 +3022,10 @@ function agregarAlCarritoVR(prod) {
       cantidad:      1,
       precio:        Number(prod.precio)  || 0,
       costo:         Number(prod.costo)   || 0,
-      stockDisponible: Number(prod.stock_actual) || 0,
+      stockDisponible: stockReal,
       esCombo:       !!prod.esCombo,
+      origenStockId:     esRemoto ? origen.sucursalId   : null,
+      origenStockNombre: esRemoto ? origen.nombreCuenta : null,
     });
   }
   renderCarritoVentaRapida();
@@ -2893,7 +3070,7 @@ function renderCarritoVentaRapida() {
   } else {
     tbody.innerHTML = VR.carrito.map(item => `
       <tr>
-        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}</td>
+        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
         <td>
           <input type="number" min="1" step="1" value="${item.cantidad}"
@@ -3029,6 +3206,15 @@ async function confirmarVentaRapida() {
 
     // Actualizar stock (solo productos normales, no servicios ni combos)
     for (const item of VR.carrito.filter(i => i.tipo==='producto' && !i.esCombo)) {
+      if (item.origenStockId) {
+        try {
+          const { error: errRemoto } = await sb.rpc('descontar_stock_remoto', {
+            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: item.cantidad,
+          });
+          if (errRemoto) console.warn('Error descontando stock remoto:', item.nombre, errRemoto);
+        } catch (eRemoto) { console.warn('Error descontando stock remoto:', item.nombre, eRemoto); }
+        continue;
+      }
       const nuevoStock = Math.max(0, item.stockDisponible - item.cantidad);
       const { error: errStock } = await sb.from('productos')
         .update({ stock_actual: nuevoStock }).eq('id', item.id).eq('auth_user_id', S.userId);
@@ -3383,6 +3569,8 @@ async function initVentas() {
     S.userEmail = user.email;
 
     if (user.email) checkAdminAccess(user.email);
+
+    await cargarEstadoStockCompartido();
 
     // 2. Config empresa
     await loadEmpresaConfig(user.id);
