@@ -1404,8 +1404,15 @@
       </div>
       <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">¿Anular esta venta?</h3>
       <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
-        La venta quedará marcada como <strong>Anulada</strong>. El stock NO se repondrá automáticamente — si necesitas reponerlo hazlo desde Movimientos especiales en Productos.
+        La venta quedará marcada como <strong>Anulada</strong> y el stock vendido se repondrá automáticamente al inventario.
       </p>
+      <label style="display:flex;align-items:flex-start;gap:8px;text-align:left;background:var(--bg-app);border-radius:10px;padding:12px 14px;margin-top:14px;cursor:pointer">
+        <input type="checkbox" id="chk-anular-descontar-caja" checked style="margin-top:2px"/>
+        <span style="font-size:12.5px;color:var(--text-secondary);line-height:1.5">
+          <strong>Descontar también el ingreso de esta venta en Caja</strong><br/>
+          Márcalo si el dinero se le devolvió al cliente. Si NO se devolvió dinero (ej. solo fue un error al registrarla), desmárcalo para que el saldo de Caja no se toque.
+        </span>
+      </label>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-anular')">Cancelar</button>
