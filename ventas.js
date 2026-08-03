@@ -733,9 +733,49 @@ async function anularVenta() {
 
     if (error) throw error;
 
+    // Si el usuario marcó la casilla, se registra en Caja el egreso
+    // reverso — nunca se BORRA el ingreso original de la venta (eso
+    // rompería el historial), se registra un movimiento nuevo que lo
+    // compensa, igual de trazable que cualquier otro movimiento.
+    const descontarCaja = document.getElementById('chk-anular-descontar-caja')?.checked !== false;
+    if (descontarCaja) {
+      try {
+        const { data: movOriginal } = await sb.from('movimientos_financieros')
+          .select('monto').eq('referencia_tipo','venta').eq('referencia_id', id)
+          .eq('auth_user_id', S.userId).eq('tipo_flujo','INGRESO').maybeSingle();
+
+        if (movOriginal && Number(movOriginal.monto) > 0) {
+          const { data: ultMov } = await sb.from('movimientos_financieros')
+            .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado','completado')
+            .order('created_at',{ ascending:false }).limit(1).maybeSingle();
+          const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+          const montoDevolver = round2(Number(movOriginal.monto));
+          const saldoRes = round2(saldoAnt - montoDevolver);
+
+          const ventaInfo = S.ventas.find(v => v.id === id);
+          await sb.from('movimientos_financieros').insert({
+            auth_user_id:       S.userId,
+            tipo_flujo:         'EGRESO',
+            tipo_movimiento:    'OTRO_EGRESO',
+            concepto:           `Reverso por anulación de venta ${ventaInfo?.numero_venta || ''}`.trim(),
+            monto:              montoDevolver,
+            saldo_anterior:     saldoAnt,
+            saldo_resultante:   saldoRes,
+            referencia_tipo:    'venta',
+            referencia_id:      id,
+            fecha:              todayISO(),
+            estado:             'completado',
+          });
+        }
+      } catch (eCaja) {
+        console.warn('No se pudo registrar el reverso en Caja:', eCaja);
+        showToast('La venta se anuló, pero no se pudo descontar de Caja — revísalo manualmente', 'warning');
+      }
+    }
+
     closeModal('modal-anular');
     closeModal('modal-detalle');
-    showToast('Venta anulada y stock devuelto al inventario', 'warning');
+    showToast(descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)', 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
   } catch(e) {
     showToast('Error al anular: '+e.message, 'error');
