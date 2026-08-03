@@ -1109,11 +1109,15 @@ async function guardarConfigTicket() {
 =================================================== */
 function mostrarComprobanteProforma(v) {
   const c = STATE.configTicket;
+  const logoUrl = STATE.empresaConfig?.logo_principal_url || STATE.empresaConfig?.logo_url || '';
+  const anchoTicket = c?.ancho_ticket || '80mm';
+  const logoMaxW = anchoTicket === '58mm' ? 70 : anchoTicket === '76mm' ? 85 : anchoTicket === 'carta' ? 130 : 95;
   const filasItems = (v.items || []).map(it => `
     <div class="tp-row"><span>${esc(it.cantidad)} × ${esc(it.producto_nombre)}</span><b>${fmt(it.subtotal)}</b></div>
   `).join('');
   document.getElementById('comprobante-body').innerHTML = `
     <div class="ticket-print">
+      ${logoUrl ? `<img src="${esc(logoUrl)}" alt="" style="display:block;max-width:${logoMaxW}px;max-height:70px;object-fit:contain;margin:0 auto 6px" onerror="this.style.display='none'"/>` : ''}
       <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(c?.nombre_ticket || STATE.empresaConfig?.nombre_comercial || 'Mi negocio')}</div>
       ${c?.ruc_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">RUC: ${esc(c.ruc_ticket)}</div>` : ''}
       ${c?.telefono_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">Tel: ${esc(c.telefono_ticket)}</div>` : ''}
