@@ -678,6 +678,55 @@ async function anularVenta() {
   if (btn) btn.disabled = true;
 
   try {
+    // Protección: si por cualquier motivo ya estaba anulada, no se
+    // vuelve a devolver el stock (evitaría duplicar la devolución).
+    const { data: ventaActual, error: errVentaActual } = await sb.from('ventas')
+      .select('estado').eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
+    if (errVentaActual) throw errVentaActual;
+    if (!ventaActual) throw new Error('Venta no encontrada');
+    if (ventaActual.estado === 'anulada') {
+      showToast('Esta venta ya estaba anulada', 'warning');
+      closeModal('modal-anular'); closeModal('modal-detalle');
+      return;
+    }
+
+    // Devolver al inventario cada producto/combo vendido en esta
+    // factura — antes esto nunca pasaba, la anulación solo cambiaba
+    // el estado de la venta sin tocar el stock.
+    const { data: detalles, error: errDet } = await sb.from('venta_detalles')
+      .select('producto_id, combo_id, tipo_item, cantidad, producto_nombre')
+      .eq('venta_id', id).eq('auth_user_id', S.userId);
+    if (errDet) throw errDet;
+
+    for (const d of (detalles || [])) {
+      if (d.tipo_item === 'producto' && d.producto_id) {
+        const { data: prod } = await sb.from('productos')
+          .select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', S.userId).maybeSingle();
+        if (prod) {
+          const nuevoStock = round2(Number(prod.stock_actual || 0) + Number(d.cantidad));
+          await sb.from('productos').update({ stock_actual: nuevoStock })
+            .eq('id', d.producto_id).eq('auth_user_id', S.userId);
+        }
+      } else if (d.tipo_item === 'combo' && d.combo_id) {
+        try {
+          const { data: itemsCombo } = await sb.from('combo_items')
+            .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', S.userId);
+          for (const compItem of (itemsCombo || [])) {
+            const { data: prodActual } = await sb.from('productos')
+              .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
+            if (!prodActual) continue;
+            const devolverCantidad = round2(Number(compItem.cantidad) * Number(d.cantidad));
+            const nuevoStock = round2(Number(prodActual.stock_actual || 0) + devolverCantidad);
+            await sb.from('productos').update({ stock_actual: nuevoStock })
+              .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
+          }
+        } catch (eCombo) {
+          console.warn('No se pudo devolver el stock de los componentes del combo:', d.producto_nombre, eCombo);
+        }
+      }
+      // Los servicios no tienen stock que devolver — se omiten.
+    }
+
     const { error } = await sb.from('ventas')
       .update({ estado:'anulada', updated_at: new Date().toISOString() })
       .eq('id', id).eq('auth_user_id', S.userId);
@@ -686,8 +735,8 @@ async function anularVenta() {
 
     closeModal('modal-anular');
     closeModal('modal-detalle');
-    showToast('Venta anulada correctamente', 'warning');
-    await Promise.allSettled([loadVentas(), loadKPIs()]);
+    showToast('Venta anulada y stock devuelto al inventario', 'warning');
+    await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
   } catch(e) {
     showToast('Error al anular: '+e.message, 'error');
   } finally {
