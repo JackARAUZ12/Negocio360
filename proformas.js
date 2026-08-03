@@ -605,18 +605,19 @@ function renderCarritoProf() {
   }
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
-      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}</td>
+      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
-      <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'precio',this.value)" style="width:90px"/></td>
+      <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/></td>
       <td><input type="number" class="carrito-input" value="${l.descuento}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'descuento',this.value)" style="width:80px"/></td>
       <td class="td-right td-money">${fmt(l.subtotal)}</td>
       <td><button class="btn-icon btn-icon-danger" onclick="eliminarLineaProf(${idx})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
     </tr>`).join('');
   actualizarResumenProf();
 }
-function actualizarLineaProf(idx, campo, valor) {
+function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
   const l = STATE.carrito[idx]; if (!l) return;
   l[campo] = parseFloat(valor) || 0;
+  if (esPrecioManual) l.precioEditado = true;
   recalcularLineaProf(l);
   renderCarritoProf();
 }
