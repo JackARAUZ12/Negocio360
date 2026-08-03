@@ -1523,8 +1523,12 @@
   =================================================== */
   function mostrarComprobante(c) {
     CS.ultimoComprobante = c;
+    const logoUrl = CS.empresaConfig?.logo_principal_url || CS.empresaConfig?.logo_url || '';
+    const anchoTicket = CS.configTicket?.ancho_ticket || '80mm';
+    const logoMaxW = anchoTicket === '58mm' ? 70 : anchoTicket === '76mm' ? 85 : anchoTicket === 'carta' ? 130 : 95;
     document.getElementById('comprobante-body').innerHTML = `
       <div class="ticket-print">
+        ${logoUrl ? `<img src="${esc(logoUrl)}" alt="" style="display:block;max-width:${logoMaxW}px;max-height:70px;object-fit:contain;margin:0 auto 6px" onerror="this.style.display='none'"/>` : ''}
         <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(CS.configTicket?.nombre_ticket || nombreNegocio())}</div>
         ${CS.configTicket?.ruc_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">RUC: ${esc(CS.configTicket.ruc_ticket)}</div>` : ''}
         ${CS.configTicket?.telefono_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">Tel: ${esc(CS.configTicket.telefono_ticket)}</div>` : ''}
