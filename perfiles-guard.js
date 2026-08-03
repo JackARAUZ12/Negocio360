@@ -1098,6 +1098,13 @@
       return;
     }
 
+    // Personalización es la primera pantalla que ve una cuenta recién
+    // registrada — todavía no ha configurado nada de su negocio, así
+    // que jamás debe pedirle elegir un perfil ni un código de PIN/admin
+    // (aunque ya exista un "Admin" recién auto-creado en segundo plano).
+    // Eso solo tiene sentido después de terminar el asistente.
+    if (currentFile() === 'personalizacion.html') return;
+
     showOverlay();
     renderSelector();
   }
