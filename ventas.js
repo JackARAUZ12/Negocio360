@@ -2015,6 +2015,20 @@ function cambiarDescuento(productoId, val) {
   renderCarrito(item.tipo);
 }
 
+// Permite ajustar el precio de una línea SOLO para esta venta — nunca
+// modifica el precio (ni la escala) real guardado en Productos/
+// Servicios, que sigue intacto para la próxima venta.
+function cambiarPrecioManual(productoId, val) {
+  const item = S.carrito.find(c => c.id===productoId);
+  if (!item) return;
+  const n = parseFloat(val);
+  if (isNaN(n) || n < 0) { renderCarrito(item.tipo); return; }
+  item.precio = round2(n);
+  item.precioEditado = true; // se usa solo para mostrar el aviso visual en el carrito
+  recalcItem(item);
+  renderCarrito(item.tipo);
+}
+
 function removeFromCarrito(productoId) {
   const idx = S.carrito.findIndex(c => c.id===productoId);
   if (idx!==-1) S.carrito.splice(idx,1);
@@ -2049,13 +2063,19 @@ function renderCarrito(tipo) {
         ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
         ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
         ${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}
+        ${item.precioEditado ? `<div style="font-size:10.5px;color:var(--text-muted)">✏️ Precio ajustado solo para esta venta</div>` : ''}
       </td>
       <td>
         <input type="number" class="cart-qty-input" value="${item.cantidad}"
           min="0.01" step="0.01" max="${item.stockMax!==Infinity ? item.stockMax : ''}"
           onchange="cambiarCantidad('${item.id}',this.value)"/>
       </td>
-      <td style="font-family:var(--font-mono);font-weight:600">${fmt(item.precio)}</td>
+      <td>
+        <input type="number" class="cart-desc-input" value="${item.precio}"
+          min="0" step="0.01" title="Ajustar el precio solo para esta venta — no cambia el precio guardado en Productos/Servicios"
+          onchange="cambiarPrecioManual('${item.id}',this.value)"
+          style="font-family:var(--font-mono);font-weight:600;width:90px"/>
+      </td>
       <td>
         <input type="number" class="cart-desc-input" value="${item.descuento}"
           min="0" step="0.01" placeholder="0.00"
@@ -3171,6 +3191,18 @@ function removeFromCarritoVR(id) {
   renderCarritoVentaRapida();
 }
 
+// Ajustar el precio de una línea SOLO para esta venta — el precio o
+// escala real del producto en Productos/Servicios nunca se toca.
+function cambiarPrecioVR(id, val) {
+  const item = VR.carrito.find(i => i.id === id);
+  if (!item) return;
+  const n = parseFloat(val);
+  if (isNaN(n) || n < 0) { renderCarritoVentaRapida(); return; }
+  item.precio = round2(n);
+  item.precioEditado = true;
+  renderCarritoVentaRapida();
+}
+
 function calcularResumenVR() {
   const subtotal = round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0));
   const ivaActivo = !!VR.config?.iva_activo;
@@ -3192,15 +3224,20 @@ function renderCarritoVentaRapida() {
   } else {
     tbody.innerHTML = VR.carrito.map(item => `
       <tr>
-        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}</td>
+        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}${item.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
         <td>
           <input type="number" min="1" step="1" value="${item.cantidad}"
             style="width:56px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
             onchange="cambiarCantidadVR('${item.id}', this.value)"/>
         </td>
-        <td>${fmt(item.precio)}</td>
-        <td style="font-weight:700">${fmt(item.cantidad*item.precio)}</td>
+        <td>
+          <input type="number" min="0" step="0.01" value="${item.precio}"
+            title="Ajustar el precio solo para esta venta"
+            style="width:78px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
+            onchange="cambiarPrecioVR('${item.id}', this.value)"/>
+        </td>
+        <td style="font-weight:700">${fmt(round2(item.cantidad*item.precio))}</td>
         <td>
           <button type="button" class="btn-ghost" style="padding:4px 8px" onclick="removeFromCarritoVR('${item.id}')">✕</button>
         </td>
@@ -3440,7 +3477,7 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
     </tr>
     <tr>
       <td>${i.cantidad} x ${fmt(i.precio)}</td>
-      <td style="text-align:right">${fmt(i.cantidad*i.precio)}</td>
+      <td style="text-align:right">${fmt(round2(i.cantidad*i.precio))}</td>
     </tr>`).join('');
 
   const html = `<!DOCTYPE html>
@@ -3525,7 +3562,7 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
     </tr>
     <tr>
       <td>${i.cantidad} x ${fmt(i.precio)}</td>
-      <td style="text-align:right">${fmt(i.subtotal!=null ? i.subtotal : i.cantidad*i.precio)}</td>
+      <td style="text-align:right">${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</td>
     </tr>`).join('');
 
   const html = `<!DOCTYPE html>
