@@ -1460,7 +1460,10 @@ async function loadAuditoriaGlobal() {
     const { data, error } = await sb.from('auditoria_log').select('*')
       .order('created_at', { ascending: false }).limit(2000);
     if (error) throw error;
-    const registros = data || [];
+    // Las sucursales/bodegas internas nunca deben aparecer aquí — no
+    // son clientes, son cuentas técnicas creadas por el propio cliente.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const registros = (data || []).filter(r => !idsShadow.has(r.auth_user_id));
 
     // Un solo query para traer el nombre de negocio/correo de cada
     // cuenta involucrada (evita N consultas, una por registro).
@@ -1584,13 +1587,17 @@ async function abrirVerLectores({ titulo, tabla, columnaId, valorId, columnaFech
   openModal('modal-ver-lectores');
 
   try {
-    const [{ data: vistos, error: errVistos }, { count: totalUsuarios }] = await Promise.all([
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const [{ data: vistos, error: errVistos }, { data: activos }] = await Promise.all([
       sb.from(tabla).select(`auth_user_id, ${columnaFecha}`).eq(columnaId, valorId).order(columnaFecha, { ascending: false }),
-      sb.from('usuarios').select('id', { count: 'exact', head: true }).eq('estado_cuenta', 'activa'),
+      sb.from('usuarios').select('auth_user_id').eq('estado_cuenta', 'activa'),
     ]);
     if (errVistos) throw errVistos;
 
-    const lista = vistos || [];
+    // Las sucursales/bodegas internas nunca cuentan como clientes que
+    // vieron el anuncio/encuesta, ni como parte del total de activos.
+    const lista = (vistos || []).filter(v => !idsShadow.has(v.auth_user_id));
+    const totalUsuarios = (activos || []).filter(u => !idsShadow.has(u.auth_user_id)).length;
     document.getElementById('lectores-modal-resumen').textContent =
       `${lista.length} de ${totalUsuarios ?? '—'} clientes activos lo han visto.`;
 
@@ -1857,12 +1864,17 @@ async function loadConversaciones() {
   if (listEl) listEl.innerHTML = '<div class="payment-empty">Cargando...</div>';
 
   try {
-    const { data: convs, error } = await sb
+    const { data: convsCrudo, error } = await sb
       .from('conversaciones_chat')
       .select('*')
       .order('ultimo_mensaje_at', { ascending: false });
 
     if (error) throw error;
+
+    // Las sucursales/bodegas internas nunca deben aparecer en la lista
+    // de conversaciones de soporte — no son clientes independientes.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const convs = (convsCrudo || []).filter(c => !idsShadow.has(c.auth_user_id));
 
     const userIds = [...new Set((convs || []).map(c => c.auth_user_id))];
     let usuariosMap = {};
