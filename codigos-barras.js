@@ -30,7 +30,12 @@ let STATE = {
 // Tamaños de etiqueta disponibles (preparado para agregar más adelante
 // sin tocar el resto de la lógica de impresión).
 const TAMANOS_ETIQUETA = {
-  '40x30': { anchoMM: 40, altoMM: 30, label: '40 × 30 mm' },
+  '25x15': { anchoMM: 25, altoMM: 15, label: '25 × 15 mm (mini, joyería/accesorios)' },
+  '30x20': { anchoMM: 30, altoMM: 20, label: '30 × 20 mm (pequeña)' },
+  '40x30': { anchoMM: 40, altoMM: 30, label: '40 × 30 mm (estándar, la más común)' },
+  '50x25': { anchoMM: 50, altoMM: 25, label: '50 × 25 mm (rectangular, impresoras Zebra/DYMO)' },
+  '60x40': { anchoMM: 60, altoMM: 40, label: '60 × 40 mm (grande)' },
+  '100x50': { anchoMM: 100, altoMM: 50, label: '100 × 50 mm (tipo envío/caja)' },
 };
 
 /* =====================================================
@@ -330,7 +335,12 @@ function svgAPngDataUrl(svgEl, callback) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(url);
-    callback(canvas.toDataURL('image/png'));
+    // Se devuelve también el ancho/alto reales de la imagen — sin esto,
+    // el PDF de etiquetas forzaba el código a un tamaño fijo sin
+    // respetar su proporción real, y en códigos largos terminaba
+    // "cortado" (las barras de más a la derecha quedaban fuera del
+    // recuadro visible de la etiqueta).
+    callback(canvas.toDataURL('image/png'), { width: img.width, height: img.height });
   };
   img.src = url;
 }
@@ -400,8 +410,8 @@ async function generarPDFEtiquetas() {
     document.body.appendChild(svgTmp);
     JsBarcode(svgTmp, c.codigo, { format: 'CODE128', width: 1.4, height: 34, displayValue: false, margin: 0 });
 
-    const dataUrl = await new Promise((resolve, reject) => {
-      svgAPngDataUrl(svgTmp, resolve);
+    const { dataUrl, dimensiones } = await new Promise((resolve, reject) => {
+      svgAPngDataUrl(svgTmp, (url, dim) => resolve({ dataUrl: url, dimensiones: dim }));
       setTimeout(() => reject(new Error('Tiempo de espera agotado generando la imagen')), 5000);
     });
     document.body.removeChild(svgTmp);
@@ -411,7 +421,7 @@ async function generarPDFEtiquetas() {
 
     for (let i = 0; i < cantidad; i++) {
       if (i > 0) doc.addPage([tamano.anchoMM, tamano.altoMM]);
-      dibujarEtiqueta(doc, tamano, c, dataUrl);
+      dibujarEtiqueta(doc, tamano, c, dataUrl, dimensiones);
     }
 
     doc.save(`Etiquetas_${(c.nombre||c.codigo).replace(/[^\w\-]/g,'_')}.pdf`);
@@ -423,23 +433,64 @@ async function generarPDFEtiquetas() {
   }
 }
 
-function dibujarEtiqueta(doc, tamano, c, dataUrlBarcode) {
+function dibujarEtiqueta(doc, tamano, c, dataUrlBarcode, dimensionesImg) {
   const W = tamano.anchoMM, H = tamano.altoMM;
   doc.setDrawColor(200,200,200);
   doc.rect(0.5, 0.5, W-1, H-1); // guía de corte, tenue
 
-  doc.setFontSize(6.5); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
-  const nombreLineas = doc.splitTextToSize(c.nombre, W-4);
-  let y = 4.5;
-  nombreLineas.slice(0, 2).forEach(ln => { doc.text(ln, W/2, y, { align: 'center' }); y += 3; });
+  const margenLat = Math.max(1.5, W * 0.05); // margen lateral proporcional al tamaño de la etiqueta
+  const anchoUtil = W - margenLat * 2;
 
-  // Imagen del código (proporción del SVG generado: ~ (código*11+35)px de ancho x 34 alto)
-  const imgAltoMM = 14;
-  const imgAnchoMM = Math.min(W - 4, 34);
-  doc.addImage(dataUrlBarcode, 'PNG', (W-imgAnchoMM)/2, Math.max(y, H-imgAltoMM-6), imgAnchoMM, imgAltoMM);
+  // Nombre del producto arriba — se ajusta al ancho útil, máximo 2 líneas
+  doc.setFontSize(Math.min(6.5, W / 6)); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
+  const nombreLineas = doc.splitTextToSize(c.nombre || '', anchoUtil);
+  let y = H * 0.14 + 1;
+  const lineHeight = Math.max(2.2, H * 0.11);
+  nombreLineas.slice(0, 2).forEach(ln => { doc.text(ln, W/2, y, { align: 'center' }); y += lineHeight; });
 
-  doc.setFontSize(6); doc.setFont(undefined, 'normal');
-  doc.text(c.codigo, W/2, H-2.5, { align: 'center' });
+  // Espacio reservado abajo para el texto del código (nunca se solapa
+  // ni se recorta, aunque el código sea largo).
+  doc.setFontSize(Math.min(6, W / 7));
+  const codigoTexto = String(c.codigo || '');
+  const alturaTextoCodigo = 3.2;
+
+  // Imagen del código: se calcula su proporción REAL (ancho/alto de la
+  // imagen generada) y se ajusta ("contain") dentro del espacio
+  // disponible, sin forzarla nunca a un tamaño fijo — así nunca queda
+  // ni estirada ni cortada, sin importar cuántos dígitos tenga el código
+  // ni el tamaño de etiqueta elegido.
+  const espacioDisponibleAlto = Math.max(6, H - y - alturaTextoCodigo - 2);
+  const espacioDisponibleAncho = anchoUtil;
+  let imgAnchoMM = espacioDisponibleAncho;
+  let imgAltoMM = espacioDisponibleAlto;
+  if (dimensionesImg && dimensionesImg.width && dimensionesImg.height) {
+    const ratioImg = dimensionesImg.width / dimensionesImg.height;
+    const ratioDisponible = espacioDisponibleAncho / espacioDisponibleAlto;
+    if (ratioImg > ratioDisponible) {
+      // La imagen es proporcionalmente más ancha que el espacio: se
+      // limita por el ancho, y la altura se reduce en la misma proporción.
+      imgAnchoMM = espacioDisponibleAncho;
+      imgAltoMM = imgAnchoMM / ratioImg;
+    } else {
+      // Se limita por la altura disponible.
+      imgAltoMM = espacioDisponibleAlto;
+      imgAnchoMM = imgAltoMM * ratioImg;
+    }
+  }
+  const imgX = (W - imgAnchoMM) / 2;
+  const imgY = y + (espacioDisponibleAlto - imgAltoMM) / 2;
+  doc.addImage(dataUrlBarcode, 'PNG', imgX, imgY, imgAnchoMM, imgAltoMM);
+
+  // Código en texto, siempre dentro del ancho útil — si es largo, se
+  // reduce el tamaño de letra automáticamente en vez de recortarlo.
+  doc.setFont(undefined, 'normal');
+  let fs = Math.min(6, W / 7);
+  doc.setFontSize(fs);
+  while (doc.getTextWidth(codigoTexto) > anchoUtil && fs > 3) {
+    fs -= 0.3;
+    doc.setFontSize(fs);
+  }
+  doc.text(codigoTexto, W/2, H - 1.8, { align: 'center', maxWidth: anchoUtil });
 }
 
 /* =====================================================
