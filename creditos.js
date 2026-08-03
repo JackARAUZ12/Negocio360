@@ -833,6 +833,20 @@
   // Cambiar la cantidad directo en la tabla de ítems ya agregados (antes
   // se fijaba solo al agregar; ahora que se agrega de a 1 con un clic,
   // esto es lo que reemplaza al campo "Cantidad" que tenía el selector).
+  // Ajustar el precio de una línea SOLO para este crédito — nunca
+  // cambia el precio ni la escala real del producto en Productos/Servicios.
+  function actualizarPrecioItemCredito(idx, valor) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    const n = parseFloat(valor);
+    if (isNaN(n) || n < 0) { renderNCItems(); return; }
+    it.precio = round2(n);
+    it.precio_editado = true;
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.actualizarPrecioItemCredito = actualizarPrecioItemCredito;
+
   function actualizarCantidadItemCredito(idx, valor) {
     const it = CS.ncItems[idx];
     if (!it) return;
@@ -905,12 +919,15 @@
     if (!CS.ncItems.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin ítems agregados</td></tr>'; return; }
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
-        <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
+        <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
         <td><input type="number" value="${it.cantidad}" min="0.01" step="0.01"
               style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
               onchange="actualizarCantidadItemCredito(${idx}, this.value)"/></td>
-        <td>${fmt(it.precio)}</td>
-        <td>${fmt(it.precio * it.cantidad)}</td>
+        <td><input type="number" value="${it.precio}" min="0" step="0.01"
+              title="Ajustar el precio solo para este crédito"
+              style="width:78px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
+              onchange="actualizarPrecioItemCredito(${idx}, this.value)"/></td>
+        <td>${fmt(round2(it.precio * it.cantidad))}</td>
         <td><button class="btn-ghost" style="padding:3px 8px" onclick="quitarItemCredito(${idx})">✕</button></td>
       </tr>`).join('');
   }
