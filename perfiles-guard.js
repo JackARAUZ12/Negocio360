@@ -139,6 +139,49 @@
     PG.overlayEl = div;
     return div;
   }
+  // Bloqueo total de pantalla — funciona en CUALQUIER página, sin
+  // depender de ningún estilo propio de esa página (por eso todo va
+  // con estilos en línea). Cubre absolutamente todo, no deja pasar
+  // ningún clic ni scroll hacia lo que esté debajo.
+  function mostrarBloqueoCuenta(estado) {
+    document.documentElement.style.overflow = 'hidden';
+    const esCancelada = estado === 'cancelada';
+    const div = document.createElement('div');
+    div.id = 'pg-bloqueo-cuenta';
+    div.style.cssText = `
+      position:fixed; inset:0; z-index:2147483647; background:#0b0d14;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    `;
+    div.innerHTML = `
+      <div style="max-width:380px; text-align:center; background:#161923; border:1px solid #2a2f3d; border-radius:16px; padding:36px 28px; box-shadow:0 20px 60px rgba(0,0,0,.5)">
+        <div style="font-size:44px; margin-bottom:12px">${esCancelada ? '❌' : '🔒'}</div>
+        <div style="font-size:19px; font-weight:800; color:#fff; margin-bottom:8px">
+          ${esCancelada ? 'Cuenta cancelada' : 'Cuenta suspendida'}
+        </div>
+        <div style="font-size:13.5px; color:#9CA3AF; line-height:1.6; margin-bottom:22px">
+          ${esCancelada
+            ? 'Tu cuenta ha sido cancelada. Puedes reactivarla eligiendo un plan.'
+            : 'Tu cuenta ha sido suspendida temporalmente. Contacta a soporte para reactivarla.'}
+        </div>
+        <button id="pg-bloqueo-btn" style="width:100%; padding:12px; border:none; border-radius:10px; background:#5A5AF4; color:#fff; font-size:14px; font-weight:700; cursor:pointer; margin-bottom:10px">
+          ${esCancelada ? 'Ver planes' : 'Contactar soporte'}
+        </button>
+        <button id="pg-bloqueo-salir" style="width:100%; padding:12px; border:1px solid #2a2f3d; border-radius:10px; background:transparent; color:#9CA3AF; font-size:13px; font-weight:600; cursor:pointer">
+          Cerrar sesión
+        </button>
+      </div>
+    `;
+    document.body.appendChild(div);
+    document.getElementById('pg-bloqueo-btn').addEventListener('click', () => {
+      window.location.href = esCancelada ? 'planes.html' : 'mailto:soporte@negocio360.app';
+    });
+    document.getElementById('pg-bloqueo-salir').addEventListener('click', async () => {
+      try { await PG.client.auth.signOut(); } catch (e) {}
+      window.location.href = 'login.html';
+    });
+  }
+
   function showOverlay() {
     const ov = ensureOverlay();
     requestAnimationFrame(() => ov.classList.add('pg-visible'));
@@ -1051,6 +1094,20 @@
 
     PG.authUserId = session.user.id;
     PG.authEmail  = session.user.email || null;
+
+    // BLOQUEO UNIVERSAL: si la cuenta está suspendida o cancelada, se
+    // corta aquí mismo — antes, solo dashboard.html revisaba esto, así
+    // que alguien ya adentro de otro módulo (Ventas, Productos, etc.)
+    // podía seguir usando el sistema con total normalidad aunque el
+    // administrador ya lo hubiera suspendido. Esto corre en TODAS las
+    // páginas porque perfiles-guard.js se carga en todas.
+    const { data: cuentaEstado } = await PG.client
+      .from('usuarios').select('estado_cuenta').eq('auth_user_id', PG.authUserId).maybeSingle();
+    const estado = cuentaEstado?.estado_cuenta || 'activa';
+    if (estado === 'suspendida' || estado === 'cancelada') {
+      mostrarBloqueoCuenta(estado);
+      return;
+    }
 
     // Si esta cuenta es en realidad una SUCURSAL (creada desde el módulo
     // Sucursales de otra cuenta Central), se muestra un aviso fijo en
