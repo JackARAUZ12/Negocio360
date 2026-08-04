@@ -3578,7 +3578,7 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   * { box-sizing: border-box; }
   body {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
-    font-family: 'Courier New', monospace; font-size: 11px; color: #000;
+    font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
@@ -3667,7 +3667,7 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
   * { box-sizing: border-box; }
   body {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
-    font-family: 'Courier New', monospace; font-size: 11px; color: #000;
+    font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
