@@ -2387,9 +2387,9 @@ function dibujarRecibo(doc, venta, items) {
   // ---- Encabezado ----
   centrado(biz.nombre || 'Mi Negocio', 11.5, true);
   linea(5.2);
-  if (biz.direccion) { centrado(biz.direccion, 7.5); linea(4); }
-  if (biz.telefono)  { centrado(`Tel: ${biz.telefono}`, 7.5); linea(4); }
-  if (biz.ruc)       { centrado(`RUC: ${biz.ruc}`, 7.5); linea(4); }
+  if (biz.direccion) { centrado(biz.direccion, 8); linea(4); }
+  if (biz.telefono)  { centrado(`Tel: ${biz.telefono}`, 8); linea(4); }
+  if (biz.ruc)       { centrado(`RUC: ${biz.ruc}`, 8); linea(4); }
   linea(1.5);
   divisor();
 
@@ -2397,9 +2397,9 @@ function dibujarRecibo(doc, venta, items) {
   linea(5.5);
   filaTexto('No. Venta:', venta.numero_venta || '—', 8, true);
   linea();
-  filaTexto('Fecha:', fmtFecha(venta.fecha) + '  ' + (venta._hora || ''), 7.5);
+  filaTexto('Fecha:', fmtFecha(venta.fecha) + '  ' + (venta._hora || ''), 8);
   linea();
-  filaTexto('Método de pago:', venta.metodo_pago_nombre || '—', 7.5);
+  filaTexto('Método de pago:', venta.metodo_pago_nombre || '—', 8);
   linea(5);
   divisor();
 
@@ -2410,15 +2410,15 @@ function dibujarRecibo(doc, venta, items) {
   filaTexto('Cliente:', tieneClienteEspecifico ? (venta.cliente_nombre || 'Cliente') : 'Cliente', 8, true);
   linea();
   if (tieneClienteEspecifico && venta._clienteTelefono) {
-    filaTexto('Teléfono:', venta._clienteTelefono, 7.5);
+    filaTexto('Teléfono:', venta._clienteTelefono, 8);
     linea();
   }
-  filaTexto('N° Cliente:', tieneClienteEspecifico ? (venta._clienteNumero || '—') : (venta.numero_venta || '—'), 7.5);
+  filaTexto('N° Cliente:', tieneClienteEspecifico ? (venta._clienteNumero || '—') : (venta.numero_venta || '—'), 8);
   linea(5);
   divisor();
 
   // ---- Items ----
-  filaTexto('Descripción', 'Subtotal', 7.5, true);
+  filaTexto('Descripción', 'Subtotal', 8, true);
   linea(4.2);
   doc.setLineDashPattern([0.8, 0.8], 0);
   doc.line(M, y, W - M, y);
@@ -2440,10 +2440,9 @@ function dibujarRecibo(doc, venta, items) {
       linea(3.9);
     });
     const cant = Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 });
-    doc.setFontSize(7.3);
-    doc.setTextColor(110, 110, 110);
-    doc.text(`${cant} x ${fmt(it.precio)}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
+    doc.setFontSize(7.8);
     doc.setTextColor(0, 0, 0);
+    doc.text(`${cant} x ${fmt(it.precio)}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
     linea(4.6);
   });
 
