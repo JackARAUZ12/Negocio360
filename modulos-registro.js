@@ -73,6 +73,8 @@
                                desc: 'Entrar a las sucursales permitidas. Crear, configurar y eliminar sigue siendo exclusivo de la Central.' },
     'consulta-inventario.html': { key: 'consulta_inventario', label: 'Consulta/Inventario', icon: '🔎', obligatorio: false,
                                desc: 'Busca cualquier producto o servicio (por nombre/SKU o escaneando su código) y ve cómo está repartido entre todas tus sucursales y bodegas.' },
+    'rutas.html':              { key: 'rutas',              label: 'Rutas',               icon: '🗺️', obligatorio: false,
+                               desc: 'Ubica a tus clientes en el mapa y arma rutas de cobro o venta en ruta, conectadas con Créditos y Ventas.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
