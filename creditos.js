@@ -94,6 +94,17 @@
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
   function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+  function setBtnLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    if (loading) {
+      if (!btn.dataset.textoOriginal) btn.dataset.textoOriginal = btn.textContent;
+      btn.textContent = 'Guardando…';
+    } else if (btn.dataset.textoOriginal) {
+      btn.textContent = btn.dataset.textoOriginal;
+    }
+  }
 
   const LABEL_TIPO_FIN = { sin_interes:'Sin intereses', con_interes:'Con intereses' };
   const LABEL_ESTADO   = { en_proceso:'En proceso', activo:'Activo', al_dia:'Al día', con_atraso:'Con atraso', cancelado:'Cancelado', refinanciado:'Refinanciado' };
