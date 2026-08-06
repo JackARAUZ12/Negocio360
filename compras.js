@@ -30,6 +30,11 @@ let STATE = {
   empresaConfig: {},
   currentUser:   {},
 
+  // Órdenes de Compra
+  modoOrden:            false, // true = se está armando una Orden, no una Compra real
+  ordenConvirtiendoId:  null,  // id de la orden que se está convirtiendo en compra real
+  ordenesCompra:        [],
+
   // Datos
   compras:       [],
   proveedores:   [],
@@ -692,6 +697,16 @@ async function verDetalleCompra(compraId) {
 /* =====================================================
    NUEVA COMPRA — MODAL MULTI-PASO
 ===================================================== */
+function mostrarSeccionOrdenes() {
+  document.getElementById('seccion-compras').style.display = 'none';
+  document.getElementById('seccion-ordenes').style.display = '';
+  cargarOrdenesCompra();
+}
+function mostrarSeccionCompras() {
+  document.getElementById('seccion-ordenes').style.display = 'none';
+  document.getElementById('seccion-compras').style.display = '';
+}
+
 function abrirNuevaCompra() {
   // Reset estado
   STATE.carrito = [];
@@ -702,12 +717,46 @@ function abrirNuevaCompra() {
   STATE.estadoCompra = 'completada';
   STATE.observacionesCompra = '';
   STATE.pasoActual  = 1;
+  STATE.modoOrden = false;
+  STATE.ordenConvirtiendoId = null;
+  actualizarTextosModoOrden();
 
   // Reset UI
   resetNuevaCompraUI();
   resetFormProductoNuevo();
   mostrarPasoSeleccion();
   openModal('modal-nueva-compra');
+}
+
+// Misma ventana/asistente que "Nueva Compra" — solo que se guarda como
+// una Orden pendiente (nunca toca Caja ni Inventario) en vez de una
+// compra real.
+function abrirNuevaOrdenCompra() {
+  STATE.carrito = [];
+  STATE.proveedorSeleccionado = null;
+  STATE.ivaActivo   = false;
+  STATE.ivaPorcentaje = 15;
+  STATE.metodoPagoSeleccionado = null;
+  STATE.estadoCompra = 'completada';
+  STATE.observacionesCompra = '';
+  STATE.pasoActual  = 1;
+  STATE.modoOrden = true;
+  STATE.ordenConvirtiendoId = null;
+  actualizarTextosModoOrden();
+
+  resetNuevaCompraUI();
+  resetFormProductoNuevo();
+  mostrarPasoSeleccion();
+  openModal('modal-nueva-compra');
+}
+
+// Ajusta los textos del asistente según si se está armando una Orden
+// o una Compra real (mismo formulario, distinto destino al guardar).
+function actualizarTextosModoOrden() {
+  const titulo = document.getElementById('nc-modal-titulo-texto');
+  const btnTexto = document.getElementById('nc-btn-save-texto');
+  if (titulo)   titulo.textContent   = STATE.modoOrden ? (STATE.ordenConvirtiendoId ? 'Convertir orden en Compra' : 'Nueva Orden de Compra') : 'Nueva Compra';
+  if (btnTexto) btnTexto.textContent = STATE.modoOrden ? 'Guardar orden' : (STATE.ordenConvirtiendoId ? 'Registrar compra' : 'Guardar compra');
 }
 
 // ── PASO 0: elegir "producto existente" vs "producto nuevo" ──────────────
@@ -1235,6 +1284,13 @@ async function guardarCompra() {
     return;
   }
 
+  // Modo Orden de Compra: nunca toca Caja ni Inventario — se guarda
+  // aparte, en su propia tabla, y esta función termina aquí.
+  if (STATE.modoOrden) {
+    await guardarOrdenCompra();
+    return;
+  }
+
   const { subtotal, descTotal, ivaTotal, total } = calcularTotales();
   const metodoPagoSel = document.getElementById('nc-metodo-pago');
   const metodoPagoId  = metodoPagoSel?.value || null;
@@ -1368,9 +1424,19 @@ async function guardarCompra() {
       }).eq('id', prov.id).eq('auth_user_id', STATE.userId);
     }
 
+    // 5.5. Si esta compra vino de convertir una Orden de Compra, se
+    // marca esa orden como "convertida" y se enlaza a la compra real
+    // resultante — así nunca se puede convertir la misma orden dos veces.
+    if (STATE.ordenConvirtiendoId) {
+      await sbClient.from('ordenes_compra')
+        .update({ estado: 'convertida', compra_id: compra.id, updated_at: new Date().toISOString() })
+        .eq('id', STATE.ordenConvirtiendoId).eq('auth_user_id', STATE.userId);
+    }
+
     // 6. Cerrar modal y recargar
     closeModal('modal-nueva-compra');
-    showToast(`Compra ${numero} registrada correctamente`);
+    showToast(STATE.ordenConvirtiendoId ? `Orden convertida — Compra ${numero} registrada` : `Compra ${numero} registrada correctamente`);
+    STATE.ordenConvirtiendoId = null;
 
     // Actualizar cache localStorage para que Dashboard lo lea desde Caja
     try {
@@ -1384,6 +1450,316 @@ async function guardarCompra() {
     showToast('Error al guardar la compra: ' + (e.message || ''), 'error');
   } finally {
     setBtnLoading('nc-btn-save', false);
+  }
+}
+
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ============================================================
+   ÓRDENES DE COMPRA — solicitud/cotización al proveedor. Nunca toca
+   Caja ni Inventario. Se convierte en una Compra real (que sí lo
+   hace) reutilizando exactamente guardarCompra().
+   ============================================================ */
+async function guardarOrdenCompra() {
+  const { subtotal, descTotal, ivaTotal, total } = calcularTotales();
+  const observaciones = document.getElementById('nc-observaciones')?.value.trim() || null;
+  const fecha = document.getElementById('nc-fecha')?.value || todayISO();
+
+  setBtnLoading('nc-btn-save', true);
+  try {
+    const { data: numData } = await sbClient.rpc('siguiente_numero_orden_compra', { p_user_id: STATE.userId });
+    const numero = numData || ('OC-' + String(Date.now()).slice(-6));
+
+    const { data: orden, error: errOrden } = await sbClient.from('ordenes_compra').insert({
+      auth_user_id:     STATE.userId,
+      numero,
+      proveedor_id:      STATE.proveedorSeleccionado?.id || null,
+      proveedor_nombre:  STATE.proveedorSeleccionado?.nombre || null,
+      fecha,
+      subtotal, descuento_total: descTotal, iva_porcentaje: STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
+      iva_monto: ivaTotal, total,
+      estado: 'pendiente',
+      observaciones,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+    }).select().single();
+    if (errOrden) throw errOrden;
+
+    const detallesPayload = STATE.carrito.map(l => ({
+      auth_user_id: STATE.userId, orden_compra_id: orden.id,
+      producto_id: l.producto.id, producto_nombre: l.producto.nombre, producto_sku: l.producto.sku || null,
+      cantidad: l.cantidad, costo_unitario: l.costoUnitario, descuento: l.descuento || 0,
+      iva_porcentaje: l.ivaPorc || 0, iva_monto: l.ivaMonto || 0, subtotal: l.subtotal,
+    }));
+    const { error: errDet } = await sbClient.from('orden_compra_detalles').insert(detallesPayload);
+    if (errDet) throw errDet;
+
+    closeModal('modal-nueva-compra');
+    showToast(`Orden de compra ${numero} guardada — no afecta Caja ni Inventario`);
+    STATE.modoOrden = false;
+    await cargarOrdenesCompra();
+  } catch (e) {
+    console.error('guardarOrdenCompra:', e);
+    showToast('Error al guardar la orden: ' + (e.message || ''), 'error');
+  } finally {
+    setBtnLoading('nc-btn-save', false);
+  }
+}
+
+async function cargarOrdenesCompra() {
+  const tbody = document.getElementById('ordenes-tbody');
+  try {
+    const { data, error } = await sbClient.from('ordenes_compra')
+      .select('*, orden_compra_detalles(id)').eq('auth_user_id', STATE.userId)
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) throw error;
+    STATE.ordenesCompra = data || [];
+    renderOrdenesCompra();
+  } catch (e) {
+    console.error('cargarOrdenesCompra:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">No se pudieron cargar las órdenes</td></tr>`;
+  }
+}
+
+function renderOrdenesCompra() {
+  const tbody = document.getElementById('ordenes-tbody');
+  if (!tbody) return;
+  if (!STATE.ordenesCompra.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Todavía no has creado ninguna orden de compra</td></tr>`;
+    return;
+  }
+  const badgeEstado = { pendiente: 'badge-pendiente', convertida: 'badge-activo', cancelada: 'badge-inactivo' };
+  const labelEstado  = { pendiente: 'Pendiente', convertida: 'Convertida', cancelada: 'Cancelada' };
+
+  tbody.innerHTML = STATE.ordenesCompra.map(o => `
+    <tr>
+      <td style="font-weight:600">${esc(o.numero)}</td>
+      <td>${fmtDate(o.fecha)}</td>
+      <td>${esc(o.proveedor_nombre || 'Sin proveedor')}</td>
+      <td>${(o.orden_compra_detalles || []).length} producto(s)</td>
+      <td class="th-right">${fmt(o.total)}</td>
+      <td><span class="status-badge ${badgeEstado[o.estado] || ''}">${labelEstado[o.estado] || o.estado}</span></td>
+      <td class="td-actions">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+          <button class="btn-icon" title="Descargar PDF" onclick="exportarPDFOrdenCompra('${o.id}')">📄</button>
+          ${o.estado === 'pendiente' ? `
+            <button class="btn-secondary" style="padding:6px 10px;font-size:12px" onclick="convertirOrdenACompra('${o.id}')">✅ Convertir en Compra</button>
+            <button class="btn-icon btn-icon-danger" title="Cancelar orden" onclick="cancelarOrdenCompra('${o.id}')">🗑️</button>
+          ` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+// Trae la orden + sus productos, y los deja listos en el mismo
+// carrito que usa "Nueva Compra" — así el usuario solo revisa y
+// confirma, sin volver a escribir nada. Al guardar, se llama a la
+// MISMA guardarCompra() de siempre (la que sí toca Caja e Inventario).
+async function convertirOrdenACompra(ordenId) {
+  try {
+    const { data: orden, error: errOrden } = await sbClient.from('ordenes_compra')
+      .select('*').eq('id', ordenId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (errOrden) throw errOrden;
+    if (!orden) { showToast('Orden no encontrada', 'error'); return; }
+    if (orden.estado !== 'pendiente') { showToast('Esta orden ya no está pendiente', 'error'); return; }
+
+    const { data: detalles, error: errDet } = await sbClient.from('orden_compra_detalles')
+      .select('*').eq('orden_compra_id', ordenId);
+    if (errDet) throw errDet;
+
+    // Se reconstruye cada línea del carrito con el producto ACTUAL
+    // (precio/stock de hoy) — si algún producto ya no existe, se avisa
+    // y se omite esa línea en vez de romper toda la conversión.
+    const productosDisponibles = STATE.productos || [];
+    const carritoReconstruido = [];
+    const faltantes = [];
+    for (const d of (detalles || [])) {
+      const prod = productosDisponibles.find(p => p.id === d.producto_id);
+      if (!prod) { faltantes.push(d.producto_nombre); continue; }
+      const linea = {
+        producto: prod, cantidad: Number(d.cantidad), costoUnitario: Number(d.costo_unitario),
+        descuento: Number(d.descuento) || 0, ivaPorc: 0, ivaMonto: 0, subtotal: 0,
+      };
+      recalcularLinea(linea);
+      carritoReconstruido.push(linea);
+    }
+    if (faltantes.length) {
+      showToast(`${faltantes.length} producto(s) de la orden ya no existen y se omitieron: ${faltantes.join(', ')}`, 'warning');
+    }
+    if (!carritoReconstruido.length) {
+      showToast('Ningún producto de esta orden sigue disponible para comprar', 'error');
+      return;
+    }
+
+    STATE.carrito = carritoReconstruido;
+    STATE.proveedorSeleccionado = orden.proveedor_id ? { id: orden.proveedor_id, nombre: orden.proveedor_nombre } : null;
+    STATE.ivaActivo = Number(orden.iva_porcentaje) > 0;
+    STATE.ivaPorcentaje = Number(orden.iva_porcentaje) || 15;
+    STATE.metodoPagoSeleccionado = null;
+    STATE.estadoCompra = 'completada';
+    STATE.observacionesCompra = `Desde orden ${orden.numero}`;
+    STATE.modoOrden = false; // ¡ojo! esto YA se guarda como compra real
+    STATE.ordenConvirtiendoId = ordenId;
+    STATE.pasoActual = 1;
+
+    resetNuevaCompraUI();
+    actualizarTextosModoOrden();
+    if (typeof llenarSelectProveedores === 'function') llenarSelectProveedores();
+    const selProv = document.getElementById('nc-proveedor-select');
+    if (selProv && STATE.proveedorSeleccionado?.id) selProv.value = STATE.proveedorSeleccionado.id;
+    openModal('modal-nueva-compra');
+    // Se salta directo al carrito ya lleno — el usuario revisa/ajusta
+    // y avanza normalmente por el resto del asistente (método de pago,
+    // observaciones, etc.) hasta confirmar en el último paso.
+    irAPaso(3);
+    renderCarrito();
+  } catch (e) {
+    console.error('convertirOrdenACompra:', e);
+    showToast('No se pudo cargar la orden: ' + (e.message || ''), 'error');
+  }
+}
+
+async function cancelarOrdenCompra(ordenId) {
+  if (!confirm('¿Cancelar esta orden de compra? Como nunca tocó Caja ni Inventario, no hay nada financiero que revertir.')) return;
+  try {
+    const { error } = await sbClient.from('ordenes_compra')
+      .update({ estado: 'cancelada', updated_at: new Date().toISOString() })
+      .eq('id', ordenId).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Orden cancelada');
+    await cargarOrdenesCompra();
+  } catch (e) {
+    showToast('Error al cancelar: ' + (e.message || ''), 'error');
+  }
+}
+
+async function cargarLogoParaPDF() {
+  const url = STATE.empresaConfig?.logo_principal_url || STATE.empresaConfig?.logo_url;
+  if (!url) return null;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const m = /^data:image\/(\w+);base64,/.exec(dataUrl || '');
+    const tipo = m ? m[1].toLowerCase() : '';
+    const formato = tipo === 'png' ? 'PNG' : (tipo === 'jpeg' || tipo === 'jpg') ? 'JPEG' : tipo === 'webp' ? 'WEBP' : null;
+    if (!formato) return null;
+    return { dataUrl, formato };
+  } catch (e) {
+    console.warn('No se pudo cargar el logo para el PDF:', e);
+    return null;
+  }
+}
+
+async function exportarPDFOrdenCompra(ordenId) {
+  try {
+    if (!window.jspdf) throw new Error('jsPDF no está disponible');
+    const { data: orden } = await sbClient.from('ordenes_compra').select('*').eq('id', ordenId).eq('auth_user_id', STATE.userId).maybeSingle();
+    const { data: items } = await sbClient.from('orden_compra_detalles').select('*').eq('orden_compra_id', ordenId);
+    if (!orden) { showToast('Orden no encontrada', 'error'); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 14;
+    const logo = await cargarLogoParaPDF();
+
+    const biz = {
+      nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
+      direccion: STATE.empresaConfig?.direccion || '',
+      telefono:  STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
+      ruc:       STATE.empresaConfig?.ruc || '',
+    };
+
+    doc.setFillColor(108, 99, 255);
+    doc.rect(0, 0, W, 38, 'F');
+    let textoX = M;
+    if (logo) {
+      try { doc.addImage(logo.dataUrl, logo.formato, M, 8, 22, 22); textoX = M + 27; } catch (e) {}
+    }
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(20); doc.setFont(undefined,'bold');
+    doc.text(biz.nombre, textoX, 20);
+    doc.setFontSize(11); doc.setFont(undefined,'normal');
+    doc.text('Orden de Compra', textoX, 29);
+    doc.setFontSize(9);
+    doc.text(`N.º ${orden.numero}`, W - M, 18, { align:'right' });
+    doc.text(`Fecha: ${fmtDate(orden.fecha)}`, W - M, 24, { align:'right' });
+
+    let y = 50;
+    doc.setTextColor(20,20,30);
+    doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(90,90,110);
+    const infoNegocio = [biz.direccion, biz.telefono ? `Tel: ${biz.telefono}` : '', biz.ruc ? `RUC: ${biz.ruc}` : ''].filter(Boolean);
+    infoNegocio.forEach((linea, i) => doc.text(linea, M, y + i*5));
+
+    doc.setFontSize(10); doc.setFont(undefined,'bold'); doc.setTextColor(20,20,30);
+    doc.text('Proveedor', W - M - 70, y);
+    doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(90,90,110);
+    doc.text(orden.proveedor_nombre || 'Sin proveedor', W - M - 70, y + 5);
+
+    y += Math.max(infoNegocio.length, 2) * 5 + 10;
+    doc.setDrawColor(230,230,235);
+    doc.line(M, y, W - M, y);
+    y += 8;
+
+    doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(108,99,255);
+    doc.text(`Estado: ${orden.estado === 'pendiente' ? 'Pendiente' : orden.estado === 'convertida' ? 'Convertida en compra' : 'Cancelada'}`, M, y);
+    y += 10;
+
+    const filas = (items||[]).map(it => [
+      it.producto_nombre || 'Ítem',
+      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
+      fmt(it.costo_unitario),
+      Number(it.descuento) > 0 ? fmt(it.descuento) : '—',
+      fmt(it.subtotal),
+    ]);
+    doc.autoTable({
+      startY: y,
+      head: [['Descripción', 'Cant.', 'Costo unit.', 'Descuento', 'Subtotal']],
+      body: filas,
+      theme: 'grid',
+      headStyles: { fillColor: [108,99,255], fontSize: 9 },
+      styles: { fontSize: 9, cellPadding: 3 },
+      margin: { left: M, right: M },
+    });
+
+    let yTot = doc.lastAutoTable.finalY + 8;
+    const totalesFilas = [
+      ['Subtotal', fmt(orden.subtotal)],
+      ...(Number(orden.descuento_total) > 0 ? [['Descuento', '-' + fmt(orden.descuento_total)]] : []),
+      ...(Number(orden.iva_monto) > 0 ? [[`Impuesto (${Number(orden.iva_porcentaje)}%)`, fmt(orden.iva_monto)]] : []),
+    ];
+    doc.setFontSize(9.5); doc.setFont(undefined,'normal'); doc.setTextColor(60,60,70);
+    totalesFilas.forEach(([label, val], i) => {
+      doc.text(label, W - M - 55, yTot + i*6);
+      doc.text(val, W - M, yTot + i*6, { align:'right' });
+    });
+    yTot += totalesFilas.length * 6 + 3;
+    doc.setDrawColor(220,220,225);
+    doc.line(W - M - 55, yTot, W - M, yTot);
+    yTot += 7;
+    doc.setFontSize(13); doc.setFont(undefined,'bold'); doc.setTextColor(20,20,30);
+    doc.text('TOTAL', W - M - 55, yTot);
+    doc.text(fmt(orden.total), W - M, yTot, { align:'right' });
+
+    if (orden.observaciones) {
+      yTot += 14;
+      doc.setFontSize(8.5); doc.setFont(undefined,'italic'); doc.setTextColor(110,110,110);
+      const obsLineas = doc.splitTextToSize(`Nota: ${orden.observaciones}`, W - M*2);
+      obsLineas.forEach((ln, i) => doc.text(ln, M, yTot + i*4.5));
+    }
+
+    doc.save(`Orden_Compra_${orden.numero}.pdf`);
+  } catch (e) {
+    console.error('exportarPDFOrdenCompra:', e);
+    showToast('No se pudo generar el PDF: ' + (e.message || ''), 'error');
   }
 }
 
