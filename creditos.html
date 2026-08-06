@@ -1621,6 +1621,58 @@
 </div>
 
 <!-- =====================================================
+     MODAL: EDITAR MONTO/PLAZO DE UN CRÉDITO
+     Solo se puede abrir si el crédito no tiene pagos registrados
+     todavía — recalcula las cuotas desde cero con los nuevos datos,
+     usando la misma función que ya usa "Nuevo crédito".
+=================================================== -->
+<div class="modal-overlay" id="modal-editar-credito" onclick="if(event.target===this)closeModal('modal-editar-credito')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Editar crédito</h3>
+      <button class="modal-close" onclick="closeModal('modal-editar-credito')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+        Esto vuelve a calcular todas las cuotas desde cero. Solo se puede hacer porque este crédito todavía no tiene ningún pago registrado.
+      </p>
+      <div class="form-group">
+        <label>Monto financiado (capital)</label>
+        <input type="number" class="form-input" id="ec-capital" min="0.01" step="0.01"/>
+      </div>
+      <div class="form-row" id="ec-fila-interes" style="display:none">
+        <div>
+          <label>Tasa de interés (%)</label>
+          <input type="number" class="form-input" id="ec-tasa" min="0" step="0.01"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Número de cuotas</label>
+          <input type="number" class="form-input" id="ec-num-cuotas" min="1" step="1"/>
+        </div>
+        <div>
+          <label>Frecuencia</label>
+          <select class="form-select" id="ec-frecuencia">
+            <option value="semanal">Semanal</option>
+            <option value="quincenal">Quincenal</option>
+            <option value="mensual">Mensual</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Fecha de inicio</label>
+        <input type="date" class="form-input" id="ec-fecha-inicio"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-editar-credito')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-editar-credito" onclick="guardarEdicionCredito()">Recalcular y guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
      MODAL: SELECCIONAR PRECIO DE ESCALA
      Solo aparece cuando el producto agregado tiene tipo_precio='escala'.
      Los productos de precio fijo nunca muestran este modal.

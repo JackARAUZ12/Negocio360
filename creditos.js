@@ -1602,6 +1602,9 @@
     const cliente = CS.clientes.find(c => c.id === credito.cliente_id);
     const { data: cuotas } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).order('numero');
     const { data: historial } = await _sb.from('creditos_historial').select('*').eq('credito_id', creditoId).order('created_at', { ascending:false });
+    const { data: pagos } = await _sb.from('creditos_pagos').select('*').eq('credito_id', creditoId).eq('estado','completado').order('created_at', { ascending:false });
+
+    const sinPagos = Number(credito.saldo_pendiente) === Number(credito.total_financiado);
 
     document.getElementById('det-credito-title').textContent = `Crédito ${credito.numero_credito}`;
     document.getElementById('detalle-credito-body').innerHTML = `
@@ -1615,6 +1618,7 @@
         <div><label>Total financiado</label><div class="stat-readonly">${fmt(credito.total_financiado)}</div></div>
         <div><label>Saldo pendiente</label><div class="stat-readonly">${fmt(credito.saldo_pendiente)}</div></div>
       </div>
+      ${sinPagos ? `<button class="btn-secondary btn-sm" style="margin-bottom:14px" onclick="abrirEditarCredito('${credito.id}')">✏️ Editar monto/plazo de este crédito</button>` : `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✏️ El monto y plazo ya no se pueden editar porque este crédito ya tiene pagos registrados.</p>`}
       <label>Cuotas</label>
       <div class="table-wrap" style="margin-bottom:16px">
         <table>
@@ -1629,12 +1633,146 @@
           </tbody>
         </table>
       </div>
+      <label>Historial de pagos ${(pagos||[]).length ? `(${pagos.length})` : ''}</label>
+      <div class="table-wrap" style="margin-bottom:16px">
+        <table>
+          <thead><tr><th>Fecha</th><th>N° comprobante</th><th>Monto</th><th>Método</th><th></th></tr></thead>
+          <tbody>
+            ${(pagos||[]).map(p => `<tr>
+              <td>${fmtDate(p.fecha)}</td><td>${esc(p.comprobante_numero||'—')}</td>
+              <td>${fmt(p.monto)}</td><td>${esc(p.metodo_pago_nombre||'—')}</td>
+              <td><button class="btn-icon" title="Volver a descargar comprobante" onclick="reimprimirComprobantePago('${p.id}')">🖨️</button></td>
+            </tr>`).join('') || '<tr><td colspan="5" class="empty-cell">Todavía no hay pagos registrados</td></tr>'}
+          </tbody>
+        </table>
+      </div>
       <label>Historial</label>
       <ul class="timeline">
         ${(historial||[]).map(h => `<li><span class="t-dot"></span><div><b>${esc(h.descripcion||h.tipo_evento)}</b><br><span style="color:var(--text-muted);font-size:11.5px">${new Date(h.created_at).toLocaleString('es-NI')}</span></div></li>`).join('') || '<li>Sin eventos</li>'}
       </ul>`;
   }
   window.abrirDetalleCredito = abrirDetalleCredito;
+
+  // Reconstruye y muestra de nuevo el mismo comprobante de un pago ya
+  // hecho — los datos numéricos vienen tal cual quedaron guardados en
+  // creditos_pagos en el momento real del pago, nunca se recalculan.
+  async function reimprimirComprobantePago(pagoId) {
+    try {
+      const { data: p } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!p) { showToast('No se encontró ese pago', 'error'); return; }
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', p.credito_id).maybeSingle();
+      const cliente = CS.clientes.find(c => c.id === p.cliente_id) || {};
+      const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', p.credito_id).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
+      mostrarComprobante({
+        titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito?.numero_credito || '—',
+        cliente: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '—', fecha: p.fecha,
+        usuario: CS.currentUser?.nombre || CS.userEmail, monto: p.monto, metodo: p.metodo_pago_nombre || '—',
+        saldoAnterior: p.saldo_anterior, saldoNuevo: p.saldo_nuevo,
+        proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
+        estado: credito ? (LABEL_ESTADO[credito.estado] || credito.estado) : '—',
+      });
+    } catch (e) {
+      console.error('reimprimirComprobantePago:', e);
+      showToast('No se pudo reconstruir el comprobante', 'error');
+    }
+  }
+  window.reimprimirComprobantePago = reimprimirComprobantePago;
+
+  // Editar monto/plazo de un crédito SIN pagos todavía — se recalculan
+  // las cuotas desde cero con la MISMA función que usa "Nuevo crédito"
+  // (generarAmortizacion), nunca una fórmula aparte.
+  let CREDITO_EDITANDO = null;
+  async function abrirEditarCredito(creditoId) {
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+    if (!credito) { showToast('Crédito no encontrado', 'error'); return; }
+    if (Number(credito.saldo_pendiente) !== Number(credito.total_financiado)) {
+      showToast('Este crédito ya tiene pagos registrados y no se puede editar', 'error');
+      return;
+    }
+    CREDITO_EDITANDO = credito;
+    document.getElementById('ec-capital').value = credito.capital_financiado;
+    document.getElementById('ec-num-cuotas').value = credito.num_cuotas;
+    document.getElementById('ec-frecuencia').value = credito.frecuencia;
+    document.getElementById('ec-fecha-inicio').value = credito.fecha_inicio;
+    const filaInteres = document.getElementById('ec-fila-interes');
+    if (credito.tipo_financiamiento === 'con_interes') {
+      filaInteres.style.display = '';
+      document.getElementById('ec-tasa').value = credito.tasa_interes || 0;
+    } else {
+      filaInteres.style.display = 'none';
+    }
+    closeModal('modal-detalle-credito');
+    openModal('modal-editar-credito');
+  }
+  window.abrirEditarCredito = abrirEditarCredito;
+
+  async function guardarEdicionCredito() {
+    if (!CREDITO_EDITANDO) return;
+    const credito = CREDITO_EDITANDO;
+
+    // Protección extra: se vuelve a comprobar en el momento de guardar
+    // que siga sin pagos — por si alguien más registró uno mientras
+    // este modal estaba abierto.
+    const { data: chequeo } = await _sb.from('creditos').select('saldo_pendiente,total_financiado').eq('id', credito.id).maybeSingle();
+    if (!chequeo || Number(chequeo.saldo_pendiente) !== Number(chequeo.total_financiado)) {
+      showToast('Ya no se puede editar: este crédito recibió un pago mientras tanto', 'error');
+      closeModal('modal-editar-credito');
+      return;
+    }
+
+    const capitalFinanciado = round2(parseFloat(document.getElementById('ec-capital').value) || 0);
+    const numCuotas = Math.max(1, parseInt(document.getElementById('ec-num-cuotas').value) || 1);
+    const frecuencia = document.getElementById('ec-frecuencia').value;
+    const fechaInicio = document.getElementById('ec-fecha-inicio').value || todayISO();
+    const tasa = credito.tipo_financiamiento === 'con_interes' ? (parseFloat(document.getElementById('ec-tasa').value) || 0) : 0;
+    if (capitalFinanciado <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
+
+    setBtnLoading('btn-guardar-editar-credito', true);
+    try {
+      // Se reconstruyen los impuestos EXACTOS que ya tenía este crédito
+      // (de su primera cuota), en vez de tomar la selección actual del
+      // formulario de "Nuevo crédito" — así no cambia nada que el
+      // cliente no haya tocado a propósito.
+      const { data: cuotaRef } = await _sb.from('creditos_cuotas').select('impuestos_detalle').eq('credito_id', credito.id).order('numero').limit(1).maybeSingle();
+      const impuestosLista = (cuotaRef?.impuestos_detalle || []).map(d => ({ id: d.impuesto_id, nombre: d.nombre, tipo_valor: d.tipo_valor, valor: d.valor }));
+      const baseImpuesto = credito.tipo === 'financiero' ? 'interes' : 'capital';
+
+      const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
+        capitalFinanciado, tipoFinanciamiento: credito.tipo_financiamiento, tasaInteres: tasa,
+        metodo: credito.metodo_amortizacion, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto,
+      });
+
+      // Se reemplazan las cuotas — seguro porque ya se confirmó que
+      // ninguna tiene pagos.
+      await _sb.from('creditos_cuotas').delete().eq('credito_id', credito.id).eq('auth_user_id', CS.userId);
+      const cuotasInsert = cuotas.map(c => ({
+        auth_user_id: CS.userId, credito_id: credito.id, numero: c.numero,
+        fecha_vencimiento: c.fecha_vencimiento, capital: c.capital, interes: c.interes,
+        impuesto: c.impuesto, impuestos_detalle: c.impuestos_detalle || [], monto_total: c.monto_total, saldo: c.saldo, estado: 'pendiente',
+      }));
+      await _sb.from('creditos_cuotas').insert(cuotasInsert);
+
+      await _sb.from('creditos').update({
+        capital_financiado: capitalFinanciado, tasa_interes: credito.tipo_financiamiento==='con_interes' ? tasa : null,
+        frecuencia, num_cuotas: numCuotas, fecha_inicio: fechaInicio,
+        total_intereses: totalIntereses, total_financiado: totalFinanciado, valor_cuota_aprox: valorCuotaAprox,
+        saldo_pendiente: totalFinanciado, updated_at: new Date().toISOString(),
+      }).eq('id', credito.id).eq('auth_user_id', CS.userId);
+
+      await registrarHistorial(credito.id, 'editado', `Monto/plazo del crédito recalculado — nuevo total: ${fmt(totalFinanciado)}`, { capitalFinanciado, numCuotas, totalFinanciado });
+
+      showToast('Crédito actualizado — cuotas recalculadas');
+      closeModal('modal-editar-credito');
+      CREDITO_EDITANDO = null;
+      await Promise.allSettled([refrescarTodo(), abrirDetalleCredito(credito.id)]);
+    } catch (e) {
+      console.error('guardarEdicionCredito:', e);
+      showToast('Error al guardar los cambios: ' + (e.message||''), 'error');
+    } finally {
+      setBtnLoading('btn-guardar-editar-credito', false);
+    }
+  }
+  window.guardarEdicionCredito = guardarEdicionCredito;
 
   /* ===================================================
      LISTA DE CRÉDITOS / KPIs
