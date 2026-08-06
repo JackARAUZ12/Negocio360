@@ -2825,6 +2825,14 @@ async function confirmarVenta(conImpresion) {
     cerrarModalVenta();
     showToast(`✅ Venta ${S.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
 
+    // Si esta pantalla se abrió incrustada desde Rutas (iframe), se le
+    // avisa al padre que la venta sí se registró — igual que con los
+    // pagos de Créditos, Rutas nunca calcula nada, solo reacciona.
+    if (window.self !== window.top) {
+      try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto: r.total, nota: `Venta ${S.numeroVenta}` }, '*'); } catch(e) {}
+    }
+
+
     // Recibo PDF automático de esta venta (no bloquea ni afecta lo ya guardado)
     descargarReciboDeVenta(
       { ...ventaPayloadConIva, cliente_telefono: null, _clienteTelefono: S.clienteObjeto?.telefono || null },
