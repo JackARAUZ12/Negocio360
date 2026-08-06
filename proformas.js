@@ -957,6 +957,7 @@ function confirmarEliminarProf(id) {
 async function eliminarProforma() {
   const p = STATE.proformaActual;
   if (!p) return;
+  if (p.estado === 'convertida') { showToast('No se puede eliminar: ya fue convertida a venta', 'error'); return; }
   setBtnLoading('btn-confirmar-eliminar-prof', true);
   try {
     const { error } = await sbClient.from('proformas').delete().eq('id', p.id).eq('auth_user_id', STATE.userId);
