@@ -1165,11 +1165,25 @@
           <p>Rutas de cobro y venta en ruta, conectadas con Créditos y Ventas — nunca duplican su lógica.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="toggleReportesRutas()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            Desempeño
+          </button>
           <button class="btn-primary" onclick="abrirNuevaRuta()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva ruta
           </button>
         </div>
+      </div>
+
+      <div class="panel-card fade-in" id="panel-reportes-rutas" style="display:none;margin-bottom:16px">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            Desempeño de rutas (últimos 30 días)
+          </div>
+        </div>
+        <div class="panel-body" id="reportes-rutas-body">Cargando…</div>
       </div>
 
       <div class="panel-card fade-in" style="background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px">
@@ -1235,10 +1249,10 @@
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Venta en Ruta</div>
         <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Visita clientes y véndeles ahí mismo</div>
       </div>
-      <div class="rt-tipo-card rt-tipo-disabled">
+      <div class="rt-tipo-card" onclick="seleccionarTipoRuta('reparto')">
         <div style="font-size:26px">📦</div>
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Reparto</div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Próximamente</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Entrega lo que ya se vendió</div>
       </div>
       <div class="rt-tipo-card rt-tipo-disabled">
         <div style="font-size:26px">🏬</div>
@@ -1285,6 +1299,13 @@
             <option value="viernes">Viernes</option><option value="sabado">Sábado</option>
             <option value="domingo">Domingo</option>
           </select>
+        </div>
+        <div class="form-group full-col">
+          <label>Asignar a (opcional)</label>
+          <select class="form-select" id="nr-asignado">
+            <option value="">Sin asignar — visible para todos</option>
+          </select>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Si asignas la ruta a alguien, solo esa persona (y tú como Admin) la van a ver.</p>
         </div>
       </div>
 

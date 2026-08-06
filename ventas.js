@@ -559,6 +559,19 @@ function buscarVentas() {
 /* ============================================================
    DETALLE DE VENTA
    ============================================================ */
+async function cambiarEstadoEntrega(ventaId, nuevoEstado) {
+  try {
+    const { error } = await sb.from('ventas').update({ estado_entrega: nuevoEstado }).eq('id', ventaId).eq('auth_user_id', S.userId);
+    if (error) throw error;
+    const v = S.ventas.find(x => x.id === ventaId);
+    if (v) v.estado_entrega = nuevoEstado;
+    showToast(nuevoEstado === 'pendiente' ? 'Marcada como pendiente de entrega — aparecerá en Rutas de Reparto' : 'Marcada como entregada');
+    abrirDetalle(ventaId);
+  } catch (e) {
+    showToast('No se pudo actualizar el estado de entrega', 'error');
+  }
+}
+
 async function abrirDetalle(ventaId) {
   S.ventaDetalleId = ventaId;
   const venta = S.ventas.find(v => v.id === ventaId);
@@ -603,6 +616,18 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">Cliente</div>
           <div class="detalle-value" style="font-weight:600">${esc(venta.cliente_nombre||'Consumidor Final')}</div>
         </div>
+        ${venta.cliente_id && venta.estado === 'completada' ? `
+        <div class="detalle-item full">
+          <div class="detalle-label">Entrega</div>
+          <div class="detalle-value">
+            ${venta.estado_entrega === 'pendiente'
+              ? `<span class="estado-badge" style="background:var(--warning-soft);color:var(--warning)">📦 Pendiente de entrega</span>
+                 <button class="btn-secondary btn-sm" style="margin-left:8px" onclick="cambiarEstadoEntrega('${venta.id}','entregado')">Marcar entregado</button>`
+              : venta.estado_entrega === 'entregado'
+                ? `<span class="estado-badge" style="background:var(--success-soft);color:var(--success)">✅ Entregado</span>`
+                : `<button class="btn-secondary btn-sm" onclick="cambiarEstadoEntrega('${venta.id}','pendiente')">📦 Marcar pendiente de entrega</button>`}
+          </div>
+        </div>` : ''}
         ${venta.observaciones ? `
         <div class="detalle-item full">
           <div class="detalle-label">Observaciones</div>

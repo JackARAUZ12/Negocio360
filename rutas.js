@@ -12,7 +12,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
-  clientes: [], clientesCobro: [], rutas: [],
+  clientes: [], clientesCobro: [], ventasReparto: [], rutas: [], perfiles: [], perfilAsignado: null,
   mapaGeneral: null, mapaNuevaRuta: null, mapaVerRuta: null,
   clienteSeleccionadoParaUbicar: null,
   seleccionRuta: new Map(), // id (cliente o cuota) -> objeto elegido
@@ -104,11 +104,52 @@ async function cargarClientesCobro() {
   } catch (e) { console.warn('cargarClientesCobro:', e); STATE.clientesCobro = []; }
 }
 
+async function cargarPerfiles() {
+  try {
+    const { data } = await sb.from('perfiles_acceso').select('id,nombre,tipo')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.perfiles = data || [];
+    const sel = document.getElementById('nr-asignado');
+    if (sel) {
+      sel.innerHTML = '<option value="">Sin asignar — visible para todos</option>' +
+        STATE.perfiles.map(p => `<option value="${p.id}" data-nombre="${esc(p.nombre)}">${esc(p.nombre)}</option>`).join('');
+    }
+  } catch (e) { console.warn('cargarPerfiles:', e); STATE.perfiles = []; }
+}
+
+async function cargarVentasReparto() {
+  try {
+    const { data, error } = await sb.rpc('ventas_pendientes_entrega');
+    if (error) throw error;
+    STATE.ventasReparto = data || [];
+  } catch (e) { console.warn('cargarVentasReparto:', e); STATE.ventasReparto = []; }
+}
+
+// Lee el perfil activo guardado por perfiles-guard.js — si es un
+// perfil restringido (no Admin), solo debe ver las rutas asignadas a
+// él o las que no están asignadas a nadie en particular.
+function obtenerPerfilActivo() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (s.authUserId !== STATE.userId) return null;
+    return s;
+  } catch (e) { return null; }
+}
+
 async function cargarRutas() {
   try {
     const { data } = await sb.from('rutas').select('*, ruta_clientes(id, estado_parada)')
       .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
-    STATE.rutas = data || [];
+    let lista = data || [];
+
+    const perfil = obtenerPerfilActivo();
+    if (perfil && perfil.tipo !== 'admin') {
+      lista = lista.filter(r => !r.asignado_a || r.asignado_a === perfil.id);
+    }
+
+    STATE.rutas = lista;
     renderRutas();
   } catch (e) { console.warn('cargarRutas:', e); }
 }
@@ -130,7 +171,7 @@ function renderRutas() {
     const completadas = paradas.filter(p => p.estado_parada === 'completada').length;
     return `
     <tr>
-      <td style="font-weight:600">${esc(r.nombre)}</td>
+      <td style="font-weight:600">${esc(r.nombre)}${r.asignado_a_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">👤 ${esc(r.asignado_a_nombre)}</div>` : ''}</td>
       <td>${TIPO_LABEL[r.tipo] || r.tipo}</td>
       <td>${r.dia_semana ? DIAS_LABEL[r.dia_semana] : '—'}</td>
       <td>${completadas}/${paradas.length}</td>
@@ -179,16 +220,20 @@ async function seleccionarTipoRuta(tipo) {
   STATE.ordenCalculado = null;
   STATE.clienteSeleccionadoParaUbicar = null;
 
-  document.getElementById('nr-titulo').textContent = tipo === 'cobro' ? 'Nueva ruta de Cobro' : 'Nueva ruta — Venta en Ruta';
-  document.getElementById('nr-lista-titulo').textContent = tipo === 'cobro'
-    ? 'Clientes con cuotas vencidas o por vencer (7 días)'
-    : 'Elige los clientes de esta ruta';
+  const titulos = { cobro: 'Nueva ruta de Cobro', preventa: 'Nueva ruta — Venta en Ruta', reparto: 'Nueva ruta de Reparto' };
+  const listaTitulos = {
+    cobro: 'Clientes con cuotas vencidas o por vencer (7 días)',
+    reparto: 'Ventas pendientes de entrega',
+  };
+  document.getElementById('nr-titulo').textContent = titulos[tipo] || 'Nueva ruta';
+  document.getElementById('nr-lista-titulo').textContent = listaTitulos[tipo] || 'Elige los clientes de esta ruta';
   document.getElementById('nr-nombre').value = '';
   document.getElementById('nr-dia').value = '';
   document.getElementById('nr-buscar-cliente').value = '';
   document.getElementById('nr-orden-preview').style.display = 'none';
 
   if (tipo === 'cobro') await cargarClientesCobro();
+  if (tipo === 'reparto') await cargarVentasReparto();
   renderListaClientesRuta();
   openModal('modal-nueva-ruta');
 
@@ -229,6 +274,26 @@ function renderListaClientesRuta() {
     return;
   }
 
+  if (STATE.tipoRutaActual === 'reparto') {
+    const lista = STATE.ventasReparto.filter(v => !q || (v.cliente_nombre||'').toLowerCase().includes(q));
+    if (!lista.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">No hay ventas pendientes de entrega — márcalas desde el detalle de una venta en Ventas 📦</div>'; return; }
+    cont.innerHTML = lista.map(v => {
+      const key = v.venta_id;
+      const marcado = STATE.seleccionRuta.has(key);
+      const tieneUbicacion = v.latitud != null;
+      return `
+      <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+        <input type="checkbox" ${marcado?'checked':''} onchange="toggleClienteRuta('${key}', this.checked, ${JSON.stringify(v).replace(/"/g,'&quot;')})"/>
+        <span style="flex:1">
+          <div>${esc(v.cliente_nombre)} ${!tieneUbicacion ? '<span style="font-size:10.5px;color:var(--warning)">sin ubicación</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--text-muted)">Venta ${esc(v.numero_venta)} · ${fmt(v.total)} · ${fmtFecha(v.fecha)}</div>
+        </span>
+        ${!tieneUbicacion ? `<button type="button" class="btn-secondary" style="padding:3px 8px;font-size:10.5px" onclick="event.preventDefault();seleccionarParaUbicarCobro('${v.cliente_id}')">Marcar en mapa</button>` : ''}
+      </label>`;
+    }).join('');
+    return;
+  }
+
   // Preventa: lista normal de clientes
   const lista = STATE.clientes.filter(c => !q || nombreCompleto(c).toLowerCase().includes(q));
   if (!lista.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">Sin resultados</div>'; return; }
@@ -247,6 +312,98 @@ function renderListaClientesRuta() {
 }
 
 function filtrarClientesRuta() { renderListaClientesRuta(); }
+
+function toggleReportesRutas() {
+  const panel = document.getElementById('panel-reportes-rutas');
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : '';
+  if (!visible) cargarReportesRutas();
+}
+
+// Resumen de desempeño — usa datos que YA se guardan en cada parada
+// (resultado_monto, estado_parada) al completarlas. Nunca recalcula
+// dinero: solo suma lo que Créditos/Ventas ya registraron de verdad.
+async function cargarReportesRutas() {
+  const body = document.getElementById('reportes-rutas-body');
+  body.innerHTML = 'Cargando…';
+  try {
+    const desde = new Date(); desde.setDate(desde.getDate() - 30);
+    const desdeISO = desde.toISOString();
+
+    const { data: rutas30 } = await sb.from('rutas').select('id, tipo, asignado_a_nombre, created_at')
+      .eq('auth_user_id', STATE.userId).gte('created_at', desdeISO);
+    const rutaIds = (rutas30 || []).map(r => r.id);
+    if (!rutaIds.length) {
+      body.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay rutas en los últimos 30 días.</p>';
+      return;
+    }
+    const rutaMap = new Map((rutas30||[]).map(r => [r.id, r]));
+
+    const { data: paradas } = await sb.from('ruta_clientes')
+      .select('ruta_id, estado_parada, resultado_monto').in('ruta_id', rutaIds);
+    const lista = paradas || [];
+
+    const totalParadas = lista.length;
+    const completadas = lista.filter(p => p.estado_parada === 'completada').length;
+    const noEncontradas = lista.filter(p => p.estado_parada === 'no_encontrado').length;
+    const pctCompletadas = totalParadas ? Math.round(completadas / totalParadas * 100) : 0;
+
+    const montoCobro = lista.reduce((s,p) => {
+      const r = rutaMap.get(p.ruta_id);
+      return (r && r.tipo === 'cobro') ? s + Number(p.resultado_monto||0) : s;
+    }, 0);
+    const montoVenta = lista.reduce((s,p) => {
+      const r = rutaMap.get(p.ruta_id);
+      return (r && r.tipo === 'preventa') ? s + Number(p.resultado_monto||0) : s;
+    }, 0);
+
+    // Desglose por persona asignada (si se usó esa función)
+    const porPersona = new Map();
+    lista.forEach(p => {
+      const r = rutaMap.get(p.ruta_id);
+      const nombre = r?.asignado_a_nombre || 'Sin asignar';
+      if (!porPersona.has(nombre)) porPersona.set(nombre, { completadas: 0, total: 0, monto: 0 });
+      const acc = porPersona.get(nombre);
+      acc.total++;
+      if (p.estado_parada === 'completada') acc.completadas++;
+      acc.monto += Number(p.resultado_monto||0);
+    });
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+        <div style="background:var(--bg-app);border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;color:var(--text-muted)">Paradas completadas</div>
+          <div style="font-size:20px;font-weight:800">${completadas}/${totalParadas} <span style="font-size:12px;color:var(--success)">(${pctCompletadas}%)</span></div>
+        </div>
+        <div style="background:var(--bg-app);border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;color:var(--text-muted)">No encontrados / reagendados</div>
+          <div style="font-size:20px;font-weight:800;color:var(--warning)">${noEncontradas}</div>
+        </div>
+        <div style="background:var(--bg-app);border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;color:var(--text-muted)">Cobrado en rutas</div>
+          <div style="font-size:20px;font-weight:800;color:var(--success)">${fmt(montoCobro)}</div>
+        </div>
+        <div style="background:var(--bg-app);border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;color:var(--text-muted)">Vendido en rutas</div>
+          <div style="font-size:20px;font-weight:800;color:var(--accent)">${fmt(montoVenta)}</div>
+        </div>
+      </div>
+      <label style="font-size:12.5px;font-weight:600;margin-bottom:6px;display:block">Por persona asignada</label>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Persona</th><th>Paradas completadas</th><th>Monto gestionado</th></tr></thead>
+          <tbody>
+            ${Array.from(porPersona.entries()).map(([nombre, acc]) => `
+              <tr><td>${esc(nombre)}</td><td>${acc.completadas}/${acc.total}</td><td>${fmt(acc.monto)}</td></tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    console.error('cargarReportesRutas:', e);
+    body.innerHTML = '<p style="color:var(--danger);font-size:12.5px">No se pudo cargar el resumen.</p>';
+  }
+}
 
 function toggleClienteRuta(key, marcado, datos) {
   if (marcado) STATE.seleccionRuta.set(key, datos); else STATE.seleccionRuta.delete(key);
@@ -326,6 +483,9 @@ async function guardarRuta() {
   const seleccionados = Array.from(STATE.seleccionRuta.values());
   if (seleccionados.length < 1) { showToast('Elige al menos un cliente', 'error'); return; }
   const dia = document.getElementById('nr-dia').value || null;
+  const selAsignado = document.getElementById('nr-asignado');
+  const asignadoId = selAsignado?.value || null;
+  STATE.perfilAsignado = asignadoId ? { id: asignadoId, nombre: selAsignado.selectedOptions[0]?.dataset.nombre || '' } : null;
   const listaFinal = STATE.ordenCalculado && STATE.ordenCalculado.length === seleccionados.length ? STATE.ordenCalculado : seleccionados;
 
   setBtnLoading('btn-guardar-ruta', true);
@@ -333,15 +493,17 @@ async function guardarRuta() {
     const { data: ruta, error: errRuta } = await sb.from('rutas').insert({
       auth_user_id: STATE.userId, nombre, dia_semana: dia, activa: true,
       tipo: STATE.tipoRutaActual, estado: 'planificada',
+      asignado_a: STATE.perfilAsignado?.id || null, asignado_a_nombre: STATE.perfilAsignado?.nombre || null,
     }).select().single();
     if (errRuta) throw errRuta;
 
     const payload = listaFinal.map((c, i) => ({
       auth_user_id: STATE.userId, ruta_id: ruta.id,
-      cliente_id: STATE.tipoRutaActual === 'cobro' ? c.cliente_id : c.id,
+      cliente_id: STATE.tipoRutaActual === 'preventa' ? c.id : c.cliente_id,
       orden: i,
       credito_id: STATE.tipoRutaActual === 'cobro' ? c.credito_id : null,
       cuota_id: STATE.tipoRutaActual === 'cobro' ? c.cuota_id : null,
+      venta_id: STATE.tipoRutaActual === 'reparto' ? c.venta_id : null,
     }));
     const { error: errRC } = await sb.from('ruta_clientes').insert(payload);
     if (errRC) throw errRC;
@@ -366,7 +528,7 @@ async function verRuta(rutaId) {
     const { data: ruta } = await sb.from('rutas').select('*').eq('id', rutaId).eq('auth_user_id', STATE.userId).maybeSingle();
     if (!ruta) { showToast('Ruta no encontrada', 'error'); return; }
     const { data: paradas } = await sb.from('ruta_clientes')
-      .select('id, orden, estado_parada, resultado_monto, resultado_nota, cliente_id, credito_id, cuota_id, clientes(id,nombre,apellido,telefono,direccion,latitud,longitud)')
+      .select('id, orden, estado_parada, resultado_monto, resultado_nota, cliente_id, credito_id, cuota_id, venta_id, clientes(id,nombre,apellido,telefono,direccion,latitud,longitud)')
       .eq('ruta_id', rutaId).order('orden');
 
     const lista = (paradas||[]).map(p => ({ ...p, cliente: p.clientes })).filter(p => p.cliente);
@@ -499,6 +661,9 @@ function renderParadaCampo() {
   } else if (CAMPO.ruta.tipo === 'preventa') {
     accionesHtml = `
       <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="abrirEmbebido('ventas.html?ruta_cliente=${c.id}&embed=1','${p.id}')">🛒 Vender aquí</button>`;
+  } else if (CAMPO.ruta.tipo === 'reparto') {
+    accionesHtml = `
+      <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="marcarEntregaHecha('${p.id}','${p.venta_id}')">📦 Marcar como entregado</button>`;
   }
 
   document.getElementById('vc-tarjeta-parada').innerHTML = `
@@ -562,6 +727,21 @@ async function marcarParadaEstado(paradaId, estado, monto, nota) {
   } catch (e) { showToast('No se pudo actualizar la parada', 'error'); }
 }
 function marcarParadaCompletadaManual(paradaId) { marcarParadaEstado(paradaId, 'completada'); }
+
+// Reparto: acción directa (no necesita ventanita incrustada, es solo
+// cambiar un estado) — pero SIGUE tocando la venta real en Ventas,
+// nunca un dato aparte que se pueda desincronizar.
+async function marcarEntregaHecha(paradaId, ventaId) {
+  try {
+    if (ventaId) {
+      await sb.from('ventas').update({ estado_entrega: 'entregado' }).eq('id', ventaId).eq('auth_user_id', STATE.userId);
+    }
+    marcarParadaEstado(paradaId, 'completada');
+    showToast('📦 Entrega registrada');
+  } catch (e) {
+    showToast('No se pudo marcar la entrega', 'error');
+  }
+}
 
 // El truco central de todo el diseño: NUNCA se calcula el pago ni la
 // venta aquí — se muestra la pantalla REAL de Créditos/Ventas dentro
@@ -654,6 +834,7 @@ async function init() {
     document.getElementById('app').style.display = 'flex';
 
     await cargarClientes();
+    await cargarPerfiles();
     cargarMapaGeneral();
     await cargarRutas();
   } catch (e) {
