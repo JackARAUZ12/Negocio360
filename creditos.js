@@ -1825,6 +1825,10 @@
       const params = new URLSearchParams(window.location.search);
       if (params.get('action') === 'new') abrirNuevoCredito();
       if (params.get('action') === 'pagar') abrirRegistrarPago();
+      // Deep link desde el módulo de Rutas — abre el pago de ESE
+      // crédito puntual, directamente en la misma pantalla de siempre.
+      const abrirPagoId = params.get('abrir_pago');
+      if (abrirPagoId) abrirRegistrarPago(abrirPagoId);
     } catch (err) {
       console.error('initCreditos:', err);
       document.getElementById('loader').classList.add('hidden');
