@@ -99,6 +99,9 @@ function getFilterDates(filter, from, to) {
 ===================================================== */
 function sym() { return STATE.empresaConfig?.moneda || 'C$'; }
 
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
 function fmt(amount) {
   if (amount === null || amount === undefined) return `${sym()} —`;
   return `${sym()} ${Number(amount).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1134,6 +1137,7 @@ function setSection(section) {
   if (section === 'movimientos') loadMovimientos();
   if (section === 'metodos')     loadMetodosPago();
   if (section === 'cierres')     loadCierres();
+  if (section === 'cajachica')   loadCajaChica();
 }
 
 /* =====================================================
@@ -1252,6 +1256,282 @@ async function initCaja() {
 sbClient.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') window.location.href = 'login.html';
 });
+
+/* =====================================================
+   CAJA CHICA — apertura y cierre con conteo físico de billetes.
+   NUNCA escribe en movimientos_financieros (eso sigue siendo
+   exclusivo de Caja general) — solo LEE de ahí para armar el
+   resumen del día y comparar contra lo contado en la mano.
+===================================================== */
+const CC_DENOMINACIONES = [
+  { valor: 1000, tipo: 'Billete' }, { valor: 500, tipo: 'Billete' },
+  { valor: 200,  tipo: 'Billete' }, { valor: 100, tipo: 'Billete' },
+  { valor: 50,   tipo: 'Billete' }, { valor: 20,  tipo: 'Billete' },
+  { valor: 10,   tipo: 'Billete' },
+  { valor: 5,    tipo: 'Moneda' },  { valor: 1,   tipo: 'Moneda' },
+  { valor: 0.50, tipo: 'Moneda' },  { valor: 0.25,tipo: 'Moneda' },
+];
+let CC = { sesionHoy: null, modoConteo: null, historial: [] };
+
+async function loadCajaChica() {
+  try {
+    const hoy = todayISO();
+    const { data } = await sbClient.from('caja_chica_sesiones')
+      .select('*').eq('auth_user_id', STATE.userId).eq('fecha', hoy).maybeSingle();
+    CC.sesionHoy = data || null;
+    renderEstadoCajaChica();
+    await loadHistorialCC();
+  } catch (e) {
+    console.warn('loadCajaChica:', e);
+  }
+}
+
+function renderEstadoCajaChica() {
+  const cont = document.getElementById('cc-estado-card');
+  if (!cont) return;
+  const s = CC.sesionHoy;
+
+  if (!s) {
+    cont.innerHTML = `
+      <div class="panel-body" style="text-align:center;padding:34px 20px">
+        <div style="font-size:32px;margin-bottom:8px">🔓</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px">Caja Chica cerrada — todavía no se ha abierto hoy</div>
+        <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:16px">Cuenta el dinero con el que arrancas el día antes de empezar a vender.</p>
+        <button class="btn-primary" onclick="abrirModalConteo('apertura')">Abrir Caja Chica</button>
+      </div>`;
+    return;
+  }
+
+  if (s.estado === 'abierta') {
+    cont.innerHTML = `
+      <div class="panel-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted)">🟢 Caja Chica abierta desde las ${new Date(s.abierta_en).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'})}${s.abierta_por ? ' · '+esc(s.abierta_por) : ''}</div>
+            <div style="font-size:22px;font-weight:800;margin-top:2px">${fmt(s.monto_apertura)} <span style="font-size:12px;color:var(--text-muted);font-weight:400">de apertura</span></div>
+          </div>
+          <button class="btn-primary" style="background:var(--danger)" onclick="abrirModalConteo('cierre')">Cerrar Caja Chica</button>
+        </div>
+        <div id="cc-resumen-vivo" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-muted)">Calculando el resumen de hoy…</div>
+      </div>`;
+    renderResumenVivoCC(s);
+    return;
+  }
+
+  // Cerrada hoy
+  const dif = Number(s.diferencia || 0);
+  cont.innerHTML = `
+    <div class="panel-body" style="text-align:center;padding:26px 20px">
+      <div style="font-size:32px;margin-bottom:8px">${Math.abs(dif) < 0.5 ? '✅' : '⚠️'}</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Caja Chica ya se cerró hoy</div>
+      <p style="font-size:12.5px;color:var(--text-muted)">
+        ${Math.abs(dif) < 0.5 ? 'Cuadró perfecto.' : (dif > 0 ? `Sobraron ${fmt(dif)}.` : `Faltaron ${fmt(Math.abs(dif))}.`)}
+      </p>
+      <button class="btn-secondary" style="margin-top:10px" onclick="verReporteCC('${s.id}')">Ver reporte de hoy</button>
+    </div>`;
+}
+
+// Trae los movimientos de HOY (leyendo el mismo libro de Caja
+// general, sin tocarlo) para mostrar cómo va el efectivo en vivo.
+async function renderResumenVivoCC(sesion) {
+  const el = document.getElementById('cc-resumen-vivo');
+  if (!el) return;
+  try {
+    const hoy = todayISO();
+    const { data: movs } = await sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId)
+      .eq('estado','completado').eq('fecha', hoy);
+
+    const lista = movs || [];
+    const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
+    const ingEfectivo = lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
+    const egrEfectivo = lista.filter(m => m.tipo_flujo==='EGRESO'  && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
+    const ingTotal    = lista.filter(m => m.tipo_flujo==='INGRESO').reduce((s,m)=>s+Number(m.monto||0),0);
+    const egrTotal    = lista.filter(m => m.tipo_flujo==='EGRESO').reduce((s,m)=>s+Number(m.monto||0),0);
+    const teorico = round2(Number(sesion.monto_apertura||0) + ingEfectivo - egrEfectivo);
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+        <div><div style="font-size:11px">Ingresos hoy (todos)</div><div style="font-weight:700;color:var(--success)">${fmt(ingTotal)}</div></div>
+        <div><div style="font-size:11px">Egresos hoy (todos)</div><div style="font-weight:700;color:var(--danger)">${fmt(egrTotal)}</div></div>
+        <div><div style="font-size:11px">Debería haber en efectivo</div><div style="font-weight:700">${fmt(teorico)}</div></div>
+      </div>`;
+  } catch (e) {
+    el.textContent = 'No se pudo calcular el resumen de hoy.';
+  }
+}
+
+async function loadHistorialCC() {
+  try {
+    const { data } = await sbClient.from('caja_chica_sesiones')
+      .select('*').eq('auth_user_id', STATE.userId).eq('estado','cerrada')
+      .order('fecha', { ascending:false }).limit(30);
+    CC.historial = data || [];
+    renderHistorialCC();
+  } catch (e) { console.warn('loadHistorialCC:', e); }
+}
+
+function renderHistorialCC() {
+  const tbody = document.getElementById('cc-historial-tbody');
+  if (!tbody) return;
+  if (!CC.historial.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Todavía no hay cierres de Caja Chica</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = CC.historial.map(s => {
+    const dif = Number(s.diferencia||0);
+    const cuadro = Math.abs(dif) < 0.5;
+    return `
+    <tr>
+      <td>${fmtDate(s.fecha)}</td>
+      <td>${fmt(s.monto_apertura)}</td>
+      <td class="td-entrada">${fmt(s.total_ingresos)}</td>
+      <td class="td-salida">${fmt(s.total_egresos)}</td>
+      <td>${fmt(s.monto_cierre_real)}</td>
+      <td style="color:${cuadro?'var(--success)':'var(--danger)'};font-weight:700">${cuadro ? '✅ Cuadró' : (dif>0?'+':'')+fmt(dif)}</td>
+      <td class="td-actions"><button class="btn-icon" title="Ver reporte" onclick="verReporteCC('${s.id}')">📄</button></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- Modal de conteo de billetes ---------- */
+function abrirModalConteo(modo) {
+  CC.modoConteo = modo;
+  document.getElementById('cc-conteo-titulo').textContent = modo === 'apertura' ? 'Contar dinero para abrir Caja Chica' : 'Contar dinero para cerrar Caja Chica';
+  document.getElementById('cc-conteo-observaciones').value = '';
+  const grid = document.getElementById('cc-denominaciones-grid');
+  grid.innerHTML = CC_DENOMINACIONES.map(d => `
+    <div>
+      <label style="font-size:11.5px;color:var(--text-muted)">${d.tipo} de ${sym()}${d.valor}</label>
+      <input type="number" min="0" step="1" value="" placeholder="0" class="cc-denom-input" data-valor="${d.valor}"
+        oninput="actualizarTotalContado()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-app);color:var(--text-primary)"/>
+    </div>`).join('');
+  actualizarTotalContado();
+  openModal('modal-conteo-billetes');
+}
+
+function actualizarTotalContado() {
+  let total = 0;
+  document.querySelectorAll('.cc-denom-input').forEach(inp => {
+    const cant = parseFloat(inp.value) || 0;
+    total += cant * parseFloat(inp.dataset.valor);
+  });
+  document.getElementById('cc-total-contado').textContent = fmt(round2(total));
+}
+
+function leerDenominacionesContadas() {
+  const det = {};
+  let total = 0;
+  document.querySelectorAll('.cc-denom-input').forEach(inp => {
+    const cant = parseFloat(inp.value) || 0;
+    if (cant > 0) { det[inp.dataset.valor] = cant; total += cant * parseFloat(inp.dataset.valor); }
+  });
+  return { detalle: det, total: round2(total) };
+}
+
+async function confirmarConteoBilletes() {
+  const { detalle, total } = leerDenominacionesContadas();
+  const obs = document.getElementById('cc-conteo-observaciones').value.trim() || null;
+  const nombreUsuario = STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario';
+
+  setBtnLoading('btn-confirmar-conteo', true);
+  try {
+    if (CC.modoConteo === 'apertura') {
+      const { error } = await sbClient.from('caja_chica_sesiones').insert({
+        auth_user_id: STATE.userId, fecha: todayISO(), estado: 'abierta',
+        monto_apertura: total, denominacion_apertura: detalle,
+        abierta_por: nombreUsuario, observaciones: obs,
+      });
+      if (error) throw error;
+      showToast('Caja Chica abierta con ' + fmt(total));
+    } else {
+      // Cierre: se calcula lo TEÓRICO (solo efectivo) contra los
+      // movimientos de hoy, y se compara con lo contado en la mano.
+      const hoy = todayISO();
+      const { data: movs } = await sbClient.from('movimientos_financieros')
+        .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId)
+        .eq('estado','completado').eq('fecha', hoy);
+      const lista = movs || [];
+      const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
+      const ingEfectivo = round2(lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0));
+      const egrEfectivo = round2(lista.filter(m => m.tipo_flujo==='EGRESO'  && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0));
+      const ingTotal = round2(lista.filter(m => m.tipo_flujo==='INGRESO').reduce((s,m)=>s+Number(m.monto||0),0));
+      const egrTotal = round2(lista.filter(m => m.tipo_flujo==='EGRESO').reduce((s,m)=>s+Number(m.monto||0),0));
+      const teorico = round2(Number(CC.sesionHoy.monto_apertura||0) + ingEfectivo - egrEfectivo);
+      const diferencia = round2(total - teorico);
+
+      const { error } = await sbClient.from('caja_chica_sesiones').update({
+        estado: 'cerrada',
+        monto_cierre_teorico: teorico, monto_cierre_real: total, denominacion_cierre: detalle,
+        diferencia,
+        total_ingresos: ingTotal, total_egresos: egrTotal,
+        total_ingresos_efectivo: ingEfectivo, total_egresos_efectivo: egrEfectivo,
+        movimientos_count: lista.length,
+        cerrada_en: new Date().toISOString(), cerrada_por: nombreUsuario,
+        observaciones: obs, updated_at: new Date().toISOString(),
+      }).eq('id', CC.sesionHoy.id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+
+      showToast(Math.abs(diferencia) < 0.5 ? 'Caja Chica cerrada — cuadró perfecto ✅' : `Caja Chica cerrada — ${diferencia>0?'sobraron':'faltaron'} ${fmt(Math.abs(diferencia))}`, Math.abs(diferencia)<0.5 ? 'success' : 'warning');
+    }
+    closeModal('modal-conteo-billetes');
+    await loadCajaChica();
+  } catch (e) {
+    console.error('confirmarConteoBilletes:', e);
+    showToast('Error al guardar: ' + (e.message||''), 'error');
+  } finally {
+    setBtnLoading('btn-confirmar-conteo', false);
+  }
+}
+
+/* ---------- Reporte de cierre ---------- */
+CC.reporteActual = null;
+async function verReporteCC(sesionId) {
+  try {
+    const { data: s } = await sbClient.from('caja_chica_sesiones').select('*').eq('id', sesionId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (!s) { showToast('No se encontró ese cierre', 'error'); return; }
+    CC.reporteActual = s;
+
+    const filaDenom = (obj, titulo) => {
+      const entradas = Object.entries(obj || {}).sort((a,b) => Number(b[0])-Number(a[0]));
+      if (!entradas.length) return `<div style="font-size:12px;color:var(--text-muted)">${titulo}: sin desglose</div>`;
+      return `<div style="margin-bottom:8px"><strong style="font-size:12.5px">${titulo}</strong>` +
+        entradas.map(([val,cant]) => `<div class="tp-row" style="font-size:12px"><span>${sym()}${val} × ${cant}</span><span>${fmt(Number(val)*Number(cant))}</span></div>`).join('') + `</div>`;
+    };
+
+    const dif = Number(s.diferencia||0);
+    document.getElementById('cc-reporte-body').innerHTML = `
+      <div class="ticket-print">
+        <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(STATE.empresaConfig?.nombre_comercial || 'Mi negocio')}</div>
+        <div style="text-align:center;color:var(--text-muted);margin-bottom:8px">Reporte de Caja Chica — ${fmtDate(s.fecha)}</div>
+        <hr/>
+        <div class="tp-row"><span>Apertura:</span><b>${new Date(s.abierta_en).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'})} — ${esc(s.abierta_por||'—')}</b></div>
+        <div class="tp-row"><span>Cierre:</span><b>${s.cerrada_en ? (new Date(s.cerrada_en).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'}) + ' — ' + esc(s.cerrada_por||'—')) : '—'}</b></div>
+        <hr/>
+        ${filaDenom(s.denominacion_apertura, 'Billetes/monedas en la apertura')}
+        ${filaDenom(s.denominacion_cierre, 'Billetes/monedas en el cierre')}
+        <hr/>
+        <div class="tp-row"><span>Monto de apertura:</span><b>${fmt(s.monto_apertura)}</b></div>
+        <div class="tp-row"><span>Ingresos del día (todos):</span><b>${fmt(s.total_ingresos)}</b></div>
+        <div class="tp-row"><span>Egresos del día (todos):</span><b>${fmt(s.total_egresos)}</b></div>
+        <div class="tp-row"><span>Debería haber (teórico, efectivo):</span><b>${fmt(s.monto_cierre_teorico)}</b></div>
+        <div class="tp-row"><span>Se contó (real):</span><b>${fmt(s.monto_cierre_real)}</b></div>
+        <div class="tp-row" style="font-weight:800;color:${Math.abs(dif)<0.5?'var(--success)':'var(--danger)'}"><span>Diferencia:</span><b>${Math.abs(dif)<0.5?'Cuadró ✅':(dif>0?'Sobraron '+fmt(dif):'Faltaron '+fmt(Math.abs(dif)))}</b></div>
+        ${s.observaciones ? `<hr/><div style="font-size:11px;color:var(--text-muted)">Nota: ${esc(s.observaciones)}</div>` : ''}
+      </div>`;
+    openModal('modal-reporte-cc');
+  } catch (e) {
+    showToast('Error al cargar el reporte', 'error');
+  }
+}
+function imprimirReporteCC() {
+  const html = document.getElementById('cc-reporte-body').innerHTML;
+  const w = window.open('', '_blank', 'width=380,height=650');
+  w.document.write(`<html><head><meta charset="UTF-8"><title>Reporte Caja Chica</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;font-size:12.5px;padding:16px;max-width:320px;margin:0 auto}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+    </head><body>${html}<script>window.print();</script></body></html>`);
+  w.document.close();
+}
 
 /* =====================================================
    ARRANQUE
