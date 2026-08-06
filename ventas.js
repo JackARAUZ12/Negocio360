@@ -681,7 +681,7 @@ async function anularVenta() {
     // Protección: si por cualquier motivo ya estaba anulada, no se
     // vuelve a devolver el stock (evitaría duplicar la devolución).
     const { data: ventaActual, error: errVentaActual } = await sb.from('ventas')
-      .select('estado').eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
+      .select('estado, cliente_id, total').eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
     if (errVentaActual) throw errVentaActual;
     if (!ventaActual) throw new Error('Venta no encontrada');
     if (ventaActual.estado === 'anulada') {
@@ -732,6 +732,26 @@ async function anularVenta() {
       .eq('id', id).eq('auth_user_id', S.userId);
 
     if (error) throw error;
+
+    // Si la venta tenía cliente asignado (no "Consumidor Final"), se le
+    // resta lo que esta venta le había sumado a su ficha — si no, su
+    // "total comprado" se quedaría inflado para siempre con ventas que
+    // ya no existen, y eso es justo el tipo de número que hace perder
+    // confianza en el sistema.
+    if (ventaActual.cliente_id) {
+      try {
+        const { data: cli } = await sb.from('clientes')
+          .select('total_compras, num_compras').eq('id', ventaActual.cliente_id).eq('auth_user_id', S.userId).maybeSingle();
+        if (cli) {
+          const nuevoTotal = Math.max(0, round2(Number(cli.total_compras || 0) - Number(ventaActual.total || 0)));
+          const nuevoNum   = Math.max(0, Number(cli.num_compras || 0) - 1);
+          await sb.from('clientes').update({ total_compras: nuevoTotal, num_compras: nuevoNum })
+            .eq('id', ventaActual.cliente_id).eq('auth_user_id', S.userId);
+        }
+      } catch (eCliente) {
+        console.warn('No se pudo actualizar el contador del cliente:', eCliente);
+      }
+    }
 
     // El IVA que se registró al vender es una obligación fiscal ligada
     // a ESA venta — si la venta se anula, ya no se debe ese IVA, sin
