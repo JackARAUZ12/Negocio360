@@ -878,6 +878,9 @@
     }
     .sidebar-overlay.show { display: block; }
     @media (min-width: 769px) { .sidebar-overlay { display: none !important; } }
+    .ticket-print { font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; line-height: 1.6; }
+    .ticket-print .tp-row { display: flex; justify-content: space-between; gap: 10px; }
+    .ticket-print hr { border: none; border-top: 1px dashed var(--border); margin: 8px 0; }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -1168,6 +1171,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           Cierres diarios
         </button>
+        <button class="section-tab" data-section="cajachica" onclick="setSection('cajachica')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>
+          Caja Chica
+        </button>
       </div>
 
       <!-- ===== PANEL: MOVIMIENTOS ===== -->
@@ -1302,6 +1309,46 @@
               </thead>
               <tbody id="cierres-tbody">
                 <tr><td colspan="6" class="empty-cell">Cargando cierres…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PANEL: CAJA CHICA ===== -->
+      <div class="section-panel" data-section="cajachica" style="display:none">
+        <div class="panel-card fade-in" style="background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px">
+          <div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+            💡 Caja Chica es el ritual diario de contar el dinero físico al abrir y al cerrar — nunca cambia el saldo de Caja general, solo lo compara con lo que debería haber.
+          </div>
+        </div>
+
+        <div class="panel-card" id="cc-estado-card">
+          <div class="panel-body" style="text-align:center;padding:30px">Cargando estado de hoy…</div>
+        </div>
+
+        <div class="panel-card" style="margin-top:16px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Historial de cierres de Caja Chica
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Apertura</th>
+                  <th>Ingresos</th>
+                  <th>Egresos</th>
+                  <th>Cierre real</th>
+                  <th>Diferencia</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="cc-historial-tbody">
+                <tr><td colspan="7" class="empty-cell">Cargando historial…</td></tr>
               </tbody>
             </table>
           </div>
@@ -1462,6 +1509,55 @@
       <button class="btn-primary" id="btn-confirmar-anular" onclick="anularMovimiento()" style="background:var(--danger)">
         Sí, anular
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: CONTEO DE BILLETES (Caja Chica — apertura y cierre)
+=================================================== -->
+<div class="modal-overlay" id="modal-conteo-billetes" onclick="if(event.target===this)closeModal('modal-conteo-billetes')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="cc-conteo-titulo">Contar dinero en caja</span>
+      <button class="modal-close" onclick="closeModal('modal-conteo-billetes')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">Cuenta cuántos billetes y monedas de cada denominación hay — el total se calcula solo.</p>
+      <div id="cc-denominaciones-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <span style="font-size:14px;font-weight:700">Total contado</span>
+        <span style="font-size:20px;font-weight:800;color:var(--accent)" id="cc-total-contado">C$ 0.00</span>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>Observaciones (opcional)</label>
+        <textarea id="cc-conteo-observaciones" rows="2" placeholder="Ej: falta el cambio de monedas de 1"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-conteo-billetes')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-conteo" onclick="confirmarConteoBilletes()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: REPORTE DE CIERRE DE CAJA CHICA
+=================================================== -->
+<div class="modal-overlay" id="modal-reporte-cc" onclick="if(event.target===this)closeModal('modal-reporte-cc')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Reporte de cierre</span>
+      <button class="modal-close" onclick="closeModal('modal-reporte-cc')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="cc-reporte-body">—</div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-reporte-cc')">Cerrar</button>
+      <button class="btn-primary" onclick="imprimirReporteCC()">Imprimir</button>
     </div>
   </div>
 </div>
