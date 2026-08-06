@@ -2264,13 +2264,29 @@ function seleccionarClienteExportModal(c) {
   if (btn) btn.disabled = false;
 }
 
+// Reporte general de créditos — todos los clientes juntos, respetando
+// el mismo período que ya eligió el usuario en la pantalla de Reportes.
+function seleccionarTodosClientesExportModal() {
+  MX.clienteId = null; MX.clienteNombre = 'Todos los clientes';
+  const buscar = document.getElementById('modal-cr-buscar');
+  const lista  = document.getElementById('modal-cr-lista');
+  const sel    = document.getElementById('modal-cr-seleccionado');
+  const nombreEl = document.getElementById('modal-cr-seleccionado-nombre');
+  const btn    = document.getElementById('modal-cr-btn-exportar');
+  if (buscar) buscar.value = '';
+  if (lista) { lista.classList.remove('show'); lista.innerHTML = ''; }
+  if (nombreEl) nombreEl.textContent = '👥 Todos los clientes';
+  if (sel) sel.style.display = 'inline-flex';
+  if (btn) btn.disabled = false;
+}
+
 function cerrarModalExportarCredito() {
   const overlay = document.getElementById('modal-exportar-credito');
   if (overlay) overlay.classList.remove('modal-open');
 }
 
 function confirmarExportarCredito() {
-  if (!MX.clienteId) return;
+  if (!MX.clienteNombre) return; // nada elegido todavía (ni cliente individual ni "todos")
   const { formato, clienteId, clienteNombre } = MX;
   cerrarModalExportarCredito();
   ejecutarExportacion('creditos', formato, clienteId, clienteNombre);
