@@ -462,20 +462,43 @@ function cerrarVistaCampo() {
 
 function renderParadaCampo() {
   const total = CAMPO.paradas.length;
-  const p = CAMPO.paradas[CAMPO.indice];
+  const pendientes = CAMPO.paradas.filter(x => x.estado_parada === 'pendiente' || x.estado_parada === 'reagendado');
+
+  // Ruta completada: ya no quedan paradas pendientes.
+  if (!pendientes.length) {
+    document.getElementById('vc-progreso').textContent = `${total} de ${total} completadas`;
+    const noEncontradas = CAMPO.paradas.filter(x => x.estado_parada === 'no_encontrado').length;
+    document.getElementById('vc-tarjeta-parada').innerHTML = `
+      <div class="panel-card" style="text-align:center">
+        <div style="font-size:40px;margin-bottom:8px">🎉</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:6px">¡Ruta completada!</div>
+        <p style="font-size:13px;color:var(--text-muted)">
+          ${total - noEncontradas} de ${total} parada(s) resueltas${noEncontradas ? `, ${noEncontradas} quedaron pendientes de reagendar` : ''}.
+        </p>
+        <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="cerrarVistaCampo()">Salir de la ruta</button>
+      </div>`;
+    return;
+  }
+
+  // Si la parada actual ya se resolvió, se salta sola a la siguiente pendiente.
+  let p = CAMPO.paradas[CAMPO.indice];
+  if (!p || p.estado_parada === 'completada' || p.estado_parada === 'no_encontrado') {
+    const idxSiguiente = CAMPO.paradas.findIndex(x => x.estado_parada === 'pendiente' || x.estado_parada === 'reagendado');
+    CAMPO.indice = idxSiguiente >= 0 ? idxSiguiente : 0;
+    p = CAMPO.paradas[CAMPO.indice];
+  }
+
   document.getElementById('vc-progreso').textContent = `Parada ${CAMPO.indice+1} de ${total}`;
   if (!p) return;
   const c = p.cliente;
-  const completada = p.estado_parada === 'completada';
-  const noEncontrado = p.estado_parada === 'no_encontrado';
 
   let accionesHtml = '';
   if (CAMPO.ruta.tipo === 'cobro') {
     accionesHtml = `
-      <button class="vc-btn-grande" style="background:var(--success);color:#fff" onclick="irARegistrarPago('${p.credito_id}','${p.id}')">💰 Registrar pago (abre Créditos)</button>`;
+      <button class="vc-btn-grande" style="background:var(--success);color:#fff" onclick="abrirEmbebido('creditos.html?abrir_pago=${p.credito_id}&embed=1','${p.id}')">💰 Registrar pago</button>`;
   } else if (CAMPO.ruta.tipo === 'preventa') {
     accionesHtml = `
-      <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="irAVenderAqui('${c.id}','${p.id}')">🛒 Vender aquí (abre Ventas)</button>`;
+      <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="abrirEmbebido('ventas.html?ruta_cliente=${c.id}&embed=1','${p.id}')">🛒 Vender aquí</button>`;
   }
 
   document.getElementById('vc-tarjeta-parada').innerHTML = `
@@ -484,21 +507,40 @@ function renderParadaCampo() {
       <div style="font-size:20px;font-weight:800;margin:6px 0">${esc(nombreCompleto(c))}</div>
       <div style="font-size:13px;color:var(--text-secondary)">${esc(c.direccion||'Sin dirección')}</div>
       ${c.telefono ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:2px">📞 ${esc(c.telefono)}</div>` : ''}
-      ${completada ? `<div style="margin-top:10px;color:var(--success);font-weight:700">✅ Parada completada</div>` : ''}
-      ${noEncontrado ? `<div style="margin-top:10px;color:var(--warning);font-weight:700">⚠️ Marcado como "no encontrado"</div>` : ''}
 
       ${c.latitud != null ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${c.latitud},${c.longitud}" target="_blank" class="vc-btn-grande" style="background:var(--bg-app);color:var(--text-primary);border:1px solid var(--border);display:block;text-decoration:none">🧭 Cómo llegar</a>` : ''}
 
-      ${!completada ? accionesHtml : ''}
-      ${!completada ? `
-        <button class="vc-btn-grande" style="background:var(--bg-app);border:1px solid var(--border);color:var(--text-primary)" onclick="marcarParadaCompletadaManual('${p.id}')">✅ Marcar como hecha</button>
-        <button class="vc-btn-grande" style="background:var(--bg-app);border:1px solid var(--warning);color:var(--warning)" onclick="marcarParadaNoEncontrado('${p.id}')">⚠️ No encontrado / reagendar</button>
-      ` : ''}
+      ${accionesHtml}
+      <button class="vc-btn-grande" style="background:var(--bg-app);border:1px solid var(--border);color:var(--text-primary)" onclick="marcarParadaCompletadaManual('${p.id}')">✅ Marcar como hecha</button>
+
+      <div id="vc-reagendar-form-${p.id}" style="display:none;text-align:left;margin-top:10px">
+        <label style="font-size:11.5px;color:var(--text-muted)">¿Por qué? (opcional)</label>
+        <input type="text" id="vc-reagendar-nota-${p.id}" placeholder="Ej: no estaba, cerrado, pidió que vuelva mañana"
+          style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-app);color:var(--text-primary);margin-top:4px"/>
+        <button class="vc-btn-grande" style="background:var(--warning);color:#fff" onclick="confirmarReagendar('${p.id}')">Confirmar y pasar a la siguiente</button>
+      </div>
+      <button id="vc-btn-reagendar-toggle-${p.id}" class="vc-btn-grande" style="background:var(--bg-app);border:1px solid var(--warning);color:var(--warning)" onclick="mostrarFormReagendar('${p.id}')">⚠️ No encontrado / reagendar</button>
     </div>`;
 }
 
-function paradaAnterior() { if (CAMPO.indice > 0) { CAMPO.indice--; renderParadaCampo(); } }
-function paradaSiguiente() { if (CAMPO.indice < CAMPO.paradas.length - 1) { CAMPO.indice++; renderParadaCampo(); } }
+function mostrarFormReagendar(paradaId) {
+  document.getElementById(`vc-reagendar-form-${paradaId}`).style.display = 'block';
+  document.getElementById(`vc-btn-reagendar-toggle-${paradaId}`).style.display = 'none';
+}
+function confirmarReagendar(paradaId) {
+  const nota = document.getElementById(`vc-reagendar-nota-${paradaId}`)?.value.trim() || null;
+  marcarParadaEstado(paradaId, 'no_encontrado', null, nota);
+}
+
+function paradaAnterior() {
+  if (CAMPO.indice > 0) { CAMPO.indice--; renderParadaCampo(); }
+}
+function paradaSiguiente() {
+  const pendientes = CAMPO.paradas.filter(x => x.estado_parada === 'pendiente' || x.estado_parada === 'reagendado');
+  if (!pendientes.length) { renderParadaCampo(); return; } // ya completada: muestra la pantalla final
+  if (CAMPO.indice < CAMPO.paradas.length - 1) { CAMPO.indice++; renderParadaCampo(); }
+  else { renderParadaCampo(); } // estaba en la última: fuerza a re-evaluar (por si ya se resolvió)
+}
 
 async function marcarParadaEstado(paradaId, estado, monto, nota) {
   try {
@@ -508,9 +550,11 @@ async function marcarParadaEstado(paradaId, estado, monto, nota) {
     }).eq('id', paradaId).eq('auth_user_id', STATE.userId);
     const p = CAMPO.paradas.find(x => x.id === paradaId);
     if (p) p.estado_parada = estado;
+
+    // Avanza sola a la siguiente parada pendiente — antes se quedaba
+    // en la misma tarjeta y había que darle "Siguiente" a mano.
     renderParadaCampo();
 
-    // Si ya no quedan paradas pendientes, se marca la ruta como completada.
     if (CAMPO.paradas.every(x => x.estado_parada === 'completada' || x.estado_parada === 'no_encontrado')) {
       await sb.from('rutas').update({ estado: 'completada' }).eq('id', CAMPO.ruta.id).eq('auth_user_id', STATE.userId);
       CAMPO.ruta.estado = 'completada';
@@ -518,23 +562,34 @@ async function marcarParadaEstado(paradaId, estado, monto, nota) {
   } catch (e) { showToast('No se pudo actualizar la parada', 'error'); }
 }
 function marcarParadaCompletadaManual(paradaId) { marcarParadaEstado(paradaId, 'completada'); }
-function marcarParadaNoEncontrado(paradaId) {
-  const nota = prompt('¿Alguna nota? (opcional)') || null;
-  marcarParadaEstado(paradaId, 'no_encontrado', null, nota);
-}
 
 // El truco central de todo el diseño: NUNCA se calcula el pago ni la
-// venta aquí — se manda a la pantalla real de Créditos/Ventas, que
-// sigue siendo la única fuente de verdad para ese dinero.
-function irARegistrarPago(creditoId, paradaId) {
-  if (!creditoId) { showToast('Esta parada no tiene un crédito vinculado', 'error'); return; }
-  try { sessionStorage.setItem('n360_ruta_parada_pendiente', paradaId); } catch(e) {}
-  window.open(`creditos.html?abrir_pago=${creditoId}`, '_blank');
+// venta aquí — se muestra la pantalla REAL de Créditos/Ventas dentro
+// de una ventanita incrustada (iframe), sin salir de Rutas ni abrir
+// pestañas nuevas. Sigue siendo la única fuente de verdad para ese
+// dinero — solo cambia CÓMO se ve, nunca la lógica.
+let EMBED_PARADA_ID = null;
+function abrirEmbebido(url, paradaId) {
+  EMBED_PARADA_ID = paradaId;
+  const frame = document.getElementById('vc-iframe-embebido');
+  frame.src = url;
+  document.getElementById('vc-modal-embebido').style.display = 'flex';
 }
-function irAVenderAqui(clienteId, paradaId) {
-  try { sessionStorage.setItem('n360_ruta_parada_pendiente', paradaId); } catch(e) {}
-  window.open(`ventas.html?ruta_cliente=${clienteId}`, '_blank');
+function cerrarEmbebido() {
+  document.getElementById('vc-modal-embebido').style.display = 'none';
+  document.getElementById('vc-iframe-embebido').src = 'about:blank';
+  EMBED_PARADA_ID = null;
 }
+// Créditos/Ventas avisan aquí cuando el pago o la venta se registró
+// de verdad — recién ahí se marca la parada como hecha.
+window.addEventListener('message', (ev) => {
+  if (!ev.data || ev.data.tipo !== 'n360_operacion_completada') return;
+  if (!EMBED_PARADA_ID) return;
+  const paradaId = EMBED_PARADA_ID;
+  cerrarEmbebido();
+  marcarParadaEstado(paradaId, 'completada', ev.data.monto || null, ev.data.nota || null);
+  showToast('✅ Registrado — parada marcada como hecha');
+});
 
 /* =====================================================
    HELPERS DE MODAL Y TOAST
