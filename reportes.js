@@ -2729,7 +2729,12 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
   // ---- CRÉDITOS — historial de pagos de UN cliente (exportación individual) ----
   // Nunca mezcla clientes: siempre viene filtrado al que se elige en el modal.
   if (tipo === 'creditos') {
-    const filasCliente = (R.cache.creditosPagos||[]).filter(f => !clienteId || f.cliente_id === clienteId);
+    const filasCliente = (R.cache.creditosPagos||[])
+      .filter(f => !clienteId || f.cliente_id === clienteId)
+      // Sin cliente elegido (modo "todos"): se agrupa por cliente
+      // dentro del mismo reporte — antes salían revueltos porque venían
+      // ordenados solo por número de cuota, sin importar de quién era.
+      .sort((a, b) => !clienteId ? (a.cliente||'').localeCompare(b.cliente||'', 'es') : 0);
     const nombreCliente = clienteNombre || filasCliente[0]?.cliente || 'cliente seleccionado';
     tituloSeccion(`Historial de pagos — ${nombreCliente}`);
     const cols = columnasActivas('creditos');
@@ -2896,7 +2901,12 @@ function hojaGastosXLSX(wb) {
 // siempre llega desde el modal de exportación en el caso individual.
 function hojaCreditosXLSX(wb, clienteId, clienteNombre) {
   const cols = columnasActivas('creditos');
-  const filasCliente = (R.cache.creditosPagos||[]).filter(f => !clienteId || f.cliente_id === clienteId);
+  const filasCliente = (R.cache.creditosPagos||[])
+      .filter(f => !clienteId || f.cliente_id === clienteId)
+      // Sin cliente elegido (modo "todos"): se agrupa por cliente
+      // dentro del mismo reporte — antes salían revueltos porque venían
+      // ordenados solo por número de cuota, sin importar de quién era.
+      .sort((a, b) => !clienteId ? (a.cliente||'').localeCompare(b.cliente||'', 'es') : 0);
   const nombreCliente = clienteNombre || filasCliente[0]?.cliente || 'cliente seleccionado';
   if (!cols.length) {
     appendSheetXLSX(wb, 'Créditos', ['Aviso'], [['No hay columnas seleccionadas para Créditos (revisa "Configurar exportaciones").']], [null]);
