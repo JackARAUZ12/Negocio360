@@ -1604,7 +1604,7 @@
     const { data: historial } = await _sb.from('creditos_historial').select('*').eq('credito_id', creditoId).order('created_at', { ascending:false });
     const { data: pagos } = await _sb.from('creditos_pagos').select('*').eq('credito_id', creditoId).eq('estado','completado').order('created_at', { ascending:false });
 
-    const sinPagos = Number(credito.saldo_pendiente) === Number(credito.total_financiado);
+
 
     document.getElementById('det-credito-title').textContent = `Crédito ${credito.numero_credito}`;
     document.getElementById('detalle-credito-body').innerHTML = `
@@ -1618,7 +1618,7 @@
         <div><label>Total financiado</label><div class="stat-readonly">${fmt(credito.total_financiado)}</div></div>
         <div><label>Saldo pendiente</label><div class="stat-readonly">${fmt(credito.saldo_pendiente)}</div></div>
       </div>
-      ${sinPagos ? `<button class="btn-secondary btn-sm" style="margin-bottom:14px" onclick="abrirEditarCredito('${credito.id}')">✏️ Editar monto/plazo de este crédito</button>` : `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✏️ El monto y plazo ya no se pueden editar porque este crédito ya tiene pagos registrados.</p>`}
+      ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" style="margin-bottom:14px" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>`}
       <label>Cuotas</label>
       <div class="table-wrap" style="margin-bottom:16px">
         <table>
@@ -1678,22 +1678,30 @@
   }
   window.reimprimirComprobantePago = reimprimirComprobantePago;
 
-  // Editar monto/plazo de un crédito SIN pagos todavía — se recalculan
-  // las cuotas desde cero con la MISMA función que usa "Nuevo crédito"
-  // (generarAmortizacion), nunca una fórmula aparte.
+  // Editar el SALDO RESTANTE de un crédito — nunca toca las cuotas ya
+  // pagadas (esas quedan intactas, con su historial real de pago).
+  // Sirve para renegociar: el cliente da menos de lo acordado, más de
+  // lo acordado, o simplemente cambia el plan de lo que falta.
   let CREDITO_EDITANDO = null;
   async function abrirEditarCredito(creditoId) {
     const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
     if (!credito) { showToast('Crédito no encontrado', 'error'); return; }
-    if (Number(credito.saldo_pendiente) !== Number(credito.total_financiado)) {
-      showToast('Este crédito ya tiene pagos registrados y no se puede editar', 'error');
+    if (Number(credito.saldo_pendiente) <= 0) {
+      showToast('Este crédito ya está totalmente pagado, no queda nada por renegociar', 'error');
       return;
     }
-    CREDITO_EDITANDO = credito;
-    document.getElementById('ec-capital').value = credito.capital_financiado;
-    document.getElementById('ec-num-cuotas').value = credito.num_cuotas;
+    const { data: cuotas } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).order('numero');
+    const pagadas = (cuotas||[]).filter(c => c.estado === 'pagada');
+    const pendientes = (cuotas||[]).filter(c => c.estado !== 'pagada');
+
+    CREDITO_EDITANDO = { credito, totalPagadas: pagadas.length, pendientes };
+    document.getElementById('ec-resumen-pagadas').textContent = pagadas.length
+      ? `${pagadas.length} cuota(s) ya pagada(s) por ${fmt(pagadas.reduce((s,c)=>s+Number(c.monto_pagado||0),0))} — no se van a tocar.`
+      : 'Este crédito todavía no tiene ninguna cuota pagada.';
+    document.getElementById('ec-capital').value = credito.saldo_pendiente;
+    document.getElementById('ec-num-cuotas').value = pendientes.length || 1;
     document.getElementById('ec-frecuencia').value = credito.frecuencia;
-    document.getElementById('ec-fecha-inicio').value = credito.fecha_inicio;
+    document.getElementById('ec-fecha-inicio').value = pendientes[0]?.fecha_vencimiento || todayISO();
     const filaInteres = document.getElementById('ec-fila-interes');
     if (credito.tipo_financiamiento === 'con_interes') {
       filaInteres.style.display = '';
@@ -1708,60 +1716,69 @@
 
   async function guardarEdicionCredito() {
     if (!CREDITO_EDITANDO) return;
-    const credito = CREDITO_EDITANDO;
+    const { credito, totalPagadas } = CREDITO_EDITANDO;
 
-    // Protección extra: se vuelve a comprobar en el momento de guardar
-    // que siga sin pagos — por si alguien más registró uno mientras
-    // este modal estaba abierto.
-    const { data: chequeo } = await _sb.from('creditos').select('saldo_pendiente,total_financiado').eq('id', credito.id).maybeSingle();
-    if (!chequeo || Number(chequeo.saldo_pendiente) !== Number(chequeo.total_financiado)) {
-      showToast('Ya no se puede editar: este crédito recibió un pago mientras tanto', 'error');
-      closeModal('modal-editar-credito');
-      return;
-    }
-
-    const capitalFinanciado = round2(parseFloat(document.getElementById('ec-capital').value) || 0);
+    const nuevoSaldo = round2(parseFloat(document.getElementById('ec-capital').value) || 0);
     const numCuotas = Math.max(1, parseInt(document.getElementById('ec-num-cuotas').value) || 1);
     const frecuencia = document.getElementById('ec-frecuencia').value;
     const fechaInicio = document.getElementById('ec-fecha-inicio').value || todayISO();
     const tasa = credito.tipo_financiamiento === 'con_interes' ? (parseFloat(document.getElementById('ec-tasa').value) || 0) : 0;
-    if (capitalFinanciado <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
+    if (nuevoSaldo <= 0) { showToast('El nuevo saldo debe ser mayor a cero', 'error'); return; }
 
     setBtnLoading('btn-guardar-editar-credito', true);
     try {
-      // Se reconstruyen los impuestos EXACTOS que ya tenía este crédito
-      // (de su primera cuota), en vez de tomar la selección actual del
-      // formulario de "Nuevo crédito" — así no cambia nada que el
-      // cliente no haya tocado a propósito.
-      const { data: cuotaRef } = await _sb.from('creditos_cuotas').select('impuestos_detalle').eq('credito_id', credito.id).order('numero').limit(1).maybeSingle();
-      const impuestosLista = (cuotaRef?.impuestos_detalle || []).map(d => ({ id: d.impuesto_id, nombre: d.nombre, tipo_valor: d.tipo_valor, valor: d.valor }));
+      // Protección: se vuelve a traer el crédito y sus cuotas AHORA
+      // mismo, por si alguien registró un pago mientras este modal
+      // estaba abierto — nunca se debe borrar una cuota que se acabó
+      // de pagar sin que este cálculo se haya enterado.
+      const { data: cuotasAhora } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', credito.id).order('numero');
+      const pagadasAhora = (cuotasAhora||[]).filter(c => c.estado === 'pagada');
+      const pendientesAhora = (cuotasAhora||[]).filter(c => c.estado !== 'pagada');
+      if (pagadasAhora.length !== totalPagadas) {
+        showToast('Se registró un pago mientras tanto — vuelve a abrir "Editar" para ver el saldo actualizado', 'error');
+        closeModal('modal-editar-credito');
+        return;
+      }
+
+      const impuestosLista = (pendientesAhora[0]?.impuestos_detalle || cuotasAhora?.[0]?.impuestos_detalle || []).map(d => ({ id: d.impuesto_id, nombre: d.nombre, tipo_valor: d.tipo_valor, valor: d.valor }));
       const baseImpuesto = credito.tipo === 'financiero' ? 'interes' : 'capital';
 
-      const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
-        capitalFinanciado, tipoFinanciamiento: credito.tipo_financiamiento, tasaInteres: tasa,
+      const { cuotas: cuotasNuevas, totalFinanciado: totalRestanteNuevo, valorCuotaAprox } = generarAmortizacion({
+        capitalFinanciado: nuevoSaldo, tipoFinanciamiento: credito.tipo_financiamiento, tasaInteres: tasa,
         metodo: credito.metodo_amortizacion, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto,
       });
 
-      // Se reemplazan las cuotas — seguro porque ya se confirmó que
-      // ninguna tiene pagos.
-      await _sb.from('creditos_cuotas').delete().eq('credito_id', credito.id).eq('auth_user_id', CS.userId);
-      const cuotasInsert = cuotas.map(c => ({
-        auth_user_id: CS.userId, credito_id: credito.id, numero: c.numero,
+      // Se borran SOLO las cuotas que todavía no están pagadas — las
+      // pagadas quedan intactas, con su historial real.
+      const idsPendientes = pendientesAhora.map(c => c.id);
+      if (idsPendientes.length) {
+        await _sb.from('creditos_cuotas').delete().in('id', idsPendientes).eq('auth_user_id', CS.userId);
+      }
+
+      // Las cuotas nuevas continúan la numeración después de las ya pagadas.
+      const cuotasInsert = cuotasNuevas.map((c, i) => ({
+        auth_user_id: CS.userId, credito_id: credito.id, numero: pagadasAhora.length + i + 1,
         fecha_vencimiento: c.fecha_vencimiento, capital: c.capital, interes: c.interes,
         impuesto: c.impuesto, impuestos_detalle: c.impuestos_detalle || [], monto_total: c.monto_total, saldo: c.saldo, estado: 'pendiente',
       }));
       await _sb.from('creditos_cuotas').insert(cuotasInsert);
 
+      // El total financiado ahora es: lo que ya se pagó/comprometió en
+      // las cuotas pagadas + el nuevo plan de lo restante — así
+      // "total_financiado - pagado = saldo_pendiente" se mantiene exacto.
+      const totalYaComprometido = pagadasAhora.reduce((s,c) => s + Number(c.monto_total||0), 0);
+      const nuevoTotalFinanciado = round2(totalYaComprometido + totalRestanteNuevo);
+
       await _sb.from('creditos').update({
-        capital_financiado: capitalFinanciado, tasa_interes: credito.tipo_financiamiento==='con_interes' ? tasa : null,
-        frecuencia, num_cuotas: numCuotas, fecha_inicio: fechaInicio,
-        total_intereses: totalIntereses, total_financiado: totalFinanciado, valor_cuota_aprox: valorCuotaAprox,
-        saldo_pendiente: totalFinanciado, updated_at: new Date().toISOString(),
+        tasa_interes: credito.tipo_financiamiento==='con_interes' ? tasa : credito.tasa_interes,
+        frecuencia, num_cuotas: pagadasAhora.length + cuotasNuevas.length,
+        total_financiado: nuevoTotalFinanciado, valor_cuota_aprox: valorCuotaAprox,
+        saldo_pendiente: totalRestanteNuevo, updated_at: new Date().toISOString(),
       }).eq('id', credito.id).eq('auth_user_id', CS.userId);
 
-      await registrarHistorial(credito.id, 'editado', `Monto/plazo del crédito recalculado — nuevo total: ${fmt(totalFinanciado)}`, { capitalFinanciado, numCuotas, totalFinanciado });
+      await registrarHistorial(credito.id, 'editado', `Saldo restante renegociado: ${fmt(nuevoSaldo)} en ${numCuotas} cuota(s) nueva(s) — ${pagadasAhora.length} cuota(s) previa(s) sin tocar`, { nuevoSaldo, numCuotas, nuevoTotalFinanciado });
 
-      showToast('Crédito actualizado — cuotas recalculadas');
+      showToast('Crédito actualizado — cuotas pendientes recalculadas');
       closeModal('modal-editar-credito');
       CREDITO_EDITANDO = null;
       await Promise.allSettled([refrescarTodo(), abrirDetalleCredito(credito.id)]);

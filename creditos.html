@@ -1629,15 +1629,16 @@
 <div class="modal-overlay" id="modal-editar-credito" onclick="if(event.target===this)closeModal('modal-editar-credito')">
   <div class="modal-box">
     <div class="modal-header">
-      <h3>Editar crédito</h3>
+      <h3>Renegociar saldo restante</h3>
       <button class="modal-close" onclick="closeModal('modal-editar-credito')">&times;</button>
     </div>
     <div class="modal-body">
+      <p id="ec-resumen-pagadas" style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;padding:10px 12px;background:var(--bg-app);border-radius:8px"></p>
       <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
-        Esto vuelve a calcular todas las cuotas desde cero. Solo se puede hacer porque este crédito todavía no tiene ningún pago registrado.
+        Usa esto cuando el cliente acuerde pagar distinto a lo planeado (menos, más, o en otro plazo). Solo se recalculan las cuotas que faltan.
       </p>
       <div class="form-group">
-        <label>Monto financiado (capital)</label>
+        <label>Nuevo saldo a pagar (lo que falta)</label>
         <input type="number" class="form-input" id="ec-capital" min="0.01" step="0.01"/>
       </div>
       <div class="form-row" id="ec-fila-interes" style="display:none">
@@ -1648,7 +1649,7 @@
       </div>
       <div class="form-row">
         <div>
-          <label>Número de cuotas</label>
+          <label>Cuotas restantes</label>
           <input type="number" class="form-input" id="ec-num-cuotas" min="1" step="1"/>
         </div>
         <div>
@@ -1661,7 +1662,7 @@
         </div>
       </div>
       <div class="form-group">
-        <label>Fecha de inicio</label>
+        <label>Fecha de la próxima cuota</label>
         <input type="date" class="form-input" id="ec-fecha-inicio"/>
       </div>
     </div>
