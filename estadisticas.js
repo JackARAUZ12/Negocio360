@@ -28,6 +28,7 @@ function parseFechaSegura(input) {
   const d = new Date(str + 'T12:00:00');
   return isNaN(d.getTime()) ? null : d;
 }
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -195,19 +196,22 @@ function rangoPeriodo() {
 function rangoPeriodoAnterior() {
   const hoy = new Date();
 
-  // FIX RAREZA: "mes" y "año" son períodos anclados al calendario (van del
-  // día 1 hasta hoy), así que su "período anterior" debe ser el mes/año
-  // calendario anterior COMPLETO — no una ventana de la misma cantidad de
-  // días. Antes, el día 1 de cada mes, rangoPeriodo() daba un rango de un
-  // solo día (ej: 1 ago – 1 ago), y esta función restaba esa misma cantidad
-  // de días (1) hacia atrás, comparando "hoy" contra "ayer" en vez de
-  // "este mes" contra "el mes pasado completo". Esto hacía que las
-  // variaciones (%) mostradas en Estadísticas el día 1 de cada mes fueran
-  // erráticas y engañosas.
+  // FIX: antes se comparaba "los pocos días que van de este mes" contra
+  // "el mes anterior COMPLETO" — eso hacía que el día 3 de cada mes,
+  // por ejemplo, se comparraran 3 días de ventas contra 31 días de
+  // ventas del mes pasado, saliendo una caída enorme y falsa. Ahora se
+  // compara siempre el MISMO tramo de días: del 1 al día de hoy de
+  // este mes, contra del 1 al mismo número de día del mes anterior —
+  // manzanas con manzanas, sin importar en qué día del mes estemos.
   if (EST.periodo === 'mes') {
     const y = hoy.getFullYear(), m = hoy.getMonth(); // m es 0-indexado
+    const diaHoy = hoy.getDate();
     const desdeAnt = new Date(y, m - 1, 1);
-    const hastaAnt = new Date(y, m, 0); // día 0 del mes actual = último día del mes anterior
+    const ultimoDiaMesAnt = new Date(y, m, 0).getDate();
+    // Si el mes anterior tiene menos días que el actual (ej: hoy es 31
+    // y el mes pasado tuvo 30 o 28), se limita al último día real de
+    // ese mes en vez de desbordarse al mes siguiente.
+    const hastaAnt = new Date(y, m - 1, Math.min(diaHoy, ultimoDiaMesAnt));
     return { from: ymd(desdeAnt), to: ymd(hastaAnt) };
   }
   if (EST.periodo === 'anio') {
@@ -253,7 +257,7 @@ async function cargarTodo() {
     // solo se traía "total" (con IVA incluido), así que la comparación de
     // tendencia de ingresos no era manzanas-con-manzanas frente al período
     // actual (que sí descuenta el IVA más abajo).
-    sb.from('ventas').select('total,impuesto,costo_total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', anterior.from).lte('fecha', anterior.to + 'T23:59:59'),
+    sb.from('ventas').select('total,impuesto,costo_total,fecha').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', anterior.from).lte('fecha', anterior.to + 'T23:59:59'),
     sb.from('compras').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to),
     sb.from('gastos').select('*').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', from).lte('fecha', to),
     sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', anterior.from).lte('fecha', anterior.to),
@@ -334,6 +338,22 @@ function saldoCajaActual(d) {
 /* ============================================================
    CÁLCULOS: SALUD FINANCIERA
    ============================================================ */
+// Determina en qué tramo del mes estamos (solo aplica cuando el
+// período visible es "mes") — para que el sistema hable con el tono
+// correcto: al iniciar el mes no debe sonar alarmante con pocos días
+// de información, y hacia el final sí puede comparar de frente.
+function etapaDelMes() {
+  if (EST.periodo !== 'mes') return { tramo: 'completo', dia: null, diasEnMes: null };
+  const hoy = new Date();
+  const dia = hoy.getDate();
+  const diasEnMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  let tramo;
+  if (dia <= 10) tramo = 'inicio';
+  else if (dia <= 20) tramo = 'medio';
+  else tramo = 'final';
+  return { tramo, dia, diasEnMes };
+}
+
 function calcularSalud() {
   const d = EST.data;
 
@@ -383,9 +403,16 @@ function calcularSalud() {
   const saldoCaja = saldoCajaActual(d);
 
   // Puntaje 0-100: 40% margen, 25% tendencia de ingresos, 20% morosidad (invertida), 15% liquidez
+  // Al inicio del mes, la tendencia se calcula con muy pocos días de
+  // información y puede ser errática — se le baja el peso a la mitad
+  // para que el puntaje general no se vea artificialmente mal (o bien)
+  // solo por el arranque. A mitad de mes ya pesa un poco más, y a
+  // partir del día 21 pesa completo, como siempre.
+  const etapa = etapaDelMes();
+  const pesoTendencia = etapa.tramo === 'inicio' ? 0.5 : etapa.tramo === 'medio' ? 0.75 : 1;
   let score = 50;
   score += Math.max(-25, Math.min(25, margen * 0.6));
-  score += Math.max(-15, Math.min(15, tendenciaIngresos * 0.3));
+  score += Math.max(-15, Math.min(15, tendenciaIngresos * 0.3 * pesoTendencia));
   score -= Math.max(0, Math.min(20, morosidad * 0.5));
   score += saldoCaja > 0 ? 10 : (saldoCaja < 0 ? -10 : 0);
   score = Math.max(0, Math.min(100, Math.round(score)));
@@ -425,7 +452,7 @@ function renderSalud() {
         <div class="salud-factor"><span class="dot ${s.margen >= 15 ? 'dot-ok' : (s.margen >= 0 ? 'dot-warn' : 'dot-bad')}"></span>
           Margen neto del período: <strong style="margin-left:4px">${fmtPct(s.margen)}</strong></div>
         <div class="salud-factor"><span class="dot ${s.tendenciaIngresos >= 0 ? 'dot-ok' : 'dot-bad'}"></span>
-          Ingresos vs. período anterior: <strong style="margin-left:4px">${s.tendenciaIngresos >= 0 ? '+' : ''}${fmtPct(s.tendenciaIngresos)}</strong></div>
+          ${etapaDelMes().tramo === 'inicio' ? `Ritmo vs. el mismo arranque del mes pasado (día 1–${etapaDelMes().dia})` : etapaDelMes().tramo === 'medio' ? `Ritmo a mitad de mes vs. mes pasado (día 1–${etapaDelMes().dia})` : 'Ingresos vs. período anterior'}: <strong style="margin-left:4px">${s.tendenciaIngresos >= 0 ? '+' : ''}${fmtPct(s.tendenciaIngresos)}</strong></div>
         <div class="salud-factor"><span class="dot ${s.morosidad <= 10 ? 'dot-ok' : (s.morosidad <= 30 ? 'dot-warn' : 'dot-bad')}"></span>
           Cuotas de crédito vencidas: <strong style="margin-left:4px">${s.cuotasVencidas.length}</strong></div>
         <div class="salud-factor"><span class="dot ${s.saldoCaja >= 0 ? 'dot-ok' : 'dot-bad'}"></span>
@@ -435,6 +462,9 @@ function renderSalud() {
   `;
 
   renderChartIngresosEgresos();
+  renderChartRitmoAcumulado();
+  renderMejorPeorDiaSemana();
+  renderMetodosPago();
   renderInsightsSalud(s);
 }
 
@@ -450,7 +480,26 @@ function renderInsightsSalud(s) {
     items.push({ icon: '🔴', bg: 'var(--danger-soft)', title: 'Estás gastando más de lo que ganas', text: `En este período tus egresos superaron tus ingresos por ${fmt(Math.abs(s.ingresos - s.egresos))}. Si esto se repite el próximo período, revisa gastos que puedas reducir o pausar.` });
   }
 
-  if (s.tendenciaIngresos > 5) {
+  const etapa = etapaDelMes();
+
+  if (etapa.tramo === 'inicio') {
+    // Primeros 10 días: nunca se habla en tono de veredicto — apenas
+    // hay unos días de información, así que se enfoca en el RITMO,
+    // sin sonar alarmante aunque vaya por debajo del mes pasado.
+    if (s.tendenciaIngresos >= 0) {
+      items.push({ icon: '🌱', bg: 'var(--accent-soft)', title: `Arrancando bien el mes (día ${etapa.dia} de ${etapa.diasEnMes})`, text: `Vas ${fmtPct(s.tendenciaIngresos)} arriba del mismo arranque del mes pasado. Todavía es temprano para sacar conclusiones — sigue así los próximos días.` });
+    } else {
+      items.push({ icon: '🌱', bg: 'var(--accent-soft)', title: `Así arranca el mes (día ${etapa.dia} de ${etapa.diasEnMes})`, text: `Vas ${fmtPct(Math.abs(s.tendenciaIngresos))} por debajo del mismo arranque del mes pasado, pero apenas van ${etapa.dia} días — es muy pronto para preocuparse. Vale la pena revisarlo de nuevo a mitad de mes.` });
+    }
+  } else if (etapa.tramo === 'medio') {
+    // Días 11-20: un chequeo de mitad de mes, con algo más de
+    // seguridad que al inicio, pero todavía sin ser un veredicto final.
+    if (s.tendenciaIngresos >= 0) {
+      items.push({ icon: '📊', bg: 'var(--accent-soft)', title: `A mitad de mes, vas mejor que el mes pasado`, text: `Llevas ${fmtPct(s.tendenciaIngresos)} más que el mismo tramo del mes anterior (día 1–${etapa.dia}). Si mantienes el ritmo, el mes debería cerrar mejor que el anterior.` });
+    } else {
+      items.push({ icon: '📊', bg: 'var(--warning-soft)', title: `A mitad de mes, vas algo más lento que el mes pasado`, text: `Llevas ${fmtPct(Math.abs(s.tendenciaIngresos))} menos que el mismo tramo del mes anterior. Todavía quedan días para repuntar — es buen momento para una promoción o para contactar clientes frecuentes.` });
+    }
+  } else if (s.tendenciaIngresos > 5) {
     items.push({ icon: '📈', bg: 'var(--accent-soft)', title: 'Tus ventas están creciendo', text: `Vendiste ${fmtPct(s.tendenciaIngresos)} más que en el período anterior. Si identificas qué producto o canal impulsó esto, puedes repetir la estrategia.` });
   } else if (s.tendenciaIngresos < -5) {
     items.push({ icon: '📉', bg: 'var(--danger-soft)', title: 'Tus ventas bajaron respecto al período anterior', text: `Cayeron ${fmtPct(Math.abs(s.tendenciaIngresos))}. Puede ser estacional, pero conviene revisar si algún cliente frecuente dejó de comprar o si hubo menos tráfico.` });
@@ -510,6 +559,134 @@ function renderChartIngresosEgresos() {
       scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } },
     },
   });
+}
+
+// Compara el ritmo ACUMULADO de ventas, día por día del mes, contra el
+// mismo tramo del mes anterior — así se ve visualmente si este mes va
+// más rápido o más lento, en vez de solo un porcentaje frío. Solo
+// aplica cuando el período visible es "mes".
+function renderChartRitmoAcumulado() {
+  const ctx = document.getElementById('chart-ritmo-acumulado');
+  if (!ctx) return;
+  if (EST.charts.ritmoAcumulado) EST.charts.ritmoAcumulado.destroy();
+  if (EST.periodo !== 'mes') { ctx.parentElement.style.display = 'none'; return; }
+  ctx.parentElement.style.display = '';
+
+  const d = EST.data;
+  const etapa = etapaDelMes();
+  const porDiaActual = {};
+  d.ventas.forEach(v => {
+    const dt = parseFechaSegura(v.fecha); if (!dt) return;
+    const dia = dt.getDate();
+    porDiaActual[dia] = (porDiaActual[dia] || 0) + (parseFloat(v.total||0) - parseFloat(v.impuesto||0));
+  });
+  const porDiaAnterior = {};
+  (d.ventasAnt || []).forEach(v => {
+    const dt = parseFechaSegura(v.fecha); if (!dt) return;
+    const dia = dt.getDate();
+    porDiaAnterior[dia] = (porDiaAnterior[dia] || 0) + (parseFloat(v.total||0) - parseFloat(v.impuesto||0));
+  });
+
+  const labels = [];
+  const acumActual = [];
+  const acumAnterior = [];
+  let sumaAct = 0, sumaAnt = 0;
+  for (let dia = 1; dia <= etapa.diasEnMes; dia++) {
+    labels.push(String(dia));
+    sumaAct += porDiaActual[dia] || 0;
+    sumaAnt += porDiaAnterior[dia] || 0;
+    acumActual.push(dia <= etapa.dia ? round2(sumaAct) : null);
+    acumAnterior.push(round2(sumaAnt));
+  }
+
+  EST.charts.ritmoAcumulado = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Este mes (acumulado)', data: acumActual, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.08)', fill: true, tension: 0.3, spanGaps: false },
+        { label: 'Mes anterior (acumulado)', data: acumAnterior, borderColor: '#9ca3af', borderDash: [5,4], backgroundColor: 'transparent', fill: false, tension: 0.3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { title: { display: true, text: 'Día del mes' }, grid: { display: false } } },
+    },
+  });
+}
+
+// ¿Qué día de la semana vendes más, y cuál menos? Útil para decidir
+// horarios, promociones o refuerzo de personal.
+function renderMejorPeorDiaSemana() {
+  const el = document.getElementById('mejor-peor-dia');
+  if (!el) return;
+  const d = EST.data;
+  const nombresDias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const totalPorDia = [0,0,0,0,0,0,0];
+  const cantPorDia  = [0,0,0,0,0,0,0];
+  d.ventas.forEach(v => {
+    const dt = parseFechaSegura(v.fecha); if (!dt) return;
+    const dow = dt.getDay();
+    totalPorDia[dow] += parseFloat(v.total||0) - parseFloat(v.impuesto||0);
+    cantPorDia[dow]++;
+  });
+  if (!d.ventas.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay ventas suficientes en este período para calcularlo.</p>';
+    return;
+  }
+  let mejorIdx = 0, peorIdx = 0;
+  for (let i = 1; i < 7; i++) {
+    if (totalPorDia[i] > totalPorDia[mejorIdx]) mejorIdx = i;
+    if (totalPorDia[i] < totalPorDia[peorIdx]) peorIdx = i;
+  }
+  el.innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div style="flex:1 1 200px;background:var(--success-soft);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11.5px;color:var(--text-muted);text-transform:uppercase;font-weight:700">Tu mejor día</div>
+        <div style="font-size:18px;font-weight:800;margin:4px 0">${nombresDias[mejorIdx]}</div>
+        <div style="font-size:12.5px;color:var(--text-secondary)">${fmt(totalPorDia[mejorIdx])} en ${cantPorDia[mejorIdx]} venta(s)</div>
+      </div>
+      <div style="flex:1 1 200px;background:var(--warning-soft);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11.5px;color:var(--text-muted);text-transform:uppercase;font-weight:700">Tu día más flojo</div>
+        <div style="font-size:18px;font-weight:800;margin:4px 0">${nombresDias[peorIdx]}</div>
+        <div style="font-size:12.5px;color:var(--text-secondary)">${fmt(totalPorDia[peorIdx])} en ${cantPorDia[peorIdx]} venta(s)</div>
+      </div>
+    </div>`;
+}
+
+// Cuánto entra por cada método de pago — para saber si conviene
+// facilitar más opciones (ej. si casi todo es efectivo, tal vez
+// ofrecer transferencia atraería más clientes).
+function renderMetodosPago() {
+  const el = document.getElementById('metodos-pago-desglose');
+  if (!el) return;
+  const d = EST.data;
+  const porMetodo = {};
+  d.ventas.forEach(v => {
+    const metodo = v.metodo_pago_nombre || 'Sin especificar';
+    porMetodo[metodo] = (porMetodo[metodo] || 0) + (parseFloat(v.total||0));
+  });
+  const entradas = Object.entries(porMetodo).sort((a,b) => b[1]-a[1]);
+  if (!entradas.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Sin ventas en este período.</p>';
+    return;
+  }
+  const totalGeneral = entradas.reduce((s,[,v]) => s+v, 0);
+  const colores = ['#6366f1','#22c55e','#f59e0b','#ec4899','#06b6d4','#8b5cf6'];
+  el.innerHTML = entradas.map(([metodo, monto], i) => {
+    const pct = totalGeneral ? (monto/totalGeneral*100) : 0;
+    return `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px">
+        <span style="font-weight:600">${esc(metodo)}</span>
+        <span style="color:var(--text-muted)">${fmt(monto)} · ${pct.toFixed(0)}%</span>
+      </div>
+      <div style="background:var(--bg-app);border-radius:6px;height:8px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${colores[i % colores.length]}"></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 /* ============================================================
