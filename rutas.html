@@ -1360,6 +1360,17 @@
   </div>
 </div>
 
+<!-- =====================================================
+     MODAL INCRUSTADO — Créditos/Ventas dentro de Rutas, sin salir
+     de la pantalla ni abrir ventanas nuevas.
+=================================================== -->
+<div id="vc-modal-embebido" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);flex-direction:column">
+  <div style="flex-shrink:0;padding:10px 14px;background:var(--bg-surface);display:flex;justify-content:flex-end">
+    <button class="btn-secondary" onclick="cerrarEmbebido()">✕ Cerrar sin registrar</button>
+  </div>
+  <iframe id="vc-iframe-embebido" src="about:blank" style="flex:1;width:100%;border:none;background:var(--bg-app)"></iframe>
+</div>
+
 <style>
   .rt-tipo-card{border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:.15s}
   .rt-tipo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
