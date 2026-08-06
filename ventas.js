@@ -3916,6 +3916,18 @@ async function initVentas() {
     if (params.get('action')==='new') {
       setTimeout(abrirNuevaVenta, 400);
     }
+    // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
+    // Venta con ese cliente ya elegido, mismo flujo de siempre.
+    const rutaClienteId = params.get('ruta_cliente');
+    if (rutaClienteId) {
+      setTimeout(() => {
+        abrirNuevaVenta();
+        setTimeout(() => {
+          selectClienteOpcion('existente');
+          seleccionarCliente(rutaClienteId);
+        }, 200);
+      }, 400);
+    }
 
   } catch(err) {
     console.error('initVentas:', err);
