@@ -733,6 +733,40 @@ async function anularVenta() {
 
     if (error) throw error;
 
+    // El IVA que se registró al vender es una obligación fiscal ligada
+    // a ESA venta — si la venta se anula, ya no se debe ese IVA, sin
+    // importar si el dinero se devolvió o no. Se revierte SIEMPRE,
+    // con un registro nuevo que resta (nunca se borra el original,
+    // eso rompería el historial de Impuestos).
+    try {
+      const { data: movIva } = await sb.from('movimientos_impuestos')
+        .select('monto').eq('referencia_venta_id', id).eq('auth_user_id', S.userId)
+        .eq('tipo_movimiento', 'IVA_VENTA').gt('monto', 0).maybeSingle();
+
+      if (movIva && Number(movIva.monto) > 0) {
+        const { data: ultImp } = await sb.from('movimientos_impuestos')
+          .select('saldo_resultante').eq('auth_user_id', S.userId)
+          .order('created_at', { ascending:false }).limit(1).maybeSingle();
+        const saldoAntImp = ultImp ? Number(ultImp.saldo_resultante) : 0;
+        const montoRevertir = round2(Number(movIva.monto));
+        const saldoResImp = round2(saldoAntImp - montoRevertir);
+        const ventaInfoImp = S.ventas.find(v => v.id === id);
+
+        await sb.from('movimientos_impuestos').insert({
+          auth_user_id:       S.userId,
+          tipo_movimiento:    'IVA_VENTA',
+          concepto:           `Reverso de IVA por anulación de venta ${ventaInfoImp?.numero_venta || ''}`.trim(),
+          monto:              -montoRevertir,
+          saldo_anterior:     saldoAntImp,
+          saldo_resultante:   saldoResImp,
+          referencia_venta_id: id,
+          fecha:              todayISO(),
+        });
+      }
+    } catch (eImp) {
+      console.warn('No se pudo revertir el IVA en Impuestos:', eImp);
+    }
+
     // Si el usuario marcó la casilla, se registra en Caja el egreso
     // reverso — nunca se BORRA el ingreso original de la venta (eso
     // rompería el historial), se registra un movimiento nuevo que lo
