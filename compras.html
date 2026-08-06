@@ -1005,6 +1005,8 @@
     }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -1182,6 +1184,10 @@
           <p>Abastece tu inventario y controla tus compras a proveedores.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="mostrarSeccionOrdenes()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Órdenes de Compra
+          </button>
           <button class="btn-primary" onclick="abrirNuevaCompra()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva Compra
@@ -1189,6 +1195,7 @@
         </div>
       </div>
 
+      <div id="seccion-compras">
       <!-- KPI CARDS -->
       <div class="kpi-grid">
         <div class="kpi-card fade-in stagger-1">
@@ -1348,6 +1355,56 @@
           </div>
         </div>
       </div>
+      </div><!-- /seccion-compras -->
+
+      <!-- ===== SECCIÓN: ÓRDENES DE COMPRA ===== -->
+      <div id="seccion-ordenes" style="display:none">
+        <div class="greeting-row fade-in">
+          <div class="greeting-text">
+            <h1>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>Órdenes de Compra</span>
+            </h1>
+            <p>Pide una cotización o solicitud a tu proveedor — no descuenta Caja ni aumenta inventario hasta que la conviertas en una compra real.</p>
+          </div>
+          <div class="greeting-actions">
+            <button class="btn-secondary" onclick="mostrarSeccionCompras()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/></svg>
+              Ver Compras
+            </button>
+            <button class="btn-primary" onclick="abrirNuevaOrdenCompra()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nueva Orden
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-card fade-in" style="background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px">
+          <div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+            💡 Una orden es solo una solicitud/cotización para tu proveedor — se puede imprimir en PDF. Cuando ya hayas comprado de verdad, dale "Convertir en compra" y ahí sí se descuenta Caja y aumenta el inventario, igual que una Compra normal.
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>N° Orden</th>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Productos</th>
+                <th class="th-right">Total</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="ordenes-tbody">
+              <tr><td colspan="7" class="empty-cell">Cargando órdenes…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-hint">← Desliza la tabla para ver más columnas →</div>
+      </div>
 
       <!-- ===== PANEL: PROVEEDORES ===== -->
       <div class="section-panel" data-section="proveedores" style="display:none">
@@ -1408,7 +1465,7 @@
     <div class="modal-header" style="flex-shrink:0">
       <span class="modal-title">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline;vertical-align:middle;margin-right:6px"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-        Nueva Compra
+        <span id="nc-modal-titulo-texto">Nueva Compra</span>
       </span>
       <button class="modal-close" onclick="closeModal('modal-nueva-compra')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1779,7 +1836,7 @@
         </button>
         <button id="nc-btn-save" class="btn-primary" onclick="guardarCompra()" style="display:none;background:var(--success)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          Guardar compra
+          <span id="nc-btn-save-texto">Guardar compra</span>
           <span id="nc-total-preview" style="opacity:0.8;font-size:12px"></span>
         </button>
         <button id="nc-btn-comprar-nuevo" class="btn-primary" onclick="crearProductoYComprar()" style="display:none;background:var(--success)">
