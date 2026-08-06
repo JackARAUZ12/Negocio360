@@ -2743,9 +2743,34 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.text('No hay columnas seleccionadas para Créditos (revisa "Configurar exportaciones").', 10, startY);
       startY += 10;
     } else {
-      const rows = filasCliente.map(f => filaAPDF(filaCreditoPago(f), cols));
+      // Modo "todos los clientes": se inserta una fila separadora con
+      // el nombre de cada cliente antes de sus cuotas — antes una
+      // terminaba y la otra empezaba sin ninguna división visible.
+      const filasSeparadoras = new Set();
+      let rows;
+      if (!clienteId) {
+        rows = [];
+        let clienteAnterior = null;
+        filasCliente.forEach(f => {
+          if (f.cliente !== clienteAnterior) {
+            rows.push([`👤 ${f.cliente}`, ...Array(cols.length-1).fill('')]);
+            filasSeparadoras.add(rows.length - 1);
+            clienteAnterior = f.cliente;
+          }
+          rows.push(filaAPDF(filaCreditoPago(f), cols));
+        });
+      } else {
+        rows = filasCliente.map(f => filaAPDF(filaCreditoPago(f), cols));
+      }
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], theme:'striped',
+        didParseCell: (data) => {
+          if (data.section === 'body' && filasSeparadoras.has(data.row.index)) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [237, 233, 254];
+            data.cell.styles.textColor = [88, 28, 135];
+          }
+        },
         headStyles:{fillColor:[168,85,247]}, margin:{left:10,right:10}, styles:{fontSize:8} });
       startY = doc.lastAutoTable.finalY + 10;
     }
@@ -2912,7 +2937,25 @@ function hojaCreditosXLSX(wb, clienteId, clienteNombre) {
     appendSheetXLSX(wb, 'Créditos', ['Aviso'], [['No hay columnas seleccionadas para Créditos (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = filasCliente.map(f => filaAXLSX(filaCreditoPago(f), cols));
+  // Modo "todos los clientes": se inserta "▶ NOMBRE" + una fila en
+  // blanco antes de las cuotas de cada cliente — Excel gratuito no
+  // permite poner negrita/color por fila fácilmente, así que esta es
+  // la forma confiable de que la división se note igual.
+  let rows;
+  if (!clienteId) {
+    rows = [];
+    let clienteAnterior = null;
+    filasCliente.forEach(f => {
+      if (f.cliente !== clienteAnterior) {
+        if (clienteAnterior !== null) rows.push(Array(cols.length).fill(''));
+        rows.push([`▶ ${f.cliente}`, ...Array(cols.length-1).fill('')]);
+        clienteAnterior = f.cliente;
+      }
+      rows.push(filaAXLSX(filaCreditoPago(f), cols));
+    });
+  } else {
+    rows = filasCliente.map(f => filaAXLSX(filaCreditoPago(f), cols));
+  }
   appendSheetXLSX(wb, 'Créditos', headersXLSX(cols),
     rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
