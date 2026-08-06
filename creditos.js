@@ -1216,6 +1216,24 @@
             console.warn('No se pudo descontar el stock de los componentes del combo:', it.nombre, eCombo);
           }
         }
+
+        // Un crédito por venta SÍ es una compra real del cliente — se
+        // suma a su ficha igual que ya pasa en Ventas y Proformas. Antes
+        // esto no se hacía, así que el "total comprado" de un cliente
+        // que compraba a crédito se veía incompleto (le faltaba justo
+        // eso: sus compras a crédito).
+        try {
+          const { data: cliActualizar } = await _sb.from('clientes')
+            .select('total_compras, num_compras').eq('id', clienteId).eq('auth_user_id', CS.userId).maybeSingle();
+          if (cliActualizar) {
+            await _sb.from('clientes').update({
+              total_compras: round2(Number(cliActualizar.total_compras||0) + total),
+              num_compras: Number(cliActualizar.num_compras||0) + 1,
+            }).eq('id', clienteId).eq('auth_user_id', CS.userId);
+          }
+        } catch (eCli) {
+          console.warn('No se pudo actualizar el contador del cliente:', eCli);
+        }
       }
 
       // 2) Producto financiero: el usuario solo escribe el nombre; se reutiliza o se crea
