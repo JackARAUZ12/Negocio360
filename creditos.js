@@ -1466,6 +1466,13 @@
       showToast('Pago registrado correctamente', 'success');
       closeModal('modal-registrar-pago');
 
+      // Si esta pantalla se abrió incrustada desde Rutas (iframe), se
+      // le avisa al padre que el pago sí se registró — Rutas nunca
+      // calcula el pago, solo reacciona quando de verdad ya pasó.
+      if (window.self !== window.top) {
+        try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto, nota: observaciones }, '*'); } catch(e) {}
+      }
+
       const cliente = CS.clientes.find(c => c.id === credito.cliente_id);
       const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
       mostrarComprobante({
