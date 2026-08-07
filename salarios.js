@@ -35,6 +35,8 @@ let STATE = {
   adelantosPendientes: [],
   bonos: [],        // [{descripcion, monto}]
   deducciones: [],  // [{descripcion, monto}]
+  conceptos: [],
+  aportesPatronales: [],
 
   ultimoComprobante: null,
 };
@@ -195,13 +197,25 @@ async function loadEmpleados() {
 function abrirNuevoEmpleado() {
   document.getElementById('emp-modal-title').textContent = 'Nuevo empleado';
   document.getElementById('emp-id').value = '';
-  ['emp-nombre','emp-cargo','emp-telefono','emp-correo','emp-observaciones'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+  ['emp-nombre','emp-cargo','emp-telefono','emp-correo','emp-observaciones',
+   'emp-cedula','emp-fecha-nacimiento','emp-direccion','emp-contacto-nombre','emp-contacto-telefono',
+   'emp-departamento','emp-fecha-fin-contrato'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   document.getElementById('emp-fecha-ingreso').value = todayISO();
   document.getElementById('emp-tipo-salario').value = 'mensual';
   document.getElementById('emp-salario').value = '';
   document.getElementById('emp-estado').value = 'activo';
+  document.getElementById('emp-pais').value = 'NI';
+  document.getElementById('emp-tipo-contrato').value = 'indefinido';
+  document.getElementById('emp-fecha-fin-wrap').style.display = 'none';
+  poblarSelectReportaA(null);
   document.getElementById('emp-error').textContent = '';
   openModal('modal-empleado');
+}
+function poblarSelectReportaA(excluirId) {
+  const sel = document.getElementById('emp-reporta-a');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Nadie / gerencia —</option>' +
+    STATE.empleados.filter(e => e.id !== excluirId).map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('');
 }
 function abrirEditarEmpleado(id) {
   const emp = STATE.empleados.find(e => e.id === id);
@@ -217,6 +231,18 @@ function abrirEditarEmpleado(id) {
   document.getElementById('emp-salario').value = emp.salario || '';
   document.getElementById('emp-estado').value = emp.estado || 'activo';
   document.getElementById('emp-observaciones').value = emp.observaciones || '';
+  document.getElementById('emp-cedula').value = emp.cedula || '';
+  document.getElementById('emp-fecha-nacimiento').value = emp.fecha_nacimiento || '';
+  document.getElementById('emp-direccion').value = emp.direccion || '';
+  document.getElementById('emp-contacto-nombre').value = emp.contacto_emergencia_nombre || '';
+  document.getElementById('emp-contacto-telefono').value = emp.contacto_emergencia_telefono || '';
+  document.getElementById('emp-pais').value = emp.pais || 'NI';
+  document.getElementById('emp-departamento').value = emp.departamento || '';
+  document.getElementById('emp-tipo-contrato').value = emp.tipo_contrato || 'indefinido';
+  document.getElementById('emp-fecha-fin-contrato').value = emp.fecha_fin_contrato || '';
+  document.getElementById('emp-fecha-fin-wrap').style.display = emp.tipo_contrato === 'plazo_fijo' ? '' : 'none';
+  poblarSelectReportaA(emp.id);
+  document.getElementById('emp-reporta-a').value = emp.reporta_a || '';
   document.getElementById('emp-error').textContent = '';
   openModal('modal-empleado');
 }
@@ -233,6 +259,7 @@ async function guardarEmpleado() {
   if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
   if (isNaN(salario) || salario < 0) { errEl.textContent = 'Indica un salario válido.'; return; }
 
+  const tipoContrato = document.getElementById('emp-tipo-contrato').value;
   const payload = {
     nombre, cargo: document.getElementById('emp-cargo').value.trim() || null,
     telefono: document.getElementById('emp-telefono').value.trim() || null,
@@ -240,6 +267,16 @@ async function guardarEmpleado() {
     fecha_ingreso: fechaIngreso, tipo_salario: tipoSalario, salario,
     estado: document.getElementById('emp-estado').value,
     observaciones: document.getElementById('emp-observaciones').value.trim() || null,
+    cedula: document.getElementById('emp-cedula').value.trim() || null,
+    fecha_nacimiento: document.getElementById('emp-fecha-nacimiento').value || null,
+    direccion: document.getElementById('emp-direccion').value.trim() || null,
+    contacto_emergencia_nombre: document.getElementById('emp-contacto-nombre').value.trim() || null,
+    contacto_emergencia_telefono: document.getElementById('emp-contacto-telefono').value.trim() || null,
+    pais: document.getElementById('emp-pais').value || 'NI',
+    departamento: document.getElementById('emp-departamento').value.trim() || null,
+    reporta_a: document.getElementById('emp-reporta-a').value || null,
+    tipo_contrato: tipoContrato,
+    fecha_fin_contrato: tipoContrato === 'plazo_fijo' ? (document.getElementById('emp-fecha-fin-contrato').value || null) : null,
   };
 
   setBtnLoading('btn-guardar-empleado', true);
@@ -254,6 +291,21 @@ async function guardarEmpleado() {
       payload.updated_at = new Date().toISOString();
       const { error } = await sbClient.from('empleados').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
       if (error) throw error;
+
+      // Nunca se pierde el dato anterior — si cambia el salario o el
+      // cargo, queda registrado en el historial del empleado.
+      const cambios = [];
+      if (emp && Number(emp.salario) !== Number(salario)) cambios.push({ campo:'salario', anterior:String(emp.salario), nuevo:String(salario) });
+      if (emp && (emp.cargo||'') !== (payload.cargo||'')) cambios.push({ campo:'cargo', anterior:emp.cargo||'—', nuevo:payload.cargo||'—' });
+      if (cambios.length) {
+        try {
+          await sbClient.from('empleados_historial_cambios').insert(cambios.map(c => ({
+            auth_user_id: STATE.userId, empleado_id: id, campo: c.campo,
+            valor_anterior: c.anterior, valor_nuevo: c.nuevo,
+            usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+          })));
+        } catch (eHist) { console.warn('No se pudo registrar el historial:', eHist); }
+      }
       showToast('Empleado actualizado');
     } else {
       payload.proximo_pago = sumarPeriodoSalario(fechaIngreso || todayISO(), tipoSalario, 1);
@@ -508,6 +560,21 @@ async function abrirPagarDesdeTabla(empleadoId) {
   STATE.empleadoActual = emp;
   STATE.bonos = [];
   STATE.deducciones = [];
+  STATE.aportesPatronales = [];
+
+  // Se calculan solos los conceptos activos configurados en "Conceptos
+  // de Nómina" para el país de este empleado — quedan como deducciones
+  // normales (editables/quitables), nunca se imponen sin que se vean.
+  if (!STATE.conceptos.length) await cargarConceptos();
+  const base = Number(emp.salario||0);
+  STATE.conceptos.filter(c => c.activo && c.tipo === 'deduccion').forEach(c => {
+    const monto = calcularConcepto(c, base);
+    if (monto > 0) STATE.deducciones.push({ descripcion: `${c.nombre} (automático)`, monto, esConcepto: true });
+  });
+  STATE.conceptos.filter(c => c.activo && c.tipo === 'aporte_patronal').forEach(c => {
+    const monto = calcularConcepto(c, base);
+    if (monto > 0) STATE.aportesPatronales.push({ descripcion: c.nombre, monto });
+  });
 
   document.getElementById('pg-sal-empleado-nombre').textContent = emp.nombre;
   document.getElementById('pg-sal-base').textContent = fmt(emp.salario);
@@ -521,6 +588,7 @@ async function abrirPagarDesdeTabla(empleadoId) {
   populateMetodosSelectSal();
   renderBonosSal();
   renderDeduccionesSal();
+  renderAportesPatronalesSal();
 
   try {
     const { data: adelantos } = await sbClient.from('empleados_adelantos').select('*')
@@ -597,6 +665,21 @@ function agregarDeduccionSal() {
 }
 function eliminarDeduccionSal(idx) { STATE.deducciones.splice(idx,1); renderDeduccionesSal(); recalcularTotalPagoSal(); }
 
+// Los aportes patronales son informativos aquí — el negocio los paga
+// aparte (no se le descuentan al empleado), así que no afectan el
+// total a pagar, pero sí quedan guardados para saber el costo real
+// de esa persona para el negocio.
+function renderAportesPatronalesSal() {
+  const cont = document.getElementById('pg-sal-aportes-lista');
+  if (!cont) return;
+  if (!STATE.aportesPatronales.length) { cont.parentElement.style.display = 'none'; return; }
+  cont.parentElement.style.display = '';
+  const total = STATE.aportesPatronales.reduce((s,a)=>s+a.monto,0);
+  cont.innerHTML = STATE.aportesPatronales.map(a => `
+    <div class="resumen-fila"><span class="resumen-label">${esc(a.descripcion)}</span><span class="resumen-val">${fmt(a.monto)}</span></div>
+  `).join('') + `<div class="resumen-fila" style="font-weight:700;border-top:1px solid var(--border);padding-top:6px;margin-top:4px"><span>Costo adicional para el negocio</span><span>${fmt(total)}</span></div>`;
+}
+
 function recalcularTotalPagoSal() {
   const emp = STATE.empleadoActual;
   if (!emp) return;
@@ -639,11 +722,13 @@ async function confirmarPagoSal() {
   setBtnLoading('btn-confirmar-pago-sal', true);
   try {
     const comprobanteNumero = `SAL-${Date.now().toString().slice(-8)}`;
+    const totalAportesPatronales = round2((STATE.aportesPatronales||[]).reduce((s,a)=>s+a.monto, 0));
     const { data: pago, error: errPago } = await sbClient.from('empleados_pagos').insert({
       auth_user_id: STATE.userId, empleado_id: emp.id, fecha,
       salario_base: base, bonificaciones: totalBonos, bonificaciones_detalle: STATE.bonos,
       deducciones: totalDeducciones, deducciones_detalle: STATE.deducciones,
       adelantos_descontados: totalAdelantos, total_pagado: total,
+      aportes_patronales: totalAportesPatronales, aportes_patronales_detalle: STATE.aportesPatronales||[],
       metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
       estado: 'pagado', comprobante_numero: comprobanteNumero,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
@@ -749,6 +834,193 @@ function setBtnLoading(id, loading) {
 /* =====================================================
    INIT
 ===================================================== */
+/* =====================================================
+   CONCEPTOS DE NÓMINA — motor genérico de deducciones/aportes.
+   Cada negocio configura los suyos según su país; el sistema no
+   asume ninguna ley específica de por sí, solo ofrece plantillas
+   opcionales como punto de partida.
+===================================================== */
+STATE.conceptos = [];
+
+async function abrirConceptosNomina() {
+  openModal('modal-conceptos-nomina');
+  await cargarConceptos();
+}
+async function cargarConceptos() {
+  try {
+    const { data } = await sbClient.from('nomina_conceptos').select('*')
+      .eq('auth_user_id', STATE.userId).order('orden');
+    STATE.conceptos = data || [];
+    renderConceptos();
+  } catch (e) { console.warn('cargarConceptos:', e); }
+}
+function renderConceptos() {
+  const tbody = document.getElementById('conceptos-tbody');
+  if (!tbody) return;
+  if (!STATE.conceptos.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Todavía no has configurado ningún concepto — carga una plantilla o agrega uno personalizado.</td></tr>`;
+    return;
+  }
+  const metodoLabel = { porcentaje: c => `${c.valor}%`, monto_fijo: c => fmt(c.valor), tabla_progresiva: () => 'Tabla progresiva' };
+  tbody.innerHTML = STATE.conceptos.map(c => `
+    <tr>
+      <td style="font-weight:600">${esc(c.nombre)}${c.obligatorio ? ' <span style="font-size:10.5px;color:var(--text-muted)">(por ley)</span>' : ''}</td>
+      <td>${c.tipo === 'deduccion' ? 'Deducción' : 'Aporte patronal'}</td>
+      <td>${metodoLabel[c.metodo_calculo] ? metodoLabel[c.metodo_calculo](c) : '—'}</td>
+      <td><label class="switch-mini"><input type="checkbox" ${c.activo?'checked':''} onchange="toggleConceptoActivo('${c.id}', this.checked)"/></label></td>
+      <td class="td-actions">
+        <button class="btn-icon" title="Editar" onclick="abrirEditarConcepto('${c.id}')">✏️</button>
+        <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="eliminarConcepto('${c.id}')">🗑️</button>
+      </td>
+    </tr>`).join('');
+}
+async function toggleConceptoActivo(id, activo) {
+  try {
+    await sbClient.from('nomina_conceptos').update({ activo, updated_at:new Date().toISOString() }).eq('id', id).eq('auth_user_id', STATE.userId);
+    const c = STATE.conceptos.find(x=>x.id===id); if (c) c.activo = activo;
+  } catch (e) { showToast('No se pudo actualizar', 'error'); }
+}
+async function eliminarConcepto(id) {
+  if (!confirm('¿Eliminar este concepto? Ya no se aplicará en los próximos pagos (los pagos ya hechos no cambian).')) return;
+  try {
+    await sbClient.from('nomina_conceptos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    showToast('Concepto eliminado');
+    await cargarConceptos();
+  } catch (e) { showToast('Error al eliminar', 'error'); }
+}
+
+// Plantillas por país — solo son un punto de partida editable, nunca
+// se aplican solas ni se imponen: el negocio elige cargarlas y puede
+// modificar o borrar cualquier concepto después.
+const PLANTILLAS_PAIS = {
+  NI: {
+    nombre: 'Nicaragua',
+    conceptos: [
+      { nombre: 'INSS Laboral', tipo: 'deduccion', metodo_calculo: 'porcentaje', valor: 7, obligatorio: true },
+      { nombre: 'INSS Patronal', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 22.5, obligatorio: true },
+      { nombre: 'IR sobre salarios', tipo: 'deduccion', metodo_calculo: 'tabla_progresiva', obligatorio: true,
+        tabla_progresiva: [
+          { hasta: 100000, tasa: 0 },
+          { hasta: 200000, tasa: 15 },
+          { hasta: 350000, tasa: 20 },
+          { hasta: 500000, tasa: 25 },
+          { hasta: null,   tasa: 30 },
+        ] },
+    ],
+  },
+};
+async function cargarPlantillaConceptos(pais) {
+  const plantilla = PLANTILLAS_PAIS[pais];
+  if (!plantilla) { showToast('Todavía no hay plantilla para ese país', 'error'); return; }
+  if (!confirm(`Se agregarán ${plantilla.conceptos.length} conceptos típicos de ${plantilla.nombre}. Podrás editarlos o borrarlos después. ¿Continuar?`)) return;
+  try {
+    const payload = plantilla.conceptos.map((c, i) => ({
+      auth_user_id: STATE.userId, nombre: c.nombre, tipo: c.tipo, metodo_calculo: c.metodo_calculo,
+      valor: c.valor || null, tabla_progresiva: c.tabla_progresiva || null,
+      obligatorio: c.obligatorio, activo: true, pais_plantilla: pais, orden: i,
+    }));
+    await sbClient.from('nomina_conceptos').insert(payload);
+    showToast(`Plantilla de ${plantilla.nombre} cargada`);
+    await cargarConceptos();
+  } catch (e) { showToast('Error al cargar la plantilla', 'error'); }
+}
+
+let CONCEPTO_TRAMOS = [];
+function abrirNuevoConcepto() {
+  document.getElementById('con-modal-title').textContent = 'Nuevo concepto';
+  document.getElementById('con-id').value = '';
+  document.getElementById('con-nombre').value = '';
+  document.getElementById('con-tipo').value = 'deduccion';
+  document.getElementById('con-metodo').value = 'porcentaje';
+  document.getElementById('con-valor').value = '';
+  document.getElementById('con-obligatorio').checked = false;
+  document.getElementById('con-error').textContent = '';
+  CONCEPTO_TRAMOS = [{ hasta: '', tasa: '' }];
+  toggleMetodoConceptoUI();
+  renderTramosConcepto();
+  openModal('modal-nuevo-concepto');
+}
+function abrirEditarConcepto(id) {
+  const c = STATE.conceptos.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('con-modal-title').textContent = 'Editar concepto';
+  document.getElementById('con-id').value = c.id;
+  document.getElementById('con-nombre').value = c.nombre;
+  document.getElementById('con-tipo').value = c.tipo;
+  document.getElementById('con-metodo').value = c.metodo_calculo;
+  document.getElementById('con-valor').value = c.valor || '';
+  document.getElementById('con-obligatorio').checked = !!c.obligatorio;
+  document.getElementById('con-error').textContent = '';
+  CONCEPTO_TRAMOS = c.tabla_progresiva && c.tabla_progresiva.length ? c.tabla_progresiva.map(t => ({ hasta: t.hasta ?? '', tasa: t.tasa })) : [{ hasta:'', tasa:'' }];
+  toggleMetodoConceptoUI();
+  renderTramosConcepto();
+  openModal('modal-nuevo-concepto');
+}
+function toggleMetodoConceptoUI() {
+  const metodo = document.getElementById('con-metodo').value;
+  document.getElementById('con-valor-wrap').style.display = metodo === 'tabla_progresiva' ? 'none' : '';
+  document.getElementById('con-tabla-wrap').style.display = metodo === 'tabla_progresiva' ? '' : 'none';
+  document.getElementById('con-valor-label').textContent = metodo === 'porcentaje' ? 'Porcentaje (%)' : 'Monto fijo';
+}
+function renderTramosConcepto() {
+  const cont = document.getElementById('con-tabla-tramos');
+  cont.innerHTML = CONCEPTO_TRAMOS.map((t, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <input type="number" placeholder="Hasta (vacío = sin límite)" value="${t.hasta}" style="flex:1" onchange="CONCEPTO_TRAMOS[${i}].hasta = this.value ? parseFloat(this.value) : null"/>
+      <input type="number" placeholder="Tasa %" value="${t.tasa}" style="width:90px" onchange="CONCEPTO_TRAMOS[${i}].tasa = parseFloat(this.value)||0"/>
+      <button type="button" class="btn-icon btn-icon-danger" onclick="CONCEPTO_TRAMOS.splice(${i},1); renderTramosConcepto();">🗑️</button>
+    </div>`).join('');
+}
+function agregarTramoConcepto() { CONCEPTO_TRAMOS.push({ hasta:'', tasa:'' }); renderTramosConcepto(); }
+
+async function guardarConcepto() {
+  const errEl = document.getElementById('con-error');
+  errEl.textContent = '';
+  const id = document.getElementById('con-id').value || null;
+  const nombre = document.getElementById('con-nombre').value.trim();
+  const tipo = document.getElementById('con-tipo').value;
+  const metodo = document.getElementById('con-metodo').value;
+  if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+
+  const payload = {
+    nombre, tipo, metodo_calculo: metodo,
+    valor: metodo !== 'tabla_progresiva' ? (parseFloat(document.getElementById('con-valor').value) || 0) : null,
+    tabla_progresiva: metodo === 'tabla_progresiva' ? CONCEPTO_TRAMOS.filter(t => t.tasa !== '' && t.tasa != null) : null,
+    obligatorio: document.getElementById('con-obligatorio').checked,
+    updated_at: new Date().toISOString(),
+  };
+  setBtnLoading('btn-guardar-concepto', true);
+  try {
+    if (id) {
+      await sbClient.from('nomina_conceptos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+    } else {
+      payload.activo = true; payload.orden = STATE.conceptos.length;
+      await sbClient.from('nomina_conceptos').insert({ auth_user_id: STATE.userId, ...payload });
+    }
+    showToast('Concepto guardado');
+    closeModal('modal-nuevo-concepto');
+    await cargarConceptos();
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-concepto', false);
+  }
+}
+
+// Aplica un concepto sobre un monto base — usado al calcular un pago.
+function calcularConcepto(concepto, montoBase) {
+  if (concepto.metodo_calculo === 'porcentaje') return round2(montoBase * (Number(concepto.valor)||0) / 100);
+  if (concepto.metodo_calculo === 'monto_fijo') return round2(Number(concepto.valor)||0);
+  if (concepto.metodo_calculo === 'tabla_progresiva') {
+    const tramos = concepto.tabla_progresiva || [];
+    for (const t of tramos) {
+      if (t.hasta == null || montoBase <= Number(t.hasta)) return round2(montoBase * (Number(t.tasa)||0) / 100);
+    }
+    return 0;
+  }
+  return 0;
+}
+
 async function initSalarios() {
   const savedTheme = localStorage.getItem('n360_theme') || 'light';
   applyTheme(savedTheme);

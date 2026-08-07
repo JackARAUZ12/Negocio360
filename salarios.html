@@ -1163,6 +1163,10 @@
           <p>Empleados, pagos de salario, adelantos y bonificaciones — todo sale de Caja al confirmarse.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="abrirConceptosNomina()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Conceptos de Nómina
+          </button>
           <button class="btn-primary" onclick="abrirNuevoEmpleado()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo empleado
@@ -1293,6 +1297,7 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="emp-id"/>
+      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:8px">Datos básicos</label>
       <div class="form-row">
         <div class="form-group"><label>Nombre completo *</label><input type="text" id="emp-nombre" placeholder="Ej: María Gómez"/></div>
         <div class="form-group"><label>Cargo</label><input type="text" id="emp-cargo" placeholder="Ej: Vendedora"/></div>
@@ -1317,12 +1322,126 @@
           </select>
         </div>
       </div>
+
+      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin:16px 0 8px">Datos personales</label>
+      <div class="form-row">
+        <div class="form-group"><label>Cédula / identificación</label><input type="text" id="emp-cedula"/></div>
+        <div class="form-group"><label>Fecha de nacimiento</label><input type="date" id="emp-fecha-nacimiento"/></div>
+        <div class="form-group full-col"><label>Dirección</label><input type="text" id="emp-direccion"/></div>
+        <div class="form-group"><label>Contacto de emergencia — nombre</label><input type="text" id="emp-contacto-nombre"/></div>
+        <div class="form-group"><label>Contacto de emergencia — teléfono</label><input type="text" id="emp-contacto-telefono"/></div>
+      </div>
+
+      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin:16px 0 8px">Datos laborales</label>
+      <div class="form-row">
+        <div class="form-group"><label>País (para las deducciones de ley)</label>
+          <select id="emp-pais">
+            <option value="NI">Nicaragua</option>
+            <option value="OTRO">Otro / genérico</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Departamento / área</label><input type="text" id="emp-departamento" placeholder="Ej: Ventas"/></div>
+        <div class="form-group"><label>Reporta a</label>
+          <select id="emp-reporta-a"><option value="">— Nadie / gerencia —</option></select>
+        </div>
+        <div class="form-group"><label>Tipo de contrato</label>
+          <select id="emp-tipo-contrato" onchange="document.getElementById('emp-fecha-fin-wrap').style.display = this.value==='plazo_fijo' ? '' : 'none'">
+            <option value="indefinido">Indefinido</option>
+            <option value="plazo_fijo">Plazo fijo</option>
+            <option value="por_obra">Por obra</option>
+          </select>
+        </div>
+        <div class="form-group" id="emp-fecha-fin-wrap" style="display:none"><label>Fecha de fin de contrato</label><input type="date" id="emp-fecha-fin-contrato"/></div>
+      </div>
+
       <div class="form-group"><label>Observaciones</label><textarea id="emp-observaciones" rows="2"></textarea></div>
       <p id="emp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-empleado')">Cancelar</button>
       <button class="btn-primary" id="btn-guardar-empleado" onclick="guardarEmpleado()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: CONCEPTOS DE NÓMINA (deducciones / aportes patronales)
+     Motor genérico — cada negocio configura los suyos, o carga una
+     plantilla de su país como punto de partida.
+=================================================== -->
+<div class="modal-overlay" id="modal-conceptos-nomina" onclick="if(event.target===this)closeModal('modal-conceptos-nomina')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <h3>Conceptos de Nómina</h3>
+      <button class="modal-close" onclick="closeModal('modal-conceptos-nomina')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Estos son los descuentos y aportes que se calculan automáticamente en cada pago — configúralos según las leyes de tu país, o carga una plantilla como punto de partida.
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn-secondary btn-sm" onclick="cargarPlantillaConceptos('NI')">🇳🇮 Cargar plantilla de Nicaragua</button>
+        <button class="btn-primary btn-sm" onclick="abrirNuevoConcepto()">+ Concepto personalizado</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nombre</th><th>Tipo</th><th>Cálculo</th><th>Activo</th><th></th></tr></thead>
+          <tbody id="conceptos-tbody"><tr><td colspan="5" class="empty-cell">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-conceptos-nomina')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: NUEVO / EDITAR CONCEPTO
+=================================================== -->
+<div class="modal-overlay" id="modal-nuevo-concepto" onclick="if(event.target===this)closeModal('modal-nuevo-concepto')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="con-modal-title">Nuevo concepto</h3>
+      <button class="modal-close" onclick="closeModal('modal-nuevo-concepto')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="con-id"/>
+      <div class="form-group"><label>Nombre *</label><input type="text" id="con-nombre" placeholder="Ej: Seguro Social (empleado)"/></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="con-tipo">
+            <option value="deduccion">Deducción (se descuenta al empleado)</option>
+            <option value="aporte_patronal">Aporte patronal (lo paga el negocio, no se descuenta)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Cómo se calcula *</label>
+          <select id="con-metodo" onchange="toggleMetodoConceptoUI()">
+            <option value="porcentaje">% del salario</option>
+            <option value="monto_fijo">Monto fijo</option>
+            <option value="tabla_progresiva">Tabla progresiva (tipo impuesto sobre la renta)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="con-valor-wrap">
+        <label id="con-valor-label">Porcentaje (%)</label>
+        <input type="number" id="con-valor" min="0" step="0.01"/>
+      </div>
+      <div id="con-tabla-wrap" style="display:none">
+        <label style="font-size:12.5px;font-weight:600">Tramos de la tabla progresiva</label>
+        <div id="con-tabla-tramos"></div>
+        <button type="button" class="btn-secondary btn-sm" style="margin-top:6px" onclick="agregarTramoConcepto()">+ Agregar tramo</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px">
+        <input type="checkbox" id="con-obligatorio"/> Es obligatorio por ley (informativo)
+      </label>
+      <p id="con-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-nuevo-concepto')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-concepto" onclick="guardarConcepto()">Guardar</button>
     </div>
   </div>
 </div>
@@ -1409,6 +1528,15 @@
         <div class="form-group" style="margin-bottom:0"><label>Descripción</label><input type="text" id="pg-sal-deduccion-desc" placeholder="Ej: Multa por tardanza"/></div>
         <div class="form-group" style="margin-bottom:0;max-width:140px"><label>Monto</label><input type="number" id="pg-sal-deduccion-monto" min="0.01" step="0.01"/></div>
         <button class="btn-secondary" type="button" onclick="agregarDeduccionSal()" style="height:38px">+ Agregar</button>
+      </div>
+
+      <!-- APORTES PATRONALES (informativo, no descuenta al empleado) -->
+      <div style="display:none;margin-top:18px" id="pg-sal-aportes-wrap">
+        <div class="nc-paso-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+          Aportes patronales (los paga el negocio, no se le descuentan al empleado)
+        </div>
+        <div id="pg-sal-aportes-lista"></div>
       </div>
 
       <!-- ADELANTOS PENDIENTES -->
