@@ -936,12 +936,30 @@ async function cargarPlantillaConceptos(pais) {
   if (!plantilla) { showToast('Todavía no hay plantilla para ese país', 'error'); return; }
   if (!confirm(`Se agregarán ${plantilla.conceptos.length} conceptos típicos de ${plantilla.nombre}. Podrás editarlos o borrarlos después. ¿Continuar?`)) return;
   try {
-    const payload = plantilla.conceptos.map((c, i) => ({
-      auth_user_id: STATE.userId, nombre: c.nombre, tipo: c.tipo, metodo_calculo: c.metodo_calculo,
-      valor: c.valor || null, tabla_progresiva: c.tabla_progresiva || null,
-      obligatorio: c.obligatorio, activo: true, pais_plantilla: pais, orden: i,
-    }));
-    await sbClient.from('nomina_conceptos').insert(payload);
+    // Nunca se duplica: si ya existe un concepto con el mismo nombre
+    // (sin importar mayúsculas), se actualiza ese en vez de crear uno
+    // nuevo — antes, cargar la plantilla 2 veces sumaba el doble de
+    // deducciones al pago.
+    const { data: existentes } = await sbClient.from('nomina_conceptos').select('id, nombre').eq('auth_user_id', STATE.userId);
+    const mapaExistentes = new Map((existentes||[]).map(e => [e.nombre.toLowerCase().trim(), e.id]));
+
+    let creados = 0, actualizados = 0;
+    for (let i = 0; i < plantilla.conceptos.length; i++) {
+      const c = plantilla.conceptos[i];
+      const payloadC = {
+        nombre: c.nombre, tipo: c.tipo, metodo_calculo: c.metodo_calculo,
+        valor: c.valor || null, tabla_progresiva: c.tabla_progresiva || null,
+        obligatorio: c.obligatorio, pais_plantilla: pais, updated_at: new Date().toISOString(),
+      };
+      const idExistente = mapaExistentes.get(c.nombre.toLowerCase().trim());
+      if (idExistente) {
+        await sbClient.from('nomina_conceptos').update(payloadC).eq('id', idExistente).eq('auth_user_id', STATE.userId);
+        actualizados++;
+      } else {
+        await sbClient.from('nomina_conceptos').insert({ auth_user_id: STATE.userId, activo: true, orden: i, ...payloadC });
+        creados++;
+      }
+    }
 
     // Cada concepto (deducción o aporte) también se refleja en el
     // catálogo de Impuestos que ya usan Ventas/Créditos/Proformas —
@@ -956,7 +974,7 @@ async function cargarPlantillaConceptos(pais) {
       } catch (eSync) { console.warn('No se pudo sincronizar a Impuestos:', c.nombre, eSync); }
     }
 
-    showToast(`Plantilla de ${plantilla.nombre} cargada — también visible en Impuestos`);
+    showToast(`Plantilla de ${plantilla.nombre}: ${creados} concepto(s) nuevo(s), ${actualizados} actualizado(s) — nunca duplicados`);
     await cargarConceptos();
   } catch (e) { showToast('Error al cargar la plantilla', 'error'); }
 }
@@ -1107,7 +1125,7 @@ function renderPlanillas() {
     </tr>`).join('');
 }
 
-function abrirNuevaPlanilla() {
+async function abrirNuevaPlanilla() {
   document.getElementById('pl-nombre').value = '';
   const hoy = new Date();
   document.getElementById('pl-desde').value = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
@@ -1115,8 +1133,14 @@ function abrirNuevaPlanilla() {
   document.getElementById('pl-fecha-pago').value = todayISO();
   document.getElementById('pl-error').textContent = '';
   STATE.planillaSeleccion = new Map();
-  renderListaEmpleadosPlanilla();
   openModal('modal-nueva-planilla');
+  document.getElementById('pl-lista-empleados').innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">Calculando deducciones…</div>';
+  // Antes esto se saltaba si STATE.conceptos todavía estaba vacío (por
+  // ejemplo, al entrar directo a Planilla sin haber abierto antes
+  // "Conceptos de Nómina" o un pago individual) — la planilla salía
+  // sin ninguna deducción aplicada, a diferencia del pago individual.
+  await cargarConceptos();
+  renderListaEmpleadosPlanilla();
 }
 
 function renderListaEmpleadosPlanilla() {
