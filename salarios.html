@@ -1167,10 +1167,35 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Conceptos de Nómina
           </button>
+          <button class="btn-secondary" onclick="abrirBonoAnualConfig()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+            Bono Anual
+          </button>
+          <button class="btn-secondary" onclick="abrirPlanillas()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
+            Planilla
+          </button>
           <button class="btn-primary" onclick="abrirNuevoEmpleado()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo empleado
           </button>
+        </div>
+      </div>
+
+      <!-- ===== PANEL: PLANILLA (Fase 3) ===== -->
+      <div class="panel-card fade-in" id="panel-planillas" style="display:none;margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
+            Planillas — pagar a todo el equipo de una vez
+          </div>
+          <button class="btn-primary btn-sm" onclick="abrirNuevaPlanilla()">+ Nueva planilla</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nombre</th><th>Período</th><th>Fecha de pago</th><th>Empleados</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="planillas-tbody"><tr><td colspan="7" class="empty-cell">Cargando…</td></tr></tbody>
+          </table>
         </div>
       </div>
 
@@ -1442,6 +1467,104 @@
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-nuevo-concepto')">Cancelar</button>
       <button class="btn-primary" id="btn-guardar-concepto" onclick="guardarConcepto()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: NUEVA PLANILLA (Fase 3)
+=================================================== -->
+<div class="modal-overlay" id="modal-nueva-planilla" onclick="if(event.target===this)closeModal('modal-nueva-planilla')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <h3>Nueva planilla</h3>
+      <button class="modal-close" onclick="closeModal('modal-nueva-planilla')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Nombre de la planilla *</label><input type="text" id="pl-nombre" placeholder="Ej: Quincena 1 - Agosto"/></div>
+        <div class="form-group"><label>Período desde</label><input type="date" id="pl-desde"/></div>
+        <div class="form-group"><label>Período hasta</label><input type="date" id="pl-hasta"/></div>
+        <div class="form-group"><label>Fecha de pago</label><input type="date" id="pl-fecha-pago"/></div>
+      </div>
+      <label style="font-size:12.5px;font-weight:600;margin:10px 0 6px;display:block">Empleados a incluir</label>
+      <div id="pl-lista-empleados" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:10px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <span style="font-weight:700">Total de la planilla</span>
+        <span style="font-size:18px;font-weight:800;color:var(--accent)" id="pl-total-general">C$ 0.00</span>
+      </div>
+      <p id="pl-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-nueva-planilla')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-planilla-borrador" onclick="guardarPlanilla(false)">Guardar como borrador</button>
+      <button class="btn-primary" id="btn-pagar-planilla" style="background:var(--success)" onclick="guardarPlanilla(true)">Pagar toda la planilla</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: CONFIGURAR BONO ANUAL (Aguinaldo / 13er mes / etc.)
+     Genérico — nombre, número de cuotas y fechas configurables,
+     porque varía mucho según el país.
+=================================================== -->
+<div class="modal-overlay" id="modal-bono-anual-config" onclick="if(event.target===this)closeModal('modal-bono-anual-config')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Bono Anual (Aguinaldo / 13er mes)</h3>
+      <button class="modal-close" onclick="closeModal('modal-bono-anual-config')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Este bono se llama distinto según el país (Aguinaldo, 13th month, Prima, 13º salário...) y se paga distinto — algunos países lo dan una vez al año, otros en 2 o más partes. Configúralo como aplique en el tuyo.
+      </p>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13.5px;font-weight:600">
+        <input type="checkbox" id="ba-activo"/> Activar Bono Anual para mi negocio
+      </label>
+      <div class="form-group"><label>Nombre de este bono</label><input type="text" id="ba-nombre" placeholder="Ej: Aguinaldo"/></div>
+      <div class="form-group">
+        <label>¿En cuántas partes se paga al año?</label>
+        <select id="ba-num-cuotas" onchange="renderFechasBonoAnual()">
+          <option value="1">1 pago al año</option>
+          <option value="2">2 pagos al año</option>
+          <option value="3">3 pagos al año</option>
+          <option value="4">4 pagos al año</option>
+        </select>
+      </div>
+      <label style="font-size:12.5px;font-weight:600;margin-bottom:6px;display:block">Fecha límite de cada pago (día y mes)</label>
+      <div id="ba-fechas-lista"></div>
+      <p id="ba-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-bono-anual-config')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-bono-config" onclick="guardarBonoAnualConfig()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: PAGAR BONO ANUAL A UN EMPLEADO
+=================================================== -->
+<div class="modal-overlay" id="modal-pagar-bono" onclick="if(event.target===this)closeModal('modal-pagar-bono')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="pb-titulo">Pagar Bono Anual</h3>
+      <button class="modal-close" onclick="closeModal('modal-pagar-bono')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div><label>Empleado</label><div class="stat-readonly" id="pb-empleado-nombre">—</div></div>
+        <div><label>Cuota</label><div class="stat-readonly" id="pb-cuota-numero">—</div></div>
+        <div><label>Período que cubre</label><div class="stat-readonly" id="pb-periodo">—</div></div>
+      </div>
+      <div class="form-group"><label>Monto a pagar (calculado proporcional, editable)</label><input type="number" id="pb-monto" min="0" step="0.01"/></div>
+      <div class="form-group"><label>Fecha de pago</label><input type="date" id="pb-fecha"/></div>
+      <div class="form-group"><label>Observaciones</label><input type="text" id="pb-observaciones"/></div>
+      <p id="pb-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-pagar-bono')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-bono" onclick="confirmarPagoBonoAnual()">Confirmar pago</button>
     </div>
   </div>
 </div>

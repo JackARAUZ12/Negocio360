@@ -37,6 +37,9 @@ let STATE = {
   deducciones: [],  // [{descripcion, monto}]
   conceptos: [],
   aportesPatronales: [],
+  planillas: [],
+  planillaSeleccion: new Map(),
+  bonoAnualConfig: null,
 
   ultimoComprobante: null,
 };
@@ -390,6 +393,7 @@ function renderTablaSal() {
           <button class="btn-icon" title="Editar" onclick="abrirEditarEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
           <button class="btn-icon" title="Ver historial" onclick="verHistorialEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
           <button class="btn-icon" title="Registrar pago" onclick="abrirPagarDesdeTabla('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>
+          <button class="btn-icon" title="Pagar Bono Anual" onclick="abrirPagarBonoAnual('${e.id}')">🎁</button>
           <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
         </td>
       </tr>`;
@@ -1044,6 +1048,283 @@ function calcularConcepto(concepto, montoBase) {
     return 0;
   }
   return 0;
+}
+
+/* =====================================================
+   FASE 3 — PLANILLA: pagar a todo el equipo de una sola vez.
+   Reutiliza exactamente el mismo cálculo de conceptos que ya usa el
+   pago individual — nunca una fórmula aparte.
+===================================================== */
+STATE.planillas = [];
+STATE.planillaSeleccion = new Map(); // empleado_id -> {incluido, base, deducciones, total}
+
+async function abrirPlanillas() {
+  document.getElementById('panel-planillas').style.display = '';
+  await cargarPlanillas();
+}
+async function cargarPlanillas() {
+  try {
+    const { data } = await sbClient.from('nomina_planillas').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false });
+    STATE.planillas = data || [];
+    renderPlanillas();
+  } catch (e) { console.warn('cargarPlanillas:', e); }
+}
+function renderPlanillas() {
+  const tbody = document.getElementById('planillas-tbody');
+  if (!tbody) return;
+  if (!STATE.planillas.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Todavía no has creado ninguna planilla</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.planillas.map(p => `
+    <tr>
+      <td style="font-weight:600">${esc(p.nombre)}</td>
+      <td>${fmtDate(p.periodo_desde)} — ${fmtDate(p.periodo_hasta)}</td>
+      <td>${fmtDate(p.fecha_pago)}</td>
+      <td>${p.total_empleados}</td>
+      <td>${fmt(p.total_pagado)}</td>
+      <td><span class="status-badge ${p.estado==='pagada'?'badge-activo':'badge-pendiente'}">${p.estado==='pagada'?'Pagada':'Borrador'}</span></td>
+      <td></td>
+    </tr>`).join('');
+}
+
+function abrirNuevaPlanilla() {
+  document.getElementById('pl-nombre').value = '';
+  const hoy = new Date();
+  document.getElementById('pl-desde').value = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  document.getElementById('pl-hasta').value = todayISO();
+  document.getElementById('pl-fecha-pago').value = todayISO();
+  document.getElementById('pl-error').textContent = '';
+  STATE.planillaSeleccion = new Map();
+  renderListaEmpleadosPlanilla();
+  openModal('modal-nueva-planilla');
+}
+
+function renderListaEmpleadosPlanilla() {
+  const cont = document.getElementById('pl-lista-empleados');
+  const activos = STATE.empleados.filter(e => e.estado === 'activo');
+  if (!activos.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">No hay empleados activos</div>'; return; }
+
+  cont.innerHTML = activos.map(e => {
+    const base = Number(e.salario||0);
+    let deducciones = 0;
+    STATE.conceptos.filter(c => c.activo && c.tipo === 'deduccion').forEach(c => { deducciones += calcularConcepto(c, base); });
+    const total = round2(base - deducciones);
+    STATE.planillaSeleccion.set(e.id, { incluido: true, nombre: e.nombre, base, deducciones: round2(deducciones), total });
+    return `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+      <input type="checkbox" checked onchange="togglePlanillaEmpleado('${e.id}', this.checked)"/>
+      <span style="flex:1">${esc(e.nombre)} <span style="color:var(--text-muted);font-size:11.5px">${esc(e.cargo||'')}</span></span>
+      <span style="color:var(--text-muted);font-size:12px">Base: ${fmt(base)}</span>
+      ${deducciones>0 ? `<span style="color:var(--danger);font-size:12px">-${fmt(deducciones)}</span>` : ''}
+      <span style="font-weight:700">${fmt(total)}</span>
+    </label>`;
+  }).join('');
+  actualizarTotalPlanilla();
+}
+function togglePlanillaEmpleado(id, incluido) {
+  const s = STATE.planillaSeleccion.get(id); if (s) s.incluido = incluido;
+  actualizarTotalPlanilla();
+}
+function actualizarTotalPlanilla() {
+  const total = Array.from(STATE.planillaSeleccion.values()).filter(s=>s.incluido).reduce((s,x)=>s+x.total, 0);
+  document.getElementById('pl-total-general').textContent = fmt(round2(total));
+}
+
+async function guardarPlanilla(pagar) {
+  const errEl = document.getElementById('pl-error');
+  errEl.textContent = '';
+  const nombre = document.getElementById('pl-nombre').value.trim();
+  const desde = document.getElementById('pl-desde').value;
+  const hasta = document.getElementById('pl-hasta').value;
+  const fechaPago = document.getElementById('pl-fecha-pago').value;
+  if (!nombre) { errEl.textContent = 'Escribe un nombre para la planilla.'; return; }
+  const incluidos = Array.from(STATE.planillaSeleccion.entries()).filter(([id,s]) => s.incluido);
+  if (!incluidos.length) { errEl.textContent = 'Elige al menos un empleado.'; return; }
+
+  const btnId = pagar ? 'btn-pagar-planilla' : 'btn-guardar-planilla-borrador';
+  setBtnLoading(btnId, true);
+  try {
+    const totalGeneral = round2(incluidos.reduce((s,[,x])=>s+x.total, 0));
+    const { data: planilla, error: errP } = await sbClient.from('nomina_planillas').insert({
+      auth_user_id: STATE.userId, nombre, periodo_desde: desde, periodo_hasta: hasta, fecha_pago: fechaPago,
+      estado: pagar ? 'pagada' : 'borrador', total_empleados: incluidos.length, total_pagado: totalGeneral,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail, pagada_en: pagar ? new Date().toISOString() : null,
+    }).select().single();
+    if (errP) throw errP;
+
+    if (pagar) {
+      // Un pago real por cada empleado — mismo mecanismo de siempre
+      // (empleados_pagos), solo que agrupados bajo esta planilla.
+      for (const [empId, s] of incluidos) {
+        const deduccionesDetalle = [];
+        STATE.conceptos.filter(c => c.activo && c.tipo === 'deduccion').forEach(c => {
+          const monto = calcularConcepto(c, s.base);
+          if (monto > 0) deduccionesDetalle.push({ descripcion: `${c.nombre} (automático)`, monto });
+        });
+        const aportesDetalle = [];
+        STATE.conceptos.filter(c => c.activo && c.tipo === 'aporte_patronal').forEach(c => {
+          const monto = calcularConcepto(c, s.base);
+          if (monto > 0) aportesDetalle.push({ descripcion: c.nombre, monto });
+        });
+        const totalAportes = round2(aportesDetalle.reduce((sum,a)=>sum+a.monto,0));
+
+        await sbClient.from('empleados_pagos').insert({
+          auth_user_id: STATE.userId, empleado_id: empId, fecha: fechaPago,
+          salario_base: s.base, bonificaciones: 0, bonificaciones_detalle: [],
+          deducciones: s.deducciones, deducciones_detalle: deduccionesDetalle,
+          adelantos_descontados: 0, total_pagado: s.total,
+          aportes_patronales: totalAportes, aportes_patronales_detalle: aportesDetalle,
+          metodo_pago_nombre: 'Efectivo', estado: 'pagado',
+          comprobante_numero: `SAL-${Date.now().toString().slice(-8)}-${empId.slice(0,4)}`,
+          usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+          planilla_id: planilla.id,
+        });
+        await sbClient.from('empleados').update({
+          ultimo_pago: fechaPago,
+          proximo_pago: sumarPeriodoSalario(fechaPago, STATE.empleados.find(e=>e.id===empId)?.tipo_salario||'mensual', 1),
+        }).eq('id', empId).eq('auth_user_id', STATE.userId);
+      }
+    }
+
+    showToast(pagar ? `Planilla pagada — ${incluidos.length} empleado(s), ${fmt(totalGeneral)}` : 'Planilla guardada como borrador');
+    closeModal('modal-nueva-planilla');
+    await Promise.allSettled([cargarPlanillas(), loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    console.error('guardarPlanilla:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading(btnId, false);
+  }
+}
+
+/* =====================================================
+   BONO ANUAL (Aguinaldo / 13er mes / 13th month / Prima...) —
+   genérico: nombre, número de cuotas y fechas configurables, porque
+   varía mucho de un país a otro. El cálculo es proporcional al
+   tiempo trabajado desde el último pago de este mismo bono.
+===================================================== */
+STATE.bonoAnualConfig = null;
+
+async function abrirBonoAnualConfig() {
+  try {
+    const { data } = await sbClient.from('nomina_bono_anual_config').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+    STATE.bonoAnualConfig = data || { activo:false, nombre:'Aguinaldo', num_cuotas:1, fechas_pago:['12-10'] };
+  } catch (e) { STATE.bonoAnualConfig = { activo:false, nombre:'Aguinaldo', num_cuotas:1, fechas_pago:['12-10'] }; }
+
+  document.getElementById('ba-activo').checked = !!STATE.bonoAnualConfig.activo;
+  document.getElementById('ba-nombre').value = STATE.bonoAnualConfig.nombre || 'Aguinaldo';
+  document.getElementById('ba-num-cuotas').value = STATE.bonoAnualConfig.num_cuotas || 1;
+  document.getElementById('ba-error').textContent = '';
+  renderFechasBonoAnual();
+  openModal('modal-bono-anual-config');
+}
+function renderFechasBonoAnual() {
+  const num = parseInt(document.getElementById('ba-num-cuotas').value) || 1;
+  const fechasActuales = STATE.bonoAnualConfig?.fechas_pago || ['12-10'];
+  const cont = document.getElementById('ba-fechas-lista');
+  cont.innerHTML = Array.from({length:num}, (_,i) => {
+    const [mes,dia] = (fechasActuales[i] || '12-10').split('-');
+    return `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span style="font-size:12.5px;width:60px">Parte ${i+1}:</span>
+      <select id="ba-fecha-mes-${i}" style="flex:1">
+        ${['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => `<option value="${m}" ${m===mes?'selected':''}>${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][parseInt(m)-1]}</option>`).join('')}
+      </select>
+      <input type="number" id="ba-fecha-dia-${i}" min="1" max="31" value="${parseInt(dia)||10}" style="width:70px"/>
+    </div>`;
+  }).join('');
+}
+async function guardarBonoAnualConfig() {
+  const errEl = document.getElementById('ba-error');
+  errEl.textContent = '';
+  const nombre = document.getElementById('ba-nombre').value.trim();
+  if (!nombre) { errEl.textContent = 'Escribe un nombre para el bono.'; return; }
+  const numCuotas = parseInt(document.getElementById('ba-num-cuotas').value) || 1;
+  const fechas = Array.from({length:numCuotas}, (_,i) => {
+    const mes = document.getElementById(`ba-fecha-mes-${i}`).value;
+    const dia = String(parseInt(document.getElementById(`ba-fecha-dia-${i}`).value)||10).padStart(2,'0');
+    return `${mes}-${dia}`;
+  });
+  setBtnLoading('btn-guardar-bono-config', true);
+  try {
+    await sbClient.from('nomina_bono_anual_config').upsert({
+      auth_user_id: STATE.userId, nombre, activo: document.getElementById('ba-activo').checked,
+      num_cuotas: numCuotas, fechas_pago: fechas, updated_at: new Date().toISOString(),
+    }, { onConflict: 'auth_user_id' });
+    showToast('Configuración de Bono Anual guardada');
+    closeModal('modal-bono-anual-config');
+    STATE.bonoAnualConfig = { activo: document.getElementById('ba-activo').checked, nombre, num_cuotas: numCuotas, fechas_pago: fechas };
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-bono-config', false);
+  }
+}
+
+let BONO_EMPLEADO_ACTUAL = null;
+async function abrirPagarBonoAnual(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  if (!STATE.bonoAnualConfig) {
+    try {
+      const { data } = await sbClient.from('nomina_bono_anual_config').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+      STATE.bonoAnualConfig = data || null;
+    } catch (e) { STATE.bonoAnualConfig = null; }
+  }
+  const cfg = STATE.bonoAnualConfig;
+  if (!cfg || !cfg.activo) { showToast('El Bono Anual no está activado — actívalo primero desde el botón "Bono Anual"', 'error'); return; }
+
+  // Se busca el último pago de este mismo bono, para calcular
+  // proporcionalmente el período trabajado desde entonces (o desde
+  // que ingresó, si nunca lo ha recibido).
+  const { data: ultimoPago } = await sbClient.from('empleados_bono_anual_pagos')
+    .select('*').eq('empleado_id', empleadoId).order('fecha', { ascending:false }).limit(1).maybeSingle();
+  const desde = ultimoPago?.fecha || emp.fecha_ingreso || todayISO();
+  const hasta = todayISO();
+  const diasPeriodo = Math.max(1, Math.round((new Date(hasta) - new Date(desde)) / 86400000));
+  const diasAnioProrrateo = Math.round(365 / (cfg.num_cuotas||1));
+  const proporcion = Math.min(1, diasPeriodo / diasAnioProrrateo);
+  const montoBase = round2((Number(emp.salario||0) / (cfg.num_cuotas||1)) * proporcion);
+  const cuotaNumero = (ultimoPago?.cuota_numero || 0) % (cfg.num_cuotas||1) + 1;
+
+  BONO_EMPLEADO_ACTUAL = { emp, desde, hasta, cuotaNumero };
+  document.getElementById('pb-titulo').textContent = `Pagar ${cfg.nombre}`;
+  document.getElementById('pb-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('pb-cuota-numero').textContent = `${cuotaNumero} de ${cfg.num_cuotas}`;
+  document.getElementById('pb-periodo').textContent = `${fmtDate(desde)} — ${fmtDate(hasta)}`;
+  document.getElementById('pb-monto').value = montoBase;
+  document.getElementById('pb-fecha').value = todayISO();
+  document.getElementById('pb-observaciones').value = '';
+  document.getElementById('pb-error').textContent = '';
+  openModal('modal-pagar-bono');
+}
+async function confirmarPagoBonoAnual() {
+  const errEl = document.getElementById('pb-error');
+  errEl.textContent = '';
+  if (!BONO_EMPLEADO_ACTUAL) return;
+  const { emp, desde, hasta, cuotaNumero } = BONO_EMPLEADO_ACTUAL;
+  const monto = round2(parseFloat(document.getElementById('pb-monto').value));
+  if (!(monto > 0)) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
+  const fecha = document.getElementById('pb-fecha').value || todayISO();
+
+  setBtnLoading('btn-confirmar-bono', true);
+  try {
+    await sbClient.from('empleados_bono_anual_pagos').insert({
+      auth_user_id: STATE.userId, empleado_id: emp.id, fecha, periodo_desde: desde, periodo_hasta: hasta,
+      monto, cuota_numero: cuotaNumero, metodo_pago_nombre: 'Efectivo',
+      observaciones: document.getElementById('pb-observaciones').value.trim() || null,
+      comprobante_numero: `BON-${Date.now().toString().slice(-8)}`,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+    });
+    showToast(`${STATE.bonoAnualConfig?.nombre || 'Bono'} pagado a ${emp.nombre}`);
+    closeModal('modal-pagar-bono');
+  } catch (e) {
+    errEl.textContent = 'Error al registrar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-confirmar-bono', false);
+  }
 }
 
 async function initSalarios() {
