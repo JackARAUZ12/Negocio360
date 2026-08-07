@@ -1453,10 +1453,56 @@ async function exportarPlanilla(formato) {
       pagos.reduce((s,p)=>s+Number(p.deducciones),0), pagos.reduce((s,p)=>s+Number(p.total_pagado),0),
       ...(modoNicaragua ? nombresAportes.map(n => pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0)) : []),
     ];
-    const ws = XLSX.utils.aoa_to_sheet([
-      [bizName], [`Planilla: ${planilla.nombre}`], [`Período: ${fmtDate(planilla.periodo_desde)} — ${fmtDate(planilla.periodo_hasta)}   Fecha de pago: ${fmtDate(planilla.fecha_pago)}`], [],
+
+    // 3 filas de título + 1 en blanco antes del encabezado real — se
+    // calcula la posición exacta para que el ajuste de columnas, el
+    // encabezado congelado y el autofiltro apunten al lugar correcto,
+    // no a la fila 0 como si no hubiera título arriba.
+    const FILAS_TITULO = 4; // bizName, nombre planilla, período, blanco
+    const headerRowIdx = FILAS_TITULO;
+    const aoa = [
+      [bizName], [`Planilla: ${planilla.nombre}`],
+      [`Período: ${fmtDate(planilla.periodo_desde)} — ${fmtDate(planilla.periodo_hasta)}   Fecha de pago: ${fmtDate(planilla.fecha_pago)}`],
+      [],
       headers, ...rows, totales,
-    ]);
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Título fusionado a lo ancho de toda la tabla, para que no se
+    // vea encajonado en una sola columna angosta.
+    const ultimaCol = headers.length - 1;
+    ws['!merges'] = [
+      { s:{r:0,c:0}, e:{r:0,c:ultimaCol} },
+      { s:{r:1,c:0}, e:{r:1,c:ultimaCol} },
+      { s:{r:2,c:0}, e:{r:2,c:ultimaCol} },
+    ];
+
+    // Formato de moneda en todas las columnas numéricas (Salario Base
+    // en adelante) — antes salían como "1470.5" en vez de "1,470.50".
+    const primeraColNumerica = 4;
+    for (let ri = headerRowIdx + 1; ri < headerRowIdx + 1 + rows.length + 1; ri++) {
+      for (let ci = primeraColNumerica; ci <= ultimaCol; ci++) {
+        const ref = XLSX.utils.encode_cell({ r: ri, c: ci });
+        if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '#,##0.00';
+      }
+    }
+
+    // Ancho de columna ajustado al contenido real, igual que en Reportes.
+    ws['!cols'] = headers.map((h, ci) => {
+      const valoresCol = [...rows.map(r => r[ci]), totales[ci]];
+      const maxLen = valoresCol.reduce((m, v) => Math.max(m, String(v ?? '').length), h.length);
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 38) };
+    });
+
+    // Encabezado de la tabla congelado (no el título) para poder
+    // desplazarse por muchos empleados sin perder de vista los nombres
+    // de las columnas.
+    ws['!freeze'] = { xSplit: '0', ySplit: String(headerRowIdx + 1), topLeftCell: `A${headerRowIdx + 2}`, activePane: 'bottomLeft', state: 'frozen' };
+
+    // Autofiltro en la fila del encabezado real — permite ordenar y
+    // filtrar en Excel sin tocar las filas de título.
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:headerRowIdx,c:0}, e:{r:headerRowIdx+rows.length,c:ultimaCol} }) };
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Planilla');
     XLSX.writeFile(wb, `Planilla_${planilla.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.xlsx`);
