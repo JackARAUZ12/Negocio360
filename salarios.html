@@ -1178,6 +1178,14 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
             Planilla
           </button>
+          <button class="btn-secondary" onclick="abrirOrganigrama()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="6"/><rect x="2" y="16" width="6" height="6"/><rect x="16" y="16" width="6" height="6"/><path d="M12 8v4M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/></svg>
+            Organigrama
+          </button>
+          <button class="btn-secondary" onclick="abrirReportesNomina()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            Reportes
+          </button>
           <button class="btn-primary" onclick="abrirNuevoEmpleado()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo empleado
@@ -1200,6 +1208,28 @@
             <tbody id="planillas-tbody"><tr><td colspan="7" class="empty-cell">Cargando…</td></tr></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ===== PANEL: ORGANIGRAMA ===== -->
+      <div class="panel-card fade-in" id="panel-organigrama" style="display:none;margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="6"/></svg>
+            Organigrama
+          </div>
+        </div>
+        <div id="organigrama-cuerpo" style="padding:10px;overflow-x:auto"></div>
+      </div>
+
+      <!-- ===== PANEL: REPORTES DE NÓMINA ===== -->
+      <div class="panel-card fade-in" id="panel-reportes-nomina" style="display:none;margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            Reportes de Nómina (últimos 6 meses)
+          </div>
+        </div>
+        <div id="reportes-nomina-cuerpo" style="padding:14px">Cargando…</div>
       </div>
 
       <!-- KPI CARDS -->
@@ -1515,6 +1545,115 @@
      nada, para que no haya ningún margen de error entre lo que se
      pagó de verdad y lo que sale en el documento.
 =================================================== -->
+<!-- =====================================================
+     MODAL: VACACIONES
+=================================================== -->
+<div class="modal-overlay" id="modal-vacaciones" onclick="if(event.target===this)closeModal('modal-vacaciones')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <h3>Vacaciones — <span id="vac-empleado-nombre">—</span></h3>
+      <button class="modal-close" onclick="closeModal('modal-vacaciones')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Días acumulados</label><div class="stat-readonly" id="vac-acumulados">—</div></div>
+        <div><label>Días ya tomados</label><div class="stat-readonly" id="vac-tomados">—</div></div>
+        <div><label>Días disponibles</label><div class="stat-readonly" id="vac-disponibles" style="font-weight:800;color:var(--accent)">—</div></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">
+        Se acumulan solos, en proporción a los días de vacaciones al año configurados en Configuración de la empresa y el tiempo trabajado.
+      </p>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Registrar vacaciones tomadas</label>
+      <div class="form-row">
+        <div class="form-group"><label>Desde</label><input type="date" id="vac-desde"/></div>
+        <div class="form-group"><label>Hasta</label><input type="date" id="vac-hasta"/></div>
+        <div class="form-group"><label>Días</label><input type="number" id="vac-dias" min="0.5" step="0.5"/></div>
+      </div>
+      <div class="form-group"><label>Nota (opcional)</label><input type="text" id="vac-nota"/></div>
+      <p id="vac-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin:16px 0 6px">Historial</label>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Desde</th><th>Hasta</th><th>Días</th><th>Nota</th></tr></thead>
+        <tbody id="vac-historial-tbody"><tr><td colspan="4" class="empty-cell">Sin registros</td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-vacaciones')">Cerrar</button>
+      <button class="btn-primary" id="btn-registrar-vacaciones" onclick="registrarVacacionesTomadas()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: REGISTRAR AUSENCIA
+=================================================== -->
+<div class="modal-overlay" id="modal-ausencia" onclick="if(event.target===this)closeModal('modal-ausencia')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Registrar ausencia — <span id="aus-empleado-nombre">—</span></h3>
+      <button class="modal-close" onclick="closeModal('modal-ausencia')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Desde</label><input type="date" id="aus-desde"/></div>
+        <div class="form-group"><label>Hasta</label><input type="date" id="aus-hasta"/></div>
+        <div class="form-group"><label>Días</label><input type="number" id="aus-dias" min="0.5" step="0.5"/></div>
+      </div>
+      <div class="form-group">
+        <label>Tipo</label>
+        <select id="aus-tipo">
+          <option value="sin_goce">Sin goce de sueldo (se descuenta del siguiente pago)</option>
+          <option value="con_goce">Con goce de sueldo (no afecta el pago)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Motivo</label><input type="text" id="aus-motivo" placeholder="Ej: permiso personal, incapacidad"/></div>
+      <p id="aus-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-ausencia')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-ausencia" onclick="guardarAusencia()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: LIQUIDAR / TERMINAR CONTRATO (indemnización)
+=================================================== -->
+<div class="modal-overlay" id="modal-liquidar" onclick="if(event.target===this)closeModal('modal-liquidar')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <h3>Liquidación final — <span id="liq-empleado-nombre">—</span></h3>
+      <button class="modal-close" onclick="closeModal('modal-liquidar')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Fecha de ingreso</label><div class="stat-readonly" id="liq-fecha-ingreso">—</div></div>
+        <div><label>Tiempo trabajado</label><div class="stat-readonly" id="liq-tiempo">—</div></div>
+        <div><label>Días de indemnización por año</label><input type="number" id="liq-dias-por-anio" min="0" step="0.5"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Indemnización por antigüedad</label><div class="stat-readonly" id="liq-monto-indemnizacion" style="font-weight:700">—</div></div>
+        <div><label>Días de vacaciones pendientes</label><div class="stat-readonly" id="liq-dias-vacaciones">—</div></div>
+        <div><label>Monto de vacaciones pendientes</label><div class="stat-readonly" id="liq-monto-vacaciones" style="font-weight:700">—</div></div>
+      </div>
+      <div class="form-group"><label>Otros montos a incluir (opcional)</label><input type="number" id="liq-otros-monto" min="0" step="0.01" placeholder="0.00"/></div>
+      <div class="form-group"><label>Detalle de esos otros montos</label><input type="text" id="liq-otros-detalle"/></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0;padding-top:12px;border-top:1px solid var(--border)">
+        <span style="font-weight:700">Total a pagar</span>
+        <span style="font-size:20px;font-weight:800;color:var(--accent)" id="liq-total">—</span>
+      </div>
+      <div class="form-group"><label>Fecha de pago</label><input type="date" id="liq-fecha-pago"/></div>
+      <div class="form-group"><label>Observaciones</label><textarea id="liq-observaciones" rows="2"></textarea></div>
+      <p style="font-size:11.5px;color:var(--warning);margin-top:6px">⚠️ Al confirmar, el empleado quedará marcado como inactivo y esto descontará de Caja.</p>
+      <p id="liq-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-liquidar')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-liquidacion" style="background:var(--danger)" onclick="confirmarLiquidacion()">Confirmar liquidación</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-exportar-planilla" onclick="if(event.target===this)closeModal('modal-exportar-planilla')">
   <div class="modal-box">
     <div class="modal-header">

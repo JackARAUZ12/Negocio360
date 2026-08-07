@@ -394,6 +394,9 @@ function renderTablaSal() {
           <button class="btn-icon" title="Ver historial" onclick="verHistorialEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
           <button class="btn-icon" title="Registrar pago" onclick="abrirPagarDesdeTabla('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>
           <button class="btn-icon" title="Pagar Bono Anual" onclick="abrirPagarBonoAnual('${e.id}')">🎁</button>
+          <button class="btn-icon" title="Vacaciones" onclick="abrirVacaciones('${e.id}')">🏖️</button>
+          <button class="btn-icon" title="Registrar ausencia" onclick="abrirAusencia('${e.id}')">📋</button>
+          <button class="btn-icon" title="Liquidar / terminar contrato" onclick="abrirLiquidar('${e.id}')">💼</button>
           <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
         </td>
       </tr>`;
@@ -1550,6 +1553,303 @@ async function exportarPlanilla(formato) {
   doc.save(`Planilla_${planilla.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.pdf`);
   showToast('PDF descargado');
   closeModal('modal-exportar-planilla');
+}
+
+/* =====================================================
+   VACACIONES — se acumulan solas, en proporción al tiempo trabajado
+   y a los días/año configurados en Configuración de la empresa.
+   Nunca se guarda un número fijo: se recalcula cada vez que se abre,
+   así siempre refleja la fecha de hoy.
+===================================================== */
+let VAC_EMPLEADO_ACTUAL = null;
+function diasVacacionesAcumulados(fechaIngreso, diasPorAnio) {
+  if (!fechaIngreso) return 0;
+  const dias = Math.max(0, Math.round((new Date(todayISO()) - new Date(fechaIngreso)) / 86400000));
+  return round2((dias / 365) * (diasPorAnio || 15));
+}
+async function abrirVacaciones(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  VAC_EMPLEADO_ACTUAL = emp;
+  const diasAnio = Number(STATE.empresaConfig?.vacaciones_dias_anio) || 15;
+
+  const { data: historial } = await sbClient.from('empleados_vacaciones')
+    .select('*').eq('empleado_id', empleadoId).order('fecha_inicio', { ascending:false });
+  const tomados = round2((historial||[]).reduce((s,v)=>s+Number(v.dias||0), 0));
+  const acumulados = diasVacacionesAcumulados(emp.fecha_ingreso, diasAnio);
+  const disponibles = round2(acumulados - tomados);
+
+  document.getElementById('vac-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('vac-acumulados').textContent = `${acumulados} días`;
+  document.getElementById('vac-tomados').textContent = `${tomados} días`;
+  document.getElementById('vac-disponibles').textContent = `${disponibles} días`;
+  document.getElementById('vac-desde').value = todayISO();
+  document.getElementById('vac-hasta').value = todayISO();
+  document.getElementById('vac-dias').value = '';
+  document.getElementById('vac-nota').value = '';
+  document.getElementById('vac-error').textContent = '';
+
+  const tbody = document.getElementById('vac-historial-tbody');
+  tbody.innerHTML = (historial||[]).length ? historial.map(v => `
+    <tr><td>${fmtDate(v.fecha_inicio)}</td><td>${fmtDate(v.fecha_fin)}</td><td>${v.dias}</td><td>${esc(v.nota||'—')}</td></tr>
+  `).join('') : '<tr><td colspan="4" class="empty-cell">Sin registros todavía</td></tr>';
+
+  openModal('modal-vacaciones');
+}
+async function registrarVacacionesTomadas() {
+  const errEl = document.getElementById('vac-error');
+  errEl.textContent = '';
+  if (!VAC_EMPLEADO_ACTUAL) return;
+  const desde = document.getElementById('vac-desde').value;
+  const hasta = document.getElementById('vac-hasta').value;
+  const dias = round2(parseFloat(document.getElementById('vac-dias').value));
+  if (!(dias > 0)) { errEl.textContent = 'Indica cuántos días fueron.'; return; }
+
+  setBtnLoading('btn-registrar-vacaciones', true);
+  try {
+    await sbClient.from('empleados_vacaciones').insert({
+      auth_user_id: STATE.userId, empleado_id: VAC_EMPLEADO_ACTUAL.id,
+      fecha_inicio: desde, fecha_fin: hasta, dias, nota: document.getElementById('vac-nota').value.trim() || null,
+    });
+    showToast('Vacaciones registradas');
+    await abrirVacaciones(VAC_EMPLEADO_ACTUAL.id);
+  } catch (e) {
+    errEl.textContent = 'Error al registrar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-registrar-vacaciones', false);
+  }
+}
+
+/* =====================================================
+   AUSENCIAS / PERMISOS
+===================================================== */
+let AUS_EMPLEADO_ACTUAL = null;
+function abrirAusencia(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  AUS_EMPLEADO_ACTUAL = emp;
+  document.getElementById('aus-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('aus-desde').value = todayISO();
+  document.getElementById('aus-hasta').value = todayISO();
+  document.getElementById('aus-dias').value = '1';
+  document.getElementById('aus-tipo').value = 'sin_goce';
+  document.getElementById('aus-motivo').value = '';
+  document.getElementById('aus-error').textContent = '';
+  openModal('modal-ausencia');
+}
+async function guardarAusencia() {
+  const errEl = document.getElementById('aus-error');
+  errEl.textContent = '';
+  if (!AUS_EMPLEADO_ACTUAL) return;
+  const dias = round2(parseFloat(document.getElementById('aus-dias').value));
+  if (!(dias > 0)) { errEl.textContent = 'Indica cuántos días fueron.'; return; }
+
+  setBtnLoading('btn-guardar-ausencia', true);
+  try {
+    await sbClient.from('empleados_ausencias').insert({
+      auth_user_id: STATE.userId, empleado_id: AUS_EMPLEADO_ACTUAL.id,
+      fecha_inicio: document.getElementById('aus-desde').value, fecha_fin: document.getElementById('aus-hasta').value,
+      dias, tipo: document.getElementById('aus-tipo').value, motivo: document.getElementById('aus-motivo').value.trim() || null,
+    });
+    showToast('Ausencia registrada' + (document.getElementById('aus-tipo').value === 'sin_goce' ? ' — recuérdalo al calcular el siguiente pago' : ''));
+    closeModal('modal-ausencia');
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-ausencia', false);
+  }
+}
+
+/* =====================================================
+   LIQUIDACIÓN FINAL — indemnización por antigüedad + vacaciones
+   pendientes. Los días por año son configurables (varía por país),
+   nunca una fórmula fija de un solo lugar.
+===================================================== */
+let LIQ_EMPLEADO_ACTUAL = null;
+async function abrirLiquidar(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  if (!emp.fecha_ingreso) { showToast('Este empleado no tiene fecha de ingreso registrada — no se puede calcular la liquidación', 'error'); return; }
+  LIQ_EMPLEADO_ACTUAL = emp;
+
+  const diasPorAnioIndem = Number(STATE.empresaConfig?.indemnizacion_dias_por_anio) || 30;
+  document.getElementById('liq-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('liq-fecha-ingreso').textContent = fmtDate(emp.fecha_ingreso);
+  document.getElementById('liq-dias-por-anio').value = diasPorAnioIndem;
+  document.getElementById('liq-fecha-pago').value = todayISO();
+  document.getElementById('liq-otros-monto').value = '';
+  document.getElementById('liq-otros-detalle').value = '';
+  document.getElementById('liq-observaciones').value = '';
+  document.getElementById('liq-error').textContent = '';
+
+  await recalcularLiquidacion();
+  openModal('modal-liquidar');
+}
+async function recalcularLiquidacion() {
+  const emp = LIQ_EMPLEADO_ACTUAL;
+  if (!emp) return;
+  const diasPorAnioIndem = parseFloat(document.getElementById('liq-dias-por-anio').value) || 0;
+  const diasTrabajados = Math.max(0, Math.round((new Date(todayISO()) - new Date(emp.fecha_ingreso)) / 86400000));
+  const aniosTrabajados = round2(diasTrabajados / 365);
+  const salarioDiario = round2(Number(emp.salario||0) / 30);
+  const montoIndemnizacion = round2(aniosTrabajados * diasPorAnioIndem * salarioDiario);
+
+  const diasAnioVac = Number(STATE.empresaConfig?.vacaciones_dias_anio) || 15;
+  const { data: historialVac } = await sbClient.from('empleados_vacaciones').select('dias').eq('empleado_id', emp.id);
+  const tomados = round2((historialVac||[]).reduce((s,v)=>s+Number(v.dias||0),0));
+  const acumulados = diasVacacionesAcumulados(emp.fecha_ingreso, diasAnioVac);
+  const diasVacPendientes = Math.max(0, round2(acumulados - tomados));
+  const montoVacPendientes = round2(diasVacPendientes * salarioDiario);
+
+  const otros = round2(parseFloat(document.getElementById('liq-otros-monto').value) || 0);
+  const total = round2(montoIndemnizacion + montoVacPendientes + otros);
+
+  document.getElementById('liq-tiempo').textContent = `${aniosTrabajados} años (${diasTrabajados} días)`;
+  document.getElementById('liq-monto-indemnizacion').textContent = fmt(montoIndemnizacion);
+  document.getElementById('liq-dias-vacaciones').textContent = `${diasVacPendientes} días`;
+  document.getElementById('liq-monto-vacaciones').textContent = fmt(montoVacPendientes);
+  document.getElementById('liq-total').textContent = fmt(total);
+
+  LIQ_EMPLEADO_ACTUAL._calculo = { aniosTrabajados, montoIndemnizacion, diasVacPendientes, montoVacPendientes, otros, total, diasPorAnioIndem };
+}
+document.addEventListener('input', (ev) => {
+  if (['liq-dias-por-anio','liq-otros-monto'].includes(ev.target?.id)) recalcularLiquidacion();
+});
+async function confirmarLiquidacion() {
+  const errEl = document.getElementById('liq-error');
+  errEl.textContent = '';
+  const emp = LIQ_EMPLEADO_ACTUAL;
+  if (!emp || !emp._calculo) return;
+  if (!confirm(`¿Confirmar la liquidación de ${emp.nombre} por ${fmt(emp._calculo.total)}? El empleado quedará marcado como inactivo.`)) return;
+
+  setBtnLoading('btn-confirmar-liquidacion', true);
+  try {
+    const c = emp._calculo;
+    const fecha = document.getElementById('liq-fecha-pago').value || todayISO();
+    const comprobanteNumero = `LIQ-${Date.now().toString().slice(-8)}`;
+    const { data: liq, error } = await sbClient.from('empleados_liquidaciones').insert({
+      auth_user_id: STATE.userId, empleado_id: emp.id, fecha, fecha_ingreso: emp.fecha_ingreso,
+      anios_trabajados: c.aniosTrabajados, dias_indemnizacion: c.diasPorAnioIndem, monto_indemnizacion: c.montoIndemnizacion,
+      dias_vacaciones_pendientes: c.diasVacPendientes, monto_vacaciones_pendientes: c.montoVacPendientes,
+      otros_montos: c.otros, otros_detalle: document.getElementById('liq-otros-detalle').value.trim() || null,
+      total_pagado: c.total, observaciones: document.getElementById('liq-observaciones').value.trim() || null,
+      comprobante_numero: comprobanteNumero, usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+    }).select().single();
+    if (error) throw error;
+
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        concepto: `Liquidación final — ${emp.nombre}`, monto: c.total,
+        referencia_tipo: 'salario', referencia_id: liq.id, fecha,
+      });
+      if (!cajaRes.ok) showToast('La liquidación se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
+    }
+
+    await sbClient.from('empleados').update({ estado: 'inactivo', updated_at: new Date().toISOString() }).eq('id', emp.id).eq('auth_user_id', STATE.userId);
+
+    showToast(`Liquidación de ${emp.nombre} registrada y descontada de Caja`);
+    closeModal('modal-liquidar');
+    await Promise.allSettled([loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    errEl.textContent = 'Error al confirmar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-confirmar-liquidacion', false);
+  }
+}
+
+/* =====================================================
+   ORGANIGRAMA — árbol visual simple, a partir de "reporta_a".
+===================================================== */
+function abrirOrganigrama() {
+  document.getElementById('panel-organigrama').style.display = '';
+  renderOrganigrama();
+}
+function renderOrganigrama() {
+  const cont = document.getElementById('organigrama-cuerpo');
+  const activos = STATE.empleados.filter(e => e.estado === 'activo');
+  if (!activos.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Sin empleados activos</p>'; return; }
+
+  const raices = activos.filter(e => !e.reporta_a || !activos.some(x => x.id === e.reporta_a));
+  const nodo = (emp, nivel) => {
+    const hijos = activos.filter(e => e.reporta_a === emp.id);
+    return `
+      <div style="margin-left:${nivel*28}px;margin-bottom:8px">
+        <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg-app);border:1px solid var(--border);border-radius:10px;padding:8px 14px">
+          <span style="font-weight:700">${esc(emp.nombre)}</span>
+          <span style="font-size:11.5px;color:var(--text-muted)">${esc(emp.cargo||'')}${emp.departamento ? ' · '+esc(emp.departamento) : ''}</span>
+        </div>
+        ${hijos.map(h => nodo(h, nivel+1)).join('')}
+      </div>`;
+  };
+  cont.innerHTML = raices.map(r => nodo(r, 0)).join('') || '<p style="color:var(--text-muted);font-size:12.5px">Sin estructura definida — asigna "Reporta a" al editar un empleado.</p>';
+}
+
+/* =====================================================
+   REPORTES DE NÓMINA — costo total y por departamento, últimos 6
+   meses. Usa solo datos ya guardados (empleados_pagos), nunca
+   recalcula nada por su cuenta.
+===================================================== */
+function abrirReportesNomina() {
+  document.getElementById('panel-reportes-nomina').style.display = '';
+  cargarReportesNomina();
+}
+async function cargarReportesNomina() {
+  const cont = document.getElementById('reportes-nomina-cuerpo');
+  cont.innerHTML = 'Cargando…';
+  try {
+    const desde = new Date(); desde.setMonth(desde.getMonth() - 6);
+    const desdeISO = ymd(desde);
+    const { data: pagos } = await sbClient.from('empleados_pagos').select('fecha, total_pagado, empleado_id')
+      .eq('auth_user_id', STATE.userId).gte('fecha', desdeISO);
+    const lista = pagos || [];
+    if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay pagos en los últimos 6 meses.</p>'; return; }
+
+    // Costo por mes
+    const porMes = new Map();
+    lista.forEach(p => {
+      const mes = p.fecha.slice(0,7);
+      porMes.set(mes, round2((porMes.get(mes)||0) + Number(p.total_pagado)));
+    });
+    const mesesOrdenados = Array.from(porMes.keys()).sort();
+
+    // Costo por departamento
+    const empMap = new Map(STATE.empleados.map(e => [e.id, e]));
+    const porDepto = new Map();
+    lista.forEach(p => {
+      const depto = empMap.get(p.empleado_id)?.departamento || 'Sin departamento';
+      porDepto.set(depto, round2((porDepto.get(depto)||0) + Number(p.total_pagado)));
+    });
+
+    const totalGeneral = round2(lista.reduce((s,p)=>s+Number(p.total_pagado),0));
+
+    cont.innerHTML = `
+      <div style="margin-bottom:18px">
+        <div style="font-size:12px;color:var(--text-muted)">Costo total de planilla (6 meses)</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent)">${fmt(totalGeneral)}</div>
+      </div>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Por mes</label>
+      <div style="margin-bottom:18px">
+        ${mesesOrdenados.map(m => {
+          const val = porMes.get(m);
+          const pct = totalGeneral ? Math.round(val/totalGeneral*100) : 0;
+          return `<div style="margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>${m}</span><span>${fmt(val)}</span></div>
+            <div style="background:var(--bg-app);border-radius:6px;height:8px;overflow:hidden"><div style="width:${pct}%;height:100%;background:#6366f1"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Por departamento</label>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Departamento</th><th>Costo (6 meses)</th><th>% del total</th></tr></thead>
+        <tbody>${Array.from(porDepto.entries()).sort((a,b)=>b[1]-a[1]).map(([depto,val]) => `
+          <tr><td>${esc(depto)}</td><td>${fmt(val)}</td><td>${totalGeneral?Math.round(val/totalGeneral*100):0}%</td></tr>
+        `).join('')}</tbody>
+      </table></div>`;
+  } catch (e) {
+    console.error('cargarReportesNomina:', e);
+    cont.innerHTML = '<p style="color:var(--danger);font-size:12.5px">No se pudo cargar el reporte.</p>';
+  }
 }
 
 async function initSalarios() {
