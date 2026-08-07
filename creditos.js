@@ -349,14 +349,47 @@
   function renderImpuestosCheck() {
     const wrap = document.getElementById('nc-impuestos-check');
     if (!wrap) return;
-    wrap.innerHTML = CS.impuestos.length
-      ? CS.impuestos.map(i => `
+    // Los de tabla progresiva (como el IR de nómina) no aplican a una
+    // venta puntual — se calculan sobre ingresos totales, no por
+    // transacción, así que no se muestran aquí como opción marcable.
+    const disponibles = CS.impuestos.filter(i => i.tipo_valor !== 'tabla_progresiva');
+    wrap.innerHTML = (disponibles.length
+      ? disponibles.map(i => `
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--text-secondary)">
             <input type="checkbox" class="nc-impuesto-chk" value="${i.id}" data-valor="${i.valor}" data-tipo="${i.tipo_valor}" data-nombre="${esc(i.nombre)}" style="width:auto" onchange="recalcularCredito()" />
             ${esc(i.nombre)} (${i.tipo_valor==='porcentaje' ? i.valor+'%' : fmt(i.valor)})
           </label>`).join('')
-      : '<span style="font-size:12.5px;color:var(--text-muted)">Sin impuestos disponibles.</span>';
+      : '<span style="font-size:12.5px;color:var(--text-muted)">Sin impuestos disponibles.</span>')
+      + `<button type="button" class="btn-secondary btn-sm" onclick="abrirCrearImpuestoRapido()" style="padding:3px 10px;font-size:11.5px">+ Nuevo impuesto</button>`;
   }
+
+  // Crear un impuesto sin salir del formulario de crédito — se agrega
+  // al mismo catálogo que usa todo el sistema (Ventas, Impuestos,
+  // Salarios), nunca uno aparte.
+  function abrirCrearImpuestoRapido() {
+    const nombre = prompt('Nombre del nuevo impuesto (ej: IR, Retención en la fuente):');
+    if (!nombre || !nombre.trim()) return;
+    const valorStr = prompt(`¿Qué porcentaje aplica "${nombre.trim()}"? (ej: 15)`);
+    const valor = parseFloat(valorStr);
+    if (isNaN(valor) || valor < 0) { showToast('Porcentaje inválido', 'error'); return; }
+    (async () => {
+      try {
+        const { data: existente } = await _sb.from('impuestos').select('id')
+          .eq('auth_user_id', CS.userId).ilike('nombre', nombre.trim()).maybeSingle();
+        if (existente) { showToast('Ya existe un impuesto con ese nombre — lo puedes marcar de la lista', 'error'); return; }
+        const { error } = await _sb.from('impuestos').insert({
+          auth_user_id: CS.userId, nombre: nombre.trim(), categoria: 'otro',
+          tipo_valor: 'porcentaje', valor, estado: true,
+        });
+        if (error) throw error;
+        showToast(`Impuesto "${nombre.trim()}" creado`);
+        const { data } = await _sb.from('impuestos').select('*').eq('auth_user_id', CS.userId).eq('estado', true);
+        CS.impuestos = data || [];
+        renderImpuestosCheck();
+      } catch (e) { showToast('Error al crear el impuesto: ' + (e.message||''), 'error'); }
+    })();
+  }
+  window.abrirCrearImpuestoRapido = abrirCrearImpuestoRapido;
 
   // Crear un impuesto nuevo sin salir del modal de Nuevo Crédito (igual que el
   // producto financiero: el usuario lo nombra ahí mismo). También queda disponible

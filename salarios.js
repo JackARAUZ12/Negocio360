@@ -920,7 +920,21 @@ async function cargarPlantillaConceptos(pais) {
       obligatorio: c.obligatorio, activo: true, pais_plantilla: pais, orden: i,
     }));
     await sbClient.from('nomina_conceptos').insert(payload);
-    showToast(`Plantilla de ${plantilla.nombre} cargada`);
+
+    // Cada concepto (deducción o aporte) también se refleja en el
+    // catálogo de Impuestos que ya usan Ventas/Créditos/Proformas —
+    // si ya existe uno con ese mismo nombre, NUNCA se duplica, se
+    // actualiza el existente.
+    for (const c of plantilla.conceptos) {
+      try {
+        await sbClient.rpc('sincronizar_concepto_a_impuestos', {
+          p_nombre: c.nombre, p_tipo_valor: c.metodo_calculo === 'monto_fijo' ? 'fijo' : c.metodo_calculo,
+          p_valor: c.valor || null, p_tabla_progresiva: c.tabla_progresiva || null, p_pais: pais,
+        });
+      } catch (eSync) { console.warn('No se pudo sincronizar a Impuestos:', c.nombre, eSync); }
+    }
+
+    showToast(`Plantilla de ${plantilla.nombre} cargada — también visible en Impuestos`);
     await cargarConceptos();
   } catch (e) { showToast('Error al cargar la plantilla', 'error'); }
 }
@@ -997,7 +1011,18 @@ async function guardarConcepto() {
       payload.activo = true; payload.orden = STATE.conceptos.length;
       await sbClient.from('nomina_conceptos').insert({ auth_user_id: STATE.userId, ...payload });
     }
-    showToast('Concepto guardado');
+
+    // También se refleja en el catálogo de Impuestos — sin duplicar
+    // si ya existe uno con el mismo nombre.
+    try {
+      await sbClient.rpc('sincronizar_concepto_a_impuestos', {
+        p_nombre: nombre, p_tipo_valor: metodo === 'monto_fijo' ? 'fijo' : metodo,
+        p_valor: payload.valor, p_tabla_progresiva: payload.tabla_progresiva,
+        p_pais: document.getElementById('emp-pais')?.value || null,
+      });
+    } catch (eSync) { console.warn('No se pudo sincronizar a Impuestos:', eSync); }
+
+    showToast('Concepto guardado — también visible en Impuestos');
     closeModal('modal-nuevo-concepto');
     await cargarConceptos();
   } catch (e) {

@@ -1074,9 +1074,9 @@ async function cargarCatalogoImpuestos() {
     if (tbody) {
       tbody.innerHTML = S.catalogoImpuestos.length ? S.catalogoImpuestos.map(i => `
         <tr>
-          <td><b>${esc(i.nombre)}</b></td>
+          <td><b>${esc(i.nombre)}</b>${i.origen==='nomina' ? ' <span style="font-size:10.5px;color:var(--accent);font-weight:600">👤 desde Salarios</span>' : ''}</td>
           <td>${esc(i.categoria||'—')}</td>
-          <td>${i.tipo_valor==='porcentaje' ? Number(i.valor)+'%' : fmt(i.valor)}</td>
+          <td>${i.tipo_valor==='porcentaje' ? Number(i.valor)+'%' : i.tipo_valor==='tabla_progresiva' ? 'Tabla progresiva' : fmt(i.valor)}</td>
           <td><span class="badge-estado ${i.estado?'on':'off'}">${i.estado?'Activo':'Inactivo'}</span></td>
           <td><button class="btn-ghost" onclick="toggleEstadoImpuesto('${i.id}', ${!i.estado})">${i.estado?'Desactivar':'Activar'}</button></td>
         </tr>`).join('') : '<tr><td colspan="5" class="empty-cell">Sin impuestos registrados</td></tr>';
