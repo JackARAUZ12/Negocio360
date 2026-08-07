@@ -973,6 +973,7 @@
     .badge-aprobada   { background: var(--success-soft);  color: var(--success); }
     .badge-rechazada  { background: var(--danger-soft);   color: var(--danger); }
     .badge-convertida { background: var(--accent-soft);   color: var(--accent); }
+    .badge-pago-parcial { background: var(--warning-soft); color: var(--warning); }
     .nc-paso-title {
       font-size: 14px; font-weight: 700; color: var(--text-primary);
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
@@ -1469,6 +1470,7 @@
     <div class="modal-footer" style="flex-wrap:wrap">
       <button class="btn-ghost" onclick="closeModal('modal-detalle-proforma')">Cerrar</button>
       <button class="btn-secondary" onclick="compartirProformaActual()">🔗 Compartir</button>
+      <button class="btn-secondary" id="det-prof-btn-pago-parcial" style="border-color:var(--warning);color:var(--warning)" onclick="abrirPagoParcial()">💳 Pago parcial / a crédito</button>
       <button class="btn-primary" id="det-prof-btn-convertir" onclick="abrirConvertirDesdeDetalle()">Convertir a Venta</button>
     </div>
   </div>
@@ -1609,6 +1611,17 @@
   .ticket-print .tp-row{display:flex;justify-content:space-between;gap:10px}
   .ticket-print hr{border:none;border-top:1px dashed var(--border);margin:8px 0}
 </style>
+
+<!-- =====================================================
+     MODAL INCRUSTADO — Créditos dentro de Proformas, para "Pago
+     parcial / a crédito", sin salir de la pantalla.
+=================================================== -->
+<div id="pp-modal-embebido" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);flex-direction:column">
+  <div style="flex-shrink:0;padding:10px 14px;background:var(--bg-surface);display:flex;justify-content:flex-end">
+    <button class="btn-secondary" onclick="cerrarPagoParcialEmbebido()">✕ Cerrar sin crear el crédito</button>
+  </div>
+  <iframe id="pp-iframe-embebido" src="about:blank" style="flex:1;width:100%;border:none;background:var(--bg-app)"></iframe>
+</div>
 
 <script src="proformas.js"></script>
 

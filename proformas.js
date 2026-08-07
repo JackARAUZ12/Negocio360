@@ -686,7 +686,7 @@ function abrirNuevaProforma() {
 function abrirEditarProforma(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
-  if (p.estado === 'convertida') { showToast('Esta proforma ya fue convertida a venta y no se puede editar', 'error'); return; }
+  if (['convertida','pago_parcial'].includes(p.estado)) { showToast('Esta proforma ya no se puede editar', 'error'); return; }
   abrirNuevaProforma();
   STATE.proformaActual = p;
   document.getElementById('np-modal-title').textContent = `Editar Proforma ${p.numero_proforma}`;
@@ -852,6 +852,7 @@ const ESTADO_PROF_INFO = {
   rechazada:  { label:'Rechazada',  badge:'badge-rechazada' },
   vencida:    { label:'Vencida',    badge:'badge-vencido' },
   convertida: { label:'Convertida', badge:'badge-convertida' },
+  pago_parcial: { label:'Pago Parcial', badge:'badge-pago-parcial' },
 };
 
 function proformasFiltradas() {
@@ -877,8 +878,8 @@ function renderTablaProf() {
   } else {
     tbody.innerHTML = pagina.map(p => {
       const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
-      const puedeEditar = p.estado !== 'convertida';
-      const puedeConvertir = !['convertida','rechazada'].includes(p.estado);
+      const puedeEditar = !['convertida','pago_parcial'].includes(p.estado);
+      const puedeConvertir = !['convertida','rechazada','pago_parcial'].includes(p.estado);
       return `
       <tr>
         <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(p.numero_proforma)}</span></td>
@@ -950,14 +951,14 @@ async function duplicarProforma(id) {
 function confirmarEliminarProf(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
-  if (p.estado === 'convertida') { showToast('No se puede eliminar: ya fue convertida a venta', 'error'); return; }
+  if (['convertida','pago_parcial'].includes(p.estado)) { showToast('No se puede eliminar: ya tiene una venta o crédito vinculado', 'error'); return; }
   STATE.proformaActual = p;
   openModal('modal-confirmar-eliminar-prof');
 }
 async function eliminarProforma() {
   const p = STATE.proformaActual;
   if (!p) return;
-  if (p.estado === 'convertida') { showToast('No se puede eliminar: ya fue convertida a venta', 'error'); return; }
+  if (['convertida','pago_parcial'].includes(p.estado)) { showToast('No se puede eliminar: ya tiene una venta o crédito vinculado', 'error'); return; }
   setBtnLoading('btn-confirmar-eliminar-prof', true);
   try {
     const { error } = await sbClient.from('proformas').delete().eq('id', p.id).eq('auth_user_id', STATE.userId);
@@ -1006,7 +1007,10 @@ async function verDetalleProf(id) {
   STATE.proformaActual = p;
   document.getElementById('det-prof-title').textContent = `Proforma ${p.numero_proforma}`;
   const btnConvertir = document.getElementById('det-prof-btn-convertir');
-  btnConvertir.style.display = ['convertida','rechazada'].includes(p.estado) ? 'none' : 'inline-flex';
+  const btnPagoParcial = document.getElementById('det-prof-btn-pago-parcial');
+  const bloqueada = ['convertida','rechazada','pago_parcial'].includes(p.estado);
+  btnConvertir.style.display = bloqueada ? 'none' : 'inline-flex';
+  if (btnPagoParcial) btnPagoParcial.style.display = bloqueada ? 'none' : 'inline-flex';
   const body = document.getElementById('detalle-prof-body');
   body.innerHTML = 'Cargando…';
   openModal('modal-detalle-proforma');
@@ -1025,6 +1029,7 @@ async function verDetalleProf(id) {
         <div><label>Total</label><div class="stat-readonly" style="font-weight:800;color:var(--accent)">${fmt(p.total)}</div></div>
       </div>
       ${p.estado==='convertida' ? `<p style="margin-top:10px;font-size:12.5px;color:var(--success)">✅ Convertida a venta el ${fmtFecha((p.fecha_conversion||'').slice(0,10))} por ${esc(p.convertido_por||'—')}.</p>` : ''}
+      ${p.estado==='pago_parcial' ? `<p style="margin-top:10px;font-size:12.5px;color:var(--warning)">💳 Con pago parcial desde el ${fmtFecha((p.fecha_pago_parcial||'').slice(0,10))} — el cobro del resto se hace desde <a href="creditos.html" target="_blank" style="color:var(--accent);text-decoration:underline">Créditos</a>, ya no desde aquí.</p>` : ''}
       ${p.observaciones ? `<p style="margin-top:10px;font-size:12.5px;color:var(--text-secondary)"><strong>Notas:</strong> ${esc(p.observaciones)}</p>` : ''}
       <div class="table-wrap" style="margin-top:14px">
         <table><thead><tr><th>Ítem</th><th class="th-right">Cant.</th><th class="th-right">Precio</th><th class="th-right">Subtotal</th></tr></thead>
@@ -1050,6 +1055,52 @@ function abrirConvertirAVenta(id) {
   loadMetodosPago();
   openModal('modal-convertir-venta');
 }
+/* =====================================================
+   PAGO PARCIAL / A CRÉDITO — abre Créditos incrustado, con el
+   cliente y los productos de la proforma ya cargados. Nunca se
+   calcula el crédito aquí: se crea con el mismo formulario real de
+   Créditos, y esta pantalla solo reacciona cuando ya se creó de verdad.
+===================================================== */
+function abrirPagoParcial() {
+  const p = STATE.proformaActual;
+  if (!p) return;
+  const items = (STATE.detalleActual || []).map(d => ({
+    producto_id: d.producto_id, nombre: d.producto_nombre, tipo_item: d.tipo_item,
+    precio: d.precio, costo: d.costo, cantidad: d.cantidad,
+    escala_id: d.escala_id, escala_nombre: d.escala_nombre, combo_id: d.combo_id,
+    origen_stock_id: d.origen_stock_id, origen_stock_nombre: d.origen_stock_nombre,
+  }));
+  const payload = { proformaId: p.id, numeroProforma: p.numero_proforma, clienteId: p.cliente_id, items };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+
+  closeModal('modal-detalle-proforma');
+  document.getElementById('pp-iframe-embebido').src = `creditos.html?desde_proforma=${encoded}`;
+  document.getElementById('pp-modal-embebido').style.display = 'flex';
+}
+function cerrarPagoParcialEmbebido() {
+  document.getElementById('pp-modal-embebido').style.display = 'none';
+  document.getElementById('pp-iframe-embebido').src = 'about:blank';
+}
+
+// Créditos avisa aquí cuando el crédito ya se creó de verdad — recién
+// ahí se marca la proforma como "Pago Parcial" y queda bloqueada para
+// cobrar desde aquí.
+window.addEventListener('message', async (ev) => {
+  if (!ev.data || ev.data.tipo !== 'n360_credito_desde_proforma') return;
+  const { creditoId, proformaId } = ev.data;
+  cerrarPagoParcialEmbebido();
+  try {
+    await sbClient.from('proformas').update({
+      estado: 'pago_parcial', credito_id: creditoId, fecha_pago_parcial: new Date().toISOString(),
+    }).eq('id', proformaId).eq('auth_user_id', STATE.userId);
+    showToast('✅ Proforma con pago parcial — el resto se cobra desde Créditos');
+    await Promise.allSettled([loadProformas(), loadKPIsProf()]);
+  } catch (e) {
+    console.error('Error al marcar proforma como pago_parcial:', e);
+    showToast('El crédito se creó, pero no se pudo actualizar la proforma — revísalo manualmente', 'error');
+  }
+});
+
 function abrirConvertirDesdeDetalle() {
   const p = STATE.proformaActual;
   closeModal('modal-detalle-proforma');

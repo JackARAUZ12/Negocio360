@@ -1048,6 +1048,35 @@
   }
   window.abrirNuevoCredito = abrirNuevoCredito;
 
+  // Abre "Nuevo crédito" prellenado con el cliente y los productos de
+  // una proforma — el usuario solo decide cuánto le están dando ahora
+  // (la "prima") y cómo queda el resto (fecha fija o cuotas). El
+  // crédito se crea con la MISMA función de siempre (confirmarNuevoCredito),
+  // nunca con un cálculo aparte.
+  CS.proformaOrigenId = null;
+  function abrirNuevoCreditoDesdeProforma(payloadEncoded) {
+    let payload;
+    try { payload = JSON.parse(decodeURIComponent(escape(atob(payloadEncoded)))); }
+    catch (e) { console.error('No se pudo leer la proforma:', e); return; }
+
+    abrirNuevoCredito();
+    CS.proformaOrigenId = payload.proformaId;
+    document.getElementById('nc-cliente').value = payload.clienteId || '';
+    CS.ncItems = (payload.items || []).map(it => ({
+      producto_id: it.producto_id, nombre: it.nombre, tipo_item: it.tipo_item,
+      precio: Number(it.precio) || 0, costo: Number(it.costo) || 0, cantidad: Number(it.cantidad) || 1,
+      escala_id: it.escala_id || null, escala_nombre: it.escala_nombre || null,
+      esCombo: !!it.combo_id,
+      origen_stock_id: it.origen_stock_id || null, origen_stock_nombre: it.origen_stock_nombre || null,
+    }));
+    renderNCItems();
+    recalcularCredito();
+
+    const aviso = document.getElementById('nc-aviso-proforma');
+    if (aviso) { aviso.style.display = ''; aviso.textContent = `📋 Creando este crédito a partir de la proforma ${payload.numeroProforma || ''} — el pago que registres ahora será la prima inicial.`; }
+  }
+  window.abrirNuevoCreditoDesdeProforma = abrirNuevoCreditoDesdeProforma;
+
   function abrirCreditoExistente() {
     document.getElementById('ce-fecha-original').value = todayISO();
     document.getElementById('ce-proximo-vencimiento').value = sumarFrecuencia(todayISO(),'mensual',1);
@@ -1311,6 +1340,14 @@
 
       showToast(`Crédito ${numeroCredito} creado correctamente`, 'success');
       closeModal('modal-nuevo-credito');
+
+      // Si este crédito se creó desde una Proforma (iframe incrustado),
+      // se le avisa al padre — Proformas nunca calcula el crédito, solo
+      // reacciona cuando de verdad ya se creó.
+      if (CS.proformaOrigenId && window.self !== window.top) {
+        try { window.parent.postMessage({ tipo: 'n360_credito_desde_proforma', creditoId: credito.id, proformaId: CS.proformaOrigenId }, '*'); } catch(e) {}
+      }
+
       await refrescarTodo();
     } catch (e) {
       console.error('confirmarNuevoCredito:', e);
@@ -2002,6 +2039,13 @@
       // crédito puntual, directamente en la misma pantalla de siempre.
       const abrirPagoId = params.get('abrir_pago');
       if (abrirPagoId) abrirRegistrarPago(abrirPagoId);
+
+      // Deep link desde Proformas ("Pago parcial / a crédito") — abre
+      // Nuevo Crédito ya con el cliente y los productos de la proforma
+      // cargados, usando el MISMO formulario de siempre. Nunca se crea
+      // el crédito con una lógica aparte.
+      const desdeProforma = params.get('desde_proforma');
+      if (desdeProforma) abrirNuevoCreditoDesdeProforma(desdeProforma);
     } catch (err) {
       console.error('initCreditos:', err);
       document.getElementById('loader').classList.add('hidden');
