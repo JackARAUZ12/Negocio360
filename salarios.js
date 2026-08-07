@@ -540,11 +540,25 @@ async function guardarAdelanto() {
 
   setBtnLoading('btn-guardar-adelanto', true);
   try {
-    const { error } = await sbClient.from('empleados_adelantos').insert({
+    const { data: adel, error } = await sbClient.from('empleados_adelantos').insert({
       auth_user_id: STATE.userId, empleado_id: emp.id, monto, fecha, motivo, estado: 'pendiente',
-    });
+    }).select().single();
     if (error) throw error;
-    showToast('Adelanto registrado');
+
+    // Un adelanto es dinero real que sale de Caja en ese momento —
+    // después, al pagar el salario, se descuenta lo ya adelantado del
+    // monto final (eso ya funcionaba); lo que faltaba era registrar
+    // ESTA salida real de dinero cuando se entrega el adelanto.
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        concepto: `Adelanto de salario — ${emp.nombre}${motivo ? ': '+motivo : ''}`,
+        monto, referencia_tipo: 'empleado', referencia_id: adel.id, fecha,
+      });
+      if (!cajaRes.ok) showToast('El adelanto se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
+    }
+
+    showToast('Adelanto registrado y descontado de Caja');
     closeModal('modal-adelanto');
     await loadKPIsSal();
   } catch (e) {
@@ -1174,7 +1188,7 @@ async function guardarPlanilla(pagar) {
         });
         const totalAportes = round2(aportesDetalle.reduce((sum,a)=>sum+a.monto,0));
 
-        await sbClient.from('empleados_pagos').insert({
+        const { data: pagoRow } = await sbClient.from('empleados_pagos').insert({
           auth_user_id: STATE.userId, empleado_id: empId, fecha: fechaPago,
           salario_base: s.base, bonificaciones: 0, bonificaciones_detalle: [],
           deducciones: s.deducciones, deducciones_detalle: deduccionesDetalle,
@@ -1184,7 +1198,19 @@ async function guardarPlanilla(pagar) {
           comprobante_numero: `SAL-${Date.now().toString().slice(-8)}-${empId.slice(0,4)}`,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
           planilla_id: planilla.id,
-        });
+        }).select().single();
+
+        // Egreso en Caja por cada empleado — antes la planilla nunca
+        // tocaba Caja, aunque el pago individual sí lo hacía siempre.
+        if (window.CajaAPI && pagoRow) {
+          const cajaRes = await window.CajaAPI.registrarMovimiento({
+            auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+            concepto: `Pago de salario a ${s.nombre} — planilla ${nombre}`, monto: s.total,
+            metodo_pago_nombre: 'Efectivo', referencia_tipo: 'salario', referencia_id: pagoRow.id, fecha: fechaPago,
+          });
+          if (!cajaRes.ok) console.error(`No se pudo descontar de Caja el pago de ${s.nombre}:`, cajaRes.error);
+        }
+
         await sbClient.from('empleados').update({
           ultimo_pago: fechaPago,
           proximo_pago: sumarPeriodoSalario(fechaPago, STATE.empleados.find(e=>e.id===empId)?.tipo_salario||'mensual', 1),
@@ -1315,14 +1341,25 @@ async function confirmarPagoBonoAnual() {
 
   setBtnLoading('btn-confirmar-bono', true);
   try {
-    await sbClient.from('empleados_bono_anual_pagos').insert({
+    const { data: bonoRow, error } = await sbClient.from('empleados_bono_anual_pagos').insert({
       auth_user_id: STATE.userId, empleado_id: emp.id, fecha, periodo_desde: desde, periodo_hasta: hasta,
       monto, cuota_numero: cuotaNumero, metodo_pago_nombre: 'Efectivo',
       observaciones: document.getElementById('pb-observaciones').value.trim() || null,
       comprobante_numero: `BON-${Date.now().toString().slice(-8)}`,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
-    });
-    showToast(`${STATE.bonoAnualConfig?.nombre || 'Bono'} pagado a ${emp.nombre}`);
+    }).select().single();
+    if (error) throw error;
+
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        concepto: `${STATE.bonoAnualConfig?.nombre || 'Bono anual'} — ${emp.nombre} (cuota ${cuotaNumero})`,
+        monto, metodo_pago_nombre: 'Efectivo', referencia_tipo: 'salario', referencia_id: bonoRow.id, fecha,
+      });
+      if (!cajaRes.ok) showToast('El bono se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
+    }
+
+    showToast(`${STATE.bonoAnualConfig?.nombre || 'Bono'} pagado a ${emp.nombre} y descontado de Caja`);
     closeModal('modal-pagar-bono');
   } catch (e) {
     errEl.textContent = 'Error al registrar: ' + (e.message||'');
