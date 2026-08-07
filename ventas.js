@@ -3646,6 +3646,12 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
   const logoUrl = S.empresaConfig?.logo_principal_url || S.empresaConfig?.logo_url || '';
   const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
+  // En 58mm hay menos ancho real de impresión (los térmicos de 58mm
+  // suelen ser 203dpi, ~384 puntos de ancho) — con la misma letra que
+  // 80mm, el texto se ve apretado o se corta en impresoras baratas.
+  const fsBase = ancho === '58mm' ? 9.5 : 11;
+  const fsTotal = ancho === '58mm' ? 11.5 : 13;
+  const fsNombre = ancho === '58mm' ? 12 : 13;
   const fechaTxt = new Date().toLocaleString('es-NI');
 
   const filas = items.map(i => `
@@ -3664,19 +3670,19 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   * { box-sizing: border-box; }
   body {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
-    font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
+    font-family: Arial, Helvetica, sans-serif; font-size: ${fsBase}px; color: #000;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
   .linea { border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 1px 0; font-size: 11px; }
-  .total-row td { font-weight: 700; font-size: 13px; padding-top: 4px; }
+  td { padding: 1px 0; font-size: ${fsBase}px; }
+  .total-row td { font-weight: 700; font-size: ${fsTotal}px; padding-top: 4px; }
   .ticket-logo { max-width: ${logoMaxW}px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
 </style></head>
 <body>
   ${logoUrl ? `<img class="ticket-logo" src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'"/>` : ''}
-  <div class="centro negrita" style="font-size:13px">${esc(nombreNegocio)}</div>
+  <div class="centro negrita" style="font-size:${fsNombre}px">${esc(nombreNegocio)}</div>
   ${cfg.ruc_ticket ? `<div class="centro">RUC: ${esc(cfg.ruc_ticket)}</div>` : ''}
   ${cfg.direccion_ticket ? `<div class="centro">${esc(cfg.direccion_ticket)}</div>` : ''}
   ${cfg.telefono_ticket ? `<div class="centro">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
@@ -3735,6 +3741,9 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
   const logoUrl = S.empresaConfig?.logo_principal_url || S.empresaConfig?.logo_url || '';
   const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
+  const fsBase = ancho === '58mm' ? 9.5 : 11;
+  const fsTotal = ancho === '58mm' ? 11.5 : 13;
+  const fsNombre = ancho === '58mm' ? 12 : 13;
   const fechaTxt = new Date().toLocaleString('es-NI');
 
   const filas = (items||[]).map(i => `
@@ -3753,19 +3762,19 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
   * { box-sizing: border-box; }
   body {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
-    font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
+    font-family: Arial, Helvetica, sans-serif; font-size: ${fsBase}px; color: #000;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
   .linea { border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 1px 0; font-size: 11px; }
-  .total-row td { font-weight: 700; font-size: 13px; padding-top: 4px; }
+  td { padding: 1px 0; font-size: ${fsBase}px; }
+  .total-row td { font-weight: 700; font-size: ${fsTotal}px; padding-top: 4px; }
   .ticket-logo { max-width: ${logoMaxW}px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
 </style></head>
 <body>
   ${logoUrl ? `<img class="ticket-logo" src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'"/>` : ''}
-  <div class="centro negrita" style="font-size:13px">${esc(nombreNegocio)}</div>
+  <div class="centro negrita" style="font-size:${fsNombre}px">${esc(nombreNegocio)}</div>
   ${cfg.ruc_ticket ? `<div class="centro">RUC: ${esc(cfg.ruc_ticket)}</div>` : ''}
   ${cfg.direccion_ticket ? `<div class="centro">${esc(cfg.direccion_ticket)}</div>` : ''}
   ${cfg.telefono_ticket ? `<div class="centro">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
