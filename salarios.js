@@ -901,7 +901,11 @@ const PLANTILLAS_PAIS = {
     nombre: 'Nicaragua',
     conceptos: [
       { nombre: 'INSS Laboral', tipo: 'deduccion', metodo_calculo: 'porcentaje', valor: 7, obligatorio: true },
-      { nombre: 'INSS Patronal', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 22.5, obligatorio: true },
+      // 21.5% aplica a empresas con MENOS de 50 trabajadores (la gran
+      // mayoría de negocios) — si el negocio tiene 50 o más, debe
+      // cambiarlo a mano a 22.5% desde "Editar" en Conceptos de Nómina.
+      { nombre: 'INSS Patronal', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 21.5, obligatorio: true },
+      { nombre: 'INATEC', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 2, obligatorio: true },
       { nombre: 'IR sobre salarios', tipo: 'deduccion', metodo_calculo: 'tabla_progresiva', obligatorio: true,
         tabla_progresiva: [
           { hasta: 100000, tasa: 0 },
@@ -1085,7 +1089,7 @@ function renderPlanillas() {
       <td>${p.total_empleados}</td>
       <td>${fmt(p.total_pagado)}</td>
       <td><span class="status-badge ${p.estado==='pagada'?'badge-activo':'badge-pendiente'}">${p.estado==='pagada'?'Pagada':'Borrador'}</span></td>
-      <td></td>
+      <td class="td-actions">${p.estado==='pagada' ? `<button class="btn-icon" title="Descargar planilla" onclick="abrirExportarPlanilla('${p.id}')">📄</button>` : ''}</td>
     </tr>`).join('');
 }
 
@@ -1325,6 +1329,120 @@ async function confirmarPagoBonoAnual() {
   } finally {
     setBtnLoading('btn-confirmar-bono', false);
   }
+}
+
+/* =====================================================
+   EXPORTAR PLANILLA — PDF y Excel profesionales. Todo sale de los
+   pagos YA registrados (empleados_pagos), nunca se recalcula nada al
+   exportar, para que el documento sea exactamente lo que se pagó.
+===================================================== */
+STATE.planillaExportando = null;
+
+async function abrirExportarPlanilla(planillaId) {
+  try {
+    const { data: planilla } = await sbClient.from('nomina_planillas').select('*').eq('id', planillaId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (!planilla) { showToast('Planilla no encontrada', 'error'); return; }
+    const { data: pagos } = await sbClient.from('empleados_pagos')
+      .select('*, empleados(nombre, cedula, cargo)').eq('planilla_id', planillaId).eq('auth_user_id', STATE.userId).order('created_at');
+    STATE.planillaExportando = { planilla, pagos: pagos || [] };
+    document.getElementById('ep-formato').value = 'NI';
+    openModal('modal-exportar-planilla');
+  } catch (e) {
+    console.error('abrirExportarPlanilla:', e);
+    showToast('No se pudo cargar la planilla', 'error');
+  }
+}
+
+// Junta los nombres únicos de conceptos (deducciones o aportes) que
+// de verdad aparecen en los pagos de esta planilla — así las columnas
+// del documento reflejan exactamente lo que se aplicó, ni más ni menos.
+function conceptosUnicos(pagos, campoDetalle) {
+  const nombres = new Set();
+  pagos.forEach(p => (p[campoDetalle] || []).forEach(d => nombres.add(d.descripcion.replace(' (automático)', ''))));
+  return Array.from(nombres);
+}
+function montoConcepto(detalle, nombreConcepto) {
+  const item = (detalle || []).find(d => d.descripcion.replace(' (automático)', '') === nombreConcepto);
+  return item ? Number(item.monto) : 0;
+}
+
+async function exportarPlanilla(formato) {
+  const ctx = STATE.planillaExportando;
+  if (!ctx) return;
+  const { planilla, pagos } = ctx;
+  const modoNicaragua = document.getElementById('ep-formato').value === 'NI';
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+
+  const nombresDeducciones = conceptosUnicos(pagos, 'deducciones_detalle');
+  const nombresAportes = conceptosUnicos(pagos, 'aportes_patronales_detalle');
+
+  if (formato === 'excel') {
+    const headers = ['#', 'Cédula', 'Nombre', 'Cargo', 'Salario Base',
+      ...nombresDeducciones, 'Total Deducciones', 'Salario Neto',
+      ...(modoNicaragua ? nombresAportes.map(n => `${n} (patronal)`) : []),
+    ];
+    const rows = pagos.map((p, i) => [
+      i+1, p.empleados?.cedula || '—', p.empleados?.nombre || '—', p.empleados?.cargo || '—', Number(p.salario_base),
+      ...nombresDeducciones.map(n => montoConcepto(p.deducciones_detalle, n)),
+      Number(p.deducciones), Number(p.total_pagado),
+      ...(modoNicaragua ? nombresAportes.map(n => montoConcepto(p.aportes_patronales_detalle, n)) : []),
+    ]);
+    const totales = ['', '', '', 'TOTALES', pagos.reduce((s,p)=>s+Number(p.salario_base),0),
+      ...nombresDeducciones.map(n => pagos.reduce((s,p)=>s+montoConcepto(p.deducciones_detalle,n),0)),
+      pagos.reduce((s,p)=>s+Number(p.deducciones),0), pagos.reduce((s,p)=>s+Number(p.total_pagado),0),
+      ...(modoNicaragua ? nombresAportes.map(n => pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0)) : []),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([
+      [bizName], [`Planilla: ${planilla.nombre}`], [`Período: ${fmtDate(planilla.periodo_desde)} — ${fmtDate(planilla.periodo_hasta)}   Fecha de pago: ${fmtDate(planilla.fecha_pago)}`], [],
+      headers, ...rows, totales,
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Planilla');
+    XLSX.writeFile(wb, `Planilla_${planilla.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.xlsx`);
+    showToast('Excel descargado');
+    closeModal('modal-exportar-planilla');
+    return;
+  }
+
+  // PDF
+  if (!window.jspdf) { showToast('No se pudo cargar el generador de PDF', 'error'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+
+  doc.setFontSize(14); doc.setFont(undefined,'bold'); doc.text(bizName, 14, 14);
+  doc.setFontSize(10); doc.setFont(undefined,'normal');
+  doc.text(`Planilla: ${planilla.nombre}`, 14, 20);
+  doc.text(`Período: ${fmtDate(planilla.periodo_desde)} — ${fmtDate(planilla.periodo_hasta)}   Fecha de pago: ${fmtDate(planilla.fecha_pago)}`, 14, 25);
+
+  const head = ['#', 'Cédula', 'Nombre', 'Cargo', 'Sal. Base',
+    ...nombresDeducciones, 'Tot. Deducc.', 'Sal. Neto',
+    ...(modoNicaragua ? nombresAportes : []),
+  ];
+  const body = pagos.map((p, i) => [
+    i+1, p.empleados?.cedula || '—', p.empleados?.nombre || '—', p.empleados?.cargo || '—', fmt(p.salario_base),
+    ...nombresDeducciones.map(n => fmt(montoConcepto(p.deducciones_detalle, n))),
+    fmt(p.deducciones), fmt(p.total_pagado),
+    ...(modoNicaragua ? nombresAportes.map(n => fmt(montoConcepto(p.aportes_patronales_detalle, n))) : []),
+  ]);
+  const totalesRow = ['', '', '', 'TOTALES', fmt(pagos.reduce((s,p)=>s+Number(p.salario_base),0)),
+    ...nombresDeducciones.map(n => fmt(pagos.reduce((s,p)=>s+montoConcepto(p.deducciones_detalle,n),0))),
+    fmt(pagos.reduce((s,p)=>s+Number(p.deducciones),0)), fmt(pagos.reduce((s,p)=>s+Number(p.total_pagado),0)),
+    ...(modoNicaragua ? nombresAportes.map(n => fmt(pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0))) : []),
+  ];
+
+  doc.autoTable({
+    startY: 30, head: [head], body: [...body, totalesRow],
+    theme: 'grid', headStyles: { fillColor: [108,99,255], fontSize: 7.5 }, styles: { fontSize: 7.5, cellPadding: 2 },
+    didParseCell: (data) => { if (data.row.index === body.length) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240,240,245]; } },
+  });
+
+  doc.setFontSize(8); doc.setTextColor(140,140,140);
+  doc.text('Generado por Negocio360 — los montos corresponden exactamente a lo registrado al momento del pago.', 14, doc.internal.pageSize.getHeight() - 8);
+
+  doc.save(`Planilla_${planilla.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.pdf`);
+  showToast('PDF descargado');
+  closeModal('modal-exportar-planilla');
 }
 
 async function initSalarios() {

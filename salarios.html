@@ -969,6 +969,9 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -1404,10 +1407,13 @@
       <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
         Estos son los descuentos y aportes que se calculan automáticamente en cada pago — configúralos según las leyes de tu país, o carga una plantilla como punto de partida.
       </p>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <button class="btn-secondary btn-sm" onclick="cargarPlantillaConceptos('NI')">🇳🇮 Cargar plantilla de Nicaragua</button>
         <button class="btn-primary btn-sm" onclick="abrirNuevoConcepto()">+ Concepto personalizado</button>
       </div>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px">
+        La plantilla de Nicaragua trae el INSS Patronal en 21.5% (para negocios con menos de 50 empleados). Si tu negocio tiene 50 o más, edítalo a 22.5% desde la lista de abajo.
+      </p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Nombre</th><th>Tipo</th><th>Cálculo</th><th>Activo</th><th></th></tr></thead>
@@ -1499,6 +1505,38 @@
       <button class="btn-ghost" onclick="closeModal('modal-nueva-planilla')">Cancelar</button>
       <button class="btn-primary" id="btn-guardar-planilla-borrador" onclick="guardarPlanilla(false)">Guardar como borrador</button>
       <button class="btn-primary" id="btn-pagar-planilla" style="background:var(--success)" onclick="guardarPlanilla(true)">Pagar toda la planilla</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: EXPORTAR PLANILLA (PDF / Excel, profesional)
+     Usa SOLO los datos ya guardados de cada pago — nunca recalcula
+     nada, para que no haya ningún margen de error entre lo que se
+     pagó de verdad y lo que sale en el documento.
+=================================================== -->
+<div class="modal-overlay" id="modal-exportar-planilla" onclick="if(event.target===this)closeModal('modal-exportar-planilla')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Descargar planilla</h3>
+      <button class="modal-close" onclick="closeModal('modal-exportar-planilla')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Formato del documento</label>
+        <select id="ep-formato">
+          <option value="NI">🇳🇮 Formato Nicaragua (estilo Planilla Nacional de Pago)</option>
+          <option value="generico">Formato genérico (nombre, cargo, ingresos, deducciones, neto)</option>
+        </select>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted)">
+        Los montos que salen aquí son exactamente los que ya se pagaron — nunca se vuelven a calcular al exportar.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-exportar-planilla')">Cancelar</button>
+      <button class="btn-secondary" onclick="exportarPlanilla('excel')">📊 Descargar Excel</button>
+      <button class="btn-primary" onclick="exportarPlanilla('pdf')">📄 Descargar PDF</button>
     </div>
   </div>
 </div>
