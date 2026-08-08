@@ -111,6 +111,8 @@ function llenarFormularioPerfil(c) {
   set('pf-nombre-comercial', c.nombre_comercial);
   set('pf-razon-social', c.razon_social);
   set('pf-descripcion', c.descripcion);
+  set('pf-vacaciones-dias-anio', c.vacaciones_dias_anio ?? 15);
+  set('pf-indemnizacion-dias-anio', c.indemnizacion_dias_por_anio ?? 30);
   set('pf-departamento', c.departamento);
   set('pf-ciudad', c.ciudad);
   set('pf-direccion', c.direccion);
@@ -220,6 +222,8 @@ async function guardarPerfil() {
       nombre_comercial: nombreComercial,
       razon_social: g('pf-razon-social'),
       descripcion: g('pf-descripcion'),
+      vacaciones_dias_anio: parseFloat(document.getElementById('pf-vacaciones-dias-anio')?.value) || 15,
+      indemnizacion_dias_por_anio: parseFloat(document.getElementById('pf-indemnizacion-dias-anio')?.value) || 30,
       departamento: g('pf-departamento'),
       ciudad: g('pf-ciudad'),
       direccion: g('pf-direccion'),
