@@ -274,11 +274,11 @@
         </div>
         <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
                class="pg-pin-input" id="pg-pin-1" placeholder="••••"
-               autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-codigo-1" />
         ${esNuevo ? `<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
                class="pg-pin-input" id="pg-pin-2" placeholder="Confirmar código"
-               autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-codigo-2" />` : ''}
         <div class="pg-hint">${esNuevo ? 'Usa entre 4 y 6 dígitos. No lo olvides.' : ''}</div>
         <div class="pg-error" id="pg-pin-error"></div>
@@ -413,7 +413,7 @@
       <div class="pg-subtitle">Pide al administrador que ingrese su código para autorizar el cambio de "${esc(perfil.nombre)}"</div>
       <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
              class="pg-pin-input" id="pg-of-admin-pin" placeholder="Código de administrador"
-             autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
              data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-codigo-admin" />
       <div class="pg-error" id="pg-of-error"></div>
       <div class="pg-btn-row">
@@ -994,7 +994,7 @@
         <div class="pg-subtitle" style="margin-bottom:4px">Sales de "${esc(nombreSucursal)}" — ingresa tu código de acceso</div>
         <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
                class="pg-pin-input" id="pg-vc-pin" placeholder="••••"
-               autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-vc-codigo" />
         <div class="pg-error" id="pg-vc-error"></div>
         <div class="pg-btn-row">
