@@ -889,7 +889,9 @@ const TIPOS_TRANSACCION = {
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
   gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
-  compra: { label: 'Compra', ejemplo: 'Debe: Inventario — Haber: Caja' },
+  compra: { label: 'Compra (pagada de una vez)', ejemplo: 'Debe: Inventario — Haber: Caja' },
+  cxp_generada: { label: 'Cuenta por pagar (compra a crédito con proveedor)', ejemplo: 'Debe: Inventario — Haber: Cuentas por Pagar' },
+  pago_cxp: { label: 'Pago a proveedor (de una cuenta por pagar)', ejemplo: 'Debe: Cuentas por Pagar — Haber: Caja' },
   pago_salario: { label: 'Pago de salario', ejemplo: 'Debe: Sueldos y Salarios — Haber: Caja' },
 };
 let STATE_MAPEO = [];
@@ -984,14 +986,16 @@ async function generarAsientosAutomaticos() {
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
-    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra) {
+    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha) {
       const m = mapeo.get(tipo);
       if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
+      campoFecha = campoFecha || 'fecha';
 
       // SOLO LECTURA — nunca se hace ningún update/insert/delete sobre
       // esta tabla, solo se consulta.
-      let query = sbClient.from(tabla).select('*')
-        .eq('auth_user_id', STATE.userId).eq(campoEstado, filtroEstado).gte('fecha', desde).lte('fecha', hasta);
+      let query = sbClient.from(tabla).select('*').eq('auth_user_id', STATE.userId);
+      if (campoEstado) query = query.eq(campoEstado, filtroEstado); // algunas tablas (ej. pagos ya hechos) no tienen "estado" — todas sus filas ya son reales
+      query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
       if (filtroExtra) query = filtroExtra(query);
       const { data: filas } = await query;
 
@@ -1008,8 +1012,9 @@ async function generarAsientosAutomaticos() {
         const lineasExtra = obtenerLineasExtra ? await obtenerLineasExtra(fila) : [];
 
         const numero = (await sbClient.rpc('generar_numero_asiento', { p_user_id: STATE.userId })).data;
+        const fechaAsiento = String(fila[campoFecha]).slice(0, 10); // por si es timestamp completo (ej. created_at)
         const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
-          auth_user_id: STATE.userId, numero, fecha: fila.fecha,
+          auth_user_id: STATE.userId, numero, fecha: fechaAsiento,
           concepto: `${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || ''}`.trim(),
           estado: 'borrador', origen: 'automatico', referencia_tipo: tipo, referencia_id: fila.id,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
@@ -1057,6 +1062,13 @@ async function generarAsientosAutomaticos() {
     await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ');
     await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
+
+    // Cuentas por Pagar (dinero que le debes a un proveedor): la
+    // obligación se registra desde que se genera (fecha_compra),
+    // sin importar si ya se pagó o sigue pendiente — el pago en sí,
+    // cuando ocurre, es un movimiento aparte.
+    await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', null, null, 'fecha_compra');
+    await procesarTipo('pago_cxp', 'cuentas_por_pagar_pagos', 'monto', null, null, 'Pago a proveedor', null, null, 'created_at');
 
     let resumen = `✅ ${creados} asiento(s) nuevo(s) generado(s) y registrado(s).`;
     if (saltados) resumen += ` ${saltados} ya existían (no se duplicaron).`;
