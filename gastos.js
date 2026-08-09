@@ -468,7 +468,7 @@
   /* ===================================================
      MODAL: NUEVO GASTO
   =================================================== */
-  function openNuevoGasto() {
+  async function openNuevoGasto() {
     document.getElementById('gasto-form').reset();
     document.getElementById('gasto-tipo-flujo').value = 'inmediato';
     document.getElementById('gasto-fecha').value = todayISO();
@@ -476,6 +476,10 @@
     document.getElementById('gasto-checkbox-wrap').style.display   = 'none';
     toggleCategoriaEspecial();
     openModal('modal-gasto');
+
+    const abierta = await hayCajaChicaAbiertaHoy();
+    document.getElementById('gasto-origen-caja-wrap').style.display = abierta ? '' : 'none';
+    if (abierta) document.getElementById('gasto-origen-caja').value = 'chica';
   }
 
   function toggleTipoGasto() {
@@ -492,6 +496,18 @@
     if (wrap) wrap.style.display = cat==='Salarios' ? 'block' : 'none';
   }
 
+  // ¿Hay una sesión de Caja Chica abierta hoy? Si sí, es obligatorio
+  // indicar de dónde sale el dinero antes de guardar. Si no hay
+  // ninguna abierta, todo sigue exactamente como siempre (sin este paso).
+  async function hayCajaChicaAbiertaHoy() {
+    try {
+      const hoy = todayISO();
+      const { data } = await _sb.from('caja_chica_sesiones')
+        .select('id').eq('auth_user_id', GS.userId).eq('fecha', hoy).eq('estado', 'abierta').maybeSingle();
+      return !!data;
+    } catch (e) { return false; }
+  }
+
   async function saveGasto() {
     const tipo          = document.getElementById('gasto-tipo-flujo').value;
     const categoria     = document.getElementById('gasto-categoria').value;
@@ -506,16 +522,25 @@
     if (!monto || monto <= 0) { showToast('El monto debe ser mayor a 0','error'); return; }
     if (categoria==='Salarios' && !empleado) { showToast('Indica el nombre del empleado','error'); return; }
 
+    // Obligatorio solo si hay Caja Chica abierta hoy — si no la hay,
+    // el select ni se muestra y origenCaja queda null (comportamiento
+    // de siempre, sale de la Caja general sin preguntar nada).
+    let origenCaja = null;
+    if (document.getElementById('gasto-origen-caja-wrap').style.display !== 'none') {
+      origenCaja = document.getElementById('gasto-origen-caja').value;
+      if (!origenCaja) { showToast('Indica de dónde sale este dinero (Caja Chica o Caja General)', 'error'); return; }
+    }
+
     const metodoNombre = GS.metodosPago.find(m=>m.id===metodoId)?.nombre || 'Efectivo';
 
     try {
       setBtnLoading('btn-save-gasto', true);
       if (tipo==='inmediato') {
-        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado });
+        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja });
       } else {
         const frecuencia = document.getElementById('gasto-frecuencia').value;
         const pagarYa    = document.getElementById('gasto-pagar-ya').checked;
-        await crearGastoProgramado({ categoria, nombre: concepto, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa });
+        await crearGastoProgramado({ categoria, nombre: concepto, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja });
       }
       closeModal('modal-gasto');
       showToast('Gasto registrado correctamente');
@@ -531,7 +556,7 @@
   /* ===================================================
      GASTO INMEDIATO
   =================================================== */
-  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado }) {
+  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja }) {
     const { data: gastoRow, error: errGasto } = await _sb.from('gastos').insert({
       auth_user_id: GS.userId, tipo:'inmediato', concepto, categoria, monto, fecha,
       metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre,
@@ -542,7 +567,7 @@
     const mov = await _registrarEnCaja({
       auth_user_id: GS.userId, tipo_flujo:'EGRESO', tipo_movimiento:'GASTO',
       concepto: `${categoria}: ${concepto}`, monto,
-      metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre,
+      metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre, origen_caja: origenCaja || null,
       referencia_tipo:'gasto', referencia_id: gastoRow.id, observaciones, fecha,
     });
     if (!mov.ok) { console.error('No se pudo registrar en Caja:', mov.error); return; }
@@ -561,16 +586,16 @@
   /* ===================================================
      GASTO PROGRAMADO
   =================================================== */
-  async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa }) {
+  async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja }) {
     const { data: progRow, error } = await _sb.from('gastos_programados').insert({
       auth_user_id: GS.userId, nombre, categoria, monto, frecuencia,
       fecha_proxima: fecha, empleado: empleado||null, observaciones: observaciones||null, activo: true,
     }).select().single();
     if (error) throw error;
-    if (pagarYa) await ejecutarPagoProgramado(progRow, { fecha, metodoId, metodoNombre, observaciones });
+    if (pagarYa) await ejecutarPagoProgramado(progRow, { fecha, metodoId, metodoNombre, observaciones, origenCaja });
   }
 
-  async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombre, observaciones }) {
+  async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombre, observaciones, origenCaja }) {
     const fechaPago   = fecha || todayISO();
     const metodoFinal = metodoNombre || 'Efectivo';
 
@@ -586,7 +611,7 @@
     const mov = await _registrarEnCaja({
       auth_user_id: GS.userId, tipo_flujo:'EGRESO', tipo_movimiento:'GASTO',
       concepto: `${programado.categoria}: ${programado.nombre}`, monto: programado.monto,
-      metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoFinal,
+      metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoFinal, origen_caja: origenCaja || null,
       referencia_tipo:'gasto', referencia_id: gastoRow.id, observaciones, fecha: fechaPago,
     });
     if (mov.ok) {
@@ -610,7 +635,7 @@
   =================================================== */
   let _programadoEnPago = null;
 
-  function abrirRegistrarPago(programadoId) {
+  async function abrirRegistrarPago(programadoId) {
     const prog = GS.gastosProgramados.find(p=>p.id===programadoId);
     if (!prog) return;
     _programadoEnPago = prog;
@@ -622,6 +647,10 @@
     document.getElementById('pago-metodo').value = '';
     document.getElementById('pago-obs').value    = '';
     openModal('modal-registrar-pago');
+
+    const abierta = await hayCajaChicaAbiertaHoy();
+    document.getElementById('pago-origen-caja-wrap').style.display = abierta ? '' : 'none';
+    if (abierta) document.getElementById('pago-origen-caja').value = 'chica';
   }
 
   async function confirmarRegistrarPago() {
@@ -630,9 +659,14 @@
     const metodoId     = document.getElementById('pago-metodo').value;
     const metodoNombre = GS.metodosPago.find(m=>m.id===metodoId)?.nombre || 'Efectivo';
     const observaciones = document.getElementById('pago-obs').value.trim();
+    let origenCaja = null;
+    if (document.getElementById('pago-origen-caja-wrap').style.display !== 'none') {
+      origenCaja = document.getElementById('pago-origen-caja').value;
+      if (!origenCaja) { showToast('Indica de dónde sale este dinero (Caja Chica o Caja General)', 'error'); return; }
+    }
     try {
       setBtnLoading('btn-confirmar-pago', true);
-      await ejecutarPagoProgramado(_programadoEnPago, { fecha, metodoId, metodoNombre, observaciones });
+      await ejecutarPagoProgramado(_programadoEnPago, { fecha, metodoId, metodoNombre, observaciones, origenCaja });
       closeModal('modal-registrar-pago');
       _programadoEnPago = null;
       showToast('Pago registrado correctamente');

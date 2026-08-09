@@ -33,6 +33,7 @@ let STATE = {
   // Órdenes de Compra
   modoOrden:            false, // true = se está armando una Orden, no una Compra real
   ordenConvirtiendoId:  null,  // id de la orden que se está convirtiendo en compra real
+  cajaChicaAbiertaHoy:  false,
   ordenesCompra:        [],
 
   // Datos
@@ -719,6 +720,7 @@ function abrirNuevaCompra() {
   STATE.pasoActual  = 1;
   STATE.modoOrden = false;
   STATE.ordenConvirtiendoId = null;
+  STATE.cajaChicaAbiertaHoy = false;
   actualizarTextosModoOrden();
 
   // Reset UI
@@ -726,6 +728,31 @@ function abrirNuevaCompra() {
   resetFormProductoNuevo();
   mostrarPasoSeleccion();
   openModal('modal-nueva-compra');
+
+  hayCajaChicaAbiertaHoy().then(abierta => {
+    STATE.cajaChicaAbiertaHoy = abierta;
+    toggleOrigenCajaCompra();
+  });
+}
+
+// ¿Hay una sesión de Caja Chica abierta hoy? Si sí, es obligatorio
+// indicar de dónde sale el dinero de esta compra antes de guardar.
+// Si no hay ninguna abierta, todo sigue exactamente como siempre.
+async function hayCajaChicaAbiertaHoy() {
+  try {
+    const hoy = todayISO();
+    const { data } = await sbClient.from('caja_chica_sesiones')
+      .select('id').eq('auth_user_id', STATE.userId).eq('fecha', hoy).eq('estado', 'abierta').maybeSingle();
+    return !!data;
+  } catch (e) { return false; }
+}
+function toggleOrigenCajaCompra() {
+  const estado = document.getElementById('nc-estado')?.value || 'completada';
+  const wrap = document.getElementById('nc-origen-caja-wrap');
+  if (!wrap) return;
+  const mostrar = !!STATE.cajaChicaAbiertaHoy && estado === 'completada';
+  wrap.style.display = mostrar ? '' : 'none';
+  if (mostrar) document.getElementById('nc-origen-caja').value = 'chica';
 }
 
 // Misma ventana/asistente que "Nueva Compra" — solo que se guarda como
@@ -1299,6 +1326,16 @@ async function guardarCompra() {
   const observaciones = document.getElementById('nc-observaciones')?.value.trim() || null;
   const fecha         = document.getElementById('nc-fecha')?.value || todayISO();
 
+  // Obligatorio solo si hay Caja Chica abierta hoy y la compra queda
+  // "completada" (afecta Caja de inmediato) — si no hay ninguna
+  // abierta, el select ni se muestra y sale de la Caja general sin
+  // preguntar nada, igual que siempre.
+  let origenCaja = null;
+  if (estado === 'completada' && document.getElementById('nc-origen-caja-wrap').style.display !== 'none') {
+    origenCaja = document.getElementById('nc-origen-caja').value;
+    if (!origenCaja) { showToast('Indica de dónde sale este dinero (Caja Chica o Caja General)', 'error'); return; }
+  }
+
   setBtnLoading('nc-btn-save', true);
 
   try {
@@ -1396,6 +1433,7 @@ async function guardarCompra() {
           saldo_resultante:   saldoRes,
           metodo_pago_id:     metodoPagoId  || null,
           metodo_pago_nombre: metodoPagoNombre,
+          origen_caja:        origenCaja || null,
           referencia_tipo:    'compra',
           referencia_id:      compra.id,
           observaciones:      `Proveedor: ${STATE.proveedorSeleccionado?.nombre || 'Sin proveedor'}`,
@@ -1614,6 +1652,11 @@ async function convertirOrdenACompra(ordenId) {
     // observaciones, etc.) hasta confirmar en el último paso.
     irAPaso(3);
     renderCarrito();
+
+    hayCajaChicaAbiertaHoy().then(abierta => {
+      STATE.cajaChicaAbiertaHoy = abierta;
+      toggleOrigenCajaCompra();
+    });
   } catch (e) {
     console.error('convertirOrdenACompra:', e);
     showToast('No se pudo cargar la orden: ' + (e.message || ''), 'error');

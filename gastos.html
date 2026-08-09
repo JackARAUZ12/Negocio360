@@ -1299,6 +1299,15 @@
           </div>
         </div>
 
+        <div class="form-group" id="gasto-origen-caja-wrap" style="display:none">
+          <label>¿De dónde sale este dinero? *</label>
+          <select id="gasto-origen-caja">
+            <option value="chica">🏦 Caja Chica (el efectivo del cajón, abierto hoy)</option>
+            <option value="general">🏛️ Caja General (banco/cuenta principal — no toca el cajón físico)</option>
+          </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Tienes una sesión de Caja Chica abierta hoy — hay que indicar de dónde sale este gasto.</div>
+        </div>
+
         <div class="form-group" id="gasto-frecuencia-wrap" style="display:none">
           <label>Frecuencia *</label>
           <select id="gasto-frecuencia">
@@ -1363,6 +1372,13 @@
         <label>Método de pago</label>
         <select id="pago-metodo">
           <option value="">Efectivo (predeterminado)</option>
+        </select>
+      </div>
+      <div class="form-group" id="pago-origen-caja-wrap" style="display:none">
+        <label>¿De dónde sale este dinero? *</label>
+        <select id="pago-origen-caja">
+          <option value="chica">🏦 Caja Chica (el efectivo del cajón, abierto hoy)</option>
+          <option value="general">🏛️ Caja General (banco/cuenta principal — no toca el cajón físico)</option>
         </select>
       </div>
       <div class="form-group">

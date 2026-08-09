@@ -1051,6 +1051,7 @@ window.CajaAPI = {
         metodo_pago_id:     params.metodo_pago_id     || null,
         referencia_tipo:    params.referencia_tipo    || null,
         referencia_id:      params.referencia_id      || null,
+        origen_caja:        params.origen_caja        || null,
         observaciones:      params.observaciones      || null,
         fecha:              params.fecha               || todayISO(),
         estado:             'completado',
@@ -1344,8 +1345,13 @@ async function renderResumenVivoCC(sesion) {
 
     const lista = movs || [];
     const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
+    // Si Gastos/Compras ya dijeron explícitamente de dónde sale ese
+    // dinero, se respeta eso — "general" nunca toca el cajón físico,
+    // aunque haya sido en efectivo. Sin ese dato (Ventas, Créditos,
+    // Salarios, etc.), sigue funcionando como siempre: por método de pago.
+    const cuentaComoEgresoChica = m => m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : esEfectivo(m));
     const ingEfectivo = lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
-    const egrEfectivo = lista.filter(m => m.tipo_flujo==='EGRESO'  && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
+    const egrEfectivo = lista.filter(m => m.tipo_flujo==='EGRESO'  && cuentaComoEgresoChica(m)).reduce((s,m)=>s+Number(m.monto||0),0);
     const ingTotal    = lista.filter(m => m.tipo_flujo==='INGRESO').reduce((s,m)=>s+Number(m.monto||0),0);
     const egrTotal    = lista.filter(m => m.tipo_flujo==='EGRESO').reduce((s,m)=>s+Number(m.monto||0),0);
     const teorico = round2(Number(sesion.monto_apertura||0) + ingEfectivo - egrEfectivo);
@@ -1453,8 +1459,9 @@ async function confirmarConteoBilletes() {
         .eq('estado','completado').eq('fecha', hoy);
       const lista = movs || [];
       const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
+      const cuentaComoEgresoChica = m => m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : esEfectivo(m));
       const ingEfectivo = round2(lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0));
-      const egrEfectivo = round2(lista.filter(m => m.tipo_flujo==='EGRESO'  && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0));
+      const egrEfectivo = round2(lista.filter(m => m.tipo_flujo==='EGRESO'  && cuentaComoEgresoChica(m)).reduce((s,m)=>s+Number(m.monto||0),0));
       const ingTotal = round2(lista.filter(m => m.tipo_flujo==='INGRESO').reduce((s,m)=>s+Number(m.monto||0),0));
       const egrTotal = round2(lista.filter(m => m.tipo_flujo==='EGRESO').reduce((s,m)=>s+Number(m.monto||0),0));
       const teorico = round2(Number(CC.sesionHoy.monto_apertura||0) + ingEfectivo - egrEfectivo);

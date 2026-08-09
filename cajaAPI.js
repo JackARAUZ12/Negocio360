@@ -84,6 +84,7 @@
           metodo_pago_id:     params.metodo_pago_id     || null,
           referencia_tipo:    params.referencia_tipo    || null,
           referencia_id:      params.referencia_id      || null,
+          origen_caja:        params.origen_caja        || null,
           observaciones:      params.observaciones      || null,
           fecha:              params.fecha              || todayISO(),
           estado:             'completado',
