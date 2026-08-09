@@ -887,6 +887,7 @@ const TIPOS_TRANSACCION = {
   venta: { label: 'Venta (en efectivo/tarjeta)', ejemplo: 'Debe: Caja — Haber: Ventas' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
+  costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
   gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
   compra: { label: 'Compra', ejemplo: 'Debe: Inventario — Haber: Caja' },
   pago_salario: { label: 'Pago de salario', ejemplo: 'Debe: Sueldos y Salarios — Haber: Caja' },
@@ -983,7 +984,7 @@ async function generarAsientosAutomaticos() {
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
-    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra) {
+    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra) {
       const m = mapeo.get(tipo);
       if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
 
@@ -1000,6 +1001,12 @@ async function generarAsientosAutomaticos() {
         const monto = round2(Number(fila[campoMonto] || 0));
         if (monto <= 0) continue;
 
+        // Costo de lo vendido (si está configurado) — se agrega como
+        // 2 líneas MÁS dentro del MISMO asiento, no como uno aparte.
+        // Sigue cuadrando porque Debe y Haber de esas 2 líneas son
+        // igual monto entre sí, sin importar cuánto sea.
+        const lineasExtra = obtenerLineasExtra ? await obtenerLineasExtra(fila) : [];
+
         const numero = (await sbClient.rpc('generar_numero_asiento', { p_user_id: STATE.userId })).data;
         const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
           auth_user_id: STATE.userId, numero, fecha: fila.fecha,
@@ -1009,10 +1016,12 @@ async function generarAsientosAutomaticos() {
         }).select().single();
         if (errA || !asiento) continue;
 
-        await sbClient.from('asientos_detalle').insert([
+        const lineas = [
           { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
           { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 1 },
-        ]);
+          ...lineasExtra.map((l, i) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: l.cuenta_id, debe: l.debe||0, haber: l.haber||0, orden: 2+i, descripcion: l.descripcion||null })),
+        ];
+        await sbClient.from('asientos_detalle').insert(lineas);
 
         // Debe y Haber son el MISMO monto por construcción, así que
         // siempre cuadra — pero igual pasa por la misma validación de
@@ -1022,12 +1031,28 @@ async function generarAsientosAutomaticos() {
       }
     }
 
+    // Costo de lo vendido: se busca en venta_detalles (costo real
+    // guardado por producto al momento de vender) para CADA venta —
+    // sin esto, "Costo de Ventas" siempre daba 0 y la utilidad se
+    // veía inflada, como si vender no costara nada.
+    const mapeoCosto = mapeo.get('costo_ventas');
+    async function obtenerCostoVentaVendido(venta) {
+      if (!mapeoCosto || !mapeoCosto.cuenta_debe_id || !mapeoCosto.cuenta_haber_id) return [];
+      const { data: detalles } = await sbClient.from('venta_detalles').select('cantidad, costo').eq('venta_id', venta.id).eq('auth_user_id', STATE.userId);
+      const costoTotal = round2((detalles||[]).reduce((s,d) => s + (Number(d.cantidad||0) * Number(d.costo||0)), 0));
+      if (costoTotal <= 0) return [];
+      return [
+        { cuenta_id: mapeoCosto.cuenta_debe_id, debe: costoTotal, haber: 0, descripcion: 'Costo de lo vendido' },
+        { cuenta_id: mapeoCosto.cuenta_haber_id, debe: 0, haber: costoTotal, descripcion: 'Salida de inventario' },
+      ];
+    }
+
     // "Venta" normal EXCLUYE las de crédito — esas van aparte como
     // "Crédito otorgado", porque en una venta a crédito NO entra
     // dinero a la Caja en ese momento; contarla igual que una venta en
     // efectivo habría duplicado el dinero (0% margen de error).
-    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito'));
-    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.eq('metodo_pago', 'credito'));
+    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito'), obtenerCostoVentaVendido);
+    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.eq('metodo_pago', 'credito'), obtenerCostoVentaVendido);
     await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
     await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ');
     await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
