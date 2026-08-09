@@ -509,12 +509,34 @@ function calcularOrdenRuta() {
   if (seleccionados.length < 2) { showToast('Elige al menos 2 paradas para calcular un orden', 'error'); return; }
 
   STATE.ordenCalculado = ordenarPorCercania(seleccionados);
+  renderOrdenRuta();
+  dibujarLineaOrdenRuta();
+}
+
+// El orden calculado por cercanía es solo un punto de partida — el
+// algoritmo no conoce calles reales ni preferencias del negocio, así
+// que aquí se puede ajustar a mano con flechas antes de guardar.
+function renderOrdenRuta() {
   document.getElementById('nr-orden-preview').style.display = 'block';
   document.getElementById('nr-orden-lista').innerHTML = STATE.ordenCalculado.map((c,i) => `
-    <div style="display:flex;gap:10px;padding:6px 0;font-size:13px;${i>0?'border-top:1px solid var(--border)':''}">
-      <strong style="color:var(--accent)">${i+1}.</strong> ${esc(c.cliente_nombre || nombreCompleto(c))}
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;${i>0?'border-top:1px solid var(--border)':''}">
+      <strong style="color:var(--accent);min-width:20px">${i+1}.</strong>
+      <span style="flex:1">${esc(c.cliente_nombre || nombreCompleto(c))}</span>
+      <div style="display:flex;gap:4px">
+        <button type="button" class="btn-icon" title="Subir" ${i===0?'disabled style="opacity:.3"':''} onclick="moverParadaOrden(${i},-1)">⬆️</button>
+        <button type="button" class="btn-icon" title="Bajar" ${i===STATE.ordenCalculado.length-1?'disabled style="opacity:.3"':''} onclick="moverParadaOrden(${i},1)">⬇️</button>
+      </div>
     </div>`).join('');
-
+}
+function moverParadaOrden(indice, direccion) {
+  const nuevoIndice = indice + direccion;
+  if (nuevoIndice < 0 || nuevoIndice >= STATE.ordenCalculado.length) return;
+  const arr = STATE.ordenCalculado;
+  [arr[indice], arr[nuevoIndice]] = [arr[nuevoIndice], arr[indice]];
+  renderOrdenRuta();
+  dibujarLineaOrdenRuta();
+}
+function dibujarLineaOrdenRuta() {
   if (STATE._lineaRuta) STATE.mapaNuevaRuta.removeLayer(STATE._lineaRuta);
   STATE._lineaRuta = L.polyline(STATE.ordenCalculado.map(c => [c.latitud, c.longitud]), { color: '#6366f1', weight: 3, dashArray: '6,6' }).addTo(STATE.mapaNuevaRuta);
 }
