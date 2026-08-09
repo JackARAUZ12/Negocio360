@@ -1384,6 +1384,17 @@ async function confirmarConvertirAVenta() {
    cualquier motivo (sin logo, SVG no soportado, error de red), se
    devuelve null y el PDF se genera igual, solo sin la imagen.
 ===================================================== */
+// Convierte un color "#RRGGBB" a [r,g,b] para jsPDF. Si el color no
+// es válido o no está configurado, devuelve null y el que llama usa
+// su propio color por defecto — nunca rompe el PDF por esto.
+function hexARgb(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const num = parseInt(m[1], 16);
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+}
+
 // Calcula el tamaño real que debe dibujarse el logo dentro de un
 // espacio máximo (maxAncho x maxAlto), respetando su proporción
 // original — nunca lo estira ni lo aplasta.
@@ -1436,13 +1447,16 @@ async function generarPDFProforma(p, items, cliente) {
 
   const biz = {
     nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
-    direccion: STATE.empresaConfig?.direccion || '',
-    telefono:  STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
-    ruc:       STATE.empresaConfig?.ruc || '',
+    direccion: STATE.empresaConfig?.pdf_mostrar_direccion !== false ? (STATE.empresaConfig?.direccion || '') : '',
+    telefono:  STATE.empresaConfig?.pdf_mostrar_telefono !== false ? (STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '') : '',
+    ruc:       STATE.empresaConfig?.pdf_mostrar_ruc !== false ? (STATE.empresaConfig?.ruc || '') : '',
   };
 
-  // ---- Encabezado (franja de color, igual que el resto de comprobantes del sistema) ----
-  doc.setFillColor(108, 99, 255);
+  // ---- Encabezado (franja con el color de marca del negocio — antes
+  // era un morado fijo, ahora usa el mismo color que ya configuran en
+  // Perfil, para que el documento se sienta de ellos, no de Negocio360) ----
+  const [rC, gC, bC] = hexARgb(STATE.empresaConfig?.color_principal) || [108, 99, 255];
+  doc.setFillColor(rC, gC, bC);
   doc.rect(0, 0, W, 38, 'F');
   let textoX = M;
   if (logo) {
@@ -1545,9 +1559,18 @@ async function generarPDFProforma(p, items, cliente) {
 
   // ---- Pie de página ----
   const alturaPagina = doc.internal.pageSize.getHeight();
+  let yPie = alturaPagina - 16;
+  const mensajePie = STATE.empresaConfig?.pdf_mensaje_pie;
+  if (mensajePie) {
+    doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+    const lineasPie = doc.splitTextToSize(mensajePie, W - M*2);
+    yPie -= (lineasPie.length - 1) * 4.5;
+    lineasPie.forEach(ln => { doc.text(ln, M, yPie); yPie += 4.5; });
+    yPie += 5;
+  }
   doc.setFontSize(8.5); doc.setTextColor(150,150,170);
-  doc.text('Cotización sujeta a disponibilidad. Precios expresados en ' + sym() + '.', M, alturaPagina - 16);
-  doc.text('Generado por Negocio360', M, alturaPagina - 10);
+  doc.text('Cotización sujeta a disponibilidad. Precios expresados en ' + sym() + '.', M, yPie);
+  doc.text('Generado por Negocio360', M, yPie + 6);
 
   return doc;
 }

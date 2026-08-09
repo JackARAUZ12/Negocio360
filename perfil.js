@@ -113,6 +113,10 @@ function llenarFormularioPerfil(c) {
   set('pf-descripcion', c.descripcion);
   set('pf-vacaciones-dias-anio', c.vacaciones_dias_anio ?? 15);
   set('pf-indemnizacion-dias-anio', c.indemnizacion_dias_por_anio ?? 30);
+  set('pf-pdf-mensaje-pie', c.pdf_mensaje_pie);
+  const chkRuc = document.getElementById('pf-pdf-mostrar-ruc'); if (chkRuc) chkRuc.checked = c.pdf_mostrar_ruc !== false;
+  const chkDir = document.getElementById('pf-pdf-mostrar-direccion'); if (chkDir) chkDir.checked = c.pdf_mostrar_direccion !== false;
+  const chkTel = document.getElementById('pf-pdf-mostrar-telefono'); if (chkTel) chkTel.checked = c.pdf_mostrar_telefono !== false;
   set('pf-departamento', c.departamento);
   set('pf-ciudad', c.ciudad);
   set('pf-direccion', c.direccion);
@@ -224,6 +228,10 @@ async function guardarPerfil() {
       descripcion: g('pf-descripcion'),
       vacaciones_dias_anio: parseFloat(document.getElementById('pf-vacaciones-dias-anio')?.value) || 15,
       indemnizacion_dias_por_anio: parseFloat(document.getElementById('pf-indemnizacion-dias-anio')?.value) || 30,
+      pdf_mensaje_pie: document.getElementById('pf-pdf-mensaje-pie')?.value.trim() || null,
+      pdf_mostrar_ruc: document.getElementById('pf-pdf-mostrar-ruc')?.checked ?? true,
+      pdf_mostrar_direccion: document.getElementById('pf-pdf-mostrar-direccion')?.checked ?? true,
+      pdf_mostrar_telefono: document.getElementById('pf-pdf-mostrar-telefono')?.checked ?? true,
       departamento: g('pf-departamento'),
       ciudad: g('pf-ciudad'),
       direccion: g('pf-direccion'),
