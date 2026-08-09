@@ -1170,6 +1170,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
             Catálogo de cuentas
           </button>
+          <button class="btn-secondary" onclick="abrirMapeoCuentas()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Contabilización automática
+          </button>
           <button class="btn-primary" onclick="abrirNuevoAsiento()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo asiento
@@ -1196,6 +1200,7 @@
       <div class="panel-card fade-in" id="seccion-asientos">
         <div class="panel-header">
           <div class="panel-title">Asientos contables</div>
+          <button class="btn-secondary btn-sm" onclick="abrirGenerarAsientos()">🔄 Generar automáticos</button>
         </div>
         <div class="table-wrap ct-tabla-responsive">
           <table>
@@ -1365,6 +1370,60 @@
 <!-- =====================================================
      MODAL: VER ASIENTO
 =================================================== -->
+<!-- =====================================================
+     MODAL: CONTABILIZACIÓN AUTOMÁTICA — configurar mapeo y generar.
+     IMPORTANTE: esto solo LEE de Ventas/Gastos/Compras/Salarios para
+     crear asientos aquí en Contabilidad — nunca modifica ni un solo
+     dato en esos otros módulos.
+=================================================== -->
+<div class="modal-overlay" id="modal-mapeo-cuentas" onclick="if(event.target===this)closeModal('modal-mapeo-cuentas')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Contabilización automática</span>
+      <button class="modal-close" onclick="closeModal('modal-mapeo-cuentas')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+        Dile al sistema qué cuenta usar en el Debe y cuál en el Haber para cada tipo de movimiento. Con esto configurado, puedes generar los asientos automáticamente — el sistema <strong>solo lee</strong> tus Ventas, Gastos, Compras y Salarios; nunca cambia nada en esos módulos.
+      </p>
+      <div id="mapeo-filas"></div>
+      <p id="mapeo-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-mapeo-cuentas')">Cerrar</button>
+      <button class="btn-primary" id="btn-guardar-mapeo" onclick="guardarMapeoCuentas()">Guardar configuración</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-generar-asientos" onclick="if(event.target===this)closeModal('modal-generar-asientos')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Generar asientos automáticos</span>
+      <button class="modal-close" onclick="closeModal('modal-generar-asientos')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Se revisan tus Ventas, Gastos, Compras y pagos de Salarios de este período — solo se lee, nunca se modifica nada ahí. Lo que ya tenga un asiento generado antes no se duplica.
+      </p>
+      <div class="form-row">
+        <div class="form-group"><label>Desde</label><input type="date" id="ga-desde"/></div>
+        <div class="form-group"><label>Hasta</label><input type="date" id="ga-hasta"/></div>
+      </div>
+      <div id="ga-resultado" style="margin-top:10px;font-size:13px"></div>
+      <p id="ga-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-generar-asientos')">Cerrar</button>
+      <button class="btn-primary" id="btn-generar-asientos" onclick="generarAsientosAutomaticos()">Generar asientos</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-ver-asiento" onclick="if(event.target===this)closeModal('modal-ver-asiento')">
   <div class="modal-box modal-lg">
     <div class="modal-header">

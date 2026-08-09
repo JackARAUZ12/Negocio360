@@ -181,7 +181,7 @@ function renderCuentas() {
       <td>${capitalize(c.tipo)}</td>
       <td>${c.naturaleza === 'deudora' ? 'Deudora' : 'Acreedora'}</td>
       <td><label class="switch-mini"><input type="checkbox" ${c.activa?'checked':''} onchange="toggleCuentaActiva('${c.id}', this.checked)"/></label></td>
-      <td class="td-actions"><button class="btn-icon" title="Editar" onclick="abrirEditarCuenta('${c.id}')">✏️</button></td>
+      <td class="td-actions"><button class="btn-icon" title="Editar" onclick="abrirEditarCuenta('${c.id}')">✏️</button><button class="btn-icon btn-icon-danger" title="Eliminar" onclick="eliminarCuenta('${c.id}')">🗑️</button></td>
     </tr>`).join('');
 }
 function capitalize(s) { return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
@@ -190,6 +190,41 @@ async function toggleCuentaActiva(id, activa) {
     await sbClient.from('cuentas_contables').update({ activa }).eq('id', id).eq('auth_user_id', STATE.userId);
     const c = STATE.cuentas.find(x=>x.id===id); if (c) c.activa = activa;
   } catch (e) { showToast('No se pudo actualizar', 'error'); }
+}
+
+// Antes de eliminar, se revisa si la cuenta tiene movimientos o
+// subcuentas — nunca se debe borrar una cuenta que ya se usó, porque
+// eso dejaría huérfanos los asientos que dependen de ella. La base
+// de datos también lo bloquea de todas formas (protección doble),
+// pero aquí se explica claramente el motivo antes de intentarlo.
+async function eliminarCuenta(id) {
+  const c = STATE.cuentas.find(x => x.id === id);
+  if (!c) return;
+
+  const tieneSubcuentas = STATE.cuentas.some(x => x.cuenta_padre_id === id);
+  if (tieneSubcuentas) {
+    alert(`No se puede eliminar "${c.codigo} — ${c.nombre}" porque tiene subcuentas dentro de ella. Elimina o reasigna esas subcuentas primero.`);
+    return;
+  }
+
+  const { count } = await sbClient.from('asientos_detalle').select('id', { count:'exact', head:true }).eq('cuenta_id', id).eq('auth_user_id', STATE.userId);
+  if (count > 0) {
+    alert(`No se puede eliminar "${c.codigo} — ${c.nombre}" porque ya tiene ${count} movimiento(s) contable(s) registrados. Si ya no la usas, mejor desactívala con el interruptor — así se conserva su historial pero deja de aparecer para asientos nuevos.`);
+    return;
+  }
+
+  if (!confirm(`¿Eliminar la cuenta "${c.codigo} — ${c.nombre}"?\n\nEsta cuenta todavía no tiene ningún movimiento, así que se puede borrar sin ningún riesgo. Esta acción no se puede deshacer.`)) return;
+
+  try {
+    const { error } = await sbClient.from('cuentas_contables').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Cuenta eliminada');
+    await cargarCuentas();
+  } catch (e) {
+    // Si por alguna razón la comprobación anterior no detectó algo y
+    // la base de datos igual la bloquea, se explica el mismo motivo.
+    showToast('No se pudo eliminar: esta cuenta ya tiene movimientos vinculados', 'error');
+  }
 }
 
 // Plantilla estándar de cuentas — genérica, no atada a un solo país,
@@ -647,6 +682,166 @@ function exportarBalance(formato) {
 /* =====================================================
    INIT
 ===================================================== */
+/* =====================================================
+   CONTABILIZACIÓN AUTOMÁTICA — LEE de Ventas/Gastos/Compras/Salarios
+   para crear asientos aquí en Contabilidad. NUNCA escribe ni modifica
+   nada en esas tablas — todo lo que se toca en esta sección es
+   estrictamente de solo lectura hacia el resto del sistema.
+===================================================== */
+const TIPOS_TRANSACCION = {
+  venta: { label: 'Venta (en efectivo)', ejemplo: 'Debe: Caja — Haber: Ventas' },
+  gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
+  compra: { label: 'Compra', ejemplo: 'Debe: Inventario — Haber: Caja' },
+  pago_salario: { label: 'Pago de salario', ejemplo: 'Debe: Sueldos y Salarios — Haber: Caja' },
+};
+let STATE_MAPEO = [];
+
+async function abrirMapeoCuentas() {
+  if (!STATE.cuentas.length) await cargarCuentas();
+  try {
+    const { data } = await sbClient.from('contabilidad_mapeo_cuentas').select('*').eq('auth_user_id', STATE.userId);
+    STATE_MAPEO = data || [];
+  } catch (e) { STATE_MAPEO = []; }
+  renderMapeoFilas();
+  document.getElementById('mapeo-error').textContent = '';
+  openModal('modal-mapeo-cuentas');
+}
+function renderMapeoFilas() {
+  const opciones = STATE.cuentas.filter(c => c.permite_movimientos)
+    .map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
+  document.getElementById('mapeo-filas').innerHTML = Object.entries(TIPOS_TRANSACCION).map(([tipo, info]) => {
+    const existente = STATE_MAPEO.find(m => m.tipo_transaccion === tipo) || {};
+    return `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:2px">${info.label}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Ejemplo típico: ${info.ejemplo}</div>
+      <div class="form-row" style="margin-bottom:0">
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Cuenta Debe</label>
+          <select id="mapeo-debe-${tipo}"><option value="">— Elegir —</option>${opciones}</select>
+        </div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:11px">Cuenta Haber</label>
+          <select id="mapeo-haber-${tipo}"><option value="">— Elegir —</option>${opciones}</select>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  Object.keys(TIPOS_TRANSACCION).forEach(tipo => {
+    const existente = STATE_MAPEO.find(m => m.tipo_transaccion === tipo);
+    if (existente) {
+      document.getElementById(`mapeo-debe-${tipo}`).value = existente.cuenta_debe_id || '';
+      document.getElementById(`mapeo-haber-${tipo}`).value = existente.cuenta_haber_id || '';
+    }
+  });
+}
+async function guardarMapeoCuentas() {
+  const errEl = document.getElementById('mapeo-error');
+  errEl.textContent = '';
+  setBtnLoading('btn-guardar-mapeo', true);
+  try {
+    for (const tipo of Object.keys(TIPOS_TRANSACCION)) {
+      const debe = document.getElementById(`mapeo-debe-${tipo}`).value || null;
+      const haber = document.getElementById(`mapeo-haber-${tipo}`).value || null;
+      if (!debe && !haber) continue; // no configurado, se deja como está
+      await sbClient.from('contabilidad_mapeo_cuentas').upsert({
+        auth_user_id: STATE.userId, tipo_transaccion: tipo, cuenta_debe_id: debe, cuenta_haber_id: haber,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'auth_user_id,tipo_transaccion' });
+    }
+    showToast('Configuración guardada');
+    closeModal('modal-mapeo-cuentas');
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-mapeo', false);
+  }
+}
+
+function abrirGenerarAsientos() {
+  const hoy = new Date();
+  document.getElementById('ga-desde').value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
+  document.getElementById('ga-hasta').value = todayISO();
+  document.getElementById('ga-resultado').innerHTML = '';
+  document.getElementById('ga-error').textContent = '';
+  openModal('modal-generar-asientos');
+}
+
+async function generarAsientosAutomaticos() {
+  const errEl = document.getElementById('ga-error');
+  errEl.textContent = '';
+  const desde = document.getElementById('ga-desde').value;
+  const hasta = document.getElementById('ga-hasta').value;
+  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; return; }
+
+  const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('*').eq('auth_user_id', STATE.userId);
+  const mapeo = new Map((mapeoData||[]).map(m => [m.tipo_transaccion, m]));
+  if (!mapeo.size) { errEl.textContent = 'Primero configura la Contabilización automática (botón junto a Catálogo de cuentas).'; return; }
+
+  setBtnLoading('btn-generar-asientos', true);
+  document.getElementById('ga-resultado').innerHTML = 'Leyendo tus Ventas, Gastos, Compras y Salarios…';
+  try {
+    // Ya generados antes, para nunca duplicar el mismo asiento.
+    const { data: yaGenerados } = await sbClient.from('asientos_contables')
+      .select('referencia_tipo, referencia_id').eq('auth_user_id', STATE.userId).eq('origen', 'automatico');
+    const yaHechos = new Set((yaGenerados||[]).map(a => `${a.referencia_tipo}:${a.referencia_id}`));
+
+    let creados = 0, saltados = 0, sinConfigurar = 0;
+
+    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo) {
+      const m = mapeo.get(tipo);
+      if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
+
+      // SOLO LECTURA — nunca se hace ningún update/insert/delete sobre
+      // esta tabla, solo se consulta.
+      const { data: filas } = await sbClient.from(tabla).select('*')
+        .eq('auth_user_id', STATE.userId).eq(campoEstado, filtroEstado).gte('fecha', desde).lte('fecha', hasta);
+
+      for (const fila of (filas||[])) {
+        const clave = `${tipo}:${fila.id}`;
+        if (yaHechos.has(clave)) { saltados++; continue; }
+        const monto = round2(Number(fila[campoMonto] || 0));
+        if (monto <= 0) continue;
+
+        const numero = (await sbClient.rpc('generar_numero_asiento', { p_user_id: STATE.userId })).data;
+        const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
+          auth_user_id: STATE.userId, numero, fecha: fila.fecha,
+          concepto: `${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || ''}`.trim(),
+          estado: 'borrador', origen: 'automatico', referencia_tipo: tipo, referencia_id: fila.id,
+          usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+        }).select().single();
+        if (errA || !asiento) continue;
+
+        await sbClient.from('asientos_detalle').insert([
+          { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
+          { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 1 },
+        ]);
+
+        // Debe y Haber son el MISMO monto por construcción, así que
+        // siempre cuadra — pero igual pasa por la misma validación de
+        // la base de datos que cualquier asiento manual, sin excepción.
+        const { error: errReg } = await sbClient.rpc('registrar_asiento_contable', { p_asiento_id: asiento.id });
+        if (!errReg) creados++;
+      }
+    }
+
+    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ');
+    await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ');
+    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
+    await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
+
+    let resumen = `✅ ${creados} asiento(s) nuevo(s) generado(s) y registrado(s).`;
+    if (saltados) resumen += ` ${saltados} ya existían (no se duplicaron).`;
+    if (sinConfigurar) resumen += ` ⚠️ ${sinConfigurar} tipo(s) de movimiento sin configurar en "Contabilización automática".`;
+    document.getElementById('ga-resultado').innerHTML = resumen;
+    showToast(`${creados} asiento(s) generado(s)`);
+    await cargarAsientos();
+  } catch (e) {
+    console.error('generarAsientosAutomaticos:', e);
+    errEl.textContent = 'Error: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-generar-asientos', false);
+  }
+}
+
 async function initContabilidad() {
   const savedTheme = localStorage.getItem('n360_theme') || 'light';
   applyTheme(savedTheme);
