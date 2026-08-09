@@ -160,10 +160,52 @@ function pfSyncHex(hexId, colorId) {
 /* =====================================================
    SUBIDA DE LOGOS (drag&drop + selector)
 ===================================================== */
-function pfPreviewLogo(input, zoneId, key) {
-  const file = input.files[0];
+// Redimensiona la imagen si es muy grande en píxeles (fotos de
+// celular normalmente vienen enormes, 4000x3000 o más, aunque el
+// logo en el documento nunca se ve a ese tamaño). Mantiene el mismo
+// formato (PNG sigue siendo PNG, para no perder la transparencia) —
+// solo baja la resolución, que es lo que realmente pesa tanto.
+function comprimirImagenLogo(file, maxDimension) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const escala = Math.min(1, maxDimension / Math.max(img.naturalWidth, img.naturalHeight));
+      if (escala >= 1) { resolve(file); return; } // ya es lo bastante chica, no hace falta tocarla
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * escala);
+      canvas.height = Math.round(img.naturalHeight * escala);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return; }
+        resolve(new File([blob], file.name, { type: file.type }));
+      }, file.type, 0.9);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+async function pfPreviewLogo(input, zoneId, key) {
+  let file = input.files[0];
   if (!file) return;
-  if (file.size > 2 * 1024 * 1024) { showToast('La imagen no puede pesar más de 2MB', 'error'); return; }
+
+  // Se intenta achicar la imagen en píxeles antes de medir el peso —
+  // así una foto de celular gigante casi nunca llega a chocar con el
+  // límite. Se prueba en pasos cada vez más chicos si hiciera falta.
+  if (file.size > 2 * 1024 * 1024 && file.type !== 'image/svg+xml') {
+    for (const maxDim of [1600, 1200, 900, 650]) {
+      file = await comprimirImagenLogo(file, maxDim);
+      if (file.size <= 2 * 1024 * 1024) break;
+    }
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    showToast('La imagen sigue pesando más de 2MB incluso reducida — prueba con otra imagen', 'error');
+    return;
+  }
+
   logoFiles[key] = file;
   const reader = new FileReader();
   reader.onload = (e) => {
