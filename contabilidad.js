@@ -145,12 +145,20 @@ function setBtnLoading(id, loading) {
 ===================================================== */
 function cambiarSeccionContable(seccion) {
   STATE.seccionActual = seccion;
-  ['asientos','mayor','balance'].forEach(s => {
+  ['asientos','mayor','balance','resultados','balancegeneral'].forEach(s => {
     document.getElementById(`seccion-${s}`).style.display = s === seccion ? '' : 'none';
     document.getElementById(`tab-btn-${s}`).classList.toggle('active', s === seccion);
   });
   if (seccion === 'mayor') poblarSelectCuentasMayor();
   if (seccion === 'balance') cargarBalanceComprobacion();
+  if (seccion === 'resultados' && !document.getElementById('er-desde').value) {
+    const hoy = new Date();
+    document.getElementById('er-desde').value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
+    document.getElementById('er-hasta').value = todayISO();
+  }
+  if (seccion === 'balancegeneral' && !document.getElementById('bg-fecha').value) {
+    document.getElementById('bg-fecha').value = todayISO();
+  }
 }
 
 /* =====================================================
@@ -680,6 +688,193 @@ function exportarBalance(formato) {
 }
 
 /* =====================================================
+   ESTADO DE RESULTADOS — solo lectura, calculado a partir de los
+   asientos ya REGISTRADOS (nunca de borradores) en el rango de
+   fechas elegido.
+
+   Matemática (naturaleza de cada tipo de cuenta):
+   - Ingreso  (acreedora): saldo = Haber - Debe
+   - Costo    (deudora):   saldo = Debe - Haber
+   - Gasto    (deudora):   saldo = Debe - Haber
+   Utilidad Bruta = Ingresos - Costos
+   Utilidad Neta  = Utilidad Bruta - Gastos
+===================================================== */
+async function calcularMovimientoPorTipo(tiposCuenta, fechaDesde, fechaHasta) {
+  const cuentasFiltradas = STATE.cuentas.filter(c => tiposCuenta.includes(c.tipo));
+  if (!cuentasFiltradas.length) return { filas: [], total: 0 };
+  const idsCuentas = cuentasFiltradas.map(c => c.id);
+
+  let query = sbClient.from('asientos_detalle')
+    .select('cuenta_id, debe, haber, asientos_contables!inner(estado, fecha)')
+    .eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado')
+    .in('cuenta_id', idsCuentas);
+  if (fechaDesde) query = query.gte('asientos_contables.fecha', fechaDesde);
+  if (fechaHasta) query = query.lte('asientos_contables.fecha', fechaHasta);
+  const { data } = await query;
+
+  const porCuenta = new Map();
+  (data||[]).forEach(d => {
+    const acc = porCuenta.get(d.cuenta_id) || { debe:0, haber:0 };
+    acc.debe += Number(d.debe||0); acc.haber += Number(d.haber||0);
+    porCuenta.set(d.cuenta_id, acc);
+  });
+
+  const filas = cuentasFiltradas.filter(c => porCuenta.has(c.id)).map(c => {
+    const { debe, haber } = porCuenta.get(c.id);
+    const saldo = c.naturaleza === 'deudora' ? round2(debe - haber) : round2(haber - debe);
+    return { cuenta: c, saldo };
+  });
+  const total = round2(filas.reduce((s,f)=>s+f.saldo, 0));
+  return { filas, total };
+}
+
+async function cargarEstadoResultados() {
+  const desde = document.getElementById('er-desde').value;
+  const hasta = document.getElementById('er-hasta').value;
+  if (!desde || !hasta) { showToast('Elige el período', 'error'); return; }
+  const cuerpo = document.getElementById('er-cuerpo');
+  cuerpo.innerHTML = 'Calculando…';
+
+  const ingresos = await calcularMovimientoPorTipo(['ingreso'], desde, hasta);
+  const costos   = await calcularMovimientoPorTipo(['costo'], desde, hasta);
+  const gastos   = await calcularMovimientoPorTipo(['gasto'], desde, hasta);
+
+  const utilidadBruta = round2(ingresos.total - costos.total);
+  const utilidadNeta = round2(utilidadBruta - gastos.total);
+
+  STATE.estadoResultadosActual = { desde, hasta, ingresos, costos, gastos, utilidadBruta, utilidadNeta };
+
+  const filaGrupo = (titulo, grupo, signo='') => `
+    <tr style="font-weight:700;background:var(--bg-app)"><td colspan="2">${titulo}</td></tr>
+    ${grupo.filas.map(f => `<tr><td style="padding-left:24px">${esc(f.cuenta.codigo)} — ${esc(f.cuenta.nombre)}</td><td style="text-align:right">${fmt(f.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:24px;color:var(--text-muted)" colspan="2">Sin movimiento en este período</td></tr>'}
+    <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding-left:24px">Total ${titulo}</td><td style="text-align:right">${fmt(grupo.total)}</td></tr>`;
+
+  cuerpo.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">Período: ${fmtFecha(desde)} — ${fmtFecha(hasta)}</div>
+    <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+      ${filaGrupo('Ingresos', ingresos)}
+      ${filaGrupo('Costo de Ventas', costos)}
+      <tr style="font-weight:800;font-size:15px;background:var(--accent-soft);color:var(--accent)"><td>Utilidad Bruta</td><td style="text-align:right">${fmt(utilidadBruta)}</td></tr>
+      ${filaGrupo('Gastos de Operación', gastos)}
+      <tr style="font-weight:800;font-size:16px;background:${utilidadNeta>=0?'var(--success-soft)':'var(--danger-soft)'};color:${utilidadNeta>=0?'var(--success)':'var(--danger)'}"><td>${utilidadNeta>=0?'Utilidad Neta del período':'Pérdida Neta del período'}</td><td style="text-align:right">${fmt(Math.abs(utilidadNeta))}</td></tr>
+    </table>`;
+}
+
+function exportarEstadoResultados(formato) {
+  const e = STATE.estadoResultadosActual;
+  if (!e) { showToast('Primero calcula el período', 'error'); return; }
+  const bizName = STATE.empresaConfig?.nombre_comercial || 'Mi Negocio';
+  const filas = [
+    ['INGRESOS','',''], ...e.ingresos.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Ingresos', e.ingresos.total],
+    ['COSTO DE VENTAS','',''], ...e.costos.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Costos', e.costos.total],
+    ['','UTILIDAD BRUTA', e.utilidadBruta],
+    ['GASTOS DE OPERACIÓN','',''], ...e.gastos.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Gastos', e.gastos.total],
+    ['','UTILIDAD NETA', e.utilidadNeta],
+  ];
+  if (formato === 'excel') {
+    const aoa = [[bizName],['Estado de Resultados'],[`Período: ${fmtFecha(e.desde)} — ${fmtFecha(e.hasta)}`],[],['Código','Cuenta','Monto'],...filas];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:2} }));
+    ws['!cols'] = [{wch:10},{wch:32},{wch:16}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Estado de Resultados');
+    XLSX.writeFile(wb, 'Estado_de_Resultados.xlsx');
+  } else {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    doc.setFontSize(14); doc.text(bizName, 14, 14);
+    doc.setFontSize(10); doc.text('Estado de Resultados', 14, 20);
+    doc.text(`Período: ${fmtFecha(e.desde)} — ${fmtFecha(e.hasta)}`, 14, 25);
+    doc.autoTable({ startY:30, head:[['Código','Cuenta','Monto']], body: filas.map(f=>[f[0], f[1], typeof f[2]==='number'?fmt(f[2]):'']), theme:'grid', headStyles:{fillColor:[108,99,255]} });
+    doc.save('Estado_de_Resultados.pdf');
+  }
+  showToast(`${formato.toUpperCase()} descargado`);
+}
+
+/* =====================================================
+   BALANCE GENERAL — solo lectura, "foto" acumulada desde el inicio
+   hasta la fecha elegida.
+
+   Activo = Pasivo + Capital + Utilidad Acumulada
+   Esto SIEMPRE debe cuadrar matemáticamente si la partida doble se
+   respetó en cada asiento — es la prueba final de que todo el
+   sistema contable está sano.
+===================================================== */
+async function cargarBalanceGeneral() {
+  const fecha = document.getElementById('bg-fecha').value;
+  if (!fecha) { showToast('Elige una fecha', 'error'); return; }
+  const cuerpo = document.getElementById('bg-cuerpo');
+  cuerpo.innerHTML = 'Calculando…';
+
+  const activo = await calcularMovimientoPorTipo(['activo'], null, fecha);
+  const pasivo = await calcularMovimientoPorTipo(['pasivo'], null, fecha);
+  const capital = await calcularMovimientoPorTipo(['capital'], null, fecha);
+  const ingresos = await calcularMovimientoPorTipo(['ingreso'], null, fecha);
+  const costos = await calcularMovimientoPorTipo(['costo'], null, fecha);
+  const gastos = await calcularMovimientoPorTipo(['gasto'], null, fecha);
+  const utilidadAcumulada = round2(ingresos.total - costos.total - gastos.total);
+
+  const totalPasivoCapital = round2(pasivo.total + capital.total + utilidadAcumulada);
+  const cuadra = round2(activo.total) === totalPasivoCapital;
+
+  STATE.balanceGeneralActual = { fecha, activo, pasivo, capital, utilidadAcumulada, totalPasivoCapital, cuadra };
+
+  document.getElementById('bg-cuadre-aviso').innerHTML = cuadra
+    ? `<div style="background:var(--success-soft);color:var(--success);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">✅ Cuadra: Activo (${fmt(activo.total)}) = Pasivo + Capital (${fmt(totalPasivoCapital)})</div>`
+    : `<div style="background:var(--danger-soft);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">⚠️ No cuadra: Activo ${fmt(activo.total)} vs Pasivo+Capital ${fmt(totalPasivoCapital)} — esto no debería pasar nunca; revisa si hay algún asiento anulado a medias.</div>`;
+
+  const filaGrupo = (titulo, grupo) => `
+    <tr style="font-weight:700;background:var(--bg-app)"><td colspan="2">${titulo}</td></tr>
+    ${grupo.filas.map(f => `<tr><td style="padding-left:24px">${esc(f.cuenta.codigo)} — ${esc(f.cuenta.nombre)}</td><td style="text-align:right">${fmt(f.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:24px;color:var(--text-muted)" colspan="2">Sin saldo</td></tr>'}
+    <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding-left:24px">Total ${titulo}</td><td style="text-align:right">${fmt(grupo.total)}</td></tr>`;
+
+  cuerpo.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">Al ${fmtFecha(fecha)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+        ${filaGrupo('Activo', activo)}
+      </table>
+      <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+        ${filaGrupo('Pasivo', pasivo)}
+        ${filaGrupo('Capital', capital)}
+        <tr style="font-weight:700;background:var(--accent-soft);color:var(--accent)"><td>Utilidad Acumulada</td><td style="text-align:right">${fmt(utilidadAcumulada)}</td></tr>
+        <tr style="font-weight:800;font-size:15px;border-top:2px solid var(--border)"><td>Total Pasivo + Capital</td><td style="text-align:right">${fmt(totalPasivoCapital)}</td></tr>
+      </table>
+    </div>`;
+}
+
+function exportarBalanceGeneral(formato) {
+  const b = STATE.balanceGeneralActual;
+  if (!b) { showToast('Primero calcula el balance', 'error'); return; }
+  const bizName = STATE.empresaConfig?.nombre_comercial || 'Mi Negocio';
+  const filas = [
+    ['ACTIVO','',''], ...b.activo.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Activo', b.activo.total],
+    ['PASIVO','',''], ...b.pasivo.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Pasivo', b.pasivo.total],
+    ['CAPITAL','',''], ...b.capital.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Capital', b.capital.total],
+    ['','Utilidad Acumulada', b.utilidadAcumulada],
+    ['','TOTAL PASIVO + CAPITAL', b.totalPasivoCapital],
+  ];
+  if (formato === 'excel') {
+    const aoa = [[bizName],['Balance General'],[`Al ${fmtFecha(b.fecha)}`],[],['Código','Cuenta','Monto'],...filas];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:2} }));
+    ws['!cols'] = [{wch:10},{wch:32},{wch:16}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Balance General');
+    XLSX.writeFile(wb, 'Balance_General.xlsx');
+  } else {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    doc.setFontSize(14); doc.text(bizName, 14, 14);
+    doc.setFontSize(10); doc.text('Balance General', 14, 20);
+    doc.text(`Al ${fmtFecha(b.fecha)}`, 14, 25);
+    doc.autoTable({ startY:30, head:[['Código','Cuenta','Monto']], body: filas.map(f=>[f[0], f[1], typeof f[2]==='number'?fmt(f[2]):'']), theme:'grid', headStyles:{fillColor:[108,99,255]} });
+    doc.save('Balance_General.pdf');
+  }
+  showToast(`${formato.toUpperCase()} descargado`);
+}
+
+/* =====================================================
    INIT
 ===================================================== */
 /* =====================================================
@@ -689,7 +884,9 @@ function exportarBalance(formato) {
    estrictamente de solo lectura hacia el resto del sistema.
 ===================================================== */
 const TIPOS_TRANSACCION = {
-  venta: { label: 'Venta (en efectivo)', ejemplo: 'Debe: Caja — Haber: Ventas' },
+  venta: { label: 'Venta (en efectivo/tarjeta)', ejemplo: 'Debe: Caja — Haber: Ventas' },
+  credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
+  pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
   compra: { label: 'Compra', ejemplo: 'Debe: Inventario — Haber: Caja' },
   pago_salario: { label: 'Pago de salario', ejemplo: 'Debe: Sueldos y Salarios — Haber: Caja' },
@@ -786,14 +983,16 @@ async function generarAsientosAutomaticos() {
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
-    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo) {
+    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra) {
       const m = mapeo.get(tipo);
       if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
 
       // SOLO LECTURA — nunca se hace ningún update/insert/delete sobre
       // esta tabla, solo se consulta.
-      const { data: filas } = await sbClient.from(tabla).select('*')
+      let query = sbClient.from(tabla).select('*')
         .eq('auth_user_id', STATE.userId).eq(campoEstado, filtroEstado).gte('fecha', desde).lte('fecha', hasta);
+      if (filtroExtra) query = filtroExtra(query);
+      const { data: filas } = await query;
 
       for (const fila of (filas||[])) {
         const clave = `${tipo}:${fila.id}`;
@@ -823,7 +1022,13 @@ async function generarAsientosAutomaticos() {
       }
     }
 
-    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ');
+    // "Venta" normal EXCLUYE las de crédito — esas van aparte como
+    // "Crédito otorgado", porque en una venta a crédito NO entra
+    // dinero a la Caja en ese momento; contarla igual que una venta en
+    // efectivo habría duplicado el dinero (0% margen de error).
+    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito'));
+    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.eq('metodo_pago', 'credito'));
+    await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
     await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ');
     await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
