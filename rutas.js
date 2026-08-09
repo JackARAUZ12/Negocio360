@@ -151,6 +151,7 @@ async function cargarRutas() {
 
     STATE.rutas = lista;
     renderRutas();
+    renderRutasHoy();
   } catch (e) { console.warn('cargarRutas:', e); }
 }
 
@@ -158,6 +159,47 @@ const TIPO_LABEL = { cobro: '💰 Cobro', preventa: '🛒 Venta en ruta', repart
 const ESTADO_LABEL = { planificada: 'Planificada', en_progreso: 'En progreso', completada: 'Completada' };
 const ESTADO_BADGE = { planificada: 'badge-pendiente', en_progreso: 'badge-activo', completada: 'badge-inactivo' };
 const DIAS_LABEL = { lunes:'Lunes',martes:'Martes',miercoles:'Miércoles',jueves:'Jueves',viernes:'Viernes',sabado:'Sábado',domingo:'Domingo' };
+
+// "Tus rutas de hoy" — lo primero que se ve al entrar, sin tener que
+// buscar en la tabla. Cuenta como "de hoy": las que repiten hoy según
+// su día de la semana, las que ya están en progreso (sin importar
+// cuándo empezaron), y las que se crearon hoy mismo sin día fijo.
+const DIAS_JS = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+function renderRutasHoy() {
+  const cont = document.getElementById('rutas-hoy-cuerpo');
+  const panel = document.getElementById('panel-hoy');
+  if (!cont || !panel) return;
+
+  const hoyDia = DIAS_JS[new Date().getDay()];
+  const hoyFecha = todayISO();
+  const relevantes = STATE.rutas.filter(r => {
+    if (r.estado === 'en_progreso') return true;
+    if (r.dia_semana === hoyDia && r.estado !== 'completada') return true;
+    if (!r.dia_semana && r.estado === 'planificada' && (r.created_at||'').slice(0,10) === hoyFecha) return true;
+    return false;
+  });
+
+  if (!relevantes.length) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+
+  cont.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">` +
+    relevantes.map(r => {
+      const paradas = r.ruta_clientes || [];
+      const completadas = paradas.filter(p => p.estado_parada === 'completada').length;
+      const enProgreso = r.estado === 'en_progreso';
+      return `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--bg-app)">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700">${TIPO_LABEL[r.tipo]||''}</div>
+        <div style="font-weight:700;font-size:14px;margin:4px 0">${esc(r.nombre)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">${completadas}/${paradas.length} parada(s) completadas${enProgreso ? ' · en progreso' : ''}</div>
+        <button class="btn-primary" style="width:100%" onclick="irDirectoACampoHoy('${r.id}')">${enProgreso ? '▶️ Continuar ruta' : '▶️ Iniciar ruta'}</button>
+      </div>`;
+    }).join('') + `</div>`;
+}
+async function irDirectoACampoHoy(rutaId) {
+  await verRuta(rutaId);
+  await iniciarVistaCampo();
+}
 
 function renderRutas() {
   const tbody = document.getElementById('rutas-tbody');
