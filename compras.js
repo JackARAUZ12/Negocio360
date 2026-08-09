@@ -717,8 +717,8 @@ STATE.configDocumentos = null;
 async function cargarConfigDocumentos() {
   try {
     const { data } = await sbClient.from('configuracion_documentos').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
-    STATE.configDocumentos = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null };
-  } catch (e) { STATE.configDocumentos = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null }; }
+    STATE.configDocumentos = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null, logo_tamano:'mediano' };
+  } catch (e) { STATE.configDocumentos = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null, logo_tamano:'mediano' }; }
 }
 
 async function abrirPersonalizarDocumentos() {
@@ -730,6 +730,7 @@ async function abrirPersonalizarDocumentos() {
   document.getElementById('pd-color-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
   document.getElementById('pd-hex-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
   document.getElementById('pd-mensaje-pie').value = c.mensaje_pie || '';
+  document.getElementById('pd-logo-tamano').value = c.logo_tamano || 'mediano';
   document.getElementById('pd-mostrar-ruc').checked = c.mostrar_ruc !== false;
   document.getElementById('pd-mostrar-direccion').checked = c.mostrar_direccion !== false;
   document.getElementById('pd-mostrar-telefono').checked = c.mostrar_telefono !== false;
@@ -778,6 +779,7 @@ async function guardarPersonalizarDocumentos() {
     await sbClient.from('configuracion_documentos').upsert({
       auth_user_id: STATE.userId, color_principal: colorPrincipal, color_tabla_usa_mismo: usaMismo, color_tabla: colorTabla,
       mensaje_pie: document.getElementById('pd-mensaje-pie').value.trim() || null,
+      logo_tamano: document.getElementById('pd-logo-tamano').value,
       mostrar_ruc: document.getElementById('pd-mostrar-ruc').checked,
       mostrar_direccion: document.getElementById('pd-mostrar-direccion').checked,
       mostrar_telefono: document.getElementById('pd-mostrar-telefono').checked,
@@ -1837,11 +1839,13 @@ async function exportarPDFOrdenCompra(ordenId) {
     doc.setFillColor(rC, gC, bC);
     doc.rect(0, 0, W, 38, 'F');
     let textoX = M;
+    const TAMANOS_LOGO = { pequeno: 22, mediano: 28, grande: 34 };
+    const cajaLogo = TAMANOS_LOGO[cfg.logo_tamano] || 28;
     if (logo) {
       try {
-        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, 22, 22);
-        doc.addImage(logo.dataUrl, logo.formato, M + (22-w)/2, 8 + (22-h)/2, w, h);
-        textoX = M + 27;
+        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogo, cajaLogo);
+        doc.addImage(logo.dataUrl, logo.formato, M + (cajaLogo-w)/2, (38-cajaLogo)/2 + (cajaLogo-h)/2, w, h);
+        textoX = M + cajaLogo + 5;
       } catch (e) {}
     }
     doc.setTextColor(255,255,255);

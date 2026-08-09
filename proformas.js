@@ -668,8 +668,8 @@ STATE.configProforma = null;
 async function cargarConfigProforma() {
   try {
     const { data } = await sbClient.from('configuracion_proforma').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
-    STATE.configProforma = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null };
-  } catch (e) { STATE.configProforma = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null }; }
+    STATE.configProforma = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null, logo_tamano:'mediano' };
+  } catch (e) { STATE.configProforma = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null, logo_tamano:'mediano' }; }
 }
 
 async function abrirPersonalizarProforma() {
@@ -681,6 +681,7 @@ async function abrirPersonalizarProforma() {
   document.getElementById('pp-color-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
   document.getElementById('pp-hex-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
   document.getElementById('pp-mensaje-pie').value = c.mensaje_pie || '';
+  document.getElementById('pp-logo-tamano').value = c.logo_tamano || 'mediano';
   document.getElementById('pp-mostrar-ruc').checked = c.mostrar_ruc !== false;
   document.getElementById('pp-mostrar-direccion').checked = c.mostrar_direccion !== false;
   document.getElementById('pp-mostrar-telefono').checked = c.mostrar_telefono !== false;
@@ -733,6 +734,7 @@ async function guardarPersonalizarProforma() {
     await sbClient.from('configuracion_proforma').upsert({
       auth_user_id: STATE.userId, color_principal: colorPrincipal, color_tabla_usa_mismo: usaMismo, color_tabla: colorTabla,
       mensaje_pie: document.getElementById('pp-mensaje-pie').value.trim() || null,
+      logo_tamano: document.getElementById('pp-logo-tamano').value,
       mostrar_ruc: document.getElementById('pp-mostrar-ruc').checked,
       mostrar_direccion: document.getElementById('pp-mostrar-direccion').checked,
       mostrar_telefono: document.getElementById('pp-mostrar-telefono').checked,
@@ -1550,11 +1552,13 @@ async function generarPDFProforma(p, items, cliente) {
   doc.setFillColor(rC, gC, bC);
   doc.rect(0, 0, W, 38, 'F');
   let textoX = M;
+  const TAMANOS_LOGO = { pequeno: 22, mediano: 28, grande: 34 };
+  const cajaLogo = TAMANOS_LOGO[cfg.logo_tamano] || 28;
   if (logo) {
     try {
-      const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, 22, 22);
-      doc.addImage(logo.dataUrl, logo.formato, M + (22-w)/2, 8 + (22-h)/2, w, h);
-      textoX = M + 27;
+      const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogo, cajaLogo);
+      doc.addImage(logo.dataUrl, logo.formato, M + (cajaLogo-w)/2, (38-cajaLogo)/2 + (cajaLogo-h)/2, w, h);
+      textoX = M + cajaLogo + 5;
     } catch (e) { /* si falla, se sigue sin logo */ }
   }
   doc.setTextColor(255, 255, 255);
@@ -1660,8 +1664,7 @@ async function generarPDFProforma(p, items, cliente) {
     yPie += 5;
   }
   doc.setFontSize(8.5); doc.setTextColor(150,150,170);
-  doc.text('Cotización sujeta a disponibilidad. Precios expresados en ' + sym() + '.', M, yPie);
-  doc.text('Generado por Negocio360', M, yPie + 6);
+  doc.text(`Cotización sujeta a disponibilidad · Precios en ${sym()} · Generado por Negocio360`, M, yPie);
 
   return doc;
 }

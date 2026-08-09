@@ -2537,8 +2537,8 @@ function ajustarLogoSinDeformar(anchoNatural, altoNatural, maxAncho, maxAlto) {
 async function cargarConfigDocumentos() {
   try {
     const { data } = await sb.from('configuracion_documentos').select('*').eq('auth_user_id', R.userId).maybeSingle();
-    R.configDocumentos = data || { color_principal:'#6C63FF', mensaje_pie:null };
-  } catch (e) { R.configDocumentos = { color_principal:'#6C63FF', mensaje_pie:null }; }
+    R.configDocumentos = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null, logo_tamano:'mediano' };
+  } catch (e) { R.configDocumentos = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null, logo_tamano:'mediano' }; }
 }
 function hexARgbDocumentos(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -2557,6 +2557,7 @@ async function abrirPersonalizarDocumentos() {
   document.getElementById('pd-color-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
   document.getElementById('pd-hex-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
   document.getElementById('pd-mensaje-pie').value = c.mensaje_pie || '';
+  document.getElementById('pd-logo-tamano').value = c.logo_tamano || 'mediano';
   document.getElementById('pd-mostrar-ruc').checked = c.mostrar_ruc !== false;
   document.getElementById('pd-mostrar-direccion').checked = c.mostrar_direccion !== false;
   document.getElementById('pd-mostrar-telefono').checked = c.mostrar_telefono !== false;
@@ -2608,6 +2609,7 @@ async function guardarPersonalizarDocumentos() {
     await sb.from('configuracion_documentos').upsert({
       auth_user_id: R.userId, color_principal: colorPrincipal, color_tabla_usa_mismo: usaMismo, color_tabla: colorTabla,
       mensaje_pie: document.getElementById('pd-mensaje-pie').value.trim() || null,
+      logo_tamano: document.getElementById('pd-logo-tamano').value,
       mostrar_ruc: document.getElementById('pd-mostrar-ruc').checked,
       mostrar_direccion: document.getElementById('pd-mostrar-direccion').checked,
       mostrar_telefono: document.getElementById('pd-mostrar-telefono').checked,
@@ -2690,11 +2692,13 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     doc.setFillColor(rDoc, gDoc, bDoc);
     doc.rect(0,0,W,20,'F');
     let textoX = 10;
+    const TAMANOS_LOGO_REP = { pequeno: 14, mediano: 17, grande: 18 };
+    const cajaLogoRep = TAMANOS_LOGO_REP[cfgDoc.logo_tamano] || 17;
     if (logo) {
       try {
-        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, 14, 14);
-        doc.addImage(logo.dataUrl, logo.formato, 8 + (14-w)/2, 3 + (14-h)/2, w, h);
-        textoX = 26;
+        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogoRep, cajaLogoRep);
+        doc.addImage(logo.dataUrl, logo.formato, 8 + (cajaLogoRep-w)/2, (20-cajaLogoRep)/2 + (cajaLogoRep-h)/2, w, h);
+        textoX = 12 + cajaLogoRep;
       } catch (e) { /* si falla, se sigue sin logo */ }
     }
     doc.setTextColor(255,255,255);
