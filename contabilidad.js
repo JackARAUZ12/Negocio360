@@ -911,19 +911,26 @@ async function cargarFlujoEfectivo() {
   const cuerpo = document.getElementById('fe-cuerpo');
   cuerpo.innerHTML = 'Calculando…';
 
-  // Saldo inicial: todo lo que pasó por Caja ANTES de "desde".
-  const { data: previos } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lt('fecha', desde);
-  const saldoInicial = round2((previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+  // "Flujo de Efectivo" es efectivo real — nunca tarjeta ni
+  // transferencia, aunque esos movimientos también hayan pasado por
+  // Caja General. Esa es la diferencia real entre este reporte y el
+  // saldo general del negocio.
+  const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
 
-  // Movimientos del período elegido.
-  const { data: movs } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, tipo_movimiento, monto').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+  // Saldo inicial: todo el efectivo que pasó ANTES de "desde".
+  const { data: previos } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lt('fecha', desde);
+  const saldoInicial = round2((previos||[]).filter(esEfectivo).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+
+  // Movimientos del período elegido — solo efectivo.
+  const { data: movsCrudos } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, tipo_movimiento, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
     .gte('fecha', desde).lte('fecha', hasta);
+  const movs = (movsCrudos||[]).filter(esEfectivo);
 
   const grupos = { operacion: [], financiamiento: [], inversion: [] };
   const acumulado = new Map();
-  (movs||[]).forEach(m => {
+  movs.forEach(m => {
     const info = CATEGORIA_FLUJO[m.tipo_movimiento] || { grupo:'operacion', label: m.tipo_movimiento };
     const signo = m.tipo_flujo === 'INGRESO' ? 1 : -1;
     const clave = `${info.grupo}:${info.label}`;
@@ -940,19 +947,19 @@ async function cargarFlujoEfectivo() {
   const flujoNeto = round2(totalOperacion + totalFinanciamiento + totalInversion);
   const saldoFinalCalculado = round2(saldoInicial + flujoNeto);
 
-  // Prueba de realidad: se compara contra el saldo real de Caja a
-  // esa fecha (calculado independientemente, sumando TODO desde el
-  // principio) — si no coincide, algo anda mal y se avisa.
+  // Prueba de realidad: se compara contra el efectivo real acumulado
+  // a esa fecha (nunca contra Caja General completa, que sí incluye
+  // tarjeta/transferencia y por eso no debe coincidir con esto).
   const { data: todosHastaFecha } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lte('fecha', hasta);
-  const saldoRealCaja = round2((todosHastaFecha||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+    .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lte('fecha', hasta);
+  const saldoRealCaja = round2((todosHastaFecha||[]).filter(esEfectivo).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
   const cuadra = saldoFinalCalculado === saldoRealCaja;
 
   STATE.flujoEfectivoActual = { desde, hasta, saldoInicial, grupos, totalOperacion, totalFinanciamiento, totalInversion, flujoNeto, saldoFinalCalculado, saldoRealCaja, cuadra };
 
   document.getElementById('fe-cuadre-aviso').innerHTML = cuadra
-    ? `<div style="background:var(--success-soft);color:var(--success);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">✅ Cuadra con el saldo real de Caja: ${fmt(saldoRealCaja)}</div>`
-    : `<div style="background:var(--danger-soft);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">⚠️ No coincide con Caja: calculado ${fmt(saldoFinalCalculado)} vs real ${fmt(saldoRealCaja)}</div>`;
+    ? `<div style="background:var(--success-soft);color:var(--success);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">✅ Cuadra con el efectivo real que debería haber: ${fmt(saldoRealCaja)}</div>`
+    : `<div style="background:var(--danger-soft);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">⚠️ No coincide: calculado ${fmt(saldoFinalCalculado)} vs efectivo real ${fmt(saldoRealCaja)}</div>`;
 
   const filaGrupo = (titulo, lista, total) => `
     <tr style="font-weight:700;background:var(--bg-app)"><td colspan="2">${titulo}</td></tr>
@@ -966,8 +973,8 @@ async function cargarFlujoEfectivo() {
       ${filaGrupo('Actividades de Financiamiento', grupos.financiamiento, totalFinanciamiento)}
       ${filaGrupo('Actividades de Inversión', grupos.inversion, totalInversion)}
       <tr style="font-weight:800;font-size:15px;background:var(--accent-soft);color:var(--accent)"><td>Flujo neto del período</td><td style="text-align:right">${fmt(flujoNeto)}</td></tr>
-      <tr><td>Saldo inicial de Caja</td><td style="text-align:right">${fmt(saldoInicial)}</td></tr>
-      <tr style="font-weight:800;font-size:16px;background:var(--success-soft);color:var(--success)"><td>Saldo final de Caja</td><td style="text-align:right">${fmt(saldoFinalCalculado)}</td></tr>
+      <tr><td>Saldo inicial en efectivo</td><td style="text-align:right">${fmt(saldoInicial)}</td></tr>
+      <tr style="font-weight:800;font-size:16px;background:var(--success-soft);color:var(--success)"><td>Saldo final en efectivo</td><td style="text-align:right">${fmt(saldoFinalCalculado)}</td></tr>
     </table>`;
 }
 
@@ -980,8 +987,8 @@ function exportarFlujoEfectivo(formato) {
     ['ACTIVIDADES DE FINANCIAMIENTO','',''], ...f.grupos.financiamiento.map(x=>['', x.label, x.monto]), ['','Flujo neto de financiamiento', f.totalFinanciamiento],
     ['ACTIVIDADES DE INVERSIÓN','',''], ...f.grupos.inversion.map(x=>['', x.label, x.monto]), ['','Flujo neto de inversión', f.totalInversion],
     ['','FLUJO NETO DEL PERÍODO', f.flujoNeto],
-    ['','Saldo inicial de Caja', f.saldoInicial],
-    ['','SALDO FINAL DE CAJA', f.saldoFinalCalculado],
+    ['','Saldo inicial en efectivo', f.saldoInicial],
+    ['','SALDO FINAL EN EFECTIVO', f.saldoFinalCalculado],
   ];
   if (formato === 'excel') {
     const aoa = [[bizName],['Estado de Flujo de Efectivo'],[`Período: ${fmtFecha(f.desde)} — ${fmtFecha(f.hasta)}`],[],['Código','Concepto','Monto'],...filas];

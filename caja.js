@@ -37,6 +37,7 @@ let STATE = {
   currentUser:   {},
   caja:          0,   // saldo actual de caja (antes "capital")
   metodosPago:   [],
+  bancos:        [],
 
   // Movimientos
   movimientos:   [],
@@ -1139,6 +1140,7 @@ function setSection(section) {
   if (section === 'metodos')     loadMetodosPago();
   if (section === 'cierres')     loadCierres();
   if (section === 'cajachica')   loadCajaChica();
+  if (section === 'bancos')      loadBancos();
 }
 
 /* =====================================================
@@ -1274,6 +1276,114 @@ const CC_DENOMINACIONES = [
 ];
 let CC = { sesionHoy: null, modoConteo: null, historial: [] };
 
+/* =====================================================
+   BANCOS — dinero de tarjeta/transferencia, separado por cada banco.
+   Caja General sigue sumando todo junto, sin importar el método.
+===================================================== */
+function esTarjetaOTransferencia(m) {
+  const metodo = (m.metodo_pago_nombre || '').toLowerCase();
+  return metodo.includes('tarjeta') || metodo.includes('transferencia');
+}
+
+async function loadBancos() {
+  try {
+    const { data: bancos } = await sbClient.from('bancos').select('*').eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
+    STATE.bancos = bancos || [];
+
+    const { data: movs } = await sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, metodo_pago_nombre, banco_id, concepto, fecha')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completado');
+    const lista = (movs || []).filter(esTarjetaOTransferencia);
+
+    renderBancosGrid(lista);
+    renderSinAsignar(lista);
+  } catch (e) {
+    console.error('loadBancos:', e);
+  }
+}
+
+function renderBancosGrid(lista) {
+  const grid = document.getElementById('bancos-grid');
+  if (!STATE.bancos.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:24px">
+      Todavía no has creado ningún banco — cuando lo hagas, el dinero de tarjeta/transferencia empezará a separarse aquí.
+    </div>`;
+    return;
+  }
+  grid.innerHTML = STATE.bancos.map(b => {
+    const delBanco = lista.filter(m => m.banco_id === b.id);
+    const saldo = round2(delBanco.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+    return `
+      <div class="panel-card" style="margin:0;cursor:pointer" onclick="verBanco('${b.id}')">
+        <div class="panel-body">
+          <div style="font-size:12px;color:var(--text-muted)">${esc(b.nombre)}</div>
+          ${b.numero_cuenta ? `<div style="font-size:11px;color:var(--text-muted)">${esc(b.numero_cuenta)}</div>` : ''}
+          <div style="font-size:22px;font-weight:800;margin-top:6px">${fmt(saldo)}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderSinAsignar(lista) {
+  const sinAsignar = lista.filter(m => !m.banco_id).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+  const tbody = document.getElementById('bancos-sin-asignar-tbody');
+  if (!sinAsignar.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Todo el dinero de tarjeta/transferencia ya tiene banco asignado 🎉</td></tr>'; return; }
+  tbody.innerHTML = sinAsignar.map(m => `
+    <tr>
+      <td>${fmtDate(m.fecha)}</td>
+      <td>${esc(m.concepto || '—')}</td>
+      <td>${esc(m.metodo_pago_nombre || '—')}</td>
+      <td style="color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmt(m.monto)}</td>
+      <td></td>
+    </tr>`).join('');
+}
+
+function abrirNuevoBanco() {
+  document.getElementById('nb-nombre').value = '';
+  document.getElementById('nb-numero-cuenta').value = '';
+  document.getElementById('nb-error').textContent = '';
+  openModal('modal-nuevo-banco');
+}
+
+async function guardarNuevoBanco() {
+  const errEl = document.getElementById('nb-error');
+  errEl.textContent = '';
+  const nombre = document.getElementById('nb-nombre').value.trim();
+  if (!nombre) { errEl.textContent = 'El nombre del banco es requerido.'; return; }
+
+  setBtnLoading('btn-guardar-banco', true);
+  try {
+    const { error } = await sbClient.from('bancos').insert({
+      auth_user_id: STATE.userId, nombre, numero_cuenta: document.getElementById('nb-numero-cuenta').value.trim() || null,
+    });
+    if (error) throw error;
+    showToast('Banco creado');
+    closeModal('modal-nuevo-banco');
+    await loadBancos();
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-banco', false);
+  }
+}
+
+async function verBanco(bancoId) {
+  const banco = STATE.bancos.find(b => b.id === bancoId);
+  if (!banco) return;
+  document.getElementById('vb-titulo').textContent = banco.nombre;
+  document.getElementById('vb-tbody').innerHTML = '<tr><td colspan="3" class="empty-cell">Cargando…</td></tr>';
+  openModal('modal-ver-banco');
+
+  const { data: movs } = await sbClient.from('movimientos_financieros')
+    .select('fecha, concepto, monto, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('estado','completado')
+    .order('fecha', { ascending:false }).limit(100);
+  const tbody = document.getElementById('vb-tbody');
+  tbody.innerHTML = (movs||[]).length ? movs.map(m => `
+    <tr><td>${fmtDate(m.fecha)}</td><td>${esc(m.concepto||'—')}</td>
+    <td style="color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmt(m.monto)}</td></tr>
+  `).join('') : '<tr><td colspan="3" class="empty-cell">Sin movimientos todavía</td></tr>';
+}
+
 async function loadCajaChica() {
   try {
     const hoy = todayISO();
@@ -1358,8 +1468,8 @@ async function renderResumenVivoCC(sesion) {
 
     el.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
-        <div><div style="font-size:11px">Ingresos hoy (todos)</div><div style="font-weight:700;color:var(--success)">${fmt(ingTotal)}</div></div>
-        <div><div style="font-size:11px">Egresos hoy (todos)</div><div style="font-weight:700;color:var(--danger)">${fmt(egrTotal)}</div></div>
+        <div><div style="font-size:11px">Ingresos hoy (efectivo)</div><div style="font-weight:700;color:var(--success)">${fmt(ingEfectivo)}</div></div>
+        <div><div style="font-size:11px">Egresos hoy (efectivo)</div><div style="font-weight:700;color:var(--danger)">${fmt(egrEfectivo)}</div></div>
         <div><div style="font-size:11px">Debería haber en efectivo</div><div style="font-weight:700">${fmt(teorico)}</div></div>
       </div>`;
   } catch (e) {
