@@ -1780,6 +1780,51 @@ function ajustarLogoSinDeformar(anchoNatural, altoNatural, maxAncho, maxAlto) {
   return { w: Math.round((anchoNatural || 1) * escala * 100) / 100, h: Math.round((altoNatural || 1) * escala * 100) / 100 };
 }
 
+// Recorta el espacio transparente sobrante alrededor del logo real
+// (muy común en PNG exportados desde herramientas de diseño, que
+// dejan mucho margen invisible) — sin esto, agrandar la "caja" no
+// sirve de nada porque se agranda TODO el lienzo, relleno incluido,
+// y el logo visible se queda igual de chiquito dentro.
+function recortarTransparenciaLogo(dataUrl, formato) {
+  return new Promise((resolve) => {
+    if (formato !== 'PNG' && formato !== 'WEBP') { resolve(null); return; } // JPEG no tiene transparencia que recortar
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        let minX = width, minY = height, maxX = 0, maxY = 0, encontrado = false;
+        const UMBRAL_ALPHA = 10; // ignora píxeles casi invisibles (antialiasing)
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const alpha = data[(y * width + x) * 4 + 3];
+            if (alpha > UMBRAL_ALPHA) {
+              encontrado = true;
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+          }
+        }
+        // Si no hay nada transparente que recortar (ya ocupa todo el
+        // lienzo), o la imagen resultó vacía, se deja como estaba.
+        if (!encontrado || (minX === 0 && minY === 0 && maxX === width-1 && maxY === height-1)) { resolve(null); return; }
+
+        const anchoRecorte = maxX - minX + 1, altoRecorte = maxY - minY + 1;
+        const cv2 = document.createElement('canvas');
+        cv2.width = anchoRecorte; cv2.height = altoRecorte;
+        cv2.getContext('2d').drawImage(canvas, minX, minY, anchoRecorte, altoRecorte, 0, 0, anchoRecorte, altoRecorte);
+        resolve({ dataUrl: cv2.toDataURL('image/png'), anchoNatural: anchoRecorte, altoNatural: altoRecorte });
+      } catch (e) { resolve(null); } // si algo falla (imagen de otro dominio, etc.), se usa la original sin recortar
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
 async function cargarLogoParaPDF() {
   const url = STATE.empresaConfig?.logo_principal_url || STATE.empresaConfig?.logo_url;
   if (!url) return null;
@@ -1806,6 +1851,10 @@ async function cargarLogoParaPDF() {
       img.onerror = () => resolve({ anchoNatural: 1, altoNatural: 1 });
       img.src = dataUrl;
     });
+
+    const recortado = await recortarTransparenciaLogo(dataUrl, formato);
+    if (recortado) return { dataUrl: recortado.dataUrl, formato: 'PNG', anchoNatural: recortado.anchoNatural, altoNatural: recortado.altoNatural };
+
     return { dataUrl, formato, anchoNatural, altoNatural };
   } catch (e) {
     console.warn('No se pudo cargar el logo para el PDF:', e);
