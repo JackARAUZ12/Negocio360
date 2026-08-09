@@ -1202,6 +1202,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
           Balance General
         </button>
+        <button class="section-tab" id="tab-btn-flujo" onclick="cambiarSeccionContable('flujo')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Flujo de Efectivo
+        </button>
       </div>
 
       <!-- ===== SECCIÓN: ASIENTOS ===== -->
@@ -1281,6 +1285,22 @@
         </div>
         <div id="bg-cuadre-aviso" style="margin:0 16px 10px"></div>
         <div id="bg-cuerpo" style="padding:16px">Elige una fecha y presiona "Calcular"</div>
+      </div>
+
+      <!-- ===== SECCIÓN: FLUJO DE EFECTIVO ===== -->
+      <div class="panel-card fade-in" id="seccion-flujo" style="display:none">
+        <div class="panel-header">
+          <div class="panel-title">Estado de Flujo de Efectivo</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="date" id="fe-desde" style="max-width:150px"/>
+            <input type="date" id="fe-hasta" style="max-width:150px"/>
+            <button class="btn-secondary btn-sm" onclick="cargarFlujoEfectivo()">Calcular</button>
+            <button class="btn-secondary btn-sm" onclick="exportarFlujoEfectivo('excel')">📊 Excel</button>
+            <button class="btn-secondary btn-sm" onclick="exportarFlujoEfectivo('pdf')">📄 PDF</button>
+          </div>
+        </div>
+        <div id="fe-cuadre-aviso" style="margin:0 16px 10px"></div>
+        <div id="fe-cuerpo" style="padding:16px">Elige un período y presiona "Calcular"</div>
       </div>
     </div><!-- /content -->
   </div><!-- /main -->

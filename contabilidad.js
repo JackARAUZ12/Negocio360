@@ -145,7 +145,7 @@ function setBtnLoading(id, loading) {
 ===================================================== */
 function cambiarSeccionContable(seccion) {
   STATE.seccionActual = seccion;
-  ['asientos','mayor','balance','resultados','balancegeneral'].forEach(s => {
+  ['asientos','mayor','balance','resultados','balancegeneral','flujo'].forEach(s => {
     document.getElementById(`seccion-${s}`).style.display = s === seccion ? '' : 'none';
     document.getElementById(`tab-btn-${s}`).classList.toggle('active', s === seccion);
   });
@@ -158,6 +158,11 @@ function cambiarSeccionContable(seccion) {
   }
   if (seccion === 'balancegeneral' && !document.getElementById('bg-fecha').value) {
     document.getElementById('bg-fecha').value = todayISO();
+  }
+  if (seccion === 'flujo' && !document.getElementById('fe-desde').value) {
+    const hoy = new Date();
+    document.getElementById('fe-desde').value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
+    document.getElementById('fe-hasta').value = todayISO();
   }
 }
 
@@ -870,6 +875,130 @@ function exportarBalanceGeneral(formato) {
     doc.text(`Al ${fmtFecha(b.fecha)}`, 14, 25);
     doc.autoTable({ startY:30, head:[['Código','Cuenta','Monto']], body: filas.map(f=>[f[0], f[1], typeof f[2]==='number'?fmt(f[2]):'']), theme:'grid', headStyles:{fillColor:[108,99,255]} });
     doc.save('Balance_General.pdf');
+  }
+  showToast(`${formato.toUpperCase()} descargado`);
+}
+
+/* =====================================================
+   ESTADO DE FLUJO DE EFECTIVO — método directo (el más claro para
+   un dueño de negocio, según las guías profesionales: "efectivo
+   recibido de clientes", "efectivo pagado a proveedores", etc.).
+
+   Solo lee movimientos_financieros (la Caja) — nunca toca ni
+   modifica nada del resto del sistema. Se contrasta contra el saldo
+   real de Caja al final, para comprobar que cuadra con la realidad,
+   no solo con la teoría.
+===================================================== */
+const CATEGORIA_FLUJO = {
+  VENTA: { grupo:'operacion', label:'Efectivo recibido de clientes (ventas)' },
+  COBRO: { grupo:'operacion', label:'Efectivo recibido de clientes (cobros)' },
+  PAGO_CREDITO: { grupo:'operacion', label:'Efectivo recibido de clientes (créditos)' },
+  COMPRA: { grupo:'operacion', label:'Efectivo pagado a proveedores (compras)' },
+  PAGO: { grupo:'operacion', label:'Pagos a proveedores (cuentas por pagar)' },
+  GASTO: { grupo:'operacion', label:'Efectivo pagado en gastos' },
+  PAGO_SALARIO: { grupo:'operacion', label:'Efectivo pagado en salarios' },
+  CREDITO_OTORGADO: { grupo:'operacion', label:'Créditos otorgados (sin movimiento de caja)' },
+  OTRO_INGRESO: { grupo:'operacion', label:'Otros ingresos operativos' },
+  OTRO_EGRESO: { grupo:'operacion', label:'Otros egresos operativos' },
+  CAPITAL_AGREGADO: { grupo:'financiamiento', label:'Capital aportado por el dueño' },
+  RETIRO: { grupo:'financiamiento', label:'Retiros del dueño' },
+};
+
+async function cargarFlujoEfectivo() {
+  const desde = document.getElementById('fe-desde').value;
+  const hasta = document.getElementById('fe-hasta').value;
+  if (!desde || !hasta) { showToast('Elige el período', 'error'); return; }
+  const cuerpo = document.getElementById('fe-cuerpo');
+  cuerpo.innerHTML = 'Calculando…';
+
+  // Saldo inicial: todo lo que pasó por Caja ANTES de "desde".
+  const { data: previos } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, monto').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lt('fecha', desde);
+  const saldoInicial = round2((previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+
+  // Movimientos del período elegido.
+  const { data: movs } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, tipo_movimiento, monto').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+    .gte('fecha', desde).lte('fecha', hasta);
+
+  const grupos = { operacion: [], financiamiento: [], inversion: [] };
+  const acumulado = new Map();
+  (movs||[]).forEach(m => {
+    const info = CATEGORIA_FLUJO[m.tipo_movimiento] || { grupo:'operacion', label: m.tipo_movimiento };
+    const signo = m.tipo_flujo === 'INGRESO' ? 1 : -1;
+    const clave = `${info.grupo}:${info.label}`;
+    acumulado.set(clave, round2((acumulado.get(clave)||0) + signo*Number(m.monto||0)));
+  });
+  acumulado.forEach((monto, clave) => {
+    const [grupo, label] = clave.split(':');
+    grupos[grupo].push({ label, monto });
+  });
+
+  const totalOperacion = round2(grupos.operacion.reduce((s,f)=>s+f.monto,0));
+  const totalFinanciamiento = round2(grupos.financiamiento.reduce((s,f)=>s+f.monto,0));
+  const totalInversion = round2(grupos.inversion.reduce((s,f)=>s+f.monto,0));
+  const flujoNeto = round2(totalOperacion + totalFinanciamiento + totalInversion);
+  const saldoFinalCalculado = round2(saldoInicial + flujoNeto);
+
+  // Prueba de realidad: se compara contra el saldo real de Caja a
+  // esa fecha (calculado independientemente, sumando TODO desde el
+  // principio) — si no coincide, algo anda mal y se avisa.
+  const { data: todosHastaFecha } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, monto').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lte('fecha', hasta);
+  const saldoRealCaja = round2((todosHastaFecha||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+  const cuadra = saldoFinalCalculado === saldoRealCaja;
+
+  STATE.flujoEfectivoActual = { desde, hasta, saldoInicial, grupos, totalOperacion, totalFinanciamiento, totalInversion, flujoNeto, saldoFinalCalculado, saldoRealCaja, cuadra };
+
+  document.getElementById('fe-cuadre-aviso').innerHTML = cuadra
+    ? `<div style="background:var(--success-soft);color:var(--success);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">✅ Cuadra con el saldo real de Caja: ${fmt(saldoRealCaja)}</div>`
+    : `<div style="background:var(--danger-soft);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">⚠️ No coincide con Caja: calculado ${fmt(saldoFinalCalculado)} vs real ${fmt(saldoRealCaja)}</div>`;
+
+  const filaGrupo = (titulo, lista, total) => `
+    <tr style="font-weight:700;background:var(--bg-app)"><td colspan="2">${titulo}</td></tr>
+    ${lista.map(f => `<tr><td style="padding-left:24px">${esc(f.label)}</td><td style="text-align:right">${fmt(f.monto)}</td></tr>`).join('') || '<tr><td style="padding-left:24px;color:var(--text-muted)" colspan="2">Sin movimiento en este período</td></tr>'}
+    <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding-left:24px">Flujo neto de ${titulo.toLowerCase()}</td><td style="text-align:right">${fmt(total)}</td></tr>`;
+
+  cuerpo.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">Período: ${fmtFecha(desde)} — ${fmtFecha(hasta)}</div>
+    <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+      ${filaGrupo('Actividades de Operación', grupos.operacion, totalOperacion)}
+      ${filaGrupo('Actividades de Financiamiento', grupos.financiamiento, totalFinanciamiento)}
+      ${filaGrupo('Actividades de Inversión', grupos.inversion, totalInversion)}
+      <tr style="font-weight:800;font-size:15px;background:var(--accent-soft);color:var(--accent)"><td>Flujo neto del período</td><td style="text-align:right">${fmt(flujoNeto)}</td></tr>
+      <tr><td>Saldo inicial de Caja</td><td style="text-align:right">${fmt(saldoInicial)}</td></tr>
+      <tr style="font-weight:800;font-size:16px;background:var(--success-soft);color:var(--success)"><td>Saldo final de Caja</td><td style="text-align:right">${fmt(saldoFinalCalculado)}</td></tr>
+    </table>`;
+}
+
+function exportarFlujoEfectivo(formato) {
+  const f = STATE.flujoEfectivoActual;
+  if (!f) { showToast('Primero calcula el período', 'error'); return; }
+  const bizName = STATE.empresaConfig?.nombre_comercial || 'Mi Negocio';
+  const filas = [
+    ['ACTIVIDADES DE OPERACIÓN','',''], ...f.grupos.operacion.map(x=>['', x.label, x.monto]), ['','Flujo neto de operación', f.totalOperacion],
+    ['ACTIVIDADES DE FINANCIAMIENTO','',''], ...f.grupos.financiamiento.map(x=>['', x.label, x.monto]), ['','Flujo neto de financiamiento', f.totalFinanciamiento],
+    ['ACTIVIDADES DE INVERSIÓN','',''], ...f.grupos.inversion.map(x=>['', x.label, x.monto]), ['','Flujo neto de inversión', f.totalInversion],
+    ['','FLUJO NETO DEL PERÍODO', f.flujoNeto],
+    ['','Saldo inicial de Caja', f.saldoInicial],
+    ['','SALDO FINAL DE CAJA', f.saldoFinalCalculado],
+  ];
+  if (formato === 'excel') {
+    const aoa = [[bizName],['Estado de Flujo de Efectivo'],[`Período: ${fmtFecha(f.desde)} — ${fmtFecha(f.hasta)}`],[],['Código','Concepto','Monto'],...filas];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:2} }));
+    ws['!cols'] = [{wch:6},{wch:40},{wch:16}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Flujo de Efectivo');
+    XLSX.writeFile(wb, 'Estado_de_Flujo_de_Efectivo.xlsx');
+  } else {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    doc.setFontSize(14); doc.text(bizName, 14, 14);
+    doc.setFontSize(10); doc.text('Estado de Flujo de Efectivo', 14, 20);
+    doc.text(`Período: ${fmtFecha(f.desde)} — ${fmtFecha(f.hasta)}`, 14, 25);
+    doc.autoTable({ startY:30, head:[['Concepto','Monto']], body: filas.map(fl=>[fl[1], typeof fl[2]==='number'?fmt(fl[2]):'']), theme:'grid', headStyles:{fillColor:[108,99,255]} });
+    doc.save('Estado_de_Flujo_de_Efectivo.pdf');
   }
   showToast(`${formato.toUpperCase()} descargado`);
 }
