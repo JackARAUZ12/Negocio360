@@ -187,15 +187,18 @@ function pfDropFile(e, inputId, zoneId, key) {
   }
 }
 async function uploadLogoPerfil(file, key) {
-  if (!file || !STATE.userId) return null;
+  if (!file || !STATE.userId) return { url: null, error: null };
   const ext = file.name.split('.').pop();
   const path = `${STATE.userId}/logo_${key}.${ext}`;
   const bucket = 'logos_empresa';
   await sbClient.storage.from(bucket).remove([path]);
   const { error } = await sbClient.storage.from(bucket).upload(path, file, { cacheControl: '3600', upsert: true, contentType: file.type });
-  if (error) { console.error(`Error subiendo logo ${key}:`, error.message); return null; }
+  if (error) {
+    console.error(`Error subiendo logo ${key}:`, error.message);
+    return { url: null, error: error.message };
+  }
   const { data } = sbClient.storage.from(bucket).getPublicUrl(path);
-  return data?.publicUrl ?? null;
+  return { url: data?.publicUrl ?? null, error: null };
 }
 
 /* =====================================================
@@ -215,10 +218,20 @@ async function guardarPerfil() {
   try {
     // Subir logos solo si el usuario eligió uno nuevo — si no, se
     // conserva el que ya estaba guardado (nunca se borra sin querer).
-    const [logoUrl, logoAltUrl] = await Promise.all([
+    // Si la subida falla por CUALQUIER motivo, ahora se avisa
+    // claramente en vez de guardar todo lo demás en silencio sin el
+    // logo nuevo (eso hacía parecer que "no se guardaba" sin razón).
+    const [resLogo, resLogoAlt] = await Promise.all([
       uploadLogoPerfil(logoFiles.principal, 'principal'),
       uploadLogoPerfil(logoFiles.alternativo, 'alternativo'),
     ]);
+    if (logoFiles.principal && resLogo.error) {
+      errEl.textContent = `El logo principal no se pudo subir: ${resLogo.error}. El resto de los cambios sí se guardó.`;
+    }
+    if (logoFiles.alternativo && resLogoAlt.error) {
+      errEl.textContent = (errEl.textContent ? errEl.textContent + ' ' : '') + `El logo alternativo no se pudo subir: ${resLogoAlt.error}.`;
+    }
+    const logoUrl = resLogo.url, logoAltUrl = resLogoAlt.url;
 
     const g = id => document.getElementById(id)?.value.trim() || null;
     const payload = {
