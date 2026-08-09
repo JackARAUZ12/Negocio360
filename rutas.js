@@ -171,12 +171,12 @@ function renderRutas() {
     const completadas = paradas.filter(p => p.estado_parada === 'completada').length;
     return `
     <tr>
-      <td style="font-weight:600">${esc(r.nombre)}${r.asignado_a_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">👤 ${esc(r.asignado_a_nombre)}</div>` : ''}</td>
-      <td>${TIPO_LABEL[r.tipo] || r.tipo}</td>
-      <td>${r.dia_semana ? DIAS_LABEL[r.dia_semana] : '—'}</td>
-      <td>${completadas}/${paradas.length}</td>
-      <td><span class="status-badge ${ESTADO_BADGE[r.estado]||''}">${ESTADO_LABEL[r.estado]||r.estado}</span></td>
-      <td class="td-actions">
+      <td data-label="Nombre" style="font-weight:600">${esc(r.nombre)}${r.asignado_a_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">👤 ${esc(r.asignado_a_nombre)}</div>` : ''}</td>
+      <td data-label="Tipo">${TIPO_LABEL[r.tipo] || r.tipo}</td>
+      <td data-label="Día">${r.dia_semana ? DIAS_LABEL[r.dia_semana] : '—'}</td>
+      <td data-label="Paradas">${completadas}/${paradas.length}</td>
+      <td data-label="Estado"><span class="status-badge ${ESTADO_BADGE[r.estado]||''}">${ESTADO_LABEL[r.estado]||r.estado}</span></td>
+      <td class="td-actions rt-td-acciones" data-label="Acciones">
         <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
           <button class="btn-secondary" style="padding:6px 12px;font-size:12px" onclick="verRuta('${r.id}')">Ver ruta</button>
           <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="eliminarRuta('${r.id}')">🗑️</button>

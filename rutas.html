@@ -1193,7 +1193,7 @@
       </div>
 
       <div class="panel-card fade-in">
-        <div id="mapa-general" style="height:380px;border-radius:12px;overflow:hidden"></div>
+        <div id="mapa-general" style="height:clamp(220px,45vh,380px);border-radius:12px;overflow:hidden"></div>
         <div class="table-hint" style="margin-top:8px">📍 Clientes con ubicación marcada.</div>
       </div>
 
@@ -1204,7 +1204,7 @@
             Rutas guardadas
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap rt-tabla-rutas">
           <table>
             <thead>
               <tr>
@@ -1238,7 +1238,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="modal-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
       <div class="rt-tipo-card" onclick="seleccionarTipoRuta('cobro')">
         <div style="font-size:26px">💰</div>
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Ruta de Cobro</div>
@@ -1313,11 +1313,11 @@
         <div style="flex:1 1 280px;max-width:380px">
           <label style="font-size:12.5px;font-weight:600;margin-bottom:6px;display:block" id="nr-lista-titulo">Elige los clientes de esta ruta</label>
           <input type="text" class="form-input" id="nr-buscar-cliente" placeholder="Buscar cliente…" oninput="filtrarClientesRuta()" style="margin-bottom:8px"/>
-          <div id="nr-lista-clientes" style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:10px"></div>
+          <div id="nr-lista-clientes" style="max-height:clamp(180px,32vh,340px);overflow-y:auto;border:1px solid var(--border);border-radius:10px"></div>
         </div>
         <div style="flex:2 1 380px">
           <label style="font-size:12.5px;font-weight:600;margin-bottom:6px;display:block">Mapa — clic en un cliente sin ubicación para marcarla</label>
-          <div id="mapa-nueva-ruta" style="height:340px;border-radius:12px;overflow:hidden;border:1px solid var(--border)"></div>
+          <div id="mapa-nueva-ruta" style="height:clamp(200px,32vh,340px);border-radius:12px;overflow:hidden;border:1px solid var(--border)"></div>
           <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px" id="nr-mapa-hint">Selecciona un cliente sin ubicación en la lista para poder marcarla en el mapa.</p>
         </div>
       </div>
@@ -1347,7 +1347,7 @@
       </button>
     </div>
     <div class="modal-body">
-      <div id="mapa-ver-ruta" style="height:260px;border-radius:12px;overflow:hidden;margin-bottom:14px"></div>
+      <div id="mapa-ver-ruta" style="height:clamp(180px,30vh,260px);border-radius:12px;overflow:hidden;margin-bottom:14px"></div>
       <div id="vr-lista-paradas"></div>
     </div>
     <div class="modal-footer">
@@ -1396,6 +1396,30 @@
   .rt-tipo-card{border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:.15s}
   .rt-tipo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
   .rt-tipo-disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+
+  /* En pantallas angostas, la tabla de "Rutas guardadas" se convierte
+     en tarjetas apiladas — en un teléfono, una tabla normal obliga a
+     hacer scroll horizontal o se ve amontonada, que es justo lo que
+     se sentía "pesado". */
+  @media (max-width: 640px) {
+    .rt-tabla-rutas table, .rt-tabla-rutas thead, .rt-tabla-rutas tbody,
+    .rt-tabla-rutas th, .rt-tabla-rutas td, .rt-tabla-rutas tr { display: block; }
+    .rt-tabla-rutas thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .rt-tabla-rutas tbody tr {
+      border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg-surface);
+    }
+    .rt-tabla-rutas tbody tr:has(td.empty-cell) { border: none; background: transparent; padding: 0; }
+    .rt-tabla-rutas td {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      padding: 6px 0; border: none !important; text-align: right;
+    }
+    .rt-tabla-rutas td::before {
+      content: attr(data-label); font-weight: 600; font-size: 12px; color: var(--text-muted); text-align: left;
+    }
+    .rt-tabla-rutas td.empty-cell::before { content: none; }
+    .rt-tabla-rutas td.empty-cell { justify-content: center; text-align: center; }
+    .rt-tabla-rutas td.rt-td-acciones { justify-content: flex-end; }
+  }
   .vc-info-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px}
   .vc-btn-grande{width:100%;padding:16px;font-size:15px;font-weight:700;border-radius:12px;border:none;cursor:pointer;margin-top:10px}
 </style>
