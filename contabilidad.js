@@ -1,0 +1,683 @@
+/* =====================================================
+   CONTABILIDAD.JS — NEGOCIO360
+   Catálogo de cuentas + asientos contables con partida doble real.
+
+   REGLA DE ORO: en cada asiento, Debe siempre debe ser igual a Haber.
+   Esta regla se valida en el navegador (para avisar al instante) Y
+   en la base de datos (registrar_asiento_contable), así que aunque
+   hubiera un error de cálculo aquí, nunca se puede "colar" un asiento
+   desbalanceado — la base de datos lo rechaza.
+
+   FASE 1 de este módulo: catálogo de cuentas + asientos manuales +
+   Libro Mayor + Balance de Comprobación. A propósito NO conecta
+   todavía Ventas/Compras/Gastos/Salarios automáticamente — esa
+   decisión (qué cuenta le corresponde a cada tipo de movimiento)
+   merece su propia aprobación explícita, con calma, no apurada.
+===================================================== */
+
+'use strict';
+
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let STATE = {
+  userId: null, userEmail: null, empresaConfig: {}, currentUser: {},
+  cuentas: [], asientos: [],
+  seccionActual: 'asientos',
+};
+
+/* =====================================================
+   HELPERS
+===================================================== */
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtFecha(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+}
+function fmt(n) {
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+  return `${moneda} ${Number(n||0).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+}
+function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/* =====================================================
+   THEME / SIDEBAR / NAV (idéntico al resto del sistema)
+===================================================== */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('n360_theme', theme);
+  const sun = document.getElementById('icon-sun'), moon = document.getElementById('icon-moon');
+  if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
+  if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  const curr = document.documentElement.getAttribute('data-theme');
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+function isMobileViewport() { return window.innerWidth <= 860; }
+function toggleSidebar() {
+  if (isMobileViewport()) {
+    document.getElementById('sidebar').classList.toggle('mobile-open');
+    document.getElementById('sidebar-overlay').classList.toggle('active');
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    document.getElementById('main').classList.toggle('sidebar-collapsed');
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+}
+function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+
+async function loadEmpresaConfig(userId) {
+  try {
+    const { data } = await sbClient.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.empresaConfig = data || {};
+    if (data) {
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
+      const lt = document.getElementById('sidebar-logo-text');
+      if (lt) lt.textContent = bizName;
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col + '22');
+        document.documentElement.style.setProperty('--border-focus', col);
+      }
+      if (data.logo_principal_url || data.logo_url) {
+        const li = document.querySelector('.logo-icon');
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+      }
+    }
+  } catch (e) { console.warn('loadEmpresaConfig:', e); }
+}
+async function loadUserProfile(userId) {
+  try {
+    const { data } = await sbClient.from('usuarios').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.currentUser = data || {};
+    return data;
+  } catch (e) { console.warn('loadUserProfile:', e); return null; }
+}
+function renderUserInfo(profile, email) {
+  const name = profile?.nombre || email?.split('@')[0] || 'Usuario';
+  const biz  = STATE.empresaConfig?.nombre_comercial || 'Mi negocio';
+  const hName = document.getElementById('header-name'); if (hName) hName.textContent = name;
+  const hBiz  = document.getElementById('header-biz');  if (hBiz)  hBiz.textContent  = biz;
+  const hAv   = document.getElementById('header-avatar'); if (hAv) hAv.textContent = (name || 'U')[0].toUpperCase();
+}
+async function checkAdminAccess(email) {
+  try {
+    const { data } = await sbClient.from('administradores').select('email, activo').eq('email', email).eq('activo', true).maybeSingle();
+    if (data) { const nav = document.getElementById('nav-admin'); if (nav) nav.style.display = 'flex'; }
+  } catch (e) { /* silencioso */ }
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display='flex'; el.classList.add('modal-open'); document.body.style.overflow='hidden'; }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display='none'; el.classList.remove('modal-open'); document.body.style.overflow=''; }
+}
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) { e.target.style.display='none'; document.body.style.overflow=''; }
+});
+function showToast(msg, type='success') {
+  const el = document.getElementById('toast'); if (!el) return;
+  el.textContent = msg; el.className = `toast toast-${type} toast-show`;
+  clearTimeout(el._timer); el._timer = setTimeout(()=>el.classList.remove('toast-show'), 3500);
+}
+function setBtnLoading(id, loading) {
+  const el = document.getElementById(id); if (!el) return;
+  el.disabled = loading; el.style.opacity = loading ? '0.6' : '1';
+}
+
+/* =====================================================
+   NAVEGACIÓN ENTRE SECCIONES
+===================================================== */
+function cambiarSeccionContable(seccion) {
+  STATE.seccionActual = seccion;
+  ['asientos','mayor','balance'].forEach(s => {
+    document.getElementById(`seccion-${s}`).style.display = s === seccion ? '' : 'none';
+    document.getElementById(`tab-btn-${s}`).classList.toggle('active', s === seccion);
+  });
+  if (seccion === 'mayor') poblarSelectCuentasMayor();
+  if (seccion === 'balance') cargarBalanceComprobacion();
+}
+
+/* =====================================================
+   CATÁLOGO DE CUENTAS
+===================================================== */
+async function abrirCatalogoCuentas() {
+  openModal('modal-catalogo-cuentas');
+  await cargarCuentas();
+}
+async function cargarCuentas() {
+  try {
+    const { data } = await sbClient.from('cuentas_contables').select('*').eq('auth_user_id', STATE.userId).order('codigo');
+    STATE.cuentas = data || [];
+    renderCuentas();
+  } catch (e) { console.warn('cargarCuentas:', e); }
+}
+function renderCuentas() {
+  const tbody = document.getElementById('cuentas-tbody');
+  if (!tbody) return;
+  if (!STATE.cuentas.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">Todavía no tienes ninguna cuenta — carga la plantilla estándar o crea una desde cero.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.cuentas.map(c => `
+    <tr>
+      <td style="font-weight:600">${esc(c.codigo)}</td>
+      <td style="padding-left:${(c.nivel-1)*14}px">${esc(c.nombre)}${!c.permite_movimientos ? ' <span style="font-size:10px;color:var(--text-muted)">(grupo)</span>' : ''}</td>
+      <td>${capitalize(c.tipo)}</td>
+      <td>${c.naturaleza === 'deudora' ? 'Deudora' : 'Acreedora'}</td>
+      <td><label class="switch-mini"><input type="checkbox" ${c.activa?'checked':''} onchange="toggleCuentaActiva('${c.id}', this.checked)"/></label></td>
+      <td class="td-actions"><button class="btn-icon" title="Editar" onclick="abrirEditarCuenta('${c.id}')">✏️</button></td>
+    </tr>`).join('');
+}
+function capitalize(s) { return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
+async function toggleCuentaActiva(id, activa) {
+  try {
+    await sbClient.from('cuentas_contables').update({ activa }).eq('id', id).eq('auth_user_id', STATE.userId);
+    const c = STATE.cuentas.find(x=>x.id===id); if (c) c.activa = activa;
+  } catch (e) { showToast('No se pudo actualizar', 'error'); }
+}
+
+// Plantilla estándar de cuentas — genérica, no atada a un solo país,
+// sirve como punto de partida editable.
+const PLANTILLA_CUENTAS = [
+  { codigo:'1000', nombre:'ACTIVO', tipo:'activo', naturaleza:'deudora', permite_movimientos:false, nivel:1 },
+  { codigo:'1100', nombre:'Activo Circulante', tipo:'activo', naturaleza:'deudora', permite_movimientos:false, nivel:2, padre:'1000' },
+  { codigo:'1110', nombre:'Caja General', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1100' },
+  { codigo:'1120', nombre:'Bancos', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1100' },
+  { codigo:'1130', nombre:'Cuentas por Cobrar Clientes', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1100' },
+  { codigo:'1140', nombre:'Inventario', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1100' },
+  { codigo:'1150', nombre:'IVA Acreditable', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1100' },
+  { codigo:'1200', nombre:'Activo Fijo', tipo:'activo', naturaleza:'deudora', permite_movimientos:false, nivel:2, padre:'1000' },
+  { codigo:'1210', nombre:'Mobiliario y Equipo', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1200' },
+  { codigo:'1220', nombre:'Vehículos', tipo:'activo', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'1200' },
+  { codigo:'1230', nombre:'Depreciación Acumulada', tipo:'activo', naturaleza:'acreedora', permite_movimientos:true, nivel:3, padre:'1200' },
+
+  { codigo:'2000', nombre:'PASIVO', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:false, nivel:1 },
+  { codigo:'2100', nombre:'Pasivo Circulante', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:false, nivel:2, padre:'2000' },
+  { codigo:'2110', nombre:'Cuentas por Pagar Proveedores', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:true, nivel:3, padre:'2100' },
+  { codigo:'2120', nombre:'IVA por Pagar', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:true, nivel:3, padre:'2100' },
+  { codigo:'2130', nombre:'Impuestos por Pagar', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:true, nivel:3, padre:'2100' },
+  { codigo:'2140', nombre:'Sueldos por Pagar', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:true, nivel:3, padre:'2100' },
+  { codigo:'2200', nombre:'Pasivo Largo Plazo', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:false, nivel:2, padre:'2000' },
+  { codigo:'2210', nombre:'Préstamos por Pagar', tipo:'pasivo', naturaleza:'acreedora', permite_movimientos:true, nivel:3, padre:'2200' },
+
+  { codigo:'3000', nombre:'CAPITAL', tipo:'capital', naturaleza:'acreedora', permite_movimientos:false, nivel:1 },
+  { codigo:'3100', nombre:'Capital Social', tipo:'capital', naturaleza:'acreedora', permite_movimientos:true, nivel:2, padre:'3000' },
+  { codigo:'3200', nombre:'Utilidades Retenidas', tipo:'capital', naturaleza:'acreedora', permite_movimientos:true, nivel:2, padre:'3000' },
+  { codigo:'3300', nombre:'Utilidad del Ejercicio', tipo:'capital', naturaleza:'acreedora', permite_movimientos:true, nivel:2, padre:'3000' },
+
+  { codigo:'4000', nombre:'INGRESOS', tipo:'ingreso', naturaleza:'acreedora', permite_movimientos:false, nivel:1 },
+  { codigo:'4100', nombre:'Ventas', tipo:'ingreso', naturaleza:'acreedora', permite_movimientos:true, nivel:2, padre:'4000' },
+  { codigo:'4200', nombre:'Otros Ingresos', tipo:'ingreso', naturaleza:'acreedora', permite_movimientos:true, nivel:2, padre:'4000' },
+
+  { codigo:'5000', nombre:'COSTOS', tipo:'costo', naturaleza:'deudora', permite_movimientos:false, nivel:1 },
+  { codigo:'5100', nombre:'Costo de Ventas', tipo:'costo', naturaleza:'deudora', permite_movimientos:true, nivel:2, padre:'5000' },
+
+  { codigo:'6000', nombre:'GASTOS', tipo:'gasto', naturaleza:'deudora', permite_movimientos:false, nivel:1 },
+  { codigo:'6100', nombre:'Gastos de Operación', tipo:'gasto', naturaleza:'deudora', permite_movimientos:false, nivel:2, padre:'6000' },
+  { codigo:'6110', nombre:'Sueldos y Salarios', tipo:'gasto', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'6100' },
+  { codigo:'6120', nombre:'Alquiler', tipo:'gasto', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'6100' },
+  { codigo:'6130', nombre:'Publicidad', tipo:'gasto', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'6100' },
+  { codigo:'6140', nombre:'Servicios Básicos', tipo:'gasto', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'6100' },
+  { codigo:'6150', nombre:'Depreciación', tipo:'gasto', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'6100' },
+  { codigo:'6190', nombre:'Otros Gastos', tipo:'gasto', naturaleza:'deudora', permite_movimientos:true, nivel:3, padre:'6100' },
+];
+
+async function cargarPlantillaCuentas() {
+  if (!confirm(`Se agregarán ${PLANTILLA_CUENTAS.length} cuentas estándar. Las que ya tengas con el mismo código no se duplican. ¿Continuar?`)) return;
+  try {
+    const { data: existentes } = await sbClient.from('cuentas_contables').select('id, codigo').eq('auth_user_id', STATE.userId);
+    const mapaExistentes = new Map((existentes||[]).map(c => [c.codigo, c.id]));
+
+    // Primera pasada: crear/actualizar todas SIN padre (para tener los
+    // ids), segunda pasada: asignar cuenta_padre_id por código.
+    const idsPorCodigo = new Map(mapaExistentes);
+    for (const c of PLANTILLA_CUENTAS) {
+      if (idsPorCodigo.has(c.codigo)) continue;
+      const { data, error } = await sbClient.from('cuentas_contables').insert({
+        auth_user_id: STATE.userId, codigo: c.codigo, nombre: c.nombre, tipo: c.tipo,
+        naturaleza: c.naturaleza, nivel: c.nivel, permite_movimientos: c.permite_movimientos, activa: true,
+      }).select().single();
+      if (!error && data) idsPorCodigo.set(c.codigo, data.id);
+    }
+    for (const c of PLANTILLA_CUENTAS) {
+      if (!c.padre) continue;
+      const propioId = idsPorCodigo.get(c.codigo);
+      const padreId = idsPorCodigo.get(c.padre);
+      if (propioId && padreId) {
+        await sbClient.from('cuentas_contables').update({ cuenta_padre_id: padreId }).eq('id', propioId).eq('auth_user_id', STATE.userId);
+      }
+    }
+    showToast('Plantilla de cuentas cargada');
+    await cargarCuentas();
+  } catch (e) {
+    console.error('cargarPlantillaCuentas:', e);
+    showToast('Error al cargar la plantilla', 'error');
+  }
+}
+
+function abrirNuevaCuenta() {
+  document.getElementById('cta-modal-title').textContent = 'Nueva cuenta';
+  document.getElementById('cta-id').value = '';
+  document.getElementById('cta-codigo').value = '';
+  document.getElementById('cta-nombre').value = '';
+  document.getElementById('cta-tipo').value = 'activo';
+  document.getElementById('cta-naturaleza').value = 'deudora';
+  document.getElementById('cta-permite-movimientos').checked = true;
+  document.getElementById('cta-error').textContent = '';
+  poblarSelectCuentaPadre(null);
+  openModal('modal-nueva-cuenta');
+}
+function abrirEditarCuenta(id) {
+  const c = STATE.cuentas.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('cta-modal-title').textContent = 'Editar cuenta';
+  document.getElementById('cta-id').value = c.id;
+  document.getElementById('cta-codigo').value = c.codigo;
+  document.getElementById('cta-nombre').value = c.nombre;
+  document.getElementById('cta-tipo').value = c.tipo;
+  document.getElementById('cta-naturaleza').value = c.naturaleza;
+  document.getElementById('cta-permite-movimientos').checked = c.permite_movimientos;
+  document.getElementById('cta-error').textContent = '';
+  poblarSelectCuentaPadre(c.id);
+  document.getElementById('cta-padre').value = c.cuenta_padre_id || '';
+  openModal('modal-nueva-cuenta');
+}
+function poblarSelectCuentaPadre(excluirId) {
+  const sel = document.getElementById('cta-padre');
+  sel.innerHTML = '<option value="">— Ninguna (cuenta principal) —</option>' +
+    STATE.cuentas.filter(c => c.id !== excluirId).map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
+}
+function autoNaturalezaCuenta() {
+  const tipo = document.getElementById('cta-tipo').value;
+  document.getElementById('cta-naturaleza').value = ['activo','costo','gasto'].includes(tipo) ? 'deudora' : 'acreedora';
+}
+async function guardarCuenta() {
+  const errEl = document.getElementById('cta-error');
+  errEl.textContent = '';
+  const id = document.getElementById('cta-id').value || null;
+  const codigo = document.getElementById('cta-codigo').value.trim();
+  const nombre = document.getElementById('cta-nombre').value.trim();
+  if (!codigo) { errEl.textContent = 'El código es requerido.'; return; }
+  if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+
+  const padreId = document.getElementById('cta-padre').value || null;
+  const payload = {
+    codigo, nombre, tipo: document.getElementById('cta-tipo').value,
+    naturaleza: document.getElementById('cta-naturaleza').value,
+    cuenta_padre_id: padreId,
+    nivel: padreId ? (STATE.cuentas.find(c=>c.id===padreId)?.nivel || 1) + 1 : 1,
+    permite_movimientos: document.getElementById('cta-permite-movimientos').checked,
+  };
+  setBtnLoading('btn-guardar-cuenta', true);
+  try {
+    if (id) {
+      await sbClient.from('cuentas_contables').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+    } else {
+      await sbClient.from('cuentas_contables').insert({ auth_user_id: STATE.userId, activa: true, ...payload });
+    }
+    showToast('Cuenta guardada');
+    closeModal('modal-nueva-cuenta');
+    await cargarCuentas();
+  } catch (e) {
+    errEl.textContent = e.message?.includes('duplicate') ? 'Ya existe una cuenta con ese código.' : ('Error: ' + (e.message||''));
+  } finally {
+    setBtnLoading('btn-guardar-cuenta', false);
+  }
+}
+
+/* =====================================================
+   ASIENTOS CONTABLES
+===================================================== */
+let ASIENTO_LINEAS = [];
+async function cargarAsientos() {
+  const tbody = document.getElementById('asientos-tbody');
+  try {
+    const { data } = await sbClient.from('asientos_contables').select('*').eq('auth_user_id', STATE.userId).order('fecha', { ascending:false }).order('created_at', { ascending:false });
+    STATE.asientos = data || [];
+    if (!tbody) return;
+    if (!STATE.asientos.length) { tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Todavía no has registrado ningún asiento</td></tr>`; return; }
+    tbody.innerHTML = STATE.asientos.map(a => `
+      <tr>
+        <td data-label="N°" style="font-weight:600">${esc(a.numero)}</td>
+        <td data-label="Fecha">${fmtFecha(a.fecha)}</td>
+        <td data-label="Concepto">${esc(a.concepto)}</td>
+        <td data-label="Debe">${fmt(a.total_debe)}</td>
+        <td data-label="Haber">${fmt(a.total_haber)}</td>
+        <td data-label="Estado"><span class="status-badge ${a.estado==='registrado'?'badge-activo':a.estado==='anulado'?'badge-inactivo':'badge-pendiente'}">${capitalize(a.estado)}</span></td>
+        <td class="td-actions" data-label=""><button class="btn-secondary" style="padding:5px 10px;font-size:12px" onclick="verAsiento('${a.id}')">Ver</button></td>
+      </tr>`).join('');
+  } catch (e) { console.warn('cargarAsientos:', e); }
+}
+
+async function abrirNuevoAsiento() {
+  if (!STATE.cuentas.length) await cargarCuentas();
+  if (!STATE.cuentas.filter(c=>c.permite_movimientos).length) {
+    showToast('Primero carga o crea tu Catálogo de Cuentas', 'error');
+    abrirCatalogoCuentas();
+    return;
+  }
+  document.getElementById('as-fecha').value = todayISO();
+  document.getElementById('as-concepto').value = '';
+  document.getElementById('as-error').textContent = '';
+  ASIENTO_LINEAS = [{ cuenta_id:'', debe:'', haber:'', descripcion:'' }, { cuenta_id:'', debe:'', haber:'', descripcion:'' }];
+  renderLineasAsiento();
+  openModal('modal-nuevo-asiento');
+}
+function renderLineasAsiento() {
+  const opciones = STATE.cuentas.filter(c => c.permite_movimientos)
+    .map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
+  document.getElementById('as-lineas').innerHTML = ASIENTO_LINEAS.map((l, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <select style="flex:2;min-width:180px" onchange="ASIENTO_LINEAS[${i}].cuenta_id=this.value">
+        <option value="">Elige una cuenta…</option>${opciones}
+      </select>
+      <input type="number" placeholder="Debe" style="width:110px" value="${l.debe}" onchange="ASIENTO_LINEAS[${i}].debe=this.value;ASIENTO_LINEAS[${i}].haber='';renderLineasAsiento();actualizarTotalesAsiento()"/>
+      <input type="number" placeholder="Haber" style="width:110px" value="${l.haber}" onchange="ASIENTO_LINEAS[${i}].haber=this.value;ASIENTO_LINEAS[${i}].debe='';renderLineasAsiento();actualizarTotalesAsiento()"/>
+      <button type="button" class="btn-icon btn-icon-danger" onclick="ASIENTO_LINEAS.splice(${i},1);renderLineasAsiento();actualizarTotalesAsiento()">🗑️</button>
+    </div>`).join('');
+  // Reponer los valores de cuenta seleccionados (el innerHTML los resetea)
+  const selects = document.querySelectorAll('#as-lineas select');
+  selects.forEach((s,i) => { s.value = ASIENTO_LINEAS[i]?.cuenta_id || ''; });
+  actualizarTotalesAsiento();
+}
+function agregarLineaAsiento() {
+  ASIENTO_LINEAS.push({ cuenta_id:'', debe:'', haber:'', descripcion:'' });
+  renderLineasAsiento();
+}
+function actualizarTotalesAsiento() {
+  const totalDebe = round2(ASIENTO_LINEAS.reduce((s,l)=>s+(parseFloat(l.debe)||0),0));
+  const totalHaber = round2(ASIENTO_LINEAS.reduce((s,l)=>s+(parseFloat(l.haber)||0),0));
+  document.getElementById('as-total-debe').textContent = fmt(totalDebe);
+  document.getElementById('as-total-haber').textContent = fmt(totalHaber);
+  const dif = round2(totalDebe - totalHaber);
+  const difEl = document.getElementById('as-diferencia');
+  difEl.textContent = fmt(Math.abs(dif));
+  difEl.style.color = dif === 0 ? 'var(--success)' : 'var(--danger)';
+}
+
+async function guardarAsiento(registrar) {
+  const errEl = document.getElementById('as-error');
+  errEl.textContent = '';
+  const fecha = document.getElementById('as-fecha').value;
+  const concepto = document.getElementById('as-concepto').value.trim();
+  if (!fecha) { errEl.textContent = 'La fecha es requerida.'; return; }
+  if (!concepto) { errEl.textContent = 'El concepto es requerido.'; return; }
+
+  const lineasValidas = ASIENTO_LINEAS.filter(l => l.cuenta_id && (parseFloat(l.debe)>0 || parseFloat(l.haber)>0));
+  if (lineasValidas.length < 2) { errEl.textContent = 'Se necesitan al menos 2 líneas con cuenta y monto.'; return; }
+
+  const totalDebe = round2(lineasValidas.reduce((s,l)=>s+(parseFloat(l.debe)||0),0));
+  const totalHaber = round2(lineasValidas.reduce((s,l)=>s+(parseFloat(l.haber)||0),0));
+  if (registrar && totalDebe !== totalHaber) {
+    errEl.textContent = `El asiento no cuadra: Debe ${fmt(totalDebe)} es distinto de Haber ${fmt(totalHaber)}. Ajusta los montos antes de registrar.`;
+    return;
+  }
+
+  const btnId = registrar ? 'btn-registrar-asiento' : 'btn-guardar-borrador-asiento';
+  setBtnLoading(btnId, true);
+  try {
+    const { data: numeroData } = await sbClient.rpc('generar_numero_asiento', { p_user_id: STATE.userId });
+    const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
+      auth_user_id: STATE.userId, numero: numeroData, fecha, concepto, estado: 'borrador', origen: 'manual',
+      total_debe: totalDebe, total_haber: totalHaber, usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+    }).select().single();
+    if (errA) throw errA;
+
+    const detalle = lineasValidas.map((l, i) => ({
+      auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: l.cuenta_id,
+      debe: parseFloat(l.debe)||0, haber: parseFloat(l.haber)||0, descripcion: l.descripcion || null, orden: i,
+    }));
+    const { error: errD } = await sbClient.from('asientos_detalle').insert(detalle);
+    if (errD) throw errD;
+
+    if (registrar) {
+      // Se valida OTRA VEZ en la base de datos — nunca se confía
+      // únicamente en el cálculo del navegador para algo tan crítico.
+      const { error: errReg } = await sbClient.rpc('registrar_asiento_contable', { p_asiento_id: asiento.id });
+      if (errReg) throw errReg;
+      showToast(`Asiento ${numeroData} registrado — cuadra perfecto`);
+    } else {
+      showToast(`Asiento ${numeroData} guardado como borrador`);
+    }
+
+    closeModal('modal-nuevo-asiento');
+    await cargarAsientos();
+  } catch (e) {
+    console.error('guardarAsiento:', e);
+    errEl.textContent = 'Error: ' + (e.message || 'no se pudo guardar');
+  } finally {
+    setBtnLoading(btnId, false);
+  }
+}
+
+let ASIENTO_VIENDO = null;
+async function verAsiento(id) {
+  const a = STATE.asientos.find(x => x.id === id);
+  if (!a) return;
+  ASIENTO_VIENDO = a;
+  document.getElementById('va-titulo').textContent = `Asiento ${a.numero}`;
+  document.getElementById('va-cuerpo').innerHTML = 'Cargando…';
+  openModal('modal-ver-asiento');
+
+  const { data: detalle } = await sbClient.from('asientos_detalle').select('*, cuentas_contables(codigo,nombre)').eq('asiento_id', id).order('orden');
+  document.getElementById('va-cuerpo').innerHTML = `
+    <div class="form-row" style="margin-bottom:14px">
+      <div><label>Fecha</label><div class="stat-readonly">${fmtFecha(a.fecha)}</div></div>
+      <div><label>Estado</label><div class="stat-readonly">${capitalize(a.estado)}</div></div>
+      <div class="full-col"><label>Concepto</label><div class="stat-readonly">${esc(a.concepto)}</div></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cuenta</th><th>Debe</th><th>Haber</th></tr></thead>
+        <tbody>
+          ${(detalle||[]).map(d => `<tr><td>${esc(d.cuentas_contables?.codigo)} — ${esc(d.cuentas_contables?.nombre)}</td><td>${d.debe>0?fmt(d.debe):'—'}</td><td>${d.haber>0?fmt(d.haber):'—'}</td></tr>`).join('')}
+          <tr style="font-weight:800;border-top:2px solid var(--border)"><td>TOTALES</td><td>${fmt(a.total_debe)}</td><td>${fmt(a.total_haber)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    ${a.estado==='anulado' ? `<p style="font-size:12px;color:var(--danger);margin-top:10px">Anulado: ${esc(a.anulado_motivo||'')}</p>` : ''}`;
+
+  document.getElementById('va-btn-registrar').style.display = a.estado === 'borrador' ? '' : 'none';
+  document.getElementById('va-btn-anular').style.display = a.estado === 'registrado' ? '' : 'none';
+}
+async function registrarAsientoDesdeVer() {
+  if (!ASIENTO_VIENDO) return;
+  try {
+    const { error } = await sbClient.rpc('registrar_asiento_contable', { p_asiento_id: ASIENTO_VIENDO.id });
+    if (error) throw error;
+    showToast('Asiento registrado — cuadra perfecto');
+    closeModal('modal-ver-asiento');
+    await cargarAsientos();
+  } catch (e) {
+    showToast('No se pudo registrar: ' + (e.message||''), 'error');
+  }
+}
+async function anularAsiento() {
+  if (!ASIENTO_VIENDO) return;
+  const motivo = prompt('¿Por qué se anula este asiento?');
+  if (motivo === null) return;
+  try {
+    await sbClient.from('asientos_contables').update({ estado:'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivo || 'Sin especificar' })
+      .eq('id', ASIENTO_VIENDO.id).eq('auth_user_id', STATE.userId);
+    showToast('Asiento anulado');
+    closeModal('modal-ver-asiento');
+    await cargarAsientos();
+  } catch (e) {
+    showToast('No se pudo anular', 'error');
+  }
+}
+
+/* =====================================================
+   LIBRO MAYOR — movimiento detallado de una cuenta
+===================================================== */
+function poblarSelectCuentasMayor() {
+  const sel = document.getElementById('mayor-cuenta-select');
+  const actual = sel.value;
+  sel.innerHTML = '<option value="">Elige una cuenta…</option>' +
+    STATE.cuentas.filter(c => c.permite_movimientos).map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
+  if (actual) sel.value = actual;
+}
+async function cargarLibroMayor() {
+  const cuentaId = document.getElementById('mayor-cuenta-select').value;
+  const tbody = document.getElementById('mayor-tbody');
+  if (!cuentaId) { tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Elige una cuenta para ver su movimiento</td></tr>'; return; }
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Cargando…</td></tr>';
+
+  const cuenta = STATE.cuentas.find(c => c.id === cuentaId);
+  const { data } = await sbClient.from('asientos_detalle')
+    .select('*, asientos_contables!inner(numero,fecha,concepto,estado)')
+    .eq('cuenta_id', cuentaId).eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado')
+    .order('asientos_contables(fecha)');
+
+  const lista = (data||[]).sort((a,b) => (a.asientos_contables.fecha||'').localeCompare(b.asientos_contables.fecha||''));
+  let saldo = 0;
+  const filas = lista.map(d => {
+    saldo += cuenta.naturaleza === 'deudora' ? (d.debe - d.haber) : (d.haber - d.debe);
+    return { ...d, saldoAcumulado: saldo };
+  });
+
+  if (!filas.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Esta cuenta todavía no tiene movimientos registrados</td></tr>'; return; }
+  tbody.innerHTML = filas.map(d => `
+    <tr>
+      <td>${fmtFecha(d.asientos_contables.fecha)}</td>
+      <td>${esc(d.asientos_contables.numero)}</td>
+      <td>${esc(d.descripcion || d.asientos_contables.concepto)}</td>
+      <td>${d.debe>0?fmt(d.debe):'—'}</td>
+      <td>${d.haber>0?fmt(d.haber):'—'}</td>
+      <td style="font-weight:700">${fmt(d.saldoAcumulado)}</td>
+    </tr>`).join('');
+}
+
+/* =====================================================
+   BALANCE DE COMPROBACIÓN — la prueba de que todo cuadra: la suma
+   general de todos los Debe siempre debe ser igual a la suma
+   general de todos los Haber, sin excepción.
+===================================================== */
+async function cargarBalanceComprobacion() {
+  const tbody = document.getElementById('balance-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Cargando…</td></tr>';
+  try {
+    const { data } = await sbClient.from('asientos_detalle')
+      .select('cuenta_id, debe, haber, asientos_contables!inner(estado)')
+      .eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado');
+
+    const porCuenta = new Map();
+    (data||[]).forEach(d => {
+      const acc = porCuenta.get(d.cuenta_id) || { debe:0, haber:0 };
+      acc.debe += Number(d.debe||0); acc.haber += Number(d.haber||0);
+      porCuenta.set(d.cuenta_id, acc);
+    });
+
+    let totalDebeGeneral = 0, totalHaberGeneral = 0;
+    const filas = STATE.cuentas.filter(c => c.permite_movimientos && porCuenta.has(c.id)).map(c => {
+      const { debe, haber } = porCuenta.get(c.id);
+      totalDebeGeneral += debe; totalHaberGeneral += haber;
+      const saldo = c.naturaleza === 'deudora' ? debe - haber : haber - debe;
+      return { cuenta: c, debe, haber, saldoDeudor: saldo>0 && c.naturaleza==='deudora' ? saldo : (saldo<0 && c.naturaleza==='acreedora' ? -saldo : 0), saldoAcreedor: saldo>0 && c.naturaleza==='acreedora' ? saldo : (saldo<0 && c.naturaleza==='deudora' ? -saldo : 0) };
+    });
+
+    if (!filas.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Todavía no hay asientos registrados</td></tr>'; STATE.balanceActual = null; return; }
+
+    tbody.innerHTML = filas.map(f => `
+      <tr>
+        <td>${esc(f.cuenta.codigo)}</td><td>${esc(f.cuenta.nombre)}</td>
+        <td>${fmt(f.debe)}</td><td>${fmt(f.haber)}</td>
+        <td>${f.saldoDeudor>0?fmt(f.saldoDeudor):'—'}</td><td>${f.saldoAcreedor>0?fmt(f.saldoAcreedor):'—'}</td>
+      </tr>`).join('') + `
+      <tr style="font-weight:800;border-top:2px solid var(--border)">
+        <td colspan="2">TOTALES</td><td>${fmt(totalDebeGeneral)}</td><td>${fmt(totalHaberGeneral)}</td>
+        <td>${fmt(filas.reduce((s,f)=>s+f.saldoDeudor,0))}</td><td>${fmt(filas.reduce((s,f)=>s+f.saldoAcreedor,0))}</td>
+      </tr>`;
+
+    const cuadra = round2(totalDebeGeneral) === round2(totalHaberGeneral);
+    document.getElementById('balance-cuadre-aviso').innerHTML = cuadra
+      ? `<div style="background:var(--success-soft);color:var(--success);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">✅ Todo cuadra: Debe = Haber = ${fmt(totalDebeGeneral)}</div>`
+      : `<div style="background:var(--danger-soft);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600">⚠️ Hay una diferencia de ${fmt(Math.abs(totalDebeGeneral-totalHaberGeneral))} — esto no debería pasar nunca; revisa si algún asiento quedó anulado a medias.</div>`;
+
+    STATE.balanceActual = { filas, totalDebeGeneral, totalHaberGeneral };
+  } catch (e) {
+    console.error('cargarBalanceComprobacion:', e);
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Error al cargar</td></tr>';
+  }
+}
+
+function exportarBalance(formato) {
+  const b = STATE.balanceActual;
+  if (!b || !b.filas.length) { showToast('No hay datos para exportar', 'error'); return; }
+  const bizName = STATE.empresaConfig?.nombre_comercial || 'Mi Negocio';
+  const headers = ['Código','Cuenta','Debe','Haber','Saldo Deudor','Saldo Acreedor'];
+  const rows = b.filas.map(f => [f.cuenta.codigo, f.cuenta.nombre, f.debe, f.haber, f.saldoDeudor||0, f.saldoAcreedor||0]);
+  const totales = ['','TOTALES', b.totalDebeGeneral, b.totalHaberGeneral, b.filas.reduce((s,f)=>s+f.saldoDeudor,0), b.filas.reduce((s,f)=>s+f.saldoAcreedor,0)];
+
+  if (formato === 'excel') {
+    const aoa = [[bizName],['Balance de Comprobación'],[`Al ${fmtFecha(todayISO())}`],[],headers,...rows,totales];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:headers.length-1} }));
+    ws['!cols'] = headers.map((h,ci) => ({ wch: Math.min(Math.max(...[...rows.map(r=>String(r[ci]??'').length), h.length])+2, 32) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Balance');
+    XLSX.writeFile(wb, 'Balance_de_Comprobacion.xlsx');
+  } else {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+    doc.setFontSize(14); doc.text(bizName, 14, 14);
+    doc.setFontSize(10); doc.text('Balance de Comprobación', 14, 20);
+    doc.autoTable({ startY:26, head:[headers], body:[...rows.map(r=>r.map((v,i)=>i>1?fmt(v):v)), totales.map((v,i)=>i>1?fmt(v):v)], theme:'grid', headStyles:{fillColor:[108,99,255]} });
+    doc.save('Balance_de_Comprobacion.pdf');
+  }
+  showToast(`${formato.toUpperCase()} descargado`);
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+async function initContabilidad() {
+  const savedTheme = localStorage.getItem('n360_theme') || 'light';
+  applyTheme(savedTheme);
+  const fechaEl = document.getElementById('header-fecha');
+  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  try {
+    const { data: { user }, error } = await sbClient.auth.getUser();
+    if (error || !user) { window.location.href = 'login.html'; return; }
+    STATE.userId = user.id; STATE.userEmail = user.email;
+    if (user.email) checkAdminAccess(user.email);
+
+    await loadEmpresaConfig(user.id);
+    const profile = await loadUserProfile(user.id);
+    if (profile) renderUserInfo(profile, user.email);
+
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+
+    await cargarCuentas();
+    await cargarAsientos();
+  } catch (err) {
+    console.error('initContabilidad:', err);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+sbClient.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') window.location.href = 'login.html'; });
+
+document.addEventListener('DOMContentLoaded', () => {
+  initContabilidad();
+  if (window.lucide) lucide.createIcons();
+});

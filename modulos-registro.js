@@ -75,6 +75,8 @@
                                desc: 'Busca cualquier producto o servicio (por nombre/SKU o escaneando su código) y ve cómo está repartido entre todas tus sucursales y bodegas.' },
     'rutas.html':              { key: 'rutas',              label: 'Rutas',               icon: '🗺️', obligatorio: false,
                                desc: 'Ubica a tus clientes en el mapa y arma rutas de cobro o venta en ruta, conectadas con Créditos y Ventas.' },
+    'contabilidad.html':       { key: 'contabilidad',       label: 'Contabilidad',        icon: '📒', obligatorio: false,
+                               desc: 'Catálogo de cuentas y asientos contables con partida doble real (Debe = Haber siempre). Libro Mayor y Balance de Comprobación.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Auditoría — Negocio360</title>
+  <title>Contabilidad — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -959,9 +959,6 @@
     .badge-parcial   { background: var(--accent-3-soft); color: var(--accent-3); }
     .badge-fecha_fija { background: var(--accent-5-soft); color: var(--accent-5); }
     .badge-cuotas     { background: var(--accent-4-soft); color: var(--accent-4); }
-    .badge-insert     { background: var(--success-soft); color: var(--success); }
-    .badge-update     { background: var(--accent-3-soft); color: var(--accent-3); }
-    .badge-delete     { background: var(--danger-soft);  color: var(--danger); }
     .nc-paso-title {
       font-size: 14px; font-weight: 700; color: var(--text-primary);
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
@@ -970,6 +967,9 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -982,7 +982,7 @@
     </svg>
   </div>
   <div class="loader-spinner"></div>
-  <p style="font-size:13px;color:var(--text-muted)">Cargando Auditoría…</p>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Sucursales…</p>
 </div>
 
 <!-- TOAST -->
@@ -1055,7 +1055,7 @@
         <span class="nav-label">Salarios</span>
       </div>
 
-      <div class="nav-item active" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         <span class="nav-label">Auditoría</span>
       </div>
@@ -1075,7 +1075,7 @@
         <span class="nav-label">Sucursales</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
+      <div class="nav-item active" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         <span class="nav-label">Contabilidad</span>
       </div>
@@ -1088,6 +1088,11 @@
       <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
         <span class="nav-label">Rutas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
       </div>
 
       <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
@@ -1135,7 +1140,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Auditoría</span>
+      <span class="header-title">Contabilidad</span>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -1154,121 +1159,243 @@
         </div>
       </div>
     </header>
-
     <div id="content">
-
       <div class="greeting-row fade-in">
-        <div class="greeting-text">
-          <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span id="greeting-text">Auditoría</span>
-          </h1>
-          <p>Quién hizo cada movimiento en el sistema, en qué módulo, y a qué fecha y hora.</p>
+        <div>
+          <h1>Contabilidad</h1>
+          <p>Catálogo de cuentas y asientos contables, con partida doble real — Debe siempre igual a Haber.</p>
+        </div>
+        <div class="greeting-actions">
+          <button class="btn-secondary" onclick="abrirCatalogoCuentas()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Catálogo de cuentas
+          </button>
+          <button class="btn-primary" onclick="abrirNuevoAsiento()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nuevo asiento
+          </button>
         </div>
       </div>
 
-      <!-- KPI CARDS -->
-      <div class="kpi-grid">
-        <div class="kpi-card fade-in stagger-1">
-          <div class="kpi-icon" style="background:var(--accent-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Movimientos hoy</div>
-            <div class="kpi-value" id="kpi-hoy">—</div>
-          </div>
-        </div>
-
-        <div class="kpi-card fade-in stagger-2">
-          <div class="kpi-icon" style="background:var(--accent-5-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Movimientos este mes</div>
-            <div class="kpi-value" id="kpi-mes">—</div>
-          </div>
-        </div>
-
-        <div class="kpi-card fade-in stagger-3">
-          <div class="kpi-icon" style="background:var(--accent-4-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Usuarios activos hoy</div>
-            <div class="kpi-value" id="kpi-usuarios">—</div>
-          </div>
-        </div>
-
-        <div class="kpi-card fade-in stagger-4">
-          <div class="kpi-icon" style="background:var(--success-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Último movimiento</div>
-            <div class="kpi-value" id="kpi-ultimo" style="font-size:14px">—</div>
-          </div>
-        </div>
+      <div class="section-tabs fade-in">
+        <button class="section-tab active" id="tab-btn-asientos" onclick="cambiarSeccionContable('asientos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
+          Asientos
+        </button>
+        <button class="section-tab" id="tab-btn-mayor" onclick="cambiarSeccionContable('mayor')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Libro Mayor
+        </button>
+        <button class="section-tab" id="tab-btn-balance" onclick="cambiarSeccionContable('balance')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          Balance de Comprobación
+        </button>
       </div>
 
-      <div class="panel-card fade-in" style="margin-top:20px">
-        <!-- FILTROS -->
-        <div class="filtros-row">
-          <button class="filter-btn active" data-filtro="todos"   onclick="setFiltroAud('todos')">Todos</button>
-          <button class="filter-btn"        data-filtro="INSERT" onclick="setFiltroAud('INSERT')">Creaciones</button>
-          <button class="filter-btn"        data-filtro="UPDATE" onclick="setFiltroAud('UPDATE')">Ediciones</button>
-          <button class="filter-btn"        data-filtro="DELETE" onclick="setFiltroAud('DELETE')">Eliminaciones</button>
-
-          <select id="aud-filtro-usuario" onchange="filtrarPorSelectAud()" style="width:auto;min-width:150px">
-            <option value="">Todos los usuarios</option>
-          </select>
-          <select id="aud-filtro-modulo" onchange="filtrarPorSelectAud()" style="width:auto;min-width:150px">
-            <option value="">Todos los módulos</option>
-          </select>
-          <input type="date" id="aud-fecha-desde" onchange="cargarAuditoria()" style="width:auto"/>
-          <input type="date" id="aud-fecha-hasta" onchange="cargarAuditoria()" style="width:auto"/>
-
-          <div class="search-wrap" style="margin-left:auto">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="aud-search" placeholder="Buscar por resumen…" oninput="buscarAud()" />
-          </div>
+      <!-- ===== SECCIÓN: ASIENTOS ===== -->
+      <div class="panel-card fade-in" id="seccion-asientos">
+        <div class="panel-header">
+          <div class="panel-title">Asientos contables</div>
         </div>
-
-        <!-- TABLA -->
-        <div class="table-wrap">
+        <div class="table-wrap ct-tabla-responsive">
           <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Hora</th>
-                <th>Usuario</th>
-                <th>Módulo</th>
-                <th>Qué hizo</th>
-              </tr>
-            </thead>
-            <tbody id="aud-tbody">
-              <tr><td colspan="5" class="empty-cell">Cargando auditoría…</td></tr>
-            </tbody>
+            <thead><tr><th>N°</th><th>Fecha</th><th>Concepto</th><th>Debe</th><th>Haber</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="asientos-tbody"><tr><td colspan="7" class="empty-cell">Cargando…</td></tr></tbody>
           </table>
         </div>
-        <div class="table-hint">← Desliza para ver todas las columnas →</div>
+      </div>
 
-        <div class="paginacion-row" id="paginacion">
-          <span id="paginacion-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
-          <div class="pag-btns">
-            <button id="btn-pag-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
-            <button id="btn-pag-next" onclick="paginaSiguiente()">Siguiente →</button>
-          </div>
+      <!-- ===== SECCIÓN: LIBRO MAYOR ===== -->
+      <div class="panel-card fade-in" id="seccion-mayor" style="display:none">
+        <div class="panel-header">
+          <div class="panel-title">Libro Mayor</div>
+          <select id="mayor-cuenta-select" onchange="cargarLibroMayor()" style="max-width:320px">
+            <option value="">Elige una cuenta…</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
+            <tbody id="mayor-tbody"><tr><td colspan="6" class="empty-cell">Elige una cuenta para ver su movimiento</td></tr></tbody>
+          </table>
         </div>
       </div>
 
+      <!-- ===== SECCIÓN: BALANCE DE COMPROBACIÓN ===== -->
+      <div class="panel-card fade-in" id="seccion-balance" style="display:none">
+        <div class="panel-header">
+          <div class="panel-title">Balance de Comprobación</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-secondary btn-sm" onclick="exportarBalance('excel')">📊 Excel</button>
+            <button class="btn-secondary btn-sm" onclick="exportarBalance('pdf')">📄 PDF</button>
+          </div>
+        </div>
+        <div id="balance-cuadre-aviso" style="margin:0 16px 10px"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Código</th><th>Cuenta</th><th>Debe</th><th>Haber</th><th>Saldo Deudor</th><th>Saldo Acreedor</th></tr></thead>
+            <tbody id="balance-tbody"><tr><td colspan="6" class="empty-cell">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /app -->
 
 <!-- =====================================================
-     SCRIPT
-===================================================== -->
-<script src="auditoria.js"></script>
+     MODAL: CATÁLOGO DE CUENTAS
+=================================================== -->
+<div class="modal-overlay" id="modal-catalogo-cuentas" onclick="if(event.target===this)closeModal('modal-catalogo-cuentas')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Catálogo de Cuentas Contables</span>
+      <button class="modal-close" onclick="closeModal('modal-catalogo-cuentas')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Estas son las cuentas donde se clasifica cada movimiento contable — carga una plantilla estándar como punto de partida, o arma la tuya desde cero.
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn-secondary btn-sm" onclick="cargarPlantillaCuentas()">📋 Cargar plantilla estándar</button>
+        <button class="btn-primary btn-sm" onclick="abrirNuevaCuenta()">+ Cuenta nueva</button>
+      </div>
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+        <table>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Naturaleza</th><th>Activa</th><th></th></tr></thead>
+          <tbody id="cuentas-tbody"><tr><td colspan="6" class="empty-cell">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-catalogo-cuentas')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: NUEVA / EDITAR CUENTA
+=================================================== -->
+<div class="modal-overlay" id="modal-nueva-cuenta" onclick="if(event.target===this)closeModal('modal-nueva-cuenta')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="cta-modal-title">Nueva cuenta</span>
+      <button class="modal-close" onclick="closeModal('modal-nueva-cuenta')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cta-id"/>
+      <div class="form-row">
+        <div class="form-group"><label>Código *</label><input type="text" id="cta-codigo" placeholder="Ej: 1110"/></div>
+        <div class="form-group"><label>Nombre *</label><input type="text" id="cta-nombre" placeholder="Ej: Caja General"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="cta-tipo" onchange="autoNaturalezaCuenta()">
+            <option value="activo">Activo</option>
+            <option value="pasivo">Pasivo</option>
+            <option value="capital">Capital</option>
+            <option value="ingreso">Ingreso</option>
+            <option value="costo">Costo</option>
+            <option value="gasto">Gasto</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Naturaleza *</label>
+          <select id="cta-naturaleza">
+            <option value="deudora">Deudora</option>
+            <option value="acreedora">Acreedora</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Cuenta padre (opcional)</label>
+        <select id="cta-padre"><option value="">— Ninguna (cuenta principal) —</option></select>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px">
+        <input type="checkbox" id="cta-permite-movimientos" checked/> Permite movimientos directos (desmárcalo si es solo una cuenta "de grupo")
+      </label>
+      <p id="cta-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-nueva-cuenta')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-cuenta" onclick="guardarCuenta()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: NUEVO ASIENTO CONTABLE
+=================================================== -->
+<div class="modal-overlay" id="modal-nuevo-asiento" onclick="if(event.target===this)closeModal('modal-nuevo-asiento')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo asiento contable</span>
+      <button class="modal-close" onclick="closeModal('modal-nuevo-asiento')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Fecha *</label><input type="date" id="as-fecha"/></div>
+        <div class="form-group full-col"><label>Concepto *</label><input type="text" id="as-concepto" placeholder="Ej: Registro de gastos de oficina de agosto"/></div>
+      </div>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin:10px 0 6px">Líneas del asiento</label>
+      <div id="as-lineas"></div>
+      <button type="button" class="btn-secondary btn-sm" style="margin-top:8px" onclick="agregarLineaAsiento()">+ Agregar línea</button>
+
+      <div style="display:flex;justify-content:space-between;gap:16px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+        <div><span style="font-size:12px;color:var(--text-muted)">Total Debe</span><div style="font-weight:800" id="as-total-debe">0.00</div></div>
+        <div><span style="font-size:12px;color:var(--text-muted)">Total Haber</span><div style="font-weight:800" id="as-total-haber">0.00</div></div>
+        <div><span style="font-size:12px;color:var(--text-muted)">Diferencia</span><div style="font-weight:800" id="as-diferencia">0.00</div></div>
+      </div>
+      <p id="as-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-nuevo-asiento')">Cancelar</button>
+      <button class="btn-secondary" id="btn-guardar-borrador-asiento" onclick="guardarAsiento(false)">Guardar como borrador</button>
+      <button class="btn-primary" id="btn-registrar-asiento" onclick="guardarAsiento(true)">Registrar asiento</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: VER ASIENTO
+=================================================== -->
+<div class="modal-overlay" id="modal-ver-asiento" onclick="if(event.target===this)closeModal('modal-ver-asiento')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title" id="va-titulo">Asiento</span>
+      <button class="modal-close" onclick="closeModal('modal-ver-asiento')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="va-cuerpo">Cargando…</div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-ver-asiento')">Cerrar</button>
+      <button class="btn-secondary" id="va-btn-registrar" onclick="registrarAsientoDesdeVer()" style="display:none">Registrar</button>
+      <button class="btn-secondary" id="va-btn-anular" style="border-color:var(--danger);color:var(--danger);display:none" onclick="anularAsiento()">Anular</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  @media (max-width: 640px) {
+    .ct-tabla-responsive table, .ct-tabla-responsive thead, .ct-tabla-responsive tbody,
+    .ct-tabla-responsive th, .ct-tabla-responsive td, .ct-tabla-responsive tr { display: block; }
+    .ct-tabla-responsive thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .ct-tabla-responsive tbody tr { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg-surface); }
+    .ct-tabla-responsive td { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border: none !important; text-align: right; }
+    .ct-tabla-responsive td::before { content: attr(data-label); font-weight: 600; font-size: 12px; color: var(--text-muted); text-align: left; }
+    .ct-tabla-responsive td.empty-cell::before { content: none; }
+    .ct-tabla-responsive td.empty-cell { justify-content: center; text-align: center; }
+  }
+</style>
+
+<script src="contabilidad.js"></script>
 
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
