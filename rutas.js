@@ -167,7 +167,7 @@ const DIAS_LABEL = { lunes:'Lunes',martes:'Martes',miercoles:'Miércoles',jueves
 const DIAS_JS = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
 function renderRutasHoy() {
   const cont = document.getElementById('rutas-hoy-cuerpo');
-  const panel = document.getElementById('panel-hoy');
+  const panel = document.getElementById('panel-rutas-hoy');
   if (!cont || !panel) return;
 
   const hoyDia = DIAS_JS[new Date().getDay()];
