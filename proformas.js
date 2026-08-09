@@ -1552,17 +1552,27 @@ async function generarPDFProforma(p, items, cliente) {
   doc.setFillColor(rC, gC, bC);
   doc.rect(0, 0, W, 38, 'F');
   let textoX = M;
-  const TAMANOS_LOGO = { pequeno: 22, mediano: 28, grande: 34 };
-  const cajaLogo = TAMANOS_LOGO[cfg.logo_tamano] || 28;
+  const TAMANOS_LOGO = { pequeno: {ancho:32, alto:22}, mediano: {ancho:45, alto:28}, grande: {ancho:58, alto:34} };
+  const cajaLogo = TAMANOS_LOGO[cfg.logo_tamano] || TAMANOS_LOGO.mediano;
   if (logo) {
     try {
-      const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogo, cajaLogo);
-      doc.addImage(logo.dataUrl, logo.formato, M + (cajaLogo-w)/2, (38-cajaLogo)/2 + (cajaLogo-h)/2, w, h);
-      textoX = M + cajaLogo + 5;
+      const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogo.ancho, cajaLogo.alto);
+      doc.addImage(logo.dataUrl, logo.formato, M, (38-h)/2, w, h);
+      textoX = M + w + 6;
     } catch (e) { /* si falla, se sigue sin logo */ }
   }
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20); doc.setFont(undefined, 'bold');
+  // El tamaño de letra del nombre se ajusta solo si no cabe en el
+  // espacio disponible (entre el logo y la info de la derecha) — así
+  // un logo grande + un nombre largo nunca se encima con nada.
+  const anchoDisponibleNombre = (W - M - 40) - textoX;
+  let tamanoNombre = 20;
+  doc.setFont(undefined, 'bold');
+  while (tamanoNombre > 12) {
+    doc.setFontSize(tamanoNombre);
+    if (doc.getTextWidth(biz.nombre) <= anchoDisponibleNombre) break;
+    tamanoNombre -= 1;
+  }
   doc.text(biz.nombre, textoX, 20);
   doc.setFontSize(11); doc.setFont(undefined, 'normal');
   doc.text('Proforma / Cotización', textoX, 29);

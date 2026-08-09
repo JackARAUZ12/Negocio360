@@ -2692,13 +2692,13 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     doc.setFillColor(rDoc, gDoc, bDoc);
     doc.rect(0,0,W,20,'F');
     let textoX = 10;
-    const TAMANOS_LOGO_REP = { pequeno: 14, mediano: 17, grande: 18 };
-    const cajaLogoRep = TAMANOS_LOGO_REP[cfgDoc.logo_tamano] || 17;
+    const TAMANOS_LOGO_REP = { pequeno: {ancho:22, alto:14}, mediano: {ancho:30, alto:17}, grande: {ancho:38, alto:18} };
+    const cajaLogoRep = TAMANOS_LOGO_REP[cfgDoc.logo_tamano] || TAMANOS_LOGO_REP.mediano;
     if (logo) {
       try {
-        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogoRep, cajaLogoRep);
-        doc.addImage(logo.dataUrl, logo.formato, 8 + (cajaLogoRep-w)/2, (20-cajaLogoRep)/2 + (cajaLogoRep-h)/2, w, h);
-        textoX = 12 + cajaLogoRep;
+        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, cajaLogoRep.ancho, cajaLogoRep.alto);
+        doc.addImage(logo.dataUrl, logo.formato, 8, (20-h)/2, w, h);
+        textoX = 12 + w;
       } catch (e) { /* si falla, se sigue sin logo */ }
     }
     doc.setTextColor(255,255,255);
