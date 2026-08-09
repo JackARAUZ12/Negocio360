@@ -12,9 +12,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
-  clientes: [], clientesCobro: [], ventasReparto: [], rutas: [], perfiles: [], perfilAsignado: null,
+  clientes: [], clientesCobro: [], ventasReparto: [], sucursalesReabastecer: [], clientesInactivos: [], rutas: [], perfiles: [], perfilAsignado: null,
   mapaGeneral: null, mapaNuevaRuta: null, mapaVerRuta: null,
   clienteSeleccionadoParaUbicar: null,
+  sucursalSeleccionadaParaUbicar: null,
+  productosPropios: null,
   seleccionRuta: new Map(), // id (cliente o cuota) -> objeto elegido
   ordenCalculado: null,
   tipoRutaActual: 'preventa',
@@ -123,6 +125,22 @@ async function cargarVentasReparto() {
     if (error) throw error;
     STATE.ventasReparto = data || [];
   } catch (e) { console.warn('cargarVentasReparto:', e); STATE.ventasReparto = []; }
+}
+
+async function cargarSucursalesReabastecer() {
+  try {
+    const { data, error } = await sb.rpc('sucursales_para_reabastecer');
+    if (error) throw error;
+    STATE.sucursalesReabastecer = data || [];
+  } catch (e) { console.warn('cargarSucursalesReabastecer:', e); STATE.sucursalesReabastecer = []; }
+}
+
+async function cargarClientesInactivos() {
+  try {
+    const { data, error } = await sb.rpc('clientes_inactivos', { p_dias: 30 });
+    if (error) throw error;
+    STATE.clientesInactivos = data || [];
+  } catch (e) { console.warn('cargarClientesInactivos:', e); STATE.clientesInactivos = []; }
 }
 
 // Lee el perfil activo guardado por perfiles-guard.js — si es un
@@ -262,10 +280,14 @@ async function seleccionarTipoRuta(tipo) {
   STATE.ordenCalculado = null;
   STATE.clienteSeleccionadoParaUbicar = null;
 
-  const titulos = { cobro: 'Nueva ruta de Cobro', preventa: 'Nueva ruta — Venta en Ruta', reparto: 'Nueva ruta de Reparto' };
+  const titulos = { cobro: 'Nueva ruta de Cobro', preventa: 'Nueva ruta — Venta en Ruta', reparto: 'Nueva ruta de Reparto',
+    reabastecimiento: 'Nueva ruta de Reabastecimiento', reactivacion: 'Nueva ruta de Reactivación', visita: 'Nueva ruta — Visita comercial' };
   const listaTitulos = {
     cobro: 'Clientes con cuotas vencidas o por vencer (7 días)',
     reparto: 'Ventas pendientes de entrega',
+    reabastecimiento: 'Sucursales/bodegas de tu grupo',
+    reactivacion: 'Clientes sin comprar hace 30+ días',
+    visita: 'Elige los clientes a visitar',
   };
   document.getElementById('nr-titulo').textContent = titulos[tipo] || 'Nueva ruta';
   document.getElementById('nr-lista-titulo').textContent = listaTitulos[tipo] || 'Elige los clientes de esta ruta';
@@ -276,6 +298,8 @@ async function seleccionarTipoRuta(tipo) {
 
   if (tipo === 'cobro') await cargarClientesCobro();
   if (tipo === 'reparto') await cargarVentasReparto();
+  if (tipo === 'reabastecimiento') await cargarSucursalesReabastecer();
+  if (tipo === 'reactivacion') await cargarClientesInactivos();
   renderListaClientesRuta();
   openModal('modal-nueva-ruta');
 
@@ -336,7 +360,47 @@ function renderListaClientesRuta() {
     return;
   }
 
-  // Preventa: lista normal de clientes
+  if (STATE.tipoRutaActual === 'reabastecimiento') {
+    const lista = STATE.sucursalesReabastecer.filter(s => !q || (s.nombre||'').toLowerCase().includes(q));
+    if (!lista.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">No se encontraron sucursales/bodegas en tu grupo.</div>'; return; }
+    cont.innerHTML = lista.map(s => {
+      const key = s.sucursal_id;
+      const marcado = STATE.seleccionRuta.has(key);
+      const tieneUbicacion = s.latitud != null;
+      return `
+      <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+        <input type="checkbox" ${marcado?'checked':''} onchange="toggleClienteRuta('${key}', this.checked, ${JSON.stringify(s).replace(/"/g,'&quot;')})"/>
+        <span style="flex:1">
+          <div>${s.tipo==='bodega'?'🏬':'🏪'} ${esc(s.nombre)} ${!tieneUbicacion ? '<span style="font-size:10.5px;color:var(--warning)">sin ubicación</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${s.productos_stock_bajo > 0 ? `⚠️ ${s.productos_stock_bajo} producto(s) con stock bajo` : 'Sin productos en stock bajo'}</div>
+        </span>
+        ${!tieneUbicacion ? `<button type="button" class="btn-secondary" style="padding:3px 8px;font-size:10.5px" onclick="event.preventDefault();seleccionarParaUbicarSucursal('${key}')">Marcar en mapa</button>` : ''}
+      </label>`;
+    }).join('');
+    return;
+  }
+
+  if (STATE.tipoRutaActual === 'reactivacion') {
+    const lista = STATE.clientesInactivos.filter(c => !q || (c.cliente_nombre||'').toLowerCase().includes(q));
+    if (!lista.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">No hay clientes inactivos 30+ días — buena señal 🎉</div>'; return; }
+    cont.innerHTML = lista.map(c => {
+      const key = c.cliente_id;
+      const marcado = STATE.seleccionRuta.has(key);
+      const tieneUbicacion = c.latitud != null;
+      return `
+      <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+        <input type="checkbox" ${marcado?'checked':''} onchange="toggleClienteRuta('${key}', this.checked, ${JSON.stringify(c).replace(/"/g,'&quot;')})"/>
+        <span style="flex:1">
+          <div>${esc(c.cliente_nombre)} ${!tieneUbicacion ? '<span style="font-size:10.5px;color:var(--warning)">sin ubicación</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${c.dias_inactivo >= 9999 ? 'Nunca ha comprado' : `${c.dias_inactivo} días sin comprar`} · Histórico: ${fmt(c.total_historico)}</div>
+        </span>
+        ${!tieneUbicacion ? `<button type="button" class="btn-secondary" style="padding:3px 8px;font-size:10.5px" onclick="event.preventDefault();seleccionarParaUbicarCobro('${c.cliente_id}')">Marcar en mapa</button>` : ''}
+      </label>`;
+    }).join('');
+    return;
+  }
+
+  // Preventa / Visita comercial: lista normal de clientes
   const lista = STATE.clientes.filter(c => !q || nombreCompleto(c).toLowerCase().includes(q));
   if (!lista.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">Sin resultados</div>'; return; }
   cont.innerHTML = lista.map(c => {
@@ -461,13 +525,38 @@ function seleccionarParaUbicar(id) {
 }
 function seleccionarParaUbicarCobro(clienteId) {
   STATE.clienteSeleccionadoParaUbicar = clienteId;
+  STATE.sucursalSeleccionadaParaUbicar = null;
   document.getElementById('nr-mapa-hint').textContent = '📍 Haz clic en el mapa para marcar la ubicación de este cliente';
+}
+function seleccionarParaUbicarSucursal(sucursalId) {
+  STATE.sucursalSeleccionadaParaUbicar = sucursalId;
+  STATE.clienteSeleccionadoParaUbicar = null;
+  document.getElementById('nr-mapa-hint').textContent = '📍 Haz clic en el mapa para marcar la ubicación de esta sucursal/bodega';
 }
 
 async function onClickMapaNuevaRuta(e) {
-  const id = STATE.clienteSeleccionadoParaUbicar;
-  if (!id) { showToast('Primero elige "Marcar en mapa" junto al cliente que quieres ubicar', 'error'); return; }
   const { lat, lng } = e.latlng;
+
+  if (STATE.sucursalSeleccionadaParaUbicar) {
+    const id = STATE.sucursalSeleccionadaParaUbicar;
+    try {
+      const { error } = await sb.from('sucursales').update({ latitud: lat, longitud: lng }).eq('id', id);
+      if (error) throw error;
+      const s = STATE.sucursalesReabastecer.find(x => x.sucursal_id === id);
+      if (s) { s.latitud = lat; s.longitud = lng; }
+      STATE.sucursalSeleccionadaParaUbicar = null;
+      document.getElementById('nr-mapa-hint').textContent = 'Ubicación guardada. Selecciona otra sucursal sin ubicación si hace falta.';
+      renderListaClientesRuta();
+      dibujarMarcadoresNuevaRuta();
+      showToast('Ubicación guardada');
+    } catch (err) {
+      showToast('No se pudo guardar la ubicación', 'error');
+    }
+    return;
+  }
+
+  const id = STATE.clienteSeleccionadoParaUbicar;
+  if (!id) { showToast('Primero elige "Marcar en mapa" junto al cliente/sucursal que quieres ubicar', 'error'); return; }
   try {
     const { error } = await sb.from('clientes').update({ latitud: lat, longitud: lng })
       .eq('id', id).eq('auth_user_id', STATE.userId);
@@ -476,6 +565,8 @@ async function onClickMapaNuevaRuta(e) {
     if (c) { c.latitud = lat; c.longitud = lng; }
     const cCobro = STATE.clientesCobro.find(x => x.cliente_id === id);
     if (cCobro) { cCobro.latitud = lat; cCobro.longitud = lng; }
+    const cInactivo = STATE.clientesInactivos.find(x => x.cliente_id === id);
+    if (cInactivo) { cInactivo.latitud = lat; cInactivo.longitud = lng; }
     STATE.clienteSeleccionadoParaUbicar = null;
     document.getElementById('nr-mapa-hint').textContent = 'Ubicación guardada. Selecciona otro cliente sin ubicación si hace falta.';
     renderListaClientesRuta();
@@ -494,7 +585,7 @@ function dibujarMarcadoresNuevaRuta() {
   const seleccionados = Array.from(STATE.seleccionRuta.values()).filter(c => c.latitud != null);
   seleccionados.forEach((c, i) => {
     L.marker([c.latitud, c.longitud]).addTo(STATE._capaMarcadoresNR)
-      .bindPopup(`<strong>${i+1}. ${esc(c.cliente_nombre || nombreCompleto(c))}</strong>`);
+      .bindPopup(`<strong>${i+1}. ${esc(c.cliente_nombre || c.nombre || nombreCompleto(c))}</strong>`);
   });
   if (seleccionados.length) {
     const bounds = L.latLngBounds(seleccionados.map(c => [c.latitud, c.longitud]));
@@ -521,7 +612,7 @@ function renderOrdenRuta() {
   document.getElementById('nr-orden-lista').innerHTML = STATE.ordenCalculado.map((c,i) => `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;${i>0?'border-top:1px solid var(--border)':''}">
       <strong style="color:var(--accent);min-width:20px">${i+1}.</strong>
-      <span style="flex:1">${esc(c.cliente_nombre || nombreCompleto(c))}</span>
+      <span style="flex:1">${esc(c.cliente_nombre || c.nombre || nombreCompleto(c))}</span>
       <div style="display:flex;gap:4px">
         <button type="button" class="btn-icon" title="Subir" ${i===0?'disabled style="opacity:.3"':''} onclick="moverParadaOrden(${i},-1)">⬆️</button>
         <button type="button" class="btn-icon" title="Bajar" ${i===STATE.ordenCalculado.length-1?'disabled style="opacity:.3"':''} onclick="moverParadaOrden(${i},1)">⬇️</button>
@@ -561,9 +652,12 @@ async function guardarRuta() {
     }).select().single();
     if (errRuta) throw errRuta;
 
+    const esSucursal = STATE.tipoRutaActual === 'reabastecimiento';
+    const usaClienteId = STATE.tipoRutaActual === 'preventa' || STATE.tipoRutaActual === 'visita';
     const payload = listaFinal.map((c, i) => ({
       auth_user_id: STATE.userId, ruta_id: ruta.id,
-      cliente_id: STATE.tipoRutaActual === 'preventa' ? c.id : c.cliente_id,
+      cliente_id: esSucursal ? null : (usaClienteId ? c.id : c.cliente_id),
+      sucursal_id: esSucursal ? c.sucursal_id : null,
       orden: i,
       credito_id: STATE.tipoRutaActual === 'cobro' ? c.credito_id : null,
       cuota_id: STATE.tipoRutaActual === 'cobro' ? c.cuota_id : null,
@@ -592,10 +686,16 @@ async function verRuta(rutaId) {
     const { data: ruta } = await sb.from('rutas').select('*').eq('id', rutaId).eq('auth_user_id', STATE.userId).maybeSingle();
     if (!ruta) { showToast('Ruta no encontrada', 'error'); return; }
     const { data: paradas } = await sb.from('ruta_clientes')
-      .select('id, orden, estado_parada, resultado_monto, resultado_nota, cliente_id, credito_id, cuota_id, venta_id, clientes(id,nombre,apellido,telefono,direccion,latitud,longitud)')
+      .select('id, orden, estado_parada, resultado_monto, resultado_nota, cliente_id, sucursal_id, credito_id, cuota_id, venta_id, clientes(id,nombre,apellido,telefono,direccion,latitud,longitud), sucursales(id,nombre,latitud,longitud)')
       .eq('ruta_id', rutaId).order('orden');
 
-    const lista = (paradas||[]).map(p => ({ ...p, cliente: p.clientes })).filter(p => p.cliente);
+    // Se normaliza sucursal → misma forma que "cliente", para que todo
+    // el resto del código (vista de campo, mapa, lista) funcione igual
+    // sin tener que duplicar nada por tipo de ruta.
+    const lista = (paradas||[]).map(p => {
+      const cliente = p.clientes || (p.sucursales ? { ...p.sucursales, apellido: '' } : null);
+      return { ...p, cliente };
+    }).filter(p => p.cliente);
     RUTA_ACTUAL = { ruta, lista };
 
     document.getElementById('vr-titulo').textContent = `${TIPO_LABEL[ruta.tipo]||''} — ${ruta.nombre}`;
@@ -728,6 +828,12 @@ function renderParadaCampo() {
   } else if (CAMPO.ruta.tipo === 'reparto') {
     accionesHtml = `
       <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="marcarEntregaHecha('${p.id}','${p.venta_id}')">📦 Marcar como entregado</button>`;
+  } else if (CAMPO.ruta.tipo === 'reabastecimiento') {
+    accionesHtml = `
+      <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="abrirMoverStock('${p.sucursal_id}','${p.id}')">🏬 Mover stock aquí</button>`;
+  } else if (CAMPO.ruta.tipo === 'reactivacion' || CAMPO.ruta.tipo === 'visita') {
+    accionesHtml = `
+      <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="mostrarFormNotaVisita('${p.id}')">📝 Guardar nota de la visita</button>`;
   }
 
   document.getElementById('vc-tarjeta-parada').innerHTML = `
@@ -741,6 +847,13 @@ function renderParadaCampo() {
 
       ${accionesHtml}
       <button class="vc-btn-grande" style="background:var(--bg-app);border:1px solid var(--border);color:var(--text-primary)" onclick="marcarParadaCompletadaManual('${p.id}')">✅ Marcar como hecha</button>
+
+      <div id="vc-nota-visita-form-${p.id}" style="display:none;text-align:left;margin-top:10px">
+        <label style="font-size:11.5px;color:var(--text-muted)">¿Cómo te fue? ¿Qué te dijo el cliente?</label>
+        <textarea id="vc-nota-visita-${p.id}" rows="3" placeholder="Ej: interesado, pidió que vuelva la próxima semana con catálogo nuevo"
+          style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-app);color:var(--text-primary);margin-top:4px;font-family:inherit"></textarea>
+        <button class="vc-btn-grande" style="background:var(--accent);color:#fff" onclick="confirmarNotaVisita('${p.id}')">Guardar nota y pasar a la siguiente</button>
+      </div>
 
       <div id="vc-reagendar-form-${p.id}" style="display:none;text-align:left;margin-top:10px">
         <label style="font-size:11.5px;color:var(--text-muted)">¿Por qué? (opcional)</label>
@@ -759,6 +872,74 @@ function mostrarFormReagendar(paradaId) {
 function confirmarReagendar(paradaId) {
   const nota = document.getElementById(`vc-reagendar-nota-${paradaId}`)?.value.trim() || null;
   marcarParadaEstado(paradaId, 'no_encontrado', null, nota);
+}
+
+// Reactivación / Visita comercial: solo se deja constancia de la
+// visita, sin venta ni cobro — la nota queda guardada en la parada.
+function mostrarFormNotaVisita(paradaId) {
+  document.getElementById(`vc-nota-visita-form-${paradaId}`).style.display = 'block';
+}
+function confirmarNotaVisita(paradaId) {
+  const nota = document.getElementById(`vc-nota-visita-${paradaId}`)?.value.trim() || null;
+  if (!nota) { showToast('Escribe algo sobre cómo te fue', 'error'); return; }
+  marcarParadaEstado(paradaId, 'completada', null, nota);
+}
+
+// Reabastecimiento: mover stock real hacia esta sucursal/bodega —
+// usa la MISMA función que ya usa Productos para mover stock entre
+// cuentas del grupo, nunca una lógica aparte.
+let MOVER_STOCK_ACTUAL = null;
+async function abrirMoverStock(sucursalDestinoId, paradaId) {
+  MOVER_STOCK_ACTUAL = { sucursalDestinoId, paradaId };
+  document.getElementById('ms-producto').value = '';
+  document.getElementById('ms-cantidad').value = '';
+  document.getElementById('ms-lista-productos').innerHTML = '';
+  document.getElementById('ms-error').textContent = '';
+  openModal('modal-mover-stock');
+  if (!STATE.productosPropios) {
+    try {
+      const { data } = await sb.from('productos').select('id,nombre,stock_actual').eq('auth_user_id', STATE.userId).eq('tipo','producto').eq('activo', true).order('nombre');
+      STATE.productosPropios = data || [];
+    } catch (e) { STATE.productosPropios = []; }
+  }
+}
+function buscarProductoMoverStock(q) {
+  const cont = document.getElementById('ms-lista-productos');
+  const query = (q||'').toLowerCase().trim();
+  if (!query) { cont.innerHTML = ''; return; }
+  const resultados = (STATE.productosPropios||[]).filter(p => p.nombre.toLowerCase().includes(query)).slice(0, 8);
+  cont.innerHTML = resultados.map(p => `
+    <div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px" onclick="elegirProductoMoverStock('${p.id}','${esc(p.nombre)}',${p.stock_actual})">
+      ${esc(p.nombre)} <span style="color:var(--text-muted);font-size:11px">(stock: ${p.stock_actual})</span>
+    </div>`).join('') || '<div style="padding:8px 10px;color:var(--text-muted);font-size:12.5px">Sin resultados</div>';
+}
+function elegirProductoMoverStock(id, nombre, stock) {
+  document.getElementById('ms-producto').value = nombre;
+  document.getElementById('ms-producto').dataset.productoId = id;
+  document.getElementById('ms-producto').dataset.stockDisponible = stock;
+  document.getElementById('ms-lista-productos').innerHTML = '';
+}
+async function confirmarMoverStock() {
+  const errEl = document.getElementById('ms-error');
+  errEl.textContent = '';
+  if (!MOVER_STOCK_ACTUAL) return;
+  const productoId = document.getElementById('ms-producto').dataset.productoId;
+  const cantidad = parseFloat(document.getElementById('ms-cantidad').value);
+  if (!productoId) { errEl.textContent = 'Elige un producto de la lista.'; return; }
+  if (!(cantidad > 0)) { errEl.textContent = 'La cantidad debe ser mayor a cero.'; return; }
+
+  try {
+    const { error } = await sb.rpc('mover_stock_producto', {
+      p_producto_id: productoId, p_sucursal_destino_id: MOVER_STOCK_ACTUAL.sucursalDestinoId, p_cantidad: cantidad,
+    });
+    if (error) throw error;
+    showToast('Stock movido correctamente');
+    closeModal('modal-mover-stock');
+    marcarParadaEstado(MOVER_STOCK_ACTUAL.paradaId, 'completada', null, `Se movió ${cantidad} unidad(es)`);
+    MOVER_STOCK_ACTUAL = null;
+  } catch (e) {
+    errEl.textContent = 'Error: ' + (e.message || 'No se pudo mover el stock');
+  }
 }
 
 function paradaAnterior() {

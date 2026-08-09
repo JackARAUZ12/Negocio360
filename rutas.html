@@ -1275,20 +1275,20 @@
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Reparto</div>
         <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Entrega lo que ya se vendió</div>
       </div>
-      <div class="rt-tipo-card rt-tipo-disabled">
+      <div class="rt-tipo-card" onclick="seleccionarTipoRuta('reabastecimiento')">
         <div style="font-size:26px">🏬</div>
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Reabastecimiento</div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Próximamente</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Lleva stock a otra sucursal/bodega</div>
       </div>
-      <div class="rt-tipo-card rt-tipo-disabled">
+      <div class="rt-tipo-card" onclick="seleccionarTipoRuta('reactivacion')">
         <div style="font-size:26px">🔁</div>
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Reactivación</div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Próximamente</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Clientes que no compran hace tiempo</div>
       </div>
-      <div class="rt-tipo-card rt-tipo-disabled">
+      <div class="rt-tipo-card" onclick="seleccionarTipoRuta('visita')">
         <div style="font-size:26px">📋</div>
         <div style="font-weight:700;font-size:13.5px;margin-top:6px">Visita comercial</div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Próximamente</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Solo dejar una nota, sin venta ni cobro</div>
       </div>
     </div>
   </div>
@@ -1411,6 +1411,37 @@
     <button class="btn-secondary" onclick="cerrarEmbebido()">✕ Cerrar sin registrar</button>
   </div>
   <iframe id="vc-iframe-embebido" src="about:blank" style="flex:1;width:100%;border:none;background:var(--bg-app)"></iframe>
+</div>
+
+<!-- =====================================================
+     MODAL: MOVER STOCK (Reabastecimiento) — usa la misma función que
+     ya usa Productos para mover stock entre cuentas del grupo.
+=================================================== -->
+<div class="modal-overlay" id="modal-mover-stock" onclick="if(event.target===this)closeModal('modal-mover-stock')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Mover stock a esta sucursal/bodega</span>
+      <button class="modal-close" onclick="closeModal('modal-mover-stock')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Producto *</label>
+        <input type="text" id="ms-producto" placeholder="Busca un producto…" autocomplete="off" oninput="buscarProductoMoverStock(this.value)"/>
+        <div id="ms-lista-productos" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px"></div>
+      </div>
+      <div class="form-group">
+        <label>Cantidad a mover *</label>
+        <input type="number" id="ms-cantidad" min="0.01" step="0.01"/>
+      </div>
+      <p id="ms-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-mover-stock')">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarMoverStock()">Mover stock</button>
+    </div>
+  </div>
 </div>
 
 <style>
