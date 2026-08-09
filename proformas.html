@@ -1191,6 +1191,10 @@
           <p>Cotizaciones para tus clientes — cuando el cliente acepta, se convierten en Venta con un clic.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="abrirPersonalizarProforma()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Personalizar
+          </button>
           <button class="btn-primary" onclick="abrirNuevaProforma()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva proforma
@@ -1616,6 +1620,80 @@
   .ticket-print .tp-row{display:flex;justify-content:space-between;gap:10px}
   .ticket-print hr{border:none;border-top:1px dashed var(--border);margin:8px 0}
 </style>
+
+<!-- =====================================================
+     MODAL: PERSONALIZAR PROFORMA — propio de este módulo, no
+     depende de Perfil ni de ningún otro lugar del sistema.
+=================================================== -->
+<div class="modal-overlay" id="modal-personalizar-proforma" onclick="if(event.target===this)closeModal('modal-personalizar-proforma')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Personalizar Proforma</span>
+      <button class="modal-close" onclick="closeModal('modal-personalizar-proforma')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="pp-grid">
+        <div>
+          <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:10px">Colores</label>
+
+          <div class="form-group">
+            <label>Color del encabezado</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="pp-color-principal" value="#6C63FF" oninput="ppSyncColor('pp-color-principal','pp-hex-principal');ppActualizarVista()" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
+              <input type="text" id="pp-hex-principal" value="#6C63FF" maxlength="7" oninput="ppSyncHex('pp-hex-principal','pp-color-principal');ppActualizarVista()" style="flex:1"/>
+            </div>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px">
+            <input type="checkbox" id="pp-mismo-color" checked onchange="ppToggleMismoColor();ppActualizarVista()"/> Usar el mismo color en la tabla de productos
+          </label>
+
+          <div class="form-group" id="pp-color-tabla-wrap" style="display:none">
+            <label>Color de la tabla de productos</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="pp-color-tabla" value="#6C63FF" oninput="ppSyncColor('pp-color-tabla','pp-hex-tabla');ppActualizarVista()" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
+              <input type="text" id="pp-hex-tabla" value="#6C63FF" maxlength="7" oninput="ppSyncHex('pp-hex-tabla','pp-color-tabla');ppActualizarVista()" style="flex:1"/>
+            </div>
+          </div>
+
+          <label style="font-size:12.5px;font-weight:700;display:block;margin:18px 0 10px">Mensaje y datos a mostrar</label>
+          <div class="form-group">
+            <label>Mensaje de pie de página (opcional)</label>
+            <textarea id="pp-mensaje-pie" rows="2" placeholder="Ej: Precios válidos por 15 días" oninput="ppActualizarVista()"></textarea>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pp-mostrar-ruc" checked onchange="ppActualizarVista()"/> RUC</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pp-mostrar-direccion" checked onchange="ppActualizarVista()"/> Dirección</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pp-mostrar-telefono" checked onchange="ppActualizarVista()"/> Teléfono</label>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:10px">Vista previa</label>
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+            <div id="pp-preview-header" style="background:#6C63FF;color:#fff;padding:14px">
+              <div style="font-size:15px;font-weight:800" id="pp-preview-nombre">Mi Negocio</div>
+              <div style="font-size:11px;opacity:.9">Proforma / Cotización</div>
+            </div>
+            <div style="padding:10px 14px;font-size:10.5px;color:var(--text-muted)" id="pp-preview-datos">RUC · Dirección · Tel</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <thead><tr id="pp-preview-tabla-head" style="background:#6C63FF;color:#fff"><th style="padding:6px 10px;text-align:left">Descripción</th><th style="padding:6px 10px">Cant.</th><th style="padding:6px 10px">Precio</th></tr></thead>
+              <tbody><tr><td style="padding:6px 10px">Producto de ejemplo</td><td style="padding:6px 10px;text-align:center">1</td><td style="padding:6px 10px;text-align:right">C$100.00</td></tr></tbody>
+            </table>
+            <div style="padding:10px 14px;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border)" id="pp-preview-pie">Generado por Negocio360</div>
+          </div>
+        </div>
+      </div>
+      <p id="pp-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-personalizar-proforma')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-personalizar-proforma" onclick="guardarPersonalizarProforma()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <!-- =====================================================
      MODAL INCRUSTADO — Créditos dentro de Proformas, para "Pago

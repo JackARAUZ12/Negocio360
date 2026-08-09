@@ -659,6 +659,95 @@ function actualizarResumenProf() {
 /* =====================================================
    ABRIR / RESET MODAL NUEVA PROFORMA
 ===================================================== */
+/* =====================================================
+   PERSONALIZAR PROFORMA — propio de este módulo, guardado en su
+   propia tabla (configuracion_proforma), independiente de Perfil.
+===================================================== */
+STATE.configProforma = null;
+
+async function cargarConfigProforma() {
+  try {
+    const { data } = await sbClient.from('configuracion_proforma').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+    STATE.configProforma = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null };
+  } catch (e) { STATE.configProforma = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null }; }
+}
+
+async function abrirPersonalizarProforma() {
+  await cargarConfigProforma();
+  const c = STATE.configProforma;
+  document.getElementById('pp-color-principal').value = c.color_principal || '#6C63FF';
+  document.getElementById('pp-hex-principal').value = c.color_principal || '#6C63FF';
+  document.getElementById('pp-mismo-color').checked = c.color_tabla_usa_mismo !== false;
+  document.getElementById('pp-color-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
+  document.getElementById('pp-hex-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
+  document.getElementById('pp-mensaje-pie').value = c.mensaje_pie || '';
+  document.getElementById('pp-mostrar-ruc').checked = c.mostrar_ruc !== false;
+  document.getElementById('pp-mostrar-direccion').checked = c.mostrar_direccion !== false;
+  document.getElementById('pp-mostrar-telefono').checked = c.mostrar_telefono !== false;
+  document.getElementById('pp-error').textContent = '';
+  ppToggleMismoColor();
+  ppActualizarVista();
+  openModal('modal-personalizar-proforma');
+}
+
+function ppSyncColor(colorId, hexId) { document.getElementById(hexId).value = document.getElementById(colorId).value; }
+function ppSyncHex(hexId, colorId) {
+  const v = document.getElementById(hexId).value;
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) document.getElementById(colorId).value = v;
+}
+function ppToggleMismoColor() {
+  const usaMismo = document.getElementById('pp-mismo-color').checked;
+  document.getElementById('pp-color-tabla-wrap').style.display = usaMismo ? 'none' : '';
+}
+function ppActualizarVista() {
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+  const colorPrincipal = document.getElementById('pp-color-principal').value;
+  const usaMismo = document.getElementById('pp-mismo-color').checked;
+  const colorTabla = usaMismo ? colorPrincipal : document.getElementById('pp-color-tabla').value;
+
+  document.getElementById('pp-preview-header').style.background = colorPrincipal;
+  document.getElementById('pp-preview-nombre').textContent = bizName;
+  document.getElementById('pp-preview-tabla-head').style.background = colorTabla;
+
+  const datos = [];
+  if (document.getElementById('pp-mostrar-ruc').checked) datos.push('RUC');
+  if (document.getElementById('pp-mostrar-direccion').checked) datos.push('Dirección');
+  if (document.getElementById('pp-mostrar-telefono').checked) datos.push('Tel');
+  document.getElementById('pp-preview-datos').textContent = datos.join(' · ') || '(sin datos de contacto mostrados)';
+
+  const mensaje = document.getElementById('pp-mensaje-pie').value.trim();
+  document.getElementById('pp-preview-pie').textContent = (mensaje ? mensaje + ' · ' : '') + 'Generado por Negocio360';
+}
+
+async function guardarPersonalizarProforma() {
+  const errEl = document.getElementById('pp-error');
+  errEl.textContent = '';
+  const colorPrincipal = document.getElementById('pp-hex-principal').value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(colorPrincipal)) { errEl.textContent = 'El color del encabezado no es válido.'; return; }
+  const usaMismo = document.getElementById('pp-mismo-color').checked;
+  const colorTabla = usaMismo ? colorPrincipal : document.getElementById('pp-hex-tabla').value.trim();
+  if (!usaMismo && !/^#[0-9a-fA-F]{6}$/.test(colorTabla)) { errEl.textContent = 'El color de la tabla no es válido.'; return; }
+
+  setBtnLoading('btn-guardar-personalizar-proforma', true);
+  try {
+    await sbClient.from('configuracion_proforma').upsert({
+      auth_user_id: STATE.userId, color_principal: colorPrincipal, color_tabla_usa_mismo: usaMismo, color_tabla: colorTabla,
+      mensaje_pie: document.getElementById('pp-mensaje-pie').value.trim() || null,
+      mostrar_ruc: document.getElementById('pp-mostrar-ruc').checked,
+      mostrar_direccion: document.getElementById('pp-mostrar-direccion').checked,
+      mostrar_telefono: document.getElementById('pp-mostrar-telefono').checked,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'auth_user_id' });
+    STATE.configProforma = null; // se recarga fresco la próxima vez que se genere un PDF
+    showToast('Personalización guardada');
+    closeModal('modal-personalizar-proforma');
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-personalizar-proforma', false);
+  }
+}
+
 function abrirNuevaProforma() {
   STATE.proformaActual = null;
   document.getElementById('np-modal-title').textContent = 'Nueva Proforma';
@@ -1444,18 +1533,20 @@ async function generarPDFProforma(p, items, cliente) {
   const W = doc.internal.pageSize.getWidth();
   const M = 14;
   const logo = await cargarLogoParaPDF();
+  if (!STATE.configProforma) await cargarConfigProforma();
+  const cfg = STATE.configProforma;
 
   const biz = {
     nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
-    direccion: STATE.empresaConfig?.pdf_mostrar_direccion !== false ? (STATE.empresaConfig?.direccion || '') : '',
-    telefono:  STATE.empresaConfig?.pdf_mostrar_telefono !== false ? (STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '') : '',
-    ruc:       STATE.empresaConfig?.pdf_mostrar_ruc !== false ? (STATE.empresaConfig?.ruc || '') : '',
+    direccion: cfg.mostrar_direccion !== false ? (STATE.empresaConfig?.direccion || '') : '',
+    telefono:  cfg.mostrar_telefono !== false ? (STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '') : '',
+    ruc:       cfg.mostrar_ruc !== false ? (STATE.empresaConfig?.ruc || '') : '',
   };
 
   // ---- Encabezado (franja con el color de marca del negocio — antes
   // era un morado fijo, ahora usa el mismo color que ya configuran en
   // Perfil, para que el documento se sienta de ellos, no de Negocio360) ----
-  const [rC, gC, bC] = hexARgb(STATE.empresaConfig?.color_principal) || [108, 99, 255];
+  const [rC, gC, bC] = hexARgb(cfg.color_principal) || [108, 99, 255];
   doc.setFillColor(rC, gC, bC);
   doc.rect(0, 0, W, 38, 'F');
   let textoX = M;
@@ -1501,7 +1592,7 @@ async function generarPDFProforma(p, items, cliente) {
 
   // ---- Estado ----
   const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
-  doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(108,99,255);
+  doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(rC, gC, bC);
   doc.text(`Estado: ${ei.label}`, M, y);
   y += 10;
 
@@ -1518,7 +1609,7 @@ async function generarPDFProforma(p, items, cliente) {
     head: [['Descripción', 'Cant.', 'Precio unit.', 'Descuento', 'Subtotal']],
     body: filas,
     theme: 'striped',
-    headStyles: { fillColor: [108, 99, 255] },
+    headStyles: { fillColor: hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108, 99, 255] },
     styles: { fontSize: 9.5, cellPadding: 3.5 },
     columnStyles: { 1: { halign:'right' }, 2: { halign:'right' }, 3: { halign:'right' }, 4: { halign:'right' } },
     margin: { left: M, right: M },
@@ -1560,7 +1651,7 @@ async function generarPDFProforma(p, items, cliente) {
   // ---- Pie de página ----
   const alturaPagina = doc.internal.pageSize.getHeight();
   let yPie = alturaPagina - 16;
-  const mensajePie = STATE.empresaConfig?.pdf_mensaje_pie;
+  const mensajePie = cfg.mensaje_pie;
   if (mensajePie) {
     doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
     const lineasPie = doc.splitTextToSize(mensajePie, W - M*2);
