@@ -708,6 +708,99 @@ function mostrarSeccionCompras() {
   document.getElementById('seccion-compras').style.display = '';
 }
 
+/* =====================================================
+   PERSONALIZAR DOCUMENTOS — compartido con Reportes, propio de su
+   tabla (configuracion_documentos), independiente de Perfil.
+===================================================== */
+STATE.configDocumentos = null;
+
+async function cargarConfigDocumentos() {
+  try {
+    const { data } = await sbClient.from('configuracion_documentos').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+    STATE.configDocumentos = data || { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null };
+  } catch (e) { STATE.configDocumentos = { color_principal:'#6C63FF', color_tabla_usa_mismo:true, color_tabla:'#6C63FF', mostrar_ruc:true, mostrar_direccion:true, mostrar_telefono:true, mensaje_pie:null }; }
+}
+
+async function abrirPersonalizarDocumentos() {
+  await cargarConfigDocumentos();
+  const c = STATE.configDocumentos;
+  document.getElementById('pd-color-principal').value = c.color_principal || '#6C63FF';
+  document.getElementById('pd-hex-principal').value = c.color_principal || '#6C63FF';
+  document.getElementById('pd-mismo-color').checked = c.color_tabla_usa_mismo !== false;
+  document.getElementById('pd-color-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
+  document.getElementById('pd-hex-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
+  document.getElementById('pd-mensaje-pie').value = c.mensaje_pie || '';
+  document.getElementById('pd-mostrar-ruc').checked = c.mostrar_ruc !== false;
+  document.getElementById('pd-mostrar-direccion').checked = c.mostrar_direccion !== false;
+  document.getElementById('pd-mostrar-telefono').checked = c.mostrar_telefono !== false;
+  document.getElementById('pd-error').textContent = '';
+  pdToggleMismoColor();
+  pdActualizarVista();
+  openModal('modal-personalizar-documentos');
+}
+
+function pdSyncColor(colorId, hexId) { document.getElementById(hexId).value = document.getElementById(colorId).value; }
+function pdSyncHex(hexId, colorId) {
+  const v = document.getElementById(hexId).value;
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) document.getElementById(colorId).value = v;
+}
+function pdToggleMismoColor() {
+  document.getElementById('pd-color-tabla-wrap').style.display = document.getElementById('pd-mismo-color').checked ? 'none' : '';
+}
+function pdActualizarVista() {
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+  const colorPrincipal = document.getElementById('pd-color-principal').value;
+  const usaMismo = document.getElementById('pd-mismo-color').checked;
+  const colorTabla = usaMismo ? colorPrincipal : document.getElementById('pd-color-tabla').value;
+  document.getElementById('pd-preview-header').style.background = colorPrincipal;
+  document.getElementById('pd-preview-nombre').textContent = bizName;
+  document.getElementById('pd-preview-tabla-head').style.background = colorTabla;
+  const datos = [];
+  if (document.getElementById('pd-mostrar-ruc').checked) datos.push('RUC');
+  if (document.getElementById('pd-mostrar-direccion').checked) datos.push('Dirección');
+  if (document.getElementById('pd-mostrar-telefono').checked) datos.push('Tel');
+  document.getElementById('pd-preview-datos').textContent = datos.join(' · ') || '(sin datos de contacto mostrados)';
+  const mensaje = document.getElementById('pd-mensaje-pie').value.trim();
+  document.getElementById('pd-preview-pie').textContent = (mensaje ? mensaje + ' · ' : '') + 'Generado por Negocio360';
+}
+
+async function guardarPersonalizarDocumentos() {
+  const errEl = document.getElementById('pd-error');
+  errEl.textContent = '';
+  const colorPrincipal = document.getElementById('pd-hex-principal').value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(colorPrincipal)) { errEl.textContent = 'El color del encabezado no es válido.'; return; }
+  const usaMismo = document.getElementById('pd-mismo-color').checked;
+  const colorTabla = usaMismo ? colorPrincipal : document.getElementById('pd-hex-tabla').value.trim();
+  if (!usaMismo && !/^#[0-9a-fA-F]{6}$/.test(colorTabla)) { errEl.textContent = 'El color de la tabla no es válido.'; return; }
+
+  setBtnLoading('btn-guardar-personalizar-documentos', true);
+  try {
+    await sbClient.from('configuracion_documentos').upsert({
+      auth_user_id: STATE.userId, color_principal: colorPrincipal, color_tabla_usa_mismo: usaMismo, color_tabla: colorTabla,
+      mensaje_pie: document.getElementById('pd-mensaje-pie').value.trim() || null,
+      mostrar_ruc: document.getElementById('pd-mostrar-ruc').checked,
+      mostrar_direccion: document.getElementById('pd-mostrar-direccion').checked,
+      mostrar_telefono: document.getElementById('pd-mostrar-telefono').checked,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'auth_user_id' });
+    STATE.configDocumentos = null;
+    showToast('Personalización guardada');
+    closeModal('modal-personalizar-documentos');
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-personalizar-documentos', false);
+  }
+}
+
+function hexARgbDocumentos(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const num = parseInt(m[1], 16);
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+}
+
 function abrirNuevaCompra() {
   // Reset estado
   STATE.carrito = [];
@@ -1730,15 +1823,18 @@ async function exportarPDFOrdenCompra(ordenId) {
     const W = doc.internal.pageSize.getWidth();
     const M = 14;
     const logo = await cargarLogoParaPDF();
+    if (!STATE.configDocumentos) await cargarConfigDocumentos();
+    const cfg = STATE.configDocumentos;
 
     const biz = {
       nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
-      direccion: STATE.empresaConfig?.direccion || '',
-      telefono:  STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
-      ruc:       STATE.empresaConfig?.ruc || '',
+      direccion: cfg.mostrar_direccion !== false ? (STATE.empresaConfig?.direccion || '') : '',
+      telefono:  cfg.mostrar_telefono !== false ? (STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '') : '',
+      ruc:       cfg.mostrar_ruc !== false ? (STATE.empresaConfig?.ruc || '') : '',
     };
 
-    doc.setFillColor(108, 99, 255);
+    const [rC, gC, bC] = hexARgbDocumentos(cfg.color_principal) || [108, 99, 255];
+    doc.setFillColor(rC, gC, bC);
     doc.rect(0, 0, W, 38, 'F');
     let textoX = M;
     if (logo) {
@@ -1773,7 +1869,7 @@ async function exportarPDFOrdenCompra(ordenId) {
     doc.line(M, y, W - M, y);
     y += 8;
 
-    doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(108,99,255);
+    doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(rC, gC, bC);
     doc.text(`Estado: ${orden.estado === 'pendiente' ? 'Pendiente' : orden.estado === 'convertida' ? 'Convertida en compra' : 'Cancelada'}`, M, y);
     y += 10;
 
@@ -1789,7 +1885,7 @@ async function exportarPDFOrdenCompra(ordenId) {
       head: [['Descripción', 'Cant.', 'Costo unit.', 'Descuento', 'Subtotal']],
       body: filas,
       theme: 'grid',
-      headStyles: { fillColor: [108,99,255], fontSize: 9 },
+      headStyles: { fillColor: hexARgbDocumentos(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255], fontSize: 9 },
       styles: { fontSize: 9, cellPadding: 3 },
       margin: { left: M, right: M },
     });
@@ -1818,6 +1914,14 @@ async function exportarPDFOrdenCompra(ordenId) {
       doc.setFontSize(8.5); doc.setFont(undefined,'italic'); doc.setTextColor(110,110,110);
       const obsLineas = doc.splitTextToSize(`Nota: ${orden.observaciones}`, W - M*2);
       obsLineas.forEach((ln, i) => doc.text(ln, M, yTot + i*4.5));
+      yTot += obsLineas.length * 4.5;
+    }
+
+    if (cfg.mensaje_pie) {
+      yTot += 10;
+      doc.setFontSize(8.5); doc.setFont(undefined,'normal'); doc.setTextColor(90,90,110);
+      const lineasPie = doc.splitTextToSize(cfg.mensaje_pie, W - M*2);
+      lineasPie.forEach((ln, i) => doc.text(ln, M, yTot + i*4.5));
     }
 
     doc.save(`Orden_Compra_${orden.numero}.pdf`);

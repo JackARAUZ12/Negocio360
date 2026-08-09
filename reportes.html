@@ -763,6 +763,10 @@
           <p>Todos los datos de tu empresa en un solo lugar. Toma decisiones basadas en información real.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="abrirPersonalizarDocumentos()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Personalizar
+          </button>
           <button class="btn-secondary" id="btnReporteGeneral" onclick="irAReporteGeneral()" disabled title="Revisando si tienes sucursales o bodegas…" style="opacity:.55;cursor:not-allowed">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
             REPORTE GENERAL
@@ -1788,7 +1792,79 @@
   </div><!-- /main -->
 
   <!-- MODAL: Exportar historial de crédito (elige de qué cliente) -->
-  <div class="modal-overlay" id="modal-exportar-credito" onclick="if(event.target===this)cerrarModalExportarCredito()">
+  <!-- =====================================================
+     MODAL: PERSONALIZAR DOCUMENTOS — compartido con Compras
+     (Órdenes de Compra), misma tabla configuracion_documentos.
+=================================================== -->
+<div class="modal-overlay" id="modal-personalizar-documentos" onclick="if(event.target===this)cerrarModalPersonalizarDocumentos()">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Personalizar Documentos</span>
+      <button class="modal-close" onclick="cerrarModalPersonalizarDocumentos()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+        Esto se aplica a los reportes en PDF y a las Órdenes de Compra — se configura una sola vez aquí.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:10px">Colores</label>
+          <div class="form-group">
+            <label>Color del encabezado</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="pd-color-principal" value="#6C63FF" oninput="pdSyncColor('pd-color-principal','pd-hex-principal');pdActualizarVista()" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
+              <input type="text" id="pd-hex-principal" value="#6C63FF" maxlength="7" oninput="pdSyncHex('pd-hex-principal','pd-color-principal');pdActualizarVista()" style="flex:1"/>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px">
+            <input type="checkbox" id="pd-mismo-color" checked onchange="pdToggleMismoColor();pdActualizarVista()"/> Usar el mismo color en la tabla
+          </label>
+          <div class="form-group" id="pd-color-tabla-wrap" style="display:none">
+            <label>Color de la tabla</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="pd-color-tabla" value="#6C63FF" oninput="pdSyncColor('pd-color-tabla','pd-hex-tabla');pdActualizarVista()" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
+              <input type="text" id="pd-hex-tabla" value="#6C63FF" maxlength="7" oninput="pdSyncHex('pd-hex-tabla','pd-color-tabla');pdActualizarVista()" style="flex:1"/>
+            </div>
+          </div>
+          <label style="font-size:12.5px;font-weight:700;display:block;margin:18px 0 10px">Mensaje y datos a mostrar</label>
+          <div class="form-group">
+            <label>Mensaje de pie de página (opcional)</label>
+            <textarea id="pd-mensaje-pie" rows="2" placeholder="Ej: Gracias por su servicio" oninput="pdActualizarVista()"></textarea>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pd-mostrar-ruc" checked onchange="pdActualizarVista()"/> RUC</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pd-mostrar-direccion" checked onchange="pdActualizarVista()"/> Dirección</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pd-mostrar-telefono" checked onchange="pdActualizarVista()"/> Teléfono</label>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:10px">Vista previa</label>
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+            <div id="pd-preview-header" style="background:#6C63FF;color:#fff;padding:14px">
+              <div style="font-size:15px;font-weight:800" id="pd-preview-nombre">Mi Negocio</div>
+              <div style="font-size:11px;opacity:.9">Reporte</div>
+            </div>
+            <div style="padding:10px 14px;font-size:10.5px;color:var(--text-muted)" id="pd-preview-datos">RUC · Dirección · Tel</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <thead><tr id="pd-preview-tabla-head" style="background:#6C63FF;color:#fff"><th style="padding:6px 10px;text-align:left">Concepto</th><th style="padding:6px 10px">Monto</th></tr></thead>
+              <tbody><tr><td style="padding:6px 10px">Ejemplo</td><td style="padding:6px 10px;text-align:center">C$100.00</td></tr></tbody>
+            </table>
+            <div style="padding:10px 14px;font-size:10px;color:var(--text-muted);border-top:1px solid var(--border)" id="pd-preview-pie">Generado por Negocio360</div>
+          </div>
+        </div>
+      </div>
+      <p id="pd-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarModalPersonalizarDocumentos()">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-personalizar-documentos" onclick="guardarPersonalizarDocumentos()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-exportar-credito" onclick="if(event.target===this)cerrarModalExportarCredito()">
     <div class="modal-box">
       <div class="modal-header">
         <div class="modal-title">Exportar historial de crédito</div>

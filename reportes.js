@@ -2530,6 +2530,97 @@ function ajustarLogoSinDeformar(anchoNatural, altoNatural, maxAncho, maxAlto) {
   return { w: Math.round((anchoNatural || 1) * escala * 100) / 100, h: Math.round((altoNatural || 1) * escala * 100) / 100 };
 }
 
+/* =====================================================
+   PERSONALIZAR DOCUMENTOS — compartido con Compras (Órdenes de
+   Compra), misma tabla configuracion_documentos.
+===================================================== */
+async function cargarConfigDocumentos() {
+  try {
+    const { data } = await sb.from('configuracion_documentos').select('*').eq('auth_user_id', R.userId).maybeSingle();
+    R.configDocumentos = data || { color_principal:'#6C63FF', mensaje_pie:null };
+  } catch (e) { R.configDocumentos = { color_principal:'#6C63FF', mensaje_pie:null }; }
+}
+function hexARgbDocumentos(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const num = parseInt(m[1], 16);
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+}
+
+async function abrirPersonalizarDocumentos() {
+  await cargarConfigDocumentos();
+  const c = R.configDocumentos;
+  document.getElementById('pd-color-principal').value = c.color_principal || '#6C63FF';
+  document.getElementById('pd-hex-principal').value = c.color_principal || '#6C63FF';
+  document.getElementById('pd-mismo-color').checked = c.color_tabla_usa_mismo !== false;
+  document.getElementById('pd-color-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
+  document.getElementById('pd-hex-tabla').value = c.color_tabla || c.color_principal || '#6C63FF';
+  document.getElementById('pd-mensaje-pie').value = c.mensaje_pie || '';
+  document.getElementById('pd-mostrar-ruc').checked = c.mostrar_ruc !== false;
+  document.getElementById('pd-mostrar-direccion').checked = c.mostrar_direccion !== false;
+  document.getElementById('pd-mostrar-telefono').checked = c.mostrar_telefono !== false;
+  document.getElementById('pd-error').textContent = '';
+  pdToggleMismoColor();
+  pdActualizarVista();
+  document.getElementById('modal-personalizar-documentos').classList.add('modal-open');
+}
+
+function cerrarModalPersonalizarDocumentos() {
+  document.getElementById('modal-personalizar-documentos').classList.remove('modal-open');
+}
+
+function pdSyncColor(colorId, hexId) { document.getElementById(hexId).value = document.getElementById(colorId).value; }
+function pdSyncHex(hexId, colorId) {
+  const v = document.getElementById(hexId).value;
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) document.getElementById(colorId).value = v;
+}
+function pdToggleMismoColor() {
+  document.getElementById('pd-color-tabla-wrap').style.display = document.getElementById('pd-mismo-color').checked ? 'none' : '';
+}
+function pdActualizarVista() {
+  const bizName = R.empresaConfig?.nombre_comercial || 'Mi Negocio';
+  const colorPrincipal = document.getElementById('pd-color-principal').value;
+  const usaMismo = document.getElementById('pd-mismo-color').checked;
+  const colorTabla = usaMismo ? colorPrincipal : document.getElementById('pd-color-tabla').value;
+  document.getElementById('pd-preview-header').style.background = colorPrincipal;
+  document.getElementById('pd-preview-nombre').textContent = bizName;
+  document.getElementById('pd-preview-tabla-head').style.background = colorTabla;
+  const datos = [];
+  if (document.getElementById('pd-mostrar-ruc').checked) datos.push('RUC');
+  if (document.getElementById('pd-mostrar-direccion').checked) datos.push('Dirección');
+  if (document.getElementById('pd-mostrar-telefono').checked) datos.push('Tel');
+  document.getElementById('pd-preview-datos').textContent = datos.join(' · ') || '(sin datos de contacto mostrados)';
+  const mensaje = document.getElementById('pd-mensaje-pie').value.trim();
+  document.getElementById('pd-preview-pie').textContent = (mensaje ? mensaje + ' · ' : '') + 'Generado por Negocio360';
+}
+
+async function guardarPersonalizarDocumentos() {
+  const errEl = document.getElementById('pd-error');
+  errEl.textContent = '';
+  const colorPrincipal = document.getElementById('pd-hex-principal').value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(colorPrincipal)) { errEl.textContent = 'El color del encabezado no es válido.'; return; }
+  const usaMismo = document.getElementById('pd-mismo-color').checked;
+  const colorTabla = usaMismo ? colorPrincipal : document.getElementById('pd-hex-tabla').value.trim();
+  if (!usaMismo && !/^#[0-9a-fA-F]{6}$/.test(colorTabla)) { errEl.textContent = 'El color de la tabla no es válido.'; return; }
+
+  try {
+    await sb.from('configuracion_documentos').upsert({
+      auth_user_id: R.userId, color_principal: colorPrincipal, color_tabla_usa_mismo: usaMismo, color_tabla: colorTabla,
+      mensaje_pie: document.getElementById('pd-mensaje-pie').value.trim() || null,
+      mostrar_ruc: document.getElementById('pd-mostrar-ruc').checked,
+      mostrar_direccion: document.getElementById('pd-mostrar-direccion').checked,
+      mostrar_telefono: document.getElementById('pd-mostrar-telefono').checked,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'auth_user_id' });
+    R.configDocumentos = null;
+    showToast('Personalización guardada');
+    document.getElementById('modal-personalizar-documentos').classList.remove('modal-open');
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  }
+}
+
 async function cargarLogoParaPDF() {
   const url = R.empresaConfig?.logo_principal_url || R.empresaConfig?.logo_url;
   if (!url) return null;
@@ -2591,9 +2682,12 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
   const W    = doc.internal.pageSize.getWidth();
   const esGeneral = tipo === 'general';
   const logo = await cargarLogoParaPDF();
+  if (!R.configDocumentos) await cargarConfigDocumentos();
+  const cfgDoc = R.configDocumentos;
+  const [rDoc, gDoc, bDoc] = hexARgbDocumentos(cfgDoc.color_principal) || [90, 90, 244];
 
   function pintarCabecera() {
-    doc.setFillColor(90, 90, 244);
+    doc.setFillColor(rDoc, gDoc, bDoc);
     doc.rect(0,0,W,20,'F');
     let textoX = 10;
     if (logo) {
