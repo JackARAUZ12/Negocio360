@@ -1677,6 +1677,14 @@ async function cancelarOrdenCompra(ordenId) {
   }
 }
 
+// Calcula el tamaño real que debe dibujarse el logo dentro de un
+// espacio máximo (maxAncho x maxAlto), respetando su proporción
+// original — nunca lo estira ni lo aplasta.
+function ajustarLogoSinDeformar(anchoNatural, altoNatural, maxAncho, maxAlto) {
+  const escala = Math.min(maxAncho / (anchoNatural || 1), maxAlto / (altoNatural || 1));
+  return { w: Math.round((anchoNatural || 1) * escala * 100) / 100, h: Math.round((altoNatural || 1) * escala * 100) / 100 };
+}
+
 async function cargarLogoParaPDF() {
   const url = STATE.empresaConfig?.logo_principal_url || STATE.empresaConfig?.logo_url;
   if (!url) return null;
@@ -1694,7 +1702,16 @@ async function cargarLogoParaPDF() {
     const tipo = m ? m[1].toLowerCase() : '';
     const formato = tipo === 'png' ? 'PNG' : (tipo === 'jpeg' || tipo === 'jpg') ? 'JPEG' : tipo === 'webp' ? 'WEBP' : null;
     if (!formato) return null;
-    return { dataUrl, formato };
+    // Se mide el tamaño REAL de la imagen — sin esto, el logo se
+    // estira o se aplasta para encajar en un cuadro fijo si no es
+    // cuadrado (la mayoría de logos no lo son).
+    const { anchoNatural, altoNatural } = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ anchoNatural: img.naturalWidth || 1, altoNatural: img.naturalHeight || 1 });
+      img.onerror = () => resolve({ anchoNatural: 1, altoNatural: 1 });
+      img.src = dataUrl;
+    });
+    return { dataUrl, formato, anchoNatural, altoNatural };
   } catch (e) {
     console.warn('No se pudo cargar el logo para el PDF:', e);
     return null;
@@ -1725,7 +1742,11 @@ async function exportarPDFOrdenCompra(ordenId) {
     doc.rect(0, 0, W, 38, 'F');
     let textoX = M;
     if (logo) {
-      try { doc.addImage(logo.dataUrl, logo.formato, M, 8, 22, 22); textoX = M + 27; } catch (e) {}
+      try {
+        const { w, h } = ajustarLogoSinDeformar(logo.anchoNatural, logo.altoNatural, 22, 22);
+        doc.addImage(logo.dataUrl, logo.formato, M + (22-w)/2, 8 + (22-h)/2, w, h);
+        textoX = M + 27;
+      } catch (e) {}
     }
     doc.setTextColor(255,255,255);
     doc.setFontSize(20); doc.setFont(undefined,'bold');
