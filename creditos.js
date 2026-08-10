@@ -1450,6 +1450,43 @@
   /* ===================================================
      REGISTRAR PAGO
   =================================================== */
+  /* ===================================================
+     ¿A QUÉ BANCO ENTRA? — obligatorio si ya hay bancos creados y el
+     método es Tarjeta/Transferencia. Sin bancos creados, nunca aparece.
+  =================================================== */
+  let _bancosCacheCred = null;
+  async function cargarBancosDisponiblesCred() {
+    if (_bancosCacheCred) return _bancosCacheCred;
+    try {
+      const { data } = await _sb.from('bancos').select('*').eq('auth_user_id', CS.userId).eq('activo', true).order('created_at');
+      _bancosCacheCred = data || [];
+    } catch (e) { _bancosCacheCred = []; }
+    return _bancosCacheCred;
+  }
+  async function pedirBancoSiNecesarioCred(metodoPagoNombre) {
+    const metodo = (metodoPagoNombre || '').toLowerCase();
+    if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return null;
+    const bancos = await cargarBancosDisponiblesCred();
+    if (!bancos.length) return null;
+
+    return new Promise((resolve) => {
+      document.getElementById('eb-metodo-cred').textContent = metodoPagoNombre;
+      const sel = document.getElementById('eb-select-cred');
+      sel.innerHTML = bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}${b.numero_cuenta?' — '+esc(b.numero_cuenta):''}</option>`).join('');
+      document.getElementById('modal-elegir-banco-cred').style.display = 'flex';
+      document.getElementById('modal-elegir-banco-cred').classList.add('modal-open');
+      window._resolverBancoElegidoCred = () => {
+        const bancoId = sel.value;
+        document.getElementById('modal-elegir-banco-cred').style.display = 'none';
+        document.getElementById('modal-elegir-banco-cred').classList.remove('modal-open');
+        resolve(bancoId || null);
+      };
+    });
+  }
+  window.confirmarBancoElegidoCred = function() {
+    if (window._resolverBancoElegidoCred) window._resolverBancoElegidoCred();
+  };
+
   async function confirmarRegistrarPagoCredito() {
     const btn = document.getElementById('btn-confirmar-pago');
     const creditoId = document.getElementById('rp-credito').value;
@@ -1461,6 +1498,8 @@
 
     if (!creditoId) { showToast('Selecciona un crédito', 'error'); return; }
     if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
+
+    const bancoElegidoPago = await pedirBancoSiNecesarioCred(metodoNombre);
 
     btn.disabled = true; btn.textContent = 'Registrando…';
     try {
@@ -1522,7 +1561,7 @@
       const cajaRes = await registrarEnCaja({
         auth_user_id: CS.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'PAGO_CREDITO',
         concepto: `Pago crédito ${credito.numero_credito}`, monto, metodo_pago_id: metodoId,
-        metodo_pago_nombre: metodoNombre, referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
+        metodo_pago_nombre: metodoNombre, banco_id: bancoElegidoPago, referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
       });
       if (!cajaRes.ok) console.warn('No se pudo registrar en caja:', cajaRes.error);
 

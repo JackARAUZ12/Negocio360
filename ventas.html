@@ -941,6 +941,29 @@
 <!-- =====================================================
      MODAL: NUEVA VENTA (wizard multi-paso)
 ===================================================== -->
+<!-- =====================================================
+     MODAL: ¿A QUÉ BANCO ENTRA? — solo aparece si el negocio ya tiene
+     bancos creados y el método de pago es Tarjeta o Transferencia.
+=================================================== -->
+<div class="modal-overlay" id="modal-elegir-banco">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">¿A qué banco entra este dinero?</span>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Esta venta es con <b id="eb-metodo">Tarjeta/Transferencia</b> — elige a cuál de tus bancos entró.
+      </p>
+      <div class="form-group">
+        <select id="eb-select"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="btn-confirmar-banco-venta" onclick="confirmarBancoElegido()">Continuar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-venta" onclick="if(event.target===this)cerrarModalVenta()">
   <div class="modal-box">
     <div class="modal-header">

@@ -2612,10 +2612,53 @@ window.descargarReciboActual = descargarReciboActual;
 /* ============================================================
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
    ============================================================ */
+/* =====================================================
+   ¿A QUÉ BANCO ENTRA? — obligatorio si el negocio ya tiene bancos
+   creados y el método es Tarjeta/Transferencia. Si no tiene ningún
+   banco, esto nunca aparece y la venta sigue exactamente igual que
+   siempre.
+===================================================== */
+let _bancosCache = null;
+async function cargarBancosDisponibles() {
+  if (_bancosCache) return _bancosCache;
+  try {
+    const { data } = await sb.from('bancos').select('*').eq('auth_user_id', S.userId).eq('activo', true).order('created_at');
+    _bancosCache = data || [];
+  } catch (e) { _bancosCache = []; }
+  return _bancosCache;
+}
+async function pedirBancoSiNecesario(metodoPagoNombre) {
+  const metodo = (metodoPagoNombre || '').toLowerCase();
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return null;
+  const bancos = await cargarBancosDisponibles();
+  if (!bancos.length) return null; // sin bancos creados, todo sigue normal
+
+  return new Promise((resolve) => {
+    document.getElementById('eb-metodo').textContent = metodoPagoNombre;
+    const sel = document.getElementById('eb-select');
+    sel.innerHTML = bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}${b.numero_cuenta?' — '+esc(b.numero_cuenta):''}</option>`).join('');
+    document.getElementById('modal-elegir-banco').style.display = 'flex';
+    document.getElementById('modal-elegir-banco').classList.add('modal-open');
+    window._resolverBancoElegido = () => {
+      const bancoId = sel.value;
+      document.getElementById('modal-elegir-banco').style.display = 'none';
+      document.getElementById('modal-elegir-banco').classList.remove('modal-open');
+      resolve(bancoId || null);
+    };
+  });
+}
+function confirmarBancoElegido() {
+  if (window._resolverBancoElegido) window._resolverBancoElegido();
+}
+
 async function confirmarVenta(conImpresion) {
   conImpresion = !!conImpresion;
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
+
+  // Se pregunta ANTES de tocar la base de datos — si el negocio no
+  // tiene bancos creados, esto se resuelve solo (null) sin mostrar nada.
+  const bancoElegidoVenta = await pedirBancoSiNecesario(S.metodoPagoNombre);
 
   const btnDigital  = document.getElementById('btn-confirmar-venta');
   const btnImprimir = document.getElementById('btn-confirmar-venta-imprimir');
@@ -2806,6 +2849,7 @@ async function confirmarVenta(conImpresion) {
         saldo_resultante:   saldoRes,
         metodo_pago_id:     S.metodoPagoId || null,
         metodo_pago_nombre: S.metodoPagoNombre,
+        banco_id:           bancoElegidoVenta,
         referencia_tipo:    'venta',
         referencia_id:      ventaId,
         observaciones:      S.observaciones || null,
@@ -3467,6 +3511,8 @@ async function confirmarVentaRapida() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
 
+  const bancoElegidoVR = await pedirBancoSiNecesario(VR.metodoPagoNombre);
+
   VR.procesando = true;
   const btn = document.getElementById('btn-vr-cobrar');
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
@@ -3594,6 +3640,7 @@ async function confirmarVentaRapida() {
         saldo_resultante:   saldoRes,
         metodo_pago_id:     VR.metodoPagoId || null,
         metodo_pago_nombre: VR.metodoPagoNombre,
+        banco_id:           bancoElegidoVR,
         referencia_tipo:    'venta',
         referencia_id:      ventaId,
         fecha:              todayISO(),

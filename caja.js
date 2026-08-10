@@ -1053,6 +1053,7 @@ window.CajaAPI = {
         referencia_tipo:    params.referencia_tipo    || null,
         referencia_id:      params.referencia_id      || null,
         origen_caja:        params.origen_caja        || null,
+        banco_id:           params.banco_id           || null,
         observaciones:      params.observaciones      || null,
         fecha:              params.fecha               || todayISO(),
         estado:             'completado',

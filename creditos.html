@@ -1569,6 +1569,29 @@
 <!-- =====================================================
      MODAL: REGISTRAR PAGO
 =================================================== -->
+<!-- =====================================================
+     MODAL: ¿A QUÉ BANCO ENTRA? — solo aparece si el negocio ya tiene
+     bancos creados y el método es Tarjeta/Transferencia.
+=================================================== -->
+<div class="modal-overlay" id="modal-elegir-banco-cred">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">¿A qué banco entra este dinero?</span>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Este pago es con <b id="eb-metodo-cred">Tarjeta/Transferencia</b> — elige a cuál de tus bancos entró.
+      </p>
+      <div class="form-group">
+        <select id="eb-select-cred"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="confirmarBancoElegidoCred()">Continuar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-registrar-pago" onclick="if(event.target===this)closeModal('modal-registrar-pago')">
   <div class="modal-box modal-lg">
     <div class="modal-header">
