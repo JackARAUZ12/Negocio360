@@ -258,6 +258,79 @@ function abrirEditarEmpleado(id) {
    cero cada vez. Plantilla base — el negocio puede ajustarla a sus
    necesidades específicas o revisarla con un abogado si hace falta.
 ===================================================== */
+/* =====================================================
+   BOLETA DE PAGO INDIVIDUAL — a diferencia de la planilla completa
+   (todos los empleados juntos), esto es el recibo de UN pago ya
+   hecho, para que el empleado lo pida cuando lo necesite (trámites
+   bancarios, alquileres, etc.). Nunca recalcula nada — usa
+   exactamente los montos ya guardados en el momento del pago.
+===================================================== */
+function generarBoletaPago(pago) {
+  const emp = STATE.empleados.find(e => e.id === pago.empleado_id) || STATE.empleadoActual || {};
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 18;
+  let y = 20;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text(bizName, M, y);
+  if (bizRuc) { doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(`RUC: ${bizRuc}`, M, y+5); }
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('BOLETA DE PAGO', W-M, y, { align:'right' });
+  doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.text(`N.º ${pago.comprobante_numero || '—'}`, W-M, y+5, { align:'right' });
+  y += 14;
+  doc.setDrawColor(200); doc.line(M, y, W-M, y); y += 8;
+
+  doc.setFontSize(10);
+  const filaDato = (label, valor) => { doc.setFont(undefined,'bold'); doc.text(label, M, y); doc.setFont(undefined,'normal'); doc.text(String(valor), M+45, y); y += 6; };
+  filaDato('Empleado:', emp.nombre || '—');
+  filaDato('Cargo:', emp.cargo || '—');
+  filaDato('Cédula:', emp.cedula || '—');
+  filaDato('Fecha de pago:', fmtDate(pago.fecha));
+  filaDato('Período:', TIPO_SALARIO_LABEL[emp.tipo_salario] || '—');
+  filaDato('Método de pago:', pago.metodo_pago_nombre || '—');
+  y += 4;
+
+  const filas = [];
+  filas.push(['Salario base', fmt(pago.salario_base)]);
+  (pago.bonificaciones_detalle||[]).forEach(b => filas.push([`(+) ${b.descripcion||'Bonificación'}`, fmt(b.monto)]));
+  if (Number(pago.dias_vacaciones_pagados||0) > 0) filas.push([`(+) Vacaciones pagadas (${pago.dias_vacaciones_pagados} días)`, '']);
+  (pago.deducciones_detalle||[]).forEach(d => filas.push([`(-) ${d.descripcion||'Deducción'}`, '-' + fmt(d.monto)]));
+  if (Number(pago.adelantos_descontados||0) > 0) filas.push(['(-) Adelantos descontados', '-' + fmt(pago.adelantos_descontados)]);
+
+  doc.autoTable({
+    startY: y, head: [['Concepto', 'Monto']], body: filas, theme: 'plain',
+    styles: { fontSize: 9.5, cellPadding: 2.5 }, columnStyles: { 1: { halign:'right' } },
+    margin: { left:M, right:M },
+  });
+  y = doc.lastAutoTable.finalY + 6;
+  doc.setDrawColor(200); doc.line(M, y, W-M, y); y += 8;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('NETO PAGADO:', M, y);
+  doc.text(`${moneda} ${Number(pago.total_pagado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`, W-M, y, { align:'right' });
+  y += 20;
+
+  doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.text('_____________________________', M, y);
+  doc.text('_____________________________', W-M-70, y);
+  y += 5;
+  doc.text('Firma del empleador', M, y);
+  doc.text('Firma del empleado', W-M-70, y);
+
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento certifica el pago realizado según los registros del negocio.', M, doc.internal.pageSize.getHeight() - 10);
+
+  doc.save(`Boleta_${(emp.nombre||'empleado').replace(/[^\w]/g,'_')}_${pago.fecha}.pdf`);
+  showToast('Boleta generada');
+}
+
 function generarContratoTrabajo() {
   const id = document.getElementById('emp-id').value;
   if (!id) { showToast('Guarda el empleado primero', 'error'); return; }
@@ -568,7 +641,7 @@ async function verHistorialEmpleado(id) {
 
       <div class="nc-paso-title" style="margin-top:16px">Historial de pagos</div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Fecha</th><th class="th-right">Base</th><th class="th-right">Bonos</th><th class="th-right">Deducciones</th><th class="th-right">Adelantos</th><th class="th-right">Total</th><th>Método</th><th>Estado</th>
+        <th>Fecha</th><th class="th-right">Base</th><th class="th-right">Bonos</th><th class="th-right">Deducciones</th><th class="th-right">Adelantos</th><th class="th-right">Total</th><th>Método</th><th>Estado</th><th></th>
       </tr></thead><tbody>
       ${(pagos||[]).map(p => `<tr>
         <td>${fmtDate(p.fecha)}</td>
@@ -579,7 +652,8 @@ async function verHistorialEmpleado(id) {
         <td class="td-right td-money" style="font-weight:700">${fmt(p.total_pagado)}</td>
         <td>${esc(p.metodo_pago_nombre||'—')}</td>
         <td><span class="status-badge badge-${p.estado==='pagado'?'pagado':'pendiente'}">${p.estado==='pagado'?'Pagado':'Pendiente'}</span></td>
-      </tr>`).join('') || '<tr><td colspan="8" class="empty-cell">Sin pagos registrados todavía</td></tr>'}
+        <td>${p.estado==='pagado' ? `<button class="btn-icon" title="Descargar boleta de pago" onclick='generarBoletaPago(${JSON.stringify(p).replace(/'/g,"&apos;")})'>📄</button>` : ''}</td>
+      </tr>`).join('') || '<tr><td colspan="9" class="empty-cell">Sin pagos registrados todavía</td></tr>'}
       </tbody></table></div>
 
       <div class="nc-paso-title" style="margin-top:16px">Adelantos</div>
