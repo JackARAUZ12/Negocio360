@@ -1313,7 +1313,7 @@ function renderBancosGrid(lista) {
   }
   grid.innerHTML = STATE.bancos.map(b => {
     const delBanco = lista.filter(m => m.banco_id === b.id);
-    const saldo = round2(delBanco.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+    const saldo = round2(Number(b.saldo_inicial||0) + delBanco.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
     return `
       <div class="panel-card" style="margin:0">
         <div class="panel-body" style="cursor:pointer" onclick="verBanco('${b.id}')">
@@ -1321,8 +1321,9 @@ function renderBancosGrid(lista) {
           ${b.numero_cuenta ? `<div style="font-size:11px;color:var(--text-muted)">${esc(b.numero_cuenta)}</div>` : ''}
           <div style="font-size:22px;font-weight:800;margin-top:6px">${fmt(saldo)}</div>
         </div>
-        <div style="padding:0 16px 14px">
-          <button class="btn-secondary btn-sm" style="width:100%" onclick="event.stopPropagation();abrirConciliarBanco('${b.id}','${esc(b.nombre)}')">🧾 Conciliar</button>
+        <div style="padding:0 16px 14px;display:flex;gap:8px">
+          <button class="btn-secondary btn-sm" style="flex:1" onclick="event.stopPropagation();abrirConciliarBanco('${b.id}','${esc(b.nombre)}')">🧾 Conciliar</button>
+          <button class="btn-icon" title="Editar banco" onclick="event.stopPropagation();abrirEditarBanco('${b.id}')">✏️</button>
         </div>
       </div>`;
   }).join('');
@@ -1343,8 +1344,23 @@ function renderSinAsignar(lista) {
 }
 
 function abrirNuevoBanco() {
+  document.getElementById('nb-titulo').textContent = 'Nuevo banco';
+  document.getElementById('nb-id').value = '';
   document.getElementById('nb-nombre').value = '';
   document.getElementById('nb-numero-cuenta').value = '';
+  document.getElementById('nb-saldo-inicial').value = '0';
+  document.getElementById('nb-error').textContent = '';
+  openModal('modal-nuevo-banco');
+}
+
+function abrirEditarBanco(bancoId) {
+  const banco = STATE.bancos.find(b => b.id === bancoId);
+  if (!banco) return;
+  document.getElementById('nb-titulo').textContent = 'Editar banco';
+  document.getElementById('nb-id').value = banco.id;
+  document.getElementById('nb-nombre').value = banco.nombre || '';
+  document.getElementById('nb-numero-cuenta').value = banco.numero_cuenta || '';
+  document.getElementById('nb-saldo-inicial').value = banco.saldo_inicial || 0;
   document.getElementById('nb-error').textContent = '';
   openModal('modal-nuevo-banco');
 }
@@ -1352,16 +1368,26 @@ function abrirNuevoBanco() {
 async function guardarNuevoBanco() {
   const errEl = document.getElementById('nb-error');
   errEl.textContent = '';
+  const id = document.getElementById('nb-id').value || null;
   const nombre = document.getElementById('nb-nombre').value.trim();
   if (!nombre) { errEl.textContent = 'El nombre del banco es requerido.'; return; }
 
+  const payload = {
+    nombre, numero_cuenta: document.getElementById('nb-numero-cuenta').value.trim() || null,
+    saldo_inicial: round2(parseFloat(document.getElementById('nb-saldo-inicial').value) || 0),
+  };
+
   setBtnLoading('btn-guardar-banco', true);
   try {
-    const { error } = await sbClient.from('bancos').insert({
-      auth_user_id: STATE.userId, nombre, numero_cuenta: document.getElementById('nb-numero-cuenta').value.trim() || null,
-    });
-    if (error) throw error;
-    showToast('Banco creado');
+    if (id) {
+      const { error } = await sbClient.from('bancos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+      showToast('Banco actualizado');
+    } else {
+      const { error } = await sbClient.from('bancos').insert({ auth_user_id: STATE.userId, ...payload });
+      if (error) throw error;
+      showToast('Banco creado');
+    }
     closeModal('modal-nuevo-banco');
     await loadBancos();
   } catch (e) {
@@ -1405,10 +1431,16 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
   document.getElementById('cb-movimientos-tbody').innerHTML = '<tr><td colspan="4" class="empty-cell">Cargando…</td></tr>';
   openModal('modal-conciliar-banco');
 
-  // El saldo acumulado de TODO lo ya conciliado antes, para este banco.
+  // El punto de partida es el saldo inicial del banco (si ya tenía
+  // dinero antes de empezar a usar el sistema) + todo lo ya
+  // conciliado antes — sin el saldo inicial, la conciliación nunca
+  // podría cuadrar si el banco no arrancó en cero.
+  const banco = STATE.bancos.find(b => b.id === bancoId);
+  const saldoInicial = Number(banco?.saldo_inicial || 0);
   const { data: previos } = await sbClient.from('movimientos_financieros')
     .select('tipo_flujo, monto').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
-  CONC.saldoReconciliadoPrevio = round2((previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+  const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0);
+  CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);
 
   await cargarMovimientosConciliacion();
   await cargarHistorialConciliaciones();
