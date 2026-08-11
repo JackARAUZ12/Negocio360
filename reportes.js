@@ -1712,16 +1712,35 @@ async function fetchCreditosReporte() {
    Reporte General).
    ------------------------------------------------------------ */
 async function fetchCreditosHistorialPagos() {
-  const { data: creditos } = await sb.from('creditos').select('id,numero_credito,tipo,cliente_id,num_cuotas')
+  const { data: creditos } = await sb.from('creditos').select('id,numero_credito,tipo,cliente_id,num_cuotas,venta_id')
     .eq('auth_user_id', R.userId)
     .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
     .lte('fecha_inicio', R.fechaHasta || todayISO());
 
   const lista = creditos || [];
-  if (!lista.length) return [];
+  if (!lista.length) { R.cache.creditosProductos = new Map(); return []; }
 
   const creditoMap = new Map(lista.map(c => [c.id, c]));
   const ids = lista.map(c => c.id);
+
+  // Productos financiados — se leen de la venta que originó cada
+  // crédito (creditos NUNCA guarda productos directamente). Los
+  // créditos creados sin venta (deuda existente migrada) simplemente
+  // no tienen nada aquí.
+  const ventaIds = lista.map(c => c.venta_id).filter(Boolean);
+  const productosPorCredito = new Map();
+  if (ventaIds.length) {
+    const { data: detalles } = await sb.from('venta_detalles').select('venta_id,producto_nombre,cantidad').in('venta_id', ventaIds);
+    const porVenta = new Map();
+    (detalles||[]).forEach(d => {
+      if (!porVenta.has(d.venta_id)) porVenta.set(d.venta_id, []);
+      porVenta.get(d.venta_id).push(d);
+    });
+    lista.forEach(c => {
+      if (c.venta_id && porVenta.has(c.venta_id)) productosPorCredito.set(c.numero_credito, porVenta.get(c.venta_id));
+    });
+  }
+  R.cache.creditosProductos = productosPorCredito;
 
   const { data: cuotas } = await sb.from('creditos_cuotas')
     .select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,saldo,estado,updated_at')
@@ -2905,6 +2924,23 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       .sort((a, b) => !clienteId ? (a.cliente||'').localeCompare(b.cliente||'', 'es') : 0);
     const nombreCliente = clienteNombre || filasCliente[0]?.cliente || 'cliente seleccionado';
     tituloSeccion(`Historial de pagos — ${nombreCliente}`);
+
+    // Productos financiados por cada crédito incluido en este reporte
+    // — antes solo se veía el monto, nunca qué se compró al crédito.
+    const numerosCreditoEnReporte = [...new Set(filasCliente.map(f => f.numero_credito))];
+    const filasProductos = numerosCreditoEnReporte
+      .filter(nc => (R.cache.creditosProductos||new Map()).has(nc))
+      .map(nc => [nc, R.cache.creditosProductos.get(nc).map(d => `${d.producto_nombre} x${Number(d.cantidad)}`).join(', ')]);
+    if (filasProductos.length) {
+      doc.setFontSize(10); doc.setTextColor(60,60,60); doc.setFont(undefined,'bold');
+      doc.text('Productos financiados', 10, startY);
+      startY += 5;
+      doc.autoTable({ startY, head:[['Crédito','Productos']], body:filasProductos, theme:'grid',
+        headStyles:{fillColor:[108,99,255]}, margin:{left:10,right:10}, styles:{fontSize:7.5, cellWidth:'wrap'},
+        columnStyles:{0:{cellWidth:25}} });
+      startY = doc.lastAutoTable.finalY + 8;
+    }
+
     const cols = columnasActivas('creditos');
     if (!cols.length) {
       doc.setFontSize(9); doc.setTextColor(150,150,150);
@@ -3126,6 +3162,16 @@ function hojaCreditosXLSX(wb, clienteId, clienteNombre) {
   }
   appendSheetXLSX(wb, 'Créditos', headersXLSX(cols),
     rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+
+  // Hoja aparte con los productos financiados de cada crédito incluido
+  // — antes solo se veía el monto, nunca qué se compró al crédito.
+  const numerosCreditoEnReporte = [...new Set(filasCliente.map(f => f.numero_credito))];
+  const filasProductos = numerosCreditoEnReporte
+    .filter(nc => (R.cache.creditosProductos||new Map()).has(nc))
+    .map(nc => [nc, R.cache.creditosProductos.get(nc).map(d => `${d.producto_nombre} x${Number(d.cantidad)}`).join(', ')]);
+  if (filasProductos.length) {
+    appendSheetXLSX(wb, 'Productos financiados', ['Crédito','Productos'], filasProductos, [null, null]);
+  }
 }
 
 // Resumen por crédito (todos los clientes) — SOLO para el Reporte

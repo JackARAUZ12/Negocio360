@@ -1124,6 +1124,9 @@
     document.getElementById('rp-resumen').style.display = 'none';
     document.getElementById('rp-monto').value = '';
     document.getElementById('rp-observaciones').value = '';
+    _bancoElegidoIdCred = null;
+    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
+    document.getElementById('rp-banco-elegido-wrap').style.display = 'none';
     openModal('modal-registrar-pago');
     if (creditoId) {
       const credito = CS.creditos.find(c => c.id === creditoId) || (await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle()).data;
@@ -1451,10 +1454,13 @@
      REGISTRAR PAGO
   =================================================== */
   /* ===================================================
-     ¿A QUÉ BANCO ENTRA? — obligatorio si ya hay bancos creados y el
-     método es Tarjeta/Transferencia. Sin bancos creados, nunca aparece.
+     ¿A QUÉ BANCO ENTRA? — aparece EN EL MOMENTO de elegir Tarjeta o
+     Transferencia en el select de método (no al final, al
+     confirmar), con tarjetas para tocar y una "✕" para regresar.
+     Sin bancos creados, esto nunca aparece.
   =================================================== */
   let _bancosCacheCred = null;
+  let _bancoElegidoIdCred = null;
   async function cargarBancosDisponiblesCred() {
     if (_bancosCacheCred) return _bancosCacheCred;
     try {
@@ -1463,28 +1469,35 @@
     } catch (e) { _bancosCacheCred = []; }
     return _bancosCacheCred;
   }
-  async function pedirBancoSiNecesarioCred(metodoPagoNombre) {
+  window.mostrarSelectorBancoCred = async function(metodoPagoNombre) {
+    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
+    document.getElementById('rp-banco-elegido-wrap').style.display = 'none';
+    _bancoElegidoIdCred = null;
     const metodo = (metodoPagoNombre || '').toLowerCase();
-    if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return null;
-    const bancos = await cargarBancosDisponiblesCred();
-    if (!bancos.length) return null;
+    if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
 
-    return new Promise((resolve) => {
-      document.getElementById('eb-metodo-cred').textContent = metodoPagoNombre;
-      const sel = document.getElementById('eb-select-cred');
-      sel.innerHTML = bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}${b.numero_cuenta?' — '+esc(b.numero_cuenta):''}</option>`).join('');
-      document.getElementById('modal-elegir-banco-cred').style.display = 'flex';
-      document.getElementById('modal-elegir-banco-cred').classList.add('modal-open');
-      window._resolverBancoElegidoCred = () => {
-        const bancoId = sel.value;
-        document.getElementById('modal-elegir-banco-cred').style.display = 'none';
-        document.getElementById('modal-elegir-banco-cred').classList.remove('modal-open');
-        resolve(bancoId || null);
-      };
-    });
-  }
-  window.confirmarBancoElegidoCred = function() {
-    if (window._resolverBancoElegidoCred) window._resolverBancoElegidoCred();
+    const bancos = await cargarBancosDisponiblesCred();
+    if (!bancos.length) return; // sin bancos creados, sigue todo normal
+
+    document.getElementById('rp-banco-elegir-metodo').textContent = metodoPagoNombre;
+    document.getElementById('rp-banco-elegir-grid').innerHTML = bancos.map(b => `
+      <div class="metodo-card" onclick="elegirBancoCred('${b.id}','${esc(b.nombre)}')">
+        <span class="mc-icon">🏦</span>
+        <span class="mc-name">${esc(b.nombre)}</span>
+      </div>`).join('');
+    document.getElementById('rp-banco-elegir-wrap').style.display = '';
+  };
+  window.elegirBancoCred = function(bancoId, bancoNombre) {
+    _bancoElegidoIdCred = bancoId;
+    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
+    document.getElementById('rp-banco-elegido-nombre').textContent = bancoNombre;
+    document.getElementById('rp-banco-elegido-wrap').style.display = 'flex';
+  };
+  window.cancelarSeleccionBancoCred = function() {
+    _bancoElegidoIdCred = null;
+    document.getElementById('rp-metodo').value = '';
+    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
+    document.getElementById('rp-banco-elegido-wrap').style.display = 'none';
   };
 
   async function confirmarRegistrarPagoCredito() {
@@ -1499,7 +1512,16 @@
     if (!creditoId) { showToast('Selecciona un crédito', 'error'); return; }
     if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
 
-    const bancoElegidoPago = await pedirBancoSiNecesarioCred(metodoNombre);
+    // El banco ya se eligió al momento de cambiar el método a
+    // Tarjeta/Transferencia (no aquí al final) — esto es solo un
+    // candado de seguridad, por si alguien llegó hasta aquí sin
+    // completar ese paso.
+    const metodoActualCred = (metodoNombre||'').toLowerCase();
+    if ((metodoActualCred.includes('tarjeta') || metodoActualCred.includes('transferencia')) && (await cargarBancosDisponiblesCred()).length && !_bancoElegidoIdCred) {
+      showToast('Elige a qué banco entra este pago', 'error');
+      return;
+    }
+    const bancoElegidoPago = _bancoElegidoIdCred || null;
 
     btn.disabled = true; btn.textContent = 'Registrando…';
     try {
@@ -1728,7 +1750,15 @@
     const { data: historial } = await _sb.from('creditos_historial').select('*').eq('credito_id', creditoId).order('created_at', { ascending:false });
     const { data: pagos } = await _sb.from('creditos_pagos').select('*').eq('credito_id', creditoId).eq('estado','completado').order('created_at', { ascending:false });
 
-
+    // Productos financiados — se leen de la venta que originó el
+    // crédito (creditos NUNCA guarda productos directamente). Si el
+    // crédito se creó sin venta (ej. deuda existente migrada), no hay
+    // nada que traer, y esa sección simplemente no aparece.
+    let productosFinanciados = [];
+    if (credito.venta_id) {
+      const { data: detalles } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id).order('created_at');
+      productosFinanciados = detalles || [];
+    }
 
     document.getElementById('det-credito-title').textContent = `Crédito ${credito.numero_credito}`;
     document.getElementById('detalle-credito-body').innerHTML = `
@@ -1743,6 +1773,22 @@
         <div><label>Saldo pendiente</label><div class="stat-readonly">${fmt(credito.saldo_pendiente)}</div></div>
       </div>
       ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" style="margin-bottom:14px" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>`}
+      ${productosFinanciados.length ? `
+        <label>Productos financiados</label>
+        <div class="table-wrap" style="margin-bottom:16px">
+          <table>
+            <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Subtotal</th></tr></thead>
+            <tbody>
+              ${productosFinanciados.map(d => `<tr>
+                <td>${esc(d.producto_nombre || '—')}</td>
+                <td>${Number(d.cantidad||0).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
+                <td>${fmt(d.precio)}</td>
+                <td>${fmt(d.subtotal)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
       <label>Cuotas</label>
       <div class="table-wrap" style="margin-bottom:16px">
         <table>
