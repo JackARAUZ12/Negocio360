@@ -1766,6 +1766,119 @@
      DETALLE DE CRÉDITO (cuotas + historial)
   =================================================== */
   window._creditoDetalleActual = null;
+  /* ===================================================
+     PAGARÉ / CONTRATO DE CRÉDITO — se llena solo con los datos ya
+     guardados del crédito, cliente y sus cuotas, sin tener que
+     redactarlo desde cero cada vez. Plantilla base — el negocio
+     puede ajustarla según sus necesidades específicas.
+  =================================================== */
+  window.generarPagareCredito = function(credito, cliente, cuotas) {
+    const bizName = CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'La Empresa';
+    const bizRuc = CS.empresaConfig?.ruc || '';
+    const bizDireccion = CS.empresaConfig?.direccion || '';
+    const moneda = CS.empresaConfig?.moneda_simbolo || 'C$';
+    const nombreCliente = cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '________________';
+    const hoy = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+    const numCuotas = (cuotas||[]).length || credito.num_cuotas || 0;
+    const valorCuota = numCuotas ? (Number(credito.total_financiado||0) / numCuotas) : Number(credito.valor_cuota_aprox||0);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 20;
+    let y = 20;
+
+    doc.setFontSize(14); doc.setFont(undefined,'bold');
+    doc.text('PAGARÉ', W/2, y, { align:'center' }); y += 8;
+    doc.setFontSize(10); doc.setFont(undefined,'normal');
+    doc.text(`N.º ${credito.numero_credito}`, W/2, y, { align:'center' }); y += 12;
+
+    const parrafo1 = `Yo, ${nombreCliente}${cliente?.direccion ? ', con domicilio en ' + cliente.direccion : ''}${cliente?.telefono ? ', teléfono ' + cliente.telefono : ''}, por medio del presente documento me comprometo a pagar incondicionalmente a la orden de ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, la cantidad de ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})} (${numeroALetrasSimple(Number(credito.total_financiado||0))}), correspondiente a la compra/financiamiento detallado a continuación.`;
+    const lineas1 = doc.splitTextToSize(parrafo1, W - M*2);
+    doc.text(lineas1, M, y); y += lineas1.length * 5 + 8;
+
+    doc.setFont(undefined,'bold'); doc.text('CONDICIONES DEL PAGO:', M, y); y += 6;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9.5);
+    const condiciones = [
+      `Capital financiado: ${moneda} ${Number(credito.capital_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Total a pagar (con intereses/impuestos si aplica): ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Número de cuotas: ${numCuotas}`,
+      `Valor aproximado por cuota: ${moneda} ${valorCuota.toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Fecha de inicio: ${credito.fecha_inicio ? fmtDate(credito.fecha_inicio) : '—'}`,
+    ];
+    condiciones.forEach(c => { doc.text('• ' + c, M+2, y); y += 5.5; });
+    y += 4;
+
+    if ((cuotas||[]).length) {
+      doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.text('CALENDARIO DE PAGOS:', M, y); y += 3;
+      doc.autoTable({
+        startY: y, head: [['Cuota', 'Vencimiento', 'Monto']],
+        body: cuotas.map(c => [c.numero, fmtDate(c.fecha_vencimiento), `${moneda} ${Number(c.monto_total).toLocaleString('es-NI',{minimumFractionDigits:2})}`]),
+        theme:'grid', styles:{ fontSize:8.5, cellPadding:2 }, headStyles:{ fillColor:[108,99,255] }, margin:{ left:M, right:M },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    doc.setFontSize(9.5); doc.setFont(undefined,'normal');
+    const parrafo2 = 'En caso de incumplimiento en el pago de cualquiera de las cuotas señaladas, EL ACREEDOR podrá exigir el pago inmediato del saldo total pendiente, sin necesidad de requerimiento judicial previo, quedando este pagaré sujeto a las leyes de la República de Nicaragua.';
+    const lineas2 = doc.splitTextToSize(parrafo2, W - M*2);
+    doc.text(lineas2, M, y); y += lineas2.length * 5 + 14;
+
+    doc.text(`Firmado en la ciudad de _________________, a los ${hoy}.`, M, y); y += 20;
+    doc.text('_____________________________', M, y);
+    doc.text('_____________________________', W - M - 70, y);
+    y += 5;
+    doc.setFont(undefined,'bold');
+    doc.text('EL DEUDOR', M, y);
+    doc.text('EL ACREEDOR', W - M - 70, y);
+    y += 5;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9);
+    doc.text(nombreCliente, M, y);
+    doc.text(bizName, W - M - 70, y);
+
+    doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+    doc.text('Este documento es una plantilla base generada automáticamente — revísala y ajústala según las necesidades específicas de tu negocio antes de usarla.', M, doc.internal.pageSize.getHeight() - 10);
+
+    doc.save(`Pagare_${credito.numero_credito}.pdf`);
+    showToast('Pagaré generado', 'success');
+  };
+
+  // Conversión simple de número a letras, solo para el monto del
+  // pagaré — cubre los montos típicos de un crédito comercial.
+  function numeroALetrasSimple(n) {
+    n = Math.round(n);
+    if (n === 0) return 'cero córdobas';
+    const UNIDADES = ['','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve'];
+    const DECENAS = ['','diez','veinte','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
+    const ESPECIALES = {11:'once',12:'doce',13:'trece',14:'catorce',15:'quince',16:'dieciséis',17:'diecisiete',18:'dieciocho',19:'diecinueve',21:'veintiuno',22:'veintidós',23:'veintitrés',24:'veinticuatro',25:'veinticinco',26:'veintiséis',27:'veintisiete',28:'veintiocho',29:'veintinueve'};
+    function centenas(num) {
+      if (num === 0) return '';
+      if (num === 100) return 'cien';
+      const c = Math.floor(num/100), resto = num%100;
+      const CENT = ['','ciento','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+      let texto = CENT[c];
+      if (resto > 0) {
+        let parteResto;
+        if (ESPECIALES[resto]) parteResto = ESPECIALES[resto];
+        else {
+          const d = Math.floor(resto/10), u = resto%10;
+          parteResto = d === 0 ? UNIDADES[u] : DECENAS[d] + (u>0?' y '+UNIDADES[u]:'');
+        }
+        texto += (texto?' ':'') + parteResto;
+      }
+      return texto;
+    }
+    function miles(num) {
+      if (num < 1000) return centenas(num);
+      const m = Math.floor(num/1000), resto = num%1000;
+      return (m===1?'mil':centenas(m)+' mil') + (resto>0?' '+centenas(resto):'');
+    }
+    const millones = Math.floor(n/1000000), resto = n%1000000;
+    let texto = millones > 0 ? (millones===1?'un millón':miles(millones)+' millones') + (resto>0?' ':'') : '';
+    texto += miles(resto);
+    return (texto.trim() || 'cero') + ' córdobas';
+  }
+
   async function abrirDetalleCredito(creditoId) {
     window._creditoDetalleActual = creditoId;
     openModal('modal-detalle-credito');
@@ -1799,7 +1912,11 @@
         <div><label>Total financiado</label><div class="stat-readonly">${fmt(credito.total_financiado)}</div></div>
         <div><label>Saldo pendiente</label><div class="stat-readonly">${fmt(credito.saldo_pendiente)}</div></div>
       </div>
-      ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" style="margin-bottom:14px" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>`}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn-secondary btn-sm" onclick='generarPagareCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(cuotas||[]).replace(/'/g,"&apos;")})'>📄 Generar pagaré</button>
+        ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : ''}
+      </div>
+      ${Number(credito.saldo_pendiente) <= 0 ? `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>` : ''}
       ${productosFinanciados.length ? `
         <label>Productos financiados</label>
         <div class="table-wrap" style="margin-bottom:16px">
