@@ -1633,12 +1633,18 @@
 
       const cliente = CS.clientes.find(c => c.id === credito.cliente_id);
       const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
+      let productosComprobante = [];
+      if (credito.venta_id) {
+        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad').eq('venta_id', credito.venta_id);
+        productosComprobante = detalles || [];
+      }
       mostrarComprobante({
         titulo: 'Pago de crédito', numero: comprobanteNumero, credito: credito.numero_credito,
         cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
         usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombre,
         saldoAnterior, saldoNuevo, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
         estado: LABEL_ESTADO[nuevoEstadoCredito] || nuevoEstadoCredito,
+        productos: productosComprobante,
       });
 
       await refrescarTodo();
@@ -1723,6 +1729,11 @@
         <div class="tp-row"><span>Cliente:</span><b>${esc(c.cliente)}</b></div>
         <div class="tp-row"><span>Fecha:</span><b>${fmtDate(c.fecha)}</b></div>
         <div class="tp-row"><span>Usuario:</span><b>${esc(c.usuario)}</b></div>
+        ${(c.productos && c.productos.length) ? `
+        <hr/>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Productos financiados:</div>
+        ${c.productos.map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px"><span>${esc(p.producto_nombre)}</span><span>x${Number(p.cantidad)}</span></div>`).join('')}
+        ` : ''}
         <hr/>
         <div class="tp-row"><span>Monto pagado:</span><b>${fmt(c.monto)}</b></div>
         <div class="tp-row"><span>Método de pago:</span><b>${esc(c.metodo)}</b></div>
@@ -1849,6 +1860,11 @@
       const { data: credito } = await _sb.from('creditos').select('*').eq('id', p.credito_id).maybeSingle();
       const cliente = CS.clientes.find(c => c.id === p.cliente_id) || {};
       const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', p.credito_id).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
+      let productosComprobante = [];
+      if (credito?.venta_id) {
+        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad').eq('venta_id', credito.venta_id);
+        productosComprobante = detalles || [];
+      }
       mostrarComprobante({
         titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito?.numero_credito || '—',
         cliente: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '—', fecha: p.fecha,
@@ -1856,6 +1872,7 @@
         saldoAnterior: p.saldo_anterior, saldoNuevo: p.saldo_nuevo,
         proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
         estado: credito ? (LABEL_ESTADO[credito.estado] || credito.estado) : '—',
+        productos: productosComprobante,
       });
     } catch (e) {
       console.error('reimprimirComprobantePago:', e);
