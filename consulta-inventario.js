@@ -281,13 +281,150 @@ function mostrarDetalle(filas) {
 
     <h3 style="font-size:14.5px;margin:16px 0 8px">💬 Análisis y consejos</h3>
     ${consejos}
+
+    <h3 style="font-size:14.5px;margin:20px 0 8px">📊 Ventas de este producto</h3>
+    <div id="ci-ventas-filtros" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn-secondary btn-sm ci-vf-btn" data-periodo="hoy" onclick="cambiarPeriodoVentas('hoy')">Hoy</button>
+      <button class="btn-secondary btn-sm ci-vf-btn" data-periodo="semana" onclick="cambiarPeriodoVentas('semana')">Esta semana</button>
+      <button class="btn-secondary btn-sm ci-vf-btn active" data-periodo="mes" onclick="cambiarPeriodoVentas('mes')">Este mes</button>
+      <button class="btn-secondary btn-sm ci-vf-btn" data-periodo="anio" onclick="cambiarPeriodoVentas('anio')">Este año</button>
+      <button class="btn-secondary btn-sm ci-vf-btn" data-periodo="personalizado" onclick="cambiarPeriodoVentas('personalizado')">Personalizado</button>
+      <input type="date" id="ci-ventas-desde" style="display:none;max-width:140px" onchange="recargarVentasPersonalizado()"/>
+      <input type="date" id="ci-ventas-hasta" style="display:none;max-width:140px" onchange="recargarVentasPersonalizado()"/>
+    </div>
+    <div id="ci-ventas-seccion">Cargando ventas…</div>
   `;
+
+  // Se guarda para poder recalcular al cambiar el período, sin tener
+  // que volver a buscar el producto.
+  STATE.filasDetalleActual = filas;
+  cambiarPeriodoVentas('mes');
 }
 
 function cerrarDetalle() {
   document.getElementById('ci-detalle-wrap').style.display = 'none';
   document.getElementById('ci-vacio').style.display = 'block';
 }
+
+/* =====================================================
+   VENTAS DE ESTE PRODUCTO — solo lectura, nunca modifica nada.
+   Reutiliza el mismo cliente "sb" (crearClienteGrupo) que ya usa
+   este archivo para productos — venta_detalles y ventas ya están
+   habilitadas ahí, así que esto trae datos de TODO el grupo
+   (Central + sucursales + bodegas) igual que el resto de la pantalla.
+===================================================== */
+function calcularRangoFechas(periodo) {
+  const hoy = new Date();
+  const y = hoy.getFullYear(), m = hoy.getMonth(), d = hoy.getDate();
+  const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  if (periodo === 'hoy') return { desde: iso(hoy), hasta: iso(hoy) };
+  if (periodo === 'semana') {
+    const diaSemana = hoy.getDay(); // 0=domingo
+    const inicio = new Date(y, m, d - diaSemana);
+    return { desde: iso(inicio), hasta: iso(hoy) };
+  }
+  if (periodo === 'mes') return { desde: iso(new Date(y, m, 1)), hasta: iso(hoy) };
+  if (periodo === 'anio') return { desde: iso(new Date(y, 0, 1)), hasta: iso(hoy) };
+  return null; // personalizado: se lee de los inputs
+}
+
+function cambiarPeriodoVentas(periodo) {
+  document.querySelectorAll('.ci-vf-btn').forEach(b => b.classList.toggle('active', b.dataset.periodo === periodo));
+  const inputDesde = document.getElementById('ci-ventas-desde');
+  const inputHasta = document.getElementById('ci-ventas-hasta');
+
+  if (periodo === 'personalizado') {
+    inputDesde.style.display = ''; inputHasta.style.display = '';
+    if (!inputDesde.value) inputDesde.value = calcularRangoFechas('mes').desde;
+    if (!inputHasta.value) inputHasta.value = calcularRangoFechas('mes').hasta;
+    cargarVentasDelProducto(STATE.filasDetalleActual, inputDesde.value, inputHasta.value);
+    return;
+  }
+  inputDesde.style.display = 'none'; inputHasta.style.display = 'none';
+  const { desde, hasta } = calcularRangoFechas(periodo);
+  cargarVentasDelProducto(STATE.filasDetalleActual, desde, hasta);
+}
+function recargarVentasPersonalizado() {
+  const desde = document.getElementById('ci-ventas-desde').value;
+  const hasta = document.getElementById('ci-ventas-hasta').value;
+  if (!desde || !hasta) return;
+  cargarVentasDelProducto(STATE.filasDetalleActual, desde, hasta);
+}
+
+async function cargarVentasDelProducto(filas, desde, hasta) {
+  const cont = document.getElementById('ci-ventas-seccion');
+  if (!cont) return; // se cerró el detalle mientras cargaba
+  cont.innerHTML = 'Calculando…';
+
+  try {
+    // Un mismo producto ("Camisa azul") puede tener un id DISTINTO en
+    // cada cuenta del grupo — se buscan ventas de TODOS esos ids a la
+    // vez, no solo el de la cuenta actual.
+    const idsProducto = filas.map(p => p.id);
+
+    const { data: detalles } = await sb.from('venta_detalles').select('*').in('producto_id', idsProducto);
+    const { data: ventasTodas } = await sb.from('ventas').select('id, fecha, estado, auth_user_id');
+    const mapaVentas = new Map((ventasTodas||[]).map(v => [v.id, v]));
+
+    const filtrados = (detalles||[]).filter(d => {
+      const venta = mapaVentas.get(d.venta_id);
+      if (!venta || venta.estado !== 'completada') return false;
+      const fechaVenta = String(venta.fecha).slice(0,10);
+      return fechaVenta >= desde && fechaVenta <= hasta;
+    });
+
+    if (cont !== document.getElementById('ci-ventas-seccion')) return; // el usuario cambió de producto mientras cargaba
+
+    if (!filtrados.length) {
+      cont.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-muted);font-size:13px;border:1px dashed var(--border);border-radius:10px">
+        No se vendió nada de este producto en el período elegido.</div>`;
+      return;
+    }
+
+    const unidadesVendidas = filtrados.reduce((s,d) => s + Number(d.cantidad||0), 0);
+    const ingresoTotal = filtrados.reduce((s,d) => s + Number(d.subtotal||0), 0);
+    const numVentasUnicas = new Set(filtrados.map(d => d.venta_id)).size;
+    const precioPromedio = unidadesVendidas > 0 ? ingresoTotal / unidadesVendidas : 0;
+
+    // Desglose por cuenta del grupo — igual que ya hace con el stock.
+    const porCuenta = new Map();
+    filtrados.forEach(d => {
+      const venta = mapaVentas.get(d.venta_id);
+      const cuentaInfo = nombreDeCuenta(venta.auth_user_id);
+      const clave = venta.auth_user_id;
+      const acc = porCuenta.get(clave) || { nombre: cuentaInfo.nombre, tipo: cuentaInfo.tipo, esCentral: cuentaInfo.esCentral, unidades: 0, ingreso: 0 };
+      acc.unidades += Number(d.cantidad||0);
+      acc.ingreso += Number(d.subtotal||0);
+      porCuenta.set(clave, acc);
+    });
+    const filasCuenta = Array.from(porCuenta.values()).sort((a,b) => b.ingreso - a.ingreso);
+
+    cont.innerHTML = `
+      <div class="ci-kpis">
+        <div class="ci-kpi"><div class="lbl">Unidades vendidas</div><div class="val">${fmtNum(unidadesVendidas)}</div></div>
+        <div class="ci-kpi"><div class="lbl">Ingreso generado</div><div class="val">${fmt(ingresoTotal)}</div></div>
+        <div class="ci-kpi"><div class="lbl">Ventas donde apareció</div><div class="val">${numVentasUnicas}</div></div>
+        <div class="ci-kpi"><div class="lbl">Precio promedio de venta</div><div class="val">${fmt(precioPromedio)}</div></div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px">
+        <table class="ci-tabla">
+          <thead><tr><th>Cuenta</th><th>Unidades</th><th>Ingreso</th></tr></thead>
+          <tbody>${filasCuenta.map(c => `
+            <tr>
+              <td style="font-weight:600">${c.tipo==='bodega'?'📦':(c.esCentral?'🏠':'🏬')} ${esc(c.nombre)}</td>
+              <td>${fmtNum(c.unidades)}</td>
+              <td>${fmt(c.ingreso)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    console.error('cargarVentasDelProducto:', e);
+    if (cont === document.getElementById('ci-ventas-seccion')) {
+      cont.innerHTML = `<div style="padding:14px;color:var(--danger);font-size:13px">No se pudo cargar el historial de ventas.</div>`;
+    }
+  }
+}
+
 
 /* =====================================================
    ESCÁNER DE CÓDIGO DE BARRAS
