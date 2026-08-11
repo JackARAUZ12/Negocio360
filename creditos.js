@@ -21,6 +21,13 @@
   );
   window.__cajaSB = _sb;
 
+  // Se declaran aquí arriba (no donde se usan más abajo) para que
+  // nunca queden en "zona muerta temporal" — si algo entre este punto
+  // y donde se usaban antes fallara, estas quedaban inaccesibles y
+  // rompían silenciosamente el botón de Registrar pago.
+  let _bancosCacheCred = null;
+  let _bancoElegidoIdCred = null;
+
   /* ===================================================
      ESTADO LOCAL
   =================================================== */
@@ -1121,12 +1128,19 @@
   window.abrirCreditoExistente = abrirCreditoExistente;
 
   async function abrirRegistrarPago(creditoId) {
-    document.getElementById('rp-resumen').style.display = 'none';
-    document.getElementById('rp-monto').value = '';
-    document.getElementById('rp-observaciones').value = '';
+    // Se usa un helper seguro en vez de asumir que el elemento
+    // siempre existe — si el navegador tiene una versión vieja
+    // cacheada del HTML (desfasada del JS más nuevo), esto evita que
+    // TODO el botón se rompa por un solo elemento que falte.
+    const ocultar = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
+    const vaciar = (id) => { const el = document.getElementById(id); if (el) el.value = ''; };
+
+    ocultar('rp-resumen');
+    vaciar('rp-monto');
+    vaciar('rp-observaciones');
     _bancoElegidoIdCred = null;
-    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
-    document.getElementById('rp-banco-elegido-wrap').style.display = 'none';
+    ocultar('rp-banco-elegir-wrap');
+    ocultar('rp-banco-elegido-wrap');
     openModal('modal-registrar-pago');
     if (creditoId) {
       const credito = CS.creditos.find(c => c.id === creditoId) || (await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle()).data;
@@ -1459,8 +1473,6 @@
      confirmar), con tarjetas para tocar y una "✕" para regresar.
      Sin bancos creados, esto nunca aparece.
   =================================================== */
-  let _bancosCacheCred = null;
-  let _bancoElegidoIdCred = null;
   async function cargarBancosDisponiblesCred() {
     if (_bancosCacheCred) return _bancosCacheCred;
     try {
@@ -1470,8 +1482,11 @@
     return _bancosCacheCred;
   }
   window.mostrarSelectorBancoCred = async function(metodoPagoNombre) {
-    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
-    document.getElementById('rp-banco-elegido-wrap').style.display = 'none';
+    const elById = (id) => document.getElementById(id);
+    const ocultar = (id) => { const el = elById(id); if (el) el.style.display = 'none'; };
+
+    ocultar('rp-banco-elegir-wrap');
+    ocultar('rp-banco-elegido-wrap');
     _bancoElegidoIdCred = null;
     const metodo = (metodoPagoNombre || '').toLowerCase();
     if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
@@ -1479,25 +1494,26 @@
     const bancos = await cargarBancosDisponiblesCred();
     if (!bancos.length) return; // sin bancos creados, sigue todo normal
 
-    document.getElementById('rp-banco-elegir-metodo').textContent = metodoPagoNombre;
-    document.getElementById('rp-banco-elegir-grid').innerHTML = bancos.map(b => `
+    const elMetodo = elById('rp-banco-elegir-metodo'); if (elMetodo) elMetodo.textContent = metodoPagoNombre;
+    const elGrid = elById('rp-banco-elegir-grid');
+    if (elGrid) elGrid.innerHTML = bancos.map(b => `
       <div class="metodo-card" onclick="elegirBancoCred('${b.id}','${esc(b.nombre)}')">
         <span class="mc-icon">🏦</span>
         <span class="mc-name">${esc(b.nombre)}</span>
       </div>`).join('');
-    document.getElementById('rp-banco-elegir-wrap').style.display = '';
+    const elWrap = elById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = '';
   };
   window.elegirBancoCred = function(bancoId, bancoNombre) {
     _bancoElegidoIdCred = bancoId;
-    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
-    document.getElementById('rp-banco-elegido-nombre').textContent = bancoNombre;
-    document.getElementById('rp-banco-elegido-wrap').style.display = 'flex';
+    const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
+    const elNombre = document.getElementById('rp-banco-elegido-nombre'); if (elNombre) elNombre.textContent = bancoNombre;
+    const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'flex';
   };
   window.cancelarSeleccionBancoCred = function() {
     _bancoElegidoIdCred = null;
-    document.getElementById('rp-metodo').value = '';
-    document.getElementById('rp-banco-elegir-wrap').style.display = 'none';
-    document.getElementById('rp-banco-elegido-wrap').style.display = 'none';
+    const elMetodo = document.getElementById('rp-metodo'); if (elMetodo) elMetodo.value = '';
+    const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
+    const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'none';
   };
 
   async function confirmarRegistrarPagoCredito() {
