@@ -1668,6 +1668,72 @@
 </div>
 
 <!-- =====================================================
+     MODAL: CONCILIACIÓN BANCARIA
+=================================================== -->
+<div class="modal-overlay" id="modal-conciliar-banco" onclick="if(event.target===this)closeModal('modal-conciliar-banco')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Conciliar — <span id="cb-banco-nombre">Banco</span></span>
+      <button class="modal-close" onclick="closeModal('modal-conciliar-banco')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Marca cada movimiento que sí aparece en el estado de cuenta real de tu banco. Lo que ya conciliaste antes no vuelve a aparecer aquí.
+      </p>
+
+      <div class="form-row">
+        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()"/></div>
+        <div><label>Saldo calculado por el sistema</label><div class="stat-readonly" id="cb-saldo-calculado">—</div></div>
+        <div><label>Diferencia</label><div class="stat-readonly" id="cb-diferencia" style="font-weight:800">—</div></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+        <label style="margin:0">Movimientos sin conciliar</label>
+        <button class="btn-secondary btn-sm" onclick="abrirAgregarAjusteConciliacion()">+ Agregar ajuste</button>
+      </div>
+      <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+        <table>
+          <thead><tr><th style="width:36px"></th><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody id="cb-movimientos-tbody"><tr><td colspan="4" class="empty-cell">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div id="cb-ajuste-form" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px">
+        <div class="form-row">
+          <div><label>Concepto</label><input type="text" id="cb-ajuste-concepto" placeholder="Ej: Comisión bancaria"/></div>
+          <div><label>Tipo</label>
+            <select id="cb-ajuste-tipo"><option value="EGRESO">Egreso (ej. comisión, cargo)</option><option value="INGRESO">Ingreso (ej. interés ganado)</option></select>
+          </div>
+          <div><label>Monto</label><input type="number" id="cb-ajuste-monto" step="0.01" min="0.01"/></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn-ghost btn-sm" onclick="document.getElementById('cb-ajuste-form').style.display='none'">Cancelar</button>
+          <button class="btn-primary btn-sm" onclick="guardarAjusteConciliacion()">Agregar</button>
+        </div>
+      </div>
+
+      <p id="cb-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
+
+      <div style="margin-top:14px">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:8px">Conciliaciones anteriores de este banco</label>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Saldo banco</th><th>Saldo sistema</th><th>Diferencia</th></tr></thead>
+            <tbody id="cb-historial-tbody"><tr><td colspan="4" class="empty-cell">Sin conciliaciones todavía</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-conciliar-banco')">Cerrar</button>
+      <button class="btn-primary" id="btn-cerrar-conciliacion" onclick="cerrarConciliacion()">Cerrar conciliación</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
      SCRIPT
 ===================================================== -->
   <script src="cajaAPI.js"></script>
