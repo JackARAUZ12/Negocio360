@@ -212,6 +212,7 @@ function abrirNuevoEmpleado() {
   document.getElementById('emp-fecha-fin-wrap').style.display = 'none';
   poblarSelectReportaA(null);
   document.getElementById('emp-error').textContent = '';
+  document.getElementById('btn-generar-contrato').style.display = 'none';
   openModal('modal-empleado');
 }
 function poblarSelectReportaA(excluirId) {
@@ -247,7 +248,98 @@ function abrirEditarEmpleado(id) {
   poblarSelectReportaA(emp.id);
   document.getElementById('emp-reporta-a').value = emp.reporta_a || '';
   document.getElementById('emp-error').textContent = '';
+  document.getElementById('btn-generar-contrato').style.display = '';
   openModal('modal-empleado');
+}
+
+/* =====================================================
+   CONTRATO DE TRABAJO — se llena solo con los datos que ya tienes
+   en el expediente del empleado, sin tener que redactarlo desde
+   cero cada vez. Plantilla base — el negocio puede ajustarla a sus
+   necesidades específicas o revisarla con un abogado si hace falta.
+===================================================== */
+function generarContratoTrabajo() {
+  const id = document.getElementById('emp-id').value;
+  if (!id) { showToast('Guarda el empleado primero', 'error'); return; }
+
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  const cedula = document.getElementById('emp-cedula').value.trim();
+  const direccion = document.getElementById('emp-direccion').value.trim();
+  const cargo = document.getElementById('emp-cargo').value.trim();
+  const salario = parseFloat(document.getElementById('emp-salario').value) || 0;
+  const tipoSalario = document.getElementById('emp-tipo-salario').value;
+  const fechaIngreso = document.getElementById('emp-fecha-ingreso').value;
+  const tipoContrato = document.getElementById('emp-tipo-contrato').value;
+  const fechaFin = document.getElementById('emp-fecha-fin-contrato').value;
+  const pais = document.getElementById('emp-pais').value;
+
+  if (!nombre) { showToast('Falta el nombre del empleado', 'error'); return; }
+  if (!cargo) { showToast('Falta el cargo del empleado', 'error'); return; }
+
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'La Empresa';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const bizDireccion = STATE.empresaConfig?.direccion || '';
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+
+  const PERIODO_LABEL = { mensual:'mensual', quincenal:'quincenal', semanal:'semanal', diario:'diario' };
+  const TIPO_CONTRATO_LABEL = { indefinido:'por tiempo indefinido', plazo_fijo:'a plazo fijo', por_obra:'por obra o servicio determinado' };
+  const hoy = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+  const fechaIngresoTexto = fechaIngreso ? new Date(fechaIngreso+'T00:00:00').toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' }) : '________________';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 20;
+  let y = 20;
+
+  doc.setFontSize(14); doc.setFont(undefined,'bold');
+  doc.text('CONTRATO INDIVIDUAL DE TRABAJO', W/2, y, { align:'center' }); y += 12;
+
+  doc.setFontSize(10); doc.setFont(undefined,'normal');
+  const parrafo1 = pais === 'NI'
+    ? `Entre ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, a quien en adelante se le denominará "EL EMPLEADOR", y el/la señor(a) ${nombre}, portador(a) de cédula de identidad N.º ${cedula || '____________________'}${direccion ? ', con domicilio en ' + direccion : ''}, a quien en adelante se le denominará "EL TRABAJADOR", de mutuo acuerdo celebran el presente Contrato Individual de Trabajo, sujeto a las leyes laborales vigentes en la República de Nicaragua, bajo las siguientes cláusulas:`
+    : `Entre ${bizName}, a quien en adelante se le denominará "EL EMPLEADOR", y el/la señor(a) ${nombre}, portador(a) de identificación N.º ${cedula || '____________________'}${direccion ? ', con domicilio en ' + direccion : ''}, a quien en adelante se le denominará "EL TRABAJADOR", de mutuo acuerdo celebran el presente Contrato Individual de Trabajo, bajo las siguientes cláusulas:`;
+  const lineas1 = doc.splitTextToSize(parrafo1, W - M*2);
+  doc.text(lineas1, M, y); y += lineas1.length * 5 + 6;
+
+  const clausula = (titulo, texto) => {
+    doc.setFont(undefined,'bold'); doc.text(titulo, M, y); y += 6;
+    doc.setFont(undefined,'normal');
+    const lns = doc.splitTextToSize(texto, W - M*2);
+    doc.text(lns, M, y); y += lns.length * 5 + 6;
+  };
+
+  clausula('PRIMERA — CARGO Y FUNCIONES:', `EL TRABAJADOR se compromete a desempeñar el cargo de ${cargo}, así como las funciones inherentes al mismo y las que razonablemente le sean asignadas por EL EMPLEADOR dentro del giro normal del negocio.`);
+
+  clausula('SEGUNDA — DURACIÓN:', `El presente contrato se celebra ${TIPO_CONTRATO_LABEL[tipoContrato] || 'por tiempo indefinido'}, iniciando labores el ${fechaIngresoTexto}${tipoContrato==='plazo_fijo' && fechaFin ? `, con fecha de finalización el ${new Date(fechaFin+'T00:00:00').toLocaleDateString('es-NI',{day:'numeric',month:'long',year:'numeric'})}` : ''}.`);
+
+  clausula('TERCERA — SALARIO:', `EL EMPLEADOR pagará a EL TRABAJADOR un salario ${PERIODO_LABEL[tipoSalario]||'mensual'} de ${moneda} ${salario.toLocaleString('es-NI',{minimumFractionDigits:2})}, sujeto a las deducciones de ley correspondientes.`);
+
+  clausula('CUARTA — JORNADA DE TRABAJO:', 'EL TRABAJADOR se compromete a cumplir con el horario de trabajo establecido por EL EMPLEADOR, respetando los descansos y días de asueto de acuerdo a la legislación laboral vigente.');
+
+  clausula('QUINTA — OBLIGACIONES DEL TRABAJADOR:', 'EL TRABAJADOR se compromete a desempeñar sus funciones con honestidad, eficiencia y buena fe, cuidando los bienes y materiales que se le confíen, y guardando la debida confidencialidad sobre la información del negocio.');
+
+  clausula('SEXTA — TERMINACIÓN:', 'El presente contrato podrá darse por terminado por cualquiera de las causales establecidas en la legislación laboral vigente, respetando en todo momento los derechos y prestaciones que correspondan a EL TRABAJADOR.');
+
+  y += 4;
+  doc.text(`Firmado en la ciudad de _________________, a los ${hoy}.`, M, y); y += 20;
+
+  doc.text('_____________________________', M, y);
+  doc.text('_____________________________', W - M - 70, y);
+  y += 5;
+  doc.setFont(undefined,'bold');
+  doc.text('EL EMPLEADOR', M, y);
+  doc.text('EL TRABAJADOR', W - M - 70, y);
+  y += 5;
+  doc.setFont(undefined,'normal'); doc.setFontSize(9);
+  doc.text(bizName, M, y);
+  doc.text(nombre, W - M - 70, y);
+
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento es una plantilla base generada automáticamente — revísala y ajústala según las necesidades específicas de tu negocio antes de firmarla.', M, doc.internal.pageSize.getHeight() - 10);
+
+  doc.save(`Contrato_${nombre.replace(/[^\w]/g,'_')}.pdf`);
+  showToast('Contrato generado');
 }
 
 async function guardarEmpleado() {
