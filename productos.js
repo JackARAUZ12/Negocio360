@@ -1540,7 +1540,7 @@ function actualizarCajaImpactoPreview() {
 // No depende de caja.js/cajaAPI.js — autocontenido para no
 // arriesgar nada del módulo de Caja.
 // ============================================================
-async function registrarCompraEnCaja(nombreProducto, monto, productoId) {
+async function registrarCompraEnCaja(nombreProducto, monto, productoId, cantidad, costoUnitario, sku) {
   try {
     const { data: ultMov } = await supabaseClient
       .from('movimientos_financieros')
@@ -1554,7 +1554,7 @@ async function registrarCompraEnCaja(nombreProducto, monto, productoId) {
     const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : 0;
     const saldoResultante = saldoAnterior - monto;
 
-    const { error } = await supabaseClient.from('movimientos_financieros').insert({
+    const { data: movInsertado, error } = await supabaseClient.from('movimientos_financieros').insert({
       auth_user_id:       STATE.user.id,
       tipo_flujo:         'EGRESO',
       tipo_movimiento:    'COMPRA',
@@ -1567,9 +1567,51 @@ async function registrarCompraEnCaja(nombreProducto, monto, productoId) {
       referencia_id:       productoId || null,
       fecha:               ymdLocal(new Date()),
       estado:              'completado',
-    });
+    }).select('id').single();
 
     if (error) throw error;
+
+    // También se deja el registro FORMAL en Compras — antes esta
+    // compra solo se veía como un movimiento suelto de Caja, y nunca
+    // aparecía en el historial ni en los reportes de Compras. Esto es
+    // aparte del descuento de Caja de arriba (que ya funcionaba bien)
+    // — si esta parte fallara por cualquier motivo, el dinero ya
+    // descontado de Caja no se ve afectado, solo faltaría este
+    // registro adicional.
+    try {
+      const { data: numero } = await supabaseClient.rpc('siguiente_numero_compra', { p_user_id: STATE.user.id });
+      const { data: compraInsertada, error: errCompra } = await supabaseClient.from('compras').insert({
+        auth_user_id:  STATE.user.id,
+        numero:        numero || `C-${Date.now()}`,
+        fecha:         ymdLocal(new Date()),
+        subtotal:      monto,
+        total:         monto,
+        metodo_pago_nombre: 'Efectivo',
+        estado:        'completada',
+        observaciones: 'Generada automáticamente al registrar stock inicial de un producto',
+        movimiento_caja_id: movInsertado?.id || null,
+      }).select('id').single();
+      if (errCompra) throw errCompra;
+
+      if (compraInsertada && productoId) {
+        await supabaseClient.from('detalle_compras').insert({
+          auth_user_id:    STATE.user.id,
+          compra_id:       compraInsertada.id,
+          producto_id:     productoId,
+          producto_nombre: nombreProducto,
+          producto_sku:    sku || null,
+          cantidad:        cantidad || 1,
+          costo_unitario:  costoUnitario != null ? costoUnitario : monto,
+          descuento:       0,
+          iva_porcentaje:  0,
+          iva_monto:       0,
+          subtotal:        monto,
+          stock_despues:   cantidad || null,
+        });
+      }
+    } catch (eCompra) {
+      console.warn('No se pudo crear el registro formal en Compras (el dinero de Caja ya se descontó bien):', eCompra);
+    }
 
     // Mantener sincronizado el caché local que usan dashboard/caja
     try {
@@ -1897,7 +1939,7 @@ async function guardarProducto() {
 
         if (descontarCaja && montoCompra > 0) {
           const insertedId = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
-          const resultCaja = await registrarCompraEnCaja(nombre, montoCompra, insertedId);
+          const resultCaja = await registrarCompraEnCaja(nombre, montoCompra, insertedId, stockActual, costo, payload.sku);
           if (resultCaja.ok) cajaInfo = { montoDescontado: montoCompra };
         }
       }
