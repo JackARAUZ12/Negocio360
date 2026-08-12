@@ -213,6 +213,7 @@ function abrirNuevoEmpleado() {
   poblarSelectReportaA(null);
   document.getElementById('emp-error').textContent = '';
   document.getElementById('btn-generar-contrato').style.display = 'none';
+  document.getElementById('btn-generar-constancia').style.display = 'none';
   openModal('modal-empleado');
 }
 function poblarSelectReportaA(excluirId) {
@@ -249,6 +250,7 @@ function abrirEditarEmpleado(id) {
   document.getElementById('emp-reporta-a').value = emp.reporta_a || '';
   document.getElementById('emp-error').textContent = '';
   document.getElementById('btn-generar-contrato').style.display = '';
+  document.getElementById('btn-generar-constancia').style.display = '';
   openModal('modal-empleado');
 }
 
@@ -329,6 +331,88 @@ function generarBoletaPago(pago) {
 
   doc.save(`Boleta_${(emp.nombre||'empleado').replace(/[^\w]/g,'_')}_${pago.fecha}.pdf`);
   showToast('Boleta generada');
+}
+
+/* =====================================================
+   CONSTANCIA SALARIAL — carta corta que certifica el salario y
+   tiempo laborando de un empleado, para trámites bancarios,
+   alquileres, etc. Distinta a la Boleta de Pago: esta certifica la
+   situación general, no un pago específico ya hecho.
+===================================================== */
+function generarConstanciaSalarial() {
+  const id = document.getElementById('emp-id').value;
+  if (!id) { showToast('Guarda el empleado primero', 'error'); return; }
+
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  const cedula = document.getElementById('emp-cedula').value.trim();
+  const cargo = document.getElementById('emp-cargo').value.trim();
+  const salario = parseFloat(document.getElementById('emp-salario').value) || 0;
+  const tipoSalario = document.getElementById('emp-tipo-salario').value;
+  const fechaIngreso = document.getElementById('emp-fecha-ingreso').value;
+
+  if (!nombre) { showToast('Falta el nombre del empleado', 'error'); return; }
+  if (!fechaIngreso) { showToast('Falta la fecha de ingreso del empleado', 'error'); return; }
+
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'La Empresa';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+  const PERIODO_LABEL = { mensual:'mensuales', quincenal:'quincenales', semanal:'semanales', diario:'diarios' };
+
+  // Tiempo laborando, calculado en años/meses — para que la carta
+  // diga algo como "desde hace 1 año y 3 meses", más natural que
+  // solo la fecha.
+  const hoy = new Date();
+  const inicio = new Date(fechaIngreso+'T00:00:00');
+  let meses = (hoy.getFullYear()-inicio.getFullYear())*12 + (hoy.getMonth()-inicio.getMonth());
+  if (hoy.getDate() < inicio.getDate()) meses--;
+  if (meses < 0) meses = 0;
+  const anios = Math.floor(meses/12), mesesRestantes = meses%12;
+  let tiempoTexto = '';
+  if (anios > 0) tiempoTexto += `${anios} año${anios!==1?'s':''}`;
+  if (mesesRestantes > 0) tiempoTexto += (tiempoTexto?' y ':'') + `${mesesRestantes} mes${mesesRestantes!==1?'es':''}`;
+  if (!tiempoTexto) tiempoTexto = 'menos de un mes';
+
+  const fechaHoyTexto = hoy.toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+  const fechaIngresoTexto = inicio.toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 22;
+  let y = 25;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text(bizName, M, y);
+  if (bizRuc) { doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(`RUC: ${bizRuc}`, M, y+5); }
+  y += 20;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('CONSTANCIA SALARIAL', W/2, y, { align:'center' }); y += 14;
+
+  doc.setFontSize(10.5); doc.setFont(undefined,'normal');
+  doc.text('A quien interese:', M, y); y += 10;
+
+  const cuerpo = `Por medio de la presente, ${bizName} hace constar que el/la señor(a) ${nombre}${cedula ? ', portador(a) de cédula de identidad N.º ' + cedula : ''}, labora en nuestras instalaciones desempeñando el cargo de ${cargo || '________________'} desde el ${fechaIngresoTexto} (aproximadamente ${tiempoTexto} a la fecha), devengando un salario ${PERIODO_LABEL[tipoSalario]||'mensuales'} de ${moneda} ${salario.toLocaleString('es-NI',{minimumFractionDigits:2})}.`;
+  const lineasCuerpo = doc.splitTextToSize(cuerpo, W - M*2);
+  doc.text(lineasCuerpo, M, y); y += lineasCuerpo.length * 5.5 + 8;
+
+  const cierre = 'Se extiende la presente constancia a solicitud del interesado, para los fines que estime conveniente.';
+  const lineasCierre = doc.splitTextToSize(cierre, W - M*2);
+  doc.text(lineasCierre, M, y); y += lineasCierre.length * 5.5 + 16;
+
+  doc.text(`Dado en la ciudad de _________________, a los ${fechaHoyTexto}.`, M, y); y += 26;
+
+  doc.text('_____________________________', M, y); y += 5;
+  doc.setFont(undefined,'bold');
+  doc.text(bizName, M, y); y += 5;
+  doc.setFont(undefined,'normal'); doc.setFontSize(9);
+  doc.text('Recursos Humanos / Gerencia', M, y);
+
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento es una plantilla base generada automáticamente — revísala antes de firmarla.', M, doc.internal.pageSize.getHeight() - 10);
+
+  doc.save(`Constancia_Salarial_${nombre.replace(/[^\w]/g,'_')}.pdf`);
+  showToast('Constancia generada');
 }
 
 function generarContratoTrabajo() {
