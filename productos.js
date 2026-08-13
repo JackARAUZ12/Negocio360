@@ -1736,36 +1736,109 @@ async function cargarLotesDelProducto(producto) {
   }
   seccion.style.display = '';
   lista.innerHTML = 'Cargando…';
+  STATE.productoLotesActual = producto;
 
   try {
     const { data: lotes } = await supabaseClient.from('producto_lotes')
       .select('*').eq('producto_id', producto.id).eq('activo', true).gt('cantidad_actual', 0)
       .order('fecha_vencimiento', { ascending: true });
 
-    if (!lotes || !lotes.length) {
-      lista.innerHTML = `<p style="font-size:12.5px;color:var(--text-muted)">Sin lotes registrados todavía — se agregan al comprar este producto desde Compras.</p>`;
-      return;
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const stockTotal = Number(producto.stock_actual || 0);
+    const stockEnLotes = (lotes || []).reduce((s, l) => s + Number(l.cantidad_actual), 0);
+    // Stock que ya existía en el sistema antes de activar esta
+    // función (o que se agregó por otro lado que no pasa por
+    // Compras) — nunca tuvo un lote asignado, así que no aparece en
+    // "Próximos a vencer" hasta que alguien le ponga una fecha aquí.
+    const stockSinAsignar = Math.max(0, round2(stockTotal - stockEnLotes));
+
+    let htmlLotes = '';
+    if (lotes && lotes.length) {
+      htmlLotes = `
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:${stockSinAsignar>0?'10px':'0'}">
+          ${lotes.map(l => {
+            const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+            const diasRestantes = Math.round((venc - hoy) / 86400000);
+            let color = 'var(--text-primary)', etiqueta = '';
+            if (diasRestantes < 0) { color = 'var(--danger, #dc2626)'; etiqueta = ' — ¡vencido!'; }
+            else if (diasRestantes <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${diasRestantes} día${diasRestantes===1?'':'s'}`; }
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px">
+                <span>${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número de lote'} · ${fmtNum(l.cantidad_actual)} unidades</span>
+                <span style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</span>
+              </div>`;
+          }).join('')}
+        </div>`;
+    } else if (stockSinAsignar <= 0) {
+      htmlLotes = `<p style="font-size:12.5px;color:var(--text-muted)">Sin lotes registrados todavía — se agregan al comprar este producto desde Compras.</p>`;
     }
 
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    lista.innerHTML = `
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${lotes.map(l => {
-          const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
-          const diasRestantes = Math.round((venc - hoy) / 86400000);
-          let color = 'var(--text-primary)', etiqueta = '';
-          if (diasRestantes < 0) { color = 'var(--danger, #dc2626)'; etiqueta = ' — ¡vencido!'; }
-          else if (diasRestantes <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${diasRestantes} día${diasRestantes===1?'':'s'}`; }
-          return `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px">
-              <span>${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número de lote'} · ${fmtNum(l.cantidad_actual)} unidades</span>
-              <span style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</span>
-            </div>`;
-        }).join('')}
-      </div>`;
+    // Aviso + formulario para el stock que ya existía antes de tener
+    // lotes — mismo espíritu que el "saldo inicial" de Bancos.
+    let htmlSinAsignar = '';
+    if (stockSinAsignar > 0) {
+      htmlSinAsignar = `
+        <div style="padding:10px 12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;font-size:12.5px;color:#92400E">
+          <div style="margin-bottom:8px">⚠️ ${fmtNum(stockSinAsignar)} unidades de este producto no tienen lote asignado (probablemente ya existían antes de activar esta función) — no van a aparecer en "Próximos a vencer" hasta que les pongas una fecha.</div>
+          <div id="formAsignarLoteExistente" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad</label>
+                <input type="number" id="inputCantidadLoteExistente" value="${stockSinAsignar}" min="0.01" max="${stockSinAsignar}" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+              </div>
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
+                <input type="text" id="inputNumeroLoteExistente" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+              </div>
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
+                <input type="date" id="inputVencimientoLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="guardarLoteStockExistente()">Guardar</button>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btnMostrarFormLoteExistente" onclick="document.getElementById('formAsignarLoteExistente').style.display='';this.style.display='none'">+ Asignar lote a este stock</button>
+        </div>`;
+    }
+
+    lista.innerHTML = htmlLotes + htmlSinAsignar;
   } catch (e) {
     console.warn('cargarLotesDelProducto:', e);
     lista.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudieron cargar los lotes.</p>`;
+  }
+}
+
+/* Asigna un lote/vencimiento a stock que YA existía en el producto
+   antes de tener control de lotes — a diferencia de Compras, esto
+   NUNCA suma al stock_actual (esas unidades ya estaban contadas),
+   solo les pone la etiqueta de fecha que les faltaba. */
+async function guardarLoteStockExistente() {
+  const producto = STATE.productoLotesActual;
+  if (!producto) return;
+
+  const cantidad = parseFloat($('inputCantidadLoteExistente')?.value);
+  const numeroLote = $('inputNumeroLoteExistente')?.value.trim() || null;
+  const fechaVencimiento = $('inputVencimientoLoteExistente')?.value;
+
+  if (!fechaVencimiento) { showToast('Indica la fecha de vencimiento', 'error'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('Indica una cantidad válida', 'error'); return; }
+
+  try {
+    const { error } = await supabaseClient.from('producto_lotes').insert({
+      auth_user_id: STATE.user.id,
+      producto_id: producto.id,
+      numero_lote: numeroLote,
+      fecha_vencimiento: fechaVencimiento,
+      cantidad_inicial: cantidad,
+      cantidad_actual: cantidad,
+      costo_unitario: producto.costo || null,
+    });
+    if (error) throw error;
+    showToast('Lote asignado correctamente');
+    await cargarLotesDelProducto(producto);
+  } catch (e) {
+    console.warn('guardarLoteStockExistente:', e);
+    showToast('No se pudo guardar el lote', 'error');
   }
 }
 
