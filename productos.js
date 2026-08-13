@@ -1829,30 +1829,58 @@ async function cargarLotesDelProducto(producto) {
     }
 
     // Aviso + formulario para el stock que ya existía antes de tener
-    // lotes — mismo espíritu que el "saldo inicial" de Bancos.
+    // lotes — mismo espíritu que el "saldo inicial" de Bancos. Ahora
+    // con 2 caminos: sumarlo a un lote que ya existe, o crear uno
+    // nuevo — igual que se elige en Compras.
     let htmlSinAsignar = '';
     if (stockSinAsignar > 0) {
+      const hayLotesExistentes = lotes && lotes.length > 0;
       htmlSinAsignar = `
         <div style="padding:10px 12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;font-size:12.5px;color:#92400E">
-          <div style="margin-bottom:8px">⚠️ ${fmtNum(stockSinAsignar)} unidades de este producto no tienen lote asignado (probablemente ya existían antes de activar esta función) — no van a aparecer en "Próximos a vencer" hasta que les pongas una fecha.</div>
+          <div style="margin-bottom:8px">⚠️ ${fmtNum(stockSinAsignar)} unidades de este producto no tienen lote asignado (probablemente ya existían antes de activar esta función) — no van a aparecer en "Próximos a vencer" hasta que las asignes a un lote.</div>
+
           <div id="formAsignarLoteExistente" style="display:none;margin-top:8px">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-              <div>
-                <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad</label>
-                <input type="number" id="inputCantidadLoteExistente" value="${stockSinAsignar}" min="0.01" max="${stockSinAsignar}" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+            ${hayLotesExistentes ? `
+            <div style="display:flex;gap:14px;margin-bottom:10px">
+              <label style="cursor:pointer;font-weight:600"><input type="radio" name="modoAsignarLote" value="existente" checked onchange="cambiarModoAsignarLote()"> Agregar a un lote existente</label>
+              <label style="cursor:pointer;font-weight:600"><input type="radio" name="modoAsignarLote" value="nuevo" onchange="cambiarModoAsignarLote()"> Crear lote nuevo</label>
+            </div>` : ''}
+
+            <div id="subformLoteExistente" style="${hayLotesExistentes ? '' : 'display:none'}">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">¿A cuál lote?</label>
+                  <select id="selectLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B">
+                    ${(lotes||[]).map(l => `<option value="${l.id}">${l.numero_lote ? escHtml(l.numero_lote) : 'Sin número'} · vence ${l.fecha_vencimiento}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad a sumar</label>
+                  <input type="number" id="inputCantidadAgregarExistente" value="${stockSinAsignar}" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="guardarAgregarALoteExistente(${stockSinAsignar})">Guardar</button>
               </div>
-              <div>
-                <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
-                <input type="text" id="inputNumeroLoteExistente" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+            </div>
+
+            <div id="subformLoteNuevo" style="${hayLotesExistentes ? 'display:none' : ''}">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad</label>
+                  <input type="number" id="inputCantidadLoteExistente" value="${stockSinAsignar}" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
+                  <input type="text" id="inputNumeroLoteExistente" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
+                  <input type="date" id="inputVencimientoLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="guardarLoteStockExistente(${stockSinAsignar})">Guardar</button>
               </div>
-              <div>
-                <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
-                <input type="date" id="inputVencimientoLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
-              </div>
-              <button type="button" class="btn btn-primary btn-sm" onclick="guardarLoteStockExistente()">Guardar</button>
             </div>
           </div>
-          <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormLoteExistente" onclick="document.getElementById('formAsignarLoteExistente').style.display='';this.style.display='none'">+ Asignar lote a este stock</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormLoteExistente" onclick="document.getElementById('formAsignarLoteExistente').style.display='';this.style.display='none'">+ Asignar este stock a un lote</button>
         </div>`;
     }
 
@@ -1863,11 +1891,52 @@ async function cargarLotesDelProducto(producto) {
   }
 }
 
+function cambiarModoAsignarLote() {
+  const modo = document.querySelector('input[name="modoAsignarLote"]:checked')?.value;
+  document.getElementById('subformLoteExistente').style.display = modo === 'existente' ? '' : 'none';
+  document.getElementById('subformLoteNuevo').style.display = modo === 'nuevo' ? '' : 'none';
+}
+
+/* Suma la cantidad indicada a un lote que YA existe (no crea uno
+   nuevo). Nunca deja pasar más de lo que realmente hay sin asignar
+   — antes esto no se validaba y se podía "inventar" stock que no
+   existía de verdad. */
+async function guardarAgregarALoteExistente(stockSinAsignarMax) {
+  const loteId = $('selectLoteExistente')?.value;
+  const cantidad = parseFloat($('inputCantidadAgregarExistente')?.value);
+
+  if (!loteId) { showToast('error', 'Falta elegir', 'Elige a cuál lote agregar.'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+  if (cantidad > stockSinAsignarMax + 0.001) {
+    showToast('error', 'Cantidad demasiado alta', `Solo hay ${fmtNum(stockSinAsignarMax)} unidades sin asignar — no se puede inventar más stock del que realmente existe.`);
+    return;
+  }
+
+  try {
+    const { data: loteActual, error: errGet } = await supabaseClient.from('producto_lotes')
+      .select('cantidad_actual, cantidad_inicial').eq('id', loteId).single();
+    if (errGet) throw errGet;
+
+    const { error } = await supabaseClient.from('producto_lotes').update({
+      cantidad_actual: Number(loteActual.cantidad_actual) + cantidad,
+      cantidad_inicial: Number(loteActual.cantidad_inicial) + cantidad,
+      updated_at: new Date().toISOString(),
+    }).eq('id', loteId);
+    if (error) throw error;
+
+    showToast('success', 'Stock agregado', 'Se sumó correctamente al lote elegido.');
+    await cargarLotesDelProducto(STATE.productoLotesActual);
+  } catch (e) {
+    console.warn('guardarAgregarALoteExistente:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
 /* Asigna un lote/vencimiento a stock que YA existía en el producto
    antes de tener control de lotes — a diferencia de Compras, esto
    NUNCA suma al stock_actual (esas unidades ya estaban contadas),
    solo les pone la etiqueta de fecha que les faltaba. */
-async function guardarLoteStockExistente() {
+async function guardarLoteStockExistente(stockSinAsignarMax) {
   const producto = STATE.productoLotesActual;
   if (!producto) return;
 
@@ -1877,6 +1946,10 @@ async function guardarLoteStockExistente() {
 
   if (!fechaVencimiento) { showToast('error', 'Falta la fecha', 'Indica la fecha de vencimiento.'); return; }
   if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+  if (cantidad > stockSinAsignarMax + 0.001) {
+    showToast('error', 'Cantidad demasiado alta', `Solo hay ${fmtNum(stockSinAsignarMax)} unidades sin asignar — no se puede inventar más stock del que realmente existe.`);
+    return;
+  }
 
   try {
     const { error } = await supabaseClient.from('producto_lotes').insert({
