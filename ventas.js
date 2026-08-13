@@ -2626,7 +2626,7 @@ async function descargarComprobanteCartaVenta() {
       numero: venta.numero_venta,
       fecha: fmtFecha(venta.fecha),
       cliente_nombre: venta.cliente_nombre,
-      cliente_telefono: venta.cliente_telefono || '',
+      cliente_telefono: '',
       subtotal: venta.subtotal,
       descuento: venta.descuento,
       impuesto: venta.impuesto,

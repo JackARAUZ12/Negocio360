@@ -13,7 +13,21 @@
 ===================================================== */
 
 async function _cc_clienteSupabase() {
-  return window.sbClient || window.supabaseClient || window.sb || window.supabase;
+  // Cada página usa un nombre distinto para su cliente de Supabase
+  // ("sb" en Ventas, "_sb" en Créditos, "sbClient" en Proformas) — se
+  // prueban todos, incluyendo el que Créditos sí expone en window
+  // bajo otro nombre. Si ninguno existe (no debería pasar nunca),
+  // se crea uno nuevo directamente como último respaldo, para que
+  // esto nunca vuelva a fallar en silencio.
+  if (typeof sb !== 'undefined' && sb?.from) return sb;
+  if (typeof sbClient !== 'undefined' && sbClient?.from) return sbClient;
+  if (typeof _sb !== 'undefined' && _sb?.from) return _sb;
+  if (window.__cajaSB?.from) return window.__cajaSB;
+  if (window.sbClient?.from) return window.sbClient;
+  return window.supabase.createClient(
+    'https://zvlincmqmmoclqhykejv.supabase.co',
+    'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'
+  );
 }
 
 async function _cc_cargarConfigDocumentos(userId) {
@@ -30,9 +44,9 @@ async function _cc_cargarConfigDocumentos(userId) {
 async function _cc_cargarLogo(userId) {
   try {
     const sb = await _cc_clienteSupabase();
-    const { data: cfg } = await sb.from('configuracion_empresa').select('logo_url').eq('auth_user_id', userId).maybeSingle();
-    if (!cfg?.logo_url) return null;
-    const resp = await fetch(cfg.logo_url);
+    const { data: cfg } = await sb.from('configuracion_empresa').select('logo_principal_url').eq('auth_user_id', userId).maybeSingle();
+    if (!cfg?.logo_principal_url) return null;
+    const resp = await fetch(cfg.logo_principal_url);
     const blob = await resp.blob();
     const dataUrl = await new Promise((resolve) => {
       const reader = new FileReader();
