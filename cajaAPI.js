@@ -86,6 +86,7 @@
           referencia_id:      params.referencia_id      || null,
           origen_caja:        params.origen_caja        || null,
           banco_id:           params.banco_id           || null,
+          monto_moneda_banco: params.monto_moneda_banco != null ? params.monto_moneda_banco : null,
           observaciones:      params.observaciones      || null,
           fecha:              params.fecha              || todayISO(),
           estado:             'completado',

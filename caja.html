@@ -1377,6 +1377,16 @@
           </div>
         </div>
 
+        <div class="panel-card" id="tasa-cambio-wrap" style="display:none">
+          <div class="panel-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap">💱 Tu tasa de cambio actual: 1 USD =</span>
+            <input type="number" id="input-tasa-cambio" step="0.01" min="0.01" style="max-width:110px" placeholder="36.60"/>
+            <span style="font-size:12.5px;color:var(--text-secondary)">córdobas</span>
+            <button class="btn-secondary btn-sm" onclick="guardarTasaCambio()">Guardar</button>
+            <span style="font-size:11px;color:var(--text-muted)">Se usa para convertir pagos entre cuentas en córdobas y en dólares. Actualízala cuando cambie.</span>
+          </div>
+        </div>
+
         <div class="panel-card">
           <div class="panel-header">
             <div class="panel-title">
@@ -1635,6 +1645,14 @@
         <input type="text" id="nb-numero-cuenta" placeholder="Para tu referencia"/>
       </div>
       <div class="form-group">
+        <label>Moneda de esta cuenta</label>
+        <select id="nb-moneda">
+          <option value="NIO">Córdoba (NIO)</option>
+          <option value="USD">Dólar (USD)</option>
+        </select>
+        <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px" id="nb-moneda-aviso"></p>
+      </div>
+      <div class="form-group">
         <label>Saldo inicial</label>
         <input type="number" id="nb-saldo-inicial" step="0.01" placeholder="0.00"/>
         <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Si el banco ya tenía dinero antes de empezar a usar el sistema, ponlo aquí — si no, déjalo en 0.</p>
@@ -1712,7 +1730,7 @@
           <div><label>Tipo</label>
             <select id="cb-ajuste-tipo"><option value="EGRESO">Egreso (ej. comisión, cargo)</option><option value="INGRESO">Ingreso (ej. interés ganado)</option></select>
           </div>
-          <div><label>Monto</label><input type="number" id="cb-ajuste-monto" step="0.01" min="0.01"/></div>
+          <div><label id="cb-ajuste-monto-label">Monto</label><input type="number" id="cb-ajuste-monto" step="0.01" min="0.01"/></div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button class="btn-ghost btn-sm" onclick="document.getElementById('cb-ajuste-form').style.display='none'">Cancelar</button>

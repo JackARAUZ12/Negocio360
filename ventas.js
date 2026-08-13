@@ -2682,21 +2682,45 @@ async function mostrarSelectorBanco(metodoPagoNombre) {
   const bancos = await cargarBancosDisponibles();
   if (!bancos.length) return; // sin bancos creados, sigue todo normal
 
+  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   document.getElementById('metodos-grid').style.display = 'none';
   document.getElementById('banco-elegir-metodo').textContent = metodoPagoNombre;
   document.getElementById('banco-elegir-grid').innerHTML = bancos.map(b => `
-    <div class="metodo-card" onclick="elegirBancoVenta('${b.id}','${esc(b.nombre)}')">
+    <div class="metodo-card" onclick="elegirBancoVenta('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
       <span class="mc-icon">🏦</span>
-      <span class="mc-name">${esc(b.nombre)}</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
     </div>`).join('');
   document.getElementById('banco-elegir-wrap').style.display = '';
 }
-function elegirBancoVenta(bancoId, bancoNombre) {
+function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
   S.bancoElegidoId = bancoId; S.bancoElegidoNombre = bancoNombre;
   document.getElementById('banco-elegir-wrap').style.display = 'none';
-  document.getElementById('banco-elegido-nombre').textContent = bancoNombre;
+
+  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const totalVenta = S._resumen?.total || 0;
+
+  if (esOtraMoneda) {
+    const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      // Sin tasa configurada no se puede convertir — se avisa
+      // claramente en vez de adivinar un número.
+      document.getElementById('banco-elegido-nombre').innerHTML =
+        `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const montoConvertido = monedaBase === 'NIO' ? round2(totalVenta / tasa) : round2(totalVenta * tasa);
+      S._montoBancoConvertido = montoConvertido;
+      document.getElementById('banco-elegido-nombre').innerHTML =
+        `${esc(bancoNombre)} — se registrará como ${simboloMonedaVenta(monedaBanco)} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    S._montoBancoConvertido = null;
+    document.getElementById('banco-elegido-nombre').textContent = bancoNombre;
+  }
+
   document.getElementById('banco-elegido-wrap').style.display = 'flex';
 }
+function simboloMonedaVenta(m) { return m === 'USD' ? '$' : 'C$'; }
 function cancelarSeleccionBanco() {
   // Regresa a elegir el método de pago desde cero — por si el
   // usuario tocó Tarjeta/Transferencia sin querer, o quiere cambiar
@@ -2721,19 +2745,40 @@ async function mostrarSelectorBancoVR(metodoPagoNombre) {
   const bancos = await cargarBancosDisponibles();
   if (!bancos.length) return;
 
+  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   document.getElementById('vr-metodos-grid').style.display = 'none';
   document.getElementById('vr-banco-elegir-metodo').textContent = metodoPagoNombre;
   document.getElementById('vr-banco-elegir-grid').innerHTML = bancos.map(b => `
-    <div class="metodo-card" onclick="elegirBancoVentaVR('${b.id}','${esc(b.nombre)}')">
+    <div class="metodo-card" onclick="elegirBancoVentaVR('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
       <span class="mc-icon">🏦</span>
-      <span class="mc-name">${esc(b.nombre)}</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
     </div>`).join('');
   document.getElementById('vr-banco-elegir-wrap').style.display = '';
 }
-function elegirBancoVentaVR(bancoId, bancoNombre) {
+function elegirBancoVentaVR(bancoId, bancoNombre, monedaBanco) {
   VR.bancoElegidoId = bancoId; VR.bancoElegidoNombre = bancoNombre;
   document.getElementById('vr-banco-elegir-wrap').style.display = 'none';
-  document.getElementById('vr-banco-elegido-nombre').textContent = bancoNombre;
+
+  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const totalVenta = calcularResumenVR().total;
+
+  if (esOtraMoneda) {
+    const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      document.getElementById('vr-banco-elegido-nombre').innerHTML =
+        `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const montoConvertido = monedaBase === 'NIO' ? round2(totalVenta / tasa) : round2(totalVenta * tasa);
+      VR._montoBancoConvertido = montoConvertido;
+      document.getElementById('vr-banco-elegido-nombre').innerHTML =
+        `${esc(bancoNombre)} — se registrará como ${simboloMonedaVenta(monedaBanco)} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    VR._montoBancoConvertido = null;
+    document.getElementById('vr-banco-elegido-nombre').textContent = bancoNombre;
+  }
+
   document.getElementById('vr-banco-elegido-wrap').style.display = 'flex';
 }
 function cancelarSeleccionBancoVR() {
@@ -2758,6 +2803,15 @@ async function confirmarVenta(conImpresion) {
     return;
   }
   const bancoElegidoVenta = S.bancoElegidoId || null;
+
+  if (bancoElegidoVenta) {
+    const bancoInfo = (await cargarBancosDisponibles()).find(b => b.id === bancoElegidoVenta);
+    const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    if (bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase && !S.empresaConfig?.tasa_cambio_usd) {
+      showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar', 'error');
+      return;
+    }
+  }
 
   const btnDigital  = document.getElementById('btn-confirmar-venta');
   const btnImprimir = document.getElementById('btn-confirmar-venta-imprimir');
@@ -2949,6 +3003,7 @@ async function confirmarVenta(conImpresion) {
         metodo_pago_id:     S.metodoPagoId || null,
         metodo_pago_nombre: S.metodoPagoNombre,
         banco_id:           bancoElegidoVenta,
+        monto_moneda_banco: bancoElegidoVenta ? (S._montoBancoConvertido ?? null) : null,
         referencia_tipo:    'venta',
         referencia_id:      ventaId,
         observaciones:      S.observaciones || null,
@@ -3630,6 +3685,15 @@ async function confirmarVentaRapida() {
   }
   const bancoElegidoVR = VR.bancoElegidoId || null;
 
+  if (bancoElegidoVR) {
+    const bancoInfo = (await cargarBancosDisponibles()).find(b => b.id === bancoElegidoVR);
+    const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    if (bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase && !S.empresaConfig?.tasa_cambio_usd) {
+      showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar', 'error');
+      return;
+    }
+  }
+
   VR.procesando = true;
   const btn = document.getElementById('btn-vr-cobrar');
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
@@ -3758,6 +3822,7 @@ async function confirmarVentaRapida() {
         metodo_pago_id:     VR.metodoPagoId || null,
         metodo_pago_nombre: VR.metodoPagoNombre,
         banco_id:           bancoElegidoVR,
+        monto_moneda_banco: bancoElegidoVR ? (VR._montoBancoConvertido ?? null) : null,
         referencia_tipo:    'venta',
         referencia_id:      ventaId,
         fecha:              todayISO(),

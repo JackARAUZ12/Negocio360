@@ -27,6 +27,7 @@
   // rompían silenciosamente el botón de Registrar pago.
   let _bancosCacheCred = null;
   let _bancoElegidoIdCred = null;
+  let _montoBancoConvertidoCred = null;
 
   /* ===================================================
      ESTADO LOCAL
@@ -1494,19 +1495,40 @@
     const bancos = await cargarBancosDisponiblesCred();
     if (!bancos.length) return; // sin bancos creados, sigue todo normal
 
+    const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
     const elMetodo = elById('rp-banco-elegir-metodo'); if (elMetodo) elMetodo.textContent = metodoPagoNombre;
     const elGrid = elById('rp-banco-elegir-grid');
     if (elGrid) elGrid.innerHTML = bancos.map(b => `
-      <div class="metodo-card" onclick="elegirBancoCred('${b.id}','${esc(b.nombre)}')">
+      <div class="metodo-card" onclick="elegirBancoCred('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
         <span class="mc-icon">🏦</span>
-        <span class="mc-name">${esc(b.nombre)}</span>
+        <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
       </div>`).join('');
     const elWrap = elById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = '';
   };
-  window.elegirBancoCred = function(bancoId, bancoNombre) {
+  window.elegirBancoCred = function(bancoId, bancoNombre, monedaBanco) {
     _bancoElegidoIdCred = bancoId;
     const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
-    const elNombre = document.getElementById('rp-banco-elegido-nombre'); if (elNombre) elNombre.textContent = bancoNombre;
+
+    const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+    const montoPago = parseFloat(document.getElementById('rp-monto')?.value) || 0;
+    const elNombre = document.getElementById('rp-banco-elegido-nombre');
+
+    if (esOtraMoneda) {
+      const tasa = Number(CS.empresaConfig?.tasa_cambio_usd || 0);
+      if (!tasa) {
+        if (elNombre) elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+        _montoBancoConvertidoCred = null;
+      } else {
+        const montoConvertido = Math.round((monedaBase === 'NIO' ? montoPago / tasa : montoPago * tasa) * 100) / 100;
+        _montoBancoConvertidoCred = montoConvertido;
+        if (elNombre) elNombre.innerHTML = `${esc(bancoNombre)} — se registrará como ${monedaBanco==='USD'?'$':'C$'} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+      }
+    } else {
+      _montoBancoConvertidoCred = null;
+      if (elNombre) elNombre.textContent = bancoNombre;
+    }
+
     const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'flex';
   };
   window.cancelarSeleccionBancoCred = function() {
@@ -1538,6 +1560,18 @@
       return;
     }
     const bancoElegidoPago = _bancoElegidoIdCred || null;
+
+    // Si el banco elegido es en otra moneda y no hay tasa de cambio
+    // configurada, no se deja continuar — mejor pedirla ahora que
+    // guardar un pago sin la conversión correcta.
+    if (bancoElegidoPago) {
+      const bancoInfo = (await cargarBancosDisponiblesCred()).find(b => b.id === bancoElegidoPago);
+      const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+      if (bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase && !CS.empresaConfig?.tasa_cambio_usd) {
+        showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de registrar este pago', 'error');
+        return;
+      }
+    }
 
     btn.disabled = true; btn.textContent = 'Registrando…';
     try {
@@ -1599,7 +1633,9 @@
       const cajaRes = await registrarEnCaja({
         auth_user_id: CS.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'PAGO_CREDITO',
         concepto: `Pago crédito ${credito.numero_credito}`, monto, metodo_pago_id: metodoId,
-        metodo_pago_nombre: metodoNombre, banco_id: bancoElegidoPago, referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
+        metodo_pago_nombre: metodoNombre, banco_id: bancoElegidoPago,
+        monto_moneda_banco: bancoElegidoPago ? _montoBancoConvertidoCred : null,
+        referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
       });
       if (!cajaRes.ok) console.warn('No se pudo registrar en caja:', cajaRes.error);
 

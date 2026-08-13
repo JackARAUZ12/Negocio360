@@ -1303,23 +1303,45 @@ async function loadBancos() {
   }
 }
 
+function simboloMoneda(moneda) { return moneda === 'USD' ? '$' : 'C$'; }
+function fmtMoneda(n, moneda) { return `${simboloMoneda(moneda)} ${Number(n||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`; }
+
 function renderBancosGrid(lista) {
   const grid = document.getElementById('bancos-grid');
   if (!STATE.bancos.length) {
     grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:24px">
       Todavía no has creado ningún banco — cuando lo hagas, el dinero de tarjeta/transferencia empezará a separarse aquí.
     </div>`;
+    document.getElementById('tasa-cambio-wrap').style.display = 'none';
     return;
   }
+
+  // El campo de tasa de cambio solo se muestra si hay al menos un
+  // banco en una moneda distinta a la moneda base del negocio — si
+  // todo está en la misma moneda, nunca hace falta convertir nada.
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const hayMonedaDistinta = STATE.bancos.some(b => (b.moneda||'NIO') !== monedaBase);
+  document.getElementById('tasa-cambio-wrap').style.display = hayMonedaDistinta ? '' : 'none';
+  if (hayMonedaDistinta) {
+    const inputTasa = document.getElementById('input-tasa-cambio');
+    if (document.activeElement !== inputTasa) inputTasa.value = STATE.empresaConfig?.tasa_cambio_usd || '';
+  }
+
   grid.innerHTML = STATE.bancos.map(b => {
+    const monedaBanco = b.moneda || 'NIO';
     const delBanco = lista.filter(m => m.banco_id === b.id);
-    const saldo = round2(Number(b.saldo_inicial||0) + delBanco.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+    // Si el banco es en una moneda distinta a la base, se suma el
+    // monto YA CONVERTIDO a la moneda del banco (monto_moneda_banco)
+    // — nunca el monto en moneda base, para que cuadre contra el
+    // estado de cuenta real del banco en SU propia moneda.
+    const montoDe = (m) => monedaBanco !== monedaBase ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+    const saldo = round2(Number(b.saldo_inicial||0) + delBanco.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0));
     return `
       <div class="panel-card" style="margin:0">
         <div class="panel-body" style="cursor:pointer" onclick="verBanco('${b.id}')">
-          <div style="font-size:12px;color:var(--text-muted)">${esc(b.nombre)}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${esc(b.nombre)} ${monedaBanco !== monedaBase ? `<span style="background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700">${monedaBanco}</span>` : ''}</div>
           ${b.numero_cuenta ? `<div style="font-size:11px;color:var(--text-muted)">${esc(b.numero_cuenta)}</div>` : ''}
-          <div style="font-size:22px;font-weight:800;margin-top:6px">${fmt(saldo)}</div>
+          <div style="font-size:22px;font-weight:800;margin-top:6px">${fmtMoneda(saldo, monedaBanco)}</div>
         </div>
         <div style="padding:0 16px 14px;display:flex;gap:8px">
           <button class="btn-secondary btn-sm" style="flex:1" onclick="event.stopPropagation();abrirConciliarBanco('${b.id}','${esc(b.nombre)}')">🧾 Conciliar</button>
@@ -1328,6 +1350,19 @@ function renderBancosGrid(lista) {
       </div>`;
   }).join('');
 }
+
+async function guardarTasaCambio() {
+  const valor = parseFloat(document.getElementById('input-tasa-cambio').value);
+  if (isNaN(valor) || valor <= 0) { showToast('Ingresa una tasa de cambio válida', 'error'); return; }
+  try {
+    await sbClient.from('configuracion_empresa').update({ tasa_cambio_usd: valor }).eq('auth_user_id', STATE.userId);
+    STATE.empresaConfig.tasa_cambio_usd = valor;
+    showToast('Tasa de cambio actualizada');
+  } catch (e) {
+    showToast('No se pudo guardar la tasa de cambio', 'error');
+  }
+}
+window.guardarTasaCambio = guardarTasaCambio;
 
 function renderSinAsignar(lista) {
   const sinAsignar = lista.filter(m => !m.banco_id).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
@@ -1350,6 +1385,9 @@ function abrirNuevoBanco() {
   document.getElementById('nb-numero-cuenta').value = '';
   document.getElementById('nb-saldo-inicial').value = '0';
   document.getElementById('nb-error').textContent = '';
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  document.getElementById('nb-moneda').value = monedaBase;
+  actualizarAvisoMonedaBanco();
   openModal('modal-nuevo-banco');
 }
 
@@ -1361,9 +1399,24 @@ function abrirEditarBanco(bancoId) {
   document.getElementById('nb-nombre').value = banco.nombre || '';
   document.getElementById('nb-numero-cuenta').value = banco.numero_cuenta || '';
   document.getElementById('nb-saldo-inicial').value = banco.saldo_inicial || 0;
+  document.getElementById('nb-moneda').value = banco.moneda || 'NIO';
   document.getElementById('nb-error').textContent = '';
+  actualizarAvisoMonedaBanco();
   openModal('modal-nuevo-banco');
 }
+
+function actualizarAvisoMonedaBanco() {
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const monedaElegida = document.getElementById('nb-moneda').value;
+  const aviso = document.getElementById('nb-moneda-aviso');
+  aviso.textContent = monedaElegida !== monedaBase
+    ? `Tu negocio opera en ${monedaBase} — los pagos a este banco se convertirán automáticamente usando tu tasa de cambio.`
+    : '';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('nb-moneda');
+  if (sel) sel.addEventListener('change', actualizarAvisoMonedaBanco);
+});
 
 async function guardarNuevoBanco() {
   const errEl = document.getElementById('nb-error');
@@ -1375,6 +1428,7 @@ async function guardarNuevoBanco() {
   const payload = {
     nombre, numero_cuenta: document.getElementById('nb-numero-cuenta').value.trim() || null,
     saldo_inicial: round2(parseFloat(document.getElementById('nb-saldo-inicial').value) || 0),
+    moneda: document.getElementById('nb-moneda').value === 'USD' ? 'USD' : 'NIO',
   };
 
   setBtnLoading('btn-guardar-banco', true);
@@ -1423,7 +1477,10 @@ async function verBanco(bancoId) {
 let CONC = { bancoId: null, bancoNombre: null, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0 };
 
 async function abrirConciliarBanco(bancoId, bancoNombre) {
-  CONC = { bancoId, bancoNombre, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0 };
+  const banco = STATE.bancos.find(b => b.id === bancoId);
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const monedaBanco = banco?.moneda || 'NIO';
+  CONC = { bancoId, bancoNombre, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0, moneda: monedaBanco, esOtraMoneda: monedaBanco !== monedaBase };
   document.getElementById('cb-banco-nombre').textContent = bancoNombre;
   document.getElementById('cb-saldo-banco').value = '';
   document.getElementById('cb-error').textContent = '';
@@ -1434,12 +1491,13 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
   // El punto de partida es el saldo inicial del banco (si ya tenía
   // dinero antes de empezar a usar el sistema) + todo lo ya
   // conciliado antes — sin el saldo inicial, la conciliación nunca
-  // podría cuadrar si el banco no arrancó en cero.
-  const banco = STATE.bancos.find(b => b.id === bancoId);
+  // podría cuadrar si el banco no arrancó en cero. Todo esto en la
+  // MONEDA REAL del banco, nunca en la moneda base del negocio.
   const saldoInicial = Number(banco?.saldo_inicial || 0);
   const { data: previos } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
-  const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0);
+    .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
+  const montoDe = (m) => CONC.esOtraMoneda ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+  const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
   CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);
 
   await cargarMovimientosConciliacion();
@@ -1449,11 +1507,13 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
 
 async function cargarMovimientosConciliacion() {
   const { data } = await sbClient.from('movimientos_financieros')
-    .select('id, fecha, concepto, monto, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
+    .select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
     .eq('conciliado', false).eq('estado','completado').order('fecha');
   CONC.movimientos = data || [];
   renderMovimientosConciliacion();
 }
+
+function _montoConcMov(m) { return CONC.esOtraMoneda ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto); }
 
 function renderMovimientosConciliacion() {
   const tbody = document.getElementById('cb-movimientos-tbody');
@@ -1466,7 +1526,7 @@ function renderMovimientosConciliacion() {
       <td><input type="checkbox" ${CONC.marcados.has(m.id)?'checked':''} onchange="toggleMovConciliado('${m.id}', this.checked)"/></td>
       <td>${fmtDate(m.fecha)}</td>
       <td>${esc(m.concepto||'—')}</td>
-      <td style="color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmt(m.monto)}</td>
+      <td style="color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmtMoneda(_montoConcMov(m), CONC.moneda)}</td>
     </tr>`).join('');
 }
 function toggleMovConciliado(id, checked) {
@@ -1476,20 +1536,21 @@ function toggleMovConciliado(id, checked) {
 
 function recalcularDiferenciaConciliacion() {
   const sumaMarcados = CONC.movimientos.filter(m => CONC.marcados.has(m.id))
-    .reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0);
+    .reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? _montoConcMov(m) : -_montoConcMov(m)), 0);
   const saldoCalculado = round2(CONC.saldoReconciliadoPrevio + sumaMarcados);
   const saldoBanco = round2(parseFloat(document.getElementById('cb-saldo-banco').value) || 0);
   const diferencia = round2(saldoBanco - saldoCalculado);
 
-  document.getElementById('cb-saldo-calculado').textContent = fmt(saldoCalculado);
+  document.getElementById('cb-saldo-calculado').textContent = fmtMoneda(saldoCalculado, CONC.moneda);
   const elDif = document.getElementById('cb-diferencia');
-  elDif.textContent = fmt(diferencia);
+  elDif.textContent = fmtMoneda(diferencia, CONC.moneda);
   elDif.style.color = diferencia === 0 ? 'var(--success)' : 'var(--danger)';
   CONC._saldoCalculado = saldoCalculado;
   CONC._diferencia = diferencia;
 }
 
 function abrirAgregarAjusteConciliacion() {
+  document.getElementById('cb-ajuste-monto-label').textContent = `Monto (en ${simboloMoneda(CONC.moneda)})`;
   document.getElementById('cb-ajuste-concepto').value = '';
   document.getElementById('cb-ajuste-monto').value = '';
   document.getElementById('cb-ajuste-tipo').value = 'EGRESO';
@@ -1501,23 +1562,36 @@ async function guardarAjusteConciliacion() {
   errEl.textContent = '';
   const concepto = document.getElementById('cb-ajuste-concepto').value.trim();
   const tipo = document.getElementById('cb-ajuste-tipo').value;
-  const monto = round2(parseFloat(document.getElementById('cb-ajuste-monto').value) || 0);
+  const montoBanco = round2(parseFloat(document.getElementById('cb-ajuste-monto').value) || 0);
   if (!concepto) { errEl.textContent = 'Escribe un concepto para el ajuste.'; return; }
-  if (monto <= 0) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
+  if (montoBanco <= 0) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
+
+  // El monto que se escribe es en la MONEDA DEL BANCO (para que
+  // cuadre contra su estado de cuenta real) — si el banco es en otra
+  // moneda distinta a la base del negocio, se convierte para que
+  // Caja General/Dashboard sigan sumando correcto en su propia moneda.
+  let montoBase = montoBanco;
+  if (CONC.esOtraMoneda) {
+    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) { errEl.textContent = 'Primero configura tu tasa de cambio arriba, antes de agregar un ajuste en esta moneda.'; return; }
+    const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    montoBase = monedaBase === 'NIO' ? round2(montoBanco * tasa) : round2(montoBanco / tasa);
+  }
 
   try {
     const { data: ultMov } = await sbClient.from('movimientos_financieros')
       .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
       .order('created_at', { ascending:false }).limit(1).maybeSingle();
     const saldoAnterior = ultMov?.saldo_resultante || 0;
-    const saldoResultante = tipo === 'INGRESO' ? saldoAnterior + monto : saldoAnterior - monto;
+    const saldoResultante = tipo === 'INGRESO' ? saldoAnterior + montoBase : saldoAnterior - montoBase;
 
     const { data: nuevo, error } = await sbClient.from('movimientos_financieros').insert({
       auth_user_id: STATE.userId, tipo_flujo: tipo, tipo_movimiento: tipo === 'INGRESO' ? 'OTRO_INGRESO' : 'OTRO_EGRESO', concepto,
-      monto, saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+      monto: montoBase, monto_moneda_banco: CONC.esOtraMoneda ? montoBanco : null,
+      saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
       metodo_pago_nombre: tipo === 'INGRESO' ? 'Transferencia' : 'Transferencia',
       banco_id: CONC.bancoId, fecha: todayISO(), estado: 'completado',
-    }).select('id, fecha, concepto, monto, tipo_flujo').single();
+    }).select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').single();
     if (error) throw error;
 
     CONC.movimientos.push(nuevo);
