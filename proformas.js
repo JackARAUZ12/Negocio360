@@ -1455,6 +1455,34 @@ async function confirmarConvertirAVenta() {
       origenProforma: p.numero_proforma,
     });
 
+    // Como el cliente ya pidió su proforma con la idea de un
+    // comprobante formal, al convertirse en venta real se genera de
+    // una vez el comprobante tamaño carta correspondiente — mismo
+    // estilo que ya usa el sistema, sin que la persona tenga que ir
+    // a buscarlo aparte a Ventas.
+    try {
+      const docCarta = await generarComprobanteCartaPDF('venta', {
+        userId: STATE.userId,
+        numero: ventaPayload.numero_venta,
+        fecha: fmtFecha(todayISO()),
+        cliente_nombre: p.cliente_nombre || 'Consumidor Final',
+        subtotal: p.subtotal, descuento: p.descuento, impuesto: p.impuesto,
+        iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0, total: p.total,
+        metodo_pago: metodoNombre, observaciones: `Generado a partir de la proforma ${p.numero_proforma}`,
+        empresaNombre: STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
+        empresaDireccion: STATE.empresaConfig?.direccion || '',
+        empresaTelefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
+        empresaRuc: STATE.empresaConfig?.ruc || '',
+        moneda_simbolo: STATE.empresaConfig?.moneda_simbolo || 'C$',
+      }, detalles.map(d => ({
+        nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
+        descuento: d.descuento, subtotal: d.subtotal,
+      })));
+      docCarta.save(`Comprobante_${ventaPayload.numero_venta}.pdf`);
+    } catch (eCarta) {
+      console.warn('No se pudo generar el comprobante tamaño carta automático:', eCarta);
+    }
+
     await Promise.allSettled([loadProformas(), loadKPIsProf()]);
   } catch (e) {
     console.error('confirmarConvertirAVenta:', e);

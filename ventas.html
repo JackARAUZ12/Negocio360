@@ -10,6 +10,7 @@
   <script src="auditoria-guard.js"></script>
   <!-- jsPDF: usado para generar el recibo PDF de cada venta -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -1418,6 +1419,9 @@
       <button class="btn-ghost" id="btn-descargar-recibo" onclick="descargarReciboActual()">
         🧾 Descargar recibo
       </button>
+      <button class="btn-ghost" id="btn-descargar-comprobante-carta" onclick="descargarComprobanteCartaVenta()">
+        📄 Comprobante tamaño carta
+      </button>
       <button class="btn-danger-outline" id="btn-anular-venta" onclick="abrirConfirmarAnular()">
         Anular venta
       </button>
@@ -1649,6 +1653,7 @@
 </div>
 
 <script src="reporte-grupo-shim.js"></script>
+<script src="comprobante-carta.js"></script>
 <script src="ventas.js"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

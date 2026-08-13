@@ -1879,6 +1879,36 @@
     return (texto.trim() || 'cero') + ' córdobas';
   }
 
+  window.descargarComprobanteCartaCredito = async function(credito, cliente, productos) {
+    try {
+      const doc = await generarComprobanteCartaPDF('credito', {
+        userId: CS.userId,
+        numero: credito.numero_credito,
+        fecha: fmtDate(credito.fecha_inicio || credito.created_at),
+        cliente_nombre: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : 'Cliente',
+        cliente_telefono: cliente?.telefono || '',
+        cliente_direccion: cliente?.direccion || '',
+        subtotal: credito.capital_financiado,
+        descuento: 0,
+        impuesto: Number(credito.total_financiado||0) - Number(credito.capital_financiado||0),
+        total: credito.total_financiado,
+        metodo_pago: 'Crédito',
+        observaciones: `Saldo pendiente: ${fmt(credito.saldo_pendiente)}`,
+        empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+        empresaDireccion: CS.empresaConfig?.direccion || '',
+        empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+        empresaRuc: CS.empresaConfig?.ruc || '',
+        moneda_simbolo: CS.empresaConfig?.moneda_simbolo || 'C$',
+      }, (productos||[]).map(p => ({
+        nombre: p.producto_nombre, cantidad: p.cantidad, precio: p.precio, descuento: 0, subtotal: p.subtotal,
+      })));
+      doc.save(`Comprobante_${credito.numero_credito}.pdf`);
+    } catch (e) {
+      console.error('descargarComprobanteCartaCredito:', e);
+      showToast('No se pudo generar el comprobante', 'error');
+    }
+  };
+
   async function abrirDetalleCredito(creditoId) {
     window._creditoDetalleActual = creditoId;
     openModal('modal-detalle-credito');
@@ -1914,6 +1944,7 @@
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <button class="btn-secondary btn-sm" onclick='generarPagareCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(cuotas||[]).replace(/'/g,"&apos;")})'>📄 Generar pagaré</button>
+        <button class="btn-secondary btn-sm" onclick='descargarComprobanteCartaCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(productosFinanciados||[]).replace(/'/g,"&apos;")})'>📄 Comprobante tamaño carta</button>
         ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : ''}
       </div>
       ${Number(credito.saldo_pendiente) <= 0 ? `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>` : ''}

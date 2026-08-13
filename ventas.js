@@ -2614,6 +2614,44 @@ async function descargarReciboActual() {
 }
 window.descargarReciboActual = descargarReciboActual;
 
+async function descargarComprobanteCartaVenta() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  try {
+    const { data: items } = await sb.from('venta_detalles').select('*')
+      .eq('venta_id', S.ventaDetalleId).eq('auth_user_id', S.userId);
+
+    const doc = await generarComprobanteCartaPDF('venta', {
+      userId: S.userId,
+      numero: venta.numero_venta,
+      fecha: fmtFecha(venta.fecha),
+      cliente_nombre: venta.cliente_nombre,
+      cliente_telefono: venta.cliente_telefono || '',
+      subtotal: venta.subtotal,
+      descuento: venta.descuento,
+      impuesto: venta.impuesto,
+      iva_porcentaje: venta.iva_porcentaje,
+      total: venta.total,
+      metodo_pago: venta.metodo_pago_nombre,
+      observaciones: venta.observaciones,
+      empresaNombre: S.empresaConfig?.nombre_comercial || S.currentUser?.nombre_negocio || 'Mi Negocio',
+      empresaDireccion: S.empresaConfig?.direccion || '',
+      empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
+      empresaRuc: S.empresaConfig?.ruc || '',
+      moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+    }, (items||[]).map(it => ({
+      nombre: it.producto_nombre, cantidad: it.cantidad, precio: it.precio,
+      descuento: it.descuento, subtotal: it.subtotal,
+    })));
+
+    doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+  } catch (e) {
+    console.error('descargarComprobanteCartaVenta:', e);
+    showToast('No se pudo generar el comprobante', 'error');
+  }
+}
+window.descargarComprobanteCartaVenta = descargarComprobanteCartaVenta;
+
 /* ============================================================
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
    ============================================================ */
