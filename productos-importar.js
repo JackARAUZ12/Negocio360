@@ -271,6 +271,10 @@ function validarFilas(filas, tipoPlantilla) {
 /* ============================================================
    4) SERVICIO DE VISTA PREVIA
    ============================================================ */
+function normalizarNombreImport(s) {
+  return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function construirVistaPrevia(validas) {
   const categoriasExistentes = new Set(
     (STATE.productos || []).filter(p => p.categoria).map(p => p.categoria.trim().toLowerCase())
@@ -283,10 +287,25 @@ function construirVistaPrevia(validas) {
   const marcasNuevas = new Set();
   let productos = 0, servicios = 0;
 
+  // Detección de duplicados — compara cada fila del archivo contra
+  // los productos ACTIVOS que ya existen en el sistema, ignorando
+  // mayúsculas y espacios de más (la misma causa que generó los
+  // duplicados que ya corregimos manualmente en varios negocios).
+  const existentesPorTipoYNombre = new Map();
+  (STATE.productos || []).forEach(p => {
+    if (p.activo === false) return;
+    existentesPorTipoYNombre.set(`${p.tipo}::${normalizarNombreImport(p.nombre)}`, p);
+  });
+  const duplicados = [];
+
   validas.forEach(v => {
     if (v.tipo === 'producto') productos++; else servicios++;
     if (v.categoria && !categoriasExistentes.has(v.categoria.toLowerCase())) categoriasNuevas.add(v.categoria.toLowerCase());
     if (v.marca_proveedor && !marcasExistentes.has(v.marca_proveedor.toLowerCase())) marcasNuevas.add(v.marca_proveedor.toLowerCase());
+
+    const key = `${v.tipo}::${normalizarNombreImport(v.nombre)}`;
+    const existente = existentesPorTipoYNombre.get(key);
+    if (existente) duplicados.push({ nombreArchivo: v.nombre, stockArchivo: v.stock_actual, stockExistente: existente.stock_actual });
   });
 
   return {
@@ -295,6 +314,7 @@ function construirVistaPrevia(validas) {
     servicios,
     categoriasNuevas: categoriasNuevas.size,
     marcasNuevas: marcasNuevas.size,
+    duplicados,
   };
 }
 
@@ -303,7 +323,7 @@ function construirVistaPrevia(validas) {
    Una sola llamada RPC = una sola transacción en la base de datos.
    Si cualquier registro falla, NADA queda guardado.
    ============================================================ */
-async function ejecutarImportacion(validas) {
+async function ejecutarImportacion(validas, modoDuplicados) {
   const payload = validas.map(v => ({
     tipo:            v.tipo,
     nombre:          v.nombre,
@@ -320,9 +340,12 @@ async function ejecutarImportacion(validas) {
     stock_minimo:    v.stock_minimo,
   }));
 
-  const { data, error } = await supabaseClient.rpc('importar_productos_masivo', { p_registros: payload });
+  const { data, error } = await supabaseClient.rpc('importar_productos_masivo', {
+    p_registros: payload,
+    p_modo_duplicados: modoDuplicados || 'crear_nuevos',
+  });
   if (error) throw error;
-  return data; // { ok, productos, servicios, marcas_creadas }
+  return data; // { ok, productos, servicios, marcas_creadas, actualizados, omitidos }
 }
 
 /* ============================================================
@@ -334,6 +357,7 @@ function abrirModalImportar() {
   IMPORT_STATE.preview = null;
   IMPORT_STATE.procesando = false;
   IMPORT_STATE.tipoPlantilla = null;
+  IMPORT_STATE.modoDuplicados = 'sumar';
   const inputFile = document.getElementById('inputImportarExcel');
   if (inputFile) inputFile.value = '';
   renderPasoInicial();
@@ -416,6 +440,32 @@ function renderPasoPreview(preview, tipoPlantilla) {
     </div>`;
   const nombrePlantilla = (IMPORT_PLANTILLAS[tipoPlantilla] && IMPORT_PLANTILLAS[tipoPlantilla].nombre) || tipoPlantilla;
 
+  const hayDuplicados = preview.duplicados && preview.duplicados.length > 0;
+  if (!IMPORT_STATE.modoDuplicados) IMPORT_STATE.modoDuplicados = 'sumar';
+
+  const bloqueDuplicados = !hayDuplicados ? '' : `
+    <div style="margin-top:16px;padding:14px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md)">
+      <div style="font-weight:700;font-size:13px;color:#92400E;margin-bottom:6px">
+        ⚠️ Encontramos ${preview.duplicados.length} producto${preview.duplicados.length===1?'':'s'} que parece${preview.duplicados.length===1?'':'n'} que ya existe${preview.duplicados.length===1?'':'n'} en tu inventario
+      </div>
+      <div style="max-height:110px;overflow-y:auto;font-size:12px;color:#78350F;margin-bottom:10px">
+        ${preview.duplicados.slice(0, 30).map(d => `• ${escHtml(d.nombreArchivo)} (ya tienes ${d.stockExistente} en stock)`).join('<br>')}
+        ${preview.duplicados.length > 30 ? `<br>… y ${preview.duplicados.length - 30} más` : ''}
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:#78350F;margin-bottom:6px;cursor:pointer">
+        <input type="radio" name="modoDuplicados" value="sumar" ${IMPORT_STATE.modoDuplicados==='sumar'?'checked':''} onchange="IMPORT_STATE.modoDuplicados=this.value">
+        <span><b>Sumar el stock del archivo</b> a los productos que ya tenía (recomendado)</span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:#78350F;cursor:pointer">
+        <input type="radio" name="modoDuplicados" value="crear_nuevos" ${IMPORT_STATE.modoDuplicados==='crear_nuevos'?'checked':''} onchange="IMPORT_STATE.modoDuplicados=this.value">
+        <span>Crearlos de todas formas como productos nuevos y separados</span>
+      </label>
+      <p style="font-size:11.5px;color:#92400E;margin-top:10px;padding-top:8px;border-top:1px solid #F59E0B">
+        💡 Tip: si un producto ya existe y solo necesitas agregarle stock de una compra real, también puedes hacerlo desde
+        <b>Compras</b> — así queda registrado el gasto y el historial de esa compra, no solo el stock.
+      </p>
+    </div>`;
+
   document.getElementById('importarBody').innerHTML = `
     <div style="margin-bottom:14px;padding:10px 14px;background:var(--success-soft, #DCFCE7);border-radius:var(--radius-md);color:var(--success);font-size:13px;font-weight:600">
       ✅ El archivo es válido (plantilla "${escHtml(nombrePlantilla)}"). Revisa el resumen antes de confirmar.
@@ -429,6 +479,7 @@ function renderPasoPreview(preview, tipoPlantilla) {
       ${tarjeta('Categorías nuevas', preview.categoriasNuevas, '#F59E0B')}
       ${tarjeta('Marcas/Proveedores nuevos', preview.marcasNuevas, '#F59E0B')}
     </div>
+    ${bloqueDuplicados}
     <p style="font-size:12px;color:var(--text-muted);margin-top:16px">
       Al confirmar, todos los registros se guardan en una sola operación: si algo fallara a mitad de camino, no queda nada guardado.
     </p>
@@ -440,6 +491,9 @@ function renderPasoPreview(preview, tipoPlantilla) {
 }
 
 function renderPasoExito(resultado) {
+  const extra = [];
+  if (resultado.actualizados) extra.push(`${resultado.actualizados} con stock sumado a lo que ya existía`);
+  if (resultado.omitidos) extra.push(`${resultado.omitidos} omitidos por ya existir`);
   document.getElementById('importarBody').innerHTML = `
     <div style="text-align:center;padding:24px 8px">
       <div style="font-size:44px;margin-bottom:10px">🎉</div>
@@ -448,6 +502,7 @@ function renderPasoExito(resultado) {
         ${resultado.productos} producto${resultado.productos===1?'':'s'} y ${resultado.servicios} servicio${resultado.servicios===1?'':'s'} agregados
         ${resultado.marcas_creadas ? '· ' + resultado.marcas_creadas + ' marca' + (resultado.marcas_creadas===1?'':'s') + '/proveedor' + (resultado.marcas_creadas===1?'':'es') + ' nuevos' : ''}
       </p>
+      ${extra.length ? `<p style="font-size:12px;color:var(--text-muted);margin-top:6px">${extra.join(' · ')}</p>` : ''}
     </div>
   `;
   document.getElementById('importarFooter').innerHTML = `
@@ -501,7 +556,7 @@ async function confirmarImportacionFinal() {
   renderPasoProcesando('Importando registros… esto puede tardar unos segundos.');
 
   try {
-    const resultado = await ejecutarImportacion(IMPORT_STATE.filasValidas);
+    const resultado = await ejecutarImportacion(IMPORT_STATE.filasValidas, IMPORT_STATE.modoDuplicados);
     renderPasoExito(resultado);
     showToast('success', 'Importación completada', resultado.productos + ' productos y ' + resultado.servicios + ' servicios agregados');
 

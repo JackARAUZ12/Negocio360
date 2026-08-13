@@ -1454,6 +1454,10 @@ async function abrirNuevaVenta() {
   S.carrito       = [];
   S.metodoPagoId  = null;
   S.metodoPagoNombre = 'Efectivo';
+  S.bancoElegidoId = null; S.bancoElegidoNombre = null;
+  const bew = document.getElementById('banco-elegir-wrap'); if (bew) bew.style.display = 'none';
+  const bdw = document.getElementById('banco-elegido-wrap'); if (bdw) bdw.style.display = 'none';
+  const mg = document.getElementById('metodos-grid'); if (mg) mg.style.display = '';
   S.observaciones = '';
   S.numeroVenta   = '';
   S.ivaActivo     = false;
@@ -2362,6 +2366,7 @@ function seleccionarMetodoPago(id, nombre) {
   const err = document.getElementById('metodo-error');
   if (err) err.style.display = 'none';
   renderMetodosPagoModal();
+  mostrarSelectorBanco(nombre);
 }
 
 /* ============================================================
@@ -2613,10 +2618,11 @@ window.descargarReciboActual = descargarReciboActual;
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
    ============================================================ */
 /* =====================================================
-   ¿A QUÉ BANCO ENTRA? — obligatorio si el negocio ya tiene bancos
-   creados y el método es Tarjeta/Transferencia. Si no tiene ningún
-   banco, esto nunca aparece y la venta sigue exactamente igual que
-   siempre.
+   ¿A QUÉ BANCO ENTRA? — aparece EN EL MOMENTO de elegir Tarjeta o
+   Transferencia (no al final, al confirmar) — con tarjetas para
+   tocar, igual que los métodos de pago, y una "✕" para regresar y
+   elegir otro método si el usuario se equivocó. Si el negocio no
+   tiene ningún banco creado, esto nunca aparece.
 ===================================================== */
 let _bancosCache = null;
 async function cargarBancosDisponibles() {
@@ -2627,28 +2633,77 @@ async function cargarBancosDisponibles() {
   } catch (e) { _bancosCache = []; }
   return _bancosCache;
 }
-async function pedirBancoSiNecesario(metodoPagoNombre) {
-  const metodo = (metodoPagoNombre || '').toLowerCase();
-  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return null;
-  const bancos = await cargarBancosDisponibles();
-  if (!bancos.length) return null; // sin bancos creados, todo sigue normal
 
-  return new Promise((resolve) => {
-    document.getElementById('eb-metodo').textContent = metodoPagoNombre;
-    const sel = document.getElementById('eb-select');
-    sel.innerHTML = bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}${b.numero_cuenta?' — '+esc(b.numero_cuenta):''}</option>`).join('');
-    document.getElementById('modal-elegir-banco').style.display = 'flex';
-    document.getElementById('modal-elegir-banco').classList.add('modal-open');
-    window._resolverBancoElegido = () => {
-      const bancoId = sel.value;
-      document.getElementById('modal-elegir-banco').style.display = 'none';
-      document.getElementById('modal-elegir-banco').classList.remove('modal-open');
-      resolve(bancoId || null);
-    };
-  });
+async function mostrarSelectorBanco(metodoPagoNombre) {
+  const metodo = (metodoPagoNombre || '').toLowerCase();
+  document.getElementById('banco-elegir-wrap').style.display = 'none';
+  document.getElementById('banco-elegido-wrap').style.display = 'none';
+  S.bancoElegidoId = null; S.bancoElegidoNombre = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponibles();
+  if (!bancos.length) return; // sin bancos creados, sigue todo normal
+
+  document.getElementById('metodos-grid').style.display = 'none';
+  document.getElementById('banco-elegir-metodo').textContent = metodoPagoNombre;
+  document.getElementById('banco-elegir-grid').innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoVenta('${b.id}','${esc(b.nombre)}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}</span>
+    </div>`).join('');
+  document.getElementById('banco-elegir-wrap').style.display = '';
 }
-function confirmarBancoElegido() {
-  if (window._resolverBancoElegido) window._resolverBancoElegido();
+function elegirBancoVenta(bancoId, bancoNombre) {
+  S.bancoElegidoId = bancoId; S.bancoElegidoNombre = bancoNombre;
+  document.getElementById('banco-elegir-wrap').style.display = 'none';
+  document.getElementById('banco-elegido-nombre').textContent = bancoNombre;
+  document.getElementById('banco-elegido-wrap').style.display = 'flex';
+}
+function cancelarSeleccionBanco() {
+  // Regresa a elegir el método de pago desde cero — por si el
+  // usuario tocó Tarjeta/Transferencia sin querer, o quiere cambiar
+  // el banco elegido.
+  S.metodoPagoId = null; S.metodoPagoNombre = null; S.bancoElegidoId = null; S.bancoElegidoNombre = null;
+  document.getElementById('metodo-pago-id-selected').value = '';
+  document.getElementById('metodo-pago-nombre-selected').value = '';
+  document.getElementById('banco-elegir-wrap').style.display = 'none';
+  document.getElementById('banco-elegido-wrap').style.display = 'none';
+  document.getElementById('metodos-grid').style.display = '';
+  renderMetodosPagoModal();
+}
+
+/* ---- Lo mismo, para Venta Rápida ---- */
+async function mostrarSelectorBancoVR(metodoPagoNombre) {
+  const metodo = (metodoPagoNombre || '').toLowerCase();
+  document.getElementById('vr-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('vr-banco-elegido-wrap').style.display = 'none';
+  VR.bancoElegidoId = null; VR.bancoElegidoNombre = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponibles();
+  if (!bancos.length) return;
+
+  document.getElementById('vr-metodos-grid').style.display = 'none';
+  document.getElementById('vr-banco-elegir-metodo').textContent = metodoPagoNombre;
+  document.getElementById('vr-banco-elegir-grid').innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoVentaVR('${b.id}','${esc(b.nombre)}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}</span>
+    </div>`).join('');
+  document.getElementById('vr-banco-elegir-wrap').style.display = '';
+}
+function elegirBancoVentaVR(bancoId, bancoNombre) {
+  VR.bancoElegidoId = bancoId; VR.bancoElegidoNombre = bancoNombre;
+  document.getElementById('vr-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('vr-banco-elegido-nombre').textContent = bancoNombre;
+  document.getElementById('vr-banco-elegido-wrap').style.display = 'flex';
+}
+function cancelarSeleccionBancoVR() {
+  VR.metodoPagoId = null; VR.metodoPagoNombre = null; VR.bancoElegidoId = null; VR.bancoElegidoNombre = null;
+  document.getElementById('vr-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('vr-banco-elegido-wrap').style.display = 'none';
+  document.getElementById('vr-metodos-grid').style.display = '';
+  renderMetodosPagoVR();
 }
 
 async function confirmarVenta(conImpresion) {
@@ -2656,9 +2711,15 @@ async function confirmarVenta(conImpresion) {
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
 
-  // Se pregunta ANTES de tocar la base de datos — si el negocio no
-  // tiene bancos creados, esto se resuelve solo (null) sin mostrar nada.
-  const bancoElegidoVenta = await pedirBancoSiNecesario(S.metodoPagoNombre);
+  // El banco ya se eligió al momento de tocar Tarjeta/Transferencia
+  // (no aquí al final) — esto es solo un candado de seguridad, por si
+  // alguien llegó hasta aquí sin completar ese paso.
+  const metodoActual = (S.metodoPagoNombre||'').toLowerCase();
+  if ((metodoActual.includes('tarjeta') || metodoActual.includes('transferencia')) && (await cargarBancosDisponibles()).length && !S.bancoElegidoId) {
+    showToast('Elige a qué banco entra este pago', 'error');
+    return;
+  }
+  const bancoElegidoVenta = S.bancoElegidoId || null;
 
   const btnDigital  = document.getElementById('btn-confirmar-venta');
   const btnImprimir = document.getElementById('btn-confirmar-venta-imprimir');
@@ -3124,7 +3185,15 @@ function abrirPantallaVentaRapida() {
   const metodoDefault  = S.metodosPago.find(m => m.es_default) || S.metodosPago[0];
   VR.metodoPagoId      = metodoDefault?.id     || null;
   VR.metodoPagoNombre  = metodoDefault?.nombre || 'Efectivo';
+  VR.bancoElegidoId    = null; VR.bancoElegidoNombre = null;
   VR.numeroVenta       = '';
+  const vbew = document.getElementById('vr-banco-elegir-wrap'); if (vbew) vbew.style.display = 'none';
+  const vbdw = document.getElementById('vr-banco-elegido-wrap'); if (vbdw) vbdw.style.display = 'none';
+  const vmg = document.getElementById('vr-metodos-grid'); if (vmg) vmg.style.display = '';
+  const metodoDefaultLower = (VR.metodoPagoNombre||'').toLowerCase();
+  if (metodoDefaultLower.includes('tarjeta') || metodoDefaultLower.includes('transferencia')) {
+    mostrarSelectorBancoVR(VR.metodoPagoNombre);
+  }
 
   renderCarritoVentaRapida();
   renderMetodosPagoVR();
@@ -3495,7 +3564,12 @@ function seleccionarMetodoPagoVR(id, nombre) {
   VR.metodoPagoId     = id;
   VR.metodoPagoNombre = nombre;
   renderMetodosPagoVR();
-  enfocarScannerVR();
+  const metodo = (nombre||'').toLowerCase();
+  if (metodo.includes('tarjeta') || metodo.includes('transferencia')) {
+    mostrarSelectorBancoVR(nombre); // si hay que elegir banco, no se enfoca el scanner todavía
+  } else {
+    enfocarScannerVR();
+  }
 }
 
 function confirmarCerrarVentaRapida() {
@@ -3511,7 +3585,12 @@ async function confirmarVentaRapida() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
 
-  const bancoElegidoVR = await pedirBancoSiNecesario(VR.metodoPagoNombre);
+  const metodoActualVR = (VR.metodoPagoNombre||'').toLowerCase();
+  if ((metodoActualVR.includes('tarjeta') || metodoActualVR.includes('transferencia')) && (await cargarBancosDisponibles()).length && !VR.bancoElegidoId) {
+    showToast('Elige a qué banco entra este pago', 'error');
+    return;
+  }
+  const bancoElegidoVR = VR.bancoElegidoId || null;
 
   VR.procesando = true;
   const btn = document.getElementById('btn-vr-cobrar');
