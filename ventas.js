@@ -3805,6 +3805,33 @@ async function confirmarVentaRapida() {
 
 function imprimirTicketVentaRapida(venta, items, resumen) {
   const cfg   = VR.config || {};
+
+  // Mismo desvío que en Nueva Venta — solo se activa si el negocio
+  // eligió "Carta / A4" a propósito en su configuración.
+  if (cfg.ancho_ticket === 'carta') {
+    (async () => {
+      try {
+        const doc = await generarComprobanteCartaPDF('venta', {
+          userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
+          cliente_nombre: venta.cliente_nombre, subtotal: venta.subtotal, descuento: venta.descuento,
+          impuesto: venta.impuesto, iva_porcentaje: venta.iva_porcentaje, total: venta.total,
+          metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
+          empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
+          empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
+          empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+        }, (items||[]).map(i => ({
+          nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
+          descuento: i.descuento||0, subtotal: round2(i.cantidad*i.precio),
+        })));
+        doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+      } catch (e) {
+        console.warn('No se pudo generar el comprobante carta:', e);
+        showToast('No se pudo generar el comprobante', 'error');
+      }
+    })();
+    return;
+  }
+
   const anchosValidos = ['58mm','76mm','80mm'];
   const ancho = anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm';
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
@@ -3900,6 +3927,35 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
    ============================================================ */
 function imprimirTicketNuevaVenta(venta, items, resumen) {
   const cfg   = VR.config || {};
+
+  // Si el negocio eligió "Carta / A4" en su configuración de ticket,
+  // se genera el comprobante de hoja completa en vez del ticket
+  // térmico — nunca al revés: si configuraron 58/76/80mm, esto nunca
+  // se activa, y todo sigue exactamente igual que siempre.
+  if (cfg.ancho_ticket === 'carta') {
+    (async () => {
+      try {
+        const doc = await generarComprobanteCartaPDF('venta', {
+          userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
+          cliente_nombre: venta.cliente_nombre, subtotal: venta.subtotal, descuento: venta.descuento,
+          impuesto: venta.impuesto, iva_porcentaje: venta.iva_porcentaje, total: venta.total,
+          metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
+          empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
+          empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
+          empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+        }, (items||[]).map(i => ({
+          nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
+          descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
+        })));
+        doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+      } catch (e) {
+        console.warn('No se pudo generar el comprobante carta:', e);
+        showToast('No se pudo generar el comprobante', 'error');
+      }
+    })();
+    return;
+  }
+
   const anchosValidos = ['58mm','76mm','80mm'];
   const ancho = anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm';
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
