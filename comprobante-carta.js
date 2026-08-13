@@ -18,7 +18,12 @@ async function _cc_clienteSupabase() {
 
 async function _cc_cargarConfigDocumentos(userId) {
   const sb = await _cc_clienteSupabase();
-  const { data } = await sb.from('configuracion_documentos').select('*').eq('auth_user_id', userId).maybeSingle();
+  // Se usa la misma configuración que Proformas (documentos de cara
+  // al cliente), no la de Compras/Reportes (documentos internos) —
+  // así el cliente que ya configuró su color, logo y mensaje de pie
+  // para sus proformas ve exactamente eso mismo en este comprobante,
+  // en vez de una configuración distinta o vacía.
+  const { data } = await sb.from('configuracion_proforma').select('*').eq('auth_user_id', userId).maybeSingle();
   return data || {};
 }
 
