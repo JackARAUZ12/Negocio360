@@ -1875,8 +1875,8 @@ async function guardarLoteStockExistente() {
   const numeroLote = $('inputNumeroLoteExistente')?.value.trim() || null;
   const fechaVencimiento = $('inputVencimientoLoteExistente')?.value;
 
-  if (!fechaVencimiento) { showToast('Indica la fecha de vencimiento', 'error'); return; }
-  if (!cantidad || cantidad <= 0) { showToast('Indica una cantidad válida', 'error'); return; }
+  if (!fechaVencimiento) { showToast('error', 'Falta la fecha', 'Indica la fecha de vencimiento.'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
 
   try {
     const { error } = await supabaseClient.from('producto_lotes').insert({
@@ -1889,11 +1889,11 @@ async function guardarLoteStockExistente() {
       costo_unitario: producto.costo || null,
     });
     if (error) throw error;
-    showToast('Lote asignado correctamente');
+    showToast('success', 'Lote asignado', 'Se asignó correctamente al stock existente.');
     await cargarLotesDelProducto(producto);
   } catch (e) {
     console.warn('guardarLoteStockExistente:', e);
-    showToast('No se pudo guardar el lote', 'error');
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
   }
 }
 
