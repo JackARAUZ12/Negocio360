@@ -1748,6 +1748,31 @@
   =================================================== */
   function mostrarComprobante(c) {
     CS.ultimoComprobante = c;
+
+    // Si el negocio eligió "Carta / A4", nunca se arma la vista
+    // previa de ticket angosto — se genera y descarga directo el
+    // comprobante profesional real, igual que ya pasa en Ventas.
+    if (CS.configTicket?.ancho_ticket === 'carta') {
+      (async () => {
+        try {
+          const doc = await generarComprobanteCartaPDF('credito', {
+            userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
+            cliente_nombre: c.cliente, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
+            metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
+            empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+            empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: CS.empresaConfig?.moneda_simbolo || 'C$',
+          }, [{ nombre: `Pago de cuota — ${c.credito || 'crédito'}`, cantidad: 1, precio: c.monto, descuento: 0, subtotal: c.monto }]);
+          doc.save(`Comprobante_pago_${c.numero || Date.now()}.pdf`);
+          showToast('Comprobante generado');
+        } catch (e) {
+          console.warn('No se pudo generar el comprobante carta:', e);
+          showToast('No se pudo generar el comprobante', 'error');
+        }
+      })();
+      return;
+    }
+
     const logoUrl = CS.empresaConfig?.logo_principal_url || CS.empresaConfig?.logo_url || '';
     const anchoTicket = CS.configTicket?.ancho_ticket || '80mm';
     const logoMaxW = anchoTicket === '58mm' ? 70 : anchoTicket === '76mm' ? 85 : anchoTicket === 'carta' ? 130 : 95;

@@ -2587,9 +2587,30 @@ function generarPDFRecibo(venta, items) {
 
 /* Descarga el recibo justo después de registrar la venta. Nunca
    interrumpe el flujo de guardado: cualquier error aquí solo se
-   registra en consola y se avisa con un toast, la venta ya está guardada. */
-function descargarReciboDeVenta(venta, items) {
+   registra en consola y se avisa con un toast, la venta ya está guardada.
+   Antes generaba SIEMPRE un ticket térmico de 80mm fijo, sin importar
+   la configuración real del negocio — ahora respeta 58/76/80mm o,
+   si el negocio eligió "Carta", genera el comprobante profesional real. */
+async function descargarReciboDeVenta(venta, items) {
   try {
+    await cargarConfigVentaRapida();
+    const cfg = VR.config || {};
+    if (cfg.ancho_ticket === 'carta') {
+      const doc = await generarComprobanteCartaPDF('venta', {
+        userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
+        cliente_nombre: venta.cliente_nombre, subtotal: venta.subtotal, descuento: venta.descuento,
+        impuesto: venta.impuesto, iva_porcentaje: venta.iva_porcentaje, total: venta.total,
+        metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
+        empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
+        empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
+        empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+      }, (items||[]).map(i => ({
+        nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
+        descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
+      })));
+      doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+      return;
+    }
     const doc = generarPDFRecibo(venta, items);
     doc.save(`Recibo_${(venta.numero_venta || 'venta').replace(/[^\w\-]/g, '')}.pdf`);
   } catch (e) {
