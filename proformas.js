@@ -1251,6 +1251,7 @@ async function guardarConfigTicket() {
    papel configurado.
 =================================================== */
 function mostrarComprobanteProforma(v) {
+  STATE.ultimoComprobante = v;
   const c = STATE.configTicket;
   const logoUrl = STATE.empresaConfig?.logo_principal_url || STATE.empresaConfig?.logo_url || '';
   const anchoTicket = c?.ancho_ticket || '80mm';
@@ -1284,9 +1285,40 @@ function mostrarComprobanteProforma(v) {
   openModal('modal-comprobante');
 }
 function imprimirComprobanteProforma() {
-  const html = document.getElementById('comprobante-body').innerHTML;
   const ancho = STATE.configTicket?.ancho_ticket || '80mm';
-  const anchoPx = ancho === 'carta' ? 'auto' : (ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px');
+
+  // Igual que en Ventas y Créditos: solo si el negocio eligió
+  // "Carta / A4" a propósito se genera el comprobante profesional
+  // real, nunca para quien tenga 58/76/80mm configurado.
+  if (ancho === 'carta') {
+    (async () => {
+      try {
+        const v = STATE.ultimoComprobante;
+        if (!v) throw new Error('No hay comprobante para imprimir');
+        const doc = await generarComprobanteCartaPDF('venta', {
+          userId: STATE.userId, numero: v.numero, fecha: fmtFecha(v.fecha),
+          cliente_nombre: v.cliente, subtotal: v.subtotal, descuento: v.descuento,
+          impuesto: v.impuesto, total: v.total, metodo_pago: v.metodo,
+          observaciones: v.origenProforma ? `Generado a partir de la proforma ${v.origenProforma}` : '',
+          empresaNombre: STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
+          empresaDireccion: STATE.empresaConfig?.direccion || '', empresaTelefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
+          empresaRuc: STATE.empresaConfig?.ruc || '', moneda_simbolo: STATE.empresaConfig?.moneda_simbolo || 'C$',
+        }, (v.items||[]).map(it => ({
+          nombre: it.producto_nombre, cantidad: it.cantidad,
+          precio: it.cantidad > 0 ? round2(it.subtotal / it.cantidad) : it.subtotal,
+          descuento: 0, subtotal: it.subtotal,
+        })));
+        doc.save(`Comprobante_${v.numero}.pdf`);
+      } catch (e) {
+        console.warn('No se pudo generar el comprobante carta:', e);
+        showToast('No se pudo generar el comprobante', 'error');
+      }
+    })();
+    return;
+  }
+
+  const html = document.getElementById('comprobante-body').innerHTML;
+  const anchoPx = ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px';
   const fs = ancho === '58mm' ? 11 : 12.5;
   const w = window.open('', '_blank', 'width=380,height=600');
   w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>

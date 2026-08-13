@@ -1747,9 +1747,36 @@
     openModal('modal-comprobante');
   }
   function imprimirComprobante() {
-    const html = document.getElementById('comprobante-body').innerHTML;
     const ancho = CS.configTicket?.ancho_ticket || '80mm';
-    const anchoPx = ancho === 'carta' ? 'auto' : (ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px');
+
+    // Si el negocio eligió "Carta / A4", se genera el comprobante
+    // profesional real (con logo, color de marca y tabla), no solo
+    // el mismo recibo angosto ensanchado — nunca se activa para quien
+    // tenga 58/76/80mm configurado.
+    if (ancho === 'carta') {
+      (async () => {
+        try {
+          const c = CS.ultimoComprobante;
+          if (!c) throw new Error('No hay comprobante para imprimir');
+          const doc = await generarComprobanteCartaPDF('credito', {
+            userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
+            cliente_nombre: c.cliente, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
+            metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
+            empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+            empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: CS.empresaConfig?.moneda_simbolo || 'C$',
+          }, [{ nombre: `Pago de cuota — ${c.credito || 'crédito'}`, cantidad: 1, precio: c.monto, descuento: 0, subtotal: c.monto }]);
+          doc.save(`Comprobante_pago_${c.numero || Date.now()}.pdf`);
+        } catch (e) {
+          console.warn('No se pudo generar el comprobante carta:', e);
+          showToast('No se pudo generar el comprobante', 'error');
+        }
+      })();
+      return;
+    }
+
+    const html = document.getElementById('comprobante-body').innerHTML;
+    const anchoPx = ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px';
     // En 58mm hay menos ancho real de impresión — con la misma letra
     // que 80mm, el texto se ve apretado o se corta en impresoras
     // térmicas baratas de bajo DPI (como la Hoin HOP-E58, 203dpi/58mm).
