@@ -1059,6 +1059,30 @@
           <div class="cfg-status" id="mu-status"></div>
         </div>
 
+        <!-- LOTES Y VENCIMIENTOS -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Lotes y vencimientos</div>
+              <div class="cfg-card-desc">Para negocios que manejan productos con fecha de caducidad (farmacias, alimentos, etc.). Al comprar, se registra el lote y su vencimiento — al vender, el sistema descuenta automáticamente del que vence primero, sin que el cajero tenga que hacer nada extra.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar control de lotes y vencimientos</div>
+              <div class="cfg-row-sub" id="lv-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="lv-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleLotesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="lv-status"></div>
+        </div>
+
         <!-- EDITAR PERFIL -->
         <div class="cfg-card fade-in stagger-2">
           <div class="cfg-card-header">
@@ -1321,6 +1345,64 @@ async function guardarMultiusuario(activo) {
   } catch (e) {
     console.error('guardarMultiusuario:', e);
     toggle.checked = !activo; // revertir visualmente
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/* =====================================================
+   LOTES Y VENCIMIENTOS — igual patrón que multiusuario, guardado en
+   configuracion_empresa.maneja_lotes_vencimiento, apagado por
+   defecto para no afectar a nadie que no lo active a propósito.
+===================================================== */
+async function cargarLotesVencimiento() {
+  const toggle = document.getElementById('lv-toggle');
+  const sub    = document.getElementById('lv-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('maneja_lotes_vencimiento')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.maneja_lotes_vencimiento === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — Compras pedirá lote/vencimiento, y Ventas descontará del que vence primero.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarLotesVencimiento:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleLotesClick(evt) {
+  const toggle = document.getElementById('lv-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarLotesVencimiento(toggle.checked);
+}
+
+async function guardarLotesVencimiento(activo) {
+  const toggle = document.getElementById('lv-toggle');
+  const sub = document.getElementById('lv-row-sub');
+  const statusEl = document.getElementById('lv-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ maneja_lotes_vencimiento: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — Compras pedirá lote/vencimiento, y Ventas descontará del que vence primero.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Lotes y vencimientos activado.' : 'Lotes y vencimientos desactivado.', true);
+  } catch (e) {
+    console.error('guardarLotesVencimiento:', e);
+    toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally {
     toggle.disabled = false;
@@ -1625,6 +1707,7 @@ async function initConfiguracion() {
       cargarMultiusuario();
       cargarModulosOpcionales();
       cargarMonedaActual();
+      cargarLotesVencimiento();
     };
 
     if (window.PerfilesGuardConfig) {

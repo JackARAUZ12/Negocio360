@@ -907,6 +907,7 @@ function elegirTipoNuevaCompra(tipo) {
     // Formulario rápido de producto nuevo.
     document.getElementById('nc-form-producto-nuevo').style.display = '';
     document.getElementById('nc-btn-comprar-nuevo').style.display = 'inline-flex';
+    document.getElementById('pn-lote-wrap').style.display = STATE.empresaConfig?.maneja_lotes_vencimiento === true ? '' : 'none';
     llenarSelectProveedores();
     populateMetodosSelect();
     document.getElementById('pn-nombre')?.focus();
@@ -1017,6 +1018,8 @@ async function crearProductoYComprar() {
       ivaPorc: 0,
       ivaMonto: 0,
       subtotal: montoCompra,
+      numeroLote: document.getElementById('pn-lote')?.value.trim() || '',
+      fechaVencimiento: document.getElementById('pn-vencimiento')?.value || '',
     }];
     STATE.ivaActivo = false;
     STATE.ivaPorcentaje = 0;
@@ -1258,6 +1261,8 @@ function agregarProductoAlCarrito(productoId) {
       costoUnitario:  Number(p.costo || 0),
       descuento:      0,
       ivaPorc:        STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
+      numeroLote:     '',
+      fechaVencimiento: '',
     };
     recalcularLinea(linea);
     STATE.carrito.push(linea);
@@ -1298,6 +1303,8 @@ function renderCarrito() {
     return;
   }
 
+  const manejaLotes = STATE.empresaConfig?.maneja_lotes_vencimiento === true;
+
   tbody.innerHTML = STATE.carrito.map((linea, idx) => `
     <tr>
       <td style="font-weight:500">${escHtml(linea.producto.nombre)}</td>
@@ -1329,6 +1336,19 @@ function renderCarrito() {
         </button>
       </td>
     </tr>
+    ${manejaLotes ? `
+    <tr class="fila-lote">
+      <td colspan="7" style="padding:4px 8px 10px;background:var(--bg-app)">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">
+          <span style="color:var(--text-muted)">🏷️ Lote:</span>
+          <input type="text" class="carrito-input" placeholder="Número de lote (opcional)" value="${escHtml(linea.numeroLote||'')}"
+            onchange="actualizarLineaCarrito(${idx},'numeroLote',this.value)" style="width:150px"/>
+          <span style="color:var(--text-muted)">Vence:</span>
+          <input type="date" class="carrito-input" value="${linea.fechaVencimiento||''}"
+            onchange="actualizarLineaCarrito(${idx},'fechaVencimiento',this.value)" style="width:150px"/>
+        </div>
+      </td>
+    </tr>` : ''}
   `).join('');
 
   actualizarResumen();
@@ -1497,6 +1517,24 @@ async function guardarCompra() {
         .eq('id', linea.producto.id)
         .eq('auth_user_id', STATE.userId);
       if (errStock) throw errStock;
+
+      // c. Registrar el lote (si el negocio activó Lotes y Vencimientos,
+      // y se indicó una fecha de vencimiento para este producto). Esto
+      // es una capa aparte — nunca afecta el stock_actual de arriba,
+      // que ya se actualizó igual que siempre.
+      if (STATE.empresaConfig?.maneja_lotes_vencimiento === true && linea.fechaVencimiento) {
+        const { error: errLote } = await sbClient.from('producto_lotes').insert({
+          auth_user_id:      STATE.userId,
+          producto_id:       linea.producto.id,
+          numero_lote:       linea.numeroLote || null,
+          fecha_vencimiento: linea.fechaVencimiento,
+          cantidad_inicial:  linea.cantidad,
+          cantidad_actual:   linea.cantidad,
+          costo_unitario:    linea.costoUnitario,
+          compra_id:         compra.id,
+        });
+        if (errLote) console.warn('No se pudo registrar el lote (la compra y el stock ya quedaron bien):', errLote);
+      }
     }
 
     // 4. Registrar movimiento en Caja (solo si estado = completada)

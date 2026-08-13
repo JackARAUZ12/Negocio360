@@ -2974,6 +2974,16 @@ async function confirmarVenta(conImpresion) {
       if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
       // Actualizar caché local
       prod.stock_actual = Math.max(0, nuevoStock);
+
+      // Si el negocio maneja lotes y vencimientos, se descuenta
+      // automáticamente del lote que vence primero (FEFO) — es una
+      // capa aparte, nunca afecta el stock_actual de arriba, que ya
+      // se actualizó igual que siempre. Si el producto no tiene
+      // lotes registrados, esto simplemente no hace nada.
+      if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
+        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: item.cantidad })
+          .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
+      }
     }
 
     const combosVendidos = S.carrito.filter(i => i.esCombo);
@@ -3801,6 +3811,11 @@ async function confirmarVentaRapida() {
       const { error: errStock } = await sb.from('productos')
         .update({ stock_actual: nuevoStock }).eq('id', item.id).eq('auth_user_id', S.userId);
       if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
+
+      if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
+        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: item.cantidad })
+          .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
+      }
     }
 
     // Combos vendidos: descontar el stock de CADA producto que los
