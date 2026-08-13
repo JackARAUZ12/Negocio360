@@ -1357,8 +1357,14 @@ function renderCarrito() {
 function actualizarLineaCarrito(idx, campo, valor) {
   const linea = STATE.carrito[idx];
   if (!linea) return;
-  linea[campo] = parseFloat(valor) || 0;
-  recalcularLinea(linea);
+  // Antes esto convertía TODO a número con parseFloat — incluyendo la
+  // fecha de vencimiento y el número de lote, que son texto. Una
+  // fecha como "2026-08-20" se volvía "2026" a secas, y un lote como
+  // "L-2026-08" se volvía 0. Ahora solo los campos numéricos de
+  // verdad pasan por parseFloat.
+  const camposNumericos = ['cantidad', 'costoUnitario', 'descuento'];
+  linea[campo] = camposNumericos.includes(campo) ? (parseFloat(valor) || 0) : valor;
+  if (camposNumericos.includes(campo)) recalcularLinea(linea);
   renderCarrito();
 }
 

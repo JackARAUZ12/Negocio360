@@ -21,6 +21,8 @@
 
   <!-- Estilos extra para modal de movimientos -->
   <style>
+    .btn-tab-lotes{background:none;border:none;padding:10px 14px;font-size:13px;font-weight:600;color:var(--text-muted,#6b7280);cursor:pointer;border-bottom:2px solid transparent}
+    .btn-tab-lotes.active{color:var(--accent,#6C63FF);border-bottom-color:var(--accent,#6C63FF)}
     /* ── Aviso de campos bloqueados en edición ── */
     .edit-lock-notice {
       display: none;
@@ -283,19 +285,31 @@
 
       <!-- MODAL: PRÓXIMOS A VENCER -->
       <div class="modal-overlay" id="modalProximosVencer" onclick="if(event.target===this)cerrarModalProximosVencer()">
-        <div class="modal-box" style="max-width:640px">
+        <div class="modal modal-lg">
           <div class="modal-header">
-            <span class="modal-title">⏰ Productos próximos a vencer</span>
-            <button class="modal-close" onclick="cerrarModalProximosVencer()">&times;</button>
+            <h2 class="modal-title">📦 Lotes y Vencimientos</h2>
+            <button class="modal-close" onclick="cerrarModalProximosVencer()" aria-label="Cerrar">✕</button>
           </div>
           <div class="modal-body" style="max-height:70vh;overflow-y:auto">
-            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(30)">30 días</button>
-              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(60)">60 días</button>
-              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(90)">90 días</button>
-              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(9999)">Ver todos</button>
+            <div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:1px solid var(--border,#e5e7eb)">
+              <button class="btn-tab-lotes active" id="tabPróximos" onclick="cambiarTabLotes('proximos')">⏰ Próximos a vencer</button>
+              <button class="btn-tab-lotes" id="tabTodos" onclick="cambiarTabLotes('todos')">📋 Todos los lotes existentes</button>
             </div>
-            <div id="listaProximosVencer">Cargando…</div>
+
+            <div id="panelProximosVencer">
+              <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(30)">30 días</button>
+                <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(60)">60 días</button>
+                <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(90)">90 días</button>
+                <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(9999)">Ver todos</button>
+              </div>
+              <div id="listaProximosVencer">Cargando…</div>
+            </div>
+
+            <div id="panelTodosLotes" style="display:none">
+              <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">Todos los lotes activos, agrupados por producto — incluye los que aún no están cerca de vencer.</p>
+              <div id="listaTodosLotes">Cargando…</div>
+            </div>
           </div>
         </div>
       </div>
@@ -520,7 +534,7 @@
       <button class="modal-close" onclick="cerrarModalProducto()" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
-      <form id="formProducto" novalidate autocomplete="off">
+      <form id="formProducto" novalidate autocomplete="off" onsubmit="return false">
 
         <!-- Toggle Tipo -->
         <div class="form-group full" style="margin-bottom:16px">

@@ -1672,11 +1672,66 @@ function abrirEditar(id) {
 ===================================================== */
 async function abrirModalProximosVencer() {
   $('modalProximosVencer').classList.add('open');
+  cambiarTabLotes('proximos');
   await filtrarProximosVencer(30);
 }
 function cerrarModalProximosVencer() {
   $('modalProximosVencer').classList.remove('open');
 }
+function cambiarTabLotes(tab) {
+  document.getElementById('tabPróximos').classList.toggle('active', tab === 'proximos');
+  document.getElementById('tabTodos').classList.toggle('active', tab === 'todos');
+  document.getElementById('panelProximosVencer').style.display = tab === 'proximos' ? '' : 'none';
+  document.getElementById('panelTodosLotes').style.display = tab === 'todos' ? '' : 'none';
+  if (tab === 'todos') cargarTodosLotes();
+}
+
+async function cargarTodosLotes() {
+  const cont = document.getElementById('listaTodosLotes');
+  cont.innerHTML = 'Cargando…';
+  try {
+    const { data: lotes } = await supabaseClient.from('producto_lotes')
+      .select('*, productos(nombre, sku)')
+      .eq('auth_user_id', STATE.user.id).eq('activo', true).gt('cantidad_actual', 0)
+      .order('fecha_vencimiento', { ascending: true });
+
+    if (!lotes || !lotes.length) {
+      cont.innerHTML = `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">Todavía no hay ningún lote registrado. Se agregan al comprar productos desde Compras, o asignándolos a stock que ya tenías desde la ficha de cada producto.</p>`;
+      return;
+    }
+
+    // Agrupados por producto, para responder justo lo que preguntaste:
+    // "qué productos están metidos en esos lotes".
+    const porProducto = new Map();
+    lotes.forEach(l => {
+      const nombre = l.productos?.nombre || 'Producto';
+      if (!porProducto.has(nombre)) porProducto.set(nombre, []);
+      porProducto.get(nombre).push(l);
+    });
+
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    cont.innerHTML = Array.from(porProducto.entries()).map(([nombre, lotesProd]) => `
+      <div style="margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px">${escHtml(nombre)}</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${lotesProd.map(l => {
+            const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+            const dias = Math.round((venc - hoy) / 86400000);
+            const color = dias < 0 ? 'var(--danger,#dc2626)' : (dias <= 15 ? '#f59e0b' : 'var(--text-primary)');
+            return `
+              <div style="display:flex;justify-content:space-between;padding:7px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px">
+                <span>${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número'} · ${fmtNum(l.cantidad_actual)} unidades</span>
+                <span style="color:${color};font-weight:600">${l.fecha_vencimiento}</span>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    console.warn('cargarTodosLotes:', e);
+    cont.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudo cargar la lista.</p>`;
+  }
+}
+
 async function filtrarProximosVencer(dias) {
   const cont = $('listaProximosVencer');
   cont.innerHTML = 'Cargando…';
@@ -1794,10 +1849,10 @@ async function cargarLotesDelProducto(producto) {
                 <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
                 <input type="date" id="inputVencimientoLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
               </div>
-              <button class="btn btn-primary btn-sm" onclick="guardarLoteStockExistente()">Guardar</button>
+              <button type="button" class="btn btn-primary btn-sm" onclick="guardarLoteStockExistente()">Guardar</button>
             </div>
           </div>
-          <button class="btn btn-secondary btn-sm" id="btnMostrarFormLoteExistente" onclick="document.getElementById('formAsignarLoteExistente').style.display='';this.style.display='none'">+ Asignar lote a este stock</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormLoteExistente" onclick="document.getElementById('formAsignarLoteExistente').style.display='';this.style.display='none'">+ Asignar lote a este stock</button>
         </div>`;
     }
 
