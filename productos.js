@@ -256,6 +256,9 @@ async function cargarDatosEmpresa() {
     STATE.perfil  = perfil;
     STATE.empresa = empresa;
 
+    const btnVencer = $('btnProximosVencer');
+    if (btnVencer) btnVencer.style.display = empresa?.maneja_lotes_vencimiento === true ? '' : 'none';
+
     // ── FIX MONEDA ────────────────────────────────────────────
     // Orden de prioridad:
     // 1. configuracion_empresa.moneda  (fuente principal del onboarding)
@@ -1656,10 +1659,114 @@ function abrirEditar(id) {
   cargarFormulario(p);
   setTipoModal(p.tipo, false);
   configurarCamposSegunModo('editar');
+  cargarLotesDelProducto(p);
 
   $('modalProductoTitle').textContent = `Editar: ${p.nombre}`;
   $('btnGuardarProducto').textContent = 'Guardar cambios';
   $('modalProducto').classList.add('open');
+}
+
+/* =====================================================
+   PRÓXIMOS A VENCER — junta los lotes de TODOS los productos del
+   negocio, ordenados por el que vence más pronto primero.
+===================================================== */
+async function abrirModalProximosVencer() {
+  $('modalProximosVencer').classList.add('open');
+  await filtrarProximosVencer(30);
+}
+function cerrarModalProximosVencer() {
+  $('modalProximosVencer').classList.remove('open');
+}
+async function filtrarProximosVencer(dias) {
+  const cont = $('listaProximosVencer');
+  cont.innerHTML = 'Cargando…';
+  try {
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const limite = new Date(hoy); limite.setDate(limite.getDate() + dias);
+    const limiteISO = limite.toISOString().slice(0,10);
+
+    const { data: lotes } = await supabaseClient.from('producto_lotes')
+      .select('*, productos(nombre, sku)')
+      .eq('auth_user_id', STATE.user.id).eq('activo', true).gt('cantidad_actual', 0)
+      .lte('fecha_vencimiento', limiteISO)
+      .order('fecha_vencimiento', { ascending: true });
+
+    if (!lotes || !lotes.length) {
+      cont.innerHTML = `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">
+        Nada vence en los próximos ${dias >= 9999 ? '' : dias + ' días'} ${dias >= 9999 ? '— sin lotes registrados aún' : ''} 🎉</p>`;
+      return;
+    }
+
+    cont.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${lotes.map(l => {
+          const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+          const diasRestantes = Math.round((venc - hoy) / 86400000);
+          const vencido = diasRestantes < 0;
+          const color = vencido ? 'var(--danger, #dc2626)' : (diasRestantes <= 15 ? '#f59e0b' : 'var(--text-primary)');
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg-app);border-left:3px solid ${color};border-radius:8px;font-size:12.5px">
+              <div>
+                <div style="font-weight:600">${escHtml(l.productos?.nombre || 'Producto')}</div>
+                <div style="color:var(--text-muted);font-size:11.5px">${l.numero_lote ? `Lote ${escHtml(l.numero_lote)} · ` : ''}${fmtNum(l.cantidad_actual)} unidades</div>
+              </div>
+              <span style="color:${color};font-weight:700;white-space:nowrap">${vencido ? 'Vencido' : `${diasRestantes}d`}</span>
+            </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    console.warn('filtrarProximosVencer:', e);
+    cont.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudo cargar la lista.</p>`;
+  }
+}
+
+/* =====================================================
+   LOTES Y VENCIMIENTOS — solo se muestra esta sección si el negocio
+   activó la función en Configuración. Es de solo lectura aquí: los
+   lotes se crean desde Compras, no se editan desde Productos.
+===================================================== */
+async function cargarLotesDelProducto(producto) {
+  const seccion = $('seccionLotesProducto');
+  const lista = $('listaLotesProducto');
+  if (!seccion || !lista) return;
+
+  if (STATE.empresa?.maneja_lotes_vencimiento !== true || producto.tipo !== 'producto') {
+    seccion.style.display = 'none';
+    return;
+  }
+  seccion.style.display = '';
+  lista.innerHTML = 'Cargando…';
+
+  try {
+    const { data: lotes } = await supabaseClient.from('producto_lotes')
+      .select('*').eq('producto_id', producto.id).eq('activo', true).gt('cantidad_actual', 0)
+      .order('fecha_vencimiento', { ascending: true });
+
+    if (!lotes || !lotes.length) {
+      lista.innerHTML = `<p style="font-size:12.5px;color:var(--text-muted)">Sin lotes registrados todavía — se agregan al comprar este producto desde Compras.</p>`;
+      return;
+    }
+
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    lista.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${lotes.map(l => {
+          const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+          const diasRestantes = Math.round((venc - hoy) / 86400000);
+          let color = 'var(--text-primary)', etiqueta = '';
+          if (diasRestantes < 0) { color = 'var(--danger, #dc2626)'; etiqueta = ' — ¡vencido!'; }
+          else if (diasRestantes <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${diasRestantes} día${diasRestantes===1?'':'s'}`; }
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px">
+              <span>${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número de lote'} · ${fmtNum(l.cantidad_actual)} unidades</span>
+              <span style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</span>
+            </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    console.warn('cargarLotesDelProducto:', e);
+    lista.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudieron cargar los lotes.</p>`;
+  }
 }
 
 function cerrarModalProducto() {

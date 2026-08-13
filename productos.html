@@ -274,9 +274,29 @@
               </a>
             </div>
           </div>
+          <button class="btn btn-secondary" id="btnProximosVencer" style="display:none" onclick="abrirModalProximosVencer()">⏰ Próximos a vencer</button>
           <button class="btn btn-secondary" onclick="abrirModalImportar()">📤 Importar Excel</button>
           <button class="btn btn-secondary" onclick="abrirModalNuevo('servicio')">🔧 Nuevo Servicio</button>
           <button class="btn btn-primary"   onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>
+        </div>
+      </div>
+
+      <!-- MODAL: PRÓXIMOS A VENCER -->
+      <div class="modal-overlay" id="modalProximosVencer" onclick="if(event.target===this)cerrarModalProximosVencer()">
+        <div class="modal-box" style="max-width:640px">
+          <div class="modal-header">
+            <span class="modal-title">⏰ Productos próximos a vencer</span>
+            <button class="modal-close" onclick="cerrarModalProximosVencer()">&times;</button>
+          </div>
+          <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(30)">30 días</button>
+              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(60)">60 días</button>
+              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(90)">90 días</button>
+              <button class="btn btn-secondary btn-sm" onclick="filtrarProximosVencer(9999)">Ver todos</button>
+            </div>
+            <div id="listaProximosVencer">Cargando…</div>
+          </div>
         </div>
       </div>
 
@@ -650,6 +670,14 @@
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
             </div>
           </div>
+        </div>
+
+        <!-- LOTES Y VENCIMIENTOS — solo aparece si el negocio activó
+             la función en Configuración, y solo al editar (nunca al
+             crear) un producto que ya existe. -->
+        <div id="seccionLotesProducto" style="display:none">
+          <div class="form-section-title">Lotes activos</div>
+          <div id="listaLotesProducto" style="margin-bottom:16px">Cargando…</div>
         </div>
 
         <!-- ESTADO -->
