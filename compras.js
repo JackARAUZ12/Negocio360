@@ -931,6 +931,10 @@ function resetFormProductoNuevo() {
   });
   const err = document.getElementById('pn-error');
   if (err) err.textContent = '';
+  _bancoElegidoIdCompra = null; _montoBancoConvertidoCompra = null;
+  STATE.esperandoBancoParaProductoNuevo = false;
+  const pnbew = document.getElementById('pn-banco-elegir-wrap'); if (pnbew) pnbew.style.display = 'none';
+  const pnbanner = document.getElementById('pn-banco-espera-banner'); if (pnbanner) pnbanner.style.display = 'none';
   actualizarPreviewProductoNuevo();
 }
 
@@ -965,6 +969,33 @@ async function crearProductoYComprar() {
   if (isNaN(costo) || costo <= 0) { if (errEl) errEl.textContent = 'El costo debe ser mayor a 0'; return; }
   if (isNaN(precio) || precio < 0) { if (errEl) errEl.textContent = 'El precio de venta no es válido'; return; }
   if (isNaN(stock) || stock <= 0) { if (errEl) errEl.textContent = 'La cantidad/stock inicial debe ser mayor a 0'; return; }
+
+  // Si el método necesita banco (Tarjeta/Transferencia) y el negocio
+  // sí tiene bancos creados, se PAUSA aquí — se muestran las tarjetas
+  // de banco (reutilizando el mismo selector de "Nueva Compra") y esta
+  // misma función se vuelve a llamar sola en cuanto se elija uno. Para
+  // Efectivo, PayPal, o cualquier otro método que no dependa de un
+  // banco propio, esto se salta por completo y guarda directo, igual
+  // que siempre.
+  const metodoLower = (metodoPagoNombre || '').toLowerCase();
+  const necesitaBanco = metodoLower.includes('tarjeta') || metodoLower.includes('transferencia');
+  if (necesitaBanco && !_bancoElegidoIdCompra) {
+    const bancos = await cargarBancosDisponiblesCompra();
+    if (bancos.length) {
+      STATE.esperandoBancoParaProductoNuevo = true;
+      await mostrarSelectorBancoCompra(metodoPagoNombre);
+      document.getElementById('pn-error').textContent = '';
+      const banner = document.getElementById('pn-banco-espera-banner');
+      if (banner) banner.style.display = '';
+      return;
+    }
+  }
+  STATE.esperandoBancoParaProductoNuevo = false;
+  const bancoAnteriorBanner = document.getElementById('pn-banco-espera-banner');
+  if (bancoAnteriorBanner) bancoAnteriorBanner.style.display = 'none';
+  // _bancoElegidoIdCompra / _montoBancoConvertidoCompra se dejan tal
+  // cual — guardarCompra() los lee directamente más abajo, en el
+  // mismo insert que ya usa para "Nueva Compra".
 
   // Mismo límite que ya existe en Productos/Servicios para el monto que
   // puede registrarse en Caja (columna numeric(14,2)).
@@ -1460,9 +1491,18 @@ async function saldoActualBanco(bancoId) {
 }
 
 async function mostrarSelectorBancoCompra(metodoPagoNombre) {
+  // Detecta si está activo el formulario rápido de "producto nuevo"
+  // o el asistente normal de "Nueva Compra" — cada uno tiene su
+  // propio bloque de tarjetas de banco en el HTML, ya que viven en
+  // secciones que se ocultan entre sí.
+  const enProductoNuevo = document.getElementById('nc-form-producto-nuevo')?.style.display !== 'none';
+  const prefijo = enProductoNuevo ? 'pn' : 'nc';
+
   const metodo = (metodoPagoNombre || '').toLowerCase();
-  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
-  document.getElementById('nc-banco-elegido-wrap').style.display = 'none';
+  const elWrapElegir = document.getElementById(`${prefijo}-banco-elegir-wrap`);
+  const elWrapElegido = document.getElementById(`nc-banco-elegido-wrap`); // solo existe en el asistente normal
+  if (elWrapElegir) elWrapElegir.style.display = 'none';
+  if (!enProductoNuevo && elWrapElegido) elWrapElegido.style.display = 'none';
   _bancoElegidoIdCompra = null; _montoBancoConvertidoCompra = null;
   if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
 
@@ -1470,21 +1510,41 @@ async function mostrarSelectorBancoCompra(metodoPagoNombre) {
   if (!bancos.length) return; // sin bancos creados, sigue todo normal
 
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
-  document.getElementById('nc-banco-elegir-metodo').textContent = metodoPagoNombre;
-  document.getElementById('nc-banco-elegir-grid').innerHTML = bancos.map(b => `
+  const elMetodoTexto = document.getElementById(`${prefijo}-banco-elegir-metodo`);
+  if (elMetodoTexto) elMetodoTexto.textContent = metodoPagoNombre;
+  const elGrid = document.getElementById(`${prefijo}-banco-elegir-grid`);
+  if (elGrid) elGrid.innerHTML = bancos.map(b => `
     <div class="metodo-card" onclick="elegirBancoCompra('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
       <span class="mc-icon">🏦</span>
       <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
     </div>`).join('');
-  document.getElementById('nc-banco-elegir-wrap').style.display = '';
+  if (elWrapElegir) elWrapElegir.style.display = '';
 }
 
 async function elegirBancoCompra(bancoId, bancoNombre, monedaBanco) {
+  const enProductoNuevo = document.getElementById('nc-form-producto-nuevo')?.style.display !== 'none';
   _bancoElegidoIdCompra = bancoId;
-  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
 
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+
+  if (enProductoNuevo) {
+    // En "producto nuevo" no hay una tarjeta de "banco elegido" aparte
+    // — se oculta el selector y se continúa directo con el guardado,
+    // ya con el banco (y su conversión, si aplica) ya calculados.
+    document.getElementById('pn-banco-elegir-wrap').style.display = 'none';
+    if (esOtraMoneda) {
+      const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+      const costo = parseFloat(document.getElementById('pn-costo')?.value) || 0;
+      const stock = parseFloat(document.getElementById('pn-stock')?.value) || 0;
+      const total = costo * stock;
+      if (tasa) _montoBancoConvertidoCompra = monedaBase === 'NIO' ? round2(total / tasa) : round2(total * tasa);
+    }
+    if (STATE.esperandoBancoParaProductoNuevo) await crearProductoYComprar();
+    return;
+  }
+
+  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
   const { total } = calcularTotales();
   const elNombre = document.getElementById('nc-banco-elegido-nombre');
 
@@ -1504,10 +1564,14 @@ async function elegirBancoCompra(bancoId, bancoNombre, monedaBanco) {
 }
 
 function cancelarSeleccionBancoCompra() {
+  const enProductoNuevo = document.getElementById('nc-form-producto-nuevo')?.style.display !== 'none';
   _bancoElegidoIdCompra = null; _montoBancoConvertidoCompra = null;
-  document.getElementById('nc-metodo-pago').value = '';
-  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
-  document.getElementById('nc-banco-elegido-wrap').style.display = 'none';
+  STATE.esperandoBancoParaProductoNuevo = false;
+  const prefijo = enProductoNuevo ? 'pn' : 'nc';
+  document.getElementById(`${prefijo}-metodo-pago`).value = '';
+  const elWrap = document.getElementById(`${prefijo}-banco-elegir-wrap`); if (elWrap) elWrap.style.display = 'none';
+  if (!enProductoNuevo) document.getElementById('nc-banco-elegido-wrap').style.display = 'none';
+  const banner = document.getElementById('pn-banco-espera-banner'); if (banner) banner.style.display = 'none';
 }
 
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
