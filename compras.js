@@ -21,6 +21,12 @@ const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
 const sbClient     = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Se declaran aquí arriba (no donde se usan más abajo) para que
+// nunca queden en "zona muerta temporal" si algo fallara antes.
+let _bancosCacheCompra = null;
+let _bancoElegidoIdCompra = null;
+let _montoBancoConvertidoCompra = null;
+
 /* =====================================================
    ESTADO GLOBAL
 ===================================================== */
@@ -816,6 +822,9 @@ function abrirNuevaCompra() {
   STATE.modoOrden = false;
   STATE.ordenConvirtiendoId = null;
   STATE.cajaChicaAbiertaHoy = false;
+  _bancoElegidoIdCompra = null; _montoBancoConvertidoCompra = null;
+  const ncbew = document.getElementById('nc-banco-elegir-wrap'); if (ncbew) ncbew.style.display = 'none';
+  const ncbdw = document.getElementById('nc-banco-elegido-wrap'); if (ncbdw) ncbdw.style.display = 'none';
   actualizarTextosModoOrden();
 
   // Reset UI
@@ -1028,6 +1037,10 @@ async function crearProductoYComprar() {
     // normal — se fuerzan aquí ya que este formulario los pide directamente.
     const selWizardMetodo = document.getElementById('nc-metodo-pago');
     if (selWizardMetodo) selWizardMetodo.value = metodoPagoId || '';
+    // Nota: este formulario rápido guarda de inmediato, sin pausa para
+    // elegir banco — si el negocio necesita elegir a qué banco entra
+    // este pago específico, debe usar "Nueva Compra" (el flujo normal,
+    // con pasos), que sí lo permite.
     const estadoEl = document.getElementById('nc-estado');
     if (estadoEl) estadoEl.value = 'completada'; // siempre descuenta de caja, sin excepción
     const fechaEl = document.getElementById('nc-fecha');
@@ -1426,6 +1439,79 @@ function actualizarResumen() {
 /* =====================================================
    GUARDAR COMPRA — TRANSACCIÓN COMPLETA
 ===================================================== */
+async function cargarBancosDisponiblesCompra() {
+  if (_bancosCacheCompra) return _bancosCacheCompra;
+  try {
+    const { data } = await sbClient.from('bancos').select('*').eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
+    _bancosCacheCompra = data || [];
+  } catch (e) { _bancosCacheCompra = []; }
+  return _bancosCacheCompra;
+}
+
+async function saldoActualBanco(bancoId) {
+  const { data: movs } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('estado', 'completado');
+  const { data: banco } = await sbClient.from('bancos').select('saldo_inicial, moneda').eq('id', bancoId).single();
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (banco?.moneda||'NIO') !== monedaBase;
+  const montoDe = (m) => esOtraMoneda ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+  const suma = (movs||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
+  return Number(banco?.saldo_inicial||0) + suma;
+}
+
+async function mostrarSelectorBancoCompra(metodoPagoNombre) {
+  const metodo = (metodoPagoNombre || '').toLowerCase();
+  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('nc-banco-elegido-wrap').style.display = 'none';
+  _bancoElegidoIdCompra = null; _montoBancoConvertidoCompra = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponiblesCompra();
+  if (!bancos.length) return; // sin bancos creados, sigue todo normal
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  document.getElementById('nc-banco-elegir-metodo').textContent = metodoPagoNombre;
+  document.getElementById('nc-banco-elegir-grid').innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoCompra('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
+    </div>`).join('');
+  document.getElementById('nc-banco-elegir-wrap').style.display = '';
+}
+
+async function elegirBancoCompra(bancoId, bancoNombre, monedaBanco) {
+  _bancoElegidoIdCompra = bancoId;
+  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const { total } = calcularTotales();
+  const elNombre = document.getElementById('nc-banco-elegido-nombre');
+
+  if (esOtraMoneda) {
+    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const montoConvertido = monedaBase === 'NIO' ? round2(total / tasa) : round2(total * tasa);
+      _montoBancoConvertidoCompra = montoConvertido;
+      elNombre.innerHTML = `${esc(bancoNombre)} — se descontará ${monedaBanco==='USD'?'$':'C$'} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    elNombre.textContent = bancoNombre;
+  }
+  document.getElementById('nc-banco-elegido-wrap').style.display = 'flex';
+}
+
+function cancelarSeleccionBancoCompra() {
+  _bancoElegidoIdCompra = null; _montoBancoConvertidoCompra = null;
+  document.getElementById('nc-metodo-pago').value = '';
+  document.getElementById('nc-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('nc-banco-elegido-wrap').style.display = 'none';
+}
+
+function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+
 async function guardarCompra() {
   if (STATE.carrito.length === 0) {
     showToast('El carrito está vacío', 'error');
@@ -1455,6 +1541,25 @@ async function guardarCompra() {
   if (estado === 'completada' && document.getElementById('nc-origen-caja-wrap').style.display !== 'none') {
     origenCaja = document.getElementById('nc-origen-caja').value;
     if (!origenCaja) { showToast('Indica de dónde sale este dinero (Caja Chica o Caja General)', 'error'); return; }
+  }
+
+  // Si se eligió un banco para este egreso, se valida que tenga saldo
+  // suficiente ANTES de guardar nada — a diferencia de un ingreso, un
+  // banco específico nunca debería poder quedar en negativo.
+  if (_bancoElegidoIdCompra && estado === 'completada') {
+    const bancoInfo = (await cargarBancosDisponiblesCompra()).find(b => b.id === _bancoElegidoIdCompra);
+    const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    const esOtraMoneda = bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase;
+    if (esOtraMoneda && !STATE.empresaConfig?.tasa_cambio_usd) {
+      showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar', 'error');
+      return;
+    }
+    const montoADescontar = esOtraMoneda ? _montoBancoConvertidoCompra : total;
+    const saldoBanco = await saldoActualBanco(_bancoElegidoIdCompra);
+    if (montoADescontar > saldoBanco + 0.01) {
+      showToast(`Saldo insuficiente en ${bancoInfo?.nombre || 'ese banco'} — tiene ${saldoBanco.toLocaleString('es-NI',{minimumFractionDigits:2})} disponible`, 'error');
+      return;
+    }
   }
 
   setBtnLoading('nc-btn-save', true);
@@ -1572,6 +1677,8 @@ async function guardarCompra() {
           saldo_resultante:   saldoRes,
           metodo_pago_id:     metodoPagoId  || null,
           metodo_pago_nombre: metodoPagoNombre,
+          banco_id:           _bancoElegidoIdCompra || null,
+          monto_moneda_banco: _bancoElegidoIdCompra ? (_montoBancoConvertidoCompra ?? null) : null,
           origen_caja:        origenCaja || null,
           referencia_tipo:    'compra',
           referencia_id:      compra.id,

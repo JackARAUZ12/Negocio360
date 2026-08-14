@@ -578,6 +578,14 @@
     .empty-cell { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
     .empty-state-mini { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+    .metodo-card{padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:10px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:20px}
+    .metodo-card .mc-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+
     /* =====================================================
        MODALES — BASE
     ===================================================== */
@@ -1871,8 +1879,21 @@
         </p>
         <div class="form-group">
           <label>Método de pago *</label>
-          <select id="nc-metodo-pago"></select>
+          <select id="nc-metodo-pago" onchange="mostrarSelectorBancoCompra(this.selectedOptions[0]?.dataset.nombre || this.selectedOptions[0]?.textContent || 'Efectivo')"></select>
         </div>
+
+        <div id="nc-banco-elegir-wrap" style="display:none;margin-top:10px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarSeleccionBancoCompra()">✕</button>
+            <span style="font-size:13px;font-weight:600">¿De qué banco sale este <span id="nc-banco-elegir-metodo">pago</span>?</span>
+          </div>
+          <div class="metodos-grid" id="nc-banco-elegir-grid"></div>
+        </div>
+        <div id="nc-banco-elegido-wrap" style="display:none;margin-top:10px;padding:10px 12px;border:1.5px solid var(--success);border-radius:var(--radius-md);background:var(--success-soft);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Sale de: <span id="nc-banco-elegido-nombre"></span></span>
+          <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBancoCompra()">✕</button>
+        </div>
+
         <div class="form-group" style="margin-top:14px">
           <label>Fecha de compra</label>
           <input type="date" id="nc-fecha"/>
