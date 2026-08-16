@@ -13,8 +13,14 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
   pedidos: [], perfiles: [], ventasDisponibles: [],
-  filtroEstado: '',
+  filtroEstado: '', metodosPago: [], cajaChicaAbiertaHoy: false,
 };
+
+// Estado de banco elegido, por separado para costo y cobro (pueden
+// ser bancos distintos, o uno de los dos ni siquiera usar banco).
+let _bancosCacheDelivery = null;
+let _bancoElegido = { costo: null, cobro: null };
+let _montoBancoConvertido = { costo: null, cobro: null };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmt(amount) {
@@ -100,6 +106,122 @@ function renderUserInfo(profile, email) {
 /* =====================================================
    CARGA DE DATOS
 ===================================================== */
+/* =====================================================
+   MÉTODOS DE PAGO, CAJA CHICA Y BANCOS — el dinero del envío
+   (costo y cobro) ahora sí toca Caja de verdad, con el mismo
+   sistema de bancos ya usado en Ventas/Compras/Créditos.
+===================================================== */
+async function loadMetodosPago() {
+  try {
+    const { data } = await sb.from('metodos_pago').select('id, nombre, activo, es_default')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('orden');
+    STATE.metodosPago = data && data.length ? data : [{ id: null, nombre: 'Efectivo', es_default: true }];
+  } catch (e) { STATE.metodosPago = [{ id: null, nombre: 'Efectivo', es_default: true }]; }
+  const opciones = STATE.metodosPago.map(m => `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  const def = STATE.metodosPago.find(m => m.es_default);
+  ['np-costo-metodo', 'np-cobro-metodo'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = opciones;
+    if (def) sel.value = def.id || '';
+  });
+}
+
+async function hayCajaChicaAbiertaHoy() {
+  try {
+    const hoy = new Date().toISOString().slice(0,10);
+    const { data } = await sb.from('caja_chica_sesiones')
+      .select('id').eq('auth_user_id', STATE.userId).eq('fecha', hoy).eq('estado', 'abierta').maybeSingle();
+    return !!data;
+  } catch (e) { return false; }
+}
+
+async function cargarBancosDisponiblesDelivery() {
+  if (_bancosCacheDelivery) return _bancosCacheDelivery;
+  try {
+    const { data } = await sb.from('bancos').select('*').eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
+    _bancosCacheDelivery = data || [];
+  } catch (e) { _bancosCacheDelivery = []; }
+  return _bancosCacheDelivery;
+}
+
+// Se activa/oculta el bloque de método de pago según si el monto de
+// costo o cobro pasó de 0 a un valor real (o viceversa).
+function onCambioMontoEnvio(tipo) {
+  const monto = parseFloat(document.getElementById(`np-${tipo}-envio`).value) || 0;
+  const wrap = document.getElementById(`np-${tipo}-metodo-wrap`);
+  wrap.style.display = monto > 0 ? '' : 'none';
+  if (monto > 0) {
+    const origenWrap = document.getElementById(`np-${tipo}-origen-caja-wrap`);
+    if (origenWrap) origenWrap.style.display = STATE.cajaChicaAbiertaHoy ? '' : 'none';
+  } else {
+    _bancoElegido[tipo] = null; _montoBancoConvertido[tipo] = null;
+    document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = 'none';
+    document.getElementById(`np-${tipo}-banco-elegido-wrap`).style.display = 'none';
+  }
+}
+
+async function mostrarSelectorBancoDelivery(tipo, metodoNombre) {
+  const metodo = (metodoNombre || '').toLowerCase();
+  document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = 'none';
+  document.getElementById(`np-${tipo}-banco-elegido-wrap`).style.display = 'none';
+  _bancoElegido[tipo] = null; _montoBancoConvertido[tipo] = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponiblesDelivery();
+  if (!bancos.length) return; // sin bancos creados, sigue todo normal
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  document.getElementById(`np-${tipo}-banco-elegir-grid`).innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoDelivery('${tipo}','${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
+    </div>`).join('');
+  document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = '';
+}
+
+function elegirBancoDelivery(tipo, bancoId, bancoNombre, monedaBanco) {
+  _bancoElegido[tipo] = bancoId;
+  document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = 'none';
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const monto = parseFloat(document.getElementById(`np-${tipo}-envio`).value) || 0;
+  const elNombre = document.getElementById(`np-${tipo}-banco-elegido-nombre`);
+
+  if (esOtraMoneda) {
+    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const convertido = monedaBase === 'NIO' ? round2(monto / tasa) : round2(monto * tasa);
+      _montoBancoConvertido[tipo] = convertido;
+      elNombre.innerHTML = `${esc(bancoNombre)} — ${monedaBanco==='USD'?'$':'C$'} ${convertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    elNombre.textContent = bancoNombre;
+  }
+  document.getElementById(`np-${tipo}-banco-elegido-wrap`).style.display = 'flex';
+}
+
+function cancelarSeleccionBancoDelivery(tipo) {
+  _bancoElegido[tipo] = null; _montoBancoConvertido[tipo] = null;
+  document.getElementById(`np-${tipo}-metodo`).value = '';
+  document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = 'none';
+  document.getElementById(`np-${tipo}-banco-elegido-wrap`).style.display = 'none';
+}
+
+async function saldoActualBancoDelivery(bancoId) {
+  const { data: movs } = await sb.from('movimientos_financieros')
+    .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('estado', 'completado');
+  const { data: banco } = await sb.from('bancos').select('saldo_inicial, moneda').eq('id', bancoId).single();
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (banco?.moneda||'NIO') !== monedaBase;
+  const montoDe = (m) => esOtraMoneda ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+  const suma = (movs||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
+  return Number(banco?.saldo_inicial||0) + suma;
+}
+
 async function cargarPerfilesInternos() {
   try {
     const { data } = await sb.from('perfiles_acceso').select('id,nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
@@ -220,6 +342,13 @@ function abrirNuevoPedido() {
   document.getElementById('np-cobro-envio').value = '0';
   document.getElementById('np-observaciones').value = '';
   document.getElementById('np-error').textContent = '';
+  _bancoElegido = { costo: null, cobro: null };
+  _montoBancoConvertido = { costo: null, cobro: null };
+  ['costo','cobro'].forEach(tipo => {
+    document.getElementById(`np-${tipo}-metodo-wrap`).style.display = 'none';
+    document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = 'none';
+    document.getElementById(`np-${tipo}-banco-elegido-wrap`).style.display = 'none';
+  });
   openModal('modal-nuevo-pedido');
 }
 
@@ -248,14 +377,49 @@ async function guardarNuevoPedido() {
 
   if (!direccion) { errEl.textContent = 'La dirección de entrega es obligatoria.'; return; }
 
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const bancos = await cargarBancosDisponiblesDelivery();
+
+  // Validar cada transacción (costo y cobro) por separado: si el
+  // banco elegido es en otra moneda, hace falta la tasa; si es un
+  // egreso (costo), el banco elegido debe tener saldo suficiente.
+  for (const tipo of ['costo', 'cobro']) {
+    const monto = tipo === 'costo' ? costoEnvio : cobroEnvio;
+    if (monto <= 0) continue;
+    const bancoId = _bancoElegido[tipo];
+    if (!bancoId) continue;
+    const bancoInfo = bancos.find(b => b.id === bancoId);
+    const esOtraMoneda = bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase;
+    if (esOtraMoneda && !STATE.empresaConfig?.tasa_cambio_usd) {
+      errEl.textContent = 'Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar.';
+      return;
+    }
+    if (tipo === 'costo') {
+      const montoADescontar = esOtraMoneda ? _montoBancoConvertido.costo : monto;
+      const saldoBanco = await saldoActualBancoDelivery(bancoId);
+      if (montoADescontar > saldoBanco + 0.01) {
+        errEl.textContent = `Saldo insuficiente en ${bancoInfo?.nombre || 'ese banco'} — tiene ${saldoBanco.toLocaleString('es-NI',{minimumFractionDigits:2})} disponible.`;
+        return;
+      }
+    }
+  }
+
   setBtnLoading('btn-guardar-pedido', true);
   try {
     const { data: numero } = await sb.rpc('siguiente_numero_delivery', { p_user_id: STATE.userId });
+
+    // Registrar en Caja lo que corresponda ANTES de crear el pedido,
+    // para poder vincular el pedido a esos movimientos reales.
+    let movimientoCostoId = null, movimientoCobroId = null;
+    if (costoEnvio > 0) movimientoCostoId = await registrarMovimientoDelivery('costo', costoEnvio, numero);
+    if (cobroEnvio > 0) movimientoCobroId = await registrarMovimientoDelivery('cobro', cobroEnvio, numero);
+
     const { error } = await sb.from('delivery_pedidos').insert({
       auth_user_id: STATE.userId, venta_id: ventaId, numero: numero || `D-${Date.now()}`,
       cliente_nombre: cliente || null, cliente_telefono: telefono || null,
       direccion, referencia: referencia || null,
       costo_envio: costoEnvio, cobro_envio: cobroEnvio,
+      movimiento_costo_id: movimientoCostoId, movimiento_cobro_id: movimientoCobroId,
       observaciones: observaciones || null, estado: 'pendiente',
     });
     if (error) throw error;
@@ -268,6 +432,39 @@ async function guardarNuevoPedido() {
   } finally {
     setBtnLoading('btn-guardar-pedido', false);
   }
+}
+
+/* Registra el costo o el cobro del envío como un movimiento REAL de
+   Caja — EGRESO para lo que pagas, INGRESO para lo que cobras.
+   Respeta banco elegido (con conversión de moneda si aplica) y
+   origen de caja (chica/general) si ese día hay Caja Chica abierta. */
+async function registrarMovimientoDelivery(tipo, monto, numeroPedido) {
+  const metodoSel = document.getElementById(`np-${tipo}-metodo`);
+  const metodoId = metodoSel?.value || null;
+  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const bancoId = _bancoElegido[tipo] || null;
+  const montoBanco = bancoId ? (_montoBancoConvertido[tipo] ?? null) : null;
+  const origenSel = document.getElementById(`np-${tipo}-origen-caja`);
+  const origenCaja = (STATE.cajaChicaAbiertaHoy && origenSel) ? origenSel.value : null;
+
+  const { data: ultMov } = await sb.from('movimientos_financieros')
+    .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
+    .order('created_at', { ascending:false }).limit(1).maybeSingle();
+  const saldoAnterior = ultMov?.saldo_resultante || 0;
+  const tipoFlujo = tipo === 'costo' ? 'EGRESO' : 'INGRESO';
+  const saldoResultante = tipoFlujo === 'INGRESO' ? saldoAnterior + monto : saldoAnterior - monto;
+
+  const { data, error } = await sb.from('movimientos_financieros').insert({
+    auth_user_id: STATE.userId, tipo_flujo: tipoFlujo,
+    tipo_movimiento: tipo === 'costo' ? 'OTRO_EGRESO' : 'OTRO_INGRESO',
+    concepto: tipo === 'costo' ? `Costo de envío — Delivery ${numeroPedido}` : `Cobro de envío — Delivery ${numeroPedido}`,
+    monto, saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+    metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+    banco_id: bancoId, monto_moneda_banco: montoBanco,
+    origen_caja: origenCaja, fecha: new Date().toISOString().slice(0,10), estado: 'completado',
+  }).select('id').single();
+  if (error) { console.warn('registrarMovimientoDelivery:', error); return null; }
+  return data?.id || null;
 }
 
 /* =====================================================
@@ -364,7 +561,8 @@ async function init() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    await Promise.all([cargarPerfilesInternos(), cargarVentasParaVincular()]);
+    await Promise.all([cargarPerfilesInternos(), cargarVentasParaVincular(), loadMetodosPago()]);
+    STATE.cajaChicaAbiertaHoy = await hayCajaChicaAbiertaHoy();
     await cargarPedidos();
   } catch (e) {
     console.error('init delivery:', e);

@@ -967,6 +967,13 @@
     .filtro-estado-btn.active, .tipo-repartidor-btn.active {
       background: var(--accent); color: #fff; border-color: var(--accent);
     }
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+    .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:16px}
+    .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -1230,11 +1237,55 @@
               <label>Referencia (opcional)</label>
               <input type="text" id="np-referencia" placeholder="Ej: casa celeste, portón negro"/>
             </div>
+
             <div class="form-row">
-              <div><label>Costo del envío (lo que pagas)</label><input type="number" id="np-costo-envio" step="0.01" min="0" value="0"/></div>
-              <div><label>Cobro del envío (lo que cobras)</label><input type="number" id="np-cobro-envio" step="0.01" min="0" value="0"/></div>
+              <div><label>Costo del envío (lo que pagas)</label><input type="number" id="np-costo-envio" step="0.01" min="0" value="0" oninput="onCambioMontoEnvio('costo')"/></div>
+              <div><label>Cobro del envío (lo que cobras)</label><input type="number" id="np-cobro-envio" step="0.01" min="0" value="0" oninput="onCambioMontoEnvio('cobro')"/></div>
             </div>
-            <label>Observaciones</label>
+
+            <!-- Método de pago del COSTO (egreso — lo que le pagas al repartidor) -->
+            <div id="np-costo-metodo-wrap" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-app);border-radius:var(--radius-md)">
+              <label style="font-size:12px">¿Con qué pagas el costo del envío?</label>
+              <select id="np-costo-metodo" onchange="mostrarSelectorBancoDelivery('costo', this.selectedOptions[0]?.dataset.nombre || 'Efectivo')"></select>
+              <div id="np-costo-origen-caja-wrap" style="display:none;margin-top:6px">
+                <label style="font-size:12px">¿De cuál caja sale?</label>
+                <select id="np-costo-origen-caja"><option value="chica">Caja Chica</option><option value="general">Caja General</option></select>
+              </div>
+              <div id="np-costo-banco-elegir-wrap" style="display:none;margin-top:8px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                  <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoDelivery('costo')">✕</button>
+                  <span style="font-size:12px;font-weight:600">¿De qué banco sale?</span>
+                </div>
+                <div class="metodos-grid" id="np-costo-banco-elegir-grid"></div>
+              </div>
+              <div id="np-costo-banco-elegido-wrap" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--success);border-radius:8px;background:var(--success-soft);display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:12px;color:var(--success);font-weight:600">🏦 Sale de: <span id="np-costo-banco-elegido-nombre"></span></span>
+                <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoDelivery('costo')">✕</button>
+              </div>
+            </div>
+
+            <!-- Método de pago del COBRO (ingreso — lo que le cobras al cliente por el envío) -->
+            <div id="np-cobro-metodo-wrap" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-app);border-radius:var(--radius-md)">
+              <label style="font-size:12px">¿Con qué te paga el cliente el envío?</label>
+              <select id="np-cobro-metodo" onchange="mostrarSelectorBancoDelivery('cobro', this.selectedOptions[0]?.dataset.nombre || 'Efectivo')"></select>
+              <div id="np-cobro-origen-caja-wrap" style="display:none;margin-top:6px">
+                <label style="font-size:12px">¿A cuál caja entra?</label>
+                <select id="np-cobro-origen-caja"><option value="chica">Caja Chica</option><option value="general">Caja General</option></select>
+              </div>
+              <div id="np-cobro-banco-elegir-wrap" style="display:none;margin-top:8px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                  <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoDelivery('cobro')">✕</button>
+                  <span style="font-size:12px;font-weight:600">¿A qué banco entra?</span>
+                </div>
+                <div class="metodos-grid" id="np-cobro-banco-elegir-grid"></div>
+              </div>
+              <div id="np-cobro-banco-elegido-wrap" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--success);border-radius:8px;background:var(--success-soft);display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: <span id="np-cobro-banco-elegido-nombre"></span></span>
+                <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoDelivery('cobro')">✕</button>
+              </div>
+            </div>
+
+            <label style="margin-top:10px">Observaciones</label>
             <textarea id="np-observaciones" placeholder="Opcional"></textarea>
             <p id="np-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
           </div>
