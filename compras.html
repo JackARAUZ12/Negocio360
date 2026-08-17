@@ -2092,6 +2092,51 @@
   </div>
 </div>
 
+<!-- =====================================================
+     MODAL: COMPLETAR COMPRA — pasar de pendiente a completada,
+     descontando de Caja recién en este momento (cuando el negocio
+     ya pagó de verdad, no cuando solo adquirió la mercancía).
+=================================================== -->
+<div class="modal-overlay" id="modal-completar-compra" onclick="if(event.target===this)closeModal('modal-completar-compra')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Completar compra</span>
+      <button class="modal-close" onclick="closeModal('modal-completar-compra')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13.5px;line-height:1.6;margin-bottom:14px">
+        Confirma que ya se pagó esta compra — recién en este momento se va a descontar de Caja, no antes.
+      </p>
+      <div class="form-group">
+        <label>Método de pago *</label>
+        <select id="cc-metodo-pago" onchange="mostrarSelectorBancoCompletar(this.selectedOptions[0]?.dataset.nombre || 'Efectivo')"></select>
+      </div>
+
+      <div id="cc-banco-elegir-wrap" style="display:none;margin-top:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoCompletar()">✕</button>
+          <span style="font-size:13px;font-weight:600">¿De qué banco sale?</span>
+        </div>
+        <div class="metodos-grid" id="cc-banco-elegir-grid"></div>
+      </div>
+      <div id="cc-banco-elegido-wrap" style="display:none;margin-top:10px;padding:10px 12px;border:1.5px solid var(--success);border-radius:var(--radius-md);background:var(--success-soft);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Sale de: <span id="cc-banco-elegido-nombre"></span></span>
+        <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoCompletar()">✕</button>
+      </div>
+
+      <p id="cc-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-completar-compra')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-completar" onclick="completarCompra()" style="background:var(--success)">
+        Sí, ya se pagó
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- SCRIPT -->
 <script src="compras.js"></script>
 <script>

@@ -26,6 +26,9 @@ const sbClient     = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let _bancosCacheCompra = null;
 let _bancoElegidoIdCompra = null;
 let _montoBancoConvertidoCompra = null;
+let compraToCompletar = null;
+let _bancoElegidoIdCompletar = null;
+let _montoBancoConvertidoCompletar = null;
 
 /* =====================================================
    ESTADO GLOBAL
@@ -519,6 +522,10 @@ function renderCompras() {
         <button class="btn-icon" onclick="verDetalleCompra('${c.id}')" title="Ver detalle">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
+        ${c.estado === 'pendiente' ? `
+        <button class="btn-icon" style="color:var(--success)" onclick="abrirCompletarCompra('${c.id}')" title="Completar — ya se pagó, descontar de Caja">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>` : ''}
         ${c.estado !== 'anulada' ? `
         <button class="btn-icon btn-icon-danger" onclick="confirmarAnularCompra('${c.id}')" title="Anular">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -2214,6 +2221,145 @@ let compraToAnular = null;
 function confirmarAnularCompra(id) {
   compraToAnular = id;
   openModal('modal-confirmar-anular');
+}
+
+/* =====================================================
+   COMPLETAR COMPRA — pasar de "pendiente" a "completada",
+   descontando de Caja recién en este momento. Reutiliza
+   cargarBancosDisponiblesCompra() y saldoActualBanco(), ya
+   construidas para la creación de una compra nueva.
+===================================================== */
+function abrirCompletarCompra(id) {
+  compraToCompletar = id;
+  _bancoElegidoIdCompletar = null; _montoBancoConvertidoCompletar = null;
+  document.getElementById('cc-error').textContent = '';
+  document.getElementById('cc-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('cc-banco-elegido-wrap').style.display = 'none';
+
+  const opciones = STATE.metodosPago && STATE.metodosPago.length
+    ? STATE.metodosPago.map(m => `<option value="${m.id||''}" data-nombre="${escHtml(m.nombre)}">${escHtml(m.nombre)}</option>`).join('')
+    : '<option value="" data-nombre="Efectivo">Efectivo</option>';
+  document.getElementById('cc-metodo-pago').innerHTML = opciones;
+
+  openModal('modal-completar-compra');
+}
+
+async function mostrarSelectorBancoCompletar(metodoPagoNombre) {
+  const metodo = (metodoPagoNombre || '').toLowerCase();
+  document.getElementById('cc-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('cc-banco-elegido-wrap').style.display = 'none';
+  _bancoElegidoIdCompletar = null; _montoBancoConvertidoCompletar = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponiblesCompra();
+  if (!bancos.length) return;
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  document.getElementById('cc-banco-elegir-grid').innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoCompletar('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
+    </div>`).join('');
+  document.getElementById('cc-banco-elegir-wrap').style.display = '';
+}
+
+function elegirBancoCompletar(bancoId, bancoNombre, monedaBanco) {
+  _bancoElegidoIdCompletar = bancoId;
+  document.getElementById('cc-banco-elegir-wrap').style.display = 'none';
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const compra = STATE.compras.find(c => c.id === compraToCompletar);
+  const total = compra ? Number(compra.total) : 0;
+  const elNombre = document.getElementById('cc-banco-elegido-nombre');
+
+  if (esOtraMoneda) {
+    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const convertido = monedaBase === 'NIO' ? round2(total / tasa) : round2(total * tasa);
+      _montoBancoConvertidoCompletar = convertido;
+      elNombre.innerHTML = `${esc(bancoNombre)} — se descontará ${monedaBanco==='USD'?'$':'C$'} ${convertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    elNombre.textContent = bancoNombre;
+  }
+  document.getElementById('cc-banco-elegido-wrap').style.display = 'flex';
+}
+
+function cancelarSeleccionBancoCompletar() {
+  _bancoElegidoIdCompletar = null; _montoBancoConvertidoCompletar = null;
+  document.getElementById('cc-metodo-pago').value = '';
+  document.getElementById('cc-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('cc-banco-elegido-wrap').style.display = 'none';
+}
+
+async function completarCompra() {
+  const errEl = document.getElementById('cc-error');
+  errEl.textContent = '';
+  if (!compraToCompletar) return;
+
+  const compra = STATE.compras.find(c => c.id === compraToCompletar);
+  if (!compra) { errEl.textContent = 'No se encontró la compra.'; return; }
+
+  const metodoSel = document.getElementById('cc-metodo-pago');
+  const metodoPagoId = metodoSel.value || null;
+  const metodoPagoNombre = metodoSel.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+
+  // Mismo candado de saldo insuficiente que ya usa la compra nueva.
+  if (_bancoElegidoIdCompletar) {
+    const bancoInfo = (await cargarBancosDisponiblesCompra()).find(b => b.id === _bancoElegidoIdCompletar);
+    const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    const esOtraMoneda = bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase;
+    if (esOtraMoneda && !STATE.empresaConfig?.tasa_cambio_usd) {
+      errEl.textContent = 'Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar.';
+      return;
+    }
+    const montoADescontar = esOtraMoneda ? _montoBancoConvertidoCompletar : Number(compra.total);
+    const saldoBanco = await saldoActualBanco(_bancoElegidoIdCompletar);
+    if (montoADescontar > saldoBanco + 0.01) {
+      errEl.textContent = `Saldo insuficiente en ${bancoInfo?.nombre || 'ese banco'} — tiene ${saldoBanco.toLocaleString('es-NI',{minimumFractionDigits:2})} disponible.`;
+      return;
+    }
+  }
+
+  setBtnLoading('btn-confirmar-completar', true);
+  try {
+    const { data: movResult } = await sbClient.from('movimientos_financieros')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const saldoAnt = movResult ? Number(movResult.saldo_resultante) : 0;
+    const saldoRes = saldoAnt - Number(compra.total);
+
+    const { data: mov, error: errMov } = await sbClient.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
+      concepto: `Compra ${compra.numero}${compra.proveedor_nombre ? ' — ' + compra.proveedor_nombre : ''}`,
+      monto: compra.total, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
+      metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
+      banco_id: _bancoElegidoIdCompletar || null,
+      monto_moneda_banco: _bancoElegidoIdCompletar ? (_montoBancoConvertidoCompletar ?? null) : null,
+      referencia_tipo: 'compra', referencia_id: compra.id,
+      fecha: todayISO(), estado: 'completado',
+    }).select('id').single();
+    if (errMov) throw errMov;
+
+    const { error: errUpdate } = await sbClient.from('compras').update({
+      estado: 'completada', movimiento_caja_id: mov.id,
+      metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
+    }).eq('id', compra.id).eq('auth_user_id', STATE.userId);
+    if (errUpdate) throw errUpdate;
+
+    showToast('Compra completada — se descontó de Caja');
+    closeModal('modal-completar-compra');
+    compraToCompletar = null;
+    await Promise.allSettled([loadKPIs(), loadCompras()]);
+  } catch (e) {
+    console.error('completarCompra:', e);
+    errEl.textContent = 'No se pudo completar la compra. Intenta de nuevo.';
+  } finally {
+    setBtnLoading('btn-confirmar-completar', false);
+  }
 }
 
 async function anularCompra() {
