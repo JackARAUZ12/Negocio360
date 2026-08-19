@@ -992,17 +992,32 @@ async function guardarCapitalInicialModal() {
     return;
   }
 
+  setBtnLoading('btn-guardar-capital-inicial', true);
   try {
-    setBtnLoading('btn-guardar-capital-inicial', true);
     await guardarDineroInicial(monto);
-    STATE.caja = monto;
-    closeModal('modal-capital-inicial');
-    showToast('Caja iniciada correctamente');
+  } catch(e) {
+    // Esto SÍ es un error real de guardado — nada se guardó.
+    console.error('guardarCapitalInicialModal (guardado):', e);
+    showToast('No se pudo iniciar caja: ' + (e.message || e.details || 'error desconocido, revisa la consola'), 'error');
+    setBtnLoading('btn-guardar-capital-inicial', false);
+    return;
+  }
+
+  // A partir de aquí, el guardado YA se completó con éxito — lo que
+  // sigue es solo refrescar lo que se ve en pantalla. Si algo de esto
+  // fallara, nunca debe mostrarse como si el guardado hubiera
+  // fallado (antes sí pasaba esto, y confundía).
+  STATE.caja = monto;
+  closeModal('modal-capital-inicial');
+  showToast('Caja iniciada correctamente');
+  try {
     await Promise.all([loadResumen(), loadMovimientos(), loadMetodosPago()]);
     actualizarCacheLocal();
   } catch(e) {
-    console.error('guardarCapitalInicialModal:', e);
-    showToast('No se pudo iniciar caja: ' + (e.message || e.details || 'error desconocido, revisa la consola'), 'error');
+    console.warn('guardarCapitalInicialModal (refresco de pantalla, el guardado ya fue exitoso):', e);
+    // No se muestra ningún error al usuario — ya se guardó bien. En
+    // el peor de los casos, algo en pantalla no se actualizó solo,
+    // pero eso se corrige con un simple refresco de la página.
   } finally {
     setBtnLoading('btn-guardar-capital-inicial', false);
   }
