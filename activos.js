@@ -319,6 +319,10 @@ function abrirNuevoActivo() {
   document.getElementById('na-ubicacion').value = '';
   document.getElementById('na-responsable').value = '';
   document.getElementById('na-proveedor').value = '';
+  document.getElementById('na-garantia').value = '';
+  document.getElementById('na-vida-util-gerencial').value = '';
+  document.getElementById('na-usado-rutas').checked = false;
+  document.getElementById('na-usado-delivery').checked = false;
   document.getElementById('na-descontar-caja').checked = true;
   document.getElementById('na-error').textContent = '';
   onCambioCategoriaActivo();
@@ -473,20 +477,37 @@ async function guardarNuevoActivo() {
       movimientoCompraId = mov.id;
     }
 
-    const { error } = await sb.from('activos_fijos').insert({
+    const responsableInicial = document.getElementById('na-responsable').value || null;
+    const ubicacionInicial = document.getElementById('na-ubicacion').value.trim() || null;
+
+    const { data: nuevoActivo, error } = await sb.from('activos_fijos').insert({
       auth_user_id: STATE.userId, numero: numero || `AF-${Date.now()}`,
       nombre, categoria, fecha_adquisicion: fecha, costo_adquisicion: costo,
       vida_util_anos: vidaUtil, valor_residual: valorResidual,
       numero_serie: document.getElementById('na-serie').value.trim() || null,
-      ubicacion: document.getElementById('na-ubicacion').value.trim() || null,
-      responsable_perfil_id: document.getElementById('na-responsable').value || null,
+      ubicacion: ubicacionInicial,
+      responsable_perfil_id: responsableInicial,
       proveedor_id: document.getElementById('na-proveedor').value || null,
+      garantia_vencimiento: document.getElementById('na-garantia').value || null,
+      vida_util_gerencial_anos: parseFloat(document.getElementById('na-vida-util-gerencial').value) || null,
+      usado_en_rutas: document.getElementById('na-usado-rutas').checked,
+      usado_en_delivery: document.getElementById('na-usado-delivery').checked,
       estado: 'activo', movimiento_compra_id: movimientoCompraId,
       cuenta_activo_id: cuentaActivo?.id || null,
       cuenta_depreciacion_id: cuentaDepreciacion?.id || null,
       cuenta_gasto_depreciacion_id: cuentaGastoDepreciacion?.id || null,
-    });
+    }).select('id').single();
     if (error) throw error;
+
+    // Si ya se asignó responsable/ubicación desde la creación, se
+    // registra como el primer renglón del historial de reasignaciones.
+    if (responsableInicial || ubicacionInicial) {
+      await sb.from('activo_reasignaciones').insert({
+        auth_user_id: STATE.userId, activo_id: nuevoActivo.id,
+        responsable_perfil_id: responsableInicial, ubicacion: ubicacionInicial,
+        motivo: 'Asignación inicial', fecha_desde: todayLocalISO(),
+      });
+    }
 
     showToast('Activo registrado correctamente');
     closeModal('modal-nuevo-activo');
@@ -518,12 +539,46 @@ async function abrirDetalleActivo(activoId) {
 
   const { data: mantenimientos } = await sb.from('activo_mantenimientos').select('*')
     .eq('auth_user_id', STATE.userId).eq('activo_id', activoId).order('fecha', { ascending: false });
+  const { data: reasignaciones } = await sb.from('activo_reasignaciones').select('*')
+    .eq('auth_user_id', STATE.userId).eq('activo_id', activoId).order('fecha_desde', { ascending: false });
+  const { data: mejoras } = await sb.from('activo_mejoras_capitalizadas').select('*')
+    .eq('auth_user_id', STATE.userId).eq('activo_id', activoId).order('fecha', { ascending: false });
 
   const mesesPendientes = Math.max(0, dep.mesesTranscurridos - (a.meses_depreciados || 0));
 
+  // Garantía/seguro — semáforo simple según cercanía del vencimiento.
+  let garantiaHtml = '';
+  if (a.garantia_vencimiento) {
+    const hoy = new Date(); const venc = new Date(a.garantia_vencimiento + 'T00:00:00');
+    const diasRestantes = Math.round((venc - hoy) / 86400000);
+    const color = diasRestantes < 0 ? 'var(--danger)' : diasRestantes <= 30 ? '#f59e0b' : 'var(--success)';
+    const texto = diasRestantes < 0 ? `venció hace ${Math.abs(diasRestantes)} días` : `vence en ${diasRestantes} días`;
+    garantiaHtml = `<div><b>Garantía/seguro:</b> <span style="color:${color};font-weight:600">${fmtFechaCorta(a.garantia_vencimiento)} (${texto})</span></div>`;
+  }
+
+  // Vida útil gerencial (si es distinta a la fiscal) — se calcula
+  // aparte, solo para mostrar, nunca reemplaza la fiscal.
+  let gerencialHtml = '';
+  if (a.vida_util_gerencial_anos) {
+    const depGerencial = calcularDepreciacion({ ...a, vida_util_anos: a.vida_util_gerencial_anos });
+    gerencialHtml = `<div style="margin-top:8px;padding:8px 10px;background:var(--bg-app);border-radius:8px;font-size:12px">
+      📊 <b>Reporte interno</b> (vida útil de ${a.vida_util_gerencial_anos} años): valor en libros ${fmt(depGerencial.valorEnLibros)} — esto NO afecta tu contabilidad fiscal, es solo para tu propio análisis.
+    </div>`;
+  }
+
+  // Costo real de operación, si es un vehículo usado en Rutas/Delivery.
+  let operacionHtml = '';
+  const operacion = await calcularCostoOperacionVehiculo(a, mantenimientos);
+  if (operacion) {
+    operacionHtml = `<div style="margin-top:12px;padding:10px 12px;background:var(--accent-soft);border-radius:8px;font-size:12.5px">
+      🚚 <b>Costo real de operación</b> — ${fmt(operacion.costoTotal)} en total (depreciación + mantenimientos)
+      ${operacion.usosTotal > 0 ? `, usado en ${operacion.usosTotal} ${operacion.usosTotal===1?'viaje':'viajes'} (${operacion.usosRutas} rutas, ${operacion.usosDelivery} deliveries) — ${fmt(operacion.costoPorUso)} por viaje` : ' — sin viajes registrados todavía'}
+    </div>`;
+  }
+
   cuerpo.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
-      <div class="panel-card" style="margin:0;padding:12px"><div style="font-size:11px;color:var(--text-muted)">Costo original</div><div style="font-size:16px;font-weight:800">${fmt(a.costo_adquisicion)}</div></div>
+      <div class="panel-card" style="margin:0;padding:12px"><div style="font-size:11px;color:var(--text-muted)">Costo actual</div><div style="font-size:16px;font-weight:800">${fmt(a.costo_adquisicion)}</div></div>
       <div class="panel-card" style="margin:0;padding:12px"><div style="font-size:11px;color:var(--text-muted)">Depreciación acumulada</div><div style="font-size:16px;font-weight:800;color:#f59e0b">${fmt(dep.depreciacionAcumulada)}</div></div>
       <div class="panel-card" style="margin:0;padding:12px"><div style="font-size:11px;color:var(--text-muted)">Valor en libros</div><div style="font-size:16px;font-weight:800;color:var(--accent)">${fmt(dep.valorEnLibros)}</div></div>
       <div class="panel-card" style="margin:0;padding:12px"><div style="font-size:11px;color:var(--text-muted)">Depreciación mensual</div><div style="font-size:16px;font-weight:800">${fmt(dep.depreciacionMensual)}</div></div>
@@ -536,26 +591,55 @@ async function abrirDetalleActivo(activoId) {
       ${a.ubicacion ? `<div><b>Ubicación:</b> ${esc(a.ubicacion)}</div>` : ''}
       ${responsable ? `<div><b>Responsable:</b> ${esc(responsable.nombre)}</div>` : ''}
       ${proveedor ? `<div><b>Proveedor:</b> ${esc(proveedor.nombre)}</div>` : ''}
+      ${garantiaHtml}
     </div>
+    ${gerencialHtml}
+    ${operacionHtml}
 
     ${a.estado === 'baja' ? `
-    <div style="padding:10px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px;margin-bottom:14px">
+    <div style="padding:10px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px;margin:14px 0">
       🚫 Dado de baja el ${fmtFechaCorta(a.fecha_baja)} — motivo: ${esc(a.motivo_baja)}${a.valor_venta ? ` — vendido por ${fmt(a.valor_venta)}` : ''}
     </div>` : `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${mesesPendientes > 0 ? `<button class="btn-secondary btn-sm" onclick="generarAsientosDepreciacion('${a.id}')">📒 Generar asiento de depreciación (${mesesPendientes} mes${mesesPendientes===1?'':'es'} pendiente${mesesPendientes===1?'':'s'})</button>` : `<span style="font-size:11.5px;color:var(--text-muted)">✅ Depreciación contable al día</span>`}
-      <button class="btn-secondary btn-sm" onclick="abrirMantenimiento('${a.id}')">🔧 Registrar mantenimiento</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0">
+      ${mesesPendientes > 0 ? `<button class="btn-secondary btn-sm" onclick="generarAsientosDepreciacion('${a.id}')">📒 Generar asiento (${mesesPendientes} mes${mesesPendientes===1?'':'es'} pendiente${mesesPendientes===1?'':'s'})</button>` : `<span style="font-size:11.5px;color:var(--text-muted)">✅ Depreciación al día</span>`}
+      <button class="btn-secondary btn-sm" onclick="abrirMantenimiento('${a.id}')">🔧 Mantenimiento</button>
+      <button class="btn-secondary btn-sm" onclick="abrirMejora('${a.id}')">⬆️ Capitalizar mejora</button>
+      <button class="btn-secondary btn-sm" onclick="abrirReasignar('${a.id}')">📍 Reasignar</button>
+      <button class="btn-secondary btn-sm" onclick="abrirEtiqueta('${a.id}')">🏷️ Etiqueta</button>
       <button class="btn-ghost btn-sm" style="color:var(--danger)" onclick="abrirBajaActivo('${a.id}')">Dar de baja</button>
     </div>`}
 
     <div style="font-weight:700;font-size:13px;margin-bottom:8px">Historial de mantenimientos</div>
-    <div>
+    <div style="margin-bottom:16px">
       ${(mantenimientos||[]).length ? mantenimientos.map(m => `
         <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:6px;font-size:12.5px">
           <span>${fmtFechaCorta(m.fecha)} — ${esc(m.descripcion)}</span>
           <span style="font-weight:600">${fmt(m.costo)}</span>
         </div>`).join('') : '<p style="font-size:12px;color:var(--text-muted)">Sin mantenimientos registrados todavía.</p>'}
     </div>
+
+    ${(mejoras||[]).length ? `
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px">Mejoras capitalizadas</div>
+    <div style="margin-bottom:16px">
+      ${mejoras.map(m => `
+        <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:6px;font-size:12.5px">
+          <span>${fmtFechaCorta(m.fecha)} — ${esc(m.descripcion)}</span>
+          <span style="font-weight:600;color:var(--accent)">+${fmt(m.monto)}</span>
+        </div>`).join('')}
+    </div>` : ''}
+
+    ${(reasignaciones||[]).length ? `
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px">Historial de asignación</div>
+    <div>
+      ${reasignaciones.map(r => {
+        const persona = STATE.perfiles.find(p => p.id === r.responsable_perfil_id);
+        return `<div style="padding:8px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:6px;font-size:12.5px">
+          <b>${fmtFechaCorta(r.fecha_desde)}${r.fecha_hasta ? ' → '+fmtFechaCorta(r.fecha_hasta) : ' → hoy'}</b>
+          ${persona ? ' — '+esc(persona.nombre) : ''}${r.ubicacion ? ' — '+esc(r.ubicacion) : ''}
+          ${r.motivo ? `<div style="color:var(--text-muted);font-size:11.5px">${esc(r.motivo)}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>` : ''}
   `;
 }
 
@@ -803,6 +887,175 @@ async function generarAsientosDepreciacion(activoId) {
     console.error('generarAsientosDepreciacion:', e);
     showToast('No se pudieron generar los asientos. Intenta de nuevo.', 'error');
   }
+}
+
+/* =====================================================
+   REASIGNAR — historial de responsable/ubicación en el tiempo.
+===================================================== */
+function abrirReasignar(activoId) {
+  const a = STATE.activos.find(x => x.id === activoId);
+  if (!a) return;
+  document.getElementById('rs-activo-id').value = activoId;
+  document.getElementById('rs-responsable').value = a.responsable_perfil_id || '';
+  document.getElementById('rs-ubicacion').value = a.ubicacion || '';
+  document.getElementById('rs-motivo').value = '';
+  document.getElementById('rs-error').textContent = '';
+  closeModal('modal-detalle-activo');
+  openModal('modal-reasignar-activo');
+}
+
+async function guardarReasignacion() {
+  const errEl = document.getElementById('rs-error');
+  errEl.textContent = '';
+  const activoId = document.getElementById('rs-activo-id').value;
+  const responsableId = document.getElementById('rs-responsable').value || null;
+  const ubicacion = document.getElementById('rs-ubicacion').value.trim() || null;
+  const motivo = document.getElementById('rs-motivo').value.trim() || null;
+
+  try {
+    await sb.from('activo_reasignaciones').update({ fecha_hasta: todayLocalISO() })
+      .eq('activo_id', activoId).eq('auth_user_id', STATE.userId).is('fecha_hasta', null);
+
+    const { error: errIns } = await sb.from('activo_reasignaciones').insert({
+      auth_user_id: STATE.userId, activo_id: activoId,
+      responsable_perfil_id: responsableId, ubicacion, motivo,
+      fecha_desde: todayLocalISO(),
+    });
+    if (errIns) throw errIns;
+
+    const { error: errUp } = await sb.from('activos_fijos').update({
+      responsable_perfil_id: responsableId, ubicacion, updated_at: new Date().toISOString(),
+    }).eq('id', activoId).eq('auth_user_id', STATE.userId);
+    if (errUp) throw errUp;
+
+    showToast('Activo reasignado');
+    closeModal('modal-reasignar-activo');
+    await cargarActivos();
+  } catch (e) {
+    console.error('guardarReasignacion:', e);
+    errEl.textContent = 'No se pudo reasignar. Intenta de nuevo.';
+  }
+}
+
+/* =====================================================
+   CAPITALIZAR MEJORA
+===================================================== */
+function abrirMejora(activoId) {
+  document.getElementById('mj-activo-id').value = activoId;
+  document.getElementById('mj-descripcion').value = '';
+  document.getElementById('mj-fecha').value = todayLocalISO();
+  document.getElementById('mj-monto').value = '';
+  document.getElementById('mj-error').textContent = '';
+  closeModal('modal-detalle-activo');
+  openModal('modal-mejora-activo');
+}
+
+async function guardarMejoraCapitalizada() {
+  const errEl = document.getElementById('mj-error');
+  errEl.textContent = '';
+  const activoId = document.getElementById('mj-activo-id').value;
+  const a = STATE.activos.find(x => x.id === activoId);
+  if (!a) return;
+  const descripcion = document.getElementById('mj-descripcion').value.trim();
+  const fecha = document.getElementById('mj-fecha').value;
+  const monto = round2(parseFloat(document.getElementById('mj-monto').value) || 0);
+
+  if (!descripcion) { errEl.textContent = 'Describe qué mejora se hizo.'; return; }
+  if (monto <= 0) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
+
+  try {
+    const { data: ultMov } = await sb.from('movimientos_financieros')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    const saldoAnterior = ultMov?.saldo_resultante || 0;
+    const saldoResultante = saldoAnterior - monto;
+
+    const { data: mov, error: errMov } = await sb.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'GASTO',
+      concepto: `Mejora capitalizada: ${a.nombre} — ${descripcion}`,
+      monto, saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+      metodo_pago_nombre: 'Efectivo', fecha, estado: 'completado',
+    }).select('id').single();
+    if (errMov) throw errMov;
+
+    const { data: gasto, error: errGasto } = await sb.from('gastos').insert({
+      auth_user_id: STATE.userId, tipo: 'inmediato', concepto: `Mejora: ${a.nombre}`,
+      categoria: 'Mejoras de activos', monto, fecha,
+      metodo_pago_nombre: 'Efectivo', observaciones: descripcion,
+      movimiento_financiero_id: mov.id, estado: 'activo',
+    }).select('id').single();
+    if (errGasto) throw errGasto;
+
+    const { error: errMejora } = await sb.from('activo_mejoras_capitalizadas').insert({
+      auth_user_id: STATE.userId, activo_id: activoId, fecha, descripcion, monto, gasto_id: gasto.id,
+    });
+    if (errMejora) throw errMejora;
+
+    const { error: errUpdate } = await sb.from('activos_fijos').update({
+      costo_adquisicion: round2(Number(a.costo_adquisicion) + monto), updated_at: new Date().toISOString(),
+    }).eq('id', activoId).eq('auth_user_id', STATE.userId);
+    if (errUpdate) throw errUpdate;
+
+    showToast('Mejora capitalizada — el costo del activo aumentó');
+    closeModal('modal-mejora-activo');
+    await cargarActivos();
+    await abrirDetalleActivo(activoId);
+  } catch (e) {
+    console.error('guardarMejoraCapitalizada:', e);
+    errEl.textContent = 'No se pudo registrar. Intenta de nuevo.';
+  }
+}
+
+/* =====================================================
+   ETIQUETA / CÓDIGO QR
+===================================================== */
+function abrirEtiqueta(activoId) {
+  const a = STATE.activos.find(x => x.id === activoId);
+  if (!a) return;
+  const texto = encodeURIComponent(`${a.numero} — ${a.nombre}`);
+  const urlQR = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${texto}`;
+  document.getElementById('et-cuerpo').innerHTML = `
+    <img src="${urlQR}" alt="Código QR" style="border:1px solid var(--border);border-radius:8px" id="et-imagen"/>
+    <div style="font-weight:800;font-size:15px;margin-top:10px">${esc(a.numero)}</div>
+    <div style="font-size:13px;color:var(--text-secondary)">${esc(a.nombre)}</div>
+  `;
+  closeModal('modal-detalle-activo');
+  openModal('modal-etiqueta-activo');
+}
+
+function imprimirEtiquetaActivo() {
+  const contenido = document.getElementById('et-cuerpo').innerHTML;
+  const ventana = window.open('', '_blank', 'width=400,height=500');
+  ventana.document.write(`<html><head><title>Etiqueta</title></head>
+    <body style="text-align:center;font-family:sans-serif;padding:30px">${contenido}</body></html>`);
+  ventana.document.close();
+  ventana.focus();
+  setTimeout(() => ventana.print(), 300);
+}
+
+/* =====================================================
+   COSTO REAL DE OPERACIÓN — vehículos vinculados a Rutas/Delivery
+===================================================== */
+async function calcularCostoOperacionVehiculo(activo, mantenimientos) {
+  if (!activo.usado_en_rutas && !activo.usado_en_delivery) return null;
+  const dep = calcularDepreciacion(activo);
+  const totalMantenimientos = (mantenimientos||[]).reduce((s,m) => s + Number(m.costo||0), 0);
+  const costoTotal = round2(dep.depreciacionAcumulada + totalMantenimientos);
+
+  let usosRutas = 0, usosDelivery = 0;
+  if (activo.usado_en_rutas) {
+    const { count } = await sb.from('rutas').select('id', { count:'exact', head:true })
+      .eq('auth_user_id', STATE.userId).eq('activo_vehiculo_id', activo.id);
+    usosRutas = count || 0;
+  }
+  if (activo.usado_en_delivery) {
+    const { count } = await sb.from('delivery_pedidos').select('id', { count:'exact', head:true })
+      .eq('auth_user_id', STATE.userId).eq('activo_vehiculo_id', activo.id);
+    usosDelivery = count || 0;
+  }
+  const usosTotal = usosRutas + usosDelivery;
+  return { costoTotal, usosRutas, usosDelivery, usosTotal,
+    costoPorUso: usosTotal > 0 ? round2(costoTotal / usosTotal) : null };
 }
 
 /* =====================================================
