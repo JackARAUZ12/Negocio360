@@ -1174,12 +1174,32 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Contabilización automática
           </button>
-          <button class="btn-primary" onclick="abrirNuevoAsiento()">
+          <button class="btn-secondary" onclick="abrirNuevoAsiento()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nuevo asiento
+            Registrar manual
           </button>
         </div>
       </div>
+
+      <!-- BANNER: CONTABILIZACIÓN AUTOMÁTICA — la forma principal de
+           trabajar. El registro manual sigue disponible arriba, para
+           cuando de verdad haga falta. -->
+      <div class="panel-card fade-in" id="banner-asientos-pendientes" style="margin-bottom:16px;background:linear-gradient(135deg, var(--accent-soft), var(--bg-surface));border:1.5px solid var(--accent)">
+        <div class="panel-body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="font-size:32px">⚡</div>
+            <div>
+              <div style="font-weight:800;font-size:15px" id="banner-asientos-titulo">Revisando tus movimientos…</div>
+              <div style="font-size:12.5px;color:var(--text-secondary)" id="banner-asientos-desc">Ventas, gastos, compras, créditos, cuentas por pagar y salarios — todo en un clic.</div>
+            </div>
+          </div>
+          <button class="btn-primary" id="btn-banner-generar" onclick="abrirGenerarAsientos()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Generar todo automático
+          </button>
+        </div>
+      </div>
+
 
       <div class="section-tabs fade-in">
         <button class="section-tab active" id="tab-btn-asientos" onclick="cambiarSeccionContable('asientos')">

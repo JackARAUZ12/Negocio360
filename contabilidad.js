@@ -1218,11 +1218,75 @@ async function generarAsientosAutomaticos() {
     document.getElementById('ga-resultado').innerHTML = resumen;
     showToast(`${creados} asiento(s) generado(s)`);
     await cargarAsientos();
+    actualizarBannerAsientosPendientes();
   } catch (e) {
     console.error('generarAsientosAutomaticos:', e);
     errEl.textContent = 'Error: ' + (e.message||'');
   } finally {
     setBtnLoading('btn-generar-asientos', false);
+  }
+}
+
+/* =====================================================
+   BANNER DE PENDIENTES — cuenta (sin crear nada) cuántos movimientos
+   todavía no tienen su asiento automático, para que el banner de
+   arriba diga algo útil apenas se entra al módulo.
+===================================================== */
+async function actualizarBannerAsientosPendientes() {
+  const tituloEl = document.getElementById('banner-asientos-titulo');
+  const descEl = document.getElementById('banner-asientos-desc');
+  const btnEl = document.getElementById('btn-banner-generar');
+  if (!tituloEl) return;
+
+  try {
+    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion, cuenta_debe_id, cuenta_haber_id').eq('auth_user_id', STATE.userId);
+    const mapeo = new Map((mapeoData||[]).map(m => [m.tipo_transaccion, m]));
+    if (!mapeo.size) {
+      tituloEl.textContent = 'Todavía no has configurado la contabilización automática';
+      descEl.textContent = 'Configúrala una sola vez, y de ahí en adelante solo aprietas un botón.';
+      btnEl.innerHTML = 'Configurar ahora';
+      btnEl.setAttribute('onclick', 'abrirMapeoCuentas()');
+      return;
+    }
+    btnEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generar todo automático';
+    btnEl.setAttribute('onclick', 'abrirGenerarAsientos()');
+
+    const { data: yaGenerados } = await sbClient.from('asientos_contables')
+      .select('referencia_tipo, referencia_id').eq('auth_user_id', STATE.userId).eq('origen', 'automatico');
+    const yaHechos = new Set((yaGenerados||[]).map(a => `${a.referencia_tipo}:${a.referencia_id}`));
+
+    async function contarTipo(tipo, tabla, filtroEstado, campoEstado, filtroExtra) {
+      if (!mapeo.get(tipo)) return 0;
+      let query = sbClient.from(tabla).select('id').eq('auth_user_id', STATE.userId);
+      if (campoEstado) query = query.eq(campoEstado, filtroEstado);
+      if (filtroExtra) query = filtroExtra(query);
+      const { data } = await query;
+      return (data||[]).filter(f => !yaHechos.has(`${tipo}:${f.id}`)).length;
+    }
+
+    const [nVenta, nCredito, nPagoCredito, nGasto, nCompra, nSalario, nCxp, nPagoCxp] = await Promise.all([
+      contarTipo('venta', 'ventas', 'completada', 'estado', q => q.neq('metodo_pago', 'credito')),
+      contarTipo('credito_otorgado', 'ventas', 'completada', 'estado', q => q.eq('metodo_pago', 'credito')),
+      contarTipo('pago_credito', 'creditos_pagos', 'completado', 'estado'),
+      contarTipo('gasto', 'gastos', 'activo', 'estado'),
+      contarTipo('compra', 'compras', 'completada', 'estado'),
+      contarTipo('pago_salario', 'empleados_pagos', 'pagado', 'estado'),
+      contarTipo('cxp_generada', 'cuentas_por_pagar', null, null),
+      contarTipo('pago_cxp', 'cuentas_por_pagar_pagos', null, null),
+    ]);
+    const total = nVenta + nCredito + nPagoCredito + nGasto + nCompra + nSalario + nCxp + nPagoCxp;
+
+    if (total > 0) {
+      tituloEl.textContent = `${total} movimiento${total===1?'':'s'} sin registrar contablemente`;
+      descEl.textContent = 'Ventas, gastos, compras, créditos, cuentas por pagar y salarios — todo en un clic.';
+    } else {
+      tituloEl.textContent = '✅ Tu contabilidad está al día';
+      descEl.textContent = 'Todos tus movimientos ya tienen su asiento contable generado.';
+    }
+  } catch (e) {
+    console.warn('actualizarBannerAsientosPendientes:', e);
+    tituloEl.textContent = 'Contabilización automática';
+    descEl.textContent = 'Genera los asientos de tus movimientos con un clic.';
   }
 }
 
@@ -1247,6 +1311,7 @@ async function initContabilidad() {
 
     await cargarCuentas();
     await cargarAsientos();
+    actualizarBannerAsientosPendientes(); // no se espera (await) — no bloquea el resto de la carga
   } catch (err) {
     console.error('initContabilidad:', err);
     document.getElementById('loader').classList.add('hidden');
