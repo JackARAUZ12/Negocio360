@@ -35,7 +35,13 @@ function esc(str) {
 }
 function fmtFecha(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+  // FIX ZONA HORARIA: new Date("2026-08-19") sin hora se interpreta
+  // como medianoche UTC, no medianoche local — en Nicaragua (UTC-6)
+  // esa medianoche UTC ya es las 6PM del día ANTERIOR hora local, y
+  // por eso se mostraba un día antes del real. Se agrega la hora
+  // explícita para forzar que se lea como medianoche LOCAL.
+  const fechaSolo = String(iso).slice(0, 10);
+  return new Date(fechaSolo + 'T00:00:00').toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
 }
 function fmt(n) {
   const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
