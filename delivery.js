@@ -39,6 +39,17 @@ function fmt(amount) {
 }
 function fmtNum(n) { return Number(n||0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
 
+/* FIX ZONA HORARIA (mismo que ya existe en Ventas/Compras): usar
+   new Date().toISOString() da la fecha en UTC. Nicaragua es UTC-6,
+   así que después de las 6:00 PM hora local, la fecha en UTC YA ES
+   EL DÍA SIGUIENTE — cualquier venta/movimiento creado de noche
+   quedaba con la fecha de mañana, y no aparecía en Ventas ni en
+   Caja al revisar el mismo día. Se usa la fecha calendario LOCAL.  */
+function ymdLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todayLocalISO() { return ymdLocal(new Date()); }
+
 /* =====================================================
    SHELL: TEMA, SIDEBAR, NAVEGACIÓN (idéntico al resto del sistema)
 ===================================================== */
@@ -140,7 +151,7 @@ async function loadMetodosPago() {
 
 async function hayCajaChicaAbiertaHoy() {
   try {
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = todayLocalISO();
     const { data } = await sb.from('caja_chica_sesiones')
       .select('id').eq('auth_user_id', STATE.userId).eq('fecha', hoy).eq('estado', 'abierta').maybeSingle();
     return !!data;
@@ -275,7 +286,7 @@ async function cargarPedidos() {
 }
 
 function renderKPIs() {
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = todayLocalISO();
   const contar = (estado) => STATE.pedidos.filter(p => p.estado === estado).length;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('kpi-pendiente', contar('pendiente'));
@@ -628,7 +639,7 @@ async function crearVentaDesdeDelivery(numeroPedido) {
   const { data: venta, error: errVenta } = await sb.from('ventas').insert({
     auth_user_id: STATE.userId, numero_venta: numeroVenta || `V-${Date.now()}`,
     cliente_nombre: document.getElementById('np-cliente').value.trim() || 'Consumidor Final',
-    subtotal: total, total, costo_total: costoTotal,
+    subtotal: total, total, costo_total: costoTotal, fecha: todayLocalISO(),
     metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     estado: 'completada', estado_pago: esParcial ? 'pendiente' : 'pagado',
     estado_entrega: 'pendiente', observaciones: `Creada desde Delivery ${numeroPedido}`,
@@ -672,7 +683,7 @@ async function crearVentaDesdeDelivery(numeroPedido) {
     metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     banco_id: _bancoElegidoVenta || null, monto_moneda_banco: _bancoElegidoVenta ? (_montoBancoConvertidoVenta ?? null) : null,
     referencia_tipo: 'venta', referencia_id: venta.id,
-    fecha: new Date().toISOString().slice(0,10), estado: 'completado',
+    fecha: todayLocalISO(), estado: 'completado',
   }).select('id').single();
   if (errMov) throw errMov;
 
@@ -816,7 +827,7 @@ async function registrarMovimientoDelivery(tipo, monto, numeroPedido) {
     monto, saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
     metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     banco_id: bancoId, monto_moneda_banco: montoBanco,
-    origen_caja: origenCaja, fecha: new Date().toISOString().slice(0,10), estado: 'completado',
+    origen_caja: origenCaja, fecha: todayLocalISO(), estado: 'completado',
   }).select('id').single();
   if (error) { console.warn('registrarMovimientoDelivery:', error); return null; }
   return data?.id || null;
@@ -1006,7 +1017,7 @@ async function confirmarSaldo() {
       metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
       banco_id: _bancoElegidoSaldo || null, monto_moneda_banco: _bancoElegidoSaldo ? (_montoBancoConvertidoSaldo ?? null) : null,
       referencia_tipo: 'venta', referencia_id: p.venta_id,
-      fecha: new Date().toISOString().slice(0,10), estado: 'completado',
+      fecha: todayLocalISO(), estado: 'completado',
     }).select('id').single();
     if (errMov) throw errMov;
 
