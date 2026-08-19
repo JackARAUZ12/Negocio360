@@ -18,6 +18,7 @@ let STATE = {
   tipoPagoVentaPedido: 'completo', // 'completo' | 'parcial'
   carritoVentaDelivery: [], // [{producto_id, nombre, precio, costo, cantidad}]
   productosCacheDelivery: null,
+  escalasCacheDelivery: {},
 };
 
 // Estado de banco elegido para la VENTA creada desde Delivery
@@ -407,11 +408,28 @@ function cambiarTipoPagoVenta(tipo) {
 async function cargarProductosCacheDelivery() {
   if (STATE.productosCacheDelivery) return STATE.productosCacheDelivery;
   try {
-    const { data } = await sb.from('productos').select('id, nombre, sku, precio, costo, stock_actual, tipo')
+    const { data } = await sb.from('productos').select('id, nombre, sku, precio, tipo_precio, costo, stock_actual, tipo')
       .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
     STATE.productosCacheDelivery = data || [];
+    await cargarEscalasCacheDelivery();
   } catch (e) { STATE.productosCacheDelivery = []; }
   return STATE.productosCacheDelivery;
+}
+
+// Mapa producto_id -> [{id, nombre, precio}] para productos con
+// tipo_precio='escala' (ej. precio distinto por mayoreo/cantidad).
+// Mismo patrón que ya usa Ventas.
+async function cargarEscalasCacheDelivery() {
+  try {
+    const { data } = await sb.from('precios_escala').select('id, producto_id, nombre, precio, orden')
+      .eq('auth_user_id', STATE.userId).order('orden');
+    const map = {};
+    (data || []).forEach(e => {
+      if (!map[e.producto_id]) map[e.producto_id] = [];
+      map[e.producto_id].push(e);
+    });
+    STATE.escalasCacheDelivery = map;
+  } catch (e) { STATE.escalasCacheDelivery = {}; }
 }
 
 // Búsqueda simple mientras se escribe, igual de espíritu que el
@@ -426,22 +444,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultados = productos.filter(p =>
       (p.nombre||'').toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q)
     ).slice(0, 8);
-    cont.innerHTML = resultados.map(p => `
-      <div class="metodo-card" style="margin-bottom:4px" onclick="agregarProductoCarritoDelivery('${p.id}')">
+    cont.innerHTML = resultados.map(p => {
+      const tieneEscala = p.tipo_precio === 'escala' && (STATE.escalasCacheDelivery[p.id]||[]).length > 0;
+      const textoPrecio = tieneEscala ? '📊 Elige un precio' : fmt(p.precio);
+      return `
+      <div class="metodo-card" style="margin-bottom:4px" onclick="${tieneEscala ? `abrirSelectorEscalaDelivery('${p.id}')` : `agregarProductoCarritoDelivery('${p.id}')`}">
         <span class="mc-icon">${p.tipo==='servicio'?'🔧':'📦'}</span>
-        <span class="mc-name">${esc(p.nombre)} — ${fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${fmtNum(p.stock_actual)})` : ''}</span>
-      </div>`).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+        <span class="mc-name">${esc(p.nombre)} — ${textoPrecio}${p.tipo==='producto' ? ` (stock: ${fmtNum(p.stock_actual)})` : ''}</span>
+      </div>`;
+    }).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
   });
 });
 
-async function agregarProductoCarritoDelivery(productoId) {
+// Muestra las opciones de precio (escala) de un producto, reutilizando
+// el mismo contenedor de resultados de búsqueda — mismo espíritu que
+// el selector de escala que ya usa Ventas/Venta Rápida.
+function abrirSelectorEscalaDelivery(productoId) {
+  const cont = document.getElementById('np-producto-resultados');
+  const escalas = STATE.escalasCacheDelivery[productoId] || [];
+  if (!escalas.length) { agregarProductoCarritoDelivery(productoId); return; }
+  cont.innerHTML = `
+    <p style="font-size:11.5px;color:var(--text-muted);margin:4px 0">Elige el precio para este producto:</p>
+    ${escalas.map(e => `
+      <div class="metodo-card" style="margin-bottom:4px" onclick="agregarProductoCarritoDelivery('${productoId}','${e.id}','${esc(e.nombre)}',${e.precio})">
+        <span class="mc-icon">📊</span>
+        <span class="mc-name">${esc(e.nombre)} — ${fmt(e.precio)}</span>
+      </div>`).join('')}
+    <button type="button" class="btn-ghost btn-sm" onclick="document.getElementById('np-producto-resultados').innerHTML=''">Cancelar</button>
+  `;
+}
+
+async function agregarProductoCarritoDelivery(productoId, escalaId, escalaNombre, precioEscala) {
   const productos = await cargarProductosCacheDelivery();
   const p = productos.find(x => x.id === productoId);
   if (!p) return;
-  const existente = STATE.carritoVentaDelivery.find(i => i.producto_id === productoId);
+  const precioFinal = precioEscala != null ? Number(precioEscala) : Number(p.precio||0);
+  // Un mismo producto con distinta escala se trata como línea aparte
+  // en el carrito (mismo espíritu que Ventas: el precio es distinto,
+  // no tiene sentido sumarlo a una línea con otro precio).
+  const existente = STATE.carritoVentaDelivery.find(i => i.producto_id === productoId && i.escala_id === (escalaId || null));
   if (existente) { existente.cantidad += 1; }
   else {
-    STATE.carritoVentaDelivery.push({ producto_id: p.id, nombre: p.nombre, precio: Number(p.precio||0), costo: Number(p.costo||0), tipo: p.tipo, cantidad: 1 });
+    STATE.carritoVentaDelivery.push({
+      producto_id: p.id, nombre: escalaNombre ? `${p.nombre} (${escalaNombre})` : p.nombre,
+      precio: precioFinal, costo: Number(p.costo||0), tipo: p.tipo, cantidad: 1,
+      escala_id: escalaId || null, escala_nombre: escalaNombre || null,
+    });
   }
   document.getElementById('np-producto-buscar').value = '';
   document.getElementById('np-producto-resultados').innerHTML = '';
@@ -592,6 +640,7 @@ async function crearVentaDesdeDelivery(numeroPedido) {
     producto_nombre: i.nombre, tipo_item: i.tipo || 'producto', cantidad: i.cantidad,
     precio: i.precio, costo: i.costo, descuento: 0,
     subtotal: round2(i.precio*i.cantidad), ganancia: round2((i.precio-i.costo)*i.cantidad),
+    escala_id: i.escala_id || null, escala_nombre: i.escala_nombre || null,
   }));
   const { error: errDet } = await sb.from('venta_detalles').insert(detallesPayload);
   if (errDet) throw errDet;
