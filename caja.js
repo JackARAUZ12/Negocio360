@@ -344,13 +344,14 @@ async function tieneMovimientos() {
 async function guardarDineroInicial(monto) {
   const montoNum = Number(monto);
 
-  await sbClient
+  const { error: errUpdate } = await sbClient
     .from('capital_negocio')
     .update({ is_current: false })
     .eq('auth_user_id', STATE.userId)
     .eq('is_current', true);
+  if (errUpdate) throw errUpdate;
 
-  await sbClient
+  const { error: errCapital } = await sbClient
     .from('capital_negocio')
     .insert({
       auth_user_id: STATE.userId,
@@ -358,6 +359,7 @@ async function guardarDineroInicial(monto) {
       concepto:     'Dinero inicial de caja',
       is_current:   true,
     });
+  if (errCapital) throw errCapital;
 
   const { error } = await sbClient
     .from('movimientos_financieros')
@@ -999,7 +1001,8 @@ async function guardarCapitalInicialModal() {
     await Promise.all([loadResumen(), loadMovimientos(), loadMetodosPago()]);
     actualizarCacheLocal();
   } catch(e) {
-    showToast('Error al iniciar caja', 'error');
+    console.error('guardarCapitalInicialModal:', e);
+    showToast('No se pudo iniciar caja: ' + (e.message || e.details || 'error desconocido, revisa la consola'), 'error');
   } finally {
     setBtnLoading('btn-guardar-capital-inicial', false);
   }
