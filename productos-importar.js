@@ -57,6 +57,8 @@ const IMPORT_STATE = {
   preview: null,
   procesando: false,
   tipoPlantilla: null, // 'FIJO' | 'ESCALA'
+  encabezadosCrudos: null, // para el mapeo inteligente (archivo propio del cliente)
+  filasCrudas: null,
 };
 
 /* ============================================================
@@ -74,7 +76,7 @@ function detectarPlantilla(wb) {
 function leerArchivoExcel(file) {
   return new Promise((resolve, reject) => {
     if (!window.XLSX) { reject(new Error('No se pudo cargar el lector de Excel. Recarga la página e intenta de nuevo.')); return; }
-    if (!/\.xlsx$/i.test(file.name)) { reject(new Error('El archivo debe tener extensión .xlsx (la de alguna de las plantillas oficiales).')); return; }
+    if (!/\.xlsx$/i.test(file.name)) { reject(new Error('El archivo debe tener extensión .xlsx.')); return; }
 
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
@@ -83,46 +85,124 @@ function leerArchivoExcel(file) {
         const wb = XLSX.read(e.target.result, { type: 'array' });
 
         const tipoPlantilla = detectarPlantilla(wb);
-        if (!tipoPlantilla) {
-          reject(new Error('Este archivo no es ninguna de las plantillas oficiales de Negocio360. Descarga la plantilla "Precio fijo" o "Escala de precios" con el botón "📥 Descargar plantilla" y no cambies su estructura.'));
+        if (tipoPlantilla) {
+          const plantilla = IMPORT_PLANTILLAS[tipoPlantilla];
+          const sheet = wb.Sheets['Productos'];
+          if (!sheet) {
+            reject(new Error('El archivo no contiene la hoja "Productos" de la plantilla "' + plantilla.nombre + '".'));
+            return;
+          }
+          const filasArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+          const encabezado = (filasArray[0] || []).map(h => String(h).trim());
+          const encabezadoOk = plantilla.columnas.every((col, i) => encabezado[i] === col);
+          if (!encabezadoOk) {
+            reject(new Error('Las columnas del archivo no coinciden con la plantilla "' + plantilla.nombre + '". Descarga la plantilla actual e intenta de nuevo sin modificar los encabezados.'));
+            return;
+          }
+          const filas = [];
+          for (let r = 1; r < filasArray.length; r++) {
+            const arr = filasArray[r];
+            const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
+            if (vacio) continue;
+            const obj = { _filaExcel: r + 1 };
+            plantilla.columnas.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
+            filas.push(obj);
+          }
+          resolve({ tipoPlantilla, filas });
           return;
         }
-        const plantilla = IMPORT_PLANTILLAS[tipoPlantilla];
 
-        const sheet = wb.Sheets['Productos'];
-        if (!sheet) {
-          reject(new Error('El archivo no contiene la hoja "Productos" de la plantilla "' + plantilla.nombre + '".'));
-          return;
-        }
-
-        // Encabezados (fila 1) — deben coincidir exacto, en el mismo orden
+        // No es una plantilla oficial de Negocio360 — en vez de
+        // rechazarlo, se devuelven los datos crudos para intentar un
+        // mapeo inteligente de columnas (ver detectarMapeoInteligente).
+        const nombreHoja = wb.SheetNames.find(n => n !== '_plantilla_meta') || wb.SheetNames[0];
+        const sheet = wb.Sheets[nombreHoja];
+        if (!sheet) { reject(new Error('El archivo no tiene ninguna hoja con datos.')); return; }
         const filasArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
-        const encabezado = (filasArray[0] || []).map(h => String(h).trim());
-        const encabezadoOk = plantilla.columnas.every((col, i) => encabezado[i] === col);
-        if (!encabezadoOk) {
-          reject(new Error('Las columnas del archivo no coinciden con la plantilla "' + plantilla.nombre + '". Descarga la plantilla actual e intenta de nuevo sin modificar los encabezados.'));
-          return;
-        }
+        const encabezadosCrudos = (filasArray[0] || []).map(h => String(h).trim()).filter(h => h !== '');
+        if (!encabezadosCrudos.length) { reject(new Error('No se encontraron encabezados en la primera fila del archivo.')); return; }
+        const filasCrudas = filasArray.slice(1).filter(arr => arr && !arr.every(v => v === '' || v === null || v === undefined));
+        if (!filasCrudas.length) { reject(new Error('El archivo no tiene ninguna fila de datos debajo de los encabezados.')); return; }
 
-        // Filas de datos → objetos con nombre de columna, ignorando filas vacías
-        const filas = [];
-        for (let r = 1; r < filasArray.length; r++) {
-          const arr = filasArray[r];
-          const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
-          if (vacio) continue;
-          const obj = { _filaExcel: r + 1 }; // fila 1 = encabezado, así que datos empiezan en fila 2
-          plantilla.columnas.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
-          filas.push(obj);
-        }
-
-        resolve({ tipoPlantilla, filas });
+        resolve({ tipoPlantilla: null, encabezadosCrudos, filasCrudas });
       } catch (err) {
         console.error('leerArchivoExcel:', err);
-        reject(new Error('No se pudo procesar el archivo. Verifica que sea un .xlsx válido de alguna plantilla oficial.'));
+        reject(new Error('No se pudo procesar el archivo. Verifica que sea un .xlsx válido.'));
       }
     };
     reader.readAsArrayBuffer(file);
   });
+}
+
+/* ============================================================
+   1.5) MAPEO INTELIGENTE — cuando el archivo NO es una plantilla
+   oficial de Negocio360 (ej. el cliente ya tenía su propia lista en
+   Excel), se intenta adivinar a qué campo corresponde cada columna
+   comparando el encabezado contra palabras clave conocidas. Nunca
+   se importa nada sin que el cliente confirme el mapeo primero.
+   ============================================================ */
+const IMPORT_CAMPOS_DESTINO = [
+  { key: 'Nombre',        label: 'Nombre del producto', requerido: true,
+    palabras: ['nombre', 'producto', 'articulo', 'artículo', 'item', 'descripcion corta', 'descripción corta'] },
+  { key: 'PrecioVenta',   label: 'Precio de venta', requerido: true,
+    palabras: ['precio venta', 'precio de venta', 'pvp', 'venta', 'precio unitario', 'precio', 'p.v.p'] },
+  { key: 'Costo',         label: 'Costo', requerido: false,
+    palabras: ['costo', 'costo unitario', 'precio compra', 'precio de compra', 'compra'] },
+  { key: 'StockInicial',  label: 'Stock / cantidad', requerido: false,
+    palabras: ['stock', 'cantidad', 'existencia', 'existencias', 'inventario', 'unidades'] },
+  { key: 'StockMinimo',   label: 'Stock mínimo (alerta)', requerido: false,
+    palabras: ['stock minimo', 'stock mínimo', 'minimo', 'mínimo', 'alerta'] },
+  { key: 'Categoria',     label: 'Categoría', requerido: false,
+    palabras: ['categoria', 'categoría', 'rubro', 'familia', 'grupo', 'linea', 'línea'] },
+  { key: 'SKU',           label: 'SKU / código interno', requerido: false,
+    palabras: ['sku', 'codigo interno', 'código interno', 'referencia', 'ref'] },
+  { key: 'CodigoBarras',  label: 'Código de barras', requerido: false,
+    palabras: ['codigo de barras', 'código de barras', 'barras', 'ean', 'upc', 'codigo barras'] },
+  { key: 'MarcaProveedor',label: 'Marca / proveedor', requerido: false,
+    palabras: ['marca', 'proveedor', 'fabricante', 'distribuidor'] },
+  { key: 'Descripcion',   label: 'Descripción', requerido: false,
+    palabras: ['descripcion', 'descripción', 'detalle', 'observaciones'] },
+];
+
+function normalizarTextoMapeo(s) {
+  return String(s || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quita acentos
+}
+
+/* Para cada columna del archivo del cliente, busca el campo destino
+   cuyas palabras clave mejor calcen — coincidencia exacta primero,
+   luego "la columna contiene la palabra clave". Nunca asigna el
+   mismo campo destino dos veces (se queda con la mejor coincidencia). */
+function detectarMapeoInteligente(encabezadosCrudos) {
+  const normalizados = encabezadosCrudos.map(normalizarTextoMapeo);
+  const usados = new Set();
+  const mapeo = {}; // { CampoDestino: indiceColumnaOriginal | null }
+
+  IMPORT_CAMPOS_DESTINO.forEach(campo => { mapeo[campo.key] = null; });
+
+  IMPORT_CAMPOS_DESTINO.forEach(campo => {
+    let mejorIdx = -1, mejorPuntaje = 0;
+    normalizados.forEach((col, idx) => {
+      if (usados.has(idx)) return;
+      campo.palabras.forEach(palabra => {
+        const p = normalizarTextoMapeo(palabra);
+        let puntaje = 0;
+        if (col === p) puntaje = 100;
+        else if (col.includes(p)) puntaje = 60 + p.length;
+        if (puntaje > mejorPuntaje) { mejorPuntaje = puntaje; mejorIdx = idx; }
+      });
+    });
+    if (mejorIdx >= 0 && mejorPuntaje >= 60) {
+      mapeo[campo.key] = mejorIdx;
+      usados.add(mejorIdx);
+    }
+  });
+
+  return mapeo;
+}
+
+function firmaEncabezados(encabezadosCrudos) {
+  return encabezadosCrudos.map(normalizarTextoMapeo).join('|');
 }
 
 /* ============================================================
@@ -357,6 +437,8 @@ function abrirModalImportar() {
   IMPORT_STATE.preview = null;
   IMPORT_STATE.procesando = false;
   IMPORT_STATE.tipoPlantilla = null;
+  IMPORT_STATE.encabezadosCrudos = null;
+  IMPORT_STATE.filasCrudas = null;
   IMPORT_STATE.modoDuplicados = 'sumar';
   const inputFile = document.getElementById('inputImportarExcel');
   if (inputFile) inputFile.value = '';
@@ -399,6 +481,117 @@ function renderPasoProcesando(mensaje) {
     </div>
   `;
   document.getElementById('importarFooter').innerHTML = '';
+}
+
+/* ============================================================
+   PASO: MAPEO DE COLUMNAS (archivo propio del cliente)
+   ============================================================ */
+function renderPasoMapeoColumnas(encabezadosCrudos, mapeoDetectado, mapeoYaConocido) {
+  const badgeConfianza = mapeoYaConocido
+    ? `<div style="margin-bottom:14px;padding:10px 14px;background:var(--success-soft,#DCFCE7);border-radius:var(--radius-md);color:var(--success);font-size:13px;font-weight:600">
+         ✅ Reconocimos esta plantilla — es la misma que usaste la vez pasada, ya viene lista.
+       </div>`
+    : `<div style="margin-bottom:14px;padding:10px 14px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md);color:#92400E;font-size:13px">
+         ⚠️ Este archivo no es una plantilla oficial de Negocio360, pero identificamos qué es cada columna automáticamente. Revisa que esté bien antes de continuar.
+       </div>`;
+
+  const filas = IMPORT_CAMPOS_DESTINO.map(campo => {
+    const idxActual = mapeoDetectado[campo.key];
+    const opciones = ['<option value="">— No usar —</option>']
+      .concat(encabezadosCrudos.map((h, i) => `<option value="${i}" ${i===idxActual?'selected':''}>${escHtml(h)}</option>`));
+    const detectado = idxActual !== null && idxActual !== undefined;
+    return `
+      <tr>
+        <td style="padding:8px 10px;font-size:13px">
+          ${escHtml(campo.label)}
+          ${campo.requerido ? '<span style="color:var(--danger)" title="Obligatorio"> *</span>' : ''}
+        </td>
+        <td style="padding:8px 10px">
+          <select class="form-select" data-campo="${campo.key}" onchange="revisarCamposObligatoriosMapeo()" style="width:100%;font-size:13px">
+            ${opciones.join('')}
+          </select>
+        </td>
+        <td style="padding:8px 10px;text-align:center;font-size:16px">${detectado ? '✅' : (campo.requerido ? '❌' : '—')}</td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('importarBody').innerHTML = `
+    ${badgeConfianza}
+    <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">
+      Encontramos ${escHtml(String(encabezadosCrudos.length))} columna${encabezadosCrudos.length===1?'':'s'} en tu archivo. Dinos cuál es cuál — las marcadas con * son obligatorias.
+    </p>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md)">
+      <table style="width:100%;border-collapse:collapse">
+        <thead style="position:sticky;top:0;background:var(--bg-surface)">
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text-muted)">En Negocio360 es…</th>
+            <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text-muted)">¿Cuál columna de tu archivo?</th>
+            <th style="padding:8px 10px;font-size:12px;color:var(--text-muted)">Detectado</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;cursor:pointer">
+      <input type="checkbox" id="chk-recordar-mapeo" checked/>
+      Recordar este mapeo — la próxima vez que suba este mismo tipo de archivo, no preguntar de nuevo
+    </label>
+    <p id="mapeo-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+  `;
+  document.getElementById('importarFooter').innerHTML = `
+    <button class="btn-secondary" onclick="renderPasoInicial()">Cancelar</button>
+    <button class="btn-primary" id="btn-confirmar-mapeo" onclick="confirmarMapeoColumnas()">Continuar</button>
+  `;
+  revisarCamposObligatoriosMapeo();
+}
+
+function revisarCamposObligatoriosMapeo() {
+  const btn = document.getElementById('btn-confirmar-mapeo');
+  if (!btn) return;
+  const faltantes = IMPORT_CAMPOS_DESTINO.filter(c => c.requerido).filter(c => {
+    const sel = document.querySelector(`select[data-campo="${c.key}"]`);
+    return !sel || sel.value === '';
+  });
+  btn.disabled = faltantes.length > 0;
+  const errEl = document.getElementById('mapeo-error');
+  if (errEl) errEl.textContent = faltantes.length
+    ? `Falta indicar: ${faltantes.map(c => c.label).join(', ')}`
+    : '';
+}
+
+async function confirmarMapeoColumnas() {
+  const mapeoFinal = {};
+  IMPORT_CAMPOS_DESTINO.forEach(campo => {
+    const sel = document.querySelector(`select[data-campo="${campo.key}"]`);
+    const val = sel?.value;
+    mapeoFinal[campo.key] = (val === '' || val === undefined) ? null : parseInt(val, 10);
+  });
+
+  // Transformar las filas crudas (arreglo por posición) al mismo
+  // formato de objeto que ya usa la plantilla "FIJO" oficial — así
+  // se reutiliza TODA la validación e importación ya construida y
+  // probada, sin duplicar nada.
+  const filas = IMPORT_STATE.filasCrudas.map((arr, i) => {
+    const obj = { _filaExcel: i + 2, TipoRegistro: 'Producto' };
+    IMPORT_CAMPOS_DESTINO.forEach(campo => {
+      const idx = mapeoFinal[campo.key];
+      obj[campo.key] = (idx !== null && arr[idx] !== undefined) ? arr[idx] : '';
+    });
+    return obj;
+  });
+
+  if (document.getElementById('chk-recordar-mapeo')?.checked) {
+    try {
+      await supabaseClient.from('plantillas_importacion_personalizadas').upsert({
+        auth_user_id: STATE.user.id,
+        firma_encabezados: firmaEncabezados(IMPORT_STATE.encabezadosCrudos),
+        mapeo: mapeoFinal,
+      }, { onConflict: 'auth_user_id,firma_encabezados' });
+    } catch (e) { console.warn('No se pudo recordar el mapeo (no afecta la importación):', e); }
+  }
+
+  IMPORT_STATE.tipoPlantilla = 'FIJO';
+  procesarFilasYMostrarVistaPrevia(filas, 'FIJO');
 }
 
 function renderPasoErrores(errores) {
@@ -517,29 +710,38 @@ async function onArchivoImportSeleccionado(ev) {
   const file = ev.target.files?.[0];
   if (!file) return;
 
-  renderPasoProcesando('Leyendo y validando el archivo…');
+  renderPasoProcesando('Leyendo el archivo…');
 
   try {
-    const { tipoPlantilla, filas } = await leerArchivoExcel(file);
-    IMPORT_STATE.tipoPlantilla = tipoPlantilla;
+    const resultado = await leerArchivoExcel(file);
 
-    if (!filas.length) {
-      renderPasoErrores([{ fila: '—', campo: 'Archivo', motivo: 'No se encontraron filas con datos para importar' }]);
+    if (resultado.tipoPlantilla) {
+      // Plantilla oficial de Negocio360 — camino de siempre, sin cambios.
+      IMPORT_STATE.tipoPlantilla = resultado.tipoPlantilla;
+      if (!resultado.filas.length) {
+        renderPasoErrores([{ fila: '—', campo: 'Archivo', motivo: 'No se encontraron filas con datos para importar' }]);
+        return;
+      }
+      procesarFilasYMostrarVistaPrevia(resultado.filas, resultado.tipoPlantilla);
       return;
     }
 
-    const { errores, validas } = validarFilas(filas, tipoPlantilla);
-    IMPORT_STATE.errores = errores;
-    IMPORT_STATE.filasValidas = validas;
+    // No es plantilla oficial — se intenta el mapeo inteligente.
+    IMPORT_STATE.encabezadosCrudos = resultado.encabezadosCrudos;
+    IMPORT_STATE.filasCrudas = resultado.filasCrudas;
+    const firma = firmaEncabezados(resultado.encabezadosCrudos);
 
-    if (errores.length) {
-      renderPasoErrores(errores);
-      return;
-    }
+    // ¿Ya se había mapeado este mismo tipo de archivo antes? Si sí,
+    // se aplica directo, sin volver a preguntar.
+    let mapeoGuardado = null;
+    try {
+      const { data } = await supabaseClient.from('plantillas_importacion_personalizadas')
+        .select('mapeo').eq('auth_user_id', STATE.user.id).eq('firma_encabezados', firma).maybeSingle();
+      mapeoGuardado = data?.mapeo || null;
+    } catch (e) { /* si falla la consulta, simplemente se detecta de nuevo */ }
 
-    const preview = construirVistaPrevia(validas);
-    IMPORT_STATE.preview = preview;
-    renderPasoPreview(preview, tipoPlantilla);
+    const mapeoDetectado = mapeoGuardado || detectarMapeoInteligente(resultado.encabezadosCrudos);
+    renderPasoMapeoColumnas(resultado.encabezadosCrudos, mapeoDetectado, !!mapeoGuardado);
 
   } catch (e) {
     console.error('onArchivoImportSeleccionado:', e);
@@ -549,6 +751,25 @@ async function onArchivoImportSeleccionado(ev) {
   }
 }
 window.onArchivoImportSeleccionado = onArchivoImportSeleccionado;
+
+function procesarFilasYMostrarVistaPrevia(filas, tipoPlantilla) {
+  if (!filas.length) {
+    renderPasoErrores([{ fila: '—', campo: 'Archivo', motivo: 'No se encontraron filas con datos para importar' }]);
+    return;
+  }
+  const { errores, validas } = validarFilas(filas, tipoPlantilla);
+  IMPORT_STATE.errores = errores;
+  IMPORT_STATE.filasValidas = validas;
+
+  if (errores.length) {
+    renderPasoErrores(errores);
+    return;
+  }
+
+  const preview = construirVistaPrevia(validas);
+  IMPORT_STATE.preview = preview;
+  renderPasoPreview(preview, tipoPlantilla);
+}
 
 async function confirmarImportacionFinal() {
   if (IMPORT_STATE.procesando) return;
