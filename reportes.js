@@ -605,8 +605,10 @@ function detalleVentaPorVenta(detalles) {
   // productos ya cacheado por ensureCaches/fetchProductos) para poder
   // indicar de qué proveedor(es) vinieron los productos de cada venta.
   const proveedorPorProducto = {};
+  const codigoBarraPorProducto = {};
   (R.cache.productos || []).forEach(p => {
     if (p.proveedor_nombre) proveedorPorProducto[p.id] = p.proveedor_nombre;
+    if (p.codigo_barras) codigoBarraPorProducto[p.id] = p.codigo_barras;
   });
 
   const map = {};
@@ -615,7 +617,7 @@ function detalleVentaPorVenta(detalles) {
     if (!map[vid]) map[vid] = { productos: [], servicios: new Set(), proveedores: new Set() };
     const nombre = d.producto_nombre || (d.tipo_item==='servicio' ? 'Servicio' : 'Producto');
     if (d.tipo_item === 'producto') {
-      map[vid].productos.push({ nombre, cantidad: Number(d.cantidad || 0) });
+      map[vid].productos.push({ nombre, cantidad: Number(d.cantidad || 0), codigoBarras: codigoBarraPorProducto[d.producto_id] || null });
       const prov = proveedorPorProducto[d.producto_id];
       if (prov) map[vid].proveedores.add(prov);
     } else {
@@ -631,6 +633,17 @@ function detalleVentaPorVenta(detalles) {
 function fmtProductosVenta(info) {
   if (!info || !info.productos.length) return 'No producto';
   return info.productos.map(p => `${p.nombre} x${fmtNum(p.cantidad)}`).join(', ');
+}
+
+// Texto para la casilla "Código(s) de barras" de una venta puntual —
+// mismo patrón que fmtProductosVenta, ya que una venta puede tener
+// varios productos con distinto código cada uno. Los productos sin
+// código asignado simplemente no aportan nada aquí (no rompen el
+// listado ni muestran "undefined").
+function fmtCodigosBarraVenta(info) {
+  if (!info || !info.productos.length) return '—';
+  const codigos = info.productos.filter(p => p.codigoBarras).map(p => p.codigoBarras);
+  return codigos.length ? codigos.join(', ') : '—';
 }
 
 // Texto para la casilla "Servicios" de una venta puntual. Solo nombres,
@@ -725,7 +738,7 @@ async function fetchClientes() {
 /* ---- PRODUCTOS ---- */
 async function fetchProductos() {
   const { data } = await sb.from('productos')
-    .select('id,nombre,sku,tipo,categoria,proveedor_id,proveedor_nombre,precio,costo,stock_actual,stock_minimo,activo')
+    .select('id,nombre,sku,codigo_barras,tipo,categoria,proveedor_id,proveedor_nombre,precio,costo,stock_actual,stock_minimo,activo')
     .eq('auth_user_id', R.userId)
     .order('nombre');
   R.cache.productos = data || [];
@@ -2335,6 +2348,7 @@ function slugify(s) {
 // (sin decimales) o 'cantidad' (hasta 2 decimales, sin símbolo).
 const COLUMNAS_REPORTES = {
   ventas: [
+    { key:'codigosBarras', label:'Código(s) de barras', tipo:'texto' },
     { key:'numero',    label:'#Venta',            tipo:'texto' },
     { key:'fecha',     label:'Fecha',              tipo:'texto' },
     { key:'cliente',   label:'Cliente',            tipo:'texto' },
@@ -2361,6 +2375,7 @@ const COLUMNAS_REPORTES = {
     { key:'ultimaCompra', label:'Última compra', tipo:'texto' },
   ],
   inventario: [
+    { key:'codigoBarras', label:'Código de barras', tipo:'texto' },
     { key:'producto',   label:'Producto',        tipo:'texto' },
     { key:'sku',        label:'SKU',             tipo:'texto' },
     { key:'categoria',  label:'Categoría',       tipo:'texto' },
@@ -2413,6 +2428,7 @@ function columnasActivas(tipoReporte) {
 function filaVenta(v, detMap) {
   const info = detMap[v.id];
   return {
+    codigosBarras: fmtCodigosBarraVenta(info),
     numero: v.numero_venta, fecha: fmtFecha(v.fecha),
     cliente: v.cliente_nombre||'Consumidor Final', metodo: v.metodo_pago_nombre||'—',
     productos: fmtProductosVenta(info), servicios: fmtServiciosVenta(info),
@@ -2427,7 +2443,7 @@ function filaCliente(c) {
   return { nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra) };
 }
 function filaProducto(p) {
-  return { producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
+  return { codigoBarras:p.codigo_barras||'—', producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
     stock:Number(p.stock_actual||0), costo:Number(p.costo||0), precio:Number(p.precio||0),
     valorTotal:Number(p.stock_actual||0)*Number(p.costo||0) };
 }
@@ -2449,6 +2465,7 @@ function filaCreditoPago(f) {
 function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExcel) {
   let etiquetaPuesta = false;
   return cols.map(c => {
+    if (c.key === 'codigosBarras') return '';
     if (c.key === 'productos') return `Uds. producto: ${fmtNum(totUnidadesProd)}`;
     if (c.key === 'total')     return paraExcel ? totMonto : fmt(totMonto);
     if (c.key === 'ganancia')  return paraExcel ? totGanancia : fmt(totGanancia);
