@@ -377,6 +377,14 @@
                   style="max-width:180px;height:36px;font-size:12.5px">
             <option value="">Todas las marcas</option>
           </select>
+          <select class="form-select" id="ordenProductos" title="Ordenar por"
+                  style="max-width:190px;height:36px;font-size:12.5px">
+            <option value="reciente">Más reciente</option>
+            <option value="antiguo">Más antiguo</option>
+            <option value="precio_asc">Precio: menor a mayor</option>
+            <option value="precio_desc">Precio: mayor a menor</option>
+            <option value="codigo_barras">Código de barra</option>
+          </select>
           <span class="results-count" id="resultadosCount">0 resultados</span>
           <button class="btn btn-secondary btn-sm" onclick="abrirModalExportarInventario()" title="Exportar inventario">📤 Exportar inventario</button>
           <button class="btn btn-secondary btn-sm" onclick="abrirModalMoverProducto()" title="Enviar stock a otra sucursal o bodega">🚚 Mover productos</button>
@@ -432,7 +440,21 @@
           <h2 style="font-size:16px;font-weight:700;margin:0 0 2px">📦 Combos</h2>
           <p style="font-size:12px;color:var(--text-muted);margin:0">Agrupa varios productos bajo un mismo nombre, SKU y código de barras. Al venderse, se descuenta el stock de cada componente.</p>
         </div>
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="comboSearchInput"
+                 placeholder="Buscar combo por nombre, SKU o código..." autocomplete="off" />
+          <button class="search-clear" id="comboSearchClear" title="Limpiar búsqueda">✕</button>
+        </div>
         <div class="toolbar-right">
+          <select class="form-select" id="ordenCombos" title="Ordenar por"
+                  style="max-width:190px;height:36px;font-size:12.5px">
+            <option value="reciente">Más reciente</option>
+            <option value="antiguo">Más antiguo</option>
+            <option value="precio_asc">Precio: menor a mayor</option>
+            <option value="precio_desc">Precio: mayor a menor</option>
+            <option value="codigo_barras">Código de barra</option>
+          </select>
           <span class="results-count" id="combosCount">0 combos</span>
           <button class="btn btn-primary btn-sm" onclick="abrirModalCombo()">+ Crear combo</button>
         </div>

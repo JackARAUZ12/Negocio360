@@ -53,6 +53,10 @@ const STATE = {
   escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
   formEscalas:  [],       // filas en edición dentro del modal de producto (antes de guardar)
   busqueda:     '',
+  ordenActivo:  'reciente',
+  comboBusqueda: '',
+  comboOrden:    'reciente',
+  combosFiltrados: [],
   cargando:     false,
   modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
   editTarget:   null,
@@ -530,7 +534,7 @@ async function cargarCombos() {
       });
     }
 
-    renderTablaCombos();
+    aplicarFiltrosCombos();
   } catch (e) {
     console.error('cargarCombos:', e);
     if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar los combos.</td></tr>`;
@@ -550,18 +554,36 @@ function precioLabelCombo(combo) {
   return fmtMoney(combo.precio);
 }
 
+function aplicarFiltrosCombos() {
+  let lista = [...STATE.combos];
+  const q = STATE.comboBusqueda.toLowerCase().trim();
+
+  if (q) {
+    lista = lista.filter(c =>
+      (c.nombre        || '').toLowerCase().includes(q) ||
+      (c.sku           || '').toLowerCase().includes(q) ||
+      (c.codigo_barras || '').toLowerCase().includes(q)
+    );
+  }
+
+  lista = ordenarLista(lista, STATE.comboOrden);
+  STATE.combosFiltrados = lista;
+  renderTablaCombos();
+}
+
 function renderTablaCombos() {
   const tbody = $('combosTbody');
   const countEl = $('combosCount');
-  if (countEl) countEl.textContent = `${STATE.combos.length} combo${STATE.combos.length === 1 ? '' : 's'}`;
+  const lista = STATE.combosFiltrados;
+  if (countEl) countEl.textContent = `${lista.length} combo${lista.length === 1 ? '' : 's'}`;
   if (!tbody) return;
 
-  if (!STATE.combos.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Aún no has creado ningún combo.</td></tr>`;
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">${STATE.comboBusqueda ? 'Sin resultados para tu búsqueda.' : 'Aún no has creado ningún combo.'}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = STATE.combos.map(c => {
+  tbody.innerHTML = lista.map(c => {
     const items = STATE.comboItemsPorCombo[c.id] || [];
     const costo = costoTotalCombo(c.id);
     return `
@@ -1320,6 +1342,33 @@ function actualizarStats() {
 // FILTROS Y BÚSQUEDA
 // FIX: caso stock_bajo usa helper esStockBajo()
 // ============================================================
+// Reutilizable tanto para Productos/Servicios como para Combos — las
+// 2 tablas comparten los mismos nombres de campo (precio, created_at,
+// codigo_barras), así que una sola función sirve para ambas listas.
+function ordenarLista(lista, criterio) {
+  const copia = [...lista];
+  switch (criterio) {
+    case 'antiguo':
+      return copia.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    case 'precio_asc':
+      return copia.sort((a, b) => Number(a.precio || 0) - Number(b.precio || 0));
+    case 'precio_desc':
+      return copia.sort((a, b) => Number(b.precio || 0) - Number(a.precio || 0));
+    case 'codigo_barras':
+      // Los que no tienen código quedan al final, no se pierden de la lista.
+      return copia.sort((a, b) => {
+        const ca = (a.codigo_barras || '').trim(), cb = (b.codigo_barras || '').trim();
+        if (!ca && !cb) return 0;
+        if (!ca) return 1;
+        if (!cb) return -1;
+        return ca.localeCompare(cb, 'es', { numeric: true });
+      });
+    case 'reciente':
+    default:
+      return copia.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+}
+
 function aplicarFiltros() {
   let lista = [...STATE.productos];
   const q   = STATE.busqueda.toLowerCase().trim();
@@ -1349,6 +1398,10 @@ function aplicarFiltros() {
   if (STATE.filtroMarca) {
     lista = lista.filter(p => p.proveedor_id === STATE.filtroMarca);
   }
+
+  // Orden — no reemplaza el filtrado de arriba, solo reordena lo que
+  // ya quedó después de buscar/filtrar.
+  lista = ordenarLista(lista, STATE.ordenActivo);
 
   STATE.filtrados = lista;
   renderTabla();
@@ -2773,6 +2826,39 @@ function initEventos() {
       STATE.busqueda = '';
       searchClear.classList.remove('visible');
       aplicarFiltros();
+    });
+  }
+
+  const ordenSelect = $('ordenProductos');
+  if (ordenSelect) {
+    ordenSelect.addEventListener('change', (e) => {
+      STATE.ordenActivo = e.target.value;
+      aplicarFiltros();
+    });
+  }
+
+  const comboSearchInput = $('comboSearchInput');
+  const comboSearchClear = $('comboSearchClear');
+  if (comboSearchInput) {
+    comboSearchInput.addEventListener('input', (e) => {
+      STATE.comboBusqueda = e.target.value;
+      if (comboSearchClear) comboSearchClear.classList.toggle('visible', STATE.comboBusqueda.length > 0);
+      aplicarFiltrosCombos();
+    });
+  }
+  if (comboSearchClear) {
+    comboSearchClear.addEventListener('click', () => {
+      if (comboSearchInput) comboSearchInput.value = '';
+      STATE.comboBusqueda = '';
+      comboSearchClear.classList.remove('visible');
+      aplicarFiltrosCombos();
+    });
+  }
+  const ordenCombosSelect = $('ordenCombos');
+  if (ordenCombosSelect) {
+    ordenCombosSelect.addEventListener('change', (e) => {
+      STATE.comboOrden = e.target.value;
+      aplicarFiltrosCombos();
     });
   }
 
