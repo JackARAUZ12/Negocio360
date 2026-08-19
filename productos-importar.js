@@ -404,6 +404,19 @@ function construirVistaPrevia(validas) {
    Si cualquier registro falla, NADA queda guardado.
    ============================================================ */
 async function ejecutarImportacion(validas, modoDuplicados) {
+  // Si la pestaña estuvo mucho tiempo inactiva (segundo plano, la
+  // computadora en reposo, etc.), la renovación automática de sesión
+  // puede no haber alcanzado a dispararse a tiempo, y el token
+  // quedaría vencido justo al momento de importar -- lo peor posible,
+  // ya que es el único paso que de verdad guarda algo. Se renueva la
+  // sesión a la fuerza aquí, antes de intentar guardar nada.
+  const { data: sessionData, error: sessionError } = await supabaseClient.auth.refreshSession();
+  if (sessionError || !sessionData?.session) {
+    const err = new Error('Tu sesión venció por inactividad. Actualiza la página (F5), inicia sesión de nuevo, y vuelve a intentar la importación — tu archivo no se perdió, solo tienes que repetir este último paso.');
+    err._sesionVencida = true;
+    throw err;
+  }
+
   const payload = validas.map(v => ({
     tipo:            v.tipo,
     nombre:          v.nombre,
@@ -424,7 +437,16 @@ async function ejecutarImportacion(validas, modoDuplicados) {
     p_registros: payload,
     p_modo_duplicados: modoDuplicados || 'crear_nuevos',
   });
-  if (error) throw error;
+  if (error) {
+    // Por si el token vence justo entre la renovación de arriba y
+    // esta llamada (muy raro, pero posible) -- mismo mensaje claro.
+    if (String(error.message || '').toLowerCase().includes('jwt')) {
+      const err = new Error('Tu sesión venció justo al momento de guardar. Actualiza la página (F5), inicia sesión de nuevo, y vuelve a intentar — tu archivo no se perdió.');
+      err._sesionVencida = true;
+      throw err;
+    }
+    throw error;
+  }
   return data; // { ok, productos, servicios, marcas_creadas, actualizados, omitidos }
 }
 
@@ -787,10 +809,22 @@ async function confirmarImportacionFinal() {
 
   } catch (e) {
     console.error('confirmarImportacionFinal:', e);
-    renderPasoErrores([{
-      fila: '—', campo: 'Importación',
-      motivo: 'No se pudo completar la importación. No se guardó ningún registro. Detalle: ' + (e.message || 'error desconocido'),
-    }]);
+    if (e._sesionVencida) {
+      document.getElementById('importarBody').innerHTML = `
+        <div style="text-align:center;padding:20px 10px">
+          <div style="font-size:40px;margin-bottom:10px">⏰</div>
+          <h3 style="margin-bottom:8px">Tu sesión venció</h3>
+          <p style="font-size:13.5px;color:var(--text-secondary);max-width:380px;margin:0 auto">${escHtml(e.message)}</p>
+        </div>`;
+      document.getElementById('importarFooter').innerHTML = `
+        <button class="btn btn-primary" onclick="location.reload()">Actualizar página</button>
+      `;
+    } else {
+      renderPasoErrores([{
+        fila: '—', campo: 'Importación',
+        motivo: 'No se pudo completar la importación. No se guardó ningún registro. Detalle: ' + (e.message || 'error desconocido'),
+      }]);
+    }
   } finally {
     IMPORT_STATE.procesando = false;
   }
