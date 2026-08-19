@@ -14,7 +14,16 @@ let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
   pedidos: [], perfiles: [], ventasDisponibles: [],
   filtroEstado: '', metodosPago: [], cajaChicaAbiertaHoy: false,
+  modoVentaPedido: 'ninguna', // 'ninguna' | 'existente' | 'nueva'
+  tipoPagoVentaPedido: 'completo', // 'completo' | 'parcial'
+  carritoVentaDelivery: [], // [{producto_id, nombre, precio, costo, cantidad}]
+  productosCacheDelivery: null,
 };
+
+// Estado de banco elegido para la VENTA creada desde Delivery
+// (aparte del banco de costo/cobro de envío, que es otro dinero).
+let _bancoElegidoVenta = null;
+let _montoBancoConvertidoVenta = null;
 
 // Estado de banco elegido, por separado para costo y cobro (pueden
 // ser bancos distintos, o uno de los dos ni siquiera usar banco).
@@ -273,8 +282,8 @@ function renderKPIs() {
   set('kpi-entregado-hoy', STATE.pedidos.filter(p => p.estado === 'entregado' && (p.fecha_entregado||'').slice(0,10) === hoy).length);
 }
 
-const ESTADO_LABEL = { pendiente:'Pendiente', asignado:'Asignado', en_camino:'En camino', entregado:'Entregado', no_entregado:'No entregado', cancelado:'Cancelado' };
-const ESTADO_COLOR = { pendiente:'#f59e0b', asignado:'var(--accent)', en_camino:'#3b82f6', entregado:'var(--success)', no_entregado:'var(--danger)', cancelado:'var(--text-muted)' };
+const ESTADO_LABEL = { pendiente:'Pendiente', asignado:'Asignado', en_camino:'En camino', entregado:'Entregado', no_entregado:'No entregado', cancelado:'Cancelado', robado_perdido:'Robo/pérdida' };
+const ESTADO_COLOR = { pendiente:'#f59e0b', asignado:'var(--accent)', en_camino:'#3b82f6', entregado:'var(--success)', no_entregado:'var(--danger)', cancelado:'var(--text-muted)', robado_perdido:'var(--danger)' };
 
 function filtrarPorEstado(estado) {
   STATE.filtroEstado = estado;
@@ -295,23 +304,27 @@ function renderPedidos() {
   }
 
   cont.innerHTML = lista.map(p => {
-    const color = ESTADO_COLOR[p.estado] || 'var(--text-muted)';
+    const color = p.estado === 'entregado' && p.tipo_pago === 'parcial' && !p.saldo_pagado ? '#f59e0b' : (ESTADO_COLOR[p.estado] || 'var(--text-muted)');
     const repartidorTexto = p.tipo_repartidor === 'interno'
       ? `🏍️ ${esc(p.repartidor_nombre || 'Repartidor propio')}`
       : p.tipo_repartidor === 'externo'
         ? `🚚 ${esc(p.repartidor_nombre || 'Servicio externo')}`
         : '';
+    const faltaSaldo = p.tipo_pago === 'parcial' && !p.saldo_pagado;
+    const etiquetaEstado = p.estado === 'entregado' && faltaSaldo ? 'Entregado — falta cobrar saldo' : ESTADO_LABEL[p.estado];
+    const puedeReportarRobo = p.estado === 'asignado' || p.estado === 'en_camino';
     return `
     <div class="panel-card" style="margin:0 0 10px;border-left:3px solid ${color}">
       <div class="panel-body" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:200px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
             <span style="font-weight:700;font-size:13.5px">${esc(p.numero)}</span>
-            <span style="font-size:10.5px;font-weight:700;color:${color};background:${color}22;padding:2px 8px;border-radius:20px">${ESTADO_LABEL[p.estado]}</span>
+            <span style="font-size:10.5px;font-weight:700;color:${color};background:${color}22;padding:2px 8px;border-radius:20px">${etiquetaEstado}</span>
           </div>
           <div style="font-size:12.5px;color:var(--text-secondary)">${esc(p.cliente_nombre || 'Sin nombre')} ${p.cliente_telefono ? '· '+esc(p.cliente_telefono) : ''}</div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:2px">📍 ${esc(p.direccion)}${p.referencia ? ' — '+esc(p.referencia) : ''}</div>
           ${repartidorTexto ? `<div style="font-size:12px;margin-top:4px">${repartidorTexto}${p.repartidor_telefono ? ' · '+esc(p.repartidor_telefono) : ''}</div>` : ''}
+          ${p.tipo_pago === 'parcial' ? `<div style="font-size:12px;margin-top:4px;color:${faltaSaldo?'#f59e0b':'var(--success)'};font-weight:600">💰 Anticipo: ${fmt(p.monto_anticipo)} — ${faltaSaldo ? `Falta: ${fmt(p.saldo_pendiente)}` : 'Saldo ya cobrado'}</div>` : ''}
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Creado: ${fmtFechaHora(p.fecha_pedido)}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
@@ -320,7 +333,9 @@ function renderPedidos() {
             ${p.estado === 'pendiente' ? `<button class="btn-secondary btn-sm" onclick="abrirAsignarRepartidor('${p.id}')">Asignar</button>` : ''}
             ${p.estado === 'asignado' ? `<button class="btn-secondary btn-sm" onclick="avanzarEstado('${p.id}','en_camino')">🛵 En camino</button>` : ''}
             ${p.estado === 'en_camino' ? `<button class="btn-primary btn-sm" onclick="avanzarEstado('${p.id}','entregado')">✅ Entregado</button>` : ''}
+            ${p.estado === 'entregado' && faltaSaldo ? `<button class="btn-primary btn-sm" style="background:#f59e0b" onclick="abrirConfirmarSaldo('${p.id}')">💰 Confirmar pago del saldo</button>` : ''}
             ${(p.estado === 'en_camino' || p.estado === 'asignado') ? `<button class="btn-ghost btn-sm" onclick="avanzarEstado('${p.id}','no_entregado')">No entregado</button>` : ''}
+            ${puedeReportarRobo ? `<button class="btn-ghost btn-sm" style="color:var(--danger)" onclick="abrirReportarRobo('${p.id}')">🚨 Robo/pérdida</button>` : ''}
             ${(p.estado === 'pendiente') ? `<button class="btn-ghost btn-sm" onclick="avanzarEstado('${p.id}','cancelado')">Cancelar</button>` : ''}
           </div>
         </div>
@@ -349,7 +364,187 @@ function abrirNuevoPedido() {
     document.getElementById(`np-${tipo}-banco-elegir-wrap`).style.display = 'none';
     document.getElementById(`np-${tipo}-banco-elegido-wrap`).style.display = 'none';
   });
+
+  // Reiniciar también el modo de venta (venta existente / nueva / ninguna)
+  STATE.carritoVentaDelivery = [];
+  document.getElementById('np-producto-buscar').value = '';
+  document.getElementById('np-producto-resultados').innerHTML = '';
+  document.getElementById('np-monto-anticipo').value = '';
+  _bancoElegidoVenta = null; _montoBancoConvertidoVenta = null;
+  document.getElementById('np-venta-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('np-venta-banco-elegido-wrap').style.display = 'none';
+  cambiarModoVentaPedido('ninguna');
+  cambiarTipoPagoVenta('completo');
+  if (STATE.metodosPago.length) {
+    const opciones = STATE.metodosPago.map(m => `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+    document.getElementById('np-venta-metodo').innerHTML = opciones;
+  }
+
   openModal('modal-nuevo-pedido');
+}
+
+/* =====================================================
+   CREAR VENTA DESDE DELIVERY — carrito propio, pago completo o
+   parcial. La venta se crea real en la tabla ventas, con su stock
+   descontado, visible en el modulo de Ventas como cualquier otra.
+===================================================== */
+function cambiarModoVentaPedido(modo) {
+  STATE.modoVentaPedido = modo;
+  document.querySelectorAll('.modo-venta-btn').forEach(b => b.classList.toggle('active', b.dataset.modo === modo));
+  document.getElementById('np-venta-existente-wrap').style.display = modo === 'existente' ? '' : 'none';
+  document.getElementById('np-venta-nueva-wrap').style.display = modo === 'nueva' ? '' : 'none';
+}
+
+function cambiarTipoPagoVenta(tipo) {
+  STATE.tipoPagoVentaPedido = tipo;
+  document.querySelectorAll('.tipo-pago-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
+  document.getElementById('np-monto-anticipo-wrap').style.display = tipo === 'parcial' ? '' : 'none';
+  document.getElementById('np-venta-metodo-label').textContent = tipo === 'parcial' ? 'Método de pago del anticipo' : 'Método de pago';
+  actualizarSaldoRestanteTexto();
+}
+
+async function cargarProductosCacheDelivery() {
+  if (STATE.productosCacheDelivery) return STATE.productosCacheDelivery;
+  try {
+    const { data } = await sb.from('productos').select('id, nombre, sku, precio, costo, stock_actual, tipo')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.productosCacheDelivery = data || [];
+  } catch (e) { STATE.productosCacheDelivery = []; }
+  return STATE.productosCacheDelivery;
+}
+
+// Búsqueda simple mientras se escribe, igual de espíritu que el
+// buscador de Venta Rápida — sin duplicar toda esa lógica aquí.
+document.addEventListener('DOMContentLoaded', () => {
+  const buscador = document.getElementById('np-producto-buscar');
+  if (buscador) buscador.addEventListener('input', async (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const cont = document.getElementById('np-producto-resultados');
+    if (!q) { cont.innerHTML = ''; return; }
+    const productos = await cargarProductosCacheDelivery();
+    const resultados = productos.filter(p =>
+      (p.nombre||'').toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q)
+    ).slice(0, 8);
+    cont.innerHTML = resultados.map(p => `
+      <div class="metodo-card" style="margin-bottom:4px" onclick="agregarProductoCarritoDelivery('${p.id}')">
+        <span class="mc-icon">${p.tipo==='servicio'?'🔧':'📦'}</span>
+        <span class="mc-name">${esc(p.nombre)} — ${fmt(p.precio)}${p.tipo==='producto' ? ` (stock: ${fmtNum(p.stock_actual)})` : ''}</span>
+      </div>`).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+  });
+});
+
+async function agregarProductoCarritoDelivery(productoId) {
+  const productos = await cargarProductosCacheDelivery();
+  const p = productos.find(x => x.id === productoId);
+  if (!p) return;
+  const existente = STATE.carritoVentaDelivery.find(i => i.producto_id === productoId);
+  if (existente) { existente.cantidad += 1; }
+  else {
+    STATE.carritoVentaDelivery.push({ producto_id: p.id, nombre: p.nombre, precio: Number(p.precio||0), costo: Number(p.costo||0), tipo: p.tipo, cantidad: 1 });
+  }
+  document.getElementById('np-producto-buscar').value = '';
+  document.getElementById('np-producto-resultados').innerHTML = '';
+  renderCarritoDelivery();
+}
+
+function actualizarCantidadCarritoDelivery(idx, valor) {
+  const cantidad = parseFloat(valor) || 0;
+  if (cantidad <= 0) { STATE.carritoVentaDelivery.splice(idx, 1); }
+  else { STATE.carritoVentaDelivery[idx].cantidad = cantidad; }
+  renderCarritoDelivery();
+}
+
+function quitarDelCarritoDelivery(idx) {
+  STATE.carritoVentaDelivery.splice(idx, 1);
+  renderCarritoDelivery();
+}
+
+function totalCarritoDelivery() {
+  return round2(STATE.carritoVentaDelivery.reduce((s, i) => s + i.precio * i.cantidad, 0));
+}
+
+function renderCarritoDelivery() {
+  const cont = document.getElementById('np-carrito-lista');
+  const totalEl = document.getElementById('np-carrito-total');
+  if (!STATE.carritoVentaDelivery.length) {
+    cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Agrega productos con el buscador de arriba.</p>';
+    totalEl.textContent = 'Total: —';
+    actualizarSaldoRestanteTexto();
+    return;
+  }
+  cont.innerHTML = STATE.carritoVentaDelivery.map((it, idx) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:8px">
+      <span style="font-size:12.5px;flex:1">${esc(it.nombre)}</span>
+      <input type="number" value="${it.cantidad}" min="0" step="1" style="width:55px;padding:3px 6px;font-size:12px" onchange="actualizarCantidadCarritoDelivery(${idx},this.value)"/>
+      <span style="font-size:12.5px;width:80px;text-align:right">${fmt(it.precio * it.cantidad)}</span>
+      <button type="button" class="btn-icon" onclick="quitarDelCarritoDelivery(${idx})">✕</button>
+    </div>`).join('');
+  totalEl.textContent = `Total: ${fmt(totalCarritoDelivery())}`;
+  actualizarSaldoRestanteTexto();
+}
+
+function actualizarSaldoRestanteTexto() {
+  const el = document.getElementById('np-saldo-restante-texto');
+  if (!el) return;
+  if (STATE.tipoPagoVentaPedido !== 'parcial') { el.textContent = ''; return; }
+  const total = totalCarritoDelivery();
+  const anticipo = parseFloat(document.getElementById('np-monto-anticipo')?.value) || 0;
+  const saldo = round2(total - anticipo);
+  el.textContent = total > 0 ? `Total: ${fmt(total)} — Saldo que falta después del anticipo: ${fmt(Math.max(0,saldo))}` : '';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const inputAnticipo = document.getElementById('np-monto-anticipo');
+  if (inputAnticipo) inputAnticipo.addEventListener('input', actualizarSaldoRestanteTexto);
+});
+
+async function mostrarSelectorBancoDeliveryVenta(metodoNombre) {
+  const metodo = (metodoNombre || '').toLowerCase();
+  document.getElementById('np-venta-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('np-venta-banco-elegido-wrap').style.display = 'none';
+  _bancoElegidoVenta = null; _montoBancoConvertidoVenta = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponiblesDelivery();
+  if (!bancos.length) return;
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  document.getElementById('np-venta-banco-elegir-grid').innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoDeliveryVenta('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
+    </div>`).join('');
+  document.getElementById('np-venta-banco-elegir-wrap').style.display = '';
+}
+
+function elegirBancoDeliveryVenta(bancoId, bancoNombre, monedaBanco) {
+  _bancoElegidoVenta = bancoId;
+  document.getElementById('np-venta-banco-elegir-wrap').style.display = 'none';
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const monto = STATE.tipoPagoVentaPedido === 'parcial' ? (parseFloat(document.getElementById('np-monto-anticipo').value)||0) : totalCarritoDelivery();
+  const elNombre = document.getElementById('np-venta-banco-elegido-nombre');
+
+  if (esOtraMoneda) {
+    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const convertido = monedaBase === 'NIO' ? round2(monto / tasa) : round2(monto * tasa);
+      _montoBancoConvertidoVenta = convertido;
+      elNombre.innerHTML = `${esc(bancoNombre)} — ${monedaBanco==='USD'?'$':'C$'} ${convertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    elNombre.textContent = bancoNombre;
+  }
+  document.getElementById('np-venta-banco-elegido-wrap').style.display = 'flex';
+}
+
+function cancelarSeleccionBancoDeliveryVenta() {
+  _bancoElegidoVenta = null; _montoBancoConvertidoVenta = null;
+  document.getElementById('np-venta-metodo').value = '';
+  document.getElementById('np-venta-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('np-venta-banco-elegido-wrap').style.display = 'none';
 }
 
 // Si eligen una venta, se rellena el nombre del cliente solo — el
@@ -361,6 +556,82 @@ document.addEventListener('DOMContentLoaded', () => {
     if (venta) document.getElementById('np-cliente').value = venta.cliente_nombre || '';
   });
 });
+
+/* Crea la venta real (visible en Ventas, con su stock descontado)
+   desde el carrito armado aqui en Delivery. Devuelve los datos que
+   guardarNuevoPedido() necesita para completar el pedido. Si algo
+   falla a medio camino, se detiene y reporta el error -- nunca deja
+   una venta a medias sin que el usuario se entere. */
+async function crearVentaDesdeDelivery(numeroPedido) {
+  const items = STATE.carritoVentaDelivery;
+  const total = totalCarritoDelivery();
+  const esParcial = STATE.tipoPagoVentaPedido === 'parcial';
+  const metodoSel = document.getElementById('np-venta-metodo');
+  const metodoId = metodoSel?.value || null;
+  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const montoAnticipo = esParcial ? round2(parseFloat(document.getElementById('np-monto-anticipo').value) || 0) : total;
+  const saldoPendiente = esParcial ? round2(total - montoAnticipo) : 0;
+
+  const { data: numeroVenta } = await sb.rpc('generar_numero_venta', { p_user_id: STATE.userId });
+
+  const costoTotal = round2(items.reduce((s,i) => s + i.costo*i.cantidad, 0));
+
+  const { data: venta, error: errVenta } = await sb.from('ventas').insert({
+    auth_user_id: STATE.userId, numero_venta: numeroVenta || `V-${Date.now()}`,
+    cliente_nombre: document.getElementById('np-cliente').value.trim() || 'Consumidor Final',
+    subtotal: total, total, costo_total: costoTotal,
+    metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+    estado: 'completada', estado_pago: esParcial ? 'pendiente' : 'pagado',
+    estado_entrega: 'pendiente', observaciones: `Creada desde Delivery ${numeroPedido}`,
+  }).select('id').single();
+  if (errVenta) throw errVenta;
+
+  const detallesPayload = items.map(i => ({
+    auth_user_id: STATE.userId, venta_id: venta.id, producto_id: i.producto_id,
+    producto_nombre: i.nombre, tipo_item: i.tipo || 'producto', cantidad: i.cantidad,
+    precio: i.precio, costo: i.costo, descuento: 0,
+    subtotal: round2(i.precio*i.cantidad), ganancia: round2((i.precio-i.costo)*i.cantidad),
+  }));
+  const { error: errDet } = await sb.from('venta_detalles').insert(detallesPayload);
+  if (errDet) throw errDet;
+
+  // Descontar stock (solo productos, no servicios) — mismo espiritu
+  // que ya usa Ventas/Venta Rapida.
+  for (const item of items) {
+    if (item.tipo === 'servicio') continue;
+    const prod = STATE.productosCacheDelivery.find(p => p.id === item.producto_id);
+    if (!prod) continue;
+    const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - item.cantidad);
+    await sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', item.producto_id).eq('auth_user_id', STATE.userId);
+    prod.stock_actual = nuevoStock;
+  }
+
+  // Registrar en Caja el anticipo (si es parcial) o el total (si es
+  // pago completo) -- nunca los dos juntos, es un solo movimiento.
+  const { data: ultMov } = await sb.from('movimientos_financieros')
+    .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
+    .order('created_at', { ascending:false }).limit(1).maybeSingle();
+  const saldoAnterior = ultMov?.saldo_resultante || 0;
+  const montoARegistrar = esParcial ? montoAnticipo : total;
+  const saldoResultante = saldoAnterior + montoARegistrar;
+
+  const { data: mov, error: errMov } = await sb.from('movimientos_financieros').insert({
+    auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
+    concepto: esParcial ? `Anticipo venta ${numeroVenta} — Delivery ${numeroPedido}` : `Venta ${numeroVenta} — Delivery ${numeroPedido}`,
+    monto: montoARegistrar, saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+    metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+    banco_id: _bancoElegidoVenta || null, monto_moneda_banco: _bancoElegidoVenta ? (_montoBancoConvertidoVenta ?? null) : null,
+    referencia_tipo: 'venta', referencia_id: venta.id,
+    fecha: new Date().toISOString().slice(0,10), estado: 'completado',
+  }).select('id').single();
+  if (errMov) throw errMov;
+
+  return {
+    ventaId: venta.id, tipoPago: esParcial ? 'parcial' : 'completo',
+    montoAnticipo: esParcial ? montoAnticipo : total, saldoPendiente,
+    movimientoAnticipoId: mov.id,
+  };
+}
 
 async function guardarNuevoPedido() {
   const errEl = document.getElementById('np-error');
@@ -376,6 +647,25 @@ async function guardarNuevoPedido() {
   const observaciones = document.getElementById('np-observaciones').value.trim();
 
   if (!direccion) { errEl.textContent = 'La dirección de entrega es obligatoria.'; return; }
+
+  // Validaciones propias de "crear venta aquí"
+  if (STATE.modoVentaPedido === 'nueva') {
+    if (!STATE.carritoVentaDelivery.length) { errEl.textContent = 'Agrega al menos un producto a la venta.'; return; }
+    if (STATE.tipoPagoVentaPedido === 'parcial') {
+      const anticipo = parseFloat(document.getElementById('np-monto-anticipo').value) || 0;
+      const total = totalCarritoDelivery();
+      if (anticipo <= 0) { errEl.textContent = 'Indica cuánto paga el cliente ahora.'; return; }
+      if (anticipo >= total) { errEl.textContent = 'El anticipo no puede ser igual o mayor al total — si paga todo, elige "Pago completo".'; return; }
+    }
+    if (_bancoElegidoVenta) {
+      const bancoInfoVenta = (await cargarBancosDisponiblesDelivery()).find(b => b.id === _bancoElegidoVenta);
+      const monedaBaseVenta = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+      if (bancoInfoVenta && (bancoInfoVenta.moneda||'NIO') !== monedaBaseVenta && !STATE.empresaConfig?.tasa_cambio_usd) {
+        errEl.textContent = 'Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar.';
+        return;
+      }
+    }
+  }
 
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   const bancos = await cargarBancosDisponiblesDelivery();
@@ -408,6 +698,19 @@ async function guardarNuevoPedido() {
   try {
     const { data: numero } = await sb.rpc('siguiente_numero_delivery', { p_user_id: STATE.userId });
 
+    // Si se eligió "Crear venta aquí", primero se crea la venta real
+    // (con su stock y su Caja) antes de armar el pedido.
+    let ventaIdFinal = ventaId;
+    let tipoPago = 'completo', montoAnticipo = 0, saldoPendiente = 0, movimientoAnticipoId = null;
+    if (STATE.modoVentaPedido === 'nueva') {
+      const resultado = await crearVentaDesdeDelivery(numero || `D-${Date.now()}`);
+      ventaIdFinal = resultado.ventaId;
+      tipoPago = resultado.tipoPago;
+      montoAnticipo = resultado.montoAnticipo;
+      saldoPendiente = resultado.saldoPendiente;
+      movimientoAnticipoId = resultado.movimientoAnticipoId;
+    }
+
     // Registrar en Caja lo que corresponda ANTES de crear el pedido,
     // para poder vincular el pedido a esos movimientos reales.
     let movimientoCostoId = null, movimientoCobroId = null;
@@ -415,15 +718,17 @@ async function guardarNuevoPedido() {
     if (cobroEnvio > 0) movimientoCobroId = await registrarMovimientoDelivery('cobro', cobroEnvio, numero);
 
     const { error } = await sb.from('delivery_pedidos').insert({
-      auth_user_id: STATE.userId, venta_id: ventaId, numero: numero || `D-${Date.now()}`,
+      auth_user_id: STATE.userId, venta_id: ventaIdFinal, numero: numero || `D-${Date.now()}`,
       cliente_nombre: cliente || null, cliente_telefono: telefono || null,
       direccion, referencia: referencia || null,
       costo_envio: costoEnvio, cobro_envio: cobroEnvio,
       movimiento_costo_id: movimientoCostoId, movimiento_cobro_id: movimientoCobroId,
+      tipo_pago: tipoPago, monto_anticipo: montoAnticipo, saldo_pendiente: saldoPendiente,
+      movimiento_anticipo_id: movimientoAnticipoId,
       observaciones: observaciones || null, estado: 'pendiente',
     });
     if (error) throw error;
-    showToast('Pedido de delivery creado');
+    showToast(STATE.modoVentaPedido === 'nueva' ? 'Venta y pedido de delivery creados' : 'Pedido de delivery creado');
     closeModal('modal-nuevo-pedido');
     await cargarPedidos();
   } catch (e) {
@@ -540,6 +845,193 @@ async function avanzarEstado(pedidoId, nuevoEstado) {
 }
 
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+
+/* =====================================================
+   CONFIRMAR PAGO DEL SALDO — para pedidos con pago parcial, ya
+   entregados, donde falta cobrar el resto.
+===================================================== */
+let _bancoElegidoSaldo = null;
+let _montoBancoConvertidoSaldo = null;
+
+function abrirConfirmarSaldo(pedidoId) {
+  const p = STATE.pedidos.find(x => x.id === pedidoId);
+  if (!p) return;
+  document.getElementById('cs-pedido-id').value = pedidoId;
+  document.getElementById('cs-resumen').textContent = `Pedido ${p.numero} — saldo pendiente: ${fmt(p.saldo_pendiente)}`;
+  document.getElementById('cs-error').textContent = '';
+  _bancoElegidoSaldo = null; _montoBancoConvertidoSaldo = null;
+  document.getElementById('cs-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('cs-banco-elegido-wrap').style.display = 'none';
+
+  const opciones = STATE.metodosPago.length
+    ? STATE.metodosPago.map(m => `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('')
+    : '<option value="" data-nombre="Efectivo">Efectivo</option>';
+  document.getElementById('cs-metodo').innerHTML = opciones;
+
+  openModal('modal-confirmar-saldo');
+}
+
+async function mostrarSelectorBancoConfirmarSaldo(metodoNombre) {
+  const metodo = (metodoNombre || '').toLowerCase();
+  document.getElementById('cs-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('cs-banco-elegido-wrap').style.display = 'none';
+  _bancoElegidoSaldo = null; _montoBancoConvertidoSaldo = null;
+  if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+  const bancos = await cargarBancosDisponiblesDelivery();
+  if (!bancos.length) return;
+
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  document.getElementById('cs-banco-elegir-grid').innerHTML = bancos.map(b => `
+    <div class="metodo-card" onclick="elegirBancoConfirmarSaldo('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
+      <span class="mc-icon">🏦</span>
+      <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
+    </div>`).join('');
+  document.getElementById('cs-banco-elegir-wrap').style.display = '';
+}
+
+function elegirBancoConfirmarSaldo(bancoId, bancoNombre, monedaBanco) {
+  _bancoElegidoSaldo = bancoId;
+  document.getElementById('cs-banco-elegir-wrap').style.display = 'none';
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+  const p = STATE.pedidos.find(x => x.id === document.getElementById('cs-pedido-id').value);
+  const monto = p ? Number(p.saldo_pendiente) : 0;
+  const elNombre = document.getElementById('cs-banco-elegido-nombre');
+
+  if (esOtraMoneda) {
+    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+    if (!tasa) {
+      elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+    } else {
+      const convertido = monedaBase === 'NIO' ? round2(monto / tasa) : round2(monto * tasa);
+      _montoBancoConvertidoSaldo = convertido;
+      elNombre.innerHTML = `${esc(bancoNombre)} — ${monedaBanco==='USD'?'$':'C$'} ${convertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+    }
+  } else {
+    elNombre.textContent = bancoNombre;
+  }
+  document.getElementById('cs-banco-elegido-wrap').style.display = 'flex';
+}
+
+function cancelarSeleccionBancoConfirmarSaldo() {
+  _bancoElegidoSaldo = null; _montoBancoConvertidoSaldo = null;
+  document.getElementById('cs-metodo').value = '';
+  document.getElementById('cs-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('cs-banco-elegido-wrap').style.display = 'none';
+}
+
+async function confirmarSaldo() {
+  const errEl = document.getElementById('cs-error');
+  errEl.textContent = '';
+  const pedidoId = document.getElementById('cs-pedido-id').value;
+  const p = STATE.pedidos.find(x => x.id === pedidoId);
+  if (!p) return;
+
+  const metodoSel = document.getElementById('cs-metodo');
+  const metodoId = metodoSel.value || null;
+  const metodoNombre = metodoSel.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const monto = Number(p.saldo_pendiente);
+
+  if (_bancoElegidoSaldo) {
+    const bancoInfo = (await cargarBancosDisponiblesDelivery()).find(b => b.id === _bancoElegidoSaldo);
+    const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    if (bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase && !STATE.empresaConfig?.tasa_cambio_usd) {
+      errEl.textContent = 'Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar.';
+      return;
+    }
+  }
+
+  try {
+    const { data: ultMov } = await sb.from('movimientos_financieros')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    const saldoAnterior = ultMov?.saldo_resultante || 0;
+    const saldoResultante = saldoAnterior + monto;
+
+    const { data: mov, error: errMov } = await sb.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
+      concepto: `Saldo final venta — Delivery ${p.numero}`,
+      monto, saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      banco_id: _bancoElegidoSaldo || null, monto_moneda_banco: _bancoElegidoSaldo ? (_montoBancoConvertidoSaldo ?? null) : null,
+      referencia_tipo: 'venta', referencia_id: p.venta_id,
+      fecha: new Date().toISOString().slice(0,10), estado: 'completado',
+    }).select('id').single();
+    if (errMov) throw errMov;
+
+    const { error: errPedido } = await sb.from('delivery_pedidos').update({
+      saldo_pagado: true, saldo_pagado_en: new Date().toISOString(), movimiento_saldo_id: mov.id,
+    }).eq('id', pedidoId).eq('auth_user_id', STATE.userId);
+    if (errPedido) throw errPedido;
+
+    // La venta ya quedó totalmente pagada — se actualiza su estado_pago
+    // para que tambien desaparezca de la alerta de "facturas pendientes"
+    // del Dashboard.
+    if (p.venta_id) {
+      await sb.from('ventas').update({ estado_pago: 'pagado' }).eq('id', p.venta_id).eq('auth_user_id', STATE.userId);
+    }
+
+    showToast('Saldo confirmado — venta completamente pagada');
+    closeModal('modal-confirmar-saldo');
+    await cargarPedidos();
+  } catch (e) {
+    console.error('confirmarSaldo:', e);
+    errEl.textContent = 'No se pudo confirmar el saldo. Intenta de nuevo.';
+  }
+}
+
+/* =====================================================
+   REPORTAR ROBO/PÉRDIDA — el stock NO se devuelve (la mercancía se
+   perdió de verdad), y si ya había un anticipo cobrado, la venta se
+   anula por completo (como si nunca hubiera pasado).
+===================================================== */
+function abrirReportarRobo(pedidoId) {
+  document.getElementById('rr-pedido-id').value = pedidoId;
+  document.getElementById('rr-observaciones').value = '';
+  document.getElementById('rr-error').textContent = '';
+  openModal('modal-reportar-robo');
+}
+
+async function reportarRobo() {
+  const errEl = document.getElementById('rr-error');
+  errEl.textContent = '';
+  const pedidoId = document.getElementById('rr-pedido-id').value;
+  const p = STATE.pedidos.find(x => x.id === pedidoId);
+  if (!p) return;
+  const obs = document.getElementById('rr-observaciones').value.trim();
+
+  try {
+    // Si había una venta con anticipo ya cobrado, se anula por
+    // completo: la venta y el movimiento de Caja del anticipo. El
+    // stock NUNCA se devuelve aquí -- es la unica diferencia real
+    // frente a una anulación normal.
+    if (p.venta_id) {
+      await sb.from('ventas').update({
+        estado: 'anulada', observaciones: `Anulada por robo/pérdida en Delivery ${p.numero}. ${obs}`,
+      }).eq('id', p.venta_id).eq('auth_user_id', STATE.userId);
+
+      if (p.movimiento_anticipo_id) {
+        await sb.from('movimientos_financieros').update({
+          estado: 'anulado', anulado_en: new Date().toISOString(),
+          anulado_motivo: `Venta anulada por robo/pérdida — Delivery ${p.numero}`,
+        }).eq('id', p.movimiento_anticipo_id).eq('auth_user_id', STATE.userId);
+      }
+    }
+
+    const { error } = await sb.from('delivery_pedidos').update({
+      estado: 'robado_perdido', observaciones: obs || p.observaciones, updated_at: new Date().toISOString(),
+    }).eq('id', pedidoId).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+
+    showToast('Pedido marcado como robo/pérdida');
+    closeModal('modal-reportar-robo');
+    await cargarPedidos();
+  } catch (e) {
+    console.error('reportarRobo:', e);
+    errEl.textContent = 'No se pudo reportar. Intenta de nuevo.';
+  }
+}
 
 /* =====================================================
    INICIALIZACIÓN

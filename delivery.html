@@ -964,7 +964,7 @@
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
     }
     .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
-    .filtro-estado-btn.active, .tipo-repartidor-btn.active {
+    .filtro-estado-btn.active, .tipo-repartidor-btn.active, .modo-venta-btn.active, .tipo-pago-btn.active {
       background: var(--accent); color: #fff; border-color: var(--accent);
     }
     .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -1213,7 +1213,7 @@
 
       <!-- MODAL: NUEVO PEDIDO -->
       <div class="modal-overlay" id="modal-nuevo-pedido" onclick="if(event.target===this)closeModal('modal-nuevo-pedido')">
-        <div class="modal-box">
+        <div class="modal-box modal-lg">
           <div class="modal-header">
             <span class="modal-title">Nuevo pedido de delivery</span>
             <button class="modal-close" onclick="closeModal('modal-nuevo-pedido')">
@@ -1222,9 +1222,60 @@
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label>Vincular a una venta (opcional)</label>
-              <select id="np-venta"><option value="">— Ninguna, es un pedido suelto —</option></select>
+              <label>¿Cómo va este pedido?</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn-secondary btn-sm modo-venta-btn active" data-modo="ninguna" onclick="cambiarModoVentaPedido('ninguna')">Pedido suelto</button>
+                <button type="button" class="btn-secondary btn-sm modo-venta-btn" data-modo="existente" onclick="cambiarModoVentaPedido('existente')">Vincular venta existente</button>
+                <button type="button" class="btn-secondary btn-sm modo-venta-btn" data-modo="nueva" onclick="cambiarModoVentaPedido('nueva')">🛒 Crear venta aquí</button>
+              </div>
             </div>
+
+            <div class="form-group" id="np-venta-existente-wrap" style="display:none">
+              <label>Elige la venta</label>
+              <select id="np-venta"><option value="">— Ninguna —</option></select>
+            </div>
+
+            <!-- CREAR VENTA AQUÍ — carrito propio de Delivery -->
+            <div id="np-venta-nueva-wrap" style="display:none">
+              <div class="form-group">
+                <label>Buscar producto</label>
+                <input type="text" id="np-producto-buscar" placeholder="Escribe el nombre o SKU..." autocomplete="off"/>
+                <div id="np-producto-resultados" style="max-height:160px;overflow-y:auto;margin-top:4px"></div>
+              </div>
+              <div id="np-carrito-lista" style="margin:10px 0"></div>
+              <div id="np-carrito-total" style="font-weight:700;font-size:15px;text-align:right;padding:8px 0;border-top:1px solid var(--border)">Total: —</div>
+
+              <div class="form-group">
+                <label>¿Cómo paga el cliente?</label>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn-secondary btn-sm tipo-pago-btn active" data-tipo="completo" onclick="cambiarTipoPagoVenta('completo')" style="flex:1">Pago completo</button>
+                  <button type="button" class="btn-secondary btn-sm tipo-pago-btn" data-tipo="parcial" onclick="cambiarTipoPagoVenta('parcial')" style="flex:1">Pago parcial (anticipo)</button>
+                </div>
+              </div>
+
+              <div id="np-monto-anticipo-wrap" style="display:none" class="form-group">
+                <label>¿Cuánto paga ahora?</label>
+                <input type="number" id="np-monto-anticipo" step="0.01" min="0.01" placeholder="0.00"/>
+                <p id="np-saldo-restante-texto" style="font-size:12px;color:var(--text-muted);margin-top:4px"></p>
+              </div>
+
+              <div class="form-group">
+                <label id="np-venta-metodo-label">Método de pago</label>
+                <select id="np-venta-metodo" onchange="mostrarSelectorBancoDeliveryVenta(this.selectedOptions[0]?.dataset.nombre || 'Efectivo')"></select>
+                <div id="np-venta-banco-elegir-wrap" style="display:none;margin-top:8px">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                    <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoDeliveryVenta()">✕</button>
+                    <span style="font-size:12px;font-weight:600">¿A qué banco entra?</span>
+                  </div>
+                  <div class="metodos-grid" id="np-venta-banco-elegir-grid"></div>
+                </div>
+                <div id="np-venta-banco-elegido-wrap" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--success);border-radius:8px;background:var(--success-soft);display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: <span id="np-venta-banco-elegido-nombre"></span></span>
+                  <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoDeliveryVenta()">✕</button>
+                </div>
+              </div>
+            </div>
+
             <div class="form-group">
               <label>Cliente</label>
               <input type="text" id="np-cliente" placeholder="Nombre del cliente"/>
@@ -1327,6 +1378,69 @@
           <div class="modal-footer">
             <button class="btn-ghost" onclick="closeModal('modal-asignar-repartidor')">Cancelar</button>
             <button class="btn-primary" onclick="guardarAsignacion()">Asignar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: CONFIRMAR PAGO DEL SALDO -->
+      <div class="modal-overlay" id="modal-confirmar-saldo" onclick="if(event.target===this)closeModal('modal-confirmar-saldo')">
+        <div class="modal-box modal-sm">
+          <div class="modal-header">
+            <span class="modal-title">💰 Confirmar pago del saldo</span>
+            <button class="modal-close" onclick="closeModal('modal-confirmar-saldo')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="cs-pedido-id"/>
+            <p id="cs-resumen" style="font-size:13.5px;color:var(--text-secondary);margin-bottom:14px"></p>
+            <div class="form-group">
+              <label>Método de pago del saldo</label>
+              <select id="cs-metodo" onchange="mostrarSelectorBancoConfirmarSaldo(this.selectedOptions[0]?.dataset.nombre || 'Efectivo')"></select>
+            </div>
+            <div id="cs-banco-elegir-wrap" style="display:none;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoConfirmarSaldo()">✕</button>
+                <span style="font-size:12px;font-weight:600">¿A qué banco entra?</span>
+              </div>
+              <div class="metodos-grid" id="cs-banco-elegir-grid"></div>
+            </div>
+            <div id="cs-banco-elegido-wrap" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--success);border-radius:8px;background:var(--success-soft);display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: <span id="cs-banco-elegido-nombre"></span></span>
+              <button type="button" class="btn-icon" onclick="cancelarSeleccionBancoConfirmarSaldo()">✕</button>
+            </div>
+            <p id="cs-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-confirmar-saldo')">Cancelar</button>
+            <button class="btn-primary" style="background:var(--success)" onclick="confirmarSaldo()">Ya se pagó el saldo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: REPORTAR ROBO/PÉRDIDA -->
+      <div class="modal-overlay" id="modal-reportar-robo" onclick="if(event.target===this)closeModal('modal-reportar-robo')">
+        <div class="modal-box modal-sm">
+          <div class="modal-header">
+            <span class="modal-title">🚨 Reportar robo o pérdida</span>
+            <button class="modal-close" onclick="closeModal('modal-reportar-robo')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="rr-pedido-id"/>
+            <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
+              Esto marca el pedido como perdido — el stock <strong>no</strong> se devuelve al inventario (se da por perdido de verdad), y si ya se había cobrado un anticipo, la venta se anula por completo.
+            </p>
+            <div class="form-group">
+              <label>¿Qué pasó? (opcional)</label>
+              <textarea id="rr-observaciones" placeholder="Ej: el repartidor reportó que le robaron la moto"></textarea>
+            </div>
+            <p id="rr-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-reportar-robo')">Cancelar</button>
+            <button class="btn-primary" style="background:var(--danger)" onclick="reportarRobo()">Sí, confirmar pérdida</button>
           </div>
         </div>
       </div>
