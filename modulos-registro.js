@@ -77,6 +77,8 @@
                                desc: 'Ubica a tus clientes en el mapa y arma rutas de cobro o venta en ruta, conectadas con Créditos y Ventas.' },
     'delivery.html':           { key: 'delivery',           label: 'Delivery',            icon: '🛵', obligatorio: false,
                                desc: 'Pedidos de entrega individuales, con repartidor propio o servicio externo — para negocios donde cada entrega es su propio caso, no una ronda planificada.' },
+    'activos.html':            { key: 'activos',            label: 'Activos Fijos',       icon: '🏭', obligatorio: false,
+                               desc: 'Vehículos, herramientas, maquinaria y todo lo que el negocio posee para operar (no para vender) — con depreciación automática según la ley nicaragüense y asientos contables generados solos.' },
     'contabilidad.html':       { key: 'contabilidad',       label: 'Contabilidad',        icon: '📒', obligatorio: false,
                                desc: 'Catálogo de cuentas y asientos contables con partida doble real (Debe = Haber siempre). Libro Mayor y Balance de Comprobación.' },
   };
