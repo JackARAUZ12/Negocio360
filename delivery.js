@@ -36,6 +36,7 @@ function fmt(amount) {
   const sym = STATE.empresaConfig?.moneda_simbolo || STATE.empresaConfig?.moneda || 'C$';
   return `${sym} ${Number(amount||0).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 }
+function fmtNum(n) { return Number(n||0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
 
 /* =====================================================
    SHELL: TEMA, SIDEBAR, NAVEGACIÓN (idéntico al resto del sistema)
