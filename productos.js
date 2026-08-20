@@ -343,8 +343,7 @@ async function cargarProductos() {
     if (error) throw error;
 
     STATE.productos = data || [];
-    aplicarFiltros();
-    actualizarStats();
+    aplicarFiltros(); // ya llama a actualizarStats() al final
 
   } catch (e) {
     console.error('cargarProductos:', e);
@@ -1281,7 +1280,14 @@ function esStockBajo(p) {
 // FIX: usa helper esStockBajo() para evitar falsos positivos
 // ============================================================
 function actualizarStats() {
-  const todos   = STATE.productos;
+  // Los KPIs siguen el filtro de Marca/Proveedor específicamente
+  // (no la búsqueda de texto ni el tipo) — si está en "Todas las
+  // marcas", se comportan exactamente igual que siempre.
+  const base = STATE.filtroMarca
+    ? STATE.productos.filter(p => p.proveedor_id === STATE.filtroMarca)
+    : STATE.productos;
+
+  const todos   = base;
   const activos = todos.filter(p => p.activo === true);
   const prods   = activos.filter(p => p.tipo === 'producto');
   const servs   = activos.filter(p => p.tipo === 'servicio');
@@ -1405,6 +1411,7 @@ function aplicarFiltros() {
 
   STATE.filtrados = lista;
   renderTabla();
+  actualizarStats();
 
   const pieEl = $('tablePie');
   if (pieEl) pieEl.textContent =
