@@ -910,7 +910,7 @@ async function loadMetodosPago() {
    ============================================================ */
 async function loadProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,tipo,precio,costo,tipo_precio,stock_actual,activo')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = data || [];
 
@@ -1746,7 +1746,7 @@ function buscarProductosParaVenta(q, tipo) {
 
   const lista = S.productosCache.filter(p =>
     p.tipo === tipo &&
-    (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower))
+    (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower))
   ).slice(0, 10);
 
   // Con Stock Compartido activo, también se muestran productos que
@@ -1805,6 +1805,7 @@ function buscarProductosParaVenta(q, tipo) {
       <div style="flex:1">
         <div class="pri-name">${esc(p.nombre)} ${p.esCombo ? '<span style="font-size:10px;color:var(--accent-4,var(--accent));font-weight:700">📦 COMBO</span>' : ''}${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
+        ${p.descripcion ? `<div style="font-family:inherit;font-size:11px;color:var(--text-muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${esc(p.descripcion)}</div>` : ''}
       </div>
       <span class="pri-stock ${stockCls}">${stockLabel}</span>
       <span class="pri-precio">${precioLabel}</span>
