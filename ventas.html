@@ -1040,6 +1040,9 @@
 
       <!-- PASO 2: PRODUCTOS -->
       <div id="step-2" class="step-panel" style="display:none">
+        <button type="button" class="btn-secondary btn-sm" id="btn-ver-promociones" style="display:none;margin-bottom:12px" onclick="abrirPromocionesDisponibles('normal')">
+          🎉 Ver promociones disponibles
+        </button>
         <div class="prod-search-wrap" style="position:relative">
           <label>Buscar producto</label>
           <input type="text" id="prod-search-input"
@@ -1333,6 +1336,9 @@
     </div>
     <div class="modal-body">
 
+      <button type="button" class="btn-secondary btn-sm" id="btn-ver-promociones-vr" style="display:none;margin-bottom:12px" onclick="abrirPromocionesDisponibles('vr')">
+        🎉 Ver promociones disponibles
+      </button>
       <div class="prod-search-wrap" style="position:relative">
         <label>Escanea el producto</label>
         <input type="text" id="vr-scan-input" autocomplete="off"
@@ -1505,6 +1511,29 @@
     <div class="modal-footer">
       <button class="btn-ghost" onclick="cerrarSelectorEscala()">Cancelar</button>
       <button class="btn-primary" onclick="confirmarSeleccionEscala()">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     PROMOCIONES DISPONIBLES — vitrina para elegir y "vender" una
+     promoción directamente, igual que un Combo, en vez de esperar a
+     que se detecte sola. La detección automática sigue funcionando
+     también (por si el carrito ya cumple sin usar este botón).
+===================================================== -->
+<div class="modal-overlay" id="modal-promociones-disponibles" onclick="if(event.target===this)cerrarPromocionesDisponibles()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">🎉 Promociones disponibles</span>
+      <button class="modal-close" onclick="cerrarPromocionesDisponibles()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="promo-disponibles-lista" style="max-height:60vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarPromocionesDisponibles()">Cerrar</button>
     </div>
   </div>
 </div>

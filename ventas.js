@@ -979,6 +979,12 @@ async function loadPromocionesCache() {
       .eq('auth_user_id', S.userId).eq('activo', true);
     S.promociones = data || [];
   } catch (e) { S.promociones = []; }
+
+  const hayVigentes = S.promociones.some(promocionEstaVigente);
+  const btn1 = document.getElementById('btn-ver-promociones');
+  const btn2 = document.getElementById('btn-ver-promociones-vr');
+  if (btn1) btn1.style.display = hayVigentes ? '' : 'none';
+  if (btn2) btn2.style.display = hayVigentes ? '' : 'none';
 }
 
 /* ============================================================
@@ -2252,6 +2258,212 @@ function calcularDescuentosPromociones(carrito, promociones) {
   });
 
   return { total, detalle };
+}
+
+/* ============================================================
+   VENDER UNA PROMOCIÓN DIRECTAMENTE — como un Combo: el cajero la
+   elige de una vitrina, y el sistema agrega los productos correctos
+   al carrito él solo. La detección automática (arriba) sigue
+   funcionando igual, esto es solo un atajo cómodo para ofrecerla.
+   ============================================================ */
+const TIPO_PROMO_LABEL_VENTA = {
+  nxm_mismo: '🎁 2x1',
+  nxm_grupo: '🎁 2x1 — varios productos',
+  regalo: '🎁 Compra 1, lleva otro gratis',
+  descuento_cantidad: '💰 Descuento por cantidad',
+};
+
+// Estado del mini-selector para promociones tipo "grupo" — el cajero
+// va marcando cuáles productos del grupo lleva el cliente, hasta
+// completar la cantidad que pide la promoción.
+S.grupoPromoSeleccion = S.grupoPromoSeleccion || null; // { promoId, elegidos: [productoId,...] }
+
+function descripcionAmigablePromo(p) {
+  const prod = (id) => S.productosCache?.find(x => x.id === id)?.nombre || '—';
+  switch (p.tipo) {
+    case 'nxm_mismo':
+      return `Compra ${p.n_compra} de "${prod(p.producto_id)}" y paga ${p.m_paga}`;
+    case 'nxm_grupo':
+      return `Elige ${p.n_compra} productos de este grupo y paga ${p.m_paga}`;
+    case 'regalo':
+      return `Compra ${p.cantidad_disparador} de "${prod(p.producto_disparador_id)}" y llévate "${prod(p.producto_regalo_id)}" ${Number(p.precio_regalo)>0 ? `a ${fmt(p.precio_regalo)}` : 'gratis'}`;
+    case 'descuento_cantidad':
+      return `Comprando ${p.cantidad_minima} o más de "${prod(p.producto_id)}", ${p.descuento_porcentaje}% de descuento`;
+    default: return p.nombre;
+  }
+}
+
+function abrirPromocionesDisponibles(contexto) {
+  S.promoContextoActivo = contexto; // 'normal' | 'vr'
+  S.grupoPromoSeleccion = null;
+  renderPromocionesDisponibles();
+  openModal('modal-promociones-disponibles');
+}
+
+function cerrarPromocionesDisponibles() {
+  closeModal('modal-promociones-disponibles');
+  S.grupoPromoSeleccion = null;
+}
+
+function renderPromocionesDisponibles() {
+  const cont = document.getElementById('promo-disponibles-lista');
+  if (!cont) return;
+  const vigentes = (S.promociones || []).filter(promocionEstaVigente);
+
+  if (!vigentes.length) {
+    cont.innerHTML = `<p style="text-align:center;color:var(--text-muted);font-size:13px;padding:16px 0">No hay promociones activas en este momento.</p>`;
+    return;
+  }
+
+  cont.innerHTML = vigentes.map(p => {
+    if (p.tipo === 'nxm_grupo' && S.grupoPromoSeleccion?.promoId === p.id) {
+      return renderMiniSelectorGrupoPromo(p);
+    }
+    return `
+      <div class="panel-card" style="margin:0 0 10px;padding:12px">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:2px">${esc(TIPO_PROMO_LABEL_VENTA[p.tipo] || p.nombre)} — ${esc(p.nombre)}</div>
+        <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">${esc(descripcionAmigablePromo(p))}</div>
+        <button type="button" class="btn-primary btn-sm" onclick="iniciarVentaPromocion('${p.id}')" style="width:100%">
+          Agregar al carrito
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function renderMiniSelectorGrupoPromo(promo) {
+  const idsGrupo = (promo.promocion_productos || []).map(pp => pp.producto_id);
+  const sel = S.grupoPromoSeleccion;
+  const productos = idsGrupo.map(id => S.productosCache.find(p => p.id === id)).filter(Boolean);
+
+  return `
+    <div class="panel-card" style="margin:0 0 10px;padding:12px">
+      <div style="font-weight:700;font-size:13.5px;margin-bottom:2px">🎁 ${esc(promo.nombre)}</div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Elige ${promo.n_compra} — llevas ${sel.elegidos.length} de ${promo.n_compra}</div>
+      ${productos.map(prod => {
+        const vecesElegido = sel.elegidos.filter(id => id === prod.id).length;
+        return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:var(--bg-app);border-radius:8px;margin-bottom:4px">
+          <span style="font-size:12.5px">${esc(prod.nombre)}${vecesElegido ? ` <b style="color:var(--accent)">×${vecesElegido}</b>` : ''}</span>
+          <div style="display:flex;gap:4px">
+            ${vecesElegido ? `<button type="button" class="btn-icon" onclick="quitarDeGrupoPromoVenta('${prod.id}')">−</button>` : ''}
+            <button type="button" class="btn-icon" onclick="agregarAGrupoPromoVenta('${prod.id}', ${promo.n_compra})">+</button>
+          </div>
+        </div>`;
+      }).join('')}
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button type="button" class="btn-ghost btn-sm" onclick="S.grupoPromoSeleccion=null;renderPromocionesDisponibles()" style="flex:1">Cancelar</button>
+        <button type="button" class="btn-primary btn-sm" ${sel.elegidos.length < promo.n_compra ? 'disabled' : ''} onclick="confirmarGrupoPromoVenta()" style="flex:1">
+          Agregar (${sel.elegidos.length}/${promo.n_compra})
+        </button>
+      </div>
+    </div>`;
+}
+
+function agregarAGrupoPromoVenta(productoId, maxElegir) {
+  if (S.grupoPromoSeleccion.elegidos.length >= maxElegir) return;
+  S.grupoPromoSeleccion.elegidos.push(productoId);
+  renderPromocionesDisponibles();
+}
+function quitarDeGrupoPromoVenta(productoId) {
+  const idx = S.grupoPromoSeleccion.elegidos.lastIndexOf(productoId);
+  if (idx >= 0) S.grupoPromoSeleccion.elegidos.splice(idx, 1);
+  renderPromocionesDisponibles();
+}
+
+// Convierte un producto del catálogo en una línea de carrito lista
+// para insertar — mismas propiedades que ya usa el resto de Ventas,
+// para que fluya igual por todo el sistema (stock, descuentos, etc).
+function construirItemCarritoDesdeProducto(prod, cantidad) {
+  let precio = Number(prod.precio || 0);
+  let escalaId = null, escalaNombre = null;
+  if (prod.tipo_precio === 'escala') {
+    // Se usa la primera escala configurada (normalmente el precio de
+    // venta normal/al detalle) como precio por defecto al vender
+    // desde una promoción — el cajero puede ajustar esa línea
+    // después si de verdad necesita otra escala.
+    const escalas = S.escalasPorProducto?.[prod.id] || [];
+    if (escalas.length) { precio = Number(escalas[0].precio || 0); escalaId = escalas[0].id; escalaNombre = escalas[0].nombre; }
+  }
+  const costo = Number(prod.costo || 0);
+  return {
+    id: prod.id, nombre: prod.nombre, sku: prod.sku || '', tipo: prod.tipo,
+    cantidad, precio, costo, descuento: 0,
+    subtotal: round2(cantidad * precio), ganancia: round2(cantidad * (precio - costo)),
+    stockMax: prod.tipo === 'producto' ? Number(prod.stock_actual || 0) : Infinity,
+    esCombo: !!prod.esCombo, escalaId, escalaNombre, origenStockId: null, origenStockNombre: null,
+  };
+}
+
+function agregarProductoOIncrementar(carrito, prod, cantidadAAgregar) {
+  const existente = carrito.find(c => c.id === prod.id && !c.escalaId);
+  if (existente) { existente.cantidad += cantidadAAgregar; recalcItem(existente); }
+  else carrito.push(construirItemCarritoDesdeProducto(prod, cantidadAAgregar));
+}
+
+function refrescarCarritoTrasPromo(contexto) {
+  if (contexto === 'vr') {
+    renderCarritoVentaRapida();
+  } else {
+    renderCarrito('producto'); renderCarrito('servicio'); calcularResumen();
+  }
+}
+
+function iniciarVentaPromocion(promoId) {
+  const promo = S.promociones.find(p => p.id === promoId);
+  if (!promo) return;
+
+  if (promo.tipo === 'nxm_grupo') {
+    S.grupoPromoSeleccion = { promoId, elegidos: [] };
+    renderPromocionesDisponibles();
+    return;
+  }
+
+  const carrito = S.promoContextoActivo === 'vr' ? VR.carrito : S.carrito;
+
+  if (promo.tipo === 'nxm_mismo') {
+    const prod = S.productosCache.find(p => p.id === promo.producto_id);
+    if (!prod) { showToast('El producto de esta promoción ya no está disponible', 'error'); return; }
+    agregarProductoOIncrementar(carrito, prod, promo.n_compra);
+    showToast(`🎉 ${promo.nombre} agregada`, 'success');
+
+  } else if (promo.tipo === 'regalo') {
+    const disparador = S.productosCache.find(p => p.id === promo.producto_disparador_id);
+    const regalo = S.productosCache.find(p => p.id === promo.producto_regalo_id);
+    if (!disparador || !regalo) { showToast('Alguno de los productos de esta promoción ya no está disponible', 'error'); return; }
+    agregarProductoOIncrementar(carrito, disparador, promo.cantidad_disparador);
+    agregarProductoOIncrementar(carrito, regalo, 1);
+    showToast(`🎉 ${promo.nombre} agregada`, 'success');
+
+  } else if (promo.tipo === 'descuento_cantidad') {
+    const prod = S.productosCache.find(p => p.id === promo.producto_id);
+    if (!prod) { showToast('El producto de esta promoción ya no está disponible', 'error'); return; }
+    agregarProductoOIncrementar(carrito, prod, promo.cantidad_minima);
+    showToast(`🎉 ${promo.nombre} agregada`, 'success');
+  }
+
+  cerrarPromocionesDisponibles();
+  refrescarCarritoTrasPromo(S.promoContextoActivo);
+}
+
+function confirmarGrupoPromoVenta() {
+  const sel = S.grupoPromoSeleccion;
+  const promo = S.promociones.find(p => p.id === sel.promoId);
+  if (!promo || sel.elegidos.length < promo.n_compra) return;
+
+  const carrito = S.promoContextoActivo === 'vr' ? VR.carrito : S.carrito;
+  // Cuenta cuántas veces se eligió cada producto, y agrega esa
+  // cantidad exacta de cada uno.
+  const conteos = {};
+  sel.elegidos.forEach(id => { conteos[id] = (conteos[id] || 0) + 1; });
+  Object.entries(conteos).forEach(([productoId, cantidad]) => {
+    const prod = S.productosCache.find(p => p.id === productoId);
+    if (prod) agregarProductoOIncrementar(carrito, prod, cantidad);
+  });
+
+  showToast(`🎉 ${promo.nombre} agregada`, 'success');
+  S.grupoPromoSeleccion = null;
+  cerrarPromocionesDisponibles();
+  refrescarCarritoTrasPromo(S.promoContextoActivo);
 }
 
 function cambiarCantidad(productoId, val) {

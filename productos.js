@@ -3068,9 +3068,9 @@ async function cargarPromociones() {
 }
 
 const TIPO_PROMO_LABEL = {
-  nxm_mismo: 'NxM — mismo producto',
-  nxm_grupo: 'NxM — grupo de productos',
-  regalo: 'Regalo al comprar',
+  nxm_mismo: '2x1 — mismo producto',
+  nxm_grupo: '2x1 — varios productos',
+  regalo: 'Compra 1, lleva otro gratis',
   descuento_cantidad: 'Descuento por cantidad',
 };
 
@@ -3151,12 +3151,24 @@ async function eliminarPromocion(id) {
 }
 
 function llenarSelectsProductosPromocion() {
-  const opciones = STATE.productos.filter(p => p.activo).map(p =>
-    `<option value="${p.id}">${escHtml(p.nombre)}</option>`).join('');
+  const opciones = STATE.productos.filter(p => p.activo).map(p => {
+    const esEscala = p.tipo_precio === 'escala';
+    const precioTexto = esEscala
+      ? `📊 ${fmtRangoEscala(STATE.escalasPorProducto[p.id])}`
+      : fmtMoney(p.precio);
+    return `<option value="${p.id}">${escHtml(p.nombre)} — ${precioTexto}</option>`;
+  }).join('');
   ['pm-producto-nxm','pm-producto-disparador','pm-producto-regalo','pm-producto-descuento'].forEach(id => {
     const sel = $(id);
     if (sel) sel.innerHTML = opciones;
   });
+}
+
+function onCambioProductoRegalo() {
+  const id = $('pm-producto-regalo').value;
+  const prod = STATE.productos.find(p => p.id === id);
+  const nota = $('pm-nota-escala-regalo');
+  if (nota) nota.style.display = (prod && prod.tipo_precio === 'escala') ? '' : 'none';
 }
 
 function onCambioTipoPromocion() {
@@ -3218,6 +3230,7 @@ function abrirModalPromocion(id) {
     renderGrupoPromocionLista();
   }
   onCambioTipoPromocion();
+  onCambioProductoRegalo();
   $('modalPromocion').classList.add('open');
 }
 

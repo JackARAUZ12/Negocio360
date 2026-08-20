@@ -541,10 +541,10 @@
       <div class="form-group">
         <label>Tipo de promoción *</label>
         <select id="pm-tipo" class="form-select" onchange="onCambioTipoPromocion()">
-          <option value="nxm_mismo">Compra N y paga M — de UN producto (ej. 2x1)</option>
-          <option value="nxm_grupo">Compra N y paga M — de un GRUPO de productos que elijo</option>
-          <option value="regalo">Compra un producto y llévate otro gratis (o con descuento)</option>
-          <option value="descuento_cantidad">Descuento automático por cantidad</option>
+          <option value="nxm_mismo">🎁 2x1 (o 3x2, etc.) — del mismo producto</option>
+          <option value="nxm_grupo">🎁 2x1 (o 3x2, etc.) — entre varios productos que yo elijo</option>
+          <option value="regalo">🎁 Compra un producto y llévate otro gratis</option>
+          <option value="descuento_cantidad">💰 Descuento por comprar varios</option>
         </select>
       </div>
 
@@ -588,7 +588,8 @@
         </div>
         <div class="form-group">
           <label>Producto de regalo *</label>
-          <select id="pm-producto-regalo" class="form-select"></select>
+          <select id="pm-producto-regalo" class="form-select" onchange="onCambioProductoRegalo()"></select>
+          <p id="pm-nota-escala-regalo" style="font-size:11.5px;color:#b45309;margin-top:4px;display:none">⚠️ Este producto tiene precios por escala — el "Precio del regalo" se compara contra el precio más bajo de su escala.</p>
         </div>
         <div class="form-group">
           <label>Precio del regalo</label>
