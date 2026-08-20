@@ -3063,7 +3063,7 @@ async function cargarPromociones() {
     renderPromociones();
   } catch (e) {
     console.error('cargarPromociones:', e);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar las promociones.</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar las promociones.</td></tr>`;
   }
 }
 
@@ -3098,6 +3098,41 @@ function vigenciaPromocion(p) {
   return `${ini} → ${fin}`;
 }
 
+// Mismo cálculo ya usado en Ventas — para nxm_grupo no hay un precio
+// único (depende de qué elija el cajero al vender), así que ahí se
+// muestra un guión en vez de un número.
+function precioVitrinaPromo(p) {
+  // Si el negocio puso un precio fijo, ese manda siempre — el cálculo
+  // automático de abajo solo sirve como respaldo cuando no se definió.
+  if (p.precio_promocion !== null && p.precio_promocion !== undefined) {
+    return fmtMoney(Number(p.precio_promocion));
+  }
+  const precioDe = (prod) => {
+    if (!prod) return null;
+    if (prod.tipo_precio === 'escala') {
+      const escalas = STATE.escalasPorProducto?.[prod.id] || [];
+      return escalas.length ? Number(escalas[0].precio || 0) : null;
+    }
+    return Number(prod.precio || 0);
+  };
+  if (p.tipo === 'nxm_mismo') {
+    const prod = STATE.productos.find(x => x.id === p.producto_id);
+    const precio = precioDe(prod);
+    return precio === null ? '—' : fmtMoney(precio * p.m_paga);
+  }
+  if (p.tipo === 'descuento_cantidad') {
+    const prod = STATE.productos.find(x => x.id === p.producto_id);
+    const precio = precioDe(prod);
+    return precio === null ? '—' : fmtMoney(round2(precio * p.cantidad_minima * (1 - Number(p.descuento_porcentaje||0)/100)));
+  }
+  if (p.tipo === 'regalo') {
+    const disparador = STATE.productos.find(x => x.id === p.producto_disparador_id);
+    const precio = precioDe(disparador);
+    return precio === null ? '—' : fmtMoney(precio * p.cantidad_disparador + Number(p.precio_regalo || 0));
+  }
+  return '<span style="color:var(--text-muted)">según lo elegido</span>';
+}
+
 function renderPromociones() {
   const tbody = $('promosTbody');
   const countEl = $('promosCount');
@@ -3105,7 +3140,7 @@ function renderPromociones() {
   if (!tbody) return;
 
   if (!STATE.promociones.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Aún no has creado ninguna promoción.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Aún no has creado ninguna promoción.</td></tr>`;
     return;
   }
 
@@ -3114,6 +3149,7 @@ function renderPromociones() {
       <td><strong>${escHtml(p.nombre)}</strong></td>
       <td>${escHtml(TIPO_PROMO_LABEL[p.tipo] || p.tipo)}</td>
       <td style="font-size:12.5px;color:var(--text-muted)">${escHtml(detallePromocion(p))}</td>
+      <td style="font-weight:700;color:var(--accent)">${precioVitrinaPromo(p)}</td>
       <td style="font-size:12.5px">${escHtml(vigenciaPromocion(p))}</td>
       <td><span class="status-badge ${p.activo?'status-activo':'status-inactivo'}" style="cursor:pointer" onclick="togglePromocionActiva('${p.id}', ${!p.activo})">${p.activo?'Activa':'Pausada'}</span></td>
       <td>
@@ -3195,6 +3231,7 @@ function abrirModalPromocion(id) {
     $('pm-tipo').value = p.tipo;
     $('pm-fecha-inicio').value = p.fecha_inicio || '';
     $('pm-fecha-fin').value = p.fecha_fin || '';
+    $('pm-precio-promocion').value = (p.precio_promocion !== null && p.precio_promocion !== undefined) ? p.precio_promocion : '';
 
     if (p.tipo === 'nxm_mismo') {
       $('pm-producto-nxm').value = p.producto_id || '';
@@ -3227,6 +3264,7 @@ function abrirModalPromocion(id) {
     $('pm-cantidad-disparador').value = 1; $('pm-precio-regalo').value = 0;
     $('pm-cantidad-minima').value = 3; $('pm-descuento-porcentaje').value = 10;
     $('pm-fecha-inicio').value = ''; $('pm-fecha-fin').value = '';
+    $('pm-precio-promocion').value = '';
     renderGrupoPromocionLista();
   }
   onCambioTipoPromocion();
@@ -3294,11 +3332,14 @@ async function guardarPromocion() {
   const tipo = $('pm-tipo').value;
   const fechaInicio = $('pm-fecha-inicio').value || null;
   const fechaFin = $('pm-fecha-fin').value || null;
+  const precioPromocionRaw = $('pm-precio-promocion').value;
+  const precioPromocion = precioPromocionRaw === '' ? null : parseFloat(precioPromocionRaw);
 
   if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
   if (fechaInicio && fechaFin && fechaFin < fechaInicio) { errEl.textContent = 'La fecha de vigencia final no puede ser antes que la inicial.'; return; }
+  if (precioPromocionRaw !== '' && (isNaN(precioPromocion) || precioPromocion < 0)) { errEl.textContent = 'El precio de la promoción no es válido.'; return; }
 
-  const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin };
+  const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, precio_promocion: precioPromocion };
   let productosGrupo = null;
 
   if (tipo === 'nxm_mismo') {

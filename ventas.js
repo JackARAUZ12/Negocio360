@@ -2317,6 +2317,31 @@ function descripcionAmigablePromo(p) {
   }
 }
 
+// El precio que se ve en la vitrina, ya calculado — para nxm_grupo no
+// hay un precio único (depende de qué elija el cliente), así que ahí
+// se muestra "según lo que elijas" en vez de un número fijo.
+function precioVitrinaPromo(p) {
+  if (p.tipo === 'nxm_mismo') {
+    const prod = S.productosCache.find(x => x.id === p.producto_id);
+    if (!prod) return null;
+    const { precio } = obtenerPrecioCostoProducto(prod);
+    return fmt(precio * p.m_paga);
+  }
+  if (p.tipo === 'descuento_cantidad') {
+    const prod = S.productosCache.find(x => x.id === p.producto_id);
+    if (!prod) return null;
+    const { precio } = obtenerPrecioCostoProducto(prod);
+    return fmt(round2(precio * p.cantidad_minima * (1 - Number(p.descuento_porcentaje||0)/100)));
+  }
+  if (p.tipo === 'regalo') {
+    const disparador = S.productosCache.find(x => x.id === p.producto_disparador_id);
+    if (!disparador) return null;
+    const { precio } = obtenerPrecioCostoProducto(disparador);
+    return fmt(precio * p.cantidad_disparador + Number(p.precio_regalo || 0));
+  }
+  return null; // nxm_grupo: depende de lo que el cajero elija
+}
+
 function abrirPromocionesDisponibles(contexto) {
   S.promoContextoActivo = contexto; // 'normal' | 'vr'
   S.grupoPromoSeleccion = null;
@@ -2343,10 +2368,14 @@ function renderPromocionesDisponibles() {
     if (p.tipo === 'nxm_grupo' && S.grupoPromoSeleccion?.promoId === p.id) {
       return renderMiniSelectorGrupoPromo(p);
     }
+    const precio = precioVitrinaPromo(p);
     return `
       <div class="panel-card" style="margin:0 0 10px;padding:12px">
-        <div style="font-weight:700;font-size:13.5px;margin-bottom:2px">${esc(TIPO_PROMO_LABEL_VENTA[p.tipo] || p.nombre)} — ${esc(p.nombre)}</div>
-        <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">${esc(descripcionAmigablePromo(p))}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px">
+          <div style="font-weight:700;font-size:13.5px">${esc(TIPO_PROMO_LABEL_VENTA[p.tipo] || p.nombre)} — ${esc(p.nombre)}</div>
+          ${precio ? `<div style="font-weight:800;font-size:15px;color:var(--accent);white-space:nowrap">${precio}</div>` : ''}
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">${esc(descripcionAmigablePromo(p))}${!precio ? ' — el precio se calcula según lo que elijas' : ''}</div>
         <button type="button" class="btn-primary btn-sm" onclick="iniciarVentaPromocion('${p.id}')" style="width:100%">
           Agregar al carrito
         </button>
@@ -2432,6 +2461,31 @@ function refrescarCarritoTrasPromo(contexto) {
   }
 }
 
+// Precio/costo real de un producto, respetando escala (misma lógica
+// que construirItemCarritoDesdeProducto, reutilizable aquí también).
+function obtenerPrecioCostoProducto(prod) {
+  let precio = Number(prod.precio || 0);
+  if (prod.tipo_precio === 'escala') {
+    const escalas = S.escalasPorProducto?.[prod.id] || [];
+    if (escalas.length) precio = Number(escalas[0].precio || 0);
+  }
+  return { precio, costo: Number(prod.costo || 0) };
+}
+
+// Agrega la promoción al carrito como UNA sola línea (igual espíritu
+// que un Combo), con su propio precio ya calculado — no como varios
+// productos sueltos. componentesPromo guarda qué se descuenta de
+// stock de verdad al finalizar la venta.
+function agregarPromocionComoLineaUnica(carrito, promo, componentesPromo, precioTotal, costoTotal) {
+  carrito.push({
+    id: promo.id, nombre: `🎁 ${promo.nombre}`, sku: '', tipo: 'producto',
+    cantidad: 1, precio: round2(precioTotal), costo: round2(costoTotal), descuento: 0,
+    subtotal: round2(precioTotal), ganancia: round2(precioTotal - costoTotal),
+    esPromocion: true, componentesPromo,
+    stockMax: Infinity, escalaId: null, escalaNombre: null, origenStockId: null, origenStockNombre: null,
+  });
+}
+
 function iniciarVentaPromocion(promoId) {
   const promo = S.promociones.find(p => p.id === promoId);
   if (!promo) return;
@@ -2447,22 +2501,39 @@ function iniciarVentaPromocion(promoId) {
   if (promo.tipo === 'nxm_mismo') {
     const prod = S.productosCache.find(p => p.id === promo.producto_id);
     if (!prod) { showToast('El producto de esta promoción ya no está disponible', 'error'); return; }
-    agregarProductoOIncrementar(carrito, prod, promo.n_compra);
-    showToast(`🎉 ${promo.nombre} agregada`, 'success');
+    const { precio, costo } = obtenerPrecioCostoProducto(prod);
+    const precioFijo = promo.precio_promocion;
+    const precioTotal = (precioFijo !== null && precioFijo !== undefined) ? Number(precioFijo) : precio * promo.m_paga;
+    agregarPromocionComoLineaUnica(carrito, promo,
+      [{ producto_id: prod.id, cantidad: promo.n_compra }],
+      precioTotal, costo * promo.n_compra);
+    showToast(`🎉 ${promo.nombre} agregada — ${fmt(precioTotal)}`, 'success');
 
   } else if (promo.tipo === 'regalo') {
     const disparador = S.productosCache.find(p => p.id === promo.producto_disparador_id);
     const regalo = S.productosCache.find(p => p.id === promo.producto_regalo_id);
     if (!disparador || !regalo) { showToast('Alguno de los productos de esta promoción ya no está disponible', 'error'); return; }
-    agregarProductoOIncrementar(carrito, disparador, promo.cantidad_disparador);
-    agregarProductoOIncrementar(carrito, regalo, 1);
-    showToast(`🎉 ${promo.nombre} agregada`, 'success');
+    const pd = obtenerPrecioCostoProducto(disparador);
+    const pr = obtenerPrecioCostoProducto(regalo);
+    const precioRegalo = Number(promo.precio_regalo || 0);
+    const precioFijo = promo.precio_promocion;
+    const precioTotal = (precioFijo !== null && precioFijo !== undefined) ? Number(precioFijo) : (pd.precio * promo.cantidad_disparador + precioRegalo);
+    const costoTotal = pd.costo * promo.cantidad_disparador + pr.costo;
+    agregarPromocionComoLineaUnica(carrito, promo,
+      [{ producto_id: disparador.id, cantidad: promo.cantidad_disparador }, { producto_id: regalo.id, cantidad: 1 }],
+      precioTotal, costoTotal);
+    showToast(`🎉 ${promo.nombre} agregada — ${fmt(precioTotal)}`, 'success');
 
   } else if (promo.tipo === 'descuento_cantidad') {
     const prod = S.productosCache.find(p => p.id === promo.producto_id);
     if (!prod) { showToast('El producto de esta promoción ya no está disponible', 'error'); return; }
-    agregarProductoOIncrementar(carrito, prod, promo.cantidad_minima);
-    showToast(`🎉 ${promo.nombre} agregada`, 'success');
+    const { precio, costo } = obtenerPrecioCostoProducto(prod);
+    const precioFijo = promo.precio_promocion;
+    const precioTotal = (precioFijo !== null && precioFijo !== undefined) ? Number(precioFijo) : round2(precio * promo.cantidad_minima * (1 - Number(promo.descuento_porcentaje||0)/100));
+    agregarPromocionComoLineaUnica(carrito, promo,
+      [{ producto_id: prod.id, cantidad: promo.cantidad_minima }],
+      precioTotal, costo * promo.cantidad_minima);
+    showToast(`🎉 ${promo.nombre} agregada — ${fmt(precioTotal)}`, 'success');
   }
 
   cerrarPromocionesDisponibles();
@@ -2475,16 +2546,34 @@ function confirmarGrupoPromoVenta() {
   if (!promo || sel.elegidos.length < promo.n_compra) return;
 
   const carrito = S.promoContextoActivo === 'vr' ? VR.carrito : S.carrito;
-  // Cuenta cuántas veces se eligió cada producto, y agrega esa
-  // cantidad exacta de cada uno.
+
+  // Cuenta cuántas veces se eligió cada producto.
   const conteos = {};
   sel.elegidos.forEach(id => { conteos[id] = (conteos[id] || 0) + 1; });
+
+  // Arma la lista de precios individuales elegidos (uno por unidad),
+  // para poder descontar los MÁS BARATOS — mismo criterio justo ya
+  // usado en la detección automática.
+  const unidades = []; // [{producto_id, precio, costo}]
   Object.entries(conteos).forEach(([productoId, cantidad]) => {
     const prod = S.productosCache.find(p => p.id === productoId);
-    if (prod) agregarProductoOIncrementar(carrito, prod, cantidad);
+    if (!prod) return;
+    const { precio, costo } = obtenerPrecioCostoProducto(prod);
+    for (let i = 0; i < cantidad; i++) unidades.push({ producto_id: productoId, precio, costo });
   });
 
-  showToast(`🎉 ${promo.nombre} agregada`, 'success');
+  const costoTotal = unidades.reduce((s, u) => s + u.costo, 0);
+  const subtotalBruto = unidades.reduce((s, u) => s + u.precio, 0);
+  const ordenadas = [...unidades].sort((a, b) => a.precio - b.precio);
+  const unidadesGratis = promo.n_compra - promo.m_paga;
+  const descuento = ordenadas.slice(0, unidadesGratis).reduce((s, u) => s + u.precio, 0);
+  const precioFijo = promo.precio_promocion;
+  const precioTotal = (precioFijo !== null && precioFijo !== undefined) ? Number(precioFijo) : round2(subtotalBruto - descuento);
+
+  const componentesPromo = Object.entries(conteos).map(([producto_id, cantidad]) => ({ producto_id, cantidad }));
+  agregarPromocionComoLineaUnica(carrito, promo, componentesPromo, precioTotal, costoTotal);
+
+  showToast(`🎉 ${promo.nombre} agregada — ${fmt(precioTotal)}`, 'success');
   S.grupoPromoSeleccion = null;
   cerrarPromocionesDisponibles();
   refrescarCarritoTrasPromo(S.promoContextoActivo);
@@ -2558,6 +2647,7 @@ function renderCarrito(tipo) {
         <div style="font-weight:600;font-size:13px">${esc(item.nombre)}</div>
         ${item.sku ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${esc(item.sku)}</div>` : ''}
         ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
+        ${item.esPromocion ? `<div style="font-size:11px;color:var(--success);font-weight:600">🎁 Promoción</div>` : ''}
         ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
         ${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}
         ${item.precioEditado ? `<div style="font-size:10.5px;color:var(--text-muted)">✏️ Precio ajustado solo para esta venta</div>` : ''}
@@ -3261,14 +3351,18 @@ async function confirmarVenta(conImpresion) {
     const detallesPayload = S.carrito.map(item => ({
       auth_user_id:   S.userId,
       venta_id:       ventaId,
-      // Un combo no existe como fila en "productos" — se guarda su id en
-      // combo_id en vez de producto_id, para no violar la relación con
-      // productos y para poder identificarlo después en reportes.
-      producto_id:    item.esCombo ? null : item.id,
+      // Un combo o una promoción vendida como línea propia no existen
+      // como fila en "productos" — se guarda su id en combo_id o
+      // promocion_id en vez de producto_id. tipo_item solo acepta
+      // 'producto'/'servicio' en la base de datos (nunca 'combo'), así
+      // que ambos casos usan 'producto' aquí — se distinguen por cuál
+      // de las 3 columnas de id tiene valor.
+      producto_id:    (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:       item.esCombo ? item.id : null,
+      promocion_id:   item.esPromocion ? item.id : null,
       producto_nombre:item.nombre,
       producto_sku:   item.sku || null,
-      tipo_item:      item.esCombo ? 'combo' : item.tipo,
+      tipo_item:      (item.esCombo || item.esPromocion) ? 'producto' : item.tipo,
       cantidad:       item.cantidad,
       precio:         item.precio,
       costo:          item.costo,
@@ -3281,9 +3375,9 @@ async function confirmarVenta(conImpresion) {
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
-      // Reintentar sin columnas escala_*/combo_id por si la migración aún no llegó a este entorno
+      // Reintentar sin columnas escala_*/combo_id/promocion_id por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
@@ -3344,6 +3438,26 @@ async function confirmarVenta(conImpresion) {
         }
       } catch (eCombo) {
         console.warn('No se pudo descontar el stock de los componentes del combo:', combo.nombre, eCombo);
+      }
+    }
+
+    // Promociones vendidas como línea única — el carrito ya trae
+    // guardado cuáles productos reales y en qué cantidad componen esa
+    // promoción (componentesPromo), así que no hace falta volver a
+    // consultar nada: se descuenta directo.
+    const promocionesVendidas = S.carrito.filter(i => i.esPromocion);
+    for (const promo of promocionesVendidas) {
+      try {
+        for (const comp of (promo.componentesPromo || [])) {
+          const { data: prodActual } = await sb.from('productos')
+            .select('stock_actual, tipo').eq('id', comp.producto_id).eq('auth_user_id', S.userId).maybeSingle();
+          if (!prodActual || prodActual.tipo !== 'producto') continue;
+          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - Number(comp.cantidad));
+          await sb.from('productos').update({ stock_actual: nuevoStock })
+            .eq('id', comp.producto_id).eq('auth_user_id', S.userId);
+        }
+      } catch (ePromo) {
+        console.warn('No se pudo descontar el stock de los componentes de la promoción:', promo.nombre, ePromo);
       }
     }
 
@@ -3981,7 +4095,7 @@ function renderCarritoVentaRapida() {
   } else {
     tbody.innerHTML = VR.carrito.map(item => `
       <tr>
-        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}${item.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
+        <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.esPromocion ? `<div style="font-size:11px;color:var(--success);font-weight:600">🎁 Promoción</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}${item.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
         <td>
           <input type="number" min="1" step="1" value="${item.cantidad}"
@@ -4125,11 +4239,12 @@ async function confirmarVentaRapida() {
     const detallesPayload = VR.carrito.map(item => ({
       auth_user_id:    S.userId,
       venta_id:        ventaId,
-      producto_id:     item.esCombo ? null : item.id,
+      producto_id:     (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:        item.esCombo ? item.id : null,
+      promocion_id:    item.esPromocion ? item.id : null,
       producto_nombre: item.nombre,
       producto_sku:    item.sku || null,
-      tipo_item:       item.esCombo ? 'combo' : item.tipo,
+      tipo_item:       (item.esCombo || item.esPromocion) ? 'producto' : item.tipo,
       cantidad:        item.cantidad,
       precio:          item.precio,
       costo:           item.costo,
@@ -4141,9 +4256,9 @@ async function confirmarVentaRapida() {
     }));
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
-      // Reintentar sin columnas escala_*/combo_id por si la migración aún no llegó a este entorno
+      // Reintentar sin columnas escala_*/combo_id/promocion_id por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
@@ -4187,6 +4302,24 @@ async function confirmarVentaRapida() {
         }
       } catch (eCombo) {
         console.warn('No se pudo descontar el stock de los componentes del combo:', combo.nombre, eCombo);
+      }
+    }
+
+    // Promociones vendidas como línea única (mismo mecanismo que en
+    // Nueva Venta) — usa lo que ya viene guardado en el carrito, sin
+    // volver a consultar nada.
+    for (const promo of VR.carrito.filter(i => i.esPromocion)) {
+      try {
+        for (const comp of (promo.componentesPromo || [])) {
+          const { data: prodActual } = await sb.from('productos')
+            .select('stock_actual, tipo').eq('id', comp.producto_id).eq('auth_user_id', S.userId).maybeSingle();
+          if (!prodActual || prodActual.tipo !== 'producto') continue;
+          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - Number(comp.cantidad));
+          await sb.from('productos').update({ stock_actual: nuevoStock })
+            .eq('id', comp.producto_id).eq('auth_user_id', S.userId);
+        }
+      } catch (ePromo) {
+        console.warn('No se pudo descontar el stock de los componentes de la promoción:', promo.nombre, ePromo);
       }
     }
 
