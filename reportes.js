@@ -35,7 +35,8 @@ const R = {
   // Cache de datos por módulo (para exportaciones y re-renders sin consultar de nuevo)
   cache: {
     ventas:         [],
-    ventasDetalles: [], // NUEVO: detalles (líneas) de venta, para saber cuántos productos se vendieron por venta
+    ventasDetalles: [],
+    activos:        [],
     compras:        [],
     gastos:         [],
     clientes:       [],
@@ -386,6 +387,7 @@ async function loadTab(tab) {
     case 'ventas':      await loadVentasTab();   break;
     case 'compras':     await loadComprasTab();  break;
     case 'inventario':  await loadInventario();  break;
+    case 'activos':     await loadActivosTab();  break;
     case 'clientes':    await loadClientesTab(); break;
     case 'creditos':    await loadCreditosTab(); break;
     case 'gastos':      await loadGastosTab();   break;
@@ -1577,6 +1579,77 @@ async function loadInventario() {
   } catch(e) { console.error('loadInventario:', e); }
 }
 
+/* ============================================================
+   ACTIVOS FIJOS
+   Mismo cálculo de depreciación por línea recta ya usado y probado
+   en activos.js — duplicado aquí a propósito, evita cargar todo ese
+   archivo solo para esto.
+   ============================================================ */
+async function fetchActivos() {
+  const { data } = await sb.from('activos_fijos').select('*').eq('auth_user_id', R.userId).order('created_at', { ascending: false });
+  R.cache.activos = data || [];
+  return R.cache.activos;
+}
+
+function calcularDepreciacionActivo(a) {
+  const costo = Number(a.costo_adquisicion);
+  const residual = Number(a.valor_residual || 0);
+  const vidaUtilMeses = Number(a.vida_util_anos) * 12;
+  const depreciable = Math.max(0, costo - residual);
+  const depreciacionMensual = vidaUtilMeses > 0 ? depreciable / vidaUtilMeses : 0;
+
+  const fechaAdq = new Date(a.fecha_adquisicion + 'T00:00:00');
+  const hoy = new Date();
+  let meses = (hoy.getFullYear() - fechaAdq.getFullYear()) * 12 + (hoy.getMonth() - fechaAdq.getMonth());
+  if (hoy.getDate() < fechaAdq.getDate()) meses -= 1;
+  meses = Math.max(0, Math.min(meses, vidaUtilMeses));
+
+  const depreciacionAcumulada = Math.round(depreciacionMensual * meses * 100) / 100;
+  const valorEnLibros = Math.round((costo - depreciacionAcumulada) * 100) / 100;
+  return { depreciacionAcumulada, valorEnLibros, mesesRestantes: vidaUtilMeses - meses };
+}
+
+const ESTADO_ACTIVO_LABEL_REP = { activo:'Activo', mantenimiento:'En mantenimiento', baja:'Dado de baja' };
+
+async function loadActivosTab() {
+  try {
+    const activos = await fetchActivos();
+    const activosVivos = activos.filter(a => a.estado !== 'baja');
+
+    let valorLibrosTotal = 0, depreciacionTotal = 0, casiDepreciados = 0;
+    activosVivos.forEach(a => {
+      const dep = calcularDepreciacionActivo(a);
+      valorLibrosTotal += dep.valorEnLibros;
+      depreciacionTotal += dep.depreciacionAcumulada;
+      if (dep.mesesRestantes <= 2) casiDepreciados++;
+    });
+
+    setEl('act-total', activos.length.toString());
+    setEl('act-mantenimiento', `${activos.filter(a=>a.estado==='mantenimiento').length} en mantenimiento`);
+    setEl('act-valor-libros', fmt(valorLibrosTotal));
+    setEl('act-depreciacion', fmt(depreciacionTotal));
+    setEl('act-casi-depreciados', casiDepreciados.toString());
+
+    const tbody = document.getElementById('act-tabla-completa');
+    if (tbody) {
+      if (!activos.length) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Todavía no has registrado ningún activo fijo.</td></tr>`;
+      } else {
+        tbody.innerHTML = activos.map(a => {
+          const dep = calcularDepreciacionActivo(a);
+          return `<tr>
+            <td>${esc(a.numero)}</td><td>${esc(a.nombre)}</td><td>${esc(a.categoria)}</td>
+            <td>${ESTADO_ACTIVO_LABEL_REP[a.estado]||a.estado}</td>
+            <td class="th-right">${fmt(a.costo_adquisicion)}</td>
+            <td class="th-right">${fmt(dep.depreciacionAcumulada)}</td>
+            <td class="th-right">${fmt(dep.valorEnLibros)}</td>
+          </tr>`;
+        }).join('');
+      }
+    }
+  } catch(e) { console.error('loadActivosTab:', e); }
+}
+
 // Tabla completa de inventario — separada para poder re-renderizar al
 // cambiar el filtro secundario de Marca/Proveedor sin duplicar lógica.
 function renderInventarioTablaCompleta(activos, filtroProveedorId) {
@@ -2219,6 +2292,7 @@ async function ensureCaches() {
   if (!R.cache.gastos.length)    await fetchGastos();
   if (!R.cache.clientes.length)  await fetchClientes();
   if (!R.cache.productos.length) await fetchProductos();
+  if (!R.cache.activos || !R.cache.activos.length) await fetchActivos();
   // Historial de pagos de créditos (cuotas pagadas/pendientes con datos
   // del cliente) — se usa para el reporte individual de Créditos, filtrado
   // siempre a UN cliente elegido por el usuario en el modal de exportación.
@@ -2385,6 +2459,17 @@ const COLUMNAS_REPORTES = {
     { key:'precio',     label:'Precio',          tipo:'moneda' },
     { key:'valorTotal', label:'Valor total',     tipo:'moneda' },
   ],
+  activos: [
+    { key:'numero',        label:'Número',              tipo:'texto' },
+    { key:'nombre',        label:'Nombre',              tipo:'texto' },
+    { key:'categoria',     label:'Categoría',           tipo:'texto' },
+    { key:'estado',        label:'Estado',              tipo:'texto' },
+    { key:'fechaAdq',      label:'Fecha de adquisición',tipo:'texto' },
+    { key:'vidaUtil',      label:'Vida útil (años)',    tipo:'cantidad' },
+    { key:'costo',         label:'Costo',               tipo:'moneda' },
+    { key:'depreciacion',  label:'Depreciación acum.',  tipo:'moneda' },
+    { key:'valorLibros',   label:'Valor en libros',     tipo:'moneda' },
+  ],
   gastos: [
     { key:'concepto',  label:'Concepto',  tipo:'texto' },
     { key:'categoria', label:'Categoría', tipo:'texto' },
@@ -2408,8 +2493,8 @@ const COLUMNAS_REPORTES = {
   ],
 };
 
-const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', gastos:'💸', creditos:'💳' };
-const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', gastos:'Gastos', creditos:'Créditos' };
+const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', activos:'🏗️', gastos:'💸', creditos:'💳' };
+const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', activos:'Activos Fijos', gastos:'Gastos', creditos:'Créditos' };
 
 // ¿Está activa la columna `key` del reporte `tipoReporte`? Por defecto
 // (si el cliente no ha guardado configuración, o esta columna es nueva
@@ -2446,6 +2531,13 @@ function filaProducto(p) {
   return { codigoBarras:p.codigo_barras||'—', producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
     stock:Number(p.stock_actual||0), costo:Number(p.costo||0), precio:Number(p.precio||0),
     valorTotal:Number(p.stock_actual||0)*Number(p.costo||0) };
+}
+function filaActivoFijo(a) {
+  const dep = calcularDepreciacionActivo(a);
+  const estadoLabel = { activo:'Activo', mantenimiento:'En mantenimiento', baja:'Dado de baja' }[a.estado] || a.estado;
+  return { numero:a.numero||'', nombre:a.nombre||'', categoria:a.categoria||'—', estado:estadoLabel,
+    fechaAdq:fmtFecha(a.fecha_adquisicion), vidaUtil:Number(a.vida_util_anos||0),
+    costo:Number(a.costo_adquisicion||0), depreciacion:dep.depreciacionAcumulada, valorLibros:dep.valorEnLibros };
 }
 function filaGasto(g) {
   return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), monto:Number(g.monto||0), tipo:g.tipo||'' };
@@ -2910,6 +3002,22 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     }
   }
 
+  // ---- ACTIVOS FIJOS ----
+  if (tipo==='activos') {
+    const cols = columnasActivas('activos');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Activos Fijos (revisa "Configurar exportaciones").', 10, startY);
+      startY += 10;
+    } else {
+      const rows = (R.cache.activos||[]).map(a => filaAPDF(filaActivoFijo(a), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
+  }
+
   // ---- GASTOS ----
   if (tipo==='gastos' || esGeneral) {
     if (esGeneral) {
@@ -3132,6 +3240,17 @@ function hojaInventarioXLSX(wb) {
     rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
+function hojaActivosXLSX(wb) {
+  const cols = columnasActivas('activos');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Activos Fijos', ['Aviso'], [['No hay columnas seleccionadas para Activos Fijos (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
+  const rows = (R.cache.activos||[]).map(a => filaAXLSX(filaActivoFijo(a), cols));
+  appendSheetXLSX(wb, 'Activos Fijos', headersXLSX(cols),
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+}
+
 function hojaGastosXLSX(wb) {
   const cols = columnasActivas('gastos');
   if (!cols.length) {
@@ -3228,6 +3347,7 @@ async function exportarExcel(tipo, clienteId, clienteNombre) {
   if (tipo==='compras'    || esGeneral) hojaComprasXLSX(wb);
   if (tipo==='clientes'   || esGeneral) hojaClientesXLSX(wb);
   if (tipo==='inventario' || esGeneral) hojaInventarioXLSX(wb);
+  if (tipo==='activos') hojaActivosXLSX(wb);
   if (tipo==='gastos'     || esGeneral) hojaGastosXLSX(wb);
   if (tipo==='creditos')  hojaCreditosXLSX(wb, clienteId, clienteNombre);
   if (esGeneral)          hojaCreditosResumenXLSX(wb);
@@ -3238,7 +3358,7 @@ async function exportarExcel(tipo, clienteId, clienteNombre) {
 
 function tituloTipo(tipo) {
   const m = { ventas:'Ventas', compras:'Compras', clientes:'Clientes',
-    inventario:'Inventario', gastos:'Gastos', creditos:'Créditos', general:'General (Completo)',
+    inventario:'Inventario', activos:'Activos Fijos', gastos:'Gastos', creditos:'Créditos', general:'General (Completo)',
     financiero:'Finanzas' };
   return m[tipo] || tipo;
 }

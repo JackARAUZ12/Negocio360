@@ -835,6 +835,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           Inventario
         </div>
+        <div class="main-tab" data-tab="activos" onclick="switchTab('activos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          Activos Fijos
+        </div>
         <div class="main-tab" data-tab="clientes" onclick="switchTab('clientes')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           Clientes
@@ -1381,6 +1385,60 @@
       </div><!-- /panel-inventario -->
 
       <!-- =====================================================
+           TAB: ACTIVOS FIJOS
+      ===================================================== -->
+      <div class="tab-panel" id="panel-activos">
+
+        <div class="kpi-grid-4 fade-in">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Activos registrados</div>
+              <div class="kpi-value" id="act-total">—</div>
+              <div class="kpi-sub" id="act-mantenimiento">0 en mantenimiento</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-2-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Valor en libros (todos)</div>
+              <div class="kpi-value" id="act-valor-libros">—</div>
+              <div class="kpi-sub">costo menos depreciación</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--warning-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Depreciación acumulada</div>
+              <div class="kpi-value" id="act-depreciacion">—</div>
+              <div class="kpi-sub">de todos los activos</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--danger-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Casi depreciados</div>
+              <div class="kpi-value" id="act-casi-depreciados" style="color:var(--danger)">—</div>
+              <div class="kpi-sub">2 meses o menos restantes</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card fade-in">
+          <div class="panel-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>Activos fijos — detalle completo</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Número</th><th>Nombre</th><th>Categoría</th><th>Estado</th><th class="th-right">Costo</th><th class="th-right">Deprec. acum.</th><th class="th-right">Valor en libros</th></tr></thead>
+              <tbody id="act-tabla-completa"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /panel-activos -->
+
+      <!-- =====================================================
            TAB: CLIENTES
       ===================================================== -->
       <div class="tab-panel" id="panel-clientes">
@@ -1741,6 +1799,16 @@
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('inventario','pdf')">PDF</button>
                   <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('inventario','xlsx')">Excel</button>
+                </div>
+              </div>
+              <!-- Activos Fijos -->
+              <div class="export-card">
+                <div class="export-card-icon">🏗️</div>
+                <div class="export-card-title">Activos Fijos</div>
+                <div class="export-card-desc">Vehículos, equipo y maquinaria, con su costo, depreciación acumulada y valor en libros — listo para tu contador.</div>
+                <div class="export-btns">
+                  <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('activos','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('activos','xlsx')">Excel</button>
                 </div>
               </div>
               <!-- Gastos -->

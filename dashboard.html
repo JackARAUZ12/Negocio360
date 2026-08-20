@@ -1421,6 +1421,17 @@
               <svg class="alert-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
 
+            <div class="alert-item" id="alert-activos-item" style="display:none" onclick="navigate('activos.html')">
+              <div class="alert-icon" style="background:var(--accent-soft)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+              </div>
+              <div class="alert-body">
+                <div class="alert-title" id="alert-activos-title">Revisando activos…</div>
+                <div class="alert-desc" id="alert-activos-desc">Activos fijos</div>
+              </div>
+              <svg class="alert-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+
             <div class="alert-item" onclick="navigate('ventas.html?filter=pendiente')">
               <div class="alert-icon" style="background:var(--accent-soft)">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -2247,6 +2258,46 @@ async function loadAlertasFacturas(userId) {
   } catch(e) { console.warn('alertas-facturas:', e); }
 }
 
+async function loadAlertasActivos(userId) {
+  try {
+    const { data } = await sbClient.from('activos_fijos')
+      .select('id, nombre, fecha_adquisicion, costo_adquisicion, valor_residual, vida_util_anos, garantia_vencimiento')
+      .eq('auth_user_id', userId).eq('estado', 'activo');
+    if (!data || !data.length) return; // sin activos, la tarjeta se queda oculta
+
+    // Mismo cálculo de meses transcurridos que ya usa activos.js —
+    // duplicado aquí a propósito, es una cuenta simple y evita tener
+    // que cargar todo ese archivo solo para esto.
+    const hoy = new Date();
+    let casiDepreciados = 0, garantiasPorVencer = 0;
+    data.forEach(a => {
+      const vidaUtilMeses = Number(a.vida_util_anos) * 12;
+      const fechaAdq = new Date(a.fecha_adquisicion + 'T00:00:00');
+      let meses = (hoy.getFullYear() - fechaAdq.getFullYear()) * 12 + (hoy.getMonth() - fechaAdq.getMonth());
+      if (hoy.getDate() < fechaAdq.getDate()) meses -= 1;
+      meses = Math.max(0, Math.min(meses, vidaUtilMeses));
+      const mesesRestantes = vidaUtilMeses - meses;
+      if (mesesRestantes <= 2) casiDepreciados++;
+
+      if (a.garantia_vencimiento) {
+        const diasRestantes = Math.round((new Date(a.garantia_vencimiento + 'T00:00:00') - hoy) / 86400000);
+        if (diasRestantes >= 0 && diasRestantes <= 30) garantiasPorVencer++;
+      }
+    });
+
+    const totalAlertas = casiDepreciados + garantiasPorVencer;
+    if (totalAlertas === 0) return; // todo al día, no hace falta mostrar la tarjeta
+
+    const partes = [];
+    if (casiDepreciados > 0) partes.push(`${casiDepreciados} activo${casiDepreciados!==1?'s':''} casi depreciado${casiDepreciados!==1?'s':''}`);
+    if (garantiasPorVencer > 0) partes.push(`${garantiasPorVencer} garantía${garantiasPorVencer!==1?'s':''} por vencer`);
+
+    document.getElementById('alert-activos-title').textContent = partes.join(' · ');
+    document.getElementById('alert-activos-desc').textContent = 'Revisa el detalle en Activos Fijos';
+    document.getElementById('alert-activos-item').style.display = '';
+  } catch(e) { console.warn('alertas-activos:', e); }
+}
+
 /* =====================================================
    CHARTS RENDER
 ===================================================== */
@@ -2456,6 +2507,7 @@ async function initDashboard() {
       loadVentasCategorias(userId),
       loadTopProductos(userId),
       loadAlertasFacturas(userId),
+      loadAlertasActivos(userId),
     ]);
 
     renderFinancial();
