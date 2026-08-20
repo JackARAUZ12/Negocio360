@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contabilidad — Negocio360</title>
+  <title>Agenda — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -964,12 +964,20 @@
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
     }
     .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .filtro-estado-btn.active, .tipo-repartidor-btn.active, .modo-venta-btn.active, .tipo-pago-btn.active,
+    .filtro-estado-activo-btn.active, .motivo-baja-btn.active, .filtro-agenda-btn.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+    .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:16px}
+    .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -1075,14 +1083,9 @@
         <span class="nav-label">Sucursales</span>
       </div>
 
-      <div class="nav-item active" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
+      <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         <span class="nav-label">Contabilidad</span>
-      </div>
-
-      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <span class="nav-label">Consulta/Inventario</span>
       </div>
 
       <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
@@ -1100,9 +1103,14 @@
         <span class="nav-label">Activos Fijos</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('agenda.html')" data-tooltip="Agenda">
+      <div class="nav-item active" onclick="navigate('agenda.html')" data-tooltip="Agenda">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <span class="nav-label">Agenda</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
       </div>
 
       <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
@@ -1155,7 +1163,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Contabilidad</span>
+      <span class="header-title">Agenda</span>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -1174,382 +1182,69 @@
         </div>
       </div>
     </header>
+
     <div id="content">
-      <div class="greeting-row fade-in">
-        <div>
-          <h1>Contabilidad</h1>
-          <p>Catálogo de cuentas y asientos contables, con partida doble real — Debe siempre igual a Haber.</p>
+      <div class="panel-card fade-in">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Agenda
+          </div>
+          <button class="btn-primary btn-sm" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
         </div>
-        <div class="greeting-actions">
-          <button class="btn-secondary" onclick="abrirCatalogoCuentas()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            Catálogo de cuentas
-          </button>
-          <button class="btn-secondary" onclick="abrirMapeoCuentas()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            Contabilización automática
-          </button>
-          <button class="btn-secondary" onclick="abrirNuevoAsiento()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Registrar manual
-          </button>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 14px">
+          <button class="btn-secondary btn-sm filtro-agenda-btn" data-rango="hoy" onclick="filtrarAgendaPorRango('hoy')">Hoy</button>
+          <button class="btn-secondary btn-sm filtro-agenda-btn active" data-rango="semana" onclick="filtrarAgendaPorRango('semana')">Esta semana</button>
+          <button class="btn-secondary btn-sm filtro-agenda-btn" data-rango="mes" onclick="filtrarAgendaPorRango('mes')">Este mes</button>
+          <button class="btn-secondary btn-sm filtro-agenda-btn" data-rango="todos" onclick="filtrarAgendaPorRango('todos')">Todo lo próximo</button>
         </div>
+
+        <div id="lista-agenda" style="padding:0 16px 16px">Cargando…</div>
       </div>
 
-      <!-- BANNER: CONTABILIZACIÓN AUTOMÁTICA — la forma principal de
-           trabajar. El registro manual sigue disponible arriba, para
-           cuando de verdad haga falta. -->
-      <div class="panel-card fade-in" id="banner-asientos-pendientes" style="margin-bottom:16px;background:linear-gradient(135deg, var(--accent-soft), var(--bg-surface));border:1.5px solid var(--accent)">
-        <div class="panel-body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-          <div style="display:flex;align-items:center;gap:14px">
-            <div style="font-size:32px">⚡</div>
-            <div>
-              <div style="font-weight:800;font-size:15px" id="banner-asientos-titulo">Revisando tus movimientos…</div>
-              <div style="font-size:12.5px;color:var(--text-secondary)" id="banner-asientos-desc">Ventas, gastos, compras, créditos, cuentas por pagar y salarios — todo en un clic.</div>
+      <!-- MODAL: NUEVO EVENTO -->
+      <div class="modal-overlay" id="modal-nuevo-evento" onclick="if(event.target===this)closeModal('modal-nuevo-evento')">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span class="modal-title" id="ne-titulo-modal">Nuevo evento</span>
+            <button class="modal-close" onclick="closeModal('modal-nuevo-evento')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="ne-evento-id"/>
+            <div class="form-group">
+              <label>Título *</label>
+              <input type="text" id="ne-titulo" placeholder="Ej: Cita con cliente, revisión de vehículo..."/>
             </div>
+            <div class="form-row">
+              <div><label>Fecha *</label><input type="date" id="ne-fecha"/></div>
+              <div><label>Hora (opcional)</label><input type="time" id="ne-hora"/></div>
+            </div>
+            <div class="form-group">
+              <label>Cliente (opcional)</label>
+              <select id="ne-cliente"><option value="">— Sin vincular —</option></select>
+            </div>
+            <div class="form-group">
+              <label>Notas (opcional)</label>
+              <textarea id="ne-descripcion" placeholder="Detalles del evento..."></textarea>
+            </div>
+            <p id="ne-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
           </div>
-          <button class="btn-primary" id="btn-banner-generar" onclick="abrirGenerarAsientos()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            Generar todo automático
-          </button>
-        </div>
-      </div>
-
-
-      <div class="section-tabs fade-in">
-        <button class="section-tab active" id="tab-btn-asientos" onclick="cambiarSeccionContable('asientos')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
-          Asientos
-        </button>
-        <button class="section-tab" id="tab-btn-mayor" onclick="cambiarSeccionContable('mayor')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          Libro Mayor
-        </button>
-        <button class="section-tab" id="tab-btn-balance" onclick="cambiarSeccionContable('balance')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-          Balance de Comprobación
-        </button>
-        <button class="section-tab" id="tab-btn-resultados" onclick="cambiarSeccionContable('resultados')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          Estado de Resultados
-        </button>
-        <button class="section-tab" id="tab-btn-balancegeneral" onclick="cambiarSeccionContable('balancegeneral')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
-          Balance General
-        </button>
-        <button class="section-tab" id="tab-btn-flujo" onclick="cambiarSeccionContable('flujo')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          Flujo de Efectivo
-        </button>
-      </div>
-
-      <!-- ===== SECCIÓN: ASIENTOS ===== -->
-      <div class="panel-card fade-in" id="seccion-asientos">
-        <div class="panel-header">
-          <div class="panel-title">Asientos contables</div>
-          <button class="btn-secondary btn-sm" onclick="abrirGenerarAsientos()">🔄 Generar automáticos</button>
-        </div>
-        <div class="table-wrap ct-tabla-responsive">
-          <table>
-            <thead><tr><th>N°</th><th>Fecha</th><th>Concepto</th><th>Debe</th><th>Haber</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="asientos-tbody"><tr><td colspan="7" class="empty-cell">Cargando…</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ===== SECCIÓN: LIBRO MAYOR ===== -->
-      <div class="panel-card fade-in" id="seccion-mayor" style="display:none">
-        <div class="panel-header">
-          <div class="panel-title">Libro Mayor</div>
-          <select id="mayor-cuenta-select" onchange="cargarLibroMayor()" style="max-width:320px">
-            <option value="">Elige una cuenta…</option>
-          </select>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
-            <tbody id="mayor-tbody"><tr><td colspan="6" class="empty-cell">Elige una cuenta para ver su movimiento</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ===== SECCIÓN: BALANCE DE COMPROBACIÓN ===== -->
-      <div class="panel-card fade-in" id="seccion-balance" style="display:none">
-        <div class="panel-header">
-          <div class="panel-title">Balance de Comprobación</div>
-          <div style="display:flex;gap:8px">
-            <button class="btn-secondary btn-sm" onclick="exportarBalance('excel')">📊 Excel</button>
-            <button class="btn-secondary btn-sm" onclick="exportarBalance('pdf')">📄 PDF</button>
+          <div class="modal-footer">
+            <button class="btn-ghost" id="btn-eliminar-evento" style="display:none;color:var(--danger);margin-right:auto" onclick="eliminarEvento()">Eliminar</button>
+            <button class="btn-ghost" onclick="closeModal('modal-nuevo-evento')">Cancelar</button>
+            <button class="btn-primary" id="btn-guardar-evento" onclick="guardarEvento()">Guardar</button>
           </div>
         </div>
-        <div id="balance-cuadre-aviso" style="margin:0 16px 10px"></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Código</th><th>Cuenta</th><th>Debe</th><th>Haber</th><th>Saldo Deudor</th><th>Saldo Acreedor</th></tr></thead>
-            <tbody id="balance-tbody"><tr><td colspan="6" class="empty-cell">Cargando…</td></tr></tbody>
-          </table>
-        </div>
       </div>
 
-      <!-- ===== SECCIÓN: ESTADO DE RESULTADOS ===== -->
-      <div class="panel-card fade-in" id="seccion-resultados" style="display:none">
-        <div class="panel-header">
-          <div class="panel-title">Estado de Resultados</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="date" id="er-desde" style="max-width:150px"/>
-            <input type="date" id="er-hasta" style="max-width:150px"/>
-            <button class="btn-secondary btn-sm" onclick="cargarEstadoResultados()">Calcular</button>
-            <button class="btn-secondary btn-sm" onclick="exportarEstadoResultados('excel')">📊 Excel</button>
-            <button class="btn-secondary btn-sm" onclick="exportarEstadoResultados('pdf')">📄 PDF</button>
-          </div>
-        </div>
-        <div id="er-cuerpo" style="padding:16px">Elige un período y presiona "Calcular"</div>
-      </div>
-
-      <!-- ===== SECCIÓN: BALANCE GENERAL ===== -->
-      <div class="panel-card fade-in" id="seccion-balancegeneral" style="display:none">
-        <div class="panel-header">
-          <div class="panel-title">Balance General</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:12px;color:var(--text-muted)">Al día:</span>
-            <input type="date" id="bg-fecha" style="max-width:150px"/>
-            <button class="btn-secondary btn-sm" onclick="cargarBalanceGeneral()">Calcular</button>
-            <button class="btn-secondary btn-sm" onclick="exportarBalanceGeneral('excel')">📊 Excel</button>
-            <button class="btn-secondary btn-sm" onclick="exportarBalanceGeneral('pdf')">📄 PDF</button>
-          </div>
-        </div>
-        <div id="bg-cuadre-aviso" style="margin:0 16px 10px"></div>
-        <div id="bg-cuerpo" style="padding:16px">Elige una fecha y presiona "Calcular"</div>
-      </div>
-
-      <!-- ===== SECCIÓN: FLUJO DE EFECTIVO ===== -->
-      <div class="panel-card fade-in" id="seccion-flujo" style="display:none">
-        <div class="panel-header">
-          <div class="panel-title">Estado de Flujo de Efectivo</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="date" id="fe-desde" style="max-width:150px"/>
-            <input type="date" id="fe-hasta" style="max-width:150px"/>
-            <button class="btn-secondary btn-sm" onclick="cargarFlujoEfectivo()">Calcular</button>
-            <button class="btn-secondary btn-sm" onclick="exportarFlujoEfectivo('excel')">📊 Excel</button>
-            <button class="btn-secondary btn-sm" onclick="exportarFlujoEfectivo('pdf')">📄 PDF</button>
-          </div>
-        </div>
-        <div id="fe-cuadre-aviso" style="margin:0 16px 10px"></div>
-        <div id="fe-cuerpo" style="padding:16px">Elige un período y presiona "Calcular"</div>
-      </div>
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /app -->
 
-<!-- =====================================================
-     MODAL: CATÁLOGO DE CUENTAS
-=================================================== -->
-<div class="modal-overlay" id="modal-catalogo-cuentas" onclick="if(event.target===this)closeModal('modal-catalogo-cuentas')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <span class="modal-title">Catálogo de Cuentas Contables</span>
-      <button class="modal-close" onclick="closeModal('modal-catalogo-cuentas')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-        Estas son las cuentas donde se clasifica cada movimiento contable — carga una plantilla estándar como punto de partida, o arma la tuya desde cero.
-      </p>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <button class="btn-secondary btn-sm" onclick="cargarPlantillaCuentas()">📋 Cargar plantilla estándar</button>
-        <button class="btn-primary btn-sm" onclick="abrirNuevaCuenta()">+ Cuenta nueva</button>
-      </div>
-      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
-        <table>
-          <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Naturaleza</th><th>Activa</th><th></th></tr></thead>
-          <tbody id="cuentas-tbody"><tr><td colspan="6" class="empty-cell">Cargando…</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-catalogo-cuentas')">Cerrar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: NUEVA / EDITAR CUENTA
-=================================================== -->
-<div class="modal-overlay" id="modal-nueva-cuenta" onclick="if(event.target===this)closeModal('modal-nueva-cuenta')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <span class="modal-title" id="cta-modal-title">Nueva cuenta</span>
-      <button class="modal-close" onclick="closeModal('modal-nueva-cuenta')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="cta-id"/>
-      <div class="form-row">
-        <div class="form-group"><label>Código *</label><input type="text" id="cta-codigo" placeholder="Ej: 1110"/></div>
-        <div class="form-group"><label>Nombre *</label><input type="text" id="cta-nombre" placeholder="Ej: Caja General"/></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Tipo *</label>
-          <select id="cta-tipo" onchange="autoNaturalezaCuenta()">
-            <option value="activo">Activo</option>
-            <option value="pasivo">Pasivo</option>
-            <option value="capital">Capital</option>
-            <option value="ingreso">Ingreso</option>
-            <option value="costo">Costo</option>
-            <option value="gasto">Gasto</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Naturaleza *</label>
-          <select id="cta-naturaleza">
-            <option value="deudora">Deudora</option>
-            <option value="acreedora">Acreedora</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Cuenta padre (opcional)</label>
-        <select id="cta-padre"><option value="">— Ninguna (cuenta principal) —</option></select>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px">
-        <input type="checkbox" id="cta-permite-movimientos" checked/> Permite movimientos directos (desmárcalo si es solo una cuenta "de grupo")
-      </label>
-      <p id="cta-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-nueva-cuenta')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-cuenta" onclick="guardarCuenta()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: NUEVO ASIENTO CONTABLE
-=================================================== -->
-<div class="modal-overlay" id="modal-nuevo-asiento" onclick="if(event.target===this)closeModal('modal-nuevo-asiento')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <span class="modal-title">Nuevo asiento contable</span>
-      <button class="modal-close" onclick="closeModal('modal-nuevo-asiento')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="form-group"><label>Fecha *</label><input type="date" id="as-fecha"/></div>
-        <div class="form-group full-col"><label>Concepto *</label><input type="text" id="as-concepto" placeholder="Ej: Registro de gastos de oficina de agosto"/></div>
-      </div>
-      <label style="font-size:12.5px;font-weight:600;display:block;margin:10px 0 6px">Líneas del asiento</label>
-      <div id="as-lineas"></div>
-      <button type="button" class="btn-secondary btn-sm" style="margin-top:8px" onclick="agregarLineaAsiento()">+ Agregar línea</button>
-
-      <div style="display:flex;justify-content:space-between;gap:16px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-        <div><span style="font-size:12px;color:var(--text-muted)">Total Debe</span><div style="font-weight:800" id="as-total-debe">0.00</div></div>
-        <div><span style="font-size:12px;color:var(--text-muted)">Total Haber</span><div style="font-weight:800" id="as-total-haber">0.00</div></div>
-        <div><span style="font-size:12px;color:var(--text-muted)">Diferencia</span><div style="font-weight:800" id="as-diferencia">0.00</div></div>
-      </div>
-      <p id="as-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-nuevo-asiento')">Cancelar</button>
-      <button class="btn-secondary" id="btn-guardar-borrador-asiento" onclick="guardarAsiento(false)">Guardar como borrador</button>
-      <button class="btn-primary" id="btn-registrar-asiento" onclick="guardarAsiento(true)">Registrar asiento</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: VER ASIENTO
-=================================================== -->
-<!-- =====================================================
-     MODAL: CONTABILIZACIÓN AUTOMÁTICA — configurar mapeo y generar.
-     IMPORTANTE: esto solo LEE de Ventas/Gastos/Compras/Salarios para
-     crear asientos aquí en Contabilidad — nunca modifica ni un solo
-     dato en esos otros módulos.
-=================================================== -->
-<div class="modal-overlay" id="modal-mapeo-cuentas" onclick="if(event.target===this)closeModal('modal-mapeo-cuentas')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <span class="modal-title">Contabilización automática</span>
-      <button class="modal-close" onclick="closeModal('modal-mapeo-cuentas')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
-        Dile al sistema qué cuenta usar en el Debe y cuál en el Haber para cada tipo de movimiento. Con esto configurado, puedes generar los asientos automáticamente — el sistema <strong>solo lee</strong> tus Ventas, Gastos, Compras y Salarios; nunca cambia nada en esos módulos.
-      </p>
-      <div id="mapeo-filas"></div>
-      <p id="mapeo-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-mapeo-cuentas')">Cerrar</button>
-      <button class="btn-primary" id="btn-guardar-mapeo" onclick="guardarMapeoCuentas()">Guardar configuración</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modal-generar-asientos" onclick="if(event.target===this)closeModal('modal-generar-asientos')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <span class="modal-title">Generar asientos automáticos</span>
-      <button class="modal-close" onclick="closeModal('modal-generar-asientos')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-        Se revisan tus Ventas, Gastos, Compras y pagos de Salarios de este período — solo se lee, nunca se modifica nada ahí. Lo que ya tenga un asiento generado antes no se duplica.
-      </p>
-      <div class="form-row">
-        <div class="form-group"><label>Desde</label><input type="date" id="ga-desde"/></div>
-        <div class="form-group"><label>Hasta</label><input type="date" id="ga-hasta"/></div>
-      </div>
-      <div id="ga-resultado" style="margin-top:10px;font-size:13px"></div>
-      <p id="ga-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-generar-asientos')">Cerrar</button>
-      <button class="btn-primary" id="btn-generar-asientos" onclick="generarAsientosAutomaticos()">Generar asientos</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modal-ver-asiento" onclick="if(event.target===this)closeModal('modal-ver-asiento')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <span class="modal-title" id="va-titulo">Asiento</span>
-      <button class="modal-close" onclick="closeModal('modal-ver-asiento')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body" id="va-cuerpo">Cargando…</div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-ver-asiento')">Cerrar</button>
-      <button class="btn-secondary" id="va-btn-registrar" onclick="registrarAsientoDesdeVer()" style="display:none">Registrar</button>
-      <button class="btn-secondary" id="va-btn-anular" style="border-color:var(--danger);color:var(--danger);display:none" onclick="anularAsiento()">Anular</button>
-    </div>
-  </div>
-</div>
-
-<style>
-  @media (max-width: 640px) {
-    .ct-tabla-responsive table, .ct-tabla-responsive thead, .ct-tabla-responsive tbody,
-    .ct-tabla-responsive th, .ct-tabla-responsive td, .ct-tabla-responsive tr { display: block; }
-    .ct-tabla-responsive thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-    .ct-tabla-responsive tbody tr { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg-surface); }
-    .ct-tabla-responsive td { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border: none !important; text-align: right; }
-    .ct-tabla-responsive td::before { content: attr(data-label); font-weight: 600; font-size: 12px; color: var(--text-muted); text-align: left; }
-    .ct-tabla-responsive td.empty-cell::before { content: none; }
-    .ct-tabla-responsive td.empty-cell { justify-content: center; text-align: center; }
-  }
-</style>
-
-<script src="contabilidad.js"></script>
-
+<script src="agenda.js"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
