@@ -812,6 +812,29 @@ async function anularVenta() {
       console.warn('No se pudo revertir el IVA en Impuestos:', eImp);
     }
 
+    // Si esta venta vino de convertir una proforma, se devuelve la
+    // proforma a como estaba ANTES de convertirse -- así el negocio
+    // no tiene que rehacer la proforma desde cero solo porque el
+    // cliente cambió de opinión y ahora quiere crédito/pago parcial
+    // en vez de venta normal. Nunca bloquea la anulación si esto
+    // falla por cualquier motivo — es una mejora, no un requisito.
+    let proformaRevertida = false;
+    try {
+      const { data: proformaVinculada } = await sb.from('proformas')
+        .select('id, estado_antes_convertir').eq('venta_id', id).eq('auth_user_id', S.userId).maybeSingle();
+
+      if (proformaVinculada) {
+        await sb.from('proformas').update({
+          estado: proformaVinculada.estado_antes_convertir || 'aprobada',
+          venta_id: null, fecha_conversion: null, convertido_por: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', proformaVinculada.id).eq('auth_user_id', S.userId);
+        proformaRevertida = true;
+      }
+    } catch (eProforma) {
+      console.warn('No se pudo devolver la proforma vinculada a su estado anterior:', eProforma);
+    }
+
     // Si el usuario marcó la casilla, se registra en Caja el egreso
     // reverso — nunca se BORRA el ingreso original de la venta (eso
     // rompería el historial), se registra un movimiento nuevo que lo
@@ -854,7 +877,8 @@ async function anularVenta() {
 
     closeModal('modal-anular');
     closeModal('modal-detalle');
-    showToast(descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)', 'warning');
+    const mensajeBase = descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)';
+    showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : ''), 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
   } catch(e) {
     showToast('Error al anular: '+e.message, 'error');

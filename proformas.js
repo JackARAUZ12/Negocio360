@@ -1465,8 +1465,12 @@ async function confirmarConvertirAVenta() {
     }
 
     // ---- Actualizar la proforma: convertida, con referencia a la venta ----
+    // Se guarda el estado exacto en el que estaba ANTES de convertir
+    // (no siempre es el mismo — puede venir de borrador, pendiente,
+    // enviada, aprobada, o vencida), para poder devolverla ahí si
+    // esta venta se llega a anular más adelante.
     await sbClient.from('proformas').update({
-      estado: 'convertida', venta_id: ventaId, fecha_conversion: new Date().toISOString(),
+      estado: 'convertida', estado_antes_convertir: p.estado, venta_id: ventaId, fecha_conversion: new Date().toISOString(),
       convertido_por: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
       updated_at: new Date().toISOString(),
     }).eq('id', p.id);
