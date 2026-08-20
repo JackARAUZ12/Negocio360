@@ -915,8 +915,9 @@ function renderCierres() {
       <td class="td-entrada">${fmt(c.total_ingresos)}</td>
       <td class="td-salida">${fmt(c.total_egresos)}</td>
       <td style="color:${flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${fmt(c.saldo_final)}</td>
-      <td class="td-actions">
+      <td class="td-actions" style="display:flex;align-items:center;gap:8px">
         <span class="badge-movs">${c.movimientos_count} mov.</span>
+        <button class="btn-icon" title="Deshacer este cierre — no borra ningún movimiento real, solo el recibo del cierre" onclick="confirmarDeshacerCierre('${c.id}','${fmtDate(c.fecha)}')" style="color:var(--danger)">↩️</button>
       </td>
     </tr>`;
   }).join('');
@@ -970,6 +971,29 @@ async function crearCierreDiario() {
     showToast('Error al crear cierre', 'error');
   } finally {
     setBtnLoading('btn-cierre-diario', false);
+  }
+}
+
+// Deshacer un cierre — el cierre es solo un "recibo" (resumen guardado
+// de ese día), no toca ni bloquea ningún movimiento real de Caja.
+// Borrarlo es completamente seguro: tus ventas, compras, gastos, etc.
+// de ese día siguen exactamente igual, solo desaparece este resumen,
+// y el sistema vuelve a dejar hacer un cierre para esa fecha.
+function confirmarDeshacerCierre(cierreId, fechaTexto) {
+  if (!confirm(`¿Deshacer el cierre del ${fechaTexto}?\n\nEsto NO borra ninguna venta, compra ni movimiento real — solo el resumen del cierre, para poder rehacerlo cuando de verdad corresponda.`)) return;
+  deshacerCierre(cierreId);
+}
+
+async function deshacerCierre(cierreId) {
+  try {
+    const { error } = await sbClient.from('cierres_caja').delete()
+      .eq('id', cierreId).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Cierre deshecho — tus movimientos reales siguen intactos');
+    await loadCierres();
+  } catch(e) {
+    console.error('deshacerCierre:', e);
+    showToast('No se pudo deshacer el cierre', 'error');
   }
 }
 
