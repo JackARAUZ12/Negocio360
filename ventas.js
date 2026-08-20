@@ -968,6 +968,20 @@ async function loadEscalasCache() {
 }
 
 /* ============================================================
+   PROMOCIONES — cargadas aparte, de forma defensiva (si algo
+   falla aquí, Ventas sigue funcionando exactamente igual que
+   siempre, simplemente sin aplicar ninguna promoción).
+   ============================================================ */
+async function loadPromocionesCache() {
+  try {
+    const { data } = await sb.from('promociones')
+      .select('*, promocion_productos(producto_id)')
+      .eq('auth_user_id', S.userId).eq('activo', true);
+    S.promociones = data || [];
+  } catch (e) { S.promociones = []; }
+}
+
+/* ============================================================
    CLIENTES CON PAGO RECURRENTE
    (mensualidad / semanal / quincenal / anual)
    ============================================================ */
@@ -2165,6 +2179,81 @@ function recalcItem(item) {
   item.ganancia = round2(item.cantidad * (item.precio - item.costo) - item.descuento);
 }
 
+/* ============================================================
+   PROMOCIONES — cálculo puro, sin efectos secundarios: recibe el
+   carrito y la lista de promociones vigentes, y solo DEVUELVE cuánto
+   descontar y por qué. Nunca modifica el carrito, nunca toca
+   item.descuento (el campo que el usuario edita a mano) — así que
+   aunque algo saliera mal aquí, nunca puede corromper una venta.
+   ============================================================ */
+function promocionEstaVigente(promo) {
+  if (!promo.activo) return false;
+  const hoy = todayISO();
+  if (promo.fecha_inicio && hoy < promo.fecha_inicio) return false;
+  if (promo.fecha_fin && hoy > promo.fecha_fin) return false;
+  return true;
+}
+
+function calcularDescuentosPromociones(carrito, promociones) {
+  let total = 0;
+  const detalle = [];
+  const vigentes = (promociones || []).filter(promocionEstaVigente);
+
+  vigentes.forEach(promo => {
+    let monto = 0;
+
+    if (promo.tipo === 'nxm_mismo') {
+      const item = carrito.find(c => c.id === promo.producto_id);
+      if (!item || !promo.n_compra || !promo.m_paga) return;
+      const veces = Math.floor(item.cantidad / promo.n_compra);
+      if (veces <= 0) return;
+      const unidadesGratis = veces * (promo.n_compra - promo.m_paga);
+      monto = round2(unidadesGratis * item.precio);
+
+    } else if (promo.tipo === 'nxm_grupo') {
+      const idsGrupo = new Set((promo.promocion_productos || []).map(pp => pp.producto_id));
+      if (!idsGrupo.size || !promo.n_compra || !promo.m_paga) return;
+      const itemsGrupo = carrito.filter(c => idsGrupo.has(c.id));
+      const cantidadTotal = itemsGrupo.reduce((s, i) => s + i.cantidad, 0);
+      const veces = Math.floor(cantidadTotal / promo.n_compra);
+      if (veces <= 0) return;
+      const unidadesGratis = veces * (promo.n_compra - promo.m_paga);
+      // Se descuentan las unidades MÁS BARATAS del grupo, no las más
+      // caras — es lo justo y lo que el cliente esperaría.
+      const preciosUnitarios = [];
+      itemsGrupo.forEach(item => { for (let i = 0; i < item.cantidad; i++) preciosUnitarios.push(item.precio); });
+      preciosUnitarios.sort((a, b) => a - b);
+      monto = round2(preciosUnitarios.slice(0, unidadesGratis).reduce((s, p) => s + p, 0));
+
+    } else if (promo.tipo === 'regalo') {
+      const itemDisparador = carrito.find(c => c.id === promo.producto_disparador_id);
+      const itemRegalo = carrito.find(c => c.id === promo.producto_regalo_id);
+      if (!itemDisparador || !itemRegalo || !promo.cantidad_disparador) return;
+      const veces = Math.floor(itemDisparador.cantidad / promo.cantidad_disparador);
+      if (veces <= 0) return;
+      // Nunca se puede "regalar" más unidades de las que el cliente
+      // realmente lleva del producto regalo en el carrito.
+      const regalosOtorgados = Math.min(veces, itemRegalo.cantidad);
+      if (regalosOtorgados <= 0) return;
+      const descuentoPorUnidad = Math.max(0, itemRegalo.precio - Number(promo.precio_regalo || 0));
+      monto = round2(regalosOtorgados * descuentoPorUnidad);
+
+    } else if (promo.tipo === 'descuento_cantidad') {
+      const item = carrito.find(c => c.id === promo.producto_id);
+      if (!item || !promo.cantidad_minima) return;
+      if (item.cantidad < promo.cantidad_minima) return;
+      monto = round2(item.cantidad * item.precio * (Number(promo.descuento_porcentaje || 0) / 100));
+    }
+
+    if (monto > 0) {
+      total = round2(total + monto);
+      detalle.push({ nombre: promo.nombre, monto });
+    }
+  });
+
+  return { total, detalle };
+}
+
 function cambiarCantidad(productoId, val) {
   const item = S.carrito.find(c => c.id===productoId);
   if (!item) return;
@@ -2286,15 +2375,32 @@ function cambiarIvaPorcentaje(val) {
 
 function calcularResumen() {
   const subtotal  = round2(S.carrito.reduce((s,i) => s+i.cantidad*i.precio, 0));
-  const descuento = round2(S.carrito.reduce((s,i) => s+i.descuento, 0));
+  const descuentoManual = round2(S.carrito.reduce((s,i) => s+i.descuento, 0));
+  // Promociones: se calculan aparte (nunca tocan item.descuento, el
+  // campo que el usuario edita a mano) y se suman al mismo total de
+  // descuento que ya existía — mismo lugar de siempre, sin inventar
+  // una columna ni un concepto nuevo en la venta.
+  const resultadoPromos = calcularDescuentosPromociones(S.carrito, S.promociones);
+  const descuentoPromociones = resultadoPromos.total;
+  const descuento = round2(descuentoManual + descuentoPromociones);
   const baseImponible = Math.max(subtotal - descuento, 0);
   const impuestos = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
   const total     = round2(subtotal - descuento + impuestos);
-  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0));
+  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, total, ganancia, costoTotal };
+  S._resumen = { subtotal, descuento, impuestos, total, ganancia, costoTotal, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
+
+  // Aviso visual de promociones aplicadas — se inserta junto al
+  // resumen si el contenedor existe; si no existe en el HTML, esto
+  // simplemente no hace nada (no rompe nada si el elemento falta).
+  const avisoPromo = document.getElementById('res-promociones-aviso');
+  if (avisoPromo) {
+    avisoPromo.innerHTML = resultadoPromos.detalle.length
+      ? resultadoPromos.detalle.map(d => `<div style="font-size:12px;color:var(--success);font-weight:600">🎉 ${esc(d.nombre)}: -${fmt(d.monto)}</div>`).join('')
+      : '';
+  }
 
   // Preview de items
   const preview = document.getElementById('resumen-items-preview');
@@ -3617,12 +3723,15 @@ function cambiarPrecioVR(id, val) {
 
 function calcularResumenVR() {
   const subtotal = round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0));
+  const resultadoPromos = calcularDescuentosPromociones(VR.carrito, S.promociones);
+  const descuentoPromociones = resultadoPromos.total;
   const ivaActivo = !!VR.config?.iva_activo;
   const ivaPct    = Number(VR.config?.iva_porcentaje) || 0;
-  const impuesto  = ivaActivo ? round2(subtotal * (ivaPct/100)) : 0;
-  const total     = round2(subtotal + impuesto);
+  const baseImponible = Math.max(subtotal - descuentoPromociones, 0);
+  const impuesto  = ivaActivo ? round2(baseImponible * (ivaPct/100)) : 0;
+  const total     = round2(subtotal - descuentoPromociones + impuesto);
   const costoTotal= round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.costo, 0));
-  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct };
+  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
 }
 
 function renderCarritoVentaRapida() {
@@ -3662,6 +3771,13 @@ function renderCarritoVentaRapida() {
   const ivaRow = document.getElementById('vr-res-iva-row');
   if (ivaRow) ivaRow.style.display = r.ivaActivo ? 'flex' : 'none';
   if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%)`);
+
+  const avisoPromoVR = document.getElementById('vr-res-promociones-aviso');
+  if (avisoPromoVR) {
+    avisoPromoVR.innerHTML = (r.promocionesAplicadas || []).length
+      ? r.promocionesAplicadas.map(d => `<div style="font-size:12px;color:var(--success);font-weight:600">🎉 ${esc(d.nombre)}: -${fmt(d.monto)}</div>`).join('')
+      : '';
+  }
 }
 
 function renderMetodosPagoVR() {
@@ -3746,7 +3862,7 @@ async function confirmarVentaRapida() {
       cliente_nombre:     'Consumidor Final',
       fecha:              todayISO(),
       subtotal:           r.subtotal,
-      descuento:          0,
+      descuento:          r.descuentoPromociones || 0,
       impuesto:           r.impuesto,
       total:              r.total,
       costo_total:        r.costoTotal,
@@ -4265,6 +4381,7 @@ async function initVentas() {
       loadProductosCache(),
       loadClientesCache(),
       loadEscalasCache(),
+      loadPromocionesCache(),
     ]);
 
     // 6. Cargar KPIs y tabla
