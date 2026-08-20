@@ -2817,6 +2817,8 @@ function escHtml(str) {
 // EVENTOS
 // ============================================================
 function initEventos() {
+  initBusquedaGrupoPromocion();
+
   const searchInput = $('searchInput');
   const searchClear = $('searchClear');
 
@@ -3039,6 +3041,318 @@ function actualizarFecha() {
 //      configurada (ej. 'C$' / NIO), provocando el bug aleatorio
 //      al recargar la página.
 // ============================================================
+/* ============================================================
+   PROMOCIONES — reglas que Ventas aplica solas, distinto de un
+   Combo (que es un producto fijo con un solo precio). Aquí solo se
+   define/administra la regla; la lógica de APLICARLA vive en
+   Ventas, en su propio archivo, para no arriesgar nada de aquí.
+   ============================================================ */
+STATE.promociones = STATE.promociones || [];
+STATE.grupoPromocionActual = STATE.grupoPromocionActual || []; // [{id, nombre}]
+
+async function cargarPromociones() {
+  const tbody = $('promosTbody');
+  try {
+    const { data, error } = await supabaseClient
+      .from('promociones')
+      .select('*, promocion_productos(producto_id)')
+      .eq('auth_user_id', STATE.user.id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    STATE.promociones = data || [];
+    renderPromociones();
+  } catch (e) {
+    console.error('cargarPromociones:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar las promociones.</td></tr>`;
+  }
+}
+
+const TIPO_PROMO_LABEL = {
+  nxm_mismo: 'NxM — mismo producto',
+  nxm_grupo: 'NxM — grupo de productos',
+  regalo: 'Regalo al comprar',
+  descuento_cantidad: 'Descuento por cantidad',
+};
+
+function detallePromocion(p) {
+  const prod = (id) => STATE.productos.find(x => x.id === id)?.nombre || '—';
+  switch (p.tipo) {
+    case 'nxm_mismo':
+      return `${prod(p.producto_id)} — compra ${p.n_compra}, paga ${p.m_paga}`;
+    case 'nxm_grupo': {
+      const n = (p.promocion_productos || []).length;
+      return `${n} producto${n===1?'':'s'} en el grupo — compra ${p.n_compra}, paga ${p.m_paga}`;
+    }
+    case 'regalo':
+      return `Compra ${p.cantidad_disparador} de "${prod(p.producto_disparador_id)}" → gratis "${prod(p.producto_regalo_id)}"${Number(p.precio_regalo)>0?` (${fmtMoney(p.precio_regalo)})`:''}`;
+    case 'descuento_cantidad':
+      return `${prod(p.producto_id)} — ${p.descuento_porcentaje}% desde ${p.cantidad_minima} unidades`;
+    default: return '—';
+  }
+}
+
+function vigenciaPromocion(p) {
+  if (!p.fecha_inicio && !p.fecha_fin) return 'Sin vencimiento';
+  const ini = p.fecha_inicio ? new Date(p.fecha_inicio+'T00:00:00').toLocaleDateString('es-NI',{day:'2-digit',month:'short'}) : '—';
+  const fin = p.fecha_fin ? new Date(p.fecha_fin+'T00:00:00').toLocaleDateString('es-NI',{day:'2-digit',month:'short'}) : '—';
+  return `${ini} → ${fin}`;
+}
+
+function renderPromociones() {
+  const tbody = $('promosTbody');
+  const countEl = $('promosCount');
+  if (countEl) countEl.textContent = `${STATE.promociones.length} promoción${STATE.promociones.length===1?'':'es'}`;
+  if (!tbody) return;
+
+  if (!STATE.promociones.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Aún no has creado ninguna promoción.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = STATE.promociones.map(p => `
+    <tr>
+      <td><strong>${escHtml(p.nombre)}</strong></td>
+      <td>${escHtml(TIPO_PROMO_LABEL[p.tipo] || p.tipo)}</td>
+      <td style="font-size:12.5px;color:var(--text-muted)">${escHtml(detallePromocion(p))}</td>
+      <td style="font-size:12.5px">${escHtml(vigenciaPromocion(p))}</td>
+      <td><span class="status-badge ${p.activo?'status-activo':'status-inactivo'}" style="cursor:pointer" onclick="togglePromocionActiva('${p.id}', ${!p.activo})">${p.activo?'Activa':'Pausada'}</span></td>
+      <td>
+        <button class="row-action-btn" title="Editar" onclick="abrirModalPromocion('${p.id}')">✏️</button>
+        <button class="row-action-btn" title="Eliminar" onclick="eliminarPromocion('${p.id}')" style="color:var(--danger)">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function togglePromocionActiva(id, nuevoValor) {
+  try {
+    const { error } = await supabaseClient.from('promociones').update({ activo: nuevoValor, updated_at: new Date().toISOString() })
+      .eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', nuevoValor ? 'Promoción activada' : 'Promoción pausada', '');
+    await cargarPromociones();
+  } catch (e) {
+    console.error('togglePromocionActiva:', e);
+    showToast('error', 'No se pudo actualizar', '');
+  }
+}
+
+async function eliminarPromocion(id) {
+  if (!confirm('¿Eliminar esta promoción? Esta acción no se puede deshacer.')) return;
+  try {
+    const { error } = await supabaseClient.from('promociones').delete().eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', 'Promoción eliminada', '');
+    await cargarPromociones();
+  } catch (e) {
+    console.error('eliminarPromocion:', e);
+    showToast('error', 'No se pudo eliminar', '');
+  }
+}
+
+function llenarSelectsProductosPromocion() {
+  const opciones = STATE.productos.filter(p => p.activo).map(p =>
+    `<option value="${p.id}">${escHtml(p.nombre)}</option>`).join('');
+  ['pm-producto-nxm','pm-producto-disparador','pm-producto-regalo','pm-producto-descuento'].forEach(id => {
+    const sel = $(id);
+    if (sel) sel.innerHTML = opciones;
+  });
+}
+
+function onCambioTipoPromocion() {
+  const tipo = $('pm-tipo').value;
+  $('pm-bloque-nxm-mismo').style.display   = tipo === 'nxm_mismo' ? '' : 'none';
+  $('pm-bloque-nxm-grupo').style.display   = tipo === 'nxm_grupo' ? '' : 'none';
+  $('pm-bloque-regalo').style.display      = tipo === 'regalo' ? '' : 'none';
+  $('pm-bloque-descuento').style.display   = tipo === 'descuento_cantidad' ? '' : 'none';
+}
+
+function abrirModalPromocion(id) {
+  $('pm-error').textContent = '';
+  $('pm-id').value = id || '';
+  llenarSelectsProductosPromocion();
+  STATE.grupoPromocionActual = [];
+  $('pm-grupo-resultados').innerHTML = '';
+  $('pm-buscar-grupo').value = '';
+
+  if (id) {
+    const p = STATE.promociones.find(x => x.id === id);
+    if (!p) return;
+    $('modalPromocionTitle').textContent = '✏️ Editar promoción';
+    $('pm-nombre').value = p.nombre;
+    $('pm-tipo').value = p.tipo;
+    $('pm-fecha-inicio').value = p.fecha_inicio || '';
+    $('pm-fecha-fin').value = p.fecha_fin || '';
+
+    if (p.tipo === 'nxm_mismo') {
+      $('pm-producto-nxm').value = p.producto_id || '';
+      $('pm-n-compra').value = p.n_compra || 2;
+      $('pm-m-paga').value = p.m_paga || 1;
+    } else if (p.tipo === 'nxm_grupo') {
+      $('pm-n-compra-grupo').value = p.n_compra || 2;
+      $('pm-m-paga-grupo').value = p.m_paga || 1;
+      STATE.grupoPromocionActual = (p.promocion_productos || []).map(pp => {
+        const prod = STATE.productos.find(x => x.id === pp.producto_id);
+        return { id: pp.producto_id, nombre: prod?.nombre || '—' };
+      });
+      renderGrupoPromocionLista();
+    } else if (p.tipo === 'regalo') {
+      $('pm-producto-disparador').value = p.producto_disparador_id || '';
+      $('pm-cantidad-disparador').value = p.cantidad_disparador || 1;
+      $('pm-producto-regalo').value = p.producto_regalo_id || '';
+      $('pm-precio-regalo').value = p.precio_regalo || 0;
+    } else if (p.tipo === 'descuento_cantidad') {
+      $('pm-producto-descuento').value = p.producto_id || '';
+      $('pm-cantidad-minima').value = p.cantidad_minima || 3;
+      $('pm-descuento-porcentaje').value = p.descuento_porcentaje || 10;
+    }
+  } else {
+    $('modalPromocionTitle').textContent = '🎉 Nueva promoción';
+    $('pm-nombre').value = '';
+    $('pm-tipo').value = 'nxm_mismo';
+    $('pm-n-compra').value = 2; $('pm-m-paga').value = 1;
+    $('pm-n-compra-grupo').value = 2; $('pm-m-paga-grupo').value = 1;
+    $('pm-cantidad-disparador').value = 1; $('pm-precio-regalo').value = 0;
+    $('pm-cantidad-minima').value = 3; $('pm-descuento-porcentaje').value = 10;
+    $('pm-fecha-inicio').value = ''; $('pm-fecha-fin').value = '';
+    renderGrupoPromocionLista();
+  }
+  onCambioTipoPromocion();
+  $('modalPromocion').classList.add('open');
+}
+
+function cerrarModalPromocion() {
+  $('modalPromocion').classList.remove('open');
+}
+
+function renderGrupoPromocionLista() {
+  const cont = $('pm-grupo-lista');
+  if (!cont) return;
+  if (!STATE.grupoPromocionActual.length) {
+    cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Todavía no has agregado productos al grupo.</p>';
+    return;
+  }
+  cont.innerHTML = STATE.grupoPromocionActual.map((p, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg-hover,#f4f4f5);border-radius:8px;margin-bottom:4px">
+      <span style="font-size:12.5px">${escHtml(p.nombre)}</span>
+      <button type="button" class="btn-icon" onclick="quitarDelGrupoPromocion(${i})" title="Quitar">✕</button>
+    </div>
+  `).join('');
+}
+
+function quitarDelGrupoPromocion(idx) {
+  STATE.grupoPromocionActual.splice(idx, 1);
+  renderGrupoPromocionLista();
+}
+
+function agregarAlGrupoPromocion(id, nombre) {
+  if (STATE.grupoPromocionActual.some(p => p.id === id)) return;
+  STATE.grupoPromocionActual.push({ id, nombre });
+  $('pm-buscar-grupo').value = '';
+  $('pm-grupo-resultados').innerHTML = '';
+  renderGrupoPromocionLista();
+}
+
+function initBusquedaGrupoPromocion() {
+  const input = $('pm-buscar-grupo');
+  if (!input) return;
+  input.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const cont = $('pm-grupo-resultados');
+    if (!q) { cont.innerHTML = ''; return; }
+    const yaAgregados = new Set(STATE.grupoPromocionActual.map(p => p.id));
+    const resultados = STATE.productos
+      .filter(p => p.activo && !yaAgregados.has(p.id) && p.nombre.toLowerCase().includes(q))
+      .slice(0, 6);
+    cont.innerHTML = resultados.map(p => `
+      <div style="padding:6px 10px;background:var(--bg-hover,#f4f4f5);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
+           onclick="agregarAlGrupoPromocion('${p.id}','${escHtml(p.nombre)}')">
+        ${escHtml(p.nombre)}
+      </div>
+    `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+  });
+}
+
+async function guardarPromocion() {
+  const errEl = $('pm-error');
+  errEl.textContent = '';
+  const id = $('pm-id').value;
+  const nombre = $('pm-nombre').value.trim();
+  const tipo = $('pm-tipo').value;
+  const fechaInicio = $('pm-fecha-inicio').value || null;
+  const fechaFin = $('pm-fecha-fin').value || null;
+
+  if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
+  if (fechaInicio && fechaFin && fechaFin < fechaInicio) { errEl.textContent = 'La fecha de vigencia final no puede ser antes que la inicial.'; return; }
+
+  const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin };
+  let productosGrupo = null;
+
+  if (tipo === 'nxm_mismo') {
+    const productoId = $('pm-producto-nxm').value;
+    const nCompra = parseInt($('pm-n-compra').value, 10);
+    const mPaga = parseInt($('pm-m-paga').value, 10);
+    if (!productoId) { errEl.textContent = 'Elige el producto.'; return; }
+    if (!nCompra || !mPaga || mPaga >= nCompra) { errEl.textContent = 'La cantidad a pagar debe ser menor a la cantidad a comprar.'; return; }
+    Object.assign(payload, { producto_id: productoId, n_compra: nCompra, m_paga: mPaga });
+  } else if (tipo === 'nxm_grupo') {
+    const nCompra = parseInt($('pm-n-compra-grupo').value, 10);
+    const mPaga = parseInt($('pm-m-paga-grupo').value, 10);
+    if (STATE.grupoPromocionActual.length < 2) { errEl.textContent = 'Agrega al menos 2 productos al grupo.'; return; }
+    if (!nCompra || !mPaga || mPaga >= nCompra) { errEl.textContent = 'La cantidad a pagar debe ser menor a la cantidad a comprar.'; return; }
+    Object.assign(payload, { n_compra: nCompra, m_paga: mPaga });
+    productosGrupo = STATE.grupoPromocionActual.map(p => p.id);
+  } else if (tipo === 'regalo') {
+    const disparadorId = $('pm-producto-disparador').value;
+    const regaloId = $('pm-producto-regalo').value;
+    const cantidadDisparador = parseInt($('pm-cantidad-disparador').value, 10);
+    const precioRegalo = parseFloat($('pm-precio-regalo').value) || 0;
+    if (!disparadorId || !regaloId) { errEl.textContent = 'Elige ambos productos.'; return; }
+    if (disparadorId === regaloId) { errEl.textContent = 'El producto que activa la promoción y el regalo deben ser distintos.'; return; }
+    if (!cantidadDisparador || cantidadDisparador < 1) { errEl.textContent = 'La cantidad necesaria debe ser al menos 1.'; return; }
+    Object.assign(payload, { producto_disparador_id: disparadorId, cantidad_disparador: cantidadDisparador, producto_regalo_id: regaloId, precio_regalo: precioRegalo });
+  } else if (tipo === 'descuento_cantidad') {
+    const productoId = $('pm-producto-descuento').value;
+    const cantidadMinima = parseInt($('pm-cantidad-minima').value, 10);
+    const descuentoPorcentaje = parseFloat($('pm-descuento-porcentaje').value);
+    if (!productoId) { errEl.textContent = 'Elige el producto.'; return; }
+    if (!cantidadMinima || cantidadMinima < 2) { errEl.textContent = 'La cantidad mínima debe ser al menos 2.'; return; }
+    if (!descuentoPorcentaje || descuentoPorcentaje <= 0 || descuentoPorcentaje > 100) { errEl.textContent = 'El descuento debe ser entre 1% y 100%.'; return; }
+    Object.assign(payload, { producto_id: productoId, cantidad_minima: cantidadMinima, descuento_porcentaje: descuentoPorcentaje });
+  }
+
+  const btn = $('btnGuardarPromocion');
+  btn.disabled = true;
+  try {
+    let promocionId = id;
+    if (id) {
+      const { error } = await supabaseClient.from('promociones').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).eq('auth_user_id', STATE.user.id);
+      if (error) throw error;
+      // Limpiar el grupo anterior antes de re-insertar (si es nxm_grupo)
+      await supabaseClient.from('promocion_productos').delete().eq('promocion_id', id).eq('auth_user_id', STATE.user.id);
+    } else {
+      const { data, error } = await supabaseClient.from('promociones').insert(payload).select('id').single();
+      if (error) throw error;
+      promocionId = data.id;
+    }
+
+    if (productosGrupo && productosGrupo.length) {
+      const filas = productosGrupo.map(pid => ({ auth_user_id: STATE.user.id, promocion_id: promocionId, producto_id: pid }));
+      const { error: errGrupo } = await supabaseClient.from('promocion_productos').insert(filas);
+      if (errGrupo) throw errGrupo;
+    }
+
+    showToast('success', id ? 'Promoción actualizada' : 'Promoción creada', '');
+    cerrarModalPromocion();
+    await cargarPromociones();
+  } catch (e) {
+    console.error('guardarPromocion:', e);
+    errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function init() {
   initSupabase();
   initTema();
@@ -3062,6 +3376,9 @@ async function init() {
 
   // 3.5) Combos (independientes de productos, pero necesitan su lista ya cargada)
   await cargarCombos();
+
+  // 3.6) Promociones — mismo espíritu, tampoco bloquea si falla
+  await cargarPromociones();
 
   // 4) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
   cargarProveedores();

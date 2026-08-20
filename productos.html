@@ -484,7 +484,143 @@
         </div>
       </div>
 
+      <!-- ============================================================
+           PROMOCIONES — reglas que el sistema aplica solo en Ventas,
+           distinto de un Combo (que es un producto fijo con un solo
+           precio). Aquí se define la REGLA, no un producto nuevo.
+           ============================================================ -->
+      <div class="toolbar" style="margin-top:28px">
+        <div>
+          <h2 style="font-size:16px;font-weight:700;margin:0 0 2px">🎉 Promociones</h2>
+          <p style="font-size:12px;color:var(--text-muted);margin:0">2x1, descuentos por cantidad, o regalos al comprar — se aplican solas en Ventas cuando se cumple la condición.</p>
+        </div>
+        <div class="toolbar-right">
+          <span class="results-count" id="promosCount">0 promociones</span>
+          <button class="btn btn-primary btn-sm" onclick="abrirModalPromocion()">+ Nueva promoción</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table class="data-table" role="table">
+            <thead>
+              <tr>
+                <th>Promoción</th>
+                <th>Tipo</th>
+                <th>Detalle</th>
+                <th>Vigencia</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="promosTbody">
+              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando promociones…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </main>
+  </div>
+</div>
+
+<!-- MODAL: NUEVA / EDITAR PROMOCIÓN -->
+<div class="modal-overlay" id="modalPromocion" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalPromocionTitle">🎉 Nueva promoción</h2>
+      <button class="modal-close" onclick="cerrarModalPromocion()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pm-id"/>
+      <div class="form-group">
+        <label>Nombre de la promoción *</label>
+        <input type="text" id="pm-nombre" class="form-input" placeholder="Ej: 2x1 en jabones"/>
+      </div>
+
+      <div class="form-group">
+        <label>Tipo de promoción *</label>
+        <select id="pm-tipo" class="form-select" onchange="onCambioTipoPromocion()">
+          <option value="nxm_mismo">Compra N y paga M — de UN producto (ej. 2x1)</option>
+          <option value="nxm_grupo">Compra N y paga M — de un GRUPO de productos que elijo</option>
+          <option value="regalo">Compra un producto y llévate otro gratis (o con descuento)</option>
+          <option value="descuento_cantidad">Descuento automático por cantidad</option>
+        </select>
+      </div>
+
+      <!-- NXM MISMO PRODUCTO -->
+      <div id="pm-bloque-nxm-mismo">
+        <div class="form-group">
+          <label>¿Qué producto? *</label>
+          <select id="pm-producto-nxm" class="form-select"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Compra *</label><input type="number" id="pm-n-compra" class="form-input" min="2" value="2"/></div>
+          <div class="form-group"><label>Paga *</label><input type="number" id="pm-m-paga" class="form-input" min="1" value="1"/></div>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Ej: Compra 2, Paga 1 = 2x1. Compra 3, Paga 2 = 3x2.</p>
+      </div>
+
+      <!-- NXM GRUPO -->
+      <div id="pm-bloque-nxm-grupo" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>Compra *</label><input type="number" id="pm-n-compra-grupo" class="form-input" min="2" value="2"/></div>
+          <div class="form-group"><label>Paga *</label><input type="number" id="pm-m-paga-grupo" class="form-input" min="1" value="1"/></div>
+        </div>
+        <div class="form-group">
+          <label>¿Qué productos entran en el grupo? *</label>
+          <input type="text" id="pm-buscar-grupo" class="form-input" placeholder="Buscar producto para agregar al grupo..."/>
+          <div id="pm-grupo-resultados" style="max-height:140px;overflow-y:auto;margin-top:4px"></div>
+        </div>
+        <div id="pm-grupo-lista" style="margin-top:8px"></div>
+        <p style="font-size:11.5px;color:var(--text-muted)">El sistema descuenta automático el/los productos más baratos entre los que el cliente eligió de este grupo.</p>
+      </div>
+
+      <!-- REGALO -->
+      <div id="pm-bloque-regalo" style="display:none">
+        <div class="form-group">
+          <label>Producto que activa la promoción *</label>
+          <select id="pm-producto-disparador" class="form-select"></select>
+        </div>
+        <div class="form-group">
+          <label>Cantidad necesaria *</label>
+          <input type="number" id="pm-cantidad-disparador" class="form-input" min="1" value="1"/>
+        </div>
+        <div class="form-group">
+          <label>Producto de regalo *</label>
+          <select id="pm-producto-regalo" class="form-select"></select>
+        </div>
+        <div class="form-group">
+          <label>Precio del regalo</label>
+          <input type="number" id="pm-precio-regalo" class="form-input" min="0" step="0.01" value="0"/>
+          <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Deja en 0 si el regalo es completamente gratis.</p>
+        </div>
+      </div>
+
+      <!-- DESCUENTO POR CANTIDAD -->
+      <div id="pm-bloque-descuento" style="display:none">
+        <div class="form-group">
+          <label>¿Qué producto? *</label>
+          <select id="pm-producto-descuento" class="form-select"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Cantidad mínima *</label><input type="number" id="pm-cantidad-minima" class="form-input" min="2" value="3"/></div>
+          <div class="form-group"><label>% de descuento *</label><input type="number" id="pm-descuento-porcentaje" class="form-input" min="1" max="100" value="10"/></div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Vigencia desde (opcional)</label><input type="date" id="pm-fecha-inicio" class="form-input"/></div>
+        <div class="form-group"><label>Vigencia hasta (opcional)</label><input type="date" id="pm-fecha-fin" class="form-input"/></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Si dejas las fechas vacías, la promoción no vence sola — la desactivas cuando quieras.</p>
+
+      <p id="pm-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalPromocion()">Cancelar</button>
+      <button class="btn btn-primary" id="btnGuardarPromocion" onclick="guardarPromocion()">Guardar promoción</button>
+    </div>
   </div>
 </div>
 
