@@ -974,25 +974,27 @@
     /* =====================================================
        CALENDARIO — vista mes/semana/día
     ===================================================== */
-    .cal-vista-btn { padding:6px 14px; font-size:12.5px; font-weight:600; border-radius:6px; color:var(--text-muted); cursor:pointer; }
-    .cal-vista-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
-    .cal-nav-btn { width:30px; height:30px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; color:var(--text-secondary); font-size:16px; }
-    .cal-nav-btn:hover { background:var(--bg-app); }
+    .cal-vista-btn { padding:8px 16px; font-size:13px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; }
+    .cal-vista-btn.active { background:#1d4ed8; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+    .cal-nav-btn { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; color:var(--text-secondary); font-size:17px; font-weight:700; background:var(--bg-app); }
+    .cal-nav-btn:hover { background:var(--border); }
     .cal-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
 
-    .cal-grid-header { display:grid; grid-template-columns:repeat(7,1fr); }
-    .cal-dow { text-align:center; font-size:11px; font-weight:700; color:var(--text-muted); padding:8px 4px; text-transform:uppercase; }
-    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid var(--border); border-left:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
-    .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:112px; padding:5px; cursor:pointer; transition:background .12s; position:relative; }
+    .cal-grid-header { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:2px; }
+    .cal-dow { text-align:center; font-size:11.5px; font-weight:700; color:var(--text-muted); padding:10px 4px; text-transform:uppercase; letter-spacing:.03em; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid var(--border); border-left:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; background:var(--bg-surface); }
+    .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:140px; padding:8px 6px; cursor:pointer; transition:background .12s; position:relative; }
     .cal-cell:hover { background:var(--bg-app); }
-    .cal-cell.cal-otro-mes { background:var(--bg-app); opacity:.5; }
+    .cal-cell.cal-otro-mes { background:var(--bg-app); opacity:.45; }
     .cal-cell.cal-hoy { background:var(--accent-soft); }
-    .cal-cell-num { font-size:12px; font-weight:700; color:var(--text-secondary); margin-bottom:3px; display:inline-block; }
-    .cal-cell.cal-hoy .cal-cell-num { background:var(--accent); color:#fff; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
-    .cal-evento-pill { font-size:11px; font-weight:700; padding:5px 7px; border-radius:6px; margin-bottom:3px; line-height:1.3; color:#fff; box-shadow:0 1px 2px rgba(0,0,0,.12); }
-    .cal-evento-pill .cal-evento-titulo { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .cal-evento-pill .cal-evento-hora { font-size:9.5px; font-weight:600; opacity:.9; margin-top:1px; }
-    .cal-evento-mas { font-size:10px; color:var(--text-muted); font-weight:600; padding:1px 6px; }
+    .cal-cell-num { font-size:12.5px; font-weight:700; color:var(--text-muted); margin-bottom:6px; display:inline-block; }
+    .cal-cell.cal-hoy .cal-cell-num { background:#1d4ed8; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+
+    .cal-evento-pill { font-size:12.5px; font-weight:700; padding:8px 10px; border-radius:9px; margin-bottom:5px; line-height:1.35; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,.10); }
+    .cal-evento-pill .cal-evento-titulo { white-space:normal; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .cal-evento-pill .cal-evento-hora { font-size:11px; font-weight:600; opacity:.92; margin-top:2px; }
+    .cal-evento-mas { font-size:11px; color:var(--text-muted); font-weight:700; padding:2px 8px; }
+
 
     .cal-semana-cell { min-height:340px; }
     .cal-dia-lista .panel-card { margin:0 0 8px }
@@ -1235,11 +1237,11 @@
         <div id="calendario-contenedor" style="padding:0 16px 16px">Cargando…</div>
 
         <div style="display:flex;gap:14px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text-secondary)">
-          <span><span class="cal-dot" style="background:#3b82f6"></span>Reuniones</span>
-          <span><span class="cal-dot" style="background:#8b5cf6"></span>Entregas</span>
-          <span><span class="cal-dot" style="background:#ec4899"></span>Tareas</span>
-          <span><span class="cal-dot" style="background:#f59e0b"></span>Pagos</span>
-          <span><span class="cal-dot" style="background:#10b981"></span>Eventos</span>
+          <span><span class="cal-dot" style="background:#4361ee"></span>Reuniones</span>
+          <span><span class="cal-dot" style="background:#9061f9"></span>Entregas</span>
+          <span><span class="cal-dot" style="background:#f4419f"></span>Tareas</span>
+          <span><span class="cal-dot" style="background:#fb9f1c"></span>Pagos</span>
+          <span><span class="cal-dot" style="background:#0ecb9d"></span>Eventos</span>
           <span><span class="cal-dot" style="background:#9ca3af"></span>Otros</span>
         </div>
       </div>
@@ -1274,11 +1276,11 @@
             <div class="form-group">
               <label>Categoría</label>
               <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px" id="ne-categorias">
-                <div class="cal-cat-btn" data-cat="reunion" style="color:#3b82f6" onclick="elegirCategoriaEvento('reunion')">🔵 Reunión</div>
-                <div class="cal-cat-btn" data-cat="entrega" style="color:#8b5cf6" onclick="elegirCategoriaEvento('entrega')">🟣 Entrega</div>
-                <div class="cal-cat-btn" data-cat="tarea" style="color:#ec4899" onclick="elegirCategoriaEvento('tarea')">🌸 Tarea</div>
-                <div class="cal-cat-btn" data-cat="pago" style="color:#f59e0b" onclick="elegirCategoriaEvento('pago')">🟠 Pago</div>
-                <div class="cal-cat-btn" data-cat="evento" style="color:#10b981" onclick="elegirCategoriaEvento('evento')">🟢 Evento</div>
+                <div class="cal-cat-btn" data-cat="reunion" style="color:#4361ee" onclick="elegirCategoriaEvento('reunion')">🔵 Reunión</div>
+                <div class="cal-cat-btn" data-cat="entrega" style="color:#9061f9" onclick="elegirCategoriaEvento('entrega')">🟣 Entrega</div>
+                <div class="cal-cat-btn" data-cat="tarea" style="color:#f4419f" onclick="elegirCategoriaEvento('tarea')">🌸 Tarea</div>
+                <div class="cal-cat-btn" data-cat="pago" style="color:#fb9f1c" onclick="elegirCategoriaEvento('pago')">🟠 Pago</div>
+                <div class="cal-cat-btn" data-cat="evento" style="color:#0ecb9d" onclick="elegirCategoriaEvento('evento')">🟢 Evento</div>
                 <div class="cal-cat-btn" data-cat="otro" style="color:#9ca3af" onclick="elegirCategoriaEvento('otro')">⚪ Otro</div>
               </div>
             </div>
@@ -1312,7 +1314,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="agenda.js"></script>
+<script src="agenda.js?v=20260820d"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>

@@ -18,7 +18,7 @@ let STATE = {
   categoriaEventoActual: 'otro',
 };
 
-const CATEGORIA_COLOR = { reunion:'#3b82f6', entrega:'#8b5cf6', tarea:'#ec4899', pago:'#f59e0b', evento:'#10b981', otro:'#9ca3af' };
+const CATEGORIA_COLOR = { reunion:'#4361ee', entrega:'#9061f9', tarea:'#f4419f', pago:'#fb9f1c', evento:'#0ecb9d', otro:'#9ca3af' };
 const CATEGORIA_LABEL = { reunion:'Reunión', entrega:'Entrega', tarea:'Tarea', pago:'Pago', evento:'Evento', otro:'Otro' };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
