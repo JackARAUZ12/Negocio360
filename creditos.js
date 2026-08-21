@@ -1843,10 +1843,10 @@
     // En 58mm hay menos ancho real de impresión — con la misma letra
     // que 80mm, el texto se ve apretado o se corta en impresoras
     // térmicas baratas de bajo DPI (como la Hoin HOP-E58, 203dpi/58mm).
-    const fs = ancho === '58mm' ? 11 : (esEpson ? 11 : 12.5);
+    const fs = ancho === '58mm' ? 11 : 12.5;
     const w = window.open('', '_blank', 'width=380,height=600');
     w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-      <style>body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.25;letter-spacing:-0.2px' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+      <style>body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
       </head><body>${html}<script>window.print();</script></body></html>`);
     w.document.close();
   }
