@@ -566,6 +566,14 @@
           <span class="btn-label" id="loginLabel">Iniciar sesión</span>
         </button>
 
+        <!-- Cuenta de demostración: entra directo, sin escribir nada,
+             a una cuenta de prueba ya configurada. No cambia en nada
+             el inicio de sesión normal de arriba. -->
+        <button class="btn btn-secondary" id="demoBtn" type="button" style="margin-top:10px">
+          <div class="spinner" id="demoSpinner"></div>
+          <span class="btn-label">🎯 Probar cuenta de demostración</span>
+        </button>
+
         <div class="divider">O</div>
 
         <!-- Register redirect -->
@@ -803,6 +811,45 @@
       showSuccess('Correo de recuperación enviado. Revisa tu bandeja de entrada.');
     }
   });
+
+  // ─── DEMO LOGIN — cuenta de prueba fija, sin escribir nada ───────
+  // Reutiliza exactamente el mismo signInWithPassword y la misma
+  // redirección que el login normal — la única diferencia es que las
+  // credenciales ya vienen fijas, el cliente no escribe nada.
+  async function handleDemoLogin() {
+    clearAlert();
+    const demoBtn = document.getElementById('demoBtn');
+    demoBtn.disabled = true;
+    demoBtn.classList.add('loading');
+
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: 'carlossreyess1984@gmail.com', password: 'Prueba1@',
+      });
+
+      if (error) {
+        showError('No se pudo entrar a la cuenta de demostración. Intenta de nuevo en un momento.');
+        demoBtn.disabled = false;
+        demoBtn.classList.remove('loading');
+        return;
+      }
+      if (!data?.user) {
+        showError('Ocurrió un error inesperado. Intenta de nuevo.');
+        demoBtn.disabled = false;
+        demoBtn.classList.remove('loading');
+        return;
+      }
+
+      showSuccess('¡Entrando a la cuenta de demostración!');
+      await redirectByOnboarding(data.user.id);
+    } catch (e) {
+      console.error('Demo login error:', e);
+      showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+      demoBtn.disabled = false;
+      demoBtn.classList.remove('loading');
+    }
+  }
+  document.getElementById('demoBtn').addEventListener('click', handleDemoLogin);
 
   // ─── REGISTER REDIRECT ──────────────────────────────────────────
   document.getElementById('registerBtn').addEventListener('click', () => {
