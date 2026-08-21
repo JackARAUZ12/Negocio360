@@ -1668,8 +1668,41 @@ async function guardarCompra() {
 
     // 3. Insertar líneas de detalle y actualizar stock de productos
     for (const linea of STATE.carrito) {
-      const stockAntes = Number(linea.producto.stock_actual || 0);
-      const stockDespues = stockAntes + Number(linea.cantidad);
+      // Suma el stock de forma ATÓMICA, en un solo paso dentro de la
+      // propia base de datos -- ya no se lee/calcula/escribe desde
+      // aquí, eliminando de raíz el riesgo de basarse en un dato
+      // viejo si algo más tocó este mismo producto al mismo tiempo.
+      const stockAntesReferencia = Number(linea.producto.stock_actual || 0); // solo de referencia visual
+      let stockDespues = stockAntesReferencia + Number(linea.cantidad);
+      let stockAntes = stockAntesReferencia;
+
+      const { data: resultadoStock, error: errStock } = await sbClient
+        .rpc('incrementar_stock_producto', {
+          p_producto_id: linea.producto.id,
+          p_auth_user_id: STATE.userId,
+          p_cantidad: Number(linea.cantidad),
+        });
+
+      if (!errStock && resultadoStock && resultadoStock.length) {
+        // Caso normal: usa el valor REAL devuelto por la base de datos
+        // (más confiable que cualquier cálculo hecho aquí en JS).
+        stockDespues = Number(resultadoStock[0].stock_actual);
+        stockAntes = round2(stockDespues - Number(linea.cantidad));
+      } else {
+        // Caso rarísimo: el producto no se encontró para actualizar.
+        // NUNCA se le muestra esto al cliente ni se interrumpe su
+        // compra -- queda registrado en silencio para que el dueño
+        // del sistema lo revise con calma, sin arriesgar duplicar
+        // inventario por una corrección tardía.
+        try {
+          await sbClient.from('log_stock_fallido').insert({
+            auth_user_id: STATE.userId, compra_id: compra.id,
+            producto_id: linea.producto.id, producto_nombre: linea.producto.nombre,
+            cantidad_no_aplicada: linea.cantidad,
+            motivo: errStock ? String(errStock.message || errStock) : 'La actualización no encontró el producto (0 filas afectadas)',
+          });
+        } catch (eLog) { console.warn('No se pudo registrar en log_stock_fallido:', eLog); }
+      }
 
       // a. Detalle
       const { error: errDet } = await sbClient.from('detalle_compras').insert({
@@ -1688,17 +1721,6 @@ async function guardarCompra() {
         stock_despues:  stockDespues,
       });
       if (errDet) throw errDet;
-
-      // b. Actualizar stock del producto
-      // Compras → Productos (la arquitectura correcta)
-      // Se marca updated_at explícitamente: una compra SÍ cuenta como una
-      // actualización del producto, aunque no se haya tocado desde Productos.
-      const { error: errStock } = await sbClient
-        .from('productos')
-        .update({ stock_actual: stockDespues, updated_at: new Date().toISOString() })
-        .eq('id', linea.producto.id)
-        .eq('auth_user_id', STATE.userId);
-      if (errStock) throw errStock;
 
       // c. Registrar el lote (si el negocio activó Lotes y Vencimientos,
       // y se indicó una fecha de vencimiento para este producto). Esto
