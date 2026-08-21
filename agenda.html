@@ -970,6 +970,34 @@
     }
     .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
     @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+
+    /* =====================================================
+       CALENDARIO — vista mes/semana/día
+    ===================================================== */
+    .cal-vista-btn { padding:6px 14px; font-size:12.5px; font-weight:600; border-radius:6px; color:var(--text-muted); cursor:pointer; }
+    .cal-vista-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .cal-nav-btn { width:30px; height:30px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; color:var(--text-secondary); font-size:16px; }
+    .cal-nav-btn:hover { background:var(--bg-app); }
+    .cal-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+
+    .cal-grid-header { display:grid; grid-template-columns:repeat(7,1fr); }
+    .cal-dow { text-align:center; font-size:11px; font-weight:700; color:var(--text-muted); padding:8px 4px; text-transform:uppercase; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid var(--border); border-left:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
+    .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:92px; padding:5px; cursor:pointer; transition:background .12s; position:relative; }
+    .cal-cell:hover { background:var(--bg-app); }
+    .cal-cell.cal-otro-mes { background:var(--bg-app); opacity:.5; }
+    .cal-cell.cal-hoy { background:var(--accent-soft); }
+    .cal-cell-num { font-size:12px; font-weight:700; color:var(--text-secondary); margin-bottom:3px; display:inline-block; }
+    .cal-cell.cal-hoy .cal-cell-num { background:var(--accent); color:#fff; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+    .cal-evento-pill { font-size:10.5px; font-weight:600; padding:2px 6px; border-radius:5px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#fff; }
+    .cal-evento-mas { font-size:10px; color:var(--text-muted); font-weight:600; padding:1px 6px; }
+
+    .cal-semana-cell { min-height:340px; }
+    .cal-dia-lista .panel-card { margin:0 0 8px }
+
+    .cal-cat-btn { padding:8px 6px; border:1.5px solid var(--border); border-radius:8px; cursor:pointer; text-align:center; font-size:11px; font-weight:600; }
+    .cal-cat-btn.active { border-color:currentColor; }
+
     .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
       cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
     .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
@@ -1184,23 +1212,50 @@
     </header>
 
     <div id="content">
-      <div class="panel-card fade-in">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Agenda
+      <div class="panel-card fade-in" style="padding:0;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 16px 12px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="btn-secondary btn-sm" onclick="irAHoyCalendario()">Hoy</button>
+            <button class="cal-nav-btn" onclick="cambiarPeriodoCalendario(-1)">‹</button>
+            <button class="cal-nav-btn" onclick="cambiarPeriodoCalendario(1)">›</button>
+            <span style="font-weight:800;font-size:16px;text-transform:capitalize;margin-left:6px" id="cal-titulo-periodo">—</span>
           </div>
-          <button class="btn-primary btn-sm" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;background:var(--bg-app);border-radius:8px;padding:2px">
+              <button class="cal-vista-btn" data-vista="dia" onclick="cambiarVistaCalendario('dia')">Día</button>
+              <button class="cal-vista-btn" data-vista="semana" onclick="cambiarVistaCalendario('semana')">Semana</button>
+              <button class="cal-vista-btn active" data-vista="mes" onclick="cambiarVistaCalendario('mes')">Mes</button>
+            </div>
+            <button class="btn-primary btn-sm" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
+          </div>
         </div>
 
-        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 14px">
-          <button class="btn-secondary btn-sm filtro-agenda-btn" data-rango="hoy" onclick="filtrarAgendaPorRango('hoy')">Hoy</button>
-          <button class="btn-secondary btn-sm filtro-agenda-btn active" data-rango="semana" onclick="filtrarAgendaPorRango('semana')">Esta semana</button>
-          <button class="btn-secondary btn-sm filtro-agenda-btn" data-rango="mes" onclick="filtrarAgendaPorRango('mes')">Este mes</button>
-          <button class="btn-secondary btn-sm filtro-agenda-btn" data-rango="todos" onclick="filtrarAgendaPorRango('todos')">Todo lo próximo</button>
-        </div>
+        <div id="calendario-contenedor" style="padding:0 16px 16px">Cargando…</div>
 
-        <div id="lista-agenda" style="padding:0 16px 16px">Cargando…</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text-secondary)">
+          <span><span class="cal-dot" style="background:#3b82f6"></span>Reuniones</span>
+          <span><span class="cal-dot" style="background:#8b5cf6"></span>Entregas</span>
+          <span><span class="cal-dot" style="background:#ec4899"></span>Tareas</span>
+          <span><span class="cal-dot" style="background:#f59e0b"></span>Pagos</span>
+          <span><span class="cal-dot" style="background:#10b981"></span>Eventos</span>
+          <span><span class="cal-dot" style="background:#9ca3af"></span>Otros</span>
+        </div>
+      </div>
+
+      <!-- MODAL: EVENTOS DEL DÍA (al hacer clic en una celda con eventos) -->
+      <div class="modal-overlay" id="modal-eventos-dia" onclick="if(event.target===this)closeModal('modal-eventos-dia')">
+        <div class="modal-box modal-sm">
+          <div class="modal-header">
+            <span class="modal-title" id="ed-titulo">Eventos</span>
+            <button class="modal-close" onclick="closeModal('modal-eventos-dia')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body" id="ed-lista"></div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-sm" id="ed-btn-nuevo" onclick="closeModal('modal-eventos-dia');abrirNuevoEvento()">+ Agregar evento aquí</button>
+          </div>
+        </div>
       </div>
 
       <!-- MODAL: NUEVO EVENTO -->
@@ -1214,6 +1269,17 @@
           </div>
           <div class="modal-body">
             <input type="hidden" id="ne-evento-id"/>
+            <div class="form-group">
+              <label>Categoría</label>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px" id="ne-categorias">
+                <div class="cal-cat-btn" data-cat="reunion" style="color:#3b82f6" onclick="elegirCategoriaEvento('reunion')">🔵 Reunión</div>
+                <div class="cal-cat-btn" data-cat="entrega" style="color:#8b5cf6" onclick="elegirCategoriaEvento('entrega')">🟣 Entrega</div>
+                <div class="cal-cat-btn" data-cat="tarea" style="color:#ec4899" onclick="elegirCategoriaEvento('tarea')">🌸 Tarea</div>
+                <div class="cal-cat-btn" data-cat="pago" style="color:#f59e0b" onclick="elegirCategoriaEvento('pago')">🟠 Pago</div>
+                <div class="cal-cat-btn" data-cat="evento" style="color:#10b981" onclick="elegirCategoriaEvento('evento')">🟢 Evento</div>
+                <div class="cal-cat-btn" data-cat="otro" style="color:#9ca3af" onclick="elegirCategoriaEvento('otro')">⚪ Otro</div>
+              </div>
+            </div>
             <div class="form-group">
               <label>Título *</label>
               <input type="text" id="ne-titulo" placeholder="Ej: Cita con cliente, revisión de vehículo..."/>
