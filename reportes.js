@@ -1959,6 +1959,18 @@ function limpiarClienteCredito() {
 
 // Pinta la tabla de historial SOLO del cliente elegido (nunca de todos a
 // la vez). Si aún no se eligió cliente, invita a buscarlo.
+// Saldo restante REAL de un cliente: suma el saldo de sus cuotas que
+// todavía deben algo (pendiente, vencida, parcial) — nunca cuenta lo
+// que ya está pagado. Se usa igual en pantalla y en ambas
+// exportaciones, para que el número sea siempre el mismo en todos
+// lados.
+function saldoRestanteCliente(filas, clienteId) {
+  const total = (filas||[])
+    .filter(f => f.cliente_id === clienteId && f.estado !== 'pagada')
+    .reduce((s, f) => s + Number(f.saldo || 0), 0);
+  return Math.round(total * 100) / 100;
+}
+
 function renderHistorialPagosCreditos() {
   const tbody = document.getElementById('creditos-historial-pagos-tbody');
   if (!tbody) return;
@@ -1974,6 +1986,12 @@ function renderHistorialPagosCreditos() {
   const filas = (R.cache.creditosPagos||[])
     .filter(f => f.cliente_id === clienteId && (!filtroEstado || f.estado === filtroEstado))
     .sort((a,b) => (a.fecha_venc||'').localeCompare(b.fecha_venc||''));
+
+  // Saldo restante REAL del cliente — siempre sobre TODAS sus cuotas,
+  // sin importar el filtro de estado que se esté viendo en la tabla
+  // de abajo (el saldo pendiente real no cambia solo por filtrar la vista).
+  const saldoEl = document.getElementById('cr-saldo-restante');
+  if (saldoEl) saldoEl.textContent = fmt(saldoRestanteCliente(R.cache.creditosPagos, clienteId));
 
   tbody.innerHTML = filas.length ? filas.map(f => {
     const info = estadoCuotaInfo(f.estado);
@@ -3050,6 +3068,17 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     const nombreCliente = clienteNombre || filasCliente[0]?.cliente || 'cliente seleccionado';
     tituloSeccion(`Historial de pagos — ${nombreCliente}`);
 
+    // Saldo restante, en grande, justo debajo del título — el dato
+    // que más le importa ver al negocio de un vistazo, en el momento
+    // exacto en que se generó este reporte.
+    if (clienteId) {
+      const saldoCliente = saldoRestanteCliente(R.cache.creditosPagos, clienteId);
+      doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(220, 38, 38);
+      doc.text(`💰 Saldo restante: ${fmt(saldoCliente)}`, 10, startY);
+      doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal');
+      startY += 9;
+    }
+
     // Productos financiados por cada crédito incluido en este reporte
     // — antes solo se veía el monto, nunca qué se compró al crédito.
     const numerosCreditoEnReporte = [...new Set(filasCliente.map(f => f.numero_credito))];
@@ -3082,7 +3111,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
         let clienteAnterior = null;
         filasCliente.forEach(f => {
           if (f.cliente !== clienteAnterior) {
-            rows.push([`👤 ${f.cliente}`, ...Array(cols.length-1).fill('')]);
+            const saldoEsteCliente = saldoRestanteCliente(R.cache.creditosPagos, f.cliente_id);
+            const filaSeparadora = Array(cols.length).fill('');
+            filaSeparadora[0] = `👤 ${f.cliente}`;
+            if (cols.length > 1) filaSeparadora[cols.length - 1] = `Saldo: ${fmt(saldoEsteCliente)}`;
+            rows.push(filaSeparadora);
             filasSeparadoras.add(rows.length - 1);
             clienteAnterior = f.cliente;
           }
@@ -3288,13 +3321,29 @@ function hojaCreditosXLSX(wb, clienteId, clienteNombre) {
     filasCliente.forEach(f => {
       if (f.cliente !== clienteAnterior) {
         if (clienteAnterior !== null) rows.push(Array(cols.length).fill(''));
-        rows.push([`▶ ${f.cliente}`, ...Array(cols.length-1).fill('')]);
+        const saldoEsteCliente = saldoRestanteCliente(R.cache.creditosPagos, f.cliente_id);
+        const filaSeparadora = Array(cols.length).fill('');
+        filaSeparadora[0] = `▶ ${f.cliente}`;
+        if (cols.length > 1) filaSeparadora[cols.length - 1] = `Saldo: ${fmt(saldoEsteCliente)}`;
+        rows.push(filaSeparadora);
         clienteAnterior = f.cliente;
       }
       rows.push(filaAXLSX(filaCreditoPago(f), cols));
     });
   } else {
-    rows = filasCliente.map(f => filaAXLSX(filaCreditoPago(f), cols));
+    // Saldo restante en grande, como primera fila del reporte
+    // individual — el dato que más le importa ver al negocio. Solo
+    // se agrega si de verdad hay cuotas; si el cliente no tiene
+    // ninguna, se deja el mensaje de "sin cuotas" de siempre, sin
+    // anteponer nada.
+    if (filasCliente.length) {
+      const saldoCliente = saldoRestanteCliente(R.cache.creditosPagos, clienteId);
+      const filaSaldo = Array(cols.length).fill('');
+      filaSaldo[0] = `💰 SALDO RESTANTE: ${fmt(saldoCliente)}`;
+      rows = [filaSaldo, Array(cols.length).fill(''), ...filasCliente.map(f => filaAXLSX(filaCreditoPago(f), cols))];
+    } else {
+      rows = [];
+    }
   }
   appendSheetXLSX(wb, 'Créditos', headersXLSX(cols),
     rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
