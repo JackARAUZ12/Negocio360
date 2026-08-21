@@ -203,7 +203,7 @@ async function cargarAgenda() {
 
     (eventos.data||[]).forEach(e => items.push({
       fecha: e.fecha, tipo: 'evento', categoria: e.categoria || 'otro',
-      titulo: e.titulo, sub: e.hora ? `${e.hora.slice(0,5)}${e.descripcion ? ' — '+e.descripcion : ''}` : (e.descripcion||''),
+      titulo: e.titulo, hora: e.hora ? e.hora.slice(0,5) : null, sub: e.descripcion || '',
       id: e.id, completado: e.estado === 'completado', clickeable: true,
     }));
 
@@ -293,6 +293,13 @@ function renderCalendario() {
 
 function itemsDelDia(iso) { return STATE.itemsAgenda.filter(it => it.fecha === iso); }
 
+// Contenido interno de un bloque de evento en el calendario — título
+// siempre, y la hora debajo en su propia línea cuando existe (igual
+// que el diseño de referencia).
+function contenidoPillEvento(it) {
+  return `<div class="cal-evento-titulo">${esc(it.titulo)}</div>${it.hora ? `<div class="cal-evento-hora">${esc(it.hora)}</div>` : ''}`;
+}
+
 function renderCalendarioMes() {
   const cont = document.getElementById('calendario-contenedor');
   if (!cont) return;
@@ -313,7 +320,7 @@ function renderCalendarioMes() {
 
     html += `<div class="cal-cell ${esOtroMes?'cal-otro-mes':''} ${esHoy?'cal-hoy':''}" onclick="abrirEventosDia('${iso}')">
       <span class="cal-cell-num">${dia.getDate()}</span>
-      ${visibles.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${esc(it.titulo)}</div>`).join('')}
+      ${visibles.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${contenidoPillEvento(it)}</div>`).join('')}
       ${restantes > 0 ? `<div class="cal-evento-mas">+${restantes} más</div>` : ''}
     </div>`;
   }
@@ -339,7 +346,7 @@ function renderCalendarioSemana() {
     const esHoy = iso === hoy;
     const items = itemsDelDia(iso);
     html += `<div class="cal-cell cal-semana-cell ${esHoy?'cal-hoy':''}" onclick="abrirEventosDia('${iso}')">
-      ${items.map(it => `<div class="cal-evento-pill" style="background:${it.color};white-space:normal">${esc(it.titulo)}</div>`).join('')}
+      ${items.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${contenidoPillEvento(it)}</div>`).join('')}
     </div>`;
   }
   html += '</div>';
@@ -369,7 +376,7 @@ function filaEventoHTML(it) {
         <span class="cal-dot" style="background:${it.color};width:10px;height:10px"></span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;${it.completado?'text-decoration:line-through':''}">${esc(it.titulo)}</div>
-          ${it.sub ? `<div style="font-size:11.5px;color:var(--text-muted)">${esc(it.sub)}</div>` : ''}
+          ${(it.hora || it.sub) ? `<div style="font-size:11.5px;color:var(--text-muted)">${it.hora ? esc(it.hora) : ''}${it.hora && it.sub ? ' — ' : ''}${esc(it.sub||'')}</div>` : ''}
         </div>
         <span style="font-size:9.5px;font-weight:700;color:${it.color};background:${it.color}22;padding:2px 7px;border-radius:20px;white-space:nowrap">${CATEGORIA_LABEL[it.categoria] || TIPO_LABEL_AGENDA[it.tipo]}</span>
       </div>
