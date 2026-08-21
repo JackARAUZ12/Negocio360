@@ -4420,7 +4420,13 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   }
 
   const anchosValidos = ['58mm','76mm','80mm'];
-  const ancho = anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm';
+  const esEpson = cfg.ancho_ticket === 'epson_tmu220';
+  // EPSON TM-U220: impresora real de matriz de puntos, papel de 76mm,
+  // con fuente monoespaciada (Courier) -- lo mas parecido a como se
+  // ve un recibo real de esa impresora, en vez del texto moderno de
+  // siempre.
+  const ancho = esEpson ? '76mm' : (anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm');
+  const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial, Helvetica, sans-serif';
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
   const logoUrl = S.empresaConfig?.logo_principal_url || S.empresaConfig?.logo_url || '';
   const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
@@ -4448,7 +4454,7 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   * { box-sizing: border-box; }
   body {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
-    font-family: Arial, Helvetica, sans-serif; font-size: ${fsBase}px; color: #000;
+    font-family: ${fontFamily}; font-size: ${fsBase}px; color: #000;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
@@ -4544,7 +4550,9 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
   }
 
   const anchosValidos = ['58mm','76mm','80mm'];
-  const ancho = anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm';
+  const esEpson = cfg.ancho_ticket === 'epson_tmu220';
+  const ancho = esEpson ? '76mm' : (anchosValidos.includes(cfg.ancho_ticket) ? cfg.ancho_ticket : '80mm');
+  const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial, Helvetica, sans-serif';
   const nombreNegocio = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
   const logoUrl = S.empresaConfig?.logo_principal_url || S.empresaConfig?.logo_url || '';
   const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
@@ -4569,7 +4577,7 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
   * { box-sizing: border-box; }
   body {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
-    font-family: Arial, Helvetica, sans-serif; font-size: ${fsBase}px; color: #000;
+    font-family: ${fontFamily}; font-size: ${fsBase}px; color: #000;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }

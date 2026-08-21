@@ -1285,7 +1285,9 @@ function mostrarComprobanteProforma(v) {
   openModal('modal-comprobante');
 }
 function imprimirComprobanteProforma() {
-  const ancho = STATE.configTicket?.ancho_ticket || '80mm';
+  const esEpson = STATE.configTicket?.ancho_ticket === 'epson_tmu220';
+  const ancho = esEpson ? '76mm' : (STATE.configTicket?.ancho_ticket || '80mm');
+  const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial,Helvetica,sans-serif';
 
   // Igual que en Ventas y Créditos: solo si el negocio eligió
   // "Carta / A4" a propósito se genera el comprobante profesional
@@ -1322,7 +1324,7 @@ function imprimirComprobanteProforma() {
   const fs = ancho === '58mm' ? 11 : 12.5;
   const w = window.open('', '_blank', 'width=380,height=600');
   w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-    <style>body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+    <style>body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
     </head><body>${html}<script>window.print();</script></body></html>`);
   w.document.close();
 }
