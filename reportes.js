@@ -3074,7 +3074,7 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     if (clienteId) {
       const saldoCliente = saldoRestanteCliente(R.cache.creditosPagos, clienteId);
       doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(220, 38, 38);
-      doc.text(`💰 Saldo restante: ${fmt(saldoCliente)}`, 10, startY);
+      doc.text(`Saldo restante: ${fmt(saldoCliente)}`, 10, startY);
       doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal');
       startY += 9;
     }
