@@ -320,8 +320,10 @@ function renderCalendarioMes() {
 
     html += `<div class="cal-cell ${esOtroMes?'cal-otro-mes':''} ${esHoy?'cal-hoy':''}" onclick="abrirEventosDia('${iso}')">
       <span class="cal-cell-num">${dia.getDate()}</span>
+      <div class="cal-eventos-wrap">
       ${visibles.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${contenidoPillEvento(it)}</div>`).join('')}
       ${restantes > 0 ? `<div class="cal-evento-mas">+${restantes} más</div>` : ''}
+      </div>
     </div>`;
   }
   html += '</div>';
@@ -346,7 +348,9 @@ function renderCalendarioSemana() {
     const esHoy = iso === hoy;
     const items = itemsDelDia(iso);
     html += `<div class="cal-cell cal-semana-cell ${esHoy?'cal-hoy':''}" onclick="abrirEventosDia('${iso}')">
+      <div class="cal-eventos-wrap">
       ${items.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${contenidoPillEvento(it)}</div>`).join('')}
+      </div>
     </div>`;
   }
   html += '</div>';

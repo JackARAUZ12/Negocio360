@@ -983,14 +983,15 @@
     .cal-grid-header { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:2px; }
     .cal-dow { text-align:center; font-size:11.5px; font-weight:700; color:var(--text-muted); padding:10px 4px; text-transform:uppercase; letter-spacing:.03em; }
     .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid var(--border); border-left:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; background:var(--bg-surface); }
-    .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:140px; padding:8px 6px; cursor:pointer; transition:background .12s; position:relative; }
+    .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:140px; padding:6px 6px 4px; cursor:pointer; transition:background .12s; position:relative; display:flex; flex-direction:column; }
     .cal-cell:hover { background:var(--bg-app); }
     .cal-cell.cal-otro-mes { background:var(--bg-app); opacity:.45; }
     .cal-cell.cal-hoy { background:var(--accent-soft); }
-    .cal-cell-num { font-size:12.5px; font-weight:700; color:var(--text-muted); margin-bottom:6px; display:inline-block; }
+    .cal-cell-num { font-size:12.5px; font-weight:700; color:var(--text-muted); margin-bottom:4px; display:inline-block; flex-shrink:0; }
     .cal-cell.cal-hoy .cal-cell-num { background:#1d4ed8; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
 
-    .cal-evento-pill { font-size:12.5px; font-weight:700; padding:8px 10px; border-radius:9px; margin-bottom:5px; line-height:1.35; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,.10); }
+    .cal-eventos-wrap { flex:1; display:flex; flex-direction:column; gap:3px; min-height:0; }
+    .cal-evento-pill { font-size:12.5px; font-weight:700; padding:8px 9px; border-radius:8px; line-height:1.3; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,.10); flex:1; display:flex; flex-direction:column; justify-content:center; }
     .cal-evento-pill .cal-evento-titulo { white-space:normal; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
     .cal-evento-pill .cal-evento-hora { font-size:11px; font-weight:600; opacity:.92; margin-top:2px; }
     .cal-evento-mas { font-size:11px; color:var(--text-muted); font-weight:700; padding:2px 8px; }
@@ -1314,7 +1315,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="agenda.js?v=20260820d"></script>
+<script src="agenda.js?v=20260820e"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
