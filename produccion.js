@@ -330,8 +330,8 @@ async function cargarOrdenes() {
   } catch (e) { console.error('cargarOrdenes:', e); }
 }
 
-const ESTADO_ORDEN_LABEL = { planificada:'Planificada', completada:'Completada', cancelada:'Cancelada' };
-const ESTADO_ORDEN_CLASE = { planificada:'status-pendiente', completada:'status-activo', cancelada:'status-inactivo' };
+const ESTADO_ORDEN_LABEL = { pendiente:'Pendiente', en_proceso:'En proceso', completada:'Completada', cancelada:'Cancelada' };
+const ESTADO_ORDEN_CLASE = { pendiente:'status-pendiente', en_proceso:'status-pendiente', completada:'status-activo', cancelada:'status-inactivo' };
 
 function renderTablaOrdenes() {
   const tbody = document.getElementById('tabla-ordenes-produccion');
@@ -351,8 +351,8 @@ function renderTablaOrdenes() {
       <td>${fmtFechaCorta(o.fecha_planificada)}</td>
       <td>
         <button class="row-action-btn" title="Ver detalle" onclick="verDetalleOrden('${o.id}')">👁️</button>
-        ${o.estado==='planificada' ? `<button class="row-action-btn" title="Completar" onclick="completarOrdenPlanificada('${o.id}')" style="color:var(--success)">✅</button>` : ''}
-        ${o.estado==='planificada' ? `<button class="row-action-btn" title="Cancelar" onclick="cancelarOrden('${o.id}')" style="color:var(--danger)">🗑️</button>` : ''}
+        ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Completar" onclick="completarOrdenPlanificada('${o.id}')" style="color:var(--success)">✅</button>` : ''}
+        ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Cancelar" onclick="cancelarOrden('${o.id}')" style="color:var(--danger)">🗑️</button>` : ''}
       </td>
     </tr>`).join('');
 }
@@ -480,7 +480,7 @@ async function guardarOrden(estadoDeseado) {
   const { necesidades, costoMateriales, todoSuficiente } = calcularNecesidadesOrden(receta, cantidad);
 
   if (estadoDeseado === 'completada' && !todoSuficiente) {
-    errEl.textContent = 'No hay suficiente materia prima para completar esta producción ahora. Guárdala como planificada, o ajusta la cantidad.';
+    errEl.textContent = 'No hay suficiente materia prima para completar esta producción ahora. Guárdala como pendiente, o ajusta la cantidad.';
     return;
   }
 
@@ -512,7 +512,7 @@ async function guardarOrden(estadoDeseado) {
       await procesarConsumoYProduccion(orden.id, receta, necesidades, cantidad, receta.producto_terminado_id);
     }
 
-    showToast(estadoDeseado === 'completada' ? '🏭 Producción completada' : 'Orden guardada como planificada');
+    showToast(estadoDeseado === 'completada' ? '🏭 Producción completada' : 'Orden guardada como pendiente');
     closeModal('modal-orden');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
     actualizarKPIsProduccion();
@@ -557,7 +557,7 @@ async function completarOrdenPlanificada(ordenId) {
 }
 
 async function cancelarOrden(ordenId) {
-  if (!confirm('¿Cancelar esta orden planificada? No se ha consumido ningún material todavía, así que no hay nada que revertir.')) return;
+  if (!confirm('¿Cancelar esta orden pendiente? No se ha consumido ningún material todavía, así que no hay nada que revertir.')) return;
   try {
     await sb.from('ordenes_produccion').update({ estado: 'cancelada', updated_at: new Date().toISOString() })
       .eq('id', ordenId).eq('auth_user_id', STATE.userId);
@@ -572,7 +572,7 @@ async function verDetalleOrden(ordenId) {
   if (!orden) return;
   document.getElementById('detalle-orden-titulo').textContent = `Orden ${orden.numero}`;
 
-  let consumosHtml = '<p style="font-size:12px;color:var(--text-muted)">Todavía no se ha consumido nada (orden planificada).</p>';
+  let consumosHtml = '<p style="font-size:12px;color:var(--text-muted)">Todavía no se ha consumido nada (orden pendiente).</p>';
   if (orden.estado === 'completada') {
     const { data: consumos } = await sb.from('orden_produccion_consumos').select('*').eq('orden_id', ordenId);
     if (consumos && consumos.length) {
@@ -606,7 +606,7 @@ async function verDetalleOrden(ordenId) {
    KPIs
 ===================================================== */
 function actualizarKPIsProduccion() {
-  const planificadas = STATE.ordenes.filter(o => o.estado === 'planificada').length;
+  const planificadas = STATE.ordenes.filter(o => o.estado === 'pendiente').length;
   const hoy = new Date();
   const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
   const completadasMes = STATE.ordenes.filter(o => o.estado === 'completada' && (o.fecha_planificada||'') >= inicioMes);
