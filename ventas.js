@@ -2225,64 +2225,19 @@ function promocionEstaVigente(promo) {
   return true;
 }
 
+// DESACTIVADO A PROPÓSITO -- decisión explícita del negocio: las
+// promociones NUNCA deben aplicarse solas, en silencio, detectando
+// coincidencias en el carrito. Deben funcionar exactamente como un
+// Combo -- una sola línea que el cajero elige y agrega a propósito
+// (ver agregarPromocionComoLineaUnica más abajo, que es la forma
+// correcta y la única que debe seguir funcionando).
+//
+// Bug real que causó esta decisión: un cliente compró un producto
+// (Taladro) que resultó estar vinculado como parte de 3 promociones
+// distintas y sin relación real con esa compra -- el sistema aplicó
+// los 3 descuentos a la vez, dejando el total en negativo.
 function calcularDescuentosPromociones(carrito, promociones) {
-  let total = 0;
-  const detalle = [];
-  const vigentes = (promociones || []).filter(promocionEstaVigente);
-
-  vigentes.forEach(promo => {
-    let monto = 0;
-
-    if (promo.tipo === 'nxm_mismo') {
-      const item = carrito.find(c => c.id === promo.producto_id);
-      if (!item || !promo.n_compra || !promo.m_paga) return;
-      const veces = Math.floor(item.cantidad / promo.n_compra);
-      if (veces <= 0) return;
-      const unidadesGratis = veces * (promo.n_compra - promo.m_paga);
-      monto = round2(unidadesGratis * item.precio);
-
-    } else if (promo.tipo === 'nxm_grupo') {
-      const idsGrupo = new Set((promo.promocion_productos || []).map(pp => pp.producto_id));
-      if (!idsGrupo.size || !promo.n_compra || !promo.m_paga) return;
-      const itemsGrupo = carrito.filter(c => idsGrupo.has(c.id));
-      const cantidadTotal = itemsGrupo.reduce((s, i) => s + i.cantidad, 0);
-      const veces = Math.floor(cantidadTotal / promo.n_compra);
-      if (veces <= 0) return;
-      const unidadesGratis = veces * (promo.n_compra - promo.m_paga);
-      // Se descuentan las unidades MÁS BARATAS del grupo, no las más
-      // caras — es lo justo y lo que el cliente esperaría.
-      const preciosUnitarios = [];
-      itemsGrupo.forEach(item => { for (let i = 0; i < item.cantidad; i++) preciosUnitarios.push(item.precio); });
-      preciosUnitarios.sort((a, b) => a - b);
-      monto = round2(preciosUnitarios.slice(0, unidadesGratis).reduce((s, p) => s + p, 0));
-
-    } else if (promo.tipo === 'regalo') {
-      const itemDisparador = carrito.find(c => c.id === promo.producto_disparador_id);
-      const itemRegalo = carrito.find(c => c.id === promo.producto_regalo_id);
-      if (!itemDisparador || !itemRegalo || !promo.cantidad_disparador) return;
-      const veces = Math.floor(itemDisparador.cantidad / promo.cantidad_disparador);
-      if (veces <= 0) return;
-      // Nunca se puede "regalar" más unidades de las que el cliente
-      // realmente lleva del producto regalo en el carrito.
-      const regalosOtorgados = Math.min(veces, itemRegalo.cantidad);
-      if (regalosOtorgados <= 0) return;
-      const descuentoPorUnidad = Math.max(0, itemRegalo.precio - Number(promo.precio_regalo || 0));
-      monto = round2(regalosOtorgados * descuentoPorUnidad);
-
-    } else if (promo.tipo === 'descuento_cantidad') {
-      const item = carrito.find(c => c.id === promo.producto_id);
-      if (!item || !promo.cantidad_minima) return;
-      if (item.cantidad < promo.cantidad_minima) return;
-      monto = round2(item.cantidad * item.precio * (Number(promo.descuento_porcentaje || 0) / 100));
-    }
-
-    if (monto > 0) {
-      total = round2(total + monto);
-      detalle.push({ nombre: promo.nombre, monto });
-    }
-  });
-
-  return { total, detalle };
+  return { total: 0, detalle: [] };
 }
 
 /* ============================================================
