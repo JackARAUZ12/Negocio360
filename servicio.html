@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Salarios — Negocio360</title>
+  <title>Servicio Postventa — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -959,19 +959,29 @@
     .badge-parcial   { background: var(--accent-3-soft); color: var(--accent-3); }
     .badge-fecha_fija { background: var(--accent-5-soft); color: var(--accent-5); }
     .badge-cuotas     { background: var(--accent-4-soft); color: var(--accent-4); }
-    .badge-activo     { background: var(--success-soft); color: var(--success); }
-    .badge-inactivo   { background: var(--bg-hover);     color: var(--text-muted); }
     .nc-paso-title {
       font-size: 14px; font-weight: 700; color: var(--text-primary);
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
     }
     .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .filtro-estado-btn.active, .tipo-repartidor-btn.active, .modo-venta-btn.active, .tipo-pago-btn.active,
+    .filtro-estado-activo-btn.active, .motivo-baja-btn.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+
+    .prod-tab-btn { padding:8px 16px; font-size:12.5px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; background:transparent; border:none; }
+    .prod-tab-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .prod-componente-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:var(--bg-app); border-radius:8px; margin-bottom:5px; font-size:12.5px; }
+    .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:16px}
+    .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -984,7 +994,7 @@
     </svg>
   </div>
   <div class="loader-spinner"></div>
-  <p style="font-size:13px;color:var(--text-muted)">Cargando Salarios…</p>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Sucursales…</p>
 </div>
 
 <!-- TOAST -->
@@ -1052,7 +1062,7 @@
         <span class="nav-label">Cuentas por Pagar</span>
       </div>
 
-      <div class="nav-item active" onclick="navigate('salarios.html')" data-tooltip="Salarios">
+      <div class="nav-item" onclick="navigate('salarios.html')" data-tooltip="Salarios">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
         <span class="nav-label">Salarios</span>
       </div>
@@ -1082,11 +1092,6 @@
         <span class="nav-label">Contabilidad</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <span class="nav-label">Consulta/Inventario</span>
-      </div>
-
       <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
         <span class="nav-label">Rutas</span>
@@ -1112,9 +1117,19 @@
         <span class="nav-label">Producción</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('servicio.html')" data-tooltip="Servicio Postventa">
+      <div class="nav-item active" onclick="navigate('servicio.html')" data-tooltip="Servicio Postventa">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         <span class="nav-label">Servicio Postventa</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
       </div>
 
       <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
@@ -1147,10 +1162,7 @@
 
       <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
 
-      <div class="nav-item" onclick="abrirNuevoEmpleado()" data-tooltip="Nuevo empleado">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span class="nav-label">Nuevo empleado</span>
-      </div>
+
 
       <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')" data-tooltip="Panel Admin" style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1165,7 +1177,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Salarios</span>
+      <span class="header-title">Servicio Postventa</span>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -1186,187 +1198,121 @@
     </header>
 
     <div id="content">
-
       <div class="greeting-row fade-in">
-        <div class="greeting-text">
-          <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span id="greeting-text">Salarios</span>
-          </h1>
-          <p>Empleados, pagos de salario, adelantos y bonificaciones — todo sale de Caja al confirmarse.</p>
+        <div>
+          <h1>Servicio Postventa / Garantías</h1>
+          <p>Reclamos, reparaciones y garantías — qué pasa después de la venta.</p>
         </div>
         <div class="greeting-actions">
-          <button class="btn-secondary" onclick="abrirConceptosNomina()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            Conceptos de Nómina
-          </button>
-          <button class="btn-secondary" onclick="abrirBonoAnualConfig()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-            Bono Anual
-          </button>
-          <button class="btn-secondary" onclick="abrirPlanillas()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
-            Planilla
-          </button>
-          <button class="btn-secondary" onclick="abrirOrganigrama()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="6"/><rect x="2" y="16" width="6" height="6"/><rect x="16" y="16" width="6" height="6"/><path d="M12 8v4M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/></svg>
-            Organigrama
-          </button>
-          <button class="btn-secondary" onclick="abrirReportesNomina()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-            Reportes
-          </button>
-          <button class="btn-primary" onclick="abrirNuevoEmpleado()">
+          <button class="btn-primary" onclick="abrirModalTicket()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nuevo empleado
+            Nuevo ticket
           </button>
         </div>
       </div>
 
-      <!-- ===== PANEL: PLANILLA (Fase 3) ===== -->
-      <div class="panel-card fade-in" id="panel-planillas" style="display:none;margin-bottom:20px">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V7h6v10M4 7h16v13H4z"/></svg>
-            Planillas — pagar a todo el equipo de una vez
-          </div>
-          <button class="btn-primary btn-sm" onclick="abrirNuevaPlanilla()">+ Nueva planilla</button>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Tickets abiertos</div>
+          <div style="font-size:20px;font-weight:800;color:var(--warning,#f59e0b)" id="kpi-abiertos">—</div>
         </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">En reparación</div>
+          <div style="font-size:20px;font-weight:800" id="kpi-reparacion">—</div>
+        </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Resueltos este mes</div>
+          <div style="font-size:20px;font-weight:800;color:var(--success)" id="kpi-resueltos-mes">—</div>
+        </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Tiempo promedio de resolución</div>
+          <div style="font-size:20px;font-weight:800" id="kpi-tiempo-promedio">—</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn-secondary btn-sm prod-tab-btn active" data-estado="" onclick="filtrarTicketsPorEstado('')">Todos</button>
+        <button class="btn-secondary btn-sm prod-tab-btn" data-estado="abierto" onclick="filtrarTicketsPorEstado('abierto')">Abiertos</button>
+        <button class="btn-secondary btn-sm prod-tab-btn" data-estado="en_reparacion" onclick="filtrarTicketsPorEstado('en_reparacion')">En reparación</button>
+        <button class="btn-secondary btn-sm prod-tab-btn" data-estado="resuelto" onclick="filtrarTicketsPorEstado('resuelto')">Resueltos</button>
+        <button class="btn-secondary btn-sm prod-tab-btn" data-estado="cambio_realizado" onclick="filtrarTicketsPorEstado('cambio_realizado')">Cambios</button>
+        <button class="btn-secondary btn-sm prod-tab-btn" data-estado="rechazado" onclick="filtrarTicketsPorEstado('rechazado')">Rechazados</button>
+      </div>
+
+      <div class="panel-card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Nombre</th><th>Período</th><th>Fecha de pago</th><th>Empleados</th><th>Total</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="planillas-tbody"><tr><td colspan="7" class="empty-cell">Cargando…</td></tr></tbody>
+            <thead><tr>
+              <th>N° Ticket</th><th>Cliente</th><th>Producto</th><th>Problema</th>
+              <th>Garantía</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
+            </tr></thead>
+            <tbody id="tabla-tickets-servicio"><tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
           </table>
         </div>
       </div>
 
-      <!-- ===== PANEL: ORGANIGRAMA ===== -->
-      <div class="panel-card fade-in" id="panel-organigrama" style="display:none;margin-bottom:20px">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="6"/></svg>
-            Organigrama
+      <!-- MODAL: NUEVO TICKET -->
+      <div class="modal-overlay" id="modal-ticket">
+        <div class="modal-box" style="max-width:560px">
+          <div class="modal-header">
+            <span class="modal-title">🛠️ Nuevo ticket de servicio</span>
+            <button class="modal-close" onclick="closeModal('modal-ticket')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
-        </div>
-        <div id="organigrama-cuerpo" style="padding:10px;overflow-x:auto"></div>
-      </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Cliente (opcional)</label>
+              <input type="text" id="tk-buscar-cliente" placeholder="Buscar cliente..." oninput="buscarClienteTicket(this.value)"/>
+              <input type="hidden" id="tk-cliente-id"/>
+              <div id="tk-cliente-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
+              <div id="tk-cliente-elegido" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
+            </div>
 
-      <!-- ===== PANEL: REPORTES DE NÓMINA ===== -->
-      <div class="panel-card fade-in" id="panel-reportes-nomina" style="display:none;margin-bottom:20px">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-            Reportes de Nómina (últimos 6 meses)
-          </div>
-        </div>
-        <div id="reportes-nomina-cuerpo" style="padding:14px">Cargando…</div>
-      </div>
+            <div class="form-group">
+              <label>Producto (opcional)</label>
+              <input type="text" id="tk-buscar-producto" placeholder="Buscar producto..." oninput="buscarProductoTicket(this.value)"/>
+              <input type="hidden" id="tk-producto-id"/>
+              <div id="tk-producto-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
+              <div id="tk-producto-elegido" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
+            </div>
 
-      <!-- KPI CARDS -->
-      <div class="kpi-grid">
-        <div class="kpi-card fade-in stagger-1">
-          <div class="kpi-icon" style="background:var(--accent-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Total empleados</div>
-            <div class="kpi-value" id="kpi-total-empleados">—</div>
-          </div>
-        </div>
+            <div class="form-row">
+              <div><label>Fecha de compra (opcional)</label><input type="date" id="tk-fecha-compra" onchange="actualizarEstadoGarantiaTicket()"/></div>
+              <div><label>Garantía (meses)</label><input type="number" id="tk-garantia-meses" min="0" step="1" placeholder="Ej: 12" oninput="actualizarEstadoGarantiaTicket()"/></div>
+            </div>
+            <div id="tk-estado-garantia" style="font-size:12.5px;margin-top:-6px;margin-bottom:10px"></div>
 
-        <div class="kpi-card fade-in stagger-2">
-          <div class="kpi-icon" style="background:var(--warning-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Pagos pendientes hoy</div>
-            <div class="kpi-value" id="kpi-pagos-pendientes">—</div>
-          </div>
-        </div>
+            <div class="form-group">
+              <label>¿Cuál es el problema? *</label>
+              <textarea id="tk-descripcion" placeholder="Describe la falla o el motivo del reclamo..."></textarea>
+            </div>
 
-        <div class="kpi-card fade-in stagger-3">
-          <div class="kpi-icon" style="background:var(--success-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Pagos este mes</div>
-            <div class="kpi-value" id="kpi-pagos-mes">—</div>
-          </div>
-        </div>
+            <div class="form-group">
+              <label>Técnico asignado (opcional)</label>
+              <input type="text" id="tk-tecnico" placeholder="Nombre de quien atiende el caso"/>
+            </div>
 
-        <div class="kpi-card fade-in stagger-4">
-          <div class="kpi-icon" style="background:var(--accent-3-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <p id="tk-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
           </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Gastado en salarios (mes)</div>
-            <div class="kpi-value" id="kpi-total-mes">—</div>
-          </div>
-        </div>
-
-        <div class="kpi-card fade-in stagger-5">
-          <div class="kpi-icon" style="background:var(--accent-5-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Próximo pago</div>
-            <div class="kpi-value" id="kpi-proximo-pago" style="font-size:15px">—</div>
-          </div>
-        </div>
-
-        <div class="kpi-card fade-in stagger-6">
-          <div class="kpi-icon" style="background:var(--accent-4-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          </div>
-          <div class="kpi-body">
-            <div class="kpi-label">Adelantos pendientes</div>
-            <div class="kpi-value" id="kpi-adelantos-pendientes">—</div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-ticket')">Cancelar</button>
+            <button class="btn-primary" id="btn-guardar-ticket" onclick="guardarTicket()">Crear ticket</button>
           </div>
         </div>
       </div>
 
-      <div class="panel-card fade-in" style="margin-top:20px">
-        <!-- FILTROS -->
-        <div class="filtros-row">
-          <button class="filter-btn active" data-filtro="todos"      onclick="setFiltroSal('todos')">Todos</button>
-          <button class="filter-btn"        data-filtro="activo"    onclick="setFiltroSal('activo')">Activos</button>
-          <button class="filter-btn"        data-filtro="inactivo"  onclick="setFiltroSal('inactivo')">Inactivos</button>
-          <button class="filter-btn"        data-filtro="pendiente" onclick="setFiltroSal('pendiente')">Pendientes de pago</button>
-          <button class="filter-btn"        data-filtro="pagado"    onclick="setFiltroSal('pagado')">Pagados hoy</button>
-
-          <div class="search-wrap" style="margin-left:auto">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="sal-search" placeholder="Buscar por nombre, cargo o tipo de salario…" oninput="buscarSal()" />
+      <!-- MODAL: DETALLE / ACTUALIZAR TICKET -->
+      <div class="modal-overlay" id="modal-detalle-ticket">
+        <div class="modal-box" style="max-width:560px">
+          <div class="modal-header">
+            <span class="modal-title" id="detalle-ticket-titulo">Ticket</span>
+            <button class="modal-close" onclick="closeModal('modal-detalle-ticket')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
-        </div>
-
-        <!-- TABLA -->
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Cargo</th>
-                <th>Tipo de salario</th>
-                <th class="th-right">Salario</th>
-                <th>Próximo pago</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="sal-tbody">
-              <tr><td colspan="7" class="empty-cell">Cargando empleados…</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="table-hint">← Desliza para ver todas las columnas →</div>
-
-        <div class="paginacion-row" id="paginacion">
-          <span id="paginacion-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
-          <div class="pag-btns">
-            <button id="btn-pag-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
-            <button id="btn-pag-next" onclick="paginaSiguiente()">Siguiente →</button>
-          </div>
+          <div class="modal-body" id="detalle-ticket-cuerpo"></div>
+          <div class="modal-footer" id="detalle-ticket-footer"></div>
         </div>
       </div>
 
@@ -1374,581 +1320,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<!-- =====================================================
-     MODAL: NUEVO / EDITAR EMPLEADO
-=================================================== -->
-<div class="modal-overlay" id="modal-empleado" onclick="if(event.target===this)closeModal('modal-empleado')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <h3 id="emp-modal-title">Nuevo empleado</h3>
-      <button class="modal-close" onclick="closeModal('modal-empleado')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="emp-id"/>
-      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:8px">Datos básicos</label>
-      <div class="form-row">
-        <div class="form-group"><label>Nombre completo *</label><input type="text" id="emp-nombre" placeholder="Ej: María Gómez"/></div>
-        <div class="form-group"><label>Cargo</label><input type="text" id="emp-cargo" placeholder="Ej: Vendedora"/></div>
-        <div class="form-group"><label>Teléfono (opcional)</label><input type="text" id="emp-telefono"/></div>
-        <div class="form-group"><label>Correo (opcional)</label><input type="text" id="emp-correo"/></div>
-        <div class="form-group"><label>Fecha de ingreso</label><input type="date" id="emp-fecha-ingreso"/></div>
-        <div class="form-group">
-          <label>Tipo de salario *</label>
-          <select id="emp-tipo-salario">
-            <option value="mensual">Mensual</option>
-            <option value="quincenal">Quincenal</option>
-            <option value="semanal">Semanal</option>
-            <option value="diario">Diario</option>
-          </select>
-        </div>
-        <div class="form-group"><label>Monto del salario *</label><input type="number" id="emp-salario" min="0" step="0.01" placeholder="0.00"/></div>
-        <div class="form-group">
-          <label>Estado</label>
-          <select id="emp-estado">
-            <option value="activo">Activo</option>
-            <option value="inactivo">Inactivo</option>
-          </select>
-        </div>
-      </div>
-
-      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin:16px 0 8px">Datos personales</label>
-      <div class="form-row">
-        <div class="form-group"><label>Cédula / identificación</label><input type="text" id="emp-cedula"/></div>
-        <div class="form-group"><label>Fecha de nacimiento</label><input type="date" id="emp-fecha-nacimiento"/></div>
-        <div class="form-group full-col"><label>Dirección</label><input type="text" id="emp-direccion"/></div>
-        <div class="form-group"><label>Contacto de emergencia — nombre</label><input type="text" id="emp-contacto-nombre"/></div>
-        <div class="form-group"><label>Contacto de emergencia — teléfono</label><input type="text" id="emp-contacto-telefono"/></div>
-      </div>
-
-      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin:16px 0 8px">Datos laborales</label>
-      <div class="form-row">
-        <div class="form-group"><label>País (para las deducciones de ley)</label>
-          <select id="emp-pais">
-            <option value="NI">Nicaragua</option>
-            <option value="OTRO">Otro / genérico</option>
-          </select>
-        </div>
-        <div class="form-group"><label>Departamento / área</label><input type="text" id="emp-departamento" placeholder="Ej: Ventas"/></div>
-        <div class="form-group"><label>Reporta a</label>
-          <select id="emp-reporta-a"><option value="">— Nadie / gerencia —</option></select>
-        </div>
-        <div class="form-group"><label>Tipo de contrato</label>
-          <select id="emp-tipo-contrato" onchange="document.getElementById('emp-fecha-fin-wrap').style.display = this.value==='plazo_fijo' ? '' : 'none'">
-            <option value="indefinido">Indefinido</option>
-            <option value="plazo_fijo">Plazo fijo</option>
-            <option value="por_obra">Por obra</option>
-          </select>
-        </div>
-        <div class="form-group" id="emp-fecha-fin-wrap" style="display:none"><label>Fecha de fin de contrato</label><input type="date" id="emp-fecha-fin-contrato"/></div>
-      </div>
-
-      <div class="form-group"><label>Observaciones</label><textarea id="emp-observaciones" rows="2"></textarea></div>
-      <p id="emp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" id="btn-generar-contrato" style="display:none" onclick="generarContratoTrabajo()">📄 Generar contrato</button>
-      <button class="btn-secondary" id="btn-generar-constancia" style="display:none" onclick="generarConstanciaSalarial()">📄 Constancia salarial</button>
-      <div style="flex:1"></div>
-      <button class="btn-ghost" onclick="closeModal('modal-empleado')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-empleado" onclick="guardarEmpleado()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: CONCEPTOS DE NÓMINA (deducciones / aportes patronales)
-     Motor genérico — cada negocio configura los suyos, o carga una
-     plantilla de su país como punto de partida.
-=================================================== -->
-<div class="modal-overlay" id="modal-conceptos-nomina" onclick="if(event.target===this)closeModal('modal-conceptos-nomina')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <h3>Conceptos de Nómina</h3>
-      <button class="modal-close" onclick="closeModal('modal-conceptos-nomina')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-        Estos son los descuentos y aportes que se calculan automáticamente en cada pago — configúralos según las leyes de tu país, o carga una plantilla como punto de partida.
-      </p>
-      <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-        <button class="btn-secondary btn-sm" onclick="cargarPlantillaConceptos('NI')">🇳🇮 Cargar plantilla de Nicaragua</button>
-        <button class="btn-primary btn-sm" onclick="abrirNuevoConcepto()">+ Concepto personalizado</button>
-      </div>
-      <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px">
-        La plantilla de Nicaragua trae el INSS Patronal en 21.5% (para negocios con menos de 50 empleados). Si tu negocio tiene 50 o más, edítalo a 22.5% desde la lista de abajo.
-      </p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Nombre</th><th>Tipo</th><th>Cálculo</th><th>Activo</th><th></th></tr></thead>
-          <tbody id="conceptos-tbody"><tr><td colspan="5" class="empty-cell">Cargando…</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-conceptos-nomina')">Cerrar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: NUEVO / EDITAR CONCEPTO
-=================================================== -->
-<div class="modal-overlay" id="modal-nuevo-concepto" onclick="if(event.target===this)closeModal('modal-nuevo-concepto')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3 id="con-modal-title">Nuevo concepto</h3>
-      <button class="modal-close" onclick="closeModal('modal-nuevo-concepto')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="con-id"/>
-      <div class="form-group"><label>Nombre *</label><input type="text" id="con-nombre" placeholder="Ej: Seguro Social (empleado)"/></div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Tipo *</label>
-          <select id="con-tipo">
-            <option value="deduccion">Deducción (se descuenta al empleado)</option>
-            <option value="aporte_patronal">Aporte patronal (lo paga el negocio, no se descuenta)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Cómo se calcula *</label>
-          <select id="con-metodo" onchange="toggleMetodoConceptoUI()">
-            <option value="porcentaje">% del salario</option>
-            <option value="monto_fijo">Monto fijo</option>
-            <option value="tabla_progresiva">Tabla progresiva (tipo impuesto sobre la renta)</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group" id="con-valor-wrap">
-        <label id="con-valor-label">Porcentaje (%)</label>
-        <input type="number" id="con-valor" min="0" step="0.01"/>
-      </div>
-      <div id="con-tabla-wrap" style="display:none">
-        <label style="font-size:12.5px;font-weight:600">Tramos de la tabla progresiva</label>
-        <div id="con-tabla-tramos"></div>
-        <button type="button" class="btn-secondary btn-sm" style="margin-top:6px" onclick="agregarTramoConcepto()">+ Agregar tramo</button>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px">
-        <input type="checkbox" id="con-obligatorio"/> Es obligatorio por ley (informativo)
-      </label>
-      <p id="con-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-nuevo-concepto')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-concepto" onclick="guardarConcepto()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: NUEVA PLANILLA (Fase 3)
-=================================================== -->
-<div class="modal-overlay" id="modal-nueva-planilla" onclick="if(event.target===this)closeModal('modal-nueva-planilla')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <h3>Nueva planilla</h3>
-      <button class="modal-close" onclick="closeModal('modal-nueva-planilla')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="form-group"><label>Nombre de la planilla *</label><input type="text" id="pl-nombre" placeholder="Ej: Quincena 1 - Agosto"/></div>
-        <div class="form-group"><label>Período desde</label><input type="date" id="pl-desde"/></div>
-        <div class="form-group"><label>Período hasta</label><input type="date" id="pl-hasta"/></div>
-        <div class="form-group"><label>Fecha de pago</label><input type="date" id="pl-fecha-pago"/></div>
-      </div>
-      <label style="font-size:12.5px;font-weight:600;margin:10px 0 6px;display:block">Empleados a incluir</label>
-      <div id="pl-lista-empleados" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:10px"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <span style="font-weight:700">Total de la planilla</span>
-        <span style="font-size:18px;font-weight:800;color:var(--accent)" id="pl-total-general">C$ 0.00</span>
-      </div>
-      <p id="pl-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-nueva-planilla')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-planilla-borrador" onclick="guardarPlanilla(false)">Guardar como borrador</button>
-      <button class="btn-primary" id="btn-pagar-planilla" style="background:var(--success)" onclick="guardarPlanilla(true)">Pagar toda la planilla</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: EXPORTAR PLANILLA (PDF / Excel, profesional)
-     Usa SOLO los datos ya guardados de cada pago — nunca recalcula
-     nada, para que no haya ningún margen de error entre lo que se
-     pagó de verdad y lo que sale en el documento.
-=================================================== -->
-<!-- =====================================================
-     MODAL: VACACIONES
-=================================================== -->
-<div class="modal-overlay" id="modal-vacaciones" onclick="if(event.target===this)closeModal('modal-vacaciones')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <h3>Vacaciones — <span id="vac-empleado-nombre">—</span></h3>
-      <button class="modal-close" onclick="closeModal('modal-vacaciones')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row" style="margin-bottom:14px">
-        <div><label>Días acumulados</label><div class="stat-readonly" id="vac-acumulados">—</div></div>
-        <div><label>Días ya tomados</label><div class="stat-readonly" id="vac-tomados">—</div></div>
-        <div><label>Días disponibles</label><div class="stat-readonly" id="vac-disponibles" style="font-weight:800;color:var(--accent)">—</div></div>
-      </div>
-      <p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">
-        Se acumulan solos, en proporción a los días de vacaciones al año configurados en Configuración de la empresa y el tiempo trabajado.
-      </p>
-      <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Registrar vacaciones tomadas</label>
-      <div class="form-row">
-        <div class="form-group"><label>Desde</label><input type="date" id="vac-desde"/></div>
-        <div class="form-group"><label>Hasta</label><input type="date" id="vac-hasta"/></div>
-        <div class="form-group"><label>Días</label><input type="number" id="vac-dias" min="0.5" step="0.5"/></div>
-      </div>
-      <div class="form-group"><label>Nota (opcional)</label><input type="text" id="vac-nota"/></div>
-      <p id="vac-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-      <label style="font-size:12.5px;font-weight:600;display:block;margin:16px 0 6px">Historial</label>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Desde</th><th>Hasta</th><th>Días</th><th>Nota</th></tr></thead>
-        <tbody id="vac-historial-tbody"><tr><td colspan="4" class="empty-cell">Sin registros</td></tr></tbody>
-      </table></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-vacaciones')">Cerrar</button>
-      <button class="btn-primary" id="btn-registrar-vacaciones" onclick="registrarVacacionesTomadas()">Registrar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: REGISTRAR AUSENCIA
-=================================================== -->
-<div class="modal-overlay" id="modal-ausencia" onclick="if(event.target===this)closeModal('modal-ausencia')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3>Registrar ausencia — <span id="aus-empleado-nombre">—</span></h3>
-      <button class="modal-close" onclick="closeModal('modal-ausencia')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="form-group"><label>Desde</label><input type="date" id="aus-desde"/></div>
-        <div class="form-group"><label>Hasta</label><input type="date" id="aus-hasta"/></div>
-        <div class="form-group"><label>Días</label><input type="number" id="aus-dias" min="0.5" step="0.5"/></div>
-      </div>
-      <div class="form-group">
-        <label>Tipo</label>
-        <select id="aus-tipo">
-          <option value="sin_goce">Sin goce de sueldo (se descuenta del siguiente pago)</option>
-          <option value="con_goce">Con goce de sueldo (no afecta el pago)</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Motivo</label><input type="text" id="aus-motivo" placeholder="Ej: permiso personal, incapacidad"/></div>
-      <p id="aus-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-ausencia')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-ausencia" onclick="guardarAusencia()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: LIQUIDAR / TERMINAR CONTRATO (indemnización)
-=================================================== -->
-<div class="modal-overlay" id="modal-liquidar" onclick="if(event.target===this)closeModal('modal-liquidar')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <h3>Liquidación final — <span id="liq-empleado-nombre">—</span></h3>
-      <button class="modal-close" onclick="closeModal('modal-liquidar')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row" style="margin-bottom:14px">
-        <div><label>Fecha de ingreso</label><div class="stat-readonly" id="liq-fecha-ingreso">—</div></div>
-        <div><label>Tiempo trabajado</label><div class="stat-readonly" id="liq-tiempo">—</div></div>
-        <div><label>Días de indemnización por año</label><input type="number" id="liq-dias-por-anio" min="0" step="0.5"/></div>
-      </div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div><label>Indemnización por antigüedad</label><div class="stat-readonly" id="liq-monto-indemnizacion" style="font-weight:700">—</div></div>
-        <div><label>Días de vacaciones pendientes</label><div class="stat-readonly" id="liq-dias-vacaciones">—</div></div>
-        <div><label>Monto de vacaciones pendientes</label><div class="stat-readonly" id="liq-monto-vacaciones" style="font-weight:700">—</div></div>
-      </div>
-      <div class="form-group"><label>Otros montos a incluir (opcional)</label><input type="number" id="liq-otros-monto" min="0" step="0.01" placeholder="0.00"/></div>
-      <div class="form-group"><label>Detalle de esos otros montos</label><input type="text" id="liq-otros-detalle"/></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0;padding-top:12px;border-top:1px solid var(--border)">
-        <span style="font-weight:700">Total a pagar</span>
-        <span style="font-size:20px;font-weight:800;color:var(--accent)" id="liq-total">—</span>
-      </div>
-      <div class="form-group"><label>Fecha de pago</label><input type="date" id="liq-fecha-pago"/></div>
-      <div class="form-group"><label>Observaciones</label><textarea id="liq-observaciones" rows="2"></textarea></div>
-      <p style="font-size:11.5px;color:var(--warning);margin-top:6px">⚠️ Al confirmar, el empleado quedará marcado como inactivo y esto descontará de Caja.</p>
-      <p id="liq-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-liquidar')">Cancelar</button>
-      <button class="btn-primary" id="btn-confirmar-liquidacion" style="background:var(--danger)" onclick="confirmarLiquidacion()">Confirmar liquidación</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modal-exportar-planilla" onclick="if(event.target===this)closeModal('modal-exportar-planilla')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3>Descargar planilla</h3>
-      <button class="modal-close" onclick="closeModal('modal-exportar-planilla')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>Formato del documento</label>
-        <select id="ep-formato">
-          <option value="NI">🇳🇮 Formato Nicaragua (estilo Planilla Nacional de Pago)</option>
-          <option value="generico">Formato genérico (nombre, cargo, ingresos, deducciones, neto)</option>
-        </select>
-      </div>
-      <p style="font-size:11.5px;color:var(--text-muted)">
-        Los montos que salen aquí son exactamente los que ya se pagaron — nunca se vuelven a calcular al exportar.
-      </p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-exportar-planilla')">Cancelar</button>
-      <button class="btn-secondary" onclick="exportarPlanilla('excel')">📊 Descargar Excel</button>
-      <button class="btn-primary" onclick="exportarPlanilla('pdf')">📄 Descargar PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: CONFIGURAR BONO ANUAL (Aguinaldo / 13er mes / etc.)
-     Genérico — nombre, número de cuotas y fechas configurables,
-     porque varía mucho según el país.
-=================================================== -->
-<div class="modal-overlay" id="modal-bono-anual-config" onclick="if(event.target===this)closeModal('modal-bono-anual-config')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3>Bono Anual (Aguinaldo / 13er mes)</h3>
-      <button class="modal-close" onclick="closeModal('modal-bono-anual-config')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-        Este bono se llama distinto según el país (Aguinaldo, 13th month, Prima, 13º salário...) y se paga distinto — algunos países lo dan una vez al año, otros en 2 o más partes. Configúralo como aplique en el tuyo.
-      </p>
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13.5px;font-weight:600">
-        <input type="checkbox" id="ba-activo"/> Activar Bono Anual para mi negocio
-      </label>
-      <div class="form-group"><label>Nombre de este bono</label><input type="text" id="ba-nombre" placeholder="Ej: Aguinaldo"/></div>
-      <div class="form-group">
-        <label>¿En cuántas partes se paga al año?</label>
-        <select id="ba-num-cuotas" onchange="renderFechasBonoAnual()">
-          <option value="1">1 pago al año</option>
-          <option value="2">2 pagos al año</option>
-          <option value="3">3 pagos al año</option>
-          <option value="4">4 pagos al año</option>
-        </select>
-      </div>
-      <label style="font-size:12.5px;font-weight:600;margin-bottom:6px;display:block">Fecha límite de cada pago (día y mes)</label>
-      <div id="ba-fechas-lista"></div>
-      <p id="ba-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-bono-anual-config')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-bono-config" onclick="guardarBonoAnualConfig()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: PAGAR BONO ANUAL A UN EMPLEADO
-=================================================== -->
-<div class="modal-overlay" id="modal-pagar-bono" onclick="if(event.target===this)closeModal('modal-pagar-bono')">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3 id="pb-titulo">Pagar Bono Anual</h3>
-      <button class="modal-close" onclick="closeModal('modal-pagar-bono')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div><label>Empleado</label><div class="stat-readonly" id="pb-empleado-nombre">—</div></div>
-        <div><label>Cuota</label><div class="stat-readonly" id="pb-cuota-numero">—</div></div>
-        <div><label>Período que cubre</label><div class="stat-readonly" id="pb-periodo">—</div></div>
-      </div>
-      <div class="form-group"><label>Monto a pagar (calculado proporcional, editable)</label><input type="number" id="pb-monto" min="0" step="0.01"/></div>
-      <div class="form-group"><label>Fecha de pago</label><input type="date" id="pb-fecha"/></div>
-      <div class="form-group"><label>Observaciones</label><input type="text" id="pb-observaciones"/></div>
-      <p id="pb-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-pagar-bono')">Cancelar</button>
-      <button class="btn-primary" id="btn-confirmar-bono" onclick="confirmarPagoBonoAnual()">Confirmar pago</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: HISTORIAL DEL EMPLEADO (pagos + adelantos)
-=================================================== -->
-<div class="modal-overlay" id="modal-historial-empleado" onclick="if(event.target===this)closeModal('modal-historial-empleado')">
-  <div class="modal-box modal-lg">
-    <div class="modal-header">
-      <h3 id="hist-emp-title">Historial</h3>
-      <button class="modal-close" onclick="closeModal('modal-historial-empleado')">&times;</button>
-    </div>
-    <div class="modal-body" id="historial-empleado-body">Cargando…</div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-historial-empleado')">Cerrar</button>
-      <button class="btn-secondary" onclick="abrirAdelantoDesdeHistorial()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Registrar adelanto
-      </button>
-      <button class="btn-primary" onclick="abrirPagarDesdeHistorial()">Registrar pago</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: REGISTRAR ADELANTO
-=================================================== -->
-<div class="modal-overlay" id="modal-adelanto" onclick="if(event.target===this)closeModal('modal-adelanto')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <h3>Registrar adelanto</h3>
-      <button class="modal-close" onclick="closeModal('modal-adelanto')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px" id="adel-empleado-nombre">—</p>
-      <div class="form-group"><label>Monto *</label><input type="number" id="adel-monto" min="0.01" step="0.01" placeholder="0.00"/></div>
-      <div class="form-group"><label>Fecha</label><input type="date" id="adel-fecha"/></div>
-      <div class="form-group"><label>Motivo</label><input type="text" id="adel-motivo" placeholder="Ej: emergencia familiar"/></div>
-      <p style="font-size:11.5px;color:var(--text-muted)">El adelanto queda pendiente — no descuenta dinero ahora. Se preguntará si se descuenta cuando se registre el próximo pago.</p>
-      <p id="adel-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-adelanto')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-adelanto" onclick="guardarAdelanto()">Registrar</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: REGISTRAR PAGO
-=================================================== -->
-<div class="modal-overlay" id="modal-pagar-sal" onclick="if(event.target===this)closeModal('modal-pagar-sal')">
-  <div class="modal-box modal-xl" style="display:flex;flex-direction:column;max-height:92vh">
-    <div class="modal-header" style="flex-shrink:0">
-      <h3>Registrar pago — <span id="pg-sal-empleado-nombre">—</span></h3>
-      <button class="modal-close" onclick="closeModal('modal-pagar-sal')">&times;</button>
-    </div>
-    <div class="modal-body" style="flex:1;overflow-y:auto">
-
-      <div class="resumen-card" style="margin-bottom:16px">
-        <div class="resumen-fila"><span class="resumen-label">Salario base</span><span class="resumen-val" id="pg-sal-base">—</span></div>
-      </div>
-
-      <!-- BONIFICACIONES -->
-      <div class="nc-paso-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        Bonificaciones
-      </div>
-      <div id="pg-sal-bonos-lista"></div>
-      <div class="form-row" style="align-items:flex-end">
-        <div class="form-group" style="margin-bottom:0"><label>Descripción</label><input type="text" id="pg-sal-bono-desc" placeholder="Ej: Bono de productividad"/></div>
-        <div class="form-group" style="margin-bottom:0;max-width:140px"><label>Monto</label><input type="number" id="pg-sal-bono-monto" min="0.01" step="0.01"/></div>
-        <button class="btn-secondary" type="button" onclick="agregarBonoSal()" style="height:38px">+ Agregar</button>
-      </div>
-
-      <!-- DEDUCCIONES -->
-      <div class="nc-paso-title" style="margin-top:18px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Deducciones
-      </div>
-      <div id="pg-sal-deducciones-lista"></div>
-      <div class="form-row" style="align-items:flex-end">
-        <div class="form-group" style="margin-bottom:0"><label>Descripción</label><input type="text" id="pg-sal-deduccion-desc" placeholder="Ej: Multa por tardanza"/></div>
-        <div class="form-group" style="margin-bottom:0;max-width:140px"><label>Monto</label><input type="number" id="pg-sal-deduccion-monto" min="0.01" step="0.01"/></div>
-        <button class="btn-secondary" type="button" onclick="agregarDeduccionSal()" style="height:38px">+ Agregar</button>
-      </div>
-
-      <!-- APORTES PATRONALES (informativo, no descuenta al empleado) -->
-      <div style="display:none;margin-top:18px" id="pg-sal-aportes-wrap">
-        <div class="nc-paso-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-          Aportes patronales (los paga el negocio, no se le descuentan al empleado)
-        </div>
-        <div id="pg-sal-aportes-lista"></div>
-      </div>
-
-      <!-- ADELANTOS PENDIENTES -->
-      <div id="pg-sal-adelantos-wrap" style="display:none;margin-top:18px">
-        <div class="nc-paso-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Este empleado tiene adelantos pendientes
-        </div>
-        <div id="pg-sal-adelantos-lista" style="margin-bottom:10px"></div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer">
-          <input type="checkbox" id="pg-sal-descontar-adelantos" onchange="recalcularTotalPagoSal()" style="width:16px;height:16px;accent-color:var(--accent)"/>
-          ¿Deseas descontarlos en este pago?
-        </label>
-      </div>
-
-      <div class="resumen-card" style="margin-top:18px">
-        <div class="resumen-fila"><span class="resumen-label">Salario base</span><span class="resumen-val" id="pg-sal-resumen-base">—</span></div>
-        <div class="resumen-fila"><span class="resumen-label">Bonificaciones</span><span class="resumen-val" id="pg-sal-resumen-bonos">—</span></div>
-        <div class="resumen-fila"><span class="resumen-label">Deducciones</span><span class="resumen-val" id="pg-sal-resumen-deducciones" style="color:var(--danger)">—</span></div>
-        <div class="resumen-fila"><span class="resumen-label">Adelantos descontados</span><span class="resumen-val" id="pg-sal-resumen-adelantos" style="color:var(--danger)">—</span></div>
-        <div class="resumen-fila resumen-total"><span class="resumen-label" style="font-size:16px;font-weight:800;color:var(--text-primary)">Total a pagar</span><span class="resumen-val" id="pg-sal-resumen-total" style="font-size:20px">—</span></div>
-      </div>
-
-      <div class="form-row" style="margin-top:16px">
-        <div class="form-group"><label>Método de pago</label><select id="pg-sal-metodo"></select></div>
-        <div class="form-group"><label>Fecha</label><input type="date" id="pg-sal-fecha"/></div>
-      </div>
-      <div class="form-group"><label>Observaciones</label><textarea id="pg-sal-observaciones" rows="2"></textarea></div>
-      <p id="pg-sal-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer" style="flex-shrink:0">
-      <button class="btn-ghost" onclick="closeModal('modal-pagar-sal')">Cancelar</button>
-      <button class="btn-primary" id="btn-confirmar-pago-sal" onclick="confirmarPagoSal()">Registrar pago</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: CONFIRMAR ELIMINAR EMPLEADO
-=================================================== -->
-<div class="modal-overlay" id="modal-confirmar-eliminar-emp" onclick="if(event.target===this)closeModal('modal-confirmar-eliminar-emp')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <h3>Eliminar empleado</h3>
-      <button class="modal-close" onclick="closeModal('modal-confirmar-eliminar-emp')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:13.5px">Esto elimina al empleado y todo su historial de pagos y adelantos. Esta acción no se puede deshacer.</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-confirmar-eliminar-emp')">Cancelar</button>
-      <button class="btn-primary" style="background:var(--danger)" id="btn-confirmar-eliminar-emp" onclick="eliminarEmpleado()">Eliminar definitivamente</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: COMPROBANTE
-=================================================== -->
-<div class="modal-overlay" id="modal-comprobante-sal" onclick="if(event.target===this)closeModal('modal-comprobante-sal')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <h3>Comprobante de pago</h3>
-      <button class="modal-close" onclick="closeModal('modal-comprobante-sal')">&times;</button>
-    </div>
-    <div class="modal-body" id="comprobante-sal-body">—</div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-comprobante-sal')">Cerrar</button>
-      <button class="btn-primary" onclick="imprimirComprobanteSal()">Imprimir</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     SCRIPT
-===================================================== -->
-<script src="cajaAPI.js"></script>
-<script src="salarios.js"></script>
-
+<script src="servicio.js?v=20260821a"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
