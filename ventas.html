@@ -1271,21 +1271,30 @@
           <label>Ancho del papel (impresora térmica)</label>
           <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
-              <input type="radio" name="vrc-ancho" value="58mm"> 58mm (térmica angosta)
+              <input type="radio" name="vrc-ancho" value="58mm" onchange="onCambiarAnchoTicketVR()"> 58mm (térmica angosta)
             </label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
-              <input type="radio" name="vrc-ancho" value="80mm" checked> 80mm (térmica estándar)
+              <input type="radio" name="vrc-ancho" value="80mm" checked onchange="onCambiarAnchoTicketVR()"> 80mm (térmica estándar)
             </label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
-              <input type="radio" name="vrc-ancho" value="76mm"> 76mm (matriz de punto, ej. Epson TM-U220A)
+              <input type="radio" name="vrc-ancho" value="76mm" onchange="onCambiarAnchoTicketVR()"> 76mm (matriz de punto, ej. Epson TM-U220A)
             </label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
-              <input type="radio" name="vrc-ancho" value="carta"> Carta / A4 (hoja completa)
+              <input type="radio" name="vrc-ancho" value="carta" onchange="onCambiarAnchoTicketVR()"> Carta / A4 (hoja completa)
             </label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
-              <input type="radio" name="vrc-ancho" value="epson_tmu220"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
+              <input type="radio" name="vrc-ancho" value="epson_tmu220" onchange="onCambiarAnchoTicketVR()"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
             </label>
           </div>
+        </div>
+
+        <div class="form-group full-col" id="vrc-wrap-usb" style="display:none;padding:10px 12px;background:var(--bg-app);border-radius:8px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:6px">
+            <input type="checkbox" id="vrc-usar-usb" onchange="toggleUsarUSBVR()"/>
+            <span>🔌 Imprimir directo por USB (letra real de la impresora, no una simulación)</span>
+          </label>
+          <div id="vrc-usb-estado" style="font-size:11.5px;color:var(--text-muted)">Solo funciona en Chrome o Edge, con la impresora conectada por USB.</div>
+          <button type="button" class="btn-secondary btn-sm" id="vrc-btn-conectar-usb" style="display:none;margin-top:8px" onclick="conectarImpresoraUSBDesdeUI('vr')">Conectar impresora USB</button>
         </div>
         <div class="form-group full-col">
           <label>Nombre del negocio en el ticket</label>
@@ -1713,6 +1722,7 @@
 
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
+<script src="escpos-usb.js?v=20260821a"></script>
 <script src="ventas.js?v=20260821d"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
