@@ -3773,6 +3773,36 @@ function onCambiarAnchoTicketVR() {
   const esEpson = document.querySelector('input[name="vrc-ancho"]:checked')?.value === 'epson_tmu220';
   const wrap = document.getElementById('vrc-wrap-usb');
   if (wrap) wrap.style.display = esEpson ? '' : 'none';
+  if (esEpson) inicializarImpresionAppEscritorio();
+}
+
+// Si esta página corre dentro de la app de escritorio de Negocio360
+// (no en un navegador normal), window.negocio360Print existe -- se
+// ofrece entonces la impresora tal como está instalada en Windows,
+// la forma más confiable de las 3 disponibles.
+async function inicializarImpresionAppEscritorio() {
+  const wrapApp = document.getElementById('vrc-wrap-app-escritorio');
+  if (!wrapApp) return;
+  if (!window.negocio360Print?.disponible) { wrapApp.style.display = 'none'; return; }
+
+  wrapApp.style.display = '';
+  const sel = document.getElementById('vrc-impresora-nativa');
+  if (!sel || sel.dataset.cargado === 'true') return; // no recargar cada vez que se abre el modal
+
+  try {
+    const resultado = await window.negocio360Print.listarImpresoras();
+    if (resultado.ok && resultado.impresoras.length) {
+      const guardada = localStorage.getItem('n360_impresora_nativa') || '';
+      sel.innerHTML = '<option value="">— Ninguna (usar impresión normal) —</option>' +
+        resultado.impresoras.map(nombre => `<option value="${nombre.replace(/"/g,'&quot;')}" ${nombre===guardada?'selected':''}>${nombre}</option>`).join('');
+    }
+    sel.dataset.cargado = 'true';
+  } catch (e) { console.warn('No se pudieron listar las impresoras de Windows:', e); }
+}
+
+function guardarImpresoraNativaElegida() {
+  const sel = document.getElementById('vrc-impresora-nativa');
+  if (sel) localStorage.setItem('n360_impresora_nativa', sel.value || '');
 }
 
 function toggleUsarUSBVR() {
@@ -4484,30 +4514,50 @@ async function confirmarVentaRapida() {
 
 /* ---------- Ticket térmico (58mm/80mm) vía diálogo de impresión ---------- */
 
-// Envoltorio: intenta USB (ESC/POS real) primero si está activado y
-// conectado; si falla por cualquier motivo, cae de vuelta a la
-// impresión normal (CSS) de siempre -- nunca deja al negocio sin
-// poder imprimir. La función CSS de abajo queda intacta, sin tocar
-// ni una linea de su logica ya probada.
-function imprimirTicketVentaRapida(venta, items, resumen) {
-  const usarUSB = document.getElementById('vrc-usar-usb')?.checked && escposConectado();
-  if (!usarUSB) { imprimirTicketVentaRapidaCSS(venta, items, resumen); return; }
+// Arma los datos base del recibo a partir de una venta ya guardada —
+// compartido entre las 3 vías de impresión posibles.
+function construirDatosReciboDesdeVenta(cfg, venta, items) {
+  const lineasItems = (items||[]).map(i => `${i.cantidad}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
+  return {
+    nombreNegocio: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360',
+    encabezadoLineas: [`Venta: ${venta.numero_venta}`, `Fecha: ${fmtFecha(venta.fecha||todayISO())}`],
+    items: lineasItems,
+    totalTexto: `TOTAL: ${fmt(venta.total)}`,
+    piePagina: '¡Gracias por su compra!',
+  };
+}
 
-  (async () => {
-    const cfg = VR.config || {};
-    const lineasItems = (items||[]).map(i => `${i.cantidad}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
-    const resultado = await imprimirReciboESCPOS({
-      nombreNegocio: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360',
-      encabezadoLineas: [`Venta: ${venta.numero_venta}`, `Fecha: ${fmtFecha(venta.fecha||todayISO())}`],
-      items: lineasItems,
-      totalTexto: `TOTAL: ${fmt(venta.total)}`,
-      piePagina: '¡Gracias por su compra!',
-    });
-    if (!resultado.ok) {
-      console.warn('Impresión USB falló, cayendo a impresión normal:', resultado.motivo);
-      imprimirTicketVentaRapidaCSS(venta, items, resumen);
-    }
-  })();
+// Intenta la via mas confiable primero, y va cayendo a la siguiente
+// si la anterior falla o no aplica -- nunca deja al negocio sin
+// poder imprimir:
+//   1) App de escritorio nativa (RAW directo a Windows, la mejor)
+//   2) USB directo del navegador (WebUSB, solo Chrome/Edge)
+//   3) Impresion normal de siempre (CSS + dialogo de impresion)
+async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
+  const impresoraNativa = localStorage.getItem('n360_impresora_nativa') || '';
+  if (window.negocio360Print?.disponible && impresoraNativa) {
+    try {
+      const bytes = construirReciboESCPOS(construirDatosReciboDesdeVenta(cfg, venta, items));
+      const resultado = await window.negocio360Print.imprimir(impresoraNativa, bytes);
+      if (resultado.ok) return;
+      console.warn('Impresión nativa (app de escritorio) falló, probando la siguiente vía:', resultado.motivo);
+    } catch (e) { console.warn('Impresión nativa dio error, probando la siguiente vía:', e); }
+  }
+
+  const usarUSB = document.getElementById('vrc-usar-usb')?.checked && escposConectado();
+  if (usarUSB) {
+    const resultado = await imprimirReciboESCPOS(construirDatosReciboDesdeVenta(cfg, venta, items));
+    if (resultado.ok) return;
+    console.warn('Impresión USB (navegador) falló, cayendo a impresión normal:', resultado.motivo);
+  }
+
+  funcionCSS();
+}
+
+// Envoltorio de Venta Rápida — nunca toca la función CSS original,
+// solo decide cuál vía usar primero.
+function imprimirTicketVentaRapida(venta, items, resumen) {
+  imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketVentaRapidaCSS(venta, items, resumen));
 }
 
 function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
@@ -4639,27 +4689,10 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
    imprimirTicketVentaRapida(): no la modifica ni depende de ella,
    para no arriesgar el funcionamiento ya probado de Venta rápida.
    ============================================================ */
-// Mismo criterio que en Venta Rápida — intenta USB primero, cae al
-// CSS si falla o no está activado.
+// Mismo criterio que en Venta Rápida — usa la función compartida de
+// prioridad (nativo → USB navegador → CSS).
 function imprimirTicketNuevaVenta(venta, items, resumen) {
-  const usarUSB = document.getElementById('vrc-usar-usb')?.checked && escposConectado();
-  if (!usarUSB) { imprimirTicketNuevaVentaCSS(venta, items, resumen); return; }
-
-  (async () => {
-    const cfg = VR.config || {};
-    const lineasItems = (items||[]).map(i => `${i.cantidad}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
-    const resultado = await imprimirReciboESCPOS({
-      nombreNegocio: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360',
-      encabezadoLineas: [`Venta: ${venta.numero_venta}`, `Fecha: ${fmtFecha(venta.fecha||todayISO())}`],
-      items: lineasItems,
-      totalTexto: `TOTAL: ${fmt(venta.total)}`,
-      piePagina: '¡Gracias por su compra!',
-    });
-    if (!resultado.ok) {
-      console.warn('Impresión USB falló, cayendo a impresión normal:', resultado.motivo);
-      imprimirTicketNuevaVentaCSS(venta, items, resumen);
-    }
-  })();
+  imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketNuevaVentaCSS(venta, items, resumen));
 }
 
 function imprimirTicketNuevaVentaCSS(venta, items, resumen) {

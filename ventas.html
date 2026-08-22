@@ -1295,6 +1295,14 @@
           </label>
           <div id="vrc-usb-estado" style="font-size:11.5px;color:var(--text-muted)">Solo funciona en Chrome o Edge, con la impresora conectada por USB.</div>
           <button type="button" class="btn-secondary btn-sm" id="vrc-btn-conectar-usb" style="display:none;margin-top:8px" onclick="conectarImpresoraUSBDesdeUI('vr')">Conectar impresora USB</button>
+
+          <div id="vrc-wrap-app-escritorio" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+            <label style="font-size:12.5px;font-weight:600">🖥️ Detectamos la app de escritorio — elige tu impresora:</label>
+            <select id="vrc-impresora-nativa" class="form-input" style="margin-top:4px" onchange="guardarImpresoraNativaElegida()">
+              <option value="">— Ninguna (usar impresión normal) —</option>
+            </select>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Esta forma es la más confiable — usa la impresora tal como está instalada en Windows, sin depender del navegador.</p>
+          </div>
         </div>
         <div class="form-group full-col">
           <label>Nombre del negocio en el ticket</label>
@@ -1723,7 +1731,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
 <script src="escpos-usb.js?v=20260821a"></script>
-<script src="ventas.js?v=20260821d"></script>
+<script src="ventas.js?v=20260822a"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
