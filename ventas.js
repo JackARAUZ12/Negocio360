@@ -910,7 +910,7 @@ async function loadMetodosPago() {
    ============================================================ */
 async function loadProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = data || [];
 
@@ -3243,6 +3243,37 @@ function cancelarSeleccionBancoVR() {
   renderMetodosPagoVR();
 }
 
+// Registra en Servicio Postventa la garantía de cada producto vendido
+// que tenga meses de garantía configurados -- SIEMPRE aislado en su
+// propio try/catch, nunca puede afectar la venta ya guardada. Si
+// algo falla aquí, la venta queda perfecta de todas formas.
+async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, clienteNombre) {
+  try {
+    const hoy = todayISO();
+    const filas = [];
+    for (const item of carrito) {
+      const prod = S.productosCache.find(p => p.id === item.id);
+      const meses = Number(prod?.garantia_meses);
+      if (!prod || !meses || meses <= 0) continue;
+
+      const vencimiento = new Date(hoy + 'T00:00:00');
+      vencimiento.setMonth(vencimiento.getMonth() + meses);
+      const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: S.userId });
+
+      filas.push({
+        auth_user_id: S.userId, numero: numero || `GT-${Date.now()}`,
+        cliente_id: clienteId || null, cliente_nombre: clienteId ? clienteNombre : null,
+        producto_id: prod.id, producto_nombre: prod.nombre,
+        venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
+        fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
+      });
+    }
+    if (filas.length) await sb.from('garantias_clientes').insert(filas);
+  } catch (e) {
+    console.warn('registrarGarantiasAutomaticas (no afecta la venta ya guardada):', e);
+  }
+}
+
 async function confirmarVenta(conImpresion) {
   conImpresion = !!conImpresion;
   if (!validarPasoActual()) return;
@@ -3535,6 +3566,7 @@ async function confirmarVenta(conImpresion) {
     ---------------------------------------------------------- */
     cerrarModalVenta();
     showToast(`✅ Venta ${S.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
+    registrarGarantiasAutomaticas(ventaId, S.carrito, S.clienteId, S.clienteNombre);
 
     // Si esta pantalla se abrió incrustada desde Rutas (iframe), se le
     // avisa al padre que la venta sí se registró — igual que con los
@@ -4357,6 +4389,7 @@ async function confirmarVentaRapida() {
     }
 
     showToast(`✅ Venta rápida ${VR.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
+    registrarGarantiasAutomaticas(ventaId, VR.carrito, null, null);
 
     // Imprimir ticket térmico (no bloquea ni afecta lo ya guardado)
     if (VR.config?.imprimir_automatico !== false) {

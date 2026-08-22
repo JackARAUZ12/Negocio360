@@ -11,9 +11,9 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
-  clientes: [], productos: [], tickets: [],
+  clientes: [], productos: [], tickets: [], garantias: [],
   filtroEstado: '',
-  clienteElegido: null, productoElegido: null,
+  clienteElegido: null, productoElegido: null, garantiaElegidaTicket: null,
 };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -198,20 +198,65 @@ function abrirModalTicket() {
   document.getElementById('tk-error').textContent = '';
   STATE.clienteElegido = null;
   STATE.productoElegido = null;
+  STATE.garantiaElegidaTicket = null;
   document.getElementById('tk-cliente-id').value = '';
   document.getElementById('tk-producto-id').value = '';
+  document.getElementById('tk-garantia-id').value = '';
   document.getElementById('tk-buscar-cliente').value = '';
   document.getElementById('tk-buscar-producto').value = '';
+  document.getElementById('tk-buscar-garantia').value = '';
   document.getElementById('tk-cliente-resultados').innerHTML = '';
   document.getElementById('tk-producto-resultados').innerHTML = '';
+  document.getElementById('tk-garantia-resultados').innerHTML = '';
   document.getElementById('tk-cliente-elegido').style.display = 'none';
   document.getElementById('tk-producto-elegido').style.display = 'none';
+  document.getElementById('tk-garantia-elegida').style.display = 'none';
   document.getElementById('tk-fecha-compra').value = '';
   document.getElementById('tk-garantia-meses').value = '';
   document.getElementById('tk-estado-garantia').innerHTML = '';
   document.getElementById('tk-descripcion').value = '';
   document.getElementById('tk-tecnico').value = '';
   openModal('modal-ticket');
+}
+
+// Buscar una garantía ya registrada, para vincular el ticket a ella
+// en vez de escribir todo de nuevo a mano.
+function buscarGarantiaTicket(q) {
+  const cont = document.getElementById('tk-garantia-resultados');
+  q = q.trim().toLowerCase();
+  if (!q) { cont.innerHTML = ''; return; }
+  const resultados = STATE.garantias.filter(g =>
+    (g.cliente_nombre||'').toLowerCase().includes(q) || (g.producto_nombre||'').toLowerCase().includes(q) || g.numero.toLowerCase().includes(q)
+  ).slice(0, 6);
+  cont.innerHTML = resultados.map(g => `
+    <div style="padding:6px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
+         onclick="elegirGarantiaTicket('${g.id}')">
+      <b>${esc(g.numero)}</b> — ${esc(g.producto_nombre||'—')} ${g.cliente_nombre ? `(${esc(g.cliente_nombre)})` : ''}
+    </div>
+  `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+}
+function elegirGarantiaTicket(id) {
+  const g = STATE.garantias.find(x => x.id === id);
+  if (!g) return;
+  STATE.garantiaElegidaTicket = g;
+  document.getElementById('tk-garantia-id').value = g.id;
+  document.getElementById('tk-buscar-garantia').value = '';
+  document.getElementById('tk-garantia-resultados').innerHTML = '';
+  const el = document.getElementById('tk-garantia-elegida');
+  el.style.display = 'flex';
+  el.innerHTML = `<span>🛡️ ${esc(g.numero)} — ${esc(g.producto_nombre||'—')}</span><button type="button" class="row-action-btn" onclick="quitarGarantiaTicket()">✕</button>`;
+
+  // Autocompletar cliente, producto, fecha y meses desde la garantía elegida
+  if (g.cliente_id) elegirClienteTicket(g.cliente_id, g.cliente_nombre);
+  if (g.producto_id) elegirProductoTicket(g.producto_id, g.producto_nombre);
+  document.getElementById('tk-fecha-compra').value = g.fecha_compra;
+  document.getElementById('tk-garantia-meses').value = g.garantia_meses;
+  actualizarEstadoGarantiaTicket();
+}
+function quitarGarantiaTicket() {
+  STATE.garantiaElegidaTicket = null;
+  document.getElementById('tk-garantia-id').value = '';
+  document.getElementById('tk-garantia-elegida').style.display = 'none';
 }
 
 async function guardarTicket() {
@@ -223,6 +268,7 @@ async function guardarTicket() {
   const fechaCompra = document.getElementById('tk-fecha-compra').value || null;
   const garantiaMeses = parseFloat(document.getElementById('tk-garantia-meses').value) || null;
   const tecnico = document.getElementById('tk-tecnico').value.trim() || null;
+  const garantiaId = document.getElementById('tk-garantia-id').value || null;
 
   setBtnLoading('btn-guardar-ticket', true);
   try {
@@ -232,12 +278,14 @@ async function guardarTicket() {
       auth_user_id: STATE.userId, numero: numero || `ST-${Date.now()}`,
       cliente_id: STATE.clienteElegido?.id || null, cliente_nombre: STATE.clienteElegido?.nombre || null,
       producto_id: STATE.productoElegido?.id || null, producto_nombre: STATE.productoElegido?.nombre || null,
+      garantia_id: garantiaId,
       fecha_compra: fechaCompra, garantia_meses: garantiaMeses,
       descripcion_problema: descripcion, tecnico_asignado: tecnico,
       usuario_nombre: STATE.currentUser?.nombre || 'Usuario', estado: 'abierto',
     };
 
     const { error } = await sb.from('servicio_postventa').insert(payload);
+
     if (error) throw error;
 
     showToast('🛠️ Ticket creado');
@@ -423,6 +471,7 @@ async function init() {
     document.getElementById('app').style.display = 'flex';
 
     await Promise.all([cargarClientesCache(), cargarProductosCache()]);
+    await cargarGarantias();
     await cargarTickets();
     actualizarKPIsServicio();
   } catch (e) {
@@ -436,3 +485,157 @@ document.addEventListener('DOMContentLoaded', () => {
   init();
   if (window.lucide) lucide.createIcons();
 });
+
+/* =====================================================
+   VISTA: GARANTÍAS (aparte de Tickets)
+===================================================== */
+function cambiarVistaServicio(vista) {
+  document.querySelectorAll('.servicio-vista-btn').forEach(b => b.classList.toggle('active', b.dataset.vista === vista));
+  document.getElementById('vista-tickets').style.display = vista === 'tickets' ? '' : 'none';
+  document.getElementById('vista-garantias').style.display = vista === 'garantias' ? '' : 'none';
+  document.getElementById('btn-nuevo-ticket').style.display = vista === 'tickets' ? '' : 'none';
+  document.getElementById('btn-nueva-garantia').style.display = vista === 'garantias' ? '' : 'none';
+}
+
+async function cargarGarantias() {
+  try {
+    const { data } = await sb.from('garantias_clientes').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
+    STATE.garantias = data || [];
+    renderTablaGarantias();
+  } catch (e) { console.error('cargarGarantias:', e); }
+}
+
+function renderTablaGarantias() {
+  const tbody = document.getElementById('tabla-garantias');
+  if (!tbody) return;
+  if (!STATE.garantias.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Todavía no hay ninguna garantía registrada.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.garantias.map(g => {
+    const vigente = todayLocalISO() <= g.fecha_vencimiento;
+    return `<tr>
+      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(g.numero)}</span></td>
+      <td>${esc(g.cliente_nombre || '—')}</td>
+      <td>${esc(g.producto_nombre || '—')}</td>
+      <td>${fmtFechaCorta(g.fecha_compra)}</td>
+      <td>${fmtFechaCorta(g.fecha_vencimiento)}</td>
+      <td>${vigente ? '<span style="color:var(--success);font-weight:600">✅ Vigente</span>' : '<span style="color:var(--danger);font-weight:600">⚠️ Vencida</span>'}</td>
+      <td><span class="status-badge ${g.origen==='automatica'?'status-activo':'status-pendiente'}">${g.origen==='automatica'?'Automática':'Manual'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+/* =====================================================
+   NUEVA GARANTÍA (registro manual)
+===================================================== */
+STATE.clienteElegidoGarantia = null;
+STATE.productoElegidoGarantia = null;
+
+function abrirModalGarantia() {
+  document.getElementById('gt-error').textContent = '';
+  STATE.clienteElegidoGarantia = null;
+  STATE.productoElegidoGarantia = null;
+  document.getElementById('gt-cliente-id').value = '';
+  document.getElementById('gt-producto-id').value = '';
+  document.getElementById('gt-buscar-cliente').value = '';
+  document.getElementById('gt-buscar-producto').value = '';
+  document.getElementById('gt-cliente-resultados').innerHTML = '';
+  document.getElementById('gt-producto-resultados').innerHTML = '';
+  document.getElementById('gt-cliente-elegido').style.display = 'none';
+  document.getElementById('gt-producto-elegido').style.display = 'none';
+  document.getElementById('gt-fecha-compra').value = todayLocalISO();
+  document.getElementById('gt-garantia-meses').value = '';
+  document.getElementById('gt-observaciones').value = '';
+  openModal('modal-garantia');
+}
+
+function buscarClienteGarantia(q) {
+  const cont = document.getElementById('gt-cliente-resultados');
+  q = q.trim().toLowerCase();
+  if (!q) { cont.innerHTML = ''; return; }
+  const resultados = STATE.clientes.filter(c => c.nombre.toLowerCase().includes(q)).slice(0, 6);
+  cont.innerHTML = resultados.map(c => `
+    <div style="padding:6px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
+         onclick="elegirClienteGarantia('${c.id}','${esc(c.nombre)}')">${esc(c.nombre)}</div>
+  `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+}
+function elegirClienteGarantia(id, nombre) {
+  STATE.clienteElegidoGarantia = { id, nombre };
+  document.getElementById('gt-cliente-id').value = id;
+  document.getElementById('gt-buscar-cliente').value = '';
+  document.getElementById('gt-cliente-resultados').innerHTML = '';
+  const el = document.getElementById('gt-cliente-elegido');
+  el.style.display = 'flex';
+  el.innerHTML = `<span>👤 ${esc(nombre)}</span><button type="button" class="row-action-btn" onclick="quitarClienteGarantia()">✕</button>`;
+}
+function quitarClienteGarantia() {
+  STATE.clienteElegidoGarantia = null;
+  document.getElementById('gt-cliente-id').value = '';
+  document.getElementById('gt-cliente-elegido').style.display = 'none';
+}
+
+function buscarProductoGarantia(q) {
+  const cont = document.getElementById('gt-producto-resultados');
+  q = q.trim().toLowerCase();
+  if (!q) { cont.innerHTML = ''; return; }
+  const resultados = STATE.productos.filter(p => p.nombre.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q)).slice(0, 6);
+  cont.innerHTML = resultados.map(p => `
+    <div style="padding:6px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
+         onclick="elegirProductoGarantia('${p.id}','${esc(p.nombre)}')">${esc(p.nombre)}</div>
+  `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+}
+function elegirProductoGarantia(id, nombre) {
+  STATE.productoElegidoGarantia = { id, nombre };
+  document.getElementById('gt-producto-id').value = id;
+  document.getElementById('gt-buscar-producto').value = '';
+  document.getElementById('gt-producto-resultados').innerHTML = '';
+  const el = document.getElementById('gt-producto-elegido');
+  el.style.display = 'flex';
+  el.innerHTML = `<span>📦 ${esc(nombre)}</span><button type="button" class="row-action-btn" onclick="quitarProductoGarantia()">✕</button>`;
+}
+function quitarProductoGarantia() {
+  STATE.productoElegidoGarantia = null;
+  document.getElementById('gt-producto-id').value = '';
+  document.getElementById('gt-producto-elegido').style.display = 'none';
+}
+
+async function guardarGarantia() {
+  const errEl = document.getElementById('gt-error');
+  errEl.textContent = '';
+  const fechaCompra = document.getElementById('gt-fecha-compra').value;
+  const garantiaMeses = parseFloat(document.getElementById('gt-garantia-meses').value);
+  const observaciones = document.getElementById('gt-observaciones').value.trim() || null;
+
+  if (!fechaCompra) { errEl.textContent = 'La fecha de compra es obligatoria.'; return; }
+  if (!garantiaMeses || garantiaMeses <= 0) { errEl.textContent = 'Los meses de garantía deben ser mayor a cero.'; return; }
+
+  setBtnLoading('btn-guardar-garantia', true);
+  try {
+    const vencimiento = new Date(fechaCompra + 'T00:00:00');
+    vencimiento.setMonth(vencimiento.getMonth() + garantiaMeses);
+    const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: STATE.userId });
+
+    const payload = {
+      auth_user_id: STATE.userId, numero: numero || `GT-${Date.now()}`,
+      cliente_id: STATE.clienteElegidoGarantia?.id || null, cliente_nombre: STATE.clienteElegidoGarantia?.nombre || null,
+      producto_id: STATE.productoElegidoGarantia?.id || null, producto_nombre: STATE.productoElegidoGarantia?.nombre || null,
+      venta_id: null, fecha_compra: fechaCompra, garantia_meses: garantiaMeses,
+      fecha_vencimiento: ymdLocal(vencimiento), origen: 'manual', observaciones,
+      usuario_nombre: STATE.currentUser?.nombre || 'Usuario',
+    };
+
+    const { error } = await sb.from('garantias_clientes').insert(payload);
+    if (error) throw error;
+
+    showToast('🛡️ Garantía registrada');
+    closeModal('modal-garantia');
+    await cargarGarantias();
+  } catch (e) {
+    console.error('guardarGarantia:', e);
+    errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+  } finally {
+    setBtnLoading('btn-guardar-garantia', false);
+  }
+}

@@ -2167,6 +2167,8 @@ function cargarFormulario(p) {
     ['inputStockMinimo',     p.stock_minimo  ?? ''],
     ['inputStockMinimoEdit', p.stock_minimo  ?? ''],
     ['inputStockActualEdit', p.stock_actual  ?? ''],
+    ['inputGarantiaMeses',     p.garantia_meses ?? ''],
+    ['inputGarantiaMesesEdit', p.garantia_meses ?? ''],
     ['inputActivo',          p.activo ? 'true' : 'false'],
   ];
   campos.forEach(([id, val]) => {
@@ -2236,6 +2238,11 @@ async function guardarProducto() {
     ? parseFloat(stockMinimoRaw)
     : 0;
 
+  // Garantía en meses (opcional) — igual criterio: campo visible según el modo
+  const garantiaEl  = STATE.modalMode === 'editar' ? $('inputGarantiaMesesEdit') : $('inputGarantiaMeses');
+  const garantiaRaw = garantiaEl?.value;
+  const garantiaMeses = (garantiaRaw !== '' && garantiaRaw !== undefined) ? parseFloat(garantiaRaw) : null;
+
   // Stock actual: usar el campo visible según el modo. En edición ahora
   // también es editable directamente (antes solo se podía desde
   // Movimientos especiales); ese botón se mantiene igual para bajas
@@ -2278,6 +2285,7 @@ async function guardarProducto() {
         tipo_precio:   tipoPrecio,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
+        garantia_meses: garantiaMeses,
         activo,
       };
       // Fecha de creación manual (producto que ya existía antes del sistema).
@@ -2332,6 +2340,7 @@ async function guardarProducto() {
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
+        garantia_meses: garantiaMeses,
         activo,
       };
       // Solo tocar stock_actual para productos (los servicios no manejan stock)

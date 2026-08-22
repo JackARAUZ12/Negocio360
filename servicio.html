@@ -973,6 +973,8 @@
 
     .prod-tab-btn { padding:8px 16px; font-size:12.5px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; background:transparent; border:none; }
     .prod-tab-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .servicio-vista-btn { padding:8px 16px; font-size:12.5px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; background:transparent; border:none; }
+    .servicio-vista-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
     .prod-componente-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:var(--bg-app); border-radius:8px; margin-bottom:5px; font-size:12.5px; }
     .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
       cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
@@ -1204,13 +1206,24 @@
           <p>Reclamos, reparaciones y garantías — qué pasa después de la venta.</p>
         </div>
         <div class="greeting-actions">
-          <button class="btn-primary" onclick="abrirModalTicket()">
+          <button class="btn-secondary" id="btn-nueva-garantia" style="display:none" onclick="abrirModalGarantia()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva garantía
+          </button>
+          <button class="btn-primary" id="btn-nuevo-ticket" onclick="abrirModalTicket()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo ticket
           </button>
         </div>
       </div>
 
+      <div style="display:flex;gap:6px;margin-bottom:16px;background:var(--bg-app);padding:4px;border-radius:10px;width:fit-content">
+        <button class="servicio-vista-btn active" data-vista="tickets" onclick="cambiarVistaServicio('tickets')">Tickets</button>
+        <button class="servicio-vista-btn" data-vista="garantias" onclick="cambiarVistaServicio('garantias')">Garantías</button>
+      </div>
+
+      <!-- VISTA: TICKETS -->
+      <div id="vista-tickets">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
         <div class="panel-card" style="margin:0;padding:14px 16px">
           <div style="font-size:11.5px;color:var(--text-muted)">Tickets abiertos</div>
@@ -1250,6 +1263,69 @@
           </table>
         </div>
       </div>
+      </div><!-- /vista-tickets -->
+
+      <!-- VISTA: GARANTÍAS -->
+      <div id="vista-garantias" style="display:none">
+        <div class="panel-card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>N° Garantía</th><th>Cliente</th><th>Producto</th><th>Comprado</th>
+                <th>Vence</th><th>Estado</th><th>Origen</th>
+              </tr></thead>
+              <tbody id="tabla-garantias"><tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: NUEVA GARANTÍA (manual) -->
+      <div class="modal-overlay" id="modal-garantia">
+        <div class="modal-box" style="max-width:520px">
+          <div class="modal-header">
+            <span class="modal-title">🛡️ Nueva garantía (registro manual)</span>
+            <button class="modal-close" onclick="closeModal('modal-garantia')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Para compras viejas o que no se hicieron desde este sistema. Las garantías de ventas nuevas se registran solas.</p>
+
+            <div class="form-group">
+              <label>Cliente (opcional)</label>
+              <input type="text" id="gt-buscar-cliente" placeholder="Buscar cliente..." oninput="buscarClienteGarantia(this.value)"/>
+              <input type="hidden" id="gt-cliente-id"/>
+              <div id="gt-cliente-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
+              <div id="gt-cliente-elegido" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Producto (opcional)</label>
+              <input type="text" id="gt-buscar-producto" placeholder="Buscar producto..." oninput="buscarProductoGarantia(this.value)"/>
+              <input type="hidden" id="gt-producto-id"/>
+              <div id="gt-producto-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
+              <div id="gt-producto-elegido" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
+            </div>
+
+            <div class="form-row">
+              <div><label>Fecha de compra *</label><input type="date" id="gt-fecha-compra"/></div>
+              <div><label>Garantía (meses) *</label><input type="number" id="gt-garantia-meses" min="1" step="1" placeholder="Ej: 12"/></div>
+            </div>
+
+            <div class="form-group">
+              <label>Observaciones (opcional)</label>
+              <input type="text" id="gt-observaciones" placeholder="Ej: comprado en la sucursal anterior"/>
+            </div>
+
+            <p id="gt-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-garantia')">Cancelar</button>
+            <button class="btn-primary" id="btn-guardar-garantia" onclick="guardarGarantia()">Registrar garantía</button>
+          </div>
+        </div>
+      </div>
 
       <!-- MODAL: NUEVO TICKET -->
       <div class="modal-overlay" id="modal-ticket">
@@ -1275,6 +1351,15 @@
               <input type="hidden" id="tk-producto-id"/>
               <div id="tk-producto-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
               <div id="tk-producto-elegido" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Vincular a una garantía registrada (opcional)</label>
+              <input type="text" id="tk-buscar-garantia" placeholder="Buscar por cliente o producto..." oninput="buscarGarantiaTicket(this.value)"/>
+              <input type="hidden" id="tk-garantia-id"/>
+              <div id="tk-garantia-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
+              <div id="tk-garantia-elegida" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Si la vinculas, la fecha de compra y la garantía de abajo se llenan solas.</p>
             </div>
 
             <div class="form-row">
@@ -1320,7 +1405,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="servicio.js?v=20260821b"></script>
+<script src="servicio.js?v=20260821c"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
