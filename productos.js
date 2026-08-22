@@ -1394,13 +1394,17 @@ function aplicarFiltros() {
   }
 
   switch (STATE.filtroActivo) {
-    case 'productos':  lista = lista.filter(p => p.tipo === 'producto');  break;
+    case 'productos':  lista = lista.filter(p => p.tipo === 'producto' && !p.es_materia_prima);  break;
     case 'servicios':  lista = lista.filter(p => p.tipo === 'servicio');  break;
-    case 'activos':    lista = lista.filter(p => p.activo === true);      break;
-    case 'inactivos':  lista = lista.filter(p => p.activo === false);     break;
+    case 'materia_prima': lista = lista.filter(p => p.es_materia_prima === true); break;
+    case 'activos':    lista = lista.filter(p => p.activo === true && !p.es_materia_prima);      break;
+    case 'inactivos':  lista = lista.filter(p => p.activo === false && !p.es_materia_prima);     break;
     // FIX: usa helper para evitar falsos positivos (0 <= 0)
-    case 'stock_bajo': lista = lista.filter(esStockBajo);                 break;
-    default: break;
+    case 'stock_bajo': lista = lista.filter(p => esStockBajo(p) && !p.es_materia_prima); break;
+    // "Todos" (default): la materia prima queda fuera de la vista
+    // general -- vive en su propio filtro dedicado, para que de
+    // verdad se sienta separada de lo que sí se vende.
+    default: lista = lista.filter(p => !p.es_materia_prima); break;
   }
 
   // Filtro secundario: Marca / Proveedor (opcional, independiente de filtroActivo)
@@ -2077,6 +2081,13 @@ function setTipoModal(tipo, habilitarToggle = true) {
     stockSection.style.display = mostrar ? '' : 'none';
   }
 
+  // Materia prima solo tiene sentido para productos (los servicios no
+  // manejan stock) -- se oculta en ambos modos, crear y editar.
+  const wrapMP = $('wrapMateriaPrima');
+  const wrapMPEdit = $('wrapMateriaPrimaEdit');
+  if (wrapMP) wrapMP.style.display = tipo === 'producto' ? '' : 'none';
+  if (wrapMPEdit) wrapMPEdit.style.display = tipo === 'producto' ? '' : 'none';
+
   if (btnProd) btnProd.disabled = !habilitarToggle;
   if (btnServ) btnServ.disabled = !habilitarToggle;
 }
@@ -2179,6 +2190,11 @@ function cargarFormulario(p) {
     if (el) el.value = val;
   });
 
+  // Materia prima: checkbox real, se maneja aparte (.checked, no .value)
+  const esMP = p.es_materia_prima === true;
+  if ($('inputEsMateriaPrima')) $('inputEsMateriaPrima').checked = esMP;
+  if ($('inputEsMateriaPrimaEdit')) $('inputEsMateriaPrimaEdit').checked = esMP;
+
   // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
   const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
   STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
@@ -2246,6 +2262,10 @@ async function guardarProducto() {
   const garantiaRaw = garantiaEl?.value;
   const garantiaMeses = (garantiaRaw !== '' && garantiaRaw !== undefined) ? parseFloat(garantiaRaw) : null;
 
+  // Materia prima: checkbox visible según el modo
+  const esMateriaPrimaEl = STATE.modalMode === 'editar' ? $('inputEsMateriaPrimaEdit') : $('inputEsMateriaPrima');
+  const esMateriaPrima = esMateriaPrimaEl?.checked === true;
+
   // Stock actual: usar el campo visible según el modo. En edición ahora
   // también es editable directamente (antes solo se podía desde
   // Movimientos especiales); ese botón se mantiene igual para bajas
@@ -2289,6 +2309,7 @@ async function guardarProducto() {
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         garantia_meses: garantiaMeses,
+        es_materia_prima: esMateriaPrima,
         activo,
       };
       // Fecha de creación manual (producto que ya existía antes del sistema).
@@ -2344,6 +2365,7 @@ async function guardarProducto() {
         tipo_precio:   tipoPrecio,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         garantia_meses: garantiaMeses,
+        es_materia_prima: esMateriaPrima,
         activo,
       };
       // Solo tocar stock_actual para productos (los servicios no manejan stock)

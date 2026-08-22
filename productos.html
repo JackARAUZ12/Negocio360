@@ -376,6 +376,7 @@
           <button class="filter-btn" data-filtro="activos">✅ Activos</button>
           <button class="filter-btn" data-filtro="inactivos">⛔ Inactivos</button>
           <button class="filter-btn" data-filtro="stock_bajo">⚠️ Stock bajo</button>
+          <button class="filter-btn" data-filtro="materia_prima" style="font-weight:800;background:#78350f22;border-color:#b45309;color:#b45309">🧱 Materia Prima</button>
         </div>
         <div class="toolbar-right">
           <select class="form-select" id="filtroMarca" title="Filtrar por marca / proveedor"
@@ -831,6 +832,14 @@
             </div>
           </div>
 
+          <div class="form-group full" id="wrapMateriaPrima" style="margin-top:6px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
+              <input type="checkbox" id="inputEsMateriaPrima" style="width:16px;height:16px" />
+              <span>🧱 Esto es materia prima (se usa para fabricar otra cosa, no se vende directo)</span>
+            </label>
+            <span class="form-hint">Se oculta del buscador en Ventas, y aparece en Producción para armar recetas</span>
+          </div>
+
           <!-- ¿Cómo afecta esto tu caja? -->
           <div class="form-group full" style="margin-top:14px">
             <label class="form-label">¿Cómo afecta esto tu caja? <span>*</span></label>
@@ -870,6 +879,14 @@
                      placeholder="Ej: 12" min="0" step="1" />
               <span class="form-hint">Meses de garantía — si lo llenas, cada venta de este producto registra su garantía sola</span>
             </div>
+          </div>
+
+          <div class="form-group full" id="wrapMateriaPrimaEdit" style="margin-top:6px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
+              <input type="checkbox" id="inputEsMateriaPrimaEdit" style="width:16px;height:16px" />
+              <span>🧱 Esto es materia prima (se usa para fabricar otra cosa, no se vende directo)</span>
+            </label>
+            <span class="form-hint">Se oculta del buscador en Ventas, y aparece en Producción para armar recetas</span>
           </div>
         </div>
 
