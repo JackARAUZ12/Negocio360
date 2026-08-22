@@ -448,6 +448,9 @@ function abrirModalOrden() {
   document.getElementById('op-fecha-entrega').value = '';
   document.getElementById('op-costo-mano-obra').value = 0;
   document.getElementById('op-costo-indirecto').value = 0;
+  document.getElementById('op-merma-cantidad').value = 0;
+  document.getElementById('op-merma-motivo').value = '';
+  document.getElementById('op-merma-motivo-wrap').style.display = 'none';
   document.getElementById('op-necesidades-wrap').style.display = 'none';
   document.getElementById('op-resumen-costo').style.display = 'none';
   if (!STATE.recetas.filter(r=>r.activa).length) {
@@ -500,15 +503,24 @@ function recalcularNecesidadesOrden() {
     </div>`).join('');
   wrap.style.display = '';
 
+  // Merma: la materia prima se consume igual sobre la cantidad
+  // PLANIFICADA (se usó lo mismo para intentar producir todo), pero
+  // el costo por unidad y el inventario final solo cuentan las
+  // unidades que de verdad salieron buenas.
+  const merma = Math.min(cantidad, Math.max(0, parseFloat(document.getElementById('op-merma-cantidad').value) || 0));
+  const cantidadBuena = Math.max(0.01, round2(cantidad - merma));
+  document.getElementById('op-merma-motivo-wrap').style.display = merma > 0 ? '' : 'none';
+
   const manoObra = parseFloat(document.getElementById('op-costo-mano-obra').value) || 0;
   const indirecto = parseFloat(document.getElementById('op-costo-indirecto').value) || 0;
   const costoTotal = round2(costoMateriales + manoObra + indirecto);
-  const costoUnitario = round2(costoTotal / cantidad);
+  const costoUnitario = round2(costoTotal / cantidadBuena);
 
   resumenEl.innerHTML = `
     <div style="display:flex;justify-content:space-between"><span>Costo de materiales:</span><b>${fmt(costoMateriales)}</b></div>
     <div style="display:flex;justify-content:space-between"><span>Mano de obra + indirectos:</span><b>${fmt(manoObra+indirecto)}</b></div>
     <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>Costo total:</span><b>${fmt(costoTotal)}</b></div>
+    ${merma > 0 ? `<div style="display:flex;justify-content:space-between;color:#f59e0b"><span>Unidades buenas (tras merma):</span><b>${fmtNum(cantidadBuena)}</b></div>` : ''}
     <div style="display:flex;justify-content:space-between;color:var(--accent);font-weight:800"><span>Costo por unidad:</span><span>${fmt(costoUnitario)}</span></div>
     ${!todoSuficiente ? '<div style="color:var(--danger);font-weight:700;margin-top:6px">⚠️ No hay suficiente materia prima para producir esta cantidad todavía.</div>' : ''}
   `;
@@ -549,6 +561,8 @@ async function guardarOrden(estadoDeseado) {
   const fechaEntrega = document.getElementById('op-fecha-entrega').value || null;
   const manoObra = parseFloat(document.getElementById('op-costo-mano-obra').value) || 0;
   const indirecto = parseFloat(document.getElementById('op-costo-indirecto').value) || 0;
+  const mermaCantidad = Math.min(cantidad||0, Math.max(0, parseFloat(document.getElementById('op-merma-cantidad').value) || 0));
+  const mermaMotivo = document.getElementById('op-merma-motivo').value.trim() || null;
 
   if (!recetaId) { errEl.textContent = 'Elige una receta.'; return; }
   if (!cantidad || cantidad <= 0) { errEl.textContent = 'La cantidad a producir debe ser mayor a cero.'; return; }
@@ -564,19 +578,24 @@ async function guardarOrden(estadoDeseado) {
   try {
     const { data: numero } = await sb.rpc('generar_numero_orden_produccion', { p_user_id: STATE.userId });
     const costoTotal = round2(costoMateriales + manoObra + indirecto);
-    const costoUnitario = round2(costoTotal / cantidad);
+    // Las unidades buenas son las que de verdad entran al inventario
+    // y sobre las que se reparte el costo -- la materia prima ya se
+    // gastó igual intentando producir toda la cantidad planificada.
+    const cantidadBuena = Math.max(0.01, round2(cantidad - mermaCantidad));
+    const costoUnitario = round2(costoTotal / cantidadBuena);
 
     const payload = {
       auth_user_id: STATE.userId, numero: numero || `OP-${Date.now()}`,
       receta_id: recetaId, producto_terminado_id: receta.producto_terminado_id,
       cantidad_planificada: cantidad, fecha_planificada: todayLocalISO(), fecha_entrega: fechaEntrega,
       costo_mano_obra: manoObra, costo_indirecto: indirecto,
+      merma_cantidad: mermaCantidad, merma_motivo: mermaCantidad > 0 ? mermaMotivo : null,
       usuario_nombre: STATE.currentUser?.nombre || 'Usuario',
       estado: estadoDeseado,
     };
     if (estadoDeseado === 'completada') {
       Object.assign(payload, {
-        cantidad_producida: cantidad, costo_materiales: costoMateriales,
+        cantidad_producida: cantidadBuena, costo_materiales: costoMateriales,
         costo_total: costoTotal, costo_unitario: costoUnitario,
         fecha_completada: new Date().toISOString(),
       });
@@ -586,7 +605,7 @@ async function guardarOrden(estadoDeseado) {
     if (error) throw error;
 
     if (estadoDeseado === 'completada') {
-      await procesarConsumoYProduccion(orden.id, receta, necesidades, cantidad, receta.producto_terminado_id);
+      await procesarConsumoYProduccion(orden.id, receta, necesidades, cantidadBuena, receta.producto_terminado_id);
     }
 
     showToast(estadoDeseado === 'completada' ? '🏭 Producción completada' : 'Orden guardada como pendiente');
@@ -599,37 +618,82 @@ async function guardarOrden(estadoDeseado) {
   }
 }
 
-async function completarOrdenPlanificada(ordenId) {
+// Abre el modal para completar una orden, dejando que el usuario
+// confirme cuantas unidades de verdad salieron buenas (por si hubo
+// merma) antes de tocar el inventario.
+function completarOrdenPlanificada(ordenId) {
   const orden = STATE.ordenes.find(o => o.id === ordenId);
   if (!orden) return;
   const receta = STATE.recetas.find(r => r.id === orden.receta_id);
   if (!receta) { showToast('No se encontró la receta de esta orden', 'error'); return; }
 
-  const { necesidades, costoMateriales, todoSuficiente } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
+  const { todoSuficiente } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
   if (!todoSuficiente) {
     showToast('No hay suficiente materia prima todavía para completar esta orden', 'error');
     return;
   }
-  if (!confirm(`¿Completar la producción de ${fmtNum(orden.cantidad_planificada)} unidades? Esto descontará la materia prima y agregará el producto terminado al inventario.`)) return;
+
+  document.getElementById('completar-orden-titulo').textContent = `Completar ${orden.numero}`;
+  document.getElementById('co-orden-id').value = ordenId;
+  document.getElementById('co-planificado-txt').textContent = `Ibas a producir ${fmtNum(orden.cantidad_planificada)} unidades de ${nombreProducto(orden.producto_terminado_id)}.`;
+  document.getElementById('co-cantidad-buena').value = orden.cantidad_planificada;
+  document.getElementById('co-cantidad-buena').max = orden.cantidad_planificada;
+  document.getElementById('co-merma-motivo').value = '';
+  document.getElementById('co-merma-motivo-wrap').style.display = 'none';
+  document.getElementById('co-error').textContent = '';
+  openModal('modal-completar-orden');
+}
+
+function onCambiarCantidadBuenaCompletar() {
+  const ordenId = document.getElementById('co-orden-id').value;
+  const orden = STATE.ordenes.find(o => o.id === ordenId);
+  if (!orden) return;
+  const buena = parseFloat(document.getElementById('co-cantidad-buena').value) || 0;
+  const merma = Math.max(0, round2(orden.cantidad_planificada - buena));
+  const wrap = document.getElementById('co-merma-motivo-wrap');
+  wrap.style.display = merma > 0 ? '' : 'none';
+  if (merma > 0) document.getElementById('co-merma-resumen').textContent = `Merma: ${fmtNum(merma)} unidades`;
+}
+
+async function confirmarCompletarOrden() {
+  const errEl = document.getElementById('co-error');
+  errEl.textContent = '';
+  const ordenId = document.getElementById('co-orden-id').value;
+  const orden = STATE.ordenes.find(o => o.id === ordenId);
+  if (!orden) return;
+  const receta = STATE.recetas.find(r => r.id === orden.receta_id);
+  if (!receta) return;
+
+  const cantidadBuenaRaw = parseFloat(document.getElementById('co-cantidad-buena').value);
+  if (isNaN(cantidadBuenaRaw) || cantidadBuenaRaw < 0) { errEl.textContent = 'Indica cuántas unidades buenas salieron.'; return; }
+  if (cantidadBuenaRaw > orden.cantidad_planificada) { errEl.textContent = 'No puede ser más de lo planificado.'; return; }
+  const cantidadBuena = Math.max(0.01, round2(cantidadBuenaRaw));
+  const mermaCantidad = Math.max(0, round2(orden.cantidad_planificada - cantidadBuenaRaw));
+  const mermaMotivo = document.getElementById('co-merma-motivo').value.trim() || null;
+
+  const { necesidades, costoMateriales } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
 
   try {
     const costoTotal = round2(costoMateriales + Number(orden.costo_mano_obra||0) + Number(orden.costo_indirecto||0));
-    const costoUnitario = round2(costoTotal / orden.cantidad_planificada);
+    const costoUnitario = round2(costoTotal / cantidadBuena);
 
-    await procesarConsumoYProduccion(ordenId, receta, necesidades, orden.cantidad_planificada, orden.producto_terminado_id);
+    await procesarConsumoYProduccion(ordenId, receta, necesidades, cantidadBuena, orden.producto_terminado_id);
 
     await sb.from('ordenes_produccion').update({
-      estado: 'completada', cantidad_producida: orden.cantidad_planificada,
+      estado: 'completada', cantidad_producida: cantidadBuena,
       costo_materiales: costoMateriales, costo_total: costoTotal, costo_unitario: costoUnitario,
+      merma_cantidad: mermaCantidad, merma_motivo: mermaCantidad > 0 ? mermaMotivo : null,
       fecha_completada: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('id', ordenId).eq('auth_user_id', STATE.userId);
 
     showToast('🏭 Producción completada');
+    closeModal('modal-completar-orden');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
     actualizarKPIsProduccion();
   } catch (e) {
-    console.error('completarOrdenPlanificada:', e);
-    showToast('No se pudo completar la producción', 'error');
+    console.error('confirmarCompletarOrden:', e);
+    errEl.textContent = 'No se pudo completar. Intenta de nuevo.';
+
   }
 }
 
@@ -667,6 +731,7 @@ async function verDetalleOrden(ordenId) {
       <div><b>Planificado:</b> ${fmtNum(orden.cantidad_planificada)} · <b>Producido:</b> ${orden.cantidad_producida!=null?fmtNum(orden.cantidad_producida):'—'}</div>
       <div><b>Estado:</b> ${ESTADO_ORDEN_LABEL[orden.estado]}${orden.estado==='en_proceso' ? ` (${orden.porcentaje_avance||0}% de avance)` : ''} · <b>Creada:</b> ${fmtFechaCorta(orden.fecha_planificada)}</div>
       ${orden.fecha_entrega ? `<div><b>Fecha de entrega:</b> ${fmtFechaCorta(orden.fecha_entrega)}</div>` : ''}
+      ${Number(orden.merma_cantidad||0) > 0 ? `<div style="color:#f59e0b"><b>⚠️ Merma:</b> ${fmtNum(orden.merma_cantidad)} unidades${orden.merma_motivo ? ` — ${esc(orden.merma_motivo)}` : ''}</div>` : ''}
     </div>
     ${orden.estado === 'completada' ? `
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
