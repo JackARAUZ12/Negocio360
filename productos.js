@@ -612,6 +612,7 @@ function abrirModalCombo() {
   $('comboNombre').value = '';
   $('comboSku').value = '';
   $('comboCodigoBarras').value = '';
+  $('comboGarantiaMeses').value = '';
   $('comboInputPrecio').value = '';
   $('comboActivo').checked = true;
   $('comboProductoSearch').value = '';
@@ -645,6 +646,7 @@ function abrirEditarCombo(id) {
   $('comboNombre').value = c.nombre || '';
   $('comboSku').value = c.sku || '';
   $('comboCodigoBarras').value = c.codigo_barras || '';
+  $('comboGarantiaMeses').value = c.garantia_meses ?? '';
   $('comboInputPrecio').value = c.tipo_precio === 'fijo' ? (c.precio ?? '') : '';
   $('comboActivo').checked = c.activo !== false;
   $('comboProductoSearch').value = '';
@@ -842,6 +844,7 @@ async function guardarCombo() {
       nombre,
       sku: $('comboSku').value.trim() || null,
       codigo_barras: $('comboCodigoBarras').value.trim() || null,
+      garantia_meses: (() => { const v = $('comboGarantiaMeses').value; return v !== '' ? parseFloat(v) : null; })(),
       tipo_precio: tipoPrecio,
       precio: tipoPrecio === 'fijo' ? precioFijo : 0,
       costo: costoTotal,
@@ -3241,6 +3244,7 @@ function abrirModalPromocion(id) {
     $('pm-fecha-inicio').value = p.fecha_inicio || '';
     $('pm-fecha-fin').value = p.fecha_fin || '';
     $('pm-precio-promocion').value = (p.precio_promocion !== null && p.precio_promocion !== undefined) ? p.precio_promocion : '';
+    $('pm-garantia-meses').value = (p.garantia_meses !== null && p.garantia_meses !== undefined) ? p.garantia_meses : '';
 
     if (p.tipo === 'nxm_mismo') {
       $('pm-producto-nxm').value = p.producto_id || '';
@@ -3274,6 +3278,7 @@ function abrirModalPromocion(id) {
     $('pm-cantidad-minima').value = 3; $('pm-descuento-porcentaje').value = 10;
     $('pm-fecha-inicio').value = ''; $('pm-fecha-fin').value = '';
     $('pm-precio-promocion').value = '';
+    $('pm-garantia-meses').value = '';
     renderGrupoPromocionLista();
   }
   onCambioTipoPromocion();
@@ -3343,12 +3348,14 @@ async function guardarPromocion() {
   const fechaFin = $('pm-fecha-fin').value || null;
   const precioPromocionRaw = $('pm-precio-promocion').value;
   const precioPromocion = precioPromocionRaw === '' ? null : parseFloat(precioPromocionRaw);
+  const garantiaPromocionRaw = $('pm-garantia-meses').value;
+  const garantiaPromocion = garantiaPromocionRaw === '' ? null : parseFloat(garantiaPromocionRaw);
 
   if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
   if (fechaInicio && fechaFin && fechaFin < fechaInicio) { errEl.textContent = 'La fecha de vigencia final no puede ser antes que la inicial.'; return; }
   if (precioPromocionRaw !== '' && (isNaN(precioPromocion) || precioPromocion < 0)) { errEl.textContent = 'El precio de la promoción no es válido.'; return; }
 
-  const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, precio_promocion: precioPromocion };
+  const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, precio_promocion: precioPromocion, garantia_meses: garantiaPromocion };
   let productosGrupo = null;
 
   if (tipo === 'nxm_mismo') {

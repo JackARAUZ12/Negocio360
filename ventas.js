@@ -923,7 +923,7 @@ async function loadProductosCache() {
     let combosCache = [];
     try {
       const { data: combos } = await sb.from('combos')
-        .select('id,nombre,sku,codigo_barras,precio,costo,tipo_precio,activo')
+        .select('id,nombre,sku,codigo_barras,precio,costo,tipo_precio,activo,garantia_meses')
         .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
       if (combos && combos.length) {
         const comboIds = combos.map(c => c.id);
@@ -949,7 +949,7 @@ async function loadProductosCache() {
           return {
             id: c.id, nombre: c.nombre, sku: c.sku || c.codigo_barras || '',
             tipo: 'producto', precio: c.precio, costo: costoActual, tipo_precio: c.tipo_precio,
-            stock_actual: stockDisponible, activo: c.activo,
+            stock_actual: stockDisponible, activo: c.activo, garantia_meses: c.garantia_meses,
             esCombo: true,
           };
         });
@@ -3252,9 +3252,23 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
     const hoy = todayISO();
     const filas = [];
     for (const item of carrito) {
-      const prod = S.productosCache.find(p => p.id === item.id);
-      const meses = Number(prod?.garantia_meses);
-      if (!prod || !meses || meses <= 0) continue;
+      let nombreParaGarantia, productoIdParaGarantia, meses;
+
+      if (item.esPromocion) {
+        // Promoción vendida como una sola línea (igual que un Combo) --
+        // su garantía vive en S.promociones, no en productosCache.
+        const promo = S.promociones.find(p => p.id === item.id);
+        meses = Number(promo?.garantia_meses);
+        nombreParaGarantia = promo?.nombre;
+        productoIdParaGarantia = null; // la promoción no es un producto real del catálogo
+      } else {
+        const prod = S.productosCache.find(p => p.id === item.id);
+        meses = Number(prod?.garantia_meses);
+        nombreParaGarantia = prod?.nombre;
+        productoIdParaGarantia = prod?.id || null;
+      }
+
+      if (!meses || meses <= 0) continue;
 
       const vencimiento = new Date(hoy + 'T00:00:00');
       vencimiento.setMonth(vencimiento.getMonth() + meses);
@@ -3263,7 +3277,7 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
       filas.push({
         auth_user_id: S.userId, numero: numero || `GT-${Date.now()}`,
         cliente_id: clienteId || null, cliente_nombre: clienteId ? clienteNombre : null,
-        producto_id: prod.id, producto_nombre: prod.nombre,
+        producto_id: productoIdParaGarantia, producto_nombre: nombreParaGarantia,
         venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
         fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
       });

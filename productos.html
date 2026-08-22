@@ -619,6 +619,8 @@
         <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
           Si lo llenas, la promoción se vende <strong>exactamente a este precio</strong> como una sola línea (igual que un Combo) — no como productos sueltos con descuento. Si lo dejas vacío, el sistema calcula el precio automático según lo que ya definiste arriba.
         </p>
+        <label style="margin-top:10px;display:block">🛡️ Garantía (opcional)</label>
+        <input type="number" id="pm-garantia-meses" class="form-input" min="0" step="1" placeholder="Meses de garantía de esta promoción"/>
       </div>
 
       <div class="form-row">
@@ -932,6 +934,11 @@
           <label class="form-label" for="comboCodigoBarras">Código de barras</label>
           <input type="text" class="form-input" id="comboCodigoBarras" placeholder="Opcional" />
         </div>
+        <div class="form-group">
+          <label class="form-label" for="comboGarantiaMeses">Garantía (opcional)</label>
+          <input type="number" class="form-input" id="comboGarantiaMeses" placeholder="Ej: 12" min="0" step="1" />
+          <span class="form-hint">Meses de garantía de este combo</span>
+        </div>
       </div>
 
       <div class="form-section-title">Productos incluidos</div>
@@ -1180,7 +1187,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js"></script>
+<script src="productos.js?v=20260821a"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
