@@ -1851,7 +1851,11 @@ async function fetchCreditosHistorialPagos() {
       fecha_venc:     cu.fecha_vencimiento,
       monto_cuota:    Number(cu.monto_total||0),
       pagado:         Number(cu.monto_pagado||0),
-      saldo:          Number(cu.saldo||0),
+      // El saldo real de ESTA cuota es lo que falta de pagar de ella
+      // misma -- nunca el campo cu.saldo, que en realidad es el saldo
+      // del cronograma completo (siempre da 0 en la última cuota,
+      // sin importar si se pagó o no).
+      saldo:          Math.max(0, Number(cu.monto_total||0) - Number(cu.monto_pagado||0)),
       estado:         cu.estado,
       fecha_estado:   cu.updated_at,
     };
@@ -1964,10 +1968,18 @@ function limpiarClienteCredito() {
 // que ya está pagado. Se usa igual en pantalla y en ambas
 // exportaciones, para que el número sea siempre el mismo en todos
 // lados.
+// El campo "saldo" de cada cuota NO significa "lo que falta pagar de
+// esa cuota" -- es el saldo restante del CRONOGRAMA completo después
+// de esa cuota (útil para la tabla de amortización al crear un
+// crédito, pero engañoso aquí). Para la última cuota de un crédito
+// (o cualquier crédito de una sola cuota), ese campo siempre da 0,
+// sin importar si de verdad se pagó o no. El cálculo correcto de lo
+// que falta pagar de ESA cuota es, y siempre será, monto_total menos
+// lo que ya se abonó.
 function saldoRestanteCliente(filas, clienteId) {
   const total = (filas||[])
     .filter(f => f.cliente_id === clienteId && f.estado !== 'pagada')
-    .reduce((s, f) => s + Number(f.saldo || 0), 0);
+    .reduce((s, f) => s + Math.max(0, Number(f.monto_total||0) - Number(f.monto_pagado||0)), 0);
   return Math.round(total * 100) / 100;
 }
 
