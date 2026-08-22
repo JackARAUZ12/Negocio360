@@ -115,13 +115,28 @@ async function cargarProductosCache() {
 }
 
 /* =====================================================
-   PESTAÑAS
+   PAGINACIÓN Y FILTROS DE LA TABLA DE ÓRDENES
 ===================================================== */
-function cambiarTabProduccion(tab) {
-  STATE.tabActivo = tab;
-  document.querySelectorAll('.prod-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  document.getElementById('tab-ordenes').style.display = tab === 'ordenes' ? '' : 'none';
-  document.getElementById('tab-recetas').style.display = tab === 'recetas' ? '' : 'none';
+STATE.filtroEstadoOrden = '';
+STATE.paginaOrdenes = 1;
+const ORDENES_POR_PAGINA = 5;
+
+function filtrarOrdenesPorEstado(estado) {
+  STATE.filtroEstadoOrden = estado;
+  STATE.paginaOrdenes = 1;
+  document.querySelectorAll('.servicio-vista-btn').forEach(b => b.classList.toggle('active', b.dataset.estado === estado));
+  renderTablaOrdenes();
+}
+
+function cambiarPaginaOrdenes(delta) {
+  STATE.paginaOrdenes = Math.max(1, STATE.paginaOrdenes + delta);
+  renderTablaOrdenes();
+}
+
+function cambiarVistaRecetasCompleta() {
+  const el = document.getElementById('vista-recetas-completa');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 /* =====================================================
@@ -336,25 +351,87 @@ const ESTADO_ORDEN_CLASE = { pendiente:'status-pendiente', en_proceso:'status-pe
 function renderTablaOrdenes() {
   const tbody = document.getElementById('tabla-ordenes-produccion');
   if (!tbody) return;
-  if (!STATE.ordenes.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Todavía no has creado ninguna orden de producción.</td></tr>`;
+
+  const filtradas = STATE.filtroEstadoOrden
+    ? STATE.ordenes.filter(o => o.estado === STATE.filtroEstadoOrden)
+    : STATE.ordenes;
+
+  if (!filtradas.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No hay órdenes ${STATE.filtroEstadoOrden ? 'en este estado' : 'todavía'}.</td></tr>`;
+    document.getElementById('prod-paginacion-info').textContent = 'Mostrando 0 de 0 órdenes';
     return;
   }
-  tbody.innerHTML = STATE.ordenes.map(o => `
-    <tr>
+
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / ORDENES_POR_PAGINA));
+  STATE.paginaOrdenes = Math.min(STATE.paginaOrdenes, totalPaginas);
+  const inicio = (STATE.paginaOrdenes - 1) * ORDENES_POR_PAGINA;
+  const pagina = filtradas.slice(inicio, inicio + ORDENES_POR_PAGINA);
+
+  tbody.innerHTML = pagina.map(o => {
+    const pct = o.estado === 'completada' ? 100 : (o.estado === 'en_proceso' ? Number(o.porcentaje_avance||0) : 0);
+    const colorBarra = o.estado === 'cancelada' ? 'var(--danger)' : (o.estado === 'completada' ? 'var(--success)' : 'var(--accent)');
+    return `<tr>
       <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(o.numero)}</span></td>
       <td>${esc(nombreProducto(o.producto_terminado_id))}</td>
-      <td>${fmtNum(o.cantidad_planificada)}</td>
-      <td>${o.cantidad_producida!=null ? fmtNum(o.cantidad_producida) : '—'}</td>
+      <td>${fmtNum(o.cantidad_planificada)} unidades</td>
       <td><span class="status-badge ${ESTADO_ORDEN_CLASE[o.estado]}">${ESTADO_ORDEN_LABEL[o.estado]}</span></td>
-      <td>${o.costo_unitario ? fmt(o.costo_unitario) : '—'}</td>
-      <td>${fmtFechaCorta(o.fecha_planificada)}</td>
+      <td style="min-width:110px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:6px;background:var(--bg-app);border-radius:20px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${colorBarra}"></div></div>
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${pct}%</span>
+        </div>
+      </td>
+      <td>${o.fecha_entrega ? fmtFechaCorta(o.fecha_entrega) : '—'}</td>
       <td>
         <button class="row-action-btn" title="Ver detalle" onclick="verDetalleOrden('${o.id}')">👁️</button>
-        ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Completar" onclick="completarOrdenPlanificada('${o.id}')" style="color:var(--success)">✅</button>` : ''}
+        ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Iniciar producción" onclick="marcarOrdenEnProceso('${o.id}')" style="color:var(--accent)">▶️</button>` : ''}
+        ${o.estado==='en_proceso' ? `<button class="row-action-btn" title="Actualizar avance" onclick="abrirModalProgreso('${o.id}')" style="color:var(--accent)">📈</button>` : ''}
+        ${(o.estado==='pendiente'||o.estado==='en_proceso') ? `<button class="row-action-btn" title="Completar" onclick="completarOrdenPlanificada('${o.id}')" style="color:var(--success)">✅</button>` : ''}
         ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Cancelar" onclick="cancelarOrden('${o.id}')" style="color:var(--danger)">🗑️</button>` : ''}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
+
+  document.getElementById('prod-paginacion-info').textContent = `Mostrando ${inicio+1} a ${Math.min(inicio+ORDENES_POR_PAGINA, filtradas.length)} de ${filtradas.length} órdenes`;
+  document.getElementById('prod-paginacion-actual').textContent = `${STATE.paginaOrdenes} / ${totalPaginas}`;
+}
+
+// Pasar una orden de "pendiente" a "en_proceso" -- todavia no se
+// consume nada de materia prima, solo marca que ya se empezo a
+// trabajar en ella.
+async function marcarOrdenEnProceso(ordenId) {
+  try {
+    await sb.from('ordenes_produccion').update({ estado: 'en_proceso', porcentaje_avance: 5, updated_at: new Date().toISOString() })
+      .eq('id', ordenId).eq('auth_user_id', STATE.userId);
+    showToast('▶️ Orden marcada en proceso');
+    await cargarOrdenes();
+    actualizarKPIsProduccion();
+  } catch (e) { showToast('No se pudo actualizar', 'error'); }
+}
+
+function abrirModalProgreso(ordenId) {
+  const orden = STATE.ordenes.find(o => o.id === ordenId);
+  if (!orden) return;
+  document.getElementById('progreso-orden-titulo').textContent = `Progreso — ${orden.numero}`;
+  document.getElementById('pg-orden-id').value = ordenId;
+  document.getElementById('pg-porcentaje').value = orden.porcentaje_avance || 0;
+  document.getElementById('pg-porcentaje-num').textContent = `${orden.porcentaje_avance || 0}%`;
+  document.getElementById('pg-error').textContent = '';
+  openModal('modal-progreso-orden');
+}
+
+async function guardarProgresoOrden() {
+  const ordenId = document.getElementById('pg-orden-id').value;
+  const pct = parseFloat(document.getElementById('pg-porcentaje').value);
+  try {
+    await sb.from('ordenes_produccion').update({ porcentaje_avance: pct, updated_at: new Date().toISOString() })
+      .eq('id', ordenId).eq('auth_user_id', STATE.userId);
+    showToast('Progreso actualizado');
+    closeModal('modal-progreso-orden');
+    await cargarOrdenes();
+  } catch (e) {
+    document.getElementById('pg-error').textContent = 'No se pudo guardar. Intenta de nuevo.';
+  }
 }
 
 function llenarSelectRecetasOrden() {
@@ -368,7 +445,7 @@ function abrirModalOrden() {
   document.getElementById('op-error').textContent = '';
   llenarSelectRecetasOrden();
   document.getElementById('op-cantidad').value = '';
-  document.getElementById('op-fecha').value = todayLocalISO();
+  document.getElementById('op-fecha-entrega').value = '';
   document.getElementById('op-costo-mano-obra').value = 0;
   document.getElementById('op-costo-indirecto').value = 0;
   document.getElementById('op-necesidades-wrap').style.display = 'none';
@@ -469,7 +546,7 @@ async function guardarOrden(estadoDeseado) {
   errEl.textContent = '';
   const recetaId = document.getElementById('op-receta').value;
   const cantidad = parseFloat(document.getElementById('op-cantidad').value);
-  const fecha = document.getElementById('op-fecha').value || todayLocalISO();
+  const fechaEntrega = document.getElementById('op-fecha-entrega').value || null;
   const manoObra = parseFloat(document.getElementById('op-costo-mano-obra').value) || 0;
   const indirecto = parseFloat(document.getElementById('op-costo-indirecto').value) || 0;
 
@@ -492,7 +569,7 @@ async function guardarOrden(estadoDeseado) {
     const payload = {
       auth_user_id: STATE.userId, numero: numero || `OP-${Date.now()}`,
       receta_id: recetaId, producto_terminado_id: receta.producto_terminado_id,
-      cantidad_planificada: cantidad, fecha_planificada: fecha,
+      cantidad_planificada: cantidad, fecha_planificada: todayLocalISO(), fecha_entrega: fechaEntrega,
       costo_mano_obra: manoObra, costo_indirecto: indirecto,
       usuario_nombre: STATE.currentUser?.nombre || 'Usuario',
       estado: estadoDeseado,
@@ -588,7 +665,8 @@ async function verDetalleOrden(ordenId) {
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.7">
       <div><b>Producto:</b> ${esc(nombreProducto(orden.producto_terminado_id))}</div>
       <div><b>Planificado:</b> ${fmtNum(orden.cantidad_planificada)} · <b>Producido:</b> ${orden.cantidad_producida!=null?fmtNum(orden.cantidad_producida):'—'}</div>
-      <div><b>Estado:</b> ${ESTADO_ORDEN_LABEL[orden.estado]} · <b>Fecha:</b> ${fmtFechaCorta(orden.fecha_planificada)}</div>
+      <div><b>Estado:</b> ${ESTADO_ORDEN_LABEL[orden.estado]}${orden.estado==='en_proceso' ? ` (${orden.porcentaje_avance||0}% de avance)` : ''} · <b>Creada:</b> ${fmtFechaCorta(orden.fecha_planificada)}</div>
+      ${orden.fecha_entrega ? `<div><b>Fecha de entrega:</b> ${fmtFechaCorta(orden.fecha_entrega)}</div>` : ''}
     </div>
     ${orden.estado === 'completada' ? `
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
@@ -606,18 +684,142 @@ async function verDetalleOrden(ordenId) {
    KPIs
 ===================================================== */
 function actualizarKPIsProduccion() {
-  const planificadas = STATE.ordenes.filter(o => o.estado === 'pendiente').length;
+  const pendientes = STATE.ordenes.filter(o => o.estado === 'pendiente');
+  const enProceso = STATE.ordenes.filter(o => o.estado === 'en_proceso');
+  const activas = pendientes.length + enProceso.length;
+
+  const hoyStr = todayLocalISO();
+  const completadasHoy = STATE.ordenes.filter(o => o.estado === 'completada' && (o.fecha_completada||'').slice(0,10) === hoyStr);
+
   const hoy = new Date();
   const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
   const completadasMes = STATE.ordenes.filter(o => o.estado === 'completada' && (o.fecha_planificada||'') >= inicioMes);
-  const producidoMes = completadasMes.reduce((s,o) => s + Number(o.cantidad_producida||0), 0);
-  const costoMes = completadasMes.reduce((s,o) => s + Number(o.costo_materiales||0), 0);
-  const recetasActivas = STATE.recetas.filter(r => r.activa).length;
+  const canceladasMes = STATE.ordenes.filter(o => o.estado === 'cancelada' && (o.fecha_planificada||'') >= inicioMes);
+  const totalConsideradoMes = completadasMes.length + canceladasMes.length;
+  // Eficiencia: de las órdenes que ya se resolvieron este mes (terminaron
+  // o se cancelaron), qué porcentaje sí llegó a completarse.
+  const eficiencia = totalConsideradoMes > 0 ? round2((completadasMes.length / totalConsideradoMes) * 100) : 100;
 
-  document.getElementById('kpi-planificadas').textContent = planificadas.toString();
-  document.getElementById('kpi-producido-mes').textContent = fmtNum(producidoMes);
-  document.getElementById('kpi-costo-mes').textContent = fmt(costoMes);
-  document.getElementById('kpi-recetas-activas').textContent = recetasActivas.toString();
+  document.getElementById('kpi-activas').textContent = activas.toString();
+  document.getElementById('kpi-en-produccion-pct').textContent = enProceso.length.toString();
+  document.getElementById('kpi-completadas-hoy').textContent = completadasHoy.length.toString();
+  document.getElementById('kpi-pendientes').textContent = pendientes.length.toString();
+  document.getElementById('kpi-eficiencia').textContent = `${eficiencia}%`;
+
+  renderResumenProduccion(completadasMes, canceladasMes, enProceso, pendientes, eficiencia);
+  renderTablaRecetasPrincipales();
+  renderConsumoMaterialesHoy();
+}
+
+// Dona de resumen (SVG puro, sin librerías) + barras de eficiencia
+function renderResumenProduccion(completadasMes, canceladasMes, enProceso, pendientes, eficiencia) {
+  const cont = document.getElementById('prod-donut-contenedor');
+  if (!cont) return;
+
+  const datos = [
+    { valor: completadasMes.length, color: '#10b981' },
+    { valor: enProceso.length,      color: '#3b82f6' },
+    { valor: pendientes.length,     color: '#f59e0b' },
+    { valor: canceladasMes.length,  color: '#ef4444' },
+  ];
+  const total = datos.reduce((s,d) => s+d.valor, 0) || 1;
+  const radio = 60, grosor = 16, circunferencia = 2 * Math.PI * radio;
+  let acumulado = 0;
+  const segmentos = datos.map(d => {
+    const porcion = d.valor / total;
+    const largo = porcion * circunferencia;
+    const offset = -acumulado * circunferencia;
+    acumulado += porcion;
+    return `<circle cx="70" cy="70" r="${radio}" fill="none" stroke="${d.color}" stroke-width="${grosor}"
+      stroke-dasharray="${largo} ${circunferencia-largo}" stroke-dashoffset="${offset}" transform="rotate(-90 70 70)"/>`;
+  }).join('');
+
+  cont.innerHTML = `
+    <svg width="140" height="140" viewBox="0 0 140 140">
+      ${total <= 1 && datos.every(d=>d.valor===0) ? `<circle cx="70" cy="70" r="${radio}" fill="none" stroke="var(--border)" stroke-width="${grosor}"/>` : segmentos}
+      <text x="70" y="65" text-anchor="middle" style="font-size:11px;fill:var(--text-muted)">Total</text>
+      <text x="70" y="83" text-anchor="middle" style="font-size:20px;font-weight:800;fill:var(--text-primary,#111)">${total===1&&datos.every(d=>d.valor===0)?0:total}</text>
+    </svg>`;
+
+  const pct = (n) => total ? Math.round((n/total)*100*10)/10 : 0;
+  document.getElementById('resumen-completadas').textContent = `${completadasMes.length} (${pct(completadasMes.length)}%)`;
+  document.getElementById('resumen-en-proceso').textContent = `${enProceso.length} (${pct(enProceso.length)}%)`;
+  document.getElementById('resumen-pendientes').textContent = `${pendientes.length} (${pct(pendientes.length)}%)`;
+  document.getElementById('resumen-canceladas').textContent = `${canceladasMes.length} (${pct(canceladasMes.length)}%)`;
+
+  document.getElementById('resumen-eficiencia-txt').textContent = `${eficiencia}%`;
+  document.getElementById('barra-eficiencia').style.width = `${Math.min(100,eficiencia)}%`;
+
+  const totalProducido = completadasMes.reduce((s,o) => s + Number(o.cantidad_producida||0), 0);
+  const totalPlanificado = completadasMes.reduce((s,o) => s + Number(o.cantidad_planificada||0), 0);
+  const vsPlan = totalPlanificado > 0 ? round2(((totalProducido - totalPlanificado) / totalPlanificado) * 100) : 0;
+  const vsPlanEl = document.getElementById('resumen-vs-plan-txt');
+  vsPlanEl.textContent = `${vsPlan >= 0 ? '+' : ''}${vsPlan}%`;
+  vsPlanEl.style.color = vsPlan >= 0 ? 'var(--success)' : 'var(--danger)';
+  document.getElementById('barra-vs-plan').style.width = `${Math.min(100, Math.max(0, 50 + vsPlan))}%`;
+}
+
+// Tarjeta compacta de recetas principales (las más usadas), con
+// enlace a "ver todas" -- funciona igual para comida, muebles,
+// repuestos, o cualquier otra cosa que el negocio fabrique.
+function renderTablaRecetasPrincipales() {
+  const tbody = document.getElementById('tabla-recetas-principales');
+  if (!tbody) return;
+  const principales = STATE.recetas.filter(r => r.activa).slice(0, 4);
+  if (!principales.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);font-size:12.5px">Todavía no tienes recetas activas.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = principales.map(r => {
+    const producto = STATE.productos.find(p => p.id === r.producto_terminado_id);
+    return `<tr>
+      <td>${esc(nombreProducto(r.producto_terminado_id))}</td>
+      <td style="font-size:12px;color:var(--text-muted)">1 lote = ${fmtNum(r.cantidad_producida)} unid.</td>
+      <td>${fmtNum(producto?.stock_actual)} unidades</td>
+      <td>
+        <button class="row-action-btn" title="Ver" onclick="abrirModalReceta('${r.id}')">👁️</button>
+        <button class="row-action-btn" title="Producir" onclick="abrirModalOrden()">🏭</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// Consumo de materiales SOLO de las órdenes completadas HOY -- lo
+// que de verdad se gastó hoy, comparado contra lo que había
+// disponible antes de consumirlo.
+async function renderConsumoMaterialesHoy() {
+  const tbody = document.getElementById('tabla-consumo-materiales');
+  if (!tbody) return;
+  const ordenesHoy = STATE.ordenes.filter(o => o.estado === 'completada' && (o.fecha_completada||'').slice(0,10) === todayLocalISO());
+  if (!ordenesHoy.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);font-size:12.5px">Todavía no se ha producido nada hoy.</td></tr>`;
+    return;
+  }
+  try {
+    const { data: consumos } = await sb.from('orden_produccion_consumos').select('producto_id, producto_nombre, cantidad_consumida')
+      .in('orden_id', ordenesHoy.map(o => o.id));
+    const porMaterial = new Map();
+    (consumos||[]).forEach(c => {
+      const acc = porMaterial.get(c.producto_id) || { nombre: c.producto_nombre, consumido: 0 };
+      acc.consumido += Number(c.cantidad_consumida||0);
+      porMaterial.set(c.producto_id, acc);
+    });
+    if (!porMaterial.size) { tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);font-size:12.5px">Sin consumo de materiales hoy.</td></tr>`; return; }
+
+    tbody.innerHTML = Array.from(porMaterial.entries()).map(([productoId, info]) => {
+      const producto = STATE.productos.find(p => p.id === productoId);
+      const disponible = Number(producto?.stock_actual || 0);
+      const colorDisp = disponible <= 0 ? 'var(--danger)' : (disponible < info.consumido ? '#f59e0b' : 'var(--success)');
+      return `<tr>
+        <td>${esc(info.nombre)}</td>
+        <td>${fmtNum(info.consumido)}</td>
+        <td>${fmtNum(info.consumido)}</td>
+        <td style="color:${colorDisp};font-weight:600">${fmtNum(disponible)}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--danger);font-size:12.5px">No se pudo cargar el consumo de hoy.</td></tr>`;
+  }
 }
 
 /* =====================================================

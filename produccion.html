@@ -1201,70 +1201,131 @@
       <div class="greeting-row fade-in">
         <div>
           <h1>Producción</h1>
-          <p>Recetas de fabricación, órdenes de producción, y el costo real de lo que produces.</p>
+          <p>Gestión de órdenes de producción.</p>
         </div>
         <div class="greeting-actions">
-          <button class="btn-secondary" onclick="abrirModalReceta()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            Nueva receta
-          </button>
-          <button class="btn-primary" onclick="abrirModalOrden()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nueva orden de producción
-          </button>
+          <button class="btn-secondary" onclick="abrirModalReceta()">🧪 Nueva receta</button>
+          <button class="btn-primary" onclick="abrirModalOrden()">+ Nueva orden de producción</button>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+      <!-- 5 KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
         <div class="panel-card" style="margin:0;padding:14px 16px">
-          <div style="font-size:11.5px;color:var(--text-muted)">Órdenes planificadas</div>
-          <div style="font-size:20px;font-weight:800" id="kpi-planificadas">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Órdenes activas</div>
+          <div style="font-size:22px;font-weight:800" id="kpi-activas">—</div>
+          <div style="font-size:11px;color:var(--accent)">● En proceso</div>
         </div>
         <div class="panel-card" style="margin:0;padding:14px 16px">
-          <div style="font-size:11.5px;color:var(--text-muted)">Producido este mes</div>
-          <div style="font-size:20px;font-weight:800;color:var(--success)" id="kpi-producido-mes">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">En producción</div>
+          <div style="font-size:22px;font-weight:800" id="kpi-en-produccion-pct">—</div>
+          <div style="font-size:11px;color:var(--accent)">● Produciendo</div>
         </div>
         <div class="panel-card" style="margin:0;padding:14px 16px">
-          <div style="font-size:11.5px;color:var(--text-muted)">Costo materiales (mes)</div>
-          <div style="font-size:20px;font-weight:800" id="kpi-costo-mes">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Completadas hoy</div>
+          <div style="font-size:22px;font-weight:800;color:var(--success)" id="kpi-completadas-hoy">—</div>
+          <div style="font-size:11px;color:var(--success)">● Terminadas</div>
         </div>
         <div class="panel-card" style="margin:0;padding:14px 16px">
-          <div style="font-size:11.5px;color:var(--text-muted)">Recetas activas</div>
-          <div style="font-size:20px;font-weight:800" id="kpi-recetas-activas">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Pendientes</div>
+          <div style="font-size:22px;font-weight:800" id="kpi-pendientes">—</div>
+          <div style="font-size:11px;color:#f59e0b">● Por iniciar</div>
+        </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Eficiencia general</div>
+          <div style="font-size:22px;font-weight:800;color:var(--success)" id="kpi-eficiencia">—</div>
+          <div style="font-size:11px;color:var(--text-muted)">Este mes</div>
         </div>
       </div>
 
-      <div style="display:flex;gap:6px;margin-bottom:14px;background:var(--bg-app);padding:4px;border-radius:10px;width:fit-content">
-        <button class="prod-tab-btn active" data-tab="ordenes" onclick="cambiarTabProduccion('ordenes')">Órdenes de producción</button>
-        <button class="prod-tab-btn" data-tab="recetas" onclick="cambiarTabProduccion('recetas')">Recetas</button>
-      </div>
-
-      <!-- TAB: ÓRDENES -->
-      <div id="tab-ordenes" class="prod-tab-panel">
-        <div class="panel-card">
+      <!-- 2 columnas: Órdenes (izq) + Resumen (der) -->
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:16px" id="prod-grid-superior">
+        <div class="panel-card" style="margin:0">
+          <div style="font-weight:700;font-size:15px;margin-bottom:10px">Órdenes de producción</div>
+          <div style="display:flex;gap:6px;margin-bottom:12px;background:var(--bg-app);padding:4px;border-radius:10px;width:fit-content;flex-wrap:wrap">
+            <button class="servicio-vista-btn active" data-estado="" onclick="filtrarOrdenesPorEstado('')">Todas</button>
+            <button class="servicio-vista-btn" data-estado="en_proceso" onclick="filtrarOrdenesPorEstado('en_proceso')">En proceso</button>
+            <button class="servicio-vista-btn" data-estado="pendiente" onclick="filtrarOrdenesPorEstado('pendiente')">Pendientes</button>
+            <button class="servicio-vista-btn" data-estado="completada" onclick="filtrarOrdenesPorEstado('completada')">Completadas</button>
+            <button class="servicio-vista-btn" data-estado="cancelada" onclick="filtrarOrdenesPorEstado('cancelada')">Canceladas</button>
+          </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>N° Orden</th><th>Producto</th><th>Planificado</th><th>Producido</th>
-                <th>Estado</th><th>Costo unitario</th><th>Fecha</th><th>Acciones</th>
+                <th>Orden</th><th>Producto</th><th>Cantidad</th><th>Estado</th><th>Progreso</th><th>Fecha entrega</th><th></th>
               </tr></thead>
-              <tbody id="tabla-ordenes-produccion"><tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+              <tbody id="tabla-ordenes-produccion"><tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
+            <span id="prod-paginacion-info">—</span>
+            <div style="display:flex;gap:4px">
+              <button class="row-action-btn" onclick="cambiarPaginaOrdenes(-1)">‹</button>
+              <span id="prod-paginacion-actual" style="padding:0 8px">1</span>
+              <button class="row-action-btn" onclick="cambiarPaginaOrdenes(1)">›</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card" style="margin:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-weight:700;font-size:15px">Resumen de producción</div>
+          </div>
+          <div id="prod-donut-contenedor" style="display:flex;justify-content:center;margin-bottom:10px"></div>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between"><span>● Completadas</span><b id="resumen-completadas">—</b></div>
+            <div style="display:flex;justify-content:space-between;color:var(--accent)"><span>● En producción</span><b id="resumen-en-proceso">—</b></div>
+            <div style="display:flex;justify-content:space-between;color:#f59e0b"><span>● Pendientes</span><b id="resumen-pendientes">—</b></div>
+            <div style="display:flex;justify-content:space-between;color:var(--danger)"><span>● Canceladas</span><b id="resumen-canceladas">—</b></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>Eficiencia de producción</span><b style="color:var(--success)" id="resumen-eficiencia-txt">—</b></div>
+            <div style="height:7px;background:var(--bg-app);border-radius:20px;overflow:hidden"><div id="barra-eficiencia" style="height:100%;background:var(--success);width:0%"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>Producción vs Planificado</span><b style="color:var(--success)" id="resumen-vs-plan-txt">—</b></div>
+            <div style="height:7px;background:var(--bg-app);border-radius:20px;overflow:hidden"><div id="barra-vs-plan" style="height:100%;background:var(--accent);width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2 columnas: Recetas principales (izq) + Consumo de materiales (der) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="prod-grid-inferior">
+        <div class="panel-card" style="margin:0">
+          <div style="font-weight:700;font-size:15px;margin-bottom:10px">Recetas principales</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Producto</th><th>Rinde</th><th>Inventario</th><th>Acciones</th></tr></thead>
+              <tbody id="tabla-recetas-principales"><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+          <div style="margin-top:10px"><a href="#" onclick="cambiarVistaRecetasCompleta();return false" style="font-size:12.5px;color:var(--accent);text-decoration:none">Ver todas las recetas →</a></div>
+        </div>
+
+        <div class="panel-card" style="margin:0">
+          <div style="font-weight:700;font-size:15px;margin-bottom:10px">Consumo de materiales (hoy)</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Material</th><th>Requerido</th><th>Consumido</th><th>Disponible</th></tr></thead>
+              <tbody id="tabla-consumo-materiales"><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- TAB: RECETAS -->
-      <div id="tab-recetas" class="prod-tab-panel" style="display:none">
-        <div class="panel-card">
-          <div class="table-wrap">
-            <table>
-              <thead><tr>
-                <th>Receta</th><th>Producto terminado</th><th>Rinde</th><th>Componentes</th><th>Estado</th><th>Acciones</th>
-              </tr></thead>
-              <tbody id="tabla-recetas"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
-            </table>
-          </div>
+      <!-- VISTA COMPLETA DE RECETAS (oculta por defecto, aparece con "Ver todas las recetas") -->
+      <div class="panel-card" id="vista-recetas-completa" style="display:none;margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-weight:700;font-size:15px">Todas las recetas</div>
+          <button class="row-action-btn" onclick="cambiarVistaRecetasCompleta()">✕ Cerrar</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Receta</th><th>Producto terminado</th><th>Rinde</th><th>Componentes</th><th>Estado</th><th>Acciones</th>
+            </tr></thead>
+            <tbody id="tabla-recetas"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+          </table>
         </div>
       </div>
 
@@ -1282,6 +1343,7 @@
             <div class="form-group">
               <label>Producto terminado *</label>
               <select id="rc-producto-terminado"></select>
+              <span class="form-hint">Puede ser cualquier cosa que fabriques: comida, muebles, repuestos, ropa — lo que sea</span>
             </div>
             <div class="form-row">
               <div><label>Nombre de la receta</label><input type="text" id="rc-nombre" placeholder="Ej: Receta estándar" value="Receta estándar"/></div>
@@ -1320,7 +1382,7 @@
             </div>
             <div class="form-row">
               <div><label>¿Cuánto vas a producir? *</label><input type="number" id="op-cantidad" min="0.01" step="0.01" oninput="recalcularNecesidadesOrden()"/></div>
-              <div><label>Fecha</label><input type="date" id="op-fecha"/></div>
+              <div><label>Fecha de entrega estimada</label><input type="date" id="op-fecha-entrega"/></div>
             </div>
 
             <div id="op-necesidades-wrap" style="display:none;margin-top:10px">
@@ -1345,6 +1407,32 @@
         </div>
       </div>
 
+      <!-- MODAL: ACTUALIZAR PROGRESO (para órdenes en_proceso) -->
+      <div class="modal-overlay" id="modal-progreso-orden">
+        <div class="modal-box" style="max-width:460px">
+          <div class="modal-header">
+            <span class="modal-title" id="progreso-orden-titulo">Actualizar progreso</span>
+            <button class="modal-close" onclick="closeModal('modal-progreso-orden')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="pg-orden-id"/>
+            <div class="form-group">
+              <label>Progreso actual (%)</label>
+              <input type="range" id="pg-porcentaje" min="0" max="100" step="5" value="0" oninput="document.getElementById('pg-porcentaje-num').textContent=this.value+'%'"/>
+              <div style="text-align:center;font-weight:800;font-size:20px;color:var(--accent)" id="pg-porcentaje-num">0%</div>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted)">Al llegar a 100%, marca la orden como completada desde el detalle, para que descuente la materia prima real.</p>
+            <p id="pg-error" style="color:var(--danger);font-size:12.5px"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-progreso-orden')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarProgresoOrden()">Guardar progreso</button>
+          </div>
+        </div>
+      </div>
+
       <!-- MODAL: DETALLE DE ORDEN -->
       <div class="modal-overlay" id="modal-detalle-orden">
         <div class="modal-box" style="max-width:560px">
@@ -1363,7 +1451,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="produccion.js?v=20260822a"></script>
+<script src="produccion.js?v=20260822b"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
