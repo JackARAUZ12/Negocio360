@@ -69,8 +69,8 @@ function navigate(url) { closeMobileSidebar(); window.location.href = url; }
 /* =====================================================
    HELPERS DE MODAL Y TOAST
 ===================================================== */
-function openModal(id) { const el = document.getElementById(id); if (el) el.classList.add('open'); }
-function closeModal(id) { const el = document.getElementById(id); if (el) el.classList.remove('open'); }
+function openModal(id) { const el = document.getElementById(id); if (el) { el.style.display='flex'; el.classList.add('modal-open'); document.body.style.overflow='hidden'; } }
+function closeModal(id) { const el = document.getElementById(id); if (el) { el.style.display='none'; el.classList.remove('modal-open'); document.body.style.overflow=''; } }
 function setBtnLoading(id, loading) { const btn = document.getElementById(id); if (btn) { btn.disabled = loading; btn.style.opacity = loading ? '.6' : ''; } }
 function showToast(msg, type='success') {
   const t = document.getElementById('toast');
