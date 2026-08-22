@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Editar Perfil — Negocio360</title>
+  <title>Producción — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -930,12 +930,6 @@
       background: var(--bg-surface); color: var(--text-primary); width: 100%;
     }
     .carrito-input:focus { border-color: var(--border-focus); outline: none; }
-    .pf-upload-zone {
-      border: 1.5px dashed var(--border); border-radius: var(--radius-md);
-      padding: 16px; text-align: center; cursor: pointer; transition: border-color var(--transition), background var(--transition);
-    }
-    .pf-upload-zone:hover, .pf-upload-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }
-    .pf-upload-zone img.pf-preview { max-width: 100%; max-height: 70px; object-fit: contain; border-radius: 6px; }
     .iva-row {
       display: flex; align-items: center; gap: 10px; padding: 12px 14px;
       background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -970,6 +964,21 @@
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
     }
     .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .filtro-estado-btn.active, .tipo-repartidor-btn.active, .modo-venta-btn.active, .tipo-pago-btn.active,
+    .filtro-estado-activo-btn.active, .motivo-baja-btn.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+
+    .prod-tab-btn { padding:8px 16px; font-size:12.5px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; background:transparent; border:none; }
+    .prod-tab-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .prod-componente-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:var(--bg-app); border-radius:8px; margin-bottom:5px; font-size:12.5px; }
+    .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:16px}
+    .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -985,7 +994,7 @@
     </svg>
   </div>
   <div class="loader-spinner"></div>
-  <p style="font-size:13px;color:var(--text-muted)">Cargando tu perfil…</p>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Sucursales…</p>
 </div>
 
 <!-- TOAST -->
@@ -1083,11 +1092,6 @@
         <span class="nav-label">Contabilidad</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <span class="nav-label">Consulta/Inventario</span>
-      </div>
-
       <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
         <span class="nav-label">Rutas</span>
@@ -1108,9 +1112,19 @@
         <span class="nav-label">Agenda</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('produccion.html')" data-tooltip="Producción">
+      <div class="nav-item active" onclick="navigate('produccion.html')" data-tooltip="Producción">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
         <span class="nav-label">Producción</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
       </div>
 
       <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
@@ -1158,7 +1172,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Editar Perfil</span>
+      <span class="header-title">Producción</span>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -1179,168 +1193,172 @@
     </header>
 
     <div id="content">
-
       <div class="greeting-row fade-in">
-        <div class="greeting-text">
-          <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66V19a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1.66"/></svg>
-            <span id="greeting-text">Editar Perfil</span>
-          </h1>
-          <p>Así se ve tu negocio en todo el sistema — reportes, comprobantes y cada módulo. Los cambios se aplican de inmediato.</p>
+        <div>
+          <h1>Producción</h1>
+          <p>Recetas de fabricación, órdenes de producción, y el costo real de lo que produces.</p>
         </div>
         <div class="greeting-actions">
-          <button class="btn-primary" id="btn-guardar-perfil" onclick="guardarPerfil()">Guardar cambios</button>
+          <button class="btn-secondary" onclick="abrirModalReceta()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Nueva receta
+          </button>
+          <button class="btn-primary" onclick="abrirModalOrden()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva orden de producción
+          </button>
         </div>
       </div>
 
-      <!-- IDENTIDAD VISUAL -->
-      <div class="panel-card fade-in">
-        <div class="panel-header">
-          <div class="panel-title">🎨 Identidad visual</div>
-          <p style="font-size:12.5px;color:var(--text-muted);margin:2px 0 0">Tu logo y colores aparecen en el menú lateral de todos los módulos y en tus comprobantes/PDF.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Órdenes planificadas</div>
+          <div style="font-size:20px;font-weight:800" id="kpi-planificadas">—</div>
         </div>
-        <div class="panel-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Logo principal</label>
-              <div class="pf-upload-zone" id="pf-zone-logo" ondragover="pfDragOver(event,'pf-zone-logo')" ondragleave="pfDragLeave('pf-zone-logo')" ondrop="pfDropFile(event,'pf-logo-principal','pf-zone-logo','principal')">
-                <input type="file" id="pf-logo-principal" accept="image/*" style="display:none" onchange="pfPreviewLogo(this,'pf-zone-logo','principal')"/>
-                <div id="pf-zone-logo-content" onclick="document.getElementById('pf-logo-principal').click()">
-                  <div style="font-size:26px">🖼️</div>
-                  <div style="font-size:13px;font-weight:600;margin-top:4px">Subir logo</div>
-                  <div style="font-size:11px;color:var(--text-muted)">PNG, SVG, WEBP · Máx 2MB</div>
-                </div>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Logo alternativo (opcional)</label>
-              <div class="pf-upload-zone" id="pf-zone-logo2" ondragover="pfDragOver(event,'pf-zone-logo2')" ondragleave="pfDragLeave('pf-zone-logo2')" ondrop="pfDropFile(event,'pf-logo-alterno','pf-zone-logo2','alternativo')">
-                <input type="file" id="pf-logo-alterno" accept="image/*" style="display:none" onchange="pfPreviewLogo(this,'pf-zone-logo2','alternativo')"/>
-                <div id="pf-zone-logo2-content" onclick="document.getElementById('pf-logo-alterno').click()">
-                  <div style="font-size:26px">✨</div>
-                  <div style="font-size:13px;font-weight:600;margin-top:4px">Subir logo alternativo</div>
-                  <div style="font-size:11px;color:var(--text-muted)">Para fondos oscuros / ícono pequeño</div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Producido este mes</div>
+          <div style="font-size:20px;font-weight:800;color:var(--success)" id="kpi-producido-mes">—</div>
+        </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Costo materiales (mes)</div>
+          <div style="font-size:20px;font-weight:800" id="kpi-costo-mes">—</div>
+        </div>
+        <div class="panel-card" style="margin:0;padding:14px 16px">
+          <div style="font-size:11.5px;color:var(--text-muted)">Recetas activas</div>
+          <div style="font-size:20px;font-weight:800" id="kpi-recetas-activas">—</div>
+        </div>
+      </div>
 
-          <div class="form-row" style="margin-top:14px">
-            <div class="form-group">
-              <label>Color principal</label>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input type="color" id="pf-color-principal" value="#6C63FF" oninput="pfSyncColor('pf-color-principal','pf-hex-principal')" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
-                <input type="text" id="pf-hex-principal" value="#6C63FF" maxlength="7" oninput="pfSyncHex('pf-hex-principal','pf-color-principal')" style="flex:1"/>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Color secundario</label>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input type="color" id="pf-color-secundario" value="#3B82F6" oninput="pfSyncColor('pf-color-secundario','pf-hex-secundario')" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
-                <input type="text" id="pf-hex-secundario" value="#3B82F6" maxlength="7" oninput="pfSyncHex('pf-hex-secundario','pf-color-secundario')" style="flex:1"/>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Color de acento</label>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input type="color" id="pf-color-acento" value="#F59E0B" oninput="pfSyncColor('pf-color-acento','pf-hex-acento')" style="width:42px;height:38px;border:none;border-radius:8px;cursor:pointer"/>
-                <input type="text" id="pf-hex-acento" value="#F59E0B" maxlength="7" oninput="pfSyncHex('pf-hex-acento','pf-color-acento')" style="flex:1"/>
-              </div>
-            </div>
+      <div style="display:flex;gap:6px;margin-bottom:14px;background:var(--bg-app);padding:4px;border-radius:10px;width:fit-content">
+        <button class="prod-tab-btn active" data-tab="ordenes" onclick="cambiarTabProduccion('ordenes')">Órdenes de producción</button>
+        <button class="prod-tab-btn" data-tab="recetas" onclick="cambiarTabProduccion('recetas')">Recetas</button>
+      </div>
+
+      <!-- TAB: ÓRDENES -->
+      <div id="tab-ordenes" class="prod-tab-panel">
+        <div class="panel-card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>N° Orden</th><th>Producto</th><th>Planificado</th><th>Producido</th>
+                <th>Estado</th><th>Costo unitario</th><th>Fecha</th><th>Acciones</th>
+              </tr></thead>
+              <tbody id="tabla-ordenes-produccion"><tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <!-- INFORMACIÓN EMPRESARIAL -->
-      <div class="panel-card fade-in">
-        <div class="panel-header"><div class="panel-title">🏢 Información empresarial</div></div>
-        <div class="panel-body">
-          <div class="form-row">
-            <div class="form-group"><label>Nombre comercial *</label><input type="text" id="pf-nombre-comercial" placeholder="Ej: Tienda La Esperanza"/></div>
-            <div class="form-group"><label>Razón social (opcional)</label><input type="text" id="pf-razon-social" placeholder="Ej: Inversiones LA S.A."/></div>
+      <!-- TAB: RECETAS -->
+      <div id="tab-recetas" class="prod-tab-panel" style="display:none">
+        <div class="panel-card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Receta</th><th>Producto terminado</th><th>Rinde</th><th>Componentes</th><th>Estado</th><th>Acciones</th>
+              </tr></thead>
+              <tbody id="tabla-recetas"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
+            </table>
           </div>
-          <div class="form-group full-col"><label>Descripción del negocio (opcional)</label><textarea id="pf-descripcion" rows="2" placeholder="¿A qué se dedica tu empresa?"></textarea></div>
         </div>
       </div>
 
-      <!-- NÓMINA -->
-      <div class="panel-card fade-in">
-        <div class="panel-header"><div class="panel-title">👥 Nómina</div></div>
-        <div class="panel-body">
-          <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-            Estos números los usa el módulo de Salarios para calcular las vacaciones y la liquidación de tus empleados — ajústalos según las leyes de tu país.
-          </p>
-          <div class="form-row">
+      <!-- MODAL: NUEVA/EDITAR RECETA -->
+      <div class="modal-overlay" id="modal-receta">
+        <div class="modal-box" style="max-width:620px">
+          <div class="modal-header">
+            <span class="modal-title" id="receta-titulo-modal">🧪 Nueva receta</span>
+            <button class="modal-close" onclick="closeModal('modal-receta')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="rc-id"/>
             <div class="form-group">
-              <label>Días de vacaciones al año</label>
-              <input type="number" id="pf-vacaciones-dias-anio" min="0" step="0.5" placeholder="15"/>
+              <label>Producto terminado *</label>
+              <select id="rc-producto-terminado"></select>
             </div>
+            <div class="form-row">
+              <div><label>Nombre de la receta</label><input type="text" id="rc-nombre" placeholder="Ej: Receta estándar" value="Receta estándar"/></div>
+              <div><label>¿Cuánto produce esta receta? *</label><input type="number" id="rc-cantidad-produce" min="0.01" step="0.01" value="1"/></div>
+            </div>
+
+            <div style="font-weight:700;font-size:13px;margin:14px 0 6px">Materia prima que necesita</div>
             <div class="form-group">
-              <label>Días de indemnización por cada año trabajado</label>
-              <input type="number" id="pf-indemnizacion-dias-anio" min="0" step="0.5" placeholder="30"/>
+              <input type="text" id="rc-buscar-componente" placeholder="Buscar producto para agregar como materia prima..."/>
+              <div id="rc-buscar-resultados" style="max-height:140px;overflow-y:auto;margin-top:4px"></div>
             </div>
+            <div id="rc-lista-componentes" style="margin-top:8px"></div>
+
+            <p id="rc-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-receta')">Cancelar</button>
+            <button class="btn-primary" id="btn-guardar-receta" onclick="guardarReceta()">Guardar receta</button>
           </div>
         </div>
       </div>
 
-      <!-- DOCUMENTOS PDF -->
-      <div class="panel-card fade-in">
-        <div class="panel-header"><div class="panel-title">📄 Documentos PDF</div></div>
-        <div class="panel-body">
-          <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-            Esto se aplica automáticamente en Proformas y en los demás documentos PDF del sistema — configúralo una sola vez aquí.
-          </p>
-          <div class="form-group full-col">
-            <label>Mensaje de pie de página (opcional)</label>
-            <textarea id="pf-pdf-mensaje-pie" rows="2" placeholder="Ej: Precios válidos por 15 días · Gracias por su preferencia"></textarea>
+      <!-- MODAL: NUEVA ORDEN -->
+      <div class="modal-overlay" id="modal-orden">
+        <div class="modal-box" style="max-width:560px">
+          <div class="modal-header">
+            <span class="modal-title">🏭 Nueva orden de producción</span>
+            <button class="modal-close" onclick="closeModal('modal-orden')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
-          <label style="font-size:12.5px;font-weight:600;display:block;margin:10px 0 6px">Datos a mostrar en los documentos</label>
-          <div style="display:flex;gap:18px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pf-pdf-mostrar-ruc" checked/> RUC</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pf-pdf-mostrar-direccion" checked/> Dirección</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="pf-pdf-mostrar-telefono" checked/> Teléfono</label>
-          </div>
-          <p style="font-size:11px;color:var(--text-muted);margin-top:8px">El color del encabezado usa el "Color de acento" que configuraste arriba en Marca.</p>
-        </div>
-      </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Receta a usar *</label>
+              <select id="op-receta" onchange="onCambiarRecetaOrden()"></select>
+            </div>
+            <div class="form-row">
+              <div><label>¿Cuánto vas a producir? *</label><input type="number" id="op-cantidad" min="0.01" step="0.01" oninput="recalcularNecesidadesOrden()"/></div>
+              <div><label>Fecha</label><input type="date" id="op-fecha"/></div>
+            </div>
 
-      <!-- UBICACIÓN -->
-      <div class="panel-card fade-in">
-        <div class="panel-header"><div class="panel-title">📍 Ubicación</div></div>
-        <div class="panel-body">
-          <div class="form-row">
-            <div class="form-group"><label>Departamento / Estado</label><input type="text" id="pf-departamento" placeholder="Ej: Managua"/></div>
-            <div class="form-group"><label>Ciudad / Municipio</label><input type="text" id="pf-ciudad" placeholder="Ej: Managua"/></div>
-          </div>
-          <div class="form-group full-col"><label>Dirección (opcional)</label><input type="text" id="pf-direccion" placeholder="Ej: De la Plaza España 1c al este"/></div>
-        </div>
-      </div>
+            <div id="op-necesidades-wrap" style="display:none;margin-top:10px">
+              <div style="font-weight:700;font-size:13px;margin-bottom:6px">Materia prima que se va a consumir</div>
+              <div id="op-necesidades-lista"></div>
+            </div>
 
-      <!-- CONTACTO -->
-      <div class="panel-card fade-in">
-        <div class="panel-header"><div class="panel-title">📞 Información de contacto</div></div>
-        <div class="panel-body">
-          <div class="form-row">
-            <div class="form-group"><label>WhatsApp</label><input type="tel" id="pf-whatsapp" placeholder="8888-1234"/></div>
-            <div class="form-group"><label>Teléfono</label><input type="tel" id="pf-telefono" placeholder="2222-3456"/></div>
-            <div class="form-group"><label>Correo empresarial</label><input type="email" id="pf-email-empresa" placeholder="contacto@minegocio.com"/></div>
+            <div class="form-row" style="margin-top:10px">
+              <div><label>Costo de mano de obra (opcional)</label><input type="number" id="op-costo-mano-obra" min="0" step="0.01" value="0" oninput="recalcularNecesidadesOrden()"/></div>
+              <div><label>Costos indirectos (opcional)</label><input type="number" id="op-costo-indirecto" min="0" step="0.01" value="0" oninput="recalcularNecesidadesOrden()"/></div>
+            </div>
+
+            <div id="op-resumen-costo" style="margin-top:10px;padding:10px 12px;background:var(--bg-app);border-radius:8px;font-size:13px;display:none"></div>
+
+            <p id="op-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
           </div>
-          <div class="form-row">
-            <div class="form-group"><label>Sitio web</label><input type="url" id="pf-sitio-web" placeholder="https://minegocio.com"/></div>
-            <div class="form-group"><label>Facebook</label><input type="url" id="pf-facebook" placeholder="https://facebook.com/minegocio"/></div>
-            <div class="form-group"><label>Instagram</label><input type="text" id="pf-instagram" placeholder="@minegocio"/></div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-orden')">Cancelar</button>
+            <button class="btn-secondary" onclick="guardarOrden('planificada')">Guardar como planificada</button>
+            <button class="btn-primary" onclick="guardarOrden('completada')">Producir ahora</button>
           </div>
         </div>
       </div>
 
-      <p id="pf-error" style="color:var(--danger);font-size:12.5px;margin:8px 2px"></p>
+      <!-- MODAL: DETALLE DE ORDEN -->
+      <div class="modal-overlay" id="modal-detalle-orden">
+        <div class="modal-box" style="max-width:560px">
+          <div class="modal-header">
+            <span class="modal-title" id="detalle-orden-titulo">Orden de producción</span>
+            <button class="modal-close" onclick="closeModal('modal-detalle-orden')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body" id="detalle-orden-cuerpo"></div>
+          <div class="modal-footer" id="detalle-orden-footer"></div>
+        </div>
+      </div>
 
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="perfil.js"></script>
-
+<script src="produccion.js?v=20260821a"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>

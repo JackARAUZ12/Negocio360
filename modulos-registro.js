@@ -81,6 +81,8 @@
                                desc: 'Vehículos, herramientas, maquinaria y todo lo que el negocio posee para operar (no para vender) — con depreciación automática según la ley nicaragüense y asientos contables generados solos.' },
     'agenda.html':             { key: 'agenda',             label: 'Agenda',              icon: '📅', obligatorio: false,
                                desc: 'Todo lo que tiene fecha en tu negocio en un solo lugar — cuotas de crédito por vencer, cuentas por pagar, gastos programados, garantías de activos — más tus propias citas y recordatorios.' },
+    'produccion.html':         { key: 'produccion',         label: 'Producción',          icon: '🏭', obligatorio: false,
+                               desc: 'Para negocios que fabrican lo que venden — recetas de fabricación, órdenes de producción, y el costo real de lo que produces, calculado desde la materia prima que de verdad se consumió.' },
     'contabilidad.html':       { key: 'contabilidad',       label: 'Contabilidad',        icon: '📒', obligatorio: false,
                                desc: 'Catálogo de cuentas y asientos contables con partida doble real (Debe = Haber siempre). Libro Mayor y Balance de Comprobación.' },
   };
