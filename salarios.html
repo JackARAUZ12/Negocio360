@@ -825,7 +825,20 @@
       .section-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 12px; }
       .greeting-text h1 { font-size: 18px; }
       .greeting-row { flex-direction: column; align-items: stretch; }
-      .greeting-actions .btn-primary { width: 100%; justify-content: center; }
+      /* FIX MÓVIL: .greeting-actions tenía 6 botones en una sola fila
+         sin flex-wrap ni ancho controlado -- solo el ultimo (.btn-primary,
+         "Nuevo empleado") recibia ajuste, dejando los otros 5 empujar
+         TODA la pagina a 756px de ancho en una pantalla de 375px
+         (confirmado con captura real). Ahora se envuelven en varias
+         filas, ocupando el ancho completo del contenedor. */
+      .greeting-actions {
+        width: 100%; flex-wrap: wrap; gap: 8px;
+      }
+      .greeting-actions .btn-primary,
+      .greeting-actions .btn-secondary {
+        flex: 1 1 calc(50% - 4px); min-width: 0;
+        justify-content: center; font-size: 12.5px; padding: 8px 10px;
+      }
       #header { gap: 8px; padding: 0 12px; }
       .plan-badge { display: none; }
       #header-fecha { display: none; }
