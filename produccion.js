@@ -16,6 +16,8 @@ let STATE = {
   productos: [], recetas: [], ordenes: [],
   tabActivo: 'ordenes',
   componentesRecetaActual: [], // [{producto_id, nombre, cantidad}]
+  tipoRecetaActual: 'normal',
+  salidasDespieceActual: [], // [{producto_id, nombre, cantidad_rendimiento, es_merma}]
 };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -145,7 +147,7 @@ function cambiarVistaRecetasCompleta() {
 async function cargarRecetas() {
   try {
     const { data } = await sb.from('recetas_produccion')
-      .select('*, receta_componentes(id, producto_id, cantidad)')
+      .select('*, receta_componentes(id, producto_id, cantidad), receta_despiece_salidas(id, producto_id, cantidad_rendimiento, es_merma)')
       .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
     STATE.recetas = data || [];
     renderTablaRecetas();
@@ -163,10 +165,12 @@ function renderTablaRecetas() {
   }
   tbody.innerHTML = STATE.recetas.map(r => {
     const nComp = (r.receta_componentes||[]).length;
+    const esDespiece = r.tipo === 'despiece';
+    const nSalidas = (r.receta_despiece_salidas||[]).length;
     return `<tr>
-      <td><strong>${esc(r.nombre)}</strong></td>
-      <td>${esc(nombreProducto(r.producto_terminado_id))}</td>
-      <td>${fmtNum(r.cantidad_producida)} unidad${r.cantidad_producida==1?'':'es'}</td>
+      <td><strong>${esc(r.nombre)}</strong> ${esDespiece ? '<span style="font-size:10px;color:#f59e0b;font-weight:700">🍗 DESPIECE</span>' : ''}</td>
+      <td>${esDespiece ? `${nSalidas} salida${nSalidas===1?'':'s'}` : esc(nombreProducto(r.producto_terminado_id))}</td>
+      <td>${esDespiece ? '—' : `${fmtNum(r.cantidad_producida)} unidad${r.cantidad_producida==1?'':'es'}`}</td>
       <td>${nComp} producto${nComp===1?'':'s'}</td>
       <td><span class="status-badge ${r.activa?'status-activo':'status-inactivo'}" style="cursor:pointer" onclick="toggleRecetaActiva('${r.id}', ${!r.activa})">${r.activa?'Activa':'Pausada'}</span></td>
       <td>
@@ -203,21 +207,41 @@ function llenarSelectProductosTerminados() {
   if (sel) sel.innerHTML = opciones;
 }
 
+function cambiarTipoReceta(tipo) {
+  STATE.tipoRecetaActual = tipo;
+  document.querySelectorAll('.prod-tipo-receta-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
+  document.getElementById('rc-seccion-normal').style.display = tipo === 'normal' ? '' : 'none';
+  document.getElementById('rc-seccion-despiece').style.display = tipo === 'despiece' ? '' : 'none';
+  document.getElementById('rc-titulo-componentes').textContent = tipo === 'despiece' ? 'Materia prima que se despieza' : 'Materia prima que necesita';
+}
+
 function abrirModalReceta(id) {
   document.getElementById('rc-error').textContent = '';
   document.getElementById('rc-id').value = id || '';
   llenarSelectProductosTerminados();
   STATE.componentesRecetaActual = [];
+  STATE.salidasDespieceActual = [];
   document.getElementById('rc-buscar-componente').value = '';
   document.getElementById('rc-buscar-resultados').innerHTML = '';
+  document.getElementById('rd-buscar-salida').value = '';
+  document.getElementById('rd-buscar-resultados').innerHTML = '';
 
   if (id) {
     const r = STATE.recetas.find(x => x.id === id);
     if (!r) return;
     document.getElementById('receta-titulo-modal').textContent = '✏️ Editar receta';
-    document.getElementById('rc-producto-terminado').value = r.producto_terminado_id;
     document.getElementById('rc-nombre').value = r.nombre;
-    document.getElementById('rc-cantidad-produce').value = r.cantidad_producida;
+    cambiarTipoReceta(r.tipo || 'normal');
+
+    if (r.tipo === 'despiece') {
+      STATE.salidasDespieceActual = (r.receta_despiece_salidas||[]).map(s => ({
+        producto_id: s.producto_id, nombre: nombreProducto(s.producto_id),
+        cantidad_rendimiento: s.cantidad_rendimiento, es_merma: s.es_merma,
+      }));
+    } else {
+      document.getElementById('rc-producto-terminado').value = r.producto_terminado_id;
+      document.getElementById('rc-cantidad-produce').value = r.cantidad_producida;
+    }
     STATE.componentesRecetaActual = (r.receta_componentes||[]).map(c => ({
       producto_id: c.producto_id, nombre: nombreProducto(c.producto_id), cantidad: c.cantidad,
     }));
@@ -225,9 +249,60 @@ function abrirModalReceta(id) {
     document.getElementById('receta-titulo-modal').textContent = '🧪 Nueva receta';
     document.getElementById('rc-nombre').value = 'Receta estándar';
     document.getElementById('rc-cantidad-produce').value = 1;
+    cambiarTipoReceta('normal');
   }
   renderListaComponentesReceta();
+  renderListaSalidasDespiece();
   openModal('modal-receta');
+}
+
+function renderListaSalidasDespiece() {
+  const cont = document.getElementById('rd-lista-salidas');
+  if (!cont) return;
+  if (!STATE.salidasDespieceActual.length) {
+    cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Todavía no has agregado ninguna salida.</p>';
+    return;
+  }
+  cont.innerHTML = STATE.salidasDespieceActual.map((s, i) => `
+    <div class="prod-componente-row">
+      <span>${s.es_merma ? '🗑️' : '📦'} ${esc(s.nombre)}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" min="0.01" step="0.01" value="${s.cantidad_rendimiento}" style="width:75px" onchange="cambiarCantidadSalida(${i}, this.value)"/>
+        <label style="display:flex;align-items:center;gap:3px;font-size:11px;white-space:nowrap;cursor:pointer">
+          <input type="checkbox" ${s.es_merma?'checked':''} onchange="toggleEsMermaSalida(${i}, this.checked)"/> desecho
+        </label>
+        <button type="button" class="row-action-btn" title="Quitar" onclick="quitarSalidaDespiece(${i})" style="color:var(--danger)">✕</button>
+      </div>
+    </div>`).join('');
+}
+function cambiarCantidadSalida(idx, valor) {
+  const n = parseFloat(valor);
+  if (!isNaN(n) && n > 0) STATE.salidasDespieceActual[idx].cantidad_rendimiento = n;
+}
+function toggleEsMermaSalida(idx, valor) { STATE.salidasDespieceActual[idx].es_merma = valor; }
+function quitarSalidaDespiece(idx) { STATE.salidasDespieceActual.splice(idx, 1); renderListaSalidasDespiece(); }
+function agregarSalidaDespiece(productoId, nombre) {
+  if (STATE.salidasDespieceActual.some(s => s.producto_id === productoId)) return;
+  STATE.salidasDespieceActual.push({ producto_id: productoId, nombre, cantidad_rendimiento: 1, es_merma: false });
+  document.getElementById('rd-buscar-salida').value = '';
+  document.getElementById('rd-buscar-resultados').innerHTML = '';
+  renderListaSalidasDespiece();
+}
+
+function initBusquedaSalidaDespiece() {
+  const input = document.getElementById('rd-buscar-salida');
+  if (!input) return;
+  input.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const cont = document.getElementById('rd-buscar-resultados');
+    if (!q) { cont.innerHTML = ''; return; }
+    const yaAgregados = new Set(STATE.salidasDespieceActual.map(s => s.producto_id));
+    const resultados = STATE.productos.filter(p => !yaAgregados.has(p.id) && p.nombre.toLowerCase().includes(q)).slice(0, 6);
+    cont.innerHTML = resultados.map(p => `
+      <div style="padding:6px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
+           onclick="agregarSalidaDespiece('${p.id}','${esc(p.nombre)}')">${esc(p.nombre)}</div>
+    `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+  });
 }
 
 function renderListaComponentesReceta() {
@@ -288,26 +363,36 @@ async function guardarReceta() {
   const errEl = document.getElementById('rc-error');
   errEl.textContent = '';
   const id = document.getElementById('rc-id').value;
-  const productoTerminadoId = document.getElementById('rc-producto-terminado').value;
   const nombre = document.getElementById('rc-nombre').value.trim();
-  const cantidadProduce = parseFloat(document.getElementById('rc-cantidad-produce').value);
+  const tipo = STATE.tipoRecetaActual;
 
-  if (!productoTerminadoId) { errEl.textContent = 'Elige el producto terminado.'; return; }
   if (!nombre) { errEl.textContent = 'El nombre de la receta es obligatorio.'; return; }
-  if (!cantidadProduce || cantidadProduce <= 0) { errEl.textContent = 'La cantidad que produce debe ser mayor a cero.'; return; }
   if (!STATE.componentesRecetaActual.length) { errEl.textContent = 'Agrega al menos una materia prima.'; return; }
+
+  let productoTerminadoId = null, cantidadProduce = null;
+  if (tipo === 'normal') {
+    productoTerminadoId = document.getElementById('rc-producto-terminado').value;
+    cantidadProduce = parseFloat(document.getElementById('rc-cantidad-produce').value);
+    if (!productoTerminadoId) { errEl.textContent = 'Elige el producto terminado.'; return; }
+    if (!cantidadProduce || cantidadProduce <= 0) { errEl.textContent = 'La cantidad que produce debe ser mayor a cero.'; return; }
+  } else {
+    if (!STATE.salidasDespieceActual.length) { errEl.textContent = 'Agrega al menos una salida (lo que vas a obtener).'; return; }
+  }
 
   setBtnLoading('btn-guardar-receta', true);
   try {
     const payload = {
-      auth_user_id: STATE.userId, producto_terminado_id: productoTerminadoId,
-      nombre, cantidad_producida: cantidadProduce, updated_at: new Date().toISOString(),
+      auth_user_id: STATE.userId, tipo,
+      producto_terminado_id: tipo === 'normal' ? productoTerminadoId : null,
+      nombre, cantidad_producida: tipo === 'normal' ? cantidadProduce : 1,
+      updated_at: new Date().toISOString(),
     };
     let recetaId = id;
     if (id) {
       const { error } = await sb.from('recetas_produccion').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
       if (error) throw error;
       await sb.from('receta_componentes').delete().eq('receta_id', id).eq('auth_user_id', STATE.userId);
+      await sb.from('receta_despiece_salidas').delete().eq('receta_id', id).eq('auth_user_id', STATE.userId);
     } else {
       const { data, error } = await sb.from('recetas_produccion').insert(payload).select('id').single();
       if (error) throw error;
@@ -319,6 +404,15 @@ async function guardarReceta() {
     }));
     const { error: errComp } = await sb.from('receta_componentes').insert(filas);
     if (errComp) throw errComp;
+
+    if (tipo === 'despiece') {
+      const filasSalidas = STATE.salidasDespieceActual.map(s => ({
+        auth_user_id: STATE.userId, receta_id: recetaId, producto_id: s.producto_id,
+        cantidad_rendimiento: s.cantidad_rendimiento, es_merma: s.es_merma,
+      }));
+      const { error: errSal } = await sb.from('receta_despiece_salidas').insert(filasSalidas);
+      if (errSal) throw errSal;
+    }
 
     showToast(id ? 'Receta actualizada' : 'Receta creada');
     closeModal('modal-receta');
@@ -370,10 +464,14 @@ function renderTablaOrdenes() {
   tbody.innerHTML = pagina.map(o => {
     const pct = o.estado === 'completada' ? 100 : (o.estado === 'en_proceso' ? Number(o.porcentaje_avance||0) : 0);
     const colorBarra = o.estado === 'cancelada' ? 'var(--danger)' : (o.estado === 'completada' ? 'var(--success)' : 'var(--accent)');
+    const esDespiece = o.tipo === 'despiece';
+    const nombreCol = esDespiece
+      ? `🍗 ${esc(STATE.recetas.find(r => r.id === o.receta_id)?.nombre || 'Despiece')}`
+      : esc(nombreProducto(o.producto_terminado_id));
     return `<tr>
       <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(o.numero)}</span></td>
-      <td>${esc(nombreProducto(o.producto_terminado_id))}</td>
-      <td>${fmtNum(o.cantidad_planificada)} unidades</td>
+      <td>${nombreCol}</td>
+      <td>${fmtNum(o.cantidad_planificada)} ${esDespiece ? 'lote(s)' : 'unidades'}</td>
       <td><span class="status-badge ${ESTADO_ORDEN_CLASE[o.estado]}">${ESTADO_ORDEN_LABEL[o.estado]}</span></td>
       <td style="min-width:110px">
         <div style="display:flex;align-items:center;gap:6px">
@@ -461,8 +559,38 @@ function abrirModalOrden() {
 
 function onCambiarRecetaOrden() {
   const receta = STATE.recetas.find(r => r.id === document.getElementById('op-receta').value);
-  if (receta) document.getElementById('op-cantidad').value = receta.cantidad_producida;
+  const label = document.getElementById('op-cantidad-label');
+  if (receta) {
+    const esDespiece = receta.tipo === 'despiece';
+    label.textContent = esDespiece ? '¿Cuántos lotes vas a procesar? *' : '¿Cuánto vas a producir? *';
+    document.getElementById('op-cantidad').value = esDespiece ? 1 : receta.cantidad_producida;
+  }
   recalcularNecesidadesOrden();
+}
+
+// Escala las salidas de una receta de despiece segun cuantos lotes se
+// van a procesar, y calcula el valor relativo de cada una (cuanto
+// rinde x su precio de venta) -- la base para repartir el costo.
+function calcularSalidasDespiece(receta, cantidadLotes) {
+  return (receta.receta_despiece_salidas || []).map(s => {
+    const prod = STATE.productos.find(p => p.id === s.producto_id);
+    const cantidadObtenida = round2(s.cantidad_rendimiento * cantidadLotes);
+    const valorRelativo = s.es_merma ? 0 : round2(cantidadObtenida * Number(prod?.precio || 0));
+    return { producto_id: s.producto_id, nombre: prod?.nombre || '—', cantidadObtenida, valorRelativo, esMerma: s.es_merma };
+  });
+}
+
+// El costo total de la materia prima se reparte entre las salidas
+// proporcional a su valor relativo -- lo que vale mas, absorbe mas
+// costo. La suma de todo lo asignado siempre da el costo total, sin
+// perder ni duplicar nada (probado en aislado antes de construir esto).
+function asignarCostoSalidasDespiece(salidas, costoTotal) {
+  const sumaValorRelativo = salidas.reduce((s, x) => s + x.valorRelativo, 0);
+  return salidas.map(s => {
+    const costoAsignado = sumaValorRelativo > 0 ? round2((s.valorRelativo / sumaValorRelativo) * costoTotal) : 0;
+    const costoUnitario = s.cantidadObtenida > 0 ? round2(costoAsignado / s.cantidadObtenida) : 0;
+    return { ...s, costoAsignado, costoUnitario };
+  });
 }
 
 // Calcula, sin escribir nada todavía, cuánta materia prima se
@@ -490,7 +618,8 @@ function recalcularNecesidadesOrden() {
   const cantidad = parseFloat(document.getElementById('op-cantidad').value);
   const wrap = document.getElementById('op-necesidades-wrap');
   const resumenEl = document.getElementById('op-resumen-costo');
-  if (!recetaId || !cantidad || cantidad <= 0) { wrap.style.display = 'none'; resumenEl.style.display = 'none'; return; }
+  const salidasWrap = document.getElementById('op-salidas-despiece-wrap');
+  if (!recetaId || !cantidad || cantidad <= 0) { wrap.style.display = 'none'; resumenEl.style.display = 'none'; salidasWrap.style.display = 'none'; return; }
 
   const receta = STATE.recetas.find(r => r.id === recetaId);
   if (!receta) return;
@@ -502,6 +631,35 @@ function recalcularNecesidadesOrden() {
       <span style="font-family:var(--font-mono)">${fmtNum(n.necesario)} / ${fmtNum(n.disponible)} disp.</span>
     </div>`).join('');
   wrap.style.display = '';
+
+  // DESPIECE: en vez de "unidades buenas de un solo producto", se
+  // muestran las salidas reales (cada una con su cantidad escalada),
+  // y el costo se reparte por valor relativo -- no hay un solo
+  // "costo por unidad" simple, cada salida tiene el suyo.
+  if (receta.tipo === 'despiece') {
+    const manoObra = parseFloat(document.getElementById('op-costo-mano-obra').value) || 0;
+    const indirecto = parseFloat(document.getElementById('op-costo-indirecto').value) || 0;
+    const costoTotal = round2(costoMateriales + manoObra + indirecto);
+    const salidas = calcularSalidasDespiece(receta, cantidad);
+    const salidasConCosto = asignarCostoSalidasDespiece(salidas, costoTotal);
+
+    document.getElementById('op-salidas-despiece-lista').innerHTML = salidasConCosto.map(s => `
+      <div class="prod-componente-row">
+        <span>${s.esMerma ? '🗑️' : '📦'} ${esc(s.nombre)}</span>
+        <span style="text-align:right">${fmtNum(s.cantidadObtenida)} unid.${!s.esMerma ? ` — <b>${fmt(s.costoUnitario)}</b>/unid.` : ' (desecho)'}</span>
+      </div>`).join('');
+    salidasWrap.style.display = '';
+
+    resumenEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between"><span>Costo de materiales:</span><b>${fmt(costoMateriales)}</b></div>
+      <div style="display:flex;justify-content:space-between"><span>Mano de obra + indirectos:</span><b>${fmt(manoObra+indirecto)}</b></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>Costo total (se reparte entre las salidas):</span><b>${fmt(costoTotal)}</b></div>
+      ${!todoSuficiente ? '<div style="color:var(--danger);font-weight:700;margin-top:6px">⚠️ No hay suficiente materia prima para procesar esta cantidad todavía.</div>' : ''}
+    `;
+    resumenEl.style.display = '';
+    return;
+  }
+  salidasWrap.style.display = 'none';
 
   // Merma: la materia prima se consume igual sobre la cantidad
   // PLANIFICADA (se usó lo mismo para intentar producir todo), pero
@@ -553,6 +711,43 @@ async function procesarConsumoYProduccion(ordenId, receta, necesidades, cantidad
   });
 }
 
+// Version para DESPIECE: consume la materia prima igual (mismo
+// bucle), pero en vez de agregar UN producto terminado, agrega cada
+// salida por separado, con su costo ya repartido por valor relativo.
+async function procesarConsumoYSalidasDespiece(ordenId, necesidades, salidasConCosto) {
+  for (const n of necesidades) {
+    const { data: resultado, error } = await sb.rpc('incrementar_stock_producto', {
+      p_producto_id: n.producto_id, p_auth_user_id: STATE.userId, p_cantidad: -n.necesario,
+    });
+    const stockDespues = (!error && resultado && resultado.length) ? Number(resultado[0].stock_actual) : null;
+
+    await sb.from('orden_produccion_consumos').insert({
+      auth_user_id: STATE.userId, orden_id: ordenId, producto_id: n.producto_id,
+      producto_nombre: n.nombre, cantidad_consumida: n.necesario,
+      costo_unitario: n.costoUnitario, subtotal: n.subtotal,
+      stock_antes: stockDespues!=null ? round2(stockDespues + n.necesario) : n.disponible,
+      stock_despues: stockDespues,
+    });
+  }
+
+  for (const s of salidasConCosto) {
+    if (s.cantidadObtenida <= 0) continue;
+    // La merma/desecho (huesos, plumas, etc.) tambien puede tener un
+    // producto asociado para llevar registro, pero no se le suma
+    // stock -- no es algo que se vaya a vender.
+    if (!s.esMerma) {
+      await sb.rpc('incrementar_stock_producto', {
+        p_producto_id: s.producto_id, p_auth_user_id: STATE.userId, p_cantidad: s.cantidadObtenida,
+      });
+    }
+    await sb.from('orden_despiece_resultados').insert({
+      auth_user_id: STATE.userId, orden_id: ordenId, producto_id: s.producto_id,
+      producto_nombre: s.nombre, cantidad_obtenida: s.cantidadObtenida,
+      valor_relativo: s.valorRelativo, costo_asignado: s.costoAsignado, costo_unitario: s.costoUnitario,
+    });
+  }
+}
+
 async function guardarOrden(estadoDeseado) {
   const errEl = document.getElementById('op-error');
   errEl.textContent = '';
@@ -578,6 +773,43 @@ async function guardarOrden(estadoDeseado) {
   try {
     const { data: numero } = await sb.rpc('generar_numero_orden_produccion', { p_user_id: STATE.userId });
     const costoTotal = round2(costoMateriales + manoObra + indirecto);
+
+    // DESPIECE: no hay un solo producto terminado ni una sola
+    // "cantidad producida" -- hay varias salidas, cada una con su
+    // propio costo repartido por valor relativo.
+    if (receta.tipo === 'despiece') {
+      const salidas = calcularSalidasDespiece(receta, cantidad);
+      const salidasConCosto = asignarCostoSalidasDespiece(salidas, costoTotal);
+
+      const payloadDespiece = {
+        auth_user_id: STATE.userId, numero: numero || `OP-${Date.now()}`,
+        tipo: 'despiece', receta_id: recetaId, producto_terminado_id: null,
+        cantidad_planificada: cantidad, fecha_planificada: todayLocalISO(), fecha_entrega: fechaEntrega,
+        costo_mano_obra: manoObra, costo_indirecto: indirecto,
+        usuario_nombre: STATE.currentUser?.nombre || 'Usuario',
+        estado: estadoDeseado,
+      };
+      if (estadoDeseado === 'completada') {
+        Object.assign(payloadDespiece, {
+          costo_materiales: costoMateriales, costo_total: costoTotal,
+          fecha_completada: new Date().toISOString(),
+        });
+      }
+
+      const { data: ordenDespiece, error: errDespiece } = await sb.from('ordenes_produccion').insert(payloadDespiece).select('id').single();
+      if (errDespiece) throw errDespiece;
+
+      if (estadoDeseado === 'completada') {
+        await procesarConsumoYSalidasDespiece(ordenDespiece.id, necesidades, salidasConCosto);
+      }
+
+      showToast(estadoDeseado === 'completada' ? '🍗 Despiece completado' : 'Orden de despiece guardada como pendiente');
+      closeModal('modal-orden');
+      await Promise.all([cargarOrdenes(), cargarProductosCache()]);
+      actualizarKPIsProduccion();
+      return;
+    }
+
     // Las unidades buenas son las que de verdad entran al inventario
     // y sobre las que se reparte el costo -- la materia prima ya se
     // gastó igual intentando producir toda la cantidad planificada.
@@ -633,6 +865,15 @@ function completarOrdenPlanificada(ordenId) {
     return;
   }
 
+  // DESPIECE: no tiene el concepto de "unidades buenas de un solo
+  // producto" -- se completa directo con las salidas ya definidas en
+  // la receta, escaladas a la cantidad planificada.
+  if (receta.tipo === 'despiece') {
+    if (!confirm(`¿Completar este despiece de ${fmtNum(orden.cantidad_planificada)} lote(s)? Esto descontará la materia prima y agregará cada salida a su inventario.`)) return;
+    completarOrdenDespieceDirecto(orden, receta);
+    return;
+  }
+
   document.getElementById('completar-orden-titulo').textContent = `Completar ${orden.numero}`;
   document.getElementById('co-orden-id').value = ordenId;
   document.getElementById('co-planificado-txt').textContent = `Ibas a producir ${fmtNum(orden.cantidad_planificada)} unidades de ${nombreProducto(orden.producto_terminado_id)}.`;
@@ -642,6 +883,29 @@ function completarOrdenPlanificada(ordenId) {
   document.getElementById('co-merma-motivo-wrap').style.display = 'none';
   document.getElementById('co-error').textContent = '';
   openModal('modal-completar-orden');
+}
+
+async function completarOrdenDespieceDirecto(orden, receta) {
+  try {
+    const { necesidades, costoMateriales } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
+    const costoTotal = round2(costoMateriales + Number(orden.costo_mano_obra||0) + Number(orden.costo_indirecto||0));
+    const salidas = calcularSalidasDespiece(receta, orden.cantidad_planificada);
+    const salidasConCosto = asignarCostoSalidasDespiece(salidas, costoTotal);
+
+    await procesarConsumoYSalidasDespiece(orden.id, necesidades, salidasConCosto);
+
+    await sb.from('ordenes_produccion').update({
+      estado: 'completada', costo_materiales: costoMateriales, costo_total: costoTotal,
+      fecha_completada: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('id', orden.id).eq('auth_user_id', STATE.userId);
+
+    showToast('🍗 Despiece completado');
+    await Promise.all([cargarOrdenes(), cargarProductosCache()]);
+    actualizarKPIsProduccion();
+  } catch (e) {
+    console.error('completarOrdenDespieceDirecto:', e);
+    showToast('No se pudo completar el despiece', 'error');
+  }
 }
 
 function onCambiarCantidadBuenaCompletar() {
@@ -711,9 +975,11 @@ async function cancelarOrden(ordenId) {
 async function verDetalleOrden(ordenId) {
   const orden = STATE.ordenes.find(o => o.id === ordenId);
   if (!orden) return;
-  document.getElementById('detalle-orden-titulo').textContent = `Orden ${orden.numero}`;
+  const esDespiece = orden.tipo === 'despiece';
+  document.getElementById('detalle-orden-titulo').textContent = `Orden ${orden.numero}${esDespiece ? ' 🍗' : ''}`;
 
   let consumosHtml = '<p style="font-size:12px;color:var(--text-muted)">Todavía no se ha consumido nada (orden pendiente).</p>';
+  let salidasHtml = '';
   if (orden.estado === 'completada') {
     const { data: consumos } = await sb.from('orden_produccion_consumos').select('*').eq('orden_id', ordenId);
     if (consumos && consumos.length) {
@@ -723,22 +989,39 @@ async function verDetalleOrden(ordenId) {
           <span>${fmtNum(c.cantidad_consumida)} × ${fmt(c.costo_unitario)} = <b>${fmt(c.subtotal)}</b></span>
         </div>`).join('');
     }
+    if (esDespiece) {
+      const { data: salidas } = await sb.from('orden_despiece_resultados').select('*').eq('orden_id', ordenId);
+      if (salidas && salidas.length) {
+        salidasHtml = salidas.map(s => `
+          <div class="prod-componente-row">
+            <span>📦 ${esc(s.producto_nombre)}</span>
+            <span>${fmtNum(s.cantidad_obtenida)} unid. — <b>${fmt(s.costo_unitario)}</b>/unid. (${fmt(s.costo_asignado)})</span>
+          </div>`).join('');
+      }
+    }
   }
 
   document.getElementById('detalle-orden-cuerpo').innerHTML = `
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.7">
-      <div><b>Producto:</b> ${esc(nombreProducto(orden.producto_terminado_id))}</div>
-      <div><b>Planificado:</b> ${fmtNum(orden.cantidad_planificada)} · <b>Producido:</b> ${orden.cantidad_producida!=null?fmtNum(orden.cantidad_producida):'—'}</div>
+      ${esDespiece
+        ? `<div><b>Tipo:</b> Despiece / Coproductos</div><div><b>Lotes planificados:</b> ${fmtNum(orden.cantidad_planificada)}</div>`
+        : `<div><b>Producto:</b> ${esc(nombreProducto(orden.producto_terminado_id))}</div>
+           <div><b>Planificado:</b> ${fmtNum(orden.cantidad_planificada)} · <b>Producido:</b> ${orden.cantidad_producida!=null?fmtNum(orden.cantidad_producida):'—'}</div>`}
       <div><b>Estado:</b> ${ESTADO_ORDEN_LABEL[orden.estado]}${orden.estado==='en_proceso' ? ` (${orden.porcentaje_avance||0}% de avance)` : ''} · <b>Creada:</b> ${fmtFechaCorta(orden.fecha_planificada)}</div>
       ${orden.fecha_entrega ? `<div><b>Fecha de entrega:</b> ${fmtFechaCorta(orden.fecha_entrega)}</div>` : ''}
-      ${Number(orden.merma_cantidad||0) > 0 ? `<div style="color:#f59e0b"><b>⚠️ Merma:</b> ${fmtNum(orden.merma_cantidad)} unidades${orden.merma_motivo ? ` — ${esc(orden.merma_motivo)}` : ''}</div>` : ''}
+      ${!esDespiece && Number(orden.merma_cantidad||0) > 0 ? `<div style="color:#f59e0b"><b>⚠️ Merma:</b> ${fmtNum(orden.merma_cantidad)} unidades${orden.merma_motivo ? ` — ${esc(orden.merma_motivo)}` : ''}</div>` : ''}
     </div>
-    ${orden.estado === 'completada' ? `
+    ${orden.estado === 'completada' && !esDespiece ? `
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
       <div class="panel-card" style="margin:0;padding:10px"><div style="font-size:11px;color:var(--text-muted)">Costo total</div><div style="font-weight:800">${fmt(orden.costo_total)}</div></div>
       <div class="panel-card" style="margin:0;padding:10px"><div style="font-size:11px;color:var(--text-muted)">Costo por unidad</div><div style="font-weight:800;color:var(--accent)">${fmt(orden.costo_unitario)}</div></div>
     </div>` : ''}
-    <div style="font-weight:700;font-size:13px;margin-bottom:6px">Materia prima consumida</div>
+    ${orden.estado === 'completada' && esDespiece ? `
+    <div class="panel-card" style="margin:0 0 14px;padding:10px"><div style="font-size:11px;color:var(--text-muted)">Costo total (repartido entre las salidas)</div><div style="font-weight:800">${fmt(orden.costo_total)}</div></div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px">Salidas obtenidas</div>
+    ${salidasHtml || '<p style="font-size:12px;color:var(--text-muted)">Sin salidas registradas.</p>'}
+    ` : ''}
+    <div style="font-weight:700;font-size:13px;margin:14px 0 6px">Materia prima consumida</div>
     ${consumosHtml}
   `;
   document.getElementById('detalle-orden-footer').innerHTML = `<button class="btn-ghost" onclick="closeModal('modal-detalle-orden')">Cerrar</button>`;
@@ -836,11 +1119,12 @@ function renderTablaRecetasPrincipales() {
     return;
   }
   tbody.innerHTML = principales.map(r => {
+    const esDespiece = r.tipo === 'despiece';
     const producto = STATE.productos.find(p => p.id === r.producto_terminado_id);
     return `<tr>
-      <td>${esc(nombreProducto(r.producto_terminado_id))}</td>
-      <td style="font-size:12px;color:var(--text-muted)">1 lote = ${fmtNum(r.cantidad_producida)} unid.</td>
-      <td>${fmtNum(producto?.stock_actual)} unidades</td>
+      <td>${esDespiece ? '🍗 ' + esc(r.nombre) : esc(nombreProducto(r.producto_terminado_id))}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${esDespiece ? `${(r.receta_despiece_salidas||[]).length} salidas` : `1 lote = ${fmtNum(r.cantidad_producida)} unid.`}</td>
+      <td>${esDespiece ? '—' : `${fmtNum(producto?.stock_actual)} unidades`}</td>
       <td>
         <button class="row-action-btn" title="Ver" onclick="abrirModalReceta('${r.id}')">👁️</button>
         <button class="row-action-btn" title="Producir" onclick="abrirModalOrden()">🏭</button>
@@ -895,6 +1179,7 @@ async function init() {
   const fechaEl = document.getElementById('header-fecha');
   if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
   initBusquedaComponenteReceta();
+  initBusquedaSalidaDespiece();
 
   try {
     const { data: { user }, error } = await sb.auth.getUser();

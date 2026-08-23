@@ -973,6 +973,7 @@
 
     .prod-tab-btn { padding:8px 16px; font-size:12.5px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; background:transparent; border:none; }
     .prod-tab-btn.active { background:var(--bg-surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .prod-tipo-receta-btn.active { border-color:var(--accent) !important; background:var(--accent-soft) !important; color:var(--accent); }
     .prod-componente-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:var(--bg-app); border-radius:8px; margin-bottom:5px; font-size:12.5px; }
     .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
       cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
@@ -1340,17 +1341,43 @@
           </div>
           <div class="modal-body">
             <input type="hidden" id="rc-id"/>
+
             <div class="form-group">
-              <label>Producto terminado *</label>
-              <select id="rc-producto-terminado"></select>
-              <span class="form-hint">Puede ser cualquier cosa que fabriques: comida, muebles, repuestos, ropa — lo que sea</span>
-            </div>
-            <div class="form-row">
-              <div><label>Nombre de la receta</label><input type="text" id="rc-nombre" placeholder="Ej: Receta estándar" value="Receta estándar"/></div>
-              <div><label>¿Cuánto produce esta receta? *</label><input type="number" id="rc-cantidad-produce" min="0.01" step="0.01" value="1"/></div>
+              <label>Tipo de receta</label>
+              <div style="display:flex;gap:8px">
+                <button type="button" class="prod-tipo-receta-btn active" data-tipo="normal" onclick="cambiarTipoReceta('normal')" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;background:var(--bg-app)">🏭 Normal<br/><span style="font-weight:400;font-size:11px;color:var(--text-muted)">Varios materiales → 1 producto</span></button>
+                <button type="button" class="prod-tipo-receta-btn" data-tipo="despiece" onclick="cambiarTipoReceta('despiece')" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;background:var(--bg-app)">🍗 Despiece<br/><span style="font-weight:400;font-size:11px;color:var(--text-muted)">1 material → varios productos</span></button>
+              </div>
             </div>
 
-            <div style="font-weight:700;font-size:13px;margin:14px 0 6px">Materia prima que necesita</div>
+            <!-- SECCIÓN: RECETA NORMAL -->
+            <div id="rc-seccion-normal">
+              <div class="form-group">
+                <label>Producto terminado *</label>
+                <select id="rc-producto-terminado"></select>
+                <span class="form-hint">Puede ser cualquier cosa que fabriques: comida, muebles, repuestos, ropa — lo que sea</span>
+              </div>
+              <div class="form-row">
+                <div><label>¿Cuánto produce esta receta? *</label><input type="number" id="rc-cantidad-produce" min="0.01" step="0.01" value="1"/></div>
+              </div>
+            </div>
+
+            <!-- SECCIÓN: DESPIECE -->
+            <div id="rc-seccion-despiece" style="display:none">
+              <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Ej: 1 pollo entero se convierte en pechuga + muslo + ala, todo a la vez. El costo del material se reparte entre las salidas según su precio de venta — lo que vale más, absorbe más costo.</p>
+              <div style="font-weight:700;font-size:13px;margin:10px 0 6px">¿Cuánto vas a obtener por cada lote?</div>
+              <div class="form-group">
+                <input type="text" id="rd-buscar-salida" placeholder="Buscar producto para agregar como salida..."/>
+                <div id="rd-buscar-resultados" style="max-height:140px;overflow-y:auto;margin-top:4px"></div>
+              </div>
+              <div id="rd-lista-salidas" style="margin-top:8px"></div>
+            </div>
+
+            <div class="form-row" style="margin-top:10px">
+              <div><label>Nombre de la receta</label><input type="text" id="rc-nombre" placeholder="Ej: Receta estándar" value="Receta estándar"/></div>
+            </div>
+
+            <div style="font-weight:700;font-size:13px;margin:14px 0 6px" id="rc-titulo-componentes">Materia prima que necesita</div>
             <div class="form-group">
               <input type="text" id="rc-buscar-componente" placeholder="Buscar producto para agregar como materia prima..."/>
               <div id="rc-buscar-resultados" style="max-height:140px;overflow-y:auto;margin-top:4px"></div>
@@ -1381,13 +1408,18 @@
               <select id="op-receta" onchange="onCambiarRecetaOrden()"></select>
             </div>
             <div class="form-row">
-              <div><label>¿Cuánto vas a producir? *</label><input type="number" id="op-cantidad" min="0.01" step="0.01" oninput="recalcularNecesidadesOrden()"/></div>
+              <div><label id="op-cantidad-label">¿Cuánto vas a producir? *</label><input type="number" id="op-cantidad" min="0.01" step="0.01" oninput="recalcularNecesidadesOrden()"/></div>
               <div><label>Fecha de entrega estimada</label><input type="date" id="op-fecha-entrega"/></div>
             </div>
 
             <div id="op-necesidades-wrap" style="display:none;margin-top:10px">
               <div style="font-weight:700;font-size:13px;margin-bottom:6px">Materia prima que se va a consumir</div>
               <div id="op-necesidades-lista"></div>
+            </div>
+
+            <div id="op-salidas-despiece-wrap" style="display:none;margin-top:10px">
+              <div style="font-weight:700;font-size:13px;margin-bottom:6px">Vas a obtener</div>
+              <div id="op-salidas-despiece-lista"></div>
             </div>
 
             <div class="form-row" style="margin-top:10px">
@@ -1493,7 +1525,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="produccion.js?v=20260822c"></script>
+<script src="produccion.js?v=20260822d"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
