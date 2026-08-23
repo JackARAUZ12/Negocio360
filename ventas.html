@@ -78,6 +78,13 @@
     input,select,textarea{font-family:var(--font-main);font-size:13.5px;color:var(--text-primary);
       background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-sm);
       padding:9px 12px;width:100%;max-width:100%;transition:border-color var(--transition),box-shadow var(--transition);outline:none}
+    /* Los radio buttons y checkboxes NUNCA deben heredar el ancho 100%
+       de arriba -- son controles pequeños de tamaño fijo, no campos de
+       texto. Sin esto, un radio dentro de un flex-label se estira a
+       todo el ancho disponible, empujando su propio punto visual lejos
+       de donde el navegador lo dibuja -- bug real confirmado en el
+       selector de ancho de ticket (58mm/76mm/80mm/carta/EPSON). */
+    input[type="radio"],input[type="checkbox"]{width:auto;max-width:none;padding:0;flex-shrink:0}
     input:focus,select:focus,textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-soft)}
     select{appearance:none;
       background-image:url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -1269,20 +1276,20 @@
       <div class="form-grid-2">
         <div class="form-group full-col">
           <label>Ancho del papel (impresora térmica)</label>
-          <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
               <input type="radio" name="vrc-ancho" value="58mm" onchange="onCambiarAnchoTicketVR()"> 58mm (térmica angosta)
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
               <input type="radio" name="vrc-ancho" value="80mm" checked onchange="onCambiarAnchoTicketVR()"> 80mm (térmica estándar)
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
               <input type="radio" name="vrc-ancho" value="76mm" onchange="onCambiarAnchoTicketVR()"> 76mm (matriz de punto, ej. Epson TM-U220A)
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
               <input type="radio" name="vrc-ancho" value="carta" onchange="onCambiarAnchoTicketVR()"> Carta / A4 (hoja completa)
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
               <input type="radio" name="vrc-ancho" value="epson_tmu220" onchange="onCambiarAnchoTicketVR()"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
             </label>
           </div>

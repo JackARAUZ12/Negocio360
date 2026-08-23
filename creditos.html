@@ -142,6 +142,10 @@
       transition: border-color var(--transition), box-shadow var(--transition);
       outline: none;
     }
+    /* Los radio buttons y checkboxes NUNCA deben heredar el ancho 100%
+       de arriba -- bug real confirmado en el selector de ancho de
+       ticket (58mm/76mm/80mm/carta/EPSON). */
+    input[type="radio"], input[type="checkbox"] { width: auto; max-width: none; padding: 0; flex-shrink: 0; }
     input:focus, select:focus, textarea:focus {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 3px var(--accent-soft);
@@ -1815,20 +1819,20 @@
     <div class="modal-body">
       <div class="form-group full-col">
         <label>Ancho del papel (impresora térmica)</label>
-        <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
             <input type="radio" name="ct-ancho" value="58mm"> 58mm (térmica angosta)
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
             <input type="radio" name="ct-ancho" value="80mm" checked> 80mm (térmica estándar)
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
             <input type="radio" name="ct-ancho" value="76mm"> 76mm (matriz de punto)
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
             <input type="radio" name="ct-ancho" value="carta"> Carta / A4 (hoja completa)
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
             <input type="radio" name="ct-ancho" value="epson_tmu220"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
           </label>
         </div>
