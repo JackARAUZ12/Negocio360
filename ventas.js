@@ -910,7 +910,7 @@ async function loadMetodosPago() {
    ============================================================ */
 async function loadProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = data || [];
 
@@ -1745,7 +1745,7 @@ function buscarProductosParaVenta(q, tipo) {
   const qLower = q.toLowerCase();
 
   const lista = S.productosCache.filter(p =>
-    p.tipo === tipo &&
+    p.tipo === tipo && !p.es_materia_prima &&
     (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower))
   ).slice(0, 10);
 
@@ -1759,7 +1759,7 @@ function buscarProductosParaVenta(q, tipo) {
     const vistos = new Set();
     listaGrupo = S.productosCacheGrupo.filter(p => {
       const clave = (p.nombre||'').trim().toLowerCase();
-      if (p.tipo !== 'producto' || !clave) return false;
+      if (p.tipo !== 'producto' || !clave || p.es_materia_prima) return false;
       if (nombresLocales.has(clave)) return false; // ya está en la lista local, no se duplica
       if (vistos.has(clave)) return false;
       const coincide = clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower);
@@ -4004,16 +4004,16 @@ async function procesarCodigoEscaneado(codigo) {
     // "Docena", "Caja" del mismo artículo) — con .maybeSingle() eso provoca un
     // error de "más de una fila" que antes se interpretaba como "no encontrado".
     let { data: coincidencias } = await sb.from('productos')
-      .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio')
-      .eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true);
+      .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio,es_materia_prima')
+      .eq('auth_user_id', S.userId).eq('codigo_barras', codigo).eq('activo', true).eq('es_materia_prima', false);
     coincidencias = coincidencias || [];
 
     // Respaldo: si no hay coincidencia por código de barras, probar por SKU
     // (útil si el negocio todavía no ha cargado códigos de barra a todo su catálogo)
     if (!coincidencias.length) {
       const { data: bySku } = await sb.from('productos')
-        .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio')
-        .eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true);
+        .select('id,nombre,sku,codigo_barras,tipo,precio,costo,stock_actual,activo,tipo_precio,es_materia_prima')
+        .eq('auth_user_id', S.userId).eq('sku', codigo).eq('activo', true).eq('es_materia_prima', false);
       coincidencias = bySku || [];
     }
 
@@ -4038,7 +4038,7 @@ async function procesarCodigoEscaneado(codigo) {
       // el grupo por código de barras o SKU antes de rendirse.
       if (S.stockCompartidoActivo) {
         const enGrupo = S.productosCacheGrupo.find(p =>
-          p.tipo === 'producto' && (p.codigo_barras === codigo || p.sku === codigo)
+          p.tipo === 'producto' && !p.es_materia_prima && (p.codigo_barras === codigo || p.sku === codigo)
         );
         if (enGrupo) {
           if (status) status.textContent = `📦 "${enGrupo.nombre}" — elige de dónde sacar el stock`;
