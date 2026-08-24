@@ -85,11 +85,56 @@ const $$ = sel => document.querySelectorAll(sel);
 // cualquier costo/precio calculado, para que quede exacto a los centavos.
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACIÓN
+   ============================================================ */
+function abrirModalMonedaVis() {
+  $('mv-moneda-oficial').textContent = MONEDA_CODIGO;
+  $('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  $('mv-tasa').value = tasaVisualizacionActiva() || '';
+  $('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  $('modalMonedaVis').classList.add('open');
+}
+
+function onCambiarSelectMonedaVis() {
+  const elegida = $('mv-select-moneda').value;
+  $('mv-wrap-tasa').style.display = (elegida && elegida !== MONEDA_CODIGO) ? '' : 'none';
+}
+
+function guardarMonedaVis() {
+  const elegida = $('mv-select-moneda').value;
+  const errEl = $('mv-error');
+  errEl.textContent = '';
+
+  if (!elegida || elegida === MONEDA_CODIGO) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat($('mv-tasa').value);
+    if (!tasa || tasa <= 0) {
+      errEl.textContent = 'Escribe tu tasa de cambio (cuántos córdobas por un dólar).';
+      return;
+    }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+
+  $('modalMonedaVis').classList.remove('open');
+  const codigoAMostrar = monedaParaMostrar(MONEDA_CODIGO);
+  $('monedaIndicador').textContent = `${CURRENCY_SYMBOLS[codigoAMostrar]||''} (${codigoAMostrar})`;
+  if (typeof renderTabla === 'function') renderTabla();      // re-pinta la tabla principal con los montos ya convertidos
+  if (typeof renderTablaCombos === 'function') renderTablaCombos();
+  if (typeof renderPromociones === 'function') renderPromociones();
+  showToast('success', 'Listo', 'Moneda de visualización actualizada');
+}
+
 function fmtMoney(val) {
   if (val === null || val === undefined || val === '') return '—';
   const n = parseFloat(val);
   if (isNaN(n)) return '—';
-  return MONEDA_SIMBOLO + n.toLocaleString('es-NI', {
+  const montoAMostrar = convertirParaMostrar(n, MONEDA_CODIGO);
+  const codigoAMostrar = monedaParaMostrar(MONEDA_CODIGO);
+  const simboloAMostrar = CURRENCY_SYMBOLS[codigoAMostrar] || MONEDA_SIMBOLO;
+  return simboloAMostrar + montoAMostrar.toLocaleString('es-NI', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -1220,7 +1265,7 @@ async function exportarInventarioPDF() {
     doc.text(`Generado: ${new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'})}`, W-12, 13, {align:'right'});
     doc.text(`${filas.length} ítem${filas.length===1?'':'s'}`, W-12, 19, {align:'right'});
 
-    const cm = MONEDA_SIMBOLO;
+    const cm = CURRENCY_SYMBOLS[monedaParaMostrar(MONEDA_CODIGO)] || MONEDA_SIMBOLO;
     const head = [['Producto','Tipo','SKU','Categoría','Stock',`Costo (${cm})`,`Precio fijo (${cm})`,'Escala 1','Escala 2','Escala 3','Escala 4','Escala 5','Estado']];
     const body = filas.map(f => [
       f.producto, f.tipo, f.sku, f.categoria, f.stock,

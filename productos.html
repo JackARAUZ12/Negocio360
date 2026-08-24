@@ -248,7 +248,7 @@
         <div class="header-date">📅 <span id="fechaActual"></span></div>
         <div class="header-divider"></div>
         <!-- Indicador de moneda activa -->
-        <span class="moneda-chip" id="monedaIndicador" title="Moneda configurada">$ (USD)</span>
+        <span class="moneda-chip" id="monedaIndicador" title="Moneda oficial: haz clic para cambiar cómo se muestra (no cambia tus datos)" style="cursor:pointer" onclick="abrirModalMonedaVis()">$ (USD)</span>
         <span class="header-plan-badge" id="planBadge">Free</span>
         <button class="header-icon-btn" id="btnTema" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
         <button class="header-icon-btn" title="Notificaciones" aria-label="Notificaciones">
@@ -1204,7 +1204,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260821a"></script>
+<script src="productos.js?v=20260824a"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
@@ -1237,7 +1237,39 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
+<div class="modal-overlay" id="modalMonedaVis" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <h3>💱 Moneda de visualización</h3>
+      <button class="modal-close" onclick="$('modalMonedaVis').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:14px">
+        Tus productos siempre se guardan en tu moneda oficial (<b id="mv-moneda-oficial">—</b>). Esto solo cambia cómo se <b>muestran</b> los números en este dispositivo — nada se modifica de verdad.
+      </p>
+      <div class="form-group">
+        <label>Ver todo en</label>
+        <select id="mv-select-moneda" class="form-select" onchange="onCambiarSelectMonedaVis()">
+          <option value="">Mi moneda oficial (sin conversión)</option>
+          <option value="NIO">Córdobas (NIO)</option>
+          <option value="USD">Dólares (USD)</option>
+        </select>
+      </div>
+      <div class="form-group" id="mv-wrap-tasa" style="display:none">
+        <label>Tu tasa de cambio (córdobas por 1 dólar)</label>
+        <input type="number" id="mv-tasa" class="form-input" min="0.01" step="0.01" placeholder="Ej: 36.60"/>
+      </div>
+      <p id="mv-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" onclick="$('modalMonedaVis').classList.remove('open')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarMonedaVis()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
