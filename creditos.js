@@ -1089,8 +1089,8 @@
   async function abrirEditarProductosCredito(creditoId) {
     const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
     if (!credito) { showToast('Crédito no encontrado', 'error'); return; }
-    if (credito.estado !== 'en_proceso') {
-      showToast('Ya no se pueden editar los productos — este crédito ya tiene pagos registrados. Usa "Renegociar saldo restante" en su lugar.', 'error');
+    if (Number(credito.saldo_pendiente) <= 0) {
+      showToast('Este crédito ya está totalmente pagado, no queda nada que editar', 'error');
       return;
     }
     const { data: detalles } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id).order('created_at');
@@ -1125,7 +1125,7 @@
     try {
       const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
       if (!credito) throw new Error('Crédito no encontrado');
-      if (credito.estado !== 'en_proceso') throw new Error('Este crédito ya tiene pagos registrados — ya no se puede editar así');
+      if (Number(credito.saldo_pendiente) <= 0) throw new Error('Este crédito ya está totalmente pagado');
 
       const { data: detallesViejos } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id);
 
@@ -1190,13 +1190,24 @@
       const costoTotal = round2(CS.ncItems.reduce((s,i)=>s+i.costo*i.cantidad,0));
       await _sb.from('ventas').update({ subtotal, impuesto: ivaMonto, total, costo_total: costoTotal }).eq('id', credito.venta_id);
 
-      // El nuevo capital financiado = nuevo total menos la MISMA prima que ya tenía
-      const nuevoCapitalFinanciado = round2(total - Number(credito.prima_monto||0));
+      // Si el crédito ya tiene pagos hechos (venía "activo", no
+      // "en_proceso"), no se puede simplemente reemplazar el capital
+      // financiado por el nuevo total -- eso ignoraría lo que el
+      // cliente ya pagó. En vez de eso, se calcula cuánto CAMBIÓ el
+      // costo de los productos (la diferencia), y ese mismo cambio se
+      // suma o resta tanto al capital financiado como al saldo
+      // pendiente -- lo ya pagado queda intacto, sin importar el estado.
+      const totalViejo = Number(venta?.total || 0);
+      const deltaProductos = round2(total - totalViejo);
+      const nuevoCapitalFinanciado = round2(Number(credito.capital_financiado||0) + deltaProductos);
+      const nuevoMontoOriginal = round2(Number(credito.monto_original||0) + deltaProductos);
+      const nuevoSaldoPendiente = round2(Math.max(0, Number(credito.saldo_pendiente||0) + deltaProductos));
       await _sb.from('creditos').update({
-        monto_original: total, capital_financiado: nuevoCapitalFinanciado, updated_at: new Date().toISOString(),
+        monto_original: nuevoMontoOriginal, capital_financiado: nuevoCapitalFinanciado,
+        saldo_pendiente: nuevoSaldoPendiente, updated_at: new Date().toISOString(),
       }).eq('id', creditoId);
 
-      await registrarHistorial(creditoId, 'editado', `Productos editados — nuevo capital financiado: ${fmt(nuevoCapitalFinanciado)}`, { nuevoCapitalFinanciado });
+      await registrarHistorial(creditoId, 'editado', `Productos editados — ${deltaProductos>=0?'aumentó':'bajó'} ${fmt(Math.abs(deltaProductos))} — nuevo saldo pendiente: ${fmt(nuevoSaldoPendiente)}`, { deltaProductos, nuevoSaldoPendiente });
 
       showToast('Productos actualizados — ahora define cómo quedan las cuotas');
       EDITANDO_PRODUCTOS_CREDITO_ID = null;
@@ -2189,7 +2200,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <button class="btn-secondary btn-sm" onclick='generarPagareCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(cuotas||[]).replace(/'/g,"&apos;")})'>📄 Generar pagaré</button>
         <button class="btn-secondary btn-sm" onclick='descargarComprobanteCartaCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(productosFinanciados||[]).replace(/'/g,"&apos;")})'>📄 Comprobante tamaño carta</button>
-        ${credito.tipo === 'venta' && credito.venta_id && credito.estado === 'en_proceso' ? `<button class="btn-secondary btn-sm" onclick="abrirEditarProductosCredito('${credito.id}')">🛒 Editar productos</button>` : ''}
+        ${credito.tipo === 'venta' && credito.venta_id && Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarProductosCredito('${credito.id}')">🛒 Editar productos</button>` : ''}
         ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : ''}
       </div>
       ${Number(credito.saldo_pendiente) <= 0 ? `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>` : ''}
