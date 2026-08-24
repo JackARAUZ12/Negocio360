@@ -631,6 +631,46 @@ async function mensajearCliente(authUserId) {
   }
 }
 
+// Llama a la funcion de servidor que manda los correos de verdad --
+// la clave de Resend nunca pasa por aqui, vive solo en el servidor.
+async function enviarRecordatoriosInactivos() {
+  const btn = document.getElementById('btn-enviar-recordatorios');
+  if (!confirm('¿Mandar un correo a cada cliente en riesgo? (máximo 1 cada 7 días por persona, no se repite si ya se le escribió hace poco)')) return;
+
+  btn.disabled = true;
+  const textoOriginal = btn.innerHTML;
+  btn.innerHTML = 'Enviando...';
+
+  try {
+    const { data, error } = await sb.functions.invoke('recordatorios-inactivos');
+    if (error) throw error;
+
+    if (!data.ok) {
+      toast('Error', data.error || 'No se pudo completar el envío', 'error');
+      return;
+    }
+
+    const enviados = data.detalle.filter(d => d.resultado === 'enviado').length;
+    const omitidos = data.detalle.filter(d => d.resultado?.startsWith('omitido')).length;
+    const errores = data.detalle.filter(d => d.resultado?.startsWith('error')).length;
+
+    toast(
+      'Recordatorios procesados',
+      `${enviados} enviados, ${omitidos} omitidos (ya se les escribió hace poco), ${errores} con error`,
+      errores > 0 ? 'warning' : 'success'
+    );
+
+    if (errores > 0) {
+      console.warn('Detalle de errores al enviar recordatorios:', data.detalle.filter(d => d.resultado?.startsWith('error')));
+    }
+  } catch (e) {
+    toast('Error', 'No se pudo conectar con la función de recordatorios: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = textoOriginal;
+  }
+}
+
 // ============================================================
 // SECCIÓN 2 — USUARIOS
 // ============================================================
