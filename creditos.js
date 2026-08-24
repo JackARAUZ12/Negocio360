@@ -2164,6 +2164,48 @@
     }
   };
 
+  // Deja corregir la fecha en que se originó el crédito -- solo la
+  // fecha registrada de la factura, NO mueve las fechas de
+  // vencimiento de las cuotas (eso es un cambio distinto y más
+  // grande, no lo que se pidió aquí). Si el crédito viene de una
+  // venta, esa venta se corrige a la misma fecha también.
+  function editarFechaCredito(creditoId) {
+    const credito = CS.creditos.find(c => c.id === creditoId);
+    if (!credito) return;
+    const cont = document.getElementById('det-credito-fecha-display');
+    if (!cont) return;
+    cont.innerHTML = `
+      <input type="date" id="det-credito-fecha-input" class="form-input" value="${(credito.fecha_inicio||'').slice(0,10)}" style="width:150px;display:inline-block"/>
+      <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Guardar" onclick="guardarFechaCredito('${creditoId}')">✅</button>
+      <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Cancelar" onclick="abrirDetalleCredito('${creditoId}')">✕</button>
+    `;
+  }
+  window.editarFechaCredito = editarFechaCredito;
+
+  async function guardarFechaCredito(creditoId) {
+    const input = document.getElementById('det-credito-fecha-input');
+    const nuevaFecha = input?.value;
+    if (!nuevaFecha) { showToast('Elige una fecha', 'error'); return; }
+
+    try {
+      const { data: credito } = await _sb.from('creditos').select('venta_id').eq('id', creditoId).maybeSingle();
+      await _sb.from('creditos').update({ fecha_inicio: nuevaFecha, updated_at: new Date().toISOString() })
+        .eq('id', creditoId).eq('auth_user_id', CS.userId);
+
+      if (credito?.venta_id) {
+        await _sb.from('ventas').update({ fecha: nuevaFecha }).eq('id', credito.venta_id).eq('auth_user_id', CS.userId);
+      }
+
+      showToast('Fecha actualizada');
+      await loadCreditos();
+      abrirDetalleCredito(creditoId);
+    } catch (e) {
+      console.error('guardarFechaCredito:', e);
+      showToast('No se pudo actualizar la fecha', 'error');
+    }
+  }
+  window.guardarFechaCredito = guardarFechaCredito;
+
   async function abrirDetalleCredito(creditoId) {
     window._creditoDetalleActual = creditoId;
     openModal('modal-detalle-credito');
@@ -2191,6 +2233,12 @@
         <div><label>Cliente</label><div class="stat-readonly">${esc(cliente ? cliente.nombre+' '+(cliente.apellido||'') : '—')}</div></div>
         <div><label>Tipo</label><div class="stat-readonly">${credito.tipo==='venta'?'Por venta':'Financiero'}</div></div>
         <div><label>Estado</label><div><span class="badge-credito badge-${credito.estado}">${LABEL_ESTADO[credito.estado]||credito.estado}</span></div></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Fecha del crédito</label><div class="stat-readonly" id="det-credito-fecha-display">
+          ${fmtDate(credito.fecha_inicio)}
+          <button class="btn-icon" style="width:20px;height:20px;display:inline-flex;vertical-align:middle" title="Editar fecha" onclick="editarFechaCredito('${credito.id}')">✏️</button>
+        </div></div>
       </div>
       <div class="form-row" style="margin-bottom:14px">
         <div><label>Capital financiado</label><div class="stat-readonly">${fmt(credito.capital_financiado)}</div></div>
