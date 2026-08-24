@@ -1653,6 +1653,7 @@ function validarPasoActual() {
       if (err) err.style.display = '';
       return false;
     }
+    if (!validarPagoSeparado()) return false;
   }
   return true;
 }
@@ -2743,7 +2744,11 @@ function renderMetodosPagoModal() {
       <span class="mc-icon">${icon}</span>
       <span class="mc-name">${esc(m.nombre)}</span>
     </div>`;
-  }).join('');
+  }).join('') + `
+    <div class="metodo-card ${S.metodoPagoId==='separado' ? 'selected' : ''}" onclick="seleccionarPagoSeparado()">
+      <span class="mc-icon">🔀</span>
+      <span class="mc-name">Pago separado</span>
+    </div>`;
 }
 
 function seleccionarMetodoPago(id, nombre) {
@@ -2755,6 +2760,140 @@ function seleccionarMetodoPago(id, nombre) {
   if (err) err.style.display = 'none';
   renderMetodosPagoModal();
   mostrarSelectorBanco(nombre);
+}
+
+/* ============================================================
+   PAGO SEPARADO — dividir el cobro entre varios métodos a la vez
+   (ej. mitad efectivo, mitad tarjeta). Reutiliza la MISMA
+   infraestructura de bancos ya existente, una por cada línea.
+   ============================================================ */
+async function seleccionarPagoSeparado() {
+  S.metodoPagoId = 'separado';
+  S.metodoPagoNombre = 'Pago separado';
+  document.getElementById('metodo-pago-id-selected').value = 'separado';
+  document.getElementById('metodo-pago-nombre-selected').value = 'Pago separado';
+  document.getElementById('banco-elegir-wrap').style.display = 'none';
+  document.getElementById('banco-elegido-wrap').style.display = 'none';
+  const err = document.getElementById('metodo-error');
+  if (err) err.style.display = 'none';
+
+  // Una línea por cada método configurado, empezando en 0.
+  S.pagoSeparadoLineas = S.metodosPago.map(m => ({
+    metodoId: m.id, metodoNombre: m.nombre, monto: 0, bancoId: null, bancoNombre: null, montoBancoConvertido: null,
+  }));
+
+  renderMetodosPagoModal();
+  document.getElementById('metodos-grid').style.display = 'none';
+  document.getElementById('pago-separado-wrap').style.display = '';
+  await renderLineasPagoSeparado();
+}
+
+function cancelarPagoSeparado() {
+  S.metodoPagoId = null; S.metodoPagoNombre = null;
+  S.pagoSeparadoLineas = [];
+  document.getElementById('metodo-pago-id-selected').value = '';
+  document.getElementById('metodo-pago-nombre-selected').value = '';
+  document.getElementById('pago-separado-wrap').style.display = 'none';
+  document.getElementById('metodos-grid').style.display = '';
+  renderMetodosPagoModal();
+}
+
+async function renderLineasPagoSeparado() {
+  const cont = document.getElementById('pago-separado-lineas');
+  if (!cont || !S.pagoSeparadoLineas) return;
+  const bancos = await cargarBancosDisponibles();
+  const iconos = { 'Efectivo':'💵', 'Transferencia':'🏦', 'Tarjeta':'💳', 'PayPal':'🅿️', 'Cheque':'📄', 'Débito':'💳' };
+
+  cont.innerHTML = S.pagoSeparadoLineas.map((linea, i) => {
+    const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
+    const icon = iconos[linea.metodoNombre] || '💰';
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:18px">${icon}</span>
+        <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
+        <input type="number" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
+          style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparado(${i}, this.value)"/>
+      </div>
+      ${necesitaBanco && linea.monto > 0 && bancos.length ? `
+      <div style="padding:6px 0 10px 28px">
+        ${linea.bancoId
+          ? `<span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: ${esc(linea.bancoNombre)}</span> <button type="button" class="btn-icon" style="width:20px;height:20px;display:inline-flex" onclick="quitarBancoLineaSeparada(${i})">✕</button>`
+          : `<div style="display:flex;gap:6px;flex-wrap:wrap">${bancos.map(b => `<button type="button" class="metodo-card" style="padding:6px 10px;font-size:11.5px" onclick="elegirBancoLineaSeparada(${i},'${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">🏦 ${esc(b.nombre)}</button>`).join('')}</div>`}
+      </div>` : ''}
+    `;
+  }).join('');
+
+  renderResumenPagoSeparado();
+}
+
+function actualizarMontoPagoSeparado(idx, valor) {
+  const n = parseFloat(valor);
+  S.pagoSeparadoLineas[idx].monto = isNaN(n) ? 0 : Math.max(0, n);
+  renderLineasPagoSeparado();
+}
+
+function elegirBancoLineaSeparada(idx, bancoId, bancoNombre, monedaBanco) {
+  const linea = S.pagoSeparadoLineas[idx];
+  linea.bancoId = bancoId; linea.bancoNombre = bancoNombre;
+
+  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  if ((monedaBanco||'NIO') !== monedaBase) {
+    const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+    linea.montoBancoConvertido = tasa ? round2(monedaBase==='NIO' ? linea.monto/tasa : linea.monto*tasa) : null;
+  } else {
+    linea.montoBancoConvertido = null;
+  }
+  renderLineasPagoSeparado();
+}
+function quitarBancoLineaSeparada(idx) {
+  S.pagoSeparadoLineas[idx].bancoId = null;
+  S.pagoSeparadoLineas[idx].bancoNombre = null;
+  S.pagoSeparadoLineas[idx].montoBancoConvertido = null;
+  renderLineasPagoSeparado();
+}
+
+function renderResumenPagoSeparado() {
+  const el = document.getElementById('pago-separado-resumen');
+  if (!el) return;
+  const total = S._resumen?.total || 0;
+  const suma = round2((S.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
+  const diferencia = round2(total - suma);
+
+  if (Math.abs(diferencia) < 0.01) {
+    el.style.background = 'var(--success-soft)'; el.style.color = 'var(--success)';
+    el.innerHTML = `✅ Cuadra exacto — ${fmt(suma)} de ${fmt(total)}`;
+  } else if (diferencia > 0) {
+    el.style.background = '#fef3cd'; el.style.color = '#b45309';
+    el.innerHTML = `Falta ${fmt(diferencia)} por asignar (llevas ${fmt(suma)} de ${fmt(total)})`;
+  } else {
+    el.style.background = 'var(--danger-soft)'; el.style.color = 'var(--danger)';
+    el.innerHTML = `⚠️ Te pasaste por ${fmt(Math.abs(diferencia))} (llevas ${fmt(suma)} de ${fmt(total)})`;
+  }
+}
+
+// Validación completa antes de dejar confirmar la venta -- si no es
+// pago separado, no aplica (siempre pasa).
+function validarPagoSeparado() {
+  if (S.metodoPagoId !== 'separado') return true;
+  const total = S._resumen?.total || 0;
+  const suma = round2((S.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
+  if (Math.abs(total - suma) >= 0.01) {
+    showToast(`El pago separado no cuadra con el total (${suma < total ? 'faltan' : 'sobran'} ${fmt(Math.abs(total-suma))})`, 'error');
+    return false;
+  }
+  const lineasConMonto = (S.pagoSeparadoLineas||[]).filter(l => l.monto > 0);
+  if (!lineasConMonto.length) {
+    showToast('Asigna al menos un monto en el pago separado', 'error');
+    return false;
+  }
+  for (const l of lineasConMonto) {
+    const necesitaBanco = /tarjeta|transferencia/.test(l.metodoNombre.toLowerCase());
+    if (necesitaBanco && _bancosCache?.length && !l.bancoId) {
+      showToast(`Elige a qué banco entra el pago de ${l.metodoNombre}`, 'error');
+      return false;
+    }
+  }
+  return true;
 }
 
 /* ============================================================
@@ -3250,13 +3389,16 @@ async function confirmarVenta(conImpresion) {
 
   // El banco ya se eligió al momento de tocar Tarjeta/Transferencia
   // (no aquí al final) — esto es solo un candado de seguridad, por si
-  // alguien llegó hasta aquí sin completar ese paso.
+  // alguien llegó hasta aquí sin completar ese paso. El pago separado
+  // ya valida sus propios bancos por línea (validarPagoSeparado), así
+  // que no aplica aquí.
+  const esPagoSeparado = S.metodoPagoId === 'separado';
   const metodoActual = (S.metodoPagoNombre||'').toLowerCase();
-  if ((metodoActual.includes('tarjeta') || metodoActual.includes('transferencia')) && (await cargarBancosDisponibles()).length && !S.bancoElegidoId) {
+  if (!esPagoSeparado && (metodoActual.includes('tarjeta') || metodoActual.includes('transferencia')) && (await cargarBancosDisponibles()).length && !S.bancoElegidoId) {
     showToast('Elige a qué banco entra este pago', 'error');
     return;
   }
-  const bancoElegidoVenta = S.bancoElegidoId || null;
+  const bancoElegidoVenta = esPagoSeparado ? null : (S.bancoElegidoId || null);
 
   if (bancoElegidoVenta) {
     const bancoInfo = (await cargarBancosDisponibles()).find(b => b.id === bancoElegidoVenta);
@@ -3308,6 +3450,13 @@ async function confirmarVenta(conImpresion) {
     /* ----------------------------------------------------------
        PASO C: Insertar venta principal
     ---------------------------------------------------------- */
+    // "separado" no es un UUID real -- en la venta se guarda null
+    // ahí, y un nombre legible con el detalle de los métodos usados
+    // (el desglose exacto por monto vive en los movimientos de Caja).
+    const nombreMetodoParaGuardar = esPagoSeparado
+      ? `Pago separado (${S.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
+      : S.metodoPagoNombre;
+
     const ventaPayload = {
       auth_user_id:       S.userId,
       numero_venta:       S.numeroVenta,
@@ -3319,8 +3468,8 @@ async function confirmarVenta(conImpresion) {
       impuesto:           r.impuestos,
       total:              r.total,
       costo_total:        r.costoTotal,
-      metodo_pago_id:     S.metodoPagoId || null,
-      metodo_pago_nombre: S.metodoPagoNombre,
+      metodo_pago_id:     esPagoSeparado ? null : (S.metodoPagoId || null),
+      metodo_pago_nombre: nombreMetodoParaGuardar,
       estado:             'completada',
       observaciones:      S.observaciones || null,
     };
@@ -3477,30 +3626,74 @@ async function confirmarVenta(conImpresion) {
         .eq('auth_user_id', S.userId).eq('estado','completado')
         .order('created_at',{ ascending:false }).limit(1).maybeSingle();
 
-      const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-      const saldoRes = saldoAnt + montoCaja;
+      let saldoCorriente = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      let ultimoMovId = null;
 
-      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
-        auth_user_id:       S.userId,
-        tipo_flujo:         'INGRESO',
-        tipo_movimiento:    'VENTA',
-        concepto:           montoIva>0 ? `Venta ${S.numeroVenta} (neto de IVA)` : `Venta ${S.numeroVenta}`,
-        monto:              montoCaja,
-        saldo_anterior:     saldoAnt,
-        saldo_resultante:   saldoRes,
-        metodo_pago_id:     S.metodoPagoId || null,
-        metodo_pago_nombre: S.metodoPagoNombre,
-        banco_id:           bancoElegidoVenta,
-        monto_moneda_banco: bancoElegidoVenta ? (S._montoBancoConvertido ?? null) : null,
-        referencia_tipo:    'venta',
-        referencia_id:      ventaId,
-        observaciones:      S.observaciones || null,
-        fecha:              todayISO(),
-      }).select('id').single();
+      if (esPagoSeparado) {
+        // Un movimiento de caja POR CADA método usado, encadenando el
+        // saldo correctamente entre ellos. La última línea se lleva lo
+        // que sobre del reparto proporcional, para que la suma cuadre
+        // exacto con montoCaja sin arrastre de redondeo.
+        const ratioCaja = Number(r.total) > 0 ? montoCaja / Number(r.total) : 0;
+        const lineasConMonto = S.pagoSeparadoLineas.filter(l => l.monto > 0);
+        let montoCajaAsignado = 0;
+
+        for (let i = 0; i < lineasConMonto.length; i++) {
+          const linea = lineasConMonto[i];
+          const esUltima = i === lineasConMonto.length - 1;
+          const montoCajaLinea = esUltima ? round2(montoCaja - montoCajaAsignado) : round2(linea.monto * ratioCaja);
+          montoCajaAsignado = round2(montoCajaAsignado + montoCajaLinea);
+
+          const saldoAntLinea = saldoCorriente;
+          const saldoResLinea = round2(saldoCorriente + montoCajaLinea);
+          saldoCorriente = saldoResLinea;
+
+          const { data: movLinea } = await sb.from('movimientos_financieros').insert({
+            auth_user_id:       S.userId,
+            tipo_flujo:         'INGRESO',
+            tipo_movimiento:    'VENTA',
+            concepto:           `Venta ${S.numeroVenta} — ${linea.metodoNombre} (pago separado)`,
+            monto:              montoCajaLinea,
+            saldo_anterior:     saldoAntLinea,
+            saldo_resultante:   saldoResLinea,
+            metodo_pago_id:     linea.metodoId,
+            metodo_pago_nombre: linea.metodoNombre,
+            banco_id:           linea.bancoId || null,
+            monto_moneda_banco: linea.bancoId ? (linea.montoBancoConvertido ?? null) : null,
+            referencia_tipo:    'venta',
+            referencia_id:      ventaId,
+            observaciones:      S.observaciones || null,
+            fecha:              todayISO(),
+          }).select('id').single();
+          ultimoMovId = movLinea?.id || ultimoMovId;
+        }
+      } else {
+        const saldoAnt = saldoCorriente;
+        const saldoRes = round2(saldoCorriente + montoCaja);
+
+        const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+          auth_user_id:       S.userId,
+          tipo_flujo:         'INGRESO',
+          tipo_movimiento:    'VENTA',
+          concepto:           montoIva>0 ? `Venta ${S.numeroVenta} (neto de IVA)` : `Venta ${S.numeroVenta}`,
+          monto:              montoCaja,
+          saldo_anterior:     saldoAnt,
+          saldo_resultante:   saldoRes,
+          metodo_pago_id:     S.metodoPagoId || null,
+          metodo_pago_nombre: S.metodoPagoNombre,
+          banco_id:           bancoElegidoVenta,
+          monto_moneda_banco: bancoElegidoVenta ? (S._montoBancoConvertido ?? null) : null,
+          referencia_tipo:    'venta',
+          referencia_id:      ventaId,
+          observaciones:      S.observaciones || null,
+          fecha:              todayISO(),
+        }).select('id').single();
+        ultimoMovId = movNuevo?.id || null;
+      }
 
       // Guardar referencia en la venta
-      if (movNuevo?.id) {
-        await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+      if (ultimoMovId) {
+        await sb.from('ventas').update({ referencia_caja: ultimoMovId }).eq('id', ventaId);
       }
     } catch(eCaja) {
       console.warn('No se pudo registrar en caja (caja.js lo manejará):', eCaja);

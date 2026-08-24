@@ -1189,6 +1189,16 @@
           <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Entra a: <span id="banco-elegido-nombre"></span></span>
           <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBanco()">✕</button>
         </div>
+
+        <!-- PAGO SEPARADO — un monto por cada método, debe sumar el total exacto -->
+        <div id="pago-separado-wrap" style="display:none;margin-top:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarPagoSeparado()">✕</button>
+            <span style="font-size:13px;font-weight:600">¿Cuánto entra por cada método?</span>
+          </div>
+          <div id="pago-separado-lineas"></div>
+          <div id="pago-separado-resumen" style="margin-top:10px;padding:10px 12px;border-radius:var(--radius-md);font-size:13px;font-weight:600"></div>
+        </div>
         <p id="metodo-error" style="color:var(--danger);font-size:12.5px;margin-top:8px;display:none">
           Selecciona un método de pago.
         </p>
@@ -1738,7 +1748,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
 <script src="escpos-usb.js?v=20260821a"></script>
-<script src="ventas.js?v=20260822c"></script>
+<script src="ventas.js?v=20260824a"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
