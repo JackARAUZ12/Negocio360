@@ -4038,9 +4038,11 @@ function abrirPantallaVentaRapida() {
   VR.metodoPagoId      = metodoDefault?.id     || null;
   VR.metodoPagoNombre  = metodoDefault?.nombre || 'Efectivo';
   VR.bancoElegidoId    = null; VR.bancoElegidoNombre = null;
+  VR.pagoSeparadoLineas = [];
   VR.numeroVenta       = '';
   const vbew = document.getElementById('vr-banco-elegir-wrap'); if (vbew) vbew.style.display = 'none';
   const vbdw = document.getElementById('vr-banco-elegido-wrap'); if (vbdw) vbdw.style.display = 'none';
+  const vpsw = document.getElementById('vr-pago-separado-wrap'); if (vpsw) vpsw.style.display = 'none';
   const vmg = document.getElementById('vr-metodos-grid'); if (vmg) vmg.style.display = '';
   const metodoDefaultLower = (VR.metodoPagoNombre||'').toLowerCase();
   if (metodoDefaultLower.includes('tarjeta') || metodoDefaultLower.includes('transferencia')) {
@@ -4419,7 +4421,11 @@ function renderMetodosPagoVR() {
       onclick="seleccionarMetodoPagoVR('${m.id}','${esc(m.nombre)}')">
       <span class="mc-icon">${iconos[m.nombre] || '💰'}</span>
       <span class="mc-name">${esc(m.nombre)}</span>
-    </div>`).join('');
+    </div>`).join('') + `
+    <div class="metodo-card ${VR.metodoPagoId==='separado' ? 'selected' : ''}" onclick="seleccionarPagoSeparadoVR()">
+      <span class="mc-icon">🔀</span>
+      <span class="mc-name">Pago separado</span>
+    </div>`;
 }
 
 function seleccionarMetodoPagoVR(id, nombre) {
@@ -4434,6 +4440,129 @@ function seleccionarMetodoPagoVR(id, nombre) {
   }
 }
 
+/* ============================================================
+   PAGO SEPARADO — Venta Rápida (mismo criterio que Nueva Venta)
+   ============================================================ */
+async function seleccionarPagoSeparadoVR() {
+  VR.metodoPagoId = 'separado';
+  VR.metodoPagoNombre = 'Pago separado';
+  document.getElementById('vr-banco-elegir-wrap').style.display = 'none';
+  document.getElementById('vr-banco-elegido-wrap').style.display = 'none';
+
+  VR.pagoSeparadoLineas = S.metodosPago.map(m => ({
+    metodoId: m.id, metodoNombre: m.nombre, monto: 0, bancoId: null, bancoNombre: null, montoBancoConvertido: null,
+  }));
+
+  renderMetodosPagoVR();
+  document.getElementById('vr-metodos-grid').style.display = 'none';
+  document.getElementById('vr-pago-separado-wrap').style.display = '';
+  await renderLineasPagoSeparadoVR();
+}
+
+function cancelarPagoSeparadoVR() {
+  VR.metodoPagoId = null; VR.metodoPagoNombre = null;
+  VR.pagoSeparadoLineas = [];
+  document.getElementById('vr-pago-separado-wrap').style.display = 'none';
+  document.getElementById('vr-metodos-grid').style.display = '';
+  renderMetodosPagoVR();
+}
+
+async function renderLineasPagoSeparadoVR() {
+  const cont = document.getElementById('vr-pago-separado-lineas');
+  if (!cont || !VR.pagoSeparadoLineas) return;
+  const bancos = await cargarBancosDisponibles();
+  const iconos = { 'Efectivo':'💵', 'Transferencia':'🏦', 'Tarjeta':'💳', 'PayPal':'🅿️', 'Cheque':'📄', 'Débito':'💳' };
+
+  cont.innerHTML = VR.pagoSeparadoLineas.map((linea, i) => {
+    const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
+    const icon = iconos[linea.metodoNombre] || '💰';
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:18px">${icon}</span>
+        <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
+        <input type="number" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
+          style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparadoVR(${i}, this.value)"/>
+      </div>
+      ${necesitaBanco && linea.monto > 0 && bancos.length ? `
+      <div style="padding:6px 0 10px 28px">
+        ${linea.bancoId
+          ? `<span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: ${esc(linea.bancoNombre)}</span> <button type="button" class="btn-icon" style="width:20px;height:20px;display:inline-flex" onclick="quitarBancoLineaSeparadaVR(${i})">✕</button>`
+          : `<div style="display:flex;gap:6px;flex-wrap:wrap">${bancos.map(b => `<button type="button" class="metodo-card" style="padding:6px 10px;font-size:11.5px" onclick="elegirBancoLineaSeparadaVR(${i},'${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">🏦 ${esc(b.nombre)}</button>`).join('')}</div>`}
+      </div>` : ''}
+    `;
+  }).join('');
+
+  renderResumenPagoSeparadoVR();
+}
+
+function actualizarMontoPagoSeparadoVR(idx, valor) {
+  const n = parseFloat(valor);
+  VR.pagoSeparadoLineas[idx].monto = isNaN(n) ? 0 : Math.max(0, n);
+  renderLineasPagoSeparadoVR();
+}
+
+function elegirBancoLineaSeparadaVR(idx, bancoId, bancoNombre, monedaBanco) {
+  const linea = VR.pagoSeparadoLineas[idx];
+  linea.bancoId = bancoId; linea.bancoNombre = bancoNombre;
+
+  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  if ((monedaBanco||'NIO') !== monedaBase) {
+    const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+    linea.montoBancoConvertido = tasa ? round2(monedaBase==='NIO' ? linea.monto/tasa : linea.monto*tasa) : null;
+  } else {
+    linea.montoBancoConvertido = null;
+  }
+  renderLineasPagoSeparadoVR();
+}
+function quitarBancoLineaSeparadaVR(idx) {
+  VR.pagoSeparadoLineas[idx].bancoId = null;
+  VR.pagoSeparadoLineas[idx].bancoNombre = null;
+  VR.pagoSeparadoLineas[idx].montoBancoConvertido = null;
+  renderLineasPagoSeparadoVR();
+}
+
+function renderResumenPagoSeparadoVR() {
+  const el = document.getElementById('vr-pago-separado-resumen');
+  if (!el) return;
+  const total = calcularResumenVR().total;
+  const suma = round2((VR.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
+  const diferencia = round2(total - suma);
+
+  if (Math.abs(diferencia) < 0.01) {
+    el.style.background = 'var(--success-soft)'; el.style.color = 'var(--success)';
+    el.innerHTML = `✅ Cuadra exacto — ${fmt(suma)} de ${fmt(total)}`;
+  } else if (diferencia > 0) {
+    el.style.background = '#fef3cd'; el.style.color = '#b45309';
+    el.innerHTML = `Falta ${fmt(diferencia)} por asignar (llevas ${fmt(suma)} de ${fmt(total)})`;
+  } else {
+    el.style.background = 'var(--danger-soft)'; el.style.color = 'var(--danger)';
+    el.innerHTML = `⚠️ Te pasaste por ${fmt(Math.abs(diferencia))} (llevas ${fmt(suma)} de ${fmt(total)})`;
+  }
+}
+
+function validarPagoSeparadoVR() {
+  if (VR.metodoPagoId !== 'separado') return true;
+  const total = calcularResumenVR().total;
+  const suma = round2((VR.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
+  if (Math.abs(total - suma) >= 0.01) {
+    showToast(`El pago separado no cuadra con el total (${suma < total ? 'faltan' : 'sobran'} ${fmt(Math.abs(total-suma))})`, 'error');
+    return false;
+  }
+  const lineasConMonto = (VR.pagoSeparadoLineas||[]).filter(l => l.monto > 0);
+  if (!lineasConMonto.length) {
+    showToast('Asigna al menos un monto en el pago separado', 'error');
+    return false;
+  }
+  for (const l of lineasConMonto) {
+    const necesitaBanco = /tarjeta|transferencia/.test(l.metodoNombre.toLowerCase());
+    if (necesitaBanco && _bancosCache?.length && !l.bancoId) {
+      showToast(`Elige a qué banco entra el pago de ${l.metodoNombre}`, 'error');
+      return false;
+    }
+  }
+  return true;
+}
+
 function confirmarCerrarVentaRapida() {
   if (VR.carrito.length && !VR.procesando) {
     if (!confirm('Hay productos escaneados sin cobrar. ¿Cerrar Venta rápida de todos modos?')) return;
@@ -4446,13 +4575,15 @@ function confirmarCerrarVentaRapida() {
 async function confirmarVentaRapida() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
+  if (!validarPagoSeparadoVR()) return;
 
+  const esPagoSeparadoVR = VR.metodoPagoId === 'separado';
   const metodoActualVR = (VR.metodoPagoNombre||'').toLowerCase();
-  if ((metodoActualVR.includes('tarjeta') || metodoActualVR.includes('transferencia')) && (await cargarBancosDisponibles()).length && !VR.bancoElegidoId) {
+  if (!esPagoSeparadoVR && (metodoActualVR.includes('tarjeta') || metodoActualVR.includes('transferencia')) && (await cargarBancosDisponibles()).length && !VR.bancoElegidoId) {
     showToast('Elige a qué banco entra este pago', 'error');
     return;
   }
-  const bancoElegidoVR = VR.bancoElegidoId || null;
+  const bancoElegidoVR = esPagoSeparadoVR ? null : (VR.bancoElegidoId || null);
 
   if (bancoElegidoVR) {
     const bancoInfo = (await cargarBancosDisponibles()).find(b => b.id === bancoElegidoVR);
@@ -4477,6 +4608,12 @@ async function confirmarVentaRapida() {
       } catch { VR.numeroVenta = `V-${Date.now()}`; }
     }
 
+    // "separado" no es un UUID real -- se guarda null y un nombre
+    // legible con el detalle de metodos usados (igual que Nueva Venta).
+    const nombreMetodoParaGuardarVR = esPagoSeparadoVR
+      ? `Pago separado (${VR.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
+      : VR.metodoPagoNombre;
+
     const ventaPayload = {
       auth_user_id:       S.userId,
       numero_venta:       VR.numeroVenta,
@@ -4488,8 +4625,8 @@ async function confirmarVentaRapida() {
       impuesto:           r.impuesto,
       total:              r.total,
       costo_total:        r.costoTotal,
-      metodo_pago_id:     VR.metodoPagoId || null,
-      metodo_pago_nombre: VR.metodoPagoNombre,
+      metodo_pago_id:     esPagoSeparadoVR ? null : (VR.metodoPagoId || null),
+      metodo_pago_nombre: nombreMetodoParaGuardarVR,
       estado:             'completada',
       observaciones:      'Venta rápida (escáner)',
       categoria:          'venta_rapida',
@@ -4602,25 +4739,66 @@ async function confirmarVentaRapida() {
       const { data: ultMov } = await sb.from('movimientos_financieros')
         .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado','completado')
         .order('created_at',{ ascending:false }).limit(1).maybeSingle();
-      const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-      const saldoRes = saldoAnt + montoCaja;
-      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
-        auth_user_id:       S.userId,
-        tipo_flujo:         'INGRESO',
-        tipo_movimiento:    'VENTA',
-        concepto:           montoIva>0 ? `Venta rápida ${VR.numeroVenta} (neto de IVA)` : `Venta rápida ${VR.numeroVenta}`,
-        monto:              montoCaja,
-        saldo_anterior:     saldoAnt,
-        saldo_resultante:   saldoRes,
-        metodo_pago_id:     VR.metodoPagoId || null,
-        metodo_pago_nombre: VR.metodoPagoNombre,
-        banco_id:           bancoElegidoVR,
-        monto_moneda_banco: bancoElegidoVR ? (VR._montoBancoConvertido ?? null) : null,
-        referencia_tipo:    'venta',
-        referencia_id:      ventaId,
-        fecha:              todayISO(),
-      }).select('id').single();
-      if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+
+      let saldoCorriente = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      let ultimoMovId = null;
+
+      if (esPagoSeparadoVR) {
+        const ratioCaja = Number(r.total) > 0 ? montoCaja / Number(r.total) : 0;
+        const lineasConMonto = VR.pagoSeparadoLineas.filter(l => l.monto > 0);
+        let montoCajaAsignado = 0;
+
+        for (let i = 0; i < lineasConMonto.length; i++) {
+          const linea = lineasConMonto[i];
+          const esUltima = i === lineasConMonto.length - 1;
+          const montoCajaLinea = esUltima ? round2(montoCaja - montoCajaAsignado) : round2(linea.monto * ratioCaja);
+          montoCajaAsignado = round2(montoCajaAsignado + montoCajaLinea);
+
+          const saldoAntLinea = saldoCorriente;
+          const saldoResLinea = round2(saldoCorriente + montoCajaLinea);
+          saldoCorriente = saldoResLinea;
+
+          const { data: movLinea } = await sb.from('movimientos_financieros').insert({
+            auth_user_id:       S.userId,
+            tipo_flujo:         'INGRESO',
+            tipo_movimiento:    'VENTA',
+            concepto:           `Venta rápida ${VR.numeroVenta} — ${linea.metodoNombre} (pago separado)`,
+            monto:              montoCajaLinea,
+            saldo_anterior:     saldoAntLinea,
+            saldo_resultante:   saldoResLinea,
+            metodo_pago_id:     linea.metodoId,
+            metodo_pago_nombre: linea.metodoNombre,
+            banco_id:           linea.bancoId || null,
+            monto_moneda_banco: linea.bancoId ? (linea.montoBancoConvertido ?? null) : null,
+            referencia_tipo:    'venta',
+            referencia_id:      ventaId,
+            fecha:              todayISO(),
+          }).select('id').single();
+          ultimoMovId = movLinea?.id || ultimoMovId;
+        }
+      } else {
+        const saldoAnt = saldoCorriente;
+        const saldoRes = round2(saldoCorriente + montoCaja);
+        const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+          auth_user_id:       S.userId,
+          tipo_flujo:         'INGRESO',
+          tipo_movimiento:    'VENTA',
+          concepto:           montoIva>0 ? `Venta rápida ${VR.numeroVenta} (neto de IVA)` : `Venta rápida ${VR.numeroVenta}`,
+          monto:              montoCaja,
+          saldo_anterior:     saldoAnt,
+          saldo_resultante:   saldoRes,
+          metodo_pago_id:     VR.metodoPagoId || null,
+          metodo_pago_nombre: VR.metodoPagoNombre,
+          banco_id:           bancoElegidoVR,
+          monto_moneda_banco: bancoElegidoVR ? (VR._montoBancoConvertido ?? null) : null,
+          referencia_tipo:    'venta',
+          referencia_id:      ventaId,
+          fecha:              todayISO(),
+        }).select('id').single();
+        ultimoMovId = movNuevo?.id || null;
+      }
+
+      if (ultimoMovId) await sb.from('ventas').update({ referencia_caja: ultimoMovId }).eq('id', ventaId);
     } catch(eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
 
     if (montoIva > 0) {

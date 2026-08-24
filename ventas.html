@@ -1451,6 +1451,15 @@
         <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Entra a: <span id="vr-banco-elegido-nombre"></span></span>
         <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBancoVR()">✕</button>
       </div>
+
+      <div id="vr-pago-separado-wrap" style="display:none;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarPagoSeparadoVR()">✕</button>
+          <span style="font-size:13px;font-weight:600">¿Cuánto entra por cada método?</span>
+        </div>
+        <div id="vr-pago-separado-lineas"></div>
+        <div id="vr-pago-separado-resumen" style="margin-top:10px;padding:10px 12px;border-radius:var(--radius-md);font-size:13px;font-weight:600"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="confirmarCerrarVentaRapida()">Cancelar</button>
@@ -1748,7 +1757,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
 <script src="escpos-usb.js?v=20260821a"></script>
-<script src="ventas.js?v=20260824a"></script>
+<script src="ventas.js?v=20260824b"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
 </body>
