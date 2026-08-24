@@ -1552,6 +1552,7 @@ async function abrirNuevaVenta() {
   S.numeroVenta   = '';
   S.ivaActivo     = false;
   S.ivaPorcentaje = S.empresaConfig?.iva_porcentaje_default ? Number(S.empresaConfig.iva_porcentaje_default) : 15;
+  const fechaInput = document.getElementById('nv-fecha-venta'); if (fechaInput) fechaInput.value = todayISO();
 
   // Limpiar campos
   const qi = document.getElementById('cliente-search-input');  if(qi) qi.value='';
@@ -3517,13 +3518,14 @@ async function confirmarVenta(conImpresion) {
     const nombreMetodoParaGuardar = esPagoSeparado
       ? `Pago separado (${S.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
       : S.metodoPagoNombre;
+    const fechaVentaElegida = document.getElementById('nv-fecha-venta')?.value || todayISO();
 
     const ventaPayload = {
       auth_user_id:       S.userId,
       numero_venta:       S.numeroVenta,
       cliente_id:         S.clienteId || null,
       cliente_nombre:     S.clienteNombre,
-      fecha:              todayISO(),
+      fecha:              fechaVentaElegida,
       subtotal:           r.subtotal,
       descuento:          r.descuento,
       impuesto:           r.impuestos,
@@ -3724,7 +3726,7 @@ async function confirmarVenta(conImpresion) {
             referencia_tipo:    'venta',
             referencia_id:      ventaId,
             observaciones:      S.observaciones || null,
-            fecha:              todayISO(),
+            fecha:              fechaVentaElegida,
           }).select('id').single();
           ultimoMovId = movLinea?.id || ultimoMovId;
         }
@@ -3747,7 +3749,7 @@ async function confirmarVenta(conImpresion) {
           referencia_tipo:    'venta',
           referencia_id:      ventaId,
           observaciones:      S.observaciones || null,
-          fecha:              todayISO(),
+          fecha:              fechaVentaElegida,
         }).select('id').single();
         ultimoMovId = movNuevo?.id || null;
       }
@@ -4095,6 +4097,7 @@ async function guardarConfigVentaRapida() {
 
 function abrirPantallaVentaRapida() {
   VR.carrito          = [];
+  const fechaVR = document.getElementById('vr-fecha-venta'); if (fechaVR) fechaVR.value = todayISO();
   const metodoDefault  = S.metodosPago.find(m => m.es_default) || S.metodosPago[0];
   VR.metodoPagoId      = metodoDefault?.id     || null;
   VR.metodoPagoNombre  = metodoDefault?.nombre || 'Efectivo';
@@ -4682,13 +4685,14 @@ async function confirmarVentaRapida() {
     const nombreMetodoParaGuardarVR = esPagoSeparadoVR
       ? `Pago separado (${VR.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
       : VR.metodoPagoNombre;
+    const fechaVentaElegidaVR = document.getElementById('vr-fecha-venta')?.value || todayISO();
 
     const ventaPayload = {
       auth_user_id:       S.userId,
       numero_venta:       VR.numeroVenta,
       cliente_id:         null,
       cliente_nombre:     'Consumidor Final',
-      fecha:              todayISO(),
+      fecha:              fechaVentaElegidaVR,
       subtotal:           r.subtotal,
       descuento:          r.descuentoPromociones || 0,
       impuesto:           r.impuesto,
@@ -4841,7 +4845,7 @@ async function confirmarVentaRapida() {
             monto_moneda_banco: linea.bancoId ? (linea.montoBancoConvertido ?? null) : null,
             referencia_tipo:    'venta',
             referencia_id:      ventaId,
-            fecha:              todayISO(),
+            fecha:              fechaVentaElegidaVR,
           }).select('id').single();
           ultimoMovId = movLinea?.id || ultimoMovId;
         }
@@ -4862,7 +4866,7 @@ async function confirmarVentaRapida() {
           monto_moneda_banco: bancoElegidoVR ? (VR._montoBancoConvertido ?? null) : null,
           referencia_tipo:    'venta',
           referencia_id:      ventaId,
-          fecha:              todayISO(),
+          fecha:              fechaVentaElegidaVR,
         }).select('id').single();
         ultimoMovId = movNuevo?.id || null;
       }
