@@ -2804,9 +2804,14 @@ async function renderLineasPagoSeparado() {
   const bancos = await cargarBancosDisponibles();
   const iconos = { 'Efectivo':'💵', 'Transferencia':'🏦', 'Tarjeta':'💳', 'PayPal':'🅿️', 'Cheque':'📄', 'Débito':'💳' };
 
+  // El wrapper del selector de banco SIEMPRE se dibuja (solo se
+  // muestra u oculta con CSS después) -- así el input de monto nunca
+  // se destruye ni pierde el foco mientras el usuario escribe, sin
+  // importar qué tan rápido teclee.
   cont.innerHTML = S.pagoSeparadoLineas.map((linea, i) => {
     const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
     const icon = iconos[linea.metodoNombre] || '💰';
+    const mostrarAhora = necesitaBanco && linea.monto > 0 && bancos.length > 0;
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:18px">${icon}</span>
@@ -2814,12 +2819,11 @@ async function renderLineasPagoSeparado() {
         <input type="number" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparado(${i}, this.value)"/>
       </div>
-      ${necesitaBanco && linea.monto > 0 && bancos.length ? `
-      <div style="padding:6px 0 10px 28px">
+      <div id="pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
         ${linea.bancoId
           ? `<span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: ${esc(linea.bancoNombre)}</span> <button type="button" class="btn-icon" style="width:20px;height:20px;display:inline-flex" onclick="quitarBancoLineaSeparada(${i})">✕</button>`
           : `<div style="display:flex;gap:6px;flex-wrap:wrap">${bancos.map(b => `<button type="button" class="metodo-card" style="padding:6px 10px;font-size:11.5px" onclick="elegirBancoLineaSeparada(${i},'${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">🏦 ${esc(b.nombre)}</button>`).join('')}</div>`}
-      </div>` : ''}
+      </div>
     `;
   }).join('');
 
@@ -2827,9 +2831,20 @@ async function renderLineasPagoSeparado() {
 }
 
 function actualizarMontoPagoSeparado(idx, valor) {
+  const linea = S.pagoSeparadoLineas[idx];
   const n = parseFloat(valor);
-  S.pagoSeparadoLineas[idx].monto = isNaN(n) ? 0 : Math.max(0, n);
-  renderLineasPagoSeparado();
+  linea.monto = isNaN(n) ? 0 : Math.max(0, n);
+
+  // Nunca se reconstruye nada mientras se escribe -- solo se
+  // muestra/oculta el bloque de banco con CSS directo (instantáneo,
+  // sin esperar nada, sin tocar el input en absoluto).
+  const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
+  const wrap = document.getElementById(`pago-separado-banco-wrap-${idx}`);
+  if (wrap) {
+    const debeVerse = necesitaBanco && linea.monto > 0 && (_bancosCache?.length > 0);
+    wrap.style.display = debeVerse ? '' : 'none';
+  }
+  renderResumenPagoSeparado();
 }
 
 function elegirBancoLineaSeparada(idx, bancoId, bancoNombre, monedaBanco) {
@@ -4476,6 +4491,7 @@ async function renderLineasPagoSeparadoVR() {
   cont.innerHTML = VR.pagoSeparadoLineas.map((linea, i) => {
     const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
     const icon = iconos[linea.metodoNombre] || '💰';
+    const mostrarAhora = necesitaBanco && linea.monto > 0 && bancos.length > 0;
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:18px">${icon}</span>
@@ -4483,12 +4499,11 @@ async function renderLineasPagoSeparadoVR() {
         <input type="number" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparadoVR(${i}, this.value)"/>
       </div>
-      ${necesitaBanco && linea.monto > 0 && bancos.length ? `
-      <div style="padding:6px 0 10px 28px">
+      <div id="vr-pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
         ${linea.bancoId
           ? `<span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: ${esc(linea.bancoNombre)}</span> <button type="button" class="btn-icon" style="width:20px;height:20px;display:inline-flex" onclick="quitarBancoLineaSeparadaVR(${i})">✕</button>`
           : `<div style="display:flex;gap:6px;flex-wrap:wrap">${bancos.map(b => `<button type="button" class="metodo-card" style="padding:6px 10px;font-size:11.5px" onclick="elegirBancoLineaSeparadaVR(${i},'${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">🏦 ${esc(b.nombre)}</button>`).join('')}</div>`}
-      </div>` : ''}
+      </div>
     `;
   }).join('');
 
@@ -4496,9 +4511,17 @@ async function renderLineasPagoSeparadoVR() {
 }
 
 function actualizarMontoPagoSeparadoVR(idx, valor) {
+  const linea = VR.pagoSeparadoLineas[idx];
   const n = parseFloat(valor);
-  VR.pagoSeparadoLineas[idx].monto = isNaN(n) ? 0 : Math.max(0, n);
-  renderLineasPagoSeparadoVR();
+  linea.monto = isNaN(n) ? 0 : Math.max(0, n);
+
+  const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
+  const wrap = document.getElementById(`vr-pago-separado-banco-wrap-${idx}`);
+  if (wrap) {
+    const debeVerse = necesitaBanco && linea.monto > 0 && (_bancosCache?.length > 0);
+    wrap.style.display = debeVerse ? '' : 'none';
+  }
+  renderResumenPagoSeparadoVR();
 }
 
 function elegirBancoLineaSeparadaVR(idx, bancoId, bancoNombre, monedaBanco) {
