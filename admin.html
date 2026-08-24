@@ -260,6 +260,16 @@
           <div class="stat-value" id="stat-premium">—</div>
           <div class="stat-label">Usuarios Premium</div>
         </div>
+
+        <div class="stat-card cancelled">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-en-riesgo">—</div>
+          <div class="stat-label">Clientes en Riesgo</div>
+        </div>
       </div>
 
       <!-- ═══ CONTROL DE PAGOS (Próximos / Pendientes / Atrasados) ═══ -->
@@ -318,6 +328,26 @@
             <div class="payment-list" id="list-atrasados">
               <div class="payment-empty">Cargando...</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CLIENTES EN RIESGO (sin entrar hace 3+ días) ═══ -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              Clientes en Riesgo
+            </div>
+            <div class="card-subtitle">Sin entrar al sistema hace 3 días o más — ordenados del más urgente al menos urgente</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="payment-list" id="list-en-riesgo">
+            <div class="payment-empty">Cargando...</div>
           </div>
         </div>
       </div>
@@ -397,6 +427,7 @@
             <button class="filter-btn" data-filter="cancelados">Cancelados</button>
             <button class="filter-btn" data-filter="prueba">Prueba</button>
             <button class="filter-btn" data-filter="premium">Premium</button>
+            <button class="filter-btn" data-filter="en_riesgo" style="color:#ef4444">🔴 En riesgo</button>
           </div>
         </div>
 

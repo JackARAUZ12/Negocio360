@@ -240,7 +240,7 @@ async function loadDashboardStats() {
   try {
     const { data: usuariosCrudo, error } = await sb
       .from('usuarios')
-      .select('id, auth_user_id, nombre, apellido, email, estado_cuenta, plan, created_at, fecha_ultimo_pago');
+      .select('id, auth_user_id, nombre, apellido, email, estado_cuenta, plan, created_at, fecha_ultimo_pago, ultima_conexion');
 
     if (error) throw error;
 
@@ -255,6 +255,7 @@ async function loadDashboardStats() {
     const cancelados  = usuarios.filter(u => u.estado_cuenta === 'cancelada').length;
     const prueba    = usuarios.filter(u => u.plan === 'prueba').length;
     const premium   = usuarios.filter(u => u.plan === 'premium').length;
+    const enRiesgo  = usuarios.filter(esClienteEnRiesgo).length;
 
     document.getElementById('stat-total').textContent       = total;
     document.getElementById('stat-activos').textContent     = activos;
@@ -262,9 +263,11 @@ async function loadDashboardStats() {
     document.getElementById('stat-cancelados').textContent  = cancelados;
     document.getElementById('stat-prueba').textContent      = prueba;
     document.getElementById('stat-premium').textContent     = premium;
+    document.getElementById('stat-en-riesgo').textContent   = enRiesgo;
 
     // Construir las listas informativas de pagos (próximos / pendientes / atrasados)
     buildPaymentLists(usuarios);
+    buildClientesEnRiesgo(usuarios);
 
   } catch (e) {
     toast('Error al cargar estadísticas', e.message, 'error');
@@ -272,7 +275,7 @@ async function loadDashboardStats() {
 }
 
 function showSkeletons() {
-  ['stat-total','stat-activos','stat-suspendidos','stat-cancelados','stat-prueba','stat-premium']
+  ['stat-total','stat-activos','stat-suspendidos','stat-cancelados','stat-prueba','stat-premium','stat-en-riesgo']
     .forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.textContent = '—'; }
@@ -280,7 +283,7 @@ function showSkeletons() {
 }
 
 function showPaymentListsLoading() {
-  ['list-proximos', 'list-pendientes', 'list-atrasados'].forEach(id => {
+  ['list-proximos', 'list-pendientes', 'list-atrasados', 'list-en-riesgo'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = '<div class="payment-empty">Cargando...</div>';
   });
@@ -552,6 +555,83 @@ function renderPaymentList(containerId, items, emptyMsg, describe) {
 }
 
 // ============================================================
+// CLIENTES EN RIESGO — sin entrar al sistema hace 3+ días
+// (usuarios.ultima_conexion, actualizado por el heartbeat de la app
+// cada ~45s mientras el cliente la tiene abierta -- mismo dato ya
+// usado en el badge de "Conexión" de la tabla de Usuarios).
+// ============================================================
+const DIAS_RIESGO = 3;
+
+function esClienteEnRiesgo(u) {
+  if (!u.ultima_conexion) return true; // nunca ha entrado -- el caso más urgente
+  const dias = (Date.now() - new Date(u.ultima_conexion).getTime()) / 86400000;
+  return dias >= DIAS_RIESGO;
+}
+
+function buildClientesEnRiesgo(usuarios) {
+  const enRiesgo = usuarios.filter(esClienteEnRiesgo).map(u => {
+    const diasInactivo = u.ultima_conexion
+      ? Math.floor((Date.now() - new Date(u.ultima_conexion).getTime()) / 86400000)
+      : null;
+    return Object.assign({}, u, { diasInactivo });
+  });
+
+  // Los que NUNCA han entrado (diasInactivo=null) son los más
+  // urgentes, van primero. Despues, del que lleva mas dias al que
+  // lleva menos.
+  enRiesgo.sort((a, b) => {
+    if (a.diasInactivo === null && b.diasInactivo === null) return 0;
+    if (a.diasInactivo === null) return -1;
+    if (b.diasInactivo === null) return 1;
+    return b.diasInactivo - a.diasInactivo;
+  });
+
+  renderClientesEnRiesgoList(enRiesgo);
+}
+
+function renderClientesEnRiesgoList(items) {
+  const el = document.getElementById('list-en-riesgo');
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = '<div class="payment-empty">Ningún cliente en riesgo ahora mismo 🎉</div>';
+    return;
+  }
+
+  el.innerHTML = items.map(u => {
+    const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Sin nombre';
+    const initial = nombreCompleto.charAt(0).toUpperCase();
+    const sub = u.diasInactivo === null ? 'Nunca ha iniciado sesión' : `Sin entrar hace ${u.diasInactivo} día${u.diasInactivo === 1 ? '' : 's'}`;
+    const badge = (u.diasInactivo === null || u.diasInactivo >= 7) ? 'danger' : 'warning';
+    const label = u.diasInactivo === null ? 'Nunca' : `${u.diasInactivo}d`;
+    return `
+      <div class="payment-item" style="cursor:pointer" onclick="mensajearCliente('${u.auth_user_id}')" title="Clic para enviarle un mensaje por el chat">
+        <div class="payment-item-avatar">${escHtml(initial)}</div>
+        <div class="payment-item-info">
+          <div class="payment-item-name">${escHtml(nombreCompleto)}</div>
+          <div class="payment-item-sub">${escHtml(sub)}</div>
+        </div>
+        <span class="pago-badge ${badge}">${escHtml(label)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// Abre (o crea) una conversación de soporte con este cliente y lo
+// lleva directo a ella -- reutiliza exactamente el mismo mecanismo
+// que ya usa el envío de comprobantes de pago por chat.
+async function mensajearCliente(authUserId) {
+  try {
+    const convId = await getOrCreateActiveConversacion(authUserId);
+    navigate('soporte');
+    await loadConversaciones();
+    selectConversation(convId);
+  } catch (e) {
+    toast('Error', 'No se pudo abrir el chat con este cliente', 'error');
+  }
+}
+
+// ============================================================
 // SECCIÓN 2 — USUARIOS
 // ============================================================
 async function loadUsers() {
@@ -632,6 +712,10 @@ function renderUsersTable(users) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             Ver
           </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="mensajearCliente('${u.auth_user_id}')" title="Enviarle un mensaje por el chat de soporte">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            Mensaje
+          </button>
           ${u.plan === 'premium'
             ? `<button class="btn-icon btn-ghost btn-sm" onclick="openEditBilling('${u.id}')" title="Editar ciclo de facturación y precio de este cliente">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -677,6 +761,8 @@ function filterAndSearch() {
   if (userFilter !== 'all') {
     if (userFilter === 'prueba' || userFilter === 'premium') {
       filtered = filtered.filter(u => u.plan === userFilter);
+    } else if (userFilter === 'en_riesgo') {
+      filtered = filtered.filter(esClienteEnRiesgo);
     } else {
       const estadoMap = { activos: 'activa', suspendidos: 'suspendida', cancelados: 'cancelada' };
       filtered = filtered.filter(u => u.estado_cuenta === estadoMap[userFilter]);
