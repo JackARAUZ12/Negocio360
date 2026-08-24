@@ -5005,7 +5005,10 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   const fsBase = ancho === '58mm' ? 9.5 : 11;
   const fsTotal = ancho === '58mm' ? 11.5 : 13;
   const fsNombre = ancho === '58mm' ? 12 : 13;
-  const fechaTxt = new Date().toLocaleString('es-NI');
+  // La fecha impresa debe ser la fecha REAL de la venta (la que se
+  // eligió al crearla), no siempre "ahora mismo" -- la hora sí queda
+  // como la hora real de impresión, ya que eso no se guarda aparte.
+  const fechaTxt = `${fmtFecha(venta.fecha || todayISO())} ${new Date().toLocaleTimeString('es-NI', {hour:'2-digit', minute:'2-digit'})}`;
 
   const filas = items.map(i => `
     <tr>
@@ -5135,7 +5138,9 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   const fsBase = ancho === '58mm' ? 9.5 : 11;
   const fsTotal = ancho === '58mm' ? 11.5 : 13;
   const fsNombre = ancho === '58mm' ? 12 : 13;
-  const fechaTxt = new Date().toLocaleString('es-NI');
+  // Misma corrección que en Venta Rápida: fecha real de la venta, no
+  // siempre "ahora mismo".
+  const fechaTxt = `${fmtFecha(venta.fecha || todayISO())} ${new Date().toLocaleTimeString('es-NI', {hour:'2-digit', minute:'2-digit'})}`;
 
   const filas = (items||[]).map(i => `
     <tr>
