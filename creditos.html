@@ -1374,7 +1374,7 @@
 <div class="modal-overlay" id="modal-nuevo-credito" onclick="if(event.target===this)closeModal('modal-nuevo-credito')">
   <div class="modal-box modal-lg">
     <div class="modal-header">
-      <h3>Nuevo crédito</h3>
+      <h3 id="nc-modal-titulo">Nuevo crédito</h3>
       <div style="display:flex;align-items:center;gap:6px">
         <button class="modal-close" title="Configurar ticket de impresión" onclick="abrirConfigTicket()" style="position:static">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1546,7 +1546,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-nuevo-credito')">Cancelar</button>
-      <button class="btn-primary" id="btn-crear-credito" onclick="confirmarNuevoCredito()">Crear crédito</button>
+      <button class="btn-primary" id="btn-crear-credito" onclick="guardarCredito()">Crear crédito</button>
     </div>
   </div>
 </div>
@@ -1874,7 +1874,7 @@
 <script src="cajaAPI.js"></script>
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
-<script src="creditos.js?v=20260824a"></script>
+<script src="creditos.js?v=20260824b"></script>
 
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

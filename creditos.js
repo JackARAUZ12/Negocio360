@@ -1068,7 +1068,161 @@
   /* ===================================================
      ABRIR MODALES
   =================================================== */
+  /* ===================================================
+     EDITAR PRODUCTOS DE UN CRÉDITO (solo antes de cualquier pago)
+     Reutiliza el MISMO modal de "Nuevo crédito" (mismo buscador de
+     productos, misma lista) -- solo cambia qué pasa al guardar.
+     Para las cuotas, en vez de duplicar esa lógica, se reutiliza el
+     flujo de "Renegociar saldo restante" que ya existe y ya maneja
+     bien los casos raros (cuotas pagadas, carrera con un pago, etc).
+  =================================================== */
+  let EDITANDO_PRODUCTOS_CREDITO_ID = null;
+
+  // El botón del modal compartido llama a esto -- decide si crea un
+  // crédito nuevo o guarda los cambios de uno existente.
+  function guardarCredito() {
+    if (EDITANDO_PRODUCTOS_CREDITO_ID) confirmarEditarProductosCredito();
+    else confirmarNuevoCredito();
+  }
+  window.guardarCredito = guardarCredito;
+
+  async function abrirEditarProductosCredito(creditoId) {
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+    if (!credito) { showToast('Crédito no encontrado', 'error'); return; }
+    if (credito.estado !== 'en_proceso') {
+      showToast('Ya no se pueden editar los productos — este crédito ya tiene pagos registrados. Usa "Renegociar saldo restante" en su lugar.', 'error');
+      return;
+    }
+    const { data: detalles } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id).order('created_at');
+
+    EDITANDO_PRODUCTOS_CREDITO_ID = creditoId;
+    CS.ncItems = (detalles||[]).map(d => ({
+      producto_id: d.combo_id || d.producto_id, nombre: d.producto_nombre, tipo_item: d.tipo_item,
+      precio: Number(d.precio)||0, costo: Number(d.costo)||0, cantidad: Number(d.cantidad)||1,
+      escala_id: d.escala_id || null, escala_nombre: d.escala_nombre || null,
+      esCombo: !!d.combo_id, origen_stock_id: null, origen_stock_nombre: null,
+    }));
+    renderNCItems();
+    document.getElementById('nc-cliente').value = credito.cliente_id;
+    document.getElementById('nc-observaciones').value = credito.observaciones || '';
+    setTipoCredito('venta');
+    const selTipo = document.getElementById('nc-tipo');
+    if (selTipo) selTipo.disabled = true; // editando productos no se cambia si era venta o financiero
+    document.getElementById('nc-modal-titulo').textContent = `Editar productos — ${credito.numero_credito}`;
+    document.getElementById('btn-crear-credito').textContent = 'Guardar cambios';
+    recalcularCredito();
+    closeModal('modal-detalle-credito');
+    openModal('modal-nuevo-credito');
+  }
+  window.abrirEditarProductosCredito = abrirEditarProductosCredito;
+
+  async function confirmarEditarProductosCredito() {
+    const creditoId = EDITANDO_PRODUCTOS_CREDITO_ID;
+    if (!CS.ncItems.length) { showToast('Agrega al menos un producto o servicio', 'error'); return; }
+
+    const btn = document.getElementById('btn-crear-credito');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+      if (!credito) throw new Error('Crédito no encontrado');
+      if (credito.estado !== 'en_proceso') throw new Error('Este crédito ya tiene pagos registrados — ya no se puede editar así');
+
+      const { data: detallesViejos } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id);
+
+      // Devolver al inventario lo que tenía la venta ANTES de editar
+      // (productos normales y componentes de combos), luego descontar
+      // lo que corresponde a la lista NUEVA -- así el stock siempre
+      // queda igual de exacto que si se hubiera vendido así desde el
+      // principio, sin importar cuántas veces se edite.
+      for (const d of (detallesViejos||[])) {
+        if (d.tipo_item !== 'producto') continue;
+        if (d.combo_id) {
+          const { data: itemsCombo } = await _sb.from('combo_items').select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', CS.userId);
+          for (const compItem of (itemsCombo||[])) {
+            const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
+            if (!prodActual) continue;
+            const devolver = Number(compItem.cantidad) * d.cantidad;
+            await _sb.from('productos').update({ stock_actual: Number(prodActual.stock_actual||0) + devolver }).eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
+          }
+        } else if (d.producto_id) {
+          const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
+          if (!prodActual) continue;
+          await _sb.from('productos').update({ stock_actual: Number(prodActual.stock_actual||0) + Number(d.cantidad||0) }).eq('id', d.producto_id).eq('auth_user_id', CS.userId);
+        }
+      }
+
+      // Descontar la lista NUEVA
+      for (const it of CS.ncItems) {
+        if (it.tipo_item !== 'producto' || it.esCombo) continue;
+        const prod = CS.productos.find(p => p.id === it.producto_id);
+        if (!prod) continue;
+        const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
+        await _sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', it.producto_id).eq('auth_user_id', CS.userId);
+      }
+      for (const it of CS.ncItems.filter(i => i.esCombo)) {
+        const { data: itemsCombo } = await _sb.from('combo_items').select('producto_id, cantidad').eq('combo_id', it.producto_id).eq('auth_user_id', CS.userId);
+        for (const compItem of (itemsCombo||[])) {
+          const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
+          if (!prodActual) continue;
+          const descontar = Number(compItem.cantidad) * it.cantidad;
+          await _sb.from('productos').update({ stock_actual: Math.max(0, Number(prodActual.stock_actual||0) - descontar) }).eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
+        }
+      }
+
+      // Reemplazar los detalles de la venta
+      await _sb.from('venta_detalles').delete().eq('venta_id', credito.venta_id);
+      const nuevosDetalles = CS.ncItems.map(it => ({
+        venta_id: credito.venta_id, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
+        combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item,
+        cantidad: it.cantidad, precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
+        ganancia: round2((it.precio-it.costo)*it.cantidad), escala_id: it.escala_id||null, escala_nombre: it.escala_nombre||null,
+      }));
+      let { error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles);
+      if (errDet) ({ error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles.map(({combo_id,...r}) => r)));
+      if (errDet) throw errDet;
+
+      // Recalcular subtotal/impuesto/total de la venta con la lista nueva
+      const { data: venta } = await _sb.from('ventas').select('*').eq('id', credito.venta_id).maybeSingle();
+      const subtotal = round2(CS.ncItems.reduce((s,i)=>s+i.precio*i.cantidad,0));
+      const ivaPct = Number(venta?.iva_porcentaje || 0);
+      const ivaMonto = round2(subtotal * ivaPct/100);
+      const total = round2(subtotal + ivaMonto);
+      const costoTotal = round2(CS.ncItems.reduce((s,i)=>s+i.costo*i.cantidad,0));
+      await _sb.from('ventas').update({ subtotal, impuesto: ivaMonto, total, costo_total: costoTotal }).eq('id', credito.venta_id);
+
+      // El nuevo capital financiado = nuevo total menos la MISMA prima que ya tenía
+      const nuevoCapitalFinanciado = round2(total - Number(credito.prima_monto||0));
+      await _sb.from('creditos').update({
+        monto_original: total, capital_financiado: nuevoCapitalFinanciado, updated_at: new Date().toISOString(),
+      }).eq('id', creditoId);
+
+      await registrarHistorial(creditoId, 'editado', `Productos editados — nuevo capital financiado: ${fmt(nuevoCapitalFinanciado)}`, { nuevoCapitalFinanciado });
+
+      showToast('Productos actualizados — ahora define cómo quedan las cuotas');
+      EDITANDO_PRODUCTOS_CREDITO_ID = null;
+      closeModal('modal-nuevo-credito');
+      document.getElementById('nc-tipo').disabled = false;
+
+      // Las cuotas se definen reutilizando el flujo de "Renegociar
+      // saldo restante" ya existente -- como este crédito nunca tuvo
+      // pagos, ahí simplemente regenera todas las cuotas desde cero.
+      await abrirEditarCredito(creditoId);
+    } catch (e) {
+      console.error('confirmarEditarProductosCredito:', e);
+      showToast('Error al guardar los cambios: ' + (e.message||''), 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Crear crédito';
+    }
+  }
+  window.confirmarEditarProductosCredito = confirmarEditarProductosCredito;
+
   function abrirNuevoCredito() {
+    EDITANDO_PRODUCTOS_CREDITO_ID = null;
+    document.getElementById('nc-modal-titulo').textContent = 'Nuevo crédito';
+    document.getElementById('btn-crear-credito').textContent = 'Crear crédito';
+    const selTipo = document.getElementById('nc-tipo');
+    if (selTipo) selTipo.disabled = false;
     CS.ncItems = [];
     CS.escalaPendiente = null;
     renderNCItems();
@@ -2035,6 +2189,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <button class="btn-secondary btn-sm" onclick='generarPagareCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(cuotas||[]).replace(/'/g,"&apos;")})'>📄 Generar pagaré</button>
         <button class="btn-secondary btn-sm" onclick='descargarComprobanteCartaCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(productosFinanciados||[]).replace(/'/g,"&apos;")})'>📄 Comprobante tamaño carta</button>
+        ${credito.tipo === 'venta' && credito.venta_id && credito.estado === 'en_proceso' ? `<button class="btn-secondary btn-sm" onclick="abrirEditarProductosCredito('${credito.id}')">🛒 Editar productos</button>` : ''}
         ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : ''}
       </div>
       ${Number(credito.saldo_pendiente) <= 0 ? `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>` : ''}
