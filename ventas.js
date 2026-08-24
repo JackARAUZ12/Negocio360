@@ -572,6 +572,49 @@ async function cambiarEstadoEntrega(ventaId, nuevoEstado) {
   }
 }
 
+// Deja editar la fecha en que se hizo una venta ya guardada -- util
+// cuando se registra algo con retraso y quedó con la fecha de hoy
+// por error. Si esta venta ya generó un movimiento en Caja, ese
+// movimiento se corrige a la misma fecha, para que Caja y Reportes
+// nunca queden desincronizados de la factura real.
+function editarFechaVenta(ventaId) {
+  const venta = S.ventas.find(v => v.id === ventaId);
+  if (!venta) return;
+  const cont = document.getElementById('det-fecha-display');
+  if (!cont) return;
+  cont.innerHTML = `
+    <input type="date" id="det-fecha-input" value="${(venta.fecha||'').slice(0,10)}" style="width:150px;display:inline-block"/>
+    <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Guardar" onclick="guardarFechaVenta('${ventaId}')">✅</button>
+    <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Cancelar" onclick="abrirDetalle('${ventaId}')">✕</button>
+  `;
+}
+
+async function guardarFechaVenta(ventaId) {
+  const input = document.getElementById('det-fecha-input');
+  const nuevaFecha = input?.value;
+  if (!nuevaFecha) { showToast('Elige una fecha', 'error'); return; }
+
+  try {
+    const venta = S.ventas.find(v => v.id === ventaId);
+    await sb.from('ventas').update({ fecha: nuevaFecha }).eq('id', ventaId).eq('auth_user_id', S.userId);
+
+    // Mantener sincronizado el movimiento de Caja que generó esta venta
+    if (venta?.referencia_caja) {
+      await sb.from('movimientos_financieros').update({ fecha: nuevaFecha })
+        .eq('id', venta.referencia_caja).eq('auth_user_id', S.userId);
+    }
+
+    if (venta) venta.fecha = nuevaFecha;
+    showToast('Fecha actualizada');
+    await loadVentas();
+    abrirDetalle(ventaId);
+  } catch (e) {
+    console.error('guardarFechaVenta:', e);
+    showToast('No se pudo actualizar la fecha', 'error');
+  }
+}
+
+
 async function abrirDetalle(ventaId) {
   S.ventaDetalleId = ventaId;
   const venta = S.ventas.find(v => v.id === ventaId);
@@ -606,7 +649,10 @@ async function abrirDetalle(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Fecha</div>
-          <div class="detalle-value">${fmtFecha(venta.fecha)}</div>
+          <div class="detalle-value" id="det-fecha-display">
+            ${fmtFecha(venta.fecha)}
+            <button class="btn-icon" style="width:20px;height:20px;display:inline-flex;vertical-align:middle" title="Editar fecha" onclick="editarFechaVenta('${venta.id}')">✏️</button>
+          </div>
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Método de pago</div>
