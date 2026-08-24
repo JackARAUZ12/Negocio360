@@ -1752,7 +1752,7 @@ function guardarMonedaVis() {
 
 function fmt(amount, symbol) {
   const monedaOficial = empresaConfig?.moneda || 'NIO';
-  const montoAMostrar = symbol ? Number(amount)||0 : convertirParaMostrar(amount, monedaOficial);
+  const montoAMostrar = convertirParaMostrar(amount, monedaOficial);
   const sym = symbol || monedaParaMostrar(monedaOficial);
   if (amount === null || amount === undefined) return `${sym} —`;
   return `${sym} ${Number(montoAMostrar).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1760,7 +1760,7 @@ function fmt(amount, symbol) {
 
 function fmtShort(amount, symbol) {
   const monedaOficial = empresaConfig?.moneda || 'NIO';
-  const montoAMostrar = symbol ? Number(amount)||0 : convertirParaMostrar(amount, monedaOficial);
+  const montoAMostrar = convertirParaMostrar(amount, monedaOficial);
   const sym = symbol || monedaParaMostrar(monedaOficial);
   if (amount === null || amount === undefined) return `${sym}0`;
   const n = Number(montoAMostrar);
@@ -1818,7 +1818,7 @@ function applyEmpresaConfig(config) {
   }
 
   // Currency
-  const sym = config.moneda || 'C$';
+  const sym = monedaParaMostrar(config.moneda);
   document.querySelectorAll('[id^="sym-"]').forEach(el => el.textContent = sym);
 
   // FIX: Apply tema saved by personalizacion.html
@@ -1903,7 +1903,7 @@ async function loadKPIs(userId) {
       // es dinero recaudado para el fisco y ya se contabiliza aparte en Impuestos.
       const total = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       document.getElementById('kpi-ventas-dia').innerHTML =
-        `<span class="currency-symbol">${sym}</span>${total.toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
+        `<span class="currency-symbol">${sym}</span>${convertirParaMostrar(total, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
       const delta = document.getElementById('kpi-ventas-dia-delta');
       delta.className = 'kpi-delta ' + (total > 0 ? 'positive' : 'neutral');
       delta.textContent = total > 0 ? `${data.length} venta${data.length !== 1 ? 's' : ''} hoy` : 'Sin ventas hoy';
@@ -1919,7 +1919,7 @@ async function loadKPIs(userId) {
       // FIX: ingreso NETO (sin IVA), igual que en "Ventas del día"
       const total = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
       document.getElementById('kpi-ventas-mes').innerHTML =
-        `<span class="currency-symbol">${sym}</span>${total.toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
+        `<span class="currency-symbol">${sym}</span>${convertirParaMostrar(total, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
       const delta = document.getElementById('kpi-ventas-mes-delta');
       delta.className = 'kpi-delta ' + (total > 0 ? 'positive' : 'neutral');
       delta.textContent = total > 0 ? `${data.length} ventas este mes` : 'Sin ventas este mes';
@@ -2027,7 +2027,7 @@ async function loadImpuestosPendientes(userId) {
     dashData.impuestosPendientes = data ? Number(data.saldo_resultante) || 0 : 0;
   } catch(e) { dashData.impuestosPendientes = 0; }
 
-  const sym = empresaConfig?.moneda || 'C$';
+  const sym = monedaParaMostrar(empresaConfig?.moneda);
   const titleEl = document.getElementById('alert-impuestos-title');
   const descEl  = document.getElementById('alert-impuestos-desc');
   const monto   = dashData.impuestosPendientes || 0;
@@ -2057,14 +2057,14 @@ async function loadCaja(userId) {
 /* NUEVO: renderiza la tarjeta "Caja disponible" en el grid de KPIs principal
    (antes vivía dentro del Resumen financiero como "fin-capital") */
 function renderCajaKPI() {
-  const sym = empresaConfig?.moneda || 'C$';
+  const sym = monedaParaMostrar(empresaConfig?.moneda);
   const cap = dashData.capital;
   const el  = document.getElementById('kpi-caja-disponible');
   const dd  = document.getElementById('kpi-caja-disponible-delta');
 
   if (el) {
     el.innerHTML = cap !== null
-      ? `<span class="currency-symbol" id="sym-caja">${sym}</span>${Number(cap).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`
+      ? `<span class="currency-symbol" id="sym-caja">${sym}</span>${convertirParaMostrar(cap, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`
       : `<span class="currency-symbol" id="sym-caja">${sym}</span>—`;
     el.style.color = (cap !== null && cap < 0) ? 'var(--danger)' : '';
   }
@@ -2158,7 +2158,7 @@ function renderFinancial() {
 }
 
 function actualizarGananciaMesKPI(ingresos, gananciaNeta, noData) {
-  const sym = empresaConfig?.moneda || 'C$';
+  const sym = monedaParaMostrar(empresaConfig?.moneda);
   const el  = document.getElementById('kpi-ganancia-mes');
   const dd  = document.getElementById('kpi-ganancia-mes-delta');
   if (!el) return;
@@ -2169,7 +2169,7 @@ function actualizarGananciaMesKPI(ingresos, gananciaNeta, noData) {
     return;
   }
 
-  el.innerHTML = `<span class="currency-symbol">${sym}</span>${Number(gananciaNeta).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  el.innerHTML = `<span class="currency-symbol">${sym}</span>${convertirParaMostrar(gananciaNeta, empresaConfig?.moneda).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const margenNeto = ingresos > 0 ? ((gananciaNeta / ingresos) * 100).toFixed(1) : 0;
   if (dd) {
     dd.className = 'kpi-delta ' + (gananciaNeta > 0 ? 'positive' : gananciaNeta < 0 ? 'negative' : 'neutral');
@@ -2409,7 +2409,7 @@ function renderLineChart(labels, values) {
   const ctx = document.getElementById('chart-ventas-line');
   if (!ctx) return;
   const d   = getChartDefaults();
-  const sym = empresaConfig?.moneda || 'C$';
+  const sym = monedaParaMostrar(empresaConfig?.moneda);
   if (lineChart) lineChart.destroy();
   lineChart = new Chart(ctx, {
     type: 'line',
@@ -2442,7 +2442,7 @@ function renderLineChart(labels, values) {
           padding: 12,
           cornerRadius: 8,
           displayColors: false,
-          callbacks: { label: ctx => `${sym} ${ctx.parsed.y.toLocaleString('es-NI', {minimumFractionDigits:2})}` }
+          callbacks: { label: ctx => `${sym} ${convertirParaMostrar(ctx.parsed.y, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2})}` }
         }
       },
       scales: {
@@ -2477,7 +2477,7 @@ function renderDonutChart(categoryMap) {
         tooltip: {
           backgroundColor: '#13131f', titleColor: '#f0f0fa', bodyColor: '#9090b0',
           padding: 10, cornerRadius: 8,
-          callbacks: { label: ctx => `${sym} ${ctx.parsed.toLocaleString('es-NI', {minimumFractionDigits:2})}` }
+          callbacks: { label: ctx => `${sym} ${convertirParaMostrar(ctx.parsed, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2})}` }
         }
       }
     }
