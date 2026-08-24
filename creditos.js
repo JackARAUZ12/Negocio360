@@ -2071,13 +2071,14 @@
       <label>Historial de pagos ${(pagos||[]).length ? `(${pagos.length})` : ''}</label>
       <div class="table-wrap" style="margin-bottom:16px">
         <table>
-          <thead><tr><th>Fecha</th><th>N° comprobante</th><th>Monto</th><th>Método</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>N° comprobante</th><th>Monto</th><th>Método</th><th>Observaciones</th><th></th></tr></thead>
           <tbody>
             ${(pagos||[]).map(p => `<tr>
               <td>${fmtDate(p.fecha)}</td><td>${esc(p.comprobante_numero||'—')}</td>
               <td>${fmt(p.monto)}</td><td>${esc(p.metodo_pago_nombre||'—')}</td>
+              <td style="max-width:220px;white-space:normal;font-size:12.5px;color:var(--text-secondary)">${p.observaciones ? esc(p.observaciones) : '—'}</td>
               <td><button class="btn-icon" title="Volver a descargar comprobante" onclick="reimprimirComprobantePago('${p.id}')">🖨️</button></td>
-            </tr>`).join('') || '<tr><td colspan="5" class="empty-cell">Todavía no hay pagos registrados</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="6" class="empty-cell">Todavía no hay pagos registrados</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -2281,7 +2282,22 @@
     else if (CS.creditosFiltro === 'financiero') q = q.eq('tipo','financiero');
     else if (CS.creditosFiltro === 'con_atraso') q = q.eq('estado','con_atraso');
     else if (CS.creditosFiltro === 'cancelado') q = q.eq('estado','cancelado');
-    if (CS.creditosSearch) q = q.ilike('numero_credito', `%${CS.creditosSearch}%`);
+    if (CS.creditosSearch) {
+      // El campo dice "Buscar cliente o número" -- pero antes solo
+      // filtraba por numero_credito, nunca por el nombre del cliente
+      // (bug real: buscar un nombre que SI existia siempre decia
+      // "no hay resultados"). Ahora busca tambien los clientes cuyo
+      // nombre/apellido coincida, y trae los creditos de cualquiera
+      // de los dos casos.
+      const { data: clientesCoinciden } = await _sb.from('clientes')
+        .select('id').eq('auth_user_id', CS.userId)
+        .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`);
+      const idsClientes = (clientesCoinciden||[]).map(c=>c.id);
+      const filtroOr = idsClientes.length
+        ? `numero_credito.ilike.%${CS.creditosSearch}%,cliente_id.in.(${idsClientes.join(',')})`
+        : `numero_credito.ilike.%${CS.creditosSearch}%`;
+      q = q.or(filtroOr);
+    }
 
     const from = (CS.creditosPage-1)*CS.creditosPerPage, to = from + CS.creditosPerPage - 1;
     const { data, count } = await q.order('created_at', { ascending:false }).range(from,to);
@@ -2364,9 +2380,10 @@
         <td>${fmt(p.monto)}</td>
         <td>${esc(p.metodo_pago_nombre||'—')}</td>
         <td>${fmt(p.saldo_nuevo)}</td>
+        <td style="max-width:200px;white-space:normal;font-size:12.5px;color:var(--text-secondary)">${p.observaciones ? esc(p.observaciones) : '—'}</td>
         <td></td>
       </tr>`;
-    }).join('') : '<tr><td colspan="7" class="empty-cell">Sin pagos registrados</td></tr>';
+    }).join('') : '<tr><td colspan="8" class="empty-cell">Sin pagos registrados</td></tr>';
   }
 
   function setSection(section) {
