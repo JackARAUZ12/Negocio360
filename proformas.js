@@ -1092,6 +1092,36 @@ function exportarProformaDesdeTabla(id) {
   descargarPdfProformaActual();
 }
 
+function editarFechaProforma(proformaId) {
+  const p = STATE.proformas.find(x => x.id === proformaId);
+  if (!p) return;
+  const cont = document.getElementById('det-prof-fecha-display');
+  if (!cont) return;
+  cont.innerHTML = `
+    <input type="date" id="det-prof-fecha-input" class="form-input" value="${(p.fecha||'').slice(0,10)}" style="width:150px;display:inline-block"/>
+    <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Guardar" onclick="guardarFechaProforma('${proformaId}')">✅</button>
+    <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Cancelar" onclick="verDetalleProf('${proformaId}')">✕</button>
+  `;
+}
+
+async function guardarFechaProforma(proformaId) {
+  const input = document.getElementById('det-prof-fecha-input');
+  const nuevaFecha = input?.value;
+  if (!nuevaFecha) { showToast('Elige una fecha', 'error'); return; }
+
+  try {
+    await sbClient.from('proformas').update({ fecha: nuevaFecha }).eq('id', proformaId).eq('auth_user_id', STATE.userId);
+    const p = STATE.proformas.find(x => x.id === proformaId);
+    if (p) p.fecha = nuevaFecha;
+    showToast('Fecha actualizada');
+    await loadProformas();
+    verDetalleProf(proformaId);
+  } catch (e) {
+    console.error('guardarFechaProforma:', e);
+    showToast('No se pudo actualizar la fecha', 'error');
+  }
+}
+
 async function verDetalleProf(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
@@ -1114,7 +1144,10 @@ async function verDetalleProf(id) {
     let html = `
       <div class="form-row">
         <div><label>Cliente</label><div class="stat-readonly">${esc(p.cliente_nombre||'Cliente final')}</div></div>
-        <div><label>Fecha</label><div class="stat-readonly">${fmtFecha(p.fecha)}</div></div>
+        <div><label>Fecha</label><div class="stat-readonly" id="det-prof-fecha-display">
+          ${fmtFecha(p.fecha)}
+          <button class="btn-icon" style="width:20px;height:20px;display:inline-flex;vertical-align:middle" title="Editar fecha" onclick="editarFechaProforma('${p.id}')">✏️</button>
+        </div></div>
         <div><label>Válida hasta</label><div class="stat-readonly">${p.fecha_vencimiento?fmtFecha(p.fecha_vencimiento):'—'}</div></div>
         <div><label>Estado</label><div class="stat-readonly"><span class="status-badge ${ei.badge}">${ei.label}</span></div></div>
         <div><label>Total</label><div class="stat-readonly" style="font-weight:800;color:var(--accent)">${fmt(p.total)}</div></div>
