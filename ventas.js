@@ -5028,6 +5028,14 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
     font-family: ${fontFamily}; font-size: ${fsBase}px; color: #000;
     ${esEpson ? 'line-height:1.3;' : ''}
+    /* Nunca cortar una palabra a la mitad -- si no cabe completa en
+       la línea, que baje entera a la siguiente. Esto protege lo que
+       el navegador decide, aunque el problema real reportado (una
+       palabra corta como "Marin" partida en "Ma"/"rim") viene del
+       controlador de Windows de esa impresora al convertir la
+       página a puntos, no de este CSS -- por eso también se ofrece
+       la impresión directa (USB/nativa) como solución definitiva. */
+    word-break: keep-all; overflow-wrap: normal; white-space: normal;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
@@ -5036,6 +5044,7 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   td { padding: 1px 0; font-size: ${fsBase}px; }
   .total-row td { font-weight: 700; font-size: ${fsTotal}px; padding-top: 4px; }
   .ticket-logo { max-width: ${logoMaxW}px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
+  .fila-dato { display: flex; justify-content: space-between; gap: 6px; }
 </style></head>
 <body>
   ${logoUrl ? `<img class="ticket-logo" src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'"/>` : ''}
@@ -5044,10 +5053,16 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   ${cfg.direccion_ticket ? `<div class="centro">${esc(cfg.direccion_ticket)}</div>` : ''}
   ${cfg.telefono_ticket ? `<div class="centro">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
   <div class="linea"></div>
-  <div>Venta: ${esc(venta.numero_venta)}</div>
-  <div>Fecha: ${esc(fechaTxt)}</div>
-  <div>Cliente: ${esc(venta.cliente_nombre)}</div>
-  <div>Pago: ${esc(venta.metodo_pago_nombre)}</div>
+  <div class="centro negrita">RECIBO DE VENTA</div>
+  <div class="linea"></div>
+  <div class="fila-dato"><span>No. Venta:</span><b>${esc(venta.numero_venta)}</b></div>
+  <div class="fila-dato"><span>Fecha:</span><span>${esc(fechaTxt)}</span></div>
+  <div class="fila-dato"><span>Método de pago:</span><span>${esc(venta.metodo_pago_nombre||'—')}</span></div>
+  <div class="linea"></div>
+  <div class="fila-dato negrita"><span>Cliente:</span><span>${esc(venta.cliente_id ? venta.cliente_nombre : 'Cliente')}</span></div>
+  <div class="fila-dato"><span>N° Cliente:</span><span>${esc(venta.cliente_id ? (venta._clienteNumero||'—') : venta.numero_venta)}</span></div>
+  <div class="linea"></div>
+  <div class="fila-dato negrita"><span>Descripción</span><span>Subtotal</span></div>
   <div class="linea"></div>
   <table>${filas}</table>
   <div class="linea"></div>
@@ -5160,6 +5175,12 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
     width: ${ancho}; margin: 0 auto; padding: 6px 8px;
     font-family: ${fontFamily}; font-size: ${fsBase}px; color: #000;
     ${esEpson ? 'line-height:1.3;' : ''}
+    /* Nunca cortar una palabra a la mitad -- el problema real
+       reportado (ej. "Marin" partido en "Ma"/"rim") viene del
+       controlador de Windows de esa impresora al convertir la
+       página a puntos, no de este CSS -- por eso también se ofrece
+       la impresión directa (USB/nativa) como solución definitiva. */
+    word-break: keep-all; overflow-wrap: normal; white-space: normal;
   }
   .centro { text-align: center; }
   .negrita { font-weight: 700; }
@@ -5168,6 +5189,7 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   td { padding: 1px 0; font-size: ${fsBase}px; }
   .total-row td { font-weight: 700; font-size: ${fsTotal}px; padding-top: 4px; }
   .ticket-logo { max-width: ${logoMaxW}px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
+  .fila-dato { display: flex; justify-content: space-between; gap: 6px; }
 </style></head>
 <body>
   ${logoUrl ? `<img class="ticket-logo" src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'"/>` : ''}
@@ -5176,10 +5198,16 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   ${cfg.direccion_ticket ? `<div class="centro">${esc(cfg.direccion_ticket)}</div>` : ''}
   ${cfg.telefono_ticket ? `<div class="centro">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
   <div class="linea"></div>
-  <div>Venta: ${esc(venta.numero_venta)}</div>
-  <div>Fecha: ${esc(fechaTxt)}</div>
-  <div>Cliente: ${esc(venta.cliente_nombre)}</div>
-  <div>Pago: ${esc(venta.metodo_pago_nombre)}</div>
+  <div class="centro negrita">RECIBO DE VENTA</div>
+  <div class="linea"></div>
+  <div class="fila-dato"><span>No. Venta:</span><b>${esc(venta.numero_venta)}</b></div>
+  <div class="fila-dato"><span>Fecha:</span><span>${esc(fechaTxt)}</span></div>
+  <div class="fila-dato"><span>Método de pago:</span><span>${esc(venta.metodo_pago_nombre||'—')}</span></div>
+  <div class="linea"></div>
+  <div class="fila-dato negrita"><span>Cliente:</span><span>${esc(venta.cliente_id ? venta.cliente_nombre : 'Cliente')}</span></div>
+  <div class="fila-dato"><span>N° Cliente:</span><span>${esc(venta.cliente_id ? (venta._clienteNumero||'—') : venta.numero_venta)}</span></div>
+  <div class="linea"></div>
+  <div class="fila-dato negrita"><span>Descripción</span><span>Subtotal</span></div>
   <div class="linea"></div>
   <table>${filas}</table>
   <div class="linea"></div>
