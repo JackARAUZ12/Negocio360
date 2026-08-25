@@ -274,7 +274,7 @@ async function loadEmpresaConfig(userId) {
         if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
       }
       // Actualizar símbolos de moneda en KPIs
-      document.querySelectorAll('[id^="sym-"]').forEach(el => el.textContent = S.moneda);
+      document.querySelectorAll('[id^="sym-"]').forEach(el => el.textContent = monedaParaMostrar(S.moneda));
     }
   } catch(e) { console.warn('loadEmpresaConfig:', e); }
 }
@@ -349,7 +349,7 @@ function setKPI(id, value, cls, delta, symId) {
   const el = document.getElementById(id);
   if (el) {
     if (symId) {
-      el.innerHTML = `<span class="currency-symbol" id="${symId}">${S.moneda}</span>${value.replace(/^[^0-9]*/,'')}`;
+      el.innerHTML = `<span class="currency-symbol" id="${symId}">${monedaParaMostrar(S.moneda)}</span>${value.replace(/^[^0-9]*/,'')}`;
     } else {
       el.textContent = value;
     }
