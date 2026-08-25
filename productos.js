@@ -35,9 +35,13 @@ const CURRENCY_SYMBOLS = {
   PEN: 'S/', CLP: '$',  ARS: '$',   EUR: '€',
 };
 
-// Se cargará desde Supabase en cargarDatosEmpresa()
-let MONEDA_CODIGO  = 'USD';
-let MONEDA_SIMBOLO = '$';
+// Se cargará desde Supabase en cargarDatosEmpresa() -- NIO como
+// valor por defecto mientras carga (36 de 37 cuentas reales usan
+// cordobas; con USD como default anterior, casi todos los clientes
+// podian toparse con la condicion de carrera de abajo).
+let MONEDA_CODIGO  = 'NIO';
+let MONEDA_SIMBOLO = 'C$';
+let _configEmpresaCargada = false; // true solo cuando MONEDA_CODIGO ya refleja el dato real
 
 // ============================================================
 // ESTADO GLOBAL
@@ -88,7 +92,16 @@ function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 /* ============================================================
    MODAL DE MONEDA DE VISUALIZACIÓN
    ============================================================ */
-function abrirModalMonedaVis() {
+async function abrirModalMonedaVis() {
+  // Espera a que la moneda oficial real ya haya cargado desde la base
+  // de datos, para nunca comparar contra el valor por defecto -- esto
+  // es lo que causaba que elegir "USD" no hiciera nada en cuentas
+  // reales cuya moneda oficial es NIO (36 de 37 cuentas reales).
+  let intentos = 0;
+  while (!_configEmpresaCargada && intentos < 30) {
+    await new Promise(r => setTimeout(r, 100));
+    intentos++;
+  }
   $('mv-moneda-oficial').textContent = MONEDA_CODIGO;
   $('mv-select-moneda').value = monedaVisualizacionActiva() || '';
   $('mv-tasa').value = tasaVisualizacionActiva() || '';
@@ -320,10 +333,11 @@ async function cargarDatosEmpresa() {
     const monedaCodigo =
       monedaDeEmpresa      !== '' ? monedaDeEmpresa      :
       monedaDePreferencias !== '' ? monedaDePreferencias :
-      'USD';
+      'NIO';
 
     MONEDA_CODIGO  = monedaCodigo;
     MONEDA_SIMBOLO = CURRENCY_SYMBOLS[monedaCodigo] || monedaCodigo;
+    _configEmpresaCargada = true;
 
     // Actualizar indicador de moneda en header
     const monedaEl = $('monedaIndicador');
@@ -370,6 +384,8 @@ async function cargarDatosEmpresa() {
 
   } catch (e) {
     console.warn('cargarDatosEmpresa:', e.message);
+  } finally {
+    _configEmpresaCargada = true;
   }
 }
 
