@@ -5010,14 +5010,18 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   // como la hora real de impresión, ya que eso no se guarda aparte.
   const fechaTxt = `${fmtFecha(venta.fecha || todayISO())} ${new Date().toLocaleTimeString('es-NI', {hour:'2-digit', minute:'2-digit'})}`;
 
+  // Se usan <div> en vez de <table> para cada línea -- confirmado
+  // con una factura real (All Plastic Mayorista) que el patrón de
+  // tabla, en esta impresora especifica, podía imprimir el nombre
+  // del producto y el subtotal de la fila siguiente pegados en la
+  // misma línea física ("...1X50X20NIO 275.00", sin espacio) — el
+  // controlador comprime demasiado el espacio entre filas de tabla.
+  // Los <div class="fila-dato"> que ya se usan arriba (Cliente,
+  // Fecha, etc.) nunca tuvieron ese problema, así que se usa el
+  // mismo patrón aquí también, por seguridad y consistencia.
   const filas = items.map(i => `
-    <tr>
-      <td colspan="2">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</td>
-    </tr>
-    <tr>
-      <td>${i.cantidad} x ${fmt(i.precio)}</td>
-      <td style="text-align:right">${fmt(round2(i.cantidad*i.precio))}</td>
-    </tr>`).join('');
+    <div style="margin-top:5px">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
+    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`).join('');
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Ticket ${esc(venta.numero_venta)}</title>
@@ -5064,13 +5068,11 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   <div class="linea"></div>
   <div class="fila-dato negrita"><span>Descripción</span><span>Subtotal</span></div>
   <div class="linea"></div>
-  <table>${filas}</table>
+  ${filas}
   <div class="linea"></div>
-  <table>
-    <tr><td>Subtotal</td><td style="text-align:right">${fmt(resumen.subtotal)}</td></tr>
-    ${resumen.ivaActivo ? `<tr><td>IVA (${resumen.ivaPct}%)</td><td style="text-align:right">${fmt(resumen.impuesto)}</td></tr>` : ''}
-    <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${fmt(resumen.total)}</td></tr>
-  </table>
+  <div class="fila-dato"><span>Subtotal</span><span>${fmt(resumen.subtotal)}</span></div>
+  ${resumen.ivaActivo ? `<div class="fila-dato"><span>IVA (${resumen.ivaPct}%)</span><span>${fmt(resumen.impuesto)}</span></div>` : ''}
+  <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
   <div class="linea"></div>
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;
@@ -5157,14 +5159,12 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   // siempre "ahora mismo".
   const fechaTxt = `${fmtFecha(venta.fecha || todayISO())} ${new Date().toLocaleTimeString('es-NI', {hour:'2-digit', minute:'2-digit'})}`;
 
+  // Mismo cambio que en Venta Rápida: divs en vez de tabla, para
+  // evitar que el nombre del producto y el subtotal se impriman
+  // pegados en la misma línea física en esta impresora.
   const filas = (items||[]).map(i => `
-    <tr>
-      <td colspan="2">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</td>
-    </tr>
-    <tr>
-      <td>${i.cantidad} x ${fmt(i.precio)}</td>
-      <td style="text-align:right">${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</td>
-    </tr>`).join('');
+    <div style="margin-top:5px">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
+    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`).join('');
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Ticket ${esc(venta.numero_venta)}</title>
@@ -5209,14 +5209,12 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   <div class="linea"></div>
   <div class="fila-dato negrita"><span>Descripción</span><span>Subtotal</span></div>
   <div class="linea"></div>
-  <table>${filas}</table>
+  ${filas}
   <div class="linea"></div>
-  <table>
-    <tr><td>Subtotal</td><td style="text-align:right">${fmt(resumen.subtotal)}</td></tr>
-    ${resumen.descuento>0 ? `<tr><td>Descuento</td><td style="text-align:right">-${fmt(resumen.descuento)}</td></tr>` : ''}
-    ${S.ivaActivo ? `<tr><td>IVA (${S.ivaPorcentaje}%)</td><td style="text-align:right">${fmt(resumen.impuestos)}</td></tr>` : ''}
-    <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${fmt(resumen.total)}</td></tr>
-  </table>
+  <div class="fila-dato"><span>Subtotal</span><span>${fmt(resumen.subtotal)}</span></div>
+  ${resumen.descuento>0 ? `<div class="fila-dato"><span>Descuento</span><span>-${fmt(resumen.descuento)}</span></div>` : ''}
+  ${S.ivaActivo ? `<div class="fila-dato"><span>IVA (${S.ivaPorcentaje}%)</span><span>${fmt(resumen.impuestos)}</span></div>` : ''}
+  <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
   <div class="linea"></div>
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;
