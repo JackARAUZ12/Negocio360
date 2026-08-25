@@ -4919,7 +4919,14 @@ function construirDatosReciboDesdeVenta(cfg, venta, items) {
   const lineasItems = (items||[]).map(i => `${i.cantidad}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
   return {
     nombreNegocio: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360',
-    encabezadoLineas: [`Venta: ${venta.numero_venta}`, `Fecha: ${fmtFecha(venta.fecha||todayISO())}`],
+    encabezadoLineas: [
+      'RECIBO DE VENTA',
+      `No. Venta: ${venta.numero_venta}`,
+      `Fecha: ${fmtFecha(venta.fecha||todayISO())}`,
+      `Metodo de pago: ${venta.metodo_pago_nombre||'-'}`,
+      `Cliente: ${venta.cliente_id ? venta.cliente_nombre : 'Cliente'}`,
+      `No. Cliente: ${venta.cliente_id ? (venta._clienteNumero||'-') : venta.numero_venta}`,
+    ],
     items: lineasItems,
     totalTexto: `TOTAL: ${fmt(venta.total)}`,
     piePagina: '¡Gracias por su compra!',

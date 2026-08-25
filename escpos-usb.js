@@ -113,7 +113,17 @@ function construirReciboESCPOS({ nombreNegocio, encabezadoLineas = [], items = [
   bytes.push(ESCPOS_ESC, 0x40);                 // ESC @  — inicializar
   bytes.push(ESCPOS_ESC, 0x74, 0x00);           // ESC t 0 — codepage CP437
   bytes.push(ESCPOS_ESC, 0x61, 0x01);           // ESC a 1 — centrado
-  bytes.push(ESCPOS_ESC, 0x21, 0x30);           // ESC ! — negrita + doble alto/ancho
+  // BUG REAL ENCONTRADO Y CORREGIDO: antes usaba 0x30 (negrita +
+  // doble alto + doble ANCHO) para el nombre del negocio -- el doble
+  // ancho reduce las 40 columnas disponibles a solo 20, y el
+  // firmware de la impresora corta a mitad de palabra porque no sabe
+  // cortar por palabra completa, solo por columna (confirmado con un
+  // caso real: "Multiservicios Marin" mide exactamente 20 caracteres,
+  // coincidiendo justo con el límite y cortándose "Marin" a la
+  // mitad). Ahora solo negrita + doble alto (0x18), sin tocar el
+  // ancho -- se ve igual de prominente, con las 40 columnas completas
+  // disponibles para nombres largos.
+  bytes.push(ESCPOS_ESC, 0x21, 0x18);           // ESC ! — negrita + doble alto (SIN doble ancho)
   bytes.push(...escposTextoACp437(nombreNegocio + '\n'));
   bytes.push(ESCPOS_ESC, 0x21, 0x00);           // ESC ! 0 — normal
 
