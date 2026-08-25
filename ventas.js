@@ -121,7 +121,7 @@ function fmtFecha(iso) {
 /* ============================================================
    HELPERS MONEDA
    ============================================================ */
-function sym() { return S.moneda || 'C$'; }
+function sym() { return monedaParaMostrar(S.moneda); }
 
 // Aritmética de punto flotante en JS puede producir basura de decimales
 // (ej. 3.5 * 28.60 = 100.10000000000001) — TODO cálculo de dinero pasa
@@ -130,12 +130,12 @@ function sym() { return S.moneda || 'C$'; }
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
 function fmt(n) {
-  const v = parseFloat(n || 0);
+  const v = convertirParaMostrar(parseFloat(n || 0), S.moneda);
   return `${sym()} ${v.toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
 }
 
 function fmtShort(n) {
-  const v = parseFloat(n || 0), s = sym();
+  const v = convertirParaMostrar(parseFloat(n || 0), S.moneda), s = sym();
   if (v >= 1_000_000) return `${s}${(v/1_000_000).toFixed(1)}M`;
   if (v >= 1_000)     return `${s}${(v/1_000).toFixed(1)}k`;
   return `${s}${v.toLocaleString('es-NI', { minimumFractionDigits:0 })}`;
@@ -5419,3 +5419,44 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.lucide) lucide.createIcons();
 });
 i
+
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACION -- agregado para que este
+   modulo tambien pueda ver todo en otra moneda (nunca toca los
+   datos reales, solo como se muestran).
+   ============================================================ */
+function abrirModalMonedaVis() {
+  const oficial = S.moneda || 'NIO';
+  document.getElementById('mv-moneda-oficial').textContent = oficial;
+  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
+  document.getElementById('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  document.getElementById('modal-moneda-vis').style.display = 'flex';
+}
+function onCambiarSelectMonedaVis() {
+  const oficial = S.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
+}
+function guardarMonedaVis() {
+  const oficial = S.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  const errEl = document.getElementById('mv-error');
+  errEl.textContent = '';
+  if (!elegida || elegida === oficial) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const btn = document.getElementById('btn-moneda-vis-texto');
+    if (btn) btn.textContent = monedaParaMostrar(S.moneda);
+  }, 800);
+});

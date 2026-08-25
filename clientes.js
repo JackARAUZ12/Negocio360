@@ -52,11 +52,11 @@ function esc(s) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function sym() { return CS.moneda || 'C$'; }
+function sym() { return monedaParaMostrar(CS.moneda); }
 
 function fmt(n) {
   const v = parseFloat(n || 0);
-  return `${sym()} ${v.toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+  return `${sym()} ${convertirParaMostrar(v, CS.moneda).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
 }
 
 function fmtShort(n) {
@@ -1656,4 +1656,45 @@ sb.auth.onAuthStateChange((event) => {
 document.addEventListener('DOMContentLoaded', () => {
   initClientes();
   if (window.lucide) lucide.createIcons();
+});
+
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACION -- agregado para que este
+   modulo tambien pueda ver todo en otra moneda (nunca toca los
+   datos reales, solo como se muestran).
+   ============================================================ */
+function abrirModalMonedaVis() {
+  const oficial = CS.moneda || 'NIO';
+  document.getElementById('mv-moneda-oficial').textContent = oficial;
+  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
+  document.getElementById('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  document.getElementById('modal-moneda-vis').style.display = 'flex';
+}
+function onCambiarSelectMonedaVis() {
+  const oficial = CS.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
+}
+function guardarMonedaVis() {
+  const oficial = CS.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  const errEl = document.getElementById('mv-error');
+  errEl.textContent = '';
+  if (!elegida || elegida === oficial) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const btn = document.getElementById('btn-moneda-vis-texto');
+    if (btn) btn.textContent = monedaParaMostrar(CS.moneda);
+  }, 800);
 });

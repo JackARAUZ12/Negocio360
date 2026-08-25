@@ -88,10 +88,10 @@
   /* ===================================================
      HELPERS FORMATO
   =================================================== */
-  function sym() { return CS.empresaConfig?.moneda || 'C$'; }
+  function sym() { return monedaParaMostrar(CS.empresaConfig?.moneda); }
   function fmt(amount) {
     if (amount === null || amount === undefined || isNaN(amount)) return `${sym()} 0.00`;
-    return `${sym()} ${Number(amount).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+    return `${sym()} ${convertirParaMostrar(amount, CS.empresaConfig?.moneda).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
   }
   function fmtDate(isoDate) {
     if (!isoDate) return '—';
@@ -2690,3 +2690,44 @@
   });
 
 })(); // fin IIFE
+
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACION -- agregado para que este
+   modulo tambien pueda ver todo en otra moneda (nunca toca los
+   datos reales, solo como se muestran).
+   ============================================================ */
+function abrirModalMonedaVis() {
+  const oficial = CS.empresaConfig?.moneda || 'NIO';
+  document.getElementById('mv-moneda-oficial').textContent = oficial;
+  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
+  document.getElementById('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  document.getElementById('modal-moneda-vis').style.display = 'flex';
+}
+function onCambiarSelectMonedaVis() {
+  const oficial = CS.empresaConfig?.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
+}
+function guardarMonedaVis() {
+  const oficial = CS.empresaConfig?.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  const errEl = document.getElementById('mv-error');
+  errEl.textContent = '';
+  if (!elegida || elegida === oficial) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const btn = document.getElementById('btn-moneda-vis-texto');
+    if (btn) btn.textContent = monedaParaMostrar(CS.empresaConfig?.moneda);
+  }, 800);
+});

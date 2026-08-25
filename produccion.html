@@ -1185,6 +1185,9 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         <span id="plan-text">Plan</span>
       </div>
+      <button class="theme-btn" onclick="abrirModalMonedaVis()" data-tooltip="Cambiar moneda de visualización" style="font-size:11px;font-weight:700;width:auto;padding:0 8px">
+        <span id="btn-moneda-vis-texto">NIO</span>
+      </button>
       <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
         <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -1526,7 +1529,39 @@
 </div><!-- /app -->
 
 <script src="produccion.js?v=20260822d"></script>
+<script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
+<div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
+      <span style="font-weight:700;font-size:15px">💱 Moneda de visualización</span>
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary,#666)">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <p style="font-size:12.5px;color:var(--text-secondary,#666);margin-bottom:14px">
+        Tus datos siempre se guardan en tu moneda oficial (<b id="mv-moneda-oficial">—</b>). Esto solo cambia cómo se <b>muestran</b> los números en este dispositivo — nada se modifica de verdad.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Ver todo en</label>
+        <select id="mv-select-moneda" onchange="onCambiarSelectMonedaVis()" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-app,#fafafa);color:var(--text-primary,#111);font-size:13.5px">
+          <option value="">Mi moneda oficial (sin conversión)</option>
+          <option value="NIO">Córdobas (NIO)</option>
+          <option value="USD">Dólares (USD)</option>
+        </select>
+      </div>
+      <div id="mv-wrap-tasa" style="display:none;margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Tu tasa de cambio (córdobas por 1 dólar)</label>
+        <input type="number" id="mv-tasa" min="0.01" step="0.01" placeholder="Ej: 36.60" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-app,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
+      </div>
+      <p id="mv-error" style="color:#ef4444;font-size:12.5px"></p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
