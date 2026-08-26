@@ -144,6 +144,17 @@ function fmtShort(n) {
 /* ============================================================
    ESCAPE HTML
    ============================================================ */
+// Mismo dato que ya usa auditoria-guard.js (sessionStorage), pero
+// guardado directo en la venta -- para saber cuanto vendio cada
+// usuario sin depender de la bitacora, que solo dura 24 horas.
+function obtenerNombrePerfilActivo() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    const perfil = raw ? JSON.parse(raw) : null;
+    return perfil?.nombre || 'Admin';
+  } catch (_) { return 'Admin'; }
+}
+
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -3533,6 +3544,7 @@ async function confirmarVenta(conImpresion) {
       costo_total:        r.costoTotal,
       metodo_pago_id:     esPagoSeparado ? null : (S.metodoPagoId || null),
       metodo_pago_nombre: nombreMetodoParaGuardar,
+      creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
       observaciones:      S.observaciones || null,
     };
@@ -4700,6 +4712,7 @@ async function confirmarVentaRapida() {
       costo_total:        r.costoTotal,
       metodo_pago_id:     esPagoSeparadoVR ? null : (VR.metodoPagoId || null),
       metodo_pago_nombre: nombreMetodoParaGuardarVR,
+      creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
       observaciones:      'Venta rápida (escáner)',
       categoria:          'venta_rapida',

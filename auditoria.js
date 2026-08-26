@@ -90,6 +90,127 @@ function navigate(url) { closeMobileSidebar(); window.location.href = url; }
 /* =====================================================
    CONFIG EMPRESA / PERFIL / ADMIN (idéntico al resto del sistema)
 ===================================================== */
+/* =====================================================
+   VENTAS POR USUARIO — cuánto vendió cada perfil de personal,
+   con productos/cantidades de cada venta, y el total del día y
+   del mes. A diferencia de la bitácora de arriba, esto lee
+   directo de la tabla ventas (dato permanente, sin límite de
+   24 horas) usando el campo creado_por_nombre que cada venta
+   guarda desde que se crea.
+===================================================== */
+/* =====================================================
+   RESUMEN MENSUAL — cuenta y suma movimientos de TODO el mes,
+   pero sin guardar nada extra: lee directo de las tablas reales
+   (ventas, gastos, compras, pagos de credito), que YA se guardan
+   para siempre sin costo adicional -- a diferencia de la bitacora
+   de auditoria de abajo, que solo dura 24h a proposito (para no
+   acumular almacenamiento indefinidamente).
+===================================================== */
+async function cargarResumenMensual() {
+  const mesInput = document.getElementById('rm-mes');
+  let mes = mesInput.value;
+  if (!mes) { mes = todayISO().slice(0,7); mesInput.value = mes; }
+  const inicio = `${mes}-01`;
+  const [anio, mesNum] = mes.split('-').map(Number);
+  const fin = new Date(anio, mesNum, 0).toISOString().slice(0,10); // último día real de ese mes
+
+  try {
+    // Cada consulta solo trae la columna de monto (no la fila completa)
+    // -- minimiza los datos transferidos, el conteo/suma se hace aquí.
+    const [ventas, gastos, compras, pagos] = await Promise.all([
+      sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lte('fecha', fin),
+      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lte('fecha', fin),
+      sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lte('fecha', fin),
+      sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lte('fecha', fin),
+    ]);
+
+    const sumar = (res, campo) => (res.data||[]).reduce((s,r) => s + (Number(r[campo])||0), 0);
+    const pintar = (idValor, idLabel, res, campo, etiqueta) => {
+      const n = (res.data||[]).length;
+      document.getElementById(idValor).textContent = fmtMonto(sumar(res, campo));
+      document.getElementById(idLabel).textContent = `${etiqueta} (${n})`;
+    };
+
+    pintar('rm-ventas',  'rm-label-ventas',  ventas,  'total', 'Ventas');
+    pintar('rm-gastos',  'rm-label-gastos',  gastos,  'monto', 'Gastos');
+    pintar('rm-compras', 'rm-label-compras', compras, 'total', 'Compras');
+    pintar('rm-pagos',   'rm-label-pagos',   pagos,   'monto', 'Pagos de crédito recibidos');
+  } catch (e) {
+    console.error('cargarResumenMensual:', e);
+  }
+}
+
+async function cargarUsuariosParaFiltroVentas() {
+  try {
+    const { data } = await sbClient.from('ventas')
+      .select('creado_por_nombre').eq('auth_user_id', STATE.userId)
+      .not('creado_por_nombre', 'is', null);
+    const nombres = [...new Set((data||[]).map(v => v.creado_por_nombre))].sort();
+    const sel = document.getElementById('vpu-filtro-usuario');
+    if (!sel) return;
+    const valorActual = sel.value;
+    sel.innerHTML = '<option value="">Todos los usuarios</option>' +
+      nombres.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    sel.value = valorActual;
+    cargarVentasPorUsuario();
+  } catch (e) { console.warn('cargarUsuariosParaFiltroVentas:', e); }
+}
+
+async function cargarVentasPorUsuario() {
+  const usuarioElegido = document.getElementById('vpu-filtro-usuario')?.value || '';
+  const tbody = document.getElementById('vpu-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando…</td></tr>';
+
+  try {
+    const hoy = todayISO();
+    const inicioMes = hoy.slice(0,7) + '-01';
+
+    let qMes = sbClient.from('ventas').select('id, numero_venta, fecha, total, created_at')
+      .eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicioMes).order('created_at',{ascending:false});
+    if (usuarioElegido) qMes = qMes.eq('creado_por_nombre', usuarioElegido);
+    const { data: ventasMes } = await qMes;
+
+    const totalMes = (ventasMes||[]).reduce((s,v) => s + (Number(v.total)||0), 0);
+    const totalHoy = (ventasMes||[]).filter(v => (v.fecha||'').slice(0,10) === hoy).reduce((s,v) => s + (Number(v.total)||0), 0);
+
+    document.getElementById('vpu-total-hoy').textContent = fmtMonto(totalHoy);
+    document.getElementById('vpu-total-mes').textContent = fmtMonto(totalMes);
+
+    if (!ventasMes || !ventasMes.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Sin ventas este mes' + (usuarioElegido ? ' para este usuario' : '') + '</td></tr>';
+      return;
+    }
+
+    // Traer los productos de todas estas ventas de una sola vez
+    const idsVentas = ventasMes.map(v => v.id);
+    const { data: detalles } = await sbClient.from('venta_detalles')
+      .select('venta_id, producto_nombre, cantidad').in('venta_id', idsVentas);
+    const detallesPorVenta = {};
+    (detalles||[]).forEach(d => {
+      (detallesPorVenta[d.venta_id] ||= []).push(`${d.cantidad}x ${d.producto_nombre}`);
+    });
+
+    tbody.innerHTML = ventasMes.map(v => {
+      const fecha = new Date(v.created_at || v.fecha);
+      return `<tr>
+        <td>${fmtFecha(v.fecha)}</td>
+        <td>${fmtHora(v.created_at || v.fecha)}</td>
+        <td>${esc(v.numero_venta)}</td>
+        <td style="max-width:280px;white-space:normal">${esc((detallesPorVenta[v.id]||[]).join(', ') || '—')}</td>
+        <td style="text-align:right;font-weight:600">${fmtMonto(v.total)}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('cargarVentasPorUsuario:', e);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger)">No se pudo cargar</td></tr>';
+  }
+}
+
+function fmtMonto(n) {
+  const sym = STATE.empresaConfig?.moneda || 'C$';
+  return `${sym} ${Number(n||0).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+}
+
 async function loadEmpresaConfig(userId) {
   try {
     const { data } = await sbClient.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
@@ -420,6 +541,8 @@ async function initAuditoria() {
       document.getElementById('app').style.display = 'flex';
       rangoFechasPorDefecto();
       cargarAuditoria();
+      cargarUsuariosParaFiltroVentas();
+      cargarResumenMensual();
     };
 
     // Auditoría SIEMPRE exige el código de administrador, sin importar
