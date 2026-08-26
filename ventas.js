@@ -155,6 +155,22 @@ function obtenerNombrePerfilActivo() {
   } catch (_) { return 'Admin'; }
 }
 
+// El dueño (perfil "admin", o sin ningún perfil elegido) siempre ve
+// TODO el historial normal. Un perfil "restringido" (personal) solo
+// ve sus propias ventas -- nunca las del dueño ni las de otro
+// compañero. Es una restricción de lo que se MUESTRA en pantalla,
+// igual que el resto del sistema de perfiles (no es un límite de
+// seguridad a nivel de base de datos).
+function obtenerRestriccionHistorialVentas() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    if (!raw) return null; // sin perfil elegido = dueño viendo directo, sin restricción
+    const perfil = JSON.parse(raw);
+    if (perfil?.tipo === 'restringido' && perfil?.nombre) return perfil.nombre;
+    return null;
+  } catch (_) { return null; }
+}
+
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -381,8 +397,15 @@ async function loadVentas() {
   try {
     let q = sb.from('ventas').select('*', { count:'exact' })
       .eq('auth_user_id', S.userId)
-      .gte('fecha', from).lte('fecha', to)
-      .order('fecha', { ascending:false })
+      .gte('fecha', from).lte('fecha', to);
+
+    // Si quien está viendo es un perfil de personal (no el dueño),
+    // solo se le muestran SUS propias ventas -- nunca las del dueño
+    // ni las de otro compañero.
+    const restriccion = obtenerRestriccionHistorialVentas();
+    if (restriccion) q = q.eq('creado_por_nombre', restriccion);
+
+    q = q.order('fecha', { ascending:false })
       .order('created_at', { ascending:false });
 
     if (S.busqueda.trim()) {
