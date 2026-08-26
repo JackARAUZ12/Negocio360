@@ -198,7 +198,7 @@ function populateMetodosSelect() {
   const metodos = STATE.metodosPago.length ? STATE.metodosPago : [{ id: null, nombre: 'Efectivo', es_default: true }];
   const opciones = metodos.map(m => `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
   const def = metodos.find(m => m.es_default);
-  ['pg-metodo'].forEach(id => {
+  ['pg-metodo', 'ncd-metodo-prima'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
     sel.innerHTML = opciones;
@@ -495,6 +495,88 @@ function previewCuotasCxP() {
    antes de tocar la parte de inventario, asi que una cuenta sin
    compra_id se comporta exactamente igual en todo lo demas).
 ===================================================== */
+/* =====================================================
+   AMORTIZACION CON PRIMA E INTERES (Cuenta Directa)
+   Misma matematica ya probada en Creditos, sin impuestos (no
+   aplica para un gasto/deuda que no es venta de productos).
+===================================================== */
+function calcularPrimaDirecta(monto, tipo, valor) {
+  monto = Number(monto)||0; valor = Number(valor)||0;
+  if (tipo === 'fija') return Math.min(round2(valor), monto);
+  if (tipo === 'porcentual') return round2(monto * valor / 100);
+  return 0;
+}
+
+function generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio }) {
+  capitalFinanciado = Number(capitalFinanciado)||0;
+  numCuotas = Math.max(1, parseInt(numCuotas)||1);
+  tasaInteres = Number(tasaInteres)||0;
+  const cuotas = [];
+  let totalIntereses = 0;
+
+  if (tasaInteres <= 0) {
+    const capitalCuota = round2(capitalFinanciado / numCuotas);
+    let saldo = capitalFinanciado;
+    for (let i = 1; i <= numCuotas; i++) {
+      const esUltima = i === numCuotas;
+      const cap = esUltima ? round2(saldo) : capitalCuota;
+      saldo = round2(saldo - cap);
+      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i), capital: cap, interes: 0, monto_total: cap, saldo });
+    }
+  } else if (metodo === 'frances') {
+    const r = tasaInteres / 100;
+    const cuotaFija = capitalFinanciado * (r * Math.pow(1+r, numCuotas)) / (Math.pow(1+r, numCuotas) - 1);
+    let saldo = capitalFinanciado;
+    for (let i = 1; i <= numCuotas; i++) {
+      const interes = round2(saldo * r);
+      let cap = round2(cuotaFija - interes);
+      const esUltima = i === numCuotas;
+      if (esUltima) cap = round2(saldo);
+      saldo = round2(saldo - cap);
+      totalIntereses = round2(totalIntereses + interes);
+      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i), capital: cap, interes, monto_total: round2(cap+interes), saldo });
+    }
+  } else {
+    // "simple": interes total = capital*tasa (un solo cargo), prorrateado en partes iguales
+    totalIntereses = round2(capitalFinanciado * tasaInteres / 100);
+    const interesCuota = round2(totalIntereses / numCuotas);
+    const capitalCuota = round2(capitalFinanciado / numCuotas);
+    let saldo = capitalFinanciado;
+    for (let i = 1; i <= numCuotas; i++) {
+      const esUltima = i === numCuotas;
+      const cap = esUltima ? round2(saldo) : capitalCuota;
+      const interes = esUltima ? round2(totalIntereses - interesCuota*(numCuotas-1)) : interesCuota;
+      saldo = round2(saldo - cap);
+      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i), capital: cap, interes, monto_total: round2(cap+interes), saldo });
+    }
+  }
+  return { cuotas, totalIntereses, totalFinanciado: round2(capitalFinanciado + totalIntereses) };
+}
+
+// Calculo INVERSO para el modo "manual": dado un monto fijo mensual
+// que el usuario ya sabe que puede pagar, calcula cuantas cuotas
+// hacen falta -- en vez de elegir el numero de cuotas y que el
+// sistema calcule cuanto sale cada una (el modo normal).
+function calcularCuotasNecesarias(capitalFinanciado, tasaInteres, metodo, montoFijo) {
+  capitalFinanciado = Number(capitalFinanciado)||0;
+  tasaInteres = Number(tasaInteres)||0;
+  montoFijo = Number(montoFijo)||0;
+  if (montoFijo <= 0) return null;
+
+  if (tasaInteres <= 0) return Math.max(1, Math.ceil(capitalFinanciado / montoFijo));
+
+  if (metodo === 'frances') {
+    const r = tasaInteres / 100;
+    // El pago fijo debe cubrir al menos el interes del primer periodo
+    // -- si no, la deuda nunca terminaria de pagarse.
+    if (montoFijo <= capitalFinanciado * r) return null;
+    return Math.max(1, Math.ceil(Math.log(montoFijo / (montoFijo - capitalFinanciado*r)) / Math.log(1+r)));
+  }
+  // "simple": el interes total es fijo (un solo cargo), no depende de N
+  const totalIntereses = round2(capitalFinanciado * tasaInteres / 100);
+  return Math.max(1, Math.ceil(round2(capitalFinanciado + totalIntereses) / montoFijo));
+}
+
 function abrirNuevaCuentaDirecta() {
   document.getElementById('ncd-proveedor-select').innerHTML =
     `<option value="">— Selecciona un proveedor —</option>` +
@@ -506,15 +588,24 @@ function abrirNuevaCuentaDirecta() {
   document.getElementById('ncd-concepto').value = '';
   document.getElementById('ncd-monto').value = '';
   document.getElementById('ncd-fecha').value = todayISO();
+  document.getElementById('ncd-prima-tipo').value = 'ninguna';
+  document.getElementById('ncd-prima-valor').value = '';
+  document.getElementById('ncd-prima-valor').disabled = true;
+  document.getElementById('ncd-wrap-metodo-prima').style.display = 'none';
+  document.getElementById('ncd-tasa-interes').value = 0;
+  document.getElementById('ncd-metodo-amortizacion').value = 'frances';
   document.getElementById('ncd-fecha-vencimiento').value = '';
   document.getElementById('ncd-num-cuotas').value = 2;
+  document.getElementById('ncd-monto-fijo').value = '';
   document.getElementById('ncd-fecha-primera-cuota').value = '';
   document.getElementById('ncd-frecuencia').value = 'mensual';
   document.getElementById('ncd-observaciones').value = '';
   document.getElementById('ncd-error').textContent = '';
   STATE.proveedorSeleccionadoDirecto = null;
   STATE.tipoCreditoDirecto = null;
+  STATE.modoCalculoDirecto = 'auto';
   setTipoCreditoDirecto('fecha_fija');
+  setModoCalculoDirecto('auto');
   openModal('modal-nueva-cuenta-directa');
 }
 
@@ -567,19 +658,70 @@ function setTipoCreditoDirecto(tipo) {
   btnCuotas.style.background  = tipo === 'cuotas' ? 'var(--accent-soft)' : '';
   document.getElementById('ncd-wrap-fecha-fija').style.display = tipo === 'fecha_fija' ? 'block' : 'none';
   document.getElementById('ncd-wrap-cuotas').style.display     = tipo === 'cuotas'     ? 'block' : 'none';
-  previewCuotasDirecto();
+  onCambioMontoODatosDirecto();
 }
 
-function previewCuotasDirecto() {
+function setModoCalculoDirecto(modo) {
+  STATE.modoCalculoDirecto = modo;
+  const btnAuto = document.getElementById('ncd-modo-auto');
+  const btnManual = document.getElementById('ncd-modo-manual');
+  btnAuto.style.borderColor   = modo === 'auto' ? 'var(--accent)' : '';
+  btnAuto.style.background    = modo === 'auto' ? 'var(--accent-soft)' : '';
+  btnManual.style.borderColor = modo === 'manual' ? 'var(--accent)' : '';
+  btnManual.style.background  = modo === 'manual' ? 'var(--accent-soft)' : '';
+  document.getElementById('ncd-wrap-num-cuotas').style.display  = modo === 'auto'   ? 'block' : 'none';
+  document.getElementById('ncd-wrap-monto-fijo').style.display  = modo === 'manual' ? 'block' : 'none';
+  onCambioMontoODatosDirecto();
+}
+
+// Funcion "maestra" -- se llama cada vez que cambia cualquier campo
+// relevante (monto, prima, tasa, metodo, modo, num_cuotas o monto
+// fijo). Recalcula todo en cadena: prima -> capital financiado ->
+// (modo manual: cuantas cuotas hacen falta) -> tabla de amortizacion.
+function onCambioMontoODatosDirecto() {
+  const monto = Number(document.getElementById('ncd-monto')?.value) || 0;
+  const primaTipo = document.getElementById('ncd-prima-tipo')?.value || 'ninguna';
+  const primaValorInput = document.getElementById('ncd-prima-valor');
+  primaValorInput.disabled = (primaTipo === 'ninguna');
+  const primaValor = Number(primaValorInput.value) || 0;
+  const primaMonto = calcularPrimaDirecta(monto, primaTipo, primaValor);
+
+  document.getElementById('ncd-wrap-metodo-prima').style.display = primaMonto > 0 ? 'block' : 'none';
+  const resumenPrima = document.getElementById('ncd-prima-resumen');
+  if (resumenPrima) resumenPrima.textContent = primaMonto > 0 ? `Se pagan ${fmt(primaMonto)} de inmediato (sale de Caja al guardar) — el resto (${fmt(round2(monto-primaMonto))}) queda como deuda.` : '';
+
+  const capitalFinanciado = round2(monto - primaMonto);
+  const tasaInteres = Number(document.getElementById('ncd-tasa-interes')?.value) || 0;
+  const metodo = document.getElementById('ncd-metodo-amortizacion')?.value || 'frances';
+  document.getElementById('ncd-wrap-metodo-amort').style.display = tasaInteres > 0 ? 'block' : 'none';
+
   const el = document.getElementById('ncd-cuotas-preview');
   if (!el || STATE.tipoCreditoDirecto !== 'cuotas') { if (el) el.textContent = ''; return; }
-  const total = Number(document.getElementById('ncd-monto')?.value) || 0;
-  const numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
+
   const fechaInicio = document.getElementById('ncd-fecha-primera-cuota')?.value;
   const frecuencia = document.getElementById('ncd-frecuencia')?.value || 'mensual';
-  if (!total || !numCuotas || !fechaInicio) { el.textContent = ''; return; }
-  const cuotas = generarCuotasCxP(total, numCuotas, fechaInicio, frecuencia);
-  el.innerHTML = cuotas.map(c => `Cuota ${c.numero}: ${fmt(c.monto_total)} — vence ${fmtDate(c.fecha_vencimiento)}`).join('<br>');
+  const calcCuotasEl = document.getElementById('ncd-num-cuotas-calculado');
+
+  let numCuotas;
+  if (STATE.modoCalculoDirecto === 'manual') {
+    const montoFijo = Number(document.getElementById('ncd-monto-fijo')?.value) || 0;
+    numCuotas = calcularCuotasNecesarias(capitalFinanciado, tasaInteres, metodo, montoFijo);
+    if (numCuotas === null) {
+      if (calcCuotasEl) calcCuotasEl.innerHTML = `<span style="color:var(--danger)">Ese monto no alcanza ni para cubrir el interés — sube el monto mensual.</span>`;
+      el.textContent = '';
+      return;
+    }
+    if (calcCuotasEl) calcCuotasEl.textContent = montoFijo > 0 ? `Con ${fmt(montoFijo)} al mes, hacen falta ${numCuotas} cuota${numCuotas===1?'':'s'}.` : '';
+  } else {
+    numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
+  }
+
+  if (!capitalFinanciado || !numCuotas || !fechaInicio) { el.textContent = ''; return; }
+
+  const { cuotas, totalIntereses, totalFinanciado } = generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio });
+  el.innerHTML = cuotas.map(c =>
+    `Cuota ${c.numero}: ${fmt(c.monto_total)}${c.interes>0?` (capital ${fmt(c.capital)} + interés ${fmt(c.interes)})`:''} — vence ${fmtDate(c.fecha_vencimiento)}`
+  ).join('<br>') + (totalIntereses > 0 ? `<br><b>Total a pagar con interés: ${fmt(totalFinanciado)}</b>` : '');
 }
 
 async function guardarCuentaDirecta() {
@@ -590,22 +732,55 @@ async function guardarCuentaDirecta() {
   if (!STATE.proveedorSeleccionadoDirecto?.id) { errEl.textContent = 'Selecciona un proveedor.'; return; }
   const concepto = document.getElementById('ncd-concepto')?.value.trim();
   if (!concepto) { errEl.textContent = 'Escribe de qué es esta cuenta.'; return; }
-  const monto = Number(document.getElementById('ncd-monto')?.value);
-  if (!monto || monto <= 0) { errEl.textContent = 'Escribe un monto válido.'; return; }
+  const montoOriginal = Number(document.getElementById('ncd-monto')?.value);
+  if (!montoOriginal || montoOriginal <= 0) { errEl.textContent = 'Escribe un monto válido.'; return; }
   const fecha = document.getElementById('ncd-fecha')?.value;
   if (!fecha) { errEl.textContent = 'Elige la fecha de la deuda.'; return; }
 
-  let fechaVencimiento = null, numCuotas = null, frecuencia = null, cuotasGeneradas = [];
+  // ---- Prima ----
+  const primaTipo = document.getElementById('ncd-prima-tipo')?.value || 'ninguna';
+  const primaValor = Number(document.getElementById('ncd-prima-valor')?.value) || 0;
+  const primaMonto = calcularPrimaDirecta(montoOriginal, primaTipo, primaValor);
+  let metodoPrimaId = null, metodoPrimaNombre = null;
+  if (primaMonto > 0) {
+    const selMetodo = document.getElementById('ncd-metodo-prima');
+    metodoPrimaId = selMetodo?.value || null;
+    metodoPrimaNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  }
+  const capitalFinanciado = round2(montoOriginal - primaMonto);
+  if (capitalFinanciado < 0) { errEl.textContent = 'La prima no puede ser mayor que el monto total.'; return; }
+
+  // ---- Tipo de credito / interes / cuotas ----
+  const tasaInteres = Number(document.getElementById('ncd-tasa-interes')?.value) || 0;
+  const metodoAmortizacion = tasaInteres > 0 ? (document.getElementById('ncd-metodo-amortizacion')?.value || 'frances') : null;
+
+  let fechaVencimiento = null, numCuotas = null, frecuencia = null, cuotasGeneradas = [], totalIntereses = 0, totalFinanciado = capitalFinanciado;
+
   if (STATE.tipoCreditoDirecto === 'fecha_fija') {
     fechaVencimiento = document.getElementById('ncd-fecha-vencimiento')?.value;
     if (!fechaVencimiento) { errEl.textContent = 'Elige la fecha de vencimiento.'; return; }
+    // Sin cuotas, pero si hay tasa de interes tambien se aplica al monto financiado.
+    totalIntereses = tasaInteres > 0 ? round2(capitalFinanciado * tasaInteres / 100) : 0;
+    totalFinanciado = round2(capitalFinanciado + totalIntereses);
   } else {
-    numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
     const fechaPrimeraCuota = document.getElementById('ncd-fecha-primera-cuota')?.value;
     frecuencia = document.getElementById('ncd-frecuencia')?.value || 'mensual';
-    if (numCuotas < 1) { errEl.textContent = 'El número de cuotas debe ser al menos 1.'; return; }
     if (!fechaPrimeraCuota) { errEl.textContent = 'Elige la fecha de la primera cuota.'; return; }
-    cuotasGeneradas = generarCuotasCxP(monto, numCuotas, fechaPrimeraCuota, frecuencia);
+
+    if (STATE.modoCalculoDirecto === 'manual') {
+      const montoFijo = Number(document.getElementById('ncd-monto-fijo')?.value) || 0;
+      if (!montoFijo || montoFijo <= 0) { errEl.textContent = 'Escribe cuánto puedes pagar fijo cada mes.'; return; }
+      numCuotas = calcularCuotasNecesarias(capitalFinanciado, tasaInteres, metodoAmortizacion, montoFijo);
+      if (numCuotas === null) { errEl.textContent = 'Ese monto fijo no alcanza ni para cubrir el interés — sube el monto.'; return; }
+    } else {
+      numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
+      if (numCuotas < 1) { errEl.textContent = 'El número de cuotas debe ser al menos 1.'; return; }
+    }
+
+    const resultado = generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo: metodoAmortizacion, frecuencia, numCuotas, fechaInicio: fechaPrimeraCuota });
+    cuotasGeneradas = resultado.cuotas;
+    totalIntereses = resultado.totalIntereses;
+    totalFinanciado = resultado.totalFinanciado;
     fechaVencimiento = cuotasGeneradas[cuotasGeneradas.length-1].fecha_vencimiento;
   }
 
@@ -615,30 +790,64 @@ async function guardarCuentaDirecta() {
   try {
     const numero = await generarNumeroCxP();
 
-    // Fila unica en cuentas_por_pagar -- compra_id queda en null a
-    // proposito, NUNCA se toca productos/detalle_compras/compras.
+    // monto_total/saldo_pendiente SIGUEN significando lo mismo que en
+    // todo el resto del modulo (saldo_pendiente = monto_total -
+    // monto_pagado) -- monto_total ahora incluye el monto ORIGINAL
+    // mas los intereses que se generen; monto_pagado arranca en la
+    // prima (si la hay), asi el saldo pendiente refleja exacto lo que
+    // falta por pagar (el capital financiado + su interes).
+    const montoTotalConIntereses = round2(montoOriginal + totalIntereses);
     const { data: cuenta, error: errCuenta } = await sbClient.from('cuentas_por_pagar').insert({
       auth_user_id: STATE.userId, numero,
       proveedor_id: STATE.proveedorSeleccionadoDirecto.id, proveedor_nombre: STATE.proveedorSeleccionadoDirecto.nombre,
       compra_id: null, tipo_credito: STATE.tipoCreditoDirecto, fecha_compra: fecha,
       fecha_vencimiento: fechaVencimiento, num_cuotas: STATE.tipoCreditoDirecto==='cuotas'?numCuotas:null,
       frecuencia: STATE.tipoCreditoDirecto==='cuotas'?frecuencia:null,
-      monto_total: monto, monto_pagado: 0, saldo_pendiente: monto, estado: 'pendiente',
+      monto_original: montoOriginal, prima_tipo: primaTipo, prima_valor: primaValor, prima_monto: primaMonto,
+      tasa_interes: tasaInteres, metodo_amortizacion: metodoAmortizacion,
+      monto_total: montoTotalConIntereses, monto_pagado: primaMonto, saldo_pendiente: round2(montoTotalConIntereses - primaMonto),
+      estado: 'pendiente',
       observaciones: concepto + (observaciones ? ' — '+observaciones : ''),
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
     if (errCuenta) throw errCuenta;
 
     if (STATE.tipoCreditoDirecto === 'cuotas') {
-      const cuotasInsert = cuotasGeneradas.map(c => ({ auth_user_id: STATE.userId, cuenta_id: cuenta.id, ...c }));
+      const cuotasInsert = cuotasGeneradas.map(c => ({
+        auth_user_id: STATE.userId, cuenta_id: cuenta.id, numero: c.numero,
+        fecha_vencimiento: c.fecha_vencimiento, monto_total: c.monto_total, monto_pagado: 0, saldo: c.monto_total, estado: 'pendiente',
+      }));
       const { error: errCuotas } = await sbClient.from('cuentas_por_pagar_cuotas').insert(cuotasInsert);
       if (errCuotas) throw errCuotas;
+    }
+
+    // La prima se paga DE INMEDIATO -- sale de Caja ahora mismo, y
+    // queda registrada igual que cualquier otro pago a este proveedor
+    // (mismo mecanismo ya usado en "Registrar pago", referencia_tipo
+    // 'cuenta_por_pagar' apuntando a esta misma cuenta).
+    if (primaMonto > 0) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
+        concepto: `Prima — ${cuenta.numero} (${concepto})`, monto: primaMonto,
+        metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre,
+        referencia_tipo: 'cuenta_por_pagar', referencia_id: cuenta.id, observaciones: 'Prima / pago inicial',
+      });
+      if (!cajaRes.ok) showToast('La cuenta se guardó, pero la prima no se pudo registrar en Caja: ' + cajaRes.error, 'error');
+      else {
+        await sbClient.from('cuentas_por_pagar_pagos').insert({
+          auth_user_id: STATE.userId, cuenta_id: cuenta.id, proveedor_id: STATE.proveedorSeleccionadoDirecto.id,
+          monto: primaMonto, metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre,
+          observaciones: 'Prima / pago inicial', saldo_anterior: montoTotalConIntereses, saldo_nuevo: round2(montoTotalConIntereses-primaMonto),
+          comprobante_numero: `PAG-${cuenta.numero}-PRIMA`,
+          usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+        });
+      }
     }
 
     // Métricas del proveedor -- igual que en la compra normal
     await sbClient.from('proveedores').update({
       ultima_compra: fecha,
-      monto_acumulado: Number(STATE.proveedorSeleccionadoDirecto.monto_acumulado||0) + monto,
+      monto_acumulado: Number(STATE.proveedorSeleccionadoDirecto.monto_acumulado||0) + montoTotalConIntereses,
       total_compras: Number(STATE.proveedorSeleccionadoDirecto.total_compras||0) + 1,
     }).eq('id', STATE.proveedorSeleccionadoDirecto.id).eq('auth_user_id', STATE.userId);
 

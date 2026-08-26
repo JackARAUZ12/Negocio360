@@ -1565,7 +1565,7 @@
       <div class="form-row">
         <div class="form-group">
           <label>Monto total *</label>
-          <input type="number" id="ncd-monto" min="0.01" step="0.01" placeholder="0.00" oninput="previewCuotasDirecto()"/>
+          <input type="number" id="ncd-monto" min="0.01" step="0.01" placeholder="0.00" oninput="onCambioMontoODatosDirecto()"/>
         </div>
         <div class="form-group">
           <label>Fecha de la deuda *</label>
@@ -1573,9 +1573,29 @@
         </div>
       </div>
 
-      <!-- TIPO DE CRÉDITO -->
+      <!-- PRIMA (pago inicial, se descuenta de Caja al guardar) -->
       <div class="form-group" style="margin-top:10px">
-        <label>¿Cómo se paga? *</label>
+        <label>Prima o pago inicial (opcional)</label>
+        <div class="form-row">
+          <select id="ncd-prima-tipo" onchange="onCambioMontoODatosDirecto()">
+            <option value="ninguna" selected>Sin prima</option>
+            <option value="fija">Monto fijo</option>
+            <option value="porcentual">Porcentaje del total</option>
+          </select>
+          <input type="number" id="ncd-prima-valor" min="0" step="0.01" placeholder="0.00" disabled oninput="onCambioMontoODatosDirecto()"/>
+        </div>
+      </div>
+      <div id="ncd-wrap-metodo-prima" style="display:none;margin-top:8px">
+        <div class="form-group">
+          <label>¿Con qué se pagó la prima? *</label>
+          <select id="ncd-metodo-prima"></select>
+        </div>
+        <div id="ncd-prima-resumen" style="font-size:12px;color:var(--text-secondary)"></div>
+      </div>
+
+      <!-- TIPO DE CRÉDITO -->
+      <div class="form-group" style="margin-top:14px">
+        <label>¿Cómo se paga el resto? *</label>
         <div style="display:flex;gap:10px">
           <button type="button" class="btn-secondary" id="ncd-tipo-fecha-fija" style="flex:1;justify-content:center" onclick="setTipoCreditoDirecto('fecha_fija')">Una sola fecha</button>
           <button type="button" class="btn-secondary" id="ncd-tipo-cuotas" style="flex:1;justify-content:center" onclick="setTipoCreditoDirecto('cuotas')">En cuotas</button>
@@ -1587,19 +1607,52 @@
       </div>
 
       <div id="ncd-wrap-cuotas" style="display:none;margin-top:10px">
+        <!-- INTERÉS -->
         <div class="form-row">
-          <div class="form-group"><label>Número de cuotas *</label><input type="number" id="ncd-num-cuotas" min="1" step="1" value="2" oninput="previewCuotasDirecto()"/></div>
-          <div class="form-group"><label>Fecha primera cuota *</label><input type="date" id="ncd-fecha-primera-cuota" oninput="previewCuotasDirecto()"/></div>
+          <div class="form-group">
+            <label>Tasa de interés % (opcional)</label>
+            <input type="number" id="ncd-tasa-interes" min="0" step="0.01" placeholder="0" value="0" oninput="onCambioMontoODatosDirecto()"/>
+          </div>
+          <div class="form-group" id="ncd-wrap-metodo-amort" style="display:none">
+            <label>Método</label>
+            <select id="ncd-metodo-amortizacion" onchange="onCambioMontoODatosDirecto()">
+              <option value="frances">Cuota fija (francés)</option>
+              <option value="simple">Interés simple</option>
+            </select>
+          </div>
         </div>
+
+        <!-- MODO DE CÁLCULO: automático (elijo cuantas cuotas) o manual (elijo cuanto pago fijo cada mes) -->
         <div class="form-group">
-          <label>Frecuencia</label>
-          <select id="ncd-frecuencia" onchange="previewCuotasDirecto()">
-            <option value="semanal">Semanal</option>
-            <option value="quincenal">Quincenal</option>
-            <option value="mensual" selected>Mensual</option>
-          </select>
+          <label>¿Cómo prefieres calcularlo?</label>
+          <div style="display:flex;gap:10px">
+            <button type="button" class="btn-secondary" id="ncd-modo-auto" style="flex:1;justify-content:center;font-size:12.5px" onclick="setModoCalculoDirecto('auto')">Por número de cuotas</button>
+            <button type="button" class="btn-secondary" id="ncd-modo-manual" style="flex:1;justify-content:center;font-size:12.5px" onclick="setModoCalculoDirecto('manual')">Por monto fijo mensual</button>
+          </div>
         </div>
-        <div id="ncd-cuotas-preview" style="font-size:12px;color:var(--text-secondary);margin-top:4px"></div>
+
+        <div id="ncd-wrap-num-cuotas" class="form-group">
+          <label>Número de cuotas *</label>
+          <input type="number" id="ncd-num-cuotas" min="1" step="1" value="2" oninput="onCambioMontoODatosDirecto()"/>
+        </div>
+        <div id="ncd-wrap-monto-fijo" class="form-group" style="display:none">
+          <label>¿Cuánto puedes pagar fijo cada mes? *</label>
+          <input type="number" id="ncd-monto-fijo" min="0.01" step="0.01" placeholder="0.00" oninput="onCambioMontoODatosDirecto()"/>
+          <div id="ncd-num-cuotas-calculado" style="font-size:12px;color:var(--text-secondary);margin-top:4px"></div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group"><label>Fecha primera cuota *</label><input type="date" id="ncd-fecha-primera-cuota" oninput="onCambioMontoODatosDirecto()"/></div>
+          <div class="form-group">
+            <label>Frecuencia</label>
+            <select id="ncd-frecuencia" onchange="onCambioMontoODatosDirecto()">
+              <option value="semanal">Semanal</option>
+              <option value="quincenal">Quincenal</option>
+              <option value="mensual" selected>Mensual</option>
+            </select>
+          </div>
+        </div>
+        <div id="ncd-cuotas-preview" style="font-size:12px;color:var(--text-secondary);margin-top:4px;max-height:140px;overflow-y:auto"></div>
       </div>
 
       <div class="form-group" style="margin-top:10px">
