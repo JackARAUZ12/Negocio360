@@ -281,10 +281,10 @@ async function cargarVentasPorUsuario() {
           <td>—</td><td>—</td><td style="text-align:right;font-weight:600">${fmtMonto(v.total)}</td>
         </tr>`;
       }
-      return items.map((d, i) => `<tr>
-        <td>${i===0 ? fmtFecha(v.fecha) : ''}</td>
-        <td>${i===0 ? fmtHora(v.created_at || v.fecha) : ''}</td>
-        <td>${i===0 ? esc(v.numero_venta) : ''}</td>
+      return items.map((d) => `<tr>
+        <td>${fmtFecha(v.fecha)}</td>
+        <td>${fmtHora(v.created_at || v.fecha)}</td>
+        <td>${esc(v.numero_venta)}</td>
         <td>${fmtNum(d.cantidad)}</td>
         <td style="max-width:220px;white-space:normal">${esc(d.producto_nombre)}</td>
         <td style="text-align:right">${fmtMonto(d.subtotal)}</td>
