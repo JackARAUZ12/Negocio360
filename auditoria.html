@@ -1236,18 +1236,28 @@
         </div>
       </div>
 
-      <!-- CONSULTA: PRODUCTO POR USUARIO -->
+      <!-- CONSULTA: PRODUCTOS POR USUARIO -->
       <div class="panel-card fade-in" style="margin-top:20px">
-        <div class="filtros-row" style="margin-bottom:4px">
-          <div>
-            <h3 style="margin:0 0 2px">¿Cuánto vendió un usuario de un producto?</h3>
-            <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Elige producto, usuario y mes. Solo cuenta ventas con usuario asignado (desde que se activó este seguimiento) — las ventas más antiguas, de antes de esa fecha, no tienen forma de saber quién las hizo.</p>
+        <div style="padding:16px 20px 4px">
+          <h3 style="margin:0 0 2px">¿Cuánto vendió un usuario de cada producto?</h3>
+          <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Marca uno o varios productos, elige usuario y mes. Solo cuenta ventas con usuario asignado (desde que se activó este seguimiento) — las más antiguas no tienen forma de saber quién las hizo.</p>
+        </div>
+        <div class="filtros-row" style="align-items:flex-start">
+          <div style="flex:1;min-width:220px">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Productos</label>
+            <input type="text" id="cpu-buscar-producto" placeholder="Buscar producto…" oninput="filtrarListaProductosConsulta()" style="width:100%;margin-bottom:6px"/>
+            <div id="cpu-lista-productos" style="max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px"></div>
+          </div>
+          <div style="min-width:170px">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Usuario</label>
+            <select id="cpu-usuario" style="width:100%"><option value="">Elige un usuario…</option></select>
+          </div>
+          <div style="min-width:140px">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Mes</label>
+            <input type="month" id="cpu-mes" style="width:100%"/>
           </div>
         </div>
-        <div class="filtros-row">
-          <select id="cpu-producto" style="width:auto;min-width:200px"><option value="">Elige un producto…</option></select>
-          <select id="cpu-usuario" style="width:auto;min-width:180px"><option value="">Elige un usuario…</option></select>
-          <input type="month" id="cpu-mes" style="width:auto"/>
+        <div class="filtros-row" style="padding-top:0">
           <button class="btn btn-primary" onclick="consultarProductoPorUsuario()">Consultar</button>
         </div>
         <div id="cpu-resultado" style="padding:0 20px 16px"></div>
@@ -1355,6 +1365,10 @@
       </div>
 
       <div class="panel-card fade-in" style="margin-top:20px">
+        <div style="padding:16px 20px 0">
+          <h3 style="margin:0 0 2px">Historial de movimientos</h3>
+          <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Quién hizo qué, en cualquier módulo — creaciones, ediciones y eliminaciones. Solo las últimas 24 horas.</p>
+        </div>
         <!-- FILTROS -->
         <div class="filtros-row">
           <button class="filter-btn active" data-filtro="todos"   onclick="setFiltroAud('todos')">Todos</button>

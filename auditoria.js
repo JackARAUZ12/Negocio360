@@ -141,22 +141,22 @@ async function cargarResumenMensual() {
 }
 
 /* =====================================================
-   CONSULTA: ¿cuánto vendió un usuario de un producto en un mes?
+   CONSULTA: ¿cuánto vendió un usuario de VARIOS productos en un mes?
    Reutiliza el MISMO dato de creado_por_nombre -- por eso solo
    funciona para ventas de despues de que este seguimiento se
    activo (mas las que se pudieron recuperar de la bitacora
    mientras aun estaba disponible). Las ventas mas viejas de eso
    nunca guardaron quien las hizo, no hay forma de recuperarlo.
 ===================================================== */
+let TODOS_LOS_PRODUCTOS_CONSULTA = [];
+let PRODUCTOS_SELECCIONADOS_CONSULTA = new Set();
+
 async function cargarOpcionesConsultaProducto() {
   try {
     const { data: productos } = await sbClient.from('productos')
       .select('id, nombre').eq('auth_user_id', STATE.userId).order('nombre');
-    const selProd = document.getElementById('cpu-producto');
-    if (selProd) {
-      selProd.innerHTML = '<option value="">Elige un producto…</option>' +
-        (productos||[]).map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
-    }
+    TODOS_LOS_PRODUCTOS_CONSULTA = productos || [];
+    renderListaProductosConsulta(TODOS_LOS_PRODUCTOS_CONSULTA);
 
     const { data: perfiles } = await sbClient.from('perfiles_acceso')
       .select('nombre').eq('auth_user_id', STATE.userId).eq('activo', true);
@@ -172,15 +172,40 @@ async function cargarOpcionesConsultaProducto() {
   } catch (e) { console.warn('cargarOpcionesConsultaProducto:', e); }
 }
 
+function renderListaProductosConsulta(lista) {
+  const cont = document.getElementById('cpu-lista-productos');
+  if (!cont) return;
+  if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px;margin:2px 0">Sin productos que coincidan</p>'; return; }
+  cont.innerHTML = lista.map(p => `
+    <label style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:13px;cursor:pointer">
+      <input type="checkbox" value="${p.id}" ${PRODUCTOS_SELECCIONADOS_CONSULTA.has(p.id) ? 'checked' : ''} onchange="toggleProductoConsulta('${p.id}', this.checked)"/>
+      <span>${esc(p.nombre)}</span>
+    </label>`).join('');
+}
+
+// El check se guarda aparte (no solo en el DOM) para que no se
+// pierda al filtrar con el buscador -- un producto elegido sigue
+// elegido aunque se filtre de la vista y luego vuelva a aparecer.
+function toggleProductoConsulta(id, marcado) {
+  if (marcado) PRODUCTOS_SELECCIONADOS_CONSULTA.add(id);
+  else PRODUCTOS_SELECCIONADOS_CONSULTA.delete(id);
+}
+
+function filtrarListaProductosConsulta() {
+  const texto = (document.getElementById('cpu-buscar-producto')?.value || '').toLowerCase();
+  const filtrados = TODOS_LOS_PRODUCTOS_CONSULTA.filter(p => (p.nombre||'').toLowerCase().includes(texto));
+  renderListaProductosConsulta(filtrados);
+}
+
 async function consultarProductoPorUsuario() {
-  const productoId = document.getElementById('cpu-producto')?.value;
+  const idsProductos = [...PRODUCTOS_SELECCIONADOS_CONSULTA];
   const usuario = document.getElementById('cpu-usuario')?.value;
   const mes = document.getElementById('cpu-mes')?.value;
   const resultDiv = document.getElementById('cpu-resultado');
   if (!resultDiv) return;
 
-  if (!productoId || !usuario || !mes) {
-    resultDiv.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;margin:0">Elige producto, usuario y mes para calcular.</p>';
+  if (!idsProductos.length || !usuario || !mes) {
+    resultDiv.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;margin:0">Marca uno o varios productos, elige un usuario y un mes.</p>';
     return;
   }
 
@@ -195,24 +220,42 @@ async function consultarProductoPorUsuario() {
       .select('id').eq('auth_user_id', STATE.userId).eq('estado','completada')
       .eq('creado_por_nombre', usuario).gte('fecha', inicio).lte('fecha', fin);
 
-    const nombreProducto = document.getElementById('cpu-producto').selectedOptions[0]?.textContent || 'este producto';
-
     if (!ventas || !ventas.length) {
       resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese mes — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;
       return;
     }
 
+    // Una sola consulta trae los detalles de TODOS los productos
+    // elegidos a la vez, sin importar cuantos sean.
     const idsVentas = ventas.map(v => v.id);
     const { data: detalles } = await sbClient.from('venta_detalles')
-      .select('cantidad, subtotal').in('venta_id', idsVentas).eq('producto_id', productoId);
+      .select('producto_id, cantidad, subtotal')
+      .in('venta_id', idsVentas).in('producto_id', idsProductos);
 
-    const totalCantidad = (detalles||[]).reduce((s,d) => s + (Number(d.cantidad)||0), 0);
-    const totalMonto = (detalles||[]).reduce((s,d) => s + (Number(d.subtotal)||0), 0);
+    const porProducto = {};
+    (detalles||[]).forEach(d => {
+      const acc = (porProducto[d.producto_id] ||= { cantidad:0, monto:0 });
+      acc.cantidad += Number(d.cantidad)||0;
+      acc.monto += Number(d.subtotal)||0;
+    });
+
+    const nombresPorId = Object.fromEntries(TODOS_LOS_PRODUCTOS_CONSULTA.map(p => [p.id, p.nombre]));
+    const filas = idsProductos
+      .map(id => ({ nombre: nombresPorId[id] || '—', cantidad: (porProducto[id]?.cantidad)||0, monto: (porProducto[id]?.monto)||0 }))
+      .sort((a,b) => b.cantidad - a.cantidad);
+
+    const totalGeneral = filas.reduce((s,f) => s + f.monto, 0);
 
     resultDiv.innerHTML = `
-      <div style="padding:14px 16px;background:var(--accent-soft);border-radius:10px;font-size:14px;line-height:1.6">
-        <b>${esc(usuario)}</b> vendió <b>${fmtNum(totalCantidad)}</b> unidades de <b>${esc(nombreProducto)}</b> en ${esc(mes)}, por un total de <b>${fmtMonto(totalMonto)}</b>.
-      </div>`;
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Monto</th></tr></thead>
+          <tbody>
+            ${filas.map(f => `<tr><td>${esc(f.nombre)}</td><td style="text-align:right">${fmtNum(f.cantidad)}</td><td style="text-align:right">${fmtMonto(f.monto)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:10px 4px 0;font-weight:600;font-size:13.5px">Total: ${fmtMonto(totalGeneral)}</div>`;
   } catch (e) {
     console.error('consultarProductoPorUsuario:', e);
     resultDiv.innerHTML = '<p style="color:var(--danger);padding:12px 0;margin:0">No se pudo calcular, intenta de nuevo.</p>';
