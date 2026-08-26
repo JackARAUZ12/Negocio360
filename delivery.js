@@ -32,6 +32,16 @@ let _bancosCacheDelivery = null;
 let _bancoElegido = { costo: null, cobro: null };
 let _montoBancoConvertido = { costo: null, cobro: null };
 
+// Mismo dato que ya usa auditoria-guard.js -- que perfil de personal
+// creo esta venta desde Delivery.
+function obtenerNombrePerfilActivo() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    const perfil = raw ? JSON.parse(raw) : null;
+    return perfil?.nombre || 'Admin';
+  } catch (_) { return 'Admin'; }
+}
+
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmt(amount) {
   const sym = monedaParaMostrar(STATE.empresaConfig?.moneda);
@@ -643,6 +653,7 @@ async function crearVentaDesdeDelivery(numeroPedido) {
     metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     estado: 'completada', estado_pago: esParcial ? 'pendiente' : 'pagado',
     estado_entrega: 'pendiente', observaciones: `Creada desde Delivery ${numeroPedido}`,
+    creado_por_nombre: obtenerNombrePerfilActivo(),
   }).select('id').single();
   if (errVenta) throw errVenta;
 

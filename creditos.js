@@ -97,6 +97,16 @@
     if (!isoDate) return '—';
     return new Date(isoDate + 'T12:00:00').toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
   }
+  // Mismo dato que ya usa auditoria-guard.js -- que perfil de
+  // personal hizo la venta que genera este credito.
+  function obtenerNombrePerfilActivo() {
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const perfil = raw ? JSON.parse(raw) : null;
+      return perfil?.nombre || 'Admin';
+    } catch (_) { return 'Admin'; }
+  }
+
   function esc(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1413,6 +1423,7 @@
           metodo_pago: 'credito', estado_pago: 'credito', estado: 'completada',
           iva_activo: ivaActivo, iva_porcentaje: ivaPct,
           categoria: 'credito', notas: 'Venta generada automáticamente por el módulo de Créditos',
+          creado_por_nombre: obtenerNombrePerfilActivo(),
         }).select().single();
         if (errVenta) throw errVenta;
         ventaId = venta.id;

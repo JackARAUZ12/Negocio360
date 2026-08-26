@@ -72,6 +72,16 @@ function fmtFecha(iso) {
   return `${d}/${m}/${y}`;
 }
 function fmtNum(v) { return Number(v || 0).toLocaleString('es-NI'); }
+// Mismo dato que ya usa auditoria-guard.js -- que perfil de personal
+// convirtio esta proforma en venta.
+function obtenerNombrePerfilActivo() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    const perfil = raw ? JSON.parse(raw) : null;
+    return perfil?.nombre || 'Admin';
+  } catch (_) { return 'Admin'; }
+}
+
 function esc(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -1391,6 +1401,7 @@ async function confirmarConvertirAVenta() {
       estado: 'completada', observaciones: p.observaciones || null,
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0,
       proforma_id: p.id,
+      creado_por_nombre: obtenerNombrePerfilActivo(),
     };
     const { data: ventaNueva, error: errVenta } = await sbClient.from('ventas').insert(ventaPayload).select('id').single();
     if (errVenta) throw errVenta;

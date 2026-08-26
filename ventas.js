@@ -1404,6 +1404,7 @@ async function confirmarPagoRecurrente() {
       categoria:          'Pago recurrente',
       estado:             'completada',
       observaciones:      observaciones,
+      creado_por_nombre:  obtenerNombrePerfilActivo(),
     };
     const ventaPayloadConIva = { ...ventaPayload, iva_activo: ivaActivo, iva_porcentaje: ivaActivo ? ivaPct : 0 };
 

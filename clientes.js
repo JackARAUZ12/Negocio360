@@ -45,6 +45,17 @@ const CS = {
 /* ============================================================
    HELPERS
    ============================================================ */
+// Mismo dato que ya usa auditoria-guard.js (sessionStorage) -- para
+// saber que perfil de personal hizo cada venta, sin depender de la
+// bitacora (que solo dura 24 horas).
+function obtenerNombrePerfilActivo() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    const perfil = raw ? JSON.parse(raw) : null;
+    return perfil?.nombre || 'Admin';
+  } catch (_) { return 'Admin'; }
+}
+
 function esc(s) {
   if (!s) return '';
   return String(s)
@@ -1005,6 +1016,7 @@ async function registrarPagoInicialRecurrente({ clienteId, clienteNombre, monto,
       categoria:          'Pago recurrente',
       estado:             'completada',
       observaciones:      'Pago del periodo actual, cobrado antes de registrar/activar al cliente en el sistema.',
+      creado_por_nombre:  obtenerNombrePerfilActivo(),
     };
     const ventaPayloadConIva = { ...ventaPayload, iva_activo: ivaActivo, iva_porcentaje: ivaActivo ? ivaPct : 0 };
 
