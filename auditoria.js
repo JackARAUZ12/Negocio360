@@ -112,16 +112,17 @@ async function cargarResumenMensual() {
   if (!mes) { mes = todayISO().slice(0,7); mesInput.value = mes; }
   const inicio = `${mes}-01`;
   const [anio, mesNum] = mes.split('-').map(Number);
-  const fin = new Date(anio, mesNum, 0).toISOString().slice(0,10); // último día real de ese mes
+  const finMes = fechaLocalISO(new Date(anio, mesNum, 0)); // último día real de ese mes, sin .toISOString()
+  const limiteExclusivo = siguienteDiaISO(finMes); // primer día del mes siguiente -- cubre TODO el último día, sin importar la hora exacta guardada
 
   try {
     // Cada consulta solo trae la columna de monto (no la fila completa)
     // -- minimiza los datos transferidos, el conteo/suma se hace aquí.
     const [ventas, gastos, compras, pagos] = await Promise.all([
-      sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lte('fecha', fin),
-      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lte('fecha', fin),
-      sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lte('fecha', fin),
-      sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lte('fecha', fin),
+      sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo),
+      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lt('fecha', limiteExclusivo),
+      sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo),
+      sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lt('fecha', limiteExclusivo),
     ]);
 
     const sumar = (res, campo) => (res.data||[]).reduce((s,r) => s + (Number(r[campo])||0), 0);
@@ -204,6 +205,20 @@ function fechaLocalISO(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// BUG REAL CORREGIDO: la columna "fecha" es timestamptz -- algunas
+// ventas se guardan a la hora exacta (ej. "2026-08-26 21:31:15"), no
+// a medianoche. Filtrar con .lte('fecha', '2026-08-26') se traduce a
+// "hasta las 00:00:00 de ese día EXACTO", excluyendo cualquier venta
+// hecha despues de medianoche ese mismo día -- justo el caso de una
+// venta reciente de "hoy". La forma correcta: pedir ESTRICTAMENTE
+// MENOS que el dia SIGUIENTE (limite exclusivo), que sí cubre todo
+// el día completo sin importar la hora exacta guardada.
+function siguienteDiaISO(fechaISO) {
+  const [anio, mes, dia] = fechaISO.split('-').map(Number);
+  const siguiente = new Date(anio, mes - 1, dia + 1);
+  return fechaLocalISO(siguiente);
+}
+
 function calcularRangoFechas(preset) {
   const hoy = new Date();
   const hoyISO = fechaLocalISO(hoy);
@@ -264,7 +279,7 @@ async function consultarProductoPorUsuario() {
 
     const { data: ventas } = await sbClient.from('ventas')
       .select('id').eq('auth_user_id', STATE.userId).eq('estado','completada')
-      .eq('creado_por_nombre', usuario).gte('fecha', desde).lte('fecha', hasta);
+      .eq('creado_por_nombre', usuario).gte('fecha', desde).lt('fecha', siguienteDiaISO(hasta));
 
     if (!ventas || !ventas.length) {
       resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese período — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;

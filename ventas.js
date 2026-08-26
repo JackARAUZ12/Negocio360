@@ -87,6 +87,16 @@ const S = {
 function ymd(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+// BUG REAL CORREGIDO: "fecha" es timestamptz, algunas ventas se
+// guardan con la hora exacta (no medianoche). Filtrar con
+// .lte('fecha', hoy) equivale a "hasta las 00:00:00 de HOY", lo que
+// excluye cualquier venta hecha despues de medianoche ese mismo dia
+// -- justo el caso de una venta recien hecha. La forma correcta es
+// pedir estrictamente MENOS que el dia siguiente (limite exclusivo).
+function siguienteDiaISO(fechaISO) {
+  const [anio, mes, dia] = fechaISO.split('-').map(Number);
+  return ymd(new Date(anio, mes - 1, dia + 1));
+}
 function todayISO()        { return ymd(new Date()); }
 function startOfMonthISO() {
   const d = new Date();
@@ -346,7 +356,7 @@ async function loadKPIs() {
     // para el fisco y ya se contabiliza aparte en el módulo de Impuestos.
     const { data: dia } = await sb.from('ventas').select('total,ganancia,impuesto')
       .eq('auth_user_id', S.userId).eq('estado','completada')
-      .gte('fecha', today).lte('fecha', today);
+      .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
 
     const totalDia = (dia||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     setKPI('kpi-dia', fmt(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
@@ -356,7 +366,7 @@ async function loadKPIs() {
     // FIX: mismo criterio — ingreso NETO de IVA
     const { data: mes } = await sb.from('ventas').select('total,ganancia,fecha,impuesto')
       .eq('auth_user_id', S.userId).eq('estado','completada')
-      .gte('fecha', mesStart).lte('fecha', today);
+      .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
 
     const totalMes = (mes||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     const ganMes   = (mes||[]).reduce((s,r) => s+Number(r.ganancia),0);
@@ -397,7 +407,7 @@ async function loadVentas() {
   try {
     let q = sb.from('ventas').select('*', { count:'exact' })
       .eq('auth_user_id', S.userId)
-      .gte('fecha', from).lte('fecha', to);
+      .gte('fecha', from).lt('fecha', siguienteDiaISO(to));
 
     // Si quien está viendo es un perfil de personal (no el dueño),
     // solo se le muestran SUS propias ventas -- nunca las del dueño
