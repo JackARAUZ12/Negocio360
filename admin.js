@@ -645,7 +645,7 @@ async function loadCrecimientoNegocio(usuarios, idsShadow) {
   }
 }
 
-function buildClientesEnRiesgo(usuarios) {
+async function buildClientesEnRiesgo(usuarios) {
   const enRiesgo = usuarios.filter(esClienteEnRiesgo).map(u => {
     const diasInactivo = u.ultima_conexion
       ? Math.floor((Date.now() - new Date(u.ultima_conexion).getTime()) / 86400000)
@@ -663,10 +663,22 @@ function buildClientesEnRiesgo(usuarios) {
     return b.diasInactivo - a.diasInactivo;
   });
 
-  renderClientesEnRiesgoList(enRiesgo);
+  // Traer de una sola vez el estado de seguimiento (pendiente /
+  // contactado / resuelto) de todos estos clientes -- para no
+  // perder de vista a quien ya se contacto.
+  let seguimientoPorUsuario = {};
+  if (enRiesgo.length) {
+    try {
+      const ids = enRiesgo.map(u => u.auth_user_id);
+      const { data } = await sb.from('admin_seguimiento_riesgo').select('auth_user_id, estado').in('auth_user_id', ids);
+      (data || []).forEach(s => { seguimientoPorUsuario[s.auth_user_id] = s.estado; });
+    } catch (e) { console.warn('seguimiento riesgo:', e); }
+  }
+
+  renderClientesEnRiesgoList(enRiesgo, seguimientoPorUsuario);
 }
 
-function renderClientesEnRiesgoList(items) {
+function renderClientesEnRiesgoList(items, seguimientoPorUsuario) {
   const el = document.getElementById('list-en-riesgo');
   if (!el) return;
 
@@ -681,17 +693,46 @@ function renderClientesEnRiesgoList(items) {
     const sub = u.diasInactivo === null ? 'Nunca ha iniciado sesión' : `Sin entrar hace ${u.diasInactivo} día${u.diasInactivo === 1 ? '' : 's'}`;
     const badge = (u.diasInactivo === null || u.diasInactivo >= 7) ? 'danger' : 'warning';
     const label = u.diasInactivo === null ? 'Nunca' : `${u.diasInactivo}d`;
+    // 5+ días (o nunca entró) se marca como urgente -- mas alla del
+    // umbral normal de "en riesgo" (3 dias).
+    const esUrgente = u.diasInactivo === null || u.diasInactivo >= 5;
+    const estado = (seguimientoPorUsuario && seguimientoPorUsuario[u.auth_user_id]) || 'pendiente';
     return `
-      <div class="payment-item" style="cursor:pointer" onclick="mensajearCliente('${u.auth_user_id}')" title="Clic para enviarle un mensaje por el chat">
-        <div class="payment-item-avatar">${escHtml(initial)}</div>
-        <div class="payment-item-info">
-          <div class="payment-item-name">${escHtml(nombreCompleto)}</div>
+      <div class="payment-item">
+        <div class="payment-item-avatar" style="cursor:pointer" onclick="mensajearCliente('${u.auth_user_id}')" title="Clic para enviarle un mensaje por el chat">${escHtml(initial)}</div>
+        <div class="payment-item-info" style="cursor:pointer" onclick="mensajearCliente('${u.auth_user_id}')" title="Clic para enviarle un mensaje por el chat">
+          <div class="payment-item-name">${escHtml(nombreCompleto)} ${esUrgente ? '<span style="color:var(--danger);font-size:10.5px;font-weight:700;margin-left:4px">● URGENTE</span>' : ''}</div>
           <div class="payment-item-sub">${escHtml(sub)}</div>
         </div>
         <span class="pago-badge ${badge}">${escHtml(label)}</span>
+        <select onclick="event.stopPropagation()" onchange="actualizarSeguimientoRiesgo('${u.auth_user_id}', this.value)" style="width:auto;font-size:11px;padding:3px 6px;margin-left:6px" title="¿Qué se ha hecho con este cliente?">
+          <option value="pendiente" ${estado==='pendiente'?'selected':''}>⏳ Pendiente</option>
+          <option value="contactado" ${estado==='contactado'?'selected':''}>📞 Contactado</option>
+          <option value="resuelto" ${estado==='resuelto'?'selected':''}>✅ Resuelto</option>
+        </select>
       </div>
     `;
   }).join('');
+}
+
+// Guarda que se hizo con esta alerta -- pendiente/contactado/resuelto.
+// Un solo registro por cliente, se actualiza el mismo (no se acumulan
+// filas viejas) via upsert.
+async function actualizarSeguimientoRiesgo(authUserId, estado) {
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('admin_seguimiento_riesgo').upsert({
+      auth_user_id: authUserId,
+      estado,
+      actualizado_por_email: user?.email || 'admin',
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    toast('Guardado', `Marcado como "${estado}"`, 'success');
+  } catch (e) {
+    console.error('actualizarSeguimientoRiesgo:', e);
+    toast('Error', 'No se pudo guardar el estado', 'error');
+  }
 }
 
 // Abre (o crea) una conversación de soporte con este cliente y lo
