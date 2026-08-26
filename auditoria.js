@@ -142,10 +142,13 @@ async function cargarResumenMensual() {
 
 async function cargarUsuariosParaFiltroVentas() {
   try {
-    const { data } = await sbClient.from('ventas')
-      .select('creado_por_nombre').eq('auth_user_id', STATE.userId)
-      .not('creado_por_nombre', 'is', null);
-    const nombres = [...new Set((data||[]).map(v => v.creado_por_nombre))].sort();
+    // Se traen TODOS los perfiles de personal registrados (activos),
+    // no solo los que ya tienen alguna venta -- así aparece cualquier
+    // usuario aunque todavía no haya vendido nada, mostrando 0.
+    const { data: perfiles } = await sbClient.from('perfiles_acceso')
+      .select('nombre').eq('auth_user_id', STATE.userId).eq('activo', true);
+    const nombres = [...new Set((perfiles||[]).map(p => p.nombre).filter(Boolean))].sort();
+
     const sel = document.getElementById('vpu-filtro-usuario');
     if (!sel) return;
     const valorActual = sel.value;
