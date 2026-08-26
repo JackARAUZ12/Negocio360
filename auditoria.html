@@ -1254,7 +1254,7 @@
       <div class="panel-card fade-in" style="margin-top:20px">
         <div style="padding:16px 20px 4px">
           <h3 style="margin:0 0 2px">¿Cuánto vendió un usuario de cada producto?</h3>
-          <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Marca uno o varios productos, elige usuario y mes. Solo cuenta ventas con usuario asignado (desde que se activó este seguimiento) — las más antiguas no tienen forma de saber quién las hizo.</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Marca uno o varios productos, elige usuario y período. Solo cuenta ventas con usuario asignado (desde que se activó este seguimiento) — las más antiguas no tienen forma de saber quién las hizo.</p>
         </div>
         <div class="filtros-row" style="align-items:flex-start">
           <div style="flex:1;min-width:220px">
@@ -1266,9 +1266,15 @@
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Usuario</label>
             <select id="cpu-usuario" style="width:100%"><option value="">Elige un usuario…</option></select>
           </div>
-          <div style="min-width:140px">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Mes</label>
-            <input type="month" id="cpu-mes" style="width:100%"/>
+          <div style="min-width:220px">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Período</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="filter-btn active" id="cpu-periodo-hoy"    onclick="elegirPeriodoConsulta('hoy')">Hoy</button>
+              <button type="button" class="filter-btn"        id="cpu-periodo-ayer"   onclick="elegirPeriodoConsulta('ayer')">Ayer</button>
+              <button type="button" class="filter-btn"        id="cpu-periodo-semana" onclick="elegirPeriodoConsulta('semana')">Esta semana</button>
+              <button type="button" class="filter-btn"        id="cpu-periodo-mes"    onclick="elegirPeriodoConsulta('mes')">Este mes</button>
+            </div>
+            <p id="cpu-rango-texto" style="margin:6px 0 0;font-size:11.5px;color:var(--text-muted)"></p>
           </div>
         </div>
         <div class="filtros-row" style="padding-top:0">

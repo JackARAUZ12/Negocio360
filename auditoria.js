@@ -167,8 +167,7 @@ async function cargarOpcionesConsultaProducto() {
         nombres.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
     }
 
-    const mesInput = document.getElementById('cpu-mes');
-    if (mesInput && !mesInput.value) mesInput.value = todayISO().slice(0,7);
+    elegirPeriodoConsulta('hoy'); // estado inicial: hoy, con su texto de rango
   } catch (e) { console.warn('cargarOpcionesConsultaProducto:', e); }
 }
 
@@ -197,31 +196,78 @@ function filtrarListaProductosConsulta() {
   renderListaProductosConsulta(filtrados);
 }
 
+// Misma fórmula segura que ya usa todayISO() -- SIEMPRE con
+// getFullYear/getMonth/getDate (hora local real del navegador),
+// nunca con .toISOString() (que convierte a UTC y puede correr la
+// fecha un día, sobre todo de noche en Nicaragua).
+function fechaLocalISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function calcularRangoFechas(preset) {
+  const hoy = new Date();
+  const hoyISO = fechaLocalISO(hoy);
+
+  if (preset === 'ayer') {
+    const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+    const ayerISO = fechaLocalISO(ayer);
+    return { desde: ayerISO, hasta: ayerISO };
+  }
+  if (preset === 'semana') {
+    // Semana actual: de este lunes a hoy (no la semana completa si
+    // aún faltan días por pasar).
+    const diaSemana = hoy.getDay(); // 0=domingo … 6=sabado
+    const diasDesdeLunes = diaSemana === 0 ? 6 : diaSemana - 1;
+    const lunes = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - diasDesdeLunes);
+    return { desde: fechaLocalISO(lunes), hasta: hoyISO };
+  }
+  if (preset === 'mes') {
+    const inicioMes = hoyISO.slice(0,7) + '-01';
+    const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0); // día 0 del mes siguiente = último día real de este mes
+    return { desde: inicioMes, hasta: fechaLocalISO(finMes) };
+  }
+  // 'hoy' (por defecto)
+  return { desde: hoyISO, hasta: hoyISO };
+}
+
+let PERIODO_CONSULTA_ACTUAL = 'hoy';
+
+function elegirPeriodoConsulta(preset) {
+  PERIODO_CONSULTA_ACTUAL = preset;
+  ['hoy','ayer','semana','mes'].forEach(p => {
+    document.getElementById(`cpu-periodo-${p}`)?.classList.toggle('active', p === preset);
+  });
+  const { desde, hasta } = calcularRangoFechas(preset);
+  const texto = document.getElementById('cpu-rango-texto');
+  if (texto) {
+    texto.textContent = desde === hasta
+      ? `Del ${fmtFecha(desde)}`
+      : `Del ${fmtFecha(desde)} al ${fmtFecha(hasta)}`;
+  }
+}
+
 async function consultarProductoPorUsuario() {
   const idsProductos = [...PRODUCTOS_SELECCIONADOS_CONSULTA];
   const usuario = document.getElementById('cpu-usuario')?.value;
-  const mes = document.getElementById('cpu-mes')?.value;
   const resultDiv = document.getElementById('cpu-resultado');
   if (!resultDiv) return;
 
-  if (!idsProductos.length || !usuario || !mes) {
-    resultDiv.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;margin:0">Marca uno o varios productos, elige un usuario y un mes.</p>';
+  if (!idsProductos.length || !usuario) {
+    resultDiv.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;margin:0">Marca uno o varios productos y elige un usuario.</p>';
     return;
   }
 
   resultDiv.innerHTML = '<p style="padding:12px 0;margin:0;color:var(--text-muted)">Calculando…</p>';
 
   try {
-    const inicio = `${mes}-01`;
-    const [anio, mesNum] = mes.split('-').map(Number);
-    const fin = new Date(anio, mesNum, 0).toISOString().slice(0,10);
+    const { desde, hasta } = calcularRangoFechas(PERIODO_CONSULTA_ACTUAL);
 
     const { data: ventas } = await sbClient.from('ventas')
       .select('id').eq('auth_user_id', STATE.userId).eq('estado','completada')
-      .eq('creado_por_nombre', usuario).gte('fecha', inicio).lte('fecha', fin);
+      .eq('creado_por_nombre', usuario).gte('fecha', desde).lte('fecha', hasta);
 
     if (!ventas || !ventas.length) {
-      resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese mes — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;
+      resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese período — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;
       return;
     }
 
