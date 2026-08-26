@@ -486,6 +486,173 @@ function previewCuotasCxP() {
 /* =====================================================
    ABRIR / RESET MODAL NUEVA CUENTA
 ===================================================== */
+/* =====================================================
+   CUENTA DIRECTA — gasto o deuda con un proveedor que NO es compra
+   de mercancia. Nunca toca productos/detalle_compras/compras --
+   crea la fila en cuentas_por_pagar directo, con compra_id en null
+   (la tabla y el resto del modulo ya soportan esto desde antes:
+   pagos, edicion y eliminacion ya revisan "if (cuenta.compra_id)"
+   antes de tocar la parte de inventario, asi que una cuenta sin
+   compra_id se comporta exactamente igual en todo lo demas).
+===================================================== */
+function abrirNuevaCuentaDirecta() {
+  document.getElementById('ncd-proveedor-select').innerHTML =
+    `<option value="">— Selecciona un proveedor —</option>` +
+    STATE.proveedores.filter(p => p.activo).map(p =>
+      `<option value="${p.id}">${esc(p.nombre)}${p.telefono ? ' — '+esc(p.telefono) : ''}</option>`
+    ).join('');
+  document.getElementById('ncd-nuevo-proveedor-form').style.display = 'none';
+  document.getElementById('ncd-prov-nombre').value = '';
+  document.getElementById('ncd-concepto').value = '';
+  document.getElementById('ncd-monto').value = '';
+  document.getElementById('ncd-fecha').value = todayISO();
+  document.getElementById('ncd-fecha-vencimiento').value = '';
+  document.getElementById('ncd-num-cuotas').value = 2;
+  document.getElementById('ncd-fecha-primera-cuota').value = '';
+  document.getElementById('ncd-frecuencia').value = 'mensual';
+  document.getElementById('ncd-observaciones').value = '';
+  document.getElementById('ncd-error').textContent = '';
+  STATE.proveedorSeleccionadoDirecto = null;
+  STATE.tipoCreditoDirecto = null;
+  setTipoCreditoDirecto('fecha_fija');
+  openModal('modal-nueva-cuenta-directa');
+}
+
+function onSelectProveedorDirecto() {
+  const id = document.getElementById('ncd-proveedor-select')?.value;
+  STATE.proveedorSeleccionadoDirecto = id ? (STATE.proveedores.find(p => p.id === id) || null) : null;
+  if (id) toggleNuevoProveedorDirecto(false);
+}
+
+function toggleNuevoProveedorDirecto(mostrar) {
+  document.getElementById('ncd-nuevo-proveedor-form').style.display = mostrar ? 'block' : 'none';
+  if (mostrar) {
+    document.getElementById('ncd-proveedor-select').value = '';
+    STATE.proveedorSeleccionadoDirecto = null;
+  }
+}
+
+async function guardarNuevoProveedorDirecto() {
+  const nombre = document.getElementById('ncd-prov-nombre')?.value.trim();
+  if (!nombre) { showToast('El nombre del proveedor es requerido', 'error'); return; }
+  try {
+    setBtnLoading('btn-guardar-proveedor-directo', true);
+    const { data, error } = await sbClient.from('proveedores')
+      .insert({ auth_user_id: STATE.userId, nombre, activo: true }).select().single();
+    if (error) throw error;
+    STATE.proveedores.push(data);
+    STATE.proveedorSeleccionadoDirecto = data;
+    document.getElementById('ncd-proveedor-select').innerHTML =
+      `<option value="">— Selecciona un proveedor —</option>` +
+      STATE.proveedores.filter(p => p.activo).map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
+    document.getElementById('ncd-proveedor-select').value = data.id;
+    toggleNuevoProveedorDirecto(false);
+    showToast('Proveedor guardado');
+  } catch (e) {
+    showToast('Error al guardar proveedor: ' + (e.message||''), 'error');
+  } finally {
+    setBtnLoading('btn-guardar-proveedor-directo', false);
+  }
+}
+
+function setTipoCreditoDirecto(tipo) {
+  STATE.tipoCreditoDirecto = tipo;
+  const btnFija = document.getElementById('ncd-tipo-fecha-fija');
+  const btnCuotas = document.getElementById('ncd-tipo-cuotas');
+  // Cambio visual directo (sin depender de una clase CSS compartida
+  // con otro tipo de boton) -- autonomo, no puede afectar nada mas.
+  btnFija.style.borderColor   = tipo === 'fecha_fija' ? 'var(--accent)' : '';
+  btnFija.style.background    = tipo === 'fecha_fija' ? 'var(--accent-soft)' : '';
+  btnCuotas.style.borderColor = tipo === 'cuotas' ? 'var(--accent)' : '';
+  btnCuotas.style.background  = tipo === 'cuotas' ? 'var(--accent-soft)' : '';
+  document.getElementById('ncd-wrap-fecha-fija').style.display = tipo === 'fecha_fija' ? 'block' : 'none';
+  document.getElementById('ncd-wrap-cuotas').style.display     = tipo === 'cuotas'     ? 'block' : 'none';
+  previewCuotasDirecto();
+}
+
+function previewCuotasDirecto() {
+  const el = document.getElementById('ncd-cuotas-preview');
+  if (!el || STATE.tipoCreditoDirecto !== 'cuotas') { if (el) el.textContent = ''; return; }
+  const total = Number(document.getElementById('ncd-monto')?.value) || 0;
+  const numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
+  const fechaInicio = document.getElementById('ncd-fecha-primera-cuota')?.value;
+  const frecuencia = document.getElementById('ncd-frecuencia')?.value || 'mensual';
+  if (!total || !numCuotas || !fechaInicio) { el.textContent = ''; return; }
+  const cuotas = generarCuotasCxP(total, numCuotas, fechaInicio, frecuencia);
+  el.innerHTML = cuotas.map(c => `Cuota ${c.numero}: ${fmt(c.monto_total)} — vence ${fmtDate(c.fecha_vencimiento)}`).join('<br>');
+}
+
+async function guardarCuentaDirecta() {
+  const errEl = document.getElementById('ncd-error');
+  errEl.textContent = '';
+
+  // ---- Validaciones ----
+  if (!STATE.proveedorSeleccionadoDirecto?.id) { errEl.textContent = 'Selecciona un proveedor.'; return; }
+  const concepto = document.getElementById('ncd-concepto')?.value.trim();
+  if (!concepto) { errEl.textContent = 'Escribe de qué es esta cuenta.'; return; }
+  const monto = Number(document.getElementById('ncd-monto')?.value);
+  if (!monto || monto <= 0) { errEl.textContent = 'Escribe un monto válido.'; return; }
+  const fecha = document.getElementById('ncd-fecha')?.value;
+  if (!fecha) { errEl.textContent = 'Elige la fecha de la deuda.'; return; }
+
+  let fechaVencimiento = null, numCuotas = null, frecuencia = null, cuotasGeneradas = [];
+  if (STATE.tipoCreditoDirecto === 'fecha_fija') {
+    fechaVencimiento = document.getElementById('ncd-fecha-vencimiento')?.value;
+    if (!fechaVencimiento) { errEl.textContent = 'Elige la fecha de vencimiento.'; return; }
+  } else {
+    numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
+    const fechaPrimeraCuota = document.getElementById('ncd-fecha-primera-cuota')?.value;
+    frecuencia = document.getElementById('ncd-frecuencia')?.value || 'mensual';
+    if (numCuotas < 1) { errEl.textContent = 'El número de cuotas debe ser al menos 1.'; return; }
+    if (!fechaPrimeraCuota) { errEl.textContent = 'Elige la fecha de la primera cuota.'; return; }
+    cuotasGeneradas = generarCuotasCxP(monto, numCuotas, fechaPrimeraCuota, frecuencia);
+    fechaVencimiento = cuotasGeneradas[cuotasGeneradas.length-1].fecha_vencimiento;
+  }
+
+  const observaciones = document.getElementById('ncd-observaciones')?.value.trim() || null;
+
+  setBtnLoading('ncd-btn-guardar', true);
+  try {
+    const numero = await generarNumeroCxP();
+
+    // Fila unica en cuentas_por_pagar -- compra_id queda en null a
+    // proposito, NUNCA se toca productos/detalle_compras/compras.
+    const { data: cuenta, error: errCuenta } = await sbClient.from('cuentas_por_pagar').insert({
+      auth_user_id: STATE.userId, numero,
+      proveedor_id: STATE.proveedorSeleccionadoDirecto.id, proveedor_nombre: STATE.proveedorSeleccionadoDirecto.nombre,
+      compra_id: null, tipo_credito: STATE.tipoCreditoDirecto, fecha_compra: fecha,
+      fecha_vencimiento: fechaVencimiento, num_cuotas: STATE.tipoCreditoDirecto==='cuotas'?numCuotas:null,
+      frecuencia: STATE.tipoCreditoDirecto==='cuotas'?frecuencia:null,
+      monto_total: monto, monto_pagado: 0, saldo_pendiente: monto, estado: 'pendiente',
+      observaciones: concepto + (observaciones ? ' — '+observaciones : ''),
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+    }).select().single();
+    if (errCuenta) throw errCuenta;
+
+    if (STATE.tipoCreditoDirecto === 'cuotas') {
+      const cuotasInsert = cuotasGeneradas.map(c => ({ auth_user_id: STATE.userId, cuenta_id: cuenta.id, ...c }));
+      const { error: errCuotas } = await sbClient.from('cuentas_por_pagar_cuotas').insert(cuotasInsert);
+      if (errCuotas) throw errCuotas;
+    }
+
+    // Métricas del proveedor -- igual que en la compra normal
+    await sbClient.from('proveedores').update({
+      ultima_compra: fecha,
+      monto_acumulado: Number(STATE.proveedorSeleccionadoDirecto.monto_acumulado||0) + monto,
+      total_compras: Number(STATE.proveedorSeleccionadoDirecto.total_compras||0) + 1,
+    }).eq('id', STATE.proveedorSeleccionadoDirecto.id).eq('auth_user_id', STATE.userId);
+
+    closeModal('modal-nueva-cuenta-directa');
+    showToast(`Cuenta directa ${cuenta.numero} creada`);
+    await Promise.allSettled([loadKPIsCxP(), loadCuentasCxP(), loadProveedores()]);
+  } catch (e) {
+    console.error('guardarCuentaDirecta:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('ncd-btn-guardar', false);
+  }
+}
+
 function abrirNuevaCuenta() {
   resetFormNuevaCuentaCxP();
   openModal('modal-nueva-cuenta');

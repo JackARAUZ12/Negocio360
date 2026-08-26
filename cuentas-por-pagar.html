@@ -301,7 +301,7 @@
     }
     .greeting-text h1 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 3px; }
     .greeting-text p  { font-size: 13.5px; color: var(--text-secondary); }
-    .greeting-actions { display: flex; align-items: center; gap: 10px; }
+    .greeting-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
     /* =====================================================
        TABS DE SECCIÓN
@@ -1198,6 +1198,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             Registrar pago
           </button>
+          <button class="btn-ghost" onclick="abrirNuevaCuentaDirecta()" title="Un gasto o deuda con un proveedor que NO es compra de productos — no toca tu inventario">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Cuenta directa
+          </button>
           <button class="btn-primary" onclick="abrirNuevaCuenta()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva compra
@@ -1502,6 +1506,113 @@
       <button class="btn-primary" id="np-btn-guardar" onclick="guardarNuevaCuentaCxP()">
         Guardar compra <span id="np-total-preview" style="opacity:0.8;font-size:12px"></span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: NUEVA CUENTA DIRECTA (sin productos, sin inventario)
+     Un gasto o deuda con un proveedor que NO es compra de mercancía
+     -- ej. renta del local, servicio profesional, mantenimiento.
+     Nunca toca productos/detalle_compras -- crea la cuenta por
+     pagar directo, con compra_id en null (ya soportado por la
+     tabla y por el resto del modulo desde antes).
+=================================================== -->
+<div class="modal-overlay" id="modal-nueva-cuenta-directa" onclick="if(event.target===this)closeModal('modal-nueva-cuenta-directa')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline;vertical-align:middle;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Nueva Cuenta Directa
+      </span>
+      <button class="modal-close" onclick="closeModal('modal-nueva-cuenta-directa')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-body" style="flex:1;overflow-y:auto;padding:20px">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;padding:10px 12px;background:var(--bg-surface-2);border-radius:var(--radius-md)">
+        Para un gasto o deuda con un proveedor que <b>no</b> es compra de mercancía — como renta, un servicio, o mantenimiento. No afecta tu inventario en absoluto.
+      </p>
+
+      <!-- PROVEEDOR -->
+      <div class="form-group">
+        <label>Proveedor *</label>
+        <select id="ncd-proveedor-select" onchange="onSelectProveedorDirecto()">
+          <option value="">— Selecciona un proveedor —</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin:10px 0">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:12px;color:var(--text-muted)">o</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <button class="btn-secondary" type="button" style="width:100%;justify-content:center" onclick="toggleNuevoProveedorDirecto(true)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Registrar proveedor nuevo
+      </button>
+      <div id="ncd-nuevo-proveedor-form" style="display:none;margin-top:12px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
+        <div class="form-group"><label>Nombre *</label><input type="text" id="ncd-prov-nombre"/></div>
+        <button class="btn-primary btn-sm" type="button" id="btn-guardar-proveedor-directo" onclick="guardarNuevoProveedorDirecto()" style="margin-top:6px">Guardar proveedor</button>
+      </div>
+
+      <!-- CONCEPTO -->
+      <div class="form-group" style="margin-top:16px">
+        <label>¿De qué es esta cuenta? *</label>
+        <input type="text" id="ncd-concepto" placeholder="Ej: Renta del local, agosto 2026"/>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Monto total *</label>
+          <input type="number" id="ncd-monto" min="0.01" step="0.01" placeholder="0.00" oninput="previewCuotasDirecto()"/>
+        </div>
+        <div class="form-group">
+          <label>Fecha de la deuda *</label>
+          <input type="date" id="ncd-fecha"/>
+        </div>
+      </div>
+
+      <!-- TIPO DE CRÉDITO -->
+      <div class="form-group" style="margin-top:10px">
+        <label>¿Cómo se paga? *</label>
+        <div style="display:flex;gap:10px">
+          <button type="button" class="btn-secondary" id="ncd-tipo-fecha-fija" style="flex:1;justify-content:center" onclick="setTipoCreditoDirecto('fecha_fija')">Una sola fecha</button>
+          <button type="button" class="btn-secondary" id="ncd-tipo-cuotas" style="flex:1;justify-content:center" onclick="setTipoCreditoDirecto('cuotas')">En cuotas</button>
+        </div>
+      </div>
+
+      <div id="ncd-wrap-fecha-fija" style="display:none;margin-top:10px">
+        <div class="form-group"><label>Fecha de vencimiento *</label><input type="date" id="ncd-fecha-vencimiento"/></div>
+      </div>
+
+      <div id="ncd-wrap-cuotas" style="display:none;margin-top:10px">
+        <div class="form-row">
+          <div class="form-group"><label>Número de cuotas *</label><input type="number" id="ncd-num-cuotas" min="1" step="1" value="2" oninput="previewCuotasDirecto()"/></div>
+          <div class="form-group"><label>Fecha primera cuota *</label><input type="date" id="ncd-fecha-primera-cuota" oninput="previewCuotasDirecto()"/></div>
+        </div>
+        <div class="form-group">
+          <label>Frecuencia</label>
+          <select id="ncd-frecuencia" onchange="previewCuotasDirecto()">
+            <option value="semanal">Semanal</option>
+            <option value="quincenal">Quincenal</option>
+            <option value="mensual" selected>Mensual</option>
+          </select>
+        </div>
+        <div id="ncd-cuotas-preview" style="font-size:12px;color:var(--text-secondary);margin-top:4px"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:10px">
+        <label>Observaciones</label>
+        <textarea id="ncd-observaciones" rows="2" placeholder="Opcional"></textarea>
+      </div>
+
+      <p id="ncd-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+
+    <div class="modal-footer" style="flex-shrink:0">
+      <button class="btn-ghost" onclick="closeModal('modal-nueva-cuenta-directa')">Cancelar</button>
+      <button class="btn-primary" id="ncd-btn-guardar" onclick="guardarCuentaDirecta()">Guardar cuenta directa</button>
     </div>
   </div>
 </div>
