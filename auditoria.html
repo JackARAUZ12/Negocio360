@@ -140,6 +140,9 @@
       transition: border-color var(--transition), box-shadow var(--transition);
       outline: none;
     }
+    input[type="checkbox"], input[type="radio"] {
+      width: auto; padding: 0; flex-shrink: 0;
+    }
     input:focus, select:focus, textarea:focus {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 3px var(--accent-soft);
@@ -839,6 +842,17 @@
       .search-wrap { max-width: 100%; width: 100%; flex-basis: 100%; }
       .filtro-categoria-select { flex: 1; min-width: 0; }
       #vpu-filtro-usuario { margin-left: 0 !important; width: 100% !important; flex-basis: 100%; }
+      /* La tabla de resultado de la consulta (Producto/Cantidad/Monto)
+         es simple, 3 columnas -- no necesita el min-width:640px
+         pensado para tablas mas grandes, y forzarlo la hacia salirse
+         de la pantalla sin necesidad. */
+      #cpu-resultado table { min-width: 0; }
+      /* En la tabla de Ventas por Usuario, la columna de Hora es la
+         menos importante -- se oculta en pantallas chicas para que
+         Producto y Subtotal (lo que de verdad importa) quepan sin
+         tener que hacer tanto scroll horizontal. */
+      #vpu-thead-row th:nth-child(2), #vpu-tbody td:nth-child(2) { display: none; }
+      #vpu-table { min-width: 480px; }
     }
 
     /* Móviles muy pequeños */
@@ -1346,9 +1360,9 @@
         </div>
 
         <div class="table-wrap" style="margin-top:14px">
-          <table>
+          <table id="vpu-table">
             <thead>
-              <tr>
+              <tr id="vpu-thead-row">
                 <th>Fecha</th>
                 <th>Hora</th>
                 <th>N° Venta</th>
