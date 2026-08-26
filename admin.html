@@ -272,6 +272,39 @@
         </div>
       </div>
 
+      <!-- ═══ CRECIMIENTO DEL NEGOCIO (todos los clientes juntos) ═══ -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+              Crecimiento del negocio
+            </div>
+            <div class="card-subtitle">Ingresos y clientes nuevos generados por todas las cuentas juntas — mes actual comparado con el anterior</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+            <div class="stat-card active">
+              <div class="stat-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+              <div class="stat-value" id="stat-ingresos-mes">—</div>
+              <div class="stat-label">Ingresos de todos los clientes (este mes)</div>
+              <div id="stat-ingresos-comparativo" style="font-size:12px;margin-top:4px;color:var(--text-secondary)">—</div>
+            </div>
+            <div class="stat-card total">
+              <div class="stat-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div class="stat-value" id="stat-clientes-nuevos-mes">—</div>
+              <div class="stat-label">Clientes nuevos (este mes)</div>
+              <div id="stat-clientes-comparativo" style="font-size:12px;margin-top:4px;color:var(--text-secondary)">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ CONTROL DE PAGOS (Próximos / Pendientes / Atrasados) ═══ -->
       <div class="payment-lists-grid">
         <div class="card payment-card proximos">

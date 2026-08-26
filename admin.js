@@ -268,6 +268,7 @@ async function loadDashboardStats() {
     // Construir las listas informativas de pagos (próximos / pendientes / atrasados)
     buildPaymentLists(usuarios);
     buildClientesEnRiesgo(usuarios);
+    loadCrecimientoNegocio(usuarios, idsShadow);
 
   } catch (e) {
     toast('Error al cargar estadísticas', e.message, 'error');
@@ -275,7 +276,7 @@ async function loadDashboardStats() {
 }
 
 function showSkeletons() {
-  ['stat-total','stat-activos','stat-suspendidos','stat-cancelados','stat-prueba','stat-premium','stat-en-riesgo']
+  ['stat-total','stat-activos','stat-suspendidos','stat-cancelados','stat-prueba','stat-premium','stat-en-riesgo','stat-ingresos-mes','stat-clientes-nuevos-mes']
     .forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.textContent = '—'; }
@@ -566,6 +567,68 @@ function esClienteEnRiesgo(u) {
   if (!u.ultima_conexion) return true; // nunca ha entrado -- el caso más urgente
   const dias = (Date.now() - new Date(u.ultima_conexion).getTime()) / 86400000;
   return dias >= DIAS_RIESGO;
+}
+
+// Ingresos generados por TODOS los clientes juntos (mes actual vs
+// anterior), y cuantos clientes nuevos entraron. Requiere el acceso
+// especial de admin a movimientos_financieros (agregado aparte, con
+// una politica NUEVA que no toca la que ya existia -- cada cuenta
+// sigue viendo solo lo suyo normalmente).
+// No existía una función de formato de dinero en este archivo --
+// se agrega aquí, simple, para las 2 tarjetas nuevas.
+function fmt(monto, simbolo) {
+  const n = Number(monto) || 0;
+  return `${simbolo || 'C$'} ${n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+async function loadCrecimientoNegocio(usuarios, idsShadow) {
+  try {
+    const hoy = new Date();
+    const fISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const inicioMesActual   = fISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+    const inicioMesAnterior = fISO(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1));
+    const finMesAnterior    = fISO(new Date(hoy.getFullYear(), hoy.getMonth(), 0)); // día 0 = último día real del mes anterior
+
+    // ---- Clientes nuevos: se reutiliza la lista YA cargada y YA
+    // filtrada de sucursales/bodegas, sin hacer una consulta nueva ----
+    const nuevosMesActual   = usuarios.filter(u => u.created_at && u.created_at.slice(0,10) >= inicioMesActual).length;
+    const nuevosMesAnterior = usuarios.filter(u => u.created_at && u.created_at.slice(0,10) >= inicioMesAnterior && u.created_at.slice(0,10) <= finMesAnterior).length;
+
+    document.getElementById('stat-clientes-nuevos-mes').textContent = nuevosMesActual;
+    const difClientes = nuevosMesActual - nuevosMesAnterior;
+    const compCli = document.getElementById('stat-clientes-comparativo');
+    if (compCli) {
+      compCli.textContent = `${nuevosMesAnterior} el mes pasado (${difClientes>=0?'+':''}${difClientes})`;
+      compCli.style.color = difClientes > 0 ? 'var(--success)' : difClientes < 0 ? 'var(--danger)' : '';
+    }
+
+    // ---- Ingresos: consulta nueva, excluyendo sucursales/bodegas
+    // para no contar el mismo dinero dos veces ----
+    const [{ data: movsActual }, { data: movsAnterior }] = await Promise.all([
+      sb.from('movimientos_financieros').select('monto, auth_user_id')
+        .eq('tipo_flujo', 'INGRESO').eq('estado', 'completado').gte('fecha', inicioMesActual),
+      sb.from('movimientos_financieros').select('monto, auth_user_id')
+        .eq('tipo_flujo', 'INGRESO').eq('estado', 'completado').gte('fecha', inicioMesAnterior).lte('fecha', finMesAnterior),
+    ]);
+
+    const sumarSinSucursales = (filas) => (filas||[])
+      .filter(m => !idsShadow.has(m.auth_user_id))
+      .reduce((s,m) => s + (Number(m.monto)||0), 0);
+
+    const totalActual   = sumarSinSucursales(movsActual);
+    const totalAnterior = sumarSinSucursales(movsAnterior);
+
+    document.getElementById('stat-ingresos-mes').textContent = fmt(totalActual, 'C$');
+    const difIngresos = totalActual - totalAnterior;
+    const compIng = document.getElementById('stat-ingresos-comparativo');
+    if (compIng) {
+      const pct = totalAnterior > 0 ? Math.round((difIngresos/totalAnterior)*100) : null;
+      compIng.textContent = `${fmt(totalAnterior,'C$')} el mes pasado` + (pct!==null ? ` (${pct>=0?'+':''}${pct}%)` : '');
+      compIng.style.color = difIngresos > 0 ? 'var(--success)' : difIngresos < 0 ? 'var(--danger)' : '';
+    }
+  } catch (e) {
+    console.warn('loadCrecimientoNegocio:', e);
+  }
 }
 
 function buildClientesEnRiesgo(usuarios) {
