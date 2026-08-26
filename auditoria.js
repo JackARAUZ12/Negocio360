@@ -140,6 +140,85 @@ async function cargarResumenMensual() {
   }
 }
 
+/* =====================================================
+   CONSULTA: ¿cuánto vendió un usuario de un producto en un mes?
+   Reutiliza el MISMO dato de creado_por_nombre -- por eso solo
+   funciona para ventas de despues de que este seguimiento se
+   activo (mas las que se pudieron recuperar de la bitacora
+   mientras aun estaba disponible). Las ventas mas viejas de eso
+   nunca guardaron quien las hizo, no hay forma de recuperarlo.
+===================================================== */
+async function cargarOpcionesConsultaProducto() {
+  try {
+    const { data: productos } = await sbClient.from('productos')
+      .select('id, nombre').eq('auth_user_id', STATE.userId).order('nombre');
+    const selProd = document.getElementById('cpu-producto');
+    if (selProd) {
+      selProd.innerHTML = '<option value="">Elige un producto…</option>' +
+        (productos||[]).map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
+    }
+
+    const { data: perfiles } = await sbClient.from('perfiles_acceso')
+      .select('nombre').eq('auth_user_id', STATE.userId).eq('activo', true);
+    const nombres = [...new Set((perfiles||[]).map(p => p.nombre).filter(Boolean))].sort();
+    const selUser = document.getElementById('cpu-usuario');
+    if (selUser) {
+      selUser.innerHTML = '<option value="">Elige un usuario…</option>' +
+        nombres.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    }
+
+    const mesInput = document.getElementById('cpu-mes');
+    if (mesInput && !mesInput.value) mesInput.value = todayISO().slice(0,7);
+  } catch (e) { console.warn('cargarOpcionesConsultaProducto:', e); }
+}
+
+async function consultarProductoPorUsuario() {
+  const productoId = document.getElementById('cpu-producto')?.value;
+  const usuario = document.getElementById('cpu-usuario')?.value;
+  const mes = document.getElementById('cpu-mes')?.value;
+  const resultDiv = document.getElementById('cpu-resultado');
+  if (!resultDiv) return;
+
+  if (!productoId || !usuario || !mes) {
+    resultDiv.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;margin:0">Elige producto, usuario y mes para calcular.</p>';
+    return;
+  }
+
+  resultDiv.innerHTML = '<p style="padding:12px 0;margin:0;color:var(--text-muted)">Calculando…</p>';
+
+  try {
+    const inicio = `${mes}-01`;
+    const [anio, mesNum] = mes.split('-').map(Number);
+    const fin = new Date(anio, mesNum, 0).toISOString().slice(0,10);
+
+    const { data: ventas } = await sbClient.from('ventas')
+      .select('id').eq('auth_user_id', STATE.userId).eq('estado','completada')
+      .eq('creado_por_nombre', usuario).gte('fecha', inicio).lte('fecha', fin);
+
+    const nombreProducto = document.getElementById('cpu-producto').selectedOptions[0]?.textContent || 'este producto';
+
+    if (!ventas || !ventas.length) {
+      resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese mes — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;
+      return;
+    }
+
+    const idsVentas = ventas.map(v => v.id);
+    const { data: detalles } = await sbClient.from('venta_detalles')
+      .select('cantidad, subtotal').in('venta_id', idsVentas).eq('producto_id', productoId);
+
+    const totalCantidad = (detalles||[]).reduce((s,d) => s + (Number(d.cantidad)||0), 0);
+    const totalMonto = (detalles||[]).reduce((s,d) => s + (Number(d.subtotal)||0), 0);
+
+    resultDiv.innerHTML = `
+      <div style="padding:14px 16px;background:var(--accent-soft);border-radius:10px;font-size:14px;line-height:1.6">
+        <b>${esc(usuario)}</b> vendió <b>${fmtNum(totalCantidad)}</b> unidades de <b>${esc(nombreProducto)}</b> en ${esc(mes)}, por un total de <b>${fmtMonto(totalMonto)}</b>.
+      </div>`;
+  } catch (e) {
+    console.error('consultarProductoPorUsuario:', e);
+    resultDiv.innerHTML = '<p style="color:var(--danger);padding:12px 0;margin:0">No se pudo calcular, intenta de nuevo.</p>';
+  }
+}
+
 async function cargarUsuariosParaFiltroVentas() {
   try {
     // Se traen TODOS los perfiles de personal registrados (activos),
@@ -162,7 +241,7 @@ async function cargarUsuariosParaFiltroVentas() {
 async function cargarVentasPorUsuario() {
   const usuarioElegido = document.getElementById('vpu-filtro-usuario')?.value || '';
   const tbody = document.getElementById('vpu-tbody');
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando…</td></tr>';
 
   try {
     const hoy = todayISO();
@@ -180,28 +259,36 @@ async function cargarVentasPorUsuario() {
     document.getElementById('vpu-total-mes').textContent = fmtMonto(totalMes);
 
     if (!ventasMes || !ventasMes.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Sin ventas este mes' + (usuarioElegido ? ' para este usuario' : '') + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Sin ventas este mes' + (usuarioElegido ? ' para este usuario' : '') + '</td></tr>';
       return;
     }
 
     // Traer los productos de todas estas ventas de una sola vez
     const idsVentas = ventasMes.map(v => v.id);
     const { data: detalles } = await sbClient.from('venta_detalles')
-      .select('venta_id, producto_nombre, cantidad').in('venta_id', idsVentas);
+      .select('venta_id, producto_nombre, cantidad, subtotal').in('venta_id', idsVentas).order('created_at');
     const detallesPorVenta = {};
-    (detalles||[]).forEach(d => {
-      (detallesPorVenta[d.venta_id] ||= []).push(`${d.cantidad}x ${d.producto_nombre}`);
-    });
+    (detalles||[]).forEach(d => { (detallesPorVenta[d.venta_id] ||= []).push(d); });
 
+    // Una fila por CADA producto, no una fila por venta -- si una
+    // venta tiene 3 productos, salen 3 filas, con la fecha/hora/N°
+    // venta repetidos para dar contexto.
     tbody.innerHTML = ventasMes.map(v => {
-      const fecha = new Date(v.created_at || v.fecha);
-      return `<tr>
-        <td>${fmtFecha(v.fecha)}</td>
-        <td>${fmtHora(v.created_at || v.fecha)}</td>
-        <td>${esc(v.numero_venta)}</td>
-        <td style="max-width:280px;white-space:normal">${esc((detallesPorVenta[v.id]||[]).join(', ') || '—')}</td>
-        <td style="text-align:right;font-weight:600">${fmtMonto(v.total)}</td>
-      </tr>`;
+      const items = detallesPorVenta[v.id] || [];
+      if (!items.length) {
+        return `<tr>
+          <td>${fmtFecha(v.fecha)}</td><td>${fmtHora(v.created_at || v.fecha)}</td><td>${esc(v.numero_venta)}</td>
+          <td>—</td><td>—</td><td style="text-align:right;font-weight:600">${fmtMonto(v.total)}</td>
+        </tr>`;
+      }
+      return items.map((d, i) => `<tr>
+        <td>${i===0 ? fmtFecha(v.fecha) : ''}</td>
+        <td>${i===0 ? fmtHora(v.created_at || v.fecha) : ''}</td>
+        <td>${i===0 ? esc(v.numero_venta) : ''}</td>
+        <td>${fmtNum(d.cantidad)}</td>
+        <td style="max-width:220px;white-space:normal">${esc(d.producto_nombre)}</td>
+        <td style="text-align:right">${fmtMonto(d.subtotal)}</td>
+      </tr>`).join('');
     }).join('');
   } catch (e) {
     console.error('cargarVentasPorUsuario:', e);
@@ -546,6 +633,7 @@ async function initAuditoria() {
       cargarAuditoria();
       cargarUsuariosParaFiltroVentas();
       cargarResumenMensual();
+      cargarOpcionesConsultaProducto();
     };
 
     // Auditoría SIEMPRE exige el código de administrador, sin importar

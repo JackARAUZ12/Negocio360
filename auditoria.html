@@ -1236,6 +1236,23 @@
         </div>
       </div>
 
+      <!-- CONSULTA: PRODUCTO POR USUARIO -->
+      <div class="panel-card fade-in" style="margin-top:20px">
+        <div class="filtros-row" style="margin-bottom:4px">
+          <div>
+            <h3 style="margin:0 0 2px">¿Cuánto vendió un usuario de un producto?</h3>
+            <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Elige producto, usuario y mes. Solo cuenta ventas con usuario asignado (desde que se activó este seguimiento) — las ventas más antiguas, de antes de esa fecha, no tienen forma de saber quién las hizo.</p>
+          </div>
+        </div>
+        <div class="filtros-row">
+          <select id="cpu-producto" style="width:auto;min-width:200px"><option value="">Elige un producto…</option></select>
+          <select id="cpu-usuario" style="width:auto;min-width:180px"><option value="">Elige un usuario…</option></select>
+          <input type="month" id="cpu-mes" style="width:auto"/>
+          <button class="btn btn-primary" onclick="consultarProductoPorUsuario()">Consultar</button>
+        </div>
+        <div id="cpu-resultado" style="padding:0 20px 16px"></div>
+      </div>
+
       <!-- RESUMEN MENSUAL -->
       <div class="panel-card fade-in" style="margin-top:20px">
         <div class="filtros-row" style="margin-bottom:4px">
@@ -1325,12 +1342,13 @@
                 <th>Fecha</th>
                 <th>Hora</th>
                 <th>N° Venta</th>
-                <th>Producto y cantidad</th>
-                <th style="text-align:right">Total</th>
+                <th>Cant.</th>
+                <th>Producto</th>
+                <th style="text-align:right">Subtotal</th>
               </tr>
             </thead>
             <tbody id="vpu-tbody">
-              <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Selecciona un usuario para ver su detalle</td></tr>
+              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Selecciona un usuario para ver su detalle</td></tr>
             </tbody>
           </table>
         </div>
