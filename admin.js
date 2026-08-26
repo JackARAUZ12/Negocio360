@@ -22,11 +22,18 @@ async function obtenerIdsSucursalesShadow() {
     const { data, error } = await sb.rpc('listar_auth_ids_sucursales_shadow');
     if (error) throw error;
     _idsSucursalesShadowCache = new Set((data || []).map(r => r.auth_user_id));
+    return _idsSucursalesShadowCache;
   } catch (e) {
     console.warn('obtenerIdsSucursalesShadow:', e);
-    _idsSucursalesShadowCache = new Set(); // ante cualquier falla, no se excluye nada (no se rompe el panel)
+    // BUG REAL CORREGIDO: antes, si esta llamada fallaba UNA sola vez
+    // (ej. un problema de red pasajero), se guardaba un Set() vacío
+    // en la caché -- y como un Set vacío sigue siendo "verdadero" en
+    // JS, el siguiente intento nunca volvía a consultar de verdad,
+    // dejando sucursales y bodegas visibles el resto de la sesión.
+    // Ahora NO se guarda nada en caché si falla -- el próximo intento
+    // (ej. recargar el Dashboard) sí vuelve a consultar en serio.
+    return new Set();
   }
-  return _idsSucursalesShadowCache;
 }
 
 // ── CONFIGURACIÓN DE COBRO ─────────────────────────────────
