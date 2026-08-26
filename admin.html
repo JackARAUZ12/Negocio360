@@ -989,6 +989,10 @@
         <div class="detail-item">
           <label>Teléfono</label>
           <span id="detail-telefono">—</span>
+          <a id="detail-telefono-whatsapp" href="#" target="_blank" rel="noopener" class="btn-icon btn-sm" title="Abrir chat de WhatsApp con este número" style="display:none;margin-left:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.48 1.32 5L2 22l5.25-1.38c1.44.79 3.06 1.2 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2m0 1.67c2.2 0 4.27.86 5.82 2.42a8.23 8.23 0 0 1 2.42 5.82c0 4.54-3.7 8.23-8.24 8.23a8.2 8.2 0 0 1-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.24-8.23m-4.87 4.72c-.14 0-.4.05-.6.29-.21.24-.8.78-.8 1.9 0 1.12.82 2.2.93 2.35.11.15 1.6 2.44 3.88 3.42 1.92.83 2.31.66 2.73.62.42-.04 1.35-.55 1.54-1.08.19-.53.19-.98.13-1.08-.06-.09-.21-.15-.44-.26-.23-.12-1.35-.67-1.56-.74-.21-.08-.36-.12-.51.12-.15.23-.59.74-.72.9-.13.15-.27.16-.5.05-.23-.12-.98-.36-1.86-1.15-.69-.61-1.15-1.37-1.29-1.6-.13-.23-.01-.36.1-.47.11-.11.23-.27.35-.4.11-.14.15-.23.22-.38.08-.16.04-.3-.02-.42-.06-.12-.51-1.29-.71-1.75-.19-.46-.38-.4-.51-.4h-.16Z"/></svg>
+            WhatsApp
+          </a>
         </div>
         <div class="detail-item">
           <label>Plan</label>
@@ -1003,12 +1007,27 @@
           <span id="detail-registro">—</span>
         </div>
         <div class="detail-item">
+          <label>Última Conexión</label>
+          <span id="detail-conexion">—</span>
+        </div>
+        <div class="detail-item">
           <label>Último Pago</label>
           <span id="detail-ultimo-pago">—</span>
         </div>
         <div class="detail-item">
           <label>Onboarding</label>
           <span id="detail-onboarding">—</span>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:8px">📝 Notas internas (solo visibles para administradores)</div>
+        <div id="notas-cliente-lista" style="max-height:160px;overflow-y:auto;margin-bottom:10px">
+          <div style="color:var(--text-muted);font-size:12.5px">Cargando…</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="nota-cliente-texto" placeholder="Ej: Llamó el 20 de agosto, prometió pagar el 25…" style="flex:1" onkeydown="if(event.key==='Enter')guardarNotaCliente()"/>
+          <button class="btn-icon btn-primary btn-sm" onclick="guardarNotaCliente()">Agregar</button>
         </div>
       </div>
     </div>

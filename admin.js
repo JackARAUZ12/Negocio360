@@ -53,6 +53,7 @@ function cicloLabel(u) {
 let currentUser   = null;
 let adminRecord   = null;
 let allUsers      = [];
+let USUARIO_DETALLE_ACTUAL = null; // el usuario que está abierto ahora mismo en el modal de detalle, para las notas internas
 let allCodes      = [];
 let userFilter    = 'all';
 let pendingAction = null;  // función pendiente de confirmación
@@ -576,6 +577,19 @@ function esClienteEnRiesgo(u) {
 // sigue viendo solo lo suyo normalmente).
 // No existía una función de formato de dinero en este archivo --
 // se agrega aquí, simple, para las 2 tarjetas nuevas.
+// Los numeros guardados vienen en formatos distintos ("57772533",
+// "+50587878108", "81294177"...) -- wa.me exige el numero completo
+// con codigo de pais, sin simbolos. Los numeros locales de 8 digitos
+// (el formato normal en Nicaragua) se completan con 505 al inicio;
+// los que ya vienen con codigo de pais se dejan tal cual.
+function normalizarNumeroWhatsApp(telefono) {
+  if (!telefono) return null;
+  const soloDigitos = String(telefono).replace(/[^\d]/g, '');
+  if (!soloDigitos) return null;
+  if (soloDigitos.length === 8) return '505' + soloDigitos;
+  return soloDigitos;
+}
+
 function fmt(monto, simbolo) {
   const n = Number(monto) || 0;
   return `${simbolo || 'C$'} ${n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -882,23 +896,84 @@ function filterAndSearch() {
 }
 
 // Ver usuario — modal detalle
+// Notas internas de administrador sobre un cliente -- solo lectura
+// y escritura para administradores (tabla propia con su propio
+// candado de RLS, confirmado que un usuario normal recibe "permiso
+// denegado" si intenta escribir aqui).
+async function cargarNotasCliente(authUserId) {
+  const cont = document.getElementById('notas-cliente-lista');
+  if (!cont) return;
+  cont.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px">Cargando…</div>';
+  try {
+    const { data, error } = await sb.from('admin_notas_clientes')
+      .select('*').eq('auth_user_id', authUserId).order('created_at', { ascending:false });
+    if (error) throw error;
+
+    if (!data || !data.length) {
+      cont.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px">Sin notas todavía.</div>';
+      return;
+    }
+    cont.innerHTML = data.map(n => `
+      <div style="padding:8px 10px;border-radius:8px;background:var(--bg-hover);margin-bottom:6px;font-size:12.5px">
+        <div>${escHtml(n.texto)}</div>
+        <div style="color:var(--text-muted);font-size:11px;margin-top:3px">${escHtml(n.creado_por_email)} · ${formatDate(n.created_at)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.warn('cargarNotasCliente:', e);
+    cont.innerHTML = '<div style="color:var(--danger);font-size:12.5px">No se pudieron cargar las notas.</div>';
+  }
+}
+
+async function guardarNotaCliente() {
+  const input = document.getElementById('nota-cliente-texto');
+  const texto = input?.value.trim();
+  if (!texto) return;
+  if (!USUARIO_DETALLE_ACTUAL?.auth_user_id) { toast('Error', 'No se identificó al cliente', 'error'); return; }
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('admin_notas_clientes').insert({
+      auth_user_id: USUARIO_DETALLE_ACTUAL.auth_user_id,
+      texto,
+      creado_por_email: user?.email || 'admin',
+    });
+    if (error) throw error;
+
+    input.value = '';
+    await cargarNotasCliente(USUARIO_DETALLE_ACTUAL.auth_user_id);
+  } catch (e) {
+    console.error('guardarNotaCliente:', e);
+    toast('Error', 'No se pudo guardar la nota', 'error');
+  }
+}
+
 function viewUser(id) {
   const u = allUsers.find(x => x.id === id);
   if (!u) return;
+  USUARIO_DETALLE_ACTUAL = u; // se reutiliza para las notas internas, sin tener que buscarlo de nuevo
 
   document.getElementById('detail-nombre').textContent     = u.nombre || '—';
   document.getElementById('detail-apellido').textContent   = u.apellido || '—';
   document.getElementById('detail-negocio').textContent    = u.nombre_negocio || '—';
   document.getElementById('detail-email').textContent      = u.email || '—';
   document.getElementById('detail-telefono').textContent   = u.telefono || '—';
+  const linkWa = document.getElementById('detail-telefono-whatsapp');
+  if (linkWa) {
+    const numeroWa = normalizarNumeroWhatsApp(u.telefono);
+    if (numeroWa) { linkWa.href = `https://wa.me/${numeroWa}`; linkWa.style.display = 'inline-flex'; }
+    else { linkWa.style.display = 'none'; }
+  }
   document.getElementById('detail-plan').innerHTML         = planBadge(u.plan);
   document.getElementById('detail-estado').innerHTML       = estadoBadge(u.estado_cuenta);
   document.getElementById('detail-registro').textContent   = formatDate(u.created_at);
+  document.getElementById('detail-conexion').innerHTML     = conexionBadge(u.ultima_conexion);
   document.getElementById('detail-ultimo-pago').textContent = u.fecha_ultimo_pago ? formatDate(u.fecha_ultimo_pago) : 'Sin registro';
   document.getElementById('detail-onboarding').innerHTML   = u.onboarding_completado
     ? '<span class="badge badge-success">Completado</span>'
     : '<span class="badge badge-warning">Pendiente</span>';
 
+  cargarNotasCliente(u.auth_user_id);
   openModal('modal-view-user');
 }
 
