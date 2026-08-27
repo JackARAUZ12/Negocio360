@@ -116,16 +116,113 @@ function renderUserInfo(profile, email) {
    autónoma, para no arriesgar nada de lo que ya funciona ahí.
 ===================================================== */
 function abrirModalIngresarMateriaPrima() {
+  // Reset del formulario "nueva"
   document.getElementById('mp-nombre').value = '';
   document.getElementById('mp-sku').value = '';
   document.getElementById('mp-categoria').value = '';
   document.getElementById('mp-costo').value = '';
   document.getElementById('mp-stock-inicial').value = '';
   document.getElementById('mp-stock-minimo').value = '';
-  document.getElementById('mp-error').textContent = '';
-  setDescontarCajaMateriaPrima(true); // por defecto "Sí" -- lo más común al ingresar stock nuevo
+  setDescontarCajaMateriaPrima(true);
   actualizarResumenMateriaPrima();
+
+  // Reset del formulario "existente"
+  document.getElementById('mp-existente-cantidad').value = '';
+  document.getElementById('mp-existente-costo').value = '';
+  document.getElementById('mp-existente-stock-actual').textContent = '';
+  STATE.materiaPrimaExistenteSeleccionada = null;
+  setDescontarCajaMateriaPrimaExistente(true);
+  actualizarResumenMateriaPrimaExistente();
+
+  document.getElementById('mp-error').textContent = '';
+
+  // Siempre arranca en la pantalla de elección
+  volverAEleccionMateriaPrima();
   openModal('modal-materia-prima');
+}
+
+// El modal siempre arranca preguntando que se quiere hacer -- no
+// asume "nueva" por defecto, para que quede claro que tambien se
+// puede agregar stock a algo que ya existe.
+function elegirModoMateriaPrima(modo) {
+  document.getElementById('mp-paso-eleccion').style.display = 'none';
+  document.getElementById('mp-form-nueva').style.display = modo === 'nueva' ? 'block' : 'none';
+  document.getElementById('mp-form-existente').style.display = modo === 'existente' ? 'block' : 'none';
+  document.getElementById('mp-btn-guardar').style.display = modo === 'nueva' ? 'inline-flex' : 'none';
+  document.getElementById('mp-existente-btn-guardar').style.display = modo === 'existente' ? 'inline-flex' : 'none';
+
+  if (modo === 'existente') {
+    cargarMateriasPrimasParaSelector();
+  }
+}
+
+function volverAEleccionMateriaPrima() {
+  document.getElementById('mp-paso-eleccion').style.display = 'block';
+  document.getElementById('mp-form-nueva').style.display = 'none';
+  document.getElementById('mp-form-existente').style.display = 'none';
+  document.getElementById('mp-btn-guardar').style.display = 'none';
+  document.getElementById('mp-existente-btn-guardar').style.display = 'none';
+}
+
+async function cargarMateriasPrimasParaSelector() {
+  const sel = document.getElementById('mp-existente-select');
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  try {
+    const { data } = await sb.from('productos')
+      .select('id,nombre,sku,costo,stock_actual')
+      .eq('auth_user_id', STATE.userId).eq('es_materia_prima', true).eq('activo', true)
+      .order('nombre');
+    STATE.materiasPrimasDisponibles = data || [];
+    poblarSelectorMateriaPrimaExistente(STATE.materiasPrimasDisponibles);
+  } catch (e) {
+    sel.innerHTML = '<option value="">No se pudieron cargar</option>';
+  }
+}
+
+function poblarSelectorMateriaPrimaExistente(materias) {
+  STATE.materiasPrimasDisponibles = materias;
+  const sel = document.getElementById('mp-existente-select');
+  if (!materias.length) {
+    sel.innerHTML = '<option value="">No tienes materias primas registradas todavía</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">— Elige una —</option>' +
+    materias.map(m => `<option value="${m.id}">${esc(m.nombre)}${m.sku ? ' ('+esc(m.sku)+')' : ''}</option>`).join('');
+}
+
+function onSeleccionarMateriaPrimaExistente() {
+  const id = document.getElementById('mp-existente-select')?.value;
+  const materia = (STATE.materiasPrimasDisponibles || []).find(m => m.id === id) || null;
+  STATE.materiaPrimaExistenteSeleccionada = materia;
+  const info = document.getElementById('mp-existente-stock-actual');
+  if (materia) {
+    info.textContent = `Stock actual: ${materia.stock_actual} — costo guardado: ${fmt(materia.costo)}`;
+    // Se sugiere el mismo costo guardado, editable por si esta
+    // entrada cuesta distinto.
+    const costoInput = document.getElementById('mp-existente-costo');
+    if (!costoInput.value) costoInput.value = materia.costo;
+  } else {
+    info.textContent = '';
+  }
+  actualizarResumenMateriaPrimaExistente();
+}
+
+function setDescontarCajaMateriaPrimaExistente(descontar) {
+  STATE.descontarCajaMateriaPrimaExistente = descontar;
+  const btnSi = document.getElementById('mp-existente-caja-si');
+  const btnNo = document.getElementById('mp-existente-caja-no');
+  btnSi.style.borderColor = descontar ? 'var(--accent)' : '';
+  btnSi.style.background  = descontar ? 'var(--accent-soft)' : '';
+  btnNo.style.borderColor = !descontar ? 'var(--accent)' : '';
+  btnNo.style.background  = !descontar ? 'var(--accent-soft)' : '';
+}
+
+function actualizarResumenMateriaPrimaExistente() {
+  const cantidad = Number(document.getElementById('mp-existente-cantidad')?.value) || 0;
+  const costo = Number(document.getElementById('mp-existente-costo')?.value) || 0;
+  const monto = cantidad * costo;
+  const resumen = document.getElementById('mp-existente-monto-resumen');
+  if (resumen) resumen.textContent = monto > 0 ? `— esta compra es ${fmt(monto)}` : '';
 }
 
 // Interruptor claro y SIEMPRE visible (antes era un checkbox que
@@ -207,6 +304,63 @@ async function guardarMateriaPrima() {
     errEl.textContent = 'Error al guardar: ' + (e.message || '');
   } finally {
     setBtnLoading('mp-btn-guardar', false);
+  }
+}
+
+// Agregar stock a una materia prima que YA EXISTE -- usa el mismo
+// RPC atomico que ya usa Compras (incrementar_stock_producto),
+// nunca modifica el costo guardado del producto (igual que hace
+// Compras al comprar mas de un producto que ya existe).
+async function guardarStockMateriaPrimaExistente() {
+  const errEl = document.getElementById('mp-error');
+  errEl.textContent = '';
+
+  const materia = STATE.materiaPrimaExistenteSeleccionada;
+  if (!materia) { errEl.textContent = 'Elige una materia prima.'; return; }
+  const cantidad = Number(document.getElementById('mp-existente-cantidad')?.value);
+  if (!cantidad || cantidad <= 0) { errEl.textContent = 'Escribe una cantidad válida.'; return; }
+  const costoEntrada = Number(document.getElementById('mp-existente-costo')?.value);
+  if (isNaN(costoEntrada) || costoEntrada < 0) { errEl.textContent = 'Escribe un costo válido para esta entrada.'; return; }
+  const descontarCaja = STATE.descontarCajaMateriaPrimaExistente !== false;
+  const montoCompra = cantidad * costoEntrada;
+
+  setBtnLoading('mp-existente-btn-guardar', true);
+  try {
+    const { data: resultado, error: errStock } = await sb.rpc('incrementar_stock_producto', {
+      p_producto_id: materia.id, p_auth_user_id: STATE.userId, p_cantidad: cantidad,
+    });
+    if (errStock) throw errStock;
+    const stockNuevo = resultado && resultado.length ? resultado[0].stock_actual : null;
+
+    if (descontarCaja && montoCompra > 0) {
+      try {
+        const { data: ultMov } = await sb.from('movimientos_financieros')
+          .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        const saldoAnterior = ultMov ? Number(ultMov.saldo_resultante) : 0;
+        const saldoResultante = saldoAnterior - montoCompra;
+
+        await sb.from('movimientos_financieros').insert({
+          auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
+          concepto: `Compra de materia prima: ${materia.nombre}`, monto: montoCompra,
+          saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+          metodo_pago_nombre: 'Efectivo', referencia_tipo: 'producto', referencia_id: materia.id,
+          fecha: ymdLocal(new Date()), estado: 'completado',
+        });
+      } catch (eCaja) {
+        console.warn('No se pudo descontar de Caja (el stock ya quedó actualizado):', eCaja);
+        showToast('Stock actualizado, pero no se pudo descontar de Caja', 'error');
+      }
+    }
+
+    closeModal('modal-materia-prima');
+    showToast(`"${materia.nombre}" ahora tiene ${stockNuevo ?? '—'} en stock`);
+    await cargarProductosCache();
+  } catch (e) {
+    console.error('guardarStockMateriaPrimaExistente:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message || '');
+  } finally {
+    setBtnLoading('mp-existente-btn-guardar', false);
   }
 }
 

@@ -1342,60 +1342,114 @@
       <div class="modal-overlay" id="modal-materia-prima">
         <div class="modal-box" style="max-width:520px">
           <div class="modal-header">
-            <h3>📦 Ingresar Materia Prima</h3>
+            <h3>📦 Materia Prima</h3>
             <button class="modal-close" onclick="closeModal('modal-materia-prima')">&times;</button>
           </div>
           <div class="modal-body">
             <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;padding:10px 12px;background:var(--bg-surface-2);border-radius:var(--radius-md)">
-              La <b>materia prima</b> es lo que usas para fabricar tus productos — no es lo que vendes directamente. Por ejemplo, si produces pan, la harina y la levadura son materia prima; el pan ya horneado es el producto terminado. Esto se agrega a tu inventario igual que un producto normal, para que puedas usarla en tus recetas de producción.
+              La <b>materia prima</b> es lo que usas para fabricar tus productos — no es lo que vendes directamente. Por ejemplo, si produces pan, la harina y la levadura son materia prima; el pan ya horneado es el producto terminado.
             </p>
 
-            <div class="form-group">
-              <label>Nombre *</label>
-              <input type="text" id="mp-nombre" placeholder="Ej: Harina de trigo"/>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>SKU (opcional)</label>
-                <input type="text" id="mp-sku" placeholder="Opcional"/>
-              </div>
-              <div class="form-group">
-                <label>Categoría (opcional)</label>
-                <input type="text" id="mp-categoria" placeholder="Ej: Insumos"/>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Costo unitario *</label>
-                <input type="number" id="mp-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenMateriaPrima()"/>
-              </div>
-              <div class="form-group">
-                <label>Stock inicial *</label>
-                <input type="number" id="mp-stock-inicial" min="0" step="0.01" placeholder="0" oninput="actualizarResumenMateriaPrima()"/>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Stock mínimo (para avisarte cuando esté por acabarse)</label>
-              <input type="number" id="mp-stock-minimo" min="0" step="0.01" placeholder="0"/>
-            </div>
-
-            <div class="form-group">
-              <label>¿Descontar esta compra de Caja? <span id="mp-monto-resumen" style="font-weight:400;color:var(--text-secondary)"></span></label>
+            <!-- PASO 0: ¿nueva o agregar a una existente? -->
+            <div id="mp-paso-eleccion" class="form-group">
+              <label>¿Qué quieres hacer?</label>
               <div style="display:flex;gap:10px">
-                <button type="button" class="btn-secondary" id="mp-caja-si" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrima(true)">Sí, descontar de Caja</button>
-                <button type="button" class="btn-secondary" id="mp-caja-no" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrima(false)">No descontar</button>
+                <button type="button" class="btn-secondary" style="flex:1;justify-content:center;padding:14px 8px;flex-direction:column;gap:4px;height:auto" onclick="elegirModoMateriaPrima('nueva')">
+                  <span style="font-size:20px">🆕</span>
+                  <span>Materia prima nueva</span>
+                </button>
+                <button type="button" class="btn-secondary" style="flex:1;justify-content:center;padding:14px 8px;flex-direction:column;gap:4px;height:auto" onclick="elegirModoMateriaPrima('existente')">
+                  <span style="font-size:20px">➕</span>
+                  <span>Agregar a una que ya existe</span>
+                </button>
               </div>
-              <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0">Elige "No descontar" si ya la pagaste antes, o si la vas a registrar en Caja por separado.</p>
+            </div>
+
+            <!-- PASO 1a: MATERIA PRIMA NUEVA -->
+            <div id="mp-form-nueva" style="display:none">
+              <button type="button" class="btn-ghost" style="margin-bottom:10px;font-size:12px" onclick="volverAEleccionMateriaPrima()">← Volver</button>
+
+              <div class="form-group">
+                <label>Nombre *</label>
+                <input type="text" id="mp-nombre" placeholder="Ej: Harina de trigo"/>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>SKU (opcional)</label>
+                  <input type="text" id="mp-sku" placeholder="Opcional"/>
+                </div>
+                <div class="form-group">
+                  <label>Categoría (opcional)</label>
+                  <input type="text" id="mp-categoria" placeholder="Ej: Insumos"/>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Costo unitario *</label>
+                  <input type="number" id="mp-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenMateriaPrima()"/>
+                </div>
+                <div class="form-group">
+                  <label>Stock inicial *</label>
+                  <input type="number" id="mp-stock-inicial" min="0" step="0.01" placeholder="0" oninput="actualizarResumenMateriaPrima()"/>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Stock mínimo (para avisarte cuando esté por acabarse)</label>
+                <input type="number" id="mp-stock-minimo" min="0" step="0.01" placeholder="0"/>
+              </div>
+
+              <div class="form-group">
+                <label>¿Descontar esta compra de Caja? <span id="mp-monto-resumen" style="font-weight:400;color:var(--text-secondary)"></span></label>
+                <div style="display:flex;gap:10px">
+                  <button type="button" class="btn-secondary" id="mp-caja-si" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrima(true)">Sí, descontar de Caja</button>
+                  <button type="button" class="btn-secondary" id="mp-caja-no" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrima(false)">No descontar</button>
+                </div>
+                <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0">Elige "No descontar" si ya la pagaste antes, o si la vas a registrar en Caja por separado.</p>
+              </div>
+            </div>
+
+            <!-- PASO 1b: AGREGAR A MATERIA PRIMA EXISTENTE -->
+            <div id="mp-form-existente" style="display:none">
+              <button type="button" class="btn-ghost" style="margin-bottom:10px;font-size:12px" onclick="volverAEleccionMateriaPrima()">← Volver</button>
+
+              <div class="form-group">
+                <label>¿Cuál materia prima? *</label>
+                <select id="mp-existente-select" onchange="onSeleccionarMateriaPrimaExistente()">
+                  <option value="">— Elige una —</option>
+                </select>
+                <p id="mp-existente-stock-actual" style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0"></p>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Cantidad a agregar *</label>
+                  <input type="number" id="mp-existente-cantidad" min="0.01" step="0.01" placeholder="0" oninput="actualizarResumenMateriaPrimaExistente()"/>
+                </div>
+                <div class="form-group">
+                  <label>Costo unitario de esta entrada *</label>
+                  <input type="number" id="mp-existente-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenMateriaPrimaExistente()"/>
+                </div>
+              </div>
+              <p style="font-size:11.5px;color:var(--text-muted);margin:-4px 0 0">Solo se usa para calcular cuánto descontar de Caja — el costo guardado del producto no cambia (igual que al comprar más de un producto normal).</p>
+
+              <div class="form-group" style="margin-top:14px">
+                <label>¿Descontar esta compra de Caja? <span id="mp-existente-monto-resumen" style="font-weight:400;color:var(--text-secondary)"></span></label>
+                <div style="display:flex;gap:10px">
+                  <button type="button" class="btn-secondary" id="mp-existente-caja-si" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrimaExistente(true)">Sí, descontar de Caja</button>
+                  <button type="button" class="btn-secondary" id="mp-existente-caja-no" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrimaExistente(false)">No descontar</button>
+                </div>
+              </div>
             </div>
 
             <p id="mp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
           </div>
           <div class="modal-footer">
             <button class="btn-ghost" onclick="closeModal('modal-materia-prima')">Cancelar</button>
-            <button class="btn-primary" id="mp-btn-guardar" onclick="guardarMateriaPrima()">Guardar materia prima</button>
+            <button class="btn-primary" id="mp-btn-guardar" style="display:none" onclick="guardarMateriaPrima()">Guardar materia prima</button>
+            <button class="btn-primary" id="mp-existente-btn-guardar" style="display:none" onclick="guardarStockMateriaPrimaExistente()">Agregar stock</button>
           </div>
         </div>
       </div>
@@ -1595,7 +1649,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="produccion.js?v=20260827b"></script>
+<script src="produccion.js?v=20260827c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
