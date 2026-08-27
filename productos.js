@@ -3046,10 +3046,18 @@ function initEventos() {
   const formProducto = $('formProducto');
   if (formProducto) {
     formProducto.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        guardarProducto();
-      }
+      if (e.key !== 'Enter' || e.target.tagName === 'TEXTAREA') return;
+      // BUG REAL CORREGIDO: al escribir varios precios de escala seguidos
+      // (nombre, precio, nombre, precio...) es MUY natural presionar Enter
+      // entre campos -- pero eso disparaba guardarProducto() de inmediato,
+      // guardando el producto CON LA FILA A MEDIO ESCRIBIR todavía vacía o
+      // incompleta. El toast decía "Producto actualizado" (parecía exitoso),
+      // pero el precio nuevo que se estaba escribiendo nunca llegaba a
+      // guardarse. Ahora Enter dentro del editor de escalas (o de combo)
+      // no dispara el guardado -- solo confirma el campo, como es normal.
+      if (e.target.closest('#escalasEditorBody, #comboEscalasEditorBody')) return;
+      e.preventDefault();
+      guardarProducto();
     });
   }
 
