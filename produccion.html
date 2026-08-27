@@ -1382,11 +1382,13 @@
               <input type="number" id="mp-stock-minimo" min="0" step="0.01" placeholder="0"/>
             </div>
 
-            <div class="form-group" id="mp-wrap-descontar-caja" style="display:none">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="mp-descontar-caja" checked style="width:auto;flex-shrink:0"/>
-                <span>Descontar <b id="mp-monto-resumen"></b> de Caja (esta compra inicial de la materia prima)</span>
-              </label>
+            <div class="form-group">
+              <label>¿Descontar esta compra de Caja? <span id="mp-monto-resumen" style="font-weight:400;color:var(--text-secondary)"></span></label>
+              <div style="display:flex;gap:10px">
+                <button type="button" class="btn-secondary" id="mp-caja-si" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrima(true)">Sí, descontar de Caja</button>
+                <button type="button" class="btn-secondary" id="mp-caja-no" style="flex:1;justify-content:center" onclick="setDescontarCajaMateriaPrima(false)">No descontar</button>
+              </div>
+              <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0">Elige "No descontar" si ya la pagaste antes, o si la vas a registrar en Caja por separado.</p>
             </div>
 
             <p id="mp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
@@ -1593,7 +1595,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="produccion.js?v=20260827a"></script>
+<script src="produccion.js?v=20260827b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

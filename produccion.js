@@ -122,19 +122,31 @@ function abrirModalIngresarMateriaPrima() {
   document.getElementById('mp-costo').value = '';
   document.getElementById('mp-stock-inicial').value = '';
   document.getElementById('mp-stock-minimo').value = '';
-  document.getElementById('mp-descontar-caja').checked = true;
-  document.getElementById('mp-wrap-descontar-caja').style.display = 'none';
   document.getElementById('mp-error').textContent = '';
+  setDescontarCajaMateriaPrima(true); // por defecto "Sí" -- lo más común al ingresar stock nuevo
+  actualizarResumenMateriaPrima();
   openModal('modal-materia-prima');
+}
+
+// Interruptor claro y SIEMPRE visible (antes era un checkbox que
+// solo aparecía si ya había un monto escrito -- podía pasar
+// desapercibido). Ahora la elección es explícita desde el principio.
+function setDescontarCajaMateriaPrima(descontar) {
+  STATE.descontarCajaMateriaPrima = descontar;
+  const btnSi = document.getElementById('mp-caja-si');
+  const btnNo = document.getElementById('mp-caja-no');
+  btnSi.style.borderColor = descontar ? 'var(--accent)' : '';
+  btnSi.style.background  = descontar ? 'var(--accent-soft)' : '';
+  btnNo.style.borderColor = !descontar ? 'var(--accent)' : '';
+  btnNo.style.background  = !descontar ? 'var(--accent-soft)' : '';
 }
 
 function actualizarResumenMateriaPrima() {
   const costo = Number(document.getElementById('mp-costo')?.value) || 0;
   const stock = Number(document.getElementById('mp-stock-inicial')?.value) || 0;
   const monto = costo * stock;
-  const wrap = document.getElementById('mp-wrap-descontar-caja');
-  wrap.style.display = monto > 0 ? 'block' : 'none';
-  if (monto > 0) document.getElementById('mp-monto-resumen').textContent = fmt(monto);
+  const resumen = document.getElementById('mp-monto-resumen');
+  resumen.textContent = monto > 0 ? `— esta compra es ${fmt(monto)}` : '';
 }
 
 async function guardarMateriaPrima() {
@@ -150,7 +162,7 @@ async function guardarMateriaPrima() {
   const stockMinimo = Number(document.getElementById('mp-stock-minimo')?.value) || 0;
   const sku = document.getElementById('mp-sku')?.value.trim() || null;
   const categoria = document.getElementById('mp-categoria')?.value.trim() || null;
-  const descontarCaja = document.getElementById('mp-descontar-caja')?.checked;
+  const descontarCaja = STATE.descontarCajaMateriaPrima !== false;
   const montoCompra = costo * stockInicial;
 
   setBtnLoading('mp-btn-guardar', true);
