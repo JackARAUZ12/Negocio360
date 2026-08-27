@@ -2309,6 +2309,22 @@ async function guardarProducto() {
       if (errEscalas) errEscalas.textContent = 'Agrega al menos un precio en la escala';
       return;
     }
+    // BUG REAL CORREGIDO: antes, una fila con precio pero SIN nombre
+    // (o con nombre pero sin precio) se descartaba en silencio al
+    // guardar -- el producto se guardaba bien ("éxito"), pero esa
+    // fila a medio llenar desaparecía sin ningún aviso, dando la
+    // impresión de que el precio nuevo "no se guardó" cuando en
+    // realidad nunca se envió completo. Ahora se avisa claramente
+    // cuál fila falta completar, en vez de perderla sin decir nada.
+    const filaIncompleta = STATE.formEscalas.findIndex(f => {
+      const tieneNombre = !!(f.nombre || '').trim();
+      const tienePrecio = f.precio !== '' && f.precio !== null && f.precio !== undefined && !isNaN(parseFloat(f.precio));
+      return tieneNombre !== tienePrecio; // uno de los dos sin el otro
+    });
+    if (filaIncompleta !== -1) {
+      if (errEscalas) errEscalas.textContent = `Falta completar la fila #${filaIncompleta + 1} de la escala (le falta el nombre o el precio) — complétala o bórrala antes de guardar`;
+      return;
+    }
   }
 
   // Stock mínimo: usar el campo visible según el modo
