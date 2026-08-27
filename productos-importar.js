@@ -155,7 +155,14 @@ const IMPORT_CAMPOS_DESTINO = [
   { key: 'Categoria',     label: 'Categoría', requerido: false,
     palabras: ['categoria', 'categoría', 'rubro', 'familia', 'grupo', 'linea', 'línea'] },
   { key: 'SKU',           label: 'SKU / código interno', requerido: false,
-    palabras: ['sku', 'codigo interno', 'código interno', 'referencia', 'ref'] },
+    // "ref" se quitó a propósito: por ser tan corta, calzaba como
+    // subcadena dentro de palabras comunes en español que NO tienen
+    // nada que ver con SKU (ej. "Preferencia", "Referido por",
+    // "Preferido"), mapeando esas columnas por error a SKU y
+    // provocando falsos "SKU duplicado" cuando esos valores se
+    // repetían entre varias filas. "referencia" (la palabra completa)
+    // sigue cubriendo el mismo caso de uso, de forma segura.
+    palabras: ['sku', 'codigo interno', 'código interno', 'referencia'] },
   { key: 'CodigoBarras',  label: 'Código de barras', requerido: false,
     palabras: ['codigo de barras', 'código de barras', 'barras', 'ean', 'upc', 'codigo barras'] },
   { key: 'MarcaProveedor',label: 'Marca / proveedor', requerido: false,
@@ -171,8 +178,15 @@ function normalizarTextoMapeo(s) {
 
 /* Para cada columna del archivo del cliente, busca el campo destino
    cuyas palabras clave mejor calcen — coincidencia exacta primero,
-   luego "la columna contiene la palabra clave". Nunca asigna el
+   luego "la columna contiene la palabra clave COMO PALABRA COMPLETA"
+   (no cualquier subcadena -- así "Preferencia" nunca se confunde con
+   "referencia" solo porque la contiene como texto). Nunca asigna el
    mismo campo destino dos veces (se queda con la mejor coincidencia). */
+function contienePalabraClaveCompleta(texto, palabraClave) {
+  const escapada = palabraClave.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|\\s)' + escapada + '($|\\s)').test(texto);
+}
+
 function detectarMapeoInteligente(encabezadosCrudos) {
   const normalizados = encabezadosCrudos.map(normalizarTextoMapeo);
   const usados = new Set();
@@ -188,7 +202,7 @@ function detectarMapeoInteligente(encabezadosCrudos) {
         const p = normalizarTextoMapeo(palabra);
         let puntaje = 0;
         if (col === p) puntaje = 100;
-        else if (col.includes(p)) puntaje = 60 + p.length;
+        else if (contienePalabraClaveCompleta(col, p)) puntaje = 60 + p.length;
         if (puntaje > mejorPuntaje) { mejorPuntaje = puntaje; mejorIdx = idx; }
       });
     });
