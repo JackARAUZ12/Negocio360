@@ -301,7 +301,7 @@
     }
     .greeting-text h1 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 3px; }
     .greeting-text p  { font-size: 13.5px; color: var(--text-secondary); }
-    .greeting-actions { display: flex; align-items: center; gap: 10px; }
+    .greeting-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
     /* =====================================================
        TABS DE SECCIÓN
@@ -1208,6 +1208,7 @@
           <p>Gestión de órdenes de producción.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="abrirModalIngresarMateriaPrima()" title="Agrega materia prima a tu inventario, sin salir de Producción">📦 Ingresar materia prima</button>
           <button class="btn-secondary" onclick="abrirModalReceta()">🧪 Nueva receta</button>
           <button class="btn-primary" onclick="abrirModalOrden()">+ Nueva orden de producción</button>
         </div>
@@ -1330,6 +1331,70 @@
             </tr></thead>
             <tbody id="tabla-recetas"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- MODAL: INGRESAR MATERIA PRIMA
+           Misma funcion que "Nuevo Producto" en Productos/Servicios,
+           pero accesible directo desde Produccion, con
+           es_materia_prima=true de una vez -- para no tener que
+           salir de este modulo a registrar un insumo nuevo. -->
+      <div class="modal-overlay" id="modal-materia-prima">
+        <div class="modal-box" style="max-width:520px">
+          <div class="modal-header">
+            <h3>📦 Ingresar Materia Prima</h3>
+            <button class="modal-close" onclick="closeModal('modal-materia-prima')">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;padding:10px 12px;background:var(--bg-surface-2);border-radius:var(--radius-md)">
+              La <b>materia prima</b> es lo que usas para fabricar tus productos — no es lo que vendes directamente. Por ejemplo, si produces pan, la harina y la levadura son materia prima; el pan ya horneado es el producto terminado. Esto se agrega a tu inventario igual que un producto normal, para que puedas usarla en tus recetas de producción.
+            </p>
+
+            <div class="form-group">
+              <label>Nombre *</label>
+              <input type="text" id="mp-nombre" placeholder="Ej: Harina de trigo"/>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>SKU (opcional)</label>
+                <input type="text" id="mp-sku" placeholder="Opcional"/>
+              </div>
+              <div class="form-group">
+                <label>Categoría (opcional)</label>
+                <input type="text" id="mp-categoria" placeholder="Ej: Insumos"/>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Costo unitario *</label>
+                <input type="number" id="mp-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenMateriaPrima()"/>
+              </div>
+              <div class="form-group">
+                <label>Stock inicial *</label>
+                <input type="number" id="mp-stock-inicial" min="0" step="0.01" placeholder="0" oninput="actualizarResumenMateriaPrima()"/>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Stock mínimo (para avisarte cuando esté por acabarse)</label>
+              <input type="number" id="mp-stock-minimo" min="0" step="0.01" placeholder="0"/>
+            </div>
+
+            <div class="form-group" id="mp-wrap-descontar-caja" style="display:none">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="mp-descontar-caja" checked style="width:auto;flex-shrink:0"/>
+                <span>Descontar <b id="mp-monto-resumen"></b> de Caja (esta compra inicial de la materia prima)</span>
+              </label>
+            </div>
+
+            <p id="mp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-materia-prima')">Cancelar</button>
+            <button class="btn-primary" id="mp-btn-guardar" onclick="guardarMateriaPrima()">Guardar materia prima</button>
+          </div>
         </div>
       </div>
 
@@ -1528,7 +1593,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="produccion.js?v=20260822d"></script>
+<script src="produccion.js?v=20260827a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

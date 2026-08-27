@@ -108,6 +108,96 @@ function renderUserInfo(profile, email) {
   const hAv = document.getElementById('header-avatar'); if (hAv) hAv.textContent = (name||'U')[0].toUpperCase();
 }
 
+/* =====================================================
+   INGRESAR MATERIA PRIMA — misma función que "Nuevo Producto" en
+   Productos/Servicios (con es_materia_prima=true de una vez), pero
+   accesible directo desde Producción, sin salir del módulo. No
+   toca productos.js en absoluto -- implementación propia y
+   autónoma, para no arriesgar nada de lo que ya funciona ahí.
+===================================================== */
+function abrirModalIngresarMateriaPrima() {
+  document.getElementById('mp-nombre').value = '';
+  document.getElementById('mp-sku').value = '';
+  document.getElementById('mp-categoria').value = '';
+  document.getElementById('mp-costo').value = '';
+  document.getElementById('mp-stock-inicial').value = '';
+  document.getElementById('mp-stock-minimo').value = '';
+  document.getElementById('mp-descontar-caja').checked = true;
+  document.getElementById('mp-wrap-descontar-caja').style.display = 'none';
+  document.getElementById('mp-error').textContent = '';
+  openModal('modal-materia-prima');
+}
+
+function actualizarResumenMateriaPrima() {
+  const costo = Number(document.getElementById('mp-costo')?.value) || 0;
+  const stock = Number(document.getElementById('mp-stock-inicial')?.value) || 0;
+  const monto = costo * stock;
+  const wrap = document.getElementById('mp-wrap-descontar-caja');
+  wrap.style.display = monto > 0 ? 'block' : 'none';
+  if (monto > 0) document.getElementById('mp-monto-resumen').textContent = fmt(monto);
+}
+
+async function guardarMateriaPrima() {
+  const errEl = document.getElementById('mp-error');
+  errEl.textContent = '';
+
+  const nombre = document.getElementById('mp-nombre')?.value.trim();
+  if (!nombre) { errEl.textContent = 'Escribe el nombre de la materia prima.'; return; }
+  const costo = Number(document.getElementById('mp-costo')?.value);
+  if (isNaN(costo) || costo < 0) { errEl.textContent = 'Escribe un costo válido.'; return; }
+  const stockInicial = Number(document.getElementById('mp-stock-inicial')?.value);
+  if (isNaN(stockInicial) || stockInicial < 0) { errEl.textContent = 'Escribe un stock inicial válido.'; return; }
+  const stockMinimo = Number(document.getElementById('mp-stock-minimo')?.value) || 0;
+  const sku = document.getElementById('mp-sku')?.value.trim() || null;
+  const categoria = document.getElementById('mp-categoria')?.value.trim() || null;
+  const descontarCaja = document.getElementById('mp-descontar-caja')?.checked;
+  const montoCompra = costo * stockInicial;
+
+  setBtnLoading('mp-btn-guardar', true);
+  try {
+    const { data: materiaPrima, error: errMP } = await sb.from('productos').insert({
+      auth_user_id: STATE.userId, tipo: 'producto', nombre, sku, categoria,
+      costo, precio: 0, tipo_precio: 'fijo',
+      stock_actual: stockInicial, stock_minimo: stockMinimo,
+      es_materia_prima: true, activo: true,
+    }).select().single();
+    if (errMP) throw errMP;
+
+    // Mismo mecanismo exacto que ya usa Productos/Servicios al crear
+    // un producto con stock inicial: descuenta de Caja SOLO si hay
+    // costo x cantidad > 0 y el usuario dejó la casilla marcada.
+    if (descontarCaja && montoCompra > 0) {
+      try {
+        const { data: ultMov } = await sb.from('movimientos_financieros')
+          .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        const saldoAnterior = ultMov ? Number(ultMov.saldo_resultante) : 0;
+        const saldoResultante = saldoAnterior - montoCompra;
+
+        await sb.from('movimientos_financieros').insert({
+          auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
+          concepto: `Compra de materia prima: ${nombre}`, monto: montoCompra,
+          saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
+          metodo_pago_nombre: 'Efectivo', referencia_tipo: 'producto', referencia_id: materiaPrima.id,
+          fecha: ymdLocal(new Date()), estado: 'completado',
+        });
+      } catch (eCaja) {
+        console.warn('No se pudo descontar de Caja (la materia prima ya quedó guardada):', eCaja);
+        showToast('Materia prima guardada, pero no se pudo descontar de Caja', 'error');
+      }
+    }
+
+    closeModal('modal-materia-prima');
+    showToast(`"${nombre}" agregada a tu inventario de materia prima`);
+    await cargarProductosCache(); // refresca la caché para que ya aparezca disponible en recetas/órdenes
+  } catch (e) {
+    console.error('guardarMateriaPrima:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message || '');
+  } finally {
+    setBtnLoading('mp-btn-guardar', false);
+  }
+}
+
 async function cargarProductosCache() {
   try {
     const { data } = await sb.from('productos').select('id,nombre,sku,tipo,costo,precio,stock_actual,activo')
