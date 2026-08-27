@@ -2492,10 +2492,13 @@ async function guardarProducto() {
     }
 
     cerrarModalProducto();
+    const detalleMensaje = tipoPrecio === 'escala'
+      ? `${nombre} · ${STATE.formEscalas.filter(f => (f.nombre||'').trim()).length} precio(s) de escala guardados`
+      : (cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre);
     showToast(
       'success',
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
-      cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre
+      detalleMensaje
     );
     // Importante: primero las escalas y DESPUÉS los productos —
     // cargarProductos() dibuja la tabla de inmediato, así que si corriera
