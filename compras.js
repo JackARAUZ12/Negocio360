@@ -332,7 +332,7 @@ function populateMetodosSelect() {
 
   // Se llenan ambos selects (el del wizard normal y el del formulario
   // rápido de "Producto nuevo"); si alguno no existe en el DOM, se ignora.
-  ['nc-metodo-pago', 'pn-metodo-pago'].forEach(id => {
+  ['nc-metodo-pago', 'pn-metodo-pago', 'cd-metodo-pago'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
     sel.innerHTML = opciones;
@@ -662,6 +662,14 @@ async function verDetalleCompra(compraId) {
         </div>` : ''}
       </div>
 
+      ${compra.es_directa ? `
+      <div class="detalle-grid" style="margin-top:4px">
+        <div class="detalle-fila full">
+          <span class="detalle-label">📄 Compra directa — ¿de qué es?</span>
+          <span class="detalle-valor">${escHtml(compra.concepto || '—')}</span>
+        </div>
+      </div>
+      ` : `
       <div style="margin:16px 0 8px;font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Productos</div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -677,6 +685,7 @@ async function verDetalleCompra(compraId) {
           </tbody>
         </table>
       </div>
+      `}
 
       <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
         <div style="display:flex;flex-direction:column;gap:6px;max-width:280px;margin-left:auto">
@@ -1582,6 +1591,154 @@ function cancelarSeleccionBancoCompra() {
 }
 
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+
+/* =====================================================
+   COMPRA DIRECTA — gasto de contado con un proveedor que NO es
+   compra de mercancia. Nunca toca detalle_compras/productos --
+   crea la cabecera de compra directo (es_directa=true) y el
+   EGRESO en Caja, igual que una compra normal completada.
+===================================================== */
+function abrirCompraDirecta() {
+  document.getElementById('cd-proveedor-select').innerHTML =
+    `<option value="">— Sin proveedor —</option>` +
+    (STATE.proveedores||[]).filter(p => p.activo !== false).map(p =>
+      `<option value="${p.id}">${escHtml(p.nombre)}</option>`
+    ).join('');
+  document.getElementById('cd-nuevo-proveedor-form').style.display = 'none';
+  document.getElementById('cd-prov-nombre').value = '';
+  document.getElementById('cd-concepto').value = '';
+  document.getElementById('cd-monto').value = '';
+  document.getElementById('cd-fecha').value = todayISO();
+  document.getElementById('cd-observaciones').value = '';
+  document.getElementById('cd-error').textContent = '';
+  document.getElementById('cd-origen-caja-wrap').style.display = 'none';
+  STATE.proveedorSeleccionadoDirectaCompra = null;
+  populateMetodosSelect();
+  openModal('modal-compra-directa');
+
+  hayCajaChicaAbiertaHoy().then(abierta => {
+    document.getElementById('cd-origen-caja-wrap').style.display = abierta ? '' : 'none';
+    if (abierta) document.getElementById('cd-origen-caja').value = 'chica';
+  });
+}
+
+function onSelectProveedorDirectaCompra() {
+  const id = document.getElementById('cd-proveedor-select')?.value;
+  STATE.proveedorSeleccionadoDirectaCompra = id ? (STATE.proveedores.find(p => p.id === id) || null) : null;
+  if (id) toggleNuevoProveedorDirectaCompra(false);
+}
+
+function toggleNuevoProveedorDirectaCompra(mostrar) {
+  document.getElementById('cd-nuevo-proveedor-form').style.display = mostrar ? 'block' : 'none';
+  if (mostrar) {
+    document.getElementById('cd-proveedor-select').value = '';
+    STATE.proveedorSeleccionadoDirectaCompra = null;
+  }
+}
+
+async function guardarNuevoProveedorDirectaCompra() {
+  const nombre = document.getElementById('cd-prov-nombre')?.value.trim();
+  if (!nombre) { showToast('El nombre del proveedor es requerido', 'error'); return; }
+  try {
+    setBtnLoading('btn-guardar-proveedor-directa-compra', true);
+    const { data, error } = await sbClient.from('proveedores')
+      .insert({ auth_user_id: STATE.userId, nombre, activo: true }).select().single();
+    if (error) throw error;
+    STATE.proveedores.push(data);
+    STATE.proveedorSeleccionadoDirectaCompra = data;
+    document.getElementById('cd-proveedor-select').innerHTML =
+      `<option value="">— Sin proveedor —</option>` +
+      STATE.proveedores.filter(p => p.activo !== false).map(p => `<option value="${p.id}">${escHtml(p.nombre)}</option>`).join('');
+    document.getElementById('cd-proveedor-select').value = data.id;
+    toggleNuevoProveedorDirectaCompra(false);
+    showToast('Proveedor guardado');
+  } catch (e) {
+    showToast('Error al guardar proveedor: ' + (e.message||''), 'error');
+  } finally {
+    setBtnLoading('btn-guardar-proveedor-directa-compra', false);
+  }
+}
+
+async function guardarCompraDirecta() {
+  const errEl = document.getElementById('cd-error');
+  errEl.textContent = '';
+
+  const concepto = document.getElementById('cd-concepto')?.value.trim();
+  if (!concepto) { errEl.textContent = 'Escribe de qué es esta compra.'; return; }
+  const monto = Number(document.getElementById('cd-monto')?.value);
+  if (!monto || monto <= 0) { errEl.textContent = 'Escribe un monto válido.'; return; }
+  const fecha = document.getElementById('cd-fecha')?.value;
+  if (!fecha) { errEl.textContent = 'Elige la fecha.'; return; }
+
+  let origenCaja = null;
+  if (document.getElementById('cd-origen-caja-wrap').style.display !== 'none') {
+    origenCaja = document.getElementById('cd-origen-caja').value;
+    if (!origenCaja) { errEl.textContent = 'Indica de dónde sale este dinero.'; return; }
+  }
+
+  const metodoSel = document.getElementById('cd-metodo-pago');
+  const metodoPagoId = metodoSel?.value || null;
+  const metodoPagoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const observaciones = document.getElementById('cd-observaciones')?.value.trim() || null;
+  const proveedor = STATE.proveedorSeleccionadoDirectaCompra;
+
+  setBtnLoading('cd-btn-guardar', true);
+  try {
+    const { data: numData } = await sbClient.rpc('siguiente_numero_compra', { p_user_id: STATE.userId });
+    const numero = numData || ('C-' + String(Date.now()).slice(-6));
+
+    // Cabecera de compra -- SIN detalle_compras, SIN tocar productos.
+    // es_directa=true marca claramente que esta compra no tiene
+    // lineas de producto, para que el detalle la muestre bien.
+    const { data: compra, error: errCompra } = await sbClient.from('compras').insert({
+      auth_user_id: STATE.userId, numero,
+      proveedor_id: proveedor?.id || null, proveedor_nombre: proveedor?.nombre || null,
+      fecha, subtotal: monto, descuento_total: 0, iva_porcentaje: 0, iva_monto: 0, total: monto,
+      metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
+      estado: 'completada', es_directa: true, concepto, observaciones,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+    }).select().single();
+    if (errCompra) throw errCompra;
+
+    // Registrar el EGRESO en Caja -- mismo mecanismo exacto que una
+    // compra normal completada (saldo encadenado real, no solo un
+    // monto suelto).
+    const { data: movResult } = await sbClient.from('movimientos_financieros')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const saldoAnt = movResult ? Number(movResult.saldo_resultante) : 0;
+    const saldoRes = saldoAnt - monto;
+
+    const { data: mov, error: errMov } = await sbClient.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
+      concepto: `Compra directa ${numero} — ${concepto}`, monto,
+      saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
+      metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
+      origen_caja: origenCaja || null, referencia_tipo: 'compra', referencia_id: compra.id,
+      observaciones: `Proveedor: ${proveedor?.nombre || 'Sin proveedor'}`, fecha,
+    }).select().single();
+    if (errMov) showToast('La compra se guardó, pero no se pudo registrar en Caja: ' + errMov.message, 'error');
+    else await sbClient.from('compras').update({ movimiento_caja_id: mov.id }).eq('id', compra.id);
+
+    // Métricas del proveedor -- igual que en una compra normal
+    if (proveedor?.id) {
+      await sbClient.from('proveedores').update({
+        ultima_compra: fecha,
+        monto_acumulado: Number(proveedor.monto_acumulado||0) + monto,
+        total_compras: Number(proveedor.total_compras||0) + 1,
+      }).eq('id', proveedor.id).eq('auth_user_id', STATE.userId);
+    }
+
+    closeModal('modal-compra-directa');
+    showToast(`Compra directa ${compra.numero} registrada`);
+    await Promise.allSettled([loadCompras(), loadProveedores()]);
+  } catch (e) {
+    console.error('guardarCompraDirecta:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('cd-btn-guardar', false);
+  }
+}
 
 async function guardarCompra() {
   if (STATE.carrito.length === 0) {
