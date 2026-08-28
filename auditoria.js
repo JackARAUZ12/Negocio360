@@ -39,7 +39,18 @@ function todayISO() {
 }
 function fmtFecha(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
+  // BUG REAL CORREGIDO: new Date("2026-08-28") (sin hora) se
+  // interpreta como medianoche UTC, no medianoche local -- al
+  // mostrarla en Nicaragua (UTC-6) retrocede 6 horas, cayendo en el
+  // dia anterior (aparecia "27 ago" en vez de "28 ago"). Si el texto
+  // viene como fecha pura "YYYY-MM-DD", se arma la fecha con
+  // año/mes/día LOCAL directamente, sin pasar por el constructor
+  // ambiguo de Date(). Las fechas con hora completa (ej. created_at
+  // real) siguen igual, esas SI tienen zona horaria explícita.
+  const soloFecha = typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const d = soloFecha
+    ? (() => { const [y,m,day] = iso.split('-').map(Number); return new Date(y, m-1, day); })()
+    : new Date(iso);
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
 }
 function fmtHora(iso) {
