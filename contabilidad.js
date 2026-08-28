@@ -1250,8 +1250,15 @@ async function guardarMapeoCuentas() {
 }
 
 function abrirGenerarAsientos() {
-  const hoy = new Date();
-  document.getElementById('ga-desde').value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
+  // BUG REAL CORREGIDO: "desde" arrancaba en el primer día del MES
+  // ACTUAL -- cualquier movimiento pendiente de antes de este mes
+  // (confirmado con un caso real: una venta del 20 de julio, con
+  // "hoy" ya en agosto) nunca se tocaba, aunque el banner los siga
+  // contando como pendientes para siempre. Ahora arranca desde una
+  // fecha lo bastante vieja como para cubrir cualquier movimiento
+  // real, sin importar que tan antiguo sea -- "Generar todo
+  // automático" ahora si genera TODO, tal como dice el boton.
+  document.getElementById('ga-desde').value = '2000-01-01';
   document.getElementById('ga-hasta').value = todayISO();
   document.getElementById('ga-resultado').innerHTML = '';
   document.getElementById('ga-error').textContent = '';
