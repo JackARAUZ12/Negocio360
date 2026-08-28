@@ -1373,13 +1373,33 @@ function imprimirComprobanteProforma() {
 }
 
 async function confirmarConvertirAVenta() {
+  // BUG REAL CORREGIDO: convertir la misma proforma dos veces (doble
+  // clic, o dos pestañas abiertas) creaba DOS ventas distintas
+  // apuntando a la misma proforma, sin que el sistema lo detectara.
+  // Candado contra doble clic, mas una verificacion fresca contra la
+  // base de datos (no solo lo que ya estaba en memoria) antes de
+  // crear nada -- si ya se convirtio por otro lado, se avisa y no se
+  // duplica.
+  if (STATE.convirtiendoProforma) return;
+  STATE.convirtiendoProforma = true;
+
   const errEl = document.getElementById('cv-error');
   errEl.textContent = '';
   const p = STATE.proformaActual;
-  if (!p) return;
+  if (!p) { STATE.convirtiendoProforma = false; return; }
 
   setBtnLoading('btn-confirmar-convertir', true);
   try {
+    const { data: pFresca, error: errFresca } = await sbClient.from('proformas')
+      .select('estado, venta_id').eq('id', p.id).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (errFresca) throw errFresca;
+    if (pFresca?.estado === 'convertida') {
+      errEl.textContent = 'Esta proforma ya se convirtió a venta (puede que en otra pestaña) — no se creó una venta nueva.';
+      closeModal('modal-convertir-venta');
+      await loadProformas();
+      return;
+    }
+
     const { data: detalles, error: errDet0 } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
     if (errDet0) throw errDet0;
     if (!detalles || !detalles.length) throw new Error('Esta proforma no tiene productos');
@@ -1571,6 +1591,7 @@ async function confirmarConvertirAVenta() {
     errEl.textContent = 'Error al convertir: ' + (e.message||'');
   } finally {
     setBtnLoading('btn-confirmar-convertir', false);
+    STATE.convirtiendoProforma = false;
   }
 }
 

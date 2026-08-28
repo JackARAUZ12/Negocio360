@@ -1130,16 +1130,106 @@ function abrirGenerarAsientos() {
   openModal('modal-generar-asientos');
 }
 
+/* =====================================================
+   REINICIAR CONTABILIDAD — borra TODOS los asientos y empieza de
+   cero. Nunca toca Ventas/Gastos/Compras/Salarios ni ningun otro
+   dato real del negocio, ni el Catalogo de cuentas, ni la
+   Contabilizacion automatica configurada -- solo asientos_contables
+   y asientos_detalle, que se pueden volver a generar despues.
+===================================================== */
+async function abrirReiniciarContabilidad() {
+  document.getElementById('rc-confirmacion').value = '';
+  document.getElementById('rc-error').textContent = '';
+  document.getElementById('btn-confirmar-reinicio').disabled = true;
+  document.getElementById('rc-cantidad-asientos').textContent = 'Contando…';
+  openModal('modal-reiniciar-contabilidad');
+
+  try {
+    const { count } = await sbClient.from('asientos_contables')
+      .select('id', { count:'exact', head:true }).eq('auth_user_id', STATE.userId);
+    document.getElementById('rc-cantidad-asientos').textContent = count ?? 0;
+  } catch (e) {
+    document.getElementById('rc-cantidad-asientos').textContent = 'varios';
+  }
+}
+
+function onEscribirConfirmacionReinicio() {
+  const valor = document.getElementById('rc-confirmacion')?.value.trim();
+  document.getElementById('btn-confirmar-reinicio').disabled = (valor !== 'REINICIAR');
+}
+
+async function confirmarReiniciarContabilidad() {
+  const errEl = document.getElementById('rc-error');
+  errEl.textContent = '';
+  const valor = document.getElementById('rc-confirmacion')?.value.trim();
+  if (valor !== 'REINICIAR') { errEl.textContent = 'Escribe exactamente REINICIAR para confirmar.'; return; }
+
+  setBtnLoading('btn-confirmar-reinicio', true);
+  try {
+    // 1) Traer los IDs de TODOS los asientos de esta cuenta (paginado
+    //    de verdad, sin limite de 1000 -- puede haber miles).
+    let idsAsientos = [];
+    let desde = 0;
+    const TAMANO_PAGINA = 1000;
+    while (true) {
+      const { data: pagina, error } = await sbClient.from('asientos_contables')
+        .select('id').eq('auth_user_id', STATE.userId).range(desde, desde + TAMANO_PAGINA - 1);
+      if (error) throw error;
+      idsAsientos = idsAsientos.concat((pagina||[]).map(a => a.id));
+      if (!pagina || pagina.length < TAMANO_PAGINA) break;
+      desde += TAMANO_PAGINA;
+    }
+
+    // 2) Borrar el detalle primero (asientos_detalle depende de
+    //    asientos_contables), despues las cabeceras -- en lotes, para
+    //    no mandar una lista de miles de ids en una sola consulta.
+    const LOTE = 200;
+    for (let i = 0; i < idsAsientos.length; i += LOTE) {
+      const lote = idsAsientos.slice(i, i + LOTE);
+      const { error: errDet } = await sbClient.from('asientos_detalle').delete()
+        .eq('auth_user_id', STATE.userId).in('asiento_id', lote);
+      if (errDet) throw errDet;
+    }
+    for (let i = 0; i < idsAsientos.length; i += LOTE) {
+      const lote = idsAsientos.slice(i, i + LOTE);
+      const { error: errAs } = await sbClient.from('asientos_contables').delete()
+        .eq('auth_user_id', STATE.userId).in('id', lote);
+      if (errAs) throw errAs;
+    }
+
+    closeModal('modal-reiniciar-contabilidad');
+    showToast(`Contabilidad reiniciada — ${idsAsientos.length} asiento(s) eliminado(s)`);
+    await Promise.allSettled([cargarAsientos(), actualizarBannerAsientosPendientes()]);
+  } catch (e) {
+    console.error('confirmarReiniciarContabilidad:', e);
+    errEl.textContent = 'Error al reiniciar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-confirmar-reinicio', false);
+  }
+}
+
 async function generarAsientosAutomaticos() {
+  // BUG REAL CORREGIDO: el mismo movimiento se convertia en asiento
+  // hasta 14 veces -- el chequeo de "ya se genero antes" vivia solo
+  // en un Set armado UNA vez al entrar aqui; si el proceso tardaba
+  // (miles de movimientos) y el usuario presionaba el boton de nuevo
+  // por impaciencia, cada click arrancaba su PROPIA ejecucion
+  // independiente, viendo el mismo estado "antes de empezar" que la
+  // anterior -- generando el mismo asiento varias veces en paralelo.
+  // Este candado bloquea CUALQUIER ejecucion nueva mientras ya hay
+  // una corriendo, sin importar cuantas veces se presione el boton.
+  if (STATE.generandoAsientosAutomaticos) return;
+  STATE.generandoAsientosAutomaticos = true;
+
   const errEl = document.getElementById('ga-error');
   errEl.textContent = '';
   const desde = document.getElementById('ga-desde').value;
   const hasta = document.getElementById('ga-hasta').value;
-  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; return; }
+  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; STATE.generandoAsientosAutomaticos = false; return; }
 
   const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('*').eq('auth_user_id', STATE.userId);
   const mapeo = new Map((mapeoData||[]).map(m => [m.tipo_transaccion, m]));
-  if (!mapeo.size) { errEl.textContent = 'Primero configura la Contabilización automática (botón junto a Catálogo de cuentas).'; return; }
+  if (!mapeo.size) { errEl.textContent = 'Primero configura la Contabilización automática (botón junto a Catálogo de cuentas).'; STATE.generandoAsientosAutomaticos = false; return; }
 
   setBtnLoading('btn-generar-asientos', true);
   document.getElementById('ga-resultado').innerHTML = 'Leyendo tus Ventas, Gastos, Compras y Salarios…';
@@ -1247,6 +1337,7 @@ async function generarAsientosAutomaticos() {
     errEl.textContent = 'Error: ' + (e.message||'');
   } finally {
     setBtnLoading('btn-generar-asientos', false);
+    STATE.generandoAsientosAutomaticos = false;
   }
 }
 
