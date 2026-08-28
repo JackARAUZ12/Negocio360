@@ -1068,30 +1068,32 @@ async function cargarFlujoEfectivo() {
   const cuerpo = document.getElementById('fe-cuerpo');
   cuerpo.innerHTML = 'Calculando…';
 
-  // "Flujo de Efectivo" es efectivo real — nunca tarjeta ni
-  // transferencia, aunque esos movimientos también hayan pasado por
-  // Caja General. Esa es la diferencia real entre este reporte y el
-  // saldo general del negocio.
-  const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
+  // BUG REAL CORREGIDO: esta funcion traia CADA movimiento financiero
+  // individual al navegador para sumarlo aqui -- con miles de
+  // movimientos reales, Supabase corta en 1000 filas por defecto,
+  // dando un "efectivo real" y "saldo inicial" incorrectos. Ahora se
+  // suma DIRECTO en la base de datos (2 funciones nuevas), sin traer
+  // ninguna fila individual -- nunca queda limitado.
+  const fechaAntesDesde = (() => {
+    const [y,m,d] = desde.split('-').map(Number);
+    const dt = new Date(y, m-1, d-1);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  })();
 
-  // Saldo inicial: todo el efectivo que pasó ANTES de "desde".
-  const { data: previos } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lt('fecha', desde);
-  const saldoInicial = round2((previos||[]).filter(esEfectivo).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
-
-  // Movimientos del período elegido — solo efectivo.
-  const { data: movsCrudos } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, tipo_movimiento, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
-    .gte('fecha', desde).lte('fecha', hasta);
-  const movs = (movsCrudos||[]).filter(esEfectivo);
+  const [{ data: saldoInicialData }, { data: categorias }, { data: saldoRealData }] = await Promise.all([
+    sbClient.rpc('saldo_efectivo_hasta_fecha', { p_fecha: fechaAntesDesde }),
+    sbClient.rpc('flujo_efectivo_por_categoria', { p_desde: desde, p_hasta: hasta }),
+    sbClient.rpc('saldo_efectivo_hasta_fecha', { p_fecha: hasta }),
+  ]);
+  const saldoInicial = round2(Number(saldoInicialData) || 0);
 
   const grupos = { operacion: [], financiamiento: [], inversion: [] };
   const acumulado = new Map();
-  movs.forEach(m => {
+  (categorias||[]).forEach(m => {
     const info = CATEGORIA_FLUJO[m.tipo_movimiento] || { grupo:'operacion', label: m.tipo_movimiento };
     const signo = m.tipo_flujo === 'INGRESO' ? 1 : -1;
     const clave = `${info.grupo}:${info.label}`;
-    acumulado.set(clave, round2((acumulado.get(clave)||0) + signo*Number(m.monto||0)));
+    acumulado.set(clave, round2((acumulado.get(clave)||0) + signo*Number(m.total||0)));
   });
   acumulado.forEach((monto, clave) => {
     const [grupo, label] = clave.split(':');
@@ -1107,9 +1109,7 @@ async function cargarFlujoEfectivo() {
   // Prueba de realidad: se compara contra el efectivo real acumulado
   // a esa fecha (nunca contra Caja General completa, que sí incluye
   // tarjeta/transferencia y por eso no debe coincidir con esto).
-  const { data: todosHastaFecha } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId).eq('estado', 'completado').lte('fecha', hasta);
-  const saldoRealCaja = round2((todosHastaFecha||[]).filter(esEfectivo).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? Number(m.monto) : -Number(m.monto)), 0));
+  const saldoRealCaja = round2(Number(saldoRealData) || 0);
   const cuadra = saldoFinalCalculado === saldoRealCaja;
 
   STATE.flujoEfectivoActual = { desde, hasta, saldoInicial, grupos, totalOperacion, totalFinanciamiento, totalInversion, flujoNeto, saldoFinalCalculado, saldoRealCaja, cuadra };
@@ -1382,10 +1382,23 @@ async function generarAsientosAutomaticos() {
   setBtnLoading('btn-generar-asientos', true);
   document.getElementById('ga-resultado').innerHTML = 'Leyendo tus Ventas, Gastos, Compras y Salarios…';
   try {
-    // Ya generados antes, para nunca duplicar el mismo asiento.
-    const { data: yaGenerados } = await sbClient.from('asientos_contables')
-      .select('referencia_tipo, referencia_id').eq('auth_user_id', STATE.userId).eq('origen', 'automatico');
-    const yaHechos = new Set((yaGenerados||[]).map(a => `${a.referencia_tipo}:${a.referencia_id}`));
+    // BUG REAL CORREGIDO: esta consulta traia como maximo 1000 filas
+    // (limite por defecto de Supabase) -- con miles de asientos ya
+    // generados, el Set de "ya hechos" quedaba incompleto, arriesgando
+    // volver a crear duplicados de cosas que YA existian pero quedaron
+    // fuera de esas primeras 1000 filas. Ahora se pagina de verdad.
+    let yaGenerados = [];
+    { let desdeIdx = 0; const TAM = 1000;
+      while (true) {
+        const { data: pagina } = await sbClient.from('asientos_contables')
+          .select('referencia_tipo, referencia_id').eq('auth_user_id', STATE.userId).eq('origen', 'automatico')
+          .range(desdeIdx, desdeIdx + TAM - 1);
+        yaGenerados = yaGenerados.concat(pagina || []);
+        if (!pagina || pagina.length < TAM) break;
+        desdeIdx += TAM;
+      }
+    }
+    const yaHechos = new Set(yaGenerados.map(a => `${a.referencia_tipo}:${a.referencia_id}`));
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
@@ -1395,12 +1408,22 @@ async function generarAsientosAutomaticos() {
       campoFecha = campoFecha || 'fecha';
 
       // SOLO LECTURA — nunca se hace ningún update/insert/delete sobre
-      // esta tabla, solo se consulta.
-      let query = sbClient.from(tabla).select('*').eq('auth_user_id', STATE.userId);
-      if (campoEstado) query = query.eq(campoEstado, filtroEstado); // algunas tablas (ej. pagos ya hechos) no tienen "estado" — todas sus filas ya son reales
-      query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
-      if (filtroExtra) query = filtroExtra(query);
-      const { data: filas } = await query;
+      // esta tabla, solo se consulta. Paginado de verdad (mismo motivo
+      // que arriba): un tipo con muchos movimientos en el rango elegido
+      // no debe quedar cortado en las primeras 1000 filas.
+      let filas = [];
+      { let desdeIdx = 0; const TAM = 1000;
+        while (true) {
+          let query = sbClient.from(tabla).select('*').eq('auth_user_id', STATE.userId);
+          if (campoEstado) query = query.eq(campoEstado, filtroEstado); // algunas tablas (ej. pagos ya hechos) no tienen "estado" — todas sus filas ya son reales
+          query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
+          if (filtroExtra) query = filtroExtra(query);
+          const { data: pagina } = await query.range(desdeIdx, desdeIdx + TAM - 1);
+          filas = filas.concat(pagina || []);
+          if (!pagina || pagina.length < TAM) break;
+          desdeIdx += TAM;
+        }
+      }
 
       for (const fila of (filas||[])) {
         const clave = `${tipo}:${fila.id}`;
@@ -1513,30 +1536,22 @@ async function actualizarBannerAsientosPendientes() {
     btnEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generar todo automático';
     btnEl.setAttribute('onclick', 'abrirGenerarAsientos()');
 
-    const { data: yaGenerados } = await sbClient.from('asientos_contables')
-      .select('referencia_tipo, referencia_id').eq('auth_user_id', STATE.userId).eq('origen', 'automatico');
-    const yaHechos = new Set((yaGenerados||[]).map(a => `${a.referencia_tipo}:${a.referencia_id}`));
+    // BUG REAL CORREGIDO: antes se traia CADA asiento ya generado (para
+    // saber cuales no contar de nuevo) y CADA fila de cada tabla, sin
+    // ningun limite -- con miles de asientos ya generados, el Set de
+    // "ya hechos" quedaba incompleto (cortado en 1000 filas), haciendo
+    // que movimientos YA procesados se siguieran contando como
+    // pendientes para siempre (confirmado con un caso real: el banner
+    // decia 186, pero el numero real correcto era 32). Ahora se cuenta
+    // TODO directo en la base de datos, sin traer ninguna fila
+    // individual -- nunca queda limitado.
+    const { data: conteos, error: errConteo } = await sbClient.rpc('contar_pendientes_contabilizar');
+    if (errConteo) throw errConteo;
+    const porTipo = new Map((conteos||[]).map(c => [c.tipo, Number(c.cantidad)||0]));
+    const soloSiMapeado = tipo => mapeo.get(tipo) ? (porTipo.get(tipo)||0) : 0;
 
-    async function contarTipo(tipo, tabla, filtroEstado, campoEstado, filtroExtra) {
-      if (!mapeo.get(tipo)) return 0;
-      let query = sbClient.from(tabla).select('id').eq('auth_user_id', STATE.userId);
-      if (campoEstado) query = query.eq(campoEstado, filtroEstado);
-      if (filtroExtra) query = filtroExtra(query);
-      const { data } = await query;
-      return (data||[]).filter(f => !yaHechos.has(`${tipo}:${f.id}`)).length;
-    }
-
-    const [nVenta, nCredito, nPagoCredito, nGasto, nCompra, nSalario, nCxp, nPagoCxp] = await Promise.all([
-      contarTipo('venta', 'ventas', 'completada', 'estado', q => q.neq('metodo_pago', 'credito')),
-      contarTipo('credito_otorgado', 'ventas', 'completada', 'estado', q => q.eq('metodo_pago', 'credito')),
-      contarTipo('pago_credito', 'creditos_pagos', 'completado', 'estado'),
-      contarTipo('gasto', 'gastos', 'activo', 'estado'),
-      contarTipo('compra', 'compras', 'completada', 'estado'),
-      contarTipo('pago_salario', 'empleados_pagos', 'pagado', 'estado'),
-      contarTipo('cxp_generada', 'cuentas_por_pagar', null, null),
-      contarTipo('pago_cxp', 'cuentas_por_pagar_pagos', null, null),
-    ]);
-    const total = nVenta + nCredito + nPagoCredito + nGasto + nCompra + nSalario + nCxp + nPagoCxp;
+    const total = ['venta','credito_otorgado','pago_credito','gasto','compra','pago_salario','cxp_generada','pago_cxp']
+      .reduce((s, tipo) => s + soloSiMapeado(tipo), 0);
 
     if (total > 0) {
       tituloEl.textContent = `${total} movimiento${total===1?'':'s'} sin registrar contablemente`;
