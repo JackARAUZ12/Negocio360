@@ -594,12 +594,29 @@ async function cargarLibroMayor() {
   tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Cargando…</td></tr>';
 
   const cuenta = STATE.cuentas.find(c => c.id === cuentaId);
-  const { data } = await sbClient.from('asientos_detalle')
-    .select('*, asientos_contables!inner(numero,fecha,concepto,estado)')
-    .eq('cuenta_id', cuentaId).eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado')
-    .order('asientos_contables(fecha)');
 
-  const lista = (data||[]).sort((a,b) => (a.asientos_contables.fecha||'').localeCompare(b.asientos_contables.fecha||''));
+  // BUG REAL CORREGIDO: esta consulta traia como maximo 1000 filas
+  // (limite por defecto de Supabase) -- en una cuenta con mucho
+  // movimiento (confirmado con un caso real: 6179 lineas), se veia
+  // una lista incompleta y el saldo acumulado final quedaba mal, sin
+  // ningun aviso de que faltaban datos. Ahora se pagina de verdad:
+  // se sigue pidiendo la siguiente pagina hasta traer TODO.
+  let data = [];
+  let desde = 0;
+  const TAMANO_PAGINA = 1000;
+  while (true) {
+    const { data: pagina, error } = await sbClient.from('asientos_detalle')
+      .select('*, asientos_contables!inner(numero,fecha,concepto,estado)')
+      .eq('cuenta_id', cuentaId).eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado')
+      .order('asientos_contables(fecha)')
+      .range(desde, desde + TAMANO_PAGINA - 1);
+    if (error) { console.error('cargarLibroMayor:', error); break; }
+    data = data.concat(pagina || []);
+    if (!pagina || pagina.length < TAMANO_PAGINA) break; // ya se trajo todo
+    desde += TAMANO_PAGINA;
+  }
+
+  const lista = data.sort((a,b) => (a.asientos_contables.fecha||'').localeCompare(b.asientos_contables.fecha||''));
   let saldo = 0;
   const filas = lista.map(d => {
     saldo += cuenta.naturaleza === 'deudora' ? (d.debe - d.haber) : (d.haber - d.debe);
@@ -627,16 +644,18 @@ async function cargarBalanceComprobacion() {
   const tbody = document.getElementById('balance-tbody');
   tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Cargando…</td></tr>';
   try {
-    const { data } = await sbClient.from('asientos_detalle')
-      .select('cuenta_id, debe, haber, asientos_contables!inner(estado)')
-      .eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado');
+    // Mismo bug real corregido que en calcularMovimientoPorTipo(): se
+    // traían todas las lineas de detalle al navegador (limitado a
+    // 1000 por consulta) -- ahora se suma directo en la base de
+    // datos, sin ese límite, sin importar cuantos asientos existan.
+    const idsTodasCuentas = STATE.cuentas.filter(c => c.permite_movimientos).map(c => c.id);
+    const { data, error } = idsTodasCuentas.length
+      ? await sbClient.rpc('sumar_movimientos_por_cuenta', { p_cuenta_ids: idsTodasCuentas, p_fecha_desde: null, p_fecha_hasta: null })
+      : { data: [], error: null };
+    if (error) throw error;
 
     const porCuenta = new Map();
-    (data||[]).forEach(d => {
-      const acc = porCuenta.get(d.cuenta_id) || { debe:0, haber:0 };
-      acc.debe += Number(d.debe||0); acc.haber += Number(d.haber||0);
-      porCuenta.set(d.cuenta_id, acc);
-    });
+    (data||[]).forEach(d => porCuenta.set(d.cuenta_id, { debe: Number(d.total_debe)||0, haber: Number(d.total_haber)||0 }));
 
     let totalDebeGeneral = 0, totalHaberGeneral = 0;
     const filas = STATE.cuentas.filter(c => c.permite_movimientos && porCuenta.has(c.id)).map(c => {
@@ -715,20 +734,24 @@ async function calcularMovimientoPorTipo(tiposCuenta, fechaDesde, fechaHasta) {
   if (!cuentasFiltradas.length) return { filas: [], total: 0 };
   const idsCuentas = cuentasFiltradas.map(c => c.id);
 
-  let query = sbClient.from('asientos_detalle')
-    .select('cuenta_id, debe, haber, asientos_contables!inner(estado, fecha)')
-    .eq('auth_user_id', STATE.userId).eq('asientos_contables.estado', 'registrado')
-    .in('cuenta_id', idsCuentas);
-  if (fechaDesde) query = query.gte('asientos_contables.fecha', fechaDesde);
-  if (fechaHasta) query = query.lte('asientos_contables.fecha', fechaHasta);
-  const { data } = await query;
+  // BUG REAL CORREGIDO: antes se traía CADA línea de asientos_detalle
+  // al navegador para sumarla aquí -- pero Supabase limita cada
+  // consulta a 1000 filas por defecto. En cuentas con mucho
+  // movimiento (confirmado con un caso real: 6179 líneas en una sola
+  // cuenta), la suma quedaba basada en una porción al azar de los
+  // datos, nunca el total real -- por eso el Balance General podía
+  // no cuadrar. Ahora se suma DIRECTO en la base de datos (función
+  // sumar_movimientos_por_cuenta), sin traer ninguna fila individual
+  // -- nunca queda limitado, sin importar cuantos movimientos tenga.
+  const { data, error } = await sbClient.rpc('sumar_movimientos_por_cuenta', {
+    p_cuenta_ids: idsCuentas,
+    p_fecha_desde: fechaDesde || null,
+    p_fecha_hasta: fechaHasta || null,
+  });
+  if (error) { console.error('sumar_movimientos_por_cuenta:', error); return { filas: [], total: 0 }; }
 
   const porCuenta = new Map();
-  (data||[]).forEach(d => {
-    const acc = porCuenta.get(d.cuenta_id) || { debe:0, haber:0 };
-    acc.debe += Number(d.debe||0); acc.haber += Number(d.haber||0);
-    porCuenta.set(d.cuenta_id, acc);
-  });
+  (data||[]).forEach(d => porCuenta.set(d.cuenta_id, { debe: Number(d.total_debe)||0, haber: Number(d.total_haber)||0 }));
 
   const filas = cuentasFiltradas.filter(c => porCuenta.has(c.id)).map(c => {
     const { debe, haber } = porCuenta.get(c.id);
