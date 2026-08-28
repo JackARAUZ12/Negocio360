@@ -1249,20 +1249,33 @@ async function guardarMapeoCuentas() {
   }
 }
 
-function abrirGenerarAsientos() {
+async function abrirGenerarAsientos() {
   // BUG REAL CORREGIDO: "desde" arrancaba en el primer día del MES
   // ACTUAL -- cualquier movimiento pendiente de antes de este mes
   // (confirmado con un caso real: una venta del 20 de julio, con
   // "hoy" ya en agosto) nunca se tocaba, aunque el banner los siga
-  // contando como pendientes para siempre. Ahora arranca desde una
-  // fecha lo bastante vieja como para cubrir cualquier movimiento
-  // real, sin importar que tan antiguo sea -- "Generar todo
-  // automático" ahora si genera TODO, tal como dice el boton.
-  document.getElementById('ga-desde').value = '2000-01-01';
+  // contando como pendientes para siempre.
+  //
+  // Ahora se calcula la fecha REAL mas antigua pendiente (una sola
+  // consulta liviana que trabaja directo en la base de datos, sin
+  // traer ninguna fila al navegador -- nunca gasta de mas) y se usa
+  // exactamente esa como punto de partida, ni un dia antes ni un dia
+  // despues de lo que realmente hace falta.
   document.getElementById('ga-hasta').value = todayISO();
-  document.getElementById('ga-resultado').innerHTML = '';
+  document.getElementById('ga-resultado').innerHTML = 'Buscando la fecha pendiente más antigua…';
   document.getElementById('ga-error').textContent = '';
   openModal('modal-generar-asientos');
+
+  let fechaDesde = todayISO();
+  try {
+    const { data, error } = await sbClient.rpc('fecha_mas_antigua_pendiente_contabilizar');
+    if (error) throw error;
+    if (data) fechaDesde = data;
+  } catch (e) {
+    console.warn('fecha_mas_antigua_pendiente_contabilizar:', e);
+  }
+  document.getElementById('ga-desde').value = fechaDesde;
+  document.getElementById('ga-resultado').innerHTML = '';
 }
 
 /* =====================================================
