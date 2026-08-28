@@ -748,6 +748,18 @@
     if (!_gastoToCancelar) return;
     try {
       setBtnLoading('btn-confirmar-cancelar', true);
+
+      // BUG REAL CORREGIDO: cancelar un gasto solo cambiaba el estado
+      // del gasto, pero NUNCA anulaba el movimiento de Caja que ya se
+      // habia creado -- el dinero seguia contandose como "salido de
+      // verdad" en Flujo de Efectivo para siempre, aunque el gasto ya
+      // estuviera cancelado. Mismo patron ya usado en Compras
+      // (anularCompra): anular el movimiento de Caja si existe, antes
+      // de marcar el gasto como cancelado.
+      await _sb.from('movimientos_financieros')
+        .update({ estado:'anulado', anulado_en: new Date().toISOString(), anulado_motivo:'Gasto cancelado' })
+        .eq('referencia_tipo','gasto').eq('referencia_id',_gastoToCancelar).eq('auth_user_id',GS.userId).eq('estado','completado');
+
       await _sb.from('gastos').update({
         estado:'cancelado', cancelado_en: new Date().toISOString(), cancelado_motivo:'Cancelado manualmente',
       }).eq('id',_gastoToCancelar).eq('auth_user_id',GS.userId);
