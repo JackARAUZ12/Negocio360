@@ -1582,6 +1582,8 @@
     <div class="modal-body" id="va-cuerpo">Cargando…</div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-ver-asiento')">Cerrar</button>
+      <button class="btn-secondary" id="va-btn-editar" onclick="activarEdicionAsiento()">✏️ Editar</button>
+      <button class="btn-primary" id="va-btn-guardar-edicion" style="display:none" onclick="guardarEdicionAsiento()">Guardar cambios</button>
       <button class="btn-secondary" id="va-btn-registrar" onclick="registrarAsientoDesdeVer()" style="display:none">Registrar</button>
       <button class="btn-secondary" id="va-btn-anular" style="border-color:var(--danger);color:var(--danger);display:none" onclick="anularAsiento()">Anular</button>
     </div>

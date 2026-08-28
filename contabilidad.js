@@ -549,6 +549,8 @@ async function verAsiento(id) {
 
   document.getElementById('va-btn-registrar').style.display = a.estado === 'borrador' ? '' : 'none';
   document.getElementById('va-btn-anular').style.display = a.estado === 'registrado' ? '' : 'none';
+  document.getElementById('va-btn-editar').style.display = '';
+  document.getElementById('va-btn-guardar-edicion').style.display = 'none';
 }
 async function registrarAsientoDesdeVer() {
   if (!ASIENTO_VIENDO) return;
@@ -574,6 +576,132 @@ async function anularAsiento() {
     await cargarAsientos();
   } catch (e) {
     showToast('No se pudo anular', 'error');
+  }
+}
+
+/* =====================================================
+   EDITAR ASIENTO MANUALMENTE — para cuando el contador necesita
+   corregir un dato especifico (cuenta equivocada, monto mal
+   escrito, fecha incorrecta) sin tener que anular y volver a crear
+   todo desde cero. Funciona sin importar el estado (borrador o
+   registrado) -- la correccion se puede necesitar en cualquiera
+   de los 2. Siempre exige que Debe siga siendo igual a Haber antes
+   de guardar, igual que en cualquier otro asiento del sistema.
+===================================================== */
+function renderEditorLineasAsiento() {
+  const cont = document.getElementById('va-editor-lineas');
+  if (!cont) return;
+  const opcionesCuentas = STATE.cuentas.filter(c => c.permite_movimientos)
+    .map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
+
+  cont.innerHTML = STATE.lineasAsientoEditando.map((linea, i) => `
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+      <select onchange="actualizarLineaAsiento(${i}, 'cuenta_id', this.value)">
+        <option value="">— Elige una cuenta —</option>
+        ${opcionesCuentas}
+      </select>
+      <input type="number" min="0" step="0.01" placeholder="Debe" value="${linea.debe || ''}" oninput="actualizarLineaAsiento(${i}, 'debe', this.value)"/>
+      <input type="number" min="0" step="0.01" placeholder="Haber" value="${linea.haber || ''}" oninput="actualizarLineaAsiento(${i}, 'haber', this.value)"/>
+      <button type="button" onclick="eliminarLineaAsiento(${i})" title="Eliminar línea" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--danger);padding:4px">🗑️</button>
+    </div>`).join('');
+
+  // Preseleccionar la cuenta de cada linea (el <select> no soporta
+  // "selected" dinamico limpio dentro del template de arriba).
+  const selects = cont.querySelectorAll('select');
+  STATE.lineasAsientoEditando.forEach((linea, i) => { if (selects[i]) selects[i].value = linea.cuenta_id || ''; });
+
+  actualizarResumenCuadreEdicion();
+}
+function agregarLineaEdicionAsiento() {
+  STATE.lineasAsientoEditando.push({ cuenta_id:'', debe:'', haber:'' });
+  renderEditorLineasAsiento();
+}
+function actualizarLineaAsiento(i, campo, valor) {
+  if (!STATE.lineasAsientoEditando[i]) return;
+  STATE.lineasAsientoEditando[i][campo] = valor;
+  actualizarResumenCuadreEdicion();
+}
+function eliminarLineaAsiento(i) {
+  STATE.lineasAsientoEditando.splice(i, 1);
+  renderEditorLineasAsiento();
+}
+function actualizarResumenCuadreEdicion() {
+  const el = document.getElementById('va-resumen-cuadre');
+  if (!el) return;
+  const totalDebe = round2(STATE.lineasAsientoEditando.reduce((s,l) => s + (Number(l.debe)||0), 0));
+  const totalHaber = round2(STATE.lineasAsientoEditando.reduce((s,l) => s + (Number(l.haber)||0), 0));
+  const cuadra = totalDebe === totalHaber && totalDebe > 0;
+  el.innerHTML = `Debe: <b>${fmt(totalDebe)}</b> — Haber: <b>${fmt(totalHaber)}</b> — ` +
+    (cuadra ? `<span style="color:var(--success)">✅ Cuadra</span>` : `<span style="color:var(--danger)">⚠️ No cuadra</span>`);
+}
+
+async function activarEdicionAsiento() {
+  if (!ASIENTO_VIENDO) return;
+  const { data: detalle } = await sbClient.from('asientos_detalle').select('*').eq('asiento_id', ASIENTO_VIENDO.id).order('orden');
+  STATE.lineasAsientoEditando = (detalle||[]).map(d => ({ cuenta_id: d.cuenta_id, debe: d.debe>0?d.debe:'', haber: d.haber>0?d.haber:'' }));
+
+  document.getElementById('va-cuerpo').innerHTML = `
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="form-group"><label>Fecha</label><input type="date" id="va-edit-fecha" value="${esc(ASIENTO_VIENDO.fecha)}"/></div>
+      <div class="form-group full-col"><label>Concepto</label><input type="text" id="va-edit-concepto" value="${esc(ASIENTO_VIENDO.concepto||'')}"/></div>
+    </div>
+    <div id="va-editor-lineas"></div>
+    <button type="button" class="btn-ghost" style="margin-top:6px" onclick="agregarLineaEdicionAsiento()">+ Agregar línea</button>
+    <div id="va-resumen-cuadre" style="margin-top:10px;font-size:13px"></div>
+    <p id="va-edit-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>`;
+
+  renderEditorLineasAsiento();
+
+  document.getElementById('va-btn-editar').style.display = 'none';
+  document.getElementById('va-btn-guardar-edicion').style.display = '';
+  document.getElementById('va-btn-registrar').style.display = 'none';
+  document.getElementById('va-btn-anular').style.display = 'none';
+}
+
+async function guardarEdicionAsiento() {
+  if (!ASIENTO_VIENDO) return;
+  const errEl = document.getElementById('va-edit-error');
+  errEl.textContent = '';
+
+  const fecha = document.getElementById('va-edit-fecha')?.value;
+  const concepto = document.getElementById('va-edit-concepto')?.value.trim();
+  if (!fecha) { errEl.textContent = 'Elige una fecha.'; return; }
+  if (!concepto) { errEl.textContent = 'Escribe un concepto.'; return; }
+
+  const lineasValidas = STATE.lineasAsientoEditando.filter(l => l.cuenta_id && ((Number(l.debe)||0) > 0 || (Number(l.haber)||0) > 0));
+  if (lineasValidas.length < 2) { errEl.textContent = 'Se necesitan al menos 2 líneas (una cuenta no puede cuadrar sola).'; return; }
+
+  const lineaIncompleta = STATE.lineasAsientoEditando.findIndex(l => l.cuenta_id && (Number(l.debe)||0) > 0 && (Number(l.haber)||0) > 0);
+  if (lineaIncompleta !== -1) { errEl.textContent = `La línea #${lineaIncompleta+1} tiene Debe y Haber a la vez — una línea solo debe tener uno de los dos.`; return; }
+
+  const totalDebe = round2(lineasValidas.reduce((s,l) => s + (Number(l.debe)||0), 0));
+  const totalHaber = round2(lineasValidas.reduce((s,l) => s + (Number(l.haber)||0), 0));
+  if (totalDebe !== totalHaber) { errEl.textContent = `No cuadra: Debe ${fmt(totalDebe)} vs Haber ${fmt(totalHaber)} — deben ser exactamente iguales.`; return; }
+
+  setBtnLoading('va-btn-guardar-edicion', true);
+  try {
+    await sbClient.from('asientos_contables').update({
+      fecha, concepto, total_debe: totalDebe, total_haber: totalHaber,
+    }).eq('id', ASIENTO_VIENDO.id).eq('auth_user_id', STATE.userId);
+
+    // Reemplazar las lineas -- igual que sincronizarEscalas() en
+    // Productos: borrar todo lo viejo, insertar lo nuevo completo.
+    await sbClient.from('asientos_detalle').delete().eq('asiento_id', ASIENTO_VIENDO.id).eq('auth_user_id', STATE.userId);
+    const nuevasLineas = lineasValidas.map((l, i) => ({
+      auth_user_id: STATE.userId, asiento_id: ASIENTO_VIENDO.id, cuenta_id: l.cuenta_id,
+      debe: Number(l.debe)||0, haber: Number(l.haber)||0, orden: i,
+    }));
+    const { error: errIns } = await sbClient.from('asientos_detalle').insert(nuevasLineas);
+    if (errIns) throw errIns;
+
+    showToast('Asiento corregido');
+    closeModal('modal-ver-asiento');
+    await cargarAsientos();
+  } catch (e) {
+    console.error('guardarEdicionAsiento:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('va-btn-guardar-edicion', false);
   }
 }
 
