@@ -5146,10 +5146,27 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
     win.focus();
     win.print();
   };
-  win.onload = imprimirUnaVez;
-  // Respaldo por si onload no dispara en algunos navegadores (no duplica
-  // la impresión gracias a la bandera "yaImprimio")
-  setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 400);
+  // BUG REAL CORREGIDO: el ticket se imprimía apenas cargaba la
+  // página (o tras 400ms de respaldo), SIN esperar a que el logo
+  // remoto (una imagen que viene de Supabase Storage, puede tardar
+  // más que eso) terminara de descargar -- si tardaba de más, el
+  // logo no aparecía en el ticket impreso, y además la altura
+  // automática de la página (@page { size: Xmm auto }) se calculaba
+  // ANTES de que el logo ocupara su espacio real, cortando el
+  // ticket. Ahora, si hay logo, se espera a que termine de cargar
+  // (bien o mal) antes de imprimir -- con un tope de seguridad más
+  // generoso (1500ms) por si la imagen nunca dispara ningún evento.
+  const imgLogo = logoUrl ? win.document.querySelector('.ticket-logo') : null;
+  if (imgLogo && !imgLogo.complete) {
+    imgLogo.addEventListener('load', imprimirUnaVez);
+    imgLogo.addEventListener('error', imprimirUnaVez);
+    setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 1500);
+  } else {
+    win.onload = imprimirUnaVez;
+    // Respaldo por si onload no dispara en algunos navegadores (no duplica
+    // la impresión gracias a la bandera "yaImprimio")
+    setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 400);
+  }
 }
 
 /* ============================================================
@@ -5288,8 +5305,18 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
     win.focus();
     win.print();
   };
-  win.onload = imprimirUnaVez;
-  setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 400);
+  // Mismo bug real corregido que en Venta Rápida: esperar a que el
+  // logo remoto termine de cargar (bien o mal) antes de imprimir,
+  // en vez de imprimir de inmediato sin esperarlo.
+  const imgLogo = logoUrl ? win.document.querySelector('.ticket-logo') : null;
+  if (imgLogo && !imgLogo.complete) {
+    imgLogo.addEventListener('load', imprimirUnaVez);
+    imgLogo.addEventListener('error', imprimirUnaVez);
+    setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 1500);
+  } else {
+    win.onload = imprimirUnaVez;
+    setTimeout(() => { try { imprimirUnaVez(); } catch{} }, 400);
+  }
 }
 
 /* ---------- Abrir configuración del ticket desde "Nueva Venta" ---------- */
