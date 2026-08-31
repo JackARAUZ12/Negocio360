@@ -3078,6 +3078,70 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   ];
 
+  /* =====================================================
+     BÚSQUEDA DE UN CLIENTE O PRODUCTO ESPECÍFICO — extrae el
+     nombre real de la pregunta ("¿cuánto me debe Juan Pérez?",
+     "precio de Camisa Polo") y busca ESE registro exacto, en vez de
+     un resumen general del negocio.
+  ===================================================== */
+  const PATRONES_CLIENTE = [
+    /(?:cliente|informaci[oó]n de|datos de|historial de)\s+([a-záéíóúñ0-9 .'-]{3,40})/i,
+    /cu[aá]nto (?:me )?debe\s+([a-záéíóúñ0-9 .'-]{3,40})/i,
+    /cu[aá]nto (?:le debo a|debo a)\s+([a-záéíóúñ0-9 .'-]{3,40})/i,
+  ];
+  const PATRONES_PRODUCTO = [
+    /precio de\s+([a-záéíóúñ0-9 .'-]{2,40})/i,
+    /stock de\s+([a-záéíóúñ0-9 .'-]{2,40})/i,
+    /cu[aá]nto (?:tengo|hay|queda[n]?) de\s+([a-záéíóúñ0-9 .'-]{2,40})/i,
+    /cu[aá]nto cuesta\s+([a-záéíóúñ0-9 .'-]{2,40})/i,
+  ];
+  function extraerNombre(texto, patrones) {
+    for (const p of patrones) {
+      const m = texto.match(p);
+      if (m && m[1]) return m[1].trim().replace(/[?¿.!]+$/, '').replace(/^(el|la|los|las|mi|mis)\s+/i, '').trim();
+    }
+    return null;
+  }
+
+  async function buscarClienteEspecifico(texto, userId) {
+    const nombre = extraerNombre(texto, PATRONES_CLIENTE);
+    if (!nombre) return null;
+    const { data: candidatos } = await sbClient.from('clientes')
+      .select('id, nombre, telefono, whatsapp, email')
+      .eq('auth_user_id', userId).ilike('nombre', `%${nombre}%`).limit(5);
+    if (!candidatos || !candidatos.length) return `No encontré ningún cliente que se llame "${nombre}".`;
+    if (candidatos.length > 1) return `Encontré varios clientes parecidos a "${nombre}": ` + candidatos.map(c=>c.nombre).join(', ') + '. Sé más específico.';
+
+    const cliente = candidatos[0];
+    const { data: ventas } = await sbClient.from('ventas').select('total, monto_pagado, metodo_pago, estado_credito, fecha')
+      .eq('auth_user_id', userId).eq('cliente_id', cliente.id).eq('estado', 'completada')
+      .order('fecha', { ascending: false });
+    const totalComprado = (ventas||[]).reduce((s,v)=>s+Number(v.total||0),0);
+    const creditoPendiente = (ventas||[]).filter(v=>v.metodo_pago==='credito' && v.estado_credito!=='pagado')
+      .reduce((s,v)=>s+(Number(v.total||0)-Number(v.monto_pagado||0)),0);
+    const ultimaCompra = ventas && ventas.length ? ventas[0].fecha : null;
+
+    let resp = `📋 ${cliente.nombre}\n`;
+    resp += `Total comprado: ${fmtC(totalComprado)} en ${(ventas||[]).length} compra${(ventas||[]).length===1?'':'s'}\n`;
+    if (creditoPendiente > 0) resp += `Crédito pendiente: ${fmtC(creditoPendiente)}\n`;
+    if (ultimaCompra) resp += `Última compra: ${new Date(ultimaCompra).toLocaleDateString('es-NI')}\n`;
+    if (cliente.telefono || cliente.whatsapp) resp += `Contacto: ${cliente.whatsapp || cliente.telefono}`;
+    return resp.trim();
+  }
+
+  async function buscarProductoEspecifico(texto, userId) {
+    const nombre = extraerNombre(texto, PATRONES_PRODUCTO);
+    if (!nombre) return null;
+    const { data: candidatos } = await sbClient.from('productos')
+      .select('nombre, precio, costo, stock_actual, sku')
+      .eq('auth_user_id', userId).eq('activo', true).ilike('nombre', `%${nombre}%`).limit(5);
+    if (!candidatos || !candidatos.length) return `No encontré ningún producto que se llame "${nombre}".`;
+    if (candidatos.length > 1) return `Encontré varios productos parecidos a "${nombre}": ` + candidatos.map(p=>p.nombre).join(', ') + '. Sé más específico.';
+
+    const p = candidatos[0];
+    return `📦 ${p.nombre}${p.sku ? ' ('+p.sku+')' : ''}\nPrecio: ${fmtC(p.precio)}\nStock actual: ${p.stock_actual}`;
+  }
+
   function detectarIntencion(texto) {
     const limpio = texto.toLowerCase();
     let mejor = null, mejorLargo = 0;
@@ -3103,13 +3167,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const userId = sesion?.session?.user?.id;
       if (!userId) { burbujaCargando.textContent = 'No se pudo verificar tu sesión, intenta recargar la página.'; return; }
 
-      const intento = detectarIntencion(pregunta);
-      burbujaCargando.remove();
-      if (!intento) {
-        agregarBurbujaIA('No entendí bien esa pregunta. Puedo ayudarte con: ventas, gastos, compras, salarios, saldo de caja, stock bajo, productos más vendidos, créditos pendientes, cuentas por pagar, o tus mejores clientes.', 'asistente');
-        return;
+      // Primero se intenta una búsqueda ESPECÍFICA (un cliente o
+      // producto por nombre) -- son más precisas que una categoría
+      // general, así que tienen prioridad si la pregunta calza.
+      let respuesta = await buscarClienteEspecifico(pregunta, userId);
+      if (!respuesta) respuesta = await buscarProductoEspecifico(pregunta, userId);
+
+      if (!respuesta) {
+        const intento = detectarIntencion(pregunta);
+        if (!intento) {
+          burbujaCargando.remove();
+          agregarBurbujaIA('No entendí bien esa pregunta. Puedo ayudarte con: ventas, gastos, compras, salarios, saldo de caja, stock bajo, productos más vendidos, créditos pendientes, cuentas por pagar, tus mejores clientes, o buscar un cliente/producto específico por nombre.', 'asistente');
+          return;
+        }
+        respuesta = await intento.responder(pregunta.toLowerCase(), userId);
       }
-      const respuesta = await intento.responder(pregunta.toLowerCase(), userId);
+      burbujaCargando.remove();
       agregarBurbujaIA(respuesta, 'asistente');
     } catch (e) {
       burbujaCargando.remove();
