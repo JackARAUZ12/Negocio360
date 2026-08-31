@@ -2854,5 +2854,107 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+<!-- ===================================================
+     ASISTENTE INTELIGENTE — botón flotante + panel de chat.
+     El dueño le pregunta en lenguaje normal sobre su negocio, y el
+     asistente (Claude, via la función edge "asistente-ia") consulta
+     los datos REALES del negocio antes de responder -- nunca
+     inventa cifras. La función edge ya filtra todo por el usuario
+     que está autenticado, nunca puede ver datos de otro negocio.
+=================================================== -->
+<style>
+  #ia-btn-flotante {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9998;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #8b7cf6);
+    border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 24px; transition: transform .15s;
+  }
+  #ia-btn-flotante:hover { transform: scale(1.08); }
+  #ia-panel {
+    position: fixed; bottom: 90px; right: 24px; z-index: 9999;
+    width: 360px; max-width: calc(100vw - 32px); height: 480px; max-height: calc(100vh - 130px);
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-xl);
+    box-shadow: 0 8px 32px rgba(0,0,0,.45); display: none; flex-direction: column; overflow: hidden;
+  }
+  #ia-panel.abierto { display: flex; }
+  #ia-panel-header {
+    padding: 14px 16px; background: linear-gradient(135deg, var(--accent), #8b7cf6);
+    color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  #ia-mensajes { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .ia-burbuja { max-width: 85%; padding: 9px 12px; border-radius: 12px; font-size: 13px; line-height: 1.4; white-space: pre-wrap; }
+  .ia-burbuja.usuario { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+  .ia-burbuja.asistente { align-self: flex-start; background: var(--bg-surface-2); color: var(--text-primary); border-bottom-left-radius: 3px; }
+  #ia-input-row { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+  #ia-input { flex: 1; background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; color: var(--text-primary); font-size: 13px; }
+  #ia-btn-enviar { background: var(--accent); border: none; border-radius: var(--radius-md); color: #fff; padding: 0 14px; cursor: pointer; }
+</style>
+
+<button id="ia-btn-flotante" onclick="toggleAsistenteIA()" title="Pregúntale a tu negocio">💬</button>
+<div id="ia-panel">
+  <div id="ia-panel-header">
+    <span>🤖 Asistente Negocio360</span>
+    <button onclick="toggleAsistenteIA()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px">✕</button>
+  </div>
+  <div id="ia-mensajes">
+    <div class="ia-burbuja asistente">¡Hola! Pregúntame lo que quieras sobre tu negocio — ventas, gastos, salarios, caja, tus clientes o productos. Por ejemplo: "¿cuánto vendí hoy?"</div>
+  </div>
+  <div id="ia-input-row">
+    <input type="text" id="ia-input" placeholder="Escribe tu pregunta…" onkeydown="if(event.key==='Enter')enviarPreguntaIA()"/>
+    <button id="ia-btn-enviar" onclick="enviarPreguntaIA()">➤</button>
+  </div>
+</div>
+
+<script>
+  window.IA_HISTORIAL = [];
+  function toggleAsistenteIA() {
+    document.getElementById('ia-panel').classList.toggle('abierto');
+  }
+  function agregarBurbujaIA(texto, tipo) {
+    const cont = document.getElementById('ia-mensajes');
+    const div = document.createElement('div');
+    div.className = `ia-burbuja ${tipo}`;
+    div.textContent = texto;
+    cont.appendChild(div);
+    cont.scrollTop = cont.scrollHeight;
+    return div;
+  }
+  async function enviarPreguntaIA() {
+    const input = document.getElementById('ia-input');
+    const pregunta = input.value.trim();
+    if (!pregunta) return;
+    input.value = '';
+    input.disabled = true;
+    agregarBurbujaIA(pregunta, 'usuario');
+    const burbujaCargando = agregarBurbujaIA('Pensando…', 'asistente');
+
+    try {
+      const { data: sesion } = await sbClient.auth.getSession();
+      const token = sesion?.session?.access_token;
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asistente-ia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ pregunta, historial: window.IA_HISTORIAL }),
+      });
+      const data = await resp.json();
+      burbujaCargando.remove();
+      if (!data.ok) {
+        agregarBurbujaIA('No pude responder: ' + (data.error || 'intenta de nuevo'), 'asistente');
+      } else {
+        agregarBurbujaIA(data.respuesta, 'asistente');
+        window.IA_HISTORIAL = data.mensajes || window.IA_HISTORIAL;
+      }
+    } catch (e) {
+      burbujaCargando.remove();
+      agregarBurbujaIA('Error de conexión, intenta de nuevo.', 'asistente');
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  }
+</script>
+
 </body>
 </html>
