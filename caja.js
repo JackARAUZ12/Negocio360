@@ -546,10 +546,11 @@ function populateMetodoSelect() {
 
 async function toggleMetodo(id, nuevoEstado) {
   try {
-    await sbClient.from('metodos_pago').update({ activo: nuevoEstado }).eq('id', id).eq('auth_user_id', STATE.userId);
+    const { error } = await sbClient.from('metodos_pago').update({ activo: nuevoEstado }).eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
     await loadMetodosPago();
     showToast(nuevoEstado ? 'Método activado' : 'Método desactivado');
-  } catch(e) { showToast('Error al actualizar método', 'error'); }
+  } catch(e) { console.error('toggleMetodo:', e); showToast('Error al actualizar método', 'error'); }
 }
 
 function editMetodo(id) {
@@ -584,27 +585,41 @@ async function saveMetodo() {
     setBtnLoading('btn-save-metodo', true);
 
     if (esDefault) {
-      await sbClient.from('metodos_pago')
+      const { error: errDefault } = await sbClient.from('metodos_pago')
         .update({ es_default: false })
         .eq('auth_user_id', STATE.userId);
+      if (errDefault) throw errDefault;
     }
 
+    // BUG REAL CORREGIDO: ni el insert ni el update revisaban si
+    // Supabase devolvía un error -- si el guardado fallaba por
+    // cualquier motivo (ej. nombre repetido, un problema de red), el
+    // sistema igual mostraba "Método creado/actualizado" como si
+    // hubiera funcionado, sin que el método realmente quedara
+    // guardado -- exactamente el sintoma de "no aparecen mis
+    // métodos de pago" reportado por un cliente.
     if (id) {
-      await sbClient.from('metodos_pago')
+      const { error: errUpd } = await sbClient.from('metodos_pago')
         .update({ nombre, descripcion, es_default: esDefault })
         .eq('id', id)
         .eq('auth_user_id', STATE.userId);
+      if (errUpd) throw errUpd;
     } else {
       const orden = STATE.metodosPago.length + 1;
-      await sbClient.from('metodos_pago')
+      const { error: errIns } = await sbClient.from('metodos_pago')
         .insert({ auth_user_id: STATE.userId, nombre, descripcion, es_default: esDefault, orden });
+      if (errIns) throw errIns;
     }
 
     closeModal('modal-metodo');
     await loadMetodosPago();
     showToast(id ? 'Método actualizado' : 'Método creado');
   } catch(e) {
-    showToast('Error al guardar método', 'error');
+    console.error('saveMetodo:', e);
+    const mensaje = e?.code === '23505'
+      ? 'Ya tienes un método de pago con ese nombre'
+      : (e?.message || 'No se pudo guardar, intenta de nuevo');
+    showToast(mensaje, 'error');
   } finally {
     setBtnLoading('btn-save-metodo', false);
   }
