@@ -1115,11 +1115,15 @@
     // sucursal se queda sin ninguna forma de volver a su cuenta principal.
     mostrarAvisoSucursalSiAplica();
 
-    // Presencia (última conexión / en línea) y badge de notificaciones:
-    // corren siempre que haya sesión, independientemente del sistema de
-    // perfiles/PIN. Best-effort: cualquier fallo se ignora en silencio.
+    // Presencia (última conexión / en línea): corre siempre que haya
+    // sesión, independientemente del sistema de perfiles/PIN.
+    // Best-effort: cualquier fallo se ignora en silencio.
     iniciarHeartbeat();
-    iniciarBadgeNotificaciones();
+    // Botón flotante de notificaciones DESACTIVADO: chocaba visualmente
+    // con el botón del Asistente Inteligente (misma esquina, mismo
+    // tamaño) -- ya existe el enlace "Notificaciones" en el menú
+    // lateral, así que no se pierde ningún acceso al quitarlo.
+    // iniciarBadgeNotificaciones();
 
     // Si el dueño de la cuenta desactivó el sistema multiusuario en
     // configuración.html, no se pide selector ni PIN: se entra directo.
