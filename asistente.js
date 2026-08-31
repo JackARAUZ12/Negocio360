@@ -180,6 +180,17 @@ function preguntaRapidaIA(texto) {
    preguntas ya preparadas para ESE módulo en concreto.
 ===================================================== */
 const MODULO_PREGUNTAS = {
+  dashboard: [
+    '¿Cuánto vendí hoy?', '¿Cuánto vendí ayer?', '¿Cuánto vendí esta semana?', '¿Cuánto vendí este mes?', '¿Cuánto vendí el mes pasado?',
+    '¿Cuál es mi saldo de caja?',
+    '¿Cómo van mis gastos este mes?', '¿Cuánto gasté hoy?',
+    '¿Cuánto compré este mes?',
+    '¿Cuánto he pagado en salarios este mes?',
+    '¿Cuánto me deben mis clientes?',
+    '¿Cuánto debo a mis proveedores?',
+    '¿Qué productos tienen poco stock?', '¿Qué producto es el más vendido este mes?',
+    '¿Quiénes son mis mejores clientes?',
+  ],
   ventas:            ['¿Cuánto vendí hoy?', '¿Cuánto vendí este mes?', '¿Cuánto vendí ayer?'],
   gastos:            ['¿Cómo van mis gastos este mes?', '¿Cuánto gasté hoy?'],
   compras:           ['¿Cuánto compré este mes?', '¿Cuánto compré hoy?'],
