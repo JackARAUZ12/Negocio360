@@ -2908,7 +2908,6 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <script>
-  window.IA_HISTORIAL = [];
   function toggleAsistenteIA() {
     document.getElementById('ia-panel').classList.toggle('abierto');
   }
@@ -2921,6 +2920,175 @@ document.addEventListener('DOMContentLoaded', () => {
     cont.scrollTop = cont.scrollHeight;
     return div;
   }
+
+  /* =====================================================
+     ASISTENTE INDEPENDIENTE — sin ninguna API externa, sin ningún
+     costo, corriendo 100% dentro de Negocio360. Funciona por
+     DETECCIÓN DE INTENCIÓN: reconoce palabras clave en la pregunta,
+     identifica qué se está pidiendo, busca el dato REAL en la base
+     de datos (siempre limitado al negocio de quien pregunta, vía
+     RLS normal), y arma una respuesta natural con el número real.
+  ===================================================== */
+  function fechaLocalISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function detectarRangoFechas(texto) {
+    const hoy = new Date();
+    if (/\bayer\b/.test(texto)) {
+      const ayer = new Date(hoy); ayer.setDate(ayer.getDate()-1);
+      return { desde: fechaLocalISO(ayer), hasta: fechaLocalISO(ayer), etiqueta: 'ayer' };
+    }
+    if (/\besta semana\b/.test(texto)) {
+      const inicio = new Date(hoy); inicio.setDate(hoy.getDate() - hoy.getDay());
+      return { desde: fechaLocalISO(inicio), hasta: fechaLocalISO(hoy), etiqueta: 'esta semana' };
+    }
+    if (/\bmes pasado\b/.test(texto)) {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1);
+      const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+      return { desde: fechaLocalISO(inicio), hasta: fechaLocalISO(fin), etiqueta: 'el mes pasado' };
+    }
+    if (/\beste mes\b|\bdel mes\b|\bmensual\b/.test(texto)) {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return { desde: fechaLocalISO(inicio), hasta: fechaLocalISO(hoy), etiqueta: 'este mes' };
+    }
+    // Por defecto: hoy.
+    return { desde: fechaLocalISO(hoy), hasta: fechaLocalISO(hoy), etiqueta: 'hoy' };
+  }
+  function fmtC(n) { return 'C$' + Number(n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+  // Cada intención: palabras clave que la disparan, y la función que
+  // busca el dato real y arma la respuesta.
+  const INTENCIONES_IA = [
+    {
+      nombre: 'ventas',
+      palabras: ['vend', 'venta'],
+      async responder(texto, userId) {
+        const { desde, hasta, etiqueta } = detectarRangoFechas(texto);
+        const { data } = await sbClient.from('ventas').select('total')
+          .eq('auth_user_id', userId).eq('estado', 'completada')
+          .gte('fecha', desde).lte('fecha', `${hasta} 23:59:59`);
+        const total = (data||[]).reduce((s,v)=>s+Number(v.total||0),0);
+        const cantidad = (data||[]).length;
+        if (!cantidad) return `No encontré ventas registradas ${etiqueta}.`;
+        return `${etiqueta === 'hoy' ? 'Hoy' : 'En ' + etiqueta} has vendido ${fmtC(total)} en ${cantidad} venta${cantidad===1?'':'s'} (ticket promedio: ${fmtC(total/cantidad)}).`;
+      },
+    },
+    {
+      nombre: 'gastos',
+      palabras: ['gast'],
+      async responder(texto, userId) {
+        const { desde, hasta, etiqueta } = detectarRangoFechas(texto);
+        const { data } = await sbClient.from('gastos').select('monto')
+          .eq('auth_user_id', userId).eq('estado', 'activo')
+          .gte('fecha', desde).lte('fecha', hasta);
+        const total = (data||[]).reduce((s,g)=>s+Number(g.monto||0),0);
+        if (!(data||[]).length) return `No tienes gastos registrados ${etiqueta}.`;
+        return `${etiqueta === 'hoy' ? 'Hoy' : 'En ' + etiqueta} has gastado ${fmtC(total)} en ${(data||[]).length} gasto${(data||[]).length===1?'':'s'}.`;
+      },
+    },
+    {
+      nombre: 'compras',
+      palabras: ['compr'],
+      async responder(texto, userId) {
+        const { desde, hasta, etiqueta } = detectarRangoFechas(texto);
+        const { data } = await sbClient.from('compras').select('total')
+          .eq('auth_user_id', userId).eq('estado', 'completada')
+          .gte('fecha', desde).lte('fecha', hasta);
+        const total = (data||[]).reduce((s,c)=>s+Number(c.total||0),0);
+        if (!(data||[]).length) return `No tienes compras registradas ${etiqueta}.`;
+        return `${etiqueta === 'hoy' ? 'Hoy' : 'En ' + etiqueta} has comprado ${fmtC(total)} en ${(data||[]).length} compra${(data||[]).length===1?'':'s'}.`;
+      },
+    },
+    {
+      nombre: 'salarios',
+      palabras: ['salario', 'sueldo', 'planilla', 'nomina', 'nómina', 'personal', 'empleado', 'trabajador'],
+      async responder(texto, userId) {
+        const { desde, hasta, etiqueta } = detectarRangoFechas(texto);
+        const { data } = await sbClient.from('empleados_pagos').select('total_pagado')
+          .eq('auth_user_id', userId).eq('estado', 'pagado')
+          .gte('fecha', desde).lte('fecha', hasta);
+        const total = (data||[]).reduce((s,p)=>s+Number(p.total_pagado||0),0);
+        if (!(data||[]).length) return `No hay pagos de salario registrados ${etiqueta}.`;
+        return `${etiqueta === 'hoy' ? 'Hoy' : 'En ' + etiqueta} has pagado ${fmtC(total)} en salarios (${(data||[]).length} pago${(data||[]).length===1?'':'s'}).`;
+      },
+    },
+    {
+      nombre: 'caja',
+      palabras: ['caja', 'efectivo', 'saldo'],
+      async responder(texto, userId) {
+        const { data } = await sbClient.from('movimientos_financieros').select('saldo_resultante')
+          .eq('auth_user_id', userId).eq('estado', 'completado')
+          .order('created_at', { ascending:false }).limit(1).maybeSingle();
+        return `Tu saldo actual en Caja es ${fmtC(data?.saldo_resultante || 0)}.`;
+      },
+    },
+    {
+      nombre: 'stock_bajo',
+      palabras: ['stock bajo', 'poco stock', 'se me acaba', 'agotand', 'inventario bajo'],
+      async responder(texto, userId) {
+        const { data } = await sbClient.from('productos').select('nombre, stock_actual, stock_minimo')
+          .eq('auth_user_id', userId).eq('activo', true).not('stock_minimo','is',null)
+          .order('stock_actual', { ascending:true }).limit(30);
+        const bajos = (data||[]).filter(p => Number(p.stock_actual) <= Number(p.stock_minimo)).slice(0,8);
+        if (!bajos.length) return 'Ningún producto está por debajo de su stock mínimo ahora mismo. 👍';
+        return `Productos con poco stock:\n` + bajos.map(p => `• ${p.nombre}: ${p.stock_actual} (mínimo ${p.stock_minimo})`).join('\n');
+      },
+    },
+    {
+      nombre: 'productos_mas_vendidos',
+      palabras: ['mas vendid', 'más vendid', 'que se vende mas', 'qué se vende más', 'producto estrella'],
+      async responder(texto, userId) {
+        const { desde, hasta, etiqueta } = detectarRangoFechas(texto);
+        const { data, error } = await sbClient.rpc('asistente_productos_mas_vendidos', {
+          p_auth_user_id: userId, p_desde: desde, p_hasta: hasta, p_limite: 5,
+        });
+        if (error || !(data||[]).length) return `No encontré productos vendidos ${etiqueta}.`;
+        return `Tus productos más vendidos ${etiqueta}:\n` + data.map((p,i) => `${i+1}. ${p.producto} — ${p.cantidad_vendida} unidades`).join('\n');
+      },
+    },
+    {
+      nombre: 'creditos',
+      palabras: ['credito', 'crédito', 'cobrar', 'me deben', 'deuda de client'],
+      async responder(texto, userId) {
+        const { data } = await sbClient.from('ventas').select('total, monto_pagado')
+          .eq('auth_user_id', userId).eq('estado','completada').eq('metodo_pago','credito').neq('estado_credito','pagado');
+        const total = (data||[]).reduce((s,v)=>s+(Number(v.total||0)-Number(v.monto_pagado||0)),0);
+        if (!(data||[]).length) return 'No tienes créditos pendientes de cobrar ahora mismo. 👍';
+        return `Tienes ${fmtC(total)} pendientes de cobrar en ${(data||[]).length} crédito${(data||[]).length===1?'':'s'}.`;
+      },
+    },
+    {
+      nombre: 'cuentas_por_pagar',
+      palabras: ['cuenta por pagar', 'cuentas por pagar', 'debo a', 'le debo', 'pagar a proveedor'],
+      async responder(texto, userId) {
+        const { data } = await sbClient.from('cuentas_por_pagar').select('saldo_pendiente').eq('auth_user_id', userId).gt('saldo_pendiente', 0);
+        const total = (data||[]).reduce((s,c)=>s+Number(c.saldo_pendiente||0),0);
+        if (!(data||[]).length) return 'No tienes cuentas por pagar pendientes ahora mismo. 👍';
+        return `Debes ${fmtC(total)} en ${(data||[]).length} cuenta${(data||[]).length===1?'':'s'} por pagar.`;
+      },
+    },
+    {
+      nombre: 'top_clientes',
+      palabras: ['mejor cliente', 'mejores clientes', 'cliente que mas compra', 'cliente que más compra'],
+      async responder(texto, userId) {
+        const { data, error } = await sbClient.rpc('asistente_top_clientes', { p_auth_user_id: userId, p_limite: 5 });
+        if (error || !(data||[]).length) return 'Todavía no tengo suficientes ventas con cliente registrado para mostrarte esto.';
+        return `Tus mejores clientes:\n` + data.map((c,i) => `${i+1}. ${c.cliente} — ${fmtC(c.total_comprado)}`).join('\n');
+      },
+    },
+  ];
+
+  function detectarIntencion(texto) {
+    const limpio = texto.toLowerCase();
+    let mejor = null, mejorLargo = 0;
+    for (const intento of INTENCIONES_IA) {
+      for (const p of intento.palabras) {
+        if (limpio.includes(p) && p.length > mejorLargo) { mejor = intento; mejorLargo = p.length; }
+      }
+    }
+    return mejor;
+  }
+
   async function enviarPreguntaIA() {
     const input = document.getElementById('ia-input');
     const pregunta = input.value.trim();
@@ -2928,27 +3096,25 @@ document.addEventListener('DOMContentLoaded', () => {
     input.value = '';
     input.disabled = true;
     agregarBurbujaIA(pregunta, 'usuario');
-    const burbujaCargando = agregarBurbujaIA('Pensando…', 'asistente');
+    const burbujaCargando = agregarBurbujaIA('Buscando…', 'asistente');
 
     try {
       const { data: sesion } = await sbClient.auth.getSession();
-      const token = sesion?.session?.access_token;
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asistente-ia`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ pregunta, historial: window.IA_HISTORIAL }),
-      });
-      const data = await resp.json();
+      const userId = sesion?.session?.user?.id;
+      if (!userId) { burbujaCargando.textContent = 'No se pudo verificar tu sesión, intenta recargar la página.'; return; }
+
+      const intento = detectarIntencion(pregunta);
       burbujaCargando.remove();
-      if (!data.ok) {
-        agregarBurbujaIA('No pude responder: ' + (data.error || 'intenta de nuevo'), 'asistente');
-      } else {
-        agregarBurbujaIA(data.respuesta, 'asistente');
-        window.IA_HISTORIAL = data.mensajes || window.IA_HISTORIAL;
+      if (!intento) {
+        agregarBurbujaIA('No entendí bien esa pregunta. Puedo ayudarte con: ventas, gastos, compras, salarios, saldo de caja, stock bajo, productos más vendidos, créditos pendientes, cuentas por pagar, o tus mejores clientes.', 'asistente');
+        return;
       }
+      const respuesta = await intento.responder(pregunta.toLowerCase(), userId);
+      agregarBurbujaIA(respuesta, 'asistente');
     } catch (e) {
       burbujaCargando.remove();
-      agregarBurbujaIA('Error de conexión, intenta de nuevo.', 'asistente');
+      agregarBurbujaIA('Ocurrió un error buscando esa información, intenta de nuevo.', 'asistente');
+      console.error('Asistente IA:', e);
     } finally {
       input.disabled = false;
       input.focus();
