@@ -98,6 +98,7 @@ async function init() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
+    renderListaModulosIA();
     document.getElementById('ia-input')?.focus();
   } catch (e) {
     console.error('init asistente:', e);
@@ -171,6 +172,53 @@ function preguntaRapidaIA(texto) {
   document.getElementById('ia-input').value = texto;
   enviarPreguntaIA();
 }
+
+/* =====================================================
+   NAVEGACIÓN POR MÓDULO — se muestra la lista de TODOS los módulos
+   reales del sistema (mismo registro que usa el resto de Negocio360
+   para menús y permisos); al elegir uno, se muestra un submenú de
+   preguntas ya preparadas para ESE módulo en concreto.
+===================================================== */
+const MODULO_PREGUNTAS = {
+  ventas:            ['¿Cuánto vendí hoy?', '¿Cuánto vendí este mes?', '¿Cuánto vendí ayer?'],
+  gastos:            ['¿Cómo van mis gastos este mes?', '¿Cuánto gasté hoy?'],
+  compras:           ['¿Cuánto compré este mes?', '¿Cuánto compré hoy?'],
+  salarios:          ['¿Cuánto he pagado en salarios este mes?', '¿Cuánto pagué en salarios esta semana?'],
+  caja:              ['¿Cuál es mi saldo de caja?'],
+  productos:         ['¿Qué productos tienen poco stock?', '¿Qué producto es el más vendido este mes?', 'Precio de (escribe el nombre)'],
+  creditos:          ['¿Cuánto me deben mis clientes?'],
+  cuentas_por_pagar: ['¿Cuánto debo a mis proveedores?'],
+  clientes:          ['¿Quiénes son mis mejores clientes?', 'Información de (escribe el nombre)'],
+};
+
+function renderListaModulosIA() {
+  const cont = document.getElementById('ia-lista-modulos');
+  const registro = window.NEGOCIO360_MODULOS || {};
+  const modulos = Object.values(registro).filter(m => !m.soloAdmin);
+  cont.innerHTML = modulos.map(m => `
+    <button class="btn-secondary btn-sm" onclick="seleccionarModuloIA('${m.key}', '${esc(m.label)}')">${m.icon} ${esc(m.label)}</button>
+  `).join('');
+}
+
+function seleccionarModuloIA(key, label) {
+  document.getElementById('ia-nivel-modulos').style.display = 'none';
+  document.getElementById('ia-nivel-preguntas').style.display = 'block';
+  document.getElementById('ia-titulo-modulo-elegido').textContent = `Preguntas de ${label}`;
+
+  const preguntas = MODULO_PREGUNTAS[key] || [];
+  const cont = document.getElementById('ia-lista-preguntas');
+  if (!preguntas.length) {
+    cont.innerHTML = `<p style="font-size:12.5px;color:var(--text-muted);margin:0">Todavía no tengo preguntas preparadas para este módulo — pero puedes escribir tu pregunta directamente abajo.</p>`;
+    return;
+  }
+  cont.innerHTML = preguntas.map(p => `<button class="btn-secondary btn-sm" onclick="preguntaRapidaIA('${esc(p)}')">${esc(p)}</button>`).join('');
+}
+
+function volverAModulosIA() {
+  document.getElementById('ia-nivel-preguntas').style.display = 'none';
+  document.getElementById('ia-nivel-modulos').style.display = 'block';
+}
+
 
 function fechaLocalISO(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
