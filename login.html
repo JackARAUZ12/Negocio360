@@ -769,7 +769,14 @@
 
     } catch (e) {
       console.error('Login error:', e);
-      showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+      // BUG REAL CORREGIDO: este catch culpaba SIEMPRE al internet, sin
+      // importar la causa real -- si redirectByOnboarding() fallaba por
+      // cualquier otro motivo DESPUES de un login ya exitoso, a la
+      // persona le salia "revisa tu internet" aunque su conexion
+      // estuviera perfecta. Ahora se usa translateAuthError(), que ya
+      // sabe distinguir la causa real -- y solo menciona internet si el
+      // mensaje real de verdad lo indica.
+      showError(translateAuthError(e?.message));
       setLoading(false);
     }
   }
@@ -844,7 +851,7 @@
       await redirectByOnboarding(data.user.id);
     } catch (e) {
       console.error('Demo login error:', e);
-      showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+      showError(translateAuthError(e?.message));
       demoBtn.disabled = false;
       demoBtn.classList.remove('loading');
     }

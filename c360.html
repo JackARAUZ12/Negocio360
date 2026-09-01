@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="claro">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title id="c360p-title">Catálogo</title>
+<meta id="c360p-desc-meta" name="description" content="Catálogo digital">
+<meta id="c360p-og-title" property="og:title" content="Catálogo">
+<meta id="c360p-og-desc" property="og:description" content="Catálogo digital">
+<meta id="c360p-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --acento: #6366f1;
+    --bg: #f8f9fb; --bg-card: #ffffff; --texto: #14151a; --texto-sec: #6b7280; --borde: #e9eaee;
+  }
+  html[data-theme="oscuro"] {
+    --bg: #0e0f14; --bg-card: #17181f; --texto: #f2f2f5; --texto-sec: #9a9ba5; --borde: #262832;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'Plus Jakarta Sans',sans-serif; background:var(--bg); color:var(--texto); transition:background .2s,color .2s; }
+  img { max-width:100%; display:block; }
+  a { color:inherit; }
+
+  header.c360p-header {
+    position:sticky; top:0; z-index:20; background:var(--bg-card); border-bottom:1px solid var(--borde);
+    padding:14px 20px; display:flex; align-items:center; gap:12px; backdrop-filter:blur(8px);
+  }
+  .c360p-logo { width:40px; height:40px; border-radius:10px; object-fit:cover; background:var(--borde); flex-shrink:0; }
+  .c360p-nombre { font-weight:800; font-size:16px; }
+  .c360p-desc-header { font-size:11.5px; color:var(--texto-sec); }
+  .c360p-tema-btn {
+    margin-left:auto; background:var(--bg); border:1px solid var(--borde); border-radius:999px;
+    width:36px; height:36px; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;
+  }
+
+  .c360p-hero { padding:28px 20px 8px; text-align:center; }
+  .c360p-hero h1 { margin:0 0 6px; font-size:22px; font-weight:800; }
+  .c360p-hero p { margin:0; color:var(--texto-sec); font-size:13.5px; max-width:480px; margin:0 auto; }
+  .c360p-contacto { display:flex; gap:10px; justify-content:center; margin-top:16px; flex-wrap:wrap; }
+  .c360p-btn-contacto {
+    display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:999px;
+    background:var(--acento); color:#fff; font-weight:700; font-size:13px; text-decoration:none; border:none; cursor:pointer;
+  }
+  .c360p-btn-contacto.secundario { background:transparent; border:1px solid var(--borde); color:var(--texto); }
+
+  .c360p-categorias { display:flex; gap:8px; overflow-x:auto; padding:14px 20px; -webkit-overflow-scrolling:touch; }
+  .c360p-cat-chip {
+    flex-shrink:0; padding:7px 16px; border-radius:999px; background:var(--bg-card); border:1px solid var(--borde);
+    font-size:12.5px; font-weight:600; cursor:pointer; color:var(--texto-sec);
+  }
+  .c360p-cat-chip.active { background:var(--acento); color:#fff; border-color:var(--acento); }
+
+  .c360p-grid {
+    display:grid; grid-template-columns:repeat(2,1fr); gap:14px; padding:6px 20px 60px; max-width:1100px; margin:0 auto;
+  }
+  @media (min-width:640px) { .c360p-grid { grid-template-columns:repeat(3,1fr); } }
+  @media (min-width:900px) { .c360p-grid { grid-template-columns:repeat(4,1fr); } }
+
+  .c360p-card {
+    background:var(--bg-card); border:1px solid var(--borde); border-radius:16px; overflow:hidden; cursor:pointer;
+    transition:transform .15s; display:flex; flex-direction:column;
+  }
+  .c360p-card:hover { transform:translateY(-2px); }
+  .c360p-card-img { width:100%; aspect-ratio:1/1; object-fit:cover; background:var(--borde); }
+  .c360p-card-body { padding:10px 12px 12px; flex:1; display:flex; flex-direction:column; }
+  .c360p-card-nombre { font-size:13.5px; font-weight:700; line-height:1.3; margin-bottom:4px; }
+  .c360p-card-precio { font-weight:800; color:var(--acento); font-size:14px; margin-top:auto; }
+
+  .c360p-vacio { text-align:center; padding:60px 20px; color:var(--texto-sec); }
+
+  /* MODAL DE PRODUCTO */
+  .c360p-modal-overlay {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; align-items:flex-end; justify-content:center;
+  }
+  .c360p-modal-overlay.open { display:flex; }
+  .c360p-modal {
+    background:var(--bg-card); width:100%; max-width:480px; max-height:88vh; overflow-y:auto;
+    border-radius:20px 20px 0 0; padding:0;
+  }
+  @media (min-width:640px) { .c360p-modal-overlay { align-items:center; } .c360p-modal { border-radius:20px; } }
+  .c360p-modal-close { position:sticky; top:10px; margin-left:auto; margin-right:10px; width:32px; height:32px; border-radius:50%; background:rgba(0,0,0,.5); color:#fff; border:none; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:5; }
+  .c360p-modal-fotos { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; margin-top:-42px; }
+  .c360p-modal-fotos img { width:100%; flex-shrink:0; scroll-snap-align:start; aspect-ratio:1/1; object-fit:cover; }
+  .c360p-modal-body { padding:18px 20px 24px; }
+  .c360p-modal-nombre { font-size:19px; font-weight:800; margin-bottom:4px; }
+  .c360p-modal-precio { font-size:20px; font-weight:800; color:var(--acento); margin-bottom:12px; }
+  .c360p-modal-desc { font-size:13.5px; color:var(--texto-sec); line-height:1.6; margin-bottom:18px; white-space:pre-wrap; }
+
+  .c360p-footer { text-align:center; padding:20px; font-size:11.5px; color:var(--texto-sec); }
+  .c360p-footer a { color:var(--acento); font-weight:700; text-decoration:none; }
+
+  .c360p-loader { display:flex; align-items:center; justify-content:center; min-height:60vh; color:var(--texto-sec); font-size:14px; }
+</style>
+</head>
+<body>
+
+<div id="c360p-loader" class="c360p-loader">Cargando catálogo…</div>
+
+<div id="c360p-app" style="display:none">
+  <header class="c360p-header">
+    <img id="c360p-logo" class="c360p-logo" src="" style="display:none"/>
+    <div>
+      <div class="c360p-nombre" id="c360p-nombre"></div>
+      <div class="c360p-desc-header" id="c360p-desc-header"></div>
+    </div>
+    <button class="c360p-tema-btn" onclick="toggleTemaPublico()" id="c360p-tema-btn">🌙</button>
+  </header>
+
+  <div class="c360p-hero">
+    <p id="c360p-descripcion-larga"></p>
+    <div class="c360p-contacto" id="c360p-contacto"></div>
+  </div>
+
+  <div class="c360p-categorias" id="c360p-categorias"></div>
+
+  <div class="c360p-grid" id="c360p-grid"></div>
+
+  <div class="c360p-footer">
+    Catálogo creado con <a href="/" target="_blank">Catálogo360</a>
+  </div>
+</div>
+
+<div class="c360p-modal-overlay" id="c360p-modal" onclick="if(event.target===this)cerrarModalProducto()">
+  <div class="c360p-modal">
+    <button class="c360p-modal-close" onclick="cerrarModalProducto()">✕</button>
+    <div class="c360p-modal-fotos" id="c360p-modal-fotos"></div>
+    <div class="c360p-modal-body">
+      <div class="c360p-modal-nombre" id="c360p-modal-nombre"></div>
+      <div class="c360p-modal-precio" id="c360p-modal-precio"></div>
+      <div class="c360p-modal-desc" id="c360p-modal-desc"></div>
+      <button class="c360p-btn-contacto" id="c360p-modal-whatsapp" style="width:100%;justify-content:center;padding:12px">
+        💬 Consultar por WhatsApp
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let CATALOGO = null, PRODUCTOS = [], CATEGORIA_ACTIVA = '__todas__';
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtC(n) { return 'C$' + Number(n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function linkWhatsapp(numero, texto) {
+  const limpio = (numero||'').replace(/[^\d]/g,'');
+  return `https://wa.me/${limpio}?text=${encodeURIComponent(texto)}`;
+}
+
+function toggleTemaPublico() {
+  const actual = document.documentElement.getAttribute('data-theme');
+  const nuevo = actual === 'oscuro' ? 'claro' : 'oscuro';
+  document.documentElement.setAttribute('data-theme', nuevo);
+  document.getElementById('c360p-tema-btn').textContent = nuevo === 'oscuro' ? '☀' : '🌙';
+  localStorage.setItem('c360p_tema', nuevo);
+}
+
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get('c');
+  if (!slug) { mostrarError('Enlace de catálogo no válido.'); return; }
+
+  const { data: catalogo, error } = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado', 'publicado').maybeSingle();
+  if (error || !catalogo) { mostrarError('Este catálogo no existe o ya no está disponible.'); return; }
+  CATALOGO = catalogo;
+
+  const temaGuardado = localStorage.getItem('c360p_tema') || catalogo.tema_default || 'claro';
+  document.documentElement.setAttribute('data-theme', temaGuardado);
+  document.getElementById('c360p-tema-btn').textContent = temaGuardado === 'oscuro' ? '☀' : '🌙';
+  document.documentElement.style.setProperty('--acento', catalogo.color_acento || '#6366f1');
+
+  const { data: productos } = await sb.from('catalogo_productos').select('*, catalogo_producto_fotos(*)')
+    .eq('catalogo_id', catalogo.id).eq('activo', true).order('orden');
+  PRODUCTOS = (productos || []).map(p => ({ ...p, fotos: (p.catalogo_producto_fotos||[]).sort((a,b)=>a.orden-b.orden) }));
+
+  renderCabecera();
+  renderCategorias();
+  renderGrid();
+
+  document.getElementById('c360p-loader').style.display = 'none';
+  document.getElementById('c360p-app').style.display = 'block';
+}
+
+function mostrarError(msg) {
+  document.getElementById('c360p-loader').innerHTML = `<div style="text-align:center"><div style="font-size:32px;margin-bottom:10px">😕</div>${esc(msg)}</div>`;
+}
+
+function renderCabecera() {
+  const c = CATALOGO;
+  document.title = c.nombre_comercial || c.nombre;
+  document.getElementById('c360p-title').textContent = c.nombre_comercial || c.nombre;
+  document.getElementById('c360p-desc-meta').setAttribute('content', c.descripcion || '');
+  document.getElementById('c360p-og-title').setAttribute('content', c.nombre_comercial || c.nombre);
+  document.getElementById('c360p-og-desc').setAttribute('content', c.descripcion || '');
+  if (c.logo_url) document.getElementById('c360p-og-image').setAttribute('content', c.logo_url);
+
+  document.getElementById('c360p-nombre').textContent = c.nombre_comercial || c.nombre;
+  document.getElementById('c360p-desc-header').textContent = c.descripcion || '';
+  document.getElementById('c360p-descripcion-larga').textContent = c.descripcion || '';
+  if (c.logo_url) {
+    const logo = document.getElementById('c360p-logo');
+    logo.src = c.logo_url; logo.style.display = 'block';
+  }
+
+  const contactoDiv = document.getElementById('c360p-contacto');
+  let botones = '';
+  if (c.whatsapp) botones += `<a class="c360p-btn-contacto" href="${linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${c.nombre_comercial||''} y tengo una consulta.`)}" target="_blank">💬 WhatsApp</a>`;
+  if (c.telefono) botones += `<a class="c360p-btn-contacto secundario" href="tel:${esc(c.telefono)}">📞 Llamar</a>`;
+  contactoDiv.innerHTML = botones;
+}
+
+function renderCategorias() {
+  const categorias = [...new Set(PRODUCTOS.map(p => p.categoria).filter(Boolean))];
+  const cont = document.getElementById('c360p-categorias');
+  if (!categorias.length) { cont.style.display = 'none'; return; }
+  cont.innerHTML = `<div class="c360p-cat-chip active" onclick="filtrarCategoria('__todas__')">Todos</div>` +
+    categorias.map(cat => `<div class="c360p-cat-chip" onclick="filtrarCategoria('${esc(cat)}')">${esc(cat)}</div>`).join('');
+}
+function filtrarCategoria(cat) {
+  CATEGORIA_ACTIVA = cat;
+  document.querySelectorAll('.c360p-cat-chip').forEach(el => el.classList.toggle('active', el.textContent === (cat === '__todas__' ? 'Todos' : cat)));
+  renderGrid();
+}
+
+function renderGrid() {
+  const grid = document.getElementById('c360p-grid');
+  const lista = CATEGORIA_ACTIVA === '__todas__' ? PRODUCTOS : PRODUCTOS.filter(p => p.categoria === CATEGORIA_ACTIVA);
+  if (!lista.length) { grid.innerHTML = `<div class="c360p-vacio" style="grid-column:1/-1">Todavía no hay productos en este catálogo.</div>`; return; }
+  grid.innerHTML = lista.map((p, i) => {
+    const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
+    return `
+    <div class="c360p-card" onclick="abrirModalProducto('${p.id}')">
+      ${principal ? `<img class="c360p-card-img" src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}">` : `<div class="c360p-card-img"></div>`}
+      <div class="c360p-card-body">
+        <div class="c360p-card-nombre">${esc(p.nombre)}</div>
+        <div class="c360p-card-precio">${fmtC(p.precio)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function abrirModalProducto(id) {
+  const p = PRODUCTOS.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('c360p-modal-nombre').textContent = p.nombre;
+  document.getElementById('c360p-modal-precio').textContent = fmtC(p.precio);
+  document.getElementById('c360p-modal-desc').textContent = p.descripcion || '';
+  document.getElementById('c360p-modal-fotos').innerHTML = p.fotos.length
+    ? p.fotos.map(f => `<img src="${esc(f.url)}" alt="">`).join('')
+    : '';
+  const btnWa = document.getElementById('c360p-modal-whatsapp');
+  if (CATALOGO.whatsapp) {
+    btnWa.style.display = 'flex';
+    btnWa.onclick = () => window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(p.precio)}) de su catálogo.`), '_blank');
+  } else {
+    btnWa.style.display = 'none';
+  }
+  document.getElementById('c360p-modal').classList.add('open');
+}
+function cerrarModalProducto() { document.getElementById('c360p-modal').classList.remove('open'); }
+
+init();
+</script>
+</body>
+</html>
