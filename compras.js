@@ -2652,6 +2652,9 @@ function renderProveedoresList() {
               : '<polyline points="20 6 9 17 4 12"/>'}
           </svg>
         </button>
+        <button class="btn-icon btn-icon-danger" onclick="abrirEliminarProveedor('${p.id}')" title="Eliminar proveedor">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
       </td>
     </tr>
   `).join('');
@@ -2719,6 +2722,77 @@ async function toggleProveedorActivo(id, activo) {
     await loadProveedores();
     showToast(activo ? 'Proveedor activado' : 'Proveedor desactivado');
   } catch(e) { showToast('Error al actualizar', 'error'); }
+}
+
+/* =====================================================
+   ELIMINAR PROVEEDOR — pide confirmar mostrando ANTES los productos
+   vinculados (si tiene), ya que se eliminan junto con el proveedor.
+   Mismo mecanismo ya probado en Productos/Servicios: DELETE real
+   sobre productos, nunca toca detalle_compras/venta_detalles (esas
+   tablas guardan el nombre/sku por separado, su historial no
+   depende de que el producto siga existiendo).
+===================================================== */
+async function abrirEliminarProveedor(id) {
+  const proveedor = STATE.proveedores.find(p => p.id === id);
+  if (!proveedor) return;
+
+  STATE.proveedorAEliminar = id;
+  document.getElementById('ep-nombre-proveedor').textContent = proveedor.nombre;
+  document.getElementById('ep-error').textContent = '';
+  document.getElementById('ep-sin-productos').style.display = 'none';
+  document.getElementById('ep-con-productos').style.display = 'none';
+  document.getElementById('ep-lista-productos').innerHTML = 'Buscando productos vinculados…';
+  document.getElementById('ep-sin-productos').style.display = 'block';
+  openModal('modal-eliminar-proveedor');
+
+  try {
+    const { data: productos } = await sbClient.from('productos')
+      .select('id, nombre').eq('auth_user_id', STATE.userId).eq('proveedor_id', id);
+    STATE.productosDelProveedorAEliminar = productos || [];
+    if (productos && productos.length) {
+      document.getElementById('ep-sin-productos').style.display = 'none';
+      document.getElementById('ep-con-productos').style.display = 'block';
+      document.getElementById('ep-lista-productos').innerHTML = productos.map(p => `• ${escHtml(p.nombre)}`).join('<br>');
+    } else {
+      document.getElementById('ep-sin-productos').style.display = 'block';
+      document.getElementById('ep-con-productos').style.display = 'none';
+    }
+  } catch (e) {
+    console.error('abrirEliminarProveedor:', e);
+    document.getElementById('ep-error').textContent = 'No se pudo revisar los productos vinculados, intenta de nuevo.';
+  }
+}
+
+async function confirmarEliminarProveedor() {
+  const id = STATE.proveedorAEliminar;
+  if (!id) return;
+  const errEl = document.getElementById('ep-error');
+  errEl.textContent = '';
+
+  setBtnLoading('btn-confirmar-eliminar-proveedor', true);
+  try {
+    const productos = STATE.productosDelProveedorAEliminar || [];
+    if (productos.length) {
+      const { error: errProd } = await sbClient.from('productos').delete()
+        .eq('auth_user_id', STATE.userId).eq('proveedor_id', id);
+      if (errProd) throw errProd;
+    }
+
+    const { error: errProv } = await sbClient.from('proveedores').delete()
+      .eq('id', id).eq('auth_user_id', STATE.userId);
+    if (errProv) throw errProv;
+
+    closeModal('modal-eliminar-proveedor');
+    showToast(productos.length
+      ? `Proveedor eliminado, junto con ${productos.length} producto${productos.length===1?'':'s'} vinculado${productos.length===1?'':'s'}`
+      : 'Proveedor eliminado');
+    await loadProveedores();
+  } catch (e) {
+    console.error('confirmarEliminarProveedor:', e);
+    errEl.textContent = 'Error al eliminar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    setBtnLoading('btn-confirmar-eliminar-proveedor', false);
+  }
 }
 
 /* =====================================================
