@@ -5594,8 +5594,17 @@ async function initVentas() {
 
   try {
     // 1. Sesión
-    const { data:{ user }, error } = await sb.auth.getUser();
-    if (error || !user) { window.location.href = 'login.html'; return; }
+    // BUG REAL CORREGIDO: getUser() siempre valida contra el servidor
+    // (requiere red) -- si habia un corte de internet momentaneo,
+    // esto fallaba con error de red, y el codigo lo trataba IGUAL que
+    // "no tiene sesion", mandando a la persona al login aunque su
+    // sesion siguiera siendo valida. Ahora se revisa primero la
+    // sesion YA GUARDADA localmente (getSession, no necesita red) --
+    // solo se manda al login si de verdad no hay ninguna sesion
+    // guardada, nunca por un simple problema de conexion.
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) { window.location.href = 'login.html'; return; }
+    const user = session.user;
 
     S.userId    = user.id;
     S.userEmail = user.email;
