@@ -199,6 +199,16 @@ const MODULO_PREGUNTAS = {
   productos:         ['¿Qué productos tienen poco stock?', '¿Qué producto es el más vendido este mes?', 'Precio de (escribe el nombre)'],
   creditos:          ['¿Cuánto me deben mis clientes?'],
   cuentas_por_pagar: ['¿Cuánto debo a mis proveedores?'],
+  proformas:         ['¿Cuántas proformas tengo pendientes?'],
+  activos:           ['¿Cuántos activos fijos tengo?'],
+  agenda:            ['¿Qué tengo en mi agenda hoy?'],
+  servicio:          ['¿Cuántos casos de servicio postventa tengo abiertos?'],
+  produccion:        ['¿Cuántas órdenes de producción tengo pendientes?'],
+  notificaciones:    ['¿Cuántas notificaciones sin leer tengo?'],
+  sucursales:        ['¿Cuántas sucursales o bodegas tengo?'],
+  impuestos:         ['¿Qué impuestos tengo configurados?'],
+  delivery:          ['¿Cuántas entregas tengo pendientes?'],
+  rutas:             ['¿Cuántas rutas tengo activas?'],
   clientes:          ['¿Quiénes son mis mejores clientes?', 'Información de (escribe el nombre)'],
 };
 
@@ -373,6 +383,114 @@ const INTENCIONES_IA = [
       const { data, error } = await sbClient.rpc('asistente_top_clientes', { p_auth_user_id: userId, p_limite: 5 });
       if (error || !(data||[]).length) return 'Todavía no tengo suficientes ventas con cliente registrado para mostrarte esto.';
       return `Tus mejores clientes:\n` + data.map((c,i) => `${i+1}. ${c.cliente} — ${fmtC(c.total_comprado)}`).join('\n');
+    },
+  },
+  {
+    nombre: 'proformas',
+    palabras: ['proforma'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('proformas').select('total, estado')
+        .eq('auth_user_id', userId).in('estado', ['pendiente','enviada','aprobada','pago_parcial']);
+      if (!(data||[]).length) return 'No tienes proformas pendientes ahora mismo. 👍';
+      const total = (data||[]).reduce((s,p)=>s+Number(p.total||0),0);
+      return `Tienes ${(data||[]).length} proforma${(data||[]).length===1?'':'s'} pendiente${(data||[]).length===1?'':'s'} (sin convertir a venta), por un total de ${fmtC(total)}.`;
+    },
+  },
+  {
+    nombre: 'activos_fijos',
+    palabras: ['activo fijo', 'activos fijos'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('activos_fijos').select('nombre, garantia_vencimiento')
+        .eq('auth_user_id', userId).eq('estado', 'activo');
+      if (!(data||[]).length) return 'No tienes activos fijos activos registrados.';
+      const hoy = new Date(); const en30dias = new Date(); en30dias.setDate(hoy.getDate()+30);
+      const porVencer = (data||[]).filter(a => a.garantia_vencimiento && new Date(a.garantia_vencimiento) <= en30dias && new Date(a.garantia_vencimiento) >= hoy);
+      let resp = `Tienes ${data.length} activo${data.length===1?'':'s'} fijo${data.length===1?'':'s'} activo${data.length===1?'':'s'}.`;
+      if (porVencer.length) resp += `\n⚠️ ${porVencer.length} con garantía por vencer en 30 días: ` + porVencer.map(a=>a.nombre).join(', ');
+      return resp;
+    },
+  },
+  {
+    nombre: 'agenda',
+    palabras: ['tengo en mi agenda', 'agenda de hoy', 'pendiente hoy'],
+    async responder(texto, userId) {
+      const hoy = fechaLocalISO(new Date());
+      const { data } = await sbClient.from('agenda_eventos').select('titulo')
+        .eq('auth_user_id', userId).eq('fecha', hoy);
+      if (!(data||[]).length) return 'No tienes nada agendado para hoy.';
+      return `Hoy tienes en tu agenda:\n` + data.map(e => `• ${e.titulo}`).join('\n');
+    },
+  },
+  {
+    nombre: 'servicio_postventa',
+    palabras: ['servicio postventa', 'garantia de un producto', 'reclamo de client'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('servicio_postventa').select('id')
+        .eq('auth_user_id', userId).in('estado', ['abierto','en_reparacion']);
+      if (!(data||[]).length) return 'No tienes casos de servicio postventa abiertos ahora mismo. 👍';
+      return `Tienes ${(data||[]).length} caso${(data||[]).length===1?'':'s'} de servicio postventa abierto${(data||[]).length===1?'':'s'} (reclamos, reparaciones o garantías en proceso).`;
+    },
+  },
+  {
+    nombre: 'ordenes_produccion',
+    palabras: ['orden de produccion', 'ordenes de produccion', 'órdenes de producción'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('ordenes_produccion').select('id')
+        .eq('auth_user_id', userId).in('estado', ['pendiente','en_proceso']);
+      if (!(data||[]).length) return 'No tienes órdenes de producción pendientes ahora mismo. 👍';
+      return `Tienes ${(data||[]).length} orden${(data||[]).length===1?'':'es'} de producción pendiente${(data||[]).length===1?'':'s'} o en proceso.`;
+    },
+  },
+  {
+    nombre: 'notificaciones',
+    palabras: ['notificacion', 'notificación'],
+    async responder(texto, userId) {
+      const { data: todas } = await sbClient.from('notificaciones').select('id');
+      const { data: leidas } = await sbClient.from('notificaciones_leidas').select('notificacion_id').eq('auth_user_id', userId);
+      const idsLeidas = new Set((leidas||[]).map(l=>l.notificacion_id));
+      const sinLeer = (todas||[]).filter(n => !idsLeidas.has(n.id)).length;
+      if (!sinLeer) return 'No tienes notificaciones sin leer. 👍';
+      return `Tienes ${sinLeer} notificación${sinLeer===1?'':'es'} sin leer.`;
+    },
+  },
+  {
+    nombre: 'sucursales',
+    palabras: ['sucursal', 'bodega'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('sucursales').select('nombre, tipo')
+        .eq('auth_user_id_central', userId).eq('activa', true).neq('es_central', true);
+      if (!(data||[]).length) return 'No tienes sucursales ni bodegas adicionales registradas todavía.';
+      return `Tienes ${data.length} sucursal${data.length===1?'':'es'}/bodega${data.length===1?'':'s'}: ` + data.map(s=>s.nombre).join(', ') + '.';
+    },
+  },
+  {
+    nombre: 'impuestos',
+    palabras: ['impuesto'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('impuestos').select('nombre, valor, tipo_valor')
+        .eq('auth_user_id', userId).eq('estado', 'activo');
+      if (!(data||[]).length) return 'No tienes impuestos configurados como activos todavía.';
+      return `Tus impuestos activos:\n` + data.map(i => `• ${i.nombre}: ${i.valor}${i.tipo_valor==='porcentaje'?'%':''}`).join('\n');
+    },
+  },
+  {
+    nombre: 'delivery',
+    palabras: ['entrega pendiente', 'entregas tengo pendientes', 'pedido delivery', 'repartidor'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('delivery_pedidos').select('id')
+        .eq('auth_user_id', userId).in('estado', ['pendiente','asignado','en_camino']);
+      if (!(data||[]).length) return 'No tienes entregas pendientes ahora mismo. 👍';
+      return `Tienes ${(data||[]).length} entrega${(data||[]).length===1?'':'s'} pendiente${(data||[]).length===1?'':'s'} de completar.`;
+    },
+  },
+  {
+    nombre: 'rutas',
+    palabras: ['ruta de reparto', 'mis rutas', 'rutas tengo activas'],
+    async responder(texto, userId) {
+      const { data } = await sbClient.from('rutas').select('nombre')
+        .eq('auth_user_id', userId).eq('activa', true);
+      if (!(data||[]).length) return 'No tienes rutas activas registradas todavía.';
+      return `Tienes ${data.length} ruta${data.length===1?'':'s'} activa${data.length===1?'':'s'}: ` + data.map(r=>r.nombre).join(', ') + '.';
     },
   },
 ];
