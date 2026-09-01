@@ -796,7 +796,7 @@ async function anularVenta() {
     // Protección: si por cualquier motivo ya estaba anulada, no se
     // vuelve a devolver el stock (evitaría duplicar la devolución).
     const { data: ventaActual, error: errVentaActual } = await sb.from('ventas')
-      .select('estado, cliente_id, total').eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
+      .select('estado, cliente_id, total, metodo_pago').eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
     if (errVentaActual) throw errVentaActual;
     if (!ventaActual) throw new Error('Venta no encontrada');
     if (ventaActual.estado === 'anulada') {
@@ -925,6 +925,35 @@ async function anularVenta() {
       console.warn('No se pudo devolver la proforma vinculada a su estado anterior:', eProforma);
     }
 
+    // BUG REAL CORREGIDO: anular una venta a crédito nunca tocaba su
+    // registro en Créditos -- el crédito se quedaba "activo" con
+    // saldo pendiente para siempre, como una deuda fantasma que el
+    // cliente nunca debió (confirmado con un caso real: la venta se
+    // anuló, pero el crédito siguió pidiendo cobro). Antes, el
+    // dueño tenía que entrar a Créditos y cancelarlo el mismo a
+    // mano. Ahora se cancela automático, con el mismo estado final
+    // ("cancelado", saldo en 0) que ya usa Créditos cuando un
+    // credito se salda por completo.
+    let creditoCancelado = false;
+    if (ventaActual.metodo_pago === 'credito') {
+      try {
+        const { data: creditoVinculado } = await sb.from('creditos')
+          .select('id, estado').eq('venta_id', id).eq('auth_user_id', S.userId).maybeSingle();
+        if (creditoVinculado && creditoVinculado.estado !== 'cancelado') {
+          await sb.from('creditos').update({
+            estado: 'cancelado', saldo_pendiente: 0, updated_at: new Date().toISOString(),
+          }).eq('id', creditoVinculado.id).eq('auth_user_id', S.userId);
+          await sb.from('creditos_historial').insert({
+            auth_user_id: S.userId, credito_id: creditoVinculado.id,
+            tipo_evento: 'cancelado', descripcion: 'Crédito cancelado automáticamente — la venta que lo originó fue anulada', data: {},
+          });
+          creditoCancelado = true;
+        }
+      } catch (eCredito) {
+        console.warn('No se pudo cancelar el crédito vinculado:', eCredito);
+      }
+    }
+
     // Si el usuario marcó la casilla, se registra en Caja el egreso
     // reverso — nunca se BORRA el ingreso original de la venta (eso
     // rompería el historial), se registra un movimiento nuevo que lo
@@ -968,7 +997,8 @@ async function anularVenta() {
     closeModal('modal-anular');
     closeModal('modal-detalle');
     const mensajeBase = descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)';
-    showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : ''), 'warning');
+    const avisoCredito = creditoCancelado ? ' — el crédito asociado se canceló automáticamente' : '';
+    showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : '') + avisoCredito, 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
   } catch(e) {
     showToast('Error al anular: '+e.message, 'error');
