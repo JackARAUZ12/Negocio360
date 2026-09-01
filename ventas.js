@@ -349,14 +349,25 @@ async function loadKPIs() {
   const today     = todayISO();
   const mesStart  = startOfMonthISO();
 
+  // BUG REAL CORREGIDO: estas tarjetas (incluyendo "Ganancia") se
+  // calculaban siempre con TODAS las ventas del negocio, sin importar
+  // quien estuviera viendo -- un perfil restringido (ej. un vendedor)
+  // veia la ganancia y las ventas de TODO el negocio, no solo las
+  // suyas. Mismo filtro ya usado en el historial de ventas
+  // (obtenerRestriccionHistorialVentas): el dueño/admin sigue viendo
+  // todo como siempre, un perfil restringido ahora solo ve lo suyo.
+  const restriccionKpi = obtenerRestriccionHistorialVentas();
+
   try {
     // Ventas del día
     // FIX: se pide también "impuesto" para poder mostrar el ingreso NETO
     // (sin IVA). El IVA no es ingreso del negocio, es dinero recaudado
     // para el fisco y ya se contabiliza aparte en el módulo de Impuestos.
-    const { data: dia } = await sb.from('ventas').select('total,ganancia,impuesto')
+    let qDia = sb.from('ventas').select('total,ganancia,impuesto')
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
+    if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
+    const { data: dia } = await qDia;
 
     const totalDia = (dia||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     setKPI('kpi-dia', fmt(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
@@ -364,9 +375,11 @@ async function loadKPIs() {
 
     // Ventas del mes
     // FIX: mismo criterio — ingreso NETO de IVA
-    const { data: mes } = await sb.from('ventas').select('total,ganancia,fecha,impuesto')
+    let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto')
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
+    if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
+    const { data: mes } = await qMes;
 
     const totalMes = (mes||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     const ganMes   = (mes||[]).reduce((s,r) => s+Number(r.ganancia),0);
