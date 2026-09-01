@@ -1008,9 +1008,81 @@
     .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
     .metodo-card .mc-icon{font-size:16px}
     .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
-    .ia-burbuja { max-width: 78%; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
-    .ia-burbuja.usuario { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
-    .ia-burbuja.asistente { align-self: flex-start; background: var(--bg-app); color: var(--text-primary); border-bottom-left-radius: 3px; }
+    /* =====================================================
+       ASISTENTE INTELIGENTE — estilos propios, 100% con variables
+       de tema (funciona igual en claro/oscuro sin código extra) y
+       totalmente responsive (celular, tablet, escritorio).
+    ===================================================== */
+    .ia-shell {
+      padding: 0; overflow: hidden; display: flex; flex-direction: column;
+      height: calc(100vh - 140px); min-height: 480px; max-height: 860px;
+    }
+    .ia-header { padding: 18px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .ia-header-titulo { font-weight: 800; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+    .ia-header-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+
+    .ia-panel-preguntas { padding: 14px 22px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .ia-panel-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+    .ia-grid-botones { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; max-height: 220px; overflow-y: auto; }
+
+    .ia-chip {
+      background: var(--bg-app); border: 1px solid var(--border); color: var(--text-primary);
+      border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all .15s ease; white-space: nowrap; line-height: 1.2;
+      display: inline-flex; align-items: center; gap: 6px; min-height: 38px;
+    }
+    .ia-chip:hover { background: var(--accent-soft, var(--bg-surface-2)); border-color: var(--accent); color: var(--accent); }
+    .ia-chip:active { transform: scale(.96); }
+    .ia-chip-volver { background: none; border: none; color: var(--accent); font-weight: 700; font-size: 13px; cursor: pointer; padding: 6px 0 10px; display: inline-flex; align-items: center; gap: 4px; }
+
+    .ia-mensajes { flex: 1; overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+    .ia-burbuja { max-width: 80%; padding: 11px 15px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .ia-burbuja.usuario { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .ia-burbuja.asistente { align-self: flex-start; background: var(--bg-app); color: var(--text-primary); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .ia-burbuja.cargando { color: var(--text-muted); font-style: italic; }
+
+    .ia-input-row { display: flex; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--border); flex-shrink: 0; background: var(--bg-surface); }
+    .ia-input {
+      flex: 1; background: var(--bg-app); border: 1px solid var(--border); border-radius: var(--radius-md);
+      padding: 12px 16px; color: var(--text-primary); font-size: 14.5px; min-width: 0;
+    }
+    .ia-input:focus { outline: none; border-color: var(--accent); }
+    .ia-btn-enviar {
+      background: var(--accent); color: #fff; border: none; border-radius: var(--radius-md);
+      padding: 0 20px; font-weight: 700; font-size: 14px; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 48px;
+    }
+    .ia-btn-enviar:hover { opacity: .9; }
+    .ia-btn-enviar:disabled { opacity: .5; cursor: not-allowed; }
+    .ia-btn-enviar .ia-enviar-texto { display: inline; }
+
+    /* TABLET */
+    @media (max-width: 900px) {
+      .ia-shell { height: calc(100vh - 120px); }
+    }
+
+    /* MÓVIL */
+    @media (max-width: 768px) {
+      .ia-shell { height: calc(100vh - 100px); min-height: 420px; border-radius: 0; }
+      .ia-header { padding: 14px 16px; }
+      .ia-header-titulo { font-size: 15.5px; }
+      .ia-header-sub { font-size: 11.5px; }
+      .ia-panel-preguntas { padding: 12px 16px 4px; }
+      .ia-grid-botones { max-height: 160px; gap: 6px; }
+      .ia-chip { padding: 8px 13px; font-size: 12.5px; min-height: 36px; }
+      .ia-mensajes { padding: 14px 16px; gap: 10px; }
+      .ia-burbuja { max-width: 88%; font-size: 13.5px; padding: 10px 13px; }
+      .ia-input-row { padding: 12px 16px; gap: 8px; }
+      .ia-input { padding: 11px 14px; font-size: 16px; } /* 16px evita zoom automático en iOS */
+      .ia-btn-enviar .ia-enviar-texto { display: none; } /* solo el ícono, para no apretar el espacio */
+      .ia-btn-enviar { min-width: 46px; padding: 0 14px; }
+    }
+
+    /* MÓVILES MUY PEQUEÑOS */
+    @media (max-width: 380px) {
+      .ia-chip { font-size: 12px; padding: 7px 11px; }
+      .ia-burbuja { max-width: 92%; }
+    }
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -1238,32 +1310,35 @@
     </header>
 
     <div id="content">
-      <div class="panel-card fade-in" style="padding:0;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 140px);min-height:520px">
+      <div class="panel-card fade-in ia-shell">
 
-        <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
-          <div style="font-weight:800;font-size:16px;display:flex;align-items:center;gap:8px">🤖 Asistente Inteligente</div>
-          <div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">Pregúntale a tu negocio — elige una pregunta rápida o escribe la tuya.</div>
+        <div class="ia-header">
+          <div class="ia-header-titulo">🤖 Asistente Inteligente</div>
+          <div class="ia-header-sub">Pregúntale a tu negocio — elige una pregunta rápida o escribe la tuya.</div>
         </div>
 
-        <div style="padding:12px 20px 4px;border-bottom:1px solid var(--border)">
+        <div class="ia-panel-preguntas">
           <div id="ia-nivel-modulos">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Elige un módulo para ver sus preguntas</div>
-            <div id="ia-lista-modulos" style="display:flex;flex-wrap:wrap;gap:8px;padding-bottom:12px"></div>
+            <div class="ia-panel-label">Elige un módulo para ver sus preguntas</div>
+            <div id="ia-lista-modulos" class="ia-grid-botones"></div>
           </div>
           <div id="ia-nivel-preguntas" style="display:none">
-            <button class="btn-ghost btn-sm" style="margin-bottom:8px" onclick="volverAModulosIA()">← Todos los módulos</button>
-            <div id="ia-titulo-modulo-elegido" style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px"></div>
-            <div id="ia-lista-preguntas" style="display:flex;flex-wrap:wrap;gap:8px;padding-bottom:12px"></div>
+            <button class="ia-chip-volver" onclick="volverAModulosIA()">← Todos los módulos</button>
+            <div id="ia-titulo-modulo-elegido" class="ia-panel-label"></div>
+            <div id="ia-lista-preguntas" class="ia-grid-botones"></div>
           </div>
         </div>
 
-        <div id="ia-mensajes" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+        <div id="ia-mensajes" class="ia-mensajes">
           <div class="ia-burbuja asistente">¡Hola! Elige un módulo arriba para ver sus preguntas, o escribe la tuya directamente abajo.</div>
         </div>
 
-        <div style="display:flex;gap:8px;padding:14px 20px;border-top:1px solid var(--border)">
-          <input type="text" id="ia-input" placeholder="Escribe tu pregunta…" style="flex:1;background:var(--bg-app);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;color:var(--text-primary);font-size:13.5px" onkeydown="if(event.key==='Enter')enviarPreguntaIA()"/>
-          <button class="btn-primary" onclick="enviarPreguntaIA()">Enviar</button>
+        <div class="ia-input-row">
+          <input type="text" id="ia-input" class="ia-input" placeholder="Escribe tu pregunta…" autocomplete="off" onkeydown="if(event.key==='Enter')enviarPreguntaIA()"/>
+          <button class="ia-btn-enviar" onclick="enviarPreguntaIA()" title="Enviar">
+            <span class="ia-enviar-texto">Enviar</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
         </div>
 
       </div>
@@ -1271,7 +1346,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="asistente.js?v=20260831c"></script>
+<script src="asistente.js?v=20260831d"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

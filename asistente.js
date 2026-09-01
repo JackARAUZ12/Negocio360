@@ -207,7 +207,7 @@ function renderListaModulosIA() {
   const registro = window.NEGOCIO360_MODULOS || {};
   const modulos = Object.values(registro).filter(m => !m.soloAdmin);
   cont.innerHTML = modulos.map(m => `
-    <button class="btn-secondary btn-sm" onclick="seleccionarModuloIA('${m.key}', '${esc(m.label)}')">${m.icon} ${esc(m.label)}</button>
+    <button class="ia-chip" onclick="seleccionarModuloIA('${m.key}', '${esc(m.label)}')">${m.icon} ${esc(m.label)}</button>
   `).join('');
 }
 
@@ -222,7 +222,7 @@ function seleccionarModuloIA(key, label) {
     cont.innerHTML = `<p style="font-size:12.5px;color:var(--text-muted);margin:0">Todavía no tengo preguntas preparadas para este módulo — pero puedes escribir tu pregunta directamente abajo.</p>`;
     return;
   }
-  cont.innerHTML = preguntas.map(p => `<button class="btn-secondary btn-sm" onclick="preguntaRapidaIA('${esc(p)}')">${esc(p)}</button>`).join('');
+  cont.innerHTML = preguntas.map(p => `<button class="ia-chip" onclick="preguntaRapidaIA('${esc(p)}')">${esc(p)}</button>`).join('');
 }
 
 function volverAModulosIA() {
@@ -452,8 +452,10 @@ async function enviarPreguntaIA() {
   if (!pregunta) return;
   input.value = '';
   input.disabled = true;
+  const btnEnviar = document.querySelector('.ia-btn-enviar');
+  if (btnEnviar) btnEnviar.disabled = true;
   agregarBurbujaIA(pregunta, 'usuario');
-  const burbujaCargando = agregarBurbujaIA('Buscando…', 'asistente');
+  const burbujaCargando = agregarBurbujaIA('Buscando…', 'asistente cargando');
 
   try {
     const { data: sesion } = await sbClient.auth.getSession();
@@ -480,6 +482,7 @@ async function enviarPreguntaIA() {
     console.error('Asistente IA:', e);
   } finally {
     input.disabled = false;
+    if (btnEnviar) btnEnviar.disabled = false;
     input.focus();
   }
 }
