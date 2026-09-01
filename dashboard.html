@@ -750,9 +750,11 @@
       .greeting-text p { font-size: 12.5px; }
       .section-title { font-size: 14px; }
       #content { padding: 14px 12px 40px; }
-      .date-selector { padding: 7px 10px; }
-      .plan-badge span { display: none; }
-      .plan-badge { padding: 8px; }
+      .date-selector { padding: 7px 10px; max-width: 130px; overflow: hidden; }
+      .date-selector #date-text, .date-selector #full-date-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 90px; }
+      .plan-badge { display: none; }
+      #header { gap: 4px; }
+      .date-selector svg:last-child { display: none; } /* la flechita del selector, no esencial */
     }
 
     /* Very small phones */
