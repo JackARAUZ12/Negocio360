@@ -157,11 +157,11 @@ function periodLabel() {
 /* ============================================================
    HELPERS MONEDA
    ============================================================ */
-function sym() { return R.moneda || 'C$'; }
+function sym() { return monedaParaMostrar(R.moneda); }
 
 function fmt(n) {
   const v = parseFloat(n||0);
-  return `${sym()} ${v.toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+  return `${sym()} ${convertirParaMostrar(v, R.moneda).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
 }
 
 function fmtShort(n) {
@@ -2715,7 +2715,8 @@ function celdaPDF(valor, tipoCol) {
   return valor ?? '';
 }
 function celdaXLSX(valor, tipoCol) {
-  if (tipoCol === 'moneda' || tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
+  if (tipoCol === 'moneda') return convertirParaMostrar(Number(valor||0), R.moneda);
+  if (tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
   return valor ?? '';
 }
 function filaAPDF(fila, cols)  { return cols.map(c => celdaPDF(fila[c.key], c.tipo)); }

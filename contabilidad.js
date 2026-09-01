@@ -827,10 +827,19 @@ function exportarBalance(formato) {
   const totales = ['','TOTALES', b.totalDebeGeneral, b.totalHaberGeneral, b.filas.reduce((s,f)=>s+f.saldoDeudor,0), b.filas.reduce((s,f)=>s+f.saldoAcreedor,0)];
 
   if (formato === 'excel') {
-    const aoa = [[bizName],['Balance de Comprobación'],[`Al ${fmtFecha(todayISO())}`],[],headers,...rows,totales];
+    // BUG REAL CORREGIDO: el PDF ya convertia correctamente (usa
+    // fmt(), que si respeta la moneda de visualizacion) -- pero
+    // Excel usaba los numeros crudos de "rows" directo, siempre en
+    // la moneda oficial. Se convierte aqui, en un arreglo aparte,
+    // para no afectar en nada al PDF (que sigue usando "rows" tal
+    // cual, sin duplicar la conversion).
+    const cv = v => convertirParaMostrar(Number(v)||0, STATE.empresaConfig?.moneda);
+    const rowsExcel = b.filas.map(f => [f.cuenta.codigo, f.cuenta.nombre, cv(f.debe), cv(f.haber), cv(f.saldoDeudor||0), cv(f.saldoAcreedor||0)]);
+    const totalesExcel = ['','TOTALES', cv(b.totalDebeGeneral), cv(b.totalHaberGeneral), cv(b.filas.reduce((s,f)=>s+f.saldoDeudor,0)), cv(b.filas.reduce((s,f)=>s+f.saldoAcreedor,0))];
+    const aoa = [[bizName],['Balance de Comprobación'],[`Al ${fmtFecha(todayISO())}`],[],headers,...rowsExcel,totalesExcel];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:headers.length-1} }));
-    ws['!cols'] = headers.map((h,ci) => ({ wch: Math.min(Math.max(...[...rows.map(r=>String(r[ci]??'').length), h.length])+2, 32) }));
+    ws['!cols'] = headers.map((h,ci) => ({ wch: Math.min(Math.max(...[...rowsExcel.map(r=>String(r[ci]??'').length), h.length])+2, 32) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Balance');
     XLSX.writeFile(wb, 'Balance_de_Comprobacion.xlsx');
@@ -934,7 +943,12 @@ function exportarEstadoResultados(formato) {
     ['','UTILIDAD NETA', e.utilidadNeta],
   ];
   if (formato === 'excel') {
-    const aoa = [[bizName],['Estado de Resultados'],[`Período: ${fmtFecha(e.desde)} — ${fmtFecha(e.hasta)}`],[],['Código','Cuenta','Monto'],...filas];
+    // Mismo bug real corregido que en exportarBalance(): el PDF ya
+    // convierte (usa fmt()), Excel usaba el numero crudo. Se
+    // convierte aqui en un arreglo aparte para no afectar al PDF.
+    const cv = v => convertirParaMostrar(Number(v)||0, STATE.empresaConfig?.moneda);
+    const filasExcel = filas.map(f => [f[0], f[1], typeof f[2]==='number' ? cv(f[2]) : f[2]]);
+    const aoa = [[bizName],['Estado de Resultados'],[`Período: ${fmtFecha(e.desde)} — ${fmtFecha(e.hasta)}`],[],['Código','Cuenta','Monto'],...filasExcel];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:2} }));
     ws['!cols'] = [{wch:10},{wch:32},{wch:16}];
@@ -1017,7 +1031,11 @@ function exportarBalanceGeneral(formato) {
     ['','TOTAL PASIVO + CAPITAL', b.totalPasivoCapital],
   ];
   if (formato === 'excel') {
-    const aoa = [[bizName],['Balance General'],[`Al ${fmtFecha(b.fecha)}`],[],['Código','Cuenta','Monto'],...filas];
+    // Mismo bug real corregido que en las 2 exportaciones anteriores:
+    // el PDF ya convierte (usa fmt()), Excel usaba el numero crudo.
+    const cv = v => convertirParaMostrar(Number(v)||0, STATE.empresaConfig?.moneda);
+    const filasExcel = filas.map(f => [f[0], f[1], typeof f[2]==='number' ? cv(f[2]) : f[2]]);
+    const aoa = [[bizName],['Balance General'],[`Al ${fmtFecha(b.fecha)}`],[],['Código','Cuenta','Monto'],...filasExcel];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:2} }));
     ws['!cols'] = [{wch:10},{wch:32},{wch:16}];
@@ -1148,7 +1166,11 @@ function exportarFlujoEfectivo(formato) {
     ['','SALDO FINAL EN EFECTIVO', f.saldoFinalCalculado],
   ];
   if (formato === 'excel') {
-    const aoa = [[bizName],['Estado de Flujo de Efectivo'],[`Período: ${fmtFecha(f.desde)} — ${fmtFecha(f.hasta)}`],[],['Código','Concepto','Monto'],...filas];
+    // Mismo bug real corregido que en las 3 exportaciones anteriores:
+    // el PDF ya convierte (usa fmt()), Excel usaba el numero crudo.
+    const cv = v => convertirParaMostrar(Number(v)||0, STATE.empresaConfig?.moneda);
+    const filasExcel = filas.map(fl => [fl[0], fl[1], typeof fl[2]==='number' ? cv(fl[2]) : fl[2]]);
+    const aoa = [[bizName],['Estado de Flujo de Efectivo'],[`Período: ${fmtFecha(f.desde)} — ${fmtFecha(f.hasta)}`],[],['Código','Concepto','Monto'],...filasExcel];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [0,1,2].map(r => ({ s:{r,c:0}, e:{r,c:2} }));
     ws['!cols'] = [{wch:6},{wch:40},{wch:16}];

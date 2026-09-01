@@ -1695,16 +1695,21 @@ async function exportarPlanilla(formato) {
       ...nombresDeducciones, 'Total Deducciones', 'Salario Neto',
       ...(modoNicaragua ? nombresAportes.map(n => `${n} (patronal)`) : []),
     ];
+    // BUG REAL CORREGIDO: el PDF ya convierte (usa fmt(), que si
+    // respeta la moneda de visualizacion) -- Excel usaba los numeros
+    // crudos directo. cv() aplica la misma conversion aqui, solo
+    // para Excel, sin tocar el PDF que ya funcionaba bien.
+    const cv = v => convertirParaMostrar(Number(v)||0, STATE.empresaConfig?.moneda);
     const rows = pagos.map((p, i) => [
-      i+1, p.empleados?.cedula || '—', p.empleados?.nombre || '—', p.empleados?.cargo || '—', Number(p.salario_base),
-      ...nombresDeducciones.map(n => montoConcepto(p.deducciones_detalle, n)),
-      Number(p.deducciones), Number(p.total_pagado),
-      ...(modoNicaragua ? nombresAportes.map(n => montoConcepto(p.aportes_patronales_detalle, n)) : []),
+      i+1, p.empleados?.cedula || '—', p.empleados?.nombre || '—', p.empleados?.cargo || '—', cv(p.salario_base),
+      ...nombresDeducciones.map(n => cv(montoConcepto(p.deducciones_detalle, n))),
+      cv(p.deducciones), cv(p.total_pagado),
+      ...(modoNicaragua ? nombresAportes.map(n => cv(montoConcepto(p.aportes_patronales_detalle, n))) : []),
     ]);
-    const totales = ['', '', '', 'TOTALES', pagos.reduce((s,p)=>s+Number(p.salario_base),0),
-      ...nombresDeducciones.map(n => pagos.reduce((s,p)=>s+montoConcepto(p.deducciones_detalle,n),0)),
-      pagos.reduce((s,p)=>s+Number(p.deducciones),0), pagos.reduce((s,p)=>s+Number(p.total_pagado),0),
-      ...(modoNicaragua ? nombresAportes.map(n => pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0)) : []),
+    const totales = ['', '', '', 'TOTALES', cv(pagos.reduce((s,p)=>s+Number(p.salario_base),0)),
+      ...nombresDeducciones.map(n => cv(pagos.reduce((s,p)=>s+montoConcepto(p.deducciones_detalle,n),0))),
+      cv(pagos.reduce((s,p)=>s+Number(p.deducciones),0)), cv(pagos.reduce((s,p)=>s+Number(p.total_pagado),0)),
+      ...(modoNicaragua ? nombresAportes.map(n => cv(pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0))) : []),
     ];
 
     // 3 filas de título + 1 en blanco antes del encabezado real — se

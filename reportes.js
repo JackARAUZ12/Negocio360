@@ -2599,7 +2599,16 @@ function celdaPDF(valor, tipoCol) {
   return valor ?? '';
 }
 function celdaXLSX(valor, tipoCol) {
-  if (tipoCol === 'moneda' || tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
+  // BUG REAL CORREGIDO: esta funcion usaba el numero crudo tal cual
+  // venia de la base de datos -- el encabezado de la columna SI
+  // mostraba el simbolo correcto segun la moneda de visualizacion
+  // (via sym()), pero el NUMERO seguia en la moneda oficial siempre.
+  // Si el dueno cambiaba a Dolar, el encabezado decia "$" pero el
+  // numero seguia siendo el monto en Cordobas -- una mezcla
+  // confusa e incorrecta. Ahora se convierte igual que ya hacia el
+  // PDF (celdaPDF ya usaba fmt(), que si convertia correctamente).
+  if (tipoCol === 'moneda') return convertirParaMostrar(Number(valor||0), R.moneda);
+  if (tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
   return valor ?? '';
 }
 function filaAPDF(fila, cols)  { return cols.map(c => celdaPDF(fila[c.key], c.tipo)); }

@@ -1051,8 +1051,8 @@ function filaExportInventario(p) {
     sku: p.sku || '—',
     categoria: p.categoria || '—',
     stock: p.tipo === 'servicio' ? '—' : Number(p.stock_actual || 0),
-    costo: Number(p.costo || 0),
-    precioFijo: esEscala ? '-' : Number(p.precio || 0),
+    costo: convertirParaMostrar(Number(p.costo || 0), MONEDA_CODIGO),
+    precioFijo: esEscala ? '-' : convertirParaMostrar(Number(p.precio || 0), MONEDA_CODIGO),
     escala1: '', escala2: '', escala3: '', escala4: '', escala5: '',
     estado: p.activo === false ? 'Inactivo' : 'Activo',
   };
@@ -1215,8 +1215,9 @@ async function exportarInventarioExcel() {
     const filas = datosParaExportarInventario();
     if (!filas.length) { showToast('warning', 'Sin productos', 'No hay productos para exportar'); return; }
 
-    const headers = ['Producto', 'Tipo', 'SKU', 'Categoría', 'Stock', `Costo (${MONEDA_SIMBOLO})`,
-      `Precio fijo (${MONEDA_SIMBOLO})`, 'Escala 1', 'Escala 2', 'Escala 3', 'Escala 4', 'Escala 5', 'Estado'];
+    const simboloVis = monedaParaMostrar(MONEDA_CODIGO);
+    const headers = ['Producto', 'Tipo', 'SKU', 'Categoría', 'Stock', `Costo (${simboloVis})`,
+      `Precio fijo (${simboloVis})`, 'Escala 1', 'Escala 2', 'Escala 3', 'Escala 4', 'Escala 5', 'Estado'];
     const filasArr = filas.map(f => [
       f.producto, f.tipo, f.sku, f.categoria, f.stock, f.costo, f.precioFijo,
       f.escala1, f.escala2, f.escala3, f.escala4, f.escala5, f.estado,
