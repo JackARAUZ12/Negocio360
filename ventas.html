@@ -1077,13 +1077,14 @@
                 <th>Producto</th>
                 <th>Qty</th>
                 <th>Precio</th>
+                <th class="col-costo-venta" style="display:none">Costo</th>
                 <th>Desc.</th>
                 <th>Subtotal</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="carrito-productos-tbody">
-              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
                 Sin productos agregados
               </td></tr>
             </tbody>
@@ -1107,13 +1108,14 @@
                 <th>Servicio</th>
                 <th>Qty</th>
                 <th>Precio</th>
+                <th class="col-costo-venta" style="display:none">Costo</th>
                 <th>Desc.</th>
                 <th>Subtotal</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="carrito-servicios-tbody">
-              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
                 Sin servicios agregados
               </td></tr>
             </tbody>
@@ -1355,6 +1357,13 @@
             Imprimir el ticket automáticamente al cerrar cada venta
           </label>
         </div>
+        <div class="form-group full-col" style="display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+          <input type="checkbox" id="vrc-mostrar-costo" style="width:16px;height:16px"/>
+          <label for="vrc-mostrar-costo" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
+            Mostrar el costo (no solo el precio) al agregar productos o servicios a una venta o proforma
+          </label>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0;padding-left:26px">Desactivado por defecto — el costo suele ser información sensible que no todo el personal debe ver al vender.</p>
       </div>
 
     </div>
@@ -1770,7 +1779,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
 <script src="escpos-usb.js?v=20260825a"></script>
-<script src="ventas.js?v=20260901a"></script>
+<script src="ventas.js?v=20260901b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

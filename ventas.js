@@ -1619,6 +1619,7 @@ async function abrirNuevaVenta() {
   S.carrito       = [];
   S.metodoPagoId  = null;
   S.metodoPagoNombre = 'Efectivo';
+  cargarPreferenciaCostoVenta();
   S.bancoElegidoId = null; S.bancoElegidoNombre = null;
   const bew = document.getElementById('banco-elegir-wrap'); if (bew) bew.style.display = 'none';
   const bdw = document.getElementById('banco-elegido-wrap'); if (bdw) bdw.style.display = 'none';
@@ -2694,6 +2695,33 @@ function cambiarPrecioManual(productoId, val) {
   renderCarrito(item.tipo);
 }
 
+function cambiarCostoManual(productoId, val) {
+  const item = S.carrito.find(c => c.id===productoId);
+  if (!item) return;
+  const n = parseFloat(val);
+  if (isNaN(n) || n < 0) { renderCarrito(item.tipo); return; }
+  item.costo = round2(n);
+  recalcItem(item);
+  renderCarrito(item.tipo);
+}
+
+// Muestra u oculta la columna de Costo en el carrito de Nueva Venta,
+// segun la preferencia guardada en Configurar Venta rapida --
+// desactivada por defecto, ya que el costo suele ser informacion
+// sensible que no todo el personal debe ver al vender.
+function aplicarVisibilidadCostoVenta() {
+  const mostrar = !!S.mostrarCostoVenta;
+  document.querySelectorAll('.col-costo-venta').forEach(el => { el.style.display = mostrar ? '' : 'none'; });
+}
+async function cargarPreferenciaCostoVenta() {
+  try {
+    const { data } = await sb.from('configuracion_venta_rapida')
+      .select('mostrar_costo_venta').eq('auth_user_id', S.userId).maybeSingle();
+    S.mostrarCostoVenta = !!data?.mostrar_costo_venta;
+  } catch (e) { S.mostrarCostoVenta = false; }
+  aplicarVisibilidadCostoVenta();
+}
+
 function removeFromCarrito(productoId) {
   const idx = S.carrito.findIndex(c => c.id===productoId);
   if (idx!==-1) S.carrito.splice(idx,1);
@@ -2714,7 +2742,7 @@ function renderCarrito(tipo) {
   const items = S.carrito.filter(c => c.tipo===tipo);
 
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
       Sin ${tipo==='producto' ? 'productos' : 'servicios'} agregados
     </td></tr>`;
     return;
@@ -2742,6 +2770,12 @@ function renderCarrito(tipo) {
           onchange="cambiarPrecioManual('${item.id}',this.value)"
           style="font-family:var(--font-mono);font-weight:600;width:90px"/>
       </td>
+      <td class="col-costo-venta" style="display:none">
+        <input type="number" class="cart-desc-input" value="${item.costo||0}"
+          min="0" step="0.01" title="Ajustar el costo solo para esta venta — no cambia el costo guardado en Productos/Servicios"
+          onchange="cambiarCostoManual('${item.id}',this.value)"
+          style="font-family:var(--font-mono);font-weight:600;width:90px"/>
+      </td>
       <td>
         <input type="number" class="cart-desc-input" value="${item.descuento}"
           min="0" step="0.01" placeholder="0.00"
@@ -2754,6 +2788,7 @@ function renderCarrito(tipo) {
         </button>
       </td>
     </tr>`).join('');
+  aplicarVisibilidadCostoVenta();
 }
 
 /* ============================================================
@@ -4021,6 +4056,8 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
   setEl2Value('vrc-mensaje',   c.mensaje_pie_ticket || 'Gracias por su compra');
   const auto = document.getElementById('vrc-autoimprimir');
   if (auto) auto.checked = c.imprimir_automatico !== false;
+  const mostrarCosto = document.getElementById('vrc-mostrar-costo');
+  if (mostrarCosto) mostrarCosto.checked = !!c.mostrar_costo_venta;
 
   openModal('modal-vr-config');
 }
@@ -4146,6 +4183,7 @@ async function guardarConfigVentaRapida() {
     direccion_ticket:    document.getElementById('vrc-direccion')?.value.trim()|| null,
     mensaje_pie_ticket:  document.getElementById('vrc-mensaje')?.value.trim()  || 'Gracias por su compra',
     imprimir_automatico: document.getElementById('vrc-autoimprimir')?.checked ?? true,
+    mostrar_costo_venta: document.getElementById('vrc-mostrar-costo')?.checked ?? false,
     updated_at:          new Date().toISOString(),
   };
 

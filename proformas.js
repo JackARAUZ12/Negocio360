@@ -609,7 +609,7 @@ function renderCarritoProf() {
   const tbody = document.getElementById('np-carrito-tbody');
   if (!tbody) return;
   if (!STATE.carrito.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">Busca y agrega productos arriba</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Busca y agrega productos arriba</td></tr>`;
     actualizarResumenProf();
     return;
   }
@@ -618,11 +618,13 @@ function renderCarritoProf() {
       <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
       <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/></td>
+      <td class="col-costo-prof" style="display:none"><input type="number" class="carrito-input" value="${l.costo||0}" min="0" step="0.01" title="Ajustar el costo solo para esta proforma" onchange="actualizarLineaProf(${idx},'costo',this.value)" style="width:90px"/></td>
       <td><input type="number" class="carrito-input" value="${l.descuento}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'descuento',this.value)" style="width:80px"/></td>
       <td class="td-right td-money">${fmt(l.subtotal)}</td>
       <td><button class="btn-icon btn-icon-danger" onclick="eliminarLineaProf(${idx})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
     </tr>`).join('');
   actualizarResumenProf();
+  aplicarVisibilidadCostoProf();
 }
 function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
   const l = STATE.carrito[idx]; if (!l) return;
@@ -632,6 +634,23 @@ function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
   renderCarritoProf();
 }
 function eliminarLineaProf(idx) { STATE.carrito.splice(idx,1); renderCarritoProf(); }
+
+// Muestra u oculta la columna de Costo en la tabla de items, segun la
+// preferencia guardada en Configurar Venta rapida (compartida con
+// Ventas) -- desactivada por defecto, ya que el costo suele ser
+// informacion sensible que no todo el personal debe ver al vender.
+function aplicarVisibilidadCostoProf() {
+  const mostrar = !!STATE.mostrarCostoVenta;
+  document.querySelectorAll('.col-costo-prof').forEach(el => { el.style.display = mostrar ? '' : 'none'; });
+}
+async function cargarPreferenciaCostoProf() {
+  try {
+    const { data } = await sbClient.from('configuracion_venta_rapida')
+      .select('mostrar_costo_venta').eq('auth_user_id', STATE.userId).maybeSingle();
+    STATE.mostrarCostoVenta = !!data?.mostrar_costo_venta;
+  } catch (e) { STATE.mostrarCostoVenta = false; }
+  aplicarVisibilidadCostoProf();
+}
 
 function toggleIVAProf(activo) {
   STATE.ivaActivo = activo;
@@ -767,6 +786,7 @@ function abrirNuevaProforma() {
   STATE.carrito = [];
   STATE.clienteSeleccionado = null;
   STATE.ivaActivo = false; STATE.ivaPorcentaje = 15;
+  cargarPreferenciaCostoProf();
 
   const sel = document.getElementById('np-cliente-select'); if (sel) sel.value = '';
   toggleNuevoClienteProf(false);
