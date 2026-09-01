@@ -1570,9 +1570,14 @@
 
       // Si este crédito se creó desde una Proforma (iframe incrustado),
       // se le avisa al padre — Proformas nunca calcula el crédito, solo
-      // reacciona cuando de verdad ya se creó.
+      // reacciona cuando de verdad ya se creó. BUG REAL CORREGIDO: antes
+      // solo se mandaba el ID del crédito, nunca el de la venta que este
+      // mismo flujo tambien crea internamente (ventaId) -- la proforma
+      // se quedaba sin saber cual era su venta real, mostrando "pago
+      // parcial" para siempre sin ningun enlace, aunque la venta ya
+      // existiera completa y correcta.
       if (CS.proformaOrigenId && window.self !== window.top) {
-        try { window.parent.postMessage({ tipo: 'n360_credito_desde_proforma', creditoId: credito.id, proformaId: CS.proformaOrigenId }, '*'); } catch(e) {}
+        try { window.parent.postMessage({ tipo: 'n360_credito_desde_proforma', creditoId: credito.id, proformaId: CS.proformaOrigenId, ventaId: ventaId || null }, '*'); } catch(e) {}
       }
 
       await refrescarTodo();

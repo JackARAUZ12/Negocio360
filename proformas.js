@@ -1221,11 +1221,19 @@ function cerrarPagoParcialEmbebido() {
 // cobrar desde aquí.
 window.addEventListener('message', async (ev) => {
   if (!ev.data || ev.data.tipo !== 'n360_credito_desde_proforma') return;
-  const { creditoId, proformaId } = ev.data;
+  const { creditoId, proformaId, ventaId } = ev.data;
   cerrarPagoParcialEmbebido();
   try {
+    // BUG REAL CORREGIDO: antes solo se guardaba el credito_id -- la
+    // proforma nunca quedaba enlazada a la venta real que este mismo
+    // flujo crea internamente (confirmado con un caso real: la venta
+    // ya existia completa, pero la proforma se quedaba sin saber cual
+    // era, mostrando "pago parcial" sin ningun enlace para siempre).
+    // Ahora tambien se guarda venta_id, igual que hace la conversion
+    // normal a venta -- para que la proforma siempre pueda mostrar y
+    // enlazar a su venta real, sin importar por cual camino se creo.
     await sbClient.from('proformas').update({
-      estado: 'pago_parcial', credito_id: creditoId, fecha_pago_parcial: new Date().toISOString(),
+      estado: 'pago_parcial', credito_id: creditoId, venta_id: ventaId || null, fecha_pago_parcial: new Date().toISOString(),
     }).eq('id', proformaId).eq('auth_user_id', STATE.userId);
     showToast('✅ Proforma con pago parcial — el resto se cobra desde Créditos');
     await Promise.allSettled([loadProformas(), loadKPIsProf()]);
