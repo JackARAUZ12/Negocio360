@@ -3576,8 +3576,11 @@ async function confirmarVenta(conImpresion) {
   // la ventana se abre AHORA MISMO (sincrono, en el instante del
   // clic) -- antes de guardar la venta -- para que el navegador nunca
   // la bloquee. Se le escribe el contenido real despues.
+  // Mismo bug real corregido que en Venta Rápida: nunca abrir esto si
+  // la impresion nativa de la app de escritorio ya esta disponible.
+  const usaraImpresionNativaNV = window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa');
   S._ventanaTicketPreabierta = null;
-  if (conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
+  if (!usaraImpresionNativaNV && conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
     try {
       S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
       if (S._ventanaTicketPreabierta) {
@@ -4816,8 +4819,14 @@ async function confirmarVentaRapida() {
   // al final no se necesita (auto-imprimir esta apagado, o la
   // impresora nativa/USB si funciono), se cierra sola sin que el
   // usuario la note.
+  // BUG REAL CORREGIDO: esto se abria SIEMPRE, incluso dentro de la
+  // app de escritorio con impresion nativa real ya disponible -- ahi
+  // nunca se necesita el navegador, y abrir esta ventana de mas
+  // causaba el error "hay que descargar un programa". Ahora se salta
+  // por completo si la impresion nativa esta lista para usarse.
+  const usaraImpresionNativaVR = window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa');
   VR._ventanaTicketPreabierta = null;
-  if (VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
+  if (!usaraImpresionNativaVR && VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
     try {
       VR._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
       if (VR._ventanaTicketPreabierta) {
