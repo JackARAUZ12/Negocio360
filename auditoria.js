@@ -252,6 +252,17 @@ function calcularRangoFechas(preset) {
     const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0); // día 0 del mes siguiente = último día real de este mes
     return { desde: inicioMes, hasta: fechaLocalISO(finMes) };
   }
+  if (preset === 'personalizado') {
+    // El usuario elige libremente -- puede ser una sola fecha
+    // especifica (desde=hasta) o un periodo completo. Si por
+    // cualquier motivo un campo esta vacio, se usa hoy como
+    // respaldo seguro, para nunca mandar una fecha invalida.
+    const desdeInput = document.getElementById('cpu-personalizado-desde')?.value || hoyISO;
+    const hastaInput = document.getElementById('cpu-personalizado-hasta')?.value || hoyISO;
+    // Si "hasta" quedo antes que "desde" por error del usuario, se
+    // intercambian -- nunca se manda un rango invertido a la consulta.
+    return desdeInput <= hastaInput ? { desde: desdeInput, hasta: hastaInput } : { desde: hastaInput, hasta: desdeInput };
+  }
   // 'hoy' (por defecto)
   return { desde: hoyISO, hasta: hoyISO };
 }
@@ -260,10 +271,38 @@ let PERIODO_CONSULTA_ACTUAL = 'hoy';
 
 function elegirPeriodoConsulta(preset) {
   PERIODO_CONSULTA_ACTUAL = preset;
-  ['hoy','ayer','semana','mes'].forEach(p => {
+  ['hoy','ayer','semana','mes','personalizado'].forEach(p => {
     document.getElementById(`cpu-periodo-${p}`)?.classList.toggle('active', p === preset);
   });
+
+  const wrapFechas = document.getElementById('cpu-personalizado-fechas');
+  if (wrapFechas) wrapFechas.style.display = preset === 'personalizado' ? 'flex' : 'none';
+
+  // Al entrar recién a "Personalizado", si los campos están vacíos se
+  // sugiere el día de hoy en ambos — el usuario los ajusta desde ahí,
+  // en vez de empezar con un campo vacío que no significa nada todavía.
+  if (preset === 'personalizado') {
+    const hoyISO = fechaLocalISO(new Date());
+    const desdeInput = document.getElementById('cpu-personalizado-desde');
+    const hastaInput = document.getElementById('cpu-personalizado-hasta');
+    if (desdeInput && !desdeInput.value) desdeInput.value = hoyISO;
+    if (hastaInput && !hastaInput.value) hastaInput.value = hoyISO;
+  }
+
   const { desde, hasta } = calcularRangoFechas(preset);
+  const texto = document.getElementById('cpu-rango-texto');
+  if (texto) {
+    texto.textContent = desde === hasta
+      ? `Del ${fmtFecha(desde)}`
+      : `Del ${fmtFecha(desde)} al ${fmtFecha(hasta)}`;
+  }
+}
+
+// Se llama cada vez que el usuario cambia manualmente "Desde" o
+// "Hasta" en modo Personalizado -- solo actualiza el texto de vista
+// previa, la consulta real se recalcula al presionar "Consultar".
+function onCambiarFechaPersonalizada() {
+  const { desde, hasta } = calcularRangoFechas('personalizado');
   const texto = document.getElementById('cpu-rango-texto');
   if (texto) {
     texto.textContent = desde === hasta
