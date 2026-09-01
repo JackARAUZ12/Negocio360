@@ -83,6 +83,8 @@
                                desc: 'Todo lo que tiene fecha en tu negocio en un solo lugar — cuotas de crédito por vencer, cuentas por pagar, gastos programados, garantías de activos — más tus propias citas y recordatorios.' },
     'asistente.html':          { key: 'asistente',          label: 'Asistente IA',        icon: '🤖', obligatorio: false,
                                desc: 'Pregúntale a tu negocio en lenguaje normal — ventas, gastos, salarios, caja, stock, clientes — y recibe la respuesta al instante, con tus datos reales.' },
+    'catalogo360.html':        { key: 'catalogo360',        label: 'Catálogo360',         icon: '📇', obligatorio: false,
+                               desc: 'Crea un catálogo digital profesional con tus productos, publícalo con un enlace y QR propios, y compártelo en WhatsApp, Instagram o Facebook.' },
     'produccion.html':         { key: 'produccion',         label: 'Producción',          icon: '🏭', obligatorio: false,
                                desc: 'Para negocios que fabrican lo que venden — recetas de fabricación, órdenes de producción, y el costo real de lo que produces, calculado desde la materia prima que de verdad se consumió.' },
     'servicio.html':           { key: 'servicio',           label: 'Servicio Postventa',  icon: '🛠️', obligatorio: false,
