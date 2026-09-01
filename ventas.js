@@ -3572,6 +3572,20 @@ async function confirmarVenta(conImpresion) {
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
 
+  // Mismo bug real corregido que en Venta Rápida: si se va a imprimir,
+  // la ventana se abre AHORA MISMO (sincrono, en el instante del
+  // clic) -- antes de guardar la venta -- para que el navegador nunca
+  // la bloquee. Se le escribe el contenido real despues.
+  S._ventanaTicketPreabierta = null;
+  if (conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
+    try {
+      S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
+      if (S._ventanaTicketPreabierta) {
+        S._ventanaTicketPreabierta.document.write('<p style="font-family:sans-serif;color:#888;padding:20px">Generando tu ticket…</p>');
+      }
+    } catch (e) { S._ventanaTicketPreabierta = null; }
+  }
+
   // El banco ya se eligió al momento de tocar Tarjeta/Transferencia
   // (no aquí al final) — esto es solo un candado de seguridad, por si
   // alguien llegó hasta aquí sin completar ese paso. El pago separado
@@ -3959,6 +3973,10 @@ async function confirmarVenta(conImpresion) {
   } catch(e) {
     console.error('confirmarVenta:', e);
     showToast('Error al registrar la venta: ' + (e.message||'intenta de nuevo'), 'error');
+    // La venta no se completó -- nunca se llega a imprimir, así que la
+    // ventana que se abrió de antemano se cierra sola.
+    if (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed) S._ventanaTicketPreabierta.close();
+    S._ventanaTicketPreabierta = null;
   } finally {
     if (btnDigital)  btnDigital.disabled  = false;
     if (btnImprimir) btnImprimir.disabled = false;
@@ -4783,6 +4801,31 @@ async function confirmarVentaRapida() {
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
   if (!validarPagoSeparadoVR()) return;
 
+  // BUG REAL CORREGIDO: el navegador bloqueaba la ventana de impresion
+  // ("hay que activar los pop ups") porque window.open() se llamaba
+  // MUY tarde -- despues de varias operaciones await (guardar la
+  // venta, sus detalles, etc.), muchos pasos asincronos alejado del
+  // clic original. Los navegadores solo permiten abrir una ventana
+  // sin pedir permiso si ocurre de forma SINCRONA, en el mismo
+  // instante del clic -- cualquier "await" de por medio hace que ya
+  // no lo reconozcan como iniciado por el usuario.
+  //
+  // La solucion estandar: abrir la ventana en blanco AHORA MISMO
+  // (sincrono, en el instante del clic), y escribirle el contenido
+  // real del ticket DESPUES, una vez que la venta ya se guardo. Si
+  // al final no se necesita (auto-imprimir esta apagado, o la
+  // impresora nativa/USB si funciono), se cierra sola sin que el
+  // usuario la note.
+  VR._ventanaTicketPreabierta = null;
+  if (VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
+    try {
+      VR._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
+      if (VR._ventanaTicketPreabierta) {
+        VR._ventanaTicketPreabierta.document.write('<p style="font-family:sans-serif;color:#888;padding:20px">Generando tu ticket…</p>');
+      }
+    } catch (e) { VR._ventanaTicketPreabierta = null; }
+  }
+
   const esPagoSeparadoVR = VR.metodoPagoId === 'separado';
   const metodoActualVR = (VR.metodoPagoNombre||'').toLowerCase();
   if (!esPagoSeparadoVR && (metodoActualVR.includes('tarjeta') || metodoActualVR.includes('transferencia')) && (await cargarBancosDisponibles()).length && !VR.bancoElegidoId) {
@@ -5040,6 +5083,11 @@ async function confirmarVentaRapida() {
   } catch(e) {
     console.error('confirmarVentaRapida:', e);
     showToast('Error al registrar la venta: ' + (e.message||'intenta de nuevo'), 'error');
+    // La venta no se completó -- nunca se llega a imprimir, así que la
+    // ventana que se abrió de antemano se cierra sola, en vez de
+    // quedarse en blanco para siempre confundiendo al usuario.
+    if (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed) VR._ventanaTicketPreabierta.close();
+    VR._ventanaTicketPreabierta = null;
   } finally {
     VR.procesando = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Cobrar y cerrar venta'; }
@@ -5075,12 +5123,19 @@ function construirDatosReciboDesdeVenta(cfg, venta, items) {
 //   2) USB directo del navegador (WebUSB, solo Chrome/Edge)
 //   3) Impresion normal de siempre (CSS + dialogo de impresion)
 async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
+  const cerrarVentanaPreabiertaSiNoHaceFalta = () => {
+    if (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed) VR._ventanaTicketPreabierta.close();
+    VR._ventanaTicketPreabierta = null;
+    if (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed) S._ventanaTicketPreabierta.close();
+    S._ventanaTicketPreabierta = null;
+  };
+
   const impresoraNativa = localStorage.getItem('n360_impresora_nativa') || '';
   if (window.negocio360Print?.disponible && impresoraNativa) {
     try {
       const bytes = construirReciboESCPOS(construirDatosReciboDesdeVenta(cfg, venta, items));
       const resultado = await window.negocio360Print.imprimir(impresoraNativa, bytes);
-      if (resultado.ok) return;
+      if (resultado.ok) { cerrarVentanaPreabiertaSiNoHaceFalta(); return; }
       console.warn('Impresión nativa (app de escritorio) falló, probando la siguiente vía:', resultado.motivo);
     } catch (e) { console.warn('Impresión nativa dio error, probando la siguiente vía:', e); }
   }
@@ -5088,7 +5143,7 @@ async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
   const usarUSB = document.getElementById('vrc-usar-usb')?.checked && escposConectado();
   if (usarUSB) {
     const resultado = await imprimirReciboESCPOS(construirDatosReciboDesdeVenta(cfg, venta, items));
-    if (resultado.ok) return;
+    if (resultado.ok) { cerrarVentanaPreabiertaSiNoHaceFalta(); return; }
     console.warn('Impresión USB (navegador) falló, cayendo a impresión normal:', resultado.motivo);
   }
 
@@ -5107,6 +5162,11 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   // Mismo desvío que en Nueva Venta — solo se activa si el negocio
   // eligió "Carta / A4" a propósito en su configuración.
   if (cfg.ancho_ticket === 'carta') {
+    // Este formato genera un PDF para descargar, nunca usa la ventana
+    // de ticket -- si se había abierto una de antemano (por si acaso),
+    // se cierra aquí para no dejarla en blanco.
+    if (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed) VR._ventanaTicketPreabierta.close();
+    VR._ventanaTicketPreabierta = null;
     (async () => {
       try {
         const doc = await generarComprobanteCartaPDF('venta', {
@@ -5219,7 +5279,16 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;
 
-  const win = window.open('', '_blank', 'width=380,height=600');
+  // Reutiliza la ventana que ya se abrió DE INMEDIATO al hacer clic
+  // en "Confirmar" (antes de guardar la venta) -- así el navegador
+  // nunca la bloquea, ya que window.open() ocurrió en el instante
+  // exacto del clic. Si por algún motivo no existe (ej. reimpresión
+  // manual desde el historial, fuera de este flujo), se abre una
+  // nueva como respaldo.
+  const win = (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed)
+    ? VR._ventanaTicketPreabierta
+    : window.open('', '_blank', 'width=380,height=600');
+  VR._ventanaTicketPreabierta = null;
   if (!win) {
     showToast('⚠️ El navegador bloqueó la ventana de impresión (permite pop-ups para imprimir el ticket)', 'error');
     return;
@@ -5281,6 +5350,11 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   // térmico — nunca al revés: si configuraron 58/76/80mm, esto nunca
   // se activa, y todo sigue exactamente igual que siempre.
   if (cfg.ancho_ticket === 'carta') {
+    // Este formato genera un PDF para descargar, nunca usa la ventana
+    // de ticket -- si se había abierto una de antemano (por si acaso),
+    // se cierra aquí para no dejarla en blanco.
+    if (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed) S._ventanaTicketPreabierta.close();
+    S._ventanaTicketPreabierta = null;
     (async () => {
       try {
         const doc = await generarComprobanteCartaPDF('venta', {
@@ -5378,7 +5452,13 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;
 
-  const win = window.open('', '_blank', 'width=380,height=600');
+  // Reutiliza la ventana que ya se abrió DE INMEDIATO al hacer clic en
+  // "Confirmar e imprimir" (antes de guardar la venta) -- mismo motivo
+  // exacto que en Venta Rápida.
+  const win = (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed)
+    ? S._ventanaTicketPreabierta
+    : window.open('', '_blank', 'width=380,height=600');
+  S._ventanaTicketPreabierta = null;
   if (!win) {
     showToast('⚠️ El navegador bloqueó la ventana de impresión (permite pop-ups para imprimir el ticket)', 'error');
     return;
