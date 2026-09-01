@@ -4193,6 +4193,13 @@ async function guardarConfigVentaRapida() {
       .select('*').single();
     if (error) throw error;
     VR.config = data;
+    // BUG REAL CORREGIDO: al guardar, se actualizaba VR.config pero
+    // nunca S.mostrarCostoVenta (la bandera que realmente controla si
+    // se ve la columna) -- el modal de Nueva Venta se reabria con el
+    // valor VIEJO todavia en memoria, dando la impresion de que el
+    // interruptor "no funcionaba" aunque si se habia guardado bien.
+    S.mostrarCostoVenta = !!data?.mostrar_costo_venta;
+    aplicarVisibilidadCostoVenta();
     closeModal('modal-vr-config');
     if (VR._origen === 'nv') {
       showToast('✅ Configuración del ticket guardada', 'success');
