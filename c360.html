@@ -37,21 +37,41 @@
     width:36px; height:36px; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;
   }
 
-  .c360p-hero { padding:28px 20px 8px; text-align:center; }
-  .c360p-hero h1 { margin:0 0 6px; font-size:22px; font-weight:800; letter-spacing:-.01em; }
-  .c360p-hero p { margin:0; color:var(--texto-sec); font-size:13.5px; max-width:480px; margin:0 auto; line-height:1.5; }
+  .c360p-hero-oscuro {
+    position:relative; background:#14151c; color:#f2f2f5; display:flex; flex-direction:column-reverse;
+    padding:24px 20px 32px; gap:24px; overflow:hidden;
+  }
+  @media (min-width:800px) { .c360p-hero-oscuro { flex-direction:row; align-items:center; padding:48px 60px; gap:48px; } }
+  .c360p-hero-izq { flex:1; min-width:0; }
+  .c360p-hero-der { flex:1; min-width:0; }
+  .c360p-hero-der img { width:100%; height:100%; max-height:340px; object-fit:cover; border-radius:16px; display:block; }
+  .c360p-hero-marca { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+  .c360p-hero-marca img.c360p-logo { width:40px; height:40px; border-radius:8px; object-fit:cover; }
+  .c360p-hero-nombre { font-weight:700; font-size:14px; letter-spacing:.04em; text-transform:uppercase; color:var(--acento); }
+  #c360p-hero-titulo { margin:0 0 10px; font-size:32px; font-weight:800; line-height:1.15; }
+  @media (min-width:800px) { #c360p-hero-titulo { font-size:44px; } }
+  .c360p-hero-izq p { margin:0 0 20px; color:#b8b9c2; font-size:14px; max-width:420px; line-height:1.6; }
+  .c360p-hero-info-contacto { display:flex; flex-direction:column; gap:6px; margin-top:20px; font-size:12.5px; color:#9a9ba5; }
+  .c360p-hero-info-contacto span { display:flex; align-items:center; gap:7px; }
+  .c360p-tema-btn-hero { position:absolute; top:16px; right:16px; z-index:2; background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.15); color:#fff; }
 
   .c360p-banner { width:100%; max-height:280px; object-fit:cover; display:block; }
-  .c360p-banner-wrap { position:relative; }
-  .c360p-banner-overlay {
-    position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,.55), transparent 60%);
-    display:flex; align-items:flex-end; padding:20px;
-  }
-  .c360p-banner-overlay-texto { color:#fff; }
-  .c360p-banner-overlay-texto h1 { margin:0; font-size:24px; font-weight:800; text-shadow:0 2px 8px rgba(0,0,0,.4); }
 
   .c360p-seccion-titulo { font-size:15px; font-weight:800; padding:0 20px; margin:22px auto 12px; max-width:1100px; display:flex; align-items:center; gap:8px; }
-  .c360p-destacados-scroll { display:flex; gap:14px; overflow-x:auto; padding:0 20px 8px; -webkit-overflow-scrolling:touch; }
+  .c360p-destacado-grande {
+    max-width:1100px; margin:0 auto; padding:0 20px 24px; display:flex; flex-direction:column; gap:20px;
+  }
+  @media (min-width:800px) { .c360p-destacado-grande { flex-direction:row; align-items:flex-start; } }
+  .c360p-dg-img-principal { width:100%; border-radius:16px; aspect-ratio:4/3; object-fit:cover; background:var(--borde); cursor:pointer; }
+  .c360p-dg-col-img { flex:1.1; min-width:0; }
+  .c360p-dg-col-info { flex:1; min-width:0; display:flex; flex-direction:column; }
+  .c360p-dg-categoria { font-size:11.5px; font-weight:800; color:var(--acento); text-transform:uppercase; letter-spacing:.05em; }
+  .c360p-dg-nombre { font-size:22px; font-weight:800; margin:6px 0 8px; }
+  .c360p-dg-desc { font-size:13.5px; color:var(--texto-sec); line-height:1.6; margin-bottom:10px; white-space:pre-wrap; }
+  .c360p-dg-precio { font-size:24px; font-weight:800; color:var(--acento); margin:10px 0 16px; }
+  .c360p-dg-thumbs { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .c360p-dg-thumb { width:56px; height:56px; border-radius:10px; object-fit:cover; cursor:pointer; border:2px solid transparent; opacity:.75; }
+  .c360p-dg-thumb.activa { border-color:var(--acento); opacity:1; }
   .c360p-destacados-scroll .c360p-card { width:150px; min-width:150px; max-width:150px; flex-shrink:0; }
   @media (min-width:640px) { .c360p-destacados-scroll .c360p-card { width:190px; min-width:190px; max-width:190px; } }
 
@@ -130,26 +150,30 @@
   <div id="c360p-banner-preview" style="display:none;background:#f59e0b;color:#1a1a1a;text-align:center;padding:8px;font-size:12.5px;font-weight:700">
     👁 Estás viendo una VISTA PREVIA — esto no es visible al público todavía
   </div>
-  <header class="c360p-header">
-    <img id="c360p-logo" class="c360p-logo" src="" style="display:none"/>
-    <div>
-      <div class="c360p-nombre" id="c360p-nombre"></div>
-      <div class="c360p-desc-header" id="c360p-desc-header"></div>
+  <div class="c360p-hero-oscuro">
+    <button class="c360p-tema-btn c360p-tema-btn-hero" onclick="toggleTemaPublico()" id="c360p-tema-btn">🌙</button>
+    <div class="c360p-hero-izq">
+      <div class="c360p-hero-marca">
+        <img id="c360p-logo" class="c360p-logo" src="" style="display:none"/>
+        <div id="c360p-nombre" class="c360p-hero-nombre"></div>
+      </div>
+      <h1 id="c360p-hero-titulo">Catálogo</h1>
+      <p id="c360p-descripcion-larga"></p>
+      <div class="c360p-contacto" id="c360p-contacto"></div>
+      <div class="c360p-hero-info-contacto" id="c360p-info-contacto"></div>
     </div>
-    <button class="c360p-tema-btn" onclick="toggleTemaPublico()" id="c360p-tema-btn">🌙</button>
-  </header>
-
-  <div class="c360p-banner-wrap" id="c360p-banner-wrap" style="display:none">
-    <img id="c360p-banner-img" class="c360p-banner" src="" alt=""/>
+    <div class="c360p-hero-der" id="c360p-banner-wrap" style="display:none">
+      <img id="c360p-banner-img" class="c360p-banner" src="" alt=""/>
+    </div>
   </div>
 
-  <div class="c360p-hero">
-    <p id="c360p-descripcion-larga"></p>
-    <div class="c360p-contacto" id="c360p-contacto"></div>
+  <div id="c360p-seccion-destacado-grande" style="display:none">
+    <div class="c360p-seccion-titulo">Producto Destacado</div>
+    <div class="c360p-destacado-grande" id="c360p-destacado-grande"></div>
   </div>
 
   <div id="c360p-seccion-destacados" style="display:none">
-    <div class="c360p-seccion-titulo">⭐ Destacados</div>
+    <div class="c360p-seccion-titulo">Más destacados</div>
     <div class="c360p-destacados-scroll" id="c360p-destacados"></div>
   </div>
 
@@ -278,7 +302,7 @@ function renderCabecera() {
   if (c.logo_url) document.getElementById('c360p-og-image').setAttribute('content', c.logo_url);
 
   document.getElementById('c360p-nombre').textContent = c.nombre_comercial || c.nombre;
-  document.getElementById('c360p-desc-header').textContent = c.descripcion || '';
+  document.getElementById('c360p-hero-titulo').textContent = c.nombre;
   document.getElementById('c360p-descripcion-larga').textContent = c.descripcion || '';
   if (c.logo_url) {
     const logo = document.getElementById('c360p-logo');
@@ -292,8 +316,15 @@ function renderCabecera() {
   const contactoDiv = document.getElementById('c360p-contacto');
   let botones = '';
   if (c.whatsapp) botones += `<a class="c360p-btn-contacto" href="${linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${c.nombre_comercial||''} y tengo una consulta.`)}" target="_blank" onclick="registrarEvento('click_whatsapp')">💬 WhatsApp</a>`;
-  if (c.telefono) botones += `<a class="c360p-btn-contacto secundario" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')">📞 Llamar</a>`;
   contactoDiv.innerHTML = botones;
+
+  const infoDiv = document.getElementById('c360p-info-contacto');
+  let filas = '';
+  if (c.whatsapp) filas += `<span>💬 ${esc(c.whatsapp)}</span>`;
+  if (c.telefono) filas += `<a href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')" style="color:inherit;text-decoration:none"><span>📞 ${esc(c.telefono)}</span></a>`;
+  if (c.email) filas += `<span>✉️ ${esc(c.email)}</span>`;
+  if (c.ubicacion) filas += `<span>📍 ${esc(c.ubicacion)}</span>`;
+  infoDiv.innerHTML = filas;
 }
 
 function registrarEvento(tipo, productoId) {
@@ -380,10 +411,56 @@ function tarjetaProductoHTML(p) {
 
 function renderDestacados() {
   const destacados = PRODUCTOS.filter(p => p.destacado);
-  const seccion = document.getElementById('c360p-seccion-destacados');
-  if (!destacados.length) { seccion.style.display = 'none'; return; }
-  seccion.style.display = 'block';
-  document.getElementById('c360p-destacados').innerHTML = destacados.map(tarjetaProductoHTML).join('');
+  const seccionGrande = document.getElementById('c360p-seccion-destacado-grande');
+  const seccionResto = document.getElementById('c360p-seccion-destacados');
+
+  if (!destacados.length) { seccionGrande.style.display = 'none'; seccionResto.style.display = 'none'; return; }
+
+  seccionGrande.style.display = 'block';
+  renderDestacadoGrande(destacados[0]);
+
+  const resto = destacados.slice(1);
+  if (resto.length) {
+    seccionResto.style.display = 'block';
+    document.getElementById('c360p-destacados').innerHTML = resto.map(tarjetaProductoHTML).join('');
+  } else {
+    seccionResto.style.display = 'none';
+  }
+}
+
+function renderDestacadoGrande(p) {
+  const cat = CATEGORIAS.find(c => c.id === p.categoria_id);
+  const fotos = p.fotos.length ? p.fotos : [{ url: '' }];
+  const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
+  const precioHTML = (p.etiqueta === 'oferta' && p.precio_oferta)
+    ? `<span class="c360p-precio-tachado" style="font-size:16px">${fmtC(p.precio)}</span> <span class="c360p-precio-oferta">${fmtC(p.precio_oferta)}</span>`
+    : fmtC(p.precio);
+
+  document.getElementById('c360p-destacado-grande').innerHTML = `
+    <div class="c360p-dg-col-img">
+      <img class="c360p-dg-img-principal" id="c360p-dg-img-principal" src="${esc(principal?.url||'')}" alt="${esc(p.nombre)}" onclick="abrirModalProducto('${p.id}')">
+      ${p.fotos.length > 1 ? `<div class="c360p-dg-thumbs">${p.fotos.map((f,i) => `<img class="c360p-dg-thumb ${f.id===principal?.id?'activa':''}" src="${esc(f.url)}" onclick="cambiarFotoDestacadoGrande(this,'${esc(f.url)}')">`).join('')}</div>` : ''}
+    </div>
+    <div class="c360p-dg-col-info">
+      ${cat ? `<div class="c360p-dg-categoria">${esc(cat.nombre)}</div>` : ''}
+      <div class="c360p-dg-nombre">${esc(p.nombre)}</div>
+      ${p.descripcion ? `<div class="c360p-dg-desc">${esc(p.descripcion)}</div>` : ''}
+      <div class="c360p-dg-precio">${precioHTML}</div>
+      ${CATALOGO.whatsapp ? `<button class="c360p-btn-contacto" style="align-self:flex-start" onclick="consultarDestacadoGrande('${p.id}')">💬 Solicitar información</button>` : ''}
+    </div>
+  `;
+}
+function consultarDestacadoGrande(id) {
+  const p = PRODUCTOS.find(x => x.id === id);
+  if (!p || !CATALOGO.whatsapp) return;
+  const precioParaMensaje = (p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio;
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(precioParaMensaje)}) de su catálogo.`), '_blank');
+}
+function cambiarFotoDestacadoGrande(imgEl, url) {
+  document.getElementById('c360p-dg-img-principal').src = url;
+  document.querySelectorAll('.c360p-dg-thumb').forEach(t => t.classList.remove('activa'));
+  imgEl.classList.add('activa');
 }
 
 function renderGrid(lista) {

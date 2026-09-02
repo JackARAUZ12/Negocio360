@@ -547,6 +547,8 @@ function cargarTabInfo() {
   document.getElementById('c360-i-descripcion').value = c.descripcion || '';
   document.getElementById('c360-i-whatsapp').value = c.whatsapp || '';
   document.getElementById('c360-i-telefono').value = c.telefono || '';
+  document.getElementById('c360-i-email').value = c.email || '';
+  document.getElementById('c360-i-ubicacion').value = c.ubicacion || '';
   const logoImg = document.getElementById('c360-i-logo-preview');
   if (c.logo_url) { logoImg.src = c.logo_url; logoImg.style.display = 'block'; } else { logoImg.style.display = 'none'; }
 }
@@ -593,6 +595,8 @@ async function guardarInfoCatalogo() {
     descripcion: document.getElementById('c360-i-descripcion').value.trim() || null,
     whatsapp: document.getElementById('c360-i-whatsapp').value.trim() || null,
     telefono: document.getElementById('c360-i-telefono').value.trim() || null,
+    email: document.getElementById('c360-i-email').value.trim() || null,
+    ubicacion: document.getElementById('c360-i-ubicacion').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
   try {
