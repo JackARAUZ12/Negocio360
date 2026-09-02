@@ -2,6 +2,8 @@
 <html lang="es" data-theme="claro">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title id="c360p-title">Catálogo</title>
 <meta id="c360p-desc-meta" name="description" content="Catálogo digital">
@@ -83,8 +85,8 @@
   .c360p-precio-tachado { text-decoration:line-through; color:var(--texto-sec); font-size:11.5px; font-weight:500; margin-right:6px; }
   .c360p-precio-oferta { color:#ef4444; }
 
-  .c360p-grid-categorias { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; padding:0 20px 20px; max-width:1100px; margin:0 auto; }
-  @media (min-width:640px) { .c360p-grid-categorias { grid-template-columns:repeat(4,1fr); } }
+  .c360p-grid-categorias { display:flex; flex-wrap:wrap; gap:16px; padding:0 20px 20px; max-width:1100px; margin:0 auto; }
+  .c360p-cat-card { flex:1 1 160px; max-width:250px; }
   .c360p-cat-card { background:var(--bg-card); border:1px solid var(--borde); border-radius:16px; overflow:hidden; cursor:pointer; transition:transform .15s; }
   .c360p-cat-card:hover { transform:translateY(-3px); }
   .c360p-cat-card img, .c360p-cat-card-img-vacia { width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--borde); }
@@ -101,10 +103,9 @@
   .c360p-btn-contacto.secundario { background:transparent; border:1px solid var(--borde); color:var(--texto); }
 
   .c360p-grid {
-    display:grid; grid-template-columns:repeat(2,1fr); gap:14px; padding:6px 20px 60px; max-width:1100px; margin:0 auto;
+    display:flex; flex-wrap:wrap; gap:14px; padding:6px 20px 60px; max-width:1100px; margin:0 auto;
   }
-  @media (min-width:640px) { .c360p-grid { grid-template-columns:repeat(3,1fr); } }
-  @media (min-width:900px) { .c360p-grid { grid-template-columns:repeat(4,1fr); } }
+  .c360p-card { flex:1 1 140px; max-width:220px; }
 
   .c360p-card {
     background:var(--bg-card); border:1px solid var(--borde); border-radius:16px; overflow:hidden; cursor:pointer;
