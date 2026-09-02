@@ -307,7 +307,8 @@ async function subirLogoCatalogo(archivo) {
   try {
     const { blob, ancho, alto } = await comprimirImagen(archivo, 400, 0.85);
     const { url } = await subirImagenCatalogo(blob, 'logo');
-    await sb.from('catalogos').update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id);
+    const { error } = await sb.from('catalogos').update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id);
+    if (error) throw error;
     STATE.catalogoActual.logo_url = url;
     const logoImg = document.getElementById('c360-i-logo-preview');
     logoImg.src = url; logoImg.style.display = 'block';
@@ -327,10 +328,19 @@ async function guardarInfoCatalogo() {
     updated_at: new Date().toISOString(),
   };
   try {
-    await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    // BUG REAL CORREGIDO: Supabase NUNCA lanza una excepcion por un
+    // error de base de datos -- devuelve { error } en la respuesta.
+    // Antes no se revisaba esto, asi que un guardado fallido (ej. por
+    // sesion vencida) igual mostraba "guardado" con exito, sin haber
+    // guardado nada de verdad.
+    const { error } = await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
     Object.assign(STATE.catalogoActual, payload);
     showToast('✅ Información guardada');
-  } catch (e) { showToast('No se pudo guardar', 'error'); }
+  } catch (e) {
+    console.error('guardarInfoCatalogo:', e);
+    showToast('No se pudo guardar: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
 }
 
 /* ---------- TAB: APARIENCIA ---------- */
@@ -351,10 +361,14 @@ async function guardarApariencia() {
     updated_at: new Date().toISOString(),
   };
   try {
-    await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    const { error } = await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
     Object.assign(STATE.catalogoActual, payload);
     showToast('✅ Apariencia guardada');
-  } catch (e) { showToast('No se pudo guardar', 'error'); }
+  } catch (e) {
+    console.error('guardarApariencia:', e);
+    showToast('No se pudo guardar: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
 }
 
 /* ---------- TAB: PRODUCTOS ---------- */
@@ -463,7 +477,8 @@ async function guardarProductoCatalogo() {
 
   try {
     if (id) {
-      await sb.from('catalogo_productos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      const { error } = await sb.from('catalogo_productos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
     } else {
       const { error } = await sb.from('catalogo_productos').insert({
         ...payload, catalogo_id: STATE.catalogoActual.id, auth_user_id: STATE.userId,
@@ -481,10 +496,11 @@ async function guardarProductoCatalogo() {
 async function eliminarProductoCatalogo(id) {
   if (!confirm('¿Eliminar este producto del catálogo?')) return;
   try {
-    await sb.from('catalogo_productos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    const { error } = await sb.from('catalogo_productos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
     showToast('Producto eliminado');
     await cargarTabProductos();
-  } catch (e) { showToast('No se pudo eliminar', 'error'); }
+  } catch (e) { console.error('eliminarProductoCatalogo:', e); showToast('No se pudo eliminar', 'error'); }
 }
 
 async function subirFotosProducto(archivos) {
@@ -505,11 +521,22 @@ async function subirFotosProducto(archivos) {
       const { blob, ancho, alto } = await comprimirImagen(archivo);
       const { url, ruta } = await subirImagenCatalogo(blob, `productos/${idProducto}`);
       const esPrincipal = (existentes||[]).length === 0;
-      await sb.from('catalogo_producto_fotos').insert({
+      // BUG REAL CORREGIDO: este insert nunca revisaba si Supabase
+      // rechazaba la foto (ej. por el limite de fotos del plan,
+      // aplicado tambien a nivel de base de datos) -- el codigo
+      // seguia como si nada, y al final mostraba "Fotos agregadas"
+      // aunque en realidad ninguna foto se hubiera guardado. Ahora se
+      // revisa el error real de cada insert antes de seguir.
+      const { error: errorFoto } = await sb.from('catalogo_producto_fotos').insert({
         catalogo_producto_id: idProducto, auth_user_id: STATE.userId,
         storage_path: ruta, url, orden: (existentes||[]).length, es_principal: esPrincipal,
         ancho, alto, tamano_bytes: blob.size,
       });
+      if (errorFoto) {
+        console.error('Error al guardar la foto en la base de datos:', errorFoto);
+        showToast('No se pudo guardar una foto: ' + (errorFoto.message?.includes('row-level security') ? 'alcanzaste el límite de tu plan' : 'intenta de nuevo'), 'error');
+        break;
+      }
     }
     const { data: fotosAhora } = await sb.from('catalogo_producto_fotos').select('*').eq('catalogo_producto_id', idProducto).order('orden');
     renderFotosEnModal(fotosAhora || []);
@@ -529,14 +556,15 @@ async function subirFotosProducto(archivos) {
 async function eliminarFotoProducto(idFoto) {
   try {
     const { data: foto } = await sb.from('catalogo_producto_fotos').select('storage_path').eq('id', idFoto).maybeSingle();
-    await sb.from('catalogo_producto_fotos').delete().eq('id', idFoto).eq('auth_user_id', STATE.userId);
+    const { error } = await sb.from('catalogo_producto_fotos').delete().eq('id', idFoto).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
     if (foto?.storage_path) await sb.storage.from('catalogo360').remove([foto.storage_path]);
     const idProducto = document.getElementById('cp-id').value;
     const { data: fotosAhora } = await sb.from('catalogo_producto_fotos').select('*').eq('catalogo_producto_id', idProducto).order('orden');
     renderFotosEnModal(fotosAhora || []);
     document.getElementById('cp-fotos-contador').textContent = `(${(fotosAhora||[]).length}/${STATE.limites.fotos_por_producto_max})`;
     await cargarTabProductos();
-  } catch (e) { showToast('No se pudo quitar la foto', 'error'); }
+  } catch (e) { console.error('eliminarFotoProducto:', e); showToast('No se pudo quitar la foto', 'error'); }
 }
 
 /* ---------- IMPORTAR DESDE NEGOCIO360 ---------- */
@@ -625,8 +653,11 @@ function copiarEnlaceCatalogo() {
   showToast('🔗 Enlace copiado');
 }
 function abrirVistaPrevia() {
-  if (STATE.catalogoActual.slug_publico) window.open(urlPublicaActual(), '_blank');
-  else showToast('Publica el catálogo primero para ver la vista previa real', 'error');
+  // BUG REAL CORREGIDO: antes exigia estar publicado, lo cual no
+  // tiene sentido -- la vista previa debe funcionar ANTES de publicar.
+  // Ahora siempre se puede ver, usando el modo de vista previa del
+  // dueño (requiere sesion, funciona sin importar el estado).
+  window.open(`c360.html?preview=${STATE.catalogoActual.id}`, '_blank');
 }
 function mostrarQR() {
   if (!STATE.catalogoActual.slug_publico) { showToast('Publica el catálogo primero', 'error'); return; }

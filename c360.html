@@ -101,6 +101,9 @@
 <div id="c360p-loader" class="c360p-loader">Cargando catálogo…</div>
 
 <div id="c360p-app" style="display:none">
+  <div id="c360p-banner-preview" style="display:none;background:#f59e0b;color:#1a1a1a;text-align:center;padding:8px;font-size:12.5px;font-weight:700">
+    👁 Estás viendo una VISTA PREVIA — esto no es visible al público todavía
+  </div>
   <header class="c360p-header">
     <img id="c360p-logo" class="c360p-logo" src="" style="display:none"/>
     <div>
@@ -164,11 +167,31 @@ function toggleTemaPublico() {
 async function init() {
   const params = new URLSearchParams(window.location.search);
   const slug = params.get('c');
-  if (!slug) { mostrarError('Enlace de catálogo no válido.'); return; }
+  const idPreview = params.get('preview');
 
-  const { data: catalogo, error } = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado', 'publicado').maybeSingle();
+  if (!slug && !idPreview) { mostrarError('Enlace de catálogo no válido.'); return; }
+
+  let catalogo, error;
+  if (idPreview) {
+    // Vista previa del dueño -- requiere sesión iniciada, funciona
+    // sin importar si el catalogo ya esta publicado o no (la politica
+    // de seguridad ya permite esto solo al dueño real).
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) { mostrarError('Inicia sesión en Negocio360 para ver la vista previa.'); return; }
+    ({ data: catalogo, error } = await sb.from('catalogos').select('*').eq('id', idPreview).maybeSingle());
+    if (catalogo && !catalogo.slug_publico) {
+      // aviso de que esto es solo una vista previa, no la version publica final
+      document.title = '(Vista previa) ' + document.title;
+    }
+  } else {
+    ({ data: catalogo, error } = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado', 'publicado').maybeSingle());
+  }
+
   if (error || !catalogo) { mostrarError('Este catálogo no existe o ya no está disponible.'); return; }
   CATALOGO = catalogo;
+  if (idPreview && catalogo.estado !== 'publicado') {
+    document.getElementById('c360p-banner-preview').style.display = 'block';
+  }
 
   const temaGuardado = localStorage.getItem('c360p_tema') || catalogo.tema_default || 'claro';
   document.documentElement.setAttribute('data-theme', temaGuardado);
