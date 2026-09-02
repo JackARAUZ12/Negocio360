@@ -427,6 +427,7 @@ function renderEstadoPublicacion() {
   const estadoTexto = document.getElementById('c360-editor-estado-texto');
   const panel = document.getElementById('c360-panel-publicado');
   const btnPublicar = document.getElementById('c360-btn-publicar');
+  const btnPausar = document.getElementById('c360-btn-pausar');
 
   if (c.estado === 'publicado' && c.slug_publico) {
     estadoTexto.textContent = 'Publicado y visible al público.';
@@ -434,12 +435,98 @@ function renderEstadoPublicacion() {
     const url = `${window.location.origin}/c360.html?c=${c.slug_publico}`;
     document.getElementById('c360-url-publica').textContent = url;
     btnPublicar.textContent = '🔄 Actualizar publicación';
+    btnPausar.style.display = '';
+    btnPausar.textContent = '⏸ Desactivar';
+  } else if (c.estado === 'pausado' && c.slug_publico) {
+    estadoTexto.textContent = 'Desactivado — el enlace no muestra el catálogo hasta que lo reactives.';
+    panel.style.display = 'none';
+    btnPublicar.textContent = '🚀 Publicar';
+    btnPausar.style.display = '';
+    btnPausar.textContent = '▶ Reactivar';
   } else {
     estadoTexto.textContent = 'Todavía en borrador — nadie más puede verlo hasta que lo publiques.';
     panel.style.display = 'none';
     btnPublicar.textContent = '🚀 Publicar';
+    btnPausar.style.display = 'none';
   }
 }
+
+async function togglePausarCatalogo() {
+  const c = STATE.catalogoActual;
+  const nuevoEstado = c.estado === 'publicado' ? 'pausado' : 'publicado';
+  try {
+    const { error } = await sb.from('catalogos').update({ estado: nuevoEstado, updated_at: new Date().toISOString() }).eq('id', c.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    c.estado = nuevoEstado;
+    renderEstadoPublicacion();
+    showToast(nuevoEstado === 'pausado' ? '⏸ Catálogo desactivado' : '✅ Catálogo reactivado');
+  } catch (e) {
+    console.error('togglePausarCatalogo:', e);
+    showToast('No se pudo cambiar el estado: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
+}
+
+/* =====================================================
+   ELIMINAR CATÁLOGO — pide confirmar, mostrando aviso si está
+   publicado. Limpia tambien las fotos reales del Storage (productos,
+   logo, banner), no solo las filas de la base de datos.
+===================================================== */
+function abrirEliminarCatalogo() {
+  const c = STATE.catalogoActual;
+  document.getElementById('ec-nombre-catalogo').textContent = c.nombre;
+  document.getElementById('ec-aviso-publicado').style.display = (c.estado === 'publicado') ? 'block' : 'none';
+  document.getElementById('ec-conteo-productos').textContent = `Este catálogo tiene ${STATE.productosActual.length} producto${STATE.productosActual.length===1?'':'s'} — se eliminarán junto con el catálogo.`;
+  document.getElementById('ec-error').textContent = '';
+  openModal('modal-eliminar-catalogo');
+}
+
+function rutaDesdeUrlStorage(url) {
+  if (!url) return null;
+  const marcador = '/catalogo360/';
+  const idx = url.indexOf(marcador);
+  return idx === -1 ? null : url.slice(idx + marcador.length);
+}
+
+async function confirmarEliminarCatalogo() {
+  const c = STATE.catalogoActual;
+  const errEl = document.getElementById('ec-error');
+  const btn = document.getElementById('btn-confirmar-eliminar-catalogo');
+  errEl.textContent = '';
+  btn.disabled = true; const textoOriginalBtn = btn.textContent; btn.textContent = 'Eliminando…';
+  try {
+    // Recolectar TODAS las rutas de Storage a borrar: fotos de cada
+    // producto, mas el logo y el banner del catalogo -- para no dejar
+    // archivos huerfanos ocupando espacio despues de eliminar.
+    const idsProductos = STATE.productosActual.map(p => p.id);
+    let rutas = [];
+    if (idsProductos.length) {
+      const { data: fotos } = await sb.from('catalogo_producto_fotos').select('storage_path').in('catalogo_producto_id', idsProductos);
+      rutas = (fotos || []).map(f => f.storage_path).filter(Boolean);
+    }
+    const rutaLogo = rutaDesdeUrlStorage(c.logo_url);
+    const rutaBanner = rutaDesdeUrlStorage(c.banner_url);
+    if (rutaLogo) rutas.push(rutaLogo);
+    if (rutaBanner) rutas.push(rutaBanner);
+
+    const { error } = await sb.from('catalogos').delete().eq('id', c.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+
+    if (rutas.length) {
+      try { await sb.storage.from('catalogo360').remove(rutas); }
+      catch (eStorage) { console.warn('No se pudieron borrar todos los archivos de Storage (best-effort):', eStorage); }
+    }
+
+    closeModal('modal-eliminar-catalogo');
+    showToast('Catálogo eliminado');
+    volverAListaCatalogos();
+  } catch (e) {
+    console.error('confirmarEliminarCatalogo:', e);
+    errEl.textContent = 'Error al eliminar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    btn.disabled = false; btn.textContent = textoOriginalBtn;
+  }
+}
+
 
 function cambiarTabEditor(tab) {
   document.querySelectorAll('.c360-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
