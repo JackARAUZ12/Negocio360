@@ -38,8 +38,29 @@
   }
 
   .c360p-hero { padding:28px 20px 8px; text-align:center; }
-  .c360p-hero h1 { margin:0 0 6px; font-size:22px; font-weight:800; }
-  .c360p-hero p { margin:0; color:var(--texto-sec); font-size:13.5px; max-width:480px; margin:0 auto; }
+  .c360p-hero h1 { margin:0 0 6px; font-size:22px; font-weight:800; letter-spacing:-.01em; }
+  .c360p-hero p { margin:0; color:var(--texto-sec); font-size:13.5px; max-width:480px; margin:0 auto; line-height:1.5; }
+
+  .c360p-banner { width:100%; max-height:280px; object-fit:cover; display:block; }
+  .c360p-banner-wrap { position:relative; }
+  .c360p-banner-overlay {
+    position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,.55), transparent 60%);
+    display:flex; align-items:flex-end; padding:20px;
+  }
+  .c360p-banner-overlay-texto { color:#fff; }
+  .c360p-banner-overlay-texto h1 { margin:0; font-size:24px; font-weight:800; text-shadow:0 2px 8px rgba(0,0,0,.4); }
+
+  .c360p-seccion-titulo { font-size:15px; font-weight:800; padding:0 20px; margin:22px auto 12px; max-width:1100px; display:flex; align-items:center; gap:8px; }
+  .c360p-destacados-scroll { display:flex; gap:14px; overflow-x:auto; padding:0 20px 8px; -webkit-overflow-scrolling:touch; }
+  .c360p-destacados-scroll .c360p-card { min-width:180px; flex-shrink:0; }
+
+  .c360p-etiqueta { position:absolute; top:8px; left:8px; font-size:10px; font-weight:800; padding:3px 9px; border-radius:999px; color:#fff; z-index:1; letter-spacing:.02em; }
+  .c360p-etiqueta.nuevo { background:#3b82f6; }
+  .c360p-etiqueta.oferta { background:#ef4444; }
+  .c360p-etiqueta.agotado { background:#6b7280; }
+  .c360p-card.agotado-card { opacity:.6; }
+  .c360p-precio-tachado { text-decoration:line-through; color:var(--texto-sec); font-size:11.5px; font-weight:500; margin-right:6px; }
+  .c360p-precio-oferta { color:#ef4444; }
   .c360p-contacto { display:flex; gap:10px; justify-content:center; margin-top:16px; flex-wrap:wrap; }
   .c360p-btn-contacto {
     display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:999px;
@@ -113,9 +134,18 @@
     <button class="c360p-tema-btn" onclick="toggleTemaPublico()" id="c360p-tema-btn">🌙</button>
   </header>
 
+  <div class="c360p-banner-wrap" id="c360p-banner-wrap" style="display:none">
+    <img id="c360p-banner-img" class="c360p-banner" src="" alt=""/>
+  </div>
+
   <div class="c360p-hero">
     <p id="c360p-descripcion-larga"></p>
     <div class="c360p-contacto" id="c360p-contacto"></div>
+  </div>
+
+  <div id="c360p-seccion-destacados" style="display:none">
+    <div class="c360p-seccion-titulo">⭐ Destacados</div>
+    <div class="c360p-destacados-scroll" id="c360p-destacados"></div>
   </div>
 
   <div class="c360p-categorias" id="c360p-categorias"></div>
@@ -203,6 +233,7 @@ async function init() {
   PRODUCTOS = (productos || []).map(p => ({ ...p, fotos: (p.catalogo_producto_fotos||[]).sort((a,b)=>a.orden-b.orden) }));
 
   renderCabecera();
+  renderDestacados();
   renderCategorias();
   renderGrid();
 
@@ -237,6 +268,10 @@ function renderCabecera() {
     const logo = document.getElementById('c360p-logo');
     logo.src = c.logo_url; logo.style.display = 'block';
   }
+  if (c.banner_url) {
+    document.getElementById('c360p-banner-wrap').style.display = 'block';
+    document.getElementById('c360p-banner-img').src = c.banner_url;
+  }
 
   const contactoDiv = document.getElementById('c360p-contacto');
   let botones = '';
@@ -264,40 +299,66 @@ function filtrarCategoria(cat) {
   renderGrid();
 }
 
+function tarjetaProductoHTML(p) {
+  const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
+  const etiquetas = { nuevo: '🆕 Nuevo', oferta: '🔥 Oferta', agotado: '⛔ Agotado' };
+  const precioHTML = (p.etiqueta === 'oferta' && p.precio_oferta)
+    ? `<span class="c360p-precio-tachado">${fmtC(p.precio)}</span><span class="c360p-precio-oferta">${fmtC(p.precio_oferta)}</span>`
+    : fmtC(p.precio);
+  return `
+    <div class="c360p-card ${p.etiqueta==='agotado'?'agotado-card':''}" style="position:relative" onclick="abrirModalProducto('${p.id}')">
+      ${p.etiqueta ? `<span class="c360p-etiqueta ${p.etiqueta}">${etiquetas[p.etiqueta]}</span>` : ''}
+      ${principal ? `<img class="c360p-card-img" src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}">` : `<div class="c360p-card-img"></div>`}
+      <div class="c360p-card-body">
+        <div class="c360p-card-nombre">${esc(p.nombre)}</div>
+        <div class="c360p-card-precio">${precioHTML}</div>
+      </div>
+    </div>`;
+}
+
+function renderDestacados() {
+  const destacados = PRODUCTOS.filter(p => p.destacado);
+  const seccion = document.getElementById('c360p-seccion-destacados');
+  if (!destacados.length) { seccion.style.display = 'none'; return; }
+  seccion.style.display = 'block';
+  document.getElementById('c360p-destacados').innerHTML = destacados.map(tarjetaProductoHTML).join('');
+}
+
 function renderGrid() {
   const grid = document.getElementById('c360p-grid');
   const lista = CATEGORIA_ACTIVA === '__todas__' ? PRODUCTOS : PRODUCTOS.filter(p => p.categoria === CATEGORIA_ACTIVA);
   if (!lista.length) { grid.innerHTML = `<div class="c360p-vacio" style="grid-column:1/-1">Todavía no hay productos en este catálogo.</div>`; return; }
-  grid.innerHTML = lista.map((p, i) => {
-    const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
-    return `
-    <div class="c360p-card" onclick="abrirModalProducto('${p.id}')">
-      ${principal ? `<img class="c360p-card-img" src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}">` : `<div class="c360p-card-img"></div>`}
-      <div class="c360p-card-body">
-        <div class="c360p-card-nombre">${esc(p.nombre)}</div>
-        <div class="c360p-card-precio">${fmtC(p.precio)}</div>
-      </div>
-    </div>`;
-  }).join('');
+  grid.innerHTML = lista.map(tarjetaProductoHTML).join('');
 }
+
 
 function abrirModalProducto(id) {
   const p = PRODUCTOS.find(x => x.id === id);
   if (!p) return;
   registrarEvento('vista_producto', id);
   document.getElementById('c360p-modal-nombre').textContent = p.nombre;
-  document.getElementById('c360p-modal-precio').textContent = fmtC(p.precio);
+  document.getElementById('c360p-modal-precio').innerHTML = (p.etiqueta==='oferta' && p.precio_oferta)
+    ? `<span class="c360p-precio-tachado" style="font-size:15px">${fmtC(p.precio)}</span> <span class="c360p-precio-oferta">${fmtC(p.precio_oferta)}</span>`
+    : fmtC(p.precio);
   document.getElementById('c360p-modal-desc').textContent = p.descripcion || '';
   document.getElementById('c360p-modal-fotos').innerHTML = p.fotos.length
     ? p.fotos.map(f => `<img src="${esc(f.url)}" alt="">`).join('')
     : '';
   const btnWa = document.getElementById('c360p-modal-whatsapp');
-  if (CATALOGO.whatsapp) {
+  const precioParaMensaje = (p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio;
+  if (CATALOGO.whatsapp && p.etiqueta !== 'agotado') {
     btnWa.style.display = 'flex';
+    btnWa.style.opacity = ''; btnWa.style.cursor = 'pointer';
+    btnWa.textContent = '💬 Consultar por WhatsApp';
     btnWa.onclick = () => {
       registrarEvento('click_whatsapp', p.id);
-      window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(p.precio)}) de su catálogo.`), '_blank');
+      window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(precioParaMensaje)}) de su catálogo.`), '_blank');
     };
+  } else if (p.etiqueta === 'agotado') {
+    btnWa.style.display = 'flex';
+    btnWa.textContent = '⛔ Agotado por ahora';
+    btnWa.onclick = null;
+    btnWa.style.opacity = '.6'; btnWa.style.cursor = 'not-allowed';
   } else {
     btnWa.style.display = 'none';
   }

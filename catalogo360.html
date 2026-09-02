@@ -1422,6 +1422,13 @@
         <div id="c360-tab-apariencia" class="c360-tab-panel" style="display:none">
           <div class="panel-card" style="padding:20px;margin-top:16px;max-width:480px">
             <div class="form-group">
+              <label>Banner de portada</label>
+              <input type="file" id="c360-a-banner-input" accept="image/*" onchange="subirBannerCatalogo(this.files[0])" style="display:none"/>
+              <img id="c360-a-banner-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-app);display:none;margin-bottom:8px"/>
+              <button class="btn-secondary btn-sm" onclick="document.getElementById('c360-a-banner-input').click()">Subir banner</button>
+              <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Aparece como imagen de portada en la parte superior de tu catálogo público. Ideal: 1200×400px o similar.</p>
+            </div>
+            <div class="form-group">
               <label>Color de acento</label>
               <input type="color" id="c360-a-color" style="width:60px;height:36px;padding:2px;cursor:pointer"/>
             </div>
@@ -1478,6 +1485,26 @@
         </div>
         <div class="form-group"><label>Descripción</label><textarea id="cp-descripcion" rows="2"></textarea></div>
 
+        <div class="form-row">
+          <div class="form-group">
+            <label>Etiqueta</label>
+            <select id="cp-etiqueta" onchange="onCambiarEtiquetaProducto()">
+              <option value="">Ninguna</option>
+              <option value="nuevo">🆕 Nuevo</option>
+              <option value="oferta">🔥 Oferta</option>
+              <option value="agotado">⛔ Agotado</option>
+            </select>
+          </div>
+          <div class="form-group" id="cp-wrap-precio-oferta" style="display:none">
+            <label>Precio de oferta</label>
+            <input type="number" id="cp-precio-oferta" min="0" step="0.01" placeholder="Precio rebajado"/>
+          </div>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cp-destacado" style="width:16px;height:16px"/>
+          <label for="cp-destacado" style="margin:0;cursor:pointer">⭐ Mostrar como producto destacado</label>
+        </div>
+
         <div class="form-group">
           <label>Fotos <span id="cp-fotos-contador" style="font-weight:400;color:var(--text-muted)"></span></label>
           <input type="file" id="cp-fotos-input" accept="image/*" multiple onchange="subirFotosProducto(this.files)" style="display:none"/>
@@ -1531,7 +1558,7 @@
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script src="catalogo360.js?v=20260901c"></script>
+<script src="catalogo360.js?v=20260901d"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

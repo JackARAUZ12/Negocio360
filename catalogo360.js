@@ -477,6 +477,24 @@ async function subirLogoCatalogo(archivo) {
   }
 }
 
+async function subirBannerCatalogo(archivo) {
+  if (!archivo) return;
+  showToast('Subiendo banner…');
+  try {
+    const { blob } = await comprimirImagen(archivo, 1600, 0.82);
+    const { url } = await subirImagenCatalogo(blob, 'banner');
+    const { error } = await sb.from('catalogos').update({ banner_url: url, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id);
+    if (error) throw error;
+    STATE.catalogoActual.banner_url = url;
+    const banEl = document.getElementById('c360-a-banner-preview');
+    banEl.src = url; banEl.style.display = 'block';
+    showToast('✅ Banner actualizado');
+  } catch (e) {
+    console.error('subirBannerCatalogo:', e);
+    showToast('No se pudo subir el banner', 'error');
+  }
+}
+
 async function guardarInfoCatalogo() {
   const payload = {
     nombre_comercial: document.getElementById('c360-i-nombre-comercial').value.trim() || null,
@@ -506,6 +524,8 @@ function cargarTabApariencia() {
   const c = STATE.catalogoActual;
   document.getElementById('c360-a-color').value = c.color_acento || '#6366f1';
   elegirTemaCatalogo(c.tema_default || 'claro', false);
+  const banEl = document.getElementById('c360-a-banner-preview');
+  if (c.banner_url) { banEl.src = c.banner_url; banEl.style.display = 'block'; } else { banEl.style.display = 'none'; }
 }
 function elegirTemaCatalogo(tema, marcarCambio = true) {
   document.getElementById('c360-a-tema-claro').classList.toggle('active', tema === 'claro');
@@ -559,12 +579,18 @@ function renderTabProductos() {
   }
   cont.innerHTML = STATE.productosActual.map(p => {
     const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
+    const etiquetas = { nuevo: {texto:'🆕 Nuevo', color:'#3b82f6'}, oferta: {texto:'🔥 Oferta', color:'#ef4444'}, agotado: {texto:'⛔ Agotado', color:'#6b7280'} };
+    const et = etiquetas[p.etiqueta];
     return `
-    <div class="c360-card-producto">
+    <div class="c360-card-producto" style="position:relative">
+      ${p.destacado ? `<span style="position:absolute;top:8px;left:8px;background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;z-index:1">⭐ Destacado</span>` : ''}
+      ${et ? `<span style="position:absolute;top:8px;right:8px;background:${et.color};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;z-index:1">${et.texto}</span>` : ''}
       ${principal ? `<img src="${esc(principal.url)}" alt="">` : `<div style="height:130px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-app)">Sin foto</div>`}
       <div style="padding:10px 12px">
         <div style="font-weight:700;font-size:13.5px">${esc(p.nombre)}</div>
-        <div style="font-family:var(--font-mono);color:var(--accent);font-weight:700;font-size:13px;margin-top:2px">${fmtC(p.precio)}</div>
+        <div style="margin-top:2px">
+          ${p.etiqueta==='oferta' && p.precio_oferta ? `<span style="font-family:var(--font-mono);color:var(--text-muted);text-decoration:line-through;font-size:11.5px;margin-right:6px">${fmtC(p.precio)}</span><span style="font-family:var(--font-mono);color:#ef4444;font-weight:700;font-size:13px">${fmtC(p.precio_oferta)}</span>` : `<span style="font-family:var(--font-mono);color:var(--accent);font-weight:700;font-size:13px">${fmtC(p.precio)}</span>`}
+        </div>
         <div style="display:flex;gap:6px;margin-top:8px">
           <button class="btn-secondary btn-sm" style="flex:1" onclick="abrirModalProductoCatalogo('${p.id}')">Editar</button>
           <button class="btn-icon btn-icon-danger" onclick="eliminarProductoCatalogo('${p.id}')">
@@ -588,6 +614,10 @@ function abrirModalProductoCatalogo(id) {
     document.getElementById('cp-precio').value = p.precio;
     document.getElementById('cp-categoria').value = p.categoria || '';
     document.getElementById('cp-descripcion').value = p.descripcion || '';
+    document.getElementById('cp-etiqueta').value = p.etiqueta || '';
+    document.getElementById('cp-precio-oferta').value = p.precio_oferta || '';
+    document.getElementById('cp-destacado').checked = !!p.destacado;
+    onCambiarEtiquetaProducto();
     renderFotosEnModal(p.fotos);
     document.getElementById('cp-fotos-contador').textContent = `(${p.fotos.length}/${STATE.limites.fotos_por_producto_max})`;
     document.getElementById('cp-btn-agregar-foto').disabled = p.fotos.length >= STATE.limites.fotos_por_producto_max;
@@ -602,10 +632,19 @@ function abrirModalProductoCatalogo(id) {
     document.getElementById('cp-precio').value = '';
     document.getElementById('cp-categoria').value = '';
     document.getElementById('cp-descripcion').value = '';
+    document.getElementById('cp-etiqueta').value = '';
+    document.getElementById('cp-precio-oferta').value = '';
+    document.getElementById('cp-destacado').checked = false;
+    onCambiarEtiquetaProducto();
     document.getElementById('cp-fotos-contador').textContent = `(0/${STATE.limites.fotos_por_producto_max})`;
     document.getElementById('cp-btn-agregar-foto').disabled = false;
   }
   openModal('modal-producto-catalogo');
+}
+
+function onCambiarEtiquetaProducto() {
+  const esOferta = document.getElementById('cp-etiqueta').value === 'oferta';
+  document.getElementById('cp-wrap-precio-oferta').style.display = esOferta ? '' : 'none';
 }
 
 function renderFotosEnModal(fotos) {
@@ -624,12 +663,21 @@ async function guardarProductoCatalogo() {
   const errEl = document.getElementById('cp-error');
   if (!nombre) { errEl.textContent = 'Escribe un nombre.'; return; }
   if (isNaN(precio) || precio < 0) { errEl.textContent = 'Escribe un precio válido.'; return; }
+  const etiqueta = document.getElementById('cp-etiqueta').value || null;
+  const precioOfertaTexto = document.getElementById('cp-precio-oferta').value;
+  const precioOferta = etiqueta === 'oferta' && precioOfertaTexto ? parseFloat(precioOfertaTexto) : null;
+  if (etiqueta === 'oferta' && (!precioOferta || precioOferta <= 0 || precioOferta >= precio)) {
+    errEl.textContent = 'El precio de oferta debe ser mayor a 0 y menor al precio normal.';
+    return;
+  }
   errEl.textContent = '';
 
   const payload = {
     nombre, precio,
     categoria: document.getElementById('cp-categoria').value.trim() || null,
     descripcion: document.getElementById('cp-descripcion').value.trim() || null,
+    etiqueta, precio_oferta: precioOferta,
+    destacado: document.getElementById('cp-destacado').checked,
     updated_at: new Date().toISOString(),
   };
 
