@@ -52,7 +52,8 @@
 
   .c360p-seccion-titulo { font-size:15px; font-weight:800; padding:0 20px; margin:22px auto 12px; max-width:1100px; display:flex; align-items:center; gap:8px; }
   .c360p-destacados-scroll { display:flex; gap:14px; overflow-x:auto; padding:0 20px 8px; -webkit-overflow-scrolling:touch; }
-  .c360p-destacados-scroll .c360p-card { min-width:180px; flex-shrink:0; }
+  .c360p-destacados-scroll .c360p-card { width:150px; min-width:150px; max-width:150px; flex-shrink:0; }
+  @media (min-width:640px) { .c360p-destacados-scroll .c360p-card { width:190px; min-width:190px; max-width:190px; } }
 
   .c360p-etiqueta { position:absolute; top:8px; left:8px; font-size:10px; font-weight:800; padding:3px 9px; border-radius:999px; color:#fff; z-index:1; letter-spacing:.02em; }
   .c360p-etiqueta.nuevo { background:#3b82f6; }

@@ -1009,6 +1009,9 @@ async function publicarCatalogoActual() {
 function urlPublicaActual() {
   return `${window.location.origin}/c360.html?c=${STATE.catalogoActual.slug_publico}`;
 }
+function verCatalogoPublicado() {
+  window.open(urlPublicaActual(), '_blank');
+}
 function copiarEnlaceCatalogo() {
   navigator.clipboard?.writeText(urlPublicaActual());
   showToast('🔗 Enlace copiado');
@@ -1030,6 +1033,10 @@ function mostrarQR() {
 // juntos, lista para descargar -- no solo el QR crudo.
 function dibujarQRConDiseno() {
   const cont = document.getElementById('qr-catalogo-canvas');
+  if (typeof QRCode === 'undefined') {
+    cont.innerHTML = 'No se pudo cargar el generador de QR. Recarga la página e intenta de nuevo.';
+    return;
+  }
   cont.innerHTML = 'Generando…';
 
   QRCode.toCanvas(urlPublicaActual(), { width: 260, margin: 1, color: { dark: '#111827', light: '#ffffff' } }, (err, qrCanvas) => {
