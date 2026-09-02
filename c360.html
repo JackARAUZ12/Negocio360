@@ -206,6 +206,13 @@ async function init() {
   renderCategorias();
   renderGrid();
 
+  // Registrar la visita real -- nunca en modo vista previa (eso no
+  // cuenta como visita real de un cliente), best-effort (si falla,
+  // no afecta en nada la experiencia de quien esta viendo el catalogo).
+  if (!idPreview) {
+    sb.rpc('catalogo_registrar_evento', { p_catalogo_id: catalogo.id, p_tipo_evento: 'visita' }).then(()=>{}).catch(()=>{});
+  }
+
   document.getElementById('c360p-loader').style.display = 'none';
   document.getElementById('c360p-app').style.display = 'block';
 }
@@ -233,9 +240,15 @@ function renderCabecera() {
 
   const contactoDiv = document.getElementById('c360p-contacto');
   let botones = '';
-  if (c.whatsapp) botones += `<a class="c360p-btn-contacto" href="${linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${c.nombre_comercial||''} y tengo una consulta.`)}" target="_blank">💬 WhatsApp</a>`;
-  if (c.telefono) botones += `<a class="c360p-btn-contacto secundario" href="tel:${esc(c.telefono)}">📞 Llamar</a>`;
+  if (c.whatsapp) botones += `<a class="c360p-btn-contacto" href="${linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${c.nombre_comercial||''} y tengo una consulta.`)}" target="_blank" onclick="registrarEvento('click_whatsapp')">💬 WhatsApp</a>`;
+  if (c.telefono) botones += `<a class="c360p-btn-contacto secundario" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')">📞 Llamar</a>`;
   contactoDiv.innerHTML = botones;
+}
+
+function registrarEvento(tipo, productoId) {
+  if (CATALOGO && !new URLSearchParams(window.location.search).get('preview')) {
+    sb.rpc('catalogo_registrar_evento', { p_catalogo_id: CATALOGO.id, p_tipo_evento: tipo, p_producto_id: productoId || null }).then(()=>{}).catch(()=>{});
+  }
 }
 
 function renderCategorias() {
@@ -271,6 +284,7 @@ function renderGrid() {
 function abrirModalProducto(id) {
   const p = PRODUCTOS.find(x => x.id === id);
   if (!p) return;
+  registrarEvento('vista_producto', id);
   document.getElementById('c360p-modal-nombre').textContent = p.nombre;
   document.getElementById('c360p-modal-precio').textContent = fmtC(p.precio);
   document.getElementById('c360p-modal-desc').textContent = p.descripcion || '';
@@ -280,7 +294,10 @@ function abrirModalProducto(id) {
   const btnWa = document.getElementById('c360p-modal-whatsapp');
   if (CATALOGO.whatsapp) {
     btnWa.style.display = 'flex';
-    btnWa.onclick = () => window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(p.precio)}) de su catálogo.`), '_blank');
+    btnWa.onclick = () => {
+      registrarEvento('click_whatsapp', p.id);
+      window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(p.precio)}) de su catálogo.`), '_blank');
+    };
   } else {
     btnWa.style.display = 'none';
   }

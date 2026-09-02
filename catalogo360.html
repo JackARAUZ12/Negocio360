@@ -1020,6 +1020,21 @@
     .c360-card-producto { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
     .c360-card-producto img { width:100%; height:130px; object-fit:cover; background:var(--bg-app); display:block; }
     .c360-foto-mini { width:56px; height:56px; border-radius:8px; object-fit:cover; background:var(--bg-app); position:relative; }
+    .c360-kpi-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 16px; }
+    .c360-kpi-icono { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:16px; margin-bottom:8px; }
+    .c360-kpi-valor { font-size:20px; font-weight:800; }
+    .c360-kpi-label { font-size:11.5px; color:var(--text-muted); font-weight:600; }
+    .c360-kpi-sub { font-size:10.5px; color:var(--text-muted); margin-top:2px; }
+    .c360-accion-rapida { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; border-radius:var(--radius-md); background:var(--bg-app); cursor:pointer; text-align:center; font-size:11.5px; font-weight:600; color:var(--text-secondary); transition:background .15s; }
+    .c360-accion-rapida:hover { background:var(--accent-soft); color:var(--accent); }
+    .c360-accion-icono { width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; font-size:15px; }
+    .c360-barra-uso-track { height:6px; background:var(--bg-app); border-radius:999px; overflow:hidden; margin-top:5px; }
+    .c360-barra-uso-fill { height:100%; background:var(--accent); border-radius:999px; }
+    .c360-mini-card-catalogo { position:relative; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--border); cursor:pointer; }
+    .c360-mini-card-catalogo img { width:100%; height:90px; object-fit:cover; background:var(--bg-app); }
+    @media (max-width: 980px) {
+      #c360-layout-principal { grid-template-columns: 1fr !important; }
+    }
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -1252,44 +1267,89 @@
       <div id="c360-vista-lista">
         <div class="greeting-row fade-in">
           <div>
-            <h1>Catálogo360</h1>
-            <p>Crea catálogos digitales profesionales para tu negocio.</p>
+            <h1 id="c360-saludo">¡Bienvenido! 👋</h1>
+            <p>Resumen general de tu actividad en Catálogo360.</p>
           </div>
           <div class="greeting-actions">
             <button class="btn-primary" id="c360-btn-crear" onclick="abrirModalCrearCatalogo()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Crear catálogo
+              Crear nuevo catálogo
             </button>
           </div>
         </div>
 
-        <div class="panel-card" style="margin-top:18px;padding:16px 20px">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-            <div>
-              <div style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em">Tu plan</div>
-              <div id="c360-plan-nombre" style="font-size:16px;font-weight:800;margin-top:2px">—</div>
-            </div>
-            <div style="display:flex;gap:24px;flex-wrap:wrap">
-              <div>
-                <div style="font-size:11.5px;color:var(--text-muted)">Catálogos</div>
-                <div id="c360-uso-catalogos" style="font-weight:700;font-size:15px">—</div>
+        <!-- 5 TARJETAS KPI -->
+        <div id="c360-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:18px"></div>
+
+        <!-- LAYOUT 2 COLUMNAS -->
+        <div style="display:grid;grid-template-columns:2.2fr 1fr;gap:18px;margin-top:20px;align-items:start" id="c360-layout-principal">
+
+          <!-- COLUMNA IZQUIERDA -->
+          <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+
+            <div class="panel-card" style="padding:18px 20px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <span class="section-title" style="margin:0">Mis catálogos</span>
               </div>
-              <div>
-                <div style="font-size:11.5px;color:var(--text-muted)">Fotos por producto</div>
-                <div id="c360-uso-fotos" style="font-weight:700;font-size:15px">—</div>
+              <div id="c360-onboarding" style="display:none;text-align:center;padding:50px 20px">
+                <div style="font-size:44px;margin-bottom:10px">📇</div>
+                <h3 style="margin:0 0 6px">Tu catálogo profesional comienza aquí</h3>
+                <p style="color:var(--text-secondary);max-width:400px;margin:0 auto 16px;font-size:13px">Agrega tus productos, elige una plantilla, y comparte un enlace profesional en WhatsApp, Instagram o Facebook.</p>
+                <button class="btn-primary" onclick="abrirModalCrearCatalogo()">Crear mi primer catálogo</button>
+              </div>
+              <div id="c360-grid-catalogos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px"></div>
+            </div>
+
+            <div class="panel-card" style="padding:18px 20px">
+              <span class="section-title" style="margin:0 0 14px;display:block">Productos recientes</span>
+              <div id="c360-productos-recientes" style="display:flex;flex-direction:column;gap:2px"></div>
+            </div>
+
+          </div>
+
+          <!-- COLUMNA DERECHA -->
+          <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+
+            <div class="panel-card" style="padding:18px 20px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="color:#a855f7">👑</span>
+                <span style="font-size:12px;color:var(--text-muted);font-weight:700">TU PLAN ACTUAL</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+                <div id="c360-plan-nombre" style="font-size:19px;font-weight:800">—</div>
+                <div id="c360-plan-precio" style="font-weight:800;color:var(--accent)"></div>
+              </div>
+              <div id="c360-plan-features" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--text-secondary);margin-bottom:16px"></div>
+
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Uso actual</div>
+              <div id="c360-barras-uso" style="display:flex;flex-direction:column;gap:12px"></div>
+            </div>
+
+            <div class="panel-card" style="padding:18px 20px">
+              <span class="section-title" style="margin:0 0 12px;display:block">Acciones rápidas</span>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+                <div class="c360-accion-rapida" onclick="accionRapida('producto')">
+                  <div class="c360-accion-icono">➕</div><span>Agregar producto</span>
+                </div>
+                <div class="c360-accion-rapida" onclick="accionRapida('fotos')">
+                  <div class="c360-accion-icono">🖼</div><span>Gestionar fotos</span>
+                </div>
+                <div class="c360-accion-rapida" onclick="accionRapida('ver')">
+                  <div class="c360-accion-icono">👁</div><span>Ver mi catálogo</span>
+                </div>
+                <div class="c360-accion-rapida" onclick="accionRapida('compartir')">
+                  <div class="c360-accion-icono">🔗</div><span>Compartir catálogo</span>
+                </div>
               </div>
             </div>
+
+            <div class="panel-card" style="padding:18px 20px">
+              <span class="section-title" style="margin:0 0 12px;display:block">Actividad reciente</span>
+              <div id="c360-actividad-reciente" style="display:flex;flex-direction:column;gap:12px"></div>
+            </div>
+
           </div>
         </div>
-
-        <div id="c360-onboarding" style="display:none;text-align:center;padding:60px 20px">
-          <div style="font-size:48px;margin-bottom:12px">📇</div>
-          <h2 style="margin:0 0 8px">Tu catálogo profesional comienza aquí</h2>
-          <p style="color:var(--text-secondary);max-width:420px;margin:0 auto 20px">Agrega tus productos, elige una plantilla, y comparte un enlace profesional en WhatsApp, Instagram o Facebook.</p>
-          <button class="btn-primary" onclick="abrirModalCrearCatalogo()">Crear mi primer catálogo</button>
-        </div>
-
-        <div id="c360-grid-catalogos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:20px"></div>
       </div>
 
       <!-- ============ PANTALLA: EDITAR UN CATALOGO ============ -->
@@ -1471,7 +1531,7 @@
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script src="catalogo360.js?v=20260901b"></script>
+<script src="catalogo360.js?v=20260901c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

@@ -170,15 +170,18 @@ async function cargarLimitesYUso() {
   } catch (e) {
     STATE.limites = { plan_key:'basico', catalogos_max:1, productos_por_catalogo_max:100, fotos_por_producto_max:3 };
   }
-  const nombresPlan = { basico:'Básico', profesional:'Profesional', premium:'Premium' };
-  const planEl = document.getElementById('c360-plan-nombre');
-  if (planEl) planEl.textContent = nombresPlan[STATE.limites.plan_key] || STATE.limites.plan_key;
-  const fotosEl = document.getElementById('c360-uso-fotos');
-  if (fotosEl) fotosEl.textContent = `Hasta ${STATE.limites.fotos_por_producto_max}`;
+  try {
+    const { data: plan } = await sb.from('catalogo_planes').select('nombre, precio_mensual').eq('plan_key', STATE.limites.plan_key).maybeSingle();
+    STATE.limites.nombre_plan = plan?.nombre || STATE.limites.plan_key;
+    STATE.limites.precio_mensual = plan?.precio_mensual || 0;
+  } catch (e) { STATE.limites.nombre_plan = STATE.limites.plan_key; STATE.limites.precio_mensual = 0; }
 }
 
 /* =====================================================
-   LISTA DE CATÁLOGOS
+   DASHBOARD PRINCIPAL — todo con datos reales: nada de numeros
+   inventados. Las metricas de visitas/clics vienen de
+   catalogo_eventos (registrado de verdad desde c360.html); lo demas
+   se calcula en vivo desde los catalogos/productos/fotos reales.
 ===================================================== */
 async function cargarListaCatalogos() {
   try {
@@ -186,29 +189,184 @@ async function cargarListaCatalogos() {
     STATE.catalogos = data || [];
   } catch (e) { STATE.catalogos = []; }
 
-  const catEl = document.getElementById('c360-uso-catalogos');
-  if (catEl) catEl.textContent = `${STATE.catalogos.length} / ${STATE.limites.catalogos_max}`;
+  // Saludo con el nombre real del negocio
+  const nombreNegocio = STATE.empresaConfig?.nombre_comercial || STATE.empresaConfig?.nombre_negocio || STATE.currentUser?.nombre || '';
+  const saludoEl = document.getElementById('c360-saludo');
+  if (saludoEl && nombreNegocio) saludoEl.textContent = `¡Bienvenido, ${nombreNegocio}! 👋`;
 
+  const idsC = STATE.catalogos.map(c => c.id);
+  let productosTotal = 0, fotosTotal = 0, todosLosProductos = [];
+  if (idsC.length) {
+    const { data: productos } = await sb.from('catalogo_productos').select('id, catalogo_id, nombre, precio, categoria, activo, created_at').in('catalogo_id', idsC).order('created_at', { ascending:false });
+    todosLosProductos = productos || [];
+    productosTotal = todosLosProductos.length;
+    const idsProd = todosLosProductos.map(p => p.id);
+    if (idsProd.length) {
+      const { count } = await sb.from('catalogo_producto_fotos').select('id', { count:'exact', head:true }).in('catalogo_producto_id', idsProd);
+      fotosTotal = count || 0;
+    }
+  }
+
+  // Visitas reales del mes (desde catalogo_eventos, vía RPC)
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+  let visitasMes = 0;
+  let visitasPorCatalogo = {};
+  try {
+    const { data: resumen } = await sb.rpc('catalogo_resumen_eventos', { p_auth_user_id: STATE.userId, p_desde: inicioMes.toISOString() });
+    visitasMes = (resumen || []).find(r => r.tipo_evento === 'visita')?.total || 0;
+    const { data: visitasCat } = await sb.rpc('catalogo_visitas_por_catalogo', { p_auth_user_id: STATE.userId });
+    (visitasCat || []).forEach(v => { visitasPorCatalogo[v.catalogo_id] = v.visitas; });
+  } catch (e) { /* best-effort, nunca bloquea el dashboard */ }
+
+  const publicados = STATE.catalogos.filter(c => c.estado === 'publicado').length;
+  const borradores = STATE.catalogos.length - publicados;
+
+  renderKpis({ productosTotal, fotosTotal, visitasMes, publicados, borradores });
+  renderPlanYUso(productosTotal, fotosTotal);
+  renderCatalogosCards(visitasPorCatalogo);
+  renderProductosRecientes(todosLosProductos.slice(0, 5));
+  renderActividadReciente(todosLosProductos);
+
+  const btnCrear = document.getElementById('c360-btn-crear');
+  if (btnCrear) btnCrear.disabled = STATE.catalogos.length >= STATE.limites.catalogos_max;
+}
+
+function renderKpis({ productosTotal, fotosTotal, visitasMes, publicados, borradores }) {
+  const L = STATE.limites;
+  const promedioProd = STATE.catalogos.length ? Math.round(productosTotal / STATE.catalogos.length) : 0;
+  const promedioFotos = productosTotal ? (fotosTotal / productosTotal).toFixed(1) : '0.0';
+  const kpis = [
+    { icono:'📁', color:'#a855f7', valor:`${STATE.catalogos.length} / ${L.catalogos_max}`, label:'Catálogos',
+      sub: STATE.catalogos.length >= L.catalogos_max ? 'Límite alcanzado' : `${L.catalogos_max - STATE.catalogos.length} disponible(s)` },
+    { icono:'📦', color:'#10b981', valor:`${productosTotal} / ${STATE.catalogos.length * L.productos_por_catalogo_max}`, label:'Productos totales',
+      sub: `${promedioProd} por catálogo (promedio)` },
+    { icono:'🖼', color:'#3b82f6', valor:`${fotosTotal}`, label:'Fotos subidas',
+      sub: `Promedio: ${promedioFotos} por producto` },
+    { icono:'👁', color:'#f59e0b', valor:`${visitasMes}`, label:'Visitas este mes',
+      sub: visitasMes ? 'Total registrado' : 'Aún sin visitas' },
+    { icono:'📈', color:'#ec4899', valor:`${publicados}`, label:'Catálogos publicados',
+      sub: borradores ? `${borradores} en borrador` : 'Todos publicados' },
+  ];
+  document.getElementById('c360-kpis').innerHTML = kpis.map(k => `
+    <div class="c360-kpi-card">
+      <div class="c360-kpi-icono" style="background:${k.color}22;color:${k.color}">${k.icono}</div>
+      <div class="c360-kpi-valor">${k.valor}</div>
+      <div class="c360-kpi-label">${k.label}</div>
+      <div class="c360-kpi-sub">${k.sub}</div>
+    </div>
+  `).join('');
+}
+
+function renderPlanYUso(productosTotal, fotosTotal) {
+  const L = STATE.limites;
+  document.getElementById('c360-plan-nombre').textContent = L.nombre_plan;
+  document.getElementById('c360-plan-precio').textContent = L.precio_mensual > 0 ? `$${L.precio_mensual}/mes` : 'Gratis';
+
+  const features = [
+    `${L.catalogos_max} catálogo${L.catalogos_max===1?'':'s'} incluido${L.catalogos_max===1?'':'s'}`,
+    `${L.productos_por_catalogo_max} productos por catálogo`,
+    `${L.fotos_por_producto_max} fotos por producto`,
+  ];
+  document.getElementById('c360-plan-features').innerHTML = features.map(f => `<div>✓ ${esc(f)}</div>`).join('');
+
+  const promedioFotosPorProducto = productosTotal ? Math.round(fotosTotal / productosTotal) : 0;
+  const barras = [
+    { label:'Catálogos', actual: STATE.catalogos.length, max: L.catalogos_max },
+    { label:'Productos por catálogo (promedio)', actual: STATE.catalogos.length ? Math.round(productosTotal/STATE.catalogos.length) : 0, max: L.productos_por_catalogo_max },
+    { label:'Fotos por producto (promedio)', actual: promedioFotosPorProducto, max: L.fotos_por_producto_max },
+  ];
+  document.getElementById('c360-barras-uso').innerHTML = barras.map(b => {
+    const pct = Math.min(100, Math.round((b.actual / (b.max||1)) * 100));
+    return `<div>
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>${esc(b.label)}</span><span style="font-weight:700">${b.actual} de ${b.max}</span></div>
+      <div class="c360-barra-uso-track"><div class="c360-barra-uso-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderCatalogosCards(visitasPorCatalogo) {
   const onboarding = document.getElementById('c360-onboarding');
   const grid = document.getElementById('c360-grid-catalogos');
-  const btnCrear = document.getElementById('c360-btn-crear');
-
-  if (!STATE.catalogos.length) {
-    onboarding.style.display = 'block';
-    grid.innerHTML = '';
-  } else {
-    onboarding.style.display = 'none';
-    grid.innerHTML = STATE.catalogos.map(c => `
-      <div class="c360-card-catalogo" onclick="abrirEditorCatalogo('${c.id}')">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <div style="font-weight:700;font-size:15px">${esc(c.nombre)}</div>
-          <span class="c360-badge ${c.estado}">${c.estado === 'publicado' ? 'Publicado' : c.estado === 'pausado' ? 'Pausado' : 'Borrador'}</span>
-        </div>
-        <div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">${esc(c.nombre_comercial || 'Sin nombre comercial todavía')}</div>
+  if (!STATE.catalogos.length) { onboarding.style.display = 'block'; grid.innerHTML = ''; return; }
+  onboarding.style.display = 'none';
+  grid.innerHTML = STATE.catalogos.map(c => `
+    <div class="c360-mini-card-catalogo" onclick="abrirEditorCatalogo('${c.id}')">
+      ${c.logo_url ? `<img src="${esc(c.logo_url)}">` : `<div style="height:90px;background:linear-gradient(135deg,var(--accent),${c.color_acento||'#6366f1'});display:flex;align-items:center;justify-content:center;font-size:26px">📇</div>`}
+      <span class="c360-badge ${c.estado}" style="position:absolute;top:8px;left:8px">${c.estado === 'publicado' ? 'PUBLICADO' : c.estado === 'pausado' ? 'PAUSADO' : 'BORRADOR'}</span>
+      <span style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px">👁 ${visitasPorCatalogo[c.id] || 0}</span>
+      <div style="padding:10px 12px;background:var(--bg-surface)">
+        <div style="font-weight:700;font-size:13.5px">${esc(c.nombre)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${tiempoRelativo(c.updated_at)}</div>
       </div>
-    `).join('');
+    </div>
+  `).join('');
+}
+
+function tiempoRelativo(fechaISO) {
+  if (!fechaISO) return '';
+  const diffMs = Date.now() - new Date(fechaISO).getTime();
+  const horas = Math.floor(diffMs / 3600000);
+  if (horas < 1) return 'Hace instantes';
+  if (horas < 24) return `Actualizado hace ${horas} hora${horas===1?'':'s'}`;
+  const dias = Math.floor(horas / 24);
+  return `Actualizado hace ${dias} día${dias===1?'':'s'}`;
+}
+
+function renderProductosRecientes(productos) {
+  const cont = document.getElementById('c360-productos-recientes');
+  if (!productos.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px">Todavía no has agregado productos.</p>`; return; }
+  cont.innerHTML = productos.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="width:40px;height:40px;border-radius:8px;background:var(--bg-app);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nombre)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${esc(p.categoria || 'Sin categoría')}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:700;font-size:13px;color:var(--accent)">${fmtC(p.precio)}</div>
+        <div style="font-size:10.5px;color:${p.activo?'var(--success)':'var(--text-muted)'}">${p.activo?'Activo':'Inactivo'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderActividadReciente(todosLosProductos) {
+  // Actividad REAL derivada de fechas ya existentes -- catalogos
+  // creados/actualizados + productos agregados. Nunca inventada.
+  const eventos = [];
+  STATE.catalogos.forEach(c => {
+    eventos.push({ icono: c.estado==='publicado'?'✅':'📁', texto: c.estado==='publicado' ? `${c.nombre} fue publicado` : `${c.nombre} creado`, fecha: c.estado==='publicado' && c.published_at ? c.published_at : c.created_at });
+  });
+  todosLosProductos.slice(0, 5).forEach(p => {
+    eventos.push({ icono:'➕', texto: `Nuevo producto agregado "${p.nombre}"`, fecha: p.created_at });
+  });
+  eventos.sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+  const cont = document.getElementById('c360-actividad-reciente');
+  if (!eventos.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px">Sin actividad todavía.</p>`; return; }
+  cont.innerHTML = eventos.slice(0, 6).map(e => `
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--bg-app);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${e.icono}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;line-height:1.35">${esc(e.texto)}</div>
+        <div style="font-size:10.5px;color:var(--text-muted)">${tiempoRelativo(e.fecha)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function accionRapida(tipo) {
+  if (!STATE.catalogos.length) { showToast('Primero crea un catálogo', 'error'); return; }
+  const catalogoObjetivo = STATE.catalogos[0]; // el mas reciente
+  if (tipo === 'producto') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => { cambiarTabEditor('productos'); abrirModalProductoCatalogo(); }); }
+  else if (tipo === 'fotos') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => cambiarTabEditor('productos')); }
+  else if (tipo === 'ver') {
+    if (catalogoObjetivo.slug_publico && catalogoObjetivo.estado === 'publicado') window.open(`c360.html?c=${catalogoObjetivo.slug_publico}`, '_blank');
+    else window.open(`c360.html?preview=${catalogoObjetivo.id}`, '_blank');
   }
-  if (btnCrear) btnCrear.disabled = STATE.catalogos.length >= STATE.limites.catalogos_max;
+  else if (tipo === 'compartir') {
+    if (catalogoObjetivo.slug_publico) { navigator.clipboard?.writeText(`${window.location.origin}/c360.html?c=${catalogoObjetivo.slug_publico}`); showToast('🔗 Enlace copiado'); }
+    else showToast('Publica el catálogo primero para poder compartirlo', 'error');
+  }
 }
 
 function abrirModalCrearCatalogo() {
