@@ -1032,6 +1032,9 @@
     .c360-barra-uso-fill { height:100%; background:var(--accent); border-radius:999px; }
     .c360-mini-card-catalogo { position:relative; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--border); cursor:pointer; }
     .c360-mini-card-catalogo img { width:100%; height:90px; object-fit:cover; background:var(--bg-app); }
+    .c360-paleta-btn { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:var(--radius-md); border:2px solid var(--border); background:var(--bg-app); cursor:pointer; font-size:12px; font-weight:600; color:var(--text-secondary); transition:border-color .15s; }
+    .c360-paleta-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
+    .c360-paleta-swatch { width:18px; height:18px; border-radius:50%; flex-shrink:0; }
     @media (max-width: 980px) {
       #c360-layout-principal { grid-template-columns: 1fr !important; }
     }
@@ -1433,8 +1436,9 @@
               <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Aparece como imagen de portada en la parte superior de tu catálogo público. Ideal: 1200×400px o similar.</p>
             </div>
             <div class="form-group">
-              <label>Color de acento</label>
-              <input type="color" id="c360-a-color" style="width:60px;height:36px;padding:2px;cursor:pointer"/>
+              <label>Color de tu catálogo</label>
+              <div id="c360-a-paletas" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px"></div>
+              <input type="hidden" id="c360-a-color" value="#6366f1"/>
             </div>
             <div class="form-group">
               <label>Tema por defecto de tu catálogo público</label>
@@ -1587,7 +1591,7 @@
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script src="catalogo360.js?v=20260901e"></script>
+<script src="catalogo360.js?v=20260901f"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

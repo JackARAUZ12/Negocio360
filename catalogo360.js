@@ -59,8 +59,12 @@ function showToast(msg, type='success') {
   const t = document.getElementById('toast');
   if (!t) { console.log(msg); return; }
   t.textContent = msg;
-  t.className = `toast toast-${type === 'error' ? 'error' : 'success'} show`;
-  setTimeout(() => t.classList.remove('show'), 3200);
+  // BUG REAL CORREGIDO: esta funcion agregaba la clase "show", pero
+  // el CSS real de este archivo (heredado de agenda.html) espera
+  // "toast-show" -- nunca coincidian, asi que la notificacion nunca
+  // se hacia visible, aunque el codigo si se ejecutaba bien.
+  t.className = `toast toast-${type === 'error' ? 'error' : 'success'} toast-show`;
+  setTimeout(() => t.classList.remove('toast-show'), 3200);
 }
 
 /* =====================================================
@@ -607,13 +611,40 @@ async function guardarInfoCatalogo() {
 }
 
 /* ---------- TAB: APARIENCIA ---------- */
+// Paletas profesionales prehechas -- el cliente elige un estilo ya
+// armado, en vez de tener que escoger un color el mismo.
+const PALETAS_CATALOGO360 = [
+  { nombre: 'Índigo',       color: '#6366f1' },
+  { nombre: 'Esmeralda',    color: '#10b981' },
+  { nombre: 'Rosa',         color: '#ec4899' },
+  { nombre: 'Ámbar',        color: '#f59e0b' },
+  { nombre: 'Coral',        color: '#ef4444' },
+  { nombre: 'Azul océano',  color: '#3b82f6' },
+  { nombre: 'Púrpura',      color: '#a855f7' },
+  { nombre: 'Grafito',      color: '#475569' },
+];
+
 function cargarTabApariencia() {
   const c = STATE.catalogoActual;
   document.getElementById('c360-a-color').value = c.color_acento || '#6366f1';
+  renderPaletasApariencia(c.color_acento || '#6366f1');
   elegirTemaCatalogo(c.tema_default || 'claro', false);
   const banEl = document.getElementById('c360-a-banner-preview');
   if (c.banner_url) { banEl.src = c.banner_url; banEl.style.display = 'block'; } else { banEl.style.display = 'none'; }
 }
+
+function renderPaletasApariencia(colorActivo) {
+  document.getElementById('c360-a-paletas').innerHTML = PALETAS_CATALOGO360.map(p => `
+    <button type="button" class="c360-paleta-btn ${p.color === colorActivo ? 'active' : ''}" onclick="elegirPaletaApariencia('${p.color}')">
+      <span class="c360-paleta-swatch" style="background:${p.color}"></span>${p.nombre}
+    </button>
+  `).join('');
+}
+function elegirPaletaApariencia(color) {
+  document.getElementById('c360-a-color').value = color;
+  renderPaletasApariencia(color);
+}
+
 function elegirTemaCatalogo(tema, marcarCambio = true) {
   document.getElementById('c360-a-tema-claro').classList.toggle('active', tema === 'claro');
   document.getElementById('c360-a-tema-oscuro').classList.toggle('active', tema === 'oscuro');
@@ -797,8 +828,45 @@ async function eliminarProductoCatalogo(id) {
 }
 
 async function subirFotosProducto(archivos) {
-  const idProducto = document.getElementById('cp-id').value;
-  if (!idProducto) { showToast('Guarda el producto primero antes de agregar fotos', 'error'); return; }
+  let idProducto = document.getElementById('cp-id').value;
+
+  // BUG REAL CORREGIDO: antes, subir una foto a un producto NUEVO
+  // (todavia sin guardar) simplemente no hacia nada, con un error
+  // invisible (mismo bug de notificaciones). Ahora, si el producto
+  // aun no existe, se guarda solo primero (usando lo que ya se
+  // escribio de nombre/precio), y luego sigue con la foto normal --
+  // el usuario nunca tiene que guardar manualmente antes de poder
+  // agregar fotos.
+  if (!idProducto) {
+    const nombre = document.getElementById('cp-nombre').value.trim();
+    const precio = parseFloat(document.getElementById('cp-precio').value);
+    if (!nombre || isNaN(precio) || precio < 0) {
+      showToast('Escribe primero el nombre y el precio del producto', 'error');
+      return;
+    }
+    if (STATE.productosActual.length >= STATE.limites.productos_por_catalogo_max) {
+      showToast(`Tu plan permite hasta ${STATE.limites.productos_por_catalogo_max} productos por catálogo.`, 'error');
+      return;
+    }
+    try {
+      const { data, error } = await sb.from('catalogo_productos').insert({
+        catalogo_id: STATE.catalogoActual.id, auth_user_id: STATE.userId,
+        nombre, precio,
+        categoria: document.getElementById('cp-categoria').value.trim() || null,
+        descripcion: document.getElementById('cp-descripcion').value.trim() || null,
+      }).select().single();
+      if (error) throw error;
+      idProducto = data.id;
+      document.getElementById('cp-id').value = idProducto;
+      document.getElementById('cp-titulo').textContent = 'Editar producto';
+      showToast('✅ Producto guardado, agregando foto…');
+    } catch (e) {
+      console.error('Guardado automático antes de subir foto:', e);
+      showToast('No se pudo guardar el producto: ' + (e.message?.includes('row-level security') ? 'alcanzaste el límite de tu plan' : 'intenta de nuevo'), 'error');
+      return;
+    }
+  }
+
   if (STATE.fotosSubiendo) return;
   STATE.fotosSubiendo = true;
   const btn = document.getElementById('cp-btn-agregar-foto');
@@ -954,21 +1022,84 @@ function abrirVistaPrevia() {
 }
 function mostrarQR() {
   if (!STATE.catalogoActual.slug_publico) { showToast('Publica el catálogo primero', 'error'); return; }
-  const cont = document.getElementById('qr-catalogo-canvas');
-  cont.innerHTML = '';
-  QRCode.toCanvas(urlPublicaActual(), { width: 220, margin: 1 }, (err, canvas) => {
-    if (err) { cont.textContent = 'No se pudo generar el QR'; return; }
-    cont.appendChild(canvas);
-  });
+  dibujarQRConDiseno();
   openModal('modal-qr-catalogo');
 }
+
+// Compone una imagen real (canvas) con el nombre del catalogo y el QR
+// juntos, lista para descargar -- no solo el QR crudo.
+function dibujarQRConDiseno() {
+  const cont = document.getElementById('qr-catalogo-canvas');
+  cont.innerHTML = 'Generando…';
+
+  QRCode.toCanvas(urlPublicaActual(), { width: 260, margin: 1, color: { dark: '#111827', light: '#ffffff' } }, (err, qrCanvas) => {
+    if (err) { cont.textContent = 'No se pudo generar el QR'; return; }
+
+    const c = STATE.catalogoActual;
+    const titulo = c.nombre_comercial || c.nombre;
+    const ancho = 340, alto = 460;
+    const final = document.createElement('canvas');
+    final.width = ancho; final.height = alto;
+    const ctx = final.getContext('2d');
+
+    // Fondo blanco con borde suave
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, ancho-2, alto-2);
+
+    // Franja de color con el acento del catalogo, arriba
+    ctx.fillStyle = c.color_acento || '#6366f1';
+    ctx.fillRect(0, 0, ancho, 10);
+
+    // Titulo del catalogo
+    ctx.fillStyle = '#111827';
+    ctx.font = '700 22px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ajustarTextoEnCanvas(ctx, titulo, ancho/2, 60, ancho - 40, 26);
+
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '400 13px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('Escanea para ver el catálogo', ancho/2, 92);
+
+    // El QR, centrado
+    const qrX = (ancho - qrCanvas.width) / 2;
+    ctx.drawImage(qrCanvas, qrX, 115);
+
+    // Pie de pagina
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '600 11px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('Creado con Catálogo360', ancho/2, alto - 20);
+
+    cont.innerHTML = '';
+    cont.appendChild(final);
+    STATE._qrCanvasFinal = final;
+  });
+}
+
+// Texto centrado con salto de linea automatico simple, para que un
+// nombre de catalogo largo no se salga de la tarjeta.
+function ajustarTextoEnCanvas(ctx, texto, x, yInicial, anchoMax, salto) {
+  const palabras = texto.split(' ');
+  let linea = '', y = yInicial;
+  for (const palabra of palabras) {
+    const prueba = linea ? `${linea} ${palabra}` : palabra;
+    if (ctx.measureText(prueba).width > anchoMax && linea) {
+      ctx.fillText(linea, x, y);
+      linea = palabra; y += salto;
+    } else { linea = prueba; }
+  }
+  ctx.fillText(linea, x, y);
+}
+
 function descargarQR() {
-  const canvas = document.querySelector('#qr-catalogo-canvas canvas');
-  if (!canvas) return;
+  const canvas = STATE._qrCanvasFinal;
+  if (!canvas) { showToast('Espera a que se genere el QR', 'error'); return; }
   const link = document.createElement('a');
   link.download = `QR_${STATE.catalogoActual.nombre.replace(/[^\w\-]/g,'_')}.png`;
-  link.href = canvas.toDataURL();
+  link.href = canvas.toDataURL('image/png');
   link.click();
+  showToast('✅ QR descargado');
 }
 
 /* =====================================================
