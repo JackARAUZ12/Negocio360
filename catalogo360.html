@@ -1389,6 +1389,7 @@
 
         <div style="display:flex;gap:6px;margin-top:18px;border-bottom:1px solid var(--border);flex-wrap:wrap">
           <button class="c360-tab active" data-tab="info" onclick="cambiarTabEditor('info')">Información</button>
+          <button class="c360-tab" data-tab="categorias" onclick="cambiarTabEditor('categorias')">Categorías</button>
           <button class="c360-tab" data-tab="productos" onclick="cambiarTabEditor('productos')">Productos</button>
           <button class="c360-tab" data-tab="apariencia" onclick="cambiarTabEditor('apariencia')">Apariencia</button>
         </div>
@@ -1415,6 +1416,15 @@
         </div>
 
         <!-- TAB: PRODUCTOS -->
+        <!-- TAB: CATEGORIAS -->
+        <div id="c360-tab-categorias" class="c360-tab-panel" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px">
+            <p style="font-size:12.5px;color:var(--text-secondary);margin:0">Agrupa tus productos por categoría — si no creas ninguna, tus productos se muestran directo.</p>
+            <button class="btn-primary btn-sm" onclick="abrirModalCategoria()">+ Nueva categoría</button>
+          </div>
+          <div id="c360-lista-categorias" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
+        </div>
+
         <div id="c360-tab-productos" class="c360-tab-panel" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;flex-wrap:wrap;gap:8px">
             <div id="c360-productos-contador" style="font-size:13px;color:var(--text-secondary);font-weight:600"></div>
@@ -1478,6 +1488,32 @@
     </div>
   </div>
 
+  <!-- MODAL: CATEGORIA -->
+  <div class="modal-overlay" id="modal-categoria" onclick="if(event.target===this)closeModal('modal-categoria')">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="cat-titulo">Nueva categoría</span>
+        <button class="modal-close" onclick="closeModal('modal-categoria')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cat-id"/>
+        <div class="form-group"><label>Nombre *</label><input type="text" id="cat-nombre" placeholder="Ej: Salas, Comedores, Dormitorios"/></div>
+        <div class="form-group"><label>Descripción breve</label><input type="text" id="cat-descripcion" placeholder="Ej: Confort y estilo para compartir momentos"/></div>
+        <div class="form-group">
+          <label>Imagen de portada</label>
+          <input type="file" id="cat-imagen-input" accept="image/*" onchange="subirImagenCategoria(this.files[0])" style="display:none"/>
+          <img id="cat-imagen-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-app);display:none;margin-bottom:8px"/>
+          <button class="btn-secondary btn-sm" onclick="document.getElementById('cat-imagen-input').click()">Subir imagen</button>
+        </div>
+        <p id="cat-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-categoria')">Cancelar</button>
+        <button class="btn-primary" onclick="guardarCategoria()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: PRODUCTO NUEVO EN EL CATALOGO -->
   <div class="modal-overlay" id="modal-producto-catalogo" onclick="if(event.target===this)closeModal('modal-producto-catalogo')">
     <div class="modal-box">
@@ -1490,7 +1526,10 @@
         <div class="form-group"><label>Nombre *</label><input type="text" id="cp-nombre"/></div>
         <div class="form-row">
           <div class="form-group"><label>Precio *</label><input type="number" id="cp-precio" min="0" step="0.01"/></div>
-          <div class="form-group"><label>Categoría</label><input type="text" id="cp-categoria"/></div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="cp-categoria-id"><option value="">Sin categoría (aparece directo)</option></select>
+          </div>
         </div>
         <div class="form-group"><label>Descripción</label><textarea id="cp-descripcion" rows="2"></textarea></div>
 
@@ -1592,7 +1631,7 @@
 </div><!-- /app -->
 
 <script src="qrcode-lib.js"></script>
-<script src="catalogo360.js?v=20260901h"></script>
+<script src="catalogo360.js?v=20260901i"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>
