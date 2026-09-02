@@ -1033,18 +1033,30 @@ function mostrarQR() {
 // juntos, lista para descargar -- no solo el QR crudo.
 function dibujarQRConDiseno() {
   const cont = document.getElementById('qr-catalogo-canvas');
-  if (typeof QRCode === 'undefined') {
+  // BUG REAL CORREGIDO: la libreria anterior se cargaba desde un CDN
+  // externo (jsdelivr, despues unpkg) que fallaba en la conexion real
+  // del cliente. Ahora se usa una libreria distinta, mucho mas
+  // pequeña, guardada dentro del propio Negocio360 (qrcode-lib.js) --
+  // nunca depende de ningun servidor externo, asi que no puede volver
+  // a fallar por este motivo.
+  if (typeof qrcode === 'undefined') {
     cont.innerHTML = 'No se pudo cargar el generador de QR. Recarga la página e intenta de nuevo.';
     return;
   }
   cont.innerHTML = 'Generando…';
 
-  QRCode.toCanvas(urlPublicaActual(), { width: 260, margin: 1, color: { dark: '#111827', light: '#ffffff' } }, (err, qrCanvas) => {
-    if (err) { cont.textContent = 'No se pudo generar el QR'; return; }
+  try {
+    const qr = qrcode(0, 'M'); // 0 = tamaño automatico segun el largo del texto
+    qr.addData(urlPublicaActual());
+    qr.make();
 
+    const modulos = qr.getModuleCount();
     const c = STATE.catalogoActual;
     const titulo = c.nombre_comercial || c.nombre;
     const ancho = 340, alto = 460;
+    const tamanoQR = 220;
+    const celda = tamanoQR / modulos;
+
     const final = document.createElement('canvas');
     final.width = ancho; final.height = alto;
     const ctx = final.getContext('2d');
@@ -1069,9 +1081,14 @@ function dibujarQRConDiseno() {
     ctx.font = '400 13px "Plus Jakarta Sans", sans-serif';
     ctx.fillText('Escanea para ver el catálogo', ancho/2, 92);
 
-    // El QR, centrado
-    const qrX = (ancho - qrCanvas.width) / 2;
-    ctx.drawImage(qrCanvas, qrX, 115);
+    // El QR, dibujado modulo por modulo, centrado
+    const qrX = (ancho - tamanoQR) / 2, qrY = 115;
+    ctx.fillStyle = '#111827';
+    for (let r = 0; r < modulos; r++) {
+      for (let cCol = 0; cCol < modulos; cCol++) {
+        if (qr.isDark(r, cCol)) ctx.fillRect(qrX + cCol*celda, qrY + r*celda, celda+0.5, celda+0.5);
+      }
+    }
 
     // Pie de pagina
     ctx.fillStyle = '#9ca3af';
@@ -1081,7 +1098,10 @@ function dibujarQRConDiseno() {
     cont.innerHTML = '';
     cont.appendChild(final);
     STATE._qrCanvasFinal = final;
-  });
+  } catch (e) {
+    console.error('dibujarQRConDiseno:', e);
+    cont.textContent = 'No se pudo generar el QR';
+  }
 }
 
 // Texto centrado con salto de linea automatico simple, para que un
