@@ -1213,6 +1213,25 @@ let STATE_MAPEO = [];
 
 async function abrirMapeoCuentas() {
   if (!STATE.cuentas.length) await cargarCuentas();
+  // BUG REAL CORREGIDO: si el usuario todavia no tiene ninguna cuenta
+  // en su Catalogo de cuentas, los menus de "Cuenta Debe"/"Cuenta
+  // Haber" quedaban vacios (solo "— Elegir —"), sin explicar por que
+  // -- parecia que "no hay opciones ni para ventas ni para nada".
+  // Ahora se detecta este caso y se guia directo a crear el catalogo
+  // de cuentas primero, con un boton para cargar la plantilla estandar.
+  const permiteMovimientos = STATE.cuentas.filter(c => c.permite_movimientos);
+  if (!permiteMovimientos.length) {
+    document.getElementById('mapeo-filas').innerHTML = `
+      <div style="text-align:center;padding:24px 12px">
+        <div style="font-size:28px;margin-bottom:8px">📋</div>
+        <p style="font-size:13.5px;font-weight:600;margin-bottom:6px">Todavía no tienes ninguna cuenta contable</p>
+        <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:16px">Para configurar la contabilización automática, primero necesitas tu Catálogo de cuentas — son las cuentas que se usarán en el Debe y el Haber de cada asiento.</p>
+        <button class="btn-primary btn-sm" onclick="closeModal('modal-mapeo-cuentas'); cargarPlantillaCuentas();">Cargar plantilla estándar de cuentas</button>
+      </div>`;
+    document.getElementById('mapeo-error').textContent = '';
+    openModal('modal-mapeo-cuentas');
+    return;
+  }
   try {
     const { data } = await sbClient.from('contabilidad_mapeo_cuentas').select('*').eq('auth_user_id', STATE.userId);
     STATE_MAPEO = data || [];
