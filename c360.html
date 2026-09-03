@@ -16,7 +16,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,500;1,6..72,500&display=swap" rel="stylesheet" />
 <style>
 :root {
-  --bg:        #fafafa;
+  --bg:        #eef0f3;
   --surface:   #ffffff;
   --surface-2: #f2f2f4;
   --border:    #e6e6ea;
@@ -27,6 +27,8 @@
   --accent-rgb: 99,102,241;
   --accent-ink: #ffffff;
   --danger:    #d64545;
+  --disponible: #16a34a;
+  --disponible-bg: #16a34a1a;
   --on-dark:   #f5f5f7;
   --on-dark-2: #b3b4bd;
   --font-display: 'Newsreader', Georgia, serif;
@@ -68,6 +70,10 @@ button { font-family:inherit; }
 .c-header-in { display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) 0; }
 .c-header-logo { width:32px; height:32px; border-radius:var(--radius-sm); object-fit:cover; flex-shrink:0; }
 .c-header-nombre { font-weight:700; font-size:14px; letter-spacing:-.01em; }
+.c-header-nav { display:none; align-items:center; gap:var(--sp-6); margin-left:var(--sp-7); }
+@media (min-width:700px) { .c-header-nav { display:flex; } }
+.c-header-nav a { font-size:13px; font-weight:600; color:var(--text-2); cursor:pointer; transition:color .15s; }
+.c-header-nav a:hover { color:var(--accent); }
 .c-theme-btn {
   margin-left:auto; width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface);
   color:var(--text-2); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px;
@@ -133,11 +139,30 @@ button { font-family:inherit; }
 .c-seccion-head { display:flex; align-items:baseline; justify-content:space-between; gap:var(--sp-4); margin-bottom:var(--sp-6); }
 .c-seccion-titulo { font-size:19px; font-weight:800; letter-spacing:-.01em; display:flex; align-items:center; gap:var(--sp-2); }
 .c-seccion-conteo { font-size:12.5px; color:var(--text-3); font-weight:600; }
-.c-volver {
-  background:none; border:none; color:var(--text-2); font-weight:700; font-size:13px; cursor:pointer;
-  display:inline-flex; align-items:center; gap:5px; padding:0; margin-bottom:var(--sp-3); transition:color .15s;
+.c-filtros-barra {
+  position:sticky; top:53px; z-index:20; background:var(--bg); border-bottom:1px solid var(--border);
+  backdrop-filter:blur(10px); background:color-mix(in srgb, var(--bg) 92%, transparent);
 }
-.c-volver:hover { color:var(--accent); }
+.c-filtros-in { display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4); padding:var(--sp-3) 0; flex-wrap:wrap; }
+.c-chips { display:flex; gap:var(--sp-2); overflow-x:auto; flex:1; min-width:0; scrollbar-width:none; }
+.c-chips::-webkit-scrollbar { display:none; }
+.c-chip {
+  flex-shrink:0; padding:7px 16px; border-radius:999px; border:1px solid var(--border); background:var(--surface);
+  font-size:12.5px; font-weight:700; color:var(--text-2); cursor:pointer; transition:all .15s; white-space:nowrap;
+}
+.c-chip:hover { border-color:var(--accent); color:var(--accent); }
+.c-chip.activo { background:var(--text); border-color:var(--text); color:var(--bg); }
+.c-filtros-derecha { display:flex; align-items:center; gap:var(--sp-4); flex-shrink:0; }
+#c-orden-select {
+  font-family:inherit; font-size:12.5px; font-weight:600; color:var(--text-2); background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 10px; cursor:pointer;
+}
+.c-btn-flotante-wa {
+  position:fixed; bottom:var(--sp-5); right:var(--sp-5); z-index:40; width:56px; height:56px; border-radius:50%;
+  background:#25D366; color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px;
+  box-shadow:0 8px 20px -4px rgba(0,0,0,.35); border:none; cursor:pointer; transition:transform .2s;
+}
+.c-btn-flotante-wa:hover { transform:scale(1.08); }
 .c-destacado { display:grid; grid-template-columns:1fr; gap:var(--sp-7); align-items:start; }
 @media (min-width:800px) { .c-destacado { grid-template-columns:1.15fr 1fr; gap:var(--sp-9); } }
 .c-destacado-media { position:relative; }
@@ -177,7 +202,12 @@ button { font-family:inherit; }
 }
 .c-card-tag.oferta { background:var(--danger); color:#fff; }
 .c-card-tag.nuevo { background:var(--text); color:var(--bg); }
-.c-card.agotada { opacity:.55; }
+.c-card-disp {
+  position:absolute; top:var(--sp-2); right:var(--sp-2); font-size:10px; font-weight:800; letter-spacing:.02em;
+  padding:3px 8px; border-radius:6px; background:var(--disponible-bg); color:var(--disponible);
+}
+.c-card-disp.agotado { background:var(--danger); color:#fff; }
+.c-card.agotada { opacity:.6; }
 .c-card-body { padding:var(--sp-4); display:flex; flex-direction:column; gap:2px; flex:1; }
 .c-card-cat { font-size:10.5px; color:var(--text-3); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
 .c-card-nombre { font-size:13.5px; font-weight:700; line-height:1.35; margin:2px 0 6px; }
@@ -185,6 +215,12 @@ button { font-family:inherit; }
 .c-card-precio { font-weight:800; font-size:14.5px; }
 .c-card-precio.con-oferta { color:var(--danger); }
 .c-card-tachado { font-size:11px; color:var(--text-3); text-decoration:line-through; }
+.c-card-accion-rapida {
+  margin-top:var(--sp-3); padding:8px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:transparent; color:var(--text-2); font-size:11.5px; font-weight:700; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:5px; transition:all .15s;
+}
+.c-card-accion-rapida:hover { border-color:#25D366; color:#25D366; }
 .c-cat-card {
   flex:1 1 200px; max-width:260px; border-radius:var(--radius-md); overflow:hidden; cursor:pointer;
   position:relative; aspect-ratio:4/3; background:var(--surface-2);
@@ -243,6 +279,11 @@ button { font-family:inherit; }
     <div class="c360-container c-header-in">
       <img id="c-header-logo" class="c-header-logo" src="" style="display:none" alt="">
       <span id="c-header-nombre" class="c-header-nombre"></span>
+      <nav class="c-header-nav">
+        <a onclick="irAInicio()">Inicio</a>
+        <a onclick="irACatalogo()">Catálogo</a>
+        <a id="c-nav-contacto" href="#" onclick="return false" style="display:none">Contacto</a>
+      </nav>
       <button class="c-theme-btn" onclick="toggleTemaPublico()" id="c-theme-btn" aria-label="Cambiar tema">🌙</button>
     </div>
   </header>
@@ -277,20 +318,23 @@ button { font-family:inherit; }
     </div>
   </section>
 
-  <section class="c-seccion c-reveal" id="c-seccion-categorias" style="display:none">
-    <div class="c360-container">
-      <div class="c-seccion-head"><span class="c-seccion-titulo">Categorías</span></div>
-      <div class="c-grid" id="c-grid-categorias"></div>
+  <div class="c-filtros-barra" id="c-filtros-barra">
+    <div class="c360-container c-filtros-in">
+      <div class="c-chips" id="c-chips-categorias"></div>
+      <div class="c-filtros-derecha">
+        <select id="c-orden-select" onchange="cambiarOrden(this.value)">
+          <option value="reciente">Más recientes</option>
+          <option value="precio_asc">Precio: menor a mayor</option>
+          <option value="precio_desc">Precio: mayor a menor</option>
+          <option value="nombre">Nombre A-Z</option>
+        </select>
+        <span class="c-seccion-conteo" id="c-conteo-productos"></span>
+      </div>
     </div>
-  </section>
+  </div>
 
   <section class="c-seccion c-reveal" id="c-seccion-productos">
     <div class="c360-container">
-      <button class="c-volver" id="c-btn-volver" onclick="volverACategorias()" style="display:none">← Todas las categorías</button>
-      <div class="c-seccion-head">
-        <span class="c-seccion-titulo" id="c-titulo-productos">Catálogo completo</span>
-        <span class="c-seccion-conteo" id="c-conteo-productos"></span>
-      </div>
       <div class="c-grid" id="c-grid-productos"></div>
     </div>
   </section>
@@ -301,6 +345,8 @@ button { font-family:inherit; }
       <span>Creado con <a href="/" target="_blank">Catálogo360</a></span>
     </div>
   </footer>
+
+  <button class="c-btn-flotante-wa" id="c-btn-flotante-wa" style="display:none" onclick="registrarEvento('click_whatsapp');window.open(c_urlWhatsappHero,'_blank')" aria-label="WhatsApp">💬</button>
 
 </div>
 
@@ -341,6 +387,12 @@ function hexARgb(hex) {
   return `${(bigint>>16)&255},${(bigint>>8)&255},${bigint&255}`;
 }
 
+function irAInicio() { window.scrollTo({ top:0, behavior:'smooth' }); }
+function irACatalogo() {
+  const barra = document.getElementById('c-filtros-barra');
+  const destino = barra.style.display !== 'none' ? barra : document.getElementById('c-seccion-productos');
+  destino.scrollIntoView({ behavior:'smooth', block:'start' });
+}
 function toggleTemaPublico() {
   const actual = document.documentElement.getAttribute('data-theme');
   const nuevo = actual === 'oscuro' ? 'claro' : 'oscuro';
@@ -444,9 +496,18 @@ function renderHeaderYHero() {
   }
 
   const ctaDiv = document.getElementById('c-hero-cta');
-  ctaDiv.innerHTML = c.whatsapp
-    ? `<a class="c-btn" href="${linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${esc(c.nombre_comercial||'')} y tengo una consulta.`)}" target="_blank" onclick="registrarEvento('click_whatsapp')">💬 Escribir por WhatsApp</a>`
-    : '';
+  if (c.whatsapp) {
+    window.c_urlWhatsappHero = linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${esc(c.nombre_comercial||'')} y tengo una consulta.`);
+    ctaDiv.innerHTML = `<a class="c-btn" href="${window.c_urlWhatsappHero}" target="_blank" onclick="registrarEvento('click_whatsapp')">💬 Escribir por WhatsApp</a>`;
+    document.getElementById('c-btn-flotante-wa').style.display = 'flex';
+    const navContacto = document.getElementById('c-nav-contacto');
+    navContacto.style.display = 'inline';
+    navContacto.href = window.c_urlWhatsappHero;
+    navContacto.target = '_blank';
+    navContacto.onclick = () => registrarEvento('click_whatsapp');
+  } else {
+    ctaDiv.innerHTML = '';
+  }
 
   const info = document.getElementById('c-hero-contacto');
   let filas = '';
@@ -508,71 +569,59 @@ function consultarProducto(id) {
   window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(precio)}) de su catálogo.`), '_blank');
 }
 
-function renderVistaCategoriasOProductos() {
-  const seccionCats = document.getElementById('c-seccion-categorias');
-  const seccionProds = document.getElementById('c-seccion-productos');
+let ORDEN_ACTUAL = 'reciente';
 
-  if (!CATEGORIAS.length) {
-    seccionCats.style.display = 'none';
-    seccionProds.style.display = 'block';
-    document.getElementById('c-titulo-productos').textContent = 'Catálogo completo';
-    document.getElementById('c-btn-volver').style.display = 'none';
-    renderGridProductos(PRODUCTOS);
-    return;
-  }
-  if (CATEGORIA_VISTA_ACTUAL) {
-    seccionCats.style.display = 'none';
-    seccionProds.style.display = 'block';
-    document.getElementById('c-titulo-productos').textContent = CATEGORIA_VISTA_ACTUAL.nombre;
-    document.getElementById('c-btn-volver').style.display = '';
-    renderGridProductos(PRODUCTOS.filter(p => p.categoria_id === CATEGORIA_VISTA_ACTUAL.id));
-  } else {
-    seccionProds.style.display = 'none';
-    seccionCats.style.display = 'block';
-    renderGridCategorias();
-  }
+function renderVistaCategoriasOProductos() {
+  renderChipsCategorias();
+  aplicarFiltroYOrden();
 }
-function renderGridCategorias() {
-  const conteo = {};
-  PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id]||0) + 1; });
-  const grid = document.getElementById('c-grid-categorias');
-  grid.className = 'c-grid' + (CATEGORIAS.length <= 3 ? ' pocas' : '');
-  grid.innerHTML = CATEGORIAS.map(cat => `
-    <div class="c-cat-card" onclick="verCategoria('${cat.id}')">
-      ${cat.imagen_url ? `<img src="${esc(cat.imagen_url)}" loading="lazy" alt="${esc(cat.nombre)}">` : ''}
-      <div class="c-cat-card-info">
-        <div class="c-cat-card-nombre">${esc(cat.nombre)}</div>
-        <div class="c-cat-card-count">${conteo[cat.id]||0} producto${(conteo[cat.id]||0)===1?'':'s'}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </div>
-      </div>
-    </div>`).join('');
+
+function renderChipsCategorias() {
+  const barra = document.getElementById('c-filtros-barra');
+  const cont = document.getElementById('c-chips-categorias');
+  if (!CATEGORIAS.length) { barra.style.display = PRODUCTOS.length ? 'block' : 'none'; cont.innerHTML = ''; return; }
+  barra.style.display = 'block';
+  cont.innerHTML = `<div class="c-chip ${!CATEGORIA_VISTA_ACTUAL?'activo':''}" onclick="filtrarPorCategoria(null)">Todos</div>` +
+    CATEGORIAS.map(cat => `<div class="c-chip ${CATEGORIA_VISTA_ACTUAL?.id===cat.id?'activo':''}" onclick="filtrarPorCategoria('${cat.id}')">${esc(cat.nombre)}</div>`).join('');
 }
-function verCategoria(id) {
-  CATEGORIA_VISTA_ACTUAL = CATEGORIAS.find(c => c.id === id) || null;
-  renderVistaCategoriasOProductos();
-  document.getElementById('c-seccion-productos').scrollIntoView({ behavior:'smooth', block:'start' });
+function filtrarPorCategoria(id) {
+  CATEGORIA_VISTA_ACTUAL = id ? CATEGORIAS.find(c => c.id === id) : null;
+  renderChipsCategorias();
+  aplicarFiltroYOrden();
 }
-function volverACategorias() { CATEGORIA_VISTA_ACTUAL = null; renderVistaCategoriasOProductos(); }
+function cambiarOrden(valor) { ORDEN_ACTUAL = valor; aplicarFiltroYOrden(); }
+
+function aplicarFiltroYOrden() {
+  let lista = CATEGORIA_VISTA_ACTUAL ? PRODUCTOS.filter(p => p.categoria_id === CATEGORIA_VISTA_ACTUAL.id) : PRODUCTOS.slice();
+  const precioReal = p => (p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio;
+  if (ORDEN_ACTUAL === 'precio_asc') lista.sort((a,b) => precioReal(a) - precioReal(b));
+  else if (ORDEN_ACTUAL === 'precio_desc') lista.sort((a,b) => precioReal(b) - precioReal(a));
+  else if (ORDEN_ACTUAL === 'nombre') lista.sort((a,b) => a.nombre.localeCompare(b.nombre));
+  else lista.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  renderGridProductos(lista);
+}
 
 function tarjetaProductoHTML(p) {
   const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
   const cat = CATEGORIAS.find(c => c.id === p.categoria_id);
   const enOferta = p.etiqueta === 'oferta' && p.precio_oferta;
-  const tagTexto = { nuevo:'Nuevo', oferta:'Oferta', agotado:'Agotado' }[p.etiqueta];
+  const agotado = p.etiqueta === 'agotado';
+  const tagTexto = { nuevo:'Nuevo', oferta:'Oferta' }[p.etiqueta];
   return `
-    <div class="c-card ${p.etiqueta==='agotado'?'agotada':''}" onclick="abrirModalProducto('${p.id}')">
-      <div class="c-card-media">
+    <div class="c-card ${agotado?'agotada':''}">
+      <div class="c-card-media" onclick="abrirModalProducto('${p.id}')">
         ${tagTexto ? `<span class="c-card-tag ${p.etiqueta}">${tagTexto}</span>` : ''}
+        <span class="c-card-disp ${agotado?'agotado':''}">${agotado?'Agotado':'Disponible'}</span>
         ${principal ? `<img src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}">` : ''}
       </div>
       <div class="c-card-body">
         ${cat ? `<div class="c-card-cat">${esc(cat.nombre)}</div>` : ''}
-        <div class="c-card-nombre">${esc(p.nombre)}</div>
+        <div class="c-card-nombre" onclick="abrirModalProducto('${p.id}')">${esc(p.nombre)}</div>
         <div class="c-card-precio-row">
           <span class="c-card-precio ${enOferta?'con-oferta':''}">${fmtC(enOferta?p.precio_oferta:p.precio)}</span>
           ${enOferta ? `<span class="c-card-tachado">${fmtC(p.precio)}</span>` : ''}
         </div>
+        ${(CATALOGO.whatsapp && !agotado) ? `<button class="c-card-accion-rapida" onclick="event.stopPropagation();consultarProducto('${p.id}')">💬 Consultar por WhatsApp</button>` : ''}
       </div>
     </div>`;
 }
