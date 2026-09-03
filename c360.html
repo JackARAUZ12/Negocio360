@@ -96,9 +96,27 @@ button { font-family:inherit; }
 }
 .c-hero-in {
   position:relative; z-index:1; padding:var(--sp-8) 0 var(--sp-7);
-  display:flex; flex-direction:column; gap:var(--sp-5);
+  display:flex; flex-direction:column; gap:var(--sp-6);
 }
 @media (min-width:700px) { .c-hero-in { padding:var(--sp-9) 0 var(--sp-8); } }
+.c-hero-in.con-mosaico { flex-direction:column-reverse; }
+@media (min-width:800px) { .c-hero-in.con-mosaico { flex-direction:row; align-items:center; gap:var(--sp-9); } }
+.c-hero-texto { flex:1; min-width:0; }
+.c-hero-mosaico {
+  flex:0 0 auto; width:100%; display:grid; grid-template-columns:1.3fr 1fr; grid-template-rows:1fr 1fr;
+  gap:var(--sp-3); height:220px;
+}
+@media (min-width:800px) { .c-hero-mosaico { width:380px; height:300px; } }
+.c-hero-mosaico img {
+  width:100%; height:100%; object-fit:cover; border-radius:var(--radius-md);
+  box-shadow:0 12px 28px -8px rgba(0,0,0,.3);
+}
+.c-hero-mosaico img:first-child { grid-row:1/3; }
+.c-hero-patron {
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(var(--accent-rgb),.35) 1.5px, transparent 0);
+  background-size:22px 22px;
+}
 .c-hero.con-imagen .c-hero-in { color:var(--on-dark); }
 .c-hero-eyebrow {
   display:flex; align-items:center; gap:var(--sp-2); font-size:12.5px; font-weight:700;
@@ -290,17 +308,20 @@ button { font-family:inherit; }
 
   <section class="c-hero" id="c-hero">
     <div class="c-hero-bg" id="c-hero-bg"></div>
-    <div class="c360-container c-hero-in">
-      <div class="c-hero-eyebrow">
-        <img id="c-hero-logo" src="" style="display:none" alt="">
-        <span id="c-hero-marca"></span>
+    <div class="c360-container c-hero-in" id="c-hero-in">
+      <div class="c-hero-texto">
+        <div class="c-hero-eyebrow">
+          <img id="c-hero-logo" src="" style="display:none" alt="">
+          <span id="c-hero-marca"></span>
+        </div>
+        <h1 class="c-hero-titulo" id="c-hero-titulo">Catálogo</h1>
+        <p class="c-hero-desc" id="c-hero-desc"></p>
+        <div class="c-hero-acciones">
+          <div id="c-hero-cta"></div>
+          <div class="c-hero-contacto" id="c-hero-contacto"></div>
+        </div>
       </div>
-      <h1 class="c-hero-titulo" id="c-hero-titulo">Catálogo</h1>
-      <p class="c-hero-desc" id="c-hero-desc"></p>
-      <div class="c-hero-acciones">
-        <div id="c-hero-cta"></div>
-        <div class="c-hero-contacto" id="c-hero-contacto"></div>
-      </div>
+      <div class="c-hero-mosaico" id="c-hero-mosaico" style="display:none"></div>
     </div>
   </section>
 
@@ -488,11 +509,36 @@ function renderHeaderYHero() {
   document.getElementById('c-hero-desc').style.display = c.descripcion ? 'block' : 'none';
 
   const heroEl = document.getElementById('c-hero');
+  const heroInEl = document.getElementById('c-hero-in');
   if (c.banner_url) {
+    // 1) El dueño subió un banner manual -- se respeta, tiene prioridad.
     heroEl.classList.add('con-imagen');
     const bg = document.getElementById('c-hero-bg');
     bg.style.backgroundImage = `url('${c.banner_url}')`;
     bg.classList.add('activo');
+  } else {
+    // 2) Sin banner manual -- el sistema arma un mosaico real con las
+    // fotos de los propios productos (nunca le pedimos al usuario que
+    // diseñe nada). Se priorizan destacados, se evitan fotos repetidas.
+    const fotosReales = [];
+    const vistos = new Set();
+    const ordenados = [...PRODUCTOS].sort((a,b) => (b.destacado?1:0) - (a.destacado?1:0));
+    for (const p of ordenados) {
+      const foto = p.fotos.find(f => f.es_principal) || p.fotos[0];
+      if (foto && !vistos.has(foto.url)) { fotosReales.push(foto.url); vistos.add(foto.url); }
+      if (fotosReales.length >= 3) break;
+    }
+    if (fotosReales.length) {
+      heroInEl.classList.add('con-mosaico');
+      const mosaico = document.getElementById('c-hero-mosaico');
+      mosaico.style.display = 'grid';
+      mosaico.innerHTML = fotosReales.map(url => `<img src="${esc(url)}" alt="" loading="lazy">`).join('');
+    } else {
+      // 3) Todavia no hay ninguna foto de producto -- en vez de un
+      // hero vacio, se genera una textura propia con el color del
+      // catalogo (nunca un bloque plano sin diseño).
+      heroEl.classList.add('c-hero-patron');
+    }
   }
 
   const ctaDiv = document.getElementById('c-hero-cta');
