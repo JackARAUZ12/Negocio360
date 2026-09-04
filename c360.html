@@ -12,6 +12,7 @@
 <meta id="c360p-og-image" property="og:image" content="">
 <meta property="og:type" content="website">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
@@ -663,24 +664,14 @@ html { transition:background-color .4s ease; }
 <div class="c-toast-wrap" id="c-toast-wrap"></div>
 
 <script>
-const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = c360CrearCliente();
 
 let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [], CATEGORIA_VISTA_ACTUAL = null;
 
-function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtC(n) { return 'C$' + Number(n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-function linkWhatsapp(numero, texto) {
-  const limpio = (numero||'').replace(/[^\d]/g,'');
-  return `https://wa.me/${limpio}?text=${encodeURIComponent(texto)}`;
-}
-function hexARgb(hex) {
-  const limpio = (hex || '#6366f1').replace('#','');
-  const bigint = parseInt(limpio.length === 3 ? limpio.split('').map(c=>c+c).join('') : limpio, 16);
-  if (isNaN(bigint)) return '99,102,241';
-  return `${(bigint>>16)&255},${(bigint>>8)&255},${bigint&255}`;
-}
+function esc(s) { return c360Esc(s); }
+function fmtC(n) { return c360FmtC(n); }
+function linkWhatsapp(numero, texto) { return c360LinkWA(numero, texto); }
+function hexARgb(hex) { return c360HexARgb(hex, '#6366f1'); }
 
 function irAInicio() { window.scrollTo({ top:0, behavior:'smooth' }); }
 function irACatalogo() {
@@ -697,42 +688,28 @@ function toggleTemaPublico() {
 }
 
 function registrarEvento(tipo, productoId) {
-  if (CATALOGO && !new URLSearchParams(window.location.search).get('preview')) {
-    sb.rpc('catalogo_registrar_evento', { p_catalogo_id: CATALOGO.id, p_tipo_evento: tipo, p_producto_id: productoId || null }).then(()=>{}).catch(()=>{});
-  }
+  c360RegistrarEvento(sb, CATALOGO?.id, tipo, productoId, !!new URLSearchParams(window.location.search).get('preview'));
 }
 
 async function init() {
   const params = new URLSearchParams(window.location.search);
   const slug = params.get('c');
   const idPreview = params.get('preview');
-  if (!slug && !idPreview) { mostrarError('Enlace de catálogo no válido.'); return; }
 
-  let catalogo, error;
-  if (idPreview) {
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session?.user) { mostrarError('Inicia sesión en Negocio360 para ver la vista previa.'); return; }
-    ({ data: catalogo, error } = await sb.from('catalogos').select('*').eq('id', idPreview).maybeSingle());
-  } else {
-    ({ data: catalogo, error } = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado', 'publicado').maybeSingle());
-  }
-  if (error || !catalogo) { mostrarError('Este catálogo no existe o ya no está disponible.'); return; }
-  CATALOGO = catalogo;
-  if (idPreview && catalogo.estado !== 'publicado') document.getElementById('c-preview-banner').style.display = 'block';
+  const resultado = await c360CargarCatalogoPublico({ sb, slug, idPreview });
+  if (resultado.error) { mostrarError(resultado.error); return; }
+  CATALOGO = resultado.catalogo;
+  PRODUCTOS = resultado.productos;
+  CATEGORIAS = resultado.categorias;
 
-  document.documentElement.style.setProperty('--accent', catalogo.color_acento || '#6366f1');
-  document.documentElement.style.setProperty('--accent-rgb', hexARgb(catalogo.color_acento));
+  if (idPreview && CATALOGO.estado !== 'publicado') document.getElementById('c-preview-banner').style.display = 'block';
 
-  const temaGuardado = localStorage.getItem('c360p_tema') || catalogo.tema_default || 'claro';
+  document.documentElement.style.setProperty('--accent', CATALOGO.color_acento || '#6366f1');
+  document.documentElement.style.setProperty('--accent-rgb', hexARgb(CATALOGO.color_acento));
+
+  const temaGuardado = localStorage.getItem('c360p_tema') || CATALOGO.tema_default || 'claro';
   document.documentElement.setAttribute('data-theme', temaGuardado);
   document.getElementById('c-theme-btn').textContent = temaGuardado === 'oscuro' ? '☀' : '🌙';
-
-  const { data: productos } = await sb.from('catalogo_productos').select('*, catalogo_producto_fotos(*)')
-    .eq('catalogo_id', catalogo.id).eq('activo', true).order('orden');
-  PRODUCTOS = (productos || []).map(p => ({ ...p, fotos: (p.catalogo_producto_fotos||[]).sort((a,b)=>a.orden-b.orden) }));
-
-  const { data: categorias } = await sb.from('catalogo_categorias').select('*').eq('catalogo_id', catalogo.id).order('orden');
-  CATEGORIAS = categorias || [];
 
   renderTodo();
 
@@ -847,27 +824,7 @@ function renderHeaderYHero() {
 }
 
 function insertarDatosEstructurados() {
-  const existente = document.getElementById('c-jsonld');
-  if (existente) existente.remove();
-  const data = {
-    "@context": "https://schema.org",
-    "@type": "Store",
-    "name": CATALOGO.nombre_comercial || CATALOGO.nombre,
-    "description": CATALOGO.descripcion || undefined,
-    "telephone": CATALOGO.telefono || undefined,
-    "image": CATALOGO.logo_url || undefined,
-    "makesOffer": PRODUCTOS.slice(0, 30).map(p => ({
-      "@type": "Offer",
-      "itemOffered": { "@type": "Product", "name": p.nombre, "image": (p.fotos.find(f=>f.es_principal)||p.fotos[0])?.url || undefined },
-      "price": String((p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio),
-      "priceCurrency": "NIO",
-      "availability": p.etiqueta === 'agotado' ? "https://schema.org/OutOfStock" : "https://schema.org/InStock"
-    }))
-  };
-  const script = document.createElement('script');
-  script.id = 'c-jsonld'; script.type = 'application/ld+json';
-  script.textContent = JSON.stringify(data);
-  document.head.appendChild(script);
+  c360InsertarJSONLD('c-jsonld', CATALOGO, PRODUCTOS);
 }
 function renderTarjetaFlotanteHero(p, enOferta) {
   const card = document.getElementById('c-hero-card-destacado');
@@ -1051,16 +1008,15 @@ function cambiarVista(modo) {
   document.getElementById('c-vista-lista').classList.toggle('activo', modo === 'lista');
 }
 function aplicarFiltroYOrden() {
-  let lista = CATEGORIA_VISTA_ACTUAL ? PRODUCTOS.filter(p => p.categoria_id === CATEGORIA_VISTA_ACTUAL.id) : PRODUCTOS.slice();
-  const precioReal = p => (p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio;
-  if (SOLO_FAVORITOS) lista = lista.filter(p => FAVORITOS.includes(p.id));
-  if (SOLO_OFERTAS) lista = lista.filter(p => p.etiqueta === 'oferta' && p.precio_oferta);
-  if (TEXTO_BUSQUEDA) lista = lista.filter(p => p.nombre.toLowerCase().includes(TEXTO_BUSQUEDA));
-  if (PRECIO_MAX_ACTIVO != null) lista = lista.filter(p => precioReal(p) <= PRECIO_MAX_ACTIVO);
-  if (ORDEN_ACTUAL === 'precio_asc') lista.sort((a,b) => precioReal(a) - precioReal(b));
-  else if (ORDEN_ACTUAL === 'precio_desc') lista.sort((a,b) => precioReal(b) - precioReal(a));
-  else if (ORDEN_ACTUAL === 'nombre') lista.sort((a,b) => a.nombre.localeCompare(b.nombre));
-  else lista.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const lista = c360FiltrarYOrdenar(PRODUCTOS, {
+    categoriaId: CATEGORIA_VISTA_ACTUAL?.id || null,
+    soloFavoritos: SOLO_FAVORITOS,
+    favoritos: FAVORITOS,
+    soloOfertas: SOLO_OFERTAS,
+    textoBusqueda: TEXTO_BUSQUEDA,
+    precioMax: PRECIO_MAX_ACTIVO,
+    orden: ORDEN_ACTUAL,
+  });
   renderGridProductos(lista);
 }
 

@@ -12,6 +12,7 @@
 <meta id="n-og-image" property="og:image" content="">
 <meta property="og:type" content="website">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <style>
@@ -509,9 +510,7 @@ svg.n-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 <div class="n-toast-wrap" id="n-toast-wrap"></div>
 
 <script>
-const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = c360CrearCliente();
 
 let CATALOGO=null, PRODUCTOS=[], CATEGORIAS=[], CATEGORIA_ACTUAL=null;
 let ORDEN='reciente', TEXTO_BUSQUEDA='', PRECIO_MAX=null, SOLO_FAV=false, SOLO_OFERTAS=false, FAVORITOS=[];
@@ -537,10 +536,10 @@ const ICO = {
   sad: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01"/></svg>',
   gift: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M3 13h18M12 9v12M12 9C9 9 8 6 9.5 4.8 11 3.6 12 6 12 9zM12 9c3 0 4-3 2.5-4.2C13 3.6 12 6 12 9z"/></svg>',
 };
-function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtC(n){ return 'C$'+Number(n||0).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function linkWA(num,txt){ return `https://wa.me/${(num||'').replace(/[^\d]/g,'')}?text=${encodeURIComponent(txt)}`; }
-function hexARgb(hex){ const h=(hex||'#5c1220').replace('#',''); const b=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16); if(isNaN(b))return '92,18,32'; return `${(b>>16)&255},${(b>>8)&255},${b&255}`; }
+function esc(s){ return c360Esc(s); }
+function fmtC(n){ return c360FmtC(n); }
+function linkWA(num,txt){ return c360LinkWA(num,txt); }
+function hexARgb(hex){ return c360HexARgb(hex, '#5c1220'); }
 function irAInicio(){ window.scrollTo({top:0,behavior:'smooth'}); }
 function irACatalogo(){ document.getElementById('n-seccion-productos').scrollIntoView({behavior:'smooth'}); }
 function toggleTema(){
@@ -550,9 +549,7 @@ function toggleTema(){
   localStorage.setItem('n_tema', n);
 }
 function registrarEvento(tipo, prodId){
-  if (CATALOGO && !new URLSearchParams(location.search).get('preview')) {
-    sb.rpc('catalogo_registrar_evento', { p_catalogo_id: CATALOGO.id, p_tipo_evento: tipo, p_producto_id: prodId||null }).then(()=>{}).catch(()=>{});
-  }
+  c360RegistrarEvento(sb, CATALOGO?.id, tipo, prodId, !!new URLSearchParams(location.search).get('preview'));
 }
 function mostrarToast(msg){
   const w = document.getElementById('n-toast-wrap');
@@ -584,17 +581,13 @@ async function init(){
   pintarIconosEstaticos();
   const params = new URLSearchParams(location.search);
   const slug = params.get('c'); const idPreview = params.get('preview');
-  if (!slug && !idPreview) { mostrarError('Enlace de catálogo no válido.'); return; }
-  let catalogo, error;
-  if (idPreview) {
-    const { data:{session} } = await sb.auth.getSession();
-    if (!session?.user) { mostrarError('Inicia sesión en Negocio360 para ver la vista previa.'); return; }
-    ({data:catalogo,error} = await sb.from('catalogos').select('*').eq('id', idPreview).maybeSingle());
-  } else {
-    ({data:catalogo,error} = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado','publicado').maybeSingle());
-  }
-  if (error || !catalogo) { mostrarError('Este catálogo no existe o ya no está disponible.'); return; }
+
+  const resultado = await c360CargarCatalogoPublico({ sb, slug, idPreview });
+  if (resultado.error) { mostrarError(resultado.error); return; }
+  const catalogo = resultado.catalogo;
   CATALOGO = catalogo;
+  PRODUCTOS = resultado.productos;
+  CATEGORIAS = resultado.categorias;
   if (idPreview && catalogo.estado!=='publicado') document.getElementById('n-preview-banner').style.display='block';
 
   document.getElementById('n-splash-nombre').textContent = catalogo.nombre_comercial || catalogo.nombre;
@@ -606,11 +599,6 @@ async function init(){
   const tema = localStorage.getItem('n_tema') || catalogo.tema_default || 'claro';
   document.documentElement.setAttribute('data-theme', tema);
   document.getElementById('n-theme-btn').innerHTML = tema==='oscuro'?ICO.sun:ICO.moon;
-
-  const { data: productos } = await sb.from('catalogo_productos').select('*, catalogo_producto_fotos(*)').eq('catalogo_id', catalogo.id).eq('activo', true).order('orden');
-  PRODUCTOS = (productos||[]).map(p => ({ ...p, fotos:(p.catalogo_producto_fotos||[]).sort((a,b)=>a.orden-b.orden) }));
-  const { data: categorias } = await sb.from('catalogo_categorias').select('*').eq('catalogo_id', catalogo.id).order('orden');
-  CATEGORIAS = categorias || [];
 
   renderTodo();
   if (!idPreview) registrarEvento('visita');
@@ -707,11 +695,7 @@ function renderHeaderYHero(){
 }
 
 function insertarJSONLD(){
-  const ex = document.getElementById('n-jsonld'); if (ex) ex.remove();
-  const data = { "@context":"https://schema.org", "@type":"Store", "name": CATALOGO.nombre_comercial||CATALOGO.nombre,
-    "makesOffer": PRODUCTOS.slice(0,30).map(p=>({ "@type":"Offer", "itemOffered":{"@type":"Product","name":p.nombre}, "price":String((p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio), "priceCurrency":"NIO", "availability": p.etiqueta==='agotado'?"https://schema.org/OutOfStock":"https://schema.org/InStock" })) };
-  const s = document.createElement('script'); s.id='n-jsonld'; s.type='application/ld+json'; s.textContent=JSON.stringify(data);
-  document.head.appendChild(s);
+  c360InsertarJSONLD('n-jsonld', CATALOGO, PRODUCTOS);
 }
 
 function renderDestacado(){
@@ -798,15 +782,14 @@ function configurarPrecio(){
 }
 function renderVistaProductos(){ configurarPrecio(); renderMigas(); aplicarFiltro(); }
 function aplicarFiltro(){
-  let lista = CATEGORIA_ACTUAL ? PRODUCTOS.filter(p=>p.categoria_id===CATEGORIA_ACTUAL.id) : PRODUCTOS.slice();
-  const real = p=>(p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
-  if (SOLO_FAV) lista = lista.filter(p=>FAVORITOS.includes(p.id));
-  if (TEXTO_BUSQUEDA) lista = lista.filter(p=>p.nombre.toLowerCase().includes(TEXTO_BUSQUEDA));
-  if (PRECIO_MAX!=null) lista = lista.filter(p=>real(p)<=PRECIO_MAX);
-  if (ORDEN==='precio_asc') lista.sort((a,b)=>real(a)-real(b));
-  else if (ORDEN==='precio_desc') lista.sort((a,b)=>real(b)-real(a));
-  else if (ORDEN==='nombre') lista.sort((a,b)=>a.nombre.localeCompare(b.nombre));
-  else lista.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const lista = c360FiltrarYOrdenar(PRODUCTOS, {
+    categoriaId: CATEGORIA_ACTUAL?.id || null,
+    soloFavoritos: SOLO_FAV,
+    favoritos: FAVORITOS,
+    textoBusqueda: TEXTO_BUSQUEDA,
+    precioMax: PRECIO_MAX,
+    orden: ORDEN,
+  });
   renderGrid(lista);
 }
 function tarjetaHTML(p, indice, esGrande){
