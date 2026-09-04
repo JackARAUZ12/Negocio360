@@ -138,24 +138,39 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 .v-nav-cta { background:var(--accent); color:#fff; border:none; border-radius:999px; padding:10px 20px; font-weight:700; font-size:12.5px; cursor:pointer; white-space:nowrap; }
 
 /* ===== HERO ===== */
-.v-hero { position:relative; overflow:hidden; padding:var(--sp-8) 0 var(--sp-9); }
+.v-hero {
+  position:relative; overflow:hidden; padding:var(--sp-8) 0 calc(var(--sp-9) + 40px); color:#fff;
+  background:radial-gradient(1100px 600px at 85% -10%, color-mix(in srgb, var(--accent) 55%, #7c3aed 45%), transparent),
+             linear-gradient(165deg, color-mix(in srgb, var(--accent) 82%, black 8%) 0%, var(--accent) 45%, color-mix(in srgb, var(--accent) 70%, black 25%) 100%);
+}
 .v-hero-spotlight {
   position:absolute; inset:0; z-index:0; pointer-events:none; opacity:0; transition:opacity .4s ease;
-  background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%), rgba(var(--accent-rgb),.14), transparent 70%);
+  background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.16), transparent 70%);
 }
 @media (min-width:900px) { .v-hero:hover .v-hero-spotlight { opacity:1; } }
-.v-hero-grid { display:flex; flex-direction:column; gap:var(--sp-7); align-items:center; }
+.v-hero-tagline {
+  display:none; position:absolute; top:78px; right:8%; z-index:1; color:rgba(255,255,255,.55); font-family:var(--font-display);
+  font-style:italic; font-size:16px; line-height:1.35; text-align:right; transform:rotate(-2deg);
+}
+@media (min-width:1100px) { .v-hero-tagline { display:block; } }
+.v-hero-grid { display:flex; flex-direction:column; gap:var(--sp-7); align-items:center; position:relative; z-index:1; }
 @media (min-width:900px) { .v-hero-grid { flex-direction:row; align-items:center; text-align:left; gap:var(--sp-9); } }
 .v-hero-in { position:relative; z-index:1; max-width:560px; text-align:center; }
 @media (min-width:900px) { .v-hero-in { text-align:left; flex:1; } }
 .v-hero-eyebrow {
-  display:inline-flex; align-items:center; gap:8px; background:var(--accent-light); border:1px solid var(--border); padding:6px 16px;
-  border-radius:999px; font-size:12px; font-weight:700; color:var(--accent); margin-bottom:var(--sp-5);
+  display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); padding:7px 18px;
+  border-radius:999px; font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#fff; margin-bottom:var(--sp-6);
+  backdrop-filter:blur(6px);
 }
-.v-eyebrow-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:v-eyebrow-dot 1.6s ease-in-out infinite; }
-.v-hero-titulo { font-size:clamp(34px,5.4vw,60px); font-weight:800; line-height:1.05; letter-spacing:-.02em; margin:0 0 var(--sp-4); }
-.v-hero-titulo .grad { color:var(--accent); font-family:var(--font-display); font-style:italic; font-weight:600; }
-.v-hero-desc { font-size:16px; color:var(--text-2); max-width:480px; margin:0 auto var(--sp-6); line-height:1.6; }
+.v-eyebrow-dot { width:6px; height:6px; border-radius:50%; background:var(--oro); animation:v-eyebrow-dot 1.6s ease-in-out infinite; }
+.v-hero-titulo {
+  font-size:clamp(42px,7vw,80px); font-weight:800; line-height:.98; letter-spacing:-.03em; margin:0 0 var(--sp-4); color:#fff;
+}
+.v-hero-titulo .grad {
+  display:block; color:var(--oro); font-family:var(--font-display); font-style:italic; font-weight:500;
+  font-size:0.56em; line-height:1.2; margin-top:6px; letter-spacing:-.01em;
+}
+.v-hero-desc { font-size:16px; color:rgba(255,255,255,.78); max-width:480px; margin:0 auto var(--sp-6); line-height:1.65; }
 @media (min-width:900px) { .v-hero-desc { margin:0 0 var(--sp-6); } }
 .v-hero-acciones { display:flex; align-items:center; justify-content:center; gap:var(--sp-3); flex-wrap:wrap; }
 @media (min-width:900px) { .v-hero-acciones { justify-content:flex-start; } }
@@ -166,8 +181,12 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 }
 .v-btn:hover { box-shadow:var(--shadow-glow), 0 0 0 6px rgba(var(--accent-rgb),.12); }
 .v-btn:active { transform:scale(.96) !important; }
+.v-hero .v-btn.v-btn-principal { background:#fff; color:var(--accent-dark); box-shadow:0 12px 28px -8px rgba(0,0,0,.35); }
+.v-hero .v-btn.v-btn-principal:hover { box-shadow:0 16px 36px -6px rgba(0,0,0,.4); }
 .v-btn.v-btn-ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:none; }
 .v-btn.v-btn-ghost:hover { border-color:var(--accent); color:var(--accent); box-shadow:none; }
+.v-hero .v-btn.v-btn-ghost { background:rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.35); }
+.v-hero .v-btn.v-btn-ghost:hover { border-color:#fff; background:rgba(255,255,255,.14); color:#fff; }
 @keyframes v-ripple-expandir { from { transform:scale(0); opacity:.45; } to { transform:scale(2.8); opacity:0; } }
 .v-btn-ripple {
   position:absolute; border-radius:50%; background:rgba(255,255,255,.7); pointer-events:none;
@@ -176,27 +195,49 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 .v-btn.v-btn-ghost .v-btn-ripple { background:rgba(var(--accent-rgb),.25); }
 @keyframes v-glow-pulse { 0%,100% { opacity:.5; transform:scale(1); } 50% { opacity:.8; transform:scale(1.06); } }
 @keyframes v-eyebrow-dot { 0%,100% { opacity:1; } 50% { opacity:.3; } }
-.v-hero-imgwrap { position:relative; z-index:1; max-width:480px; width:100%; }
-.v-hero-imgwrap::before {
-  content:''; position:absolute; inset:-30px; z-index:-1; background:radial-gradient(circle, rgba(var(--accent-rgb),.28), transparent 70%);
-  filter:blur(20px); animation:v-glow-pulse 5s ease-in-out infinite;
+@keyframes v-anillo-girar { to { transform:rotate(360deg); } }
+.v-hero-imgwrap { position:relative; z-index:1; max-width:400px; width:100%; padding:20px; }
+@media (min-width:900px) { .v-hero-imgwrap { flex:0 0 42%; max-width:440px; padding:30px; } }
+.v-hero-anillo {
+  position:absolute; inset:6% 10%; border:2px solid transparent; border-top-color:var(--oro); border-right-color:var(--oro);
+  border-radius:50%; opacity:.55; animation:v-anillo-girar 18s linear infinite;
 }
-@media (min-width:900px) { .v-hero-imgwrap { flex:0 0 44%; max-width:none; } }
+.v-hero-peek { position:absolute; border-radius:var(--radius-lg); object-fit:cover; filter:blur(1.5px) brightness(.75); opacity:.7; box-shadow:0 20px 40px -12px rgba(0,0,0,.5); }
+.v-hero-peek.a { width:34%; aspect-ratio:3/4; top:2%; left:-4%; transform:rotate(-9deg); }
+.v-hero-peek.b { width:30%; aspect-ratio:3/4; bottom:6%; right:-6%; transform:rotate(11deg); }
+.v-hero-mockup {
+  position:relative; background:#fff; border-radius:26px; padding:14px 14px 18px; box-shadow:0 30px 60px -16px rgba(0,0,0,.5);
+  transition:transform .5s cubic-bezier(.22,1,.36,1);
+}
+.v-hero-mockup:hover { transform:translateY(-6px) rotate(-.6deg); }
+.v-hero-cinta {
+  position:absolute; top:16px; right:-8px; z-index:2; background:linear-gradient(135deg,var(--oro),var(--oro-oscuro)); color:#fff;
+  font-size:11px; font-weight:800; padding:6px 16px 6px 12px; border-radius:8px 2px 2px 8px; transform:rotate(4deg);
+  box-shadow:0 8px 16px -4px rgba(138,109,47,.6); display:flex; align-items:center; gap:4px;
+}
 .v-hero-img {
-  width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:var(--radius-xl); box-shadow:var(--shadow-glow);
-  max-height:560px; opacity:0; transition:opacity .5s ease;
+  width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:16px;
+  max-height:480px; opacity:0; transition:opacity .5s ease; background:var(--surface-2);
 }
 .v-hero-img.cargada { opacity:1; }
-.v-hero-patron { background-image:radial-gradient(circle at 2px 2px, rgba(var(--accent-rgb),.35) 1.5px, transparent 0); background-size:22px 22px; }
-.v-hero-chip-flotante {
-  position:absolute; z-index:2; background:var(--surface); border-radius:var(--radius-lg); box-shadow:var(--shadow-soft);
-  padding:12px 18px; display:flex; align-items:center; gap:10px;
+.v-hero-mockup-fav {
+  position:absolute; bottom:64px; right:26px; width:36px; height:36px; border-radius:50%; background:#fff; border:1px solid var(--border);
+  box-shadow:var(--shadow-soft); display:flex; align-items:center; justify-content:center; color:var(--danger); cursor:pointer; font-size:15px;
 }
-.v-hero-chip-flotante.a { top:16px; left:-16px; }
-.v-hero-chip-flotante.b { bottom:16px; right:-16px; }
+.v-hero-mockup-info { display:flex; align-items:center; justify-content:space-between; padding:14px 6px 2px; color:var(--text); }
+.v-hero-mockup-info b { font-size:14px; font-weight:700; }
+.v-hero-mockup-info span { font-family:var(--font); font-weight:800; font-size:15px; color:var(--accent); }
+.v-hero-patron { background-image:radial-gradient(circle at 2px 2px, rgba(255,255,255,.25) 1.5px, transparent 0); background-size:22px 22px; }
+.v-hero-chip-flotante {
+  position:absolute; z-index:3; background:var(--surface); border-radius:var(--radius-lg); box-shadow:var(--shadow-soft);
+  padding:12px 18px; display:flex; align-items:center; gap:10px; color:var(--text);
+}
+.v-hero-chip-flotante.a { top:2px; left:-22px; }
+.v-hero-chip-flotante.b { bottom:-6px; right:-22px; }
 .v-hero-chip-flotante img { width:36px; height:36px; border-radius:10px; object-fit:cover; }
 .v-hero-chip-flotante .txt b { display:block; font-size:12.5px; }
 .v-hero-chip-flotante .txt span { font-size:11px; color:var(--accent); font-weight:700; }
+.v-hero-ola { position:absolute; left:0; right:0; bottom:-1px; width:100%; height:70px; fill:var(--bg); z-index:1; }
 
 /* ===== BARRA DE CONFIANZA ===== */
 .v-confianza { padding:var(--sp-7) 0; }
@@ -481,6 +522,7 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 
   <section class="v-hero" id="v-hero">
     <div class="v-hero-spotlight" id="v-hero-spotlight"></div>
+    <div class="v-hero-tagline" id="v-hero-tagline">Más que productos,<br>es tu estilo</div>
 
     <div class="v-wrap v-hero-grid">
       <div class="v-hero-in">
@@ -490,11 +532,23 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
         <div class="v-hero-acciones" id="v-hero-acciones"></div>
       </div>
       <div class="v-hero-imgwrap" id="v-hero-imgwrap" style="display:none">
-        <img class="v-hero-img" id="v-hero-img" src="" alt="">
+        <div class="v-hero-anillo"></div>
+        <img class="v-hero-peek a" id="v-hero-peek-a" src="" alt="" style="display:none">
+        <img class="v-hero-peek b" id="v-hero-peek-b" src="" alt="" style="display:none">
+        <div class="v-hero-mockup">
+          <span class="v-hero-cinta" id="v-hero-cinta" style="display:none">Destacado</span>
+          <img class="v-hero-img" id="v-hero-img" src="" alt="">
+          <button class="v-hero-mockup-fav" id="v-hero-mockup-fav" aria-label="Favorito"></button>
+          <div class="v-hero-mockup-info" id="v-hero-mockup-info" style="display:none">
+            <b id="v-hero-mockup-nombre"></b>
+            <span id="v-hero-mockup-precio"></span>
+          </div>
+        </div>
         <div class="v-hero-chip-flotante a" id="v-hero-chip-a" style="display:none"></div>
         <div class="v-hero-chip-flotante b" id="v-hero-chip-b" style="display:none"></div>
       </div>
     </div>
+    <svg class="v-hero-ola" viewBox="0 0 1440 90" preserveAspectRatio="none"><path d="M0,32 C320,90 1120,0 1440,42 L1440,90 L0,90 Z"></path></svg>
   </section>
 
   <div class="v-divisor"><div class="v-divisor-linea"><div class="v-divisor-barrido"></div></div><div class="v-divisor-puntos"><span></span><span></span><span></span></div></div>
@@ -838,14 +892,16 @@ function renderHeaderYHero(){
 
   document.getElementById('v-nav-nombre').textContent = c.nombre_comercial || c.nombre;
   if (c.logo_url) { const l=document.getElementById('v-nav-logo'); l.src=c.logo_url; l.style.display='block'; }
-  document.getElementById('v-hero-titulo').innerHTML = `${esc(c.nombre_comercial||c.nombre)} <span class="grad">a un mensaje de distancia</span>`;
-  document.getElementById('v-hero-desc').textContent = c.descripcion || `Descubre ${PRODUCTOS.length} productos reales, listos para ti.`;
+  document.getElementById('v-hero-titulo').innerHTML = `${esc(c.nombre_comercial||c.nombre)}<span class="grad">a un mensaje de distancia</span>`;
+  document.getElementById('v-hero-desc').textContent = c.descripcion || `Descubre nuestros productos, explora nuestras categorías y encuentra justo lo que necesitas.`;
 
+  // CTA: "Ver catalogo" es la accion PRINCIPAL (explorar, sin salir de
+  // la pagina); WhatsApp queda como accion SECUNDARIA/complementaria.
   const acciones = document.getElementById('v-hero-acciones');
-  let html = `<button class="v-btn v-btn-ghost" onclick="irACatalogo()">Ver catálogo →</button>`;
+  let html = `<button class="v-btn v-btn-principal" onclick="irACatalogo()">${ICO.bag||''} Ver catálogo →</button>`;
   if (c.whatsapp) {
     const url = linkWA(c.whatsapp, `Hola, vi su catálogo ${c.nombre_comercial||''} y tengo una consulta.`);
-    html = `<a class="v-btn" href="${url}" target="_blank" onclick="registrarEvento('click_whatsapp')">${ICO.chat} Escribir por WhatsApp</a>` + html;
+    html += `<a class="v-btn v-btn-ghost" href="${url}" target="_blank" onclick="registrarEvento('click_whatsapp')">${ICO.chat} Escribir por WhatsApp</a>`;
     window.v_wa_url = url;
     const navCta = document.getElementById('v-nav-cta'); navCta.style.display='inline-flex'; navCta.href=url;
     const btnFlotante = document.getElementById('v-btn-flotante-wa');
@@ -863,8 +919,10 @@ function renderHeaderYHero(){
   }
   acciones.innerHTML = html;
 
-  // Imagen del hero: usa la foto del producto destacado, o la primera
-  // disponible -- nunca pide banner al usuario, el sistema decide solo.
+  // Elemento visual protagonista: tarjeta tipo "mockup" con la foto
+  // del producto destacado real, mas 2 fotos reales adicionales
+  // asomando detras para dar profundidad -- nunca datos inventados,
+  // se omiten con elegancia si el negocio aun no tiene suficientes.
   const destacado = PRODUCTOS.find(p=>p.destacado) || PRODUCTOS[0];
   const foto = destacado?.fotos?.find(f=>f.es_principal) || destacado?.fotos?.[0];
   if (foto) {
@@ -872,10 +930,28 @@ function renderHeaderYHero(){
     const heroImg = document.getElementById('v-hero-img');
     heroImg.onload = () => heroImg.classList.add('cargada');
     heroImg.src = foto.url;
-    if (destacado.destacado) {
-      const chipA = document.getElementById('v-hero-chip-a');
-      chipA.style.display='flex'; chipA.innerHTML = `<img src="${esc(foto.url)}"><div class="txt"><b>${esc(destacado.nombre)}</b><span>${fmtC(destacado.precio)}</span></div>`;
-    }
+
+    const cinta = document.getElementById('v-hero-cinta');
+    cinta.style.display = destacado.destacado ? 'flex' : 'none';
+    cinta.innerHTML = `${ICO.star} Destacado`;
+
+    document.getElementById('v-hero-mockup-info').style.display = 'flex';
+    document.getElementById('v-hero-mockup-nombre').textContent = destacado.nombre;
+    const enOferta = destacado.etiqueta==='oferta' && destacado.precio_oferta;
+    document.getElementById('v-hero-mockup-precio').textContent = fmtC(enOferta?destacado.precio_oferta:destacado.precio);
+
+    const favBtn = document.getElementById('v-hero-mockup-fav');
+    const actualizarFavIco = () => { favBtn.innerHTML = FAVORITOS.includes(destacado.id) ? ICO.heartFill : ICO.heart; };
+    actualizarFavIco();
+    favBtn.onclick = () => { toggleFav(destacado.id); actualizarFavIco(); };
+
+    // Fotos de otros productos reales, asomando detras (nunca la misma
+    // foto repetida, nunca inventadas).
+    const otras = PRODUCTOS.filter(p => p.id !== destacado.id).map(p => p.fotos.find(f=>f.es_principal)||p.fotos[0]).filter(Boolean);
+    const peekA = document.getElementById('v-hero-peek-a'), peekB = document.getElementById('v-hero-peek-b');
+    if (otras[0]) { peekA.src = otras[0].url; peekA.style.display = 'block'; }
+    if (otras[1]) { peekB.src = otras[1].url; peekB.style.display = 'block'; }
+
     const chipB = document.getElementById('v-hero-chip-b');
     chipB.style.display='flex'; chipB.innerHTML = `<div class="txt"><b id="v-chip-conteo">0 productos</b><span>Disponibles ahora</span></div>`;
     contarHacia('v-chip-conteo', PRODUCTOS.length, ' productos');
