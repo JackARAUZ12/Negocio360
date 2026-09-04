@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="claro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title id="n-title">Catálogo</title>
+<meta id="n-desc-meta" name="description" content="Catálogo digital">
+<meta id="n-og-title" property="og:title" content="Catálogo">
+<meta id="n-og-desc" property="og:description" content="Catálogo digital">
+<meta id="n-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #faf6ee;
+  --surface: #fffdf9;
+  --surface-2: #f2e9d8;
+  --border: #e5d8bd;
+  --text: #2a1a14;
+  --text-2: #6b584a;
+  --text-3: #a3927f;
+  --vino: #5c1220;
+  --vino-oscuro: #3d0c15;
+  --vino-rgb: 92,18,32;
+  --pino: #1f3d2b;
+  --pino-oscuro: #14291d;
+  --dorado: #c9a24b;
+  --dorado-claro: #e8cd8a;
+  --dorado-rgb: 201,162,75;
+  --crema: #f5ecdf;
+  --danger: #a3271f;
+  --disponible: #2f6b45;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font: 'Jost', sans-serif;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px; --sp-8:48px; --sp-9:64px; --sp-10:96px;
+  --shadow-soft: 0 1px 2px rgba(60,20,10,.08), 0 6px 16px -6px rgba(60,20,10,.14);
+  --shadow-glow: 0 2px 6px rgba(60,20,10,.12), 0 20px 44px -12px rgba(var(--vino-rgb),.4);
+  --max-w: 1280px;
+}
+html[data-theme="oscuro"] {
+  --bg: #170a0c; --surface: #221012; --surface-2: #2c1518; --border: #3d1f22;
+  --text: #f5ecdf; --text-2: #c9b6a8; --text-3: #8a7568;
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px -6px rgba(0,0,0,.5);
+  --shadow-glow: 0 2px 6px rgba(0,0,0,.4), 0 24px 50px -12px rgba(var(--dorado-rgb),.35);
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); transition:background .3s,color .3s; overflow-x:hidden; }
+img { max-width:100%; display:block; }
+a { color:inherit; text-decoration:none; }
+button { font-family:inherit; }
+:focus-visible { outline:2px solid var(--dorado); outline-offset:2px; }
+.n-wrap { max-width:var(--max-w); margin:0 auto; padding:0 var(--sp-5); }
+@media (min-width:900px) { .n-wrap { padding:0 var(--sp-8); } }
+svg.n-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
+
+@keyframes n-fade-up { from { opacity:0; transform:translateY(22px); } to { opacity:1; transform:translateY(0); } }
+@keyframes n-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes n-brillo { 0%,100% { opacity:.35; transform:scale(1); } 50% { opacity:.85; transform:scale(1.3); } }
+@keyframes n-caer { from { transform:translateY(-10vh) translateX(0); opacity:0; } 10% { opacity:.55; } 100% { transform:translateY(110vh) translateX(24px); opacity:0; } }
+@keyframes n-girar-lento { to { transform:rotate(360deg); } }
+.n-reveal { opacity:0; transform:translateY(26px); transition:opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
+.n-reveal.visible { opacity:1; transform:translateY(0); }
+
+/* ===== SPLASH -- corto e intencional, sin porcentajes ===== */
+.n-splash {
+  position:fixed; inset:0; z-index:1000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  background:radial-gradient(1200px 700px at 50% -10%, var(--vino) 0%, var(--vino-oscuro) 55%, #22070c 100%);
+  overflow:hidden; text-align:center; padding:24px; transition:opacity .6s ease;
+}
+.n-splash.n-splash-oculto { opacity:0; pointer-events:none; }
+.n-splash-brillo { position:absolute; border-radius:50%; background:var(--dorado); filter:blur(1px); animation:n-brillo 3s ease-in-out infinite; }
+.n-splash-logo { width:64px; height:64px; border-radius:50%; object-fit:cover; border:2px solid var(--dorado-claro); margin-bottom:6px; animation:n-fade-up .7s ease both; box-shadow:0 0 0 6px rgba(var(--dorado-rgb),.12); }
+.n-splash-orn { font-size:22px; color:var(--dorado-claro); animation:n-fade-up .6s ease .1s both; }
+.n-splash-eyebrow { color:var(--dorado-claro); font-family:var(--font); font-size:12px; font-weight:600; letter-spacing:.22em; text-transform:uppercase; animation:n-fade-up .6s ease .2s both; }
+.n-splash-titulo { color:#fff; font-family:var(--font-display); font-style:italic; font-weight:600; font-size:clamp(30px,6vw,48px); margin:0; animation:n-fade-up .65s ease .3s both; }
+.n-splash-sub { color:rgba(255,255,255,.75); font-size:13.5px; max-width:320px; animation:n-fade-up .6s ease .42s both; }
+
+/* ===== HEADER ===== */
+.n-header { position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--vino-oscuro) 92%, transparent); backdrop-filter:blur(10px); border-bottom:1px solid rgba(var(--dorado-rgb),.25); }
+.n-header-in { display:flex; align-items:center; gap:var(--sp-4); padding:13px 0; color:#fff; }
+.n-header-logo { width:34px; height:34px; border-radius:50%; object-fit:cover; border:1px solid rgba(var(--dorado-rgb),.5); }
+.n-header-nombre { font-family:var(--font-display); font-style:italic; font-weight:600; font-size:19px; }
+.n-header-tag { display:none; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--dorado-claro); margin-left:8px; }
+@media (min-width:600px) { .n-header-tag { display:inline; } }
+.n-header-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.n-header-fav { position:relative; background:rgba(255,255,255,.08); border:1px solid rgba(var(--dorado-rgb),.3); width:36px; height:36px; border-radius:50%; cursor:pointer; color:#fff; display:flex; align-items:center; justify-content:center; }
+.n-header-fav-badge { position:absolute; top:-4px; right:-4px; background:var(--dorado); color:var(--vino-oscuro); font-size:9px; font-weight:800; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.n-header-theme { background:rgba(255,255,255,.08); border:1px solid rgba(var(--dorado-rgb),.3); width:36px; height:36px; border-radius:50%; cursor:pointer; color:#fff; }
+.n-header-cta { background:linear-gradient(135deg,#25D366,#1fb855); color:#fff; border:none; border-radius:999px; padding:9px 18px; font-weight:600; font-size:12.5px; }
+
+/* ===== HERO ===== */
+.n-hero { position:relative; overflow:hidden; padding:var(--sp-9) 0 var(--sp-8); color:#fff;
+  background:radial-gradient(900px 500px at 15% 0%, rgba(var(--dorado-rgb),.18), transparent 60%), linear-gradient(175deg, var(--vino-oscuro) 0%, var(--vino) 55%, #4a0f1a 100%);
+}
+.n-hero-nieve { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+.n-hero-copo { position:absolute; top:-10px; width:4px; height:4px; border-radius:50%; background:var(--dorado-claro); opacity:0; animation:n-caer linear infinite; }
+.n-hero-grid { position:relative; z-index:1; display:flex; flex-direction:column; gap:var(--sp-8); align-items:center; }
+@media (min-width:920px) { .n-hero-grid { flex-direction:row; gap:var(--sp-10); align-items:center; } }
+.n-hero-in { max-width:560px; text-align:center; }
+@media (min-width:920px) { .n-hero-in { text-align:left; flex:1; } }
+.n-hero-eyebrow { display:inline-flex; align-items:center; gap:10px; color:var(--dorado-claro); font-size:11.5px; font-weight:600; letter-spacing:.2em; text-transform:uppercase; margin-bottom:var(--sp-5); }
+.n-hero-eyebrow::before, .n-hero-eyebrow::after { content:''; width:24px; height:1px; background:var(--dorado-claro); opacity:.6; }
+.n-hero-titulo { font-family:var(--font-display); font-weight:600; font-size:clamp(38px,6.4vw,68px); line-height:1.02; margin:0 0 var(--sp-4); color:#fff; }
+.n-hero-titulo em { display:block; font-style:italic; color:var(--dorado-claro); font-weight:500; }
+.n-hero-desc { font-size:15.5px; color:rgba(255,255,255,.8); max-width:440px; margin:0 auto var(--sp-6); line-height:1.7; }
+@media (min-width:920px) { .n-hero-desc { margin:0 0 var(--sp-6); } }
+.n-hero-acciones { display:flex; align-items:center; justify-content:center; gap:var(--sp-3); flex-wrap:wrap; }
+@media (min-width:920px) { .n-hero-acciones { justify-content:flex-start; } }
+.n-btn {
+  display:inline-flex; align-items:center; gap:8px; padding:14px 28px; border-radius:999px; font-weight:600; font-size:13.5px;
+  border:1px solid transparent; cursor:pointer; transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s;
+}
+.n-btn:active { transform:scale(.96); }
+.n-btn.n-btn-principal { background:linear-gradient(135deg,var(--dorado-claro),var(--dorado)); color:var(--vino-oscuro); box-shadow:0 14px 30px -10px rgba(var(--dorado-rgb),.6); }
+.n-btn.n-btn-principal:hover { transform:translateY(-2px); box-shadow:0 18px 36px -8px rgba(var(--dorado-rgb),.7); }
+.n-btn.n-btn-ghost { background:rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.35); }
+.n-btn.n-btn-ghost:hover { border-color:var(--dorado-claro); color:var(--dorado-claro); }
+
+.n-hero-escena { position:relative; z-index:1; width:100%; max-width:400px; }
+@media (min-width:920px) { .n-hero-escena { flex:0 0 42%; max-width:440px; } }
+.n-hero-rama { position:absolute; top:-8%; left:-6%; width:52%; opacity:.9; filter:drop-shadow(0 10px 18px rgba(0,0,0,.35)); z-index:2; pointer-events:none; }
+.n-hero-marco {
+  position:relative; background:var(--crema); border-radius:20px; padding:16px 16px 20px; box-shadow:0 34px 70px -18px rgba(0,0,0,.55);
+  transform:rotate(1.2deg); transition:transform .5s cubic-bezier(.22,1,.36,1);
+}
+.n-hero-marco:hover { transform:rotate(0deg) translateY(-4px); }
+.n-hero-cinta {
+  position:absolute; top:14px; left:-10px; z-index:2; background:linear-gradient(135deg,var(--dorado-claro),var(--dorado)); color:var(--vino-oscuro);
+  font-size:10.5px; font-weight:800; letter-spacing:.03em; padding:6px 14px 6px 16px; border-radius:2px 8px 8px 2px; transform:rotate(-3deg);
+  box-shadow:0 8px 16px -4px rgba(0,0,0,.35); display:flex; align-items:center; gap:4px;
+}
+.n-hero-img { width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:12px; max-height:460px; opacity:0; transition:opacity .5s ease; background:var(--surface-2); }
+.n-hero-img.cargada { opacity:1; }
+.n-hero-fav {
+  position:absolute; bottom:60px; right:24px; width:34px; height:34px; border-radius:50%; background:var(--surface); border:1px solid var(--border);
+  box-shadow:var(--shadow-soft); display:flex; align-items:center; justify-content:center; color:var(--vino); cursor:pointer; font-size:14px;
+}
+.n-hero-info { display:flex; align-items:center; justify-content:space-between; padding:12px 4px 0; color:var(--text); }
+.n-hero-info b { font-family:var(--font-display); font-size:15px; font-weight:600; }
+.n-hero-info span { font-weight:700; font-size:14.5px; color:var(--vino); }
+.n-hero-luz { position:absolute; border-radius:50%; background:var(--dorado-claro); filter:blur(1px); animation:n-brillo 2.6s ease-in-out infinite; z-index:3; }
+.n-hero-patron { background-image:radial-gradient(circle at 2px 2px, rgba(var(--dorado-rgb),.35) 1.5px, transparent 0); background-size:24px 24px; }
+
+/* ===== DIVISOR entre secciones -- textura, no solo linea ===== */
+.n-divisor { position:relative; height:56px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+.n-divisor svg { width:100%; height:100%; }
+.n-divisor-orn { position:absolute; font-family:var(--font-display); font-style:italic; color:var(--dorado); font-size:20px; background:var(--bg); padding:0 16px; }
+
+/* ===== SECCIONES ===== */
+.n-seccion { padding:var(--sp-9) 0; }
+.n-seccion-head { text-align:center; margin-bottom:var(--sp-7); }
+.n-seccion-eyebrow { display:inline-flex; align-items:center; gap:8px; color:var(--dorado); font-size:11px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; margin-bottom:10px; }
+.n-seccion-eyebrow::before, .n-seccion-eyebrow::after { content:''; width:18px; height:1px; background:var(--dorado); }
+.n-seccion-titulo { font-family:var(--font-display); font-weight:600; font-size:clamp(26px,3.6vw,40px); margin:0; }
+.n-seccion-titulo em { font-style:italic; color:var(--vino); }
+.n-seccion-sub { color:var(--text-2); font-size:14px; margin-top:8px; }
+.n-volver { background:none; border:1px solid var(--border); border-radius:999px; padding:8px 18px; font-size:12.5px; font-weight:600; cursor:pointer; margin-bottom:var(--sp-5); color:var(--text-2); }
+
+/* ===== CATEGORIAS -- editorial, no iconos genericos ===== */
+.n-cats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-4); }
+@media (min-width:700px) { .n-cats-grid { grid-template-columns:repeat(4,1fr); gap:var(--sp-5); } }
+.n-cat-card { position:relative; aspect-ratio:3/4; border-radius:var(--radius-lg); overflow:hidden; cursor:pointer; background:var(--surface-2); }
+.n-cat-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .6s cubic-bezier(.22,1,.36,1); }
+.n-cat-card:hover img { transform:scale(1.08); }
+.n-cat-card::after { content:''; position:absolute; inset:0; background:linear-gradient(180deg, rgba(60,10,15,.05) 40%, rgba(40,8,12,.88) 100%); }
+.n-cat-card-info { position:absolute; left:0; right:0; bottom:0; z-index:1; padding:var(--sp-4); color:#fff; }
+.n-cat-card-nombre { font-family:var(--font-display); font-style:italic; font-weight:600; font-size:19px; }
+.n-cat-card-count { font-size:11px; color:var(--dorado-claro); margin-top:2px; }
+.n-cat-sin-foto { background:linear-gradient(160deg, var(--pino), var(--pino-oscuro)); }
+
+/* ===== PRODUCTO DESTACADO -- escena editorial ===== */
+.n-destacado { display:grid; grid-template-columns:1fr; gap:var(--sp-7); }
+@media (min-width:900px) { .n-destacado { grid-template-columns:1.05fr 1fr; gap:var(--sp-9); align-items:center; } }
+.n-destacado-media { position:relative; }
+.n-destacado-img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:var(--radius-lg); box-shadow:var(--shadow-glow); }
+.n-destacado-thumbs { display:flex; gap:8px; margin-top:var(--sp-3); justify-content:center; }
+@media (min-width:900px) { .n-destacado-thumbs { justify-content:flex-start; } }
+.n-destacado-thumb { width:54px; height:54px; border-radius:var(--radius-sm); object-fit:cover; cursor:pointer; opacity:.55; border:2px solid transparent; transition:all .2s; }
+.n-destacado-thumb.activa { opacity:1; border-color:var(--dorado); }
+.n-destacado-badge { display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg,var(--dorado-claro),var(--dorado)); color:var(--vino-oscuro); font-size:11px; font-weight:800; padding:6px 16px; border-radius:999px; margin-bottom:var(--sp-3); }
+.n-destacado-cat { font-size:11.5px; font-weight:700; color:var(--vino); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+.n-destacado-nombre { font-family:var(--font-display); font-weight:600; font-size:clamp(26px,3.4vw,38px); margin:0 0 var(--sp-3); }
+.n-destacado-desc { font-size:14.5px; color:var(--text-2); line-height:1.75; margin:0 0 var(--sp-5); max-width:48ch; }
+.n-precio-row { display:flex; align-items:baseline; gap:12px; margin-bottom:var(--sp-6); }
+.n-precio { font-size:28px; font-weight:700; color:var(--vino); }
+.n-precio.oferta { color:var(--danger); }
+.n-tachado { font-size:15px; color:var(--text-3); text-decoration:line-through; }
+
+/* ===== GRID DE PRODUCTOS -- editorial con tamanos mixtos ===== */
+.n-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+@media (min-width:640px) { .n-grid { grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:var(--sp-5); } }
+.n-grid.pocas { grid-template-columns:repeat(auto-fit, minmax(220px,280px)); justify-content:center; }
+@media (max-width:639px) { .n-grid.pocas { grid-template-columns:repeat(4,1fr); justify-content:initial; } }
+.n-card.grande { grid-column:span 4; }
+@media (min-width:640px) { .n-card.grande { grid-column:span 2; } }
+.n-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; cursor:pointer;
+  display:flex; flex-direction:column; transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s;
+}
+.n-card:hover { transform:translateY(-6px); box-shadow:var(--shadow-glow); border-color:transparent; }
+.n-card.grande .n-card-media { aspect-ratio:16/9; }
+@media (min-width:640px) { .n-card.grande .n-card-media { aspect-ratio:2/1; } }
+.n-card-media { position:relative; aspect-ratio:1/1; background:var(--surface-2); overflow:hidden; }
+.n-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:n-shimmer 1.4s infinite; }
+@keyframes n-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+.n-card-media img { width:100%; height:100%; object-fit:cover; transition:transform .5s cubic-bezier(.22,1,.36,1), opacity .4s ease; opacity:0; }
+.n-card-media img.cargada { opacity:1; }
+.n-card:hover .n-card-media img { transform:scale(1.07); }
+.n-card-tag { position:absolute; top:8px; left:8px; font-size:9.5px; font-weight:800; padding:4px 9px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow-soft); }
+@media (max-width:639px) { .n-card-tag { top:4px; left:4px; font-size:7.5px; padding:2px 6px; } }
+.n-card-tag.oferta { background:var(--danger); color:#fff; }
+.n-card-tag.nuevo { background:linear-gradient(135deg,var(--dorado-claro),var(--dorado)); color:var(--vino-oscuro); }
+.n-card-tag.destacado-tag { background:linear-gradient(135deg,var(--dorado-claro),var(--dorado)); color:var(--vino-oscuro); }
+.n-card-disp { display:none; position:absolute; top:8px; right:8px; font-size:9px; font-weight:800; padding:4px 9px; border-radius:999px; background:rgba(255,253,249,.92); color:var(--disponible); }
+.n-card-disp.agotado { display:block; font-size:7.5px; padding:2px 6px; top:4px; right:4px; }
+@media (min-width:640px) { .n-card-disp { display:block; } .n-card-disp.agotado { font-size:9px; padding:4px 9px; top:8px; right:8px; } }
+.n-card.agotada .n-card-media { opacity:.5; }
+.n-fav-btn {
+  position:absolute; bottom:2px; right:2px; width:22px; height:22px; border-radius:50%; background:rgba(255,253,249,.92);
+  border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:10px; box-shadow:var(--shadow-soft); color:var(--vino);
+}
+@media (min-width:640px) { .n-fav-btn { bottom:8px; right:8px; width:32px; height:32px; font-size:14px; } }
+.n-card-body { padding:0 6px 8px; display:flex; flex-direction:column; gap:2px; flex:1; }
+@media (min-width:640px) { .n-card-body { padding:var(--sp-4); gap:3px; } }
+.n-card-cat { display:none; font-size:10px; color:var(--vino); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+@media (min-width:640px) { .n-card-cat { display:block; } }
+.n-card-nombre { font-family:var(--font-display); font-weight:600; font-size:11px; line-height:1.25; margin:2px 0 4px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+@media (min-width:640px) { .n-card-nombre { font-size:15px; margin:2px 0 6px; } }
+.n-card-precio-row { display:flex; align-items:baseline; gap:6px; margin-top:auto; }
+.n-card-precio { font-weight:700; font-size:11px; color:var(--vino); }
+@media (min-width:640px) { .n-card-precio { font-size:15px; } }
+.n-card-precio.oferta { color:var(--danger); }
+.n-card-tachado { display:none; font-size:11px; color:var(--text-3); text-decoration:line-through; }
+@media (min-width:640px) { .n-card-tachado { display:inline; } }
+.n-card-acciones { display:none; gap:6px; margin-top:var(--sp-3); }
+@media (min-width:640px) { .n-card-acciones { display:flex; } }
+.n-card-accion { flex:1; padding:9px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface-2); color:var(--text-2); font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; transition:all .15s; }
+.n-card-accion.wa:hover { background:#25D3661a; border-color:#25D366; color:#25D366; }
+.n-card-accion.llamar, .n-card-accion.compartir { flex:0 0 auto; padding:9px 13px; }
+.n-card-accion:hover { border-color:var(--vino); color:var(--vino); }
+.n-vacio { text-align:center; padding:var(--sp-9) var(--sp-4); color:var(--text-3); width:100%; }
+
+/* ===== FILTROS ===== */
+.n-filtros-barra { position:sticky; top:0; z-index:40; background:color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter:blur(10px); padding:var(--sp-3) 0; margin-bottom:var(--sp-4); }
+.n-filtros-fila { display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap; }
+.n-buscador { flex:1 1 220px; display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:10px 20px; }
+.n-buscador input { border:none; outline:none; background:none; flex:1; color:var(--text); font-family:var(--font); font-size:13.5px; }
+.n-select, .n-precio-chip { background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:9px 16px; font-size:12.5px; font-weight:600; color:var(--text-2); }
+.n-select { cursor:pointer; }
+.n-precio-chip { display:flex; align-items:center; gap:8px; }
+.n-precio-chip input[type=range] { accent-color:var(--vino); width:100px; }
+.n-migas { font-size:12px; color:var(--text-3); margin-bottom:var(--sp-3); }
+.n-migas a { color:var(--vino); cursor:pointer; font-weight:700; }
+
+/* ===== CIERRE NAVIDENO ===== */
+.n-cierre { position:relative; overflow:hidden; padding:var(--sp-9) 0; color:#fff; text-align:center;
+  background:radial-gradient(800px 400px at 50% 0%, rgba(var(--dorado-rgb),.15), transparent 60%), linear-gradient(175deg, var(--vino-oscuro), #2a0910);
+}
+.n-cierre-titulo { font-family:var(--font-display); font-style:italic; font-weight:600; font-size:clamp(28px,4.4vw,44px); margin:0 0 10px; }
+.n-cierre-titulo em { color:var(--dorado-claro); }
+.n-cierre-sub { color:rgba(255,255,255,.75); font-size:14.5px; max-width:440px; margin:0 auto var(--sp-7); }
+.n-cierre-confianza { display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-4); max-width:520px; margin:0 auto var(--sp-8); }
+@media (min-width:640px) { .n-cierre-confianza { grid-template-columns:repeat(4,1fr); } }
+.n-cierre-item { display:flex; flex-direction:column; align-items:center; gap:8px; font-size:12px; color:rgba(255,255,255,.85); }
+.n-cierre-item .ico { width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid rgba(var(--dorado-rgb),.35); display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--dorado-claro); }
+.n-cierre-cta-card { background:rgba(255,255,255,.06); border:1px solid rgba(var(--dorado-rgb),.3); border-radius:var(--radius-lg); padding:var(--sp-7); max-width:480px; margin:0 auto; }
+.n-cierre-cta-card h3 { font-family:var(--font-display); font-style:italic; font-size:22px; margin:0 0 8px; }
+.n-cierre-cta-card p { font-size:13px; color:rgba(255,255,255,.75); margin:0 0 var(--sp-5); }
+.n-footer-marca { margin-top:var(--sp-8); font-size:11px; color:rgba(255,255,255,.5); }
+.n-footer-marca b { color:var(--dorado-claro); }
+
+/* ===== MODAL ===== */
+.n-modal-overlay { display:none; position:fixed; inset:0; background:rgba(30,8,10,.6); backdrop-filter:blur(4px); z-index:200; align-items:flex-end; justify-content:center; }
+@media (min-width:640px) { .n-modal-overlay { align-items:center; padding:16px; } }
+.n-modal-overlay.open { display:flex; }
+@keyframes n-sheet-in { from { transform:translateY(100%); } to { transform:translateY(0); } }
+@keyframes n-pop { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
+.n-modal { background:var(--surface); border-radius:var(--radius-lg) var(--radius-lg) 0 0; width:100%; max-width:560px; max-height:92vh; overflow-y:auto; box-shadow:var(--shadow-glow); animation:n-sheet-in .32s cubic-bezier(.22,1,.36,1); }
+@media (min-width:640px) { .n-modal { border-radius:var(--radius-lg); animation:n-pop .25s ease; } }
+.n-modal-agarradera { display:block; width:40px; height:4px; border-radius:999px; background:var(--border); margin:10px auto 0; }
+@media (min-width:640px) { .n-modal-agarradera { display:none; } }
+.n-modal-close { position:sticky; top:12px; margin:0 12px 0 auto; width:34px; height:34px; border-radius:50%; background:rgba(0,0,0,.5); color:#fff; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:5; }
+.n-modal-fotos { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; margin-top:-46px; border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
+.n-modal-fotos img { width:100%; flex-shrink:0; scroll-snap-align:start; aspect-ratio:1/1; object-fit:cover; }
+.n-modal-body { padding:var(--sp-6); }
+.n-modal-cat { font-size:11.5px; font-weight:700; color:var(--vino); text-transform:uppercase; margin-bottom:6px; }
+.n-modal-nombre { font-family:var(--font-display); font-weight:600; font-size:24px; margin-bottom:var(--sp-2); }
+.n-modal-desc { font-size:13.5px; color:var(--text-2); line-height:1.6; margin:var(--sp-4) 0; white-space:pre-wrap; }
+.n-relacionados-titulo { font-size:13px; font-weight:700; margin:var(--sp-6) 0 var(--sp-3); border-top:1px solid var(--border); padding-top:var(--sp-5); }
+.n-relacionados-scroll { display:flex; gap:var(--sp-3); overflow-x:auto; }
+.n-relacionado { flex:0 0 108px; cursor:pointer; }
+.n-relacionado img { width:108px; height:108px; object-fit:cover; border-radius:var(--radius-sm); background:var(--surface-2); }
+.n-relacionado .nom { font-size:11.5px; font-weight:600; margin-top:4px; }
+.n-relacionado .prc { font-size:11.5px; font-weight:800; color:var(--vino); }
+
+/* ===== LIGHTBOX ===== */
+.n-lightbox { display:none; position:fixed; inset:0; background:rgba(20,5,7,.95); z-index:300; align-items:center; justify-content:center; }
+.n-lightbox.open { display:flex; }
+.n-lightbox img { max-width:90vw; max-height:85vh; object-fit:contain; border-radius:var(--radius-md); }
+.n-lightbox-cerrar, .n-lightbox-flecha { position:absolute; background:rgba(255,255,255,.15); color:#fff; border:none; border-radius:50%; cursor:pointer; }
+.n-lightbox-cerrar { top:24px; right:24px; width:40px; height:40px; font-size:18px; }
+.n-lightbox-flecha { top:50%; transform:translateY(-50%); width:48px; height:48px; font-size:24px; }
+.n-lightbox-flecha.izq { left:24px; } .n-lightbox-flecha.der { right:24px; }
+.n-lightbox-contador { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); color:#fff; font-size:12px; }
+
+/* ===== VARIOS ===== */
+.n-btn-flotante-wa { position:fixed; bottom:20px; right:20px; z-index:60; width:56px; height:56px; border-radius:50%; background:#25D366; color:#fff; display:none; align-items:center; justify-content:center; font-size:24px; border:none; cursor:pointer; box-shadow:0 12px 26px rgba(0,0,0,.3); }
+@media (min-width:640px) { .n-btn-flotante-wa.activo { display:flex; } }
+.n-cta-fija-movil { display:none; position:fixed; bottom:0; left:0; right:0; z-index:60; background:#25D366; color:#fff; padding:14px var(--sp-5); align-items:center; justify-content:center; gap:8px; font-weight:600; font-size:14px; box-shadow:0 -8px 20px rgba(0,0,0,.15); }
+@media (max-width:639px) { .n-cta-fija-movil.activo { display:flex; } }
+@media (max-width:639px) { body.n-con-cta-fija { padding-bottom:64px; } }
+.n-toast-wrap { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:400; display:flex; flex-direction:column; gap:8px; }
+.n-toast { background:var(--vino-oscuro); color:#fff; padding:11px 22px; border-radius:999px; font-size:13px; font-weight:600; box-shadow:var(--shadow-soft); animation:n-fade-up .3s; }
+.n-loader-skeleton { padding:var(--sp-6) 0; }
+.n-sk { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:n-shimmer 1.4s infinite; border-radius:10px; }
+.n-loader-vacio { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:70vh; gap:14px; color:var(--text-2); font-size:14px; text-align:center; padding:0 var(--sp-5); }
+.n-preview-banner { display:none; background:var(--vino-oscuro); color:#fff; text-align:center; font-size:12px; font-weight:700; padding:8px 16px; }
+.n-footer { border-top:1px solid var(--border); padding:var(--sp-5) 0; }
+.n-footer-in { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; font-size:12px; color:var(--text-3); }
+.n-footer-in a { color:var(--vino); font-weight:700; }
+</style>
+</head>
+<body>
+
+<div id="n-splash" class="n-splash">
+  <div class="n-splash-logo-wrap" id="n-splash-logo-wrap" style="display:none"><img id="n-splash-logo" class="n-splash-logo" src="" alt=""></div>
+  <div class="n-splash-orn">❄</div>
+  <div class="n-splash-eyebrow">Especial de Navidad</div>
+  <h1 class="n-splash-titulo">Bienvenido a<br><span id="n-splash-nombre">tu catálogo</span></h1>
+  <p class="n-splash-sub">Preparando nuestra temporada más especial…</p>
+</div>
+
+<div id="n-loader" class="n-loader-skeleton">
+  <div class="n-wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:48px"><div class="n-sk" style="width:34px;height:34px;border-radius:50%"></div><div class="n-sk" style="width:120px;height:16px"></div></div>
+    <div class="n-sk" style="width:100%;height:340px;border-radius:18px;margin-bottom:48px"></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+      <div class="n-sk" style="aspect-ratio:1/1;border-radius:14px"></div><div class="n-sk" style="aspect-ratio:1/1;border-radius:14px"></div>
+      <div class="n-sk" style="aspect-ratio:1/1;border-radius:14px"></div><div class="n-sk" style="aspect-ratio:1/1;border-radius:14px"></div>
+    </div>
+  </div>
+</div>
+
+<div id="n-app" style="display:none">
+  <div id="n-preview-banner" class="n-preview-banner">Vista previa — esto no es visible al público todavía</div>
+
+  <header class="n-header">
+    <div class="n-wrap n-header-in">
+      <img id="n-header-logo" class="n-header-logo" src="" style="display:none" alt="">
+      <span id="n-header-nombre" class="n-header-nombre"></span>
+      <span class="n-header-tag">Catálogo Navideño</span>
+      <div class="n-header-right">
+        <button class="n-header-fav" onclick="irACatalogo();toggleSoloFavoritos();" aria-label="Favoritos"><span id="n-header-fav-ico"></span><span class="n-header-fav-badge" id="n-header-fav-badge" style="display:none">0</span></button>
+        <button class="n-header-theme" onclick="toggleTema()" id="n-theme-btn" aria-label="Cambiar tema"></button>
+        <a class="n-header-cta" id="n-header-cta" style="display:none" target="_blank">WhatsApp</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="n-hero" id="n-hero">
+    <div class="n-hero-nieve" id="n-hero-nieve"></div>
+    <div class="n-wrap n-hero-grid">
+      <div class="n-hero-in">
+        <div class="n-hero-eyebrow">Especial de Navidad</div>
+        <h1 class="n-hero-titulo" id="n-hero-titulo">Catálogo<em>en cada detalle</em></h1>
+        <p class="n-hero-desc" id="n-hero-desc"></p>
+        <div class="n-hero-acciones" id="n-hero-acciones"></div>
+      </div>
+      <div class="n-hero-escena" id="n-hero-escena" style="display:none">
+        <div class="n-hero-marco">
+          <span class="n-hero-cinta" id="n-hero-cinta" style="display:none">Destacado</span>
+          <img class="n-hero-img" id="n-hero-img" src="" alt="">
+          <button class="n-hero-fav" id="n-hero-fav" aria-label="Favorito"></button>
+          <div class="n-hero-info" id="n-hero-info" style="display:none">
+            <b id="n-hero-info-nombre"></b>
+            <span id="n-hero-info-precio"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="n-divisor"><svg viewBox="0 0 1440 56" preserveAspectRatio="none"><path d="M0,28 Q360,0 720,28 T1440,28" fill="none" stroke="var(--border)" stroke-width="1"/></svg><span class="n-divisor-orn">✦</span></div>
+
+  <section class="n-seccion n-reveal" id="n-seccion-destacado" style="display:none">
+    <div class="n-wrap">
+      <div class="n-seccion-head">
+        <div class="n-seccion-eyebrow">Lo mejor de la temporada</div>
+        <h2 class="n-seccion-titulo">Producto <em>destacado</em></h2>
+      </div>
+      <div class="n-destacado" id="n-destacado"></div>
+    </div>
+  </section>
+
+  <div class="n-divisor" id="n-divisor-mas" style="display:none"><svg viewBox="0 0 1440 56" preserveAspectRatio="none"><path d="M0,28 Q360,0 720,28 T1440,28" fill="none" stroke="var(--border)" stroke-width="1"/></svg><span class="n-divisor-orn">✦</span></div>
+
+  <section class="n-seccion n-reveal" id="n-seccion-mas-destacados" style="display:none">
+    <div class="n-wrap">
+      <div class="n-seccion-head"><div class="n-seccion-eyebrow">Ideas para regalar</div><h2 class="n-seccion-titulo">Más para <em>regalar</em></h2></div>
+      <div class="n-grid" id="n-grid-mas-destacados"></div>
+    </div>
+  </section>
+
+  <div class="n-divisor" id="n-divisor-vistos" style="display:none"><svg viewBox="0 0 1440 56" preserveAspectRatio="none"><path d="M0,28 Q360,0 720,28 T1440,28" fill="none" stroke="var(--border)" stroke-width="1"/></svg><span class="n-divisor-orn">✦</span></div>
+
+  <section class="n-seccion n-reveal" id="n-seccion-vistos" style="display:none">
+    <div class="n-wrap">
+      <div class="n-seccion-head"><div class="n-seccion-eyebrow">No lo pierdas de vista</div><h2 class="n-seccion-titulo">Vistos <em>recientemente</em></h2></div>
+      <div class="n-grid" id="n-grid-vistos"></div>
+    </div>
+  </section>
+
+  <div class="n-divisor" id="n-divisor-categorias" style="display:none"><svg viewBox="0 0 1440 56" preserveAspectRatio="none"><path d="M0,28 Q360,0 720,28 T1440,28" fill="none" stroke="var(--border)" stroke-width="1"/></svg><span class="n-divisor-orn">✦</span></div>
+
+  <section class="n-seccion n-reveal" id="n-seccion-categorias" style="display:none">
+    <div class="n-wrap">
+      <div class="n-seccion-head"><div class="n-seccion-eyebrow">Explora</div><h2 class="n-seccion-titulo">Descubre la <em>temporada</em></h2><p class="n-seccion-sub">Todo lo que necesitas para una Navidad memorable.</p></div>
+      <div class="n-cats-grid" id="n-cats-grid"></div>
+    </div>
+  </section>
+
+  <div class="n-divisor"><svg viewBox="0 0 1440 56" preserveAspectRatio="none"><path d="M0,28 Q360,0 720,28 T1440,28" fill="none" stroke="var(--border)" stroke-width="1"/></svg><span class="n-divisor-orn">✦</span></div>
+
+  <section class="n-seccion n-reveal" id="n-seccion-productos">
+    <div class="n-wrap">
+      <div class="n-filtros-barra">
+        <div id="n-migas" class="n-migas" style="display:none"></div>
+        <div class="n-filtros-fila">
+          <div class="n-buscador"><span id="n-buscador-ico"></span><input type="text" id="n-buscador" placeholder="Buscar productos…" oninput="onBuscar(this.value)"></div>
+          <select class="n-select" id="n-orden-select" onchange="cambiarOrden(this.value)">
+            <option value="reciente">Más recientes</option>
+            <option value="precio_asc">Precio: menor a mayor</option>
+            <option value="precio_desc">Precio: mayor a menor</option>
+            <option value="nombre">Nombre A-Z</option>
+          </select>
+          <div class="n-precio-chip"><span id="n-precio-label">Cualquier precio</span><input type="range" id="n-precio-slider" min="0" max="100" value="100" oninput="onCambiarPrecio(this.value)"></div>
+        </div>
+      </div>
+      <div class="n-seccion-head" style="text-align:left;display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--sp-5)">
+        <h2 class="n-seccion-titulo" id="n-titulo-productos" style="font-size:22px">Todos los productos</h2>
+        <span class="n-seccion-sub" id="n-conteo-productos" style="margin:0"></span>
+      </div>
+      <button class="n-volver" id="n-btn-volver" onclick="volverACategorias()" style="display:none">← Ver todas las categorías</button>
+      <div class="n-grid" id="n-grid-productos"></div>
+    </div>
+  </section>
+
+  <section class="n-cierre">
+    <div class="n-wrap">
+      <h2 class="n-cierre-titulo">Gracias por ser parte<br><em>de esta temporada</em></h2>
+      <p class="n-cierre-sub">Que esta Navidad esté llena de momentos especiales.</p>
+      <div class="n-cierre-confianza">
+        <div class="n-cierre-item"><div class="ico" id="n-conf-1"></div>Envíos a todo el país</div>
+        <div class="n-cierre-item"><div class="ico" id="n-conf-2"></div>Atención directa</div>
+        <div class="n-cierre-item"><div class="ico" id="n-conf-3"></div>Productos verificados</div>
+        <div class="n-cierre-item"><div class="ico" id="n-conf-4"></div>Contacto seguro</div>
+      </div>
+      <div class="n-cierre-cta-card" id="n-cierre-cta" style="display:none">
+        <h3>¿No encuentras lo que buscas?</h3>
+        <p>Escríbenos y con gusto te ayudamos a encontrarlo.</p>
+        <a class="n-btn n-btn-principal" id="n-cierre-btn" target="_blank" style="width:100%;justify-content:center"></a>
+      </div>
+      <div class="n-footer-marca">Catálogo de <b id="n-footer-nombre"></b> — creado con Catálogo360</div>
+    </div>
+  </section>
+
+  <button class="n-btn-flotante-wa" id="n-btn-flotante-wa" aria-label="WhatsApp"></button>
+  <a class="n-cta-fija-movil" id="n-cta-fija-movil" target="_blank"></a>
+</div>
+
+<div class="n-modal-overlay" id="n-modal" onclick="if(event.target===this)cerrarModal()">
+  <div class="n-modal">
+    <div class="n-modal-agarradera"></div>
+    <button class="n-modal-close" onclick="cerrarModal()" id="n-modal-close-ico" aria-label="Cerrar"></button>
+    <div class="n-modal-fotos" id="n-modal-fotos" onclick="abrirLightbox(FOTOS_MODAL_ACTUAL, indexFotoClic(event))"></div>
+    <div class="n-modal-body">
+      <div class="n-modal-cat" id="n-modal-cat" style="display:none"></div>
+      <div class="n-modal-nombre" id="n-modal-nombre"></div>
+      <div class="n-precio-row" style="margin-bottom:0">
+        <span class="n-precio" id="n-modal-precio"></span>
+        <span class="n-tachado" id="n-modal-tachado" style="display:none"></span>
+      </div>
+      <div class="n-modal-desc" id="n-modal-desc"></div>
+      <button class="n-btn n-btn-principal" id="n-modal-whatsapp" style="width:100%;justify-content:center"></button>
+      <div id="n-relacionados-wrap" style="display:none">
+        <div class="n-relacionados-titulo">También te puede interesar</div>
+        <div class="n-relacionados-scroll" id="n-relacionados"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="n-lightbox" id="n-lightbox" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="n-lightbox-cerrar" onclick="cerrarLightbox()" id="n-lb-close-ico" aria-label="Cerrar"></button>
+  <button class="n-lightbox-flecha izq" onclick="moverLightbox(-1)" aria-label="Foto anterior">‹</button>
+  <img id="n-lightbox-img" src="" alt="">
+  <button class="n-lightbox-flecha der" onclick="moverLightbox(1)" aria-label="Foto siguiente">›</button>
+  <div class="n-lightbox-contador" id="n-lightbox-contador"></div>
+</div>
+
+<div class="n-toast-wrap" id="n-toast-wrap"></div>
+
+<script>
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let CATALOGO=null, PRODUCTOS=[], CATEGORIAS=[], CATEGORIA_ACTUAL=null;
+let ORDEN='reciente', TEXTO_BUSQUEDA='', PRECIO_MAX=null, SOLO_FAV=false, SOLO_OFERTAS=false, FAVORITOS=[];
+let FOTOS_MODAL_ACTUAL=[], VISTOS=[], LB_FOTOS=[], LB_INDICE=0;
+try { FAVORITOS = JSON.parse(localStorage.getItem('n_favoritos')||'[]'); } catch(e){}
+try { VISTOS = JSON.parse(localStorage.getItem('n_vistos')||'[]'); } catch(e){}
+
+const ICO = {
+  heart: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  heartFill: '<svg class="n-ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  moon: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/></svg>',
+  sun: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  search: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  chat: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.3 0-2.5-.3-3.6-.8L3 21l1.8-5.4A8.4 8.4 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/></svg>',
+  phone: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11 11 0 0 0 3.5.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1 11 11 0 0 0 .6 3.5 1 1 0 0 1-.3 1z"/></svg>',
+  link: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>',
+  close: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  truck: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg>',
+  headset: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2.5" y="13" width="4" height="6" rx="1.2"/><rect x="17.5" y="13" width="4" height="6" rx="1.2"/><path d="M19.5 19v1a3 3 0 0 1-3 3h-2.5"/></svg>',
+  shield: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
+  lock: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  star: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 17l-5.6 3.1 1.4-6.3-4.8-4.3 6.4-.6z"/></svg>',
+  sad: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01"/></svg>',
+  gift: '<svg class="n-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M3 13h18M12 9v12M12 9C9 9 8 6 9.5 4.8 11 3.6 12 6 12 9zM12 9c3 0 4-3 2.5-4.2C13 3.6 12 6 12 9z"/></svg>',
+};
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtC(n){ return 'C$'+Number(n||0).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function linkWA(num,txt){ return `https://wa.me/${(num||'').replace(/[^\d]/g,'')}?text=${encodeURIComponent(txt)}`; }
+function hexARgb(hex){ const h=(hex||'#5c1220').replace('#',''); const b=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16); if(isNaN(b))return '92,18,32'; return `${(b>>16)&255},${(b>>8)&255},${b&255}`; }
+function irAInicio(){ window.scrollTo({top:0,behavior:'smooth'}); }
+function irACatalogo(){ document.getElementById('n-seccion-productos').scrollIntoView({behavior:'smooth'}); }
+function toggleTema(){
+  const n = document.documentElement.getAttribute('data-theme')==='oscuro'?'claro':'oscuro';
+  document.documentElement.setAttribute('data-theme', n);
+  document.getElementById('n-theme-btn').innerHTML = n==='oscuro'?ICO.sun:ICO.moon;
+  localStorage.setItem('n_tema', n);
+}
+function registrarEvento(tipo, prodId){
+  if (CATALOGO && !new URLSearchParams(location.search).get('preview')) {
+    sb.rpc('catalogo_registrar_evento', { p_catalogo_id: CATALOGO.id, p_tipo_evento: tipo, p_producto_id: prodId||null }).then(()=>{}).catch(()=>{});
+  }
+}
+function mostrarToast(msg){
+  const w = document.getElementById('n-toast-wrap');
+  const t = document.createElement('div'); t.className='n-toast'; t.textContent=msg;
+  w.appendChild(t); setTimeout(()=>t.remove(), 2600);
+}
+function pintarIconosEstaticos(){
+  document.getElementById('n-conf-1').innerHTML = ICO.truck;
+  document.getElementById('n-conf-2').innerHTML = ICO.headset;
+  document.getElementById('n-conf-3').innerHTML = ICO.shield;
+  document.getElementById('n-conf-4').innerHTML = ICO.lock;
+  document.getElementById('n-modal-close-ico').innerHTML = ICO.close;
+  document.getElementById('n-lb-close-ico').innerHTML = ICO.close;
+  document.getElementById('n-btn-flotante-wa').innerHTML = ICO.chat;
+  document.getElementById('n-header-fav-ico').innerHTML = ICO.heart;
+  document.getElementById('n-buscador-ico').innerHTML = ICO.search;
+  document.getElementById('n-hero-fav').innerHTML = ICO.heart;
+  // Copos de nieve sutiles cayendo en el hero -- decorativos, discretos
+  const nieve = document.getElementById('n-hero-nieve');
+  let html = '';
+  for (let i=0;i<14;i++){
+    const izq = Math.random()*100, dur = 9+Math.random()*8, retraso = Math.random()*10, tam = 2+Math.random()*3;
+    html += `<span class="n-hero-copo" style="left:${izq}%;width:${tam}px;height:${tam}px;animation-duration:${dur}s;animation-delay:-${retraso}s"></span>`;
+  }
+  nieve.innerHTML = html;
+}
+
+async function init(){
+  pintarIconosEstaticos();
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'); const idPreview = params.get('preview');
+  if (!slug && !idPreview) { mostrarError('Enlace de catálogo no válido.'); return; }
+  let catalogo, error;
+  if (idPreview) {
+    const { data:{session} } = await sb.auth.getSession();
+    if (!session?.user) { mostrarError('Inicia sesión en Negocio360 para ver la vista previa.'); return; }
+    ({data:catalogo,error} = await sb.from('catalogos').select('*').eq('id', idPreview).maybeSingle());
+  } else {
+    ({data:catalogo,error} = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado','publicado').maybeSingle());
+  }
+  if (error || !catalogo) { mostrarError('Este catálogo no existe o ya no está disponible.'); return; }
+  CATALOGO = catalogo;
+  if (idPreview && catalogo.estado!=='publicado') document.getElementById('n-preview-banner').style.display='block';
+
+  document.getElementById('n-splash-nombre').textContent = catalogo.nombre_comercial || catalogo.nombre;
+  if (catalogo.logo_url) {
+    document.getElementById('n-splash-logo').src = catalogo.logo_url;
+    document.getElementById('n-splash-logo-wrap').style.display = 'block';
+  }
+
+  const tema = localStorage.getItem('n_tema') || catalogo.tema_default || 'claro';
+  document.documentElement.setAttribute('data-theme', tema);
+  document.getElementById('n-theme-btn').innerHTML = tema==='oscuro'?ICO.sun:ICO.moon;
+
+  const { data: productos } = await sb.from('catalogo_productos').select('*, catalogo_producto_fotos(*)').eq('catalogo_id', catalogo.id).eq('activo', true).order('orden');
+  PRODUCTOS = (productos||[]).map(p => ({ ...p, fotos:(p.catalogo_producto_fotos||[]).sort((a,b)=>a.orden-b.orden) }));
+  const { data: categorias } = await sb.from('catalogo_categorias').select('*').eq('catalogo_id', catalogo.id).order('orden');
+  CATEGORIAS = categorias || [];
+
+  renderTodo();
+  if (!idPreview) registrarEvento('visita');
+  document.getElementById('n-loader').style.display='none';
+  document.getElementById('n-app').style.display='block';
+  activarRevelado();
+  // Splash corta e intencional -- 1.9s, sin porcentajes falsos
+  setTimeout(() => {
+    const splash = document.getElementById('n-splash');
+    splash.classList.add('n-splash-oculto');
+    setTimeout(() => splash.remove(), 650);
+  }, 1900);
+}
+function ocultarSplashInmediato(){ const s=document.getElementById('n-splash'); if (s) s.remove(); }
+function mostrarError(msg){
+  ocultarSplashInmediato();
+  document.getElementById('n-loader').className = 'n-loader-vacio';
+  document.getElementById('n-loader').innerHTML = `
+    <svg viewBox="0 0 120 120" width="88" height="88" fill="none" stroke="var(--text-3)" stroke-width="1.5">
+      <circle cx="60" cy="60" r="42" stroke-dasharray="4 6"/>
+      <path d="M45 50c3-4 8-6 15-6s12 2 15 6M42 74c6-8 12-12 18-12s12 4 18 12" stroke-linecap="round"/>
+      <circle cx="45" cy="52" r="2.5" fill="var(--text-3)" stroke="none"/>
+      <circle cx="75" cy="52" r="2.5" fill="var(--text-3)" stroke="none"/>
+    </svg>
+    <p>${esc(msg)}</p>`;
+}
+function activarRevelado(){
+  if (!('IntersectionObserver' in window)) { document.querySelectorAll('.n-reveal').forEach(e=>e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  document.querySelectorAll('.n-reveal').forEach(e=>obs.observe(e));
+}
+
+function renderTodo(){
+  renderHeaderYHero();
+  insertarJSONLD();
+  renderDestacado();
+  renderCategoriasSeccion();
+  renderVistaProductos();
+  actualizarFavBadge();
+  document.getElementById('n-footer-nombre').textContent = CATALOGO.nombre_comercial || CATALOGO.nombre;
+}
+
+function renderHeaderYHero(){
+  const c = CATALOGO;
+  document.title = c.nombre_comercial || c.nombre;
+  document.getElementById('n-title').textContent = c.nombre_comercial || c.nombre;
+  document.getElementById('n-desc-meta').setAttribute('content', c.descripcion||'');
+  document.getElementById('n-og-title').setAttribute('content', c.nombre_comercial||c.nombre);
+  document.getElementById('n-og-desc').setAttribute('content', c.descripcion||'');
+  if (c.logo_url) document.getElementById('n-og-image').setAttribute('content', c.logo_url);
+
+  document.getElementById('n-header-nombre').textContent = c.nombre_comercial || c.nombre;
+  if (c.logo_url) { const l=document.getElementById('n-header-logo'); l.src=c.logo_url; l.style.display='block'; }
+  document.getElementById('n-hero-titulo').innerHTML = `${esc(c.nombre_comercial||c.nombre)}<em>en cada detalle</em>`;
+  document.getElementById('n-hero-desc').textContent = c.descripcion || 'Descubre nuestra selección para esta temporada y encuentra justo lo que buscas.';
+
+  const acciones = document.getElementById('n-hero-acciones');
+  let html = `<button class="n-btn n-btn-principal" onclick="irACatalogo()">${ICO.gift} Explorar catálogo</button>`;
+  if (c.whatsapp) {
+    const url = linkWA(c.whatsapp, `Hola, vi su catálogo navideño ${c.nombre_comercial||''} y tengo una consulta.`);
+    html += `<a class="n-btn n-btn-ghost" href="${url}" target="_blank" onclick="registrarEvento('click_whatsapp')">${ICO.chat} Escribir por WhatsApp</a>`;
+    const navCta = document.getElementById('n-header-cta'); navCta.style.display='inline-flex'; navCta.href=url;
+    const btnFlotante = document.getElementById('n-btn-flotante-wa');
+    btnFlotante.classList.add('activo'); btnFlotante.onclick = () => { registrarEvento('click_whatsapp'); window.open(url,'_blank'); };
+    const barraFija = document.getElementById('n-cta-fija-movil');
+    barraFija.classList.add('activo'); barraFija.href = url; barraFija.innerHTML = ICO.chat + ' Escribir por WhatsApp'; barraFija.onclick = () => registrarEvento('click_whatsapp');
+    document.body.classList.add('n-con-cta-fija');
+    document.getElementById('n-cierre-cta').style.display='block';
+    const cBtn = document.getElementById('n-cierre-btn'); cBtn.href=url; cBtn.innerHTML=ICO.chat+' Escribir por WhatsApp'; cBtn.onclick=()=>registrarEvento('click_whatsapp');
+  }
+  acciones.innerHTML = html;
+
+  const destacado = PRODUCTOS.find(p=>p.destacado) || PRODUCTOS[0];
+  const foto = destacado?.fotos?.find(f=>f.es_principal) || destacado?.fotos?.[0];
+  if (foto) {
+    document.getElementById('n-hero-escena').style.display='block';
+    const heroImg = document.getElementById('n-hero-img');
+    heroImg.onload = () => heroImg.classList.add('cargada');
+    heroImg.src = foto.url;
+    const cinta = document.getElementById('n-hero-cinta');
+    cinta.style.display = destacado.destacado ? 'flex' : 'none';
+    cinta.innerHTML = `${ICO.star} Destacado`;
+    document.getElementById('n-hero-info').style.display = 'flex';
+    document.getElementById('n-hero-info-nombre').textContent = destacado.nombre;
+    const enOferta = destacado.etiqueta==='oferta' && destacado.precio_oferta;
+    document.getElementById('n-hero-info-precio').textContent = fmtC(enOferta?destacado.precio_oferta:destacado.precio);
+    const favBtn = document.getElementById('n-hero-fav');
+    const actualizarFavIco = () => { favBtn.innerHTML = FAVORITOS.includes(destacado.id) ? ICO.heartFill : ICO.heart; };
+    actualizarFavIco();
+    favBtn.onclick = () => { toggleFav(destacado.id); actualizarFavIco(); };
+  } else {
+    document.getElementById('n-hero').classList.add('n-hero-patron');
+  }
+}
+
+function insertarJSONLD(){
+  const ex = document.getElementById('n-jsonld'); if (ex) ex.remove();
+  const data = { "@context":"https://schema.org", "@type":"Store", "name": CATALOGO.nombre_comercial||CATALOGO.nombre,
+    "makesOffer": PRODUCTOS.slice(0,30).map(p=>({ "@type":"Offer", "itemOffered":{"@type":"Product","name":p.nombre}, "price":String((p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio), "priceCurrency":"NIO", "availability": p.etiqueta==='agotado'?"https://schema.org/OutOfStock":"https://schema.org/InStock" })) };
+  const s = document.createElement('script'); s.id='n-jsonld'; s.type='application/ld+json'; s.textContent=JSON.stringify(data);
+  document.head.appendChild(s);
+}
+
+function renderDestacado(){
+  const destacados = PRODUCTOS.filter(p=>p.destacado);
+  const secA = document.getElementById('n-seccion-destacado'), secB = document.getElementById('n-seccion-mas-destacados');
+  const divA = document.getElementById('n-divisor-mas');
+  if (!destacados.length) { secA.style.display='none'; secB.style.display='none'; divA.style.display='none'; return; }
+  secA.style.display='block';
+  const p = destacados[0];
+  const cat = CATEGORIAS.find(c=>c.id===p.categoria_id);
+  const principal = p.fotos.find(f=>f.es_principal) || p.fotos[0];
+  const oferta = p.etiqueta==='oferta' && p.precio_oferta;
+  document.getElementById('n-destacado').innerHTML = `
+    <div class="n-destacado-media">
+      <img class="n-destacado-img" id="n-destacado-img" src="${esc(principal?.url||'')}" alt="${esc(p.nombre)}" onclick="abrirModal('${p.id}')">
+      ${p.fotos.length>1?`<div class="n-destacado-thumbs">${p.fotos.map(f=>`<img class="n-destacado-thumb ${f.id===principal?.id?'activa':''}" src="${esc(f.url)}" onclick="cambiarFotoDestacado(this,'${esc(f.url)}')">`).join('')}</div>`:''}
+    </div>
+    <div>
+      <div class="n-destacado-badge">${ICO.star} Destacado</div>
+      ${cat?`<div class="n-destacado-cat">${esc(cat.nombre)}</div>`:''}
+      <h2 class="n-destacado-nombre">${esc(p.nombre)}</h2>
+      ${p.descripcion?`<p class="n-destacado-desc">${esc(p.descripcion)}</p>`:''}
+      <div class="n-precio-row">
+        <span class="n-precio ${oferta?'oferta':''}">${fmtC(oferta?p.precio_oferta:p.precio)}</span>
+        ${oferta?`<span class="n-tachado">${fmtC(p.precio)}</span>`:''}
+      </div>
+      ${CATALOGO.whatsapp?`<button class="n-btn n-btn-principal" onclick="consultarProducto('${p.id}')">${ICO.chat} Consultar disponibilidad</button>`:''}
+    </div>`;
+  const resto = destacados.slice(1);
+  if (resto.length) { secB.style.display='block'; divA.style.display='block'; const g=document.getElementById('n-grid-mas-destacados'); g.className='n-grid'+(resto.length<=3?' pocas':''); g.innerHTML=resto.map((p,i)=>tarjetaHTML(p,i,resto.length>=3&&i===0)).join(''); }
+  else { secB.style.display='none'; divA.style.display='none'; }
+}
+function cambiarFotoDestacado(el,url){ const img=document.getElementById('n-destacado-img'); img.classList.remove('cargada'); img.onload=()=>img.classList.add('cargada'); img.src=url; document.querySelectorAll('.n-destacado-thumb').forEach(t=>t.classList.remove('activa')); el.classList.add('activa'); }
+function consultarProducto(id){
+  const p = PRODUCTOS.find(x=>x.id===id); if (!p||!CATALOGO.whatsapp) return;
+  const precio = (p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWA(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(precio)}) de su catálogo navideño.`), '_blank');
+}
+
+function renderCategoriasSeccion(){
+  const sec = document.getElementById('n-seccion-categorias');
+  const div = document.getElementById('n-divisor-categorias');
+  if (!CATEGORIAS.length || CATEGORIA_ACTUAL) { sec.style.display='none'; div.style.display='none'; return; }
+  sec.style.display='block'; div.style.display='block';
+  const conteo = {}; PRODUCTOS.forEach(p=>{ if(p.categoria_id) conteo[p.categoria_id]=(conteo[p.categoria_id]||0)+1; });
+  document.getElementById('n-cats-grid').innerHTML = CATEGORIAS.map(cat=>`
+    <div class="n-cat-card ${!cat.imagen_url?'n-cat-sin-foto':''}" onclick="filtrarCategoria('${cat.id}')">
+      ${cat.imagen_url?`<img src="${esc(cat.imagen_url)}" loading="lazy">`:''}
+      <div class="n-cat-card-info">
+        <div class="n-cat-card-nombre">${esc(cat.nombre)}</div>
+        <div class="n-cat-card-count">${conteo[cat.id]||0} producto${(conteo[cat.id]||0)===1?'':'s'}</div>
+      </div>
+    </div>`).join('');
+}
+function filtrarCategoria(id){
+  CATEGORIA_ACTUAL = CATEGORIAS.find(c=>c.id===id)||null; SOLO_FAV=false;
+  renderCategoriasSeccion(); renderMigas(); aplicarFiltro();
+  document.getElementById('n-seccion-productos').scrollIntoView({behavior:'smooth'});
+}
+function volverACategorias(){ CATEGORIA_ACTUAL=null; SOLO_FAV=false; renderCategoriasSeccion(); renderMigas(); aplicarFiltro(); }
+function toggleSoloFavoritos(){ SOLO_FAV=!SOLO_FAV; if(SOLO_FAV) CATEGORIA_ACTUAL=null; renderCategoriasSeccion(); renderMigas(); aplicarFiltro(); }
+function renderMigas(){
+  const el = document.getElementById('n-migas'), btnVolver = document.getElementById('n-btn-volver'), titulo = document.getElementById('n-titulo-productos');
+  if (!CATEGORIA_ACTUAL && !SOLO_FAV) { el.style.display='none'; btnVolver.style.display='none'; titulo.textContent='Todos los productos'; return; }
+  const actual = SOLO_FAV?'Mis favoritos':CATEGORIA_ACTUAL.nombre;
+  el.style.display='block'; el.innerHTML = `<a onclick="volverACategorias()">Inicio</a> › ${esc(actual)}`;
+  btnVolver.style.display = CATEGORIAS.length ? 'inline-block' : 'none';
+  titulo.textContent = actual;
+}
+function onBuscar(v){ TEXTO_BUSQUEDA=v.trim().toLowerCase(); aplicarFiltro(); }
+function onCambiarPrecio(v){
+  PRECIO_MAX=Number(v); const slider=document.getElementById('n-precio-slider');
+  document.getElementById('n-precio-label').textContent = PRECIO_MAX>=Number(slider.max)?'Cualquier precio':'Hasta '+fmtC(PRECIO_MAX);
+  aplicarFiltro();
+}
+function cambiarOrden(v){ ORDEN=v; aplicarFiltro(); }
+function configurarPrecio(){
+  if (!PRODUCTOS.length) return;
+  const real = p=>(p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
+  const max = Math.ceil(Math.max(...PRODUCTOS.map(real)));
+  const s = document.getElementById('n-precio-slider'); s.max=max; s.value=max; PRECIO_MAX=max;
+  document.getElementById('n-precio-label').textContent = 'Hasta '+fmtC(max);
+}
+function renderVistaProductos(){ configurarPrecio(); renderMigas(); aplicarFiltro(); }
+function aplicarFiltro(){
+  let lista = CATEGORIA_ACTUAL ? PRODUCTOS.filter(p=>p.categoria_id===CATEGORIA_ACTUAL.id) : PRODUCTOS.slice();
+  const real = p=>(p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
+  if (SOLO_FAV) lista = lista.filter(p=>FAVORITOS.includes(p.id));
+  if (TEXTO_BUSQUEDA) lista = lista.filter(p=>p.nombre.toLowerCase().includes(TEXTO_BUSQUEDA));
+  if (PRECIO_MAX!=null) lista = lista.filter(p=>real(p)<=PRECIO_MAX);
+  if (ORDEN==='precio_asc') lista.sort((a,b)=>real(a)-real(b));
+  else if (ORDEN==='precio_desc') lista.sort((a,b)=>real(b)-real(a));
+  else if (ORDEN==='nombre') lista.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  else lista.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  renderGrid(lista);
+}
+function tarjetaHTML(p, indice, esGrande){
+  const principal = p.fotos.find(f=>f.es_principal)||p.fotos[0];
+  const cat = CATEGORIAS.find(c=>c.id===p.categoria_id);
+  const oferta = p.etiqueta==='oferta' && p.precio_oferta;
+  const agotado = p.etiqueta==='agotado';
+  const tag = {nuevo:'Nuevo',oferta:'Oferta'}[p.etiqueta];
+  const fav = FAVORITOS.includes(p.id);
+  const retraso = indice!=null ? `style="animation-delay:${Math.min(indice,10)*45}ms"` : '';
+  return `
+    <div class="n-card n-entra ${agotado?'agotada':''} ${esGrande?'grande':''}" ${retraso}>
+      <div class="n-card-media ${principal?'cargando':''}">
+        <div onclick="abrirModal('${p.id}')" style="position:absolute;inset:0;cursor:pointer"></div>
+        ${p.destacado ? `<span class="n-card-tag destacado-tag">${ICO.star} Destacado</span>` : (tag?`<span class="n-card-tag ${p.etiqueta}">${tag}</span>`:'')}
+        <span class="n-card-disp ${agotado?'agotado':''}">${agotado?'Agotado':'Disponible'}</span>
+        <button class="n-fav-btn ${fav?'activo':''}" onclick="event.stopPropagation();toggleFav('${p.id}')">${fav?ICO.heartFill:ICO.heart}</button>
+        ${principal?`<img src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}" onload="this.classList.add('cargada');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">`:''}
+      </div>
+      <div class="n-card-body">
+        ${cat?`<div class="n-card-cat">${esc(cat.nombre)}</div>`:''}
+        <div class="n-card-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+        <div class="n-card-precio-row">
+          <span class="n-card-precio ${oferta?'oferta':''}">${fmtC(oferta?p.precio_oferta:p.precio)}</span>
+          ${oferta?`<span class="n-card-tachado">${fmtC(p.precio)}</span>`:''}
+        </div>
+        ${!agotado?`<div class="n-card-acciones">
+          ${CATALOGO.whatsapp?`<button class="n-card-accion wa" onclick="event.stopPropagation();consultarProducto('${p.id}')">${ICO.chat}</button>`:''}
+          ${CATALOGO.telefono?`<a class="n-card-accion llamar" href="tel:${esc(CATALOGO.telefono)}" onclick="event.stopPropagation();registrarEvento('click_telefono')">${ICO.phone}</a>`:''}
+          <button class="n-card-accion compartir" onclick="event.stopPropagation();compartir('${p.id}')">${ICO.link}</button>
+        </div>`:''}
+      </div>
+    </div>`;
+}
+function renderGrid(lista){
+  document.getElementById('n-conteo-productos').textContent = lista.length?`${lista.length} producto${lista.length===1?'':'s'}`:'';
+  const g = document.getElementById('n-grid-productos');
+  if (!lista.length) { g.innerHTML = `<div class="n-vacio">Todavía no hay productos aquí.</div>`; return; }
+  g.className = 'n-grid'+(lista.length<=3?' pocas':'');
+  g.innerHTML = lista.map((p,i)=>tarjetaHTML(p,i)).join('');
+}
+function toggleFav(id){
+  const i = FAVORITOS.indexOf(id); if (i===-1) FAVORITOS.push(id); else FAVORITOS.splice(i,1);
+  localStorage.setItem('n_favoritos', JSON.stringify(FAVORITOS));
+  aplicarFiltro(); actualizarFavBadge();
+}
+function actualizarFavBadge(){ const b=document.getElementById('n-header-fav-badge'); b.textContent=FAVORITOS.length; b.style.display=FAVORITOS.length?'flex':'none'; }
+function compartir(id){
+  const p = PRODUCTOS.find(x=>x.id===id); if (!p) return;
+  const url = `${location.href.split('#')[0]}#producto-${id}`;
+  if (navigator.share) navigator.share({title:p.nombre, text:`${p.nombre} — ${fmtC(p.precio)}`, url}).catch(()=>{});
+  else if (navigator.clipboard) { navigator.clipboard.writeText(url); mostrarToast('Enlace copiado'); }
+}
+
+function registrarVisto(id){
+  VISTOS = VISTOS.filter(v=>v!==id); VISTOS.unshift(id); VISTOS=VISTOS.slice(0,8);
+  localStorage.setItem('n_vistos', JSON.stringify(VISTOS));
+  renderVistos();
+}
+function renderVistos(){
+  const sec = document.getElementById('n-seccion-vistos');
+  const div = document.getElementById('n-divisor-vistos');
+  const validos = VISTOS.filter(id=>PRODUCTOS.some(p=>p.id===id));
+  if (validos.length<2) { sec.style.display='none'; div.style.display='none'; return; }
+  sec.style.display='block'; div.style.display='block';
+  const lista = validos.map(id=>PRODUCTOS.find(p=>p.id===id)).filter(Boolean);
+  const g = document.getElementById('n-grid-vistos'); g.className='n-grid'+(lista.length<=3?' pocas':''); g.innerHTML=lista.map((p,i)=>tarjetaHTML(p,i)).join('');
+}
+
+function abrirModal(id){
+  const p = PRODUCTOS.find(x=>x.id===id); if (!p) return;
+  registrarEvento('vista_producto', id); registrarVisto(id);
+  const cat = CATEGORIAS.find(c=>c.id===p.categoria_id);
+  const oferta = p.etiqueta==='oferta' && p.precio_oferta;
+  const catEl = document.getElementById('n-modal-cat'); catEl.textContent=cat?cat.nombre:''; catEl.style.display=cat?'block':'none';
+  document.getElementById('n-modal-nombre').textContent = p.nombre;
+  document.getElementById('n-modal-precio').textContent = fmtC(oferta?p.precio_oferta:p.precio);
+  document.getElementById('n-modal-precio').className = 'n-precio'+(oferta?' oferta':'');
+  const t = document.getElementById('n-modal-tachado'); t.style.display=oferta?'inline':'none'; if(oferta) t.textContent=fmtC(p.precio);
+  document.getElementById('n-modal-desc').textContent = p.descripcion||'';
+  FOTOS_MODAL_ACTUAL = p.fotos.map(f=>f.url);
+  document.getElementById('n-modal-fotos').innerHTML = p.fotos.length?p.fotos.map(f=>`<img src="${esc(f.url)}">`).join(''):'';
+  const btn = document.getElementById('n-modal-whatsapp');
+  if (CATALOGO.whatsapp && p.etiqueta!=='agotado') { btn.style.display='flex'; btn.disabled=false; btn.innerHTML=ICO.chat+' Consultar por WhatsApp'; btn.onclick=()=>consultarProducto(p.id); }
+  else if (p.etiqueta==='agotado') { btn.style.display='flex'; btn.disabled=true; btn.textContent='Agotado por ahora'; btn.onclick=null; }
+  else btn.style.display='none';
+  renderRelacionados(p);
+  document.getElementById('n-modal').classList.add('open');
+}
+function cerrarModal(){ document.getElementById('n-modal').classList.remove('open'); }
+function indexFotoClic(ev){ const img=ev.target.closest('img'); if(!img) return 0; return Array.from(img.parentElement.children).indexOf(img); }
+function renderRelacionados(p){
+  const wrap = document.getElementById('n-relacionados-wrap');
+  if (!p.categoria_id) { wrap.style.display='none'; return; }
+  const rel = PRODUCTOS.filter(x=>x.id!==p.id && x.categoria_id===p.categoria_id).slice(0,6);
+  if (!rel.length) { wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  document.getElementById('n-relacionados').innerHTML = rel.map(r=>{
+    const f = r.fotos.find(x=>x.es_principal)||r.fotos[0];
+    return `<div class="n-relacionado" onclick="abrirModal('${r.id}')">${f?`<img src="${esc(f.url)}" loading="lazy">`:`<div style="width:108px;height:108px;background:var(--surface-2);border-radius:10px"></div>`}<div class="nom">${esc(r.nombre)}</div><div class="prc">${fmtC(r.precio)}</div></div>`;
+  }).join('');
+}
+
+function abrirLightbox(fotos, idx){ if(!fotos||!fotos.length) return; LB_FOTOS=fotos; LB_INDICE=idx||0; document.getElementById('n-lightbox-img').src=LB_FOTOS[LB_INDICE]; document.getElementById('n-lightbox-contador').textContent=`${LB_INDICE+1} / ${LB_FOTOS.length}`; document.getElementById('n-lightbox').classList.add('open'); }
+function cerrarLightbox(){ document.getElementById('n-lightbox').classList.remove('open'); }
+function moverLightbox(d){ LB_INDICE=(LB_INDICE+d+LB_FOTOS.length)%LB_FOTOS.length; document.getElementById('n-lightbox-img').src=LB_FOTOS[LB_INDICE]; document.getElementById('n-lightbox-contador').textContent=`${LB_INDICE+1} / ${LB_FOTOS.length}`; }
+(function(){
+  let inicioX = null;
+  const lb = document.getElementById('n-lightbox');
+  lb.addEventListener('touchstart', e => { inicioX = e.touches[0].clientX; }, { passive:true });
+  lb.addEventListener('touchend', e => {
+    if (inicioX == null) return;
+    const delta = e.changedTouches[0].clientX - inicioX;
+    if (Math.abs(delta) > 50) moverLightbox(delta > 0 ? -1 : 1);
+    inicioX = null;
+  }, { passive:true });
+})();
+document.addEventListener('keydown', e=>{
+  if (document.getElementById('n-lightbox').classList.contains('open')) {
+    if (e.key==='Escape') cerrarLightbox(); if (e.key==='ArrowLeft') moverLightbox(-1); if (e.key==='ArrowRight') moverLightbox(1);
+    return;
+  }
+  if (e.key==='Escape' && document.getElementById('n-modal').classList.contains('open')) cerrarModal();
+});
+
+init();
+</script>
+</body>
+</html>

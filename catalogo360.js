@@ -636,6 +636,7 @@ const PALETAS_CATALOGO360 = [
 const PLANTILLAS_CATALOGO360 = [
   { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true, archivo:'c360.html' },
   { key:'plantilla2', nombre:'Vibrante', icono:'✨', desc:'Clara, colorida, con degradados y burbujas animadas.', disponible:true, archivo:'c360-vibrante.html' },
+  { key:'navidad', nombre:'Navidad', icono:'🎄', desc:'Cálida y editorial -- vino, verde pino, crema y dorado.', disponible:true, archivo:'c360-navidad.html' },
 ];
 function archivoDePlantilla(key) {
   return PLANTILLAS_CATALOGO360.find(p => p.key === key)?.archivo || 'c360.html';
