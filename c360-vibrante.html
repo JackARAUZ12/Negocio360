@@ -85,7 +85,7 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
   width:72px; height:72px; border-radius:50%; overflow:hidden; border:3px solid rgba(255,255,255,.5); box-shadow:0 12px 32px rgba(0,0,0,.25);
   animation:v-splash-logo-in .7s cubic-bezier(.22,1.4,.36,1) both;
 }
-.v-splash-logo-wrap img { width:100%; height:100%; object-fit:cover; }
+.v-splash-logo-wrap img { display:none; width:100%; height:100%; object-fit:cover; position:relative; z-index:1; }
 .v-splash-eyebrow {
   position:relative; z-index:1; color:rgba(255,255,255,.85); font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
   animation:v-splash-fade-up .5s ease .1s both;
@@ -95,7 +95,13 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
   font-size:clamp(24px,4.4vw,38px); margin:0; max-width:16ch; animation:v-splash-fade-up .55s ease .2s both;
 }
 .v-splash-barra-wrap { position:relative; z-index:1; width:180px; height:4px; border-radius:999px; background:rgba(255,255,255,.25); overflow:hidden; margin-top:8px; animation:v-splash-fade-up .5s ease .35s both; }
-.v-splash-barra { height:100%; background:#fff; border-radius:999px; width:0%; animation:v-splash-barra-fill 1.6s cubic-bezier(.22,.8,.36,1) forwards; }
+.v-splash-barra { height:100%; background:#fff; border-radius:999px; width:0%; animation:v-splash-barra-fill 10s cubic-bezier(.16,.8,.3,1) forwards; }
+.v-splash-porcentaje { position:relative; z-index:1; color:rgba(255,255,255,.75); font-family:var(--font-display); font-size:13px; margin-top:2px; animation:v-splash-fade-up .5s ease .4s both; }
+.v-splash-mensaje { position:relative; z-index:1; color:rgba(255,255,255,.9); font-size:12.5px; font-weight:600; min-height:18px; margin-top:6px; animation:v-splash-fade-up .5s ease .3s both; }
+@keyframes v-splash-msg-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.v-splash-msg-activo { animation:v-splash-msg-in .4s ease; }
+@keyframes v-splash-anillo { to { transform:rotate(360deg); } }
+.v-splash-anillo { position:absolute; inset:-8px; border-radius:50%; border:2px solid transparent; border-top-color:rgba(255,255,255,.6); animation:v-splash-anillo 1.4s linear infinite; }
 @keyframes v-sk-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
 .v-sk { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:v-sk-shimmer 1.4s infinite; border-radius:12px; }
 .v-loader-vacio { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:70vh; gap:var(--sp-4); color:var(--text-2); font-size:14px; text-align:center; padding:0 var(--sp-5); }
@@ -204,7 +210,15 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 .v-cat-tile.activo span { color:var(--accent); font-weight:800; }
 
 /* ===== SECCIONES ===== */
-.v-seccion { padding:var(--sp-8) 0; }
+.v-seccion { padding:var(--sp-8) 0; position:relative; }
+.v-divisor {
+  position:relative; height:1px; background:linear-gradient(90deg, transparent, var(--border) 15%, var(--border) 85%, transparent);
+}
+.v-divisor::before {
+  content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(45deg); width:9px; height:9px;
+  background:var(--accent); border:2px solid var(--bg);
+}
+.v-divisor.v-divisor-oro::before { background:linear-gradient(135deg,var(--oro),var(--oro-oscuro)); }
 .v-tinte-a { background:var(--bg); }
 .v-tinte-b { background:linear-gradient(180deg, rgba(var(--accent-rgb),.06), rgba(var(--accent-rgb),.02)); }
 .v-seccion-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--sp-6); gap:var(--sp-4); flex-wrap:wrap; }
@@ -234,10 +248,12 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 /* ===== TARJETAS ===== */
 @keyframes v-card-in { from { opacity:0; transform:translateY(18px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
 .v-card.v-entra { animation:v-card-in .5s cubic-bezier(.22,1,.36,1) backwards; }
-.v-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-4); }
+.v-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
 @media (min-width:640px) { .v-grid { grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:var(--sp-5); } }
 .v-grid.pocas { grid-template-columns:repeat(auto-fit, minmax(220px,280px)); justify-content:center; }
-.v-card.grande { grid-column:span 2; }
+@media (max-width:639px) { .v-grid.pocas { grid-template-columns:repeat(4,1fr); justify-content:initial; } }
+.v-card.grande { grid-column:span 4; }
+@media (min-width:640px) { .v-card.grande { grid-column:span 2; } }
 .v-card.grande .v-card-media { aspect-ratio:16/9; }
 @media (min-width:640px) { .v-card.grande .v-card-media { aspect-ratio:2/1; } }
 .v-card {
@@ -245,36 +261,47 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
   overflow:hidden; cursor:pointer; transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s; display:flex; flex-direction:column;
 }
 .v-card:hover { transform:translateY(-8px); box-shadow:var(--shadow-glow); }
-.v-card.destacada { background:linear-gradient(165deg, var(--oro-claro), var(--surface) 55%); border-color:var(--oro); box-shadow:0 8px 24px -10px rgba(212,169,76,.4); }
-.v-card.destacada:hover { box-shadow:0 20px 44px -12px rgba(212,169,76,.55); }
+.v-card.destacada { background:linear-gradient(165deg, var(--oro-claro), var(--surface) 70%); border:2px solid var(--oro); box-shadow:0 10px 28px -8px rgba(212,169,76,.55); }
+.v-card.destacada:hover { box-shadow:0 22px 48px -10px rgba(212,169,76,.7); border-color:var(--oro-oscuro); }
+.v-card.destacada .v-card-media { box-shadow:inset 0 0 0 1px rgba(212,169,76,.3); }
 .v-card-tag.destacado-tag { position:absolute; top:8px; left:8px; font-size:10px; font-weight:800; padding:4px 10px; border-radius:999px; background:linear-gradient(135deg,var(--oro),var(--oro-oscuro)); color:#fff; display:flex; align-items:center; gap:4px; }
 @keyframes v-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
-.v-card-media { position:relative; margin:var(--sp-3); border-radius:var(--radius-md); overflow:hidden; aspect-ratio:1/1; background:var(--surface-2); }
+.v-card-media { position:relative; margin:6px; border-radius:var(--radius-sm); overflow:hidden; aspect-ratio:1/1; background:var(--surface-2); }
+@media (min-width:640px) { .v-card-media { margin:var(--sp-3); border-radius:var(--radius-md); } }
 .v-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:v-shimmer 1.4s infinite; }
 .v-card-media img { width:100%; height:100%; object-fit:cover; transition:transform .5s cubic-bezier(.22,1,.36,1), opacity .4s ease; opacity:0; }
 .v-card-media img.cargada { opacity:1; }
 .v-card:hover .v-card-media img { transform:scale(1.08); }
-.v-card-tag { position:absolute; top:8px; left:8px; font-size:10px; font-weight:800; padding:4px 10px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow-soft); }
+.v-card-tag { position:absolute; top:4px; left:4px; font-size:8px; font-weight:800; padding:2px 6px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow-soft); }
+@media (min-width:640px) { .v-card-tag { top:8px; left:8px; font-size:10px; padding:4px 10px; } }
 .v-card-tag.oferta { background:var(--danger); color:#fff; }
 .v-card-tag.nuevo { background:var(--accent); color:#fff; }
-.v-card-disp { position:absolute; top:8px; right:8px; font-size:9.5px; font-weight:800; padding:4px 9px; border-radius:999px; background:rgba(255,255,255,.9); color:var(--disponible); }
-.v-card-disp.agotado { color:var(--danger); }
+.v-card-disp { display:none; position:absolute; top:8px; right:8px; font-size:9.5px; font-weight:800; padding:4px 9px; border-radius:999px; background:rgba(255,255,255,.9); color:var(--disponible); }
+.v-card-disp.agotado { display:block; font-size:8px; padding:2px 6px; top:4px; right:4px; }
+@media (min-width:640px) { .v-card-disp { display:block; } .v-card-disp.agotado { font-size:9.5px; padding:4px 9px; top:8px; right:8px; } }
 .v-card.agotada .v-card-media { opacity:.5; }
 .v-fav-btn {
-  position:absolute; bottom:8px; right:8px; width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.92);
-  border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; box-shadow:var(--shadow-soft);
+  position:absolute; bottom:2px; right:2px; width:22px; height:22px; border-radius:50%; background:rgba(255,255,255,.92);
+  border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:10px; box-shadow:var(--shadow-soft);
   transition:transform .2s;
 }
+@media (min-width:640px) { .v-fav-btn { bottom:8px; right:8px; width:32px; height:32px; font-size:14px; } }
 .v-fav-btn:hover { transform:scale(1.15); }
 .v-fav-btn.activo { color:var(--danger); }
-.v-card-body { padding:0 var(--sp-4) var(--sp-4); display:flex; flex-direction:column; gap:3px; flex:1; }
-.v-card-cat { font-size:10.5px; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
-.v-card-nombre { font-size:14.5px; font-weight:700; line-height:1.3; margin:2px 0 6px; }
+.v-card-body { padding:0 6px 8px; display:flex; flex-direction:column; gap:2px; flex:1; }
+@media (min-width:640px) { .v-card-body { padding:0 var(--sp-4) var(--sp-4); gap:3px; } }
+.v-card-cat { display:none; font-size:10.5px; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+@media (min-width:640px) { .v-card-cat { display:block; } }
+.v-card-nombre { font-size:11px; font-weight:700; line-height:1.25; margin:2px 0 4px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+@media (min-width:640px) { .v-card-nombre { font-size:14.5px; margin:2px 0 6px; } }
 .v-card-precio-row { display:flex; align-items:baseline; gap:6px; margin-top:auto; }
-.v-card-precio { font-weight:800; font-size:15.5px; }
+.v-card-precio { font-weight:800; font-size:11.5px; }
+@media (min-width:640px) { .v-card-precio { font-size:15.5px; } }
 .v-card-precio.oferta { color:var(--danger); }
-.v-card-tachado { font-size:11.5px; color:var(--text-3); text-decoration:line-through; }
-.v-card-acciones { display:flex; gap:6px; margin-top:var(--sp-3); }
+.v-card-tachado { display:none; font-size:11.5px; color:var(--text-3); text-decoration:line-through; }
+@media (min-width:640px) { .v-card-tachado { display:inline; } }
+.v-card-acciones { display:none; gap:6px; margin-top:var(--sp-3); }
+@media (min-width:640px) { .v-card-acciones { display:flex; } }
 .v-card-accion {
   flex:1; padding:9px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface-2);
   color:var(--text-2); font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; transition:all .15s;
@@ -379,10 +406,12 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 <div id="v-splash" class="v-splash">
   <div class="v-splash-orbe a"></div>
   <div class="v-splash-orbe b"></div>
-  <div class="v-splash-logo-wrap" id="v-splash-logo-wrap" style="display:none"><img id="v-splash-logo" src="" alt=""></div>
+  <div class="v-splash-logo-wrap" id="v-splash-logo-wrap" style="position:relative"><div class="v-splash-anillo"></div><img id="v-splash-logo" src="" alt=""></div>
   <div class="v-splash-eyebrow">Catálogo digital</div>
   <h1 class="v-splash-titulo">Bienvenido a <span id="v-splash-nombre">tu catálogo</span></h1>
+  <div class="v-splash-mensaje" id="v-splash-mensaje">Preparando tu experiencia…</div>
   <div class="v-splash-barra-wrap"><div class="v-splash-barra" id="v-splash-barra"></div></div>
+  <div class="v-splash-porcentaje" id="v-splash-porcentaje">0%</div>
 </div>
 
 <div id="v-loader" class="v-loader-skeleton">
@@ -443,6 +472,8 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
     </div>
   </section>
 
+  <div class="v-divisor"></div>
+
   <section class="v-seccion v-tinte-a">
     <div class="v-wrap">
       <div class="v-confianza-in v-confianza">
@@ -454,12 +485,16 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
     </div>
   </section>
 
+  <div class="v-divisor v-divisor-oro"></div>
+
   <section class="v-seccion v-reveal v-tinte-b" id="v-seccion-destacado" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Producto <span>destacado</span></span></div>
       <div class="v-destacado" id="v-destacado"></div>
     </div>
   </section>
+
+  <div class="v-divisor v-divisor-oro" id="v-divisor-destacados" style="display:none"></div>
 
   <section class="v-seccion v-reveal v-tinte-a" id="v-seccion-mas-destacados" style="display:none">
     <div class="v-wrap">
@@ -468,6 +503,8 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
     </div>
   </section>
 
+  <div class="v-divisor" id="v-divisor-vistos" style="display:none"></div>
+
   <section class="v-seccion v-reveal v-tinte-b" id="v-seccion-vistos" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Vistos recientemente</span></div>
@@ -475,12 +512,16 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
     </div>
   </section>
 
+  <div class="v-divisor" id="v-divisor-categorias" style="display:none"></div>
+
   <section class="v-seccion v-reveal v-tinte-a" id="v-seccion-categorias" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Explora por categoría</span></div>
       <div class="v-cats-scroll" id="v-cats-scroll"></div>
     </div>
   </section>
+
+  <div class="v-divisor"></div>
 
   <section class="v-seccion v-reveal" id="v-seccion-productos">
     <div class="v-wrap">
@@ -671,7 +712,7 @@ async function init(){
   document.getElementById('v-splash-nombre').textContent = catalogo.nombre_comercial || catalogo.nombre;
   if (catalogo.logo_url) {
     document.getElementById('v-splash-logo').src = catalogo.logo_url;
-    document.getElementById('v-splash-logo-wrap').style.display = 'block';
+    document.getElementById('v-splash-logo').style.display = 'block';
   }
 
   document.documentElement.style.setProperty('--accent', catalogo.color_acento || '#6d5ef8');
@@ -692,11 +733,42 @@ async function init(){
   document.getElementById('v-loader').style.display='none';
   document.getElementById('v-app').style.display='block';
   activarRevelado();
+  animarSecuenciaBienvenida(catalogo.nombre_comercial || catalogo.nombre);
+}
+function animarSecuenciaBienvenida(nombre){
+  const DURACION_MS = 10000;
+  const mensajes = [
+    'Preparando tu experiencia…',
+    `Cargando el catálogo de ${nombre}…`,
+    `${PRODUCTOS.length} producto${PRODUCTOS.length===1?'':'s'} listos para ti…`,
+    'Afinando los últimos detalles…',
+    'Casi listo…',
+  ];
+  const elMensaje = document.getElementById('v-splash-mensaje');
+  const elPorcentaje = document.getElementById('v-splash-porcentaje');
+  let i = 0;
+  const intervaloMensajes = setInterval(() => {
+    i = (i + 1) % mensajes.length;
+    elMensaje.textContent = mensajes[i];
+    elMensaje.classList.remove('v-splash-msg-activo'); void elMensaje.offsetWidth; elMensaje.classList.add('v-splash-msg-activo');
+  }, DURACION_MS / mensajes.length);
+  elMensaje.textContent = mensajes[0];
+
+  const inicio = performance.now();
+  function pasoPorcentaje(ahora){
+    const t = Math.min(1, (ahora-inicio)/DURACION_MS);
+    elPorcentaje.textContent = Math.round(t*100) + '%';
+    if (t < 1) requestAnimationFrame(pasoPorcentaje);
+  }
+  requestAnimationFrame(pasoPorcentaje);
+
   setTimeout(() => {
+    clearInterval(intervaloMensajes);
     const splash = document.getElementById('v-splash');
+    if (!splash) return;
     splash.classList.add('v-splash-oculto');
     setTimeout(() => splash.remove(), 550);
-  }, 900);
+  }, DURACION_MS);
 }
 function ocultarSplashInmediato(){
   const splash = document.getElementById('v-splash');
@@ -821,8 +893,8 @@ function renderDestacado(){
       ${CATALOGO.whatsapp?`<button class="v-btn" onclick="consultarProducto('${p.id}')">${ICO.chat} Consultar disponibilidad</button>`:''}
     </div>`;
   const resto = destacados.slice(1);
-  if (resto.length) { secB.style.display='block'; const g=document.getElementById('v-grid-mas-destacados'); g.className='v-grid'+(resto.length<=3?' pocas':''); g.innerHTML=resto.map((p,i)=>tarjetaHTML(p,i,resto.length>=3&&i===0)).join(''); }
-  else secB.style.display='none';
+  if (resto.length) { secB.style.display='block'; document.getElementById('v-divisor-destacados').style.display='block'; const g=document.getElementById('v-grid-mas-destacados'); g.className='v-grid'+(resto.length<=3?' pocas':''); g.innerHTML=resto.map((p,i)=>tarjetaHTML(p,i,resto.length>=3&&i===0)).join(''); }
+  else { secB.style.display='none'; document.getElementById('v-divisor-destacados').style.display='none'; }
 }
 function cambiarFotoDestacado(el,url){ const img=document.getElementById('v-destacado-img'); img.classList.remove('cargada'); img.onload=()=>img.classList.add('cargada'); img.src=url; document.querySelectorAll('.v-destacado-thumb').forEach(t=>t.classList.remove('activa')); el.classList.add('activa'); }
 function consultarProducto(id){
@@ -835,8 +907,8 @@ function consultarProducto(id){
 const ICONOS_CAT = [ICO.tag, ICO.bag, ICO.star, ICO.tag, ICO.tag, ICO.bag, ICO.tag, ICO.bag, ICO.tag, ICO.tag, ICO.star, ICO.tag];
 function renderCategoriasSeccion(){
   const sec = document.getElementById('v-seccion-categorias');
-  if (!CATEGORIAS.length || CATEGORIA_ACTUAL) { sec.style.display='none'; return; }
-  sec.style.display='block';
+  if (!CATEGORIAS.length || CATEGORIA_ACTUAL) { sec.style.display='none'; document.getElementById('v-divisor-categorias').style.display='none'; return; }
+  sec.style.display='block'; document.getElementById('v-divisor-categorias').style.display='block';
   const conteo = {}; PRODUCTOS.forEach(p=>{ if(p.categoria_id) conteo[p.categoria_id]=(conteo[p.categoria_id]||0)+1; });
   document.getElementById('v-cats-scroll').innerHTML = CATEGORIAS.map((cat,i)=>`
     <div class="v-cat-tile" onclick="filtrarCategoria('${cat.id}')">
@@ -951,8 +1023,8 @@ function registrarVisto(id){
 function renderVistos(){
   const sec = document.getElementById('v-seccion-vistos');
   const validos = VISTOS.filter(id=>PRODUCTOS.some(p=>p.id===id));
-  if (validos.length<2) { sec.style.display='none'; return; }
-  sec.style.display='block';
+  if (validos.length<2) { sec.style.display='none'; document.getElementById('v-divisor-vistos').style.display='none'; return; }
+  sec.style.display='block'; document.getElementById('v-divisor-vistos').style.display='block';
   const lista = validos.map(id=>PRODUCTOS.find(p=>p.id===id)).filter(Boolean);
   const g = document.getElementById('v-grid-vistos'); g.className='v-grid'+(lista.length<=3?' pocas':''); g.innerHTML=lista.map((p,i)=>tarjetaHTML(p,i)).join('');
 }
