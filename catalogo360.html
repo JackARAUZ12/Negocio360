@@ -1034,6 +1034,15 @@
     .c360-mini-card-catalogo img { width:100%; height:90px; object-fit:cover; background:var(--bg-app); }
     .c360-paleta-btn { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:var(--radius-md); border:2px solid var(--border); background:var(--bg-app); cursor:pointer; font-size:12px; font-weight:600; color:var(--text-secondary); transition:border-color .15s; }
     .c360-paleta-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
+    .c360-plantilla-card { border:2px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; cursor:pointer; transition:border-color .15s; background:var(--bg-app); }
+    .c360-plantilla-card.activa { border-color:var(--accent); }
+    .c360-plantilla-card.deshabilitada { cursor:not-allowed; opacity:.55; }
+    .c360-plantilla-preview { height:110px; display:flex; align-items:center; justify-content:center; font-size:28px; }
+    .c360-plantilla-info { padding:10px 12px; }
+    .c360-plantilla-nombre { font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px; }
+    .c360-plantilla-badge { font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px; background:var(--accent); color:#fff; }
+    .c360-plantilla-badge.proximamente { background:var(--border); color:var(--text-muted); }
+    .c360-plantilla-desc { font-size:11px; color:var(--text-muted); margin-top:2px; }
     .c360-paleta-swatch { width:18px; height:18px; border-radius:50%; flex-shrink:0; }
     @media (max-width: 980px) {
       #c360-layout-principal { grid-template-columns: 1fr !important; }
@@ -1442,6 +1451,13 @@
 
         <!-- TAB: APARIENCIA -->
         <div id="c360-tab-apariencia" class="c360-tab-panel" style="display:none">
+          <div class="panel-card" style="padding:20px;margin-top:16px;max-width:720px">
+            <div class="form-group">
+              <label>Plantilla de tu catálogo</label>
+              <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 12px">Elige el diseño con el que tus clientes verán tu catálogo público. Con un clic, tus productos se acomodan solos en la plantilla elegida.</p>
+              <div id="c360-a-plantillas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
+            </div>
+          </div>
           <div class="panel-card" style="padding:20px;margin-top:16px;max-width:480px">
             <div class="form-group">
               <label>Banner de portada</label>
@@ -1635,7 +1651,7 @@
 </div><!-- /app -->
 
 <script src="qrcode-lib.js"></script>
-<script src="catalogo360.js?v=20260901j"></script>
+<script src="catalogo360.js?v=20260901k"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
 <script src="modulos-guard.js"></script>

@@ -629,13 +629,48 @@ const PALETAS_CATALOGO360 = [
   { nombre: 'Grafito',      color: '#475569' },
 ];
 
+// Plantillas disponibles del catálogo público -- por ahora solo una
+// esta terminada y lista para usar; la segunda queda preparada como
+// "Próximamente" para cuando se construya.
+const PLANTILLAS_CATALOGO360 = [
+  { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true },
+  { key:'plantilla2', nombre:'Plantilla 2', icono:'🧩', desc:'Próximamente.', disponible:false },
+];
+
 function cargarTabApariencia() {
   const c = STATE.catalogoActual;
+  renderPlantillasApariencia(c.plantilla || 'profesional');
   document.getElementById('c360-a-color').value = c.color_acento || '#6366f1';
   renderPaletasApariencia(c.color_acento || '#6366f1');
   elegirTemaCatalogo(c.tema_default || 'claro', false);
   const banEl = document.getElementById('c360-a-banner-preview');
   if (c.banner_url) { banEl.src = c.banner_url; banEl.style.display = 'block'; } else { banEl.style.display = 'none'; }
+}
+
+function renderPlantillasApariencia(plantillaActiva) {
+  document.getElementById('c360-a-plantillas').innerHTML = PLANTILLAS_CATALOGO360.map(p => `
+    <div class="c360-plantilla-card ${p.key===plantillaActiva?'activa':''} ${!p.disponible?'deshabilitada':''}"
+         onclick="${p.disponible ? `elegirPlantilla('${p.key}')` : ''}">
+      <div class="c360-plantilla-preview" style="background:${p.disponible?'linear-gradient(135deg,#14161f,#1b1f29)':'var(--bg-app)'};color:${p.disponible?'#fff':'inherit'}">${p.icono}</div>
+      <div class="c360-plantilla-info">
+        <div class="c360-plantilla-nombre">${esc(p.nombre)} ${p.key===plantillaActiva?'<span class="c360-plantilla-badge">Activa</span>':(!p.disponible?'<span class="c360-plantilla-badge proximamente">Próximamente</span>':'')}</div>
+        <div class="c360-plantilla-desc">${esc(p.desc)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function elegirPlantilla(key) {
+  try {
+    const { error } = await sb.from('catalogos').update({ plantilla: key, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    STATE.catalogoActual.plantilla = key;
+    renderPlantillasApariencia(key);
+    showToast('✅ Plantilla aplicada — tus productos ya se acomodaron en ella');
+  } catch (e) {
+    console.error('elegirPlantilla:', e);
+    showToast('No se pudo cambiar la plantilla: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
 }
 
 function renderPaletasApariencia(colorActivo) {
