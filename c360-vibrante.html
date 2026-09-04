@@ -40,18 +40,22 @@
   --font: 'Outfit', sans-serif;
   --font-display: 'Playfair Display', Georgia, serif;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px; --sp-8:48px; --sp-9:64px; --sp-10:96px;
-  --shadow-soft: 0 8px 24px -8px rgba(20,20,40,.10);
-  --shadow-glow: 0 20px 50px -12px rgba(var(--accent-rgb),.35);
+  --shadow-soft: 0 1px 2px rgba(20,20,40,.06), 0 4px 8px rgba(20,20,40,.06), 0 12px 24px -8px rgba(20,20,40,.12);
+  --shadow-glow: 0 2px 4px rgba(20,20,40,.06), 0 8px 16px -4px rgba(var(--accent-rgb),.18), 0 24px 48px -12px rgba(var(--accent-rgb),.35);
   --max-w: 1320px;
 }
 html[data-theme="oscuro"] {
   --bg: #0f1020; --surface: #171833; --surface-2: #1f2140; --border: #2b2d54;
   --text: #f3f3fb; --text-2: #b3b5d6; --text-3: #767aa3;
-  --shadow-soft: 0 8px 24px -8px rgba(0,0,0,.4); --shadow-glow: 0 24px 60px -12px rgba(var(--accent-rgb),.45);
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.3), 0 4px 10px rgba(0,0,0,.3), 0 14px 28px -8px rgba(0,0,0,.4); --shadow-glow: 0 2px 4px rgba(0,0,0,.3), 0 10px 20px -4px rgba(var(--accent-rgb),.25), 0 28px 56px -12px rgba(var(--accent-rgb),.45);
 }
 * { box-sizing:border-box; }
 html { scroll-behavior:smooth; }
-body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); transition:background .3s,color .3s; overflow-x:hidden; }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); transition:background .3s,color .3s; overflow-x:hidden; position:relative; }
+body::after {
+  content:''; position:fixed; inset:0; z-index:9999; pointer-events:none; opacity:.025; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
 img { max-width:100%; display:block; }
 a { color:inherit; text-decoration:none; }
 button { font-family:inherit; }
@@ -135,6 +139,11 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 
 /* ===== HERO ===== */
 .v-hero { position:relative; overflow:hidden; padding:var(--sp-8) 0 var(--sp-9); }
+.v-hero-spotlight {
+  position:absolute; inset:0; z-index:0; pointer-events:none; opacity:0; transition:opacity .4s ease;
+  background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%), rgba(var(--accent-rgb),.14), transparent 70%);
+}
+@media (min-width:900px) { .v-hero:hover .v-hero-spotlight { opacity:1; } }
 .v-hero-grid { display:flex; flex-direction:column; gap:var(--sp-7); align-items:center; }
 @media (min-width:900px) { .v-hero-grid { flex-direction:row; align-items:center; text-align:left; gap:var(--sp-9); } }
 .v-hero-in { position:relative; z-index:1; max-width:560px; text-align:center; }
@@ -264,10 +273,11 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 .v-card.grande .v-card-media { aspect-ratio:16/9; }
 @media (min-width:640px) { .v-card.grande .v-card-media { aspect-ratio:2/1; } }
 .v-card {
-  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-  overflow:hidden; cursor:pointer; transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s; display:flex; flex-direction:column;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); will-change:transform;
+  overflow:hidden; cursor:pointer; transition:transform .35s cubic-bezier(.22,1,.36,1), box-shadow .35s; display:flex; flex-direction:column;
+  transform-style:preserve-3d;
 }
-.v-card:hover { transform:translateY(-8px); box-shadow:var(--shadow-glow); }
+.v-card:hover { box-shadow:var(--shadow-glow); }
 .v-card.destacada { background:linear-gradient(165deg, var(--oro-claro), var(--surface) 70%); border:2px solid var(--oro); box-shadow:0 10px 28px -8px rgba(212,169,76,.55); }
 .v-card.destacada:hover { box-shadow:0 22px 48px -10px rgba(212,169,76,.7); border-color:var(--oro-oscuro); }
 .v-card.destacada .v-card-media { box-shadow:inset 0 0 0 1px rgba(212,169,76,.3); }
@@ -464,6 +474,8 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
   </nav>
 
   <section class="v-hero" id="v-hero">
+    <div class="v-hero-spotlight" id="v-hero-spotlight"></div>
+
     <div class="v-wrap v-hero-grid">
       <div class="v-hero-in">
         <div class="v-hero-eyebrow" id="v-hero-eyebrow"><span class="v-eyebrow-dot"></span>Catálogo digital</div>
@@ -1094,6 +1106,38 @@ document.addEventListener('keydown', e=>{
   if (e.key==='Escape' && document.getElementById('v-modal').classList.contains('open')) cerrarModal();
 });
 
+// Inclinacion 3D de tarjetas al mover el mouse -- con delegacion de
+// eventos para que funcione tambien con tarjetas que se re-renderizan
+// al filtrar. Solo en dispositivos con mouse real (no tactil).
+if (window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
+  let tarjetaActiva = null;
+  document.addEventListener('mousemove', (e) => {
+    const card = e.target.closest('.v-card');
+    if (card !== tarjetaActiva) {
+      if (tarjetaActiva) tarjetaActiva.style.transform = '';
+      tarjetaActiva = card;
+    }
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    card.style.transform = `perspective(900px) rotateX(${(-py*7).toFixed(2)}deg) rotateY(${(px*7).toFixed(2)}deg) translateY(-8px) scale(1.015)`;
+  });
+  document.addEventListener('mouseleave', () => { if (tarjetaActiva) { tarjetaActiva.style.transform = ''; tarjetaActiva = null; } }, true);
+}
+let _tickingSpotlight = false;
+const _heroEl = document.getElementById('v-hero');
+_heroEl.addEventListener('mousemove', (e) => {
+  if (_tickingSpotlight) return; _tickingSpotlight = true;
+  const clientX = e.clientX, clientY = e.clientY;
+  requestAnimationFrame(() => {
+    const r = _heroEl.getBoundingClientRect();
+    const spot = document.getElementById('v-hero-spotlight');
+    spot.style.setProperty('--mx', `${clientX - r.left}px`);
+    spot.style.setProperty('--my', `${clientY - r.top}px`);
+    _tickingSpotlight = false;
+  });
+});
 let _tickingParallax = false;
 window.addEventListener('scroll', () => {
   if (_tickingParallax) return; _tickingParallax = true;
