@@ -29,6 +29,9 @@
   --accent-light: color-mix(in srgb, var(--accent) 14%, white);
   --accent-ink: #ffffff;
   --danger: #ef4444;
+  --oro: #d4a94c;
+  --oro-claro: #fdf6e3;
+  --oro-oscuro: #8a6d2f;
   --disponible: #22c55e;
   --radius-xl: 28px;
   --radius-lg: 20px;
@@ -63,6 +66,36 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 .v-reveal { opacity:0; transform:translateY(24px); transition:opacity .6s cubic-bezier(.22,1,.36,1), transform .6s cubic-bezier(.22,1,.36,1); }
 .v-reveal.visible { opacity:1; transform:translateY(0); }
 
+@keyframes v-splash-orbe-a { 0%,100% { transform:translate(0,0) scale(1); } 50% { transform:translate(40px,-30px) scale(1.15); } }
+@keyframes v-splash-orbe-b { 0%,100% { transform:translate(0,0) scale(1); } 50% { transform:translate(-30px,30px) scale(1.1); } }
+@keyframes v-splash-logo-in { 0% { opacity:0; transform:scale(.5) rotate(-8deg); } 60% { transform:scale(1.08) rotate(2deg); } 100% { opacity:1; transform:scale(1) rotate(0); } }
+@keyframes v-splash-fade-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+@keyframes v-splash-barra-fill { from { width:0%; } to { width:100%; } }
+@keyframes v-splash-out { to { opacity:0; visibility:hidden; transform:scale(1.03); } }
+.v-splash {
+  position:fixed; inset:0; z-index:1000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+  background:linear-gradient(160deg, var(--accent) 0%, var(--accent-dark) 100%); overflow:hidden; text-align:center; padding:24px;
+  transition:opacity .5s ease, transform .5s ease;
+}
+.v-splash.v-splash-oculto { animation:v-splash-out .5s ease forwards; pointer-events:none; }
+.v-splash-orbe { position:absolute; border-radius:50%; filter:blur(50px); opacity:.35; background:#fff; }
+.v-splash-orbe.a { width:280px; height:280px; top:-80px; left:-60px; animation:v-splash-orbe-a 7s ease-in-out infinite; }
+.v-splash-orbe.b { width:240px; height:240px; bottom:-70px; right:-50px; animation:v-splash-orbe-b 8s ease-in-out infinite; }
+.v-splash-logo-wrap {
+  width:72px; height:72px; border-radius:50%; overflow:hidden; border:3px solid rgba(255,255,255,.5); box-shadow:0 12px 32px rgba(0,0,0,.25);
+  animation:v-splash-logo-in .7s cubic-bezier(.22,1.4,.36,1) both;
+}
+.v-splash-logo-wrap img { width:100%; height:100%; object-fit:cover; }
+.v-splash-eyebrow {
+  position:relative; z-index:1; color:rgba(255,255,255,.85); font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  animation:v-splash-fade-up .5s ease .1s both;
+}
+.v-splash-titulo {
+  position:relative; z-index:1; color:#fff; font-family:var(--font-display); font-style:italic; font-weight:600;
+  font-size:clamp(24px,4.4vw,38px); margin:0; max-width:16ch; animation:v-splash-fade-up .55s ease .2s both;
+}
+.v-splash-barra-wrap { position:relative; z-index:1; width:180px; height:4px; border-radius:999px; background:rgba(255,255,255,.25); overflow:hidden; margin-top:8px; animation:v-splash-fade-up .5s ease .35s both; }
+.v-splash-barra { height:100%; background:#fff; border-radius:999px; width:0%; animation:v-splash-barra-fill 1.6s cubic-bezier(.22,.8,.36,1) forwards; }
 @keyframes v-sk-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
 .v-sk { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:v-sk-shimmer 1.4s infinite; border-radius:12px; }
 .v-loader-vacio { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:70vh; gap:var(--sp-4); color:var(--text-2); font-size:14px; text-align:center; padding:0 var(--sp-5); }
@@ -104,6 +137,7 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
   display:inline-flex; align-items:center; gap:8px; background:var(--accent-light); border:1px solid var(--border); padding:6px 16px;
   border-radius:999px; font-size:12px; font-weight:700; color:var(--accent); margin-bottom:var(--sp-5);
 }
+.v-eyebrow-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:v-eyebrow-dot 1.6s ease-in-out infinite; }
 .v-hero-titulo { font-size:clamp(34px,5.4vw,60px); font-weight:800; line-height:1.05; letter-spacing:-.02em; margin:0 0 var(--sp-4); }
 .v-hero-titulo .grad { color:var(--accent); font-family:var(--font-display); font-style:italic; font-weight:600; }
 .v-hero-desc { font-size:16px; color:var(--text-2); max-width:480px; margin:0 auto var(--sp-6); line-height:1.6; }
@@ -119,7 +153,13 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 .v-btn:active { transform:scale(.96); }
 .v-btn.v-btn-ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:none; }
 .v-btn.v-btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
+@keyframes v-glow-pulse { 0%,100% { opacity:.5; transform:scale(1); } 50% { opacity:.8; transform:scale(1.06); } }
+@keyframes v-eyebrow-dot { 0%,100% { opacity:1; } 50% { opacity:.3; } }
 .v-hero-imgwrap { position:relative; z-index:1; max-width:480px; width:100%; }
+.v-hero-imgwrap::before {
+  content:''; position:absolute; inset:-30px; z-index:-1; background:radial-gradient(circle, rgba(var(--accent-rgb),.28), transparent 70%);
+  filter:blur(20px); animation:v-glow-pulse 5s ease-in-out infinite;
+}
 @media (min-width:900px) { .v-hero-imgwrap { flex:0 0 44%; max-width:none; } }
 .v-hero-img {
   width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:var(--radius-xl); box-shadow:var(--shadow-glow);
@@ -165,6 +205,8 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 
 /* ===== SECCIONES ===== */
 .v-seccion { padding:var(--sp-8) 0; }
+.v-tinte-a { background:var(--bg); }
+.v-tinte-b { background:linear-gradient(180deg, rgba(var(--accent-rgb),.06), rgba(var(--accent-rgb),.02)); }
 .v-seccion-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--sp-6); gap:var(--sp-4); flex-wrap:wrap; }
 .v-seccion-titulo { font-size:24px; font-weight:800; letter-spacing:-.01em; }
 .v-seccion-titulo span { color:var(--accent); }
@@ -181,7 +223,7 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 @media (min-width:860px) { .v-destacado-thumbs { justify-content:flex-start; } }
 .v-destacado-thumb { width:56px; height:56px; border-radius:var(--radius-sm); object-fit:cover; cursor:pointer; opacity:.55; border:2px solid transparent; transition:all .2s; }
 .v-destacado-thumb.activa { opacity:1; border-color:var(--accent); }
-.v-destacado-badge { display:inline-block; background:var(--accent); color:#fff; font-size:11px; font-weight:800; padding:5px 14px; border-radius:999px; margin-bottom:var(--sp-3); }
+.v-destacado-badge { display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg,var(--oro),var(--oro-oscuro)); color:#fff; font-size:11px; font-weight:800; padding:6px 16px; border-radius:999px; margin-bottom:var(--sp-3); box-shadow:0 6px 16px -4px rgba(212,169,76,.5); }
 .v-destacado-nombre { font-size:clamp(24px,3.4vw,38px); font-weight:800; margin:0 0 var(--sp-3); letter-spacing:-.01em; }
 .v-destacado-desc { font-size:14.5px; color:var(--text-2); line-height:1.7; margin:0 0 var(--sp-5); }
 .v-precio-row { display:flex; align-items:baseline; gap:12px; margin-bottom:var(--sp-6); }
@@ -192,17 +234,20 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 /* ===== TARJETAS ===== */
 @keyframes v-card-in { from { opacity:0; transform:translateY(18px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
 .v-card.v-entra { animation:v-card-in .5s cubic-bezier(.22,1,.36,1) backwards; }
-.v-grid { display:flex; flex-wrap:wrap; gap:var(--sp-5); justify-content:flex-start; }
-.v-grid.pocas { justify-content:center; }
-.v-card.grande { flex-basis:100%; max-width:100%; }
-@media (min-width:640px) { .v-card.grande { flex-basis:calc(66.66% - var(--sp-5)); max-width:560px; } }
+.v-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-4); }
+@media (min-width:640px) { .v-grid { grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:var(--sp-5); } }
+.v-grid.pocas { grid-template-columns:repeat(auto-fit, minmax(220px,280px)); justify-content:center; }
+.v-card.grande { grid-column:span 2; }
 .v-card.grande .v-card-media { aspect-ratio:16/9; }
 @media (min-width:640px) { .v-card.grande .v-card-media { aspect-ratio:2/1; } }
 .v-card {
-  flex:1 1 230px; max-width:280px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
   overflow:hidden; cursor:pointer; transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s; display:flex; flex-direction:column;
 }
 .v-card:hover { transform:translateY(-8px); box-shadow:var(--shadow-glow); }
+.v-card.destacada { background:linear-gradient(165deg, var(--oro-claro), var(--surface) 55%); border-color:var(--oro); box-shadow:0 8px 24px -10px rgba(212,169,76,.4); }
+.v-card.destacada:hover { box-shadow:0 20px 44px -12px rgba(212,169,76,.55); }
+.v-card-tag.destacado-tag { position:absolute; top:8px; left:8px; font-size:10px; font-weight:800; padding:4px 10px; border-radius:999px; background:linear-gradient(135deg,var(--oro),var(--oro-oscuro)); color:#fff; display:flex; align-items:center; gap:4px; }
 @keyframes v-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
 .v-card-media { position:relative; margin:var(--sp-3); border-radius:var(--radius-md); overflow:hidden; aspect-ratio:1/1; background:var(--surface-2); }
 .v-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:v-shimmer 1.4s infinite; }
@@ -331,6 +376,15 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 </head>
 <body>
 
+<div id="v-splash" class="v-splash">
+  <div class="v-splash-orbe a"></div>
+  <div class="v-splash-orbe b"></div>
+  <div class="v-splash-logo-wrap" id="v-splash-logo-wrap" style="display:none"><img id="v-splash-logo" src="" alt=""></div>
+  <div class="v-splash-eyebrow">Catálogo digital</div>
+  <h1 class="v-splash-titulo">Bienvenido a <span id="v-splash-nombre">tu catálogo</span></h1>
+  <div class="v-splash-barra-wrap"><div class="v-splash-barra" id="v-splash-barra"></div></div>
+</div>
+
 <div id="v-loader" class="v-loader-skeleton">
   <div class="v-wrap">
     <div class="v-sk-nav"><div class="v-sk" style="width:32px;height:32px;border-radius:50%"></div><div class="v-sk" style="width:120px;height:16px"></div></div>
@@ -376,7 +430,7 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
   <section class="v-hero" id="v-hero">
     <div class="v-wrap v-hero-grid">
       <div class="v-hero-in">
-        <div class="v-hero-eyebrow" id="v-hero-eyebrow">Catálogo digital</div>
+        <div class="v-hero-eyebrow" id="v-hero-eyebrow"><span class="v-eyebrow-dot"></span>Catálogo digital</div>
         <h1 class="v-hero-titulo" id="v-hero-titulo">Catálogo</h1>
         <p class="v-hero-desc" id="v-hero-desc"></p>
         <div class="v-hero-acciones" id="v-hero-acciones"></div>
@@ -389,7 +443,7 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
     </div>
   </section>
 
-  <section class="v-seccion">
+  <section class="v-seccion v-tinte-a">
     <div class="v-wrap">
       <div class="v-confianza-in v-confianza">
         <div class="v-confianza-item"><div class="ico" id="v-conf-1"></div><b>Envíos rápidos</b><small>A todo el país</small></div>
@@ -400,28 +454,28 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
     </div>
   </section>
 
-  <section class="v-seccion v-reveal" id="v-seccion-destacado" style="display:none">
+  <section class="v-seccion v-reveal v-tinte-b" id="v-seccion-destacado" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Producto <span>destacado</span></span></div>
       <div class="v-destacado" id="v-destacado"></div>
     </div>
   </section>
 
-  <section class="v-seccion v-reveal" id="v-seccion-mas-destacados" style="display:none">
+  <section class="v-seccion v-reveal v-tinte-a" id="v-seccion-mas-destacados" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Más destacados</span></div>
       <div class="v-grid" id="v-grid-mas-destacados"></div>
     </div>
   </section>
 
-  <section class="v-seccion v-reveal" id="v-seccion-vistos" style="display:none">
+  <section class="v-seccion v-reveal v-tinte-b" id="v-seccion-vistos" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Vistos recientemente</span></div>
       <div class="v-grid" id="v-grid-vistos"></div>
     </div>
   </section>
 
-  <section class="v-seccion v-reveal" id="v-seccion-categorias" style="display:none">
+  <section class="v-seccion v-reveal v-tinte-a" id="v-seccion-categorias" style="display:none">
     <div class="v-wrap">
       <div class="v-seccion-head"><span class="v-seccion-titulo">Explora por categoría</span></div>
       <div class="v-cats-scroll" id="v-cats-scroll"></div>
@@ -614,6 +668,12 @@ async function init(){
   CATALOGO = catalogo;
   if (idPreview && catalogo.estado!=='publicado') document.getElementById('v-preview-banner').style.display='block';
 
+  document.getElementById('v-splash-nombre').textContent = catalogo.nombre_comercial || catalogo.nombre;
+  if (catalogo.logo_url) {
+    document.getElementById('v-splash-logo').src = catalogo.logo_url;
+    document.getElementById('v-splash-logo-wrap').style.display = 'block';
+  }
+
   document.documentElement.style.setProperty('--accent', catalogo.color_acento || '#6d5ef8');
   document.documentElement.style.setProperty('--accent-rgb', hexARgb(catalogo.color_acento));
   const tema = localStorage.getItem('v_tema') || catalogo.tema_default || 'claro';
@@ -632,8 +692,18 @@ async function init(){
   document.getElementById('v-loader').style.display='none';
   document.getElementById('v-app').style.display='block';
   activarRevelado();
+  setTimeout(() => {
+    const splash = document.getElementById('v-splash');
+    splash.classList.add('v-splash-oculto');
+    setTimeout(() => splash.remove(), 550);
+  }, 900);
+}
+function ocultarSplashInmediato(){
+  const splash = document.getElementById('v-splash');
+  if (splash) splash.remove();
 }
 function mostrarError(msg){
+  ocultarSplashInmediato();
   document.getElementById('v-loader').className = 'v-loader-vacio';
   document.getElementById('v-loader').innerHTML = `
     <svg viewBox="0 0 120 120" width="96" height="96" fill="none" stroke="var(--text-3)" stroke-width="1.5">
@@ -825,10 +895,10 @@ function tarjetaHTML(p, indice, esGrande){
   const fav = FAVORITOS.includes(p.id);
   const retraso = indice!=null ? `style="animation-delay:${Math.min(indice,10)*45}ms"` : '';
   return `
-    <div class="v-card v-entra ${agotado?'agotada':''} ${esGrande?'grande':''}" ${retraso}>
+    <div class="v-card v-entra ${agotado?'agotada':''} ${esGrande?'grande':''} ${p.destacado?'destacada':''}" ${retraso}>
       <div class="v-card-media ${principal?'cargando':''}">
         <div onclick="abrirModal('${p.id}')" style="position:absolute;inset:0;cursor:pointer"></div>
-        ${tag?`<span class="v-card-tag ${p.etiqueta}">${tag}</span>`:''}
+        ${p.destacado ? `<span class="v-card-tag destacado-tag">${ICO.star} Destacado</span>` : (tag?`<span class="v-card-tag ${p.etiqueta}">${tag}</span>`:'')}
         <span class="v-card-disp ${agotado?'agotado':''}">${agotado?'Agotado':'Disponible'}</span>
         <button class="v-fav-btn ${fav?'activo':''}" onclick="event.stopPropagation();toggleFav('${p.id}')">${fav?ICO.heartFill:ICO.heart}</button>
         ${principal?`<img src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}" onload="this.classList.add('cargada');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">`:''}
