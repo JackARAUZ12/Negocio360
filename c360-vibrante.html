@@ -161,13 +161,19 @@ svg.v-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
 @media (min-width:900px) { .v-hero-acciones { justify-content:flex-start; } }
 .v-btn {
   display:inline-flex; align-items:center; gap:8px; padding:15px 28px; border-radius:999px; font-weight:700; font-size:14px;
-  border:none; cursor:pointer; background:var(--accent); color:#fff;
-  box-shadow:var(--shadow-glow); transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+  border:none; cursor:pointer; background:var(--accent); color:#fff; position:relative; overflow:hidden;
+  box-shadow:var(--shadow-glow); transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s;
 }
-.v-btn:hover { transform:translateY(-3px) scale(1.02); }
-.v-btn:active { transform:scale(.96); }
+.v-btn:hover { box-shadow:var(--shadow-glow), 0 0 0 6px rgba(var(--accent-rgb),.12); }
+.v-btn:active { transform:scale(.96) !important; }
 .v-btn.v-btn-ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:none; }
-.v-btn.v-btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
+.v-btn.v-btn-ghost:hover { border-color:var(--accent); color:var(--accent); box-shadow:none; }
+@keyframes v-ripple-expandir { from { transform:scale(0); opacity:.45; } to { transform:scale(2.8); opacity:0; } }
+.v-btn-ripple {
+  position:absolute; border-radius:50%; background:rgba(255,255,255,.7); pointer-events:none;
+  transform:scale(0); animation:v-ripple-expandir .6s ease-out forwards;
+}
+.v-btn.v-btn-ghost .v-btn-ripple { background:rgba(var(--accent-rgb),.25); }
 @keyframes v-glow-pulse { 0%,100% { opacity:.5; transform:scale(1); } 50% { opacity:.8; transform:scale(1.06); } }
 @keyframes v-eyebrow-dot { 0%,100% { opacity:1; } 50% { opacity:.3; } }
 .v-hero-imgwrap { position:relative; z-index:1; max-width:480px; width:100%; }
@@ -1125,6 +1131,38 @@ if (window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
   });
   document.addEventListener('mouseleave', () => { if (tarjetaActiva) { tarjetaActiva.style.transform = ''; tarjetaActiva = null; } }, true);
 }
+// Efecto magnetico en botones: se desplazan sutilmente hacia el
+// cursor mientras el mouse esta encima. Con delegacion de eventos
+// para funcionar en botones que se generan dinamicamente.
+if (window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
+  document.addEventListener('mousemove', (e) => {
+    const btn = e.target.closest('.v-btn');
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const dx = (e.clientX - (r.left + r.width/2)) * 0.18;
+    const dy = (e.clientY - (r.top + r.height/2)) * 0.18;
+    btn.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+  });
+  document.addEventListener('mouseout', (e) => {
+    const btn = e.target.closest('.v-btn');
+    if (btn && !btn.contains(e.relatedTarget)) btn.style.transform = '';
+  });
+}
+// Onda de clic estilo material -- se genera en el punto exacto del
+// clic y se limpia sola al terminar la animacion.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.v-btn');
+  if (!btn) return;
+  const r = btn.getBoundingClientRect();
+  const lado = Math.max(r.width, r.height) * 1.4;
+  const ripple = document.createElement('span');
+  ripple.className = 'v-btn-ripple';
+  ripple.style.width = ripple.style.height = `${lado}px`;
+  ripple.style.left = `${e.clientX - r.left - lado/2}px`;
+  ripple.style.top = `${e.clientY - r.top - lado/2}px`;
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 650);
+});
 let _tickingSpotlight = false;
 const _heroEl = document.getElementById('v-hero');
 _heroEl.addEventListener('mousemove', (e) => {
