@@ -364,11 +364,12 @@ function accionRapida(tipo) {
   if (tipo === 'producto') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => { cambiarTabEditor('productos'); abrirModalProductoCatalogo(); }); }
   else if (tipo === 'fotos') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => cambiarTabEditor('productos')); }
   else if (tipo === 'ver') {
-    if (catalogoObjetivo.slug_publico && catalogoObjetivo.estado === 'publicado') window.open(`c360.html?c=${catalogoObjetivo.slug_publico}`, '_blank');
-    else window.open(`c360.html?preview=${catalogoObjetivo.id}`, '_blank');
+    const archivo = archivoDePlantilla(catalogoObjetivo.plantilla);
+    if (catalogoObjetivo.slug_publico && catalogoObjetivo.estado === 'publicado') window.open(`${archivo}?c=${catalogoObjetivo.slug_publico}`, '_blank');
+    else window.open(`${archivo}?preview=${catalogoObjetivo.id}`, '_blank');
   }
   else if (tipo === 'compartir') {
-    if (catalogoObjetivo.slug_publico) { navigator.clipboard?.writeText(`${window.location.origin}/c360.html?c=${catalogoObjetivo.slug_publico}`); showToast('🔗 Enlace copiado'); }
+    if (catalogoObjetivo.slug_publico) { navigator.clipboard?.writeText(`${window.location.origin}/${archivoDePlantilla(catalogoObjetivo.plantilla)}?c=${catalogoObjetivo.slug_publico}`); showToast('🔗 Enlace copiado'); }
     else showToast('Publica el catálogo primero para poder compartirlo', 'error');
   }
 }
@@ -437,7 +438,7 @@ function renderEstadoPublicacion() {
   if (c.estado === 'publicado' && c.slug_publico) {
     estadoTexto.textContent = 'Publicado y visible al público.';
     panel.style.display = 'block';
-    const url = `${window.location.origin}/c360.html?c=${c.slug_publico}`;
+    const url = `${window.location.origin}/${archivoDePlantilla(c.plantilla)}?c=${c.slug_publico}`;
     document.getElementById('c360-url-publica').textContent = url;
     btnPublicar.textContent = '🔄 Actualizar publicación';
     btnPausar.style.display = '';
@@ -633,9 +634,12 @@ const PALETAS_CATALOGO360 = [
 // esta terminada y lista para usar; la segunda queda preparada como
 // "Próximamente" para cuando se construya.
 const PLANTILLAS_CATALOGO360 = [
-  { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true },
-  { key:'plantilla2', nombre:'Plantilla 2', icono:'🧩', desc:'Próximamente.', disponible:false },
+  { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true, archivo:'c360.html' },
+  { key:'plantilla2', nombre:'Vibrante', icono:'✨', desc:'Clara, colorida, con degradados y burbujas animadas.', disponible:true, archivo:'c360-vibrante.html' },
 ];
+function archivoDePlantilla(key) {
+  return PLANTILLAS_CATALOGO360.find(p => p.key === key)?.archivo || 'c360.html';
+}
 
 function cargarTabApariencia() {
   const c = STATE.catalogoActual;
@@ -1171,7 +1175,7 @@ async function publicarCatalogoActual() {
 }
 
 function urlPublicaActual() {
-  return `${window.location.origin}/c360.html?c=${STATE.catalogoActual.slug_publico}`;
+  return `${window.location.origin}/${archivoDePlantilla(STATE.catalogoActual.plantilla)}?c=${STATE.catalogoActual.slug_publico}`;
 }
 function verCatalogoPublicado() {
   window.open(urlPublicaActual(), '_blank');
@@ -1185,7 +1189,7 @@ function abrirVistaPrevia() {
   // tiene sentido -- la vista previa debe funcionar ANTES de publicar.
   // Ahora siempre se puede ver, usando el modo de vista previa del
   // dueño (requiere sesion, funciona sin importar el estado).
-  window.open(`c360.html?preview=${STATE.catalogoActual.id}`, '_blank');
+  window.open(`${archivoDePlantilla(STATE.catalogoActual.plantilla)}?preview=${STATE.catalogoActual.id}`, '_blank');
 }
 function mostrarQR() {
   if (!STATE.catalogoActual.slug_publico) { showToast('Publica el catálogo primero', 'error'); return; }

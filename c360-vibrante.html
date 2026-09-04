@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="claro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title id="v-title">Catálogo</title>
+<meta id="v-desc-meta" name="description" content="Catálogo digital">
+<meta id="v-og-title" property="og:title" content="Catálogo">
+<meta id="v-og-desc" property="og:description" content="Catálogo digital">
+<meta id="v-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #f7f8fd;
+  --surface: #ffffff;
+  --surface-2: #eef1fb;
+  --border: #e6e9f7;
+  --text: #12141f;
+  --text-2: #5c6079;
+  --text-3: #9a9fb8;
+  --accent: #6d5ef8;
+  --accent-rgb: 109,94,248;
+  --accent-2: #ff5da2;
+  --accent-2-rgb: 255,93,162;
+  --accent-ink: #ffffff;
+  --danger: #ef4444;
+  --disponible: #22c55e;
+  --radius-xl: 28px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --font: 'Outfit', sans-serif;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px; --sp-8:48px; --sp-9:64px; --sp-10:96px;
+  --shadow-soft: 0 8px 24px -8px rgba(20,20,40,.10);
+  --shadow-glow: 0 20px 50px -12px rgba(var(--accent-rgb),.35);
+  --max-w: 1320px;
+}
+html[data-theme="oscuro"] {
+  --bg: #0f1020; --surface: #171833; --surface-2: #1f2140; --border: #2b2d54;
+  --text: #f3f3fb; --text-2: #b3b5d6; --text-3: #767aa3;
+  --shadow-soft: 0 8px 24px -8px rgba(0,0,0,.4); --shadow-glow: 0 24px 60px -12px rgba(var(--accent-rgb),.45);
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); transition:background .3s,color .3s; overflow-x:hidden; }
+img { max-width:100%; display:block; }
+a { color:inherit; text-decoration:none; }
+button { font-family:inherit; }
+.v-wrap { max-width:var(--max-w); margin:0 auto; padding:0 var(--sp-5); }
+@media (min-width:900px) { .v-wrap { padding:0 var(--sp-8); } }
+@keyframes v-float { 0%,100% { transform:translateY(0) rotate(0deg); } 50% { transform:translateY(-22px) rotate(4deg); } }
+@keyframes v-float2 { 0%,100% { transform:translateY(0) scale(1); } 50% { transform:translateY(18px) scale(1.05); } }
+@keyframes v-fade-up { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+@keyframes v-pop { 0% { transform:scale(.9); opacity:0; } 100% { transform:scale(1); opacity:1; } }
+.v-reveal { opacity:0; transform:translateY(24px); transition:opacity .6s cubic-bezier(.22,1,.36,1), transform .6s cubic-bezier(.22,1,.36,1); }
+.v-reveal.visible { opacity:1; transform:translateY(0); }
+
+.v-loader { display:flex; align-items:center; justify-content:center; min-height:70vh; }
+.v-loader-spin { width:40px; height:40px; border-radius:50%; border:4px solid var(--surface-2); border-top-color:var(--accent); animation:v-spin .8s linear infinite; }
+@keyframes v-spin { to { transform:rotate(360deg); } }
+
+/* ===== NAV FLOTANTE ===== */
+.v-navbar-space { height:88px; }
+.v-navbar {
+  position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:50; width:calc(100% - 32px); max-width:1200px;
+  background:color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter:blur(16px); border:1px solid var(--border);
+  border-radius:999px; box-shadow:var(--shadow-soft); padding:10px 10px 10px 20px;
+  display:flex; align-items:center; gap:var(--sp-4);
+}
+.v-nav-logo { width:32px; height:32px; border-radius:50%; object-fit:cover; }
+.v-nav-nombre { font-weight:800; font-size:15px; }
+.v-nav-links { display:none; gap:var(--sp-5); margin-left:var(--sp-4); }
+@media (min-width:820px) { .v-nav-links { display:flex; } }
+.v-nav-links a { font-size:13px; font-weight:600; color:var(--text-2); cursor:pointer; }
+.v-nav-links a:hover { color:var(--accent); }
+.v-nav-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.v-nav-fav { position:relative; background:var(--surface-2); border:none; width:38px; height:38px; border-radius:50%; cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; }
+.v-nav-fav-badge { position:absolute; top:-3px; right:-3px; background:var(--accent-2); color:#fff; font-size:9px; font-weight:800; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.v-nav-theme { background:var(--surface-2); border:none; width:38px; height:38px; border-radius:50%; cursor:pointer; font-size:15px; }
+.v-nav-cta { background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; border:none; border-radius:999px; padding:10px 20px; font-weight:700; font-size:12.5px; cursor:pointer; white-space:nowrap; }
+
+/* ===== HERO ===== */
+.v-hero { position:relative; overflow:hidden; padding:var(--sp-8) 0 var(--sp-9); text-align:center; }
+.v-hero-blob { position:absolute; border-radius:50%; filter:blur(60px); opacity:.35; z-index:0; }
+.v-blob-1 { width:380px; height:380px; background:var(--accent); top:-140px; left:-100px; animation:v-float 9s ease-in-out infinite; }
+.v-blob-2 { width:320px; height:320px; background:var(--accent-2); top:40px; right:-120px; animation:v-float2 11s ease-in-out infinite; }
+.v-hero-in { position:relative; z-index:1; max-width:720px; margin:0 auto; }
+.v-hero-eyebrow {
+  display:inline-flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); padding:6px 16px;
+  border-radius:999px; font-size:12px; font-weight:700; color:var(--accent); margin-bottom:var(--sp-5); box-shadow:var(--shadow-soft);
+}
+.v-hero-titulo { font-size:clamp(34px,6vw,64px); font-weight:800; line-height:1.05; letter-spacing:-.02em; margin:0 0 var(--sp-4); }
+.v-hero-titulo .grad { background:linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.v-hero-desc { font-size:16px; color:var(--text-2); max-width:520px; margin:0 auto var(--sp-6); line-height:1.6; }
+.v-hero-acciones { display:flex; align-items:center; justify-content:center; gap:var(--sp-3); flex-wrap:wrap; margin-bottom:var(--sp-7); }
+.v-btn {
+  display:inline-flex; align-items:center; gap:8px; padding:15px 28px; border-radius:999px; font-weight:700; font-size:14px;
+  border:none; cursor:pointer; background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff;
+  box-shadow:var(--shadow-glow); transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.v-btn:hover { transform:translateY(-3px) scale(1.02); }
+.v-btn.v-btn-ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:none; }
+.v-btn.v-btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
+.v-hero-imgwrap { position:relative; z-index:1; max-width:560px; margin:0 auto; }
+.v-hero-img {
+  width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:var(--radius-xl); box-shadow:var(--shadow-glow);
+}
+.v-hero-chip-flotante {
+  position:absolute; z-index:2; background:var(--surface); border-radius:var(--radius-lg); box-shadow:var(--shadow-soft);
+  padding:12px 18px; display:flex; align-items:center; gap:10px; animation:v-float 6s ease-in-out infinite;
+}
+.v-hero-chip-flotante.a { top:-18px; left:-18px; }
+.v-hero-chip-flotante.b { bottom:-18px; right:-18px; animation-delay:1.5s; }
+.v-hero-chip-flotante img { width:36px; height:36px; border-radius:10px; object-fit:cover; }
+.v-hero-chip-flotante .txt b { display:block; font-size:12.5px; }
+.v-hero-chip-flotante .txt span { font-size:11px; color:var(--accent); font-weight:700; }
+
+/* ===== BARRA DE CONFIANZA ===== */
+.v-confianza { padding:var(--sp-7) 0; }
+.v-confianza-in { display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-4); }
+@media (min-width:800px) { .v-confianza-in { grid-template-columns:repeat(4,1fr); } }
+.v-confianza-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:var(--sp-5); text-align:center; transition:transform .2s; }
+.v-confianza-item:hover { transform:translateY(-4px); }
+.v-confianza-item .ico { font-size:26px; margin-bottom:8px; }
+.v-confianza-item b { display:block; font-size:12.5px; }
+.v-confianza-item small { font-size:10.5px; color:var(--text-3); }
+
+/* ===== CATEGORIAS ===== */
+.v-cats-scroll { display:flex; gap:var(--sp-4); overflow-x:auto; padding:var(--sp-2) 0 var(--sp-3); scrollbar-width:none; }
+.v-cats-scroll::-webkit-scrollbar { display:none; }
+.v-cat-tile {
+  flex:0 0 auto; width:104px; display:flex; flex-direction:column; align-items:center; gap:8px; cursor:pointer; text-align:center;
+}
+.v-cat-tile .circulo {
+  width:74px; height:74px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:26px;
+  background:linear-gradient(135deg, rgba(var(--accent-rgb),.15), rgba(var(--accent-2-rgb),.15)); border:2px solid transparent;
+  transition:all .2s;
+}
+.v-cat-tile.activo .circulo { border-color:var(--accent); background:linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.v-cat-tile:hover .circulo { transform:scale(1.06); }
+.v-cat-tile span { font-size:12px; font-weight:600; color:var(--text-2); }
+.v-cat-tile.activo span { color:var(--accent); font-weight:800; }
+
+/* ===== SECCIONES ===== */
+.v-seccion { padding:var(--sp-8) 0; }
+.v-seccion-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--sp-6); gap:var(--sp-4); flex-wrap:wrap; }
+.v-seccion-titulo { font-size:24px; font-weight:800; letter-spacing:-.01em; }
+.v-seccion-titulo span { color:var(--accent); }
+.v-seccion-conteo { font-size:12.5px; color:var(--text-3); font-weight:600; }
+.v-volver { background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:8px 16px; font-size:12.5px; font-weight:700; cursor:pointer; margin-bottom:var(--sp-4); }
+
+/* ===== DESTACADO ===== */
+.v-destacado { display:grid; grid-template-columns:1fr; gap:var(--sp-6); }
+@media (min-width:860px) { .v-destacado { grid-template-columns:1fr 1fr; align-items:center; gap:var(--sp-8); } }
+.v-destacado-media { position:relative; }
+.v-destacado-img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:var(--radius-xl); box-shadow:var(--shadow-glow); }
+.v-destacado-thumbs { display:flex; gap:8px; margin-top:var(--sp-3); justify-content:center; }
+@media (min-width:860px) { .v-destacado-thumbs { justify-content:flex-start; } }
+.v-destacado-thumb { width:56px; height:56px; border-radius:var(--radius-sm); object-fit:cover; cursor:pointer; opacity:.55; border:2px solid transparent; transition:all .2s; }
+.v-destacado-thumb.activa { opacity:1; border-color:var(--accent); }
+.v-destacado-badge { display:inline-block; background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; font-size:11px; font-weight:800; padding:5px 14px; border-radius:999px; margin-bottom:var(--sp-3); }
+.v-destacado-nombre { font-size:clamp(24px,3.4vw,38px); font-weight:800; margin:0 0 var(--sp-3); letter-spacing:-.01em; }
+.v-destacado-desc { font-size:14.5px; color:var(--text-2); line-height:1.7; margin:0 0 var(--sp-5); }
+.v-precio-row { display:flex; align-items:baseline; gap:12px; margin-bottom:var(--sp-6); }
+.v-precio { font-size:30px; font-weight:800; }
+.v-precio.oferta { color:var(--danger); }
+.v-tachado { font-size:16px; color:var(--text-3); text-decoration:line-through; }
+
+/* ===== TARJETAS ===== */
+.v-grid { display:flex; flex-wrap:wrap; gap:var(--sp-5); justify-content:flex-start; }
+.v-grid.pocas { justify-content:center; }
+.v-card {
+  flex:1 1 230px; max-width:280px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  overflow:hidden; cursor:pointer; transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s; display:flex; flex-direction:column;
+}
+.v-card:hover { transform:translateY(-8px); box-shadow:var(--shadow-glow); }
+.v-card-media { position:relative; margin:var(--sp-3); border-radius:var(--radius-md); overflow:hidden; aspect-ratio:1/1; background:var(--surface-2); }
+.v-card-media img { width:100%; height:100%; object-fit:cover; transition:transform .5s cubic-bezier(.22,1,.36,1); }
+.v-card:hover .v-card-media img { transform:scale(1.08); }
+.v-card-tag { position:absolute; top:8px; left:8px; font-size:10px; font-weight:800; padding:4px 10px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow-soft); }
+.v-card-tag.oferta { background:var(--danger); color:#fff; }
+.v-card-tag.nuevo { background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; }
+.v-card-disp { position:absolute; top:8px; right:8px; font-size:9.5px; font-weight:800; padding:4px 9px; border-radius:999px; background:rgba(255,255,255,.9); color:var(--disponible); }
+.v-card-disp.agotado { color:var(--danger); }
+.v-card.agotada .v-card-media { opacity:.5; }
+.v-fav-btn {
+  position:absolute; bottom:8px; right:8px; width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.92);
+  border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; box-shadow:var(--shadow-soft);
+  transition:transform .2s;
+}
+.v-fav-btn:hover { transform:scale(1.15); }
+.v-fav-btn.activo { color:var(--danger); }
+.v-card-body { padding:0 var(--sp-4) var(--sp-4); display:flex; flex-direction:column; gap:3px; flex:1; }
+.v-card-cat { font-size:10.5px; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+.v-card-nombre { font-size:14.5px; font-weight:700; line-height:1.3; margin:2px 0 6px; }
+.v-card-precio-row { display:flex; align-items:baseline; gap:6px; margin-top:auto; }
+.v-card-precio { font-weight:800; font-size:15.5px; }
+.v-card-precio.oferta { color:var(--danger); }
+.v-card-tachado { font-size:11.5px; color:var(--text-3); text-decoration:line-through; }
+.v-card-acciones { display:flex; gap:6px; margin-top:var(--sp-3); }
+.v-card-accion {
+  flex:1; padding:9px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; transition:all .15s;
+}
+.v-card-accion.wa:hover { background:#25D3661a; border-color:#25D366; color:#25D366; }
+.v-card-accion.llamar { flex:0 0 auto; padding:9px 13px; }
+.v-card-accion.compartir { flex:0 0 auto; padding:9px 13px; }
+.v-card-accion:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ===== FILTROS ===== */
+.v-filtros-barra { position:sticky; top:0; z-index:40; background:color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter:blur(10px); padding:var(--sp-3) 0; margin-bottom:var(--sp-4); }
+.v-filtros-fila { display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap; }
+.v-buscador { flex:1 1 220px; display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:10px 20px; }
+.v-buscador input { border:none; outline:none; background:none; flex:1; color:var(--text); font-family:var(--font); font-size:13.5px; }
+.v-select, .v-precio-chip { background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:9px 16px; font-size:12.5px; font-weight:600; color:var(--text-2); }
+.v-select { cursor:pointer; }
+.v-precio-chip { display:flex; align-items:center; gap:8px; }
+.v-precio-chip input[type=range] { accent-color:var(--accent); width:100px; }
+.v-migas { font-size:12px; color:var(--text-3); margin-bottom:var(--sp-3); }
+.v-migas a { color:var(--accent); cursor:pointer; font-weight:700; }
+
+/* ===== MODAL ===== */
+.v-modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,16,32,.55); backdrop-filter:blur(4px); z-index:200; align-items:center; justify-content:center; padding:16px; }
+.v-modal-overlay.open { display:flex; animation:v-pop .25s cubic-bezier(.22,1,.36,1); }
+.v-modal { background:var(--surface); border-radius:var(--radius-xl); width:100%; max-width:560px; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-glow); }
+.v-modal-close { position:sticky; top:12px; margin:0 12px 0 auto; width:34px; height:34px; border-radius:50%; background:rgba(0,0,0,.5); color:#fff; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:5; }
+.v-modal-fotos { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; margin-top:-46px; border-radius:var(--radius-xl) var(--radius-xl) 0 0; }
+.v-modal-fotos img { width:100%; flex-shrink:0; scroll-snap-align:start; aspect-ratio:1/1; object-fit:cover; }
+.v-modal-body { padding:var(--sp-6); }
+.v-modal-cat { font-size:11.5px; font-weight:800; color:var(--accent); text-transform:uppercase; margin-bottom:6px; }
+.v-modal-nombre { font-size:24px; font-weight:800; margin-bottom:var(--sp-2); }
+.v-modal-desc { font-size:13.5px; color:var(--text-2); line-height:1.6; margin:var(--sp-4) 0; white-space:pre-wrap; }
+.v-relacionados-titulo { font-size:13px; font-weight:800; margin:var(--sp-6) 0 var(--sp-3); border-top:1px solid var(--border); padding-top:var(--sp-5); }
+.v-relacionados-scroll { display:flex; gap:var(--sp-3); overflow-x:auto; }
+.v-relacionado { flex:0 0 108px; cursor:pointer; }
+.v-relacionado img { width:108px; height:108px; object-fit:cover; border-radius:var(--radius-md); background:var(--surface-2); }
+.v-relacionado .n { font-size:11.5px; font-weight:600; margin-top:4px; }
+.v-relacionado .p { font-size:11.5px; font-weight:800; color:var(--accent); }
+
+/* ===== LIGHTBOX ===== */
+.v-lightbox { display:none; position:fixed; inset:0; background:rgba(10,10,20,.94); z-index:300; align-items:center; justify-content:center; }
+.v-lightbox.open { display:flex; }
+.v-lightbox img { max-width:90vw; max-height:85vh; object-fit:contain; border-radius:var(--radius-md); }
+.v-lightbox-cerrar, .v-lightbox-flecha { position:absolute; background:rgba(255,255,255,.15); color:#fff; border:none; border-radius:50%; cursor:pointer; }
+.v-lightbox-cerrar { top:24px; right:24px; width:40px; height:40px; font-size:18px; }
+.v-lightbox-flecha { top:50%; transform:translateY(-50%); width:48px; height:48px; font-size:24px; }
+.v-lightbox-flecha.izq { left:24px; } .v-lightbox-flecha.der { right:24px; }
+.v-lightbox-contador { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); color:#fff; font-size:12px; }
+
+/* ===== CTA WHATSAPP ===== */
+.v-cta { padding:var(--sp-8) 0; }
+.v-cta-card {
+  background:linear-gradient(135deg, var(--accent), var(--accent-2)); border-radius:var(--radius-xl); padding:var(--sp-8);
+  display:flex; flex-direction:column; align-items:center; text-align:center; gap:var(--sp-4); color:#fff; position:relative; overflow:hidden;
+}
+.v-cta-card h3 { font-size:clamp(22px,3vw,32px); font-weight:800; margin:0; }
+.v-cta-card p { font-size:14px; opacity:.9; margin:0; max-width:420px; }
+.v-cta-card .v-btn { background:#fff; color:var(--accent); box-shadow:0 12px 30px rgba(0,0,0,.2); }
+
+/* ===== FOOTER ===== */
+.v-footer-cta { padding:var(--sp-7) 0; }
+.v-footer-cta-in { display:grid; grid-template-columns:1fr; gap:var(--sp-5); }
+@media (min-width:800px) { .v-footer-cta-in { grid-template-columns:repeat(4,1fr); } }
+.v-footer-cta-item { display:flex; align-items:center; gap:12px; }
+.v-footer-cta-item .circ { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; background:var(--surface-2); }
+.v-footer-cta-item b { display:block; font-size:12.5px; }
+.v-footer-cta-item small { font-size:11px; color:var(--text-3); }
+.v-footer { border-top:1px solid var(--border); padding:var(--sp-5) 0; }
+.v-footer-in { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; font-size:12px; color:var(--text-3); }
+.v-footer-in a { color:var(--accent); font-weight:700; }
+.v-btn-flotante-wa {
+  position:fixed; bottom:20px; right:20px; z-index:60; width:58px; height:58px; border-radius:50%; background:#25D366; color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:26px; border:none; cursor:pointer; box-shadow:0 12px 28px rgba(0,0,0,.3);
+  animation:v-pop .3s cubic-bezier(.34,1.56,.64,1);
+}
+.v-toast-wrap { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:400; display:flex; flex-direction:column; gap:8px; }
+.v-toast { background:var(--text); color:var(--bg); padding:11px 22px; border-radius:999px; font-size:13px; font-weight:700; box-shadow:var(--shadow-soft); animation:v-fade-up .3s; }
+.v-vacio { text-align:center; padding:var(--sp-9) var(--sp-4); color:var(--text-3); width:100%; }
+.v-preview-banner { display:none; background:var(--text); color:var(--bg); text-align:center; font-size:12px; font-weight:700; padding:8px 16px; }
+</style>
+</head>
+<body>
+
+<div id="v-loader" class="v-loader"><div class="v-loader-spin"></div></div>
+
+<div id="v-app" style="display:none">
+  <div id="v-preview-banner" class="v-preview-banner">👁 Vista previa — esto no es visible al público todavía</div>
+
+  <div class="v-navbar-space"></div>
+  <nav class="v-navbar">
+    <img id="v-nav-logo" class="v-nav-logo" src="" style="display:none" alt="">
+    <span id="v-nav-nombre" class="v-nav-nombre"></span>
+    <div class="v-nav-links">
+      <a onclick="irAInicio()">Inicio</a>
+      <a onclick="irACatalogo()">Catálogo</a>
+    </div>
+    <div class="v-nav-right">
+      <button class="v-nav-fav" onclick="irACatalogo();toggleSoloFavoritos();" aria-label="Favoritos">🤍<span class="v-nav-fav-badge" id="v-nav-fav-badge" style="display:none">0</span></button>
+      <button class="v-nav-theme" onclick="toggleTema()" id="v-theme-btn" aria-label="Cambiar tema">🌙</button>
+      <a class="v-nav-cta" id="v-nav-cta" style="display:none" target="_blank">WhatsApp</a>
+    </div>
+  </nav>
+
+  <section class="v-hero">
+    <div class="v-hero-blob v-blob-1"></div>
+    <div class="v-hero-blob v-blob-2"></div>
+    <div class="v-wrap">
+      <div class="v-hero-in">
+        <div class="v-hero-eyebrow" id="v-hero-eyebrow">✨ Catálogo digital</div>
+        <h1 class="v-hero-titulo" id="v-hero-titulo">Catálogo</h1>
+        <p class="v-hero-desc" id="v-hero-desc"></p>
+        <div class="v-hero-acciones" id="v-hero-acciones"></div>
+      </div>
+      <div class="v-hero-imgwrap" id="v-hero-imgwrap" style="display:none">
+        <img class="v-hero-img" id="v-hero-img" src="" alt="">
+        <div class="v-hero-chip-flotante a" id="v-hero-chip-a" style="display:none"></div>
+        <div class="v-hero-chip-flotante b" id="v-hero-chip-b" style="display:none"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="v-seccion">
+    <div class="v-wrap">
+      <div class="v-confianza-in v-confianza">
+        <div class="v-confianza-item"><div class="ico">🚀</div><b>Envíos rápidos</b><small>A todo el país</small></div>
+        <div class="v-confianza-item"><div class="ico">💎</div><b>Calidad garantizada</b><small>Productos verificados</small></div>
+        <div class="v-confianza-item"><div class="ico">💬</div><b>Atención directa</b><small>Por WhatsApp</small></div>
+        <div class="v-confianza-item"><div class="ico">🔒</div><b>Confianza real</b><small>Contacto verificado</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="v-seccion v-reveal" id="v-seccion-destacado" style="display:none">
+    <div class="v-wrap">
+      <div class="v-seccion-head"><span class="v-seccion-titulo">Producto <span>destacado</span></span></div>
+      <div class="v-destacado" id="v-destacado"></div>
+    </div>
+  </section>
+
+  <section class="v-seccion v-reveal" id="v-seccion-mas-destacados" style="display:none">
+    <div class="v-wrap">
+      <div class="v-seccion-head"><span class="v-seccion-titulo">Más destacados</span></div>
+      <div class="v-grid" id="v-grid-mas-destacados"></div>
+    </div>
+  </section>
+
+  <section class="v-seccion v-reveal" id="v-seccion-vistos" style="display:none">
+    <div class="v-wrap">
+      <div class="v-seccion-head"><span class="v-seccion-titulo">Vistos recientemente</span></div>
+      <div class="v-grid" id="v-grid-vistos"></div>
+    </div>
+  </section>
+
+  <section class="v-seccion v-reveal" id="v-seccion-categorias" style="display:none">
+    <div class="v-wrap">
+      <div class="v-seccion-head"><span class="v-seccion-titulo">Explora por categoría</span></div>
+      <div class="v-cats-scroll" id="v-cats-scroll"></div>
+    </div>
+  </section>
+
+  <section class="v-seccion v-reveal" id="v-seccion-productos">
+    <div class="v-wrap">
+      <div class="v-filtros-barra">
+        <div id="v-migas" class="v-migas" style="display:none"></div>
+        <div class="v-filtros-fila">
+          <div class="v-buscador"><span>🔍</span><input type="text" id="v-buscador" placeholder="Buscar productos…" oninput="onBuscar(this.value)"></div>
+          <select class="v-select" id="v-orden-select" onchange="cambiarOrden(this.value)">
+            <option value="reciente">Más recientes</option>
+            <option value="precio_asc">Precio: menor a mayor</option>
+            <option value="precio_desc">Precio: mayor a menor</option>
+            <option value="nombre">Nombre A-Z</option>
+          </select>
+          <div class="v-precio-chip"><span id="v-precio-label">Cualquier precio</span><input type="range" id="v-precio-slider" min="0" max="100" value="100" oninput="onCambiarPrecio(this.value)"></div>
+        </div>
+      </div>
+      <div class="v-seccion-head">
+        <span class="v-seccion-titulo" id="v-titulo-productos">Todos los productos</span>
+        <span class="v-seccion-conteo" id="v-conteo-productos"></span>
+      </div>
+      <button class="v-volver" id="v-btn-volver" onclick="volverACategorias()" style="display:none">← Ver todas las categorías</button>
+      <div class="v-grid" id="v-grid-productos"></div>
+    </div>
+  </section>
+
+  <section class="v-cta">
+    <div class="v-wrap">
+      <div class="v-cta-card" id="v-cta-card" style="display:none">
+        <h3>¿No encuentras lo que buscas?</h3>
+        <p>Escríbenos y te ayudamos a encontrar justo lo que necesitas.</p>
+        <a class="v-btn" id="v-cta-btn" target="_blank">💬 Escribir por WhatsApp</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="v-footer-cta">
+    <div class="v-wrap v-footer-cta-in">
+      <div class="v-footer-cta-item"><div class="circ">🛍️</div><div><b>Compra fácil y rápida</b><small>Consulta en segundos</small></div></div>
+      <div class="v-footer-cta-item"><div class="circ">⚡</div><div><b>Respuesta inmediata</b><small>Por WhatsApp</small></div></div>
+      <div class="v-footer-cta-item"><div class="circ">✅</div><div><b>Productos verificados</b><small>Calidad real</small></div></div>
+      <div class="v-footer-cta-item"><div class="circ">🌟</div><div><b>Tu satisfacción primero</b><small>Siempre</small></div></div>
+    </div>
+  </div>
+
+  <footer class="v-footer">
+    <div class="v-wrap v-footer-in">
+      <span id="v-footer-nombre"></span>
+      <span>Creado con <a href="/" target="_blank">Catálogo360</a></span>
+    </div>
+  </footer>
+
+  <button class="v-btn-flotante-wa" id="v-btn-flotante-wa" style="display:none" aria-label="WhatsApp">💬</button>
+</div>
+
+<div class="v-modal-overlay" id="v-modal" onclick="if(event.target===this)cerrarModal()">
+  <div class="v-modal">
+    <button class="v-modal-close" onclick="cerrarModal()">✕</button>
+    <div class="v-modal-fotos" id="v-modal-fotos" onclick="abrirLightbox(FOTOS_MODAL_ACTUAL, indexFotoClic(event))"></div>
+    <div class="v-modal-body">
+      <div class="v-modal-cat" id="v-modal-cat" style="display:none"></div>
+      <div class="v-modal-nombre" id="v-modal-nombre"></div>
+      <div class="v-precio-row" style="margin-bottom:0">
+        <span class="v-precio" id="v-modal-precio"></span>
+        <span class="v-tachado" id="v-modal-tachado" style="display:none"></span>
+      </div>
+      <div class="v-modal-desc" id="v-modal-desc"></div>
+      <button class="v-btn" id="v-modal-whatsapp" style="width:100%;justify-content:center"></button>
+      <div id="v-relacionados-wrap" style="display:none">
+        <div class="v-relacionados-titulo">También te puede interesar</div>
+        <div class="v-relacionados-scroll" id="v-relacionados"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="v-lightbox" id="v-lightbox" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="v-lightbox-cerrar" onclick="cerrarLightbox()">✕</button>
+  <button class="v-lightbox-flecha izq" onclick="moverLightbox(-1)">‹</button>
+  <img id="v-lightbox-img" src="" alt="">
+  <button class="v-lightbox-flecha der" onclick="moverLightbox(1)">›</button>
+  <div class="v-lightbox-contador" id="v-lightbox-contador"></div>
+</div>
+
+<div class="v-toast-wrap" id="v-toast-wrap"></div>
+
+<script>
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let CATALOGO=null, PRODUCTOS=[], CATEGORIAS=[], CATEGORIA_ACTUAL=null;
+let ORDEN='reciente', TEXTO_BUSQUEDA='', PRECIO_MAX=null, SOLO_FAV=false, FAVORITOS=[];
+let FOTOS_MODAL_ACTUAL=[], VISTOS=[], LB_FOTOS=[], LB_INDICE=0;
+try { FAVORITOS = JSON.parse(localStorage.getItem('v_favoritos')||'[]'); } catch(e){}
+try { VISTOS = JSON.parse(localStorage.getItem('v_vistos')||'[]'); } catch(e){}
+
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtC(n){ return 'C$'+Number(n||0).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function linkWA(num,txt){ return `https://wa.me/${(num||'').replace(/[^\d]/g,'')}?text=${encodeURIComponent(txt)}`; }
+function hexARgb(hex){ const h=(hex||'#6d5ef8').replace('#',''); const b=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16); if(isNaN(b))return '109,94,248'; return `${(b>>16)&255},${(b>>8)&255},${b&255}`; }
+function irAInicio(){ window.scrollTo({top:0,behavior:'smooth'}); }
+function irACatalogo(){ document.getElementById('v-seccion-productos').scrollIntoView({behavior:'smooth'}); }
+function toggleTema(){
+  const n = document.documentElement.getAttribute('data-theme')==='oscuro'?'claro':'oscuro';
+  document.documentElement.setAttribute('data-theme', n);
+  document.getElementById('v-theme-btn').textContent = n==='oscuro'?'☀':'🌙';
+  localStorage.setItem('v_tema', n);
+}
+function registrarEvento(tipo, prodId){
+  if (CATALOGO && !new URLSearchParams(location.search).get('preview')) {
+    sb.rpc('catalogo_registrar_evento', { p_catalogo_id: CATALOGO.id, p_tipo_evento: tipo, p_producto_id: prodId||null }).then(()=>{}).catch(()=>{});
+  }
+}
+function mostrarToast(msg){
+  const w = document.getElementById('v-toast-wrap');
+  const t = document.createElement('div'); t.className='v-toast'; t.textContent=msg;
+  w.appendChild(t); setTimeout(()=>t.remove(), 2600);
+}
+
+async function init(){
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'); const idPreview = params.get('preview');
+  if (!slug && !idPreview) { mostrarError('Enlace de catálogo no válido.'); return; }
+  let catalogo, error;
+  if (idPreview) {
+    const { data:{session} } = await sb.auth.getSession();
+    if (!session?.user) { mostrarError('Inicia sesión en Negocio360 para ver la vista previa.'); return; }
+    ({data:catalogo,error} = await sb.from('catalogos').select('*').eq('id', idPreview).maybeSingle());
+  } else {
+    ({data:catalogo,error} = await sb.from('catalogos').select('*').eq('slug_publico', slug).eq('estado','publicado').maybeSingle());
+  }
+  if (error || !catalogo) { mostrarError('Este catálogo no existe o ya no está disponible.'); return; }
+  CATALOGO = catalogo;
+  if (idPreview && catalogo.estado!=='publicado') document.getElementById('v-preview-banner').style.display='block';
+
+  document.documentElement.style.setProperty('--accent', catalogo.color_acento || '#6d5ef8');
+  document.documentElement.style.setProperty('--accent-rgb', hexARgb(catalogo.color_acento));
+  const tema = localStorage.getItem('v_tema') || catalogo.tema_default || 'claro';
+  document.documentElement.setAttribute('data-theme', tema);
+  document.getElementById('v-theme-btn').textContent = tema==='oscuro'?'☀':'🌙';
+
+  const { data: productos } = await sb.from('catalogo_productos').select('*, catalogo_producto_fotos(*)').eq('catalogo_id', catalogo.id).eq('activo', true).order('orden');
+  PRODUCTOS = (productos||[]).map(p => ({ ...p, fotos:(p.catalogo_producto_fotos||[]).sort((a,b)=>a.orden-b.orden) }));
+  const { data: categorias } = await sb.from('catalogo_categorias').select('*').eq('catalogo_id', catalogo.id).order('orden');
+  CATEGORIAS = categorias || [];
+
+  renderTodo();
+  if (!idPreview) registrarEvento('visita');
+  document.getElementById('v-loader').style.display='none';
+  document.getElementById('v-app').style.display='block';
+  activarRevelado();
+}
+function mostrarError(msg){ document.getElementById('v-loader').innerHTML = `<div style="text-align:center"><div style="font-size:32px;margin-bottom:10px">😕</div>${esc(msg)}</div>`; }
+function activarRevelado(){
+  if (!('IntersectionObserver' in window)) { document.querySelectorAll('.v-reveal').forEach(e=>e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  document.querySelectorAll('.v-reveal').forEach(e=>obs.observe(e));
+}
+
+function renderTodo(){
+  renderHeaderYHero();
+  insertarJSONLD();
+  renderDestacado();
+  renderCategoriasSeccion();
+  renderVistaProductos();
+  actualizarFavBadge();
+  document.getElementById('v-footer-nombre').textContent = CATALOGO.nombre_comercial || CATALOGO.nombre;
+}
+
+function renderHeaderYHero(){
+  const c = CATALOGO;
+  document.title = c.nombre_comercial || c.nombre;
+  document.getElementById('v-title').textContent = c.nombre_comercial || c.nombre;
+  document.getElementById('v-desc-meta').setAttribute('content', c.descripcion||'');
+  document.getElementById('v-og-title').setAttribute('content', c.nombre_comercial||c.nombre);
+  document.getElementById('v-og-desc').setAttribute('content', c.descripcion||'');
+  if (c.logo_url) document.getElementById('v-og-image').setAttribute('content', c.logo_url);
+
+  document.getElementById('v-nav-nombre').textContent = c.nombre_comercial || c.nombre;
+  if (c.logo_url) { const l=document.getElementById('v-nav-logo'); l.src=c.logo_url; l.style.display='block'; }
+  document.getElementById('v-hero-titulo').innerHTML = `${esc(c.nombre_comercial||c.nombre)} <span class="grad">a un mensaje de distancia</span>`;
+  document.getElementById('v-hero-desc').textContent = c.descripcion || `Descubre ${PRODUCTOS.length} productos reales, listos para ti.`;
+
+  const acciones = document.getElementById('v-hero-acciones');
+  let html = `<button class="v-btn v-btn-ghost" onclick="irACatalogo()">Ver catálogo →</button>`;
+  if (c.whatsapp) {
+    const url = linkWA(c.whatsapp, `Hola, vi su catálogo ${c.nombre_comercial||''} y tengo una consulta.`);
+    html = `<a class="v-btn" href="${url}" target="_blank" onclick="registrarEvento('click_whatsapp')">💬 Escribir por WhatsApp</a>` + html;
+    window.v_wa_url = url;
+    const navCta = document.getElementById('v-nav-cta'); navCta.style.display='inline-flex'; navCta.href=url;
+    document.getElementById('v-btn-flotante-wa').style.display='flex';
+    document.getElementById('v-btn-flotante-wa').onclick = () => { registrarEvento('click_whatsapp'); window.open(url,'_blank'); };
+    document.getElementById('v-cta-card').style.display='flex';
+    const ctaBtn = document.getElementById('v-cta-btn'); ctaBtn.href=url; ctaBtn.onclick=()=>registrarEvento('click_whatsapp');
+  }
+  acciones.innerHTML = html;
+
+  // Imagen del hero: usa la foto del producto destacado, o la primera
+  // disponible -- nunca pide banner al usuario, el sistema decide solo.
+  const destacado = PRODUCTOS.find(p=>p.destacado) || PRODUCTOS[0];
+  const foto = destacado?.fotos?.find(f=>f.es_principal) || destacado?.fotos?.[0];
+  if (foto) {
+    document.getElementById('v-hero-imgwrap').style.display='block';
+    document.getElementById('v-hero-img').src = foto.url;
+    if (destacado.destacado) {
+      const chipA = document.getElementById('v-hero-chip-a');
+      chipA.style.display='flex'; chipA.innerHTML = `<img src="${esc(foto.url)}"><div class="txt"><b>${esc(destacado.nombre)}</b><span>${fmtC(destacado.precio)}</span></div>`;
+    }
+    const chipB = document.getElementById('v-hero-chip-b');
+    chipB.style.display='flex'; chipB.innerHTML = `<div class="txt"><b>${PRODUCTOS.length} productos</b><span>Disponibles ahora</span></div>`;
+  }
+}
+
+function insertarJSONLD(){
+  const ex = document.getElementById('v-jsonld'); if (ex) ex.remove();
+  const data = { "@context":"https://schema.org", "@type":"Store", "name": CATALOGO.nombre_comercial||CATALOGO.nombre,
+    "makesOffer": PRODUCTOS.slice(0,30).map(p=>({ "@type":"Offer", "itemOffered":{"@type":"Product","name":p.nombre}, "price":String((p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio), "priceCurrency":"NIO", "availability": p.etiqueta==='agotado'?"https://schema.org/OutOfStock":"https://schema.org/InStock" })) };
+  const s = document.createElement('script'); s.id='v-jsonld'; s.type='application/ld+json'; s.textContent=JSON.stringify(data);
+  document.head.appendChild(s);
+}
+
+function renderDestacado(){
+  const destacados = PRODUCTOS.filter(p=>p.destacado);
+  const secA = document.getElementById('v-seccion-destacado'), secB = document.getElementById('v-seccion-mas-destacados');
+  if (!destacados.length) { secA.style.display='none'; secB.style.display='none'; return; }
+  secA.style.display='block';
+  const p = destacados[0];
+  const cat = CATEGORIAS.find(c=>c.id===p.categoria_id);
+  const principal = p.fotos.find(f=>f.es_principal) || p.fotos[0];
+  const oferta = p.etiqueta==='oferta' && p.precio_oferta;
+  document.getElementById('v-destacado').innerHTML = `
+    <div class="v-destacado-media">
+      <img class="v-destacado-img" id="v-destacado-img" src="${esc(principal?.url||'')}" alt="${esc(p.nombre)}" onclick="abrirModal('${p.id}')">
+      ${p.fotos.length>1?`<div class="v-destacado-thumbs">${p.fotos.map(f=>`<img class="v-destacado-thumb ${f.id===principal?.id?'activa':''}" src="${esc(f.url)}" onclick="cambiarFotoDestacado(this,'${esc(f.url)}')">`).join('')}</div>`:''}
+    </div>
+    <div>
+      <div class="v-destacado-badge">⭐ Destacado</div>
+      ${cat?`<div class="v-modal-cat">${esc(cat.nombre)}</div>`:''}
+      <h2 class="v-destacado-nombre">${esc(p.nombre)}</h2>
+      ${p.descripcion?`<p class="v-destacado-desc">${esc(p.descripcion)}</p>`:''}
+      <div class="v-precio-row">
+        <span class="v-precio ${oferta?'oferta':''}">${fmtC(oferta?p.precio_oferta:p.precio)}</span>
+        ${oferta?`<span class="v-tachado">${fmtC(p.precio)}</span>`:''}
+      </div>
+      ${CATALOGO.whatsapp?`<button class="v-btn" onclick="consultarProducto('${p.id}')">💬 Consultar disponibilidad</button>`:''}
+    </div>`;
+  const resto = destacados.slice(1);
+  if (resto.length) { secB.style.display='block'; const g=document.getElementById('v-grid-mas-destacados'); g.className='v-grid'+(resto.length<=3?' pocas':''); g.innerHTML=resto.map(tarjetaHTML).join(''); }
+  else secB.style.display='none';
+}
+function cambiarFotoDestacado(el,url){ document.getElementById('v-destacado-img').src=url; document.querySelectorAll('.v-destacado-thumb').forEach(t=>t.classList.remove('activa')); el.classList.add('activa'); }
+function consultarProducto(id){
+  const p = PRODUCTOS.find(x=>x.id===id); if (!p||!CATALOGO.whatsapp) return;
+  const precio = (p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWA(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(precio)}) de su catálogo.`), '_blank');
+}
+
+const ICONOS_CAT = ['🛍️','👗','💄','🏠','⌚','🎁','📱','👟','🍿','🧴','🎨','🪑'];
+function renderCategoriasSeccion(){
+  const sec = document.getElementById('v-seccion-categorias');
+  if (!CATEGORIAS.length || CATEGORIA_ACTUAL) { sec.style.display='none'; return; }
+  sec.style.display='block';
+  const conteo = {}; PRODUCTOS.forEach(p=>{ if(p.categoria_id) conteo[p.categoria_id]=(conteo[p.categoria_id]||0)+1; });
+  document.getElementById('v-cats-scroll').innerHTML = CATEGORIAS.map((cat,i)=>`
+    <div class="v-cat-tile" onclick="filtrarCategoria('${cat.id}')">
+      <div class="circulo">${cat.imagen_url?`<img src="${esc(cat.imagen_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:ICONOS_CAT[i%ICONOS_CAT.length]}</div>
+      <span>${esc(cat.nombre)} (${conteo[cat.id]||0})</span>
+    </div>`).join('');
+}
+function filtrarCategoria(id){
+  CATEGORIA_ACTUAL = CATEGORIAS.find(c=>c.id===id)||null; SOLO_FAV=false;
+  renderCategoriasSeccion(); renderMigas(); aplicarFiltro();
+  document.getElementById('v-seccion-productos').scrollIntoView({behavior:'smooth'});
+}
+function volverACategorias(){ CATEGORIA_ACTUAL=null; SOLO_FAV=false; renderCategoriasSeccion(); renderMigas(); aplicarFiltro(); }
+function toggleSoloFavoritos(){ SOLO_FAV=!SOLO_FAV; if(SOLO_FAV) CATEGORIA_ACTUAL=null; renderCategoriasSeccion(); renderMigas(); aplicarFiltro(); }
+function renderMigas(){
+  const el = document.getElementById('v-migas'), btnVolver = document.getElementById('v-btn-volver'), titulo = document.getElementById('v-titulo-productos');
+  if (!CATEGORIA_ACTUAL && !SOLO_FAV) { el.style.display='none'; btnVolver.style.display='none'; titulo.textContent='Todos los productos'; return; }
+  const actual = SOLO_FAV?'Mis favoritos':CATEGORIA_ACTUAL.nombre;
+  el.style.display='block'; el.innerHTML = `<a onclick="volverACategorias()">Inicio</a> › ${esc(actual)}`;
+  btnVolver.style.display = CATEGORIAS.length ? 'inline-block' : 'none';
+  titulo.textContent = actual;
+}
+function onBuscar(v){ TEXTO_BUSQUEDA=v.trim().toLowerCase(); aplicarFiltro(); }
+function onCambiarPrecio(v){
+  PRECIO_MAX=Number(v); const slider=document.getElementById('v-precio-slider');
+  document.getElementById('v-precio-label').textContent = PRECIO_MAX>=Number(slider.max)?'Cualquier precio':'Hasta '+fmtC(PRECIO_MAX);
+  aplicarFiltro();
+}
+function cambiarOrden(v){ ORDEN=v; aplicarFiltro(); }
+function configurarPrecio(){
+  if (!PRODUCTOS.length) return;
+  const real = p=>(p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
+  const max = Math.ceil(Math.max(...PRODUCTOS.map(real)));
+  const s = document.getElementById('v-precio-slider'); s.max=max; s.value=max; PRECIO_MAX=max;
+  document.getElementById('v-precio-label').textContent = 'Hasta '+fmtC(max);
+}
+function renderVistaProductos(){ configurarPrecio(); renderMigas(); aplicarFiltro(); }
+function aplicarFiltro(){
+  let lista = CATEGORIA_ACTUAL ? PRODUCTOS.filter(p=>p.categoria_id===CATEGORIA_ACTUAL.id) : PRODUCTOS.slice();
+  const real = p=>(p.etiqueta==='oferta'&&p.precio_oferta)?p.precio_oferta:p.precio;
+  if (SOLO_FAV) lista = lista.filter(p=>FAVORITOS.includes(p.id));
+  if (TEXTO_BUSQUEDA) lista = lista.filter(p=>p.nombre.toLowerCase().includes(TEXTO_BUSQUEDA));
+  if (PRECIO_MAX!=null) lista = lista.filter(p=>real(p)<=PRECIO_MAX);
+  if (ORDEN==='precio_asc') lista.sort((a,b)=>real(a)-real(b));
+  else if (ORDEN==='precio_desc') lista.sort((a,b)=>real(b)-real(a));
+  else if (ORDEN==='nombre') lista.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  else lista.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  renderGrid(lista);
+}
+function tarjetaHTML(p){
+  const principal = p.fotos.find(f=>f.es_principal)||p.fotos[0];
+  const cat = CATEGORIAS.find(c=>c.id===p.categoria_id);
+  const oferta = p.etiqueta==='oferta' && p.precio_oferta;
+  const agotado = p.etiqueta==='agotado';
+  const tag = {nuevo:'Nuevo',oferta:'Oferta'}[p.etiqueta];
+  const fav = FAVORITOS.includes(p.id);
+  return `
+    <div class="v-card ${agotado?'agotada':''}">
+      <div class="v-card-media" onclick="abrirModal('${p.id}')">
+        ${tag?`<span class="v-card-tag ${p.etiqueta}">${tag}</span>`:''}
+        <span class="v-card-disp ${agotado?'agotado':''}">${agotado?'Agotado':'Disponible'}</span>
+        <button class="v-fav-btn ${fav?'activo':''}" onclick="event.stopPropagation();toggleFav('${p.id}')">${fav?'❤️':'🤍'}</button>
+        ${principal?`<img src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}">`:''}
+      </div>
+      <div class="v-card-body">
+        ${cat?`<div class="v-card-cat">${esc(cat.nombre)}</div>`:''}
+        <div class="v-card-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+        <div class="v-card-precio-row">
+          <span class="v-card-precio ${oferta?'oferta':''}">${fmtC(oferta?p.precio_oferta:p.precio)}</span>
+          ${oferta?`<span class="v-card-tachado">${fmtC(p.precio)}</span>`:''}
+        </div>
+        ${!agotado?`<div class="v-card-acciones">
+          ${CATALOGO.whatsapp?`<button class="v-card-accion wa" onclick="event.stopPropagation();consultarProducto('${p.id}')">💬</button>`:''}
+          ${CATALOGO.telefono?`<a class="v-card-accion llamar" href="tel:${esc(CATALOGO.telefono)}" onclick="event.stopPropagation();registrarEvento('click_telefono')">📞</a>`:''}
+          <button class="v-card-accion compartir" onclick="event.stopPropagation();compartir('${p.id}')">🔗</button>
+        </div>`:''}
+      </div>
+    </div>`;
+}
+function renderGrid(lista){
+  document.getElementById('v-conteo-productos').textContent = lista.length?`${lista.length} producto${lista.length===1?'':'s'}`:'';
+  const g = document.getElementById('v-grid-productos');
+  if (!lista.length) { g.innerHTML = `<div class="v-vacio">Todavía no hay productos aquí.</div>`; return; }
+  g.className = 'v-grid'+(lista.length<=3?' pocas':'');
+  g.innerHTML = lista.map(tarjetaHTML).join('');
+}
+function toggleFav(id){
+  const i = FAVORITOS.indexOf(id); if (i===-1) FAVORITOS.push(id); else FAVORITOS.splice(i,1);
+  localStorage.setItem('v_favoritos', JSON.stringify(FAVORITOS));
+  aplicarFiltro(); actualizarFavBadge();
+}
+function actualizarFavBadge(){ const b=document.getElementById('v-nav-fav-badge'); b.textContent=FAVORITOS.length; b.style.display=FAVORITOS.length?'flex':'none'; }
+function compartir(id){
+  const p = PRODUCTOS.find(x=>x.id===id); if (!p) return;
+  const url = `${location.href.split('#')[0]}#producto-${id}`;
+  if (navigator.share) navigator.share({title:p.nombre, text:`${p.nombre} — ${fmtC(p.precio)}`, url}).catch(()=>{});
+  else if (navigator.clipboard) { navigator.clipboard.writeText(url); mostrarToast('🔗 Enlace copiado'); }
+}
+
+function registrarVisto(id){
+  VISTOS = VISTOS.filter(v=>v!==id); VISTOS.unshift(id); VISTOS=VISTOS.slice(0,8);
+  localStorage.setItem('v_vistos', JSON.stringify(VISTOS));
+  renderVistos();
+}
+function renderVistos(){
+  const sec = document.getElementById('v-seccion-vistos');
+  const validos = VISTOS.filter(id=>PRODUCTOS.some(p=>p.id===id));
+  if (validos.length<2) { sec.style.display='none'; return; }
+  sec.style.display='block';
+  const lista = validos.map(id=>PRODUCTOS.find(p=>p.id===id)).filter(Boolean);
+  const g = document.getElementById('v-grid-vistos'); g.className='v-grid'+(lista.length<=3?' pocas':''); g.innerHTML=lista.map(tarjetaHTML).join('');
+}
+
+function abrirModal(id){
+  const p = PRODUCTOS.find(x=>x.id===id); if (!p) return;
+  registrarEvento('vista_producto', id); registrarVisto(id);
+  const cat = CATEGORIAS.find(c=>c.id===p.categoria_id);
+  const oferta = p.etiqueta==='oferta' && p.precio_oferta;
+  const catEl = document.getElementById('v-modal-cat'); catEl.textContent=cat?cat.nombre:''; catEl.style.display=cat?'block':'none';
+  document.getElementById('v-modal-nombre').textContent = p.nombre;
+  document.getElementById('v-modal-precio').textContent = fmtC(oferta?p.precio_oferta:p.precio);
+  document.getElementById('v-modal-precio').className = 'v-precio'+(oferta?' oferta':'');
+  const t = document.getElementById('v-modal-tachado'); t.style.display=oferta?'inline':'none'; if(oferta) t.textContent=fmtC(p.precio);
+  document.getElementById('v-modal-desc').textContent = p.descripcion||'';
+  FOTOS_MODAL_ACTUAL = p.fotos.map(f=>f.url);
+  document.getElementById('v-modal-fotos').innerHTML = p.fotos.length?p.fotos.map(f=>`<img src="${esc(f.url)}">`).join(''):'';
+  const btn = document.getElementById('v-modal-whatsapp');
+  if (CATALOGO.whatsapp && p.etiqueta!=='agotado') { btn.style.display='flex'; btn.disabled=false; btn.textContent='💬 Consultar por WhatsApp'; btn.onclick=()=>consultarProducto(p.id); }
+  else if (p.etiqueta==='agotado') { btn.style.display='flex'; btn.disabled=true; btn.textContent='Agotado por ahora'; btn.onclick=null; }
+  else btn.style.display='none';
+  renderRelacionados(p);
+  document.getElementById('v-modal').classList.add('open');
+}
+function cerrarModal(){ document.getElementById('v-modal').classList.remove('open'); }
+function indexFotoClic(ev){ const img=ev.target.closest('img'); if(!img) return 0; return Array.from(img.parentElement.children).indexOf(img); }
+function renderRelacionados(p){
+  const wrap = document.getElementById('v-relacionados-wrap');
+  if (!p.categoria_id) { wrap.style.display='none'; return; }
+  const rel = PRODUCTOS.filter(x=>x.id!==p.id && x.categoria_id===p.categoria_id).slice(0,6);
+  if (!rel.length) { wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  document.getElementById('v-relacionados').innerHTML = rel.map(r=>{
+    const f = r.fotos.find(x=>x.es_principal)||r.fotos[0];
+    return `<div class="v-relacionado" onclick="abrirModal('${r.id}')">${f?`<img src="${esc(f.url)}" loading="lazy">`:`<div style="width:108px;height:108px;background:var(--surface-2);border-radius:14px"></div>`}<div class="n">${esc(r.nombre)}</div><div class="p">${fmtC(r.precio)}</div></div>`;
+  }).join('');
+}
+
+function abrirLightbox(fotos, idx){ if(!fotos||!fotos.length) return; LB_FOTOS=fotos; LB_INDICE=idx||0; document.getElementById('v-lightbox-img').src=LB_FOTOS[LB_INDICE]; document.getElementById('v-lightbox-contador').textContent=`${LB_INDICE+1} / ${LB_FOTOS.length}`; document.getElementById('v-lightbox').classList.add('open'); }
+function cerrarLightbox(){ document.getElementById('v-lightbox').classList.remove('open'); }
+function moverLightbox(d){ LB_INDICE=(LB_INDICE+d+LB_FOTOS.length)%LB_FOTOS.length; document.getElementById('v-lightbox-img').src=LB_FOTOS[LB_INDICE]; document.getElementById('v-lightbox-contador').textContent=`${LB_INDICE+1} / ${LB_FOTOS.length}`; }
+document.addEventListener('keydown', e=>{
+  if (document.getElementById('v-lightbox').classList.contains('open')) {
+    if (e.key==='Escape') cerrarLightbox(); if (e.key==='ArrowLeft') moverLightbox(-1); if (e.key==='ArrowRight') moverLightbox(1);
+    return;
+  }
+  if (e.key==='Escape' && document.getElementById('v-modal').classList.contains('open')) cerrarModal();
+});
+
+init();
+</script>
+</body>
+</html>
