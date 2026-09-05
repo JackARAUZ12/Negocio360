@@ -2741,6 +2741,8 @@
           return;
         }
 
+        if (c360RedirigirSiPlantillaCambio(resultado.catalogo, 'halloween')) return;
+
         H_CATALOGO = resultado.catalogo;
         H_PRODUCTOS = resultado.productos || [];
         H_CATEGORIAS = resultado.categorias || [];

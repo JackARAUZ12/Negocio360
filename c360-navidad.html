@@ -584,6 +584,7 @@ async function init(){
 
   const resultado = await c360CargarCatalogoPublico({ sb, slug, idPreview });
   if (resultado.error) { mostrarError(resultado.error); return; }
+  if (c360RedirigirSiPlantillaCambio(resultado.catalogo, 'navidad')) return;
   const catalogo = resultado.catalogo;
   CATALOGO = catalogo;
   PRODUCTOS = resultado.productos;

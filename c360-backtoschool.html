@@ -3941,6 +3941,8 @@
           return;
         }
 
+        if (c360RedirigirSiPlantillaCambio(resultado.catalogo, 'backtoschool')) return;
+
         BTS_CATALOGO = resultado.catalogo;
         BTS_PRODUCTOS = resultado.productos || [];
         BTS_CATEGORIAS = resultado.categorias || [];

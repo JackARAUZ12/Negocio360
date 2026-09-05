@@ -178,3 +178,40 @@ function c360CrearAlmacenLocal(prefijo) {
     guardarTema: (tema) => localStorage.setItem(`${prefijo}_tema`, tema),
   };
 }
+
+/**
+ * Mapeo plantilla -> archivo real. Debe reflejar exactamente el mismo
+ * mapeo que usa el panel admin (PLANTILLAS_CATALOGO360 en
+ * catalogo360.js) -- si se agrega una plantilla nueva ahi, hay que
+ * agregarla aqui tambien.
+ */
+const C360_ARCHIVO_POR_PLANTILLA = {
+  profesional: 'c360.html',
+  plantilla2: 'c360-vibrante.html',
+  navidad: 'c360-navidad.html',
+  valentin: 'c360-valentin.html',
+  halloween: 'c360-halloween.html',
+  backtoschool: 'c360-backtoschool.html',
+  verano: 'c360-verano.html',
+};
+
+/**
+ * Resuelve un enlace/QR "viejo" que apunta a un archivo de plantilla
+ * fijo: si la plantilla REAL guardada en el catalogo ya cambio desde
+ * que se genero ese enlace, redirige automaticamente al archivo
+ * correcto (mismos parametros de la URL, ?c= o ?preview=) para que el
+ * cliente siempre vea la version actual, sin necesitar un enlace
+ * nuevo cada vez que el negocio cambia de plantilla.
+ *
+ * @param {object} catalogo - el catalogo ya cargado (con su columna .plantilla)
+ * @param {string} miPlantillaKey - la key de ESTE archivo (ej. 'halloween' en c360-halloween.html)
+ * @returns {boolean} true si se disparo una redireccion (el que llama debe detenerse ahi mismo)
+ */
+function c360RedirigirSiPlantillaCambio(catalogo, miPlantillaKey) {
+  const plantillaReal = catalogo?.plantilla || 'profesional';
+  if (plantillaReal === miPlantillaKey) return false;
+  const archivoCorrecto = C360_ARCHIVO_POR_PLANTILLA[plantillaReal] || 'c360.html';
+  const destino = `${archivoCorrecto}${location.search}`;
+  window.location.replace(destino);
+  return true;
+}
