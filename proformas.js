@@ -583,14 +583,20 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   const origen = STATE.origenStockElegido; STATE.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(p.precio||0);
+  const stockReal = esRemoto ? (origen.stockDisponible ?? Infinity) : Number(p.stock_actual || 0);
 
   const existente = STATE.carrito.find(l => l.id === productoId && (l.escalaId || null) === (escalaElegida?.id || null) && (l.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
-  if (existente) { existente.cantidad++; recalcularLineaProf(existente); }
+  if (existente) {
+    existente.cantidad++;
+    if (p.tipo === 'producto' && existente.cantidad > stockReal) existente.sinStock = true;
+    recalcularLineaProf(existente);
+  }
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
       cantidad: 1, precio: precioUsar, descuento: 0, esCombo: !!p.esCombo,
       escalaId: escalaElegida ? escalaElegida.id : null,
       escalaNombre: escalaElegida ? escalaElegida.nombre : null,
+      sinStock: p.tipo === 'producto' && 1 > stockReal,
       origenStockId:     esRemoto ? origen.sucursalId   : null,
       origenStockNombre: esRemoto ? origen.nombreCuenta : null };
     recalcularLineaProf(linea);
@@ -615,7 +621,7 @@ function renderCarritoProf() {
   }
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
-      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
+      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${l.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
       <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/></td>
       <td class="col-costo-prof" style="display:none"><input type="number" class="carrito-input" value="${l.costo||0}" min="0" step="0.01" title="Ajustar el costo solo para esta proforma" onchange="actualizarLineaProf(${idx},'costo',this.value)" style="width:90px"/></td>
@@ -630,6 +636,10 @@ function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
   const l = STATE.carrito[idx]; if (!l) return;
   l[campo] = parseFloat(valor) || 0;
   if (esPrecioManual) l.precioEditado = true;
+  if (campo === 'cantidad' && l.tipo === 'producto' && !l.origenStockId) {
+    const p = STATE.productos.find(x => x.id === l.id);
+    if (p && l.cantidad > Number(p.stock_actual || 0)) l.sinStock = true;
+  }
   recalcularLineaProf(l);
   renderCarritoProf();
 }
