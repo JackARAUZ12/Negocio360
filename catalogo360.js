@@ -533,7 +533,6 @@ async function confirmarEliminarCatalogo() {
   }
 }
 
-
 function cambiarTabEditor(tab) {
   document.querySelectorAll('.c360-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   ['info','categorias','productos','apariencia'].forEach(t => {
@@ -630,15 +629,15 @@ const PALETAS_CATALOGO360 = [
   { nombre: 'Grafito',      color: '#475569' },
 ];
 
-// Plantillas disponibles del catálogo público -- por ahora solo una
-// esta terminada y lista para usar; la segunda queda preparada como
-// "Próximamente" para cuando se construya.
+// Plantillas disponibles del catálogo público
 const PLANTILLAS_CATALOGO360 = [
   { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true, archivo:'c360.html' },
   { key:'plantilla2', nombre:'Vibrante', icono:'✨', desc:'Clara, colorida, con degradados y burbujas animadas.', disponible:true, archivo:'c360-vibrante.html' },
   { key:'navidad', nombre:'Navidad', icono:'🎄', desc:'Cálida y editorial -- vino, verde pino, crema y dorado.', disponible:true, archivo:'c360-navidad.html' },
   { key:'valentin', nombre:'San Valentín', icono:'❤️', desc:'Romántica y sofisticada -- borgoña, rosa empolvado, crema y dorado.', disponible:true, archivo:'c360-valentin.html' },
+  { key:'halloween', nombre:'Halloween', icono:'🎃', desc:'Misteriosa y oscura -- púrpura profundo, naranja vibrante y detalles espeluznantes.', disponible:true, archivo:'c360-halloween.html' },
 ];
+
 function archivoDePlantilla(key) {
   return PLANTILLAS_CATALOGO360.find(p => p.key === key)?.archivo || 'c360.html';
 }
@@ -1332,3 +1331,4 @@ function guardarMonedaVis() {
   }
   location.reload();
 }
+```
