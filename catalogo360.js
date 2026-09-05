@@ -49,6 +49,7 @@ function toggleSidebar() {
     document.getElementById('main').classList.toggle('sidebar-collapsed');
   }
 }
+```
 function closeMobileSidebar() {
   document.getElementById('sidebar').classList.remove('mobile-open');
   document.getElementById('sidebar-overlay').classList.remove('active');
@@ -60,9 +61,10 @@ function showToast(msg, type='success') {
   const t = document.getElementById('toast');
   if (!t) { console.log(msg); return; }
   t.textContent = msg;
-  t.className = `toast toast-${type === 'error' ? 'error' : 'success'} toast-show`;
+  t.className = 'toast toast-' + (type === 'error' ? 'error' : 'success') + ' toast-show';
   setTimeout(() => t.classList.remove('toast-show'), 3200);
 }
+```
 
 /* =====================================================
    COMPRESIÓN DE IMÁGENES
