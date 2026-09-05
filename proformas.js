@@ -50,6 +50,10 @@ let STATE = {
   stockOrigenPendiente:  null,
   origenStockElegido:    null,
   productosCacheGrupo:   [],
+
+  // Vender sin stock — apagado por defecto, mismo interruptor que Ventas
+  // (se lee de configuracion_empresa, no se guarda aparte por módulo).
+  venderSinStockActivo: false,
   ivaPorcentaje: 15,
 
   proformaActual: null,
@@ -123,6 +127,9 @@ async function loadEmpresaConfig(userId) {
   try {
     const { data } = await sbClient.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
     STATE.empresaConfig = data || {};
+    STATE.venderSinStockActivo = !!data?.vender_sin_stock;
+    const chkVSS = document.getElementById('chk-vender-sin-stock');
+    if (chkVSS) chkVSS.checked = STATE.venderSinStockActivo;
     if (data) {
       const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
       const lt = document.getElementById('sidebar-logo-text');
@@ -241,7 +248,7 @@ async function loadProductos() {
   try {
     const { data } = await sbClient.from('productos')
       .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     const productos = data || [];
 
     // Combos: se agregan al mismo catálogo de búsqueda/carrito que los
@@ -328,7 +335,7 @@ function buscarProductoProf() {
     const vistos = new Set();
     filtradosGrupo = STATE.productosCacheGrupo.filter(p => {
       const clave = (p.nombre||'').trim().toLowerCase();
-      if (p.tipo !== 'producto' || !clave || nombresLocales.has(clave) || vistos.has(clave)) return false;
+      if (p.tipo !== 'producto' || !clave || p.es_materia_prima || nombresLocales.has(clave) || vistos.has(clave)) return false;
       const coincide = clave.includes(q) || (p.sku||'').toLowerCase().includes(q);
       if (coincide) vistos.add(clave);
       return coincide;
@@ -421,6 +428,22 @@ async function toggleStockCompartido(activo) {
     console.error('toggleStockCompartido (proformas):', e);
     showToast('No se pudo cambiar Stock Compartido', 'error');
     const chk = document.getElementById('chk-stock-compartido');
+    if (chk) chk.checked = !activo;
+  }
+}
+
+async function toggleVenderSinStock(activo) {
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ vender_sin_stock: activo }).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    STATE.venderSinStockActivo = activo;
+    if (STATE.empresaConfig) STATE.empresaConfig.vender_sin_stock = activo;
+    showToast(activo ? 'Ahora puedes cotizar sin stock disponible' : 'Vender sin stock desactivado', 'success');
+  } catch (e) {
+    console.error('toggleVenderSinStock (proformas):', e);
+    showToast('No se pudo cambiar esta opción', 'error');
+    const chk = document.getElementById('chk-vender-sin-stock');
     if (chk) chk.checked = !activo;
   }
 }

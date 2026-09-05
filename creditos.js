@@ -268,7 +268,7 @@
 
   async function loadProductosYServicios() {
     const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio')
-      .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
+      .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     const todos = data || [];
     CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
     // Los "productos financieros" ya no se seleccionan de un catálogo aparte: el usuario
@@ -656,7 +656,7 @@
       const vistos = new Set();
       resultadosGrupo = CS.productosCacheGrupo.filter(p => {
         const clave = (p.nombre||'').trim().toLowerCase();
-        if (p.tipo !== 'producto' || !clave || nombresLocales.has(clave) || vistos.has(clave)) return false;
+        if (p.tipo !== 'producto' || !clave || p.es_materia_prima || nombresLocales.has(clave) || vistos.has(clave)) return false;
         const coincide = clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto);
         if (coincide) vistos.add(clave);
         return coincide;

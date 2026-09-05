@@ -1191,6 +1191,13 @@
           <span class="n360-switch-slider"></span>
         </span>
       </label>
+      <label id="vender-sin-stock-wrap" style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-right:6px" title="Permite cotizar y convertir a venta productos aunque no tengan existencias disponibles en este momento">
+        <span>🧾 Vender sin stock</span>
+        <span class="n360-switch">
+          <input type="checkbox" id="chk-vender-sin-stock" onchange="toggleVenderSinStock(this.checked)" />
+          <span class="n360-switch-slider"></span>
+        </span>
+      </label>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -1753,7 +1760,7 @@
 </div>
 
 <script src="comprobante-carta.js"></script>
-<script src="proformas.js?v=20260901c"></script>
+<script src="proformas.js?v=20260901d"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
