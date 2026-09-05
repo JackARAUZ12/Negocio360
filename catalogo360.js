@@ -1,4 +1,3 @@
-```javascript
 /* =====================================================
    CATALOGO360.JS — NEGOCIO360
    App de gestión de catálogos digitales. Reutiliza los productos ya
@@ -49,7 +48,6 @@ function toggleSidebar() {
     document.getElementById('main').classList.toggle('sidebar-collapsed');
   }
 }
-```
 function closeMobileSidebar() {
   document.getElementById('sidebar').classList.remove('mobile-open');
   document.getElementById('sidebar-overlay').classList.remove('active');
@@ -64,7 +62,6 @@ function showToast(msg, type='success') {
   t.className = 'toast toast-' + (type === 'error' ? 'error' : 'success') + ' toast-show';
   setTimeout(() => t.classList.remove('toast-show'), 3200);
 }
-```
 
 /* =====================================================
    COMPRESIÓN DE IMÁGENES
@@ -91,7 +88,6 @@ function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
   });
 }
 
-```
 async function subirImagenCatalogo(blob, carpeta) {
   const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.webp';
   const ruta = STATE.userId + '/' + carpeta + '/' + nombreArchivo;
@@ -100,7 +96,6 @@ async function subirImagenCatalogo(blob, carpeta) {
   const { data } = sb.storage.from('catalogo360').getPublicUrl(ruta);
   return { url: data.publicUrl, ruta };
 }
-```
 
 /* =====================================================
    INICIALIZACIÓN
@@ -1234,4 +1229,3 @@ function descargarQR() {
   link.click();
   showToast('✅ QR descargado');
 }
-```
