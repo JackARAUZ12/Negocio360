@@ -138,6 +138,15 @@ async function init() {
     if (profile) renderUserInfo(profile, user.email);
 
     document.getElementById('loader').classList.add('hidden');
+
+    // Bloqueo real: si esta cuenta todavia no canjeo un codigo de
+    // Catalogo360, se muestra la pantalla de planes en vez del editor
+    // -- nunca se carga ningun dato real del catalogo hasta desbloquear.
+    if (!STATE.empresaConfig?.catalogo360_desbloqueado) {
+      document.getElementById('c360-paywall').style.display = 'block';
+      return;
+    }
+
     document.getElementById('app').style.display = 'flex';
 
     await cargarLimitesYUso();
@@ -148,9 +157,40 @@ async function init() {
     document.getElementById('app').style.display = 'flex';
   }
 }
+
+async function canjearCodigoCatalogo360() {
+  const input = document.getElementById('c360-input-codigo');
+  const msgEl = document.getElementById('c360-codigo-mensaje');
+  const btn = document.getElementById('c360-btn-canjear');
+  const codigo = (input?.value || '').trim();
+  if (!codigo) {
+    msgEl.style.display = 'block'; msgEl.style.color = '#e53e3e'; msgEl.textContent = 'Escribe un código primero';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  msgEl.style.display = 'none';
+  try {
+    const { data, error } = await sb.rpc('catalogo360_canjear_codigo', { p_codigo: codigo });
+    if (error) throw error;
+    if (data?.ok) {
+      msgEl.style.display = 'block'; msgEl.style.color = '#22c55e'; msgEl.textContent = data.mensaje;
+      setTimeout(() => window.location.reload(), 900);
+    } else {
+      msgEl.style.display = 'block'; msgEl.style.color = '#e53e3e'; msgEl.textContent = data?.mensaje || 'Código no válido';
+      btn.disabled = false; btn.textContent = 'Activar';
+    }
+  } catch (e) {
+    msgEl.style.display = 'block'; msgEl.style.color = '#e53e3e'; msgEl.textContent = 'No se pudo verificar el código, intenta de nuevo';
+    btn.disabled = false; btn.textContent = 'Activar';
+  }
+}
 document.addEventListener('DOMContentLoaded', () => {
   init();
   if (window.lucide) lucide.createIcons();
+  const btnCanjear = document.getElementById('c360-btn-canjear');
+  if (btnCanjear) btnCanjear.addEventListener('click', canjearCodigoCatalogo360);
+  const inputCodigo = document.getElementById('c360-input-codigo');
+  if (inputCodigo) inputCodigo.addEventListener('keydown', (e) => { if (e.key === 'Enter') canjearCodigoCatalogo360(); });
 });
 
 /* =====================================================

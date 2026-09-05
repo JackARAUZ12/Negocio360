@@ -140,6 +140,7 @@ function navigate(section) {
   if (section === 'dashboard') loadDashboardStats();
   if (section === 'users')     loadUsers();
   if (section === 'codes')     loadCodes();
+  if (section === 'codes-catalogo360') loadCodesC360();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
   if (section === 'encuestas') cargarResultadosEncuesta();
@@ -2164,6 +2165,218 @@ async function createCode() {
 }
 
 // ============================================================
+// SECCIÓN 3-B — CÓDIGOS CATÁLOGO360
+// Tabla y logica completamente aparte de codigos_acceso (esa es
+// para registrar cuentas nuevas con un plan -- este es para
+// desbloquear el modulo Catalogo360 en una cuenta YA existente).
+// ============================================================
+let allCodesC360 = [];
+
+async function loadCodesC360() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  showCodesC360Loader();
+
+  try {
+    const { data, error } = await sb
+      .from('catalogo360_codigos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    allCodesC360 = data || [];
+    renderCodesC360Table(allCodesC360);
+
+  } catch (e) {
+    toast('Error al cargar códigos', e.message, 'error');
+    renderCodesC360Empty();
+  }
+}
+
+function showCodesC360Loader() {
+  document.getElementById('codes-catalogo360-tbody').innerHTML = `
+    <tr><td colspan="7" style="text-align:center; padding:48px; color:var(--text-muted)">
+      <div class="loader-spinner" style="margin:0 auto 12px"></div>
+      <div>Cargando códigos...</div>
+    </td></tr>`;
+}
+
+function renderCodesC360Empty() {
+  document.getElementById('codes-catalogo360-tbody').innerHTML = `
+    <tr><td colspan="7">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21V12h6v9"/>
+        </svg>
+        <p>No hay códigos de Catálogo360</p>
+        <span>Crea el primer código con el botón "Crear Código"</span>
+      </div>
+    </td></tr>`;
+}
+
+function renderCodesC360Table(codes) {
+  const tbody = document.getElementById('codes-catalogo360-tbody');
+  if (!codes.length) { renderCodesC360Empty(); return; }
+
+  tbody.innerHTML = codes.map(c => `
+    <tr>
+      <td>
+        <span style="font-family:monospace;font-weight:600;letter-spacing:.5px;color:var(--accent)">${escHtml(c.codigo)}</span>
+      </td>
+      <td>${escHtml(c.descripcion || '—')}</td>
+      <td>
+        ${c.activo
+          ? '<span class="badge badge-success badge-dot">Activo</span>'
+          : '<span class="badge badge-danger badge-dot">Inactivo</span>'}
+      </td>
+      <td>
+        <span style="font-weight:600">${c.usos_actuales}</span>
+        <span style="color:var(--text-muted)"> / ${c.usos_maximos ?? '∞'}</span>
+      </td>
+      <td>${c.fecha_expiracion ? formatDate(c.fecha_expiracion) : '—'}</td>
+      <td>${formatDate(c.created_at)}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn-copy" onclick="copyCode('${escHtml(c.codigo)}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copiar
+          </button>
+          ${c.activo
+            ? `<button class="btn-icon btn-warning btn-sm" onclick="toggleCodeC360('${c.id}', false)">Desactivar</button>`
+            : `<button class="btn-icon btn-success btn-sm" onclick="toggleCodeC360('${c.id}', true)">Activar</button>`}
+          <button class="btn-icon btn-danger btn-sm" onclick="confirmDeleteCodeC360('${c.id}', '${escHtml(c.codigo)}')">Eliminar</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function toggleCodeC360(id, nuevoEstado) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  try {
+    const { error } = await sb
+      .from('catalogo360_codigos')
+      .update({ activo: nuevoEstado })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    toast(nuevoEstado ? 'Código activado' : 'Código desactivado', '', nuevoEstado ? 'success' : 'warning');
+    loadCodesC360();
+
+  } catch (e) {
+    toast('Error al actualizar código', e.message, 'error');
+  }
+}
+
+function confirmDeleteCodeC360(id, codigo) {
+  document.getElementById('confirm-icon').className = 'confirm-icon danger';
+  document.getElementById('confirm-icon').textContent = '✕';
+  document.getElementById('confirm-title').textContent = '¿Eliminar este código?';
+  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${codigo}</strong>. Esta acción no se puede deshacer. Los clientes que ya lo hayan canjeado NO pierden su acceso.`;
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-danger';
+  btn.textContent = 'Sí, eliminar';
+
+  window._pendingAction = { accion: 'delete-code-c360', codeId: id };
+  openModal('modal-confirm');
+}
+
+async function executeConfirmDeleteCodeC360(codeId) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('catalogo360_codigos')
+      .delete()
+      .eq('id', codeId);
+
+    if (error) throw error;
+
+    closeModal('modal-confirm');
+    toast('Código eliminado', '', 'error');
+    loadCodesC360();
+
+  } catch (e) {
+    toast('Error al eliminar código', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+function openCreateCodeC360Modal() {
+  document.getElementById('form-create-code-catalogo360').reset();
+  document.getElementById('new-usos-c360').value = 1;
+  openModal('modal-create-code-catalogo360');
+}
+
+function generateCodeC360() {
+  const chars   = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const segment = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  document.getElementById('new-codigo-c360').value = `C360-${segment(4)}${segment(4)}`;
+}
+
+async function createCodeC360() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const codigo      = document.getElementById('new-codigo-c360').value.trim();
+  const descripcion = document.getElementById('new-descripcion-c360').value.trim();
+  const usosMax     = parseInt(document.getElementById('new-usos-c360').value, 10) || 1;
+  const expiracion  = document.getElementById('new-expiracion-c360').value || null;
+
+  if (!codigo) { toast('Campo requerido', 'El código no puede estar vacío', 'warning'); return; }
+
+  const btn = document.getElementById('btn-save-code-c360');
+  btn.innerHTML = '<span class="btn-spinner"></span> Guardando...';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('catalogo360_codigos')
+      .insert({
+        codigo,
+        descripcion: descripcion || null,
+        activo: true,
+        usos_maximos: usosMax,
+        usos_actuales: 0,
+        fecha_expiracion: expiracion,
+        creado_por: user.email,
+      });
+
+    if (error) throw error;
+
+    closeModal('modal-create-code-catalogo360');
+    toast('Código creado correctamente', codigo, 'success');
+    loadCodesC360();
+
+  } catch (e) {
+    if (e.code === '23505') {
+      toast('Código duplicado', 'Ya existe un código con ese nombre', 'warning');
+    } else {
+      toast('Error al crear código', e.message, 'error');
+    }
+  } finally {
+    btn.innerHTML = 'Guardar Código';
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
 // SECCIÓN 4 — ATENCIÓN AL CLIENTE (CHAT)
 // ============================================================
 
@@ -2803,6 +3016,8 @@ async function dispatchConfirm() {
 
   if (pending.accion === 'delete-code') {
     await executeConfirmDeleteCode(pending.codeId);
+  } else if (pending.accion === 'delete-code-c360') {
+    await executeConfirmDeleteCodeC360(pending.codeId);
   } else if (pending.accion === 'finalizar-chat') {
     await executeFinalizarChat(pending.convId);
   } else if (pending.accion === 'marcar-pagado') {
@@ -2998,6 +3213,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Evento: guardar código
   document.getElementById('btn-save-code').addEventListener('click', createCode);
+
+  // Eventos: Códigos Catálogo360
+  document.getElementById('btn-new-code-catalogo360').addEventListener('click', openCreateCodeC360Modal);
+  document.getElementById('btn-generate-code-c360').addEventListener('click', generateCodeC360);
+  document.getElementById('btn-save-code-c360').addEventListener('click', createCodeC360);
 
   // Cargar página inicial
   navigate('dashboard');

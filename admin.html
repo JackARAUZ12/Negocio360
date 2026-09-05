@@ -91,6 +91,14 @@
         Códigos de Acceso
       </button>
 
+      <button class="nav-item" data-section="codes-catalogo360">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>
+          <path d="M9 21V12h6v9"/>
+        </svg>
+        Códigos Catálogo360
+      </button>
+
       <button class="nav-item" data-section="anuncios">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -741,6 +749,50 @@
       </div>
     </section>
 
+    <section class="page-content" id="page-codes-catalogo360">
+      <div class="page-header">
+        <h1>Códigos Catálogo360</h1>
+        <p>Genera los códigos que desbloquean Catálogo360 para clientes de Negocio360 -- una vez canjeado, el cliente entra las veces que quiera sin volver a pedirlo</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Códigos Generados</div>
+            <div class="card-subtitle">Activa, desactiva o elimina códigos de Catálogo360</div>
+          </div>
+          <button class="btn-icon btn-primary" id="btn-new-code-catalogo360">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Crear Código
+          </button>
+        </div>
+
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Estado</th>
+                  <th>Usos</th>
+                  <th>Expira</th>
+                  <th>Fecha Creación</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="codes-catalogo360-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ══════════════════════════════════
          PÁGINA: ANUNCIOS DEL SISTEMA
     ══════════════════════════════════ -->
@@ -1210,6 +1262,81 @@
     <div class="modal-footer">
       <button class="btn-icon btn-ghost" onclick="closeModal('modal-create-code')">Cancelar</button>
       <button class="btn-icon btn-primary" id="btn-save-code">Guardar Código</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CREAR CÓDIGO CATÁLOGO360
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-create-code-catalogo360">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Crear Código de Catálogo360</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="form-create-code-catalogo360">
+        <div class="form-group">
+          <label>Código</label>
+          <div style="display:flex; gap:10px; align-items:center">
+            <input
+              type="text"
+              id="new-codigo-c360"
+              class="form-control"
+              placeholder="C360-ABCD1234"
+              style="flex:1; font-family:monospace; letter-spacing:.5px"
+            />
+            <button class="btn-icon btn-ghost" id="btn-generate-code-c360" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Generar
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Descripción (opcional)</label>
+          <input
+            type="text"
+            id="new-descripcion-c360"
+            class="form-control"
+            placeholder="Ej: Cliente Óptica Central"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Usos máximos</label>
+          <input
+            type="number"
+            id="new-usos-c360"
+            class="form-control"
+            value="1"
+            min="1"
+            max="9999"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Fecha de expiración (opcional)</label>
+          <input
+            type="date"
+            id="new-expiracion-c360"
+            class="form-control"
+          />
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-create-code-catalogo360')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-save-code-c360">Guardar Código</button>
     </div>
   </div>
 </div>
