@@ -1,3 +1,4 @@
+```javascript
 /* =====================================================
    CATALOGO360.JS — NEGOCIO360
    App de gestión de catálogos digitales. Reutiliza los productos ya
@@ -59,20 +60,12 @@ function showToast(msg, type='success') {
   const t = document.getElementById('toast');
   if (!t) { console.log(msg); return; }
   t.textContent = msg;
-  // BUG REAL CORREGIDO: esta funcion agregaba la clase "show", pero
-  // el CSS real de este archivo (heredado de agenda.html) espera
-  // "toast-show" -- nunca coincidian, asi que la notificacion nunca
-  // se hacia visible, aunque el codigo si se ejecutaba bien.
   t.className = `toast toast-${type === 'error' ? 'error' : 'success'} toast-show`;
   setTimeout(() => t.classList.remove('toast-show'), 3200);
 }
 
 /* =====================================================
-   COMPRESIÓN DE IMÁGENES — nunca se sube una foto sin comprimir.
-   Se reduce a un ancho máximo razonable para catálogo (1200px) y se
-   convierte a WebP con buena calidad -- esto baja el peso real de
-   una foto de celular (3-8MB) a normalmente menos de 200KB, sin que
-   se note la diferencia visual en un catálogo.
+   COMPRESIÓN DE IMÁGENES
 ===================================================== */
 function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
   return new Promise((resolve, reject) => {
@@ -96,9 +89,6 @@ function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
   });
 }
 
-// Sube una imagen YA comprimida al bucket catalogo360, dentro de la
-// carpeta del usuario (obligatorio para que la política de Storage
-// permita la escritura) -- devuelve la URL pública final.
 async function subirImagenCatalogo(blob, carpeta) {
   const nombreArchivo = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.webp`;
   const ruta = `${STATE.userId}/${carpeta}/${nombreArchivo}`;
@@ -182,10 +172,7 @@ async function cargarLimitesYUso() {
 }
 
 /* =====================================================
-   DASHBOARD PRINCIPAL — todo con datos reales: nada de numeros
-   inventados. Las metricas de visitas/clics vienen de
-   catalogo_eventos (registrado de verdad desde c360.html); lo demas
-   se calcula en vivo desde los catalogos/productos/fotos reales.
+   DASHBOARD PRINCIPAL
 ===================================================== */
 async function cargarListaCatalogos() {
   try {
@@ -193,7 +180,6 @@ async function cargarListaCatalogos() {
     STATE.catalogos = data || [];
   } catch (e) { STATE.catalogos = []; }
 
-  // Saludo con el nombre real del negocio
   const nombreNegocio = STATE.empresaConfig?.nombre_comercial || STATE.empresaConfig?.nombre_negocio || STATE.currentUser?.nombre || '';
   const saludoEl = document.getElementById('c360-saludo');
   if (saludoEl && nombreNegocio) saludoEl.textContent = `¡Bienvenido, ${nombreNegocio}! 👋`;
@@ -211,7 +197,6 @@ async function cargarListaCatalogos() {
     }
   }
 
-  // Visitas reales del mes (desde catalogo_eventos, vía RPC)
   const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
   let visitasMes = 0;
   let visitasPorCatalogo = {};
@@ -220,7 +205,7 @@ async function cargarListaCatalogos() {
     visitasMes = (resumen || []).find(r => r.tipo_evento === 'visita')?.total || 0;
     const { data: visitasCat } = await sb.rpc('catalogo_visitas_por_catalogo', { p_auth_user_id: STATE.userId });
     (visitasCat || []).forEach(v => { visitasPorCatalogo[v.catalogo_id] = v.visitas; });
-  } catch (e) { /* best-effort, nunca bloquea el dashboard */ }
+  } catch (e) {}
 
   const publicados = STATE.catalogos.filter(c => c.estado === 'publicado').length;
   const borradores = STATE.catalogos.length - publicados;
@@ -335,8 +320,6 @@ function renderProductosRecientes(productos) {
 }
 
 function renderActividadReciente(todosLosProductos) {
-  // Actividad REAL derivada de fechas ya existentes -- catalogos
-  // creados/actualizados + productos agregados. Nunca inventada.
   const eventos = [];
   STATE.catalogos.forEach(c => {
     eventos.push({ icono: c.estado==='publicado'?'✅':'📁', texto: c.estado==='publicado' ? `${c.nombre} fue publicado` : `${c.nombre} creado`, fecha: c.estado==='publicado' && c.published_at ? c.published_at : c.created_at });
@@ -360,7 +343,7 @@ function renderActividadReciente(todosLosProductos) {
 
 function accionRapida(tipo) {
   if (!STATE.catalogos.length) { showToast('Primero crea un catálogo', 'error'); return; }
-  const catalogoObjetivo = STATE.catalogos[0]; // el mas reciente
+  const catalogoObjetivo = STATE.catalogos[0];
   if (tipo === 'producto') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => { cambiarTabEditor('productos'); abrirModalProductoCatalogo(); }); }
   else if (tipo === 'fotos') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => cambiarTabEditor('productos')); }
   else if (tipo === 'ver') {
@@ -472,11 +455,6 @@ async function togglePausarCatalogo() {
   }
 }
 
-/* =====================================================
-   ELIMINAR CATÁLOGO — pide confirmar, mostrando aviso si está
-   publicado. Limpia tambien las fotos reales del Storage (productos,
-   logo, banner), no solo las filas de la base de datos.
-===================================================== */
 function abrirEliminarCatalogo() {
   const c = STATE.catalogoActual;
   document.getElementById('ec-nombre-catalogo').textContent = c.nombre;
@@ -500,9 +478,6 @@ async function confirmarEliminarCatalogo() {
   errEl.textContent = '';
   btn.disabled = true; const textoOriginalBtn = btn.textContent; btn.textContent = 'Eliminando…';
   try {
-    // Recolectar TODAS las rutas de Storage a borrar: fotos de cada
-    // producto, mas el logo y el banner del catalogo -- para no dejar
-    // archivos huerfanos ocupando espacio despues de eliminar.
     const idsProductos = STATE.productosActual.map(p => p.id);
     let rutas = [];
     if (idsProductos.length) {
@@ -557,7 +532,7 @@ async function subirLogoCatalogo(archivo) {
   if (!archivo) return;
   showToast('Subiendo logo…');
   try {
-    const { blob, ancho, alto } = await comprimirImagen(archivo, 400, 0.85);
+    const { blob } = await comprimirImagen(archivo, 400, 0.85);
     const { url } = await subirImagenCatalogo(blob, 'logo');
     const { error } = await sb.from('catalogos').update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id);
     if (error) throw error;
@@ -600,11 +575,6 @@ async function guardarInfoCatalogo() {
     updated_at: new Date().toISOString(),
   };
   try {
-    // BUG REAL CORREGIDO: Supabase NUNCA lanza una excepcion por un
-    // error de base de datos -- devuelve { error } en la respuesta.
-    // Antes no se revisaba esto, asi que un guardado fallido (ej. por
-    // sesion vencida) igual mostraba "guardado" con exito, sin haber
-    // guardado nada de verdad.
     const { error } = await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
     if (error) throw error;
     Object.assign(STATE.catalogoActual, payload);
@@ -616,8 +586,6 @@ async function guardarInfoCatalogo() {
 }
 
 /* ---------- TAB: APARIENCIA ---------- */
-// Paletas profesionales prehechas -- el cliente elige un estilo ya
-// armado, en vez de tener que escoger un color el mismo.
 const PALETAS_CATALOGO360 = [
   { nombre: 'Índigo',       color: '#6366f1' },
   { nombre: 'Esmeralda',    color: '#10b981' },
@@ -629,7 +597,6 @@ const PALETAS_CATALOGO360 = [
   { nombre: 'Grafito',      color: '#475569' },
 ];
 
-// Plantillas disponibles del catálogo público
 const PLANTILLAS_CATALOGO360 = [
   { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true, archivo:'c360.html' },
   { key:'plantilla2', nombre:'Vibrante', icono:'✨', desc:'Clara, colorida, con degradados y burbujas animadas.', disponible:true, archivo:'c360-vibrante.html' },
@@ -727,8 +694,6 @@ function renderTabCategorias() {
     cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px;grid-column:1/-1">Aún no has creado ninguna categoría — tus productos se muestran directo en el catálogo.</p>`;
     return;
   }
-  // Cuenta de productos por categoria, calculada de lo ya cargado en
-  // memoria (STATE.productosActual) -- sin gastar una consulta extra.
   const conteo = {};
   (STATE.productosActual || []).forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id]||0) + 1; });
 
@@ -852,7 +817,7 @@ async function cargarTabProductos() {
     STATE.productosActual = (productos || []).map(p => ({ ...p, fotos: fotosPorProducto[p.id] || [] }));
   } catch (e) { STATE.productosActual = []; }
   renderTabProductos();
-  renderTabCategorias(); // actualiza el conteo por categoría sin gastar otra consulta
+  renderTabCategorias();
 }
 
 function renderTabProductos() {
@@ -999,13 +964,6 @@ async function eliminarProductoCatalogo(id) {
 async function subirFotosProducto(archivos) {
   let idProducto = document.getElementById('cp-id').value;
 
-  // BUG REAL CORREGIDO: antes, subir una foto a un producto NUEVO
-  // (todavia sin guardar) simplemente no hacia nada, con un error
-  // invisible (mismo bug de notificaciones). Ahora, si el producto
-  // aun no existe, se guarda solo primero (usando lo que ya se
-  // escribio de nombre/precio), y luego sigue con la foto normal --
-  // el usuario nunca tiene que guardar manualmente antes de poder
-  // agregar fotos.
   if (!idProducto) {
     const nombre = document.getElementById('cp-nombre').value.trim();
     const precio = parseFloat(document.getElementById('cp-precio').value);
@@ -1051,12 +1009,6 @@ async function subirFotosProducto(archivos) {
       const { blob, ancho, alto } = await comprimirImagen(archivo);
       const { url, ruta } = await subirImagenCatalogo(blob, `productos/${idProducto}`);
       const esPrincipal = (existentes||[]).length === 0;
-      // BUG REAL CORREGIDO: este insert nunca revisaba si Supabase
-      // rechazaba la foto (ej. por el limite de fotos del plan,
-      // aplicado tambien a nivel de base de datos) -- el codigo
-      // seguia como si nada, y al final mostraba "Fotos agregadas"
-      // aunque en realidad ninguna foto se hubiera guardado. Ahora se
-      // revisa el error real de cada insert antes de seguir.
       const { error: errorFoto } = await sb.from('catalogo_producto_fotos').insert({
         catalogo_producto_id: idProducto, auth_user_id: STATE.userId,
         storage_path: ruta, url, orden: (existentes||[]).length, es_principal: esPrincipal,
@@ -1186,10 +1138,6 @@ function copiarEnlaceCatalogo() {
   showToast('🔗 Enlace copiado');
 }
 function abrirVistaPrevia() {
-  // BUG REAL CORREGIDO: antes exigia estar publicado, lo cual no
-  // tiene sentido -- la vista previa debe funcionar ANTES de publicar.
-  // Ahora siempre se puede ver, usando el modo de vista previa del
-  // dueño (requiere sesion, funciona sin importar el estado).
   window.open(`${archivoDePlantilla(STATE.catalogoActual.plantilla)}?preview=${STATE.catalogoActual.id}`, '_blank');
 }
 function mostrarQR() {
@@ -1198,16 +1146,8 @@ function mostrarQR() {
   openModal('modal-qr-catalogo');
 }
 
-// Compone una imagen real (canvas) con el nombre del catalogo y el QR
-// juntos, lista para descargar -- no solo el QR crudo.
 function dibujarQRConDiseno() {
   const cont = document.getElementById('qr-catalogo-canvas');
-  // BUG REAL CORREGIDO: la libreria anterior se cargaba desde un CDN
-  // externo (jsdelivr, despues unpkg) que fallaba en la conexion real
-  // del cliente. Ahora se usa una libreria distinta, mucho mas
-  // pequeña, guardada dentro del propio Negocio360 (qrcode-lib.js) --
-  // nunca depende de ningun servidor externo, asi que no puede volver
-  // a fallar por este motivo.
   if (typeof qrcode === 'undefined') {
     cont.innerHTML = 'No se pudo cargar el generador de QR. Recarga la página e intenta de nuevo.';
     return;
@@ -1215,7 +1155,7 @@ function dibujarQRConDiseno() {
   cont.innerHTML = 'Generando…';
 
   try {
-    const qr = qrcode(0, 'M'); // 0 = tamaño automatico segun el largo del texto
+    const qr = qrcode(0, 'M');
     qr.addData(urlPublicaActual());
     qr.make();
 
@@ -1230,17 +1170,14 @@ function dibujarQRConDiseno() {
     final.width = ancho; final.height = alto;
     const ctx = final.getContext('2d');
 
-    // Fondo blanco con borde suave
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, ancho, alto);
     ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, ancho-2, alto-2);
 
-    // Franja de color con el acento del catalogo, arriba
     ctx.fillStyle = c.color_acento || '#6366f1';
     ctx.fillRect(0, 0, ancho, 10);
 
-    // Titulo del catalogo
     ctx.fillStyle = '#111827';
     ctx.font = '700 22px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
@@ -1250,7 +1187,6 @@ function dibujarQRConDiseno() {
     ctx.font = '400 13px "Plus Jakarta Sans", sans-serif';
     ctx.fillText('Escanea para ver el catálogo', ancho/2, 92);
 
-    // El QR, dibujado modulo por modulo, centrado
     const qrX = (ancho - tamanoQR) / 2, qrY = 115;
     ctx.fillStyle = '#111827';
     for (let r = 0; r < modulos; r++) {
@@ -1259,7 +1195,6 @@ function dibujarQRConDiseno() {
       }
     }
 
-    // Pie de pagina
     ctx.fillStyle = '#9ca3af';
     ctx.font = '600 11px "Plus Jakarta Sans", sans-serif';
     ctx.fillText('Creado con Catálogo360', ancho/2, alto - 20);
@@ -1273,8 +1208,6 @@ function dibujarQRConDiseno() {
   }
 }
 
-// Texto centrado con salto de linea automatico simple, para que un
-// nombre de catalogo largo no se salga de la tarjeta.
 function ajustarTextoEnCanvas(ctx, texto, x, yInicial, anchoMax, salto) {
   const palabras = texto.split(' ');
   let linea = '', y = yInicial;
@@ -1296,39 +1229,5 @@ function descargarQR() {
   link.href = canvas.toDataURL('image/png');
   link.click();
   showToast('✅ QR descargado');
-}
-
-/* =====================================================
-   MODAL DE MONEDA DE VISUALIZACIÓN — mismo patrón usado en todo el
-   sistema (no afecta los precios propios del catálogo, solo cómo se
-   muestran los montos internos de Negocio360 en esta página).
-===================================================== */
-function abrirModalMonedaVis() {
-  const oficial = STATE.empresaConfig?.moneda || 'NIO';
-  document.getElementById('mv-moneda-oficial').textContent = oficial;
-  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
-  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
-  document.getElementById('mv-error').textContent = '';
-  onCambiarSelectMonedaVis();
-  document.getElementById('modal-moneda-vis').style.display = 'flex';
-}
-function onCambiarSelectMonedaVis() {
-  const oficial = STATE.empresaConfig?.moneda || 'NIO';
-  const elegida = document.getElementById('mv-select-moneda').value;
-  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
-}
-function guardarMonedaVis() {
-  const oficial = STATE.empresaConfig?.moneda || 'NIO';
-  const elegida = document.getElementById('mv-select-moneda').value;
-  const errEl = document.getElementById('mv-error');
-  errEl.textContent = '';
-  if (!elegida || elegida === oficial) {
-    desactivarMonedaVisualizacion();
-  } else {
-    const tasa = parseFloat(document.getElementById('mv-tasa').value);
-    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
-    activarMonedaVisualizacion(elegida, tasa);
-  }
-  location.reload();
 }
 ```
