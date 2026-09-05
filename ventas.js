@@ -28,6 +28,10 @@ const S = {
   miSucursalId:          null, // id en la tabla "sucursales" que representa a ESTA cuenta
   stockOrigenPendiente:  null,
   origenStockElegido:    null, // se consume una sola vez al agregar al carrito
+
+  // Vender sin stock — apagado por defecto, no cambia nada del
+  // comportamiento actual a menos que el usuario lo active explícitamente.
+  venderSinStockActivo: false,
   productosCacheGrupo:   [],   // productos de TODO el grupo (solo se llena si Stock Compartido está activo)
 
   // Lista de ventas
@@ -297,6 +301,13 @@ async function loadEmpresaConfig(userId) {
     if (data) {
       S.empresaConfig = data;
       S.moneda = data.moneda || 'C$';
+
+      // Vender sin stock: se lee tal cual está guardado — apagado
+      // salvo que el negocio lo haya activado explícitamente.
+      S.venderSinStockActivo = !!data.vender_sin_stock;
+      const chkVSS = document.getElementById('chk-vender-sin-stock');
+      if (chkVSS) chkVSS.checked = S.venderSinStockActivo;
+
       const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Negocio360';
       const lt = document.getElementById('sidebar-logo-text');
       if (lt) lt.textContent = bizName;
@@ -1917,15 +1928,17 @@ function buscarProductosParaVenta(q, tipo) {
     if (tipo==='servicio') {
       stockLabel = 'Sin límite'; stockCls = 'stock-ok';
     } else if (stockNum <= 0) {
-      stockLabel = 'Sin stock'; stockCls = 'stock-out';
+      // Con "Vender sin stock" activo, se avisa igual pero se aclara
+      // que sí se puede continuar — nunca se oculta el estado real.
+      stockLabel = S.venderSinStockActivo ? 'Sin stock (se puede vender)' : 'Sin stock'; stockCls = 'stock-out';
     } else if (stockNum <= 5) {
       stockLabel = `Stock: ${stockNum}`; stockCls = 'stock-low';
     } else {
       stockLabel = `Stock: ${stockNum}`; stockCls = 'stock-ok';
     }
-    // Con Stock Compartido activo, nunca se deshabilita por falta de
-    // stock local — siempre se puede elegir traerlo de otra cuenta.
-    const disabled = tipo==='producto' && stockNum<=0 && !S.stockCompartidoActivo;
+    // Con Stock Compartido O Vender-sin-stock activos, nunca se
+    // deshabilita por falta de stock local.
+    const disabled = tipo==='producto' && stockNum<=0 && !S.stockCompartidoActivo && !S.venderSinStockActivo;
     const esEscala = p.tipo_precio === 'escala';
     const precioLabel = esEscala
       ? (() => {
@@ -2078,6 +2091,32 @@ async function toggleStockCompartido(activo) {
     console.error('toggleStockCompartido:', e);
     showToast('No se pudo cambiar Stock Compartido', 'error');
     const chk = document.getElementById('chk-stock-compartido');
+    if (chk) chk.checked = !activo; // revertir el interruptor visualmente
+  }
+}
+
+/* ============================================================
+   VENDER SIN STOCK
+   Interruptor por cuenta, apagado por defecto. Al activarlo, deja de
+   bloquear la venta de productos sin existencias disponibles — pero
+   el descuento final de stock sigue exactamente igual que siempre
+   (topa en 0, nunca queda negativo), así que el inventario y la
+   contabilidad no se ven afectados. Cada línea vendida por encima de
+   lo disponible queda marcada (vendido_sin_stock) para poder
+   reportarla después.
+   ============================================================ */
+async function toggleVenderSinStock(activo) {
+  try {
+    const { error } = await sb.from('configuracion_empresa')
+      .update({ vender_sin_stock: activo }).eq('auth_user_id', S.userId);
+    if (error) throw error;
+    S.venderSinStockActivo = activo;
+    if (S.empresaConfig) S.empresaConfig.vender_sin_stock = activo;
+    showToast(activo ? 'Ahora puedes facturar sin stock disponible' : 'Vender sin stock desactivado', 'success');
+  } catch (e) {
+    console.error('toggleVenderSinStock:', e);
+    showToast('No se pudo cambiar esta opción', 'error');
+    const chk = document.getElementById('chk-vender-sin-stock');
     if (chk) chk.checked = !activo; // revertir el interruptor visualmente
   }
 }
@@ -2254,10 +2293,11 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   const existente = S.carrito.find(c => c.id===productoId && (c.escalaId || null) === (escalaElegida?.id || null) && (c.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
     // Aumentar cantidad (validando stock si es producto)
-    if (tipo==='producto') {
-      if (existente.cantidad >= stockReal) {
+    if (tipo==='producto' && existente.cantidad >= stockReal) {
+      if (!S.venderSinStockActivo) {
         showToast(`Stock insuficiente. Máximo: ${stockReal}`, 'error'); return;
       }
+      existente.sinStock = true; // se vendió por encima de lo disponible — queda marcado
     }
     existente.cantidad++;
     recalcItem(existente);
@@ -2273,7 +2313,13 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       descuento:0,
       subtotal: precioUsar,
       ganancia: precioUsar - parseFloat(prod.costo||0),
-      stockMax: tipo==='producto' ? stockReal : Infinity,
+      // Con el interruptor apagado, se comporta exactamente igual que
+      // siempre (tope real en el stock disponible). Con el interruptor
+      // activo, no se topa la cantidad, pero se guarda cuál era el
+      // disponible real para poder marcar la línea si lo supera.
+      stockMax: tipo==='producto' ? (S.venderSinStockActivo ? Infinity : stockReal) : Infinity,
+      stockDisponibleReal: tipo==='producto' ? stockReal : null,
+      sinStock: tipo==='producto' && stockReal <= 0,
       esCombo:  !!prod.esCombo,
       // Trazabilidad de la escala usada (null si es precio fijo) — se guarda
       // en venta_detalles para poder reportar por escala en el futuro.
@@ -2680,6 +2726,11 @@ function cambiarCantidad(productoId, val) {
   if (item.tipo==='producto' && n > item.stockMax) {
     showToast(`Stock máximo disponible: ${item.stockMax}`, 'error');
     return;
+  }
+  // stockMax ya es Infinity si "Vender sin stock" está activo (no
+  // bloquea arriba) — aquí solo se marca la línea para trazabilidad.
+  if (item.tipo==='producto' && item.stockDisponibleReal != null && n > item.stockDisponibleReal) {
+    item.sinStock = true;
   }
   item.cantidad = n;
   recalcItem(item);
@@ -3725,13 +3776,14 @@ async function confirmarVenta(conImpresion) {
       ganancia:       item.ganancia,
       escala_id:      item.escalaId || null,
       escala_nombre:  item.escalaNombre || null,
+      vendido_sin_stock: !!item.sinStock,
     }));
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
-      // Reintentar sin columnas escala_*/combo_id/promocion_id por si la migración aún no llegó a este entorno
+      // Reintentar sin columnas escala_*/combo_id/promocion_id/vendido_sin_stock por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
@@ -4395,7 +4447,7 @@ function continuarEscaneoConProducto(prod) {
     return;
   }
 
-  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0) {
+  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0 && !S.venderSinStockActivo) {
     showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
     if (status) status.textContent = '📡 Listo para escanear';
     enfocarScannerVR();
@@ -4511,8 +4563,11 @@ function agregarAlCarritoVR(prod) {
   if (existente) {
     // No exceder el stock disponible
     if (prod.tipo === 'producto' && existente.cantidad + 1 > stockReal) {
-      showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
-      return;
+      if (!S.venderSinStockActivo) {
+        showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
+        return;
+      }
+      existente.sinStock = true; // se vendió por encima de lo disponible — queda marcado
     }
     existente.cantidad += 1;
   } else {
@@ -4525,7 +4580,9 @@ function agregarAlCarritoVR(prod) {
       cantidad:      1,
       precio:        Number(prod.precio)  || 0,
       costo:         Number(prod.costo)   || 0,
-      stockDisponible: stockReal,
+      stockDisponible: stockReal, // valor REAL -- se usa también para el descuento final de stock, nunca debe ser Infinity
+      stockTope: prod.tipo==='producto' && S.venderSinStockActivo ? Infinity : stockReal, // tope para bloquear cantidad en pantalla
+      sinStock: prod.tipo === 'producto' && stockReal <= 0,
       esCombo:       !!prod.esCombo,
       origenStockId:     esRemoto ? origen.sucursalId   : null,
       origenStockNombre: esRemoto ? origen.nombreCuenta : null,
@@ -4539,9 +4596,16 @@ function cambiarCantidadVR(id, val) {
   if (!item) return;
   let n = parseFloat(val);
   if (isNaN(n) || n <= 0) n = 1;
-  if (item.tipo === 'producto' && n > item.stockDisponible) {
+  if (item.tipo === 'producto' && n > item.stockTope) {
     showToast(`⚠️ Stock máximo disponible: ${item.stockDisponible}`, 'error');
-    n = item.stockDisponible;
+    n = item.stockTope;
+  }
+  // stockTope ya es Infinity si "Vender sin stock" está activo (no
+  // bloquea arriba) — aquí solo se marca la línea para trazabilidad.
+  // stockDisponible NUNCA cambia — es el valor real que se usa para
+  // descontar el stock al confirmar la venta.
+  if (item.tipo === 'producto' && n > item.stockDisponible) {
+    item.sinStock = true;
   }
   item.cantidad = n;
   renderCarritoVentaRapida();
@@ -4922,12 +4986,13 @@ async function confirmarVentaRapida() {
       ganancia:        round2(item.cantidad*(item.precio-item.costo)),
       escala_id:       item.escalaId || null,
       escala_nombre:   item.escalaNombre || null,
+      vendido_sin_stock: !!item.sinStock,
     }));
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
-      // Reintentar sin columnas escala_*/combo_id/promocion_id por si la migración aún no llegó a este entorno
+      // Reintentar sin columnas escala_*/combo_id/promocion_id/vendido_sin_stock por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
