@@ -1456,17 +1456,33 @@ async function confirmarConvertirAVenta() {
     const ventaId = ventaNueva.id;
 
     // ---- D: detalles de venta ----
+    // Para marcar qué líneas se están vendiendo por encima de lo
+    // disponible (trazabilidad, igual que en Ventas), se consulta el
+    // stock real de los productos involucrados ANTES de insertar —
+    // esto es solo lectura, no afecta en nada al descuento real que
+    // ocurre después en el paso E (ese sigue exactamente igual).
+    const idsProductoParaStock = [...new Set(detalles.filter(d => d.tipo_item === 'producto' && d.producto_id && !d.origen_stock_id).map(d => d.producto_id))];
+    let stockPorProducto = {};
+    if (idsProductoParaStock.length) {
+      const { data: prodsStock } = await sbClient.from('productos').select('id,stock_actual')
+        .in('id', idsProductoParaStock).eq('auth_user_id', STATE.userId);
+      (prodsStock || []).forEach(p => { stockPorProducto[p.id] = Number(p.stock_actual || 0); });
+    }
+
     const detallesVenta = detalles.map(d => ({
       auth_user_id: STATE.userId, venta_id: ventaId, producto_id: d.producto_id, combo_id: d.combo_id || null,
       producto_nombre: d.producto_nombre, producto_sku: d.producto_sku, tipo_item: d.tipo_item,
       cantidad: d.cantidad, precio: d.precio, costo: d.costo, descuento: d.descuento,
       subtotal: d.subtotal, ganancia: d.ganancia, escala_id: d.escala_id, escala_nombre: d.escala_nombre,
+      vendido_sin_stock: d.tipo_item === 'producto' && d.producto_id && !d.origen_stock_id
+        ? Number(d.cantidad) > (stockPorProducto[d.producto_id] ?? Infinity)
+        : false,
     }));
     let { error: errDetV } = await sbClient.from('venta_detalles').insert(detallesVenta);
     if (errDetV) {
-      // Reintentar sin combo_id por si la migración aún no llegó a este entorno
+      // Reintentar sin combo_id/vendido_sin_stock por si la migración aún no llegó a este entorno
       ({ error: errDetV } = await sbClient.from('venta_detalles').insert(
-        detallesVenta.map(({ combo_id, ...resto }) => resto)
+        detallesVenta.map(({ combo_id, vendido_sin_stock, ...resto }) => resto)
       ));
     }
     if (errDetV) throw errDetV;

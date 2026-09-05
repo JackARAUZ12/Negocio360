@@ -48,6 +48,10 @@
     stockOrigenPendiente:  null,
     origenStockElegido:    null,
     productosCacheGrupo:   [],
+
+    // Vender sin stock — apagado por defecto, mismo interruptor que Ventas
+    // (se lee de configuracion_empresa, no se guarda aparte por módulo).
+    venderSinStockActivo: false,
     ncItems: [],          // ítems agregados al crédito por venta en curso
     ncAmortizacionPreview: [],
     ultimoComprobante: null,
@@ -171,6 +175,9 @@
       const { data } = await _sb.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
       if (data) {
         CS.empresaConfig = data;
+        CS.venderSinStockActivo = !!data.vender_sin_stock;
+        const chkVSS = document.getElementById('chk-vender-sin-stock');
+        if (chkVSS) chkVSS.checked = CS.venderSinStockActivo;
         const logoText = document.getElementById('sidebar-logo-text');
         if (logoText) logoText.textContent = nombreNegocio();
         const color = data.color_principal || data.color_primario;
@@ -744,6 +751,23 @@
   }
   window.toggleStockCompartido = toggleStockCompartido;
 
+  async function toggleVenderSinStock(activo) {
+    try {
+      const { error } = await _sb.from('configuracion_empresa')
+        .update({ vender_sin_stock: activo }).eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      CS.venderSinStockActivo = activo;
+      if (CS.empresaConfig) CS.empresaConfig.vender_sin_stock = activo;
+      showToast(activo ? 'Ahora puedes dar crédito sin stock disponible' : 'Vender sin stock desactivado', 'success');
+    } catch (e) {
+      console.error('toggleVenderSinStock (creditos):', e);
+      showToast('No se pudo cambiar esta opción', 'error');
+      const chk = document.getElementById('chk-vender-sin-stock');
+      if (chk) chk.checked = !activo;
+    }
+  }
+  window.toggleVenderSinStock = toggleVenderSinStock;
+
   async function abrirSelectorStockOrigen(nombreProducto, callbackContinuar) {
     try {
       const { data, error } = await _sb.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
@@ -863,7 +887,7 @@
       return;
     }
 
-    if (prod.tipo === 'producto' && Number(prod.stock_actual || 0) <= 0) {
+    if (prod.tipo === 'producto' && Number(prod.stock_actual || 0) <= 0 && !CS.venderSinStockActivo) {
       showToast(`"${prod.nombre}" no tiene stock disponible`, 'error'); return;
     }
 
@@ -877,14 +901,19 @@
     const esRemoto = !!(origen && !origen.esLocal);
 
     const precioUsar = escalaElegida ? Number(escalaElegida.precio||0) : Number(prod.precio||0);
+    const stockReal = Number(prod.stock_actual || 0);
     const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null) && (i.origen_stock_id || null) === (esRemoto ? origen.sucursalId : null));
-    if (existente) existente.cantidad += cantidad;
+    if (existente) {
+      existente.cantidad += cantidad;
+      if (prod.tipo === 'producto' && existente.cantidad > stockReal) existente.sinStock = true;
+    }
     else CS.ncItems.push({
       producto_id: prod.id, nombre: prod.nombre, tipo_item: prod.tipo,
       precio: precioUsar, costo: Number(prod.costo)||0, cantidad,
       escala_id: escalaElegida ? escalaElegida.id : null,
       escala_nombre: escalaElegida ? escalaElegida.nombre : null,
       esCombo: !!prod.esCombo,
+      sinStock: prod.tipo === 'producto' && cantidad > stockReal,
       origen_stock_id:     esRemoto ? origen.sucursalId   : null,
       origen_stock_nombre: esRemoto ? origen.nombreCuenta : null,
     });
@@ -917,8 +946,12 @@
     if (!it.esCombo) {
       const prod = CS.productos.find(p => p.id === it.producto_id);
       if (prod && prod.tipo === 'producto' && n > Number(prod.stock_actual||0)) {
-        showToast(`Stock insuficiente (disponible: ${prod.stock_actual||0})`, 'error');
-        n = Number(prod.stock_actual||0) || 1;
+        if (!CS.venderSinStockActivo) {
+          showToast(`Stock insuficiente (disponible: ${prod.stock_actual||0})`, 'error');
+          n = Number(prod.stock_actual||0) || 1;
+        } else {
+          it.sinStock = true; // se vendió por encima de lo disponible — queda marcado
+        }
       }
     }
     it.cantidad = n;
@@ -1186,9 +1219,10 @@
         combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item,
         cantidad: it.cantidad, precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
         ganancia: round2((it.precio-it.costo)*it.cantidad), escala_id: it.escala_id||null, escala_nombre: it.escala_nombre||null,
+        vendido_sin_stock: !!it.sinStock,
       }));
       let { error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles);
-      if (errDet) ({ error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles.map(({combo_id,...r}) => r)));
+      if (errDet) ({ error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles.map(({combo_id,vendido_sin_stock,...r}) => r)));
       if (errDet) throw errDet;
 
       // Recalcular subtotal/impuesto/total de la venta con la lista nueva
@@ -1435,12 +1469,13 @@
           precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
           ganancia: round2((it.precio-it.costo)*it.cantidad),
           escala_id: it.escala_id || null, escala_nombre: it.escala_nombre || null,
+          vendido_sin_stock: !!it.sinStock,
         }));
         let { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
         if (errDet) {
-          // Reintentar sin combo_id por si la migración aún no llegó a este entorno
+          // Reintentar sin combo_id/vendido_sin_stock por si la migración aún no llegó a este entorno
           ({ error: errDet } = await _sb.from('venta_detalles').insert(
-            detalles.map(({ combo_id, ...resto }) => resto)
+            detalles.map(({ combo_id, vendido_sin_stock, ...resto }) => resto)
           ));
         }
         if (errDet) throw errDet;
