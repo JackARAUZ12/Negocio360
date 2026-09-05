@@ -91,14 +91,16 @@ function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
   });
 }
 
+```
 async function subirImagenCatalogo(blob, carpeta) {
-  const nombreArchivo = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.webp`;
-  const ruta = `${STATE.userId}/${carpeta}/${nombreArchivo}`;
+  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.webp';
+  const ruta = STATE.userId + '/' + carpeta + '/' + nombreArchivo;
   const { error } = await sb.storage.from('catalogo360').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
   if (error) throw error;
   const { data } = sb.storage.from('catalogo360').getPublicUrl(ruta);
   return { url: data.publicUrl, ruta };
 }
+```
 
 /* =====================================================
    INICIALIZACIÓN
