@@ -643,6 +643,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'valentin', nombre:'San Valentín', icono:'❤️', desc:'Romántica y sofisticada -- borgoña, rosa empolvado, crema y dorado.', disponible:true, archivo:'c360-valentin.html' },
   { key:'halloween', nombre:'Halloween', icono:'🎃', desc:'Misteriosa y oscura -- púrpura profundo, naranja vibrante y detalles espeluznantes.', disponible:true, archivo:'c360-halloween.html' },
   { key:'backtoschool', nombre:'Back to School', icono:'🎒', desc:'Editorial y comercial, energía de temporada sin caer en lo infantil.', disponible:true, archivo:'c360-backtoschool.html' },
+  { key: 'verano', nombre: 'Verano', icono: '☀️', desc: 'Fresca, luminosa y editorial — perfecta para colecciones de temporada.', disponible: true, archivo: 'c360-verano.html' },
 ];
 
 function archivoDePlantilla(key) {
