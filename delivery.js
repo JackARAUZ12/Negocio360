@@ -1128,6 +1128,15 @@ async function init() {
     await Promise.all([cargarPerfilesInternos(), cargarVentasParaVincular(), loadMetodosPago()]);
     STATE.cajaChicaAbiertaHoy = await hayCajaChicaAbiertaHoy();
     await cargarPedidos();
+
+    if (window.Negocio360Tutorial) {
+      const pasosDelivery = [
+        { icono: '🛵', titulo: 'Bienvenido a Delivery', texto: 'Aquí gestionas los pedidos que se entregan a domicilio -- desde que se crea el pedido hasta que llega al cliente.' },
+        { icono: '👤', titulo: 'Asigna un repartidor', texto: 'Cada pedido se lo asignas a un repartidor, y puedes ir cambiando su estado hasta que quede entregado.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('delivery', pasosDelivery);
+      Negocio360Tutorial.agregarBotonAyuda('delivery', pasosDelivery);
+    }
   } catch (e) {
     console.error('init delivery:', e);
     document.getElementById('loader').classList.add('hidden');

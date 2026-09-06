@@ -494,6 +494,15 @@ async function init() {
 
     await cargarTodo();
     initEscaner();
+
+    if (window.Negocio360Tutorial) {
+      const pasosConsultaInv = [
+        { icono: '🔎', titulo: 'Bienvenido a Consulta de Inventario', texto: 'Aquí revisas rápido cuánto stock tienes de cualquier producto, sin entrar al módulo completo de Productos.' },
+        { icono: '📷', titulo: 'Escanea para buscar', texto: 'Puedes escanear el código de barras con la cámara para encontrar un producto al instante.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('consulta-inventario', pasosConsultaInv);
+      Negocio360Tutorial.agregarBotonAyuda('consulta-inventario', pasosConsultaInv);
+    }
   } catch (err) {
     console.error('init consulta-inventario:', err);
     document.getElementById('loader').classList.add('hidden');

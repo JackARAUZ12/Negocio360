@@ -1080,6 +1080,15 @@ async function init() {
 
     await Promise.all([cargarPerfilesInternos(), cargarProveedoresActivos(), loadMetodosPago(), cargarCuentasContables()]);
     await cargarActivos();
+
+    if (window.Negocio360Tutorial) {
+      const pasosActivos = [
+        { icono: '🏭', titulo: 'Bienvenido a Activos', texto: 'Aquí registras los bienes de tu negocio -- equipo, muebles, vehículos -- y su valor a lo largo del tiempo.' },
+        { icono: '📉', titulo: 'Depreciación automática', texto: 'Cada activo pierde valor con el tiempo -- el sistema calcula esa depreciación solo, según el tipo de bien.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('activos', pasosActivos);
+      Negocio360Tutorial.agregarBotonAyuda('activos', pasosActivos);
+    }
   } catch (e) {
     console.error('init activos:', e);
     document.getElementById('loader').classList.add('hidden');

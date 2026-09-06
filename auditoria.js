@@ -788,6 +788,15 @@ async function initAuditoria() {
       cargarUsuariosParaFiltroVentas();
       cargarResumenMensual();
       cargarOpcionesConsultaProducto();
+
+      if (window.Negocio360Tutorial) {
+        const pasosAuditoria = [
+          { icono: '🔍', titulo: 'Bienvenido a Auditoría', texto: 'Aquí ves un historial de todo lo que ha pasado en tu cuenta -- ventas editadas, borrados, y cambios importantes.' },
+          { icono: '🔒', titulo: 'Acceso protegido', texto: 'Este módulo siempre pide tu código de administrador, para que solo tú (o quien tú decidas) pueda ver esta información sensible.' },
+        ];
+        Negocio360Tutorial.verificarYMostrar('auditoria', pasosAuditoria);
+        Negocio360Tutorial.agregarBotonAyuda('auditoria', pasosAuditoria);
+      }
     };
 
     // Auditoría SIEMPRE exige el código de administrador, sin importar

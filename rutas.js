@@ -1082,6 +1082,15 @@ async function init() {
     await cargarPerfiles();
     cargarMapaGeneral();
     await cargarRutas();
+
+    if (window.Negocio360Tutorial) {
+      const pasosRutas = [
+        { icono: '🗺️', titulo: 'Bienvenido a Rutas', texto: 'Aquí organizas las visitas a tus clientes en el mapa -- útil si haces cobros o entregas a domicilio.' },
+        { icono: '📍', titulo: 'Arma tu ruta del día', texto: 'Elige los clientes a visitar y el sistema te los ordena en el mapa para que hagas el recorrido más eficiente.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('rutas', pasosRutas);
+      Negocio360Tutorial.agregarBotonAyuda('rutas', pasosRutas);
+    }
   } catch (e) {
     console.error('init rutas:', e);
     document.getElementById('loader').classList.add('hidden');

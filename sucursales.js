@@ -669,6 +669,15 @@ async function initSucursales() {
 
     await loadPerfilesCentral();
     await cargarSucursales();
+
+    if (window.Negocio360Tutorial) {
+      const pasosSucursales = [
+        { icono: '🏬', titulo: 'Bienvenido a Sucursales', texto: 'Si tienes más de un local, aquí los administras todos desde una sola cuenta central.' },
+        { icono: '📦', titulo: 'Stock compartido', texto: 'Puedes activar Stock Compartido para que tus sucursales se presten inventario entre sí cuando haga falta.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('sucursales', pasosSucursales);
+      Negocio360Tutorial.agregarBotonAyuda('sucursales', pasosSucursales);
+    }
   } catch (err) {
     console.error('initSucursales:', err);
     document.getElementById('loader').classList.add('hidden');

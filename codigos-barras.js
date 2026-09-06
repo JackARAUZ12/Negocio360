@@ -567,6 +567,15 @@ async function initCodigosBarras() {
     document.getElementById('app').style.display = 'flex';
 
     await cargarCodigos();
+
+    if (window.Negocio360Tutorial) {
+      const pasosCodigosBarras = [
+        { icono: '🏷️', titulo: 'Bienvenido a Códigos de Barras', texto: 'Aquí generas e imprimes códigos de barras para tus productos -- útil si vendes con escáner en caja.' },
+        { icono: '🖨️', titulo: 'Genera e imprime', texto: 'Elige el producto, genera su código, y listo para imprimir en etiquetas físicas para tus estantes.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('codigos-barras', pasosCodigosBarras);
+      Negocio360Tutorial.agregarBotonAyuda('codigos-barras', pasosCodigosBarras);
+    }
   } catch (err) {
     console.error('initCodigosBarras:', err);
     document.getElementById('loader').classList.add('hidden');
