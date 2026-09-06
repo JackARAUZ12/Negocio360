@@ -5727,6 +5727,17 @@ async function initVentas() {
       }, 400);
     }
 
+    if (window.Negocio360Tutorial) {
+      const pasosVentas = [
+        { icono: '💰', titulo: 'Bienvenido a Ventas', texto: 'Aquí registras cada venta de tu negocio -- productos, servicios, o ambos en la misma venta.' },
+        { icono: '🛒', titulo: 'Arma el carrito', texto: 'Busca el producto o servicio, dale clic para agregarlo, y ajusta la cantidad si hace falta.' },
+        { icono: '💳', titulo: 'Elige el método de pago', texto: 'Puedes cobrar en efectivo, tarjeta, transferencia, o dividir el pago entre varios métodos con "Pagos separados".' },
+        { icono: '🧾', titulo: 'Confirma e imprime', texto: 'Al confirmar la venta, el stock se descuenta solo y puedes imprimir o compartir el comprobante al instante.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('ventas', pasosVentas);
+      Negocio360Tutorial.agregarBotonAyuda('ventas', pasosVentas);
+    }
+
   } catch(err) {
     console.error('initVentas:', err);
     document.getElementById('loader').classList.add('hidden');

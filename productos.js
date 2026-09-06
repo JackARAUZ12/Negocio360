@@ -3565,7 +3565,17 @@ async function init() {
   cargarProveedores();
 
   initNotificaciones();
+
+  if (window.Negocio360Tutorial) {
+    const pasosProductos = [
+      { icono: '📦', titulo: 'Bienvenido a Productos/Servicios', texto: 'Aquí cargas todo lo que vendes -- productos con stock, o servicios sin inventario.' },
+      { icono: '➕', titulo: 'Agrega uno nuevo', texto: 'Con "Nuevo producto" pones nombre, precio, costo, y si aplica, cuánto stock tienes disponible.' },
+      { icono: '🏷️', titulo: 'Organiza con categorías', texto: 'Las categorías te ayudan a encontrar todo más rápido, y a que tus reportes salgan más claros.' },
+      { icono: '📊', titulo: 'Vigila tu stock', texto: 'El stock se descuenta solo con cada venta -- aquí siempre ves cuánto te queda de cada producto.' },
+    ];
+    Negocio360Tutorial.verificarYMostrar('productos', pasosProductos);
+    Negocio360Tutorial.agregarBotonAyuda('productos', pasosProductos);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
-te

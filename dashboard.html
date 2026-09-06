@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js"></script>
   <script src="auditoria-guard.js"></script>
+  <script src="tutorial-motor.js"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <!-- Lucide Icons -->
@@ -2628,6 +2629,18 @@ async function initDashboard() {
     renderFinancial();
     actualizarBotonMonedaVis();
     _dashboardUserId = userId; // guardado para poder recargar solo los datos después (ej. al cambiar la moneda de visualización)
+
+    if (window.Negocio360Tutorial) {
+      const pasosDashboard = [
+        { icono: '👋', titulo: '¡Bienvenido a Negocio360!', texto: 'Este es tu Dashboard -- el resumen general de tu negocio. Aquí ves tus ventas, gastos y caja de un vistazo.' },
+        { icono: '📊', titulo: 'Tus números al día', texto: 'Las tarjetas de arriba muestran tus ventas, ganancias y caja actuales. Se actualizan solas cada vez que registras algo nuevo.' },
+        { icono: '💰', titulo: 'Empieza por Ventas', texto: 'El módulo más importante es Ventas -- ahí registras cada venta que hagas, con el método de pago que prefieras.' },
+        { icono: '📦', titulo: 'Carga tus productos', texto: 'Antes de vender, agrega tus productos o servicios en el módulo Productos/Servicios -- con precio, costo y stock si aplica.' },
+        { icono: '⚙️', titulo: 'Todo lo demás', texto: 'En el menú lateral tienes Clientes, Compras, Gastos, Caja, Reportes y más -- cada uno con su propio tutorial la primera vez que entres.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('dashboard', pasosDashboard);
+      Negocio360Tutorial.agregarBotonAyuda('dashboard', pasosDashboard);
+    }
 
   } catch (err) {
     console.error('Dashboard init error:', err);
