@@ -1,0 +1,3599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title id="v-title">Catálogo Verano</title>
+  <meta id="v-meta-description" name="description" content="Catálogo digital" />
+  <meta id="v-og-title" property="og:title" content="Catálogo" />
+  <meta id="v-og-description" property="og:description" content="Catálogo digital" />
+  <meta id="v-og-image" property="og:image" content="" />
+  <meta property="og:type" content="website" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="c360-core.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Outfit:wght@300;400;500;600;700;800;900&family=Caveat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --v-sand-light: #f4e4c1;
+      --v-sand: #e8d4a0;
+      --v-sand-dark: #d4b17a;
+      
+      --v-water-light: #e0f7fa;
+      --v-water-shallow: #80deea;
+      --v-water-mid: #4dd0e1;
+      --v-water-deep: #26c6da;
+      --v-water-ocean: #00acc1;
+      --v-water-abyss: #006064;
+      
+      --v-coral: #ff7f50;
+      --v-coral-light: #ff9a76;
+      --v-coral-dark: #e66a3c;
+      
+      --v-turquoise: #00ced1;
+      --v-turquoise-light: #40e0d0;
+      --v-turquoise-dark: #00b8bb;
+      
+      --v-mint: #98d8c8;
+      --v-seafoam: #b2f5ea;
+      
+      --v-sun: #ffd700;
+      --v-sun-glow: #ffed4e;
+      
+      --v-white: #ffffff;
+      --v-cream: #fffef9;
+      
+      --v-text-beach: #5d4e37;
+      --v-text-water: #004d5c;
+      --v-text-deep: #002b36;
+      
+      --v-catalog-accent: #ff7f50;
+      --v-catalog-accent-rgb: 255, 127, 80;
+      
+      --v-font-display: "Righteous", cursive;
+      --v-font-heading: "Outfit", sans-serif;
+      --v-font-script: "Caveat", cursive;
+      
+      --v-radius-blob: 63% 37% 54% 46% / 55% 48% 52% 45%;
+      --v-radius-wave: 60% 40% 30% 70% / 60% 30% 70% 40%;
+      --v-radius-shell: 80% 20% 55% 45% / 80% 80% 20% 20%;
+      
+      --v-radius-xl: 40px;
+      --v-radius-lg: 28px;
+      --v-radius-md: 20px;
+      --v-radius-sm: 12px;
+      
+      --v-container: 1500px;
+      
+      --v-shadow-sand: 0 8px 24px rgba(212, 177, 122, 0.3);
+      --v-shadow-water: 0 12px 40px rgba(0, 206, 209, 0.25);
+      --v-shadow-deep: 0 20px 60px rgba(0, 43, 54, 0.4);
+      --v-shadow-float: 0 30px 80px rgba(0, 172, 193, 0.35);
+      
+      --v-glow-sun: 0 0 60px rgba(255, 215, 0, 0.6);
+      --v-glow-coral: 0 0 40px rgba(255, 127, 80, 0.5);
+      --v-glow-water: 0 0 50px rgba(64, 224, 208, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      min-width: 320px;
+      overflow-x: hidden;
+      background: var(--v-water-ocean);
+      color: var(--v-text-beach);
+      font-family: var(--v-font-heading);
+      font-size: 16px;
+      line-height: 1.6;
+      cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><text y="20" font-size="20">🐚</text></svg>') 12 12, auto;
+    }
+
+    body.v-lock {
+      overflow: hidden;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button,
+    a,
+    select,
+    input {
+      -webkit-tap-highlight-color: transparent;
+      cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><text y="24" font-size="24">⭐</text></svg>') 14 14, pointer;
+    }
+
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 3px solid rgba(var(--v-catalog-accent-rgb), 0.6);
+      outline-offset: 3px;
+    }
+
+    .v-container {
+      width: min(var(--v-container), calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    @media (min-width: 768px) {
+      .v-container {
+        width: min(var(--v-container), calc(100% - 96px));
+      }
+    }
+
+    @media (min-width: 1400px) {
+      .v-container {
+        width: min(var(--v-container), calc(100% - 160px));
+      }
+    }
+
+    .v-splash-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(180deg, #87ceeb 0%, #4dd0e1 50%, #00acc1 100%);
+      transition: opacity 1s ease, visibility 1s ease;
+    }
+
+    .v-splash-screen.v-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .v-splash-content {
+      position: relative;
+      text-align: center;
+      animation: v-splash-float 1.5s ease-in-out;
+    }
+
+    @keyframes v-splash-float {
+      from {
+        opacity: 0;
+        transform: translateY(80px) scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .v-splash-sun {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 40px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--v-sun) 0%, var(--v-sun-glow) 100%);
+      box-shadow: var(--v-glow-sun), 0 0 120px rgba(255, 215, 0, 0.4);
+      animation: v-sun-pulse 3s ease-in-out infinite;
+    }
+
+    .v-splash-sun::before {
+      position: absolute;
+      inset: -40px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, transparent 70%);
+      content: "";
+      animation: v-sun-rotate 20s linear infinite;
+    }
+
+    @keyframes v-sun-pulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: var(--v-glow-sun), 0 0 120px rgba(255, 215, 0, 0.4);
+      }
+      50% {
+        transform: scale(1.1);
+        box-shadow: var(--v-glow-sun), 0 0 180px rgba(255, 215, 0, 0.6);
+      }
+    }
+
+    @keyframes v-sun-rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .v-splash-rays {
+      position: absolute;
+      inset: 0;
+    }
+
+    .v-splash-ray {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 60px;
+      background: linear-gradient(to bottom, rgba(255, 237, 78, 0.8), transparent);
+      border-radius: 999px;
+      transform-origin: center -90px;
+    }
+
+    .v-splash-ray:nth-child(1) { transform: translate(-50%, -50%) rotate(0deg); }
+    .v-splash-ray:nth-child(2) { transform: translate(-50%, -50%) rotate(30deg); }
+    .v-splash-ray:nth-child(3) { transform: translate(-50%, -50%) rotate(60deg); }
+    .v-splash-ray:nth-child(4) { transform: translate(-50%, -50%) rotate(90deg); }
+    .v-splash-ray:nth-child(5) { transform: translate(-50%, -50%) rotate(120deg); }
+    .v-splash-ray:nth-child(6) { transform: translate(-50%, -50%) rotate(150deg); }
+    .v-splash-ray:nth-child(7) { transform: translate(-50%, -50%) rotate(180deg); }
+    .v-splash-ray:nth-child(8) { transform: translate(-50%, -50%) rotate(210deg); }
+    .v-splash-ray:nth-child(9) { transform: translate(-50%, -50%) rotate(240deg); }
+    .v-splash-ray:nth-child(10) { transform: translate(-50%, -50%) rotate(270deg); }
+    .v-splash-ray:nth-child(11) { transform: translate(-50%, -50%) rotate(300deg); }
+    .v-splash-ray:nth-child(12) { transform: translate(-50%, -50%) rotate(330deg); }
+
+    .v-splash-title {
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-turquoise) 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-family: var(--v-font-display);
+      font-size: clamp(56px, 10vw, 100px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+      text-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .v-splash-subtitle {
+      color: var(--v-text-water);
+      font-size: clamp(20px, 4vw, 28px);
+      font-weight: 300;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .v-loader-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 19000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(180deg, #4dd0e1 0%, #00acc1 50%, #006064 100%);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 1s ease, visibility 1s ease;
+    }
+
+    .v-loader-screen.v-active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .v-loader-screen.v-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .v-loader-content {
+      text-align: center;
+      animation: v-loader-rise 0.8s ease;
+    }
+
+    @keyframes v-loader-rise {
+      from {
+        opacity: 0;
+        transform: translateY(40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .v-loader-wave-container {
+      position: relative;
+      width: 240px;
+      height: 240px;
+      margin: 0 auto 48px;
+    }
+
+    .v-loader-wave {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: v-wave-pulse 2s ease-out infinite;
+    }
+
+    .v-loader-wave:nth-child(1) { animation-delay: 0s; }
+    .v-loader-wave:nth-child(2) { animation-delay: 0.5s; }
+    .v-loader-wave:nth-child(3) { animation-delay: 1s; }
+
+    @keyframes v-wave-pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 0;
+      }
+    }
+
+    .v-loader-shell {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 80px;
+      height: 80px;
+      border-radius: var(--v-radius-shell);
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-coral-light) 100%);
+      box-shadow: var(--v-glow-coral), inset 0 -10px 20px rgba(0, 0, 0, 0.2);
+      transform: translate(-50%, -50%);
+      animation: v-shell-rotate 4s ease-in-out infinite;
+    }
+
+    @keyframes v-shell-rotate {
+      0%, 100% {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+      50% {
+        transform: translate(-50%, -50%) rotate(180deg);
+      }
+    }
+
+    .v-loader-title {
+      margin-bottom: 16px;
+      color: var(--v-white);
+      font-family: var(--v-font-display);
+      font-size: clamp(32px, 6vw, 48px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+    }
+
+    .v-loader-biz {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-turquoise) 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .v-loader-text {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 16px;
+      font-weight: 400;
+    }
+
+    .v-loader-progress {
+      width: 300px;
+      height: 8px;
+      margin: 36px auto 0;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+
+    .v-loader-bar {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--v-coral) 0%, var(--v-turquoise) 50%, var(--v-mint) 100%);
+      background-size: 300% 100%;
+      animation: v-bar-fill 2.8s ease-in-out forwards, v-bar-shimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes v-bar-fill {
+      to { width: 100%; }
+    }
+
+    @keyframes v-bar-shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 300% 50%; }
+    }
+
+    .v-loader-screen.error .v-loader-wave-container {
+      display: none;
+    }
+
+    .v-loader-screen.error .v-loader-title {
+      color: var(--v-coral);
+      font-family: var(--v-font-heading);
+      font-size: 28px;
+    }
+
+    .v-sand-particles {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .v-sand-grain {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--v-sand-dark);
+      opacity: 0.4;
+      animation: v-sand-fall linear infinite;
+    }
+
+    @keyframes v-sand-fall {
+      to {
+        transform: translateY(100vh) translateX(30px);
+        opacity: 0;
+      }
+    }
+
+    .v-bubbles {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .v-bubble {
+      position: absolute;
+      bottom: -50px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.3));
+      box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.5);
+      animation: v-bubble-rise linear infinite;
+    }
+
+    @keyframes v-bubble-rise {
+      to {
+        transform: translateY(-100vh) translateX(20px);
+        opacity: 0;
+      }
+    }
+
+    .v-fish-tank {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .v-fish {
+      position: absolute;
+      font-size: 24px;
+      animation: v-fish-swim linear infinite;
+    }
+
+    @keyframes v-fish-swim {
+      from {
+        transform: translateX(-100px);
+      }
+      to {
+        transform: translateX(calc(100vw + 100px));
+      }
+    }
+
+    .v-light-rays {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .v-light-ray {
+      position: absolute;
+      top: -10%;
+      width: 150px;
+      height: 120%;
+      background: linear-gradient(to bottom, rgba(255, 255, 255, 0.15), transparent);
+      transform-origin: top center;
+      animation: v-ray-sway 8s ease-in-out infinite;
+    }
+
+    .v-light-ray:nth-child(1) {
+      left: 10%;
+      animation-delay: 0s;
+    }
+
+    .v-light-ray:nth-child(2) {
+      left: 30%;
+      animation-delay: 1s;
+    }
+
+    .v-light-ray:nth-child(3) {
+      left: 50%;
+      animation-delay: 2s;
+    }
+
+    .v-light-ray:nth-child(4) {
+      left: 70%;
+      animation-delay: 3s;
+    }
+
+    .v-light-ray:nth-child(5) {
+      left: 90%;
+      animation-delay: 4s;
+    }
+
+    @keyframes v-ray-sway {
+      0%, 100% {
+        transform: rotate(-3deg);
+      }
+      50% {
+        transform: rotate(3deg);
+      }
+    }
+
+    .v-preview-banner {
+      display: none;
+      position: relative;
+      z-index: 1000;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-coral-dark) 100%);
+      box-shadow: var(--v-shadow-water);
+      color: var(--v-white);
+      text-align: center;
+      font-family: var(--v-font-heading);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .v-depth-meter {
+      position: fixed;
+      top: 100px;
+      right: 20px;
+      z-index: 900;
+      display: flex;
+      width: 60px;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 12px;
+      border-radius: var(--v-radius-lg);
+      background: rgba(0, 96, 100, 0.7);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--v-shadow-deep);
+      color: var(--v-white);
+      font-family: var(--v-font-heading);
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .v-depth-meter.v-visible {
+      opacity: 1;
+    }
+
+    .v-depth-icon {
+      font-size: 24px;
+    }
+
+    .v-depth-label {
+      writing-mode: vertical-rl;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .v-navbar {
+      position: fixed;
+      top: 0;
+      z-index: 800;
+      width: 100%;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px) saturate(180%);
+      transition: all 0.5s ease;
+    }
+
+    .v-navbar.v-scrolled {
+      background: rgba(0, 172, 193, 0.95);
+      backdrop-filter: blur(30px);
+      box-shadow: var(--v-shadow-water);
+    }
+
+    .v-navbar-inner {
+      display: flex;
+      min-height: 90px;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .v-brand {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-brand:hover {
+      transform: translateY(-5px);
+    }
+
+    .v-brand-icon {
+      position: relative;
+      display: grid;
+      width: 64px;
+      height: 64px;
+      flex: 0 0 64px;
+      place-items: center;
+      overflow: hidden;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: var(--v-radius-blob);
+      background: linear-gradient(135deg, rgba(var(--v-catalog-accent-rgb), 0.3) 0%, rgba(64, 224, 208, 0.3) 100%);
+      box-shadow: var(--v-shadow-water), var(--v-glow-coral);
+      font-size: 32px;
+      transition: all 0.5s ease;
+    }
+
+    .v-brand:hover .v-brand-icon {
+      border-radius: var(--v-radius-wave);
+      box-shadow: var(--v-shadow-float), var(--v-glow-water);
+      transform: rotate(15deg) scale(1.1);
+    }
+
+    .v-brand-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .v-brand-text {
+      min-width: 0;
+    }
+
+    .v-brand-name {
+      overflow: hidden;
+      color: var(--v-white);
+      font-family: var(--v-font-display);
+      font-size: 22px;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      text-overflow: ellipsis;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      white-space: nowrap;
+      transition: all 0.4s ease;
+    }
+
+    .v-brand:hover .v-brand-name {
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-turquoise) 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .v-brand-season {
+      display: block;
+      margin-top: 4px;
+      color: rgba(255, 255, 255, 0.7);
+      font-family: var(--v-font-script);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .v-nav-menu {
+      display: none;
+      margin-left: auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .v-nav-link {
+      padding: 14px 20px;
+      border-radius: var(--v-radius-sm);
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 15px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .v-nav-link:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: var(--v-white);
+    }
+
+    .v-toolbar {
+      display: flex;
+      margin-left: auto;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .v-icon-btn {
+      position: relative;
+      display: grid;
+      width: 50px;
+      height: 50px;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--v-radius-sm);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--v-white);
+      font-size: 22px;
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-icon-btn:hover {
+      border-color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.2);
+      transform: translateY(-4px) scale(1.05);
+      box-shadow: var(--v-shadow-water);
+    }
+
+    .v-icon-btn.v-active {
+      border-color: var(--v-coral);
+      background: linear-gradient(135deg, rgba(var(--v-coral-rgb), 0.3) 0%, rgba(64, 224, 208, 0.3) 100%);
+    }
+
+    .v-fav-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      display: none;
+      min-width: 22px;
+      height: 22px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 6px;
+      border: 3px solid var(--v-water-ocean);
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-coral-light) 100%);
+      box-shadow: var(--v-glow-coral);
+      color: var(--v-white);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .v-wa-btn {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 26px;
+      border-radius: var(--v-radius-sm);
+      background: linear-gradient(135deg, #25d366 0%, #1ea952 100%);
+      box-shadow: 0 8px 24px rgba(37, 211, 102, 0.4);
+      color: var(--v-white);
+      font-size: 15px;
+      font-weight: 800;
+      transition: all 0.4s ease;
+    }
+
+    .v-wa-btn:hover {
+      box-shadow: 0 12px 32px rgba(37, 211, 102, 0.5);
+      transform: translateY(-3px);
+    }
+
+    @media (min-width: 1150px) {
+      .v-nav-menu {
+        display: flex;
+      }
+
+      .v-toolbar {
+        margin-left: 0;
+      }
+
+      .v-wa-btn {
+        display: flex;
+      }
+    }
+
+    @media (max-width: 580px) {
+      .v-wa-btn span {
+        display: none;
+      }
+
+      .v-wa-btn {
+        padding: 14px;
+      }
+    }
+
+    .v-beach-zone {
+      position: relative;
+      min-height: 1000px;
+      padding: 140px 0 180px;
+      background: 
+        radial-gradient(circle at 80% 30%, rgba(255, 215, 0, 0.3) 0%, transparent 40%),
+        linear-gradient(180deg, #f4e4c1 0%, #e8d4a0 60%, #d4b17a 100%);
+      overflow: hidden;
+    }
+
+    .v-beach-zone::before {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 200px;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent 0px,
+        rgba(0, 206, 209, 0.1) 2px,
+        transparent 4px
+      );
+      content: "";
+    }
+
+    .v-beach-texture {
+      position: absolute;
+      inset: 0;
+      opacity: 0.15;
+      background-image: 
+        radial-gradient(circle at 20% 30%, var(--v-sand-dark) 1px, transparent 1px),
+        radial-gradient(circle at 80% 70%, var(--v-sand-dark) 1px, transparent 1px);
+      background-size: 50px 50px, 60px 60px;
+    }
+
+    .v-beach-items {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .v-beach-item {
+      position: absolute;
+      font-size: 48px;
+      opacity: 0.6;
+      animation: v-item-float 6s ease-in-out infinite;
+    }
+
+    .v-beach-item:nth-child(1) {
+      top: 20%;
+      left: 10%;
+      animation-delay: 0s;
+    }
+
+    .v-beach-item:nth-child(2) {
+      top: 40%;
+      right: 15%;
+      animation-delay: 1s;
+    }
+
+    .v-beach-item:nth-child(3) {
+      bottom: 30%;
+      left: 20%;
+      animation-delay: 2s;
+    }
+
+    @keyframes v-item-float {
+      0%, 100% {
+        transform: translateY(0) rotate(-5deg);
+      }
+      50% {
+        transform: translateY(-15px) rotate(5deg);
+      }
+    }
+
+    .v-beach-grid {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      align-items: center;
+      gap: 80px;
+    }
+
+    .v-beach-content {
+      max-width: 820px;
+      animation: v-slide-up 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes v-slide-up {
+      from {
+        opacity: 0;
+        transform: translateY(100px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .v-beach-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 32px;
+      padding: 12px 28px;
+      border: 2px solid rgba(var(--v-coral-rgb), 0.4);
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(var(--v-coral-rgb), 0.2) 0%, rgba(64, 224, 208, 0.2) 100%);
+      box-shadow: var(--v-shadow-sand);
+      color: var(--v-coral-dark);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .v-beach-badge::before,
+    .v-beach-badge::after {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      content: "";
+      animation: v-badge-glow 2s ease-in-out infinite;
+    }
+
+    .v-beach-badge::after {
+      animation-delay: 1s;
+    }
+
+    @keyframes v-badge-glow {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.4;
+        transform: scale(0.7);
+      }
+    }
+
+    .v-beach-h1 {
+      margin: 0 0 32px;
+      color: var(--v-text-beach);
+      font-family: var(--v-font-display);
+      font-size: clamp(56px, 11vw, 120px);
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      line-height: 0.95;
+      text-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .v-beach-h1 .v-gradient {
+      display: block;
+      margin-top: 16px;
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-turquoise) 50%, var(--v-mint) 100%);
+      background-size: 300% 300%;
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: v-gradient-flow 8s ease infinite;
+    }
+
+    @keyframes v-gradient-flow {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .v-beach-desc {
+      max-width: 720px;
+      margin: 0 0 40px;
+      color: var(--v-text-beach);
+      font-size: 19px;
+      line-height: 1.8;
+    }
+
+    .v-beach-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .v-btn-primary,
+    .v-btn-secondary {
+      display: inline-flex;
+      min-height: 62px;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 18px 38px;
+      border-radius: var(--v-radius-lg);
+      font-family: var(--v-font-heading);
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-btn-primary:active,
+    .v-btn-secondary:active {
+      transform: scale(0.96);
+    }
+
+    .v-btn-primary {
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-coral-dark) 100%);
+      box-shadow: 0 12px 36px rgba(var(--v-catalog-accent-rgb), 0.4);
+      color: var(--v-white);
+    }
+
+    .v-btn-primary:hover {
+      box-shadow: 0 16px 48px rgba(var(--v-catalog-accent-rgb), 0.5);
+      transform: translateY(-6px);
+    }
+
+    .v-btn-secondary {
+      border: 2px solid var(--v-text-beach);
+      background: rgba(255, 255, 255, 0.5);
+      color: var(--v-text-beach);
+    }
+
+    .v-btn-secondary:hover {
+      border-color: var(--v-coral);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--v-coral);
+      transform: translateY(-5px);
+      box-shadow: var(--v-shadow-sand);
+    }
+
+    .v-beach-feature {
+      position: relative;
+      max-width: 640px;
+      margin: 0 auto;
+      animation: v-feature-emerge 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
+    }
+
+    @keyframes v-feature-emerge {
+      from {
+        opacity: 0;
+        transform: translateY(80px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .v-beach-feature::before {
+      position: absolute;
+      top: -60px;
+      right: -60px;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, transparent 70%);
+      content: "";
+      filter: blur(60px);
+      animation: v-glow-pulse 6s ease-in-out infinite;
+    }
+
+    @keyframes v-glow-pulse {
+      0%, 100% {
+        opacity: 0.5;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.3);
+      }
+    }
+
+    .v-feature-card {
+      position: relative;
+      overflow: hidden;
+      border: 3px solid rgba(255, 255, 255, 0.5);
+      border-radius: var(--v-radius-blob);
+      background: rgba(255, 255, 255, 0.3);
+      box-shadow: var(--v-shadow-float);
+      cursor: pointer;
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-feature-card:hover {
+      border-radius: var(--v-radius-wave);
+      border-color: rgba(255, 127, 80, 0.7);
+      box-shadow: 0 40px 100px rgba(0, 0, 0, 0.3), var(--v-glow-coral);
+      transform: translateY(-15px) rotate(-4deg);
+    }
+
+    .v-feature-img {
+      position: relative;
+      width: 100%;
+      height: 460px;
+      overflow: hidden;
+      background: linear-gradient(135deg, var(--v-sand-light) 0%, var(--v-sand) 100%);
+    }
+
+    .v-feature-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.8s ease;
+    }
+
+    .v-feature-card:hover .v-feature-img img {
+      transform: scale(1.15) rotate(3deg);
+    }
+
+    .v-feature-placeholder {
+      display: grid;
+      height: 100%;
+      place-items: center;
+      font-size: 100px;
+    }
+
+    .v-feature-body {
+      padding: 32px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.8) 100%);
+    }
+
+    .v-feature-cat {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(64, 224, 208, 0.3) 0%, rgba(152, 216, 200, 0.3) 100%);
+      color: var(--v-turquoise-dark);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .v-feature-name {
+      margin-bottom: 16px;
+      color: var(--v-text-beach);
+      font-family: var(--v-font-heading);
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+    }
+
+    .v-feature-price-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .v-feature-price {
+      color: var(--v-coral);
+      font-family: var(--v-font-heading);
+      font-size: 30px;
+      font-weight: 900;
+    }
+
+    .v-feature-old {
+      color: var(--v-text-beach);
+      font-size: 20px;
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+
+    @media (min-width: 1250px) {
+      .v-beach-zone {
+        min-height: 1100px;
+        padding: 160px 0 200px;
+      }
+
+      .v-beach-grid {
+        grid-template-columns: 1fr 660px;
+        gap: 100px;
+      }
+    }
+
+    .v-shore-zone {
+      position: relative;
+      min-height: 400px;
+      padding: 100px 0;
+      background: linear-gradient(180deg, #d4b17a 0%, #b8e6e8 100%);
+      overflow: hidden;
+    }
+
+    .v-shore-waves {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .v-shore-wave {
+      position: absolute;
+      width: 200%;
+      height: 120px;
+      background: 
+        radial-gradient(ellipse at center, rgba(255, 255, 255, 0.6) 0%, transparent 70%);
+      animation: v-wave-move 12s ease-in-out infinite;
+    }
+
+    .v-shore-wave:nth-child(1) {
+      top: 0;
+      animation-delay: 0s;
+    }
+
+    .v-shore-wave:nth-child(2) {
+      top: 80px;
+      animation-delay: 2s;
+    }
+
+    .v-shore-wave:nth-child(3) {
+      top: 160px;
+      animation-delay: 4s;
+    }
+
+    @keyframes v-wave-move {
+      0%, 100% {
+        transform: translateX(-50%) translateY(0);
+      }
+      50% {
+        transform: translateX(-25%) translateY(-20px);
+      }
+    }
+
+    .v-shore-content {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+    }
+
+    .v-shore-title {
+      margin-bottom: 20px;
+      color: var(--v-white);
+      font-family: var(--v-font-display);
+      font-size: clamp(36px, 7vw, 64px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+      text-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .v-shore-text {
+      max-width: 680px;
+      margin: 0 auto;
+      color: var(--v-white);
+      font-size: 18px;
+      line-height: 1.8;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .v-shallow-zone {
+      position: relative;
+      min-height: 800px;
+      padding: 120px 0;
+      background: linear-gradient(180deg, #80deea 0%, #4dd0e1 100%);
+      overflow: hidden;
+    }
+
+    .v-shallow-zone::before {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle at 20% 40%, rgba(255, 255, 255, 0.2) 2px, transparent 2px),
+        radial-gradient(circle at 80% 60%, rgba(255, 255, 255, 0.15) 3px, transparent 3px);
+      background-size: 100px 100px, 150px 150px;
+      content: "";
+      opacity: 0.3;
+    }
+
+    .v-section-header {
+      max-width: 1000px;
+      margin: 0 auto 80px;
+      text-align: center;
+    }
+
+    .v-section-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 10px 26px;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      color: var(--v-white);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .v-section-h2 {
+      margin: 0 0 24px;
+      color: var(--v-white);
+      font-family: var(--v-font-display);
+      font-size: clamp(40px, 8vw, 72px);
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      line-height: 1.15;
+      text-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .v-section-h2 .v-highlight {
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-sun) 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .v-section-lead {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 19px;
+      line-height: 1.8;
+    }
+
+    .v-categories-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 32px;
+    }
+
+    .v-category-card {
+      position: relative;
+      min-height: 320px;
+      overflow: hidden;
+      padding: 36px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: var(--v-radius-blob);
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--v-shadow-water);
+      cursor: pointer;
+      isolation: isolate;
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-category-card:hover {
+      border-radius: var(--v-radius-wave);
+      border-color: rgba(255, 255, 255, 0.6);
+      box-shadow: var(--v-shadow-float), var(--v-glow-water);
+      transform: translateY(-12px) scale(1.02);
+    }
+
+    .v-category-bg {
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.8s ease;
+    }
+
+    .v-category-card:hover .v-category-bg {
+      transform: scale(1.2) rotate(5deg);
+    }
+
+    .v-category-card::after {
+      position: absolute;
+      z-index: -1;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(77, 208, 225, 0.2) 0%, rgba(77, 208, 225, 0.8) 80%);
+      content: "";
+    }
+
+    .v-category-no-bg {
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(var(--v-catalog-accent-rgb), 0.3) 0%, rgba(64, 224, 208, 0.3) 100%);
+    }
+
+    .v-category-emoji {
+      position: absolute;
+      top: 32px;
+      right: 32px;
+      font-size: 52px;
+      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-category-card:hover .v-category-emoji {
+      transform: scale(1.4) rotate(20deg);
+    }
+
+    .v-category-info {
+      position: absolute;
+      right: 36px;
+      bottom: 36px;
+      left: 36px;
+    }
+
+    .v-category-name {
+      margin-bottom: 10px;
+      color: var(--v-white);
+      font-family: var(--v-font-heading);
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .v-category-count {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .v-underwater-zone {
+      position: relative;
+      min-height: 600px;
+      padding: 140px 0;
+      background: linear-gradient(180deg, #26c6da 0%, #00acc1 50%, #006064 100%);
+      overflow: hidden;
+    }
+
+    .v-underwater-zone::before {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle at 30% 20%, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+        radial-gradient(circle at 70% 80%, rgba(0, 0, 0, 0.08) 2px, transparent 2px);
+      background-size: 80px 80px, 120px 120px;
+      content: "";
+      opacity: 0.4;
+    }
+
+    .v-coral-decorations {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 200px;
+      pointer-events: none;
+    }
+
+    .v-coral {
+      position: absolute;
+      bottom: 0;
+      font-size: 48px;
+      animation: v-coral-sway 4s ease-in-out infinite;
+    }
+
+    .v-coral:nth-child(1) {
+      left: 10%;
+      animation-delay: 0s;
+    }
+
+    .v-coral:nth-child(2) {
+      left: 30%;
+      animation-delay: 1s;
+    }
+
+    .v-coral:nth-child(3) {
+      left: 50%;
+      animation-delay: 2s;
+    }
+
+    .v-coral:nth-child(4) {
+      left: 70%;
+      animation-delay: 1.5s;
+    }
+
+    .v-coral:nth-child(5) {
+      left: 90%;
+      animation-delay: 0.5s;
+    }
+
+    @keyframes v-coral-sway {
+      0%, 100% {
+        transform: translateX(0) rotate(-3deg);
+      }
+      50% {
+        transform: translateX(10px) rotate(3deg);
+      }
+    }
+
+    .v-filters-bar {
+      position: sticky;
+      top: 90px;
+      z-index: 300;
+      margin-bottom: 56px;
+      padding: 32px 0;
+      background: rgba(0, 96, 100, 0.85);
+      backdrop-filter: blur(24px);
+      box-shadow: var(--v-shadow-deep);
+    }
+
+    .v-filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .v-search-box {
+      display: flex;
+      min-width: min(100%, 360px);
+      flex: 1 1 380px;
+      align-items: center;
+      gap: 16px;
+      padding: 0 22px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--v-radius-lg);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    }
+
+    .v-search-box:focus-within {
+      border-color: rgba(255, 255, 255, 0.5);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.15);
+    }
+
+    .v-search-icon {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 22px;
+    }
+
+    .v-search-box input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--v-white);
+      font-size: 16px;
+      padding: 18px 0;
+    }
+
+    .v-search-box input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .v-select,
+    .v-filter-chip {
+      min-height: 56px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--v-radius-md);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      color: var(--v-white);
+      font-size: 15px;
+      font-weight: 700;
+      transition: all 0.3s ease;
+    }
+
+    .v-select {
+      min-width: 200px;
+      padding: 0 20px;
+    }
+
+    .v-select:hover,
+    .v-select:focus {
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+
+    .v-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 22px;
+    }
+
+    .v-filter-chip:hover {
+      border-color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .v-filter-chip.v-active {
+      border-color: var(--v-coral);
+      background: linear-gradient(135deg, rgba(var(--v-coral-rgb), 0.3) 0%, rgba(64, 224, 208, 0.3) 100%);
+      box-shadow: var(--v-glow-coral);
+    }
+
+    .v-price-slider {
+      display: flex;
+      min-height: 56px;
+      align-items: center;
+      gap: 16px;
+      padding: 0 20px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--v-radius-md);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      color: var(--v-white);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .v-price-slider input {
+      width: 130px;
+      accent-color: var(--v-coral);
+    }
+
+    .v-price-text {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .v-breadcrumbs {
+      display: none;
+      margin: 0 0 28px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 15px;
+    }
+
+    .v-breadcrumbs button {
+      padding: 0;
+      background: none;
+      color: var(--v-coral);
+      font-weight: 800;
+    }
+
+    .v-breadcrumbs button:hover {
+      text-decoration: underline;
+    }
+
+    .v-products-top {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 32px;
+      margin-bottom: 56px;
+    }
+
+    .v-products-count {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .v-clear-btn {
+      display: none;
+      padding: 0;
+      background: none;
+      color: var(--v-coral);
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .v-clear-btn:hover {
+      text-decoration: underline;
+    }
+
+    .v-products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 36px;
+    }
+
+    .v-product-card {
+      overflow: hidden;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--v-radius-blob);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--v-shadow-water);
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+      animation: v-float-product 6s ease-in-out infinite;
+    }
+
+    .v-product-card:nth-child(odd) {
+      animation-delay: 0s;
+    }
+
+    .v-product-card:nth-child(even) {
+      animation-delay: 3s;
+    }
+
+    @keyframes v-float-product {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-15px);
+      }
+    }
+
+    .v-product-card:hover {
+      border-radius: var(--v-radius-wave);
+      border-color: rgba(255, 255, 255, 0.5);
+      box-shadow: var(--v-shadow-float), var(--v-glow-water);
+      transform: translateY(-15px) scale(1.02);
+      animation: none;
+    }
+
+    .v-product-card.v-sold {
+      opacity: 0.7;
+    }
+
+    .v-product-thumb {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 1;
+      background: linear-gradient(135deg, rgba(77, 208, 225, 0.3) 0%, rgba(0, 172, 193, 0.3) 100%);
+      cursor: pointer;
+    }
+
+    .v-product-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.8s ease;
+    }
+
+    .v-product-card:hover .v-product-thumb img {
+      transform: scale(1.2) rotate(4deg);
+    }
+
+    .v-product-no-img {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      place-items: center;
+      font-size: 90px;
+    }
+
+    .v-product-badge {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      color: var(--v-white);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .v-product-badge.v-new {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.6);
+    }
+
+    .v-product-badge.v-offer {
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-coral-dark) 100%);
+      box-shadow: var(--v-glow-coral);
+    }
+
+    .v-product-badge.v-featured {
+      background: linear-gradient(135deg, var(--v-sun) 0%, var(--v-sun-glow) 100%);
+      box-shadow: var(--v-glow-sun);
+      color: var(--v-text-beach);
+    }
+
+    .v-sold-badge {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      color: var(--v-white);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .v-fav-btn {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(12px);
+      color: var(--v-text-water);
+      cursor: pointer;
+      font-size: 22px;
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .v-fav-btn:hover {
+      border-color: var(--v-coral);
+      background: var(--v-white);
+      color: var(--v-coral);
+      transform: scale(1.2);
+    }
+
+    .v-fav-btn.v-active {
+      border-color: var(--v-coral);
+      background: linear-gradient(135deg, var(--v-coral) 0%, var(--v-sun) 100%);
+      box-shadow: var(--v-glow-coral);
+      color: var(--v-white);
+      transform: scale(1.2);
+    }
+
+    .v-product-body {
+      padding: 28px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.2) 100%);
+    }
+
+    .v-product-cat {
+      min-height: 22px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      color: var(--v-turquoise-light);
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .v-product-name {
+      display: -webkit-box;
+      min-height: 58px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      color: var(--v-white);
+      cursor: pointer;
+      font-family: var(--v-font-heading);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.5;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      transition: color 0.3s ease;
+    }
+
+    .v-product-name:hover {
+      color: var(--v-coral);
+    }
+
+    .v-product-pricing {
+      display: flex;
+      min-height: 36px;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .v-product-price {
+      color: var(--v-coral-light);
+      font-family: var(--v-font-heading);
+      font-size: 24px;
+      font-weight: 900;
+    }
+
+    .v-product-price.v-offer {
+      color: var(--v-sun);
+    }
+
+    .v-product-old {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 18px;
+      text-decoration: line-through;
+    }
+
+    .v-product-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .v-product-btn {
+      display: inline-flex;
+      min-height: 50px;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: var(--v-radius-md);
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      color: var(--v-white);
+      font-size: 15px;
+      font-weight: 800;
+      transition: all 0.3s ease;
+    }
+
+    .v-product-btn:hover {
+      border-color: var(--v-coral);
+      background: rgba(255, 127, 80, 0.3);
+    }
+
+    .v-product-btn.v-wa:hover {
+      border-color: #25d366;
+      background: rgba(37, 211, 102, 0.3);
+      color: #25d366;
+    }
+
+    .v-empty-state {
+      grid-column: 1 / -1;
+      padding: 140px 32px;
+      border: 3px dashed rgba(255, 255, 255, 0.3);
+      border-radius: var(--v-radius-xl);
+      text-align: center;
+    }
+
+    .v-empty-icon {
+      margin-bottom: 28px;
+      font-size: 80px;
+      opacity: 0.5;
+    }
+
+    .v-empty-title {
+      margin-bottom: 14px;
+      color: var(--v-white);
+      font-family: var(--v-font-heading);
+      font-size: 26px;
+      font-weight: 800;
+    }
+
+    .v-empty-text {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 17px;
+    }
+
+    .v-abyss-zone {
+      position: relative;
+      overflow: hidden;
+      padding: 140px 0 70px;
+      background: linear-gradient(180deg, #006064 0%, #004d50 50%, #003135 100%);
+      text-align: center;
+    }
+
+    .v-abyss-zone::before {
+      position: absolute;
+      top: -2px;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, transparent 0%, var(--v-turquoise) 30%, var(--v-coral) 50%, var(--v-mint) 70%, transparent 100%);
+      content: "";
+    }
+
+    .v-abyss-zone::after {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle at 25% 35%, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        radial-gradient(circle at 75% 65%, rgba(255, 255, 255, 0.02) 2px, transparent 2px);
+      background-size: 120px 120px, 180px 180px;
+      content: "";
+      opacity: 0.5;
+    }
+
+    .v-abyss-stars {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .v-starfish {
+      position: absolute;
+      font-size: 36px;
+      opacity: 0.4;
+      animation: v-starfish-rotate 20s linear infinite;
+    }
+
+    .v-starfish:nth-child(1) {
+      top: 20%;
+      left: 10%;
+      animation-delay: 0s;
+    }
+
+    .v-starfish:nth-child(2) {
+      top: 60%;
+      left: 80%;
+      animation-delay: 5s;
+    }
+
+    .v-starfish:nth-child(3) {
+      top: 80%;
+      left: 40%;
+      animation-delay: 10s;
+    }
+
+    @keyframes v-starfish-rotate {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .v-abyss-content {
+      position: relative;
+      z-index: 2;
+    }
+
+    .v-abyss-h2 {
+      margin-bottom: 28px;
+      background: linear-gradient(135deg, var(--v-turquoise-light) 0%, var(--v-coral-light) 50%, var(--v-sun-glow) 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-family: var(--v-font-display);
+      font-size: clamp(48px, 9vw, 88px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+    }
+
+    .v-abyss-text {
+      max-width: 740px;
+      margin: 0 auto 52px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 18px;
+      line-height: 1.8;
+    }
+
+    .v-abyss-cta {
+      display: inline-flex;
+    }
+
+    .v-abyss-credits {
+      margin-top: 100px;
+      padding-top: 40px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 15px;
+    }
+
+    .v-abyss-credits strong {
+      color: var(--v-coral-light);
+    }
+
+    .v-modal-backdrop,
+    .v-lightbox-backdrop {
+      position: fixed;
+      z-index: 1500;
+      display: none;
+      inset: 0;
+      align-items: flex-end;
+      justify-content: center;
+      background: rgba(0, 43, 54, 0.9);
+      backdrop-filter: blur(20px);
+    }
+
+    .v-modal-backdrop.v-open,
+    .v-lightbox-backdrop.v-open {
+      display: flex;
+    }
+
+    .v-modal {
+      width: 100%;
+      max-width: 920px;
+      max-height: 96vh;
+      overflow-y: auto;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--v-radius-blob) var(--v-radius-blob) 0 0;
+      background: rgba(0, 172, 193, 0.95);
+      backdrop-filter: blur(20px);
+      box-shadow: var(--v-shadow-xl);
+      animation: v-modal-rise 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes v-modal-rise {
+      from {
+        opacity: 0;
+        transform: translateY(100px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .v-modal-grip {
+      width: 72px;
+      height: 8px;
+      margin: 18px auto 0;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .v-modal-close {
+      position: sticky;
+      z-index: 40;
+      top: 18px;
+      float: right;
+      display: grid;
+      width: 52px;
+      height: 52px;
+      margin: 0 18px -70px 0;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      color: var(--v-text-water);
+      cursor: pointer;
+      font-size: 28px;
+      transition: all 0.4s ease;
+    }
+
+    .v-modal-close:hover {
+      background: var(--v-coral);
+      color: var(--v-white);
+      transform: rotate(90deg);
+    }
+
+    .v-modal-gallery {
+      display: flex;
+      min-height: 440px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      background: linear-gradient(135deg, rgba(0, 172, 193, 0.5) 0%, rgba(0, 96, 100, 0.5) 100%);
+    }
+
+    .v-modal-gallery img {
+      width: 100%;
+      min-width: 100%;
+      max-height: 640px;
+      object-fit: cover;
+      cursor: zoom-in;
+      scroll-snap-align: start;
+    }
+
+    .v-modal-no-img {
+      display: grid;
+      min-width: 100%;
+      min-height: 440px;
+      place-items: center;
+      font-size: 120px;
+    }
+
+    .v-modal-main {
+      padding: 40px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.15) 100%);
+    }
+
+    .v-modal-cat {
+      display: inline-block;
+      margin-bottom: 16px;
+      padding: 10px 22px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      color: var(--v-white);
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .v-modal-h2 {
+      margin: 0 0 28px;
+      color: var(--v-white);
+      font-family: var(--v-font-display);
+      font-size: clamp(36px, 8vw, 56px);
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      line-height: 1.2;
+      text-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .v-modal-desc {
+      margin: 32px 0;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 18px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    .v-modal-actions {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 14px;
+      margin-top: 36px;
+    }
+
+    .v-modal-icon-btn {
+      display: grid;
+      width: 64px;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: var(--v-radius-md);
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      color: var(--v-white);
+      cursor: pointer;
+      font-size: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .v-modal-icon-btn:hover {
+      border-color: var(--v-coral);
+      background: rgba(255, 127, 80, 0.3);
+    }
+
+    .v-related-section {
+      margin-top: 52px;
+      padding-top: 40px;
+      border-top: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .v-related-h3 {
+      margin-bottom: 28px;
+      color: var(--v-white);
+      font-family: var(--v-font-heading);
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .v-related-scroller {
+      display: flex;
+      gap: 18px;
+      overflow-x: auto;
+      padding-bottom: 14px;
+    }
+
+    .v-related-item {
+      width: 180px;
+      min-width: 180px;
+      cursor: pointer;
+      transition: transform 0.4s ease;
+    }
+
+    .v-related-item:hover {
+      transform: translateY(-10px);
+    }
+
+    .v-related-item img,
+    .v-related-no-img {
+      width: 180px;
+      height: 180px;
+      border-radius: var(--v-radius-md);
+      background: rgba(255, 255, 255, 0.1);
+      object-fit: cover;
+    }
+
+    .v-related-name {
+      display: -webkit-box;
+      margin-top: 14px;
+      overflow: hidden;
+      color: var(--v-white);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.4;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .v-related-price {
+      margin-top: 8px;
+      color: var(--v-coral-light);
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    @media (min-width: 960px) {
+      .v-modal-backdrop {
+        align-items: center;
+        padding: 36px;
+      }
+
+      .v-modal {
+        border-radius: var(--v-radius-blob);
+      }
+
+      .v-modal-grip {
+        display: none;
+      }
+    }
+
+    .v-lightbox-backdrop {
+      z-index: 1600;
+      align-items: center;
+      padding: 36px;
+      background: rgba(0, 0, 0, 0.97);
+    }
+
+    .v-lightbox-backdrop img {
+      max-width: 95vw;
+      max-height: 95vh;
+      border-radius: var(--v-radius-md);
+      object-fit: contain;
+    }
+
+    .v-lightbox-close,
+    .v-lightbox-arrow {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      backdrop-filter: blur(12px);
+      color: var(--v-white);
+      cursor: pointer;
+      transition: all 0.4s ease;
+    }
+
+    .v-lightbox-close {
+      top: 36px;
+      right: 36px;
+      width: 56px;
+      height: 56px;
+      font-size: 28px;
+    }
+
+    .v-lightbox-close:hover {
+      background: var(--v-coral);
+      transform: rotate(90deg);
+    }
+
+    .v-lightbox-arrow {
+      top: 50%;
+      width: 60px;
+      height: 60px;
+      font-size: 40px;
+      transform: translateY(-50%);
+    }
+
+    .v-lightbox-arrow:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .v-lightbox-arrow.v-prev {
+      left: 32px;
+    }
+
+    .v-lightbox-arrow.v-next {
+      right: 32px;
+    }
+
+    .v-lightbox-info {
+      position: absolute;
+      bottom: 36px;
+      left: 50%;
+      padding: 14px 28px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(12px);
+      color: var(--v-white);
+      font-size: 16px;
+      font-weight: 800;
+      transform: translateX(-50%);
+    }
+
+    .v-toasts {
+      position: fixed;
+      z-index: 3000;
+      right: 32px;
+      bottom: 32px;
+      display: flex;
+      max-width: min(480px, calc(100% - 64px));
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .v-toast {
+      padding: 20px 30px;
+      border: 2px solid rgba(var(--v-coral-rgb), 0.5);
+      border-radius: var(--v-radius-lg);
+      background: rgba(0, 172, 193, 0.95);
+      backdrop-filter: blur(20px);
+      box-shadow: var(--v-shadow-float);
+      color: var(--v-white);
+      font-size: 16px;
+      font-weight: 700;
+      animation: v-toast-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes v-toast-pop {
+      from {
+        opacity: 0;
+        transform: translateY(50px) scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .v-fab {
+      position: fixed;
+      z-index: 400;
+      right: 32px;
+      bottom: 32px;
+      display: none;
+      width: 72px;
+      height: 72px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #25d366 0%, #1ea952 100%);
+      box-shadow: 0 14px 44px rgba(37, 211, 102, 0.6);
+      color: var(--v-white);
+      font-size: 40px;
+      transition: all 0.4s ease;
+    }
+
+    .v-fab:hover {
+      box-shadow: 0 18px 56px rgba(37, 211, 102, 0.7);
+      transform: translateY(-10px) scale(1.12);
+    }
+
+    @media (max-width: 1149px) {
+      .v-fab.v-visible {
+        display: flex;
+      }
+
+      body.v-has-fab {
+        padding-bottom: 120px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="v-splash" class="v-splash-screen">
+    <div class="v-splash-content">
+      <div class="v-splash-sun">
+        <div class="v-splash-rays">
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+          <div class="v-splash-ray"></div>
+        </div>
+      </div>
+      <h1 class="v-splash-title">¡Bienvenido!</h1>
+      <p class="v-splash-subtitle">Sumérgete en Verano</p>
+    </div>
+  </div>
+
+  <div id="v-loader" class="v-loader-screen">
+    <div class="v-loader-content">
+      <div class="v-loader-wave-container">
+        <div class="v-loader-wave"></div>
+        <div class="v-loader-wave"></div>
+        <div class="v-loader-wave"></div>
+        <div class="v-loader-shell"></div>
+      </div>
+      <h1 class="v-loader-title">Cargando Catálogo de <span id="v-loader-biz" class="v-loader-biz">tu negocio</span></h1>
+      <p class="v-loader-text">Preparando tu experiencia submarina...</p>
+      <div class="v-loader-progress">
+        <div class="v-loader-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="v-sand" class="v-sand-particles"></div>
+  <div id="v-bubbles" class="v-bubbles"></div>
+  <div id="v-fish" class="v-fish-tank"></div>
+  <div id="v-rays" class="v-light-rays">
+    <div class="v-light-ray"></div>
+    <div class="v-light-ray"></div>
+    <div class="v-light-ray"></div>
+    <div class="v-light-ray"></div>
+    <div class="v-light-ray"></div>
+  </div>
+
+  <div id="v-app" style="display:none">
+    <div id="v-preview" class="v-preview-banner">
+      Vista Previa: Este catálogo aún no está publicado
+    </div>
+
+    <div id="v-depth-meter" class="v-depth-meter">
+      <div id="v-depth-icon" class="v-depth-icon">🏖️</div>
+      <div id="v-depth-label" class="v-depth-label">Arena</div>
+    </div>
+
+    <nav id="v-navbar" class="v-navbar">
+      <div class="v-container v-navbar-inner">
+        <a class="v-brand" href="#" onclick="vGoHome(); return false;" aria-label="Ir al inicio">
+          <div id="v-brand-icon" class="v-brand-icon">🌊</div>
+          <div class="v-brand-text">
+            <div id="v-brand-name" class="v-brand-name">Catálogo</div>
+            <span class="v-brand-season">Verano 2024</span>
+          </div>
+        </a>
+
+        <div class="v-nav-menu">
+          <button class="v-nav-link" onclick="vGoHome()">Inicio</button>
+          <button class="v-nav-link" onclick="vGoCategories()">Categorías</button>
+          <button class="v-nav-link" onclick="vGoProducts()">Productos</button>
+        </div>
+
+        <div class="v-toolbar">
+          <button id="v-fav-btn" class="v-icon-btn" type="button" onclick="vToggleFavorites()" title="Ver favoritos" aria-label="Ver favoritos">
+            ♡
+            <span id="v-fav-badge" class="v-fav-badge">0</span>
+          </button>
+
+          <a id="v-header-wa" class="v-wa-btn" href="#" target="_blank" rel="noopener">
+            💬 <span>WhatsApp</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <section id="v-beach" class="v-beach-zone">
+      <div class="v-beach-texture"></div>
+      <div class="v-beach-items">
+        <div class="v-beach-item">🏖️</div>
+        <div class="v-beach-item">🩴</div>
+        <div class="v-beach-item">🥥</div>
+      </div>
+
+      <div class="v-container v-beach-grid">
+        <div class="v-beach-content">
+          <div class="v-beach-badge">Temporada de Verano</div>
+
+          <h1 id="v-beach-h1" class="v-beach-h1">
+            Tu Catálogo
+            <span class="v-gradient">donde el verano cobra vida</span>
+          </h1>
+
+          <p id="v-beach-desc" class="v-beach-desc"></p>
+
+          <div id="v-beach-actions" class="v-beach-actions">
+            <button class="v-btn-primary" onclick="vGoProducts()">🌊 Explorar Productos</button>
+          </div>
+        </div>
+
+        <div id="v-beach-feature" class="v-beach-feature" hidden></div>
+      </div>
+    </section>
+
+    <section id="v-shore" class="v-shore-zone">
+      <div class="v-shore-waves">
+        <div class="v-shore-wave"></div>
+        <div class="v-shore-wave"></div>
+        <div class="v-shore-wave"></div>
+      </div>
+
+      <div class="v-container v-shore-content">
+        <h2 class="v-shore-title">Descubre la Colección</h2>
+        <p class="v-shore-text">
+          Sumérgete en nuestra selección veraniega donde cada producto ha sido elegido para hacer de tu temporada algo inolvidable.
+        </p>
+      </div>
+    </section>
+
+    <section id="v-shallow" class="v-shallow-zone">
+      <div class="v-container">
+        <div class="v-section-header">
+          <div class="v-section-tag">Encuentra tu estilo</div>
+          <h2 class="v-section-h2">Explora por <span class="v-highlight">Categoría</span></h2>
+          <p class="v-section-lead">Navega por nuestras colecciones especialmente seleccionadas para esta temporada veraniega.</p>
+        </div>
+
+        <div id="v-categories" class="v-categories-grid"></div>
+      </div>
+    </section>
+
+    <section id="v-underwater" class="v-underwater-zone">
+      <div class="v-coral-decorations">
+        <div class="v-coral">🪸</div>
+        <div class="v-coral">🌿</div>
+        <div class="v-coral">🪸</div>
+        <div class="v-coral">🌿</div>
+        <div class="v-coral">🪸</div>
+      </div>
+
+      <div class="v-container">
+        <div class="v-filters-bar">
+          <div id="v-breadcrumbs" class="v-breadcrumbs"></div>
+
+          <div class="v-filters-row">
+            <label class="v-search-box">
+              <span class="v-search-icon">⌕</span>
+              <input id="v-search" type="search" placeholder="Buscar productos de verano..." oninput="vSearch(this.value)" />
+            </label>
+
+            <select id="v-sort" class="v-select" onchange="vSort(this.value)" aria-label="Ordenar productos">
+              <option value="reciente">Más recientes</option>
+              <option value="precio_asc">Precio: menor a mayor</option>
+              <option value="precio_desc">Precio: mayor a menor</option>
+              <option value="nombre">Nombre A-Z</option>
+            </select>
+
+            <button id="v-offers-btn" class="v-filter-chip" type="button" onclick="vToggleOffers()">
+              🔥 Ofertas
+            </button>
+
+            <div class="v-price-slider">
+              <span id="v-price-text" class="v-price-text">Cualquier precio</span>
+              <input id="v-price-range" type="range" min="0" max="100" value="100" oninput="vChangePrice(this.value)" aria-label="Precio máximo" />
+            </div>
+          </div>
+        </div>
+
+        <div class="v-products-top">
+          <div>
+            <div class="v-section-tag">Nuestra Colección</div>
+            <h2 id="v-products-h2" class="v-section-h2">Todos los Productos</h2>
+          </div>
+
+          <div style="text-align:right">
+            <div id="v-products-count" class="v-products-count"></div>
+            <button id="v-clear-btn" class="v-clear-btn" onclick="vClearFilters()">
+              Limpiar Filtros
+            </button>
+          </div>
+        </div>
+
+        <div id="v-products" class="v-products-grid"></div>
+      </div>
+    </section>
+
+    <footer class="v-abyss-zone">
+      <div class="v-abyss-stars">
+        <div class="v-starfish">⭐</div>
+        <div class="v-starfish">⭐</div>
+        <div class="v-starfish">⭐</div>
+      </div>
+
+      <div class="v-container v-abyss-content">
+        <h2 id="v-abyss-h2" class="v-abyss-h2">¡Hasta Pronto!</h2>
+        <p id="v-abyss-text" class="v-abyss-text">
+          Gracias por explorar nuestro catálogo de verano. Estamos aquí para ayudarte con lo que necesites.
+        </p>
+
+        <a id="v-abyss-wa" class="v-btn-primary v-abyss-cta" href="#" target="_blank" rel="noopener" style="display:none">
+          💬 Escribir por WhatsApp
+        </a>
+
+        <div class="v-abyss-credits">
+          Catálogo de Verano de <strong id="v-abyss-biz">tu negocio</strong> — creado con Catálogo360
+        </div>
+      </div>
+    </footer>
+
+    <a id="v-fab" class="v-fab" href="#" target="_blank" rel="noopener" aria-label="Escribir por WhatsApp">
+      💬
+    </a>
+  </div>
+
+  <div id="v-modal" class="v-modal-backdrop" onclick="if(event.target === this) vCloseModal()">
+    <article class="v-modal" role="dialog" aria-modal="true" aria-labelledby="v-modal-h2">
+      <div class="v-modal-grip"></div>
+
+      <button class="v-modal-close" type="button" onclick="vCloseModal()" aria-label="Cerrar">×</button>
+
+      <div id="v-modal-gallery" class="v-modal-gallery"></div>
+
+      <div class="v-modal-main">
+        <div id="v-modal-cat" class="v-modal-cat"></div>
+        <h2 id="v-modal-h2" class="v-modal-h2"></h2>
+
+        <div class="v-product-pricing">
+          <span id="v-modal-price" class="v-product-price"></span>
+          <span id="v-modal-old" class="v-product-old" style="display:none"></span>
+        </div>
+
+        <p id="v-modal-desc" class="v-modal-desc"></p>
+
+        <div class="v-modal-actions">
+          <button id="v-modal-wa" class="v-btn-primary" type="button"></button>
+
+          <a id="v-modal-phone" class="v-modal-icon-btn" href="#" style="display:none" title="Llamar" aria-label="Llamar">
+            ☎
+          </a>
+
+          <button id="v-modal-share" class="v-modal-icon-btn" type="button" onclick="vShareProduct()" title="Compartir producto" aria-label="Compartir producto">
+            ↗
+          </button>
+        </div>
+
+        <div id="v-related-section" class="v-related-section" style="display:none">
+          <div class="v-related-h3">También puede interesarte</div>
+          <div id="v-related" class="v-related-scroller"></div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <div id="v-lightbox" class="v-lightbox-backdrop" onclick="if(event.target === this) vCloseLightbox()">
+    <button class="v-lightbox-close" type="button" onclick="vCloseLightbox()" aria-label="Cerrar imagen">×</button>
+    <button class="v-lightbox-arrow v-prev" type="button" onclick="vMoveLightbox(-1)" aria-label="Imagen anterior">‹</button>
+    <img id="v-lightbox-img" src="" alt="" />
+    <button class="v-lightbox-arrow v-next" type="button" onclick="vMoveLightbox(1)" aria-label="Imagen siguiente">›</button>
+    <div id="v-lightbox-info" class="v-lightbox-info"></div>
+  </div>
+
+  <div id="v-toasts" class="v-toasts"></div>
+
+  <script>
+    const VB_CLIENT = c360CrearCliente();
+
+    let V_CATALOG = null;
+    let V_PRODUCTS = [];
+    let V_CATEGORIES = [];
+
+    let V_ACTIVE_CAT = null;
+    let V_SEARCH_TERM = "";
+    let V_SORT_MODE = "reciente";
+    let V_MAX_PRICE = null;
+    let V_OFFERS_ONLY = false;
+    let V_FAVS_ONLY = false;
+
+    let V_FAVORITES = [];
+    let V_STORAGE = null;
+    let V_PREVIEW_MODE = false;
+
+    let V_MODAL_PRODUCT = null;
+    let V_LIGHTBOX_IMGS = [];
+    let V_LIGHTBOX_IDX = 0;
+
+    const $v = (id) => document.getElementById(id);
+    const vEsc = (txt) => c360Esc(txt);
+    const vFmt = (amt) => c360FmtC(amt);
+
+    function vRealPrice(prod) {
+      return prod.etiqueta === "oferta" && prod.precio_oferta ? Number(prod.precio_oferta) : Number(prod.precio || 0);
+    }
+
+    function vMainImg(prod) {
+      return prod?.fotos?.find((f) => f.es_principal) || prod?.fotos?.[0] || null;
+    }
+
+    function vProdCat(prod) {
+      return V_CATEGORIES.find((c) => c.id === prod.categoria_id) || null;
+    }
+
+    function vBuildWALink(prod = null) {
+      if (!V_CATALOG?.whatsapp) return "";
+
+      const biz = V_CATALOG.nombre_comercial || V_CATALOG.nombre || "";
+      let msg = `Hola, vi el catálogo de verano de ${biz} y tengo una consulta.`;
+
+      if (prod) {
+        msg = `Hola, estoy interesado en "${prod.nombre}" (${vFmt(vRealPrice(prod))}) del catálogo de verano de ${biz}.`;
+      }
+
+      return c360LinkWA(V_CATALOG.whatsapp, msg);
+    }
+
+    function vTrack(type, prodId = null) {
+      c360RegistrarEvento(VB_CLIENT, V_CATALOG?.id, type, prodId, V_PREVIEW_MODE);
+    }
+
+    function vShowToast(msg) {
+      const zone = $v("v-toasts");
+      const toast = document.createElement("div");
+      toast.className = "v-toast";
+      toast.textContent = msg;
+      zone.appendChild(toast);
+
+      setTimeout(() => toast.remove(), 3500);
+    }
+
+    function vApplyColor() {
+      const valid = /^#[0-9a-f]{6}$/i.test(V_CATALOG?.color_acento || "");
+      const color = valid ? V_CATALOG.color_acento : "#ff7f50";
+
+      document.documentElement.style.setProperty("--v-catalog-accent", color);
+      document.documentElement.style.setProperty("--v-catalog-accent-rgb", c360HexARgb(color, "#ff7f50"));
+    }
+
+    function vGoHome() {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function vGoCategories() {
+      const sec = $v("v-shallow");
+      if (sec) {
+        sec.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function vGoProducts() {
+      $v("v-underwater").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function vRefreshFavs() {
+      const valid = new Set(V_PRODUCTS.map((p) => p.id));
+      V_FAVORITES = V_FAVORITES.filter((id) => valid.has(id));
+
+      if (V_STORAGE) V_STORAGE.guardarFavoritos(V_FAVORITES);
+
+      const badge = $v("v-fav-badge");
+      badge.textContent = V_FAVORITES.length;
+      badge.style.display = V_FAVORITES.length ? "flex" : "none";
+
+      const btn = $v("v-fav-btn");
+      btn.classList.toggle("v-active", V_FAVS_ONLY);
+      btn.innerHTML = `${V_FAVS_ONLY ? "♥" : "♡"}<span id="v-fav-badge" class="v-fav-badge" style="display:${V_FAVORITES.length ? "flex" : "none"}">${V_FAVORITES.length}</span>`;
+    }
+
+    function vToggleFav(id) {
+      const idx = V_FAVORITES.indexOf(id);
+
+      if (idx === -1) {
+        V_FAVORITES.push(id);
+        vShowToast("Producto agregado a favoritos.");
+      } else {
+        V_FAVORITES.splice(idx, 1);
+        vShowToast("Producto quitado de favoritos.");
+      }
+
+      vRefreshFavs();
+      vApplyFilters();
+      vRenderBeach();
+    }
+
+    function vToggleFavorites() {
+      V_FAVS_ONLY = !V_FAVS_ONLY;
+
+      if (V_FAVS_ONLY) {
+        V_ACTIVE_CAT = null;
+        V_OFFERS_ONLY = false;
+      }
+
+      vRenderCategories();
+      vRenderBreadcrumbs();
+      vApplyFilters();
+      vGoProducts();
+    }
+
+    function vConfigPrice() {
+      const realMax = c360PrecioMaximoReal(V_PRODUCTS);
+      const sliderMax = Math.max(1, Math.ceil(realMax));
+
+      const range = $v("v-price-range");
+      range.min = "0";
+      range.max = String(sliderMax);
+      range.value = String(sliderMax);
+      range.disabled = !V_PRODUCTS.length;
+
+      V_MAX_PRICE = sliderMax;
+      vUpdatePriceLabel();
+    }
+
+    function vUpdatePriceLabel() {
+      const range = $v("v-price-range");
+      const limit = Number(range.max || 0);
+      const curr = Number(V_MAX_PRICE);
+
+      $v("v-price-text").textContent = curr >= limit ? "Cualquier precio" : `Hasta ${vFmt(curr)}`;
+    }
+
+    function vChangePrice(val) {
+      V_MAX_PRICE = Number(val);
+      vUpdatePriceLabel();
+      vApplyFilters();
+    }
+
+    function vSearch(val) {
+      V_SEARCH_TERM = String(val || "").trim().toLowerCase();
+      vApplyFilters();
+    }
+
+    function vSort(val) {
+      V_SORT_MODE = val;
+      vApplyFilters();
+    }
+
+    function vToggleOffers() {
+      V_OFFERS_ONLY = !V_OFFERS_ONLY;
+      V_FAVS_ONLY = false;
+
+      $v("v-offers-btn").classList.toggle("v-active", V_OFFERS_ONLY);
+
+      vRenderCategories();
+      vRenderBreadcrumbs();
+      vApplyFilters();
+    }
+
+    function vClearFilters() {
+      V_ACTIVE_CAT = null;
+      V_SEARCH_TERM = "";
+      V_SORT_MODE = "reciente";
+      V_OFFERS_ONLY = false;
+      V_FAVS_ONLY = false;
+
+      $v("v-search").value = "";
+      $v("v-sort").value = "reciente";
+
+      const range = $v("v-price-range");
+      V_MAX_PRICE = Number(range.max || 0);
+      range.value = range.max;
+
+      $v("v-offers-btn").classList.remove("v-active");
+
+      vUpdatePriceLabel();
+      vRenderCategories();
+      vRenderBreadcrumbs();
+      vApplyFilters();
+    }
+
+    function vFilterCat(id) {
+      V_ACTIVE_CAT = V_CATEGORIES.find((c) => c.id === id) || null;
+      V_FAVS_ONLY = false;
+      V_OFFERS_ONLY = false;
+
+      $v("v-offers-btn").classList.remove("v-active");
+
+      vRenderCategories();
+      vRenderBreadcrumbs();
+      vApplyFilters();
+      vGoProducts();
+    }
+
+    function vRenderBreadcrumbs() {
+      const nav = $v("v-breadcrumbs");
+      const title = $v("v-products-h2");
+
+      if (V_FAVS_ONLY) {
+        nav.style.display = "block";
+        nav.innerHTML = `<button onclick="vClearFilters()">Inicio</button> &nbsp;›&nbsp; Mis Favoritos`;
+        title.textContent = "Mis Favoritos";
+        return;
+      }
+
+      if (V_OFFERS_ONLY) {
+        nav.style.display = "block";
+        nav.innerHTML = `<button onclick="vClearFilters()">Inicio</button> &nbsp;›&nbsp; Ofertas`;
+        title.textContent = "Ofertas Especiales";
+        return;
+      }
+
+      if (V_ACTIVE_CAT) {
+        nav.style.display = "block";
+        nav.innerHTML = `<button onclick="vClearFilters()">Inicio</button> &nbsp;›&nbsp; ${vEsc(V_ACTIVE_CAT.nombre)}`;
+        title.textContent = V_ACTIVE_CAT.nombre;
+        return;
+      }
+
+      nav.style.display = "none";
+      title.textContent = "Todos los Productos";
+    }
+
+    function vRenderHeader() {
+      const name = V_CATALOG.nombre_comercial || V_CATALOG.nombre || "Catálogo";
+      const desc = V_CATALOG.descripcion || "Explora nuestro catálogo de verano.";
+
+      document.title = `${name} | Verano 2024`;
+      $v("v-title").textContent = document.title;
+
+      $v("v-meta-description").setAttribute("content", desc);
+      $v("v-og-title").setAttribute("content", name);
+      $v("v-og-description").setAttribute("content", desc);
+
+      if (V_CATALOG.logo_url) {
+        $v("v-og-image").setAttribute("content", V_CATALOG.logo_url);
+      }
+
+      $v("v-brand-name").textContent = name;
+      $v("v-abyss-biz").textContent = name;
+      $v("v-abyss-h2").textContent = `¡Hasta Pronto, ${name}!`;
+      $v("v-loader-biz").textContent = name;
+
+      const icon = $v("v-brand-icon");
+
+      if (V_CATALOG.logo_url) {
+        icon.innerHTML = `<img src="${vEsc(V_CATALOG.logo_url)}" alt="${vEsc(name)}">`;
+      } else {
+        icon.textContent = "🌊";
+      }
+
+      const wa = vBuildWALink();
+
+      if (wa) {
+        const headerWA = $v("v-header-wa");
+        headerWA.style.display = "inline-flex";
+        headerWA.href = wa;
+        headerWA.onclick = () => vTrack("click_whatsapp");
+
+        const abyssWA = $v("v-abyss-wa");
+        abyssWA.style.display = "inline-flex";
+        abyssWA.href = wa;
+        abyssWA.onclick = () => vTrack("click_whatsapp");
+
+        const fab = $v("v-fab");
+        fab.href = wa;
+        fab.classList.add("v-visible");
+        fab.onclick = () => vTrack("click_whatsapp");
+
+        document.body.classList.add("v-has-fab");
+      }
+    }
+
+    function vRenderBeach() {
+      const name = V_CATALOG.nombre_comercial || V_CATALOG.nombre || "Tu catálogo";
+      const featured = V_PRODUCTS.find((p) => p.destacado) || V_PRODUCTS.find((p) => p.etiqueta !== "agotado") || V_PRODUCTS[0];
+
+      $v("v-beach-h1").innerHTML = `${vEsc(name)}<span class="v-gradient">donde el verano cobra vida</span>`;
+      $v("v-beach-desc").textContent = V_CATALOG.descripcion || "Descubre nuestra selección veraniega con productos perfectos para hacer de esta temporada algo memorable e inolvidable.";
+
+      const actions = $v("v-beach-actions");
+      let actionsHTML = `<button class="v-btn-primary" onclick="vGoProducts()">🌊 Explorar Productos</button>`;
+
+      if (V_CATALOG.whatsapp) {
+        actionsHTML += `<a class="v-btn-secondary" href="${vEsc(vBuildWALink())}" target="_blank" rel="noopener" onclick="vTrack('click_whatsapp')">💬 Escribir por WhatsApp</a>`;
+      }
+
+      actions.innerHTML = actionsHTML;
+
+      const feature = $v("v-beach-feature");
+
+      if (!featured) {
+        feature.hidden = true;
+        return;
+      }
+
+      const img = vMainImg(featured);
+      const hasOffer = featured.etiqueta === "oferta" && featured.precio_oferta;
+      const cat = vProdCat(featured);
+
+      feature.hidden = false;
+      feature.innerHTML = `
+        <div class="v-feature-card" onclick="vOpenProduct('${featured.id}')">
+          <div class="v-feature-img">
+            ${img ? `<img src="${vEsc(img.url)}" alt="${vEsc(featured.nombre)}">` : `<div class="v-feature-placeholder">🏖️</div>`}
+          </div>
+
+          <div class="v-feature-body">
+            ${cat ? `<div class="v-feature-cat">${vEsc(cat.nombre)}</div>` : ""}
+            <div class="v-feature-name">${vEsc(featured.nombre)}</div>
+
+            <div class="v-feature-price-row">
+              <span class="v-feature-price">${vFmt(vRealPrice(featured))}</span>
+              ${hasOffer ? `<span class="v-feature-old">${vFmt(featured.precio)}</span>` : ""}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function vRenderCategories() {
+      const grid = $v("v-categories");
+
+      if (!V_CATEGORIES.length) {
+        $v("v-shallow").style.display = "none";
+        grid.innerHTML = "";
+        return;
+      }
+
+      $v("v-shallow").style.display = "";
+
+      const counts = {};
+
+      V_PRODUCTS.forEach((p) => {
+        if (p.categoria_id) {
+          counts[p.categoria_id] = (counts[p.categoria_id] || 0) + 1;
+        }
+      });
+
+      grid.innerHTML = V_CATEGORIES.map((cat, i) => {
+        const count = counts[cat.id] || 0;
+        const icons = ["🏄", "🏖️", "🌺", "🥥", "🍹", "🐚", "⛱️", "🌴", "🐠", "🌊"];
+        const icon = icons[i % icons.length];
+
+        return `
+          <button class="v-category-card" type="button" onclick="vFilterCat('${cat.id}')">
+            ${cat.imagen_url ? `<img class="v-category-bg" src="${vEsc(cat.imagen_url)}" alt="${vEsc(cat.nombre)}">` : `<div class="v-category-no-bg"></div>`}
+
+            <span class="v-category-emoji">${icon}</span>
+
+            <span class="v-category-info">
+              <span class="v-category-name">${vEsc(cat.nombre)}</span>
+              <span class="v-category-count">${count} producto${count === 1 ? "" : "s"}</span>
+            </span>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function vProdBadge(prod) {
+      if (prod.destacado) {
+        return `<span class="v-product-badge v-featured">★ Destacado</span>`;
+      }
+
+      if (prod.etiqueta === "oferta") {
+        return `<span class="v-product-badge v-offer">Oferta</span>`;
+      }
+
+      if (prod.etiqueta === "nuevo") {
+        return `<span class="v-product-badge v-new">Nuevo</span>`;
+      }
+
+      return "";
+    }
+
+    function vProdCard(prod) {
+      const img = vMainImg(prod);
+      const cat = vProdCat(prod);
+      const isFav = V_FAVORITES.includes(prod.id);
+      const hasOffer = prod.etiqueta === "oferta" && prod.precio_oferta;
+      const isSold = prod.etiqueta === "agotado";
+
+      return `
+        <article class="v-product-card ${isSold ? "v-sold" : ""}">
+          <div class="v-product-thumb" onclick="vOpenProduct('${prod.id}')">
+            ${img ? `<img src="${vEsc(img.url)}" loading="lazy" alt="${vEsc(prod.nombre)}">` : `<div class="v-product-no-img">🏖️</div>`}
+
+            ${vProdBadge(prod)}
+            ${isSold ? `<span class="v-sold-badge">Agotado</span>` : ""}
+
+            <button class="v-fav-btn ${isFav ? "v-active" : ""}" type="button" onclick="event.stopPropagation(); vToggleFav('${prod.id}')" aria-label="${isFav ? "Quitar de favoritos" : "Agregar a favoritos"}" title="${isFav ? "Quitar de favoritos" : "Agregar a favoritos"}">
+              ${isFav ? "♥" : "♡"}
+            </button>
+          </div>
+
+          <div class="v-product-body">
+            <div class="v-product-cat">${cat ? vEsc(cat.nombre) : "&nbsp;"}</div>
+
+            <div class="v-product-name" onclick="vOpenProduct('${prod.id}')">
+              ${vEsc(prod.nombre)}
+            </div>
+
+            <div class="v-product-pricing">
+              <span class="v-product-price ${hasOffer ? "v-offer" : ""}">${vFmt(vRealPrice(prod))}</span>
+              ${hasOffer ? `<span class="v-product-old">${vFmt(prod.precio)}</span>` : ""}
+            </div>
+
+            <div class="v-product-actions">
+              <button class="v-product-btn" type="button" onclick="vOpenProduct('${prod.id}')">
+                Ver detalle
+              </button>
+
+              ${V_CATALOG.whatsapp && !isSold ? `<button class="v-product-btn v-wa" type="button" onclick="vContactProd('${prod.id}')" title="Consultar por WhatsApp">💬</button>` : ""}
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function vRenderProducts(list) {
+      const grid = $v("v-products");
+      const count = $v("v-products-count");
+
+      count.textContent = list.length ? `${list.length} producto${list.length === 1 ? "" : "s"} encontrado${list.length === 1 ? "" : "s"}` : "";
+
+      const hasFilters = V_ACTIVE_CAT || V_SEARCH_TERM || V_OFFERS_ONLY || V_FAVS_ONLY || Number(V_MAX_PRICE) < Number($v("v-price-range").max);
+
+      $v("v-clear-btn").style.display = hasFilters ? "inline-block" : "none";
+
+      if (!list.length) {
+        grid.innerHTML = `
+          <div class="v-empty-state">
+            <div class="v-empty-icon">🔍</div>
+            <div class="v-empty-title">No encontramos productos</div>
+            <div class="v-empty-text">Prueba ajustando los filtros para ver más resultados.</div>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = list.map(vProdCard).join("");
+    }
+
+    function vApplyFilters() {
+      const list = c360FiltrarYOrdenar(V_PRODUCTS, {
+        categoriaId: V_ACTIVE_CAT?.id || null,
+        soloFavoritos: V_FAVS_ONLY,
+        favoritos: V_FAVORITES,
+        soloOfertas: V_OFFERS_ONLY,
+        textoBusqueda: V_SEARCH_TERM,
+        precioMax: V_MAX_PRICE,
+        orden: V_SORT_MODE
+      });
+
+      vRenderProducts(list);
+    }
+
+    function vContactProd(id) {
+      const prod = V_PRODUCTS.find((p) => p.id === id);
+
+      if (!prod || !V_CATALOG.whatsapp || prod.etiqueta === "agotado") {
+        return;
+      }
+
+      vTrack("click_whatsapp", prod.id);
+      window.open(vBuildWALink(prod), "_blank", "noopener");
+    }
+
+    function vOpenProduct(id) {
+      const prod = V_PRODUCTS.find((p) => p.id === id);
+      if (!prod) return;
+
+      V_MODAL_PRODUCT = prod;
+      vTrack("vista_producto", prod.id);
+
+      const cat = vProdCat(prod);
+      const hasOffer = prod.etiqueta === "oferta" && prod.precio_oferta;
+      const isSold = prod.etiqueta === "agotado";
+
+      if (cat) {
+        $v("v-modal-cat").textContent = cat.nombre;
+        $v("v-modal-cat").style.display = "inline-block";
+      } else {
+        $v("v-modal-cat").style.display = "none";
+      }
+
+      $v("v-modal-h2").textContent = prod.nombre;
+      $v("v-modal-price").textContent = vFmt(vRealPrice(prod));
+      $v("v-modal-price").className = `v-product-price ${hasOffer ? "v-offer" : ""}`;
+
+      const oldPrice = $v("v-modal-old");
+      oldPrice.style.display = hasOffer ? "inline" : "none";
+      oldPrice.textContent = hasOffer ? vFmt(prod.precio) : "";
+
+      $v("v-modal-desc").textContent = prod.descripcion || "Consulta con nosotros para conocer más detalles sobre este producto.";
+
+      V_LIGHTBOX_IMGS = (prod.fotos || []).map((f) => f.url);
+
+      const gallery = $v("v-modal-gallery");
+
+      if (prod.fotos?.length) {
+        gallery.innerHTML = prod.fotos.map((f, idx) => `<img src="${vEsc(f.url)}" alt="${vEsc(prod.nombre)}" onclick="vOpenLightbox(${idx})">`).join("");
+      } else {
+        gallery.innerHTML = `<div class="v-modal-no-img">🏖️</div>`;
+      }
+
+      const waBtn = $v("v-modal-wa");
+
+      if (V_CATALOG.whatsapp && !isSold) {
+        waBtn.style.display = "inline-flex";
+        waBtn.disabled = false;
+        waBtn.textContent = "💬 Consultar por WhatsApp";
+        waBtn.onclick = () => vContactProd(prod.id);
+      } else if (isSold) {
+        waBtn.style.display = "inline-flex";
+        waBtn.disabled = true;
+        waBtn.textContent = "Agotado por ahora";
+        waBtn.onclick = null;
+      } else {
+        waBtn.style.display = "none";
+      }
+
+      const phone = $v("v-modal-phone");
+
+      if (V_CATALOG.telefono) {
+        phone.style.display = "grid";
+        phone.href = `tel:${String(V_CATALOG.telefono).replace(/[^\d+]/g, "")}`;
+        phone.onclick = () => vTrack("click_telefono", prod.id);
+      } else {
+        phone.style.display = "none";
+      }
+
+      vRenderRelated(prod);
+
+      $v("v-modal").classList.add("v-open");
+      document.body.classList.add("v-lock");
+    }
+
+    function vCloseModal() {
+      $v("v-modal").classList.remove("v-open");
+      V_MODAL_PRODUCT = null;
+
+      if (!$v("v-lightbox").classList.contains("v-open")) {
+        document.body.classList.remove("v-lock");
+      }
+    }
+
+    function vRenderRelated(prod) {
+      const section = $v("v-related-section");
+      const scroller = $v("v-related");
+
+      if (!prod.categoria_id) {
+        section.style.display = "none";
+        return;
+      }
+
+      const related = V_PRODUCTS.filter((p) => p.id !== prod.id && p.categoria_id === prod.categoria_id).slice(0, 6);
+
+      if (!related.length) {
+        section.style.display = "none";
+        return;
+      }
+
+      section.style.display = "block";
+
+      scroller.innerHTML = related.map((p) => {
+        const img = vMainImg(p);
+
+        return `
+          <div class="v-related-item" onclick="vOpenProduct('${p.id}')">
+            ${img ? `<img src="${vEsc(img.url)}" alt="${vEsc(p.nombre)}">` : `<div class="v-related-no-img">🏖️</div>`}
+            <div class="v-related-name">${vEsc(p.nombre)}</div>
+            <div class="v-related-price">${vFmt(vRealPrice(p))}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function vShareProduct() {
+      const prod = V_MODAL_PRODUCT;
+      if (!prod) return;
+
+      const url = `${window.location.href.split("#")[0]}#producto-${prod.id}`;
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: prod.nombre,
+            text: `${prod.nombre} — ${vFmt(vRealPrice(prod))}`,
+            url
+          });
+          return;
+        }
+
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+          vShowToast("Enlace del producto copiado.");
+          return;
+        }
+
+        vShowToast("No se pudo compartir desde este navegador.");
+      } catch (err) {
+      }
+    }
+
+    function vOpenLightbox(idx) {
+      if (!V_LIGHTBOX_IMGS.length) return;
+
+      V_LIGHTBOX_IDX = Math.max(0, Math.min(idx, V_LIGHTBOX_IMGS.length - 1));
+      vRefreshLightbox();
+
+      $v("v-lightbox").classList.add("v-open");
+      document.body.classList.add("v-lock");
+    }
+
+    function vRefreshLightbox() {
+      $v("v-lightbox-img").src = V_LIGHTBOX_IMGS[V_LIGHTBOX_IDX];
+      $v("v-lightbox-info").textContent = `${V_LIGHTBOX_IDX + 1} / ${V_LIGHTBOX_IMGS.length}`;
+    }
+
+    function vMoveLightbox(dir) {
+      if (!V_LIGHTBOX_IMGS.length) return;
+
+      V_LIGHTBOX_IDX = (V_LIGHTBOX_IDX + dir + V_LIGHTBOX_IMGS.length) % V_LIGHTBOX_IMGS.length;
+
+      vRefreshLightbox();
+    }
+
+    function vCloseLightbox() {
+      $v("v-lightbox").classList.remove("v-open");
+
+      if (!$v("v-modal").classList.contains("v-open")) {
+        document.body.classList.remove("v-lock");
+      }
+    }
+
+    function vInsertSEO() {
+      c360InsertarJSONLD("v-jsonld", V_CATALOG, V_PRODUCTS);
+    }
+
+    function vShowError(msg) {
+      const loader = $v("v-loader");
+      loader.classList.add("error");
+
+      loader.innerHTML = `
+        <div class="v-loader-content">
+          <h1 class="v-loader-title">No pudimos abrir este catálogo</h1>
+          <p class="v-loader-text">${vEsc(msg)}</p>
+        </div>
+      `;
+    }
+
+    function vRevealApp() {
+      $v("v-app").style.display = "block";
+
+      const loader = $v("v-loader");
+      loader.classList.add("v-hidden");
+
+      setTimeout(() => {
+        if (loader) loader.remove();
+      }, 1000);
+    }
+
+    function vCreateSand() {
+      const sand = $v("v-sand");
+      const count = 20;
+
+      for (let i = 0; i < count; i++) {
+        const grain = document.createElement("div");
+        grain.className = "v-sand-grain";
+        grain.style.left = `${Math.random() * 100}%`;
+        grain.style.animationDuration = `${Math.random() * 3 + 2}s`;
+        grain.style.animationDelay = `${Math.random() * 3}s`;
+        sand.appendChild(grain);
+      }
+    }
+
+    function vCreateBubbles() {
+      const bubbles = $v("v-bubbles");
+      const count = 25;
+
+      for (let i = 0; i < count; i++) {
+        const bubble = document.createElement("div");
+        bubble.className = "v-bubble";
+        bubble.style.left = `${Math.random() * 100}%`;
+        bubble.style.width = `${Math.random() * 30 + 10}px`;
+        bubble.style.height = bubble.style.width;
+        bubble.style.animationDuration = `${Math.random() * 8 + 6}s`;
+        bubble.style.animationDelay = `${Math.random() * 8}s`;
+        bubbles.appendChild(bubble);
+      }
+    }
+
+    function vCreateFish() {
+      const tank = $v("v-fish");
+      const fishes = ["🐠", "🐟", "🦈", "🐡", "🦑", "🐙"];
+      const count = 8;
+
+      for (let i = 0; i < count; i++) {
+        const fish = document.createElement("div");
+        fish.className = "v-fish";
+        fish.textContent = fishes[Math.floor(Math.random() * fishes.length)];
+        fish.style.top = `${Math.random() * 80 + 10}%`;
+        fish.style.fontSize = `${Math.random() * 20 + 20}px`;
+        fish.style.animationDuration = `${Math.random() * 20 + 15}s`;
+        fish.style.animationDelay = `${Math.random() * 10}s`;
+        tank.appendChild(fish);
+      }
+    }
+
+    function vUpdateDepthMeter() {
+      const scrollY = window.pageYOffset;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const scrollPercent = (scrollY / docHeight) * 100;
+
+      const meter = $v("v-depth-meter");
+      const icon = $v("v-depth-icon");
+      const label = $v("v-depth-label");
+
+      if (scrollY > 200) {
+        meter.classList.add("v-visible");
+      } else {
+        meter.classList.remove("v-visible");
+      }
+
+      if (scrollPercent < 20) {
+        icon.textContent = "🏖️";
+        label.textContent = "Arena";
+      } else if (scrollPercent < 35) {
+        icon.textContent = "🌊";
+        label.textContent = "Orilla";
+      } else if (scrollPercent < 50) {
+        icon.textContent = "🏊";
+        label.textContent = "Aguas Poco Profundas";
+      } else if (scrollPercent < 90) {
+        icon.textContent = "🐠";
+        label.textContent = "Submarino";
+      } else {
+        icon.textContent = "⭐";
+        label.textContent = "Abisal";
+      }
+    }
+
+    function vSetupScroll() {
+      const navbar = $v("v-navbar");
+
+      window.addEventListener("scroll", () => {
+        const scrollY = window.pageYOffset;
+
+        if (scrollY > 100) {
+          navbar.classList.add("v-scrolled");
+        } else {
+          navbar.classList.remove("v-scrolled");
+        }
+
+        vUpdateDepthMeter();
+      });
+    }
+
+    async function vInit() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const slug = params.get("c");
+        const previewId = params.get("preview");
+
+        V_PREVIEW_MODE = !!previewId;
+
+        const result = await c360CargarCatalogoPublico({
+          sb: VB_CLIENT,
+          slug,
+          idPreview: previewId
+        });
+
+        if (result.error) {
+          vShowError(result.error);
+          return;
+        }
+
+        V_CATALOG = result.catalogo;
+        V_PRODUCTS = result.productos || [];
+        V_CATEGORIES = result.categorias || [];
+
+        V_STORAGE = c360CrearAlmacenLocal(`verano_${V_CATALOG.id}`);
+        V_FAVORITES = V_STORAGE.obtenerFavoritos();
+
+        vApplyColor();
+
+        if (V_PREVIEW_MODE && V_CATALOG.estado !== "publicado") {
+          $v("v-preview").style.display = "block";
+        }
+
+        setTimeout(() => {
+          $v("v-splash").classList.add("v-hidden");
+
+          setTimeout(() => {
+            $v("v-loader").classList.add("v-active");
+
+            setTimeout(() => {
+              vRenderHeader();
+              vRenderBeach();
+              vRenderCategories();
+              vConfigPrice();
+              vRenderBreadcrumbs();
+              vRefreshFavs();
+              vApplyFilters();
+              vInsertSEO();
+              vSetupScroll();
+              vCreateSand();
+              vCreateBubbles();
+              vCreateFish();
+
+              if (!V_PREVIEW_MODE) {
+                vTrack("visita");
+              }
+
+              vRevealApp();
+            }, 2800);
+          }, 1000);
+        }, 3000);
+      } catch (err) {
+        console.error("Error inicializando plantilla Verano:", err);
+        vShowError("Ocurrió un problema al cargar el catálogo. Intenta nuevamente.");
+      }
+    }
+
+    document.addEventListener("keydown", (evt) => {
+      if (evt.key !== "Escape") return;
+
+      if ($v("v-lightbox").classList.contains("v-open")) {
+        vCloseLightbox();
+        return;
+      }
+
+      if ($v("v-modal").classList.contains("v-open")) {
+        vCloseModal();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", vInit);
+  </script>
+</body>
+</html>
