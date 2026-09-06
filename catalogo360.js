@@ -130,7 +130,7 @@ async function init() {
 
   try {
     const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) { window.location.href = 'login.html'; return; }
+    if (error || !user) { window.location.href = 'catalogo360-login.html'; return; }
     STATE.userId = user.id;
 
     await loadEmpresaConfig(user.id);
