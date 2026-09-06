@@ -647,6 +647,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'backtoschool', nombre:'Back to School', icono:'🎒', desc:'Editorial y comercial, energía de temporada sin caer en lo infantil.', disponible:true, archivo:'c360-backtoschool.html' },
   { key: 'verano', nombre: 'Verano', icono: '☀️', desc: 'Fresca, luminosa y editorial — perfecta para colecciones de temporada.', disponible: true, archivo: 'c360-verano.html' },
   { key:'veranocoastal', nombre:'Verano Coastal', icono:'🌊', desc:'Inmersiva con scroll progresivo de playa a profundidad submarina -- arena, olas, vida marina.', disponible:true, archivo:'c360-verano2.html' },
+  { key:'Lujo y estilo', nombre:'Lujo y estilo', icono:'🤵', desc:'Totalmente de lujo, para tus clientes mas sofisticados', disponible:true, archivo:'c360-luxury.html' },
 ];
 
 function archivoDePlantilla(key) {
