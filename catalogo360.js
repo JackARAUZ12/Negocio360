@@ -641,6 +641,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'plantilla2', nombre:'Vibrante', icono:'✨', desc:'Clara, colorida, con degradados y burbujas animadas.', disponible:true, archivo:'c360-vibrante.html' },
   { key:'navidad', nombre:'Navidad', icono:'🎄', desc:'Cálida y editorial -- vino, verde pino, crema y dorado.', disponible:true, archivo:'c360-navidad.html' },
   { key:'navidad2', nombre:'Navidad Premium', icono:'🎅', desc:'Elegante y festiva -- rojo intenso, verde bosque, dorado y detalles nevados.', disponible:true, archivo:'c360-navidad2.html' },
+   { key:'navidadroja', nombre:'Navidad Roja', icono:'🎁', desc:'Ultra navideña con rojo profundo, efectos de nieve y transiciones cinematográficas.', disponible:true, archivo:'c360-navidad3.html' },
   { key:'valentin', nombre:'San Valentín', icono:'❤️', desc:'Romántica y sofisticada -- borgoña, rosa empolvado, crema y dorado.', disponible:true, archivo:'c360-valentin.html' },
   { key:'halloween', nombre:'Halloween', icono:'🎃', desc:'Misteriosa y oscura -- púrpura profundo, naranja vibrante y detalles espeluznantes.', disponible:true, archivo:'c360-halloween.html' },
   { key:'backtoschool', nombre:'Back to School', icono:'🎒', desc:'Editorial y comercial, energía de temporada sin caer en lo infantil.', disponible:true, archivo:'c360-backtoschool.html' },
