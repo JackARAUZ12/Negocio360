@@ -2909,6 +2909,16 @@ async function initCompras() {
     // 5. KPIs y tabla principal
     await Promise.allSettled([loadKPIs(), loadCompras()]);
 
+    if (window.Negocio360Tutorial) {
+      const pasosCompras = [
+        { icono: '🛒', titulo: 'Bienvenido a Compras', texto: 'Aquí registras lo que le compras a tus proveedores -- así tu stock e inventario se actualizan solos.' },
+        { icono: '📦', titulo: 'Registra una compra', texto: 'Elige el proveedor y los productos que compraste, con la cantidad y el costo real de cada uno.' },
+        { icono: '📈', titulo: 'El stock sube solo', texto: 'Al confirmar la compra, el stock de esos productos aumenta automáticamente -- no hace falta ajustarlo a mano.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('compras', pasosCompras);
+      Negocio360Tutorial.agregarBotonAyuda('compras', pasosCompras);
+    }
+
   } catch(err) {
     console.error('initCompras:', err);
     document.getElementById('loader').classList.add('hidden');

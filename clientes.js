@@ -1639,6 +1639,16 @@ async function initClientes() {
 
     await Promise.allSettled([loadKPIs(), loadClientes()]);
 
+    if (window.Negocio360Tutorial) {
+      const pasosClientes = [
+        { icono: '👥', titulo: 'Bienvenido a Clientes', texto: 'Aquí llevas el registro de todos tus clientes -- su historial de compras, contacto, y cuánto te compran.' },
+        { icono: '➕', titulo: 'Agrega uno nuevo', texto: 'Con "Nuevo cliente" guardas nombre, teléfono y dirección -- luego lo eliges rápido al hacer una venta.' },
+        { icono: '📈', titulo: 'Su historial completo', texto: 'Al abrir un cliente ves todo lo que te ha comprado, cuánto te debe si tiene crédito, y su actividad reciente.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('clientes', pasosClientes);
+      Negocio360Tutorial.agregarBotonAyuda('clientes', pasosClientes);
+    }
+
     // Escuchar cambios de ventas.js en tiempo real vía localStorage
     window.addEventListener('storage', e => {
       if (e.key === 'n360_venta_nueva') {

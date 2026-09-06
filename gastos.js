@@ -903,6 +903,16 @@
       await loadMetodosPago();
       await refrescarTodo();
       if (new URLSearchParams(window.location.search).get('action')==='new') openNuevoGasto();
+
+      if (window.Negocio360Tutorial) {
+        const pasosGastos = [
+          { icono: '💸', titulo: 'Bienvenido a Gastos', texto: 'Aquí registras todo lo que sale de tu negocio -- desde renta y servicios, hasta compras pequeñas del día a día.' },
+          { icono: '🏷️', titulo: 'Elige una categoría', texto: 'Cada gasto va en una categoría (renta, servicios, transporte, etc.) para que tus reportes salgan más claros.' },
+          { icono: '📊', titulo: 'Se refleja en tu Dashboard', texto: 'Cada gasto que registres se descuenta de tus ganancias reales, visibles al instante en el Dashboard.' },
+        ];
+        Negocio360Tutorial.verificarYMostrar('gastos', pasosGastos);
+        Negocio360Tutorial.agregarBotonAyuda('gastos', pasosGastos);
+      }
     } catch(err) {
       console.error('initGastos:', err);
       document.getElementById('loader').classList.add('hidden');

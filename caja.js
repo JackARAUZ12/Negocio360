@@ -1304,6 +1304,16 @@ async function initCaja() {
 
     actualizarCacheLocal();
 
+    if (window.Negocio360Tutorial) {
+      const pasosCaja = [
+        { icono: '🏦', titulo: 'Bienvenido a Caja', texto: 'Aquí ves todo el dinero que entra y sale de tu negocio -- ventas, gastos, y movimientos manuales, todo en un solo lugar.' },
+        { icono: '💵', titulo: 'Dinero inicial del día', texto: 'Cada día puedes registrar con cuánto efectivo abres, para que el cuadre de caja te salga exacto al cerrar.' },
+        { icono: '📋', titulo: 'Movimientos manuales', texto: 'Si necesitas registrar una entrada o salida que no viene de una venta o gasto, aquí también puedes agregarla directo.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('caja', pasosCaja);
+      Negocio360Tutorial.agregarBotonAyuda('caja', pasosCaja);
+    }
+
   } catch(err) {
     console.error('initCaja:', err);
     document.getElementById('loader').classList.add('hidden');
