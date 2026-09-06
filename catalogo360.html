@@ -1008,9 +1008,10 @@
     .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
     .metodo-card .mc-icon{font-size:16px}
     .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
-    .c360-tab { background:none; border:none; padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .c360-tab { background:none; border:none; padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; flex-shrink:0; }
     .c360-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
     .c360-tab-panel { display:block; }
+    .c360-tabs-bar::-webkit-scrollbar { display:none; }
     .c360-card-catalogo { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; cursor:pointer; transition:border-color .15s; }
     .c360-card-catalogo:hover { border-color:var(--accent); }
     .c360-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
@@ -1321,6 +1322,9 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <span class="header-title">Catálogo360</span>
+      <button class="header-toggle" onclick="reabrirTutorial()" title="Ver el tutorial de nuevo" style="margin-left:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -1466,7 +1470,7 @@
           </div>
         </div>
 
-        <div style="display:flex;gap:6px;margin-top:18px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <div class="c360-tabs-bar" style="display:flex;gap:6px;margin-top:18px;border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none">
           <button class="c360-tab active" data-tab="info" onclick="cambiarTabEditor('info')">Información</button>
           <button class="c360-tab" data-tab="categorias" onclick="cambiarTabEditor('categorias')">Categorías</button>
           <button class="c360-tab" data-tab="productos" onclick="cambiarTabEditor('productos')">Productos</button>
@@ -1530,13 +1534,6 @@
             </div>
           </div>
           <div class="panel-card" style="padding:20px;margin-top:16px;max-width:480px">
-            <div class="form-group">
-              <label>Banner de portada</label>
-              <input type="file" id="c360-a-banner-input" accept="image/*" onchange="subirBannerCatalogo(this.files[0])" style="display:none"/>
-              <img id="c360-a-banner-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-base);display:none;margin-bottom:8px"/>
-              <button class="btn-secondary btn-sm" onclick="document.getElementById('c360-a-banner-input').click()">Subir banner</button>
-              <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Aparece como imagen de portada en la parte superior de tu catálogo público. Ideal: 1200×400px o similar.</p>
-            </div>
             <div class="form-group">
               <label>Color de tu catálogo</label>
               <div id="c360-a-paletas" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px"></div>
@@ -1808,6 +1805,66 @@
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
       <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
       <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TUTORIAL DE BIENVENIDA -->
+<div class="modal-overlay" id="modal-tutorial" style="z-index:600">
+  <div class="modal-box" style="max-width:460px;overflow:hidden">
+    <div id="tutorial-pasos">
+      <div class="tutorial-paso" data-paso="1">
+        <div style="height:150px;background:linear-gradient(135deg,var(--accent,#6366f1),#8b8bf9);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21V12h6v9"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">¡Bienvenido a Catálogo360!</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En menos de 5 minutos vas a tener tu catálogo digital listo para compartir por WhatsApp. Te mostramos lo esencial.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="2" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#6366f1)" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Primero, la información</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En la pestaña <strong>Información</strong> pones el nombre de tu negocio, tu WhatsApp y tu logo -- esto es lo primero que ve tu cliente.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="3" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#6366f1)" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Agrega tus productos</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En <strong>Productos</strong> subes fotos, precios y descripciones. Puedes marcar uno como "Destacado" para que sea protagonista del catálogo.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="4" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#6366f1)" stroke-width="1.6"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Elige tu plantilla</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En <strong>Apariencia</strong> eliges el diseño con el que tus clientes verán el catálogo -- tenemos varias, incluidas ediciones de temporada. Tus productos se acomodan solos.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="5" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.6"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.3 0-2.5-.3-3.6-.8L3 21l1.8-5.4A8.4 8.4 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Comparte tu catálogo</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">Con el botón "Compartir" copias el enlace listo para pegar en tu estado de WhatsApp o enviarlo directo a tus clientes. ¡Eso es todo!</p>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px 20px">
+      <div id="tutorial-puntos" style="display:flex;gap:6px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary btn-sm" onclick="cerrarTutorial()">Saltar</button>
+        <button class="btn-primary btn-sm" id="btn-tutorial-siguiente" onclick="avanzarTutorial()">Siguiente</button>
+      </div>
     </div>
   </div>
 </div>

@@ -151,6 +151,8 @@ async function init() {
 
     await cargarLimitesYUso();
     await cargarListaCatalogos();
+
+    if (!STATE.empresaConfig?.catalogo360_tutorial_visto) mostrarTutorial();
   } catch (e) {
     console.error('init catalogo360:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -663,23 +665,6 @@ async function subirLogoCatalogo(archivo) {
   }
 }
 
-async function subirBannerCatalogo(archivo) {
-  if (!archivo) return;
-  showToast('Subiendo banner…');
-  try {
-    const { blob } = await comprimirImagen(archivo, 1600, 0.82);
-    const { url } = await subirImagenCatalogo(blob, 'banner');
-    const { error } = await sb.from('catalogos').update({ banner_url: url, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id);
-    if (error) throw error;
-    STATE.catalogoActual.banner_url = url;
-    const banEl = document.getElementById('c360-a-banner-preview');
-    banEl.src = url; banEl.style.display = 'block';
-    showToast('✅ Banner actualizado');
-  } catch (e) {
-    console.error('subirBannerCatalogo:', e);
-    showToast('No se pudo subir el banner', 'error');
-  }
-}
 
 async function guardarInfoCatalogo() {
   const payload = {
@@ -739,8 +724,6 @@ function cargarTabApariencia() {
   document.getElementById('c360-a-color').value = c.color_acento || '#6366f1';
   renderPaletasApariencia(c.color_acento || '#6366f1');
   elegirTemaCatalogo(c.tema_default || 'claro', false);
-  const banEl = document.getElementById('c360-a-banner-preview');
-  if (c.banner_url) { banEl.src = c.banner_url; banEl.style.display = 'block'; } else { banEl.style.display = 'none'; }
 }
 
 function renderPlantillasApariencia(plantillaActiva) {
@@ -1354,3 +1337,43 @@ function descargarQR() {
   link.click();
   showToast('✅ QR descargado');
 }
+
+/* ---------- TUTORIAL DE BIENVENIDA ---------- */
+const TUTORIAL_TOTAL_PASOS = 5;
+let TUTORIAL_PASO_ACTUAL = 1;
+
+function mostrarTutorial() {
+  TUTORIAL_PASO_ACTUAL = 1;
+  renderTutorialPaso();
+  openModal('modal-tutorial');
+}
+
+function renderTutorialPaso() {
+  document.querySelectorAll('.tutorial-paso').forEach(el => {
+    el.style.display = Number(el.dataset.paso) === TUTORIAL_PASO_ACTUAL ? 'block' : 'none';
+  });
+  const puntos = document.getElementById('tutorial-puntos');
+  puntos.innerHTML = Array.from({ length: TUTORIAL_TOTAL_PASOS }, (_, i) => {
+    const activo = i + 1 === TUTORIAL_PASO_ACTUAL;
+    return `<span style="width:${activo?18:6}px;height:6px;border-radius:99px;background:${activo?'var(--accent,#6366f1)':'var(--border,#e5e7eb)'};transition:all .2s"></span>`;
+  }).join('');
+  const btn = document.getElementById('btn-tutorial-siguiente');
+  btn.textContent = TUTORIAL_PASO_ACTUAL === TUTORIAL_TOTAL_PASOS ? 'Empezar' : 'Siguiente';
+}
+
+function avanzarTutorial() {
+  if (TUTORIAL_PASO_ACTUAL >= TUTORIAL_TOTAL_PASOS) { cerrarTutorial(); return; }
+  TUTORIAL_PASO_ACTUAL++;
+  renderTutorialPaso();
+}
+
+async function cerrarTutorial() {
+  closeModal('modal-tutorial');
+  try {
+    await sb.from('configuracion_empresa').update({ catalogo360_tutorial_visto: true }).eq('auth_user_id', STATE.userId);
+    if (STATE.empresaConfig) STATE.empresaConfig.catalogo360_tutorial_visto = true;
+  } catch (e) { console.error('cerrarTutorial:', e); }
+}
+
+// Permite volver a verlo cuando quiera, desde donde se enganche el boton correspondiente.
+function reabrirTutorial() { mostrarTutorial(); }
