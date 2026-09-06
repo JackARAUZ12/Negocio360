@@ -976,7 +976,7 @@
     ===================================================== */
     .cal-vista-btn { padding:8px 16px; font-size:13px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; }
     .cal-vista-btn.active { background:#1d4ed8; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.15); }
-    .cal-nav-btn { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; color:var(--text-secondary); font-size:17px; font-weight:700; background:var(--bg-app); }
+    .cal-nav-btn { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; color:var(--text-secondary); font-size:17px; font-weight:700; background:var(--bg-base); }
     .cal-nav-btn:hover { background:var(--border); }
     .cal-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
 
@@ -984,8 +984,8 @@
     .cal-dow { text-align:center; font-size:11.5px; font-weight:700; color:var(--text-muted); padding:10px 4px; text-transform:uppercase; letter-spacing:.03em; }
     .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid var(--border); border-left:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; background:var(--bg-surface); }
     .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:140px; padding:6px 6px 4px; cursor:pointer; transition:background .12s; position:relative; display:flex; flex-direction:column; }
-    .cal-cell:hover { background:var(--bg-app); }
-    .cal-cell.cal-otro-mes { background:var(--bg-app); opacity:.45; }
+    .cal-cell:hover { background:var(--bg-base); }
+    .cal-cell.cal-otro-mes { background:var(--bg-base); opacity:.45; }
     .cal-cell.cal-hoy { background:var(--accent-soft); }
     .cal-cell-num { font-size:12.5px; font-weight:700; color:var(--text-muted); margin-bottom:4px; display:inline-block; flex-shrink:0; }
     .cal-cell.cal-hoy .cal-cell-num { background:#1d4ed8; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
@@ -1015,26 +1015,26 @@
     .c360-card-catalogo:hover { border-color:var(--accent); }
     .c360-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
     .c360-badge.publicado { background:var(--success-soft,rgba(34,197,94,.15)); color:var(--success); }
-    .c360-badge.borrador { background:var(--bg-app); color:var(--text-muted); }
+    .c360-badge.borrador { background:var(--bg-base); color:var(--text-muted); }
     .c360-badge.pausado { background:var(--danger-soft); color:var(--danger); }
     .c360-card-producto { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
-    .c360-card-producto img { width:100%; height:130px; object-fit:cover; background:var(--bg-app); display:block; }
-    .c360-foto-mini { width:56px; height:56px; border-radius:8px; object-fit:cover; background:var(--bg-app); position:relative; }
+    .c360-card-producto img { width:100%; height:130px; object-fit:cover; background:var(--bg-base); display:block; }
+    .c360-foto-mini { width:56px; height:56px; border-radius:8px; object-fit:cover; background:var(--bg-base); position:relative; }
     .c360-kpi-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 16px; }
     .c360-kpi-icono { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:16px; margin-bottom:8px; }
     .c360-kpi-valor { font-size:20px; font-weight:800; }
     .c360-kpi-label { font-size:11.5px; color:var(--text-muted); font-weight:600; }
     .c360-kpi-sub { font-size:10.5px; color:var(--text-muted); margin-top:2px; }
-    .c360-accion-rapida { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; border-radius:var(--radius-md); background:var(--bg-app); cursor:pointer; text-align:center; font-size:11.5px; font-weight:600; color:var(--text-secondary); transition:background .15s; }
+    .c360-accion-rapida { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; border-radius:var(--radius-md); background:var(--bg-base); cursor:pointer; text-align:center; font-size:11.5px; font-weight:600; color:var(--text-secondary); transition:background .15s; }
     .c360-accion-rapida:hover { background:var(--accent-soft); color:var(--accent); }
     .c360-accion-icono { width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; font-size:15px; }
-    .c360-barra-uso-track { height:6px; background:var(--bg-app); border-radius:999px; overflow:hidden; margin-top:5px; }
+    .c360-barra-uso-track { height:6px; background:var(--bg-base); border-radius:999px; overflow:hidden; margin-top:5px; }
     .c360-barra-uso-fill { height:100%; background:var(--accent); border-radius:999px; }
     .c360-mini-card-catalogo { position:relative; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--border); cursor:pointer; }
-    .c360-mini-card-catalogo img { width:100%; height:90px; object-fit:cover; background:var(--bg-app); }
-    .c360-paleta-btn { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:var(--radius-md); border:2px solid var(--border); background:var(--bg-app); cursor:pointer; font-size:12px; font-weight:600; color:var(--text-secondary); transition:border-color .15s; }
+    .c360-mini-card-catalogo img { width:100%; height:90px; object-fit:cover; background:var(--bg-base); }
+    .c360-paleta-btn { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:var(--radius-md); border:2px solid var(--border); background:var(--bg-base); cursor:pointer; font-size:12px; font-weight:600; color:var(--text-secondary); transition:border-color .15s; }
     .c360-paleta-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
-    .c360-plantilla-card { border:2px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; cursor:pointer; transition:border-color .15s; background:var(--bg-app); }
+    .c360-plantilla-card { border:2px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; cursor:pointer; transition:border-color .15s; background:var(--bg-base); }
     .c360-plantilla-card.activa { border-color:var(--accent); }
     .c360-plantilla-card.deshabilitada { cursor:not-allowed; opacity:.55; }
     .c360-plantilla-preview { height:110px; display:flex; align-items:center; justify-content:center; font-size:28px; }
@@ -1050,6 +1050,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -1470,6 +1471,7 @@
           <button class="c360-tab" data-tab="categorias" onclick="cambiarTabEditor('categorias')">Categorías</button>
           <button class="c360-tab" data-tab="productos" onclick="cambiarTabEditor('productos')">Productos</button>
           <button class="c360-tab" data-tab="apariencia" onclick="cambiarTabEditor('apariencia')">Apariencia</button>
+          <button class="c360-tab" data-tab="estadisticas" onclick="cambiarTabEditor('estadisticas')">Estadísticas</button>
         </div>
 
         <!-- TAB: INFORMACION -->
@@ -1489,7 +1491,7 @@
               <label>Logo</label>
               <input type="file" id="c360-i-logo-input" accept="image/*" onchange="subirLogoCatalogo(this.files[0])" style="display:none"/>
               <div style="display:flex;align-items:center;gap:12px">
-                <img id="c360-i-logo-preview" src="" style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--bg-app);display:none"/>
+                <img id="c360-i-logo-preview" src="" style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--bg-base);display:none"/>
                 <button class="btn-secondary btn-sm" onclick="document.getElementById('c360-i-logo-input').click()">Subir logo</button>
               </div>
             </div>
@@ -1531,7 +1533,7 @@
             <div class="form-group">
               <label>Banner de portada</label>
               <input type="file" id="c360-a-banner-input" accept="image/*" onchange="subirBannerCatalogo(this.files[0])" style="display:none"/>
-              <img id="c360-a-banner-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-app);display:none;margin-bottom:8px"/>
+              <img id="c360-a-banner-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-base);display:none;margin-bottom:8px"/>
               <button class="btn-secondary btn-sm" onclick="document.getElementById('c360-a-banner-input').click()">Subir banner</button>
               <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Aparece como imagen de portada en la parte superior de tu catálogo público. Ideal: 1200×400px o similar.</p>
             </div>
@@ -1549,6 +1551,61 @@
               <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">El visitante siempre podrá cambiarlo — esto solo define con cuál abre por defecto.</p>
             </div>
             <button class="btn-primary" onclick="guardarApariencia()">Guardar apariencia</button>
+          </div>
+        </div>
+
+        <div id="c360-tab-estadisticas" class="c360-tab-panel" style="display:none">
+          <div class="panel-card" style="padding:20px;margin-top:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+              <div>
+                <label style="display:block">Rendimiento de tu catálogo</label>
+                <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0">Cuántas personas visitan tu catálogo, cuántas escriben por WhatsApp, y qué productos ven más.</p>
+              </div>
+              <select id="c360-e-rango" class="form-control" style="width:auto" onchange="cargarEstadisticasCatalogo()">
+                <option value="7">Últimos 7 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+                <option value="90">Últimos 90 días</option>
+                <option value="0">Todo el historial</option>
+              </select>
+            </div>
+
+            <div id="c360-e-vacio" style="display:none;text-align:center;padding:40px 20px;color:var(--text-muted)">
+              <p>Todavía no hay visitas registradas en este período.</p>
+              <p style="font-size:11.5px">Comparte el enlace de tu catálogo para empezar a ver datos aquí.</p>
+            </div>
+
+            <div id="c360-e-contenido">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px">
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:var(--text)" id="c360-e-visitas">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Visitas</div>
+                </div>
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:#22c55e" id="c360-e-whatsapp">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Clics a WhatsApp</div>
+                </div>
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:var(--accent)" id="c360-e-vistas-producto">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Productos vistos</div>
+                </div>
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:var(--text)" id="c360-e-conversion">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">De visita a WhatsApp</div>
+                </div>
+              </div>
+
+              <div class="panel-card" style="padding:16px;margin-bottom:18px">
+                <label style="font-size:12.5px">Visitas por día</label>
+                <div style="height:220px;margin-top:10px">
+                  <canvas id="c360-e-grafico"></canvas>
+                </div>
+              </div>
+
+              <div class="panel-card" style="padding:16px">
+                <label style="font-size:12.5px">Productos más vistos</label>
+                <div id="c360-e-top-productos" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1591,7 +1648,7 @@
         <div class="form-group">
           <label>Imagen de portada</label>
           <input type="file" id="cat-imagen-input" accept="image/*" onchange="subirImagenCategoria(this.files[0])" style="display:none"/>
-          <img id="cat-imagen-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-app);display:none;margin-bottom:8px"/>
+          <img id="cat-imagen-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-base);display:none;margin-bottom:8px"/>
           <button class="btn-secondary btn-sm" onclick="document.getElementById('cat-imagen-input').click()">Subir imagen</button>
         </div>
         <p id="cat-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>

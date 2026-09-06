@@ -345,7 +345,7 @@ function renderProductosRecientes(productos) {
   if (!productos.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px">Todavía no has agregado productos.</p>`; return; }
   cont.innerHTML = productos.map(p => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div style="width:40px;height:40px;border-radius:8px;background:var(--bg-app);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>
+      <div style="width:40px;height:40px;border-radius:8px;background:var(--bg-base);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nombre)}</div>
         <div style="font-size:11px;color:var(--text-muted)">${esc(p.categoria || 'Sin categoría')}</div>
@@ -371,7 +371,7 @@ function renderActividadReciente(todosLosProductos) {
   if (!eventos.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px">Sin actividad todavía.</p>`; return; }
   cont.innerHTML = eventos.slice(0, 6).map(e => `
     <div style="display:flex;gap:10px;align-items:flex-start">
-      <div style="width:26px;height:26px;border-radius:50%;background:var(--bg-app);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${e.icono}</div>
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--bg-base);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${e.icono}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;line-height:1.35">${esc(e.texto)}</div>
         <div style="font-size:10.5px;color:var(--text-muted)">${tiempoRelativo(e.fecha)}</div>
@@ -549,12 +549,90 @@ async function confirmarEliminarCatalogo() {
 
 function cambiarTabEditor(tab) {
   document.querySelectorAll('.c360-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  ['info','categorias','productos','apariencia'].forEach(t => {
+  ['info','categorias','productos','apariencia','estadisticas'].forEach(t => {
     document.getElementById(`c360-tab-${t}`).style.display = t === tab ? 'block' : 'none';
   });
+  if (tab === 'estadisticas') cargarEstadisticasCatalogo();
 }
 
-/* ---------- TAB: INFORMACIÓN ---------- */
+/* ---------- TAB: ESTADÍSTICAS ---------- */
+let CHART_ESTADISTICAS_CATALOGO = null;
+
+async function cargarEstadisticasCatalogo() {
+  const catalogo = STATE.catalogoActual;
+  if (!catalogo) return;
+
+  const dias = Number(document.getElementById('c360-e-rango').value);
+  let query = sb.from('catalogo_eventos').select('tipo_evento, catalogo_producto_id, created_at').eq('catalogo_id', catalogo.id);
+  if (dias > 0) {
+    const desde = new Date(); desde.setDate(desde.getDate() - dias);
+    query = query.gte('created_at', desde.toISOString());
+  }
+  const { data, error } = await query;
+  const eventos = error ? [] : (data || []);
+
+  const vacio = document.getElementById('c360-e-vacio');
+  const contenido = document.getElementById('c360-e-contenido');
+  if (!eventos.length) { vacio.style.display = 'block'; contenido.style.display = 'none'; return; }
+  vacio.style.display = 'none'; contenido.style.display = 'block';
+
+  const visitas = eventos.filter(e => e.tipo_evento === 'visita');
+  const whatsapp = eventos.filter(e => e.tipo_evento === 'click_whatsapp');
+  const vistasProducto = eventos.filter(e => e.tipo_evento === 'vista_producto');
+
+  document.getElementById('c360-e-visitas').textContent = visitas.length;
+  document.getElementById('c360-e-whatsapp').textContent = whatsapp.length;
+  document.getElementById('c360-e-vistas-producto').textContent = vistasProducto.length;
+  document.getElementById('c360-e-conversion').textContent = visitas.length ? `${Math.round((whatsapp.length / visitas.length) * 100)}%` : '—';
+
+  // Visitas por día (siempre los últimos N días reales del rango, aunque algún día tenga 0)
+  const porDia = {};
+  const diasAMostrar = dias > 0 ? dias : 30;
+  const hoy = new Date();
+  for (let i = diasAMostrar - 1; i >= 0; i--) {
+    const d = new Date(hoy); d.setDate(d.getDate() - i);
+    porDia[d.toISOString().slice(0, 10)] = 0;
+  }
+  visitas.forEach(v => {
+    const clave = v.created_at.slice(0, 10);
+    if (clave in porDia) porDia[clave]++;
+  });
+  const etiquetas = Object.keys(porDia).map(f => new Date(f + 'T12:00:00').toLocaleDateString('es-NI', { day: 'numeric', month: 'short' }));
+  const valores = Object.values(porDia);
+
+  const ctx = document.getElementById('c360-e-grafico').getContext('2d');
+  if (CHART_ESTADISTICAS_CATALOGO) CHART_ESTADISTICAS_CATALOGO.destroy();
+  CHART_ESTADISTICAS_CATALOGO = new Chart(ctx, {
+    type: 'line',
+    data: { labels: etiquetas, datasets: [{ label: 'Visitas', data: valores, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.12)', fill: true, tension: .3, pointRadius: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+
+  // Top productos por vistas
+  const conteoPorProducto = {};
+  vistasProducto.forEach(v => { if (v.catalogo_producto_id) conteoPorProducto[v.catalogo_producto_id] = (conteoPorProducto[v.catalogo_producto_id] || 0) + 1; });
+  const top = Object.entries(conteoPorProducto).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const contTop = document.getElementById('c360-e-top-productos');
+  if (!top.length) {
+    contTop.innerHTML = `<p style="font-size:12px;color:var(--text-muted)">Todavía no hay vistas de producto en este período.</p>`;
+  } else {
+    const maxConteo = top[0][1];
+    contTop.innerHTML = top.map(([id, conteo]) => {
+      const prod = (STATE.productosActual || []).find(p => p.id === id);
+      const nombre = prod ? prod.nombre : 'Producto eliminado';
+      const pct = Math.round((conteo / maxConteo) * 100);
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px">
+            <span>${esc(nombre)}</span>
+            <span style="color:var(--text-muted)">${conteo} vista${conteo===1?'':'s'}</span>
+          </div>
+          <div style="height:6px;border-radius:99px;background:var(--bg-base)"><div style="height:100%;width:${pct}%;border-radius:99px;background:var(--accent)"></div></div>
+        </div>`;
+    }).join('');
+  }
+}
+
 function cargarTabInfo() {
   const c = STATE.catalogoActual;
   document.getElementById('c360-i-nombre-comercial').value = c.nombre_comercial || '';
@@ -664,7 +742,7 @@ function renderPlantillasApariencia(plantillaActiva) {
   document.getElementById('c360-a-plantillas').innerHTML = PLANTILLAS_CATALOGO360.map(p => `
     <div class="c360-plantilla-card ${p.key===plantillaActiva?'activa':''} ${!p.disponible?'deshabilitada':''}"
          onclick="${p.disponible ? `elegirPlantilla('${p.key}')` : ''}">
-      <div class="c360-plantilla-preview" style="background:${p.disponible?'linear-gradient(135deg,#14161f,#1b1f29)':'var(--bg-app)'};color:${p.disponible?'#fff':'inherit'}">${p.icono}</div>
+      <div class="c360-plantilla-preview" style="background:${p.disponible?'linear-gradient(135deg,#14161f,#1b1f29)':'var(--bg-base)'};color:${p.disponible?'#fff':'inherit'}">${p.icono}</div>
       <div class="c360-plantilla-info">
         <div class="c360-plantilla-nombre">${esc(p.nombre)} ${p.key===plantillaActiva?'<span class="c360-plantilla-badge">Activa</span>':(!p.disponible?'<span class="c360-plantilla-badge proximamente">Próximamente</span>':'')}</div>
         <div class="c360-plantilla-desc">${esc(p.desc)}</div>
@@ -740,7 +818,7 @@ function renderTabCategorias() {
 
   cont.innerHTML = STATE.categorias.map(cat => `
     <div class="c360-card-producto">
-      ${cat.imagen_url ? `<img src="${esc(cat.imagen_url)}" style="height:100px;width:100%;object-fit:cover">` : `<div style="height:100px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-app)">Sin imagen</div>`}
+      ${cat.imagen_url ? `<img src="${esc(cat.imagen_url)}" style="height:100px;width:100%;object-fit:cover">` : `<div style="height:100px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-base)">Sin imagen</div>`}
       <div style="padding:10px 12px">
         <div style="font-weight:700;font-size:13.5px">${esc(cat.nombre)}</div>
         <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${conteo[cat.id]||0} producto${(conteo[cat.id]||0)===1?'':'s'}</div>
@@ -878,7 +956,7 @@ function renderTabProductos() {
     <div class="c360-card-producto" style="position:relative">
       ${p.destacado ? `<span style="position:absolute;top:8px;left:8px;background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;z-index:1">⭐ Destacado</span>` : ''}
       ${et ? `<span style="position:absolute;top:8px;right:8px;background:${et.color};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;z-index:1">${et.texto}</span>` : ''}
-      ${principal ? `<img src="${esc(principal.url)}" alt="">` : `<div style="height:130px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-app)">Sin foto</div>`}
+      ${principal ? `<img src="${esc(principal.url)}" alt="">` : `<div style="height:130px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-base)">Sin foto</div>`}
       <div style="padding:10px 12px">
         <div style="font-weight:700;font-size:13.5px">${esc(p.nombre)}</div>
         <div style="margin-top:2px">
