@@ -3541,6 +3541,16 @@ async function initReportes() {
       switchTab(tabMap[tabParam]||'ejecutivo');
     }
 
+    if (window.Negocio360Tutorial) {
+      const pasosReportes = [
+        { icono: '📈', titulo: 'Bienvenido a Reportes', texto: 'Aquí ves el desempeño real de tu negocio -- ventas, ganancias, gastos, todo resumido y comparado por período.' },
+        { icono: '📅', titulo: 'Elige tu período', texto: 'Puedes ver reportes diarios, mensuales o anuales, y comparar un período contra otro para ver si vas mejorando.' },
+        { icono: '📄', titulo: 'Exporta cuando quieras', texto: 'Cualquier reporte lo puedes descargar en PDF, listo para imprimir o enviar a tu contador.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('reportes', pasosReportes);
+      Negocio360Tutorial.agregarBotonAyuda('reportes', pasosReportes);
+    }
+
   } catch(err) {
     console.error('initReportes:', err);
     document.getElementById('loader').classList.add('hidden');

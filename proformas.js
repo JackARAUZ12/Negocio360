@@ -2019,6 +2019,16 @@ async function initProformas() {
     await Promise.allSettled([loadMetodosPago(), loadClientes(), loadProductos()]);
     await loadProformas();
     await loadKPIsProf();
+
+    if (window.Negocio360Tutorial) {
+      const pasosProformas = [
+        { icono: '📝', titulo: 'Bienvenido a Proformas', texto: 'Aquí armas cotizaciones para tus clientes -- sin que se descuente stock ni afecte tu caja todavía.' },
+        { icono: '🛒', titulo: 'Arma la cotización', texto: 'Agrega los productos o servicios que tu cliente pidió, con el precio que le vas a ofrecer.' },
+        { icono: '✅', titulo: 'Conviértela en venta', texto: 'Cuando tu cliente acepte, con un solo clic la conviertes en una venta real -- ahí sí se descuenta el stock.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('proformas', pasosProformas);
+      Negocio360Tutorial.agregarBotonAyuda('proformas', pasosProformas);
+    }
   } catch (err) {
     console.error('initProformas:', err);
     document.getElementById('loader').classList.add('hidden');

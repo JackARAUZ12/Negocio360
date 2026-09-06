@@ -2721,6 +2721,16 @@
       // el crédito con una lógica aparte.
       const desdeProforma = params.get('desde_proforma');
       if (desdeProforma) abrirNuevoCreditoDesdeProforma(desdeProforma);
+
+      if (window.Negocio360Tutorial) {
+        const pasosCreditos = [
+          { icono: '📋', titulo: 'Bienvenido a Créditos', texto: 'Aquí registras ventas que tu cliente te va a pagar después, en vez de pagarte todo de una vez.' },
+          { icono: '💵', titulo: 'Registra los pagos', texto: 'Cada vez que tu cliente te abone algo, lo registras aquí -- el saldo pendiente se actualiza solo.' },
+          { icono: '🔔', titulo: 'Nunca pierdas de vista quién te debe', texto: 'La lista te muestra siempre cuánto te debe cada cliente y desde cuándo, para que no se te olvide cobrar.' },
+        ];
+        Negocio360Tutorial.verificarYMostrar('creditos', pasosCreditos);
+        Negocio360Tutorial.agregarBotonAyuda('creditos', pasosCreditos);
+      }
     } catch (err) {
       console.error('initCreditos:', err);
       document.getElementById('loader').classList.add('hidden');
