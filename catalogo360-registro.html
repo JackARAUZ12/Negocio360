@@ -36,9 +36,11 @@ input:focus { outline: none; border-color: var(--border-focus); box-shadow: var(
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: .6; cursor: default; }
 .error-box { display: none; background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); font-size: 13px; padding: 10px 13px; border-radius: var(--radius-sm); margin-bottom: 16px; }
+.success-box { display: none; background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; font-size: 13px; padding: 10px 13px; border-radius: var(--radius-sm); margin-bottom: 16px; }
 .pie { text-align: center; font-size: 13px; color: var(--text-secondary); margin-top: 22px; }
 .pie a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .volver { display: block; text-align: center; font-size: 12.5px; color: var(--text-muted); margin-top: 14px; text-decoration: none; }
+.codigo-input { text-align: center; letter-spacing: 1.5px; font-family: monospace; text-transform: uppercase; }
 </style>
 </head>
 <body>
@@ -49,30 +51,47 @@ input:focus { outline: none; border-color: var(--border-focus); box-shadow: var(
     </div>
     <span class="marca-nombre">Catálogo360</span>
   </div>
-  <h1>Crea tu cuenta</h1>
-  <p class="sub">Tu catálogo digital, listo para compartir por WhatsApp.</p>
 
-  <div class="error-box" id="error-box"></div>
+  <!-- PASO 1: CÓDIGO DE ACCESO -->
+  <div id="panel-codigo">
+    <h1>Ingresa tu código</h1>
+    <p class="sub">Tu asesor te lo entrega al activar tu plan de Catálogo360.</p>
+    <div class="error-box" id="error-box-codigo"></div>
+    <div class="form-group">
+      <label for="codigo">Código de acceso</label>
+      <input type="text" id="codigo" class="codigo-input" placeholder="C360-XXXXXXXX" required />
+    </div>
+    <button type="button" class="btn-primary" id="btn-verificar">Continuar</button>
+    <p class="pie">¿No tienes un código? <a href="https://wa.me/50581294177?text=Hola%2C%20quiero%20un%20c%C3%B3digo%20para%20activar%20Cat%C3%A1logo360" target="_blank">Escríbenos por WhatsApp</a></p>
+  </div>
 
-  <form id="form-registro">
-    <div class="form-group">
-      <label for="negocio">Nombre de tu negocio</label>
-      <input type="text" id="negocio" placeholder="Ej: Boutique María" required />
-    </div>
-    <div class="form-group">
-      <label for="whatsapp">WhatsApp (con código de país)</label>
-      <input type="tel" id="whatsapp" placeholder="Ej: 50588888888" required />
-    </div>
-    <div class="form-group">
-      <label for="email">Correo electrónico</label>
-      <input type="email" id="email" placeholder="tucorreo@ejemplo.com" required />
-    </div>
-    <div class="form-group">
-      <label for="password">Contraseña</label>
-      <input type="password" id="password" placeholder="Mínimo 6 caracteres" minlength="6" required />
-    </div>
-    <button type="submit" class="btn-primary" id="btn-registro">Crear mi catálogo</button>
-  </form>
+  <!-- PASO 2: DATOS DE REGISTRO (oculto hasta validar el código) -->
+  <div id="panel-registro" style="display:none">
+    <h1>Crea tu cuenta</h1>
+    <p class="sub">Tu catálogo digital, listo para compartir por WhatsApp.</p>
+    <div class="success-box" id="success-box">✓ Código válido</div>
+    <div class="error-box" id="error-box"></div>
+
+    <form id="form-registro">
+      <div class="form-group">
+        <label for="negocio">Nombre de tu negocio</label>
+        <input type="text" id="negocio" placeholder="Ej: Boutique María" required />
+      </div>
+      <div class="form-group">
+        <label for="whatsapp">WhatsApp (con código de país)</label>
+        <input type="tel" id="whatsapp" placeholder="Ej: 50588888888" required />
+      </div>
+      <div class="form-group">
+        <label for="email">Correo electrónico</label>
+        <input type="email" id="email" placeholder="tucorreo@ejemplo.com" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" placeholder="Mínimo 6 caracteres" minlength="6" required />
+      </div>
+      <button type="submit" class="btn-primary" id="btn-registro">Crear mi catálogo</button>
+    </form>
+  </div>
 
   <p class="pie">¿Ya tienes cuenta? <a href="catalogo360-login.html">Inicia sesión</a></p>
   <a href="index.html" class="volver">← Volver al inicio</a>
@@ -80,14 +99,23 @@ input:focus { outline: none; border-color: var(--border-focus); box-shadow: var(
 
 <script>
 const sb = window.supabase.createClient('https://zvlincmqmmoclqhykejv.supabase.co', 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t');
+let CODIGO_VALIDADO = null;
 
 function mostrarError(msg) {
   const box = document.getElementById('error-box');
   box.textContent = msg;
   box.style.display = 'block';
 }
+function mostrarErrorCodigo(msg) {
+  const box = document.getElementById('error-box-codigo');
+  box.textContent = msg;
+  box.style.display = 'block';
+}
 function ocultarError() {
   document.getElementById('error-box').style.display = 'none';
+}
+function ocultarErrorCodigo() {
+  document.getElementById('error-box-codigo').style.display = 'none';
 }
 function traducirError(msg) {
   if (/already registered|already exists/i.test(msg)) return 'Ya existe una cuenta con ese correo. Intenta iniciar sesión.';
@@ -96,9 +124,37 @@ function traducirError(msg) {
   return 'No se pudo crear la cuenta. Intenta de nuevo.';
 }
 
+document.getElementById('btn-verificar').addEventListener('click', async () => {
+  ocultarErrorCodigo();
+  const codigo = document.getElementById('codigo').value.trim();
+  if (!codigo) { mostrarErrorCodigo('Escribe tu código de acceso.'); return; }
+
+  const btn = document.getElementById('btn-verificar');
+  btn.disabled = true; btn.textContent = 'Verificando…';
+
+  try {
+    const { data, error } = await sb.rpc('catalogo360_verificar_codigo', { p_codigo: codigo });
+    if (error) throw error;
+    if (!data?.valido) {
+      mostrarErrorCodigo(data?.mensaje || 'Código no válido');
+      btn.disabled = false; btn.textContent = 'Continuar';
+      return;
+    }
+    CODIGO_VALIDADO = codigo;
+    document.getElementById('panel-codigo').style.display = 'none';
+    document.getElementById('panel-registro').style.display = 'block';
+  } catch (err) {
+    console.error('Verificar código Catálogo360:', err);
+    mostrarErrorCodigo('No se pudo verificar el código, intenta de nuevo.');
+    btn.disabled = false; btn.textContent = 'Continuar';
+  }
+});
+
 document.getElementById('form-registro').addEventListener('submit', async (e) => {
   e.preventDefault();
   ocultarError();
+
+  if (!CODIGO_VALIDADO) { mostrarError('Primero verifica tu código de acceso.'); return; }
 
   const negocio = document.getElementById('negocio').value.trim();
   const whatsapp = document.getElementById('whatsapp').value.trim().replace(/[^\d]/g, '');
@@ -119,15 +175,15 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     if (error) throw error;
     if (!data?.user) throw new Error('No se pudo crear la cuenta.');
 
-    // Guardar también el nombre comercial y WhatsApp directo en
-    // configuracion_empresa, para que el editor de Catálogo360 ya
-    // aparezca con estos datos desde el primer momento (usuarios
-    // guarda su propia copia via el trigger, pero Catálogo360 lee
-    // de configuracion_empresa).
     if (data.session) {
       await sb.from('configuracion_empresa').upsert({
         auth_user_id: data.user.id, nombre_comercial: negocio, whatsapp,
       }, { onConflict: 'auth_user_id' });
+
+      // Canjea el mismo código ya validado en el paso 1 -- ahora sí
+      // hay sesión activa, así que esto desbloquea Catálogo360 de una
+      // vez, sin que el cliente tenga que volver a escribirlo.
+      await sb.rpc('catalogo360_canjear_codigo', { p_codigo: CODIGO_VALIDADO });
     }
 
     window.location.href = 'catalogo360.html';
