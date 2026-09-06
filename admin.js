@@ -141,6 +141,7 @@ function navigate(section) {
   if (section === 'users')     loadUsers();
   if (section === 'codes')     loadCodes();
   if (section === 'codes-catalogo360') loadCodesC360();
+  if (section === 'clientes-catalogo360') loadClientesC360();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
   if (section === 'encuestas') cargarResultadosEncuesta();
@@ -2227,6 +2228,10 @@ function renderCodesC360Table(codes) {
       </td>
       <td>${escHtml(c.descripcion || '—')}</td>
       <td>
+        <span class="badge badge-dot" style="background:var(--accent-soft,#eff0ff);color:var(--accent)">${escHtml(c.plan_key ? c.plan_key[0].toUpperCase()+c.plan_key.slice(1) : 'Básico')}</span>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${c.es_independiente ? '🧍 Independiente' : '🏢 Cliente Negocio360'}</div>
+      </td>
+      <td>
         ${c.activo
           ? '<span class="badge badge-success badge-dot">Activo</span>'
           : '<span class="badge badge-danger badge-dot">Inactivo</span>'}
@@ -2338,6 +2343,8 @@ async function createCodeC360() {
   const descripcion = document.getElementById('new-descripcion-c360').value.trim();
   const usosMax     = parseInt(document.getElementById('new-usos-c360').value, 10) || 1;
   const expiracion  = document.getElementById('new-expiracion-c360').value || null;
+  const planKey     = document.getElementById('new-plan-c360').value;
+  const esIndependiente = document.getElementById('new-tipo-cliente-c360').value === 'true';
 
   if (!codigo) { toast('Campo requerido', 'El código no puede estar vacío', 'warning'); return; }
 
@@ -2356,6 +2363,8 @@ async function createCodeC360() {
         usos_actuales: 0,
         fecha_expiracion: expiracion,
         creado_por: user.email,
+        plan_key: planKey,
+        es_independiente: esIndependiente,
       });
 
     if (error) throw error;
@@ -2373,6 +2382,64 @@ async function createCodeC360() {
   } finally {
     btn.innerHTML = 'Guardar Código';
     btn.disabled = false;
+  }
+}
+
+// ============================================================
+// SECCIÓN 3-C — CLIENTES CATÁLOGO360
+// ============================================================
+async function loadClientesC360() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const tbody = document.getElementById('clientes-catalogo360-tbody');
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:48px;color:var(--text-muted)"><div class="loader-spinner" style="margin:0 auto 12px"></div>Cargando clientes...</td></tr>`;
+
+  try {
+    const { data, error } = await sb.rpc('admin_catalogo360_listar_clientes');
+    if (error) throw error;
+
+    const clientes = data || [];
+    document.getElementById('cc360-total').textContent = clientes.length;
+    document.getElementById('cc360-independientes').textContent = clientes.filter(c => c.es_independiente).length;
+    document.getElementById('cc360-existentes').textContent = clientes.filter(c => !c.es_independiente).length;
+    const ingreso = clientes.reduce((sum, c) => sum + Number(c.precio_mensual || 0), 0);
+    document.getElementById('cc360-ingresos').textContent = `$${ingreso.toFixed(0)}`;
+
+    if (!clientes.length) {
+      tbody.innerHTML = `
+        <tr><td colspan="8">
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+            <p>Todavía no hay clientes con Catálogo360 desbloqueado</p>
+            <span>Aparecerán aquí en cuanto canjeen un código</span>
+          </div>
+        </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = clientes.map(c => `
+      <tr>
+        <td style="font-weight:600">${escHtml(c.nombre_comercial || '—')}</td>
+        <td>${escHtml(c.email)}</td>
+        <td>${escHtml(c.whatsapp || '—')}</td>
+        <td>
+          <span class="badge badge-dot" style="background:var(--accent-soft,#eff0ff);color:var(--accent)">${escHtml(c.nombre_plan)}</span>
+          <div style="font-size:11px;color:var(--text-muted)">$${Number(c.precio_mensual).toFixed(0)}/mes</div>
+        </td>
+        <td>${c.es_independiente ? '🧍 Independiente' : '🏢 Cliente Negocio360'}</td>
+        <td style="text-align:center;font-weight:600">${c.cantidad_catalogos}</td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--text-muted)">${escHtml(c.codigo_usado || '—')}</span></td>
+        <td>${c.desbloqueado_en ? formatDate(c.desbloqueado_en) : '—'}</td>
+      </tr>
+    `).join('');
+
+  } catch (e) {
+    console.error('loadClientesC360:', e);
+    toast('Error al cargar clientes', e.message, 'error');
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--danger)">No se pudo cargar la lista de clientes.</td></tr>`;
   }
 }
 

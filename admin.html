@@ -99,6 +99,16 @@
         Códigos Catálogo360
       </button>
 
+      <button class="nav-item" data-section="clientes-catalogo360">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Clientes Catálogo360
+      </button>
+
       <button class="nav-item" data-section="anuncios">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -777,6 +787,7 @@
                 <tr>
                   <th>Código</th>
                   <th>Descripción</th>
+                  <th>Plan / Tipo</th>
                   <th>Estado</th>
                   <th>Usos</th>
                   <th>Expira</th>
@@ -785,6 +796,62 @@
                 </tr>
               </thead>
               <tbody id="codes-catalogo360-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-clientes-catalogo360">
+      <div class="page-header">
+        <h1>Clientes Catálogo360</h1>
+        <p>Todas las cuentas con Catálogo360 desbloqueado -- sean clientes existentes de Negocio360 o clientes independientes</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="cc360-total">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Clientes totales</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent)" id="cc360-independientes">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Independientes</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="cc360-existentes">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Clientes Negocio360</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent-2,#22c55e)" id="cc360-ingresos">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Ingreso mensual estimado</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Clientes con Catálogo360 activo</div>
+            <div class="card-subtitle">Plan, tipo de cliente y catálogos creados</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Negocio</th>
+                  <th>Correo</th>
+                  <th>WhatsApp</th>
+                  <th>Plan</th>
+                  <th>Tipo de cliente</th>
+                  <th>Catálogos</th>
+                  <th>Código usado</th>
+                  <th>Desbloqueado</th>
+                </tr>
+              </thead>
+              <tbody id="clientes-catalogo360-tbody">
                 <!-- Renderizado por JS -->
               </tbody>
             </table>
@@ -1310,6 +1377,23 @@
             class="form-control"
             placeholder="Ej: Cliente Óptica Central"
           />
+        </div>
+
+        <div class="form-group">
+          <label>Plan que otorga este código</label>
+          <select id="new-plan-c360" class="form-control">
+            <option value="basico">Básico — $10/mes (1 catálogo, 100 productos, 3 fotos)</option>
+            <option value="profesional">Profesional — $20/mes (3 catálogos, 100 c/u, 6 fotos)</option>
+            <option value="premium">Premium — $35/mes (5 catálogos, 100 c/u, 10 fotos)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de cliente</label>
+          <select id="new-tipo-cliente-c360" class="form-control">
+            <option value="false">Cliente existente de Negocio360 (agrega Catálogo360 a su cuenta)</option>
+            <option value="true">Cliente independiente (solo quiere Catálogo360)</option>
+          </select>
         </div>
 
         <div class="form-group">
