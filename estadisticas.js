@@ -1360,6 +1360,15 @@ async function initEstadisticas() {
     document.getElementById('app').style.display = 'flex';
 
     await recargar();
+
+    if (window.Negocio360Tutorial) {
+      const pasosEstadisticas = [
+        { icono: '📊', titulo: 'Bienvenido a Estadísticas', texto: 'Aquí ves gráficas de tu negocio -- qué se vende más, en qué días, y cómo va tu tendencia con el tiempo.' },
+        { icono: '📅', titulo: 'Cambia el período', texto: 'Puedes ver las estadísticas de hoy, la semana, el mes, o el rango de fechas que necesites.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('estadisticas', pasosEstadisticas);
+      Negocio360Tutorial.agregarBotonAyuda('estadisticas', pasosEstadisticas);
+    }
   } catch (err) {
     console.error('initEstadisticas:', err);
     document.getElementById('loader').classList.add('hidden');

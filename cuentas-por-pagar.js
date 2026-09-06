@@ -1660,6 +1660,15 @@ async function initCuentasPorPagar() {
     await Promise.allSettled([loadMetodosPago(), loadProductosDisponibles(), loadProveedores()]);
     await loadCuentasCxP();
     await loadKPIsCxP();
+
+    if (window.Negocio360Tutorial) {
+      const pasosCxP = [
+        { icono: '📤', titulo: 'Bienvenido a Cuentas por Pagar', texto: 'Aquí llevas el control de lo que TÚ le debes a tus proveedores -- compras que hiciste a crédito.' },
+        { icono: '💵', titulo: 'Registra tus abonos', texto: 'Cada vez que le pagues algo a un proveedor, lo registras aquí -- el saldo pendiente se actualiza solo.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('cuentas-por-pagar', pasosCxP);
+      Negocio360Tutorial.agregarBotonAyuda('cuentas-por-pagar', pasosCxP);
+    }
   } catch (err) {
     console.error('initCuentasPorPagar:', err);
     document.getElementById('loader').classList.add('hidden');

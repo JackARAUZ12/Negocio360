@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js"></script>
   <script src="auditoria-guard.js"></script>
+  <script src="tutorial-motor.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -1289,6 +1290,15 @@ async function initImpuestos() {
 
     await cargarCatalogoImpuestos();
     await cargarImpuestos();
+
+    if (window.Negocio360Tutorial) {
+      const pasosImpuestos = [
+        { icono: '🧾', titulo: 'Bienvenido a Impuestos', texto: 'Aquí llevas el control de los impuestos que cobras (como el IVA) en tus ventas.' },
+        { icono: '📊', titulo: 'Todo se calcula solo', texto: 'Cada venta con impuesto aplicado aparece aquí automáticamente, listo para que sepas cuánto debes declarar.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('impuestos', pasosImpuestos);
+      Negocio360Tutorial.agregarBotonAyuda('impuestos', pasosImpuestos);
+    }
 
   } catch(err) {
     console.error('initImpuestos:', err);

@@ -347,6 +347,15 @@ async function initNotificaciones() {
     limpiarNotificacionesViejas(); // best-effort, no bloquea la carga
     await cargarNotificaciones();
     renderNotificaciones();
+
+    if (window.Negocio360Tutorial) {
+      const pasosNotificaciones = [
+        { icono: '🔔', titulo: 'Bienvenido a Notificaciones', texto: 'Aquí te avisamos de cosas importantes -- stock bajo, pagos pendientes, y novedades del sistema.' },
+        { icono: '✅', titulo: 'Márcalas como leídas', texto: 'Cuando ya revisaste una notificación, puedes marcarla como leída para mantener tu lista limpia.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('notificaciones', pasosNotificaciones);
+      Negocio360Tutorial.agregarBotonAyuda('notificaciones', pasosNotificaciones);
+    }
   } catch (err) {
     console.error('initNotificaciones:', err);
     document.getElementById('loader').classList.add('hidden');

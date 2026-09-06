@@ -2130,6 +2130,15 @@ async function initSalarios() {
     await loadMetodosPago();
     await loadEmpleados();
     await loadKPIsSal();
+
+    if (window.Negocio360Tutorial) {
+      const pasosSalarios = [
+        { icono: '👔', titulo: 'Bienvenido a Salarios', texto: 'Aquí llevas el control de pagos a tus empleados -- salarios, adelantos, y comisiones.' },
+        { icono: '💵', titulo: 'Registra un pago', texto: 'Elige el empleado y registra el monto pagado -- queda guardado en su historial de pagos.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('salarios', pasosSalarios);
+      Negocio360Tutorial.agregarBotonAyuda('salarios', pasosSalarios);
+    }
   } catch (err) {
     console.error('initSalarios:', err);
     document.getElementById('loader').classList.add('hidden');
