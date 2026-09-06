@@ -1012,6 +1012,11 @@
     .c360-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
     .c360-tab-panel { display:block; }
     .c360-tabs-bar::-webkit-scrollbar { display:none; }
+    .c360-check-fila { display:flex; align-items:center; gap:10px; font-size:12.5px; }
+    .c360-check-circulo { width:20px; height:20px; border-radius:50%; border:2px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; transition:all .2s ease; }
+    .c360-check-fila.hecho .c360-check-circulo { background:var(--success,#22c55e); border-color:var(--success,#22c55e); }
+    .c360-check-fila.hecho span.c360-check-texto { color:var(--text-muted); text-decoration:line-through; }
+    .c360-check-fila:not(.hecho) span.c360-check-texto { font-weight:600; }
     .c360-card-catalogo { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; cursor:pointer; transition:border-color .15s; }
     .c360-card-catalogo:hover { border-color:var(--accent); }
     .c360-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
@@ -1470,6 +1475,17 @@
           </div>
         </div>
 
+        <div id="c360-checklist" class="panel-card" style="display:none;margin-top:14px;padding:16px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div>
+              <div style="font-size:13px;font-weight:700">🚀 Primeros pasos</div>
+              <div id="c360-checklist-sub" style="font-size:11.5px;color:var(--text-muted);margin-top:2px"></div>
+            </div>
+            <button onclick="ocultarChecklistCatalogo()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;line-height:1;padding:2px 6px" title="Ocultar">&times;</button>
+          </div>
+          <div id="c360-checklist-items" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
         <div class="c360-tabs-bar" style="display:flex;gap:6px;margin-top:18px;border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none">
           <button class="c360-tab active" data-tab="info" onclick="cambiarTabEditor('info')">Información</button>
           <button class="c360-tab" data-tab="categorias" onclick="cambiarTabEditor('categorias')">Categorías</button>
@@ -1508,7 +1524,7 @@
         <div id="c360-tab-categorias" class="c360-tab-panel" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px">
             <p style="font-size:12.5px;color:var(--text-secondary);margin:0">Agrupa tus productos por categoría — si no creas ninguna, tus productos se muestran directo.</p>
-            <button class="btn-primary btn-sm" onclick="abrirModalCategoria()">+ Nueva categoría</button>
+            <button class="btn-primary btn-sm" id="c360-btn-nueva-categoria" onclick="abrirModalCategoria()">+ Nueva categoría</button>
           </div>
           <div id="c360-lista-categorias" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
         </div>
@@ -1518,7 +1534,7 @@
             <div id="c360-productos-contador" style="font-size:13px;color:var(--text-secondary);font-weight:600"></div>
             <div style="display:flex;gap:8px">
               <button class="btn-secondary btn-sm" onclick="abrirImportarDeNegocio360()">📦 Agregar desde mi inventario</button>
-              <button class="btn-primary btn-sm" onclick="abrirModalProductoCatalogo()">+ Producto nuevo</button>
+              <button class="btn-primary btn-sm" id="c360-btn-nuevo-producto" onclick="abrirModalProductoCatalogo()">+ Producto nuevo</button>
             </div>
           </div>
           <div id="c360-lista-productos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px"></div>
@@ -1866,6 +1882,15 @@
         <button class="btn-primary btn-sm" id="btn-tutorial-siguiente" onclick="avanzarTutorial()">Siguiente</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- TOOLTIP CONTEXTUAL -- apunta a un boton real la primera vez que se visita cada pestaña -->
+<div id="c360-coach" style="display:none;position:absolute;z-index:700;max-width:230px;background:#1a1a2e;color:#fff;padding:12px 14px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+  <div id="c360-coach-flecha" style="position:absolute;top:-6px;left:24px;width:12px;height:12px;background:#1a1a2e;transform:rotate(45deg)"></div>
+  <div id="c360-coach-texto" style="position:relative"></div>
+  <div style="text-align:right;margin-top:8px;position:relative">
+    <button onclick="cerrarCoachMark()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Entendido</button>
   </div>
 </div>
 

@@ -450,6 +450,45 @@ async function abrirEditorCatalogo(id) {
   cambiarTabEditor('info');
   await cargarTabCategorias();
   await cargarTabProductos();
+  renderChecklistCatalogo();
+}
+
+/* ---------- CHECKLIST DE PRIMEROS PASOS ---------- */
+function claveChecklistOculto() { return `c360_checklist_oculto_${STATE.catalogoActual?.id}`; }
+function claveCompartido() { return `c360_compartido_${STATE.catalogoActual?.id}`; }
+function marcarCatalogoComoCompartido() {
+  if (!STATE.catalogoActual) return;
+  localStorage.setItem(claveCompartido(), '1');
+  renderChecklistCatalogo();
+}
+function ocultarChecklistCatalogo() {
+  localStorage.setItem(claveChecklistOculto(), '1');
+  document.getElementById('c360-checklist').style.display = 'none';
+}
+function renderChecklistCatalogo() {
+  const cont = document.getElementById('c360-checklist');
+  if (!cont || !STATE.catalogoActual) return;
+  if (localStorage.getItem(claveChecklistOculto())) { cont.style.display = 'none'; return; }
+
+  const c = STATE.catalogoActual;
+  const items = [
+    { hecho: !!(c.nombre_comercial && c.whatsapp), texto: 'Configura el nombre y WhatsApp de tu negocio', tab: 'info' },
+    { hecho: (STATE.productosActual || []).length > 0, texto: 'Agrega tu primer producto', tab: 'productos' },
+    { hecho: c.estado === 'publicado', texto: 'Publica tu catálogo', tab: 'apariencia' },
+    { hecho: !!localStorage.getItem(claveCompartido()), texto: 'Comparte el enlace con tu primer cliente', tab: 'info' },
+  ];
+  const completados = items.filter(i => i.hecho).length;
+
+  if (completados === items.length) { cont.style.display = 'none'; return; }
+
+  cont.style.display = 'block';
+  document.getElementById('c360-checklist-sub').textContent = `${completados} de ${items.length} completados -- ya casi tienes tu catálogo listo`;
+  document.getElementById('c360-checklist-items').innerHTML = items.map((it, i) => `
+    <div class="c360-check-fila ${it.hecho ? 'hecho' : ''}" ${it.hecho ? '' : `onclick="cambiarTabEditor('${it.tab}')" style="cursor:pointer"`}>
+      <div class="c360-check-circulo">${it.hecho ? '✓' : ''}</div>
+      <span class="c360-check-texto">${it.texto}</span>
+    </div>
+  `).join('');
 }
 
 function renderEstadoPublicacion() {
@@ -555,6 +594,37 @@ function cambiarTabEditor(tab) {
     document.getElementById(`c360-tab-${t}`).style.display = t === tab ? 'block' : 'none';
   });
   if (tab === 'estadisticas') cargarEstadisticasCatalogo();
+  mostrarCoachMarkSiAplica(tab);
+}
+
+/* ---------- COACH MARKS CONTEXTUALES POR PESTAÑA ---------- */
+const COACH_MARKS_CATALOGO360 = {
+  categorias: { elId: 'c360-btn-nueva-categoria', texto: 'Crea categorías para organizar tus productos -- tus clientes podrán filtrar por categoría en el catálogo público.' },
+  productos: { elId: 'c360-btn-nuevo-producto', texto: 'Aquí agregas cada producto -- nombre, precio, fotos, y si quieres marcarlo como destacado.' },
+  apariencia: { elId: 'c360-a-plantillas', texto: 'Elige el diseño con el que tus clientes verán tu catálogo. Tus productos se acomodan solos en cualquiera que elijas.' },
+};
+function claveCoachVisto(tab) { return `c360_coach_${tab}_visto`; }
+function mostrarCoachMarkSiAplica(tab) {
+  const cfg = COACH_MARKS_CATALOGO360[tab];
+  if (!cfg) return;
+  if (localStorage.getItem(claveCoachVisto(tab))) return;
+  const target = document.getElementById(cfg.elId);
+  if (!target) return;
+  setTimeout(() => {
+    const rect = target.getBoundingClientRect();
+    const coach = document.getElementById('c360-coach');
+    document.getElementById('c360-coach-texto').textContent = cfg.texto;
+    coach.style.top = `${window.scrollY + rect.bottom + 10}px`;
+    coach.style.left = `${Math.max(12, window.scrollX + rect.left)}px`;
+    coach.style.display = 'block';
+    coach.dataset.tabActual = tab;
+  }, 200); // pequena espera para que la pestaña ya este visible y medible
+}
+function cerrarCoachMark() {
+  const coach = document.getElementById('c360-coach');
+  const tab = coach.dataset.tabActual;
+  if (tab) localStorage.setItem(claveCoachVisto(tab), '1');
+  coach.style.display = 'none';
 }
 
 /* ---------- TAB: ESTADÍSTICAS ---------- */
@@ -681,6 +751,7 @@ async function guardarInfoCatalogo() {
     if (error) throw error;
     Object.assign(STATE.catalogoActual, payload);
     showToast('✅ Información guardada');
+    renderChecklistCatalogo();
   } catch (e) {
     console.error('guardarInfoCatalogo:', e);
     showToast('No se pudo guardar: ' + (e.message || 'intenta de nuevo'), 'error');
@@ -1053,6 +1124,7 @@ async function guardarProductoCatalogo() {
     closeModal('modal-producto-catalogo');
     showToast('✅ Producto guardado');
     await cargarTabProductos();
+    renderChecklistCatalogo();
   } catch (e) {
     errEl.textContent = e.message?.includes('row-level security') ? 'Alcanzaste el límite de productos de tu plan.' : 'No se pudo guardar, intenta de nuevo.';
   }
@@ -1227,6 +1299,7 @@ async function publicarCatalogoActual() {
     STATE.catalogoActual.slug_publico = slug;
     STATE.catalogoActual.estado = 'publicado';
     renderEstadoPublicacion();
+    renderChecklistCatalogo();
     showToast('🚀 ¡Catálogo publicado!');
   } catch (e) {
     console.error('publicarCatalogoActual:', e);
@@ -1238,10 +1311,12 @@ function urlPublicaActual() {
   return `${window.location.origin}/${archivoDePlantilla(STATE.catalogoActual.plantilla)}?c=${STATE.catalogoActual.slug_publico}`;
 }
 function verCatalogoPublicado() {
+  marcarCatalogoComoCompartido();
   window.open(urlPublicaActual(), '_blank');
 }
 function copiarEnlaceCatalogo() {
   navigator.clipboard?.writeText(urlPublicaActual());
+  marcarCatalogoComoCompartido();
   showToast('🔗 Enlace copiado');
 }
 function abrirVistaPrevia() {
