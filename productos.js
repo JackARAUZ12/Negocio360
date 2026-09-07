@@ -1504,6 +1504,13 @@ function renderTabla() {
   if (theadNormal) theadNormal.style.display = esModoMateriaPrima ? 'none' : '';
   if (theadMP) theadMP.style.display = esModoMateriaPrima ? '' : 'none';
 
+  const btnMP = $('btnNuevaMateriaPrima');
+  if (btnMP) btnMP.style.display = esModoMateriaPrima ? '' : 'none';
+  const btnNuevoServicio = $('btnNuevoServicio');
+  if (btnNuevoServicio) btnNuevoServicio.style.display = esModoMateriaPrima ? 'none' : '';
+  const btnNuevoProducto = $('btnNuevoProducto');
+  if (btnNuevoProducto) btnNuevoProducto.style.display = esModoMateriaPrima ? 'none' : '';
+
   if (esModoMateriaPrima) { renderTablaMateriaPrima(tbody); return; }
 
   if (STATE.filtrados.length === 0) {
@@ -1604,6 +1611,13 @@ function renderTabla() {
 // (abrirDetalle/abrirEditar/confirmarEliminarProducto/abrirMovimiento)
 // -- solo cambia que columnas se muestran, nunca la logica real.
 // ============================================================
+// "Nueva materia prima" reutiliza el mismo modal que ya existe en
+// Producción (con su misma logica real, incluido el descuento de
+// Caja al comprar) en vez de duplicarla aquí -- así nunca hay dos
+// lugares del sistema haciendo lo mismo de forma distinta.
+function irAIngresarMateriaPrima() {
+  window.location.href = 'produccion.html?abrir=materia-prima';
+}
 function renderTablaMateriaPrima(tbody) {
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
@@ -1615,7 +1629,7 @@ function renderTablaMateriaPrima(tbody) {
             ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
             : 'Agrega tu primer insumo -- también puedes hacerlo directo desde el módulo Producción.'}</p>
           ${!STATE.busqueda
-            ? `<button class="btn btn-primary" onclick="abrirModalNuevo('producto', true)">+ Nueva materia prima</button>`
+            ? `<button class="btn btn-primary" onclick="irAIngresarMateriaPrima()">+ Nueva materia prima</button>`
             : ''}
         </div>
       </td></tr>

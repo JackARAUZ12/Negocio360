@@ -1452,6 +1452,13 @@ async function init() {
     await cargarProductosCache();
     await Promise.all([cargarRecetas(), cargarOrdenes()]);
     actualizarKPIsProduccion();
+
+    // Llegada directa desde "+ Nueva materia prima" en Productos/Servicios
+    // -- se reutiliza el mismo modal de siempre, con la misma logica
+    // real (incluido el descuento de Caja), en vez de duplicarla ahi.
+    if (new URLSearchParams(window.location.search).get('abrir') === 'materia-prima') {
+      abrirModalIngresarMateriaPrima();
+    }
   } catch (e) {
     console.error('init producción:', e);
     document.getElementById('loader').classList.add('hidden');
