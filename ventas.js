@@ -2389,6 +2389,16 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 }
 
 function recalcItem(item) {
+  // Si esta línea usa descuento por porcentaje, el monto real (item.descuento)
+  // se recalcula aquí mismo cada vez que cambia cantidad o precio -- así el
+  // descuento por % siempre queda correcto, y todo lo demás del sistema
+  // (subtotal, ganancia, resumen, comprobante, guardado en base de datos)
+  // sigue leyendo item.descuento exactamente igual que siempre, sin saber
+  // ni necesitar saber que fue calculado a partir de un %.
+  if (item.descuentoModo === 'porcentaje') {
+    const pct = Math.min(100, Math.max(0, Number(item.descuentoPorcentaje) || 0));
+    item.descuento = round2(item.cantidad * item.precio * pct / 100);
+  }
   item.subtotal = round2(item.cantidad * item.precio - item.descuento);
   item.ganancia = round2(item.cantidad * (item.precio - item.costo) - item.descuento);
 }
@@ -2740,7 +2750,37 @@ function cambiarCantidad(productoId, val) {
 function cambiarDescuento(productoId, val) {
   const item = S.carrito.find(c => c.id===productoId);
   if (!item) return;
+  item.descuentoModo = 'monto'; // escribir el monto directo siempre vuelve a modo monto
   item.descuento = parseFloat(val) || 0;
+  recalcItem(item);
+  renderCarrito(item.tipo);
+}
+
+// Descuento por porcentaje -- el usuario escribe un % (ej. 10 = 10%) y
+// recalcItem() ya se encarga de convertirlo al monto real cada vez que
+// haga falta. item.descuento sigue siendo, para el resto del sistema,
+// exactamente el mismo campo de siempre.
+function cambiarDescuentoPorcentaje(productoId, val) {
+  const item = S.carrito.find(c => c.id===productoId);
+  if (!item) return;
+  let pct = parseFloat(val) || 0;
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  item.descuentoModo = 'porcentaje';
+  item.descuentoPorcentaje = pct;
+  recalcItem(item);
+  renderCarrito(item.tipo);
+}
+
+// Alterna la línea entre "Monto (C$)" y "Porcentaje (%)" -- al cambiar
+// de modo, el descuento anterior se limpia para no dejar una mezcla
+// confusa (ej. un 10% que "recuerda" un monto viejo que ya no aplica).
+function alternarModoDescuento(productoId) {
+  const item = S.carrito.find(c => c.id===productoId);
+  if (!item) return;
+  item.descuentoModo = item.descuentoModo === 'porcentaje' ? 'monto' : 'porcentaje';
+  item.descuento = 0;
+  item.descuentoPorcentaje = 0;
   recalcItem(item);
   renderCarrito(item.tipo);
 }
@@ -2841,9 +2881,20 @@ function renderCarrito(tipo) {
           style="font-family:var(--font-mono);font-weight:600;width:90px"/>
       </td>
       <td>
-        <input type="number" class="cart-desc-input" value="${item.descuento}"
-          min="0" step="0.01" placeholder="0.00"
-          onchange="cambiarDescuento('${item.id}',this.value)"/>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button type="button" onclick="alternarModoDescuento('${item.id}')"
+            title="${item.descuentoModo === 'porcentaje' ? 'Cambiar a monto (C$)' : 'Cambiar a porcentaje (%)'}"
+            style="flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg-hover,#f0f0f5);cursor:pointer;font-size:11px;font-weight:700;color:var(--text-secondary)">${item.descuentoModo === 'porcentaje' ? '%' : 'C$'}</button>
+          ${item.descuentoModo === 'porcentaje' ? `
+            <input type="number" class="cart-desc-input" value="${item.descuentoPorcentaje||0}"
+              min="0" max="100" step="0.1" placeholder="0%" title="Porcentaje de descuento sobre esta línea"
+              onchange="cambiarDescuentoPorcentaje('${item.id}',this.value)" style="width:70px"/>
+          ` : `
+            <input type="number" class="cart-desc-input" value="${item.descuento}"
+              min="0" step="0.01" placeholder="0.00" title="Monto de descuento sobre esta línea"
+              onchange="cambiarDescuento('${item.id}',this.value)" style="width:70px"/>
+          `}
+        </div>
       </td>
       <td style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${fmt(item.subtotal)}</td>
       <td>
