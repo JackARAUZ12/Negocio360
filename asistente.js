@@ -556,7 +556,7 @@ async function buscarProductoEspecifico(texto, userId) {
   if (!nombre) return null;
   const { data: candidatos } = await sbClient.from('productos')
     .select('nombre, precio, costo, stock_actual, sku')
-    .eq('auth_user_id', userId).eq('activo', true).ilike('nombre', `%${nombre}%`).limit(5);
+    .eq('auth_user_id', userId).eq('activo', true).eq('es_materia_prima', false).ilike('nombre', `%${nombre}%`).limit(5);
   if (!candidatos || !candidatos.length) return `No encontré ningún producto que se llame "${nombre}".`;
   if (candidatos.length > 1) return `Encontré varios productos parecidos a "${nombre}": ` + candidatos.map(p=>p.nombre).join(', ') + '. Sé más específico.';
 

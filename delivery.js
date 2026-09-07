@@ -430,7 +430,7 @@ async function cargarProductosCacheDelivery() {
   if (STATE.productosCacheDelivery) return STATE.productosCacheDelivery;
   try {
     const { data } = await sb.from('productos').select('id, nombre, sku, precio, tipo_precio, costo, stock_actual, tipo')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     STATE.productosCacheDelivery = data || [];
     await cargarEscalasCacheDelivery();
   } catch (e) { STATE.productosCacheDelivery = []; }

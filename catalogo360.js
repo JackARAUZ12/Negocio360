@@ -1238,7 +1238,7 @@ async function abrirImportarDeNegocio360() {
 
   try {
     const { data } = await sb.from('productos').select('id, nombre, precio, categoria, descripcion')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('tipo', 'producto').order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('tipo', 'producto').eq('es_materia_prima', false).order('nombre');
     const yaAgregados = new Set(STATE.productosActual.filter(p => p.producto_id).map(p => p.producto_id));
     STATE.productosNegocio360 = (data || []).filter(p => !yaAgregados.has(p.id));
 

@@ -109,7 +109,7 @@ async function cargarClientesCache() {
 }
 async function cargarProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku').eq('auth_user_id', STATE.userId).order('nombre');
+    const { data } = await sb.from('productos').select('id,nombre,sku').eq('auth_user_id', STATE.userId).eq('es_materia_prima', false).order('nombre');
     STATE.productos = data || [];
   } catch (e) { STATE.productos = []; }
 }
