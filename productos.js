@@ -1499,6 +1499,13 @@ function renderTabla() {
   if (countEl) countEl.textContent =
     `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
 
+  const esModoMateriaPrima = STATE.filtroActivo === 'materia_prima';
+  const theadNormal = $('theadProductos'), theadMP = $('theadMateriaPrima');
+  if (theadNormal) theadNormal.style.display = esModoMateriaPrima ? 'none' : '';
+  if (theadMP) theadMP.style.display = esModoMateriaPrima ? '' : 'none';
+
+  if (esModoMateriaPrima) { renderTablaMateriaPrima(tbody); return; }
+
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
       <tr><td colspan="11">
@@ -1582,6 +1589,77 @@ function renderTabla() {
   }).join('');
 
   // Hover para row-actions (el movBtn queda siempre visible separado)
+  tbody.querySelectorAll('tr[data-id]').forEach(row => {
+    const actions = row.querySelector('.row-actions');
+    if (!actions) return;
+    row.addEventListener('mouseenter', () => actions.style.opacity = '1');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '0');
+  });
+}
+
+// ============================================================
+// TABLA SIMPLIFICADA -- MATERIA PRIMA
+// Reutiliza los mismos datos (STATE.filtrados, ya filtrado por
+// es_materia_prima=true) y las mismas funciones de accion de siempre
+// (abrirDetalle/abrirEditar/confirmarEliminarProducto/abrirMovimiento)
+// -- solo cambia que columnas se muestran, nunca la logica real.
+// ============================================================
+function renderTablaMateriaPrima(tbody) {
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <div class="empty-state-icon">🧱</div>
+          <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin materia prima aún'}</h3>
+          <p>${STATE.busqueda
+            ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
+            : 'Agrega tu primer insumo -- también puedes hacerlo directo desde el módulo Producción.'}</p>
+          ${!STATE.busqueda
+            ? `<button class="btn btn-primary" onclick="abrirModalNuevo('producto', true)">+ Nueva materia prima</button>`
+            : ''}
+        </div>
+      </td></tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = STATE.filtrados.map(p => {
+    const stockBajo = esStockBajo(p);
+    return `
+      <tr data-id="${p.id}">
+        <td>
+          <div class="td-nombre">${escHtml(p.nombre)}</div>
+          ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+        </td>
+        <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>${p.proveedor_nombre ? escHtml(p.proveedor_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td class="td-money">${fmtMoney(p.costo)}</td>
+        <td>
+          <div class="td-stock">
+            <span>${fmtNum(p.stock_actual)}</span>
+            ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
+          </div>
+        </td>
+        <td>${fmtNum(p.stock_minimo || 0)}</td>
+        <td>
+          <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+            ${p.activo ? 'Activo' : 'Inactivo'}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+              <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
+              <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
+              <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+            </div>
+            <button class="row-action-btn mov-btn-especial" title="Movimiento especial (merma)" onclick="abrirMovimiento('${p.id}')" style="opacity:1;color:var(--warning);">📉</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
   tbody.querySelectorAll('tr[data-id]').forEach(row => {
     const actions = row.querySelector('.row-actions');
     if (!actions) return;
@@ -3029,8 +3107,8 @@ function initEventos() {
     });
   }
 
-  const filtersGroup = document.querySelector('.filters-group');
-  if (filtersGroup) {
+  const filtersGroups = document.querySelectorAll('.filters-group');
+  filtersGroups.forEach(filtersGroup => {
     filtersGroup.addEventListener('click', (e) => {
       const btn = e.target.closest('.filter-btn');
       if (!btn) return;
@@ -3039,7 +3117,7 @@ function initEventos() {
       STATE.filtroActivo = btn.dataset.filtro;
       aplicarFiltros();
     });
-  }
+  });
 
   const filtroMarca = $('filtroMarca');
   if (filtroMarca) {

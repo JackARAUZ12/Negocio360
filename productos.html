@@ -377,7 +377,10 @@
           <button class="filter-btn" data-filtro="activos">✅ Activos</button>
           <button class="filter-btn" data-filtro="inactivos">⛔ Inactivos</button>
           <button class="filter-btn" data-filtro="stock_bajo">⚠️ Stock bajo</button>
-          <button class="filter-btn" data-filtro="materia_prima" style="font-weight:800;background:#78350f22;border-color:#b45309;color:#b45309">🧱 Materia Prima</button>
+        </div>
+        <div style="width:1px;align-self:stretch;background:var(--border);margin:0 4px" title="Materia prima -- insumos de producción, no se venden directo"></div>
+        <div class="filters-group">
+          <button class="filter-btn" id="tab-materia-prima" data-filtro="materia_prima" style="font-weight:800;background:#78350f22;border-color:#b45309;color:#b45309">🧱 Materia Prima</button>
         </div>
         <div class="toolbar-right">
           <select class="form-select" id="filtroMarca" title="Filtrar por marca / proveedor"
@@ -403,7 +406,7 @@
       <div class="table-card">
         <div class="table-wrapper">
           <table class="data-table" role="table">
-            <thead>
+            <thead id="theadProductos">
               <tr>
                 <th>Tipo</th>
                 <th>Creado</th>
@@ -414,6 +417,18 @@
                 <th>Costo</th>
                 <th>Margen</th>
                 <th>Stock</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <thead id="theadMateriaPrima" style="display:none">
+              <tr>
+                <th>Nombre / SKU</th>
+                <th>Categoría</th>
+                <th>Proveedor</th>
+                <th>Costo</th>
+                <th>Stock</th>
+                <th>Stock mínimo</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
