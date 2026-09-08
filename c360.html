@@ -1,1189 +1,2988 @@
 <!DOCTYPE html>
 <html lang="es" data-theme="claro">
 <head>
-<meta charset="UTF-8" />
-<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title id="c360p-title">Catálogo</title>
-<meta id="c360p-desc-meta" name="description" content="Catálogo digital">
-<meta id="c360p-og-title" property="og:title" content="Catálogo">
-<meta id="c360p-og-desc" property="og:description" content="Catálogo digital">
-<meta id="c360p-og-image" property="og:image" content="">
-<meta property="og:type" content="website">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="c360-core.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<style>
-:root {
-  --bg:        #f4efe6;
-  --surface:   #faf7f1;
-  --surface-2: #ebe4d6;
-  --border:    #ddd3bf;
-  --text:      #1c1917;
-  --text-2:    #57524a;
-  --text-3:    #8a8377;
-  --accent:    #6366f1;
-  --accent-rgb: 99,102,241;
-  --accent-ink: #ffffff;
-  --danger:    #b23a2f;
-  --disponible: #3f6b4a;
-  --disponible-bg: #3f6b4a1a;
-  --on-dark:   #f5f1ea;
-  --on-dark-2: #c4bdae;
-  --font-display: 'Fraunces', Georgia, serif;
-  --font-ui: 'Space Grotesk', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
-  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 48px; --sp-9: 64px; --sp-10: 96px;
-  --radius-sm: 3px; --radius-md: 4px; --radius-lg: 4px;
-  --shadow-1: 0 1px 2px rgba(28,25,23,.06);
-  --shadow-2: 0 24px 48px -12px rgba(28,25,23,.28);
-  --max-w: 1400px;
-}
-html[data-theme="oscuro"] {
-  --bg: #0c0e13; --surface: #14171f; --surface-2: #1b1f29; --border: #262b38;
-  --text: #f2f1ec; --text-2: #a6a9b8; --text-3: #6b6f80;
-  --on-dark: #f2f1ec; --on-dark-2: #a6a9b8;
-  --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 24px 56px -12px rgba(0,0,0,.65);
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin:0; font-family:var(--font-ui); background:var(--bg); color:var(--text);
-  transition:background .25s ease, color .25s ease; overflow-x:hidden;
-  -webkit-font-smoothing:antialiased;
-}
-img { max-width:100%; display:block; }
-a { color:inherit; text-decoration:none; }
-button { font-family:inherit; }
-:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.c360-container { max-width:var(--max-w); margin:0 auto; padding:0 var(--sp-5); }
-@media (min-width:900px) { .c360-container { padding:0 var(--sp-8); } }
-@keyframes c-fade-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-@keyframes c-fade { from { opacity:0; } to { opacity:1; } }
-.c-reveal { opacity:0; transform:translateY(16px); transition:opacity .5s cubic-bezier(.22,1,.36,1), transform .5s cubic-bezier(.22,1,.36,1); }
-.c-reveal.visible { opacity:1; transform:translateY(0); }
-@keyframes c-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
-.c-sk { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:c-shimmer 1.4s infinite; border-radius:6px; margin-bottom:8px; }
-.c360p-loader-skeleton { padding:var(--sp-5); max-width:var(--max-w); margin:0 auto; }
-.c-sk-header { display:flex; align-items:center; gap:10px; margin-bottom:var(--sp-8); }
-.c-sk-hero { padding:var(--sp-8) 0; }
-.c-sk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:var(--sp-4); }
-.c-sk-card { display:flex; flex-direction:column; gap:6px; }
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="c360p-title">Catálogo</title>
 
-html { transition:background-color .4s ease; }
-* { transition-property:background-color, border-color, color; transition-duration:.25s; }
+  <meta id="c360p-desc-meta" name="description" content="Catálogo digital">
+  <meta id="c360p-og-title" property="og:title" content="Catálogo">
+  <meta id="c360p-og-desc" property="og:description" content="Catálogo digital">
+  <meta id="c360p-og-image" property="og:image" content="">
+  <meta property="og:type" content="website">
 
-.c-toast-wrap { position:fixed; bottom:var(--sp-5); left:50%; transform:translateX(-50%); z-index:300; display:flex; flex-direction:column; gap:8px; align-items:center; }
-.c-toast {
-  background:var(--text); color:var(--bg); padding:10px 20px; border-radius:999px; font-size:13px; font-weight:600;
-  box-shadow:0 8px 20px rgba(0,0,0,.25); animation:c-fade-up .3s cubic-bezier(.22,1,.36,1);
-}
-.c-header {
-  position:sticky; top:0; z-index:30; border-bottom:1px solid var(--border);
-  backdrop-filter:blur(10px); background:color-mix(in srgb, var(--bg) 88%, transparent);
-}
-.c-header-in { display:flex; align-items:center; gap:var(--sp-4); padding:var(--sp-4) 0; }
-.c-header-logo { width:38px; height:38px; border-radius:50%; object-fit:cover; flex-shrink:0; border:1px solid var(--border); }
-.c-header-nombre { font-family:var(--font-display); font-weight:600; font-size:20px; letter-spacing:-.01em; }
-.c-header-nav { display:none; align-items:center; gap:var(--sp-7); margin-left:var(--sp-8); }
-@media (min-width:700px) { .c-header-nav { display:flex; } }
-.c-header-nav a {
-  font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-2); cursor:pointer;
-  position:relative; padding-bottom:3px;
-}
-.c-header-nav a::after { content:''; position:absolute; left:0; right:100%; bottom:0; height:1px; background:var(--accent); transition:right .25s cubic-bezier(.22,1,.36,1); }
-.c-header-nav a:hover { color:var(--text); }
-.c-header-nav a:hover::after { right:0; }
-.c-header-buscador {
-  display:none; align-items:center; gap:8px; background:var(--surface-2); border:1px solid var(--border);
-  border-radius:999px; padding:8px 16px; margin-left:auto; flex:0 1 260px;
-}
-@media (min-width:900px) { .c-header-buscador { display:flex; } }
-.c-header-buscador input { border:none; outline:none; background:none; flex:1; color:var(--text); font-family:var(--font-ui); font-size:12.5px; }
-.c-header-buscador input::placeholder { color:var(--text-3); }
-.c-header-fav-btn {
-  margin-left:var(--sp-3); background:none; border:none; cursor:pointer; color:var(--text-2); font-size:18px;
-  display:flex; align-items:center; gap:4px; position:relative; transition:color .15s;
-}
-.c-header-fav-btn:hover { color:var(--danger); }
-.c-header-fav-conteo {
-  position:absolute; top:-6px; right:-10px; background:var(--accent); color:var(--accent-ink); font-family:var(--font-mono);
-  font-size:9.5px; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-}
-.c-theme-btn {
-  margin-left:auto; width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface);
-  color:var(--text-2); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px;
-  transition:transform .35s cubic-bezier(.22,1,.36,1), border-color .2s, color .2s;
-}
-.c-theme-btn:hover { transform:rotate(20deg); border-color:var(--accent); color:var(--accent); }
-.c-preview-banner {
-  display:none; background:#1a1a1a; color:#fff; text-align:center; font-size:12px; font-weight:600;
-  padding:var(--sp-2) var(--sp-4); letter-spacing:.02em;
-}
-.c-hero { position:relative; background:var(--surface); overflow:hidden; min-height:46vh; display:flex; align-items:stretch; border-bottom:1px solid var(--border); }
-.c-hero-bg {
-  position:absolute; inset:0; background-size:cover; background-position:center;
-  opacity:0; transition:opacity .6s ease;
-}
-.c-hero-bg.activo { opacity:1; }
-.c-hero-bg::after {
-  content:''; position:absolute; inset:0;
-  background:linear-gradient(180deg, rgba(10,10,14,.35) 0%, rgba(10,10,14,.78) 100%);
-}
-.c-hero-in {
-  position:relative; z-index:1; width:100%;
-  display:flex; flex-direction:column; justify-content:center; gap:var(--sp-6);
-  padding:var(--sp-8) var(--sp-5) var(--sp-9);
-}
-@media (min-width:800px) { .c-hero-in { padding:0; flex-direction:row; align-items:stretch; gap:0; } }
-.c-hero-texto {
-  flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; position:relative; z-index:2;
-}
-@media (min-width:800px) { .c-hero-texto { padding:0 0 0 var(--sp-9); max-width:600px; margin-right:-60px; } }
-.c-hero-mosaico-wrap { display:none; }
-@media (min-width:800px) { .c-hero-mosaico-wrap { display:block; position:relative; flex:0 0 52%; } }
-.c-hero-mosaico { display:none; position:relative; }
-@media (min-width:800px) {
-  .c-hero-mosaico { display:grid; width:100%; height:100%; position:relative; filter:sepia(.18) saturate(1.15); grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; }
-  .c-hero-mosaico::before { content:''; position:absolute; inset:0; background:rgba(var(--accent-rgb),.14); mix-blend-mode:multiply; z-index:1; pointer-events:none; }
-  .c-hero-mosaico.una-sola { grid-template-columns:1fr; grid-template-rows:1fr; }
-}
-.c-hero-mosaico.vacio { display:none !important; }
-.c-hero-mosaico img { width:100%; height:100%; object-fit:cover; display:block; }
-.c-hero-mosaico img:first-child:not(:only-child) { grid-row:1/3; }
-.c-hero-etiqueta-flotante {
-  position:absolute; z-index:3; top:14%; right:8%; background:var(--accent); color:var(--accent-ink);
-  font-family:var(--font-mono); font-size:11px; padding:8px 14px; transform:rotate(-4deg);
-  box-shadow:var(--shadow-2); letter-spacing:.02em;
-}
-.c-hero-card-flotante {
-  position:absolute; z-index:3; left:-40px; bottom:10%; width:220px; background:rgba(12,14,19,.88);
-  backdrop-filter:blur(10px); color:#f2f1ec; padding:var(--sp-4); box-shadow:var(--shadow-2); border:1px solid rgba(255,255,255,.1);
-}
-.c-hero-card-flotante .etiqueta { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.08em; color:var(--accent); text-transform:uppercase; }
-.c-hero-card-flotante .nombre { font-family:var(--font-display); font-size:16px; margin:6px 0 8px; line-height:1.2; }
-.c-hero-card-flotante .precio-row { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
-.c-hero-card-flotante .precio { font-family:var(--font-mono); font-size:14px; font-weight:500; }
-.c-hero-card-flotante .tachado { font-family:var(--font-mono); font-size:11px; color:#8a8d99; text-decoration:line-through; }
-.c-hero-card-flotante a { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--accent); cursor:pointer; }
-@media (max-width:899px) { .c-hero-card-flotante { display:none !important; } }
-.c-hero-patron {
-  background-image: radial-gradient(circle at 2px 2px, rgba(var(--accent-rgb),.4) 1.5px, transparent 0);
-  background-size:24px 24px;
-}
-.c-confianza { background:var(--surface); border-bottom:1px solid var(--border); }
-.c-confianza-in { display:grid; grid-template-columns:1fr; gap:var(--sp-5); padding:var(--sp-6) 0; }
-@media (min-width:800px) { .c-confianza-in { grid-template-columns:repeat(4,1fr); } }
-.c-confianza-item { display:flex; align-items:center; gap:var(--sp-3); }
-.c-confianza-item span { font-size:22px; flex-shrink:0; }
-.c-confianza-item b { display:block; font-size:13px; font-weight:600; }
-.c-confianza-item small { display:block; font-size:11.5px; color:var(--text-3); margin-top:2px; }
-@media (min-width:800px) { .c-confianza-item:not(:last-child) { border-right:1px solid var(--border); padding-right:var(--sp-5); } }
-.c-hero.con-imagen .c-hero-in { color:var(--on-dark); }
-.c-hero-eyebrow {
-  display:flex; align-items:center; gap:var(--sp-2); font-family:var(--font-mono); font-size:11px; font-weight:500;
-  letter-spacing:.1em; text-transform:uppercase; color:var(--accent);
-}
-.c-hero.con-imagen .c-hero-eyebrow { color:#fff; opacity:.9; }
-.c-hero-eyebrow img { width:22px; height:22px; border-radius:50%; object-fit:cover; }
-.c-hero-eyebrow::before { content:''; width:20px; height:1px; background:currentColor; }
-.c-hero-titulo {
-  font-family:var(--font-display); font-weight:600; font-style:normal;
-  font-size:clamp(44px, 7.2vw, 108px); line-height:0.92; letter-spacing:-.03em; margin:var(--sp-3) 0; max-width:11ch;
-  position:relative;
-}
-.c-hero-desc {
-  font-size:clamp(14px,1.6vw,16.5px); color:var(--text-2); max-width:40ch; line-height:1.65; margin:0;
-}
-.c-hero.con-imagen .c-hero-desc { color:var(--on-dark-2); }
-.c-hero-acciones { display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-5); margin-top:var(--sp-7); }
-.c-hero-contacto { display:flex; flex-wrap:wrap; gap:var(--sp-4); font-family:var(--font-mono); font-size:11.5px; color:var(--text-2); }
-.c-hero.con-imagen .c-hero-contacto { color:var(--on-dark-2); }
-.c-hero-contacto a, .c-hero-contacto span { display:inline-flex; align-items:center; gap:6px; }
-.c-hero-contacto a:hover { color:var(--accent); }
-.c-hero.con-imagen .c-hero-contacto a:hover { color:#fff; }
-.c-btn {
-  display:inline-flex; align-items:center; justify-content:center; gap:10px;
-  padding:14px 26px; border-radius:0; font-weight:600; font-family:var(--font-ui); font-size:13px; border:1px solid var(--text); cursor:pointer;
-  background:var(--text); color:var(--bg); position:relative; overflow:hidden; letter-spacing:.02em;
-  transition:color .3s ease .05s; z-index:0;
-}
-.c-btn::before { content:''; position:absolute; inset:0; background:var(--accent); transform:translateX(-101%); transition:transform .3s cubic-bezier(.65,0,.35,1); z-index:0; }
-.c-btn span, .c-btn { z-index:1; }
-.c-btn:hover::before { transform:translateX(0); }
-.c-btn:hover { border-color:var(--accent); }
-.c-btn:active { transform:scale(.98); }
-.c-btn.c-btn-ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
-.c-btn.c-btn-ghost::before { display:none; }
-.c-hero.con-imagen .c-btn.c-btn-ghost { color:#fff; border-color:rgba(255,255,255,.35); }
-.c-btn.c-btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
-.c-btn.c-btn-sm { padding:9px 16px; font-size:12.5px; }
-.c-btn:disabled { opacity:.5; cursor:not-allowed; box-shadow:none; transform:none; }
-.c-seccion { padding:var(--sp-8) 0; position:relative; border-top:4px solid transparent; }
-.c-seccion.tinte-a { background:rgba(var(--accent-rgb),.05); border-top-color:rgba(var(--accent-rgb),.35); }
-.c-seccion.tinte-b { background:var(--surface); border-top-color:var(--border); }
-.c-seccion-destacado-wrap.tinte-a { background:rgba(var(--accent-rgb),.05); border-top:4px solid rgba(var(--accent-rgb),.35); }
-.c-seccion-head { display:flex; align-items:baseline; justify-content:space-between; gap:var(--sp-4); margin-bottom:var(--sp-6); }
-.c-seccion-titulo { font-size:19px; font-weight:800; letter-spacing:-.01em; display:flex; align-items:center; gap:var(--sp-2); }
-.c-seccion-titulo::before { content:''; width:5px; height:20px; border-radius:3px; background:var(--accent); display:inline-block; }
-.c-seccion-conteo { font-size:12.5px; color:var(--text-3); font-weight:600; }
-.c-filtros-barra {
-  position:sticky; top:63px; z-index:20; background:var(--bg); border-bottom:1px solid var(--border);
-  backdrop-filter:blur(10px); background:color-mix(in srgb, var(--bg) 92%, transparent);
-}
-.c-filtros-in { display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4); padding:var(--sp-3) 0 var(--sp-5); flex-wrap:wrap; }
-.c-catalogo-layout { display:block; }
-@media (min-width:900px) { .c-catalogo-layout { display:grid; grid-template-columns:220px 1fr; gap:var(--sp-8); align-items:start; } }
-.c-sidebar { display:none; }
-@media (min-width:900px) { .c-sidebar { display:block; position:sticky; top:130px; } }
-.c-sidebar-titulo { font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); margin-bottom:var(--sp-4); }
-.c-sidebar-cat-item {
-  display:flex; align-items:center; gap:10px; padding:9px 12px; margin-bottom:2px; cursor:pointer;
-  font-size:13px; color:var(--text-2); transition:all .15s;
-}
-.c-sidebar-cat-item:hover { color:var(--text); background:var(--surface-2); }
-.c-sidebar-cat-item.activo { background:rgba(var(--accent-rgb),.12); color:var(--accent); font-weight:600; }
-.c-sidebar-ofertas {
-  margin-top:var(--sp-7); padding:var(--sp-5); background:var(--surface-2); border:1px solid var(--border); position:relative; overflow:hidden;
-}
-.c-sidebar-ofertas h4 { font-family:var(--font-display); font-size:19px; margin:0 0 4px; }
-.c-sidebar-ofertas p { font-size:12px; color:var(--text-2); margin:0 0 var(--sp-4); }
-.c-sidebar-ofertas a { font-size:12px; font-weight:700; color:var(--accent); cursor:pointer; }
-.c-vista-toggle { display:none; gap:4px; }
-@media (min-width:900px) { .c-vista-toggle { display:flex; } }
-.c-vista-toggle button { width:30px; height:30px; border:1px solid var(--border); background:var(--surface); color:var(--text-3); cursor:pointer; font-size:13px; }
-.c-vista-toggle button.activo { color:var(--accent); border-color:var(--accent); }
-.c-grid.vista-lista { flex-direction:column; }
-.c-grid.vista-lista .c-card { flex-direction:row; max-width:100%; gap:var(--sp-5); align-items:flex-start; }
-.c-grid.vista-lista .c-card-media { flex:0 0 140px; aspect-ratio:1/1; }
-.c-grid.vista-lista .c-card.grande { flex-basis:auto; }
-.c-cta-whatsapp { background:var(--surface); border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:var(--sp-8) 0; }
-.c-cta-whatsapp-in { display:flex; flex-direction:column; gap:var(--sp-5); align-items:flex-start; }
-@media (min-width:700px) { .c-cta-whatsapp-in { flex-direction:row; align-items:center; justify-content:space-between; } }
-.c-cta-whatsapp h3 { font-family:var(--font-display); font-size:24px; margin:0 0 4px; }
-.c-cta-whatsapp p { font-size:13px; color:var(--text-2); margin:0; }
-.c-chips { display:flex; gap:var(--sp-6); overflow-x:auto; flex:1; min-width:0; scrollbar-width:none; }
-.c-chips::-webkit-scrollbar { display:none; }
-.c-chip {
-  flex-shrink:0; padding:6px 0; border:none; border-bottom:2px solid transparent; background:none;
-  font-family:var(--font-mono); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-3); cursor:pointer; transition:all .15s; white-space:nowrap;
-}
-.c-chip:hover { color:var(--text); }
-.c-migas { display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11px; color:var(--text-3); padding-top:var(--sp-2); }
-.c-migas a { cursor:pointer; font-weight:600; }
-.c-migas a:hover { color:var(--accent); }
-.c-fila-busqueda { display:flex; gap:var(--sp-5); align-items:center; padding:var(--sp-4) 0 0; flex-wrap:wrap; border-bottom:1px solid var(--border); }
-.c-busqueda-caja {
-  flex:1 1 220px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); padding:0 0 var(--sp-3);
-}
-.c-busqueda-caja input {
-  border:none; outline:none; background:none; flex:1; color:var(--text); font-family:var(--font-display); font-size:19px; font-weight:500;
-}
-.c-busqueda-caja input::placeholder { color:var(--text-3); font-style:italic; }
-.c-precio-filtro { display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-size:11px; color:var(--text-2); flex:0 0 auto; padding-bottom:var(--sp-3); }
-.c-precio-filtro input[type=range] { accent-color:var(--accent); width:120px; }
-.c-fav-btn {
-  position:absolute; bottom:var(--sp-2); right:var(--sp-2); width:30px; height:30px; border-radius:50%;
-  background:rgba(250,247,241,.92); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;
-  font-size:15px; z-index:2; transition:transform .15s;
-}
-.c-fav-btn:hover { transform:scale(1.15); }
-.c-fav-btn.activo { color:var(--danger); }
-.c-chip.activo { color:var(--text); border-bottom-color:var(--accent); }
-.c-filtros-derecha { display:flex; align-items:center; gap:var(--sp-4); flex-shrink:0; }
-#c-orden-select {
-  font-family:inherit; font-size:12.5px; font-weight:600; color:var(--text-2); background:var(--surface);
-  border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 10px; cursor:pointer;
-}
-.c-btn-flotante-wa {
-  position:fixed; bottom:var(--sp-5); right:var(--sp-5); z-index:40; width:56px; height:56px; border-radius:50%;
-  background:#25D366; color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px;
-  box-shadow:0 8px 20px -4px rgba(0,0,0,.35); border:none; cursor:pointer; transition:transform .2s;
-}
-.c-btn-flotante-wa:hover { transform:scale(1.08); }
-.c-seccion-destacado-wrap { padding:var(--sp-9) 0 var(--sp-10); }
-.c-destacado { display:flex; flex-direction:column; gap:var(--sp-6); padding:0 var(--sp-5); }
-@media (min-width:900px) {
-  .c-destacado { flex-direction:row; align-items:stretch; gap:0; padding:0; min-height:340px; }
-}
-.c-destacado-media { position:relative; flex:0 0 auto; }
-@media (min-width:900px) { .c-destacado-media { flex:0 0 54%; } }
-.c-destacado-img {
-  width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:var(--radius-lg); background:var(--surface-2);
-  cursor:zoom-in;
-}
-@media (min-width:900px) { .c-destacado-img { height:100%; aspect-ratio:auto; border-radius:0; } }
-.c-destacado-thumbs { display:flex; gap:var(--sp-2); margin-top:var(--sp-3); padding:0 var(--sp-5); }
-@media (min-width:900px) { .c-destacado-thumbs { position:absolute; bottom:var(--sp-6); left:var(--sp-6); margin-top:0; padding:0; } }
-.c-destacado-thumb {
-  width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; cursor:pointer;
-  border:2px solid transparent; opacity:.6; transition:opacity .2s, border-color .2s;
-}
-@media (min-width:900px) { .c-destacado-thumb { border-color:rgba(255,255,255,.5); box-shadow:0 4px 14px rgba(0,0,0,.3); } }
-.c-destacado-thumb.activa { opacity:1; border-color:var(--accent); }
-.c-destacado-info { display:flex; flex-direction:column; justify-content:center; padding:0 var(--sp-5); }
-@media (min-width:900px) { .c-destacado-info { flex:1; padding:0 var(--sp-9); } }
-.c-destacado-cat { font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--accent); margin-bottom:var(--sp-2); }
-.c-destacado-nombre {
-  font-family:var(--font-display); font-weight:500; font-style:italic;
-  font-size:clamp(28px,3.6vw,48px); margin:0 0 var(--sp-4); line-height:1.05; max-width:14ch;
-}
-.c-destacado-desc { font-size:14.5px; color:var(--text-2); line-height:1.7; margin:0 0 var(--sp-6); max-width:48ch; }
-.c-precio-row { display:flex; align-items:baseline; gap:var(--sp-3); margin-bottom:var(--sp-6); }
-.c-precio { font-size:26px; font-weight:800; letter-spacing:-.01em; }
-.c-precio.con-oferta { color:var(--danger); }
-.c-precio-tachado { font-size:15px; color:var(--text-3); text-decoration:line-through; font-weight:500; }
-.c-grid { display:flex; flex-wrap:wrap; justify-content:flex-start; gap:var(--sp-6) var(--sp-5); }
-.c-card.grande { flex-basis:100%; max-width:100%; }
-@media (min-width:640px) { .c-card.grande { flex-basis:calc(66.66% - var(--sp-5)); max-width:520px; } }
-.c-card.grande .c-card-media { aspect-ratio:16/10; }
-@media (min-width:640px) { .c-card.grande .c-card-media { aspect-ratio:3/2; } }
-.c-grid.pocas { justify-content:center; }
-.c-card {
-  flex:1 1 240px; max-width:320px; background:none; border:none; border-radius:0;
-  overflow:visible; cursor:pointer; display:flex; flex-direction:column;
-}
-.c-card-media {
-  position:relative; aspect-ratio:3/4; background:var(--surface-2); overflow:hidden;
-  transition:box-shadow .35s cubic-bezier(.22,1,.36,1);
-}
-.c-card:hover .c-card-media { box-shadow:var(--shadow-2); }
-.c-card-media img { width:100%; height:100%; object-fit:cover; transition:transform .6s cubic-bezier(.22,1,.36,1); }
-.c-card:hover .c-card-media img { transform:scale(1.045); }
-.c-card-tag {
-  position:absolute; top:var(--sp-3); left:var(--sp-3); font-family:var(--font-mono); font-size:10px;
-  letter-spacing:.03em; padding:4px 10px; background:var(--surface); color:var(--text);
-}
-.c-card-tag.oferta { background:var(--danger); color:#fff; }
-.c-card-tag.nuevo { background:var(--accent); color:var(--accent-ink); }
-.c-card-disp {
-  position:absolute; top:var(--sp-3); right:var(--sp-3); font-family:var(--font-mono); font-size:9.5px;
-  letter-spacing:.03em; padding:4px 9px; background:rgba(250,247,241,.92); color:var(--disponible);
-}
-.c-card-disp.agotado { color:var(--danger); }
-.c-card.agotada .c-card-media { opacity:.55; }
-.c-card-body { padding:var(--sp-3) 0 0; display:flex; flex-direction:column; gap:2px; }
-.c-card-cat {
-  align-self:flex-start; font-family:var(--font-mono); font-size:9.5px; color:var(--text-3); text-transform:uppercase; letter-spacing:.06em;
-  margin-bottom:2px;
-}
-.c-card-nombre { font-family:var(--font-display); font-size:16.5px; font-weight:500; line-height:1.25; margin:0 0 6px; }
-.c-card-precio-row { display:flex; align-items:baseline; gap:8px; }
-.c-card-precio { font-family:var(--font-mono); font-weight:500; font-size:14px; }
-.c-card-precio.con-oferta { color:var(--danger); }
-.c-card-tachado { font-family:var(--font-mono); font-size:12px; color:var(--text-3); text-decoration:line-through; }
-.c-card-botones { display:flex; gap:6px; margin-top:var(--sp-3); }
-.c-card-accion-rapida {
-  flex:1; padding:8px; border:1px solid var(--border);
-  background:transparent; color:var(--text-2); font-size:11px; font-weight:700; cursor:pointer;
-  display:flex; align-items:center; justify-content:center; gap:5px; transition:all .15s;
-}
-.c-card-accion-rapida.wa:hover { border-color:#25D366; color:#25D366; background:#25D3661a; }
-.c-card-accion-rapida.llamar { flex:0 0 auto; padding:8px 12px; }
-.c-card-accion-rapida.llamar:hover { border-color:#3b82f6; color:#3b82f6; background:#3b82f61a; }
-.c-card-accion-rapida.compartir { flex:0 0 auto; padding:8px 12px; }
-.c-card-accion-rapida.compartir:hover { border-color:var(--accent); color:var(--accent); background:rgba(var(--accent-rgb),.08); }
-.c-cat-card {
-  flex:1 1 200px; max-width:260px; overflow:hidden; cursor:pointer;
-  position:relative; aspect-ratio:4/3; background:var(--surface-2);
-  transition:transform .3s cubic-bezier(.22,1,.36,1);
-}
-.c-cat-card:hover { transform:translateY(-4px); }
-.c-cat-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .5s ease; }
-.c-cat-card:hover img { transform:scale(1.07); }
-.c-cat-card::after {
-  content:''; position:absolute; inset:0; background:linear-gradient(180deg, transparent 40%, rgba(10,10,14,.82) 100%);
-}
-.c-cat-card-info { position:absolute; left:0; right:0; bottom:0; z-index:1; padding:var(--sp-4); color:#fff; }
-.c-cat-card-nombre { font-family:var(--font-display); font-weight:600; font-size:17px; margin-bottom:2px; }
-.c-cat-card-count { font-size:11.5px; color:rgba(255,255,255,.75); display:flex; align-items:center; gap:5px; }
-.c-cat-card-count svg { transition:transform .25s; }
-.c-cat-card:hover .c-cat-card-count svg { transform:translateX(3px); }
-.c-vacio { text-align:center; padding:var(--sp-9) var(--sp-4); color:var(--text-3); font-size:13.5px; }
-.c-confianza-footer { background:var(--surface); border-top:1px solid var(--border); }
-.c-confianza-footer-in { display:grid; grid-template-columns:1fr; gap:var(--sp-6); padding:var(--sp-8) 0; }
-@media (min-width:800px) { .c-confianza-footer-in { grid-template-columns:repeat(4,1fr); } }
-.c-confianza-footer-item { display:flex; align-items:center; gap:var(--sp-3); }
-.c-confianza-footer-item .icono {
-  width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;
-}
-.c-confianza-footer-item .icono.rosa { background:#e879791a; }
-.c-confianza-footer-item .icono.verde { background:#22c55e1a; }
-.c-confianza-footer-item .icono.roja { background:#ef44441a; }
-.c-confianza-footer-item .icono.morada { background:rgba(var(--accent-rgb),.12); }
-.c-confianza-footer-item b { display:block; font-size:13px; font-weight:600; }
-.c-confianza-footer-item small { display:block; font-size:11.5px; color:var(--text-3); margin-top:2px; }
-.c-footer { border-top:1px solid var(--border); padding:var(--sp-6) 0; }
-.c-footer-in { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--sp-3); font-size:12px; color:var(--text-3); }
-.c-footer-in a { font-weight:700; color:var(--text-2); }
-.c-footer-in a:hover { color:var(--accent); }
-.c-modal-overlay {
-  display:none; position:fixed; inset:0; background:rgba(10,10,14,.6); z-index:100;
-  align-items:flex-end; justify-content:center; backdrop-filter:blur(2px);
-}
-.c-modal-overlay.open { display:flex; animation:c-fade .2s ease; }
-@keyframes c-modal-in { from { opacity:0; transform:translateY(30px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
-.c-modal {
-  background:var(--surface); width:100%; max-width:520px; max-height:90vh; overflow-y:auto;
-  border-radius:var(--radius-lg) var(--radius-lg) 0 0; animation:c-modal-in .3s cubic-bezier(.22,1,.36,1);
-}
-@media (min-width:640px) { .c-modal-overlay { align-items:center; } .c-modal { border-radius:var(--radius-lg); } }
-.c-modal-close {
-  position:sticky; top:var(--sp-3); margin:0 var(--sp-3) 0 auto; width:32px; height:32px; border-radius:50%;
-  background:rgba(0,0,0,.5); color:#fff; border:none; cursor:pointer; display:flex; align-items:center;
-  justify-content:center; z-index:5; font-size:15px;
-}
-.c-modal-fotos { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; margin-top:-40px; }
-.c-modal-fotos img { width:100%; flex-shrink:0; scroll-snap-align:start; aspect-ratio:1/1; object-fit:cover; }
-.c-modal-body { padding:var(--sp-5) var(--sp-6) var(--sp-7); }
-.c-modal-cat { font-size:11.5px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
-.c-modal-nombre { font-family:var(--font-display); font-size:22px; font-weight:500; margin-bottom:var(--sp-2); }
-.c-modal-desc { font-size:13.5px; color:var(--text-2); line-height:1.6; margin-bottom:var(--sp-4); white-space:pre-wrap; }
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="c360-core.js"></script>
 
-.c-relacionados-titulo { font-size:13px; font-weight:800; margin:var(--sp-6) 0 var(--sp-3); border-top:1px solid var(--border); padding-top:var(--sp-5); }
-.c-relacionados-scroll { display:flex; gap:var(--sp-3); overflow-x:auto; }
-.c-relacionado-mini { flex:0 0 110px; cursor:pointer; }
-.c-relacionado-mini img { width:110px; height:110px; object-fit:cover; border-radius:var(--radius-sm); background:var(--surface-2); }
-.c-relacionado-mini .nombre { font-size:11.5px; font-weight:600; margin-top:4px; line-height:1.3; }
-.c-relacionado-mini .precio { font-size:11.5px; font-weight:800; color:var(--accent); }
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-.c-lightbox {
-  display:none; position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:200;
-  align-items:center; justify-content:center; animation:c-fade .2s ease;
-}
-.c-lightbox.open { display:flex; }
-.c-lightbox img { max-width:90vw; max-height:85vh; object-fit:contain; }
-.c-lightbox-cerrar {
-  position:absolute; top:var(--sp-5); right:var(--sp-5); width:40px; height:40px; border-radius:50%;
-  background:rgba(255,255,255,.15); color:#fff; border:none; cursor:pointer; font-size:18px;
-}
-.c-lightbox-flecha {
-  position:absolute; top:50%; transform:translateY(-50%); width:48px; height:48px; border-radius:50%;
-  background:rgba(255,255,255,.15); color:#fff; border:none; cursor:pointer; font-size:26px;
-}
-.c-lightbox-flecha.izq { left:var(--sp-5); }
-.c-lightbox-flecha.der { right:var(--sp-5); }
-.c-lightbox-contador { position:absolute; bottom:var(--sp-5); left:50%; transform:translateX(-50%); color:#fff; font-size:12.5px; }
-@media (min-width:900px) { .c-hero-titulo { max-width:16ch; } }
-</style>
+  <style>
+    :root{
+      --bg:#f4efe6;
+      --surface:#faf7f1;
+      --surface-2:#ebe4d6;
+      --border:#ddd3bf;
+      --text:#1c1917;
+      --text-2:#57524a;
+      --text-3:#8a8377;
+      --accent:#6366f1;
+      --accent-rgb:99,102,241;
+      --accent-ink:#fff;
+      --danger:#b23a2f;
+      --disponible:#3f6b4a;
+      --on-dark:#f5f1ea;
+      --on-dark-2:#c4bdae;
+      --font-display:'Fraunces',Georgia,serif;
+      --font-ui:'Space Grotesk',sans-serif;
+      --font-mono:'JetBrains Mono',monospace;
+      --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;
+      --sp-6:24px;--sp-7:32px;--sp-8:48px;--sp-9:64px;--sp-10:96px;
+      --radius-sm:4px;
+      --radius-md:8px;
+      --radius-lg:16px;
+      --shadow-1:0 1px 2px rgba(28,25,23,.06);
+      --shadow-2:0 24px 48px -12px rgba(28,25,23,.28);
+      --max-w:1400px;
+      --header-h:70px;
+    }
+
+    html[data-theme="oscuro"]{
+      --bg:#0c0e13;
+      --surface:#14171f;
+      --surface-2:#1b1f29;
+      --border:#262b38;
+      --text:#f2f1ec;
+      --text-2:#a6a9b8;
+      --text-3:#6b6f80;
+      --on-dark:#f2f1ec;
+      --on-dark-2:#a6a9b8;
+      --shadow-1:0 1px 2px rgba(0,0,0,.4);
+      --shadow-2:0 24px 56px -12px rgba(0,0,0,.65);
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+    body{
+      margin:0;
+      min-width:0;
+      overflow-x:hidden;
+      background:var(--bg);
+      color:var(--text);
+      font-family:var(--font-ui);
+      -webkit-font-smoothing:antialiased;
+      transition:background-color .25s ease,color .25s ease;
+    }
+
+    body.c-modal-abierto{
+      overflow:hidden;
+      overscroll-behavior:none;
+    }
+
+    img{display:block;max-width:100%}
+    a{color:inherit;text-decoration:none}
+    button,input,select{font:inherit}
+    button,a,input,select{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+    button{cursor:pointer}
+    :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+    .c360-container{
+      width:100%;
+      max-width:var(--max-w);
+      margin:0 auto;
+      padding-inline:var(--sp-5);
+    }
+
+    .c-reveal{
+      opacity:0;
+      transform:translateY(18px);
+      transition:opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1);
+    }
+
+    .c-reveal.visible{opacity:1;transform:translateY(0)}
+
+    @keyframes c-fade-up{
+      from{opacity:0;transform:translateY(14px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+
+    @keyframes c-fade{
+      from{opacity:0}
+      to{opacity:1}
+    }
+
+    @keyframes c-shimmer{
+      0%{background-position:-200% 0}
+      100%{background-position:200% 0}
+    }
+
+    @keyframes c-card-enter{
+      from{opacity:0;transform:translateY(12px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+
+    .c-sk{
+      margin-bottom:8px;
+      border-radius:8px;
+      background:linear-gradient(90deg,var(--surface-2) 25%,var(--border) 50%,var(--surface-2) 75%);
+      background-size:200% 100%;
+      animation:c-shimmer 1.4s infinite;
+    }
+
+    .c360p-loader-skeleton{
+      max-width:var(--max-w);
+      margin:auto;
+      padding:var(--sp-5);
+    }
+
+    .c-sk-header{display:flex;align-items:center;gap:10px;margin-bottom:var(--sp-8)}
+    .c-sk-hero{padding:var(--sp-8) 0}
+    .c-sk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:var(--sp-4)}
+    .c-sk-card{display:flex;flex-direction:column;gap:6px}
+
+    .c-toast-wrap{
+      position:fixed;
+      z-index:300;
+      bottom:var(--sp-5);
+      left:50%;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      align-items:center;
+      transform:translateX(-50%);
+      pointer-events:none;
+    }
+
+    .c-toast{
+      padding:10px 20px;
+      border-radius:999px;
+      background:var(--text);
+      color:var(--bg);
+      box-shadow:0 8px 20px rgba(0,0,0,.25);
+      font-size:13px;
+      font-weight:600;
+      text-align:center;
+      animation:c-fade-up .3s cubic-bezier(.22,1,.36,1);
+    }
+
+    .c-preview-banner{
+      display:none;
+      padding:var(--sp-2) var(--sp-4);
+      background:#171717;
+      color:#fff;
+      font-size:12px;
+      font-weight:600;
+      letter-spacing:.02em;
+      text-align:center;
+    }
+
+    /* HEADER */
+
+    .c-header{
+      position:sticky;
+      top:0;
+      z-index:30;
+      isolation:isolate;
+      border-bottom:1px solid var(--border);
+      background:color-mix(in srgb,var(--bg) 88%,transparent);
+      backdrop-filter:blur(14px);
+    }
+
+    .c-header-in{
+      display:flex;
+      min-width:0;
+      align-items:center;
+      gap:var(--sp-4);
+      padding:var(--sp-4) 0;
+    }
+
+    .c-header-logo{
+      width:38px;
+      height:38px;
+      flex-shrink:0;
+      border:1px solid var(--border);
+      border-radius:50%;
+      object-fit:cover;
+    }
+
+    .c-header-nombre{
+      max-width:clamp(110px,18vw,260px);
+      overflow:hidden;
+      font-family:var(--font-display);
+      font-size:20px;
+      font-weight:600;
+      letter-spacing:-.01em;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    .c-header-nav{
+      display:none;
+      align-items:center;
+      gap:var(--sp-7);
+      margin-left:var(--sp-8);
+    }
+
+    .c-header-nav a{
+      position:relative;
+      padding-bottom:3px;
+      color:var(--text-2);
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+
+    .c-header-nav a:after{
+      position:absolute;
+      right:100%;
+      bottom:0;
+      left:0;
+      height:1px;
+      background:var(--accent);
+      content:"";
+      transition:right .25s ease;
+    }
+
+    .c-header-nav a:hover{color:var(--text)}
+    .c-header-nav a:hover:after{right:0}
+
+    .c-header-buscador{
+      display:none;
+      flex:0 1 260px;
+      align-items:center;
+      gap:8px;
+      margin-left:auto;
+      padding:8px 16px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:var(--surface-2);
+    }
+
+    .c-header-buscador input{
+      width:100%;
+      border:0;
+      outline:0;
+      background:transparent;
+      color:var(--text);
+      font-size:12.5px;
+    }
+
+    .c-header-buscador input::placeholder{color:var(--text-3)}
+
+    .c-header-fav-btn{
+      position:relative;
+      display:flex;
+      width:36px;
+      min-width:36px;
+      height:36px;
+      align-items:center;
+      justify-content:center;
+      margin-left:auto;
+      border:0;
+      background:transparent;
+      color:var(--text-2);
+      font-size:18px;
+    }
+
+    .c-header-fav-btn:hover{color:var(--danger)}
+
+    .c-header-fav-conteo{
+      position:absolute;
+      top:-4px;
+      right:-7px;
+      display:flex;
+      width:16px;
+      height:16px;
+      align-items:center;
+      justify-content:center;
+      border-radius:50%;
+      background:var(--accent);
+      color:var(--accent-ink);
+      font-family:var(--font-mono);
+      font-size:9px;
+    }
+
+    .c-theme-btn{
+      display:flex;
+      width:34px;
+      height:34px;
+      flex-shrink:0;
+      align-items:center;
+      justify-content:center;
+      margin-left:0;
+      border:1px solid var(--border);
+      border-radius:50%;
+      background:var(--surface);
+      color:var(--text-2);
+      font-size:15px;
+      transition:transform .35s cubic-bezier(.22,1,.36,1),color .2s,border-color .2s;
+    }
+
+    .c-theme-btn:hover{
+      border-color:var(--accent);
+      color:var(--accent);
+      transform:rotate(20deg);
+    }
+
+    /* HERO */
+
+    .c-hero{
+      position:relative;
+      display:flex;
+      min-height:46vh;
+      align-items:stretch;
+      overflow:hidden;
+      border-bottom:1px solid var(--border);
+      background:var(--surface);
+    }
+
+    .c-hero-bg{
+      position:absolute;
+      inset:0;
+      opacity:0;
+      background-position:center;
+      background-size:cover;
+      transition:opacity .6s ease;
+    }
+
+    .c-hero-bg.activo{opacity:1}
+
+    .c-hero-bg:after{
+      position:absolute;
+      inset:0;
+      background:linear-gradient(180deg,rgba(10,10,14,.3),rgba(10,10,14,.78));
+      content:"";
+    }
+
+    .c-hero-in{
+      position:relative;
+      z-index:1;
+      display:flex;
+      width:100%;
+      flex-direction:column;
+      justify-content:center;
+      gap:var(--sp-6);
+      padding:var(--sp-8) var(--sp-5) var(--sp-9);
+    }
+
+    .c-hero-texto{
+      position:relative;
+      z-index:2;
+      display:flex;
+      min-width:0;
+      flex:1;
+      flex-direction:column;
+      justify-content:center;
+    }
+
+    .c-hero.con-imagen .c-hero-in{color:var(--on-dark)}
+
+    .c-hero-eyebrow{
+      display:flex;
+      align-items:center;
+      gap:var(--sp-2);
+      color:var(--accent);
+      font-family:var(--font-mono);
+      font-size:11px;
+      font-weight:500;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+    }
+
+    .c-hero.con-imagen .c-hero-eyebrow{color:#fff;opacity:.9}
+
+    .c-hero-eyebrow:before{
+      width:20px;
+      height:1px;
+      background:currentColor;
+      content:"";
+    }
+
+    .c-hero-eyebrow img{
+      width:22px;
+      height:22px;
+      border-radius:50%;
+      object-fit:cover;
+    }
+
+    .c-hero-titulo{
+      max-width:16ch;
+      margin:var(--sp-3) 0;
+      font-family:var(--font-display);
+      font-size:clamp(44px,7.2vw,108px);
+      font-weight:600;
+      letter-spacing:-.04em;
+      line-height:.92;
+    }
+
+    .c-hero-desc{
+      max-width:40ch;
+      margin:0;
+      color:var(--text-2);
+      font-size:clamp(14px,1.6vw,16.5px);
+      line-height:1.65;
+    }
+
+    .c-hero.con-imagen .c-hero-desc{color:var(--on-dark-2)}
+
+    .c-hero-acciones{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:var(--sp-5);
+      margin-top:var(--sp-7);
+    }
+
+    .c-hero-contacto{
+      display:flex;
+      flex-wrap:wrap;
+      gap:var(--sp-4);
+      color:var(--text-2);
+      font-family:var(--font-mono);
+      font-size:11.5px;
+    }
+
+    .c-hero.con-imagen .c-hero-contacto{color:var(--on-dark-2)}
+    .c-hero-contacto a:hover{color:var(--accent)}
+
+    .c-btn{
+      position:relative;
+      z-index:0;
+      display:inline-flex;
+      min-height:44px;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      overflow:hidden;
+      padding:13px 25px;
+      border:1px solid var(--text);
+      border-radius:0;
+      background:var(--text);
+      color:var(--bg);
+      font-size:13px;
+      font-weight:700;
+      letter-spacing:.02em;
+      transition:color .3s ease,border-color .3s ease,transform .15s ease;
+    }
+
+    .c-btn:before{
+      position:absolute;
+      z-index:-1;
+      inset:0;
+      background:var(--accent);
+      content:"";
+      transform:translateX(-101%);
+      transition:transform .3s cubic-bezier(.65,0,.35,1);
+    }
+
+    .c-btn:hover:before{transform:translateX(0)}
+    .c-btn:hover{border-color:var(--accent)}
+    .c-btn:active{transform:scale(.98)}
+    .c-btn:disabled{cursor:not-allowed;opacity:.5}
+
+    .c-hero-mosaico-wrap{display:none}
+
+    .c-hero-mosaico{
+      position:relative;
+      display:none;
+      width:100%;
+      height:100%;
+      grid-template-columns:1fr 1fr;
+      grid-template-rows:1fr 1fr;
+      gap:2px;
+      filter:sepia(.18) saturate(1.15);
+    }
+
+    .c-hero-mosaico:before{
+      position:absolute;
+      z-index:1;
+      inset:0;
+      background:rgba(var(--accent-rgb),.14);
+      content:"";
+      mix-blend-mode:multiply;
+      pointer-events:none;
+    }
+
+    .c-hero-mosaico.una-sola{
+      grid-template-columns:1fr;
+      grid-template-rows:1fr;
+    }
+
+    .c-hero-mosaico img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+
+    .c-hero-mosaico img:first-child:not(:only-child){grid-row:1/3}
+    .c-hero-mosaico.vacio{display:none!important}
+
+    .c-hero-etiqueta-flotante{
+      position:absolute;
+      z-index:3;
+      top:14%;
+      right:8%;
+      padding:8px 14px;
+      background:var(--accent);
+      box-shadow:var(--shadow-2);
+      color:var(--accent-ink);
+      font-family:var(--font-mono);
+      font-size:11px;
+      letter-spacing:.02em;
+      transform:rotate(-4deg);
+    }
+
+    .c-hero-card-flotante{
+      position:absolute;
+      z-index:3;
+      bottom:10%;
+      left:-40px;
+      width:220px;
+      padding:var(--sp-4);
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(12,14,19,.9);
+      box-shadow:var(--shadow-2);
+      color:#f2f1ec;
+      backdrop-filter:blur(10px);
+    }
+
+    .c-hero-card-flotante .etiqueta{
+      color:var(--accent);
+      font-family:var(--font-mono);
+      font-size:9.5px;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+
+    .c-hero-card-flotante .nombre{
+      margin:6px 0 8px;
+      font-family:var(--font-display);
+      font-size:16px;
+      line-height:1.2;
+    }
+
+    .c-hero-card-flotante .precio-row{
+      display:flex;
+      align-items:baseline;
+      gap:8px;
+      margin-bottom:10px;
+    }
+
+    .c-hero-card-flotante .precio{font-family:var(--font-mono);font-size:14px}
+    .c-hero-card-flotante .tachado{color:#8a8d99;font-family:var(--font-mono);font-size:11px;text-decoration:line-through}
+    .c-hero-card-flotante a{color:var(--accent);font-size:11.5px;font-weight:700}
+
+    .c-hero-patron{
+      background-image:radial-gradient(circle at 2px 2px,rgba(var(--accent-rgb),.4) 1.5px,transparent 0);
+      background-size:24px 24px;
+    }
+
+    /* CONFIANZA */
+
+    .c-confianza,.c-confianza-footer{
+      border-bottom:1px solid var(--border);
+      background:var(--surface);
+    }
+
+    .c-confianza-in,.c-confianza-footer-in{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:var(--sp-5);
+      padding:var(--sp-6) 0;
+    }
+
+    .c-confianza-item,.c-confianza-footer-item{
+      display:flex;
+      align-items:center;
+      gap:var(--sp-3);
+    }
+
+    .c-confianza-item span{font-size:22px}
+    .c-confianza-item b,.c-confianza-footer-item b{display:block;font-size:13px;font-weight:700}
+    .c-confianza-item small,.c-confianza-footer-item small{display:block;margin-top:2px;color:var(--text-3);font-size:11.5px}
+
+    .c-confianza-footer-item .icono{
+      display:flex;
+      width:44px;
+      height:44px;
+      flex-shrink:0;
+      align-items:center;
+      justify-content:center;
+      border-radius:50%;
+      font-size:18px;
+    }
+
+    .icono.rosa{background:#e879791a}
+    .icono.verde{background:#22c55e1a}
+    .icono.roja{background:#ef44441a}
+    .icono.morada{background:rgba(var(--accent-rgb),.12)}
+
+    /* SECCIONES */
+
+    .c-seccion{
+      position:relative;
+      padding:var(--sp-8) 0;
+      border-top:4px solid transparent;
+    }
+
+    .c-seccion.tinte-a,.c-seccion-destacado-wrap.tinte-a{
+      border-top-color:rgba(var(--accent-rgb),.35);
+      background:rgba(var(--accent-rgb),.05);
+    }
+
+    .c-seccion.tinte-b{border-top-color:var(--border);background:var(--surface)}
+    .c-seccion-destacado-wrap{padding:var(--sp-9) 0 var(--sp-10)}
+
+    .c-seccion-head{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:var(--sp-4);
+      margin-bottom:var(--sp-6);
+    }
+
+    .c-seccion-titulo{
+      display:flex;
+      align-items:center;
+      gap:var(--sp-2);
+      font-size:19px;
+      font-weight:800;
+      letter-spacing:-.01em;
+    }
+
+    .c-seccion-titulo:before{
+      display:inline-block;
+      width:5px;
+      height:20px;
+      border-radius:3px;
+      background:var(--accent);
+      content:"";
+    }
+
+    .c-seccion-conteo{color:var(--text-3);font-size:12.5px;font-weight:600}
+
+    /* DESTACADO */
+
+    .c-destacado{
+      display:flex;
+      max-width:var(--max-w);
+      flex-direction:column;
+      gap:var(--sp-6);
+      margin:auto;
+      padding:0 var(--sp-5);
+    }
+
+    .c-destacado-media{position:relative;flex:0 0 auto}
+
+    .c-destacado-img{
+      width:100%;
+      aspect-ratio:4/5;
+      border-radius:var(--radius-lg);
+      background:var(--surface-2);
+      cursor:zoom-in;
+      object-fit:cover;
+    }
+
+    .c-destacado-sin-foto,.c-card-sin-foto{
+      display:grid;
+      width:100%;
+      min-height:160px;
+      height:100%;
+      place-items:center;
+      background:radial-gradient(circle at 20% 20%,rgba(var(--accent-rgb),.15),transparent 35%),var(--surface-2);
+      color:var(--text-3);
+      font-size:12px;
+    }
+
+    .c-destacado-sin-foto{aspect-ratio:4/5;border-radius:var(--radius-lg)}
+
+    .c-destacado-thumbs{
+      display:flex;
+      gap:var(--sp-2);
+      margin-top:var(--sp-3);
+      padding:0 var(--sp-5);
+    }
+
+    .c-destacado-thumb{
+      width:52px;
+      height:52px;
+      border:2px solid transparent;
+      border-radius:var(--radius-sm);
+      cursor:pointer;
+      object-fit:cover;
+      opacity:.6;
+    }
+
+    .c-destacado-thumb.activa{border-color:var(--accent);opacity:1}
+    .c-destacado-info{display:flex;flex:1;flex-direction:column;justify-content:center;padding:0 var(--sp-5)}
+    .c-destacado-cat{margin-bottom:var(--sp-2);color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+    .c-destacado-nombre{max-width:14ch;margin:0 0 var(--sp-4);font-family:var(--font-display);font-size:clamp(28px,3.6vw,48px);font-style:italic;font-weight:500;line-height:1.05}
+    .c-destacado-desc{max-width:48ch;margin:0 0 var(--sp-6);color:var(--text-2);font-size:14.5px;line-height:1.7}
+    .c-precio-row{display:flex;align-items:baseline;gap:var(--sp-3);margin-bottom:var(--sp-6)}
+    .c-precio{font-size:26px;font-weight:800;letter-spacing:-.01em}
+    .c-precio.con-oferta{color:var(--danger)}
+    .c-precio-tachado{color:var(--text-3);font-size:15px;font-weight:500;text-decoration:line-through}
+
+    /* FILTROS */
+
+    .c-filtros-barra{
+      position:sticky;
+      top:var(--header-h);
+      z-index:20;
+      border-bottom:1px solid var(--border);
+      background:color-mix(in srgb,var(--bg) 93%,transparent);
+      backdrop-filter:blur(12px);
+    }
+
+    #c-filtros-barra,#c-seccion-productos{scroll-margin-top:calc(var(--header-h) + 16px)}
+
+    .c-migas{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      padding-top:var(--sp-2);
+      color:var(--text-3);
+      font-family:var(--font-mono);
+      font-size:11px;
+    }
+
+    .c-migas a{font-weight:700;cursor:pointer}
+    .c-migas a:hover{color:var(--accent)}
+
+    .c-fila-busqueda{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:var(--sp-5);
+      padding:var(--sp-4) 0 0;
+      border-bottom:1px solid var(--border);
+    }
+
+    .c-busqueda-caja{
+      display:flex;
+      min-width:0;
+      flex:1 1 220px;
+      align-items:center;
+      gap:10px;
+      padding:0 0 var(--sp-3);
+      border-bottom:1px solid var(--border);
+    }
+
+    .c-busqueda-caja input{
+      width:100%;
+      min-width:0;
+      border:0;
+      outline:0;
+      background:transparent;
+      color:var(--text);
+      font-family:var(--font-display);
+      font-size:19px;
+      font-weight:500;
+    }
+
+    .c-busqueda-caja input::placeholder{color:var(--text-3);font-style:italic}
+
+    .c-precio-filtro{
+      display:flex;
+      flex:0 0 auto;
+      align-items:center;
+      gap:10px;
+      padding-bottom:var(--sp-3);
+      color:var(--text-2);
+      font-family:var(--font-mono);
+      font-size:11px;
+    }
+
+    .c-precio-filtro input[type=range]{width:120px;accent-color:var(--accent)}
+
+    .c-catalogo-layout{display:block}
+    .c-sidebar{display:none}
+    .c-sidebar-titulo{margin-bottom:var(--sp-4);color:var(--text-3);font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+
+    .c-sidebar-cat-item{
+      display:flex;
+      width:100%;
+      align-items:center;
+      gap:10px;
+      margin-bottom:2px;
+      padding:9px 12px;
+      border:0;
+      background:transparent;
+      color:var(--text-2);
+      font-size:13px;
+      text-align:left;
+    }
+
+    .c-sidebar-cat-item:hover{background:var(--surface-2);color:var(--text)}
+    .c-sidebar-cat-item.activo{background:rgba(var(--accent-rgb),.12);color:var(--accent);font-weight:700}
+
+    .c-sidebar-ofertas{
+      position:relative;
+      overflow:hidden;
+      margin-top:var(--sp-7);
+      padding:var(--sp-5);
+      border:1px solid var(--border);
+      background:var(--surface-2);
+    }
+
+    .c-sidebar-ofertas h4{margin:0 0 4px;font-family:var(--font-display);font-size:19px}
+    .c-sidebar-ofertas p{margin:0 0 var(--sp-4);color:var(--text-2);font-size:12px}
+    .c-sidebar-ofertas a{color:var(--accent);font-size:12px;font-weight:800;cursor:pointer}
+
+    .c-filtros-in{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+      gap:var(--sp-4);
+      padding:var(--sp-3) 0 var(--sp-5);
+    }
+
+    .c-chips{
+      display:flex;
+      min-width:0;
+      flex:1;
+      gap:var(--sp-6);
+      overflow-x:auto;
+      scrollbar-width:none;
+    }
+
+    .c-chips::-webkit-scrollbar{display:none}
+
+    .c-chip{
+      flex-shrink:0;
+      padding:6px 0;
+      border:0;
+      border-bottom:2px solid transparent;
+      background:transparent;
+      color:var(--text-3);
+      font-family:var(--font-mono);
+      font-size:11.5px;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .c-chip:hover{color:var(--text)}
+    .c-chip.activo{border-bottom-color:var(--accent);color:var(--text)}
+
+    .c-filtros-derecha{display:flex;flex-shrink:0;align-items:center;gap:var(--sp-4)}
+
+    #c-orden-select{
+      padding:7px 10px;
+      border:1px solid var(--border);
+      border-radius:var(--radius-sm);
+      background:var(--surface);
+      color:var(--text-2);
+      font-size:12.5px;
+      font-weight:700;
+    }
+
+    .c-vista-toggle{display:none;gap:4px}
+    .c-vista-toggle button{
+      width:30px;
+      height:30px;
+      border:1px solid var(--border);
+      background:var(--surface);
+      color:var(--text-3);
+    }
+
+    .c-vista-toggle button.activo{border-color:var(--accent);color:var(--accent)}
+
+    /* GRID Y TARJETAS */
+
+    .c-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:28px 16px;
+    }
+
+    .c-grid .c-card,.c-grid .c-card.grande{
+      width:100%;
+      min-width:0;
+      max-width:none;
+      margin:0;
+    }
+
+    .c-grid .c-card.grande{grid-column:span 2}
+
+    .c-card{
+      display:flex;
+      flex-direction:column;
+      animation:c-card-enter .48s cubic-bezier(.22,1,.36,1) both;
+      animation-delay:var(--delay,0ms);
+    }
+
+    .c-card-media{
+      position:relative;
+      aspect-ratio:3/4;
+      overflow:hidden;
+      background:var(--surface-2);
+      cursor:pointer;
+      transition:box-shadow .35s cubic-bezier(.22,1,.36,1);
+    }
+
+    .c-card:hover .c-card-media{box-shadow:var(--shadow-2)}
+    .c-card-media img{width:100%;height:100%;object-fit:cover;transition:transform .6s cubic-bezier(.22,1,.36,1)}
+    .c-card:hover .c-card-media img{transform:scale(1.045)}
+
+    .c-card.grande .c-card-media{aspect-ratio:16/10}
+
+    .c-card-tag{
+      position:absolute;
+      z-index:2;
+      top:var(--sp-3);
+      left:var(--sp-3);
+      padding:4px 10px;
+      background:var(--surface);
+      color:var(--text);
+      font-family:var(--font-mono);
+      font-size:10px;
+      letter-spacing:.03em;
+    }
+
+    .c-card-tag.oferta{background:var(--danger);color:#fff}
+    .c-card-tag.nuevo{background:var(--accent);color:var(--accent-ink)}
+
+    .c-card-disp{
+      position:absolute;
+      z-index:2;
+      top:var(--sp-3);
+      right:var(--sp-3);
+      padding:4px 9px;
+      background:rgba(250,247,241,.92);
+      color:var(--disponible);
+      font-family:var(--font-mono);
+      font-size:9.5px;
+      letter-spacing:.03em;
+    }
+
+    .c-card-disp.agotado{color:var(--danger)}
+    .c-card.agotada .c-card-media{opacity:.55}
+
+    .c-fav-btn{
+      position:absolute;
+      z-index:3;
+      right:var(--sp-2);
+      bottom:var(--sp-2);
+      display:flex;
+      width:30px;
+      height:30px;
+      align-items:center;
+      justify-content:center;
+      border:0;
+      border-radius:50%;
+      background:rgba(250,247,241,.94);
+      font-size:15px;
+      transition:transform .15s ease;
+    }
+
+    .c-fav-btn:hover{transform:scale(1.15)}
+    .c-fav-btn.activo{color:var(--danger)}
+
+    .c-card-body{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      padding:var(--sp-3) 0 0;
+    }
+
+    .c-card-cat{
+      align-self:flex-start;
+      margin-bottom:2px;
+      color:var(--text-3);
+      font-family:var(--font-mono);
+      font-size:9.5px;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+    }
+
+    .c-card-nombre{
+      margin:0 0 6px;
+      font-family:var(--font-display);
+      font-size:16.5px;
+      font-weight:500;
+      line-height:1.25;
+      cursor:pointer;
+    }
+
+    .c-card-precio-row{display:flex;align-items:baseline;gap:8px}
+    .c-card-precio{font-family:var(--font-mono);font-size:14px;font-weight:500}
+    .c-card-precio.con-oferta{color:var(--danger)}
+    .c-card-tachado{color:var(--text-3);font-family:var(--font-mono);font-size:12px;text-decoration:line-through}
+
+    .c-card-botones{display:flex;gap:6px;margin-top:var(--sp-3)}
+
+    .c-card-accion-rapida{
+      display:flex;
+      min-height:38px;
+      flex:1;
+      align-items:center;
+      justify-content:center;
+      gap:5px;
+      padding:8px;
+      border:1px solid var(--border);
+      background:transparent;
+      color:var(--text-2);
+      font-size:11px;
+      font-weight:800;
+    }
+
+    .c-card-accion-rapida.llamar,.c-card-accion-rapida.compartir{flex:0 0 auto;padding-inline:12px}
+    .c-card-accion-rapida.wa:hover{border-color:#25D366;background:#25D3661a;color:#25D366}
+    .c-card-accion-rapida.llamar:hover{border-color:#3b82f6;background:#3b82f61a;color:#3b82f6}
+    .c-card-accion-rapida.compartir:hover{border-color:var(--accent);background:rgba(var(--accent-rgb),.08);color:var(--accent)}
+
+    .c-grid.vista-lista{display:flex;flex-direction:column}
+    .c-grid.vista-lista .c-card{display:flex;max-width:100%;flex-direction:row;gap:var(--sp-5);align-items:flex-start}
+    .c-grid.vista-lista .c-card-media{flex:0 0 140px;aspect-ratio:1}
+    .c-grid.vista-lista .c-card.grande{grid-column:auto}
+
+    .c-vacio{
+      width:100%;
+      padding:var(--sp-9) var(--sp-4);
+      color:var(--text-3);
+      font-size:13.5px;
+      text-align:center;
+    }
+
+    /* CTA Y FOOTER */
+
+    .c-cta-whatsapp{
+      padding:var(--sp-8) 0;
+      border-top:1px solid var(--border);
+      border-bottom:1px solid var(--border);
+      background:var(--surface);
+    }
+
+    .c-cta-whatsapp-in{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:var(--sp-5);
+    }
+
+    .c-cta-whatsapp h3{margin:0 0 4px;font-family:var(--font-display);font-size:24px}
+    .c-cta-whatsapp p{margin:0;color:var(--text-2);font-size:13px}
+
+    .c-footer{padding:var(--sp-6) 0;border-top:1px solid var(--border)}
+    .c-footer-in{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-3);color:var(--text-3);font-size:12px}
+    .c-footer-in a{color:var(--text-2);font-weight:800}
+    .c-footer-in a:hover{color:var(--accent)}
+
+    .c-btn-flotante-wa{
+      position:fixed;
+      z-index:40;
+      right:var(--sp-5);
+      bottom:var(--sp-5);
+      display:flex;
+      width:56px;
+      height:56px;
+      align-items:center;
+      justify-content:center;
+      border:0;
+      border-radius:50%;
+      background:#25D366;
+      box-shadow:0 8px 20px -4px rgba(0,0,0,.35);
+      color:#fff;
+      font-size:26px;
+      transition:transform .2s ease;
+    }
+
+    .c-btn-flotante-wa:hover{transform:scale(1.08)}
+
+    /* MODAL */
+
+    .c-modal-overlay{
+      position:fixed;
+      z-index:100;
+      inset:0;
+      display:none;
+      align-items:flex-end;
+      justify-content:center;
+      padding:10px;
+      background:rgba(10,10,14,.64);
+      backdrop-filter:blur(3px);
+    }
+
+    .c-modal-overlay.open{display:flex;animation:c-fade .2s ease}
+
+    .c-modal{
+      width:100%;
+      max-width:520px;
+      max-height:calc(100vh - 10px);
+      max-height:calc(100dvh - 10px);
+      overflow-y:auto;
+      border-radius:18px 18px 0 0;
+      background:var(--surface);
+      animation:c-fade-up .3s cubic-bezier(.22,1,.36,1);
+      overscroll-behavior:contain;
+    }
+
+    .c-modal-close{
+      position:sticky;
+      z-index:5;
+      top:var(--sp-3);
+      display:flex;
+      width:34px;
+      height:34px;
+      align-items:center;
+      justify-content:center;
+      margin:0 var(--sp-3) 0 auto;
+      border:0;
+      border-radius:50%;
+      background:rgba(0,0,0,.56);
+      color:#fff;
+      font-size:15px;
+    }
+
+    .c-modal-fotos{
+      display:flex;
+      overflow-x:auto;
+      margin-top:-42px;
+      scroll-snap-type:x mandatory;
+      scrollbar-width:none;
+    }
+
+    .c-modal-fotos::-webkit-scrollbar{display:none}
+    .c-modal-fotos img{width:100%;flex-shrink:0;aspect-ratio:1;cursor:zoom-in;object-fit:cover;scroll-snap-align:start}
+
+    .c-modal-body{padding:var(--sp-5) var(--sp-6) var(--sp-7)}
+    .c-modal-cat{margin-bottom:6px;color:var(--accent);font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+    .c-modal-nombre{margin-bottom:var(--sp-2);font-family:var(--font-display);font-size:24px;font-weight:500}
+    .c-modal-desc{margin-bottom:var(--sp-4);color:var(--text-2);font-size:13.5px;line-height:1.6;white-space:pre-wrap}
+
+    .c-relacionados-titulo{
+      margin:var(--sp-6) 0 var(--sp-3);
+      padding-top:var(--sp-5);
+      border-top:1px solid var(--border);
+      font-size:13px;
+      font-weight:800;
+    }
+
+    .c-relacionados-scroll{display:flex;gap:var(--sp-3);overflow-x:auto}
+    .c-relacionado-mini{flex:0 0 110px;cursor:pointer}
+    .c-relacionado-mini img,.c-relacionado-vacio{width:110px;height:110px;border-radius:var(--radius-sm);background:var(--surface-2);object-fit:cover}
+    .c-relacionado-mini .nombre{margin-top:4px;font-size:11.5px;font-weight:700;line-height:1.3}
+    .c-relacionado-mini .precio{color:var(--accent);font-size:11.5px;font-weight:800}
+
+    /* LIGHTBOX */
+
+    .c-lightbox{
+      position:fixed;
+      z-index:200;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      background:rgba(0,0,0,.92);
+    }
+
+    .c-lightbox.open{display:flex;animation:c-fade .2s ease}
+    .c-lightbox img{max-width:min(94vw,1400px);max-height:82dvh;object-fit:contain}
+
+    .c-lightbox-cerrar,.c-lightbox-flecha{
+      position:absolute;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:0;
+      border-radius:50%;
+      background:rgba(255,255,255,.15);
+      color:#fff;
+    }
+
+    .c-lightbox-cerrar{top:var(--sp-5);right:var(--sp-5);width:40px;height:40px;font-size:18px}
+    .c-lightbox-flecha{top:50%;width:48px;height:48px;font-size:26px;transform:translateY(-50%)}
+    .c-lightbox-flecha.izq{left:var(--sp-5)}
+    .c-lightbox-flecha.der{right:var(--sp-5)}
+    .c-lightbox-contador{position:absolute;bottom:var(--sp-5);left:50%;color:#fff;font-size:12.5px;transform:translateX(-50%)}
+
+    /* DESKTOP */
+
+    @media(min-width:700px){
+      .c-header-nav{display:flex}
+      .c-confianza-in,.c-confianza-footer-in{grid-template-columns:repeat(4,1fr)}
+      .c-confianza-item:not(:last-child){padding-right:var(--sp-5);border-right:1px solid var(--border)}
+      .c-cta-whatsapp-in{flex-direction:row;align-items:center;justify-content:space-between}
+      .c-grid{gap:30px 20px}
+    }
+
+    @media(min-width:800px){
+      .c-hero-in{flex-direction:row;align-items:stretch;gap:0;padding:0}
+      .c-hero-texto{max-width:600px;margin-right:-60px;padding:0 0 0 var(--sp-9)}
+      .c-hero.con-mosaico .c-hero-mosaico-wrap,
+      .c-hero.con-imagen.con-destacado-hero .c-hero-mosaico-wrap{
+        position:relative;
+        display:block;
+        flex:0 0 52%;
+      }
+
+      .c-hero.con-mosaico .c-hero-mosaico{display:grid}
+      .c-hero:not(.con-mosaico):not(.con-destacado-hero) .c-hero-texto{margin-right:0}
+
+      .c-hero.con-imagen.con-destacado-hero .c-hero-mosaico{display:none}
+    }
+
+    @media(min-width:900px){
+      .c360-container{padding-inline:var(--sp-8)}
+      .c-header-buscador{display:flex}
+      .c-header-fav-btn{margin-left:var(--sp-3)}
+      .c-catalogo-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:var(--sp-8);align-items:start}
+      .c-sidebar{position:sticky;top:130px;display:block}
+      .c-vista-toggle{display:flex}
+      .c-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:32px 22px}
+
+      .c-destacado{
+        min-height:340px;
+        flex-direction:row;
+        gap:0;
+        padding-inline:var(--sp-8);
+        border:1px solid var(--border);
+        background:var(--surface);
+        box-shadow:var(--shadow-1);
+      }
+
+      .c-destacado-media{flex:0 0 54%}
+      .c-destacado-img{height:100%;aspect-ratio:auto;border-radius:0}
+      .c-destacado-sin-foto{height:100%;aspect-ratio:auto;border-radius:0}
+      .c-destacado-info{padding:0 var(--sp-9)}
+      .c-destacado-thumbs{position:absolute;bottom:var(--sp-6);left:var(--sp-6);margin:0;padding:0}
+      .c-destacado-thumb{border-color:rgba(255,255,255,.5);box-shadow:0 4px 14px rgba(0,0,0,.3)}
+    }
+
+    @media(min-width:1200px){
+      .c-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    }
+
+    @media(min-width:640px){
+      .c-modal-overlay{align-items:center;padding:24px}
+      .c-modal{max-height:min(90vh,800px);max-height:min(90dvh,800px);border-radius:18px}
+    }
+
+    /* MOVIL */
+
+    @media(max-width:699px){
+      :root{--header-h:56px}
+
+      .c360-container{padding-inline:16px}
+      .c-header-in{gap:10px;padding:10px 0}
+      .c-header-logo{width:34px;height:34px}
+      .c-header-nombre{font-size:17px}
+      .c-header-fav-btn{font-size:16px}
+
+      .c-hero{min-height:auto}
+      .c-hero-in{gap:24px;padding:34px 16px 32px}
+      .c-hero-titulo{max-width:100%;font-size:clamp(40px,12vw,64px);line-height:.94}
+      .c-hero-desc{font-size:14px;line-height:1.6}
+      .c-hero-acciones{flex-direction:column;align-items:stretch;gap:16px;margin-top:24px}
+      #c-hero-cta,#c-hero-cta .c-btn{width:100%}
+      .c-hero-contacto{gap:10px 14px;font-size:10.5px}
+
+      .c-hero.con-mosaico .c-hero-mosaico-wrap{
+        position:relative;
+        display:block;
+        min-height:180px;
+        margin:0 -16px -32px;
+      }
+
+      .c-hero.con-mosaico .c-hero-mosaico{
+        display:grid;
+        height:180px;
+        grid-template-columns:1.15fr .85fr;
+        grid-template-rows:1fr 1fr;
+        gap:2px;
+      }
+
+      .c-hero.con-mosaico .c-hero-mosaico.una-sola{grid-template-columns:1fr;grid-template-rows:1fr}
+      .c-hero.con-mosaico .c-hero-mosaico img:first-child:not(:only-child){grid-row:1/3}
+      .c-hero-etiqueta-flotante{top:12px;right:12px;padding:7px 10px;font-size:10px}
+      .c-hero-card-flotante{display:none!important}
+
+      .c-confianza-in{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 10px;padding:22px 0}
+      .c-confianza-item{align-items:flex-start;gap:8px}
+      .c-confianza-item span{font-size:19px}
+      .c-confianza-item b{font-size:11.px;line-height:1.2}
+      .c-confianza-item small{font-size:10px;line-height:1.3}
+
+      .c-seccion{padding:38px 0}
+      .c-seccion-destacado-wrap{padding:42px 0 48px}
+      .c-destacado{gap:20px;padding:0 16px}
+      .c-destacado-info{padding:0}
+      .c-destacado-img,.c-destacado-sin-foto{border-radius:12px}
+
+      .c-fila-busqueda{gap:14px;padding-top:12px}
+      .c-busqueda-caja{flex-basis:100%}
+      .c-busqueda-caja input{font-size:17px}
+      .c-precio-filtro{width:100%;justify-content:space-between}
+      .c-precio-filtro input[type=range]{width:min(48vw,210px)}
+
+      .c-filtros-in{align-items:stretch;gap:12px}
+      .c-chips{width:100%;gap:20px}
+      .c-filtros-derecha{width:100%;justify-content:space-between;gap:10px}
+      #c-orden-select{max-width:180px}
+
+      .c-grid{gap:24px 12px}
+      .c-grid .c-card.grande .c-card-media{aspect-ratio:16/10}
+      .c-card-tag,.c-card-disp{padding:4px 6px;font-size:8.5px}
+      .c-card-tag{top:8px;left:8px}
+      .c-card-disp{top:8px;right:8px}
+      .c-fav-btn{right:7px;bottom:7px;width:34px;height:34px}
+      .c-card-body{padding-top:10px}
+      .c-card-cat{font-size:8.5px}
+      .c-card-nombre{font-size:15px;line-height:1.22}
+      .c-card-precio{font-size:12.5px}
+      .c-card-tachado{font-size:10.5px}
+      .c-card-botones{gap:5px;margin-top:10px}
+      .c-card-accion-rapida.llamar,.c-card-accion-rapida.compartir{padding-inline:10px}
+
+      .c-btn-flotante-wa{
+        right:16px;
+        bottom:calc(16px + env(safe-area-inset-bottom));
+      }
+
+      .c-toast-wrap{
+        bottom:calc(80px + env(safe-area-inset-bottom));
+        width:calc(100% - 32px);
+      }
+
+      .c-confianza-footer-in{gap:20px;padding:34px 0}
+    }
+
+    @media(max-width:359px){
+      .c-grid{grid-template-columns:1fr}
+      .c-grid .c-card.grande{grid-column:auto}
+      .c-confianza-in{grid-template-columns:1fr}
+    }
+
+    @media(min-width:700px) and (max-width:819px){
+      .c-header-nav{display:none}
+    }
+
+    @media(hover:none){
+      .c-card:hover .c-card-media{box-shadow:none}
+      .c-card:hover .c-card-media img{transform:none}
+    }
+
+    @media(prefers-reduced-motion:reduce){
+      *,*:before,*:after{
+        animation-duration:.01ms!important;
+        animation-iteration-count:1!important;
+        scroll-behavior:auto!important;
+        transition-duration:.01ms!important;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<div id="c360p-loader" class="c360p-loader-skeleton">
-  <div class="c-sk-header"><div class="c-sk" style="width:32px;height:32px;border-radius:8px"></div><div class="c-sk" style="width:100px;height:14px"></div></div>
-  <div class="c-sk-hero"><div class="c-sk" style="width:60%;height:16px;margin-bottom:14px"></div><div class="c-sk" style="width:40%;height:44px;margin-bottom:14px"></div><div class="c-sk" style="width:80%;height:14px"></div></div>
-  <div class="c-sk-grid">
-    <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
-    <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
-    <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
-    <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
-  </div>
-</div>
-
-<div id="c360p-app" style="display:none">
-
-  <div id="c-preview-banner" class="c-preview-banner">👁 Vista previa — esto no es visible al público todavía</div>
-
-  <header class="c-header">
-    <div class="c360-container c-header-in">
-      <img id="c-header-logo" class="c-header-logo" src="" style="display:none" alt="">
-      <span id="c-header-nombre" class="c-header-nombre"></span>
-      <nav class="c-header-nav">
-        <a onclick="irAInicio()">Inicio</a>
-        <a onclick="irACatalogo()">Catálogo</a>
-        <a id="c-nav-contacto" href="#" onclick="return false" style="display:none">Contacto</a>
-      </nav>
-      <div class="c-header-buscador">
-        <input type="text" id="c-buscador-header" placeholder="Buscar productos…" oninput="onBuscar(this.value); document.getElementById('c-buscador').value=this.value;" aria-label="Buscar productos">
-        <span>🔍</span>
-      </div>
-      <button class="c-header-fav-btn" onclick="irACatalogo();toggleSoloFavoritos();" aria-label="Favoritos">
-        ♥ <span class="c-header-fav-conteo" id="c-header-fav-conteo" style="display:none">0</span>
-      </button>
-      <button class="c-theme-btn" onclick="toggleTemaPublico()" id="c-theme-btn" aria-label="Cambiar tema">🌙</button>
+  <div id="c360p-loader" class="c360p-loader-skeleton">
+    <div class="c-sk-header">
+      <div class="c-sk" style="width:32px;height:32px;border-radius:8px"></div>
+      <div class="c-sk" style="width:100px;height:14px"></div>
     </div>
-  </header>
 
-  <section class="c-hero" id="c-hero">
-    <div class="c-hero-bg" id="c-hero-bg"></div>
-    <div class="c-hero-in" id="c-hero-in">
-      <div class="c-hero-texto">
-        <div class="c-hero-eyebrow">
-          <img id="c-hero-logo" src="" style="display:none" alt="">
-          <span id="c-hero-marca"></span>
-        </div>
-        <h1 class="c-hero-titulo" id="c-hero-titulo">Catálogo</h1>
-        <p class="c-hero-desc" id="c-hero-desc"></p>
-        <div class="c-hero-acciones">
-          <div id="c-hero-cta"></div>
-          <div class="c-hero-contacto" id="c-hero-contacto"></div>
-        </div>
-      </div>
-      <div class="c-hero-mosaico-wrap">
-        <div class="c-hero-mosaico vacio" id="c-hero-mosaico"></div>
-        <div class="c-hero-etiqueta-flotante" id="c-hero-etiqueta" style="display:none"></div>
-        <div class="c-hero-card-flotante" id="c-hero-card-destacado" style="display:none"></div>
-      </div>
+    <div class="c-sk-hero">
+      <div class="c-sk" style="width:60%;height:16px;margin-bottom:14px"></div>
+      <div class="c-sk" style="width:40%;height:44px;margin-bottom:14px"></div>
+      <div class="c-sk" style="width:80%;height:14px"></div>
     </div>
-  </section>
 
-  <div class="c-confianza">
-    <div class="c360-container c-confianza-in">
-      <div class="c-confianza-item"><span>🚚</span><div><b>Envíos rápidos</b><small>A todo el país</small></div></div>
-      <div class="c-confianza-item"><span>✅</span><div><b>Productos verificados</b><small>Calidad garantizada</small></div></div>
-      <div class="c-confianza-item"><span>🎧</span><div><b>Atención personalizada</b><small>Estamos para ayudarte</small></div></div>
-      <div class="c-confianza-item"><span>🔒</span><div><b>Contacto directo</b><small>Compra con confianza</small></div></div>
+    <div class="c-sk-grid">
+      <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
+      <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
+      <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
+      <div class="c-sk-card"><div class="c-sk" style="height:160px"></div><div class="c-sk" style="height:12px;width:70%"></div><div class="c-sk" style="height:14px;width:40%"></div></div>
     </div>
   </div>
 
-  <section class="c-seccion-destacado-wrap tinte-a c-reveal" id="c-seccion-destacado" style="display:none">
-    <div class="c-destacado" id="c-destacado"></div>
-  </section>
+  <div id="c360p-app" style="display:none">
 
-  <section class="c-seccion tinte-b c-reveal" id="c-seccion-mas-destacados" style="display:none">
-    <div class="c360-container">
-      <div class="c-seccion-head"><span class="c-seccion-titulo">Más destacados</span></div>
-      <div class="c-grid" id="c-grid-mas-destacados"></div>
+    <div id="c-preview-banner" class="c-preview-banner">
+      👁 Vista previa — esto no es visible al público todavía
     </div>
-  </section>
 
-  <section class="c-seccion tinte-b c-reveal" id="c-seccion-vistos" style="display:none">
-    <div class="c360-container">
-      <div class="c-seccion-head"><span class="c-seccion-titulo">Vistos recientemente</span></div>
-      <div class="c-grid" id="c-grid-vistos"></div>
-    </div>
-  </section>
+    <header class="c-header">
+      <div class="c360-container c-header-in">
+        <img id="c-header-logo" class="c-header-logo" src="" alt="" style="display:none">
+        <span id="c-header-nombre" class="c-header-nombre"></span>
 
-  <div class="c-filtros-barra" id="c-filtros-barra">
-    <div class="c360-container">
-      <div id="c-migas" class="c-migas" style="display:none"></div>
-      <div class="c-fila-busqueda">
-        <div class="c-busqueda-caja">
+        <nav class="c-header-nav" aria-label="Navegación principal">
+          <a onclick="irAInicio()">Inicio</a>
+          <a onclick="irACatalogo()">Catálogo</a>
+          <a id="c-nav-contacto" href="#" onclick="return false" style="display:none">Contacto</a>
+        </nav>
+
+        <div class="c-header-buscador">
+          <input
+            type="search"
+            id="c-buscador-header"
+            placeholder="Buscar productos…"
+            oninput="onBuscar(this.value)"
+            aria-label="Buscar productos">
           <span>🔍</span>
-          <input type="text" id="c-buscador" placeholder="Buscar productos…" oninput="onBuscar(this.value)" aria-label="Buscar productos">
         </div>
-        <div class="c-precio-filtro">
-          <span id="c-precio-label">Cualquier precio</span>
-          <input type="range" id="c-precio-slider" min="0" max="100" value="100" oninput="onCambiarPrecio(this.value)" aria-label="Filtrar por precio máximo">
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <section class="c-seccion tinte-a c-reveal" id="c-seccion-productos">
-    <div class="c360-container c-catalogo-layout">
-      <aside class="c-sidebar">
-        <div class="c-sidebar-titulo">Categorías</div>
-        <div class="c-sidebar-categorias" id="c-sidebar-categorias"></div>
-        <div class="c-sidebar-ofertas" id="c-sidebar-ofertas" style="display:none"></div>
-      </aside>
-      <div class="c-catalogo-main">
-        <div class="c-filtros-in">
-          <div class="c-chips" id="c-chips-categorias"></div>
-          <div class="c-filtros-derecha">
-            <select id="c-orden-select" onchange="cambiarOrden(this.value)">
-              <option value="reciente">Más recientes</option>
-              <option value="precio_asc">Precio: menor a mayor</option>
-              <option value="precio_desc">Precio: mayor a menor</option>
-              <option value="nombre">Nombre A-Z</option>
-            </select>
-            <span class="c-seccion-conteo" id="c-conteo-productos"></span>
-            <div class="c-vista-toggle">
-              <button id="c-vista-grid" class="activo" onclick="cambiarVista('grid')" aria-label="Vista de cuadrícula">▦</button>
-              <button id="c-vista-lista" onclick="cambiarVista('lista')" aria-label="Vista de lista">☰</button>
-            </div>
+        <button class="c-header-fav-btn" type="button" onclick="irACatalogo();toggleSoloFavoritos()" aria-label="Ver favoritos">
+          ♥
+          <span class="c-header-fav-conteo" id="c-header-fav-conteo" style="display:none">0</span>
+        </button>
+
+        <button class="c-theme-btn" type="button" onclick="toggleTemaPublico()" id="c-theme-btn" aria-label="Cambiar tema">
+          🌙
+        </button>
+      </div>
+    </header>
+
+    <section class="c-hero" id="c-hero">
+      <div class="c-hero-bg" id="c-hero-bg"></div>
+
+      <div class="c-hero-in" id="c-hero-in">
+        <div class="c-hero-texto">
+          <div class="c-hero-eyebrow">
+            <img id="c-hero-logo" src="" style="display:none" alt="">
+            <span id="c-hero-marca"></span>
+          </div>
+
+          <h1 class="c-hero-titulo" id="c-hero-titulo">Catálogo</h1>
+          <p class="c-hero-desc" id="c-hero-desc"></p>
+
+          <div class="c-hero-acciones">
+            <div id="c-hero-cta"></div>
+            <div class="c-hero-contacto" id="c-hero-contacto"></div>
           </div>
         </div>
-        <div class="c-grid" id="c-grid-productos"></div>
-      </div>
-    </div>
-  </section>
 
-  <div class="c-cta-whatsapp" id="c-cta-whatsapp" style="display:none">
-    <div class="c360-container c-cta-whatsapp-in">
-      <div>
-        <h3>¿No encuentras lo que buscas?</h3>
-        <p>Escríbenos y te ayudamos a encontrarlo.</p>
-      </div>
-      <a class="c-btn" id="c-cta-whatsapp-btn" target="_blank">💬 Escribir por WhatsApp</a>
-    </div>
-  </div>
-
-  <div class="c-confianza-footer">
-    <div class="c360-container c-confianza-footer-in">
-      <div class="c-confianza-footer-item"><span class="icono rosa">🛍️</span><div><b>Compra fácil y rápida</b><small>Realiza tu pedido en segundos</small></div></div>
-      <div class="c-confianza-footer-item"><span class="icono verde">💬</span><div><b>Atención en tiempo real</b><small>Te asesoramos por WhatsApp</small></div></div>
-      <div class="c-confianza-footer-item"><span class="icono roja">❤️</span><div><b>Productos de calidad</b><small>Seleccionamos lo mejor para ti</small></div></div>
-      <div class="c-confianza-footer-item"><span class="icono morada">⭐</span><div><b>Tu satisfacción es prioridad</b><small>Miles de clientes confían en nosotros</small></div></div>
-    </div>
-  </div>
-
-  <footer class="c-footer">
-    <div class="c360-container c-footer-in">
-      <span id="c-footer-nombre"></span>
-      <span>Creado con <a href="/" target="_blank">Catálogo360</a></span>
-    </div>
-  </footer>
-
-  <button class="c-btn-flotante-wa" id="c-btn-flotante-wa" style="display:none" onclick="registrarEvento('click_whatsapp');window.open(c_urlWhatsappHero,'_blank')" aria-label="WhatsApp">💬</button>
-
-</div>
-
-<div class="c-modal-overlay" id="c-modal" onclick="if(event.target===this)cerrarModalProducto()">
-  <div class="c-modal">
-    <button class="c-modal-close" onclick="cerrarModalProducto()">✕</button>
-    <div class="c-modal-fotos" id="c-modal-fotos" onclick="abrirLightbox(FOTOS_MODAL_ACTUAL, indexFotoClic(event))"></div>
-    <div class="c-modal-body">
-      <div class="c-modal-cat" id="c-modal-cat" style="display:none"></div>
-      <div class="c-modal-nombre" id="c-modal-nombre"></div>
-      <div class="c-precio-row" style="margin-bottom:var(--sp-4)">
-        <span class="c-precio" id="c-modal-precio"></span>
-        <span class="c-precio-tachado" id="c-modal-precio-tachado" style="display:none"></span>
-      </div>
-      <div class="c-modal-desc" id="c-modal-desc"></div>
-      <button class="c-btn" id="c-modal-whatsapp" style="width:100%"></button>
-      <div id="c-relacionados-wrap" style="display:none">
-        <div class="c-relacionados-titulo">También te puede interesar</div>
-        <div class="c-relacionados-scroll" id="c-relacionados"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="c-lightbox" id="c-lightbox" onclick="if(event.target===this)cerrarLightbox()">
-  <button class="c-lightbox-cerrar" onclick="cerrarLightbox()" aria-label="Cerrar">✕</button>
-  <button class="c-lightbox-flecha izq" onclick="moverLightbox(-1)" aria-label="Anterior">‹</button>
-  <img id="c-lightbox-img" src="" alt="">
-  <button class="c-lightbox-flecha der" onclick="moverLightbox(1)" aria-label="Siguiente">›</button>
-  <div class="c-lightbox-contador" id="c-lightbox-contador"></div>
-</div>
-
-<div class="c-toast-wrap" id="c-toast-wrap"></div>
-
-<script>
-const sb = c360CrearCliente();
-
-let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [], CATEGORIA_VISTA_ACTUAL = null;
-
-function esc(s) { return c360Esc(s); }
-function fmtC(n) { return c360FmtC(n); }
-function linkWhatsapp(numero, texto) { return c360LinkWA(numero, texto); }
-function hexARgb(hex) { return c360HexARgb(hex, '#6366f1'); }
-
-function irAInicio() { window.scrollTo({ top:0, behavior:'smooth' }); }
-function irACatalogo() {
-  const barra = document.getElementById('c-filtros-barra');
-  const destino = barra.style.display !== 'none' ? barra : document.getElementById('c-seccion-productos');
-  destino.scrollIntoView({ behavior:'smooth', block:'start' });
-}
-function toggleTemaPublico() {
-  const actual = document.documentElement.getAttribute('data-theme');
-  const nuevo = actual === 'oscuro' ? 'claro' : 'oscuro';
-  document.documentElement.setAttribute('data-theme', nuevo);
-  document.getElementById('c-theme-btn').textContent = nuevo === 'oscuro' ? '☀' : '🌙';
-  localStorage.setItem('c360p_tema', nuevo);
-}
-
-function registrarEvento(tipo, productoId) {
-  c360RegistrarEvento(sb, CATALOGO?.id, tipo, productoId, !!new URLSearchParams(window.location.search).get('preview'));
-}
-
-async function init() {
-  const params = new URLSearchParams(window.location.search);
-  const slug = params.get('c');
-  const idPreview = params.get('preview');
-
-  const resultado = await c360CargarCatalogoPublico({ sb, slug, idPreview });
-  if (resultado.error) { mostrarError(resultado.error); return; }
-  if (c360RedirigirSiPlantillaCambio(resultado.catalogo, 'profesional')) return;
-  CATALOGO = resultado.catalogo;
-  PRODUCTOS = resultado.productos;
-  CATEGORIAS = resultado.categorias;
-
-  if (idPreview && CATALOGO.estado !== 'publicado') document.getElementById('c-preview-banner').style.display = 'block';
-
-  document.documentElement.style.setProperty('--accent', CATALOGO.color_acento || '#6366f1');
-  document.documentElement.style.setProperty('--accent-rgb', hexARgb(CATALOGO.color_acento));
-
-  const temaGuardado = localStorage.getItem('c360p_tema') || CATALOGO.tema_default || 'claro';
-  document.documentElement.setAttribute('data-theme', temaGuardado);
-  document.getElementById('c-theme-btn').textContent = temaGuardado === 'oscuro' ? '☀' : '🌙';
-
-  renderTodo();
-
-  if (!idPreview) registrarEvento('visita');
-
-  document.getElementById('c360p-loader').style.display = 'none';
-  document.getElementById('c360p-app').style.display = 'block';
-  activarRevelado();
-}
-
-function mostrarError(msg) {
-  document.getElementById('c360p-loader').innerHTML = `<div style="text-align:center"><div style="font-size:28px;margin-bottom:10px">😕</div>${esc(msg)}</div>`;
-}
-
-function activarRevelado() {
-  if (!('IntersectionObserver' in window)) { document.querySelectorAll('.c-reveal').forEach(el => el.classList.add('visible')); return; }
-  const obs = new IntersectionObserver((entradas) => {
-    entradas.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
-  }, { threshold:.08, rootMargin:'0px 0px -30px 0px' });
-  document.querySelectorAll('.c-reveal').forEach(el => obs.observe(el));
-}
-
-function renderTodo() {
-  renderHeaderYHero();
-  renderDestacado();
-  renderVistaCategoriasOProductos();
-  actualizarContadorFav();
-  document.getElementById('c-footer-nombre').textContent = CATALOGO.nombre_comercial || CATALOGO.nombre;
-}
-
-function renderHeaderYHero() {
-  const c = CATALOGO;
-  document.title = c.nombre_comercial || c.nombre;
-  document.getElementById('c360p-desc-meta').setAttribute('content', c.descripcion || '');
-  document.getElementById('c360p-og-title').setAttribute('content', c.nombre_comercial || c.nombre);
-  document.getElementById('c360p-og-desc').setAttribute('content', c.descripcion || '');
-  if (c.logo_url) document.getElementById('c360p-og-image').setAttribute('content', c.logo_url);
-
-  document.getElementById('c-header-nombre').textContent = c.nombre_comercial || c.nombre;
-  if (c.logo_url) {
-    document.getElementById('c-header-logo').src = c.logo_url;
-    document.getElementById('c-header-logo').style.display = 'block';
-    document.getElementById('c-hero-logo').src = c.logo_url;
-    document.getElementById('c-hero-logo').style.display = 'block';
-  }
-  document.getElementById('c-hero-marca').textContent = c.nombre_comercial || c.nombre;
-  document.getElementById('c-hero-titulo').textContent = c.nombre;
-  document.getElementById('c-hero-desc').textContent = c.descripcion || '';
-  document.getElementById('c-hero-desc').style.display = c.descripcion ? 'block' : 'none';
-
-  const heroEl = document.getElementById('c-hero');
-  const heroInEl = document.getElementById('c-hero-in');
-  if (c.banner_url) {
-    // 1) El dueño subió un banner manual -- se respeta, tiene prioridad.
-    heroEl.classList.add('con-imagen');
-    const bg = document.getElementById('c-hero-bg');
-    bg.style.backgroundImage = `url('${c.banner_url}')`;
-    bg.classList.add('activo');
-  } else {
-    // 2) Sin banner manual -- el sistema arma un mosaico real con las
-    // fotos de los propios productos (nunca le pedimos al usuario que
-    // diseñe nada). Se priorizan destacados, se evitan fotos repetidas.
-    const fotosReales = [];
-    const vistos = new Set();
-    const ordenados = [...PRODUCTOS].sort((a,b) => (b.destacado?1:0) - (a.destacado?1:0));
-    for (const p of ordenados) {
-      const foto = p.fotos.find(f => f.es_principal) || p.fotos[0];
-      if (foto && !vistos.has(foto.url)) { fotosReales.push(foto.url); vistos.add(foto.url); }
-      if (fotosReales.length >= 3) break;
-    }
-    if (fotosReales.length) {
-      const mosaico = document.getElementById('c-hero-mosaico');
-      mosaico.classList.remove('vacio');
-      mosaico.classList.toggle('una-sola', fotosReales.length === 1);
-      mosaico.innerHTML = fotosReales.map(url => `<img src="${esc(url)}" alt="" loading="lazy">`).join('');
-      const etiqueta = document.getElementById('c-hero-etiqueta');
-      etiqueta.style.display = 'block';
-      etiqueta.textContent = `${PRODUCTOS.length} PRODUCTO${PRODUCTOS.length===1?'':'S'}`;
-    } else {
-      document.getElementById('c-hero-mosaico').classList.add('vacio');
-      // 3) Todavia no hay ninguna foto de producto -- en vez de un
-      // hero vacio, se genera una textura propia con el color del
-      // catalogo (nunca un bloque plano sin diseño).
-      heroEl.classList.add('c-hero-patron');
-    }
-  }
-
-  const ctaDiv = document.getElementById('c-hero-cta');
-  if (c.whatsapp) {
-    window.c_urlWhatsappHero = linkWhatsapp(c.whatsapp, `Hola, vi su catálogo ${esc(c.nombre_comercial||'')} y tengo una consulta.`);
-    ctaDiv.innerHTML = `<a class="c-btn" href="${window.c_urlWhatsappHero}" target="_blank" onclick="registrarEvento('click_whatsapp')">💬 Escribir por WhatsApp</a>`;
-    document.getElementById('c-btn-flotante-wa').style.display = 'flex';
-    const navContacto = document.getElementById('c-nav-contacto');
-    navContacto.style.display = 'inline';
-    navContacto.href = window.c_urlWhatsappHero;
-    navContacto.target = '_blank';
-    navContacto.onclick = () => registrarEvento('click_whatsapp');
-    document.getElementById('c-cta-whatsapp').style.display = 'block';
-    const ctaBtn = document.getElementById('c-cta-whatsapp-btn');
-    ctaBtn.href = window.c_urlWhatsappHero;
-    ctaBtn.onclick = () => registrarEvento('click_whatsapp');
-  } else {
-    ctaDiv.innerHTML = '';
-  }
-
-  const info = document.getElementById('c-hero-contacto');
-  let filas = '';
-  if (c.telefono) filas += `<a href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')">📞 ${esc(c.telefono)}</a>`;
-  if (c.email) filas += `<span>✉️ ${esc(c.email)}</span>`;
-  if (c.ubicacion) filas += `<span>📍 ${esc(c.ubicacion)}</span>`;
-  info.innerHTML = filas;
-}
-
-function insertarDatosEstructurados() {
-  c360InsertarJSONLD('c-jsonld', CATALOGO, PRODUCTOS);
-}
-function renderTarjetaFlotanteHero(p, enOferta) {
-  const card = document.getElementById('c-hero-card-destacado');
-  card.style.display = 'block';
-  card.innerHTML = `
-    <div class="etiqueta">Destacado</div>
-    <div class="nombre">${esc(p.nombre)}</div>
-    <div class="precio-row">
-      <span class="precio">${fmtC(enOferta?p.precio_oferta:p.precio)}</span>
-      ${enOferta ? `<span class="tachado">${fmtC(p.precio)}</span>` : ''}
-    </div>
-    <a onclick="abrirModalProducto('${p.id}')">Ver producto →</a>
-  `;
-}
-function renderDestacado() {
-  const destacados = PRODUCTOS.filter(p => p.destacado);
-  const seccionGrande = document.getElementById('c-seccion-destacado');
-  const seccionResto = document.getElementById('c-seccion-mas-destacados');
-  insertarDatosEstructurados();
-
-  if (!destacados.length) { seccionGrande.style.display = 'none'; seccionResto.style.display = 'none'; return; }
-
-  seccionGrande.style.display = 'block';
-  const p = destacados[0];
-  const cat = CATEGORIAS.find(c => c.id === p.categoria_id);
-  const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
-  const enOferta = p.etiqueta === 'oferta' && p.precio_oferta;
-  renderTarjetaFlotanteHero(p, enOferta);
-
-  document.getElementById('c-destacado').innerHTML = `
-    <div class="c-destacado-media">
-      <img class="c-destacado-img" id="c-destacado-img-principal" src="${esc(principal?.url||'')}" alt="${esc(p.nombre)}" onclick="abrirModalProducto('${p.id}')">
-      ${p.fotos.length > 1 ? `<div class="c-destacado-thumbs">${p.fotos.map(f => `<img class="c-destacado-thumb ${f.id===principal?.id?'activa':''}" src="${esc(f.url)}" onclick="cambiarFotoDestacado(this,'${esc(f.url)}')">`).join('')}</div>` : ''}
-    </div>
-    <div class="c-destacado-info">
-      ${cat ? `<div class="c-destacado-cat">${esc(cat.nombre)}</div>` : ''}
-      <h2 class="c-destacado-nombre">${esc(p.nombre)}</h2>
-      ${p.descripcion ? `<p class="c-destacado-desc">${esc(p.descripcion)}</p>` : ''}
-      <div class="c-precio-row">
-        <span class="c-precio ${enOferta?'con-oferta':''}">${fmtC(enOferta?p.precio_oferta:p.precio)}</span>
-        ${enOferta ? `<span class="c-precio-tachado">${fmtC(p.precio)}</span>` : ''}
-      </div>
-      ${CATALOGO.whatsapp ? `<button class="c-btn" style="align-self:flex-start" onclick="consultarProducto('${p.id}')">💬 Consultar disponibilidad</button>` : ''}
-    </div>`;
-
-  const resto = destacados.slice(1);
-  if (resto.length) {
-    seccionResto.style.display = 'block';
-    const grid = document.getElementById('c-grid-mas-destacados');
-    grid.className = 'c-grid' + (resto.length <= 3 ? ' pocas' : '');
-    grid.innerHTML = resto.map(tarjetaProductoHTML).join('');
-  } else {
-    seccionResto.style.display = 'none';
-  }
-}
-function cambiarFotoDestacado(imgEl, url) {
-  document.getElementById('c-destacado-img-principal').src = url;
-  document.querySelectorAll('.c-destacado-thumb').forEach(t => t.classList.remove('activa'));
-  imgEl.classList.add('activa');
-}
-function consultarProducto(id) {
-  const p = PRODUCTOS.find(x => x.id === id);
-  if (!p || !CATALOGO.whatsapp) return;
-  const precio = (p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio;
-  registrarEvento('click_whatsapp', p.id);
-  window.open(linkWhatsapp(CATALOGO.whatsapp, `Hola, estoy interesado en "${p.nombre}" (${fmtC(precio)}) de su catálogo.`), '_blank');
-}
-
-let ORDEN_ACTUAL = 'reciente';
-let TEXTO_BUSQUEDA = '';
-let PRECIO_MAX_ACTIVO = null;
-let SOLO_FAVORITOS = false;
-let FAVORITOS = [];
-try { FAVORITOS = JSON.parse(localStorage.getItem('c360p_favoritos') || '[]'); } catch(e) { FAVORITOS = []; }
-
-function toggleFavorito(id) {
-  const idx = FAVORITOS.indexOf(id);
-  if (idx === -1) FAVORITOS.push(id); else FAVORITOS.splice(idx, 1);
-  localStorage.setItem('c360p_favoritos', JSON.stringify(FAVORITOS));
-  aplicarFiltroYOrden();
-  renderChipsCategorias();
-  actualizarContadorFav();
-}
-function actualizarContadorFav() {
-  const el = document.getElementById('c-header-fav-conteo');
-  el.textContent = FAVORITOS.length;
-  el.style.display = FAVORITOS.length ? 'flex' : 'none';
-}
-
-function renderVistaCategoriasOProductos() {
-  configurarFiltroPrecio();
-  renderChipsCategorias();
-  renderMigas();
-  aplicarFiltroYOrden();
-}
-
-function configurarFiltroPrecio() {
-  if (!PRODUCTOS.length) return;
-  const precioReal = p => (p.etiqueta==='oferta' && p.precio_oferta) ? p.precio_oferta : p.precio;
-  const max = Math.max(...PRODUCTOS.map(precioReal));
-  const slider = document.getElementById('c-precio-slider');
-  slider.max = Math.ceil(max);
-  slider.value = Math.ceil(max);
-  PRECIO_MAX_ACTIVO = Math.ceil(max);
-  document.getElementById('c-precio-label').textContent = 'Hasta ' + fmtC(PRECIO_MAX_ACTIVO);
-}
-function onCambiarPrecio(valor) {
-  PRECIO_MAX_ACTIVO = Number(valor);
-  const slider = document.getElementById('c-precio-slider');
-  document.getElementById('c-precio-label').textContent = PRECIO_MAX_ACTIVO >= Number(slider.max) ? 'Cualquier precio' : 'Hasta ' + fmtC(PRECIO_MAX_ACTIVO);
-  aplicarFiltroYOrden();
-}
-function onBuscar(valor) { TEXTO_BUSQUEDA = valor.trim().toLowerCase(); aplicarFiltroYOrden(); }
-
-function renderChipsCategorias() {
-  const barra = document.getElementById('c-filtros-barra');
-  const cont = document.getElementById('c-chips-categorias');
-  if (!PRODUCTOS.length) { barra.style.display = 'none'; return; }
-  barra.style.display = 'block';
-  let chips = `<div class="c-chip ${!CATEGORIA_VISTA_ACTUAL && !SOLO_FAVORITOS?'activo':''}" onclick="filtrarPorCategoria(null)">Todos</div>`;
-  chips += CATEGORIAS.map(cat => `<div class="c-chip ${CATEGORIA_VISTA_ACTUAL?.id===cat.id?'activo':''}" onclick="filtrarPorCategoria('${cat.id}')">${esc(cat.nombre)}</div>`).join('');
-  if (FAVORITOS.length) chips += `<div class="c-chip ${SOLO_FAVORITOS?'activo':''}" onclick="toggleSoloFavoritos()">❤️ Mis favoritos (${FAVORITOS.length})</div>`;
-  cont.innerHTML = chips;
-
-  // Sidebar de categorias (solo escritorio) -- misma logica, otro estilo visual
-  const sidebar = document.getElementById('c-sidebar-categorias');
-  if (sidebar) {
-    let lista = `<div class="c-sidebar-cat-item ${!CATEGORIA_VISTA_ACTUAL && !SOLO_FAVORITOS?'activo':''}" onclick="filtrarPorCategoria(null)">📦 Todos los productos</div>`;
-    lista += CATEGORIAS.map(cat => `<div class="c-sidebar-cat-item ${CATEGORIA_VISTA_ACTUAL?.id===cat.id?'activo':''}" onclick="filtrarPorCategoria('${cat.id}')">${esc(cat.nombre)}</div>`).join('');
-    if (FAVORITOS.length) lista += `<div class="c-sidebar-cat-item ${SOLO_FAVORITOS?'activo':''}" onclick="toggleSoloFavoritos()">❤️ Mis favoritos (${FAVORITOS.length})</div>`;
-    sidebar.innerHTML = lista;
-  }
-
-  // Tarjeta de ofertas real en el sidebar -- solo si de verdad hay
-  // productos en oferta, nunca un porcentaje inventado.
-  const ofertasWrap = document.getElementById('c-sidebar-ofertas');
-  if (ofertasWrap) {
-    const enOferta = PRODUCTOS.filter(p => p.etiqueta === 'oferta' && p.precio_oferta);
-    if (enOferta.length) {
-      const maxDescuento = Math.max(...enOferta.map(p => Math.round((1 - p.precio_oferta/p.precio) * 100)));
-      ofertasWrap.style.display = 'block';
-      ofertasWrap.innerHTML = `<h4>Ofertas</h4><p>Hasta ${maxDescuento}% de descuento en ${enOferta.length} producto${enOferta.length===1?'':'s'}</p><a onclick="filtrarSoloOfertas()">Ver ofertas →</a>`;
-    } else {
-      ofertasWrap.style.display = 'none';
-    }
-  }
-}
-function filtrarSoloOfertas() {
-  TEXTO_BUSQUEDA = ''; document.getElementById('c-buscador').value = '';
-  CATEGORIA_VISTA_ACTUAL = null; SOLO_FAVORITOS = false; SOLO_OFERTAS = true;
-  renderChipsCategorias();
-  aplicarFiltroYOrden();
-}
-function toggleSoloFavoritos() {
-  SOLO_FAVORITOS = !SOLO_FAVORITOS;
-  if (SOLO_FAVORITOS) { CATEGORIA_VISTA_ACTUAL = null; SOLO_OFERTAS = false; }
-  renderChipsCategorias();
-  renderMigas();
-  aplicarFiltroYOrden();
-}
-function filtrarPorCategoria(id) {
-  CATEGORIA_VISTA_ACTUAL = id ? CATEGORIAS.find(c => c.id === id) : null;
-  SOLO_FAVORITOS = false; SOLO_OFERTAS = false;
-  renderChipsCategorias();
-  renderMigas();
-  aplicarFiltroYOrden();
-}
-function renderMigas() {
-  const el = document.getElementById('c-migas');
-  if (!CATEGORIA_VISTA_ACTUAL && !SOLO_FAVORITOS) { el.style.display = 'none'; return; }
-  el.style.display = 'flex';
-  const actual = SOLO_FAVORITOS ? 'Mis favoritos' : CATEGORIA_VISTA_ACTUAL.nombre;
-  el.innerHTML = `<a onclick="filtrarPorCategoria(null)">Inicio</a> <span>›</span> <span>${esc(actual)}</span>`;
-}
-function cambiarOrden(valor) { ORDEN_ACTUAL = valor; aplicarFiltroYOrden(); }
-
-let SOLO_OFERTAS = false;
-function cambiarVista(modo) {
-  document.getElementById('c-grid-productos').classList.toggle('vista-lista', modo === 'lista');
-  document.getElementById('c-vista-grid').classList.toggle('activo', modo === 'grid');
-  document.getElementById('c-vista-lista').classList.toggle('activo', modo === 'lista');
-}
-function aplicarFiltroYOrden() {
-  const lista = c360FiltrarYOrdenar(PRODUCTOS, {
-    categoriaId: CATEGORIA_VISTA_ACTUAL?.id || null,
-    soloFavoritos: SOLO_FAVORITOS,
-    favoritos: FAVORITOS,
-    soloOfertas: SOLO_OFERTAS,
-    textoBusqueda: TEXTO_BUSQUEDA,
-    precioMax: PRECIO_MAX_ACTIVO,
-    orden: ORDEN_ACTUAL,
-  });
-  renderGridProductos(lista);
-}
-
-function tarjetaProductoHTML(p, esGrande) {
-  const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
-  const cat = CATEGORIAS.find(c => c.id === p.categoria_id);
-  const enOferta = p.etiqueta === 'oferta' && p.precio_oferta;
-  const agotado = p.etiqueta === 'agotado';
-  const tagTexto = { nuevo:'Nuevo', oferta:'Oferta' }[p.etiqueta];
-  const esFav = FAVORITOS.includes(p.id);
-  return `
-    <div class="c-card ${agotado?'agotada':''} ${esGrande?'grande':''}">
-      <div class="c-card-media" onclick="abrirModalProducto('${p.id}')">
-        ${tagTexto ? `<span class="c-card-tag ${p.etiqueta}">${tagTexto}</span>` : ''}
-        <span class="c-card-disp ${agotado?'agotado':''}">${agotado?'Agotado':'Disponible'}</span>
-        <button class="c-fav-btn ${esFav?'activo':''}" onclick="event.stopPropagation();toggleFavorito('${p.id}')" aria-label="Favorito">${esFav?'❤️':'🤍'}</button>
-        ${principal ? `<img src="${esc(principal.url)}" loading="lazy" alt="${esc(p.nombre)}">` : ''}
-      </div>
-      <div class="c-card-body">
-        ${cat ? `<div class="c-card-cat">${esc(cat.nombre)}</div>` : ''}
-        <div class="c-card-nombre" onclick="abrirModalProducto('${p.id}')">${esc(p.nombre)}</div>
-        <div class="c-card-precio-row">
-          <span class="c-card-precio ${enOferta?'con-oferta':''}">${fmtC(enOferta?p.precio_oferta:p.precio)}</span>
-          ${enOferta ? `<span class="c-card-tachado">${fmtC(p.precio)}</span>` : ''}
+        <div class="c-hero-mosaico-wrap">
+          <div class="c-hero-mosaico vacio" id="c-hero-mosaico"></div>
+          <div class="c-hero-etiqueta-flotante" id="c-hero-etiqueta" style="display:none"></div>
+          <div class="c-hero-card-flotante" id="c-hero-card-destacado" style="display:none"></div>
         </div>
-        ${(!agotado) ? `<div class="c-card-botones">
-          ${CATALOGO.whatsapp ? `<button class="c-card-accion-rapida wa" onclick="event.stopPropagation();consultarProducto('${p.id}')" title="Consultar por WhatsApp">💬</button>` : ''}
-          ${CATALOGO.telefono ? `<a class="c-card-accion-rapida llamar" href="tel:${esc(CATALOGO.telefono)}" onclick="event.stopPropagation();registrarEvento('click_telefono')" title="Llamar">📞</a>` : ''}
-          <button class="c-card-accion-rapida compartir" onclick="event.stopPropagation();compartirProducto('${p.id}')" title="Compartir">🔗</button>
-        </div>` : ''}
       </div>
-    </div>`;
-}
-function mostrarToast(mensaje) {
-  const wrap = document.getElementById('c-toast-wrap');
-  const t = document.createElement('div');
-  t.className = 'c-toast';
-  t.textContent = mensaje;
-  wrap.appendChild(t);
-  setTimeout(() => t.remove(), 2600);
-}
-function compartirProducto(id) {
-  const p = PRODUCTOS.find(x => x.id === id);
-  if (!p) return;
-  const url = `${window.location.href.split('#')[0]}#producto-${id}`;
-  if (navigator.share) {
-    navigator.share({ title: p.nombre, text: `${p.nombre} — ${fmtC(p.precio)}`, url }).catch(()=>{});
-  } else if (navigator.clipboard) {
-    navigator.clipboard.writeText(url);
-    mostrarToast('🔗 Enlace copiado');
-  }
-}
-function renderGridProductos(lista) {
-  document.getElementById('c-conteo-productos').textContent = lista.length ? `${lista.length} producto${lista.length===1?'':'s'}` : '';
-  const grid = document.getElementById('c-grid-productos');
-  if (!lista.length) { grid.innerHTML = `<div class="c-vacio" style="width:100%">Todavía no hay productos aquí.</div>`; return; }
-  grid.className = 'c-grid' + (lista.length <= 3 ? ' pocas' : '');
-  const usaRitmo = lista.length >= 6;
-  grid.innerHTML = lista.map((p, i) => tarjetaProductoHTML(p, usaRitmo && i % 5 === 0)).join('');
-}
+    </section>
 
-let FOTOS_MODAL_ACTUAL = [];
-let VISTOS_RECIENTEMENTE = [];
-try { VISTOS_RECIENTEMENTE = JSON.parse(localStorage.getItem('c360p_vistos') || '[]'); } catch(e) { VISTOS_RECIENTEMENTE = []; }
+    <div class="c-confianza">
+      <div class="c360-container c-confianza-in">
+        <div class="c-confianza-item"><span>🚚</span><div><b>Envíos rápidos</b><small>A todo el país</small></div></div>
+        <div class="c-confianza-item"><span>✅</span><div><b>Productos verificados</b><small>Calidad garantizada</small></div></div>
+        <div class="c-confianza-item"><span>🎧</span><div><b>Atención personalizada</b><small>Estamos para ayudarte</small></div></div>
+        <div class="c-confianza-item"><span>🔒</span><div><b>Contacto directo</b><small>Compra con confianza</small></div></div>
+      </div>
+    </div>
 
-function abrirModalProducto(id) {
-  const p = PRODUCTOS.find(x => x.id === id);
-  if (!p) return;
-  registrarEvento('vista_producto', id);
-  registrarVisto(id);
-  const cat = CATEGORIAS.find(c => c.id === p.categoria_id);
-  const enOferta = p.etiqueta === 'oferta' && p.precio_oferta;
+    <section class="c-seccion-destacado-wrap tinte-a c-reveal" id="c-seccion-destacado" style="display:none">
+      <div class="c-destacado" id="c-destacado"></div>
+    </section>
 
-  const catEl = document.getElementById('c-modal-cat');
-  catEl.textContent = cat ? cat.nombre : '';
-  catEl.style.display = cat ? 'block' : 'none';
-  document.getElementById('c-modal-nombre').textContent = p.nombre;
-  document.getElementById('c-modal-precio').textContent = fmtC(enOferta ? p.precio_oferta : p.precio);
-  document.getElementById('c-modal-precio').className = 'c-precio' + (enOferta ? ' con-oferta' : '');
-  const tachadoEl = document.getElementById('c-modal-precio-tachado');
-  tachadoEl.style.display = enOferta ? 'inline' : 'none';
-  if (enOferta) tachadoEl.textContent = fmtC(p.precio);
-  document.getElementById('c-modal-desc').textContent = p.descripcion || '';
-  FOTOS_MODAL_ACTUAL = p.fotos.map(f => f.url);
-  document.getElementById('c-modal-fotos').innerHTML = p.fotos.length ? p.fotos.map(f => `<img src="${esc(f.url)}" alt="">`).join('') : '';
+    <section class="c-seccion tinte-b c-reveal" id="c-seccion-mas-destacados" style="display:none">
+      <div class="c360-container">
+        <div class="c-seccion-head">
+          <span class="c-seccion-titulo">Más destacados</span>
+        </div>
+        <div class="c-grid" id="c-grid-mas-destacados"></div>
+      </div>
+    </section>
 
-  const btnWa = document.getElementById('c-modal-whatsapp');
-  if (CATALOGO.whatsapp && p.etiqueta !== 'agotado') {
-    btnWa.style.display = 'flex'; btnWa.disabled = false;
-    btnWa.textContent = '💬 Consultar por WhatsApp';
-    btnWa.onclick = () => consultarProducto(p.id);
-  } else if (p.etiqueta === 'agotado') {
-    btnWa.style.display = 'flex'; btnWa.disabled = true;
-    btnWa.textContent = 'Agotado por ahora'; btnWa.onclick = null;
-  } else {
-    btnWa.style.display = 'none';
-  }
-  renderRelacionados(p);
-  document.getElementById('c-modal').classList.add('open');
-}
-function cerrarModalProducto() { document.getElementById('c-modal').classList.remove('open'); }
+    <section class="c-seccion tinte-b c-reveal" id="c-seccion-vistos" style="display:none">
+      <div class="c360-container">
+        <div class="c-seccion-head">
+          <span class="c-seccion-titulo">Vistos recientemente</span>
+        </div>
+        <div class="c-grid" id="c-grid-vistos"></div>
+      </div>
+    </section>
 
-function indexFotoClic(ev) {
-  const img = ev.target.closest('img');
-  if (!img) return 0;
-  return Array.from(img.parentElement.children).indexOf(img);
-}
-function registrarVisto(id) {
-  VISTOS_RECIENTEMENTE = VISTOS_RECIENTEMENTE.filter(v => v !== id);
-  VISTOS_RECIENTEMENTE.unshift(id);
-  VISTOS_RECIENTEMENTE = VISTOS_RECIENTEMENTE.slice(0, 8);
-  localStorage.setItem('c360p_vistos', JSON.stringify(VISTOS_RECIENTEMENTE));
-  renderVistos();
-}
-function renderVistos() {
-  const seccion = document.getElementById('c-seccion-vistos');
-  const otrosVistos = VISTOS_RECIENTEMENTE.filter(id => PRODUCTOS.some(p => p.id === id));
-  if (otrosVistos.length < 2) { seccion.style.display = 'none'; return; }
-  seccion.style.display = 'block';
-  const lista = otrosVistos.map(id => PRODUCTOS.find(p => p.id === id)).filter(Boolean);
-  const grid = document.getElementById('c-grid-vistos');
-  grid.className = 'c-grid' + (lista.length <= 3 ? ' pocas' : '');
-  grid.innerHTML = lista.map(tarjetaProductoHTML).join('');
-}
-function renderRelacionados(p) {
-  const wrap = document.getElementById('c-relacionados-wrap');
-  if (!p.categoria_id) { wrap.style.display = 'none'; return; }
-  const relacionados = PRODUCTOS.filter(x => x.id !== p.id && x.categoria_id === p.categoria_id).slice(0, 6);
-  if (!relacionados.length) { wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block';
-  document.getElementById('c-relacionados').innerHTML = relacionados.map(r => {
-    const foto = r.fotos.find(f => f.es_principal) || r.fotos[0];
-    return `<div class="c-relacionado-mini" onclick="abrirModalProducto('${r.id}')">
-      ${foto ? `<img src="${esc(foto.url)}" loading="lazy">` : `<div style="width:110px;height:110px;background:var(--surface-2);border-radius:8px"></div>`}
-      <div class="nombre">${esc(r.nombre)}</div>
-      <div class="precio">${fmtC(r.precio)}</div>
-    </div>`;
-  }).join('');
-}
+    <div class="c-filtros-barra" id="c-filtros-barra">
+      <div class="c360-container">
+        <div id="c-migas" class="c-migas" style="display:none"></div>
 
-/* ===== Lightbox de fotos ===== */
-let LIGHTBOX_FOTOS = [], LIGHTBOX_INDICE = 0;
-function abrirLightbox(fotos, indice) {
-  if (!fotos || !fotos.length) return;
-  LIGHTBOX_FOTOS = fotos; LIGHTBOX_INDICE = indice || 0;
-  document.getElementById('c-lightbox-img').src = LIGHTBOX_FOTOS[LIGHTBOX_INDICE];
-  document.getElementById('c-lightbox-contador').textContent = `${LIGHTBOX_INDICE+1} / ${LIGHTBOX_FOTOS.length}`;
-  document.getElementById('c-lightbox').classList.add('open');
-}
-function cerrarLightbox() { document.getElementById('c-lightbox').classList.remove('open'); }
-function moverLightbox(delta) {
-  LIGHTBOX_INDICE = (LIGHTBOX_INDICE + delta + LIGHTBOX_FOTOS.length) % LIGHTBOX_FOTOS.length;
-  document.getElementById('c-lightbox-img').src = LIGHTBOX_FOTOS[LIGHTBOX_INDICE];
-  document.getElementById('c-lightbox-contador').textContent = `${LIGHTBOX_INDICE+1} / ${LIGHTBOX_FOTOS.length}`;
-}
-document.addEventListener('keydown', (e) => {
-  if (document.getElementById('c-lightbox').classList.contains('open')) {
-    if (e.key === 'Escape') cerrarLightbox();
-    if (e.key === 'ArrowLeft') moverLightbox(-1);
-    if (e.key === 'ArrowRight') moverLightbox(1);
-    return;
-  }
-  if (e.key === 'Escape' && document.getElementById('c-modal').classList.contains('open')) cerrarModalProducto();
-});
+        <div class="c-fila-busqueda">
+          <div class="c-busqueda-caja">
+            <span>🔍</span>
+            <input
+              type="search"
+              id="c-buscador"
+              placeholder="Buscar productos…"
+              oninput="onBuscar(this.value)"
+              aria-label="Buscar productos">
+          </div>
 
-init();
-</script>
+          <div class="c-precio-filtro">
+            <span id="c-precio-label">Cualquier precio</span>
+            <input
+              type="range"
+              id="c-precio-slider"
+              min="0"
+              max="100"
+              value="100"
+              oninput="onCambiarPrecio(this.value)"
+              aria-label="Filtrar por precio máximo">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section class="c-seccion tinte-a c-reveal" id="c-seccion-productos">
+      <div class="c360-container c-catalogo-layout">
+
+        <aside class="c-sidebar">
+          <div class="c-sidebar-titulo">Categorías</div>
+          <div id="c-sidebar-categorias"></div>
+          <div class="c-sidebar-ofertas" id="c-sidebar-ofertas" style="display:none"></div>
+        </aside>
+
+        <div class="c-catalogo-main">
+          <div class="c-filtros-in">
+            <div class="c-chips" id="c-chips-categorias"></div>
+
+            <div class="c-filtros-derecha">
+              <select id="c-orden-select" onchange="cambiarOrden(this.value)" aria-label="Ordenar productos">
+                <option value="reciente">Más recientes</option>
+                <option value="precio_asc">Precio: menor a mayor</option>
+                <option value="precio_desc">Precio: mayor a menor</option>
+                <option value="nombre">Nombre A-Z</option>
+              </select>
+
+              <span class="c-seccion-conteo" id="c-conteo-productos"></span>
+
+              <div class="c-vista-toggle" aria-label="Cambiar vista">
+                <button type="button" id="c-vista-grid" class="activo" onclick="cambiarVista('grid')" aria-label="Vista de cuadrícula">▦</button>
+                <button type="button" id="c-vista-lista" onclick="cambiarVista('lista')" aria-label="Vista de lista">☰</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="c-grid" id="c-grid-productos"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="c-cta-whatsapp" id="c-cta-whatsapp" style="display:none">
+      <div class="c360-container c-cta-whatsapp-in">
+        <div>
+          <h3>¿No encuentras lo que buscas?</h3>
+          <p>Escríbenos y te ayudamos a encontrarlo.</p>
+        </div>
+
+        <a class="c-btn" id="c-cta-whatsapp-btn" target="_blank" rel="noopener">
+          💬 Escribir por WhatsApp
+        </a>
+      </div>
+    </div>
+
+    <div class="c-confianza-footer">
+      <div class="c360-container c-confianza-footer-in">
+        <div class="c-confianza-footer-item"><span class="icono rosa">🛍️</span><div><b>Compra fácil y rápida</b><small>Realiza tu pedido en segundos</small></div></div>
+        <div class="c-confianza-footer-item"><span class="icono verde">💬</span><div><b>Atención en tiempo real</b><small>Te asesoramos por WhatsApp</small></div></div>
+        <div class="c-confianza-footer-item"><span class="icono roja">❤️</span><div><b>Productos de calidad</b><small>Seleccionamos lo mejor para ti</small></div></div>
+        <div class="c-confianza-footer-item"><span class="icono morada">⭐</span><div><b>Tu satisfacción es prioridad</b><small>Miles de clientes confían en nosotros</small></div></div>
+      </div>
+    </div>
+
+    <footer class="c-footer">
+      <div class="c360-container c-footer-in">
+        <span id="c-footer-nombre"></span>
+        <span>Creado con <a href="/" target="_blank" rel="noopener">Catálogo360</a></span>
+      </div>
+    </footer>
+
+    <button
+      class="c-btn-flotante-wa"
+      id="c-btn-flotante-wa"
+      type="button"
+      style="display:none"
+      onclick="abrirWhatsappHero()"
+      aria-label="Escribir por WhatsApp">
+      💬
+    </button>
+  </div>
+
+  <div
+    class="c-modal-overlay"
+    id="c-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="c-modal-nombre"
+    aria-hidden="true"
+    tabindex="-1"
+    onclick="if(event.target===this)cerrarModalProducto()">
+
+    <div class="c-modal">
+      <button class="c-modal-close" type="button" onclick="cerrarModalProducto()" aria-label="Cerrar producto">✕</button>
+
+      <div
+        class="c-modal-fotos"
+        id="c-modal-fotos"
+        onclick="abrirLightbox(FOTOS_MODAL_ACTUAL,indexFotoClic(event))">
+      </div>
+
+      <div class="c-modal-body">
+        <div class="c-modal-cat" id="c-modal-cat" style="display:none"></div>
+        <div class="c-modal-nombre" id="c-modal-nombre"></div>
+
+        <div class="c-precio-row" style="margin-bottom:var(--sp-4)">
+          <span class="c-precio" id="c-modal-precio"></span>
+          <span class="c-precio-tachado" id="c-modal-precio-tachado" style="display:none"></span>
+        </div>
+
+        <div class="c-modal-desc" id="c-modal-desc"></div>
+
+        <button class="c-btn" id="c-modal-whatsapp" type="button" style="width:100%"></button>
+
+        <div id="c-relacionados-wrap" style="display:none">
+          <div class="c-relacionados-titulo">También te puede interesar</div>
+          <div class="c-relacionados-scroll" id="c-relacionados"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="c-lightbox"
+    id="c-lightbox"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Galería de imágenes"
+    aria-hidden="true"
+    tabindex="-1"
+    onclick="if(event.target===this)cerrarLightbox()">
+
+    <button class="c-lightbox-cerrar" type="button" onclick="cerrarLightbox()" aria-label="Cerrar imagen">✕</button>
+    <button class="c-lightbox-flecha izq" type="button" onclick="moverLightbox(-1)" aria-label="Imagen anterior">‹</button>
+    <img id="c-lightbox-img" src="" alt="">
+    <button class="c-lightbox-flecha der" type="button" onclick="moverLightbox(1)" aria-label="Imagen siguiente">›</button>
+    <div class="c-lightbox-contador" id="c-lightbox-contador"></div>
+  </div>
+
+  <div class="c-toast-wrap" id="c-toast-wrap" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    const sb = c360CrearCliente();
+
+    let CATALOGO = null;
+    let PRODUCTOS = [];
+    let CATEGORIAS = [];
+    let CATEGORIA_VISTA_ACTUAL = null;
+
+    let ORDEN_ACTUAL = 'reciente';
+    let TEXTO_BUSQUEDA = '';
+    let PRECIO_MAX_ACTIVO = null;
+    let SOLO_FAVORITOS = false;
+    let SOLO_OFERTAS = false;
+    let VISTA_ACTUAL = 'grid';
+
+    let FAVORITOS = [];
+    let VISTOS_RECIENTEMENTE = [];
+    let FOTOS_MODAL_ACTUAL = [];
+    let LIGHTBOX_FOTOS = [];
+    let LIGHTBOX_INDICE = 0;
+    let C360_BUSQUEDA_FRAME = null;
+    let C360_FOCO_PREVIO = null;
+
+    function esc(valor) {
+      return c360Esc(String(valor ?? ''));
+    }
+
+    function fmtC(valor) {
+      return c360FmtC(Number(valor || 0));
+    }
+
+    function linkWhatsapp(numero, texto) {
+      return c360LinkWA(numero, texto);
+    }
+
+    function hexARgb(hex) {
+      return c360HexARgb(hex, '#6366f1');
+    }
+
+    function inlineArg(valor) {
+      return esc(JSON.stringify(String(valor ?? '')));
+    }
+
+    function tieneOferta(p) {
+      return p &&
+        p.etiqueta === 'oferta' &&
+        p.precio_oferta !== null &&
+        p.precio_oferta !== undefined &&
+        p.precio_oferta !== '';
+    }
+
+    function precioActivo(p) {
+      return tieneOferta(p) ? Number(p.precio_oferta) : Number(p.precio || 0);
+    }
+
+    function fotoPrincipal(p) {
+      if (!p || !Array.isArray(p.fotos)) return null;
+      return p.fotos.find(f => f.es_principal) || p.fotos[0] || null;
+    }
+
+    function categoriaDeProducto(p) {
+      return CATEGORIAS.find(c => c.id === p.categoria_id) || null;
+    }
+
+    function c360ClaveLocal(tipo) {
+      return `c360p_${tipo}_${CATALOGO?.id || 'general'}`;
+    }
+
+    function c360LeerListaLocal(tipo) {
+      try {
+        const valor = JSON.parse(localStorage.getItem(c360ClaveLocal(tipo)) || '[]');
+        return Array.isArray(valor) ? valor : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function c360GuardarListaLocal(tipo, valor) {
+      try {
+        localStorage.setItem(c360ClaveLocal(tipo), JSON.stringify(valor));
+      } catch {
+        /* No bloquea el catálogo si el navegador no permite localStorage */
+      }
+    }
+
+    function irAInicio() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function irACatalogo() {
+      const barra = document.getElementById('c-filtros-barra');
+      const destino = barra.style.display !== 'none'
+        ? barra
+        : document.getElementById('c-seccion-productos');
+
+      destino.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function toggleTemaPublico() {
+      const actual = document.documentElement.getAttribute('data-theme');
+      const nuevo = actual === 'oscuro' ? 'claro' : 'oscuro';
+
+      document.documentElement.setAttribute('data-theme', nuevo);
+      document.getElementById('c-theme-btn').textContent = nuevo === 'oscuro' ? '☀' : '🌙';
+
+      try {
+        localStorage.setItem('c360p_tema', nuevo);
+      } catch {}
+    }
+
+    function registrarEvento(tipo, productoId = null) {
+      c360RegistrarEvento(
+        sb,
+        CATALOGO?.id,
+        tipo,
+        productoId,
+        !!new URLSearchParams(window.location.search).get('preview')
+      );
+    }
+
+    function abrirWhatsappHero() {
+      if (!window.c_urlWhatsappHero) return;
+      registrarEvento('click_whatsapp');
+      window.open(window.c_urlWhatsappHero, '_blank', 'noopener');
+    }
+
+    async function init() {
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get('c');
+      const idPreview = params.get('preview');
+
+      const resultado = await c360CargarCatalogoPublico({
+        sb,
+        slug,
+        idPreview
+      });
+
+      if (resultado.error) {
+        mostrarError(resultado.error);
+        return;
+      }
+
+      if (c360RedirigirSiPlantillaCambio(resultado.catalogo, 'profesional')) return;
+
+      CATALOGO = resultado.catalogo || {};
+
+      PRODUCTOS = (Array.isArray(resultado.productos) ? resultado.productos : [])
+        .filter(Boolean)
+        .map(p => ({
+          ...p,
+          fotos: Array.isArray(p.fotos)
+            ? p.fotos.filter(f => f && typeof f.url === 'string' && f.url.trim())
+            : []
+        }));
+
+      CATEGORIAS = Array.isArray(resultado.categorias)
+        ? resultado.categorias.filter(Boolean)
+        : [];
+
+      const idsValidos = new Set(PRODUCTOS.map(p => p.id));
+
+      FAVORITOS = c360LeerListaLocal('favoritos')
+        .filter(id => idsValidos.has(id));
+
+      VISTOS_RECIENTEMENTE = c360LeerListaLocal('vistos')
+        .filter(id => idsValidos.has(id));
+
+      if (idPreview && CATALOGO.estado !== 'publicado') {
+        document.getElementById('c-preview-banner').style.display = 'block';
+      }
+
+      document.documentElement.style.setProperty(
+        '--accent',
+        CATALOGO.color_acento || '#6366f1'
+      );
+
+      document.documentElement.style.setProperty(
+        '--accent-rgb',
+        hexARgb(CATALOGO.color_acento)
+      );
+
+      let temaGuardado = 'claro';
+
+      try {
+        temaGuardado = localStorage.getItem('c360p_tema') ||
+          CATALOGO.tema_default ||
+          'claro';
+      } catch {
+        temaGuardado = CATALOGO.tema_default || 'claro';
+      }
+
+      document.documentElement.setAttribute('data-theme', temaGuardado);
+      document.getElementById('c-theme-btn').textContent =
+        temaGuardado === 'oscuro' ? '☀' : '🌙';
+
+      renderTodo();
+      abrirProductoDesdeHash();
+
+      if (!idPreview) registrarEvento('visita');
+
+      document.getElementById('c360p-loader').style.display = 'none';
+      document.getElementById('c360p-app').style.display = 'block';
+
+      activarRevelado();
+    }
+
+    function mostrarError(msg) {
+      document.getElementById('c360p-loader').innerHTML = `
+        <div style="max-width:420px;margin:10vh auto;text-align:center">
+          <div style="font-size:34px;margin-bottom:12px">😕</div>
+          <strong style="display:block;margin-bottom:8px">No fue posible cargar el catálogo</strong>
+          <span>${esc(msg)}</span>
+        </div>
+      `;
+    }
+
+    function activarRevelado() {
+      if (!('IntersectionObserver' in window)) {
+        document.querySelectorAll('.c-reveal').forEach(el => el.classList.add('visible'));
+        return;
+      }
+
+      const obs = new IntersectionObserver((entradas) => {
+        entradas.forEach(entrada => {
+          if (entrada.isIntersecting) {
+            entrada.target.classList.add('visible');
+            obs.unobserve(entrada.target);
+          }
+        });
+      }, {
+        threshold: 0.08,
+        rootMargin: '0px 0px -30px 0px'
+      });
+
+      document.querySelectorAll('.c-reveal').forEach(el => obs.observe(el));
+    }
+
+    function renderTodo() {
+      renderHeaderYHero();
+      renderDestacado();
+      renderVistaCategoriasOProductos();
+      renderVistos();
+      actualizarContadorFav();
+
+      document.getElementById('c-footer-nombre').textContent =
+        CATALOGO.nombre_comercial || CATALOGO.nombre || '';
+    }
+
+    function renderHeaderYHero() {
+      const c = CATALOGO;
+      const nombreComercial = c.nombre_comercial || c.nombre || 'Catálogo';
+
+      document.title = nombreComercial;
+      document.getElementById('c360p-desc-meta').setAttribute('content', c.descripcion || '');
+      document.getElementById('c360p-og-title').setAttribute('content', nombreComercial);
+      document.getElementById('c360p-og-desc').setAttribute('content', c.descripcion || '');
+
+      if (c.logo_url) {
+        document.getElementById('c360p-og-image').setAttribute('content', c.logo_url);
+      }
+
+      document.getElementById('c-header-nombre').textContent = nombreComercial;
+      document.getElementById('c-hero-marca').textContent = nombreComercial;
+      document.getElementById('c-hero-titulo').textContent = c.nombre || nombreComercial;
+      document.getElementById('c-hero-desc').textContent = c.descripcion || '';
+      document.getElementById('c-hero-desc').style.display = c.descripcion ? 'block' : 'none';
+
+      const headerLogo = document.getElementById('c-header-logo');
+      const heroLogo = document.getElementById('c-hero-logo');
+
+      if (c.logo_url) {
+        headerLogo.src = c.logo_url;
+        heroLogo.src = c.logo_url;
+        headerLogo.style.display = 'block';
+        heroLogo.style.display = 'block';
+      } else {
+        headerLogo.style.display = 'none';
+        heroLogo.style.display = 'none';
+      }
+
+      const heroEl = document.getElementById('c-hero');
+      const bg = document.getElementById('c-hero-bg');
+      const mosaico = document.getElementById('c-hero-mosaico');
+      const etiquetaHero = document.getElementById('c-hero-etiqueta');
+      const cardHero = document.getElementById('c-hero-card-destacado');
+
+      heroEl.classList.remove(
+        'con-imagen',
+        'con-mosaico',
+        'con-destacado-hero',
+        'c-hero-patron'
+      );
+
+      bg.style.backgroundImage = '';
+      bg.classList.remove('activo');
+
+      mosaico.innerHTML = '';
+      mosaico.classList.add('vacio');
+      etiquetaHero.style.display = 'none';
+      cardHero.style.display = 'none';
+
+      if (c.banner_url) {
+        heroEl.classList.add('con-imagen');
+
+        const urlSeguro = String(c.banner_url).replace(/"/g, '%22');
+        bg.style.backgroundImage = `url("${urlSeguro}")`;
+        bg.classList.add('activo');
+      } else {
+        const fotosReales = [];
+        const vistas = new Set();
+
+        const ordenados = [...PRODUCTOS].sort(
+          (a, b) => Number(!!b.destacado) - Number(!!a.destacado)
+        );
+
+        for (const producto of ordenados) {
+          const foto = fotoPrincipal(producto);
+
+          if (foto?.url && !vistas.has(foto.url)) {
+            fotosReales.push(foto.url);
+            vistas.add(foto.url);
+          }
+
+          if (fotosReales.length >= 3) break;
+        }
+
+        if (fotosReales.length) {
+          heroEl.classList.add('con-mosaico');
+
+          mosaico.classList.remove('vacio');
+          mosaico.classList.toggle('una-sola', fotosReales.length === 1);
+
+          mosaico.innerHTML = fotosReales.map((url, i) => `
+            <img
+              src="${esc(url)}"
+              alt="Producto destacado del catálogo"
+              loading="${i === 0 ? 'eager' : 'lazy'}"
+              decoding="async">
+          `).join('');
+
+          etiquetaHero.textContent =
+            `${PRODUCTOS.length} PRODUCTO${PRODUCTOS.length === 1 ? '' : 'S'}`;
+
+          etiquetaHero.style.display = 'block';
+        } else {
+          heroEl.classList.add('c-hero-patron');
+        }
+      }
+
+      const ctaDiv = document.getElementById('c-hero-cta');
+      const navContacto = document.getElementById('c-nav-contacto');
+      const ctaWhatsapp = document.getElementById('c-cta-whatsapp');
+      const btnFlotante = document.getElementById('c-btn-flotante-wa');
+
+      ctaDiv.innerHTML = '';
+      navContacto.style.display = 'none';
+      ctaWhatsapp.style.display = 'none';
+      btnFlotante.style.display = 'none';
+      window.c_urlWhatsappHero = '';
+
+      if (c.whatsapp) {
+        const mensaje = `Hola, vi su catálogo ${nombreComercial} y tengo una consulta.`;
+        window.c_urlWhatsappHero = linkWhatsapp(c.whatsapp, mensaje);
+
+        ctaDiv.innerHTML = `
+          <a
+            class="c-btn"
+            href="${esc(window.c_urlWhatsappHero)}"
+            target="_blank"
+            rel="noopener"
+            onclick="registrarEvento('click_whatsapp')">
+            💬 Escribir por WhatsApp
+          </a>
+        `;
+
+        navContacto.style.display = 'inline';
+        navContacto.href = window.c_urlWhatsappHero;
+        navContacto.target = '_blank';
+        navContacto.rel = 'noopener';
+        navContacto.onclick = () => registrarEvento('click_whatsapp');
+
+        const ctaBtn = document.getElementById('c-cta-whatsapp-btn');
+        ctaBtn.href = window.c_urlWhatsappHero;
+        ctaBtn.onclick = () => registrarEvento('click_whatsapp');
+
+        ctaWhatsapp.style.display = 'block';
+        btnFlotante.style.display = 'flex';
+      }
+
+      const info = document.getElementById('c-hero-contacto');
+      let filas = '';
+
+      if (c.telefono) {
+        filas += `
+          <a href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')">
+            📞 ${esc(c.telefono)}
+          </a>
+        `;
+      }
+
+      if (c.email) {
+        filas += `<span>✉️ ${esc(c.email)}</span>`;
+      }
+
+      if (c.ubicacion) {
+        filas += `<span>📍 ${esc(c.ubicacion)}</span>`;
+      }
+
+      info.innerHTML = filas;
+    }
+
+    function insertarDatosEstructurados() {
+      c360InsertarJSONLD('c-jsonld', CATALOGO, PRODUCTOS);
+    }
+
+    function renderTarjetaFlotanteHero(p, enOferta) {
+      const card = document.getElementById('c-hero-card-destacado');
+      const hero = document.getElementById('c-hero');
+
+      const existeVisual =
+        hero.classList.contains('con-imagen') ||
+        hero.classList.contains('con-mosaico');
+
+      hero.classList.toggle('con-destacado-hero', existeVisual);
+
+      if (!existeVisual) {
+        card.style.display = 'none';
+        return;
+      }
+
+      card.style.display = 'block';
+
+      card.innerHTML = `
+        <div class="etiqueta">Destacado</div>
+        <div class="nombre">${esc(p.nombre)}</div>
+
+        <div class="precio-row">
+          <span class="precio">${fmtC(enOferta ? p.precio_oferta : p.precio)}</span>
+          ${enOferta ? `<span class="tachado">${fmtC(p.precio)}</span>` : ''}
+        </div>
+
+        <a onclick="abrirModalProducto(${inlineArg(p.id)})">Ver producto →</a>
+      `;
+    }
+
+    function renderDestacado() {
+      const destacados = PRODUCTOS.filter(p => p.destacado);
+      const seccionGrande = document.getElementById('c-seccion-destacado');
+      const seccionResto = document.getElementById('c-seccion-mas-destacados');
+
+      document.getElementById('c-hero').classList.remove('con-destacado-hero');
+      document.getElementById('c-hero-card-destacado').style.display = 'none';
+
+      insertarDatosEstructurados();
+
+      if (!destacados.length) {
+        seccionGrande.style.display = 'none';
+        seccionResto.style.display = 'none';
+        return;
+      }
+
+      seccionGrande.style.display = 'block';
+
+      const p = destacados[0];
+      const cat = categoriaDeProducto(p);
+      const principal = fotoPrincipal(p);
+      const enOferta = tieneOferta(p);
+
+      renderTarjetaFlotanteHero(p, enOferta);
+
+      document.getElementById('c-destacado').innerHTML = `
+        <div class="c-destacado-media">
+          ${
+            principal
+              ? `<img
+                  class="c-destacado-img"
+                  id="c-destacado-img-principal"
+                  src="${esc(principal.url)}"
+                  alt="${esc(p.nombre)}"
+                  onclick="abrirModalProducto(${inlineArg(p.id)})">`
+              : `<div class="c-destacado-sin-foto">Sin imagen disponible</div>`
+          }
+
+          ${
+            p.fotos.length > 1
+              ? `<div class="c-destacado-thumbs">
+                  ${p.fotos.map(f => `
+                    <img
+                      class="c-destacado-thumb ${f.id === principal?.id ? 'activa' : ''}"
+                      src="${esc(f.url)}"
+                      alt="Ver imagen de ${esc(p.nombre)}"
+                      onclick="cambiarFotoDestacado(this,${inlineArg(f.url)})">
+                  `).join('')}
+                </div>`
+              : ''
+          }
+        </div>
+
+        <div class="c-destacado-info">
+          ${cat ? `<div class="c-destacado-cat">${esc(cat.nombre)}</div>` : ''}
+          <h2 class="c-destacado-nombre">${esc(p.nombre)}</h2>
+          ${p.descripcion ? `<p class="c-destacado-desc">${esc(p.descripcion)}</p>` : ''}
+
+          <div class="c-precio-row">
+            <span class="c-precio ${enOferta ? 'con-oferta' : ''}">
+              ${fmtC(enOferta ? p.precio_oferta : p.precio)}
+            </span>
+            ${enOferta ? `<span class="c-precio-tachado">${fmtC(p.precio)}</span>` : ''}
+          </div>
+
+          ${
+            CATALOGO.whatsapp && p.etiqueta !== 'agotado'
+              ? `<button
+                  type="button"
+                  class="c-btn"
+                  style="align-self:flex-start"
+                  onclick="consultarProducto(${inlineArg(p.id)})">
+                  💬 Consultar disponibilidad
+                </button>`
+              : ''
+          }
+        </div>
+      `;
+
+      const resto = destacados.slice(1);
+
+      if (resto.length) {
+        seccionResto.style.display = 'block';
+
+        const grid = document.getElementById('c-grid-mas-destacados');
+        grid.className = `c-grid${resto.length <= 3 ? ' pocas' : ''}`;
+
+        grid.innerHTML = resto
+          .map((producto, i) => tarjetaProductoHTML(producto, false, i))
+          .join('');
+      } else {
+        seccionResto.style.display = 'none';
+      }
+    }
+
+    function cambiarFotoDestacado(imgEl, url) {
+      const principal = document.getElementById('c-destacado-img-principal');
+
+      if (principal) principal.src = url;
+
+      document.querySelectorAll('.c-destacado-thumb').forEach(t => {
+        t.classList.remove('activa');
+      });
+
+      imgEl.classList.add('activa');
+    }
+
+    function consultarProducto(id) {
+      const p = PRODUCTOS.find(x => x.id === id);
+
+      if (!p || !CATALOGO.whatsapp || p.etiqueta === 'agotado') return;
+
+      registrarEvento('click_whatsapp', p.id);
+
+      const mensaje = `Hola, estoy interesado en "${p.nombre}" (${fmtC(precioActivo(p))}) de su catálogo.`;
+
+      window.open(
+        linkWhatsapp(CATALOGO.whatsapp, mensaje),
+        '_blank',
+        'noopener'
+      );
+    }
+
+    function toggleFavorito(id) {
+      const indice = FAVORITOS.indexOf(id);
+
+      if (indice === -1) {
+        FAVORITOS.push(id);
+        mostrarToast('❤️ Agregado a favoritos');
+      } else {
+        FAVORITOS.splice(indice, 1);
+        mostrarToast('Favorito eliminado');
+      }
+
+      if (!FAVORITOS.length) {
+        SOLO_FAVORITOS = false;
+      }
+
+      c360GuardarListaLocal('favoritos', FAVORITOS);
+
+      actualizarContadorFav();
+      renderChipsCategorias();
+      renderMigas();
+      aplicarFiltroYOrden();
+    }
+
+    function actualizarContadorFav() {
+      const el = document.getElementById('c-header-fav-conteo');
+
+      el.textContent = FAVORITOS.length;
+      el.style.display = FAVORITOS.length ? 'flex' : 'none';
+    }
+
+    function renderVistaCategoriasOProductos() {
+      configurarFiltroPrecio();
+      renderChipsCategorias();
+      renderMigas();
+      aplicarFiltroYOrden();
+    }
+
+    function configurarFiltroPrecio() {
+      if (!PRODUCTOS.length) return;
+
+      const precios = PRODUCTOS
+        .map(precioActivo)
+        .filter(precio => Number.isFinite(precio) && precio >= 0);
+
+      const maximo = Math.max(0, ...precios);
+      const slider = document.getElementById('c-precio-slider');
+      const maxSlider = Math.max(1, Math.ceil(maximo));
+
+      slider.max = maxSlider;
+      slider.value = maxSlider;
+
+      PRECIO_MAX_ACTIVO = maxSlider;
+
+      document.getElementById('c-precio-label').textContent = 'Cualquier precio';
+    }
+
+    function onCambiarPrecio(valor) {
+      PRECIO_MAX_ACTIVO = Number(valor);
+
+      const slider = document.getElementById('c-precio-slider');
+      const maximo = Number(slider.max);
+
+      document.getElementById('c-precio-label').textContent =
+        PRECIO_MAX_ACTIVO >= maximo
+          ? 'Cualquier precio'
+          : `Hasta ${fmtC(PRECIO_MAX_ACTIVO)}`;
+
+      aplicarFiltroYOrden();
+    }
+
+    function onBuscar(valor) {
+      const texto = String(valor || '');
+
+      TEXTO_BUSQUEDA = texto.trim().toLowerCase();
+
+      ['c-buscador', 'c-buscador-header'].forEach(id => {
+        const input = document.getElementById(id);
+
+        if (input && input.value !== texto) {
+          input.value = texto;
+        }
+      });
+
+      if (C360_BUSQUEDA_FRAME) {
+        cancelAnimationFrame(C360_BUSQUEDA_FRAME);
+      }
+
+      C360_BUSQUEDA_FRAME = requestAnimationFrame(() => {
+        aplicarFiltroYOrden();
+        C360_BUSQUEDA_FRAME = null;
+      });
+    }
+
+    function renderChipsCategorias() {
+      const barra = document.getElementById('c-filtros-barra');
+      const cont = document.getElementById('c-chips-categorias');
+
+      if (!PRODUCTOS.length) {
+        barra.style.display = 'none';
+        return;
+      }
+
+      barra.style.display = 'block';
+
+      const todosActivo =
+        !CATEGORIA_VISTA_ACTUAL &&
+        !SOLO_FAVORITOS &&
+        !SOLO_OFERTAS;
+
+      const enOferta = PRODUCTOS.filter(p => tieneOferta(p));
+
+      let chips = `
+        <button
+          type="button"
+          class="c-chip ${todosActivo ? 'activo' : ''}"
+          onclick="filtrarPorCategoria(null)">
+          Todos
+        </button>
+      `;
+
+      chips += CATEGORIAS.map(cat => `
+        <button
+          type="button"
+          class="c-chip ${CATEGORIA_VISTA_ACTUAL?.id === cat.id ? 'activo' : ''}"
+          onclick="filtrarPorCategoria(${inlineArg(cat.id)})">
+          ${esc(cat.nombre)}
+        </button>
+      `).join('');
+
+      if (enOferta.length) {
+        chips += `
+          <button
+            type="button"
+            class="c-chip ${SOLO_OFERTAS ? 'activo' : ''}"
+            onclick="filtrarSoloOfertas()">
+            Ofertas
+          </button>
+        `;
+      }
+
+      if (FAVORITOS.length) {
+        chips += `
+          <button
+            type="button"
+            class="c-chip ${SOLO_FAVORITOS ? 'activo' : ''}"
+            onclick="toggleSoloFavoritos()">
+            ❤️ Favoritos (${FAVORITOS.length})
+          </button>
+        `;
+      }
+
+      cont.innerHTML = chips;
+
+      const sidebar = document.getElementById('c-sidebar-categorias');
+
+      if (sidebar) {
+        let lista = `
+          <button
+            type="button"
+            class="c-sidebar-cat-item ${todosActivo ? 'activo' : ''}"
+            onclick="filtrarPorCategoria(null)">
+            📦 Todos los productos
+          </button>
+        `;
+
+        lista += CATEGORIAS.map(cat => `
+          <button
+            type="button"
+            class="c-sidebar-cat-item ${CATEGORIA_VISTA_ACTUAL?.id === cat.id ? 'activo' : ''}"
+            onclick="filtrarPorCategoria(${inlineArg(cat.id)})">
+            ${esc(cat.nombre)}
+          </button>
+        `).join('');
+
+        if (enOferta.length) {
+          lista += `
+            <button
+              type="button"
+              class="c-sidebar-cat-item ${SOLO_OFERTAS ? 'activo' : ''}"
+              onclick="filtrarSoloOfertas()">
+              🔥 Ofertas
+            </button>
+          `;
+        }
+
+        if (FAVORITOS.length) {
+          lista += `
+            <button
+              type="button"
+              class="c-sidebar-cat-item ${SOLO_FAVORITOS ? 'activo' : ''}"
+              onclick="toggleSoloFavoritos()">
+              ❤️ Mis favoritos (${FAVORITOS.length})
+            </button>
+          `;
+        }
+
+        sidebar.innerHTML = lista;
+      }
+
+      const ofertasWrap = document.getElementById('c-sidebar-ofertas');
+
+      if (ofertasWrap && enOferta.length) {
+        const descuentos = enOferta
+          .filter(p => Number(p.precio) > 0)
+          .map(p => Math.round(
+            (1 - Number(p.precio_oferta) / Number(p.precio)) * 100
+          ))
+          .filter(n => Number.isFinite(n) && n > 0);
+
+        const texto = descuentos.length
+          ? `Hasta ${Math.max(...descuentos)}% de descuento en ${enOferta.length} producto${enOferta.length === 1 ? '' : 's'}`
+          : `Precios especiales en ${enOferta.length} producto${enOferta.length === 1 ? '' : 's'}`;
+
+        ofertasWrap.style.display = 'block';
+        ofertasWrap.innerHTML = `
+          <h4>Ofertas</h4>
+          <p>${texto}</p>
+          <a onclick="filtrarSoloOfertas()">Ver ofertas →</a>
+        `;
+      } else if (ofertasWrap) {
+        ofertasWrap.style.display = 'none';
+      }
+    }
+
+    function filtrarSoloOfertas() {
+      TEXTO_BUSQUEDA = '';
+
+      ['c-buscador', 'c-buscador-header'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.value = '';
+      });
+
+      CATEGORIA_VISTA_ACTUAL = null;
+      SOLO_FAVORITOS = false;
+      SOLO_OFERTAS = true;
+
+      renderChipsCategorias();
+      renderMigas();
+      aplicarFiltroYOrden();
+    }
+
+    function toggleSoloFavoritos() {
+      SOLO_FAVORITOS = !SOLO_FAVORITOS;
+
+      if (SOLO_FAVORITOS) {
+        CATEGORIA_VISTA_ACTUAL = null;
+        SOLO_OFERTAS = false;
+      }
+
+      renderChipsCategorias();
+      renderMigas();
+      aplicarFiltroYOrden();
+    }
+
+    function filtrarPorCategoria(id) {
+      CATEGORIA_VISTA_ACTUAL = id
+        ? CATEGORIAS.find(c => c.id === id) || null
+        : null;
+
+      SOLO_FAVORITOS = false;
+      SOLO_OFERTAS = false;
+
+      renderChipsCategorias();
+      renderMigas();
+      aplicarFiltroYOrden();
+    }
+
+    function renderMigas() {
+      const el = document.getElementById('c-migas');
+
+      if (!CATEGORIA_VISTA_ACTUAL && !SOLO_FAVORITOS && !SOLO_OFERTAS) {
+        el.style.display = 'none';
+        return;
+      }
+
+      const actual = SOLO_FAVORITOS
+        ? 'Mis favoritos'
+        : SOLO_OFERTAS
+          ? 'Ofertas'
+          : CATEGORIA_VISTA_ACTUAL.nombre;
+
+      el.style.display = 'flex';
+
+      el.innerHTML = `
+        <a onclick="filtrarPorCategoria(null)">Inicio</a>
+        <span>›</span>
+        <span>${esc(actual)}</span>
+      `;
+    }
+
+    function cambiarOrden(valor) {
+      ORDEN_ACTUAL = valor;
+      aplicarFiltroYOrden();
+    }
+
+    function cambiarVista(modo) {
+      VISTA_ACTUAL = modo === 'lista' ? 'lista' : 'grid';
+
+      const grid = document.getElementById('c-grid-productos');
+
+      grid.classList.toggle('vista-lista', VISTA_ACTUAL === 'lista');
+
+      document.getElementById('c-vista-grid')
+        .classList.toggle('activo', VISTA_ACTUAL === 'grid');
+
+      document.getElementById('c-vista-lista')
+        .classList.toggle('activo', VISTA_ACTUAL === 'lista');
+    }
+
+    function aplicarFiltroYOrden() {
+      const lista = c360FiltrarYOrdenar(PRODUCTOS, {
+        categoriaId: CATEGORIA_VISTA_ACTUAL?.id || null,
+        soloFavoritos: SOLO_FAVORITOS,
+        favoritos: FAVORITOS,
+        soloOfertas: SOLO_OFERTAS,
+        textoBusqueda: TEXTO_BUSQUEDA,
+        precioMax: PRECIO_MAX_ACTIVO,
+        orden: ORDEN_ACTUAL
+      });
+
+      renderGridProductos(Array.isArray(lista) ? lista : []);
+    }
+
+    function tarjetaProductoHTML(p, esGrande = false, indice = 0) {
+      const principal = fotoPrincipal(p);
+      const cat = categoriaDeProducto(p);
+      const enOferta = tieneOferta(p);
+      const agotado = p.etiqueta === 'agotado';
+      const tagTexto = { nuevo: 'Nuevo', oferta: 'Oferta' }[p.etiqueta];
+      const esFav = FAVORITOS.includes(p.id);
+      const delay = Math.min(Math.max(Number(indice) || 0, 0), 8) * 45;
+
+      return `
+        <article
+          class="c-card ${agotado ? 'agotada' : ''} ${esGrande ? 'grande' : ''}"
+          style="--delay:${delay}ms">
+
+          <div class="c-card-media" onclick="abrirModalProducto(${inlineArg(p.id)})">
+            ${tagTexto ? `<span class="c-card-tag ${esc(p.etiqueta)}">${tagTexto}</span>` : ''}
+
+            <span class="c-card-disp ${agotado ? 'agotado' : ''}">
+              ${agotado ? 'Agotado' : 'Disponible'}
+            </span>
+
+            <button
+              class="c-fav-btn ${esFav ? 'activo' : ''}"
+              type="button"
+              onclick="event.stopPropagation();toggleFavorito(${inlineArg(p.id)})"
+              aria-label="${esFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">
+              ${esFav ? '❤️' : '🤍'}
+            </button>
+
+            ${
+              principal
+                ? `<img
+                    src="${esc(principal.url)}"
+                    loading="lazy"
+                    decoding="async"
+                    alt="${esc(p.nombre)}">`
+                : `<div class="c-card-sin-foto">Sin imagen</div>`
+            }
+          </div>
+
+          <div class="c-card-body">
+            ${cat ? `<div class="c-card-cat">${esc(cat.nombre)}</div>` : ''}
+
+            <div
+              class="c-card-nombre"
+              onclick="abrirModalProducto(${inlineArg(p.id)})">
+              ${esc(p.nombre)}
+            </div>
+
+            <div class="c-card-precio-row">
+              <span class="c-card-precio ${enOferta ? 'con-oferta' : ''}">
+                ${fmtC(enOferta ? p.precio_oferta : p.precio)}
+              </span>
+
+              ${enOferta ? `<span class="c-cardachado">${fmtC(p.precio)}</span>` : ''}
+            </div>
+
+            ${
+              !agotado
+                ? `<div class="c-card-botones">
+                    ${
+                      CATALOGO.whatsapp
+                        ? `<button
+                            class="c-card-accion-rapida wa"
+                            type="button"
+                            onclick="event.stopPropagation();consultarProducto(${inlineArg(p.id)})"
+                            title="Consultar por WhatsApp"
+                            aria-label="Consultar ${esc(p.nombre)} por WhatsApp">
+                            💬
+                          </button>`
+                        : ''
+                    }
+
+                    ${
+                      CATALOGO.telefono
+                        ? `<a
+                            class="c-card-accion-rapida llamar"
+                            href="tel:${esc(CATALOGO.telefono)}"
+                            onclick="event.stopPropagation();registrarEvento('click_telefono')"
+                            title="Llamar"
+                            aria-label="Llamar">
+                            📞
+                          </a>`
+                        : ''
+                    }
+
+                    <button
+                      class="c-card-accion-rapida compartir"
+                      type="button"
+                      onclick="event.stopPropagation();compartirProducto(${inlineArg(p.id)})"
+                      title="Compartir"
+                      aria-label="Compartir ${esc(p.nombre)}">
+                      🔗
+                    </button>
+                  </div>`
+                : ''
+            }
+          </div>
+        </article>
+      `;
+    }
+
+    function renderGridProductos(lista) {
+      const conteo = document.getElementById('c-conteo-productos');
+      const grid = document.getElementById('c-grid-productos');
+
+      conteo.textContent = lista.length
+        ? `${lista.length} producto${lista.length === 1 ? '' : 's'}`
+        : '';
+
+      if (!lista.length) {
+        grid.className = 'c-grid';
+
+        grid.innerHTML = `
+          <div class="c-vacio">
+            No encontramos productos con esos filtros.
+          </div>
+        `;
+
+        return;
+      }
+
+      grid.className =
+        `c-grid${lista.length <= 3 ? ' pocas' : ''}${VISTA_ACTUAL === 'lista' ? ' vista-lista' : ''}`;
+
+      const usaRitmo = lista.length >= 6;
+
+      grid.innerHTML = lista.map((producto, i) => {
+        const grande = usaRitmo && i % 5 === 0;
+        return tarjetaProductoHTML(producto, grande, i);
+      }).join('');
+    }
+
+    function mostrarToast(mensaje) {
+      const wrap = document.getElementById('c-toast-wrap');
+      const toast = document.createElement('div');
+
+      toast.className = 'c-toast';
+      toast.textContent = mensaje;
+
+      wrap.appendChild(toast);
+
+      setTimeout(() => toast.remove(), 2600);
+    }
+
+    async function compartirProducto(id) {
+      const p = PRODUCTOS.find(x => x.id === id);
+      if (!p) return;
+
+      const base = window.location.href.split('#')[0];
+      const url = `${base}#producto-${encodeURIComponent(p.id)}`;
+
+      const datos = {
+        title: p.nombre,
+        text: `${p.nombre} — ${fmtC(precioActivo(p))}`,
+        url
+      };
+
+      if (navigator.share) {
+        try {
+          await navigator.share(datos);
+          return;
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+        }
+      }
+
+      try {
+        await navigator.clipboard.writeText(url);
+        mostrarToast('🔗 Enlace copiado');
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = url;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+          document.execCommand('copy');
+        } catch {}
+
+        textarea.remove();
+        mostrarToast('🔗 Enlace copiado');
+      }
+    }
+
+    function abrirModalProducto(id) {
+      const p = PRODUCTOS.find(x => x.id === id);
+      if (!p) return;
+
+      C360_FOCO_PREVIO = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+      registrarEvento('vista_producto', id);
+      registrarVisto(id);
+
+      const cat = categoriaDeProducto(p);
+      const enOferta = tieneOferta(p);
+
+      const catEl = document.getElementById('c-modal-cat');
+      catEl.textContent = cat ? cat.nombre : '';
+      catEl.style.display = cat ? 'block' : 'none';
+
+      document.getElementById('c-modal-nombre').textContent = p.nombre || '';
+      document.getElementById('c-modal-precio').textContent = fmtC(precioActivo(p));
+      document.getElementById('c-modal-precio').className =
+        `c-precio${enOferta ? ' con-oferta' : ''}`;
+
+      const tachado = document.getElementById('c-modal-precio-tachado');
+      tachado.style.display = enOferta ? 'inline' : 'none';
+      tachado.textContent = enOferta ? fmtC(p.precio) : '';
+
+      document.getElementById('c-modal-desc').textContent = p.descripcion || '';
+
+      FOTOS_MODAL_ACTUAL = p.fotos.map(f => f.url);
+
+      document.getElementById('c-modal-fotos').innerHTML = p.fotos.length
+        ? p.fotos.map(f => `
+            <img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="eager">
+          `).join('')
+        : '';
+
+      const btnWa = document.getElementById('c-modal-whatsapp');
+
+      if (CATALOGO.whatsapp && p.etiqueta !== 'agotado') {
+        btnWa.style.display = 'flex';
+        btnWa.disabled = false;
+        btnWa.textContent = '💬 Consultar por WhatsApp';
+        btnWa.onclick = () => consultarProducto(p.id);
+      } else if (p.etiqueta === 'agotado') {
+        btnWa.style.display = 'flex';
+        btnWa.disabled = true;
+        btnWa.textContent = 'Agotado por ahora';
+        btnWa.onclick = null;
+      } else {
+        btnWa.style.display = 'none';
+        btnWa.onclick = null;
+      }
+
+      renderRelacionados(p);
+
+      const modal = document.getElementById('c-modal');
+
+      document.body.classList.add('c-modal-abierto');
+      modal.setAttribute('aria-hidden', 'false');
+      modal.classList.add('open');
+
+      requestAnimationFrame(() => {
+        modal.querySelector('.c-modal-close')?.focus();
+      });
+    }
+
+    function cerrarModalProducto() {
+      const modal = document.getElementById('c-modal');
+
+      if (!modal.classList.contains('open')) return;
+
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('c-modal-abierto');
+
+      if (C360_FOCO_PREVIO) {
+        C360_FOCO_PREVIO.focus({ preventScroll: true });
+      }
+    }
+
+    function indexFotoClic(evento) {
+      const img = evento.target.closest('img');
+
+      if (!img) return 0;
+
+      return Array.from(img.parentElement.children).indexOf(img);
+    }
+
+    function registrarVisto(id) {
+      VISTOS_RECIENTEMENTE = VISTOS_RECIENTEMENTE.filter(v => v !== id);
+      VISTOS_RECIENTEMENTE.unshift(id);
+      VISTOS_RECIENTEMENTE = VISTOS_RECIENTEMENTE.slice(0, 8);
+
+      c360GuardarListaLocal('vistos', VISTOS_RECIENTEMENTE);
+
+      renderVistos();
+    }
+
+    function renderVistos() {
+      const seccion = document.getElementById('c-seccion-vistos');
+
+      const lista = VISTOS_RECIENTEMENTE
+        .map(id => PRODUCTOS.find(p => p.id === id))
+        .filter(Boolean);
+
+      if (lista.length < 2) {
+        seccion.style.display = 'none';
+        return;
+      }
+
+      seccion.style.display = 'block';
+
+      const grid = document.getElementById('c-grid-vistos');
+      grid.className = `c-grid${lista.length <= 3 ? ' pocas' : ''}`;
+
+      grid.innerHTML = lista
+        .map((producto, i) => tarjetaProductoHTML(producto, false, i))
+        .join('');
+    }
+
+    function renderRelacionados(p) {
+      const wrap = document.getElementById('c-relacionados-wrap');
+
+      if (!p.categoria_id) {
+        wrap.style.display = 'none';
+        return;
+      }
+
+      const relacionados = PRODUCTOS
+        .filter(x => x.id !== p.id && x.categoria_id === p.categoria_id)
+        .slice(0, 6);
+
+      if (!relacionados.length) {
+        wrap.style.display = 'none';
+        return;
+      }
+
+      wrap.style.display = 'block';
+
+      document.getElementById('c-relacionados').innerHTML = relacionados.map(r => {
+        const foto = fotoPrincipal(r);
+        const precio = precioActivo(r);
+
+        return `
+          <div
+            class="c-relacionado-mini"
+            onclick="abrirModalProducto(${inlineArg(r.id)})">
+
+            ${
+              foto
+                ? `<img src="${esc(foto.url)}" loading="lazy" alt="${esc(r.nombre)}">`
+                : `<div class="c-relacionado-vacio"></div>`
+            }
+
+            <div class="nombre">${esc(r.nombre)}</div>
+            <div class="precio">${fmtC(precio)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function abrirLightbox(fotos, indice = 0) {
+      if (!Array.isArray(fotos) || !fotos.length) return;
+
+      LIGHTBOX_FOTOS = fotos;
+      LIGHTBOX_INDICE = Math.max(0, Math.min(Number(indice) || 0, fotos.length - 1));
+
+      const lightbox = document.getElementById('c-lightbox');
+
+      document.getElementById('c-lightbox-img').src =
+        LIGHTBOX_FOTOS[LIGHTBOX_INDICE];
+
+      document.getElementById('c-lightbox-contador').textContent =
+        `${LIGHTBOX_INDICE + 1} / ${LIGHTBOX_FOTOS.length}`;
+
+      lightbox.setAttribute('aria-hidden', 'false');
+      lightbox.classList.add('open');
+
+      requestAnimationFrame(() => {
+        lightbox.querySelector('.c-lightbox-cerrar')?.focus();
+      });
+    }
+
+    function cerrarLightbox() {
+      const lightbox = document.getElementById('c-lightbox');
+
+      lightbox.classList.remove('open');
+      lightbox.setAttribute('aria-hidden', 'true');
+    }
+
+    function moverLightbox(delta) {
+      if (!LIGHTBOX_FOTOS.length) return;
+
+      LIGHTBOX_INDICE =
+        (LIGHTBOX_INDICE + delta + LIGHTBOX_FOTOS.length) %
+        LIGHTBOX_FOTOS.length;
+
+      document.getElementById('c-lightbox-img').src =
+        LIGHTBOX_FOTOS[LIGHTBOX_INDICE];
+
+      document.getElementById('c-lightbox-contador').textContent =
+        `${LIGHTBOX_INDICE + 1} / ${LIGHTBOX_FOTOS.length}`;
+    }
+
+    function abrirProductoDesdeHash() {
+      if (!window.location.hash.startsWith('#producto-')) return;
+
+      let id = '';
+
+      try {
+        id = decodeURIComponent(
+          window.location.hash.replace('#producto-', '')
+        );
+      } catch {
+        return;
+      }
+
+      if (PRODUCTOS.some(p => p.id === id)) {
+        abrirModalProducto(id);
+      }
+    }
+
+    window.addEventListener('hashchange', abrirProductoDesdeHash);
+
+    document.addEventListener('keydown', (e) => {
+      const lightboxAbierto = document.getElementById('c-lightbox').classList.contains('open');
+      const modalAbierto = document.getElementById('c-modal').classList.contains('open');
+
+      if (lightboxAbierto) {
+        if (e.key === 'Escape') cerrarLightbox();
+        if (e.key === 'ArrowLeft') moverLightbox(-1);
+        if (e.key === 'ArrowRight') moverLightbox(1);
+        return;
+      }
+
+      if (modalAbierto && e.key === 'Escape') {
+        cerrarModalProducto();
+      }
+    });
+
+    init();
+  </script>
 </body>
 </html>
