@@ -1673,11 +1673,11 @@
         </div>
         <div class="form-group">
           <label>Costo unitario (compra) *</label>
-          <input type="number" id="pn-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarPreviewProductoNuevo()"/>
+          <input type="text" inputmode="decimal" id="pn-costo" min="0" placeholder="0.00" oninput="saneaDecimalInput(this);actualizarPreviewProductoNuevo()"/>
         </div>
         <div class="form-group">
           <label>Precio de venta *</label>
-          <input type="number" id="pn-precio" min="0" step="0.01" placeholder="0.00"/>
+          <input type="text" inputmode="decimal" id="pn-precio" min="0" placeholder="0.00" oninput="saneaDecimalInput(this)"/>
         </div>
         <div class="form-group">
           <label>Cantidad / stock inicial *</label>
@@ -1846,8 +1846,8 @@
         </div>
         <div id="nc-iva-porcentaje-wrap">
           <label style="white-space:nowrap;margin:0">Porcentaje IVA:</label>
-          <input type="number" id="nc-iva-porcentaje" value="15" min="0" max="100" step="0.01"
-            oninput="actualizarIVAPorcentaje()"/>
+          <input type="text" inputmode="decimal" id="nc-iva-porcentaje" value="15" min="0" max="100"
+            oninput="saneaDecimalInput(this);actualizarIVAPorcentaje()"/>
           <span style="color:var(--text-muted);font-size:13px">%</span>
         </div>
 
@@ -2084,7 +2084,7 @@
       <div class="form-row">
         <div class="form-group">
           <label>Monto *</label>
-          <input type="number" id="cd-monto" min="0.01" step="0.01" placeholder="0.00"/>
+          <input type="text" inputmode="decimal" id="cd-monto" min="0.01" placeholder="0.00" oninput="saneaDecimalInput(this)"/>
         </div>
         <div class="form-group">
           <label>Fecha *</label>
@@ -2370,7 +2370,7 @@
       </div>
       <div id="mv-wrap-tasa" style="display:none;margin-bottom:12px">
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Tu tasa de cambio (córdobas por 1 dólar)</label>
-        <input type="number" id="mv-tasa" min="0.01" step="0.01" placeholder="Ej: 36.60" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-app,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
+        <input type="text" inputmode="decimal" id="mv-tasa" min="0.01" placeholder="Ej: 36.60" oninput="saneaDecimalInput(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-app,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
       </div>
       <p id="mv-error" style="color:#ef4444;font-size:12.5px"></p>
     </div>

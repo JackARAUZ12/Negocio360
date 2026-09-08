@@ -955,7 +955,7 @@ function resetFormProductoNuevo() {
 }
 
 function actualizarPreviewProductoNuevo() {
-  const costo = parseFloat(document.getElementById('pn-costo')?.value) || 0;
+  const costo = parseDecimalLocal(document.getElementById('pn-costo')?.value) || 0;
   const stock = parseFloat(document.getElementById('pn-stock')?.value) || 0;
   const total = costo * stock;
   const el = document.getElementById('pn-total-preview');
@@ -969,8 +969,8 @@ async function crearProductoYComprar() {
   const nombre    = (document.getElementById('pn-nombre')?.value || '').trim();
   const categoria = (document.getElementById('pn-categoria')?.value || '').trim();
   const sku       = (document.getElementById('pn-sku')?.value || '').trim();
-  const costo     = parseFloat(document.getElementById('pn-costo')?.value);
-  const precio    = parseFloat(document.getElementById('pn-precio')?.value);
+  const costo     = parseDecimalLocal(document.getElementById('pn-costo')?.value);
+  const precio    = parseDecimalLocal(document.getElementById('pn-precio')?.value);
   const stock     = parseFloat(document.getElementById('pn-stock')?.value);
   const provSel   = document.getElementById('pn-proveedor-select');
   const proveedorId     = provSel?.value || null;
@@ -1369,20 +1369,23 @@ function renderCarrito() {
     <tr>
       <td style="font-weight:500">${escHtml(linea.producto.nombre)}</td>
       <td>
-        <input type="number" class="carrito-input" value="${linea.cantidad}"
-          min="0.01" step="0.01"
+        <input type="text" inputmode="decimal" class="carrito-input" value="${linea.cantidad}"
+          min="0.01"
+          oninput="saneaDecimalInput(this)"
           onchange="actualizarLineaCarrito(${idx},'cantidad',this.value)"
           style="width:70px"/>
       </td>
       <td>
-        <input type="number" class="carrito-input" value="${linea.costoUnitario}"
-          min="0" step="0.01"
+        <input type="text" inputmode="decimal" class="carrito-input" value="${linea.costoUnitario}"
+          min="0"
+          oninput="saneaDecimalInput(this)"
           onchange="actualizarLineaCarrito(${idx},'costoUnitario',this.value)"
           style="width:90px"/>
       </td>
       <td>
-        <input type="number" class="carrito-input" value="${linea.descuento}"
-          min="0" step="0.01"
+        <input type="text" inputmode="decimal" class="carrito-input" value="${linea.descuento}"
+          min="0"
+          oninput="saneaDecimalInput(this)"
           onchange="actualizarLineaCarrito(${idx},'descuento',this.value)"
           style="width:80px"/>
       </td>
@@ -1423,7 +1426,7 @@ function actualizarLineaCarrito(idx, campo, valor) {
   // "L-2026-08" se volvía 0. Ahora solo los campos numéricos de
   // verdad pasan por parseFloat.
   const camposNumericos = ['cantidad', 'costoUnitario', 'descuento'];
-  linea[campo] = camposNumericos.includes(campo) ? (parseFloat(valor) || 0) : valor;
+  linea[campo] = camposNumericos.includes(campo) ? (parseDecimalLocal(valor) || 0) : valor;
   if (camposNumericos.includes(campo)) recalcularLinea(linea);
   renderCarrito();
 }
@@ -1448,7 +1451,7 @@ function toggleIVA(activo) {
 }
 
 function actualizarIVAPorcentaje() {
-  const val = parseFloat(document.getElementById('nc-iva-porcentaje')?.value || 15);
+  const val = parseDecimalLocal(document.getElementById('nc-iva-porcentaje')?.value || 15);
   STATE.ivaPorcentaje = isNaN(val) ? 15 : val;
   STATE.carrito.forEach(l => recalcularLinea(l));
   renderCarrito();
@@ -1551,7 +1554,7 @@ async function elegirBancoCompra(bancoId, bancoNombre, monedaBanco) {
     document.getElementById('pn-banco-elegir-wrap').style.display = 'none';
     if (esOtraMoneda) {
       const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
-      const costo = parseFloat(document.getElementById('pn-costo')?.value) || 0;
+      const costo = parseDecimalLocal(document.getElementById('pn-costo')?.value) || 0;
       const stock = parseFloat(document.getElementById('pn-stock')?.value) || 0;
       const total = costo * stock;
       if (tasa) _montoBancoConvertidoCompra = monedaBase === 'NIO' ? round2(total / tasa) : round2(total * tasa);
@@ -1591,6 +1594,35 @@ function cancelarSeleccionBancoCompra() {
 }
 
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+
+// Los campos type="number" en HTML SOLO aceptan punto como separador
+// decimal -- pero el teclado numerico de un telefono en español
+// muestra COMA. Al escribir "150,50" el navegador descarta la coma en
+// silencio y el valor queda "15050" (¡no "150"!) porque simplemente
+// concatena los digitos que siguen -- un error financiero grave y
+// nada obvio para quien lo escribio. Estos 2 ayudantes resuelven esto
+// en los campos de dinero/decimales de Compras, que ahora son
+// type="text" en vez de type="number" (los inputs de texto SI dejan
+// escribir cualquier caracter, incluida la coma, sin mutilar nada).
+function saneaDecimalInput(el) {
+  if (!el) return;
+  const cursor = el.selectionStart;
+  const antes = el.value;
+  // Solo digitos, un unico separador (coma o punto, se normaliza a punto)
+  let limpio = antes.replace(',', '.').replace(/[^\d.]/g, '');
+  const primerPunto = limpio.indexOf('.');
+  if (primerPunto !== -1) {
+    limpio = limpio.slice(0, primerPunto + 1) + limpio.slice(primerPunto + 1).replace(/\./g, '');
+  }
+  if (limpio !== antes) {
+    el.value = limpio;
+    const diff = antes.length - limpio.length;
+    if (cursor != null) el.setSelectionRange(cursor - diff, cursor - diff);
+  }
+}
+function parseDecimalLocal(valor) {
+  return parseFloat(String(valor ?? '').replace(',', '.'));
+}
 
 /* =====================================================
    COMPRA DIRECTA — gasto de contado con un proveedor que NO es
@@ -1665,7 +1697,7 @@ async function guardarCompraDirecta() {
 
   const concepto = document.getElementById('cd-concepto')?.value.trim();
   if (!concepto) { errEl.textContent = 'Escribe de qué es esta compra.'; return; }
-  const monto = Number(document.getElementById('cd-monto')?.value);
+  const monto = parseDecimalLocal(document.getElementById('cd-monto')?.value);
   if (!monto || monto <= 0) { errEl.textContent = 'Escribe un monto válido.'; return; }
   const fecha = document.getElementById('cd-fecha')?.value;
   if (!fecha) { errEl.textContent = 'Elige la fecha.'; return; }
@@ -2964,7 +2996,7 @@ function guardarMonedaVis() {
   if (!elegida || elegida === oficial) {
     desactivarMonedaVisualizacion();
   } else {
-    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    const tasa = parseDecimalLocal(document.getElementById('mv-tasa').value);
     if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
     activarMonedaVisualizacion(elegida, tasa);
   }
