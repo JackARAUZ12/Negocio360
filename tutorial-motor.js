@@ -116,11 +116,13 @@
       }
       #tm-ayuda-flotante:hover { transform: scale(1.06); }
       @media (max-width: 480px) {
-        #tm-card { max-width: 100%; border-radius: 16px 16px 0 0; align-self: flex-end; }
-        #tm-overlay { align-items: flex-end; padding: 0; }
+        #tm-card { max-width: 100%; }
         #tm-media { height: 110px; font-size: 38px; }
         #tm-body { padding: 20px 20px 4px; }
         #tm-footer { padding: 14px 20px 20px; }
+      }
+      @media (max-height: 560px) {
+        #tm-media { display: none; }
       }
     `;
     document.head.appendChild(style);
@@ -169,6 +171,7 @@
 
   async function cerrar() {
     document.getElementById('tm-overlay').classList.remove('tm-open');
+    document.body.style.overflow = ''; // restaura el scroll de fondo
     if (moduloActivoKey) await marcarVisto(moduloActivoKey);
   }
 
@@ -202,6 +205,7 @@
     pasoActual = 0;
     renderPaso();
     document.getElementById('tm-overlay').classList.add('tm-open');
+    document.body.style.overflow = 'hidden'; // bloquea el scroll de fondo -- el tutorial se queda fijo y centrado aunque desliken por accidente
   }
 
   async function verificarYMostrar(moduloKey, pasos) {
