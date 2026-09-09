@@ -2068,6 +2068,15 @@ async function verReporteCC(sesionId) {
     if (!s) { showToast('No se encontró ese cierre', 'error'); return; }
     CC.reporteActual = s;
 
+    // Detalle movimiento por movimiento -- mismo filtro exacto que ya
+    // usa confirmarConteoBilletes() para calcular los totales, asi
+    // que el detalle siempre cuadra con lo ya guardado en la sesion.
+    const { data: movs } = await sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, concepto, tipo_movimiento, created_at, metodo_pago_nombre')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completado').eq('fecha', s.fecha)
+      .order('created_at');
+    CC.reporteMovimientos = movs || [];
+
     const filaDenom = (obj, titulo) => {
       const entradas = Object.entries(obj || {}).sort((a,b) => Number(b[0])-Number(a[0]));
       if (!entradas.length) return `<div style="font-size:12px;color:var(--text-muted)">${titulo}: sin desglose</div>`;
@@ -2094,6 +2103,20 @@ async function verReporteCC(sesionId) {
         <div class="tp-row"><span>Se contó (real):</span><b>${fmt(s.monto_cierre_real)}</b></div>
         <div class="tp-row" style="font-weight:800;color:${Math.abs(dif)<0.5?'var(--success)':'var(--danger)'}"><span>Diferencia:</span><b>${Math.abs(dif)<0.5?'Cuadró ✅':(dif>0?'Sobraron '+fmt(dif):'Faltaron '+fmt(Math.abs(dif)))}</b></div>
         ${s.observaciones ? `<hr/><div style="font-size:11px;color:var(--text-muted)">Nota: ${esc(s.observaciones)}</div>` : ''}
+      </div>
+      <div class="table-wrap" style="max-height:280px;overflow-y:auto;margin-top:12px">
+        <table class="data-table" style="width:100%">
+          <thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th style="text-align:right">Monto</th></tr></thead>
+          <tbody>
+            ${CC.reporteMovimientos.length ? CC.reporteMovimientos.map(m => `
+              <tr>
+                <td>${new Date(m.created_at).toLocaleTimeString('es-NI', { hour:'2-digit', minute:'2-digit' })}</td>
+                <td>${tipoMovLabel(m.tipo_movimiento) || m.tipo_movimiento || '—'}</td>
+                <td>${esc(m.concepto || '—')}</td>
+                <td style="text-align:right;color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmt(m.monto)}</td>
+              </tr>`).join('') : `<tr><td colspan="4" class="empty-cell">Sin movimientos ese día</td></tr>`}
+          </tbody>
+        </table>
       </div>`;
     openModal('modal-reporte-cc');
   } catch (e) {
@@ -2107,6 +2130,57 @@ function imprimirReporteCC() {
     <style>body{font-family:Arial,Helvetica,sans-serif;font-size:12.5px;padding:16px;max-width:320px;margin:0 auto}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
     </head><body>${html}<script>window.print();</script></body></html>`);
   w.document.close();
+}
+
+// Exporta el reporte de Caja Chica ya cargado en pantalla a un PDF
+// real -- mismo patron exacto (jsPDF + autoTable) ya usado en Ventas,
+// Reportes, y en el detalle de Cierre diario.
+function exportarReporteCCPDF() {
+  const s = CC.reporteActual;
+  if (!s) { showToast('Primero abre un reporte', 'error'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  doc.setFontSize(14); doc.setFont(undefined, 'bold');
+  doc.text(`Caja Chica — ${fmtDate(s.fecha)}`, 10, 15);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
+  doc.text(`Generado: ${new Date().toLocaleString('es-NI')}`, 10, 21);
+
+  const dif = Number(s.diferencia || 0);
+  let startY = 28;
+  doc.autoTable({
+    startY,
+    head: [['Concepto', 'Monto']],
+    body: [
+      ['Apertura', fmt(s.monto_apertura)],
+      ['Ingresos del día (todos)', fmt(s.total_ingresos)],
+      ['Egresos del día (todos)', fmt(s.total_egresos)],
+      ['Debería haber (teórico, efectivo)', fmt(s.monto_cierre_teorico)],
+      ['Se contó (real)', fmt(s.monto_cierre_real)],
+      ['Diferencia', Math.abs(dif) < 0.5 ? 'Cuadró' : (dif > 0 ? 'Sobraron ' + fmt(dif) : 'Faltaron ' + fmt(Math.abs(dif)))],
+    ],
+    theme: 'striped', headStyles: { fillColor: [90, 90, 244] }, margin: { left: 10, right: 10 }, styles: { fontSize: 9 },
+  });
+  startY = doc.lastAutoTable.finalY + 10;
+
+  doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.setTextColor(30);
+  doc.text('Detalle de movimientos', 10, startY);
+  startY += 4;
+
+  doc.autoTable({
+    startY,
+    head: [['Hora', 'Tipo', 'Concepto', 'Monto']],
+    body: (CC.reporteMovimientos || []).map(m => [
+      new Date(m.created_at).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }),
+      tipoMovLabel(m.tipo_movimiento) || m.tipo_movimiento || '—',
+      m.concepto || '—',
+      `${m.tipo_flujo === 'INGRESO' ? '+' : '-'}${fmt(m.monto)}`,
+    ]),
+    theme: 'grid', headStyles: { fillColor: [90, 90, 244] }, margin: { left: 10, right: 10 }, styles: { fontSize: 8 },
+  });
+
+  doc.save(`negocio360_caja_chica_${s.fecha}.pdf`);
 }
 
 /* =====================================================

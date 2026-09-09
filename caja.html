@@ -1667,7 +1667,7 @@
      MODAL: REPORTE DE CIERRE DE CAJA CHICA
 =================================================== -->
 <div class="modal-overlay" id="modal-reporte-cc" onclick="if(event.target===this)closeModal('modal-reporte-cc')">
-  <div class="modal-box modal-sm">
+  <div class="modal-box modal-sm" style="max-width:620px">
     <div class="modal-header">
       <span class="modal-title">Reporte de cierre</span>
       <button class="modal-close" onclick="closeModal('modal-reporte-cc')">
@@ -1677,7 +1677,8 @@
     <div class="modal-body" id="cc-reporte-body">—</div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-reporte-cc')">Cerrar</button>
-      <button class="btn-primary" onclick="imprimirReporteCC()">Imprimir</button>
+      <button class="btn-secondary" onclick="imprimirReporteCC()">Imprimir</button>
+      <button class="btn-primary" onclick="exportarReporteCCPDF()">📄 Exportar PDF</button>
     </div>
   </div>
 </div>
