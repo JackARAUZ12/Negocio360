@@ -624,6 +624,40 @@
   // ------------------------------------------------------------
   // Restricciones en pantalla (sidebar + acceso a la página actual)
   // ------------------------------------------------------------
+  // Oculta absolutamente todo el menu lateral excepto Catalogo360 --
+  // usado solo para cuentas INDEPENDIENTES (nunca para clientes
+  // completos de Negocio360, ni siquiera con sub-perfiles restringidos,
+  // que usan aplicarRestricciones() en vez de esta funcion).
+  function restringirSoloACatalogo360() {
+    const nodos = document.querySelectorAll('[onclick*="navigate("], a[href$=".html"], a[href*=".html?"]');
+    nodos.forEach(el => {
+      let href = el.getAttribute('href');
+      if (!href) {
+        const m = (el.getAttribute('onclick') || '').match(/navigate\(['"]([^'"?]+)/);
+        href = m ? m[1] : null;
+      }
+      if (!href) return;
+      const file = href.split('?')[0].split('/').pop();
+      if (file !== 'catalogo360.html') {
+        const item = el.closest('.nav-item') || el;
+        item.style.display = 'none';
+      }
+    });
+
+    // Oculta títulos de sección que quedaron sin items visibles (ej.
+    // "ACCESOS RÁPIDOS" completo, ya que ninguno de esos accesos es
+    // Catálogo360).
+    document.querySelectorAll('.nav-section-title, .sidebar-section-label').forEach(title => {
+      let n = title.nextElementSibling;
+      let algunoVisible = false;
+      while (n && !n.classList.contains('nav-section-title') && !n.classList.contains('sidebar-section-label')) {
+        if (n.style.display !== 'none') algunoVisible = true;
+        n = n.nextElementSibling;
+      }
+      title.style.display = algunoVisible ? '' : 'none';
+    });
+  }
+
   function primerModuloPermitido(perfil) {
     const permitido = MODULO_ORDEN.find(k => (perfil.modulos || []).includes(k));
     const entry = Object.entries(MODULOS).find(([, v]) => v.key === permitido);
@@ -1107,6 +1141,24 @@
     if (estado === 'suspendida' || estado === 'cancelada') {
       mostrarBloqueoCuenta(estado);
       return;
+    }
+
+    // CUENTAS INDEPENDIENTES DE CATÁLOGO360: si esta cuenta se registró
+    // solo para Catálogo360 (nunca fue ni será cliente completo de
+    // Negocio360), se restringe a SOLO Catálogo360 en cualquier
+    // página -- nunca debe poder usar Ventas, Clientes, Compras, etc.
+    // Corre ANTES que el sistema de perfiles/multiusuario porque es
+    // una restricción de TIPO DE CUENTA, no de sub-usuario dentro de
+    // una cuenta ya completa.
+    const { data: suscripcionC360 } = await PG.client
+      .from('catalogo_suscripciones').select('es_independiente').eq('auth_user_id', PG.authUserId).maybeSingle();
+    if (suscripcionC360?.es_independiente) {
+      if (currentFile() !== 'catalogo360.html') {
+        location.href = 'catalogo360.html';
+        return;
+      }
+      restringirSoloACatalogo360();
+      return; // el sistema de perfiles/multiusuario normal no aplica a cuentas independientes
     }
 
     // Si esta cuenta es en realidad una SUCURSAL (creada desde el módulo
