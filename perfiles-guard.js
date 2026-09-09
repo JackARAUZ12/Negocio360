@@ -641,6 +641,7 @@
       if (file !== 'catalogo360.html') {
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
+        item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar
       }
     });
 
@@ -695,6 +696,7 @@
       if (!permitidos.has(mod.key)) {
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
+        item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar
       }
     });
 
