@@ -152,7 +152,7 @@ async function init() {
     await cargarLimitesYUso();
     await cargarListaCatalogos();
 
-    if (!STATE.empresaConfig?.catalogo360_tutorial_visto) mostrarTutorial();
+    if (!STATE.empresaConfig?.catalogo360_tutorial_visto || STATE.userId === CATALOGO360_CUENTA_SIEMPRE_DEMO) mostrarTutorial();
   } catch (e) {
     console.error('init catalogo360:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -1418,6 +1418,12 @@ function descargarQR() {
 const TUTORIAL_TOTAL_PASOS = 5;
 let TUTORIAL_PASO_ACTUAL = 1;
 
+// Cuenta de DEMOSTRACION de Catalogo360: siempre ve el tutorial, en
+// cada sesion, sin importar cuantas veces ya lo haya cerrado -- util
+// para hacer demos del catalogo una y otra vez a clientes
+// potenciales. Nunca se marca como "visto" para esta cuenta.
+const CATALOGO360_CUENTA_SIEMPRE_DEMO = '5ee31e5b-1e71-48ce-a590-17c8227b828b';
+
 function mostrarTutorial() {
   TUTORIAL_PASO_ACTUAL = 1;
   renderTutorialPaso();
@@ -1445,6 +1451,7 @@ function avanzarTutorial() {
 
 async function cerrarTutorial() {
   closeModal('modal-tutorial');
+  if (STATE.userId === CATALOGO360_CUENTA_SIEMPRE_DEMO) return; // nunca se marca como visto para la cuenta de demo
   try {
     await sb.from('configuracion_empresa').update({ catalogo360_tutorial_visto: true }).eq('auth_user_id', STATE.userId);
     if (STATE.empresaConfig) STATE.empresaConfig.catalogo360_tutorial_visto = true;
