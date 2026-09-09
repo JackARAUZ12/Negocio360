@@ -66,6 +66,15 @@ input:focus { outline: none; border-color: var(--border-focus); box-shadow: var(
     <button type="submit" class="btn-primary" id="btn-login">Iniciar sesión</button>
   </form>
 
+  <div style="display:flex;align-items:center;gap:10px;margin:20px 0">
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+    <span style="font-size:11.5px;color:var(--text-muted)">o</span>
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+  </div>
+  <button type="button" class="btn-primary" id="btn-demo" onclick="entrarComoDemo()" style="width:100%;background:#fff;border:1.5px solid var(--accent);color:var(--accent)">
+    👀 Ver una demo — sin registrarte
+  </button>
+
   <p class="pie">¿No tienes cuenta? <a href="catalogo360-registro.html">Regístrate</a></p>
   <a href="index.html" class="volver">← Volver al inicio</a>
 </div>
@@ -85,6 +94,27 @@ function traducirError(msg) {
   if (/invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.';
   if (/email not confirmed/i.test(msg)) return 'Confirma tu correo antes de iniciar sesión.';
   return 'No se pudo iniciar sesión. Intenta de nuevo.';
+}
+
+// Cuenta de demostración -- de acceso publico y compartido, a
+// proposito, para que cualquiera pueda "tocar" Catalogo360 sin pedir
+// codigo ni registrarse. No tiene datos sensibles reales.
+async function entrarComoDemo() {
+  ocultarError();
+  const btn = document.getElementById('btn-demo');
+  btn.disabled = true; btn.textContent = 'Entrando a la demo…';
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: 'demo@negocio360oficial.com', password: 'VerDemo2026#',
+    });
+    if (error) throw error;
+    if (!data?.user) throw new Error('No se pudo entrar a la demo.');
+    window.location.href = 'catalogo360.html';
+  } catch (err) {
+    console.error('Login demo Catálogo360:', err);
+    mostrarError('No se pudo entrar a la demo en este momento. Intenta de nuevo.');
+    btn.disabled = false; btn.textContent = '👀 Ver una demo — sin registrarte';
+  }
 }
 
 // Si ya hay sesión activa, no hace falta pasar por aquí de nuevo.
