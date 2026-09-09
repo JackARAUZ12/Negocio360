@@ -931,11 +931,130 @@ function renderCierres() {
       <td class="td-salida">${fmt(c.total_egresos)}</td>
       <td style="color:${flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${fmt(c.saldo_final)}</td>
       <td class="td-actions" style="display:flex;align-items:center;gap:8px">
-        <span class="badge-movs">${c.movimientos_count} mov.</span>
+        <span class="badge-movs" style="cursor:pointer;text-decoration:underline" title="Ver detalle" onclick="verDetalleCierre('${c.fecha}')">${c.movimientos_count} mov.</span>
         <button class="btn-icon" title="Deshacer este cierre — no borra ningún movimiento real, solo el recibo del cierre" onclick="confirmarDeshacerCierre('${c.id}','${fmtDate(c.fecha)}')" style="color:var(--danger)">↩️</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+// Guarda el ultimo detalle cargado para poder exportarlo a PDF sin
+// tener que volver a consultar la base de datos.
+let DETALLE_CIERRE_ACTUAL = { fecha: null, movimientos: [], resumen: null };
+
+// Reconstruye el detalle de un cierre (nuevo o viejo) consultando los
+// movimientos reales de esa fecha -- mismo filtro exacto que ya usa
+// crearCierreDiario() para calcular los totales, asi que el detalle
+// siempre cuadra con los 4 numeros ya guardados. No se guarda nada
+// nuevo en la base de datos -- funciona igual para cierres de hace
+// meses que para uno recien hecho.
+async function verDetalleCierre(fecha) {
+  openModal('modal-detalle-cierre');
+  document.getElementById('dc-titulo').textContent = `Detalle del cierre — ${fmtDate(fecha)}`;
+  document.getElementById('dc-resumen').innerHTML = '';
+  document.getElementById('dc-tbody').innerHTML = `<tr><td colspan="4" class="empty-cell">Cargando…</td></tr>`;
+
+  try {
+    const { data: movs, error } = await sbClient
+      .from('movimientos_financieros')
+      .select('tipo_flujo, monto, concepto, tipo_movimiento, created_at, saldo_anterior')
+      .eq('auth_user_id', STATE.userId)
+      .eq('estado', 'completado')
+      .eq('fecha', fecha)
+      .order('created_at');
+    if (error) throw error;
+
+    const lista = movs || [];
+    const saldoInicial  = lista.length > 0 ? Number(lista[0].saldo_anterior) : 0;
+    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
+    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    const saldoFinal    = saldoInicial + totalIngresos - totalEgresos;
+
+    DETALLE_CIERRE_ACTUAL = { fecha, movimientos: lista, resumen: { saldoInicial, totalIngresos, totalEgresos, saldoFinal } };
+
+    document.getElementById('dc-resumen').innerHTML = `
+      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Saldo inicial</div>
+        <div style="font-size:15px;font-weight:700">${fmt(saldoInicial)}</div>
+      </div>
+      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Ingresos</div>
+        <div style="font-size:15px;font-weight:700;color:var(--success,#22c55e)">${fmt(totalIngresos)}</div>
+      </div>
+      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Egresos</div>
+        <div style="font-size:15px;font-weight:700;color:var(--danger,#ef4444)">${fmt(totalEgresos)}</div>
+      </div>
+      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Saldo final</div>
+        <div style="font-size:15px;font-weight:700">${fmt(saldoFinal)}</div>
+      </div>
+    `;
+
+    if (!lista.length) {
+      document.getElementById('dc-tbody').innerHTML = `<tr><td colspan="4" class="empty-cell">Sin movimientos ese día</td></tr>`;
+      return;
+    }
+
+    document.getElementById('dc-tbody').innerHTML = lista.map(m => `
+      <tr>
+        <td>${new Date(m.created_at).toLocaleTimeString('es-NI', { hour:'2-digit', minute:'2-digit' })}</td>
+        <td>${tipoMovLabel(m.tipo_movimiento) || m.tipo_movimiento || '—'}</td>
+        <td>${escHtml(m.concepto || '—')}</td>
+        <td style="text-align:right;color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmt(m.monto)}</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    console.error('verDetalleCierre:', e);
+    document.getElementById('dc-tbody').innerHTML = `<tr><td colspan="4" class="empty-cell">No se pudo cargar el detalle</td></tr>`;
+  }
+}
+
+// Exporta el detalle ya cargado en pantalla a un PDF -- mismo patron
+// exacto (jsPDF + autoTable) que ya usan Ventas y Reportes.
+function exportarDetalleCierrePDF() {
+  const { fecha, movimientos, resumen } = DETALLE_CIERRE_ACTUAL;
+  if (!fecha) { showToast('Primero abre el detalle de un cierre', 'error'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  doc.setFontSize(14); doc.setFont(undefined, 'bold');
+  doc.text(`Cierre de caja — ${fmtDate(fecha)}`, 10, 15);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
+  doc.text(`Generado: ${new Date().toLocaleString('es-NI')}`, 10, 21);
+
+  let startY = 28;
+  doc.autoTable({
+    startY,
+    head: [['Concepto', 'Monto']],
+    body: [
+      ['Saldo inicial', fmt(resumen.saldoInicial)],
+      ['Total ingresos', fmt(resumen.totalIngresos)],
+      ['Total egresos', fmt(resumen.totalEgresos)],
+      ['Saldo final', fmt(resumen.saldoFinal)],
+    ],
+    theme: 'striped', headStyles: { fillColor: [90, 90, 244] }, margin: { left: 10, right: 10 }, styles: { fontSize: 9 },
+  });
+  startY = doc.lastAutoTable.finalY + 10;
+
+  doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.setTextColor(30);
+  doc.text('Detalle de movimientos', 10, startY);
+  startY += 4;
+
+  doc.autoTable({
+    startY,
+    head: [['Hora', 'Tipo', 'Concepto', 'Monto']],
+    body: movimientos.map(m => [
+      new Date(m.created_at).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }),
+      tipoMovLabel(m.tipo_movimiento) || m.tipo_movimiento || '—',
+      m.concepto || '—',
+      `${m.tipo_flujo === 'INGRESO' ? '+' : '-'}${fmt(m.monto)}`,
+    ]),
+    theme: 'grid', headStyles: { fillColor: [90, 90, 244] }, margin: { left: 10, right: 10 }, styles: { fontSize: 8 },
+  });
+
+  doc.save(`negocio360_cierre_caja_${fecha}.pdf`);
 }
 
 async function crearCierreDiario() {

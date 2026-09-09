@@ -10,6 +10,8 @@
   <script src="modulos-registro.js"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <!-- Google Fonts -->
@@ -1550,6 +1552,34 @@
 <!-- ===================================================
      MODAL: MÉTODO DE PAGO
 =================================================== -->
+<div class="modal-overlay" id="modal-detalle-cierre" onclick="if(event.target===this)closeModal('modal-detalle-cierre')">
+  <div class="modal-box modal-lg" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="dc-titulo">Detalle del cierre</span>
+      <button class="modal-close" onclick="closeModal('modal-detalle-cierre')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="dc-resumen" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px"></div>
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+        <table class="data-table" style="width:100%">
+          <thead>
+            <tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th style="text-align:right">Monto</th></tr>
+          </thead>
+          <tbody id="dc-tbody">
+            <tr><td colspan="4" class="empty-cell">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('modal-detalle-cierre')">Cerrar</button>
+      <button class="btn-primary" id="dc-btn-pdf" onclick="exportarDetalleCierrePDF()">📄 Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-metodo" onclick="if(event.target===this)closeModal('modal-metodo')">
   <div class="modal-box modal-sm">
     <div class="modal-header">
