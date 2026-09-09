@@ -360,6 +360,9 @@
       min-width: 0;
     }
     .kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .kpi-card-clickable { cursor: pointer; }
+    .kpi-card-clickable:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); border-color: var(--accent); }
+    .kpi-card-clickable:active { transform: translateY(0); }
     .kpi-icon {
       width: 44px; height: 44px;
       border-radius: var(--radius-sm);
@@ -1172,7 +1175,7 @@
 
       <!-- KPI CARDS -->
       <div class="kpi-grid">
-        <div class="kpi-card fade-in stagger-1">
+        <div class="kpi-card kpi-card-clickable fade-in stagger-1" onclick="location.href='ventas.html'">
           <div class="kpi-icon" style="background:var(--accent-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
@@ -1183,7 +1186,7 @@
           </div>
         </div>
 
-        <div class="kpi-card fade-in stagger-2">
+        <div class="kpi-card kpi-card-clickable fade-in stagger-2" onclick="location.href='ventas.html'">
           <div class="kpi-icon" style="background:var(--accent-2-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </div>
@@ -1194,7 +1197,7 @@
           </div>
         </div>
 
-        <div class="kpi-card fade-in stagger-3">
+        <div class="kpi-card kpi-card-clickable fade-in stagger-3" onclick="location.href='reportes.html'">
           <div class="kpi-icon" style="background:var(--accent-3-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
           </div>
@@ -1206,7 +1209,7 @@
         </div>
 
         <!-- NUEVO: Caja disponible movida aquí desde el Resumen financiero -->
-        <div class="kpi-card fade-in stagger-3">
+        <div class="kpi-card kpi-card-clickable fade-in stagger-3" onclick="location.href='caja.html'">
           <div class="kpi-icon" style="background:var(--accent-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           </div>
@@ -1217,7 +1220,7 @@
           </div>
         </div>
 
-        <div class="kpi-card fade-in stagger-4">
+        <div class="kpi-card kpi-card-clickable fade-in stagger-4" onclick="location.href='clientes.html'">
           <div class="kpi-icon" style="background:var(--accent-4-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
@@ -1228,7 +1231,7 @@
           </div>
         </div>
 
-        <div class="kpi-card fade-in stagger-5">
+        <div class="kpi-card kpi-card-clickable fade-in stagger-5" onclick="location.href='productos.html'">
           <div class="kpi-icon" style="background:var(--accent-5-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
@@ -1239,7 +1242,7 @@
           </div>
         </div>
 
-        <div class="kpi-card fade-in" style="animation-delay:0.30s">
+        <div class="kpi-card kpi-card-clickable fade-in" style="animation-delay:0.30s" onclick="location.href='productos.html'">
           <div class="kpi-icon" style="background:var(--accent-4-soft)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           </div>
