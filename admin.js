@@ -19,9 +19,23 @@ let _idsSucursalesShadowCache = null;
 async function obtenerIdsSucursalesShadow() {
   if (_idsSucursalesShadowCache) return _idsSucursalesShadowCache;
   try {
-    const { data, error } = await sb.rpc('listar_auth_ids_sucursales_shadow');
-    if (error) throw error;
-    _idsSucursalesShadowCache = new Set((data || []).map(r => r.auth_user_id));
+    const [{ data: dataRpc, error: errorRpc }, { data: dataEmail, error: errorEmail }] = await Promise.all([
+      sb.rpc('listar_auth_ids_sucursales_shadow'),
+      // Respaldo robusto: cualquier cuenta con correo @negocio360.internal
+      // se excluye TAMBIEN por este patron, sin depender de que su fila
+      // en "sucursales" siga existiendo. Encontrado un caso real: 4
+      // cuentas de bodega/sucursal cuya fila en "sucursales" ya no
+      // existe (se elimino esa sucursal/bodega en algun momento, sin
+      // borrar la cuenta tecnica asociada) -- el RPC nunca las
+      // encontraba porque busca DENTRO de "sucursales", dejandolas
+      // aparecer como si fueran clientes reales en Usuarios, en las
+      // listas de pago, y en Clientes por Periodo.
+      sb.from('usuarios').select('auth_user_id').ilike('email', '%@negocio360.internal'),
+    ]);
+    if (errorRpc) throw errorRpc;
+    const ids = new Set((dataRpc || []).map(r => r.auth_user_id));
+    if (!errorEmail) (dataEmail || []).forEach(u => ids.add(u.auth_user_id));
+    _idsSucursalesShadowCache = ids;
     return _idsSucursalesShadowCache;
   } catch (e) {
     console.warn('obtenerIdsSucursalesShadow:', e);
@@ -2497,7 +2511,11 @@ async function loadClientesPeriodo() {
       .order('created_at', { ascending: false });
     if (error) throw error;
 
-    CP_USUARIOS_CACHE = data || [];
+    // Las sucursales/bodegas internas no son clientes que pagan -- se
+    // excluyen antes de agrupar por período, igual que en el resto
+    // del panel (Usuarios, listas de pago, etc).
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    CP_USUARIOS_CACHE = (data || []).filter(u => !idsShadow.has(u.auth_user_id));
     CP_PERIODOS_CACHE = generarPeriodos19_19(12);
 
     document.getElementById('cp-total-activos').textContent = CP_USUARIOS_CACHE.length;
