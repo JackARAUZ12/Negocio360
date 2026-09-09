@@ -1154,7 +1154,15 @@
     // bodega — nunca tiene Dashboard completo ni necesita elegir perfil
     // ahí primero (rebotarla a dashboard.html la mandaría, de rebote,
     // directo a Personalización, que una bodega nunca debe ver).
-    if (currentFile() !== 'dashboard.html' && currentFile() !== 'personalizacion.html' && currentFile() !== 'bodega.html') {
+    // EXCEPCIÓN 3: catalogo360.html tambien recibe cuentas INDEPENDIENTES
+    // (clientes que se registraron solo para Catalogo360, nunca pasaron
+    // por dashboard.html ni por Personalizacion) -- igual que bodega,
+    // rebotarlas a dashboard.html las manda, de rebote, a login.html
+    // porque esa cuenta no tiene todo lo que Dashboard espera. Un
+    // cliente Negocio360 normal que entra directo a Catalogo360 sigue
+    // funcionando igual -- esto solo evita el rebote, nunca bloquea a
+    // nadie que ya tenia acceso.
+    if (currentFile() !== 'dashboard.html' && currentFile() !== 'personalizacion.html' && currentFile() !== 'bodega.html' && currentFile() !== 'catalogo360.html') {
       location.href = 'dashboard.html';
       return;
     }
