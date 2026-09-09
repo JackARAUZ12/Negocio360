@@ -3405,10 +3405,25 @@ function generarPDFRecibo(venta, items) {
    Antes generaba SIEMPRE un ticket térmico de 80mm fijo, sin importar
    la configuración real del negocio — ahora respeta 58/76/80mm o,
    si el negocio eligió "Carta", genera el comprobante profesional real. */
+// Si el negocio desactivo la descarga automatica (configuracion_venta_rapida.descargar_pdf_automatico
+// = false), en vez de guardar un archivo PDF cada vez, se abre el dialogo
+// de impresion del navegador directo desde el PDF generado en memoria --
+// nunca se crea ningun archivo en la computadora.
+function entregarPDFRecibo(doc, nombreArchivo, descargarAutomatico) {
+  if (descargarAutomatico === false) {
+    doc.autoPrint();
+    const url = doc.output('bloburl');
+    window.open(url, '_blank');
+    return;
+  }
+  doc.save(nombreArchivo);
+}
+
 async function descargarReciboDeVenta(venta, items) {
   try {
     await cargarConfigVentaRapida();
     const cfg = VR.config || {};
+    const descargarAutomatico = cfg.descargar_pdf_automatico !== false;
     if (cfg.ancho_ticket === 'carta') {
       const doc = await generarComprobanteCartaPDF('venta', {
         userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
@@ -3422,11 +3437,11 @@ async function descargarReciboDeVenta(venta, items) {
         nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
         descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
       })));
-      doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+      entregarPDFRecibo(doc, `Comprobante_${venta.numero_venta}.pdf`, descargarAutomatico);
       return;
     }
     const doc = generarPDFRecibo(venta, items);
-    doc.save(`Recibo_${(venta.numero_venta || 'venta').replace(/[^\w\-]/g, '')}.pdf`);
+    entregarPDFRecibo(doc, `Recibo_${(venta.numero_venta || 'venta').replace(/[^\w\-]/g, '')}.pdf`, descargarAutomatico);
   } catch (e) {
     console.error('generar recibo PDF:', e);
     showToast('Venta guardada, pero no se pudo generar el recibo PDF', 'warning');
@@ -4193,6 +4208,8 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
   setEl2Value('vrc-mensaje',   c.mensaje_pie_ticket || 'Gracias por su compra');
   const auto = document.getElementById('vrc-autoimprimir');
   if (auto) auto.checked = c.imprimir_automatico !== false;
+  const descargarPdf = document.getElementById('vrc-descargar-pdf');
+  if (descargarPdf) descargarPdf.checked = c.descargar_pdf_automatico !== false;
   const mostrarCosto = document.getElementById('vrc-mostrar-costo');
   if (mostrarCosto) mostrarCosto.checked = !!c.mostrar_costo_venta;
 
@@ -4320,6 +4337,7 @@ async function guardarConfigVentaRapida() {
     direccion_ticket:    document.getElementById('vrc-direccion')?.value.trim()|| null,
     mensaje_pie_ticket:  document.getElementById('vrc-mensaje')?.value.trim()  || 'Gracias por su compra',
     imprimir_automatico: document.getElementById('vrc-autoimprimir')?.checked ?? true,
+    descargar_pdf_automatico: document.getElementById('vrc-descargar-pdf')?.checked ?? true,
     mostrar_costo_venta: document.getElementById('vrc-mostrar-costo')?.checked ?? false,
     updated_at:          new Date().toISOString(),
   };
@@ -5306,7 +5324,7 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
           nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: round2(i.cantidad*i.precio),
         })));
-        doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+        entregarPDFRecibo(doc, `Comprobante_${venta.numero_venta}.pdf`, cfg.descargar_pdf_automatico !== false);
       } catch (e) {
         console.warn('No se pudo generar el comprobante carta:', e);
         showToast('No se pudo generar el comprobante', 'error');
@@ -5494,7 +5512,7 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
           nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
         })));
-        doc.save(`Comprobante_${venta.numero_venta}.pdf`);
+        entregarPDFRecibo(doc, `Comprobante_${venta.numero_venta}.pdf`, cfg.descargar_pdf_automatico !== false);
       } catch (e) {
         console.warn('No se pudo generar el comprobante carta:', e);
         showToast('No se pudo generar el comprobante', 'error');
