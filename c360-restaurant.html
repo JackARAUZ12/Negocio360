@@ -1,0 +1,3587 @@
+<!DOCTYPE html>
+<html lang="es" data-mode="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+
+  <title id="restaurant-title">Menú digital</title>
+  <meta id="restaurant-description-meta" name="description" content="Menú digital" />
+  <meta id="restaurant-og-title" property="og:title" content="Menú digital" />
+  <meta id="restaurant-og-description" property="og:description" content="Conoce nuestro menú" />
+  <meta id="restaurant-og-image" property="og:image" content="" />
+  <meta property="og:type" content="restaurant.menu" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="c360-core.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600;1,700&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    :root {
+      --r-bg: #f5f1e9;
+      --r-paper: #fffdf8;
+      --r-paper-soft: #eee8dc;
+      --r-ink: #1d2921;
+      --r-muted: #6f756d;
+      --r-line: #dcd5c8;
+      --r-dark: #1d2921;
+      --r-dark-soft: #2e4034;
+      --r-accent: #cf5a3c;
+      --r-accent-dark: #a9402c;
+      --r-green: #6e856e;
+      --r-gold: #d6a84f;
+      --r-white: #fffdf8;
+      --r-shadow: 0 24px 70px rgba(29, 41, 33, 0.14);
+      --r-shadow-small: 0 10px 26px rgba(29, 41, 33, 0.1);
+      --r-radius: 18px;
+      --r-serif: "Playfair Display", Georgia, serif;
+      --r-sans: "DM Sans", Arial, sans-serif;
+      --r-max: 1240px;
+    }
+
+    html[data-mode="night"] {
+      --r-bg: #121914;
+      --r-paper: #1c271f;
+      --r-paper-soft: #253329;
+      --r-ink: #f7f1e4;
+      --r-muted: #b3b8ae;
+      --r-line: #3b4a3e;
+      --r-dark: #0d130f;
+      --r-dark-soft: #25372a;
+      --r-white: #f7f1e4;
+      --r-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+      --r-shadow-small: 0 10px 26px rgba(0, 0, 0, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--r-bg);
+      color: var(--r-ink);
+      font-family: var(--r-sans);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    body.menu-locked {
+      overflow: hidden;
+    }
+
+    body::selection {
+      background: var(--r-accent);
+      color: #fff;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    button,
+    a,
+    input,
+    select {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 3px solid rgba(207, 90, 60, 0.45);
+      outline-offset: 3px;
+    }
+
+    .restaurant-shell {
+      width: min(var(--r-max), calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .restaurant-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--r-dark);
+      color: var(--r-white);
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    .restaurant-loader.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .restaurant-loader-inner {
+      display: grid;
+      justify-items: center;
+      gap: 22px;
+      text-align: center;
+    }
+
+    .restaurant-loader-plate {
+      position: relative;
+      display: grid;
+      width: 84px;
+      height: 84px;
+      place-items: center;
+      border: 3px solid rgba(255, 253, 248, 0.35);
+      border-radius: 50%;
+      animation: rotatePlate 2.5s linear infinite;
+    }
+
+    .restaurant-loader-plate::before {
+      content: "";
+      width: 46px;
+      height: 46px;
+      border: 3px solid var(--r-accent);
+      border-radius: 50%;
+    }
+
+    .restaurant-loader-plate::after {
+      content: "";
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--r-gold);
+      box-shadow:
+        18px -19px 0 var(--r-accent),
+        -20px 13px 0 var(--r-green),
+        18px 17px 0 var(--r-gold);
+    }
+
+    .restaurant-loader-title {
+      margin: 0;
+      font-family: var(--r-serif);
+      font-size: 30px;
+      font-weight: 600;
+    }
+
+    .restaurant-loader-text {
+      margin: 0;
+      color: rgba(255, 253, 248, 0.65);
+      font-size: 14px;
+    }
+
+    .restaurant-loader.error .restaurant-loader-plate {
+      display: none;
+    }
+
+    @keyframes rotatePlate {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .preview-ribbon {
+      display: none;
+      padding: 10px 16px;
+      background: var(--r-gold);
+      color: #30230e;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-align: center;
+    }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--r-line);
+      background: color-mix(in srgb, var(--r-bg) 91%, transparent);
+      backdrop-filter: blur(18px);
+    }
+
+    .header-inner {
+      display: flex;
+      min-height: 76px;
+      align-items: center;
+      gap: 26px;
+    }
+
+    .restaurant-brand {
+      display: inline-flex;
+      min-width: 0;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .restaurant-logo {
+      display: grid;
+      width: 46px;
+      height: 46px;
+      flex: 0 0 46px;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 50%;
+      background: var(--r-dark);
+      color: var(--r-gold);
+      font-family: var(--r-serif);
+      font-size: 25px;
+      font-weight: 700;
+      box-shadow: 0 4px 0 var(--r-accent);
+    }
+
+    .restaurant-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .restaurant-brand-text {
+      min-width: 0;
+    }
+
+    .restaurant-brand-name {
+      overflow: hidden;
+      max-width: 250px;
+      color: var(--r-ink);
+      font-family: var(--r-serif);
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .restaurant-brand-caption {
+      margin-top: 5px;
+      color: var(--r-accent);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .site-navigation {
+      display: flex;
+      margin-left: auto;
+      align-items: center;
+      gap: 26px;
+    }
+
+    .site-navigation a {
+      position: relative;
+      color: var(--r-muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .site-navigation a::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      bottom: -7px;
+      left: 0;
+      height: 2px;
+      background: var(--r-accent);
+      transform: scaleX(0);
+      transform-origin: right;
+      transition: transform 0.25s ease;
+    }
+
+    .site-navigation a:hover {
+      color: var(--r-accent);
+    }
+
+    .site-navigation a:hover::after {
+      transform: scaleX(1);
+      transform-origin: left;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-icon {
+      position: relative;
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid var(--r-line);
+      border-radius: 50%;
+      background: var(--r-paper);
+      color: var(--r-ink);
+      cursor: pointer;
+      font-size: 17px;
+      transition: transform 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+    }
+
+    .header-icon:hover,
+    .header-icon.active {
+      border-color: var(--r-accent);
+      color: var(--r-accent);
+      transform: translateY(-2px);
+    }
+
+    .favorite-counter {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      display: none;
+      min-width: 19px;
+      height: 19px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 5px;
+      border: 2px solid var(--r-bg);
+      border-radius: 999px;
+      background: var(--r-accent);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .header-order {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 999px;
+      background: var(--r-accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      transition: background 0.25s ease, transform 0.25s ease;
+    }
+
+    .header-order:hover {
+      background: var(--r-accent-dark);
+      transform: translateY(-2px);
+    }
+
+    .header-order[hidden] {
+      display: none;
+    }
+
+    .hero-section {
+      position: relative;
+      overflow: hidden;
+      background: var(--r-dark);
+      color: var(--r-white);
+    }
+
+    .hero-section::before {
+      content: "SABOR";
+      position: absolute;
+      right: -30px;
+      bottom: -72px;
+      color: rgba(255, 253, 248, 0.035);
+      font-family: var(--r-serif);
+      font-size: clamp(130px, 24vw, 330px);
+      font-style: italic;
+      font-weight: 700;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .hero-layout {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      min-height: 600px;
+      grid-template-columns: minmax(0, 1fr) minmax(380px, 0.9fr);
+      align-items: center;
+      gap: 70px;
+      padding: 82px 0 96px;
+    }
+
+    .hero-copy {
+      max-width: 650px;
+    }
+
+    .hero-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+      color: var(--r-gold);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .hero-kicker::before {
+      content: "";
+      display: block;
+      width: 35px;
+      height: 1px;
+      background: var(--r-gold);
+    }
+
+    .hero-title {
+      margin: 0;
+      font-family: var(--r-serif);
+      font-size: clamp(48px, 7vw, 92px);
+      font-weight: 600;
+      letter-spacing: -0.055em;
+      line-height: 0.98;
+    }
+
+    .hero-title em {
+      display: block;
+      color: var(--r-accent);
+      font-style: italic;
+      font-weight: 500;
+    }
+
+    .hero-description {
+      max-width: 560px;
+      margin: 28px 0 0;
+      color: rgba(255, 253, 248, 0.7);
+      font-size: 16px;
+      line-height: 1.8;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      margin-top: 34px;
+    }
+
+    .primary-action,
+    .secondary-action {
+      display: inline-flex;
+      min-height: 50px;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      padding: 0 22px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      transition: transform 0.25s ease, background 0.25s ease, color 0.25s ease;
+    }
+
+    .primary-action {
+      background: var(--r-accent);
+      color: #fff;
+    }
+
+    .primary-action:hover {
+      background: var(--r-accent-dark);
+      transform: translateY(-3px);
+    }
+
+    .secondary-action {
+      border: 1px solid rgba(255, 253, 248, 0.35);
+      background: transparent;
+      color: var(--r-white);
+    }
+
+    .secondary-action:hover {
+      border-color: var(--r-gold);
+      color: var(--r-gold);
+      transform: translateY(-3px);
+    }
+
+    .hero-note {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 34px;
+      color: rgba(255, 253, 248, 0.54);
+      font-size: 12px;
+    }
+
+    .hero-note strong {
+      color: var(--r-gold);
+      font-weight: 700;
+    }
+
+    .hero-feature {
+      position: relative;
+      min-height: 480px;
+    }
+
+    .hero-feature::before {
+      content: "";
+      position: absolute;
+      top: 20px;
+      right: -10px;
+      width: 78%;
+      height: 78%;
+      border: 1px solid rgba(214, 168, 79, 0.5);
+      border-radius: 50%;
+      transform: rotate(-13deg);
+    }
+
+    .feature-photo {
+      position: absolute;
+      z-index: 1;
+      top: 28px;
+      right: 10px;
+      width: min(100%, 420px);
+      height: 420px;
+      overflow: hidden;
+      border: 8px solid var(--r-paper);
+      border-radius: 50%;
+      background: var(--r-paper-soft);
+      box-shadow: 20px 26px 0 rgba(207, 90, 60, 0.32), var(--r-shadow);
+      transform: rotate(4deg);
+    }
+
+    .feature-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .feature-placeholder {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      place-items: center;
+      padding: 30px;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(207, 90, 60, 0.22), transparent 30%),
+        var(--r-paper-soft);
+      color: var(--r-muted);
+      font-family: var(--r-serif);
+      font-size: 28px;
+      text-align: center;
+    }
+
+    .feature-label {
+      position: absolute;
+      z-index: 2;
+      bottom: 28px;
+      left: 0;
+      display: grid;
+      width: 190px;
+      gap: 5px;
+      padding: 17px 19px;
+      background: var(--r-gold);
+      color: #2e220d;
+      box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.15);
+      transform: rotate(-7deg);
+    }
+
+    .feature-label small {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .feature-label strong {
+      overflow: hidden;
+      font-family: var(--r-serif);
+      font-size: 17px;
+      line-height: 1.15;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .feature-label span {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .section {
+      padding: 86px 0;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 30px;
+      margin-bottom: 34px;
+    }
+
+    .eyebrow {
+      margin-bottom: 10px;
+      color: var(--r-accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .section-title {
+      margin: 0;
+      font-family: var(--r-serif);
+      font-size: clamp(34px, 5vw, 58px);
+      font-weight: 600;
+      letter-spacing: -0.045em;
+      line-height: 1;
+    }
+
+    .section-intro {
+      max-width: 420px;
+      margin: 0;
+      color: var(--r-muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .category-section {
+      background: var(--r-paper);
+      border-bottom: 1px solid var(--r-line);
+    }
+
+    .category-scroller {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .category-tile {
+      position: relative;
+      min-height: 190px;
+      overflow: hidden;
+      border-radius: var(--r-radius);
+      background: var(--r-dark);
+      color: #fff;
+      cursor: pointer;
+      isolation: isolate;
+      text-align: left;
+    }
+
+    .category-tile::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.78), transparent 70%);
+    }
+
+    .category-tile:hover .category-image {
+      transform: scale(1.08);
+    }
+
+    .category-tile.is-selected {
+      box-shadow: 0 0 0 3px var(--r-accent);
+    }
+
+    .category-image,
+    .category-empty {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.45s ease;
+    }
+
+    .category-image {
+      object-fit: cover;
+      opacity: 0.8;
+    }
+
+    .category-empty {
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 70% 25%, rgba(207, 90, 60, 0.58), transparent 32%),
+        var(--r-dark-soft);
+      color: rgba(255, 253, 248, 0.5);
+      font-family: var(--r-serif);
+      font-size: 52px;
+    }
+
+    .category-content {
+      position: absolute;
+      right: 18px;
+      bottom: 17px;
+      left: 18px;
+    }
+
+    .category-name {
+      font-family: var(--r-serif);
+      font-size: 22px;
+      line-height: 1.05;
+    }
+
+    .category-count {
+      margin-top: 8px;
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .menu-section {
+      background: var(--r-bg);
+    }
+
+    .menu-toolbar {
+      position: sticky;
+      top: 76px;
+      z-index: 50;
+      margin-bottom: 34px;
+      padding: 15px 0;
+      border-top: 1px solid var(--r-line);
+      border-bottom: 1px solid var(--r-line);
+      background: color-mix(in srgb, var(--r-bg) 94%, transparent);
+      backdrop-filter: blur(18px);
+    }
+
+    .toolbar-layout {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .search-field {
+      display: flex;
+      min-width: 220px;
+      flex: 1;
+      align-items: center;
+      gap: 10px;
+      padding: 0 15px;
+      border: 1px solid var(--r-line);
+      border-radius: 999px;
+      background: var(--r-paper);
+      color: var(--r-muted);
+    }
+
+    .search-field span {
+      font-size: 19px;
+      line-height: 1;
+    }
+
+    .search-field input {
+      width: 100%;
+      min-width: 0;
+      padding: 13px 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--r-ink);
+      font-size: 13px;
+    }
+
+    .search-field input::placeholder {
+      color: var(--r-muted);
+    }
+
+    .select-field,
+    .filter-control {
+      min-height: 45px;
+      border: 1px solid var(--r-line);
+      border-radius: 999px;
+      background: var(--r-paper);
+      color: var(--r-ink);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .select-field {
+      min-width: 170px;
+      padding: 0 15px;
+    }
+
+    .filter-control {
+      padding: 0 16px;
+      cursor: pointer;
+      transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+    }
+
+    .filter-control:hover,
+    .filter-control.active {
+      border-color: var(--r-accent);
+      background: var(--r-accent);
+      color: #fff;
+    }
+
+    .price-control {
+      display: flex;
+      min-height: 45px;
+      align-items: center;
+      gap: 9px;
+      padding: 0 13px;
+      border: 1px solid var(--r-line);
+      border-radius: 999px;
+      background: var(--r-paper);
+      color: var(--r-muted);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .price-control input {
+      width: 92px;
+      accent-color: var(--r-accent);
+    }
+
+    .menu-status {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .menu-status-title {
+      margin: 0;
+      font-family: var(--r-serif);
+      font-size: clamp(31px, 4vw, 46px);
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .menu-breadcrumb {
+      display: none;
+      margin-bottom: 8px;
+      color: var(--r-accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .menu-breadcrumb button {
+      padding: 0;
+      background: none;
+      color: var(--r-accent);
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .menu-counter {
+      color: var(--r-muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .clear-filters {
+      display: none;
+      margin-top: 8px;
+      padding: 0;
+      background: none;
+      color: var(--r-accent);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .menu-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px 34px;
+    }
+
+    .dish-card {
+      display: grid;
+      grid-template-columns: 148px minmax(0, 1fr);
+      gap: 18px;
+      min-width: 0;
+      padding: 0 0 18px;
+      border-bottom: 1px solid var(--r-line);
+      transition: transform 0.25s ease;
+    }
+
+    .dish-card:hover {
+      transform: translateY(-3px);
+    }
+
+    .dish-card.is-featured {
+      grid-column: 1 / -1;
+      grid-template-columns: 250px minmax(0, 1fr);
+      padding: 18px;
+      border: 1px solid var(--r-accent);
+      border-radius: var(--r-radius);
+      background: var(--r-paper);
+      box-shadow: var(--r-shadow-small);
+    }
+
+    .dish-card.is-sold {
+      opacity: 0.56;
+    }
+
+    .dish-media {
+      position: relative;
+      min-height: 148px;
+      overflow: hidden;
+      border-radius: 13px;
+      background: var(--r-paper-soft);
+      cursor: pointer;
+    }
+
+    .dish-card.is-featured .dish-media {
+      min-height: 235px;
+    }
+
+    .dish-media img {
+      width: 100%;
+      height: 100%;
+      min-height: inherit;
+      object-fit: cover;
+      transition: transform 0.45s ease;
+    }
+
+    .dish-card:hover .dish-media img {
+      transform: scale(1.06);
+    }
+
+    .dish-placeholder {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      min-height: inherit;
+      place-items: center;
+      padding: 18px;
+      background:
+        radial-gradient(circle at 28% 20%, rgba(207, 90, 60, 0.22), transparent 30%),
+        var(--r-paper-soft);
+      color: var(--r-muted);
+      font-family: var(--r-serif);
+      font-size: 19px;
+      text-align: center;
+    }
+
+    .dish-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: var(--r-gold);
+      color: #30230e;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .dish-badge.offer {
+      background: var(--r-accent);
+      color: #fff;
+    }
+
+    .dish-badge.sold {
+      top: auto;
+      right: 10px;
+      bottom: 10px;
+      left: auto;
+      background: var(--r-dark);
+      color: #fff;
+    }
+
+    .dish-favorite {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 253, 248, 0.92);
+      color: var(--r-ink);
+      cursor: pointer;
+      font-size: 16px;
+      transition: transform 0.25s ease, background 0.25s ease, color 0.25s ease;
+    }
+
+    .dish-favorite:hover,
+    .dish-favorite.active {
+      background: var(--r-accent);
+      color: #fff;
+      transform: scale(1.1);
+    }
+
+    .dish-content {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      padding: 3px 0;
+    }
+
+    .dish-category {
+      overflow: hidden;
+      color: var(--r-accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .dish-name {
+      display: block;
+      width: 100%;
+      margin: 7px 0 8px;
+      padding: 0;
+      overflow: hidden;
+      background: none;
+      color: var(--r-ink);
+      cursor: pointer;
+      font-family: var(--r-serif);
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.08;
+      text-align: left;
+      transition: color 0.2s ease;
+    }
+
+    .dish-name:hover {
+      color: var(--r-accent);
+    }
+
+    .dish-card.is-featured .dish-name {
+      font-size: clamp(28px, 4vw, 48px);
+    }
+
+    .dish-description {
+      display: -webkit-box;
+      margin: 0;
+      overflow: hidden;
+      color: var(--r-muted);
+      font-size: 12px;
+      line-height: 1.65;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+
+    .dish-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 9px;
+      margin-top: auto;
+      padding-top: 17px;
+    }
+
+    .dish-price {
+      color: var(--r-ink);
+      font-family: var(--r-serif);
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .dish-card.is-featured .dish-price {
+      color: var(--r-accent);
+      font-size: 28px;
+    }
+
+    .dish-old-price {
+      color: var(--r-muted);
+      font-size: 11px;
+      text-decoration: line-through;
+    }
+
+    .saving-label {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(207, 90, 60, 0.12);
+      color: var(--r-accent);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .dish-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .dish-detail-button,
+    .dish-whatsapp-button {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+      transition: transform 0.25s ease, background 0.25s ease;
+    }
+
+    .dish-detail-button {
+      flex: 1;
+      border: 1px solid var(--r-line);
+      background: transparent;
+      color: var(--r-ink);
+    }
+
+    .dish-detail-button:hover {
+      border-color: var(--r-accent);
+      color: var(--r-accent);
+      transform: translateY(-2px);
+    }
+
+    .dish-whatsapp-button {
+      width: 38px;
+      background: var(--r-dark);
+      color: #fff;
+    }
+
+    .dish-whatsapp-button:hover {
+      background: #25d366;
+      transform: translateY(-2px);
+    }
+
+    .empty-menu {
+      grid-column: 1 / -1;
+      padding: 80px 24px;
+      border: 1px dashed var(--r-line);
+      border-radius: var(--r-radius);
+      background: var(--r-paper);
+      color: var(--r-muted);
+      text-align: center;
+    }
+
+    .empty-menu-mark {
+      margin-bottom: 14px;
+      color: var(--r-accent);
+      font-family: var(--r-serif);
+      font-size: 52px;
+      font-style: italic;
+    }
+
+    .empty-menu p {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .restaurant-footer {
+      position: relative;
+      overflow: hidden;
+      padding: 80px 0 30px;
+      background: var(--r-dark);
+      color: var(--r-white);
+    }
+
+    .restaurant-footer::after {
+      content: "BUEN PROVECHO";
+      position: absolute;
+      right: -20px;
+      bottom: -32px;
+      color: rgba(255, 253, 248, 0.035);
+      font-family: var(--r-serif);
+      font-size: clamp(70px, 12vw, 170px);
+      font-style: italic;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .footer-layout {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 50px;
+      align-items: end;
+    }
+
+    .footer-title {
+      max-width: 650px;
+      margin: 0;
+      font-family: var(--r-serif);
+      font-size: clamp(38px, 6vw, 72px);
+      font-weight: 600;
+      letter-spacing: -0.05em;
+      line-height: 0.98;
+    }
+
+    .footer-text {
+      max-width: 500px;
+      margin: 20px 0 0;
+      color: rgba(255, 253, 248, 0.66);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .footer-order {
+      margin-top: 27px;
+    }
+
+    .footer-info {
+      display: grid;
+      gap: 12px;
+      color: rgba(255, 253, 248, 0.7);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .footer-info strong {
+      color: var(--r-gold);
+    }
+
+    .footer-bottom {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 15px;
+      margin-top: 70px;
+      padding-top: 22px;
+      border-top: 1px solid rgba(255, 253, 248, 0.18);
+      color: rgba(255, 253, 248, 0.45);
+      font-size: 11px;
+    }
+
+    .floating-contact {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 80;
+      display: none;
+      width: 57px;
+      height: 57px;
+      place-items: center;
+      border-radius: 50%;
+      background: #25d366;
+      color: #fff;
+      box-shadow: 0 10px 28px rgba(37, 211, 102, 0.35);
+      font-size: 24px;
+    }
+
+    .floating-contact.active {
+      display: grid;
+    }
+
+    .modal-layer,
+    .lightbox-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: none;
+      place-items: center;
+      padding: 22px;
+      background: rgba(13, 19, 15, 0.82);
+      backdrop-filter: blur(12px);
+    }
+
+    .modal-layer.open,
+    .lightbox-layer.open {
+      display: grid;
+    }
+
+    .product-modal {
+      position: relative;
+      display: grid;
+      width: min(920px, 100%);
+      max-height: min(820px, 94vh);
+      grid-template-columns: 0.95fr 1.05fr;
+      overflow: hidden;
+      border-radius: 22px;
+      background: var(--r-paper);
+      box-shadow: var(--r-shadow);
+      animation: modalIn 0.3s ease both;
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: translateY(25px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .modal-close {
+      position: absolute;
+      z-index: 4;
+      top: 14px;
+      right: 14px;
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 253, 248, 0.9);
+      color: var(--r-ink);
+      cursor: pointer;
+      font-size: 20px;
+      box-shadow: var(--r-shadow-small);
+    }
+
+    .modal-gallery {
+      min-height: 560px;
+      overflow: hidden;
+      background: var(--r-paper-soft);
+    }
+
+    .modal-gallery img {
+      width: 100%;
+      height: 100%;
+      min-height: 560px;
+      object-fit: cover;
+      cursor: zoom-in;
+    }
+
+    .modal-gallery-placeholder {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      min-height: 560px;
+      place-items: center;
+      padding: 30px;
+      color: var(--r-muted);
+      font-family: var(--r-serif);
+      font-size: 28px;
+      text-align: center;
+    }
+
+    .modal-content {
+      max-height: 94vh;
+      overflow-y: auto;
+      padding: 62px 36px 35px;
+    }
+
+    .modal-category {
+      margin-bottom: 12px;
+      color: var(--r-accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .modal-name {
+      margin: 0;
+      font-family: var(--r-serif);
+      font-size: clamp(35px, 5vw, 56px);
+      font-weight: 600;
+      letter-spacing: -0.05em;
+      line-height: 1;
+    }
+
+    .modal-price-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .modal-price {
+      color: var(--r-accent);
+      font-family: var(--r-serif);
+      font-size: 30px;
+      font-weight: 700;
+    }
+
+    .modal-old-price {
+      color: var(--r-muted);
+      font-size: 12px;
+      text-decoration: line-through;
+    }
+
+    .modal-description {
+      margin: 22px 0 0;
+      color: var(--r-muted);
+      font-size: 14px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 48px 48px;
+      gap: 9px;
+      margin-top: 28px;
+    }
+
+    .modal-order-button,
+    .modal-small-button {
+      display: grid;
+      min-height: 49px;
+      place-items: center;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .modal-order-button {
+      background: var(--r-accent);
+      color: #fff;
+    }
+
+    .modal-order-button:hover {
+      background: var(--r-accent-dark);
+    }
+
+    .modal-order-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .modal-small-button {
+      border: 1px solid var(--r-line);
+      background: var(--r-paper-soft);
+      color: var(--r-ink);
+      font-size: 18px;
+    }
+
+    .modal-small-button:hover {
+      border-color: var(--r-accent);
+      color: var(--r-accent);
+    }
+
+    .related-products {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--r-line);
+    }
+
+    .related-title {
+      margin-bottom: 14px;
+      color: var(--r-muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .related-list {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 5px;
+    }
+
+    .related-item {
+      width: 104px;
+      min-width: 104px;
+      cursor: pointer;
+    }
+
+    .related-image,
+    .related-placeholder {
+      width: 104px;
+      height: 82px;
+      overflow: hidden;
+      border-radius: 10px;
+      background: var(--r-paper-soft);
+      object-fit: cover;
+    }
+
+    .related-name {
+      display: -webkit-box;
+      margin-top: 7px;
+      overflow: hidden;
+      color: var(--r-ink);
+      font-family: var(--r-serif);
+      font-size: 14px;
+      line-height: 1.12;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .related-price {
+      margin-top: 5px;
+      color: var(--r-accent);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .lightbox-layer {
+      z-index: 400;
+      padding: 26px;
+      background: rgba(5, 8, 6, 0.96);
+    }
+
+    .lightbox-image {
+      max-width: min(92vw, 1100px);
+      max-height: 84vh;
+      border-radius: 12px;
+      object-fit: contain;
+    }
+
+    .lightbox-close,
+    .lightbox-arrow {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .lightbox-close {
+      top: 20px;
+      right: 20px;
+      width: 45px;
+      height: 45px;
+      font-size: 22px;
+    }
+
+    .lightbox-arrow {
+      top: 50%;
+      width: 50px;
+      height: 50px;
+      font-size: 29px;
+      transform: translateY(-50%);
+    }
+
+    .lightbox-arrow.left {
+      left: 20px;
+    }
+
+    .lightbox-arrow.right {
+      right: 20px;
+    }
+
+    .lightbox-count {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      padding: 8px 15px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.11);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      transform: translateX(-50%);
+    }
+
+    .toast-area {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 800;
+      display: flex;
+      max-width: min(370px, calc(100% - 40px));
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .toast-message {
+      padding: 14px 17px;
+      border-left: 4px solid var(--r-accent);
+      border-radius: 9px;
+      background: var(--r-paper);
+      color: var(--r-ink);
+      box-shadow: var(--r-shadow-small);
+      font-size: 12px;
+      font-weight: 700;
+      animation: toastIn 0.3s ease both;
+    }
+
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @media (max-width: 980px) {
+      .hero-layout {
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 30px;
+      }
+
+      .hero-feature {
+        min-height: 390px;
+      }
+
+      .feature-photo {
+        width: 320px;
+        height: 320px;
+      }
+
+      .category-scroller {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar-layout {
+        flex-wrap: wrap;
+      }
+
+      .search-field {
+        flex-basis: 100%;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .restaurant-shell {
+        width: min(100% - 28px, var(--r-max));
+      }
+
+      .header-inner {
+        min-height: 68px;
+        gap: 10px;
+      }
+
+      .site-navigation {
+        display: none;
+      }
+
+      .restaurant-brand-name {
+        max-width: 150px;
+        font-size: 17px;
+      }
+
+      .restaurant-brand-caption {
+        font-size: 8px;
+      }
+
+      .restaurant-logo {
+        width: 40px;
+        height: 40px;
+        flex-basis: 40px;
+        font-size: 21px;
+      }
+
+      .header-actions {
+        margin-left: auto;
+      }
+
+      .header-icon {
+        width: 37px;
+        height: 37px;
+      }
+
+      .header-order {
+        width: 37px;
+        height: 37px;
+        justify-content: center;
+        padding: 0;
+        font-size: 17px;
+      }
+
+      .header-order span {
+        display: none;
+      }
+
+      .hero-layout {
+        display: flex;
+        min-height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 48px;
+        padding: 65px 0 75px;
+      }
+
+      .hero-title {
+        font-size: clamp(47px, 15vw, 76px);
+      }
+
+      .hero-description {
+        font-size: 14px;
+      }
+
+      .hero-feature {
+        min-height: 340px;
+        margin: 0 auto;
+        width: min(100%, 370px);
+      }
+
+      .feature-photo {
+        top: 0;
+        right: 15px;
+        width: min(83vw, 310px);
+        height: min(83vw, 310px);
+      }
+
+      .feature-label {
+        bottom: 10px;
+        left: 2px;
+      }
+
+      .section {
+        padding: 65px 0;
+      }
+
+      .section-heading {
+        display: block;
+      }
+
+      .section-intro {
+        margin-top: 15px;
+      }
+
+      .category-scroller {
+        display: flex;
+        overflow-x: auto;
+        margin-right: -14px;
+        padding-right: 14px;
+        padding-bottom: 5px;
+        scroll-snap-type: x mandatory;
+      }
+
+      .category-tile {
+        min-width: 215px;
+        scroll-snap-align: start;
+      }
+
+      .menu-toolbar {
+        top: 68px;
+      }
+
+      .toolbar-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .search-field {
+        grid-column: 1 / -1;
+      }
+
+      .select-field,
+      .filter-control,
+      .price-control {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .price-control {
+        justify-content: center;
+      }
+
+      .price-control input {
+        width: 70px;
+      }
+
+      .menu-status {
+        align-items: start;
+      }
+
+      .menu-list {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 18px;
+      }
+
+      .dish-card.is-featured {
+        grid-template-columns: 145px minmax(0, 1fr);
+        padding: 0 0 18px;
+        border: 0;
+        border-bottom: 1px solid var(--r-line);
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .dish-card.is-featured .dish-media {
+        min-height: 145px;
+      }
+
+      .dish-card.is-featured .dish-name {
+ font-size: 25px;
+      }
+
+      .dish-card.is-featured .dish-price {
+        font-size: 22px;
+      }
+
+      .footer-layout {
+        grid-template-columns: 1fr;
+        gap: 34px;
+      }
+
+      .footer-info {
+        text-align: left;
+      }
+
+      .footer-bottom {
+        margin-top: 45px;
+      }
+
+      .product-modal {
+        max-height: 94vh;
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+
+      .modal-gallery {
+        min-height: 290px;
+        max-height: 42vh;
+      }
+
+      .modal-gallery img,
+      .modal-gallery-placeholder {
+        min-height: 290px;
+      }
+
+      .modal-content {
+        max-height: none;
+        padding: 34px 23px 28px;
+      }
+
+      .modal-name {
+        font-size: 40px;
+      }
+
+      .floating-contact.active {
+        display: grid;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .hero-actions a,
+      .hero-actions button {
+        width: 100%;
+      }
+
+      .dish-card,
+      .dish-card.is-featured {
+        grid-template-columns: 116px minmax(0, 1fr);
+        gap: 13px;
+      }
+
+      .dish-media,
+      .dish-card.is-featured .dish-media {
+        min-height: 116px;
+      }
+
+      .dish-name,
+      .dish-card.is-featured .dish-name {
+        font-size: 20px;
+      }
+
+      .dish-description {
+        font-size: 11px;
+        -webkit-line-clamp: 2;
+      }
+
+      .dish-footer {
+        padding-top: 10px;
+      }
+
+      .dish-price,
+      .dish-card.is-featured .dish-price {
+        font-size: 19px;
+      }
+
+      .dish-actions {
+        margin-top: 9px;
+      }
+
+      .dish-detail-button {
+        font-size: 10px;
+      }
+
+      .modal-actions {
+        grid-template-columns: 1fr 44px 44px;
+      }
+
+      .toast-area {
+        right: 14px;
+        bottom: 14px;
+        max-width: calc(100% - 28px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="restaurant-loader" class="restaurant-loader">
+    <div class="restaurant-loader-inner">
+      <div class="restaurant-loader-plate"></div>
+      <h1 class="restaurant-loader-title">Preparando la mesa</h1>
+      <p class="restaurant-loader-text">Cargando sabores y especialidades.</p>
+    </div>
+  </div>
+
+  <div id="restaurant-app" hidden>
+    <div id="restaurant-preview" class="preview-ribbon">
+      Vista previa: este menú todavía no está publicado.
+    </div>
+
+    <header class="site-header">
+      <div class="restaurant-shell header-inner">
+        <a class="restaurant-brand" href="#inicio" aria-label="Ir al inicio">
+          <div id="restaurant-logo" class="restaurant-logo">R</div>
+
+          <div class="restaurant-brand-text">
+            <div id="restaurant-brand-name" class="restaurant-brand-name">Restaurante</div>
+            <div class="restaurant-brand-caption">Menú digital</div>
+          </div>
+        </a>
+
+        <nav class="site-navigation" aria-label="Navegación principal">
+          <a href="#inicio">Inicio</a>
+          <a href="#categorias">Categorías</a>
+          <a href="#menu">Menú</a>
+        </nav>
+
+        <div class="header-actions">
+          <button
+            id="restaurant-favorites-button"
+            class="header-icon"
+            type="button"
+            data-action="favorites"
+            aria-label="Ver favoritos"
+            title="Ver favoritos"
+          >
+            ♡
+            <span id="restaurant-favorite-counter" class="favorite-counter">0</span>
+          </button>
+
+          <button
+            id="restaurant-theme-button"
+            class="header-icon"
+            type="button"
+            data-action="theme"
+            aria-label="Cambiar tema"
+            title="Cambiar tema"
+          >
+            ☼
+          </button>
+
+          <a
+            id="restaurant-header-order"
+            class="header-order"
+            href="#"
+            target="_blank"
+            rel="noopener"
+            hidden
+          >
+            <span>Reservar</span>
+            <strong>↗</strong>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="inicio" class="hero-section">
+        <div class="restaurant-shell hero-layout">
+          <div class="hero-copy">
+            <div class="hero-kicker">Cocina hecha para compartir</div>
+
+            <h1 id="restaurant-hero-title" class="hero-title">
+              Una mesa
+              <em>llena de historias</em>
+            </h1>
+
+            <p id="restaurant-hero-description" class="hero-description">
+              Descubre nuestros platillos, especialidades y sabores de temporada.
+            </p>
+
+            <div id="restaurant-hero-actions" class="hero-actions">
+              <button class="primary-action" type="button" data-action="scroll-menu">
+                Ver el menú
+              </button>
+            </div>
+
+            <div class="hero-note">
+              <strong>●</strong>
+              <span>Ingredientes seleccionados · Preparación al momento</span>
+            </div>
+          </div>
+
+          <div id="restaurant-hero-feature" class="hero-feature" hidden></div>
+        </div>
+      </section>
+
+      <section id="categorias" class="section category-section">
+        <div class="restaurant-shell">
+          <div class="section-heading">
+            <div>
+              <div class="eyebrow">Elige tu antojo</div>
+              <h2 class="section-title">Explora la carta</h2>
+            </div>
+
+            <p class="section-intro">
+              Desde favoritos de la casa hasta nuevas propuestas para disfrutar cualquier momento.
+            </p>
+          </div>
+
+          <div id="restaurant-categories" class="category-scroller"></div>
+        </div>
+      </section>
+
+      <section id="menu" class="section menu-section">
+        <div class="restaurant-shell">
+          <div class="menu-toolbar">
+            <div class="toolbar-layout">
+              <label class="search-field">
+                <span>⌕</span>
+                <input
+                  id="restaurant-search"
+                  type="search"
+                  placeholder="Buscar platillo, bebida o ingrediente..."
+                  aria-label="Buscar en el menú"
+                />
+              </label>
+
+              <select id="restaurant-sort" class="select-field" aria-label="Ordenar menú">
+                <option value="reciente">Más recientes</option>
+                <option value="precio_asc">Precio menor a mayor</option>
+                <option value="precio_desc">Precio mayor a menor</option>
+                <option value="nombre">Nombre A-Z</option>
+              </select>
+
+              <button
+                id="restaurant-offers-button"
+                class="filter-control"
+                type="button"
+                data-action="offers"
+              >
+                Especiales
+              </button>
+
+              <label class="price-control">
+                <span id="restaurant-price-label">Cualquier precio</span>
+                <input
+                  id="restaurant-price-range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="100"
+                  aria-label="Precio máximo"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div class="menu-status">
+            <div>
+              <div id="restaurant-breadcrumb" class="menu-breadcrumb"></div>
+              <h2 id="restaurant-menu-title" class="menu-status-title">Toda la carta</h2>
+            </div>
+
+            <div>
+              <div id="restaurant-menu-counter" class="menu-counter"></div>
+              <button
+                id="restaurant-clear-filters"
+                class="clear-filters"
+                type="button"
+                data-action="clear-filters"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          </div>
+
+          <div id="restaurant-menu-list" class="menu-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="restaurant-footer">
+      <div class="restaurant-shell">
+        <div class="footer-layout">
+          <div>
+            <h2 id="restaurant-footer-title" class="footer-title">
+              Nos encantará recibirte.
+            </h2>
+
+            <p id="restaurant-footer-text" class="footer-text">
+              Escríbenos para reservar, consultar disponibilidad o conocer más sobre nuestros platillos.
+            </p>
+
+            <a
+              id="restaurant-footer-order"
+              class="primary-action footer-order"
+              href="#"
+              target="_blank"
+              rel="noopener"
+              hidden
+            >
+              Escribir por WhatsApp
+            </a>
+          </div>
+
+          <div class="footer-info">
+            <span>Menú de <strong id="restaurant-footer-business">nuestro restaurante</strong></span>
+            <span>Creado con Catálogo360</span>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <span>Gracias por compartir la mesa con nosotros.</span>
+          <span>© <span id="restaurant-current-year"></span></span>
+        </div>
+      </div>
+    </footer>
+
+    <a
+      id="restaurant-floating-contact"
+      class="floating-contact"
+      href="#"
+      target="_blank"
+      rel="noopener"
+      aria-label="Contactar por WhatsApp"
+    >
+      💬
+    </a>
+  </div>
+
+  <div
+    id="restaurant-modal-layer"
+    class="modal-layer"
+    aria-hidden="true"
+  >
+    <article class="product-modal" role="dialog" aria-modal="true" aria-labelledby="restaurant-modal-name">
+      <button
+        class="modal-close"
+        type="button"
+        data-action="close-modal"
+        aria-label="Cerrar"
+      >
+        ×
+      </button>
+
+      <div id="restaurant-modal-gallery" class="modal-gallery"></div>
+
+      <div class="modal-content">
+        <div id="restaurant-modal-category" class="modal-category"></div>
+
+        <h2 id="restaurant-modal-name" class="modal-name"></h2>
+
+        <div class="modal-price-line">
+          <span id="restaurant-modal-price" class="modal-price"></span>
+          <span id="restaurant-modal-old-price" class="modal-old-price" hidden></span>
+        </div>
+
+        <p id="restaurant-modal-description" class="modal-description"></p>
+
+        <div class="modal-actions">
+          <button
+            id="restaurant-modal-order"
+            class="modal-order-button"
+            type="button"
+            data-action="ask-product"
+          >
+            Consultar este platillo
+          </button>
+
+          <button
+            id="restaurant-modal-favorite"
+            class="modal-small-button"
+            type="button"
+            data-action="favorite-modal"
+            aria-label="Agregar a favoritos"
+            title="Agregar a favoritos"
+          >
+            ♡
+          </button>
+
+          <button
+            class="modal-small-button"
+            type="button"
+            data-action="share-product"
+            aria-label="Compartir platillo"
+            title="Compartir platillo"
+          >
+            ↗
+          </button>
+        </div>
+
+        <a
+          id="restaurant-modal-phone"
+          class="modal-small-button"
+          href="#"
+          hidden
+          style="margin-top:10px; text-decoration:none;"
+        >
+          ☎ Llamar al restaurante
+        </a>
+
+        <div id="restaurant-related-products" class="related-products" hidden>
+          <div class="related-title">También puede gustarte</div>
+          <div id="restaurant-related-list" class="related-list"></div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <div id="restaurant-lightbox" class="lightbox-layer" aria-hidden="true">
+    <button
+      class="lightbox-close"
+      type="button"
+      data-action="close-lightbox"
+      aria-label="Cerrar imagen"
+    >
+      ×
+    </button>
+
+    <button
+      class="lightbox-arrow left"
+      type="button"
+      data-action="previous-image"
+      aria-label="Imagen anterior"
+    >
+      ‹
+    </button>
+
+    <img id="restaurant-lightbox-image" class="lightbox-image" src="" alt="" />
+
+    <button
+      class="lightbox-arrow right"
+      type="button"
+      data-action="next-image"
+      aria-label="Imagen siguiente"
+    >
+      ›
+    </button>
+
+    <div id="restaurant-lightbox-count" class="lightbox-count"></div>
+  </div>
+
+  <div id="restaurant-toast-area" class="toast-area"></div>
+
+  <script>
+    const RESTAURANT_CLIENT = c360CrearCliente();
+
+    let RESTAURANT_CATALOG = null;
+    let RESTAURANT_PRODUCTS = [];
+    let RESTAURANT_CATEGORIES = [];
+    let RESTAURANT_STORAGE = null;
+
+    let RESTAURANT_CURRENT_CATEGORY = null;
+    let RESTAURANT_SEARCH_TEXT = "";
+    let RESTAURANT_SORT = "reciente";
+    let RESTAURANT_PRICE_MAX = null;
+    let RESTAURANT_ONLY_OFFERS = false;
+    let RESTAURANT_ONLY_FAVORITES = false;
+    let RESTAURANT_FAVORITES = [];
+
+    let RESTAURANT_PREVIEW = false;
+    let RESTAURANT_MODAL_PRODUCT = null;
+    let RESTAURANT_LIGHTBOX_PHOTOS = [];
+    let RESTAURANT_LIGHTBOX_INDEX = 0;
+
+    const $r = (id) => document.getElementById(id);
+
+    function restaurantEscape(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    function restaurantMoney(value) {
+      return c360FmtC(Number(value || 0));
+    }
+
+    function restaurantProductPrice(product) {
+      const isOffer =
+        product?.etiqueta === "oferta" &&
+        Number(product?.precio_oferta || 0) > 0;
+
+      return isOffer
+        ? Number(product.precio_oferta)
+        : Number(product?.precio || 0);
+    }
+
+    function restaurantIsOffer(product) {
+      return (
+        product?.etiqueta === "oferta" &&
+        Number(product?.precio_oferta || 0) > 0
+      );
+    }
+
+    function restaurantSavings(product) {
+      if (!restaurantIsOffer(product)) return null;
+
+      const regularPrice = Number(product.precio || 0);
+      const offerPrice = Number(product.precio_oferta || 0);
+
+      if (!regularPrice) return null;
+
+      const percentage = Math.round((1 - offerPrice / regularPrice) * 100);
+      return percentage > 0 ? percentage : null;
+    }
+
+    function restaurantMainPhoto(product) {
+      return (
+        product?.fotos?.find((photo) => photo.es_principal) ||
+        product?.fotos?.[0] ||
+        null
+      );
+    }
+
+    function restaurantProductCategory(product) {
+      return (
+        RESTAURANT_CATEGORIES.find(
+          (category) => String(category.id) === String(product?.categoria_id)
+        ) || null
+      );
+    }
+
+    function restaurantWhatsAppUrl(product = null) {
+      if (!RESTAURANT_CATALOG?.whatsapp) return "";
+
+      const businessName =
+        RESTAURANT_CATALOG.nombre_comercial ||
+        RESTAURANT_CATALOG.nombre ||
+        "nuestro restaurante";
+
+      const message = product
+        ? `Hola, estoy interesado en "${product.nombre}" (${restaurantMoney(restaurantProductPrice(product))}) del menú de ${businessName}.`
+        : `Hola, quisiera hacer una consulta sobre el menú de ${businessName}.`;
+
+      return c360LinkWA(RESTAURANT_CATALOG.whatsapp, message);
+    }
+
+    function restaurantRegisterEvent(type, productId = null) {
+      try {
+        c360RegistrarEvento(
+          RESTAURANT_CLIENT,
+          RESTAURANT_CATALOG?.id,
+          type,
+          productId,
+          RESTAURANT_PREVIEW
+        );
+      } catch (error) {
+        console.warn("No se pudo registrar el evento:", error);
+      }
+    }
+
+    function restaurantToast(message) {
+      const area = $r("restaurant-toast-area");
+      const toast = document.createElement("div");
+
+      toast.className = "toast-message";
+      toast.textContent = message;
+      area.appendChild(toast);
+
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function restaurantApplyTheme(theme) {
+      const safeTheme = theme === "noche" ? "night" : "light";
+
+      document.documentElement.setAttribute("data-mode", safeTheme);
+
+      const button = $r("restaurant-theme-button");
+
+      if (safeTheme === "night") {
+        button.textContent = "☾";
+        button.title = "Usar tema claro";
+        button.setAttribute("aria-label", "Usar tema claro");
+      } else {
+        button.textContent = "☼";
+        button.title = "Usar tema oscuro";
+        button.setAttribute("aria-label", "Usar tema oscuro");
+      }
+
+      if (RESTAURANT_STORAGE) {
+        RESTAURANT_STORAGE.guardarTema(
+          safeTheme === "night" ? "noche" : "dia"
+        );
+      }
+    }
+
+    function restaurantToggleTheme() {
+      const current = document.documentElement.getAttribute("data-mode");
+      restaurantApplyTheme(current === "night" ? "dia" : "noche");
+    }
+
+    function restaurantScrollToMenu() {
+      $r("menu")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+
+    function restaurantUpdateFavorites() {
+      const validIds = new Set(
+        RESTAURANT_PRODUCTS.map((product) => String(product.id))
+      );
+
+      RESTAURANT_FAVORITES = RESTAURANT_FAVORITES
+        .map((id) => String(id))
+        .filter((id) => validIds.has(id));
+
+      RESTAURANT_STORAGE?.guardarFavoritos(RESTAURANT_FAVORITES);
+
+      const button = $r("restaurant-favorites-button");
+      const counter = $r("restaurant-favorite-counter");
+
+      button.classList.toggle(
+        "active",
+        RESTAURANT_ONLY_FAVORITES
+      );
+
+      button.firstChild.textContent = RESTAURANT_ONLY_FAVORITES
+        ? "♥"
+        : "♡";
+
+      counter.textContent = RESTAURANT_FAVORITES.length;
+      counter.style.display = RESTAURANT_FAVORITES.length
+        ? "flex"
+        : "none";
+    }
+
+    function restaurantIsFavorite(id) {
+      return RESTAURANT_FAVORITES.includes(String(id));
+    }
+
+    function restaurantToggleFavorite(id) {
+      const normalizedId = String(id);
+      const index = RESTAURANT_FAVORITES.indexOf(normalizedId);
+
+      if (index === -1) {
+        RESTAURANT_FAVORITES.push(normalizedId);
+        restaurantToast("Platillo agregado a favoritos.");
+      } else {
+        RESTAURANT_FAVORITES.splice(index, 1);
+        restaurantToast("Platillo quitado de favoritos.");
+      }
+
+      restaurantUpdateFavorites();
+      restaurantApplyFilters();
+      restaurantUpdateModalFavorite();
+    }
+
+    function restaurantToggleFavoritesView() {
+      RESTAURANT_ONLY_FAVORITES = !RESTAURANT_ONLY_FAVORITES;
+
+      if (RESTAURANT_ONLY_FAVORITES) {
+        RESTAURANT_CURRENT_CATEGORY = null;
+        RESTAURANT_ONLY_OFFERS = false;
+        $r("restaurant-offers-button").classList.remove("active");
+      }
+
+      restaurantUpdateFavorites();
+      restaurantRenderCategories();
+      restaurantRenderBreadcrumb();
+      restaurantApplyFilters();
+      restaurantScrollToMenu();
+    }
+
+    function restaurantConfigurePrice() {
+      const realMaximum = Number(
+        c360PrecioMaximoReal(RESTAURANT_PRODUCTS) || 0
+      );
+
+      const sliderMaximum = Math.max(1, Math.ceil(realMaximum));
+      const slider = $r("restaurant-price-range");
+
+      slider.min = "0";
+      slider.max = String(sliderMaximum);
+      slider.value = String(sliderMaximum);
+      slider.disabled = !RESTAURANT_PRODUCTS.length;
+
+      RESTAURANT_PRICE_MAX = sliderMaximum;
+      restaurantUpdatePriceLabel();
+    }
+
+    function restaurantUpdatePriceLabel() {
+      const slider = $r("restaurant-price-range");
+      const maximum = Number(slider.max || 0);
+      const current = Number(RESTAURANT_PRICE_MAX || 0);
+
+      $r("restaurant-price-label").textContent =
+        current >= maximum
+          ? "Cualquier precio"
+          : `Hasta ${restaurantMoney(current)}`;
+    }
+
+    function restaurantSearch(value) {
+      RESTAURANT_SEARCH_TEXT = String(value || "")
+        .trim()
+        .toLowerCase();
+
+      restaurantApplyFilters();
+    }
+
+    function restaurantChangeSort(value) {
+      RESTAURANT_SORT = value;
+      restaurantApplyFilters();
+    }
+
+    function restaurantChangePrice(value) {
+      RESTAURANT_PRICE_MAX = Number(value);
+      restaurantUpdatePriceLabel();
+      restaurantApplyFilters();
+    }
+
+    function restaurantToggleOffers() {
+      RESTAURANT_ONLY_OFFERS = !RESTAURANT_ONLY_OFFERS;
+      RESTAURANT_ONLY_FAVORITES = false;
+
+      $r("restaurant-offers-button").classList.toggle(
+        "active",
+        RESTAURANT_ONLY_OFFERS
+      );
+
+      restaurantUpdateFavorites();
+      restaurantRenderCategories();
+      restaurantRenderBreadcrumb();
+      restaurantApplyFilters();
+    }
+
+    function restaurantClearFilters() {
+      RESTAURANT_CURRENT_CATEGORY = null;
+      RESTAURANT_SEARCH_TEXT = "";
+      RESTAURANT_SORT = "reciente";
+      RESTAURANT_ONLY_OFFERS = false;
+      RESTAURANT_ONLY_FAVORITES = false;
+
+      $r("restaurant-search").value = "";
+      $r("restaurant-sort").value = "reciente";
+      $r("restaurant-offers-button").classList.remove("active");
+
+      const slider = $r("restaurant-price-range");
+      RESTAURANT_PRICE_MAX = Number(slider.max || 0);
+      slider.value = slider.max;
+
+      restaurantUpdatePriceLabel();
+      restaurantUpdateFavorites();
+      restaurantRenderCategories();
+      restaurantRenderBreadcrumb();
+      restaurantApplyFilters();
+    }
+
+    function restaurantSelectCategory(id) {
+      RESTAURANT_CURRENT_CATEGORY =
+        RESTAURANT_CATEGORIES.find(
+          (category) => String(category.id) === String(id)
+        ) || null;
+
+      RESTAURANT_ONLY_FAVORITES = false;
+      RESTAURANT_ONLY_OFFERS = false;
+
+      $r("restaurant-offers-button").classList.remove("active");
+
+      restaurantUpdateFavorites();
+      restaurantRenderCategories();
+      restaurantRenderBreadcrumb();
+      restaurantApplyFilters();
+      restaurantScrollToMenu();
+    }
+
+    function restaurantRenderBreadcrumb() {
+      const breadcrumb = $r("restaurant-breadcrumb");
+      const title = $r("restaurant-menu-title");
+
+      if (RESTAURANT_ONLY_FAVORITES) {
+        breadcrumb.style.display = "block";
+        breadcrumb.innerHTML =
+          `<button type="button" data-action="clear-filters">Inicio</button> / Favoritos`;
+        title.textContent = "Mis favoritos";
+        return;
+      }
+
+      if (RESTAURANT_ONLY_OFFERS) {
+        breadcrumb.style.display = "block";
+        breadcrumb.innerHTML =
+          `<button type="button" data-action="clear-filters">Inicio</button> / Especiales`;
+        title.textContent = "Especiales de la casa";
+        return;
+      }
+
+      if (RESTAURANT_CURRENT_CATEGORY) {
+        breadcrumb.style.display = "block";
+        breadcrumb.innerHTML =
+          `<button type="button" data-action="clear-filters">Inicio</button> / ${restaurantEscape(RESTAURANT_CURRENT_CATEGORY.nombre)}`;
+        title.textContent = RESTAURANT_CURRENT_CATEGORY.nombre;
+        return;
+      }
+
+      breadcrumb.style.display = "none";
+      title.textContent = "Toda la carta";
+    }
+
+    function restaurantSetContactLink(elementId, url) {
+      const element = $r(elementId);
+      if (!element) return;
+
+      if (url) {
+        element.href = url;
+        element.hidden = false;
+      } else {
+        element.hidden = true;
+      }
+    }
+
+    function restaurantRenderHeader() {
+      const catalog = RESTAURANT_CATALOG;
+      const name =
+        catalog.nombre_comercial ||
+        catalog.nombre ||
+        "Nuestro restaurante";
+
+      const description =
+        catalog.descripcion ||
+        "Descubre nuestro menú y disfruta sabores preparados especialmente para ti.";
+
+      document.title = `${name} | Menú digital`;
+      $r("restaurant-title").textContent = document.title;
+      $r("restaurant-description-meta").setAttribute("content", description);
+      $r("restaurant-og-title").setAttribute("content", name);
+      $r("restaurant-og-description").setAttribute("content", description);
+
+      if (catalog.logo_url) {
+        $r("restaurant-og-image").setAttribute(
+          "content",
+          catalog.logo_url
+        );
+      }
+
+      $r("restaurant-brand-name").textContent = name;
+      $r("restaurant-footer-business").textContent = name;
+      $r("restaurant-footer-title").textContent =
+        `Nos encantará recibirte en ${name}.`;
+
+      const logo = $r("restaurant-logo");
+
+      if (catalog.logo_url) {
+        logo.innerHTML =
+          `<img src="${restaurantEscape(catalog.logo_url)}" alt="${restaurantEscape(name)}">`;
+      } else {
+        logo.textContent = name.charAt(0).toUpperCase() || "R";
+      }
+
+      const generalWhatsApp = restaurantWhatsAppUrl();
+
+      restaurantSetContactLink(
+        "restaurant-header-order",
+        generalWhatsApp
+      );
+
+      restaurantSetContactLink(
+        "restaurant-footer-order",
+        generalWhatsApp
+      );
+
+      restaurantSetContactLink(
+        "restaurant-floating-contact",
+        generalWhatsApp
+      );
+
+      if (generalWhatsApp) {
+        $r("restaurant-header-order").onclick = () =>
+          restaurantRegisterEvent("click_whatsapp");
+
+        $r("restaurant-footer-order").onclick = () =>
+          restaurantRegisterEvent("click_whatsapp");
+
+        $r("restaurant-floating-contact").onclick = () =>
+          restaurantRegisterEvent("click_whatsapp");
+      }
+    }
+
+    function restaurantRenderHero() {
+      const catalog = RESTAURANT_CATALOG;
+      const name =
+        catalog.nombre_comercial ||
+        catalog.nombre ||
+        "Nuestro restaurante";
+
+      const featured =
+        RESTAURANT_PRODUCTS.find((product) => product.destacado) ||
+        RESTAURANT_PRODUCTS.find((product) => product.etiqueta !== "agotado") ||
+        RESTAURANT_PRODUCTS[0];
+
+      $r("restaurant-hero-title").innerHTML =
+        `${restaurantEscape(name)}<em>hecho para compartir</em>`;
+
+      $r("restaurant-hero-description").textContent =
+        catalog.descripcion ||
+        "Descubre nuestros platillos, especialidades y sabores preparados al momento.";
+
+      const actions = $r("restaurant-hero-actions");
+      const generalWhatsApp = restaurantWhatsAppUrl();
+
+      actions.innerHTML = `
+        <button class="primary-action" type="button" data-action="scroll-menu">
+          Explorar la carta
+        </button>
+        ${
+          generalWhatsApp
+            ? `
+              <a
+                class="secondary-action"
+                href="${restaurantEscape(generalWhatsApp)}"
+                target="_blank"
+                rel="noopener"
+                data-action="whatsapp-general"
+              >
+                Reservar mesa
+              </a>
+            `
+            : ""
+        }
+      `;
+
+      const featureContainer = $r("restaurant-hero-feature");
+
+      if (!featured) {
+        featureContainer.hidden = true;
+        return;
+      }
+
+      const photo = restaurantMainPhoto(featured);
+      const savings = restaurantSavings(featured);
+      const image = photo
+        ? `<img src="${restaurantEscape(photo.url)}" alt="${restaurantEscape(featured.nombre)}">`
+        : `<div class="feature-placeholder">${restaurantEscape(featured.nombre)}</div>`;
+
+      featureContainer.hidden = false;
+      featureContainer.innerHTML = `
+        <div
+          class="feature-photo"
+          data-action="open-product"
+          data-id="${restaurantEscape(featured.id)}"
+          role="button"
+          tabindex="0"
+          aria-label="Ver ${restaurantEscape(featured.nombre)}"
+        >
+          ${image}
+        </div>
+
+        <div class="feature-label">
+          <small>${featured.destacado ? "Recomendación de la casa" : "Favorito del menú"}</small>
+          <strong>${restaurantEscape(featured.nombre)}</strong>
+          <span>
+            ${
+              savings
+                ? `-${savings}% · ${restaurantMoney(restaurantProductPrice(featured))}`
+                : restaurantMoney(restaurantProductPrice(featured))
+            }
+          </span>
+        </div>
+      `;
+    }
+
+    function restaurantRenderCategories() {
+      const section = document.querySelector(".category-section");
+      const container = $r("restaurant-categories");
+
+      if (!RESTAURANT_CATEGORIES.length) {
+        section.style.display = "none";
+        container.innerHTML = "";
+        return;
+      }
+
+      section.style.display = "";
+
+      const productCounts = {};
+
+      RESTAURANT_PRODUCTS.forEach((product) => {
+        if (product.categoria_id) {
+          productCounts[product.categoria_id] =
+            (productCounts[product.categoria_id] || 0) + 1;
+        }
+      });
+
+      container.innerHTML = RESTAURANT_CATEGORIES.map((category) => {
+        const count = productCounts[category.id] || 0;
+        const initial =
+          String(category.nombre || "").trim().charAt(0).toUpperCase() || "•";
+
+        const selected =
+          RESTAURANT_CURRENT_CATEGORY &&
+          String(RESTAURANT_CURRENT_CATEGORY.id) === String(category.id);
+
+        const image = category.imagen_url
+          ? `<img class="category-image" src="${restaurantEscape(category.imagen_url)}" alt="${restaurantEscape(category.nombre)}">`
+          : `<div class="category-empty">${initial}</div>`;
+
+        return `
+          <button
+            class="category-tile ${selected ? "is-selected" : ""}"
+            type="button"
+            data-action="select-category"
+            data-id="${restaurantEscape(category.id)}"
+          >
+            ${image}
+
+            <span class="category-content">
+              <span class="category-name">${restaurantEscape(category.nombre)}</span>
+              <span class="category-count">
+                ${count} producto${count === 1 ? "" : "s"}
+              </span>
+            </span>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function restaurantProductBadge(product, savings) {
+      if (product.etiqueta === "agotado") {
+        return `<span class="dish-badge sold">Agotado</span>`;
+      }
+
+      if (restaurantIsOffer(product)) {
+        return `<span class="dish-badge offer">${savings ? `-${savings}%` : "Especial"}</span>`;
+      }
+
+      if (product.destacado) {
+        return `<span class="dish-badge">De la casa</span>`;
+      }
+
+      if (product.etiqueta === "nuevo") {
+        return `<span class="dish-badge">Nuevo</span>`;
+      }
+
+      return "";
+    }
+
+    function restaurantProductCard(product) {
+      const photo = restaurantMainPhoto(product);
+      const category = restaurantProductCategory(product);
+      const savings = restaurantSavings(product);
+      const offer = restaurantIsOffer(product);
+      const sold = product.etiqueta === "agotado";
+      const featured = Boolean(product.destacado) && !sold;
+      const favorite = restaurantIsFavorite(product.id);
+
+      const image = photo
+        ? `<img src="${restaurantEscape(photo.url)}" loading="lazy" alt="${restaurantEscape(product.nombre)}">`
+        : `<div class="dish-placeholder">${restaurantEscape(product.nombre)}</div>`;
+
+      return `
+        <article class="dish-card ${featured ? "is-featured" : ""} ${sold ? "is-sold" : ""}">
+          <div
+            class="dish-media"
+            data-action="open-product"
+            data-id="${restaurantEscape(product.id)}"
+            role="button"
+            tabindex="0"
+            aria-label="Ver ${restaurantEscape(product.nombre)}"
+          >
+            ${image}
+            ${restaurantProductBadge(product, savings)}
+
+            <button
+              class="dish-favorite ${favorite ? "active" : ""}"
+              type="button"
+              data-action="favorite"
+              data-id="${restaurantEscape(product.id)}"
+              aria-label="${favorite ? "Quitar de favoritos" : "Agregar a favoritos"}"
+              title="${favorite ? "Quitar de favoritos" : "Agregar a favoritos"}"
+            >
+              ${favorite ? "♥" : "♡"}
+            </button>
+          </div>
+
+          <div class="dish-content">
+            <div class="dish-category">
+              ${category ? restaurantEscape(category.nombre) : "Especialidad"}
+            </div>
+
+            <button
+              class="dish-name"
+              type="button"
+              data-action="open-product"
+              data-id="${restaurantEscape(product.id)}"
+            >
+              ${restaurantEscape(product.nombre)}
+            </button>
+
+            ${
+              product.descripcion
+                ? `<p class="dish-description">${restaurantEscape(product.descripcion)}</p>`
+                : ""
+            }
+
+            <div class="dish-footer">
+              <span class="dish-price">${restaurantMoney(restaurantProductPrice(product))}</span>
+
+              ${
+                offer
+                  ? `<span class="dish-old-price">${restaurantMoney(product.precio)}</span>`
+                  : ""
+              }
+
+              ${
+                offer && savings
+                  ? `<span class="saving-label">Ahorras ${savings}%</span>`
+                  : ""
+              }
+            </div>
+
+            <div class="dish-actions">
+              <button
+                class="dish-detail-button"
+                type="button"
+                data-action="open-product"
+                data-id="${restaurantEscape(product.id)}"
+              >
+                Ver detalles
+              </button>
+
+              ${
+                RESTAURANT_CATALOG.whatsapp && !sold
+                  ? `
+                    <button
+                      class="dish-whatsapp-button"
+                      type="button"
+                      data-action="ask-product"
+                      data-id="${restaurantEscape(product.id)}"
+                      aria-label="Consultar por WhatsApp"
+                      title="Consultar por WhatsApp"
+                    >
+                      💬
+                    </button>
+                  `
+                  : ""
+              }
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function restaurantRenderMenu(products) {
+      const container = $r("restaurant-menu-list");
+      const counter = $r("restaurant-menu-counter");
+      const priceSlider = $r("restaurant-price-range");
+
+      counter.textContent = products.length
+        ? `${products.length} resultado${products.length === 1 ? "" : "s"}`
+        : "";
+
+      const hasFilters =
+        Boolean(RESTAURANT_CURRENT_CATEGORY) ||
+        Boolean(RESTAURANT_SEARCH_TEXT) ||
+        RESTAURANT_ONLY_OFFERS ||
+        RESTAURANT_ONLY_FAVORITES ||
+        Number(RESTAURANT_PRICE_MAX) < Number(priceSlider.max);
+
+      $r("restaurant-clear-filters").style.display = hasFilters
+        ? "inline-block"
+        : "none";
+
+      if (!products.length) {
+        container.innerHTML = `
+          <div class="empty-menu">
+            <div class="empty-menu-mark">Hmm...</div>
+            <p>No encontramos platillos con esos filtros.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = products
+        .map(restaurantProductCard)
+        .join("");
+    }
+
+    function restaurantApplyFilters() {
+      const filteredProducts = c360FiltrarYOrdenar(
+        RESTAURANT_PRODUCTS,
+        {
+          categoriaId: RESTAURANT_CURRENT_CATEGORY?.id || null,
+          soloFavoritos: RESTAURANT_ONLY_FAVORITES,
+          favoritos: RESTAURANT_FAVORITES,
+          soloOfertas: RESTAURANT_ONLY_OFFERS,
+          textoBusqueda: RESTAURANT_SEARCH_TEXT,
+          precioMax: RESTAURANT_PRICE_MAX,
+          orden: RESTAURANT_SORT
+        }
+      );
+
+      restaurantRenderMenu(filteredProducts);
+    }
+
+    function restaurantFindProduct(id) {
+      return RESTAURANT_PRODUCTS.find(
+        (product) => String(product.id) === String(id)
+      );
+    }
+
+    function restaurantAskProduct(id) {
+      const product = restaurantFindProduct(id);
+
+      if (
+        !product ||
+        !RESTAURANT_CATALOG.whatsapp ||
+        product.etiqueta === "agotado"
+      ) {
+        return;
+      }
+
+      restaurantRegisterEvent("click_whatsapp", product.id);
+      window.open(
+        restaurantWhatsAppUrl(product),
+        "_blank",
+        "noopener"
+      );
+    }
+
+    function restaurantUpdateModalFavorite() {
+      if (!RESTAURANT_MODAL_PRODUCT) return;
+
+      const button = $r("restaurant-modal-favorite");
+      const favorite = restaurantIsFavorite(RESTAURANT_MODAL_PRODUCT.id);
+
+      button.textContent = favorite ? "♥" : "♡";
+      button.classList.toggle("active", favorite);
+      button.setAttribute(
+        "aria-label",
+        favorite ? "Quitar de favoritos" : "Agregar a favoritos"
+      );
+      button.title = favorite
+        ? "Quitar de favoritos"
+        : "Agregar a favoritos";
+    }
+
+    function restaurantRenderRelated(product) {
+      const wrapper = $r("restaurant-related-products");
+      const list = $r("restaurant-related-list");
+
+      if (!product.categoria_id) {
+        wrapper.hidden = true;
+        return;
+      }
+
+      const related = RESTAURANT_PRODUCTS
+        .filter((item) =>
+          String(item.id) !== String(product.id) &&
+          String(item.categoria_id) === String(product.categoria_id)
+        )
+        .slice(0, 6);
+
+      if (!related.length) {
+        wrapper.hidden = true;
+        return;
+      }
+
+      wrapper.hidden = false;
+
+      list.innerHTML = related.map((item) => {
+        const photo = restaurantMainPhoto(item);
+
+        const image = photo
+          ? `<img class="related-image" src="${restaurantEscape(photo.url)}" alt="${restaurantEscape(item.nombre)}">`
+          : `<div class="related-placeholder"></div>`;
+
+        return `
+          <div
+            class="related-item"
+            data-action="open-product"
+            data-id="${restaurantEscape(item.id)}"
+            role="button"
+            tabindex="0"
+          >
+            ${image}
+            <div class="related-name">${restaurantEscape(item.nombre)}</div>
+            <div class="related-price">${restaurantMoney(restaurantProductPrice(item))}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function restaurantOpenProduct(id) {
+      const product = restaurantFindProduct(id);
+      if (!product) return;
+
+      RESTAURANT_MODAL_PRODUCT = product;
+      restaurantRegisterEvent("vista_producto", product.id);
+
+      const category = restaurantProductCategory(product);
+      const offer = restaurantIsOffer(product);
+      const sold = product.etiqueta === "agotado";
+
+      const categoryElement = $r("restaurant-modal-category");
+      categoryElement.textContent = category?.nombre || "";
+      categoryElement.style.display = category ? "block" : "none";
+
+      $r("restaurant-modal-name").textContent = product.nombre;
+      $r("restaurant-modal-price").textContent =
+        restaurantMoney(restaurantProductPrice(product));
+
+      const oldPrice = $r("restaurant-modal-old-price");
+      oldPrice.hidden = !offer;
+      oldPrice.textContent = offer
+        ? restaurantMoney(product.precio)
+        : "";
+
+      $r("restaurant-modal-description").textContent =
+        product.descripcion ||
+        "Consulta con nosotros para conocer más detalles sobre este platillo.";
+
+      RESTAURANT_LIGHTBOX_PHOTOS = (product.fotos || [])
+        .map((photo) => photo.url)
+        .filter(Boolean);
+
+      const gallery = $r("restaurant-modal-gallery");
+
+      if (RESTAURANT_LIGHTBOX_PHOTOS.length) {
+        gallery.innerHTML = product.fotos
+          .filter((photo) => photo.url)
+          .map((photo, index) => `
+            <img
+              src="${restaurantEscape(photo.url)}"
+              alt="${restaurantEscape(product.nombre)}"
+              data-action="open-lightbox"
+              data-index="${index}"
+            >
+          `)
+          .join("");
+      } else {
+        gallery.innerHTML =
+          `<div class="modal-gallery-placeholder">${restaurantEscape(product.nombre)}</div>`;
+      }
+
+      const orderButton = $r("restaurant-modal-order");
+      orderButton.dataset.id = product.id;
+      orderButton.disabled = !RESTAURANT_CATALOG.whatsapp || sold;
+      orderButton.textContent = sold
+        ? "Agotado por ahora"
+        : RESTAURANT_CATALOG.whatsapp
+          ? "Consultar este platillo"
+          : "Consulta no disponible";
+
+      const phone = $r("restaurant-modal-phone");
+
+      if (RESTAURANT_CATALOG.telefono) {
+        phone.hidden = false;
+        phone.href =
+          `tel:${String(RESTAURANT_CATALOG.telefono).replace(/[^\d+]/g, "")}`;
+        phone.onclick = () =>
+          restaurantRegisterEvent("click_telefono", product.id);
+      } else {
+        phone.hidden = true;
+      }
+
+      restaurantUpdateModalFavorite();
+      restaurantRenderRelated(product);
+
+      const modal = $r("restaurant-modal-layer");
+      modal.classList.add("open");
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("menu-locked");
+    }
+
+    function restaurantCloseProduct() {
+      const modal = $r("restaurant-modal-layer");
+
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+      RESTAURANT_MODAL_PRODUCT = null;
+
+      if (!$r("restaurant-lightbox").classList.contains("open")) {
+        document.body.classList.remove("menu-locked");
+      }
+    }
+
+    async function restaurantShareProduct() {
+      const product = RESTAURANT_MODAL_PRODUCT;
+      if (!product) return;
+
+      const productUrl =
+        `${window.location.origin}${window.location.pathname}${window.location.search}#producto-${encodeURIComponent(product.id)}`;
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: product.nombre,
+            text: `${product.nombre} — ${restaurantMoney(restaurantProductPrice(product))}`,
+            url: productUrl
+          });
+          return;
+        }
+
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(productUrl);
+          restaurantToast("Enlace del platillo copiado.");
+          return;
+        }
+
+        restaurantToast("No se pudo compartir desde este navegador.");
+      } catch (error) {
+        console.warn("Compartir cancelado o no disponible.");
+      }
+    }
+
+    function restaurantOpenLightbox(index) {
+      if (!RESTAURANT_LIGHTBOX_PHOTOS.length) return;
+
+      RESTAURANT_LIGHTBOX_INDEX = Math.max(
+        0,
+        Math.min(index, RESTAURANT_LIGHTBOX_PHOTOS.length - 1)
+      );
+
+      restaurantPaintLightbox();
+
+      const lightbox = $r("restaurant-lightbox");
+      lightbox.classList.add("open");
+      lightbox.setAttribute("aria-hidden", "false");
+      document.body.classList.add("menu-locked");
+    }
+
+    function restaurantPaintLightbox() {
+      const image = $r("restaurant-lightbox-image");
+      const count = $r("restaurant-lightbox-count");
+
+      image.src = RESTAURANT_LIGHTBOX_PHOTOS[RESTAURANT_LIGHTBOX_INDEX];
+      image.alt = RESTAURANT_MODAL_PRODUCT?.nombre || "Imagen del platillo";
+
+      count.textContent =
+        `${RESTAURANT_LIGHTBOX_INDEX + 1} / ${RESTAURANT_LIGHTBOX_PHOTOS.length}`;
+
+      document.querySelectorAll(".lightbox-arrow").forEach((arrow) => {
+        arrow.style.display =
+          RESTAURANT_LIGHTBOX_PHOTOS.length > 1 ? "grid" : "none";
+      });
+    }
+
+    function restaurantMoveLightbox(direction) {
+      if (!RESTAURANT_LIGHTBOX_PHOTOS.length) return;
+
+      RESTAURANT_LIGHTBOX_INDEX =
+        (
+          RESTAURANT_LIGHTBOX_INDEX +
+          direction +
+          RESTAURANT_LIGHTBOX_PHOTOS.length
+        ) %
+        RESTAURANT_LIGHTBOX_PHOTOS.length;
+
+      restaurantPaintLightbox();
+    }
+
+    function restaurantCloseLightbox() {
+      const lightbox = $r("restaurant-lightbox");
+
+      lightbox.classList.remove("open");
+      lightbox.setAttribute("aria-hidden", "true");
+
+      if (!$r("restaurant-modal-layer").classList.contains("open")) {
+        document.body.classList.remove("menu-locked");
+      }
+    }
+
+    function restaurantInsertSEO() {
+      try {
+        c360InsertarJSONLD(
+          "restaurant-jsonld",
+          RESTAURANT_CATALOG,
+          RESTAURANT_PRODUCTS
+        );
+      } catch (error) {
+        console.warn("No se pudo insertar SEO estructurado.");
+      }
+    }
+
+    function restaurantShowError(message) {
+      const loader = $r("restaurant-loader");
+      loader.classList.add("error");
+
+      loader.innerHTML = `
+        <div class="restaurant-loader-inner">
+          <h1 class="restaurant-loader-title">No pudimos abrir el menú</h1>
+          <p class="restaurant-loader-text">${restaurantEscape(message)}</p>
+        </div>
+      `;
+    }
+
+    function restaurantShowApp() {
+      $r("restaurant-app").hidden = false;
+
+      const loader = $r("restaurant-loader");
+      loader.classList.add("is-hidden");
+
+      setTimeout(() => loader.remove(), 550);
+    }
+
+    function restaurantHandleAction(event) {
+      const target = event.target.closest("[data-action]");
+      if (!target) return;
+
+      const action = target.dataset.action;
+      const id = target.dataset.id;
+
+      if (action === "theme") {
+        restaurantToggleTheme();
+        return;
+      }
+
+      if (action === "favorites") {
+        restaurantToggleFavoritesView();
+        return;
+      }
+
+      if (action === "offers") {
+        restaurantToggleOffers();
+        return;
+      }
+
+      if (action === "clear-filters") {
+        restaurantClearFilters();
+        return;
+      }
+
+      if (action === "scroll-menu") {
+        restaurantScrollToMenu();
+        return;
+      }
+
+      if (action === "select-category") {
+        restaurantSelectCategory(id);
+        return;
+      }
+
+      if (action === "open-product") {
+        restaurantOpenProduct(id);
+        return;
+      }
+
+      if (action === "favorite") {
+        event.stopPropagation();
+        restaurantToggleFavorite(id);
+        return;
+      }
+
+      if (action === "favorite-modal") {
+        if (RESTAURANT_MODAL_PRODUCT) {
+          restaurantToggleFavorite(RESTAURANT_MODAL_PRODUCT.id);
+        }
+        return;
+      }
+
+      if (action === "ask-product") {
+        restaurantAskProduct(id || RESTAURANT_MODAL_PRODUCT?.id);
+        return;
+      }
+
+      if (action === "close-modal") {
+        restaurantCloseProduct();
+        return;
+      }
+
+      if (action === "share-product") {
+        restaurantShareProduct();
+        return;
+      }
+
+      if (action === "open-lightbox") {
+        restaurantOpenLightbox(Number(target.dataset.index || 0));
+        return;
+      }
+
+      if (action === "close-lightbox") {
+        restaurantCloseLightbox();
+        return;
+      }
+
+      if (action === "previous-image") {
+        restaurantMoveLightbox(-1);
+        return;
+      }
+
+      if (action === "next-image") {
+        restaurantMoveLightbox(1);
+        return;
+      }
+
+      if (action === "whatsapp-general") {
+        restaurantRegisterEvent("click_whatsapp");
+      }
+    }
+
+    async function restaurantInit() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const slug = params.get("c");
+        const previewId = params.get("preview");
+
+        RESTAURANT_PREVIEW = Boolean(previewId);
+
+        const result = await c360CargarCatalogoPublico({
+          sb: RESTAURANT_CLIENT,
+          slug,
+          idPreview: previewId
+        });
+
+        if (result?.error) {
+          restaurantShowError(result.error);
+          return;
+        }
+
+        if (
+          c360RedirigirSiPlantillaCambio(
+            result.catalogo,
+            "restaurant"
+          )
+        ) {
+          return;
+        }
+
+        RESTAURANT_CATALOG = result.catalogo;
+        RESTAURANT_PRODUCTS = result.productos || [];
+        RESTAURANT_CATEGORIES = result.categorias || [];
+
+        RESTAURANT_STORAGE = c360CrearAlmacenLocal(
+          `restaurant_${RESTAURANT_CATALOG.id}`
+        );
+
+        RESTAURANT_FAVORITES = (
+          RESTAURANT_STORAGE.obtenerFavoritos() || []
+        ).map(String);
+
+        const savedTheme = RESTAURANT_STORAGE.obtenerTema(
+          RESTAURANT_CATALOG.tema_default === "oscuro"
+            ? "noche"
+            : "dia"
+        );
+
+        restaurantApplyTheme(savedTheme);
+        restaurantRenderHeader();
+        restaurantRenderHero();
+        restaurantRenderCategories();
+        restaurantConfigurePrice();
+        restaurantRenderBreadcrumb();
+        restaurantUpdateFavorites();
+        restaurantApplyFilters();
+        restaurantInsertSEO();
+
+        $r("restaurant-current-year").textContent =
+          new Date().getFullYear();
+
+        if (
+          RESTAURANT_PREVIEW &&
+          RESTAURANT_CATALOG.estado !== "publicado"
+        ) {
+          $r("restaurant-preview").style.display = "block";
+        }
+
+        if (!RESTAURANT_PREVIEW) {
+          restaurantRegisterEvent("visita");
+        }
+
+        restaurantShowApp();
+
+        const hash = window.location.hash;
+
+        if (hash.startsWith("#producto-")) {
+          const productId = decodeURIComponent(
+            hash.replace("#producto-", "")
+          );
+
+          setTimeout(() => {
+            if (restaurantFindProduct(productId)) {
+              restaurantOpenProduct(productId);
+            }
+          }, 250);
+        }
+      } catch (error) {
+        console.error("Error inicializando el menú del restaurante:", error);
+        restaurantShowError(
+          "Ocurrió un problema al cargar el menú. Intenta nuevamente."
+        );
+      }
+    }
+
+    document.addEventListener("click", restaurantHandleAction);
+
+    document.addEventListener("click", (event) => {
+      if (event.target === $r("restaurant-modal-layer")) {
+        restaurantCloseProduct();
+      }
+
+      if (event.target === $r("restaurant-lightbox")) {
+        restaurantCloseLightbox();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        if ($r("restaurant-lightbox").classList.contains("open")) {
+          restaurantCloseLightbox();
+          return;
+        }
+
+        if ($r("restaurant-modal-layer").classList.contains("open")) {
+          restaurantCloseProduct();
+        }
+      }
+
+      if (
+        $r("restaurant-lightbox").classList.contains("open") &&
+        event.key === "ArrowLeft"
+      ) {
+        restaurantMoveLightbox(-1);
+      }
+
+      if (
+        $r("restaurant-lightbox").classList.contains("open") &&
+        event.key === "ArrowRight"
+      ) {
+        restaurantMoveLightbox(1);
+      }
+
+      if (
+        event.key === "Enter" &&
+        document.activeElement?.dataset?.action === "open-product"
+      ) {
+        restaurantOpenProduct(document.activeElement.dataset.id);
+      }
+    });
+
+    $r("restaurant-search").addListener("input", (event) => {
+      restaurantSearch(event.target.value);
+    });
+
+    $r("restaurant-sort").addEventListener("change", (event) => {
+      restaurantChangeSort(event.target.value);
+    });
+
+    $r("restaurant-price-range").addEventListener("input", (event) => {
+      restaurantChangePrice(event.target.value);
+    });
+
+    document.addEventListener("DOMContentLoaded", restaurantInit);
+  </script>
+</body>
+</html>
