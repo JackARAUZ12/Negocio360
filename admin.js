@@ -142,6 +142,7 @@ function navigate(section) {
   if (section === 'codes')     loadCodes();
   if (section === 'codes-catalogo360') loadCodesC360();
   if (section === 'clientes-catalogo360') loadClientesC360();
+  if (section === 'clientes-periodo') loadClientesPeriodo();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
   if (section === 'encuestas') cargarResultadosEncuesta();
@@ -2444,8 +2445,113 @@ async function loadClientesC360() {
 }
 
 // ============================================================
-// SECCIÓN 4 — ATENCIÓN AL CLIENTE (CHAT)
+// SECCIÓN 3-D — CLIENTES POR PERÍODO (19-19)
 // ============================================================
+let CP_PERIODOS_CACHE = [];
+let CP_USUARIOS_CACHE = [];
+
+// Genera N períodos consecutivos del 19 de un mes al 19 del siguiente,
+// empezando por el período que contiene la fecha de hoy y yendo hacia
+// atrás. Ej: si hoy es 6 de septiembre, el período actual es
+// "19 ago - 19 sep" (todavía no llega al día 19 de este mes).
+function generarPeriodos19_19(cantidad = 12) {
+  const hoy = new Date();
+  let mesAncla = hoy.getMonth();
+  let anioAncla = hoy.getFullYear();
+  if (hoy.getDate() < 19) {
+    mesAncla -= 1;
+    if (mesAncla < 0) { mesAncla = 11; anioAncla -= 1; }
+  }
+
+  const nombresMes = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const periodos = [];
+  for (let i = 0; i < cantidad; i++) {
+    let mesInicio = mesAncla - i;
+    let anioInicio = anioAncla;
+    while (mesInicio < 0) { mesInicio += 12; anioInicio -= 1; }
+    let mesFin = mesInicio + 1, anioFin = anioInicio;
+    if (mesFin > 11) { mesFin = 0; anioFin += 1; }
+
+    const inicio = new Date(anioInicio, mesInicio, 19, 0, 0, 0);
+    const fin = new Date(anioFin, mesFin, 19, 0, 0, 0);
+    periodos.push({
+      inicio, fin,
+      etiqueta: `19 ${nombresMes[mesInicio]} — 19 ${nombresMes[mesFin]} ${anioFin}`,
+      esActual: i === 0,
+    });
+  }
+  return periodos;
+}
+
+async function loadClientesPeriodo() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const tbody = document.getElementById('clientes-periodo-tbody');
+  tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:48px;color:var(--text-muted)"><div class="loader-spinner" style="margin:0 auto 12px"></div>Cargando clientes...</td></tr>`;
+
+  try {
+    const { data, error } = await sb.from('usuarios')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, plan, estado_cuenta, created_at')
+      .eq('estado_cuenta', 'activa')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    CP_USUARIOS_CACHE = data || [];
+    CP_PERIODOS_CACHE = generarPeriodos19_19(12);
+
+    document.getElementById('cp-total-activos').textContent = CP_USUARIOS_CACHE.length;
+
+    const periodoActual = CP_PERIODOS_CACHE[0];
+    const conteoActual = CP_USUARIOS_CACHE.filter(u => {
+      const f = new Date(u.created_at);
+      return f >= periodoActual.inicio && f < periodoActual.fin;
+    }).length;
+    document.getElementById('cp-periodo-actual').textContent = conteoActual;
+    document.getElementById('cp-periodo-actual-label').textContent = `Período actual (${periodoActual.etiqueta})`;
+
+    tbody.innerHTML = CP_PERIODOS_CACHE.map((p, idx) => {
+      const conteo = CP_USUARIOS_CACHE.filter(u => {
+        const f = new Date(u.created_at);
+        return f >= p.inicio && f < p.fin;
+      }).length;
+      return `
+        <tr>
+          <td style="font-weight:600">${p.etiqueta} ${p.esActual ? '<span class="badge badge-dot" style="background:var(--accent-soft,#eff0ff);color:var(--accent);margin-left:6px">Actual</span>' : ''}</td>
+          <td style="text-align:center;font-weight:700;font-size:15px">${conteo}</td>
+          <td style="text-align:right">
+            <button class="btn-secondary btn-sm" onclick="verDetallePeriodo(${idx})" ${conteo === 0 ? 'disabled' : ''}>Ver detalle</button>
+          </td>
+        </tr>`;
+    }).join('');
+
+  } catch (e) {
+    console.error('loadClientesPeriodo:', e);
+    toast('Error al cargar clientes por período', e.message, 'error');
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:32px;color:var(--danger)">No se pudo cargar la lista.</td></tr>`;
+  }
+}
+
+function verDetallePeriodo(idx) {
+  const p = CP_PERIODOS_CACHE[idx];
+  if (!p) return;
+  const enEsePeriodo = CP_USUARIOS_CACHE.filter(u => {
+    const f = new Date(u.created_at);
+    return f >= p.inicio && f < p.fin;
+  });
+
+  document.getElementById('cp-detalle-titulo').textContent = `Clientes activos — ${p.etiqueta}`;
+  document.getElementById('cp-detalle-tbody').innerHTML = enEsePeriodo.map(u => `
+    <tr>
+      <td style="font-weight:600">${escHtml(u.nombre_negocio || (u.nombre + ' ' + (u.apellido||'')))}</td>
+      <td>${escHtml(u.email)}</td>
+      <td>${escHtml(u.plan || '—')}</td>
+      <td>${formatDate(u.created_at)}</td>
+    </tr>
+  `).join('');
+  document.getElementById('cp-detalle-card').style.display = 'block';
+  document.getElementById('cp-detalle-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
 // Carga la lista de conversaciones y las cruza con los datos del usuario
 async function loadConversaciones() {
