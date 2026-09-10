@@ -938,6 +938,25 @@
   }
   window.actualizarPrecioItemCredito = actualizarPrecioItemCredito;
 
+  // Mismo mecanismo exacto ya probado en Ventas y Proformas -- precio
+  // a C$0, restaurable, sin tocar como se descuenta el stock.
+  function alternarRegaliaCredito(idx) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    if (it.esRegalia) {
+      it.esRegalia = false;
+      it.precio = it.precioAntesRegalia != null ? it.precioAntesRegalia : it.precio;
+      it.precioAntesRegalia = undefined;
+    } else {
+      it.precioAntesRegalia = it.precio;
+      it.esRegalia = true;
+      it.precio = 0;
+    }
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.alternarRegaliaCredito = alternarRegaliaCredito;
+
   function actualizarCantidadItemCredito(idx, valor) {
     const it = CS.ncItems[idx];
     if (!it) return;
@@ -1014,14 +1033,19 @@
     if (!CS.ncItems.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin ítems agregados</td></tr>'; return; }
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
-        <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
+        <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
         <td><input type="number" value="${it.cantidad}" min="0.01" step="0.01"
               style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
               onchange="actualizarCantidadItemCredito(${idx}, this.value)"/></td>
-        <td><input type="number" value="${it.precio}" min="0" step="0.01"
-              title="Ajustar el precio solo para este crédito"
-              style="width:78px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
-              onchange="actualizarPrecioItemCredito(${idx}, this.value)"/></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" value="${it.precio}" min="0" step="0.01"
+                  title="Ajustar el precio solo para este crédito" ${it.esRegalia?'disabled':''}
+                  style="width:78px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
+                  onchange="actualizarPrecioItemCredito(${idx}, this.value)"/>
+            <button type="button" onclick="alternarRegaliaCredito(${idx})" title="${it.esRegalia?'Quitar regalía':'Marcar como regalía (precio C$0)'}" style="flex-shrink:0;width:24px;height:24px;border-radius:6px;border:1px solid ${it.esRegalia?'#d6336c':'var(--border)'};background:${it.esRegalia?'#d6336c22':'var(--bg-app)'};cursor:pointer;font-size:12px">🎀</button>
+          </div>
+        </td>
         <td>${fmt(round2(it.precio * it.cantidad))}</td>
         <td><button class="btn-ghost" style="padding:3px 8px" onclick="quitarItemCredito(${idx})">✕</button></td>
       </tr>`).join('');
