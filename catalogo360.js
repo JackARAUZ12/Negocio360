@@ -590,10 +590,11 @@ async function confirmarEliminarCatalogo() {
 
 function cambiarTabEditor(tab) {
   document.querySelectorAll('.c360-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  ['info','categorias','productos','apariencia','estadisticas'].forEach(t => {
+  ['info','categorias','productos','apariencia','estadisticas','catalogos-pdf'].forEach(t => {
     document.getElementById(`c360-tab-${t}`).style.display = t === tab ? 'block' : 'none';
   });
   if (tab === 'estadisticas') cargarEstadisticasCatalogo();
+  if (tab === 'catalogos-pdf') renderPlantillasPDF();
   mostrarCoachMarkSiAplica(tab);
 }
 
@@ -822,6 +823,32 @@ async function elegirPlantilla(key) {
     console.error('elegirPlantilla:', e);
     showToast('No se pudo cambiar la plantilla: ' + (e.message || 'intenta de nuevo'), 'error');
   }
+}
+
+/* ---------- PESTAÑA: CATÁLOGOS PDF ---------- */
+// Sistema APARTE del catálogo web -- no reutiliza ninguna de las
+// plantillas de Apariencia. Cada plantilla PDF aquí es un diseño
+// propio, construido con jsPDF (texto real, no una imagen).
+const PLANTILLAS_PDF_CATALOGO360 = [
+  { key: 'clasica', nombre: 'Clásica', icono: '📄', desc: 'Portada con tu color de marca, cuadrícula de productos en 3 columnas', disponible: true },
+];
+
+function renderPlantillasPDF() {
+  document.getElementById('c360-pdf-plantillas').innerHTML = PLANTILLAS_PDF_CATALOGO360.map(p => `
+    <div class="c360-plantilla-card ${!p.disponible?'deshabilitada':''}"
+         onclick="${p.disponible ? `elegirPlantillaPDF('${p.key}')` : ''}">
+      <div class="c360-plantilla-preview" style="background:${p.disponible?'linear-gradient(135deg,#14161f,#1b1f29)':'var(--bg-base)'};color:${p.disponible?'#fff':'inherit'}">${p.icono}</div>
+      <div class="c360-plantilla-info">
+        <div class="c360-plantilla-nombre">${esc(p.nombre)} ${!p.disponible?'<span class="c360-plantilla-badge proximamente">Próximamente</span>':''}</div>
+        <div class="c360-plantilla-desc">${esc(p.desc)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function elegirPlantillaPDF(key) {
+  STATE.plantillaPdfSeleccionada = key;
+  abrirModalCatalogoPDF();
 }
 
 function renderPaletasApariencia(colorActivo) {

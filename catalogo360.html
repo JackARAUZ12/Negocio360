@@ -1470,7 +1470,6 @@
             <div style="display:flex;gap:8px">
               <button class="btn-primary btn-sm" onclick="verCatalogoPublicado()">🌐 Ver catálogo</button>
               <button class="btn-secondary btn-sm" onclick="copiarEnlaceCatalogo()">🔗 Copiar enlace</button>
-              <button class="btn-secondary btn-sm" onclick="abrirModalCatalogoPDF()">📄 Descargar PDF</button>
               <button class="btn-secondary btn-sm" onclick="mostrarQR()">▦ QR</button>
             </div>
           </div>
@@ -1493,6 +1492,7 @@
           <button class="c360-tab" data-tab="productos" onclick="cambiarTabEditor('productos')">Productos</button>
           <button class="c360-tab" data-tab="apariencia" onclick="cambiarTabEditor('apariencia')">Apariencia</button>
           <button class="c360-tab" data-tab="estadisticas" onclick="cambiarTabEditor('estadisticas')">Estadísticas</button>
+          <button class="c360-tab" data-tab="catalogos-pdf" onclick="cambiarTabEditor('catalogos-pdf')">Catálogos PDF</button>
         </div>
 
         <!-- TAB: INFORMACION -->
@@ -1622,9 +1622,19 @@
             </div>
           </div>
         </div>
+
+        <div id="c360-tab-catalogos-pdf" class="c360-tab-panel" style="display:none">
+          <div class="panel-card" style="padding:20px;margin-top:16px;max-width:720px">
+            <div class="form-group">
+              <label>Plantilla de tu Catálogo PDF</label>
+              <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 12px">Un catálogo aparte, pensado para descargar e imprimir -- texto real, no una imagen. Tus productos se acomodan solos, sin importar cuál plantilla elijas.</p>
+              <div id="c360-pdf-plantillas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
-    </div><!-- /content -->
+      </div><!-- /content -->
   </div><!-- /main -->
 
   <!-- MODAL: CREAR CATALOGO -->
