@@ -1502,11 +1502,28 @@ async function confirmarConvertirAVenta() {
       (prodsStock || []).forEach(p => { stockPorProducto[p.id] = Number(p.stock_actual || 0); });
     }
 
+    // Validar que cada escala_id todavia exista de verdad antes de
+    // insertar -- un producto de Stock Compartido (cuenta vinculada)
+    // pudo haber tenido su escala editada o borrada del lado de la
+    // otra cuenta despues de armar esta proforma. Sin esto, un solo
+    // escala_id ya invalido tumba la conversion COMPLETA con un error
+    // de llave foranea. Se conserva escala_nombre igual (el texto
+    // sigue mostrando el precio que se acordo), solo se limpia la
+    // referencia que ya no apunta a ningun lado real.
+    const idsEscalaAValidar = [...new Set(detalles.filter(d => d.escala_id).map(d => d.escala_id))];
+    let idsEscalaValidos = new Set();
+    if (idsEscalaAValidar.length) {
+      const { data: escalasReales } = await sbClient.from('precios_escala').select('id').in('id', idsEscalaAValidar);
+      idsEscalaValidos = new Set((escalasReales || []).map(e => e.id));
+    }
+
     const detallesVenta = detalles.map(d => ({
       auth_user_id: STATE.userId, venta_id: ventaId, producto_id: d.producto_id, combo_id: d.combo_id || null,
       producto_nombre: d.producto_nombre, producto_sku: d.producto_sku, tipo_item: d.tipo_item,
       cantidad: d.cantidad, precio: d.precio, costo: d.costo, descuento: d.descuento,
-      subtotal: d.subtotal, ganancia: d.ganancia, escala_id: d.escala_id, escala_nombre: d.escala_nombre,
+      subtotal: d.subtotal, ganancia: d.ganancia,
+      escala_id: (d.escala_id && idsEscalaValidos.has(d.escala_id)) ? d.escala_id : null,
+      escala_nombre: d.escala_nombre,
       vendido_sin_stock: d.tipo_item === 'producto' && d.producto_id && !d.origen_stock_id
         ? Number(d.cantidad) > (stockPorProducto[d.producto_id] ?? Infinity)
         : false,
