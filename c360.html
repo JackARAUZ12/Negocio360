@@ -15,6 +15,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="c360-core.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1095,6 +1097,27 @@
 
     .c-btn-flotante-wa:hover{transform:scale(1.08)}
 
+    .c-btn-flotante-pdf{
+      position:fixed;
+      z-index:40;
+      right:var(--sp-5);
+      bottom:calc(var(--sp-5) + 66px);
+      display:flex;
+      width:48px;
+      height:48px;
+      align-items:center;
+      justify-content:center;
+      border:0;
+      border-radius:50%;
+      background:var(--accent);
+      box-shadow:0 8px 20px -4px rgba(0,0,0,.35);
+      color:#fff;
+      font-size:20px;
+      transition:transform .2s ease;
+    }
+    .c-btn-flotante-pdf:hover{transform:scale(1.08)}
+    .c-btn-flotante-pdf:disabled{opacity:.6;cursor:default;transform:none}
+
     /* MODAL */
 
     .c-modal-overlay{
@@ -1593,6 +1616,16 @@
     </footer>
 
     <button
+      class="c-btn-flotante-pdf"
+      id="c-btn-flotante-pdf"
+      type="button"
+      title="Descargar catálogo en PDF"
+      onclick="descargarCatalogoPDF()"
+      aria-label="Descargar catálogo en PDF">
+      📄
+    </button>
+
+    <button
       class="c-btn-flotante-wa"
       id="c-btn-flotante-wa"
       type="button"
@@ -1786,6 +1819,70 @@
       if (!window.c_urlWhatsappHero) return;
       registrarEvento('click_whatsapp');
       window.open(window.c_urlWhatsappHero, '_blank', 'noopener');
+    }
+
+    // Toma el diseño REAL ya renderizado en pantalla (colores, fotos,
+    // tipografia -- todo) y lo convierte en un PDF de verdad, paginado
+    // como un documento, no como una captura de pantalla suelta. No
+    // reconstruye nada del diseño a mano -- por eso funciona igual sin
+    // importar que tan personalizado este el catalogo.
+    async function descargarCatalogoPDF() {
+      const btn = document.getElementById('c-btn-flotante-pdf');
+      const btnWa = document.getElementById('c-btn-flotante-wa');
+      const banner = document.getElementById('c-preview-banner');
+      const app = document.getElementById('c360p-app');
+      if (!app || btn.disabled) return;
+
+      const textoOriginalBtn = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳';
+
+      // Ocultar todo lo que nunca debe salir en el documento descargado
+      // -- se restaura exactamente al final, pase lo que pase.
+      const btnWaDisplayPrevio = btnWa ? btnWa.style.display : null;
+      const bannerDisplayPrevio = banner ? banner.style.display : null;
+      if (btnWa) btnWa.style.display = 'none';
+      btn.style.display = 'none';
+      if (banner) banner.style.display = 'none';
+
+      try {
+        const canvas = await html2canvas(app, {
+          scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: app.scrollWidth,
+        });
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const anchoPagina = pdf.internal.pageSize.getWidth();
+        const altoPagina  = pdf.internal.pageSize.getHeight();
+        const altoImagen  = (canvas.height * anchoPagina) / canvas.width;
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+
+        let alturaRestante = altoImagen;
+        let posicion = 0;
+        pdf.addImage(imgData, 'JPEG', 0, posicion, anchoPagina, altoImagen);
+        alturaRestante -= altoPagina;
+
+        while (alturaRestante > 0) {
+          posicion = alturaRestante - altoImagen;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, posicion, anchoPagina, altoImagen);
+          alturaRestante -= altoPagina;
+        }
+
+        const nombreNegocio = (CATALOGO?.nombre_comercial || CATALOGO?.nombre || 'Catalogo')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '-');
+        pdf.save(`Catalogo-${nombreNegocio}.pdf`);
+        registrarEvento('descarga_pdf');
+      } catch (e) {
+        console.error('descargarCatalogoPDF:', e);
+        alert('No se pudo generar el PDF. Intenta de nuevo.');
+      } finally {
+        if (btnWa) btnWa.style.display = btnWaDisplayPrevio;
+        if (banner) banner.style.display = bannerDisplayPrevio;
+        btn.style.display = '';
+        btn.disabled = false;
+        btn.textContent = textoOriginalBtn;
+      }
     }
 
     async function init() {
