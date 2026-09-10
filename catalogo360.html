@@ -1470,7 +1470,7 @@
             <div style="display:flex;gap:8px">
               <button class="btn-primary btn-sm" onclick="verCatalogoPublicado()">🌐 Ver catálogo</button>
               <button class="btn-secondary btn-sm" onclick="copiarEnlaceCatalogo()">🔗 Copiar enlace</button>
-              <button class="btn-secondary btn-sm" onclick="descargarCatalogoComoPDF()">📄 Descargar PDF</button>
+              <button class="btn-secondary btn-sm" onclick="abrirModalCatalogoPDF()">📄 Descargar PDF</button>
               <button class="btn-secondary btn-sm" onclick="mostrarQR()">▦ QR</button>
             </div>
           </div>
@@ -1648,6 +1648,36 @@
     </div>
   </div>
 
+  <!-- MODAL: CATÁLOGO PDF -->
+  <div class="modal-overlay" id="modal-catalogo-pdf" onclick="if(event.target===this)closeModal('modal-catalogo-pdf')">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">📄 Generar catálogo en PDF</span>
+        <button class="modal-close" onclick="closeModal('modal-catalogo-pdf')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">Los productos se toman automáticamente de tu catálogo actual. Puedes ajustar estos textos antes de generar el PDF.</p>
+        <div class="form-group">
+          <label>Título del catálogo</label>
+          <input type="text" id="cpdf-titulo" placeholder="Ej: Catálogo de Productos"/>
+        </div>
+        <div class="form-group">
+          <label>Subtítulo / mensaje de bienvenida</label>
+          <input type="text" id="cpdf-subtitulo" placeholder="Ej: Descubre nuestra colección 2026"/>
+        </div>
+        <div class="form-group">
+          <label>Nota final (pie del catálogo)</label>
+          <input type="text" id="cpdf-nota" placeholder="Ej: Precios sujetos a cambio sin previo aviso"/>
+        </div>
+        <p id="cpdf-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-catalogo-pdf')">Cancelar</button>
+        <button class="btn-primary" id="cpdf-btn-generar" onclick="generarCatalogoPDFDiseño()">Generar PDF</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: CATEGORIA -->
   <div class="modal-overlay" id="modal-categoria" onclick="if(event.target===this)closeModal('modal-categoria')">
     <div class="modal-box">
@@ -1791,6 +1821,7 @@
 </div><!-- /app -->
 
 <script src="qrcode-lib.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="catalogo360.js?v=20260901m"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js"></script>
