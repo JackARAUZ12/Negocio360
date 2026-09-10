@@ -2898,7 +2898,6 @@ function renderCarrito(tipo) {
         <div style="display:flex;align-items:center;gap:4px">
           <input type="number" class="cart-desc-input" value="${item.precio}"
             min="0" step="0.01" title="Ajustar el precio solo para esta venta — no cambia el precio guardado en Productos/Servicios"
-            ${item.esRegalia ? 'disabled' : ''}
             onchange="cambiarPrecioManual('${item.id}',this.value)"
             style="font-family:var(--font-mono);font-weight:600;width:90px"/>
           <button type="button" onclick="alternarRegalia('${item.id}')"

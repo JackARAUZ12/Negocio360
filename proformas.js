@@ -666,7 +666,7 @@ function renderCarritoProf() {
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
-          <input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" ${l.esRegalia?'disabled':''} onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/>
+          <input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/>
           <button type="button" onclick="alternarRegaliaProf(${idx})" title="${l.esRegalia?'Quitar regalía':'Marcar como regalía (precio C$0)'}" style="flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid ${l.esRegalia?'#d6336c':'var(--border)'};background:${l.esRegalia?'#d6336c22':'var(--bg-hover,#f0f0f5)'};cursor:pointer;font-size:13px">🎀</button>
         </div>
       </td>

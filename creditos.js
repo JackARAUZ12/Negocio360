@@ -938,6 +938,20 @@
   }
   window.actualizarPrecioItemCredito = actualizarPrecioItemCredito;
 
+  // Mismo patron exacto que actualizarPrecioItemCredito -- ajusta el
+  // costo SOLO para este credito, nunca el costo real guardado en
+  // Productos/Servicios.
+  function actualizarCostoItemCredito(idx, valor) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    const n = parseFloat(valor);
+    if (isNaN(n) || n < 0) { renderNCItems(); return; }
+    it.costo = round2(n);
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.actualizarCostoItemCredito = actualizarCostoItemCredito;
+
   // Mismo mecanismo exacto ya probado en Ventas y Proformas -- precio
   // a C$0, restaurable, sin tocar como se descuenta el stock.
   function alternarRegaliaCredito(idx) {
@@ -1040,12 +1054,16 @@
         <td>
           <div style="display:flex;align-items:center;gap:4px">
             <input type="number" value="${it.precio}" min="0" step="0.01"
-                  title="Ajustar el precio solo para este crédito" ${it.esRegalia?'disabled':''}
+                  title="Ajustar el precio solo para este crédito"
                   style="width:78px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
                   onchange="actualizarPrecioItemCredito(${idx}, this.value)"/>
             <button type="button" onclick="alternarRegaliaCredito(${idx})" title="${it.esRegalia?'Quitar regalía':'Marcar como regalía (precio C$0)'}" style="flex-shrink:0;width:24px;height:24px;border-radius:6px;border:1px solid ${it.esRegalia?'#d6336c':'var(--border)'};background:${it.esRegalia?'#d6336c22':'var(--bg-app)'};cursor:pointer;font-size:12px">🎀</button>
           </div>
         </td>
+        <td><input type="number" value="${it.costo||0}" min="0" step="0.01"
+              title="Ajustar el costo solo para este crédito"
+              style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
+              onchange="actualizarCostoItemCredito(${idx}, this.value)"/></td>
         <td>${fmt(round2(it.precio * it.cantidad))}</td>
         <td><button class="btn-ghost" style="padding:3px 8px" onclick="quitarItemCredito(${idx})">✕</button></td>
       </tr>`).join('');
