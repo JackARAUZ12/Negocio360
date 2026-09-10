@@ -1363,13 +1363,77 @@ function descargarCatalogoComoPDF() {
 // del catálogo ya cargado (STATE.productosActual) -- solo el título,
 // subtítulo y nota final son editables antes de generar.
 // ============================================================
+// ============================================================
+// CATÁLOGO PDF -- sistema aparte del catálogo web (no "fotografía"
+// ninguna plantilla). Diseño propio con jsPDF: texto real y
+// seleccionable, no una imagen. Los productos se toman automáticos
+// del catálogo ya cargado (STATE.productosActual). El dueño del
+// negocio elige textos, color, si agrupar por categorías (y cuáles
+// incluir), y cuántas columnas -- antes de generar.
+// ============================================================
+const PALETAS_PDF_CATALOGO360 = {
+  indigo:    { nombre: 'Índigo elegante', primario: '#4338ca', claro: '#eef2ff' },
+  esmeralda: { nombre: 'Esmeralda',       primario: '#047857', claro: '#ecfdf5' },
+  rosa:      { nombre: 'Rosa moderno',    primario: '#be185d', claro: '#fdf2f8' },
+  negro:     { nombre: 'Negro editorial', primario: '#18181b', claro: '#f4f4f5' },
+  dorado:    { nombre: 'Dorado lujo',     primario: '#92400e', claro: '#fffbeb' },
+  azul:      { nombre: 'Azul océano',     primario: '#0369a1', claro: '#f0f9ff' },
+};
+
 function abrirModalCatalogoPDF() {
   const cat = STATE.catalogoActual;
   document.getElementById('cpdf-titulo').value = cat?.nombre_comercial || cat?.nombre || 'Nuestro Catálogo';
   document.getElementById('cpdf-subtitulo').value = 'Descubre nuestros productos';
   document.getElementById('cpdf-nota').value = 'Precios sujetos a cambio sin previo aviso';
   document.getElementById('cpdf-error').textContent = '';
+  document.getElementById('cpdf-agrupar-categorias').checked = true;
+  document.getElementById('cpdf-mostrar-descripcion').checked = false;
+  document.getElementById('cpdf-solo-destacados').checked = false;
+  document.getElementById('cpdf-columnas').value = '3';
+
+  renderPaletasPDF('indigo');
+  renderListaCategoriasPDF();
+  alternarListaCategoriasPDF();
   openModal('modal-catalogo-pdf');
+}
+
+function renderPaletasPDF(claveActiva) {
+  document.getElementById('cpdf-color-elegido').value = claveActiva;
+  document.getElementById('cpdf-paletas').innerHTML = Object.entries(PALETAS_PDF_CATALOGO360).map(([key, p]) => `
+    <div onclick="elegirPaletaPDF('${key}')" title="${esc(p.nombre)}"
+         style="cursor:pointer;height:40px;border-radius:8px;background:${p.primario};display:flex;align-items:center;justify-content:center;border:3px solid ${key===claveActiva?'var(--text-primary)':'transparent'};transition:transform .15s"
+         onmouseover="this.style.transform='scale(1.06)'" onmouseout="this.style.transform='scale(1)'">
+      ${key===claveActiva ? '<span style="color:#fff;font-size:15px">✓</span>' : ''}
+    </div>
+  `).join('');
+}
+function elegirPaletaPDF(key) {
+  renderPaletasPDF(key);
+}
+
+function renderListaCategoriasPDF() {
+  const categorias = STATE.categorias || [];
+  const wrap = document.getElementById('cpdf-lista-categorias');
+  if (!categorias.length) {
+    wrap.innerHTML = `<p style="font-size:11.5px;color:var(--text-muted)">Este catálogo todavía no tiene categorías -- se incluirán todos los productos juntos.</p>`;
+    return;
+  }
+  wrap.innerHTML = categorias.map(c => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;margin:0">
+      <input type="checkbox" class="cpdf-cat-check" value="${c.id}" checked style="width:15px;height:15px"/>
+      ${esc(c.nombre)}
+    </label>
+  `).join('');
+}
+function alternarListaCategoriasPDF() {
+  const agrupar = document.getElementById('cpdf-agrupar-categorias').checked;
+  document.getElementById('cpdf-categorias-wrap').style.opacity = agrupar ? '1' : '0.45';
+  document.querySelectorAll('.cpdf-cat-check').forEach(chk => chk.disabled = !agrupar);
+}
+function alternarTodasCategoriasPDF() {
+  const checks = document.querySelectorAll('.cpdf-cat-check');
+  const hayAlgunoDesmarcado = Array.from(checks).some(c => !c.checked);
+  checks.forEach(c => c.checked = hayAlgunoDesmarcado);
 }
 
 // Carga una foto externa (Supabase Storage) y la convierte a base64
@@ -1399,29 +1463,49 @@ async function generarCatalogoPDFDiseño() {
   const error = document.getElementById('cpdf-error');
   error.textContent = '';
 
-  const productos = (STATE.productosActual || []).filter(p => p.activo !== false);
-  if (!productos.length) {
+  const todos = (STATE.productosActual || []).filter(p => p.activo !== false);
+  if (!todos.length) {
     error.textContent = 'Este catálogo todavía no tiene productos agregados.';
     return;
   }
 
+  // ---- Leer todas las opciones elegidas ----
   const titulo = document.getElementById('cpdf-titulo').value.trim() || 'Nuestro Catálogo';
   const subtitulo = document.getElementById('cpdf-subtitulo').value.trim();
   const nota = document.getElementById('cpdf-nota').value.trim();
-  const cat = STATE.catalogoActual;
-  const colorAcento = cat?.color_acento || '#5a5af4';
-  const rgbAcento = hexARgb(colorAcento);
+  const claveColor = document.getElementById('cpdf-color-elegido').value;
+  const paleta = PALETAS_PDF_CATALOGO360[claveColor] || PALETAS_PDF_CATALOGO360.indigo;
+  const rgbPrimario = hexARgb(paleta.primario);
+  const rgbClaro = hexARgb(paleta.claro);
+  const agruparCategorias = document.getElementById('cpdf-agrupar-categorias').checked;
+  const mostrarDescripcion = document.getElementById('cpdf-mostrar-descripcion').checked;
+  const soloDestacados = document.getElementById('cpdf-solo-destacados').checked;
+  const columnas = parseInt(document.getElementById('cpdf-columnas').value) || 3;
+  const idsCategoriasElegidas = new Set(
+    Array.from(document.querySelectorAll('.cpdf-cat-check:checked')).map(c => c.value)
+  );
 
+  let productos = todos;
+  if (soloDestacados) productos = productos.filter(p => p.destacado);
+  if (agruparCategorias && (STATE.categorias || []).length) {
+    productos = productos.filter(p => !p.categoria_id || idsCategoriasElegidas.has(p.categoria_id));
+  }
+  if (!productos.length) {
+    error.textContent = 'No hay productos que coincidan con lo que seleccionaste.';
+    return;
+  }
+
+  const cat = STATE.catalogoActual;
   btn.disabled = true;
   btn.textContent = 'Generando…';
 
   try {
     // Precargar todas las fotos principales EN PARALELO antes de armar
-    // el documento -- más rápido que una por una, y así el resto del
-    // armado del PDF no tiene que esperar a la red a cada rato.
-    const fotosBase64 = await Promise.all(productos.map(p => {
+    // el documento -- más rápido que una por una.
+    const fotosPorId = {};
+    await Promise.all(productos.map(async p => {
       const foto = (p.fotos || []).find(f => f.es_principal) || (p.fotos || [])[0];
-      return cargarImagenComoBase64(foto?.url);
+      fotosPorId[p.id] = await cargarImagenComoBase64(foto?.url);
     }));
 
     const { jsPDF } = window.jspdf;
@@ -1430,64 +1514,88 @@ async function generarCatalogoPDFDiseño() {
     const altoPag  = doc.internal.pageSize.getHeight();
     const margen = 15;
 
-    // ---- PORTADA ----
-    doc.setFillColor(rgbAcento.r, rgbAcento.g, rgbAcento.b);
-    doc.rect(0, 0, anchoPag, 70, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont(undefined, 'bold'); doc.setFontSize(26);
-    doc.text(cat?.nombre_comercial || cat?.nombre || 'Catálogo', anchoPag / 2, 35, { align: 'center' });
-    doc.setFont(undefined, 'normal'); doc.setFontSize(14);
-    doc.text(titulo, anchoPag / 2, 48, { align: 'center' });
-    if (subtitulo) { doc.setFontSize(11); doc.text(subtitulo, anchoPag / 2, 57, { align: 'center' }); }
+    dibujarPortadaPDF(doc, anchoPag, cat, titulo, subtitulo, rgbPrimario, agruparCategorias, productos, idsCategoriasElegidas);
 
-    doc.setTextColor(60, 60, 60);
-    doc.setFontSize(10);
-    if (cat?.whatsapp) doc.text(`💬 WhatsApp: ${cat.whatsapp}`, anchoPag / 2, 90, { align: 'center' });
-    doc.setFontSize(9); doc.setTextColor(140, 140, 140);
-    doc.text(`Generado el ${new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' })}`, anchoPag / 2, 98, { align: 'center' });
+    // ---- Agrupar productos por sección (categoría) o todo junto ----
+    let secciones;
+    if (agruparCategorias && (STATE.categorias || []).length) {
+      secciones = (STATE.categorias || [])
+        .filter(c => idsCategoriasElegidas.has(c.id))
+        .map(c => ({ nombre: c.nombre, items: productos.filter(p => p.categoria_id === c.id) }))
+        .filter(s => s.items.length);
+      const sinCategoria = productos.filter(p => !p.categoria_id);
+      if (sinCategoria.length) secciones.push({ nombre: 'Otros productos', items: sinCategoria });
+    } else {
+      secciones = [{ nombre: null, items: productos }];
+    }
 
-    // ---- CUADRÍCULA DE PRODUCTOS ----
-    const columnas = 3;
     const espacio = 6;
     const anchoCelda = (anchoPag - margen * 2 - espacio * (columnas - 1)) / columnas;
     const altoFoto = anchoCelda;
-    const altoCelda = altoFoto + 20;
+    const altoCelda = altoFoto + (mostrarDescripcion ? 30 : 20);
     const inicioY = 25;
     const finY = altoPag - 20;
 
-    let x = margen, y = inicioY, col = 0;
     doc.addPage();
     dibujarPiePagina(doc, anchoPag, altoPag, nota);
+    let x = margen, y = inicioY, col = 0;
 
-    productos.forEach((p, idx) => {
-      if (y + altoCelda > finY) {
-        doc.addPage();
-        dibujarPiePagina(doc, anchoPag, altoPag, nota);
-        x = margen; y = inicioY; col = 0;
+    secciones.forEach(seccion => {
+      if (seccion.nombre) {
+        if (y !== inicioY && y + 16 > finY - altoCelda) {
+          doc.addPage(); dibujarPiePagina(doc, anchoPag, altoPag, nota);
+          x = margen; y = inicioY; col = 0;
+        } else if (col !== 0) {
+          x = margen; y += altoCelda + espacio; col = 0;
+        }
+        doc.setFillColor(rgbPrimario.r, rgbPrimario.g, rgbPrimario.b);
+        doc.rect(margen, y, anchoPag - margen * 2, 10, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFont(undefined, 'bold'); doc.setFontSize(11);
+        doc.text(seccion.nombre, margen + 4, y + 7);
+        y += 16;
       }
 
-      const fotoB64 = fotosBase64[idx];
-      doc.setDrawColor(225, 225, 225);
-      doc.rect(x, y, anchoCelda, altoFoto);
-      if (fotoB64) {
-        try { doc.addImage(fotoB64, 'JPEG', x, y, anchoCelda, altoFoto); } catch (e) {}
-      } else {
-        doc.setFontSize(8); doc.setTextColor(180, 180, 180);
-        doc.text('Sin foto', x + anchoCelda / 2, y + altoFoto / 2, { align: 'center' });
-      }
+      seccion.items.forEach(p => {
+        if (y + altoCelda > finY) {
+          doc.addPage(); dibujarPiePagina(doc, anchoPag, altoPag, nota);
+          x = margen; y = inicioY; col = 0;
+        }
 
-      doc.setTextColor(30, 30, 30); doc.setFont(undefined, 'bold'); doc.setFontSize(9);
-      const nombreCorto = doc.splitTextToSize(p.nombre || '', anchoCelda).slice(0, 2);
-      doc.text(nombreCorto, x, y + altoFoto + 5);
+        const fotoB64 = fotosPorId[p.id];
+        doc.setFillColor(rgbClaro.r, rgbClaro.g, rgbClaro.b);
+        doc.roundedRect(x, y, anchoCelda, altoCelda, 2, 2, 'F');
+        doc.setDrawColor(220, 220, 220);
+        doc.rect(x + 2, y + 2, anchoCelda - 4, altoFoto - 4);
+        if (fotoB64) {
+          try { doc.addImage(fotoB64, 'JPEG', x + 2, y + 2, anchoCelda - 4, altoFoto - 4); } catch (e) {}
+        } else {
+          doc.setFontSize(7.5); doc.setTextColor(170, 170, 170);
+          doc.text('Sin foto', x + anchoCelda / 2, y + altoFoto / 2, { align: 'center' });
+        }
 
-      doc.setFont(undefined, 'bold'); doc.setFontSize(10);
-      doc.setTextColor(rgbAcento.r, rgbAcento.g, rgbAcento.b);
-      const precioTexto = `C$${Number(p.precio_oferta ?? p.precio ?? 0).toFixed(2)}`;
-      doc.text(precioTexto, x, y + altoFoto + 5 + (nombreCorto.length * 4) + 4);
+        let cursorY = y + altoFoto + 6;
+        doc.setTextColor(30, 30, 30); doc.setFont(undefined, 'bold'); doc.setFontSize(9);
+        const nombreCorto = doc.splitTextToSize(p.nombre || '', anchoCelda - 4).slice(0, 2);
+        doc.text(nombreCorto, x + 2, cursorY);
+        cursorY += nombreCorto.length * 4 + 3;
 
-      col++;
-      if (col >= columnas) { col = 0; x = margen; y += altoCelda + espacio; }
-      else { x += anchoCelda + espacio; }
+        doc.setFont(undefined, 'bold'); doc.setFontSize(10);
+        doc.setTextColor(rgbPrimario.r, rgbPrimario.g, rgbPrimario.b);
+        doc.text(`C$${Number(p.precio_oferta ?? p.precio ?? 0).toFixed(2)}`, x + 2, cursorY);
+
+        if (mostrarDescripcion && p.descripcion) {
+          cursorY += 5;
+          doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
+          const descCorta = doc.splitTextToSize(p.descripcion, anchoCelda - 4).slice(0, 2);
+          doc.text(descCorta, x + 2, cursorY);
+        }
+
+        col++;
+        if (col >= columnas) { col = 0; x = margen; y += altoCelda + espacio; }
+        else { x += anchoCelda + espacio; }
+      });
+
+      if (col !== 0) { col = 0; x = margen; y += altoCelda + espacio; }
     });
 
     const nombreArchivo = (cat?.nombre_comercial || cat?.nombre || 'Catalogo')
@@ -1500,6 +1608,44 @@ async function generarCatalogoPDFDiseño() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Generar PDF';
+  }
+}
+
+function dibujarPortadaPDF(doc, anchoPag, cat, titulo, subtitulo, rgbPrimario, agruparCategorias, productos, idsCategoriasElegidas) {
+  doc.setFillColor(rgbPrimario.r, rgbPrimario.g, rgbPrimario.b);
+  doc.rect(0, 0, anchoPag, 80, 'F');
+  // Franja decorativa mas clara, para que la portada no se vea plana
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 74, anchoPag, 2, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(26);
+  doc.text(cat?.nombre_comercial || cat?.nombre || 'Catálogo', anchoPag / 2, 32, { align: 'center' });
+  doc.setFont(undefined, 'normal'); doc.setFontSize(14);
+  doc.text(titulo, anchoPag / 2, 45, { align: 'center' });
+  if (subtitulo) { doc.setFontSize(11); doc.text(subtitulo, anchoPag / 2, 54, { align: 'center' }); }
+
+  doc.setTextColor(60, 60, 60);
+  doc.setFontSize(10);
+  if (cat?.whatsapp) doc.text(`💬 WhatsApp: ${cat.whatsapp}`, anchoPag / 2, 96, { align: 'center' });
+  doc.setFontSize(9); doc.setTextColor(140, 140, 140);
+  doc.text(`Generado el ${new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' })}`, anchoPag / 2, 104, { align: 'center' });
+
+  // Índice de categorías en la portada, si se agrupo por categorias
+  if (agruparCategorias && (STATE.categorias || []).length) {
+    const categoriasConProductos = (STATE.categorias || [])
+      .filter(c => idsCategoriasElegidas.has(c.id) && productos.some(p => p.categoria_id === c.id));
+    if (categoriasConProductos.length) {
+      let y = 125;
+      doc.setTextColor(90, 90, 90); doc.setFont(undefined, 'bold'); doc.setFontSize(10);
+      doc.text('En este catálogo encontrarás:', anchoPag / 2, y, { align: 'center' });
+      y += 8;
+      doc.setFont(undefined, 'normal'); doc.setFontSize(9.5); doc.setTextColor(70, 70, 70);
+      categoriasConProductos.forEach(c => {
+        doc.text(`•  ${c.nombre}`, anchoPag / 2, y, { align: 'center' });
+        y += 6.5;
+      });
+    }
   }
 }
 

@@ -1660,13 +1660,14 @@
 
   <!-- MODAL: CATÁLOGO PDF -->
   <div class="modal-overlay" id="modal-catalogo-pdf" onclick="if(event.target===this)closeModal('modal-catalogo-pdf')">
-    <div class="modal-box">
+    <div class="modal-box modal-lg" style="max-width:640px">
       <div class="modal-header">
         <span class="modal-title">📄 Generar catálogo en PDF</span>
         <button class="modal-close" onclick="closeModal('modal-catalogo-pdf')">&times;</button>
       </div>
-      <div class="modal-body">
-        <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">Los productos se toman automáticamente de tu catálogo actual. Puedes ajustar estos textos antes de generar el PDF.</p>
+      <div class="modal-body" style="max-height:65vh;overflow-y:auto">
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">📝 Textos</div>
         <div class="form-group">
           <label>Título del catálogo</label>
           <input type="text" id="cpdf-titulo" placeholder="Ej: Catálogo de Productos"/>
@@ -1679,7 +1680,49 @@
           <label>Nota final (pie del catálogo)</label>
           <input type="text" id="cpdf-nota" placeholder="Ej: Precios sujetos a cambio sin previo aviso"/>
         </div>
-        <p id="cpdf-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">🎨 Color del catálogo</div>
+        <div id="cpdf-paletas" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:4px"></div>
+        <input type="hidden" id="cpdf-color-elegido" value="indigo"/>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">📦 Qué incluir</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <input type="checkbox" id="cpdf-agrupar-categorias" checked style="width:16px;height:16px" onchange="alternarListaCategoriasPDF()"/>
+          <label for="cpdf-agrupar-categorias" style="margin:0;font-size:13px;cursor:pointer">Agrupar por categorías (cada una con su propia sección)</label>
+        </div>
+        <div id="cpdf-categorias-wrap" style="margin-left:24px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:11.5px;color:var(--text-muted)">Categorías a incluir</span>
+            <button type="button" class="btn-ghost btn-sm" onclick="alternarTodasCategoriasPDF()" style="font-size:11px">Marcar/desmarcar todas</button>
+          </div>
+          <div id="cpdf-lista-categorias" style="display:flex;flex-direction:column;gap:6px;max-height:140px;overflow-y:auto"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input type="checkbox" id="cpdf-mostrar-descripcion" style="width:16px;height:16px"/>
+          <label for="cpdf-mostrar-descripcion" style="margin:0;font-size:13px;cursor:pointer">Mostrar la descripción de cada producto (si la tiene)</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cpdf-solo-destacados" style="width:16px;height:16px"/>
+          <label for="cpdf-solo-destacados" style="margin:0;font-size:13px;cursor:pointer">Incluir solo productos destacados</label>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">📐 Diseño de la cuadrícula</div>
+        <div class="form-group" style="max-width:200px">
+          <label>Productos por fila</label>
+          <select id="cpdf-columnas">
+            <option value="2">2 columnas (más grande)</option>
+            <option value="3" selected>3 columnas</option>
+            <option value="4">4 columnas (más compacto)</option>
+          </select>
+        </div>
+
+        <p id="cpdf-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
       </div>
       <div class="modal-footer">
         <button class="btn-ghost" onclick="closeModal('modal-catalogo-pdf')">Cancelar</button>
