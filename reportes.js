@@ -391,6 +391,7 @@ async function loadTab(tab) {
     case 'clientes':    await loadClientesTab(); break;
     case 'creditos':    await loadCreditosTab(); break;
     case 'gastos':      await loadGastosTab();   break;
+    case 'regalias':    await loadRegaliasTab(); break;
     case 'alertas':     await loadAlertas();     break;
     case 'exportar':    renderConfigExportar();  break;
   }
@@ -565,7 +566,7 @@ async function fetchVentasDetalles() {
   if (!R.cache.ventas.length) return [];
   const ventaIds = R.cache.ventas.map(v => v.id);
   const { data } = await sb.from('venta_detalles')
-    .select('venta_id,producto_id,producto_nombre,tipo_item,cantidad,precio,costo,subtotal,ganancia')
+    .select('venta_id,producto_id,producto_nombre,tipo_item,cantidad,precio,costo,subtotal,ganancia,es_regalia')
     .eq('auth_user_id', R.userId)
     .in('venta_id', ventaIds);
   return data || [];
@@ -2156,6 +2157,54 @@ async function loadGastosTab() {
     }
 
   } catch(e) { console.error('loadGastosTab:', e); }
+}
+
+/* ============================================================
+   TAB: REGALÍAS -- cuanto se ha regalado (costo real, no precio de
+   venta, ya que el precio de una regalia es C$0 o simbolico y no
+   refleja el impacto real en el negocio). Reutiliza fetchVentas() y
+   fetchVentasDetalles() -- ya cargan las ventas y sus lineas del
+   periodo -- solo se filtra por es_regalia=true, sin ninguna
+   consulta nueva a la base de datos.
+   ============================================================ */
+async function loadRegaliasTab() {
+  try {
+    const [, detalles] = await Promise.all([fetchVentas(), fetchVentasDetalles()]);
+    const regalias = detalles.filter(d => d.es_regalia);
+
+    const totalCosto = regalias.reduce((s,d) => s + Number(d.costo||0) * Number(d.cantidad||0), 0);
+    const totalUnidades = regalias.reduce((s,d) => s + Number(d.cantidad||0), 0);
+    const ventasConRegalia = new Set(regalias.map(d => d.venta_id)).size;
+
+    setEl('rg-costo-total', fmt(totalCosto));
+    setEl('rg-unidades', totalUnidades.toString());
+    setEl('rg-ventas-count', `${ventasConRegalia} venta${ventasConRegalia!==1?'s':''}`);
+
+    // Top productos regalados -- por cuantas veces se regalaron, no
+    // por monto (regalar 1 producto caro una vez no es lo mismo que
+    // regalar 50 unidades baratas -- lo segundo importa mas para
+    // decidir si conviene seguir haciendolo).
+    const porProducto = {};
+    regalias.forEach(d => {
+      const nombre = d.producto_nombre || 'Producto';
+      if (!porProducto[nombre]) porProducto[nombre] = { unidades: 0, costo: 0, veces: 0 };
+      porProducto[nombre].unidades += Number(d.cantidad||0);
+      porProducto[nombre].costo += Number(d.costo||0) * Number(d.cantidad||0);
+      porProducto[nombre].veces += 1;
+    });
+    const topProductos = Object.entries(porProducto).sort((a,b) => b[1].unidades - a[1].unidades).slice(0, 10);
+
+    const tbody = document.getElementById('rg-top-tbody');
+    if (tbody) {
+      tbody.innerHTML = topProductos.length ? topProductos.map(([nombre, info]) => `
+        <tr>
+          <td style="font-weight:500">${esc(nombre)}</td>
+          <td class="td-right">${info.unidades}</td>
+          <td class="td-right">${info.veces}</td>
+          <td class="td-right td-money">${fmt(info.costo)}</td>
+        </tr>`).join('') : `<tr><td colspan="4" class="empty-cell">Sin regalías registradas en este período</td></tr>`;
+    }
+  } catch(e) { console.error('loadRegaliasTab:', e); }
 }
 
 /* ============================================================

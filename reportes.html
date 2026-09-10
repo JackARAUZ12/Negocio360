@@ -870,6 +870,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Gastos
         </div>
+        <div class="main-tab" data-tab="regalias" onclick="switchTab('regalias')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+          Regalías
+        </div>
         <div class="main-tab" data-tab="alertas" onclick="switchTab('alertas')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           Alertas
@@ -1728,6 +1732,49 @@
         </div>
 
       </div><!-- /panel-gastos -->
+
+      <!-- =====================================================
+           TAB: REGALÍAS
+      ===================================================== -->
+      <div class="tab-panel" id="panel-regalias">
+
+        <div class="kpi-grid-4 fade-in">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#d6336c22"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d6336c" stroke-width="2"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Costo real de lo regalado</div>
+              <div class="kpi-value" id="rg-costo-total">—</div>
+              <div class="kpi-sub">En este período</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Unidades regaladas</div>
+              <div class="kpi-value" id="rg-unidades">—</div>
+              <div class="kpi-sub" id="rg-ventas-count">0 ventas</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Productos más regalados</div>
+              <div class="panel-subtitle">Por cantidad de unidades — para saber si conviene seguir</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Producto</th><th class="td-right">Unidades</th><th class="td-right">Veces regalado</th><th class="td-right">Costo real</th></tr></thead>
+                <tbody id="rg-top-tbody"><tr><td colspan="4" class="empty-cell">Cargando…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /panel-regalias -->
 
       <!-- =====================================================
            TAB: ALERTAS
