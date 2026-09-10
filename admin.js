@@ -50,6 +50,26 @@ async function obtenerIdsSucursalesShadow() {
   }
 }
 
+// Las cuentas INDEPENDIENTES de Catálogo360 (registradas solo para
+// Catálogo360, nunca fueron ni serán clientes completos de Negocio360
+// -- incluida la cuenta de demostración) tampoco son clientes de
+// Negocio360 para efectos de esta lista -- se ven en su propia
+// sección "Clientes Catálogo360", nunca mezcladas aquí con negocios
+// reales de Negocio360.
+let _idsClientesC360IndependientesCache = null;
+async function obtenerIdsClientesC360Independientes() {
+  if (_idsClientesC360IndependientesCache) return _idsClientesC360IndependientesCache;
+  try {
+    const { data, error } = await sb.from('catalogo_suscripciones').select('auth_user_id').eq('es_independiente', true);
+    if (error) throw error;
+    _idsClientesC360IndependientesCache = new Set((data || []).map(r => r.auth_user_id));
+    return _idsClientesC360IndependientesCache;
+  } catch (e) {
+    console.warn('obtenerIdsClientesC360Independientes:', e);
+    return new Set();
+  }
+}
+
 // ── CONFIGURACIÓN DE COBRO ─────────────────────────────────
 // Precio mensual del plan Premium usado en el comprobante de pago.
 // Cambia este valor si el precio de la suscripción cambia.
@@ -272,7 +292,8 @@ async function loadDashboardStats() {
     // Las sucursales/bodegas de los clientes no son cuentas que pagan
     // — se excluyen antes de calcular cualquier estadística.
     const idsShadow = await obtenerIdsSucursalesShadow();
-    const usuarios = usuariosCrudo.filter(u => !idsShadow.has(u.auth_user_id));
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    const usuarios = usuariosCrudo.filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
 
     const total     = usuarios.length;
     const activos   = usuarios.filter(u => u.estado_cuenta === 'activa').length;
@@ -833,7 +854,8 @@ async function loadUsers() {
     // Igual que en las estadísticas: las sucursales/bodegas internas
     // nunca aparecen en esta lista, no son clientes que pagan.
     const idsShadow = await obtenerIdsSucursalesShadow();
-    allUsers = (data || []).filter(u => !idsShadow.has(u.auth_user_id));
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    allUsers = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
     renderUsersTable(allUsers);
 
   } catch (e) {
@@ -1792,7 +1814,8 @@ async function loadAuditoriaGlobal() {
     // Las sucursales/bodegas internas nunca deben aparecer aquí — no
     // son clientes, son cuentas técnicas creadas por el propio cliente.
     const idsShadow = await obtenerIdsSucursalesShadow();
-    const registros = (data || []).filter(r => !idsShadow.has(r.auth_user_id));
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    const registros = (data || []).filter(r => !idsShadow.has(r.auth_user_id) && !idsIndependientesC360.has(r.auth_user_id));
 
     // Un solo query para traer el nombre de negocio/correo de cada
     // cuenta involucrada (evita N consultas, una por registro).
@@ -2515,7 +2538,8 @@ async function loadClientesPeriodo() {
     // excluyen antes de agrupar por período, igual que en el resto
     // del panel (Usuarios, listas de pago, etc).
     const idsShadow = await obtenerIdsSucursalesShadow();
-    CP_USUARIOS_CACHE = (data || []).filter(u => !idsShadow.has(u.auth_user_id));
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    CP_USUARIOS_CACHE = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
     CP_PERIODOS_CACHE = generarPeriodos19_19(12);
 
     document.getElementById('cp-total-activos').textContent = CP_USUARIOS_CACHE.length;
