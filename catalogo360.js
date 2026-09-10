@@ -1469,14 +1469,18 @@ async function generarCatalogoPDFDiseño() {
     return;
   }
 
-  // ---- Leer todas las opciones elegidas ----
   const titulo = document.getElementById('cpdf-titulo').value.trim() || 'Nuestro Catálogo';
   const subtitulo = document.getElementById('cpdf-subtitulo').value.trim();
   const nota = document.getElementById('cpdf-nota').value.trim();
   const claveColor = document.getElementById('cpdf-color-elegido').value;
   const paleta = PALETAS_PDF_CATALOGO360[claveColor] || PALETAS_PDF_CATALOGO360.indigo;
-  const rgbPrimario = hexARgb(paleta.primario);
-  const rgbClaro = hexARgb(paleta.claro);
+  const C = {
+    primario: hexARgb(paleta.primario),
+    claro: hexARgb(paleta.claro),
+    tinta: { r: 24, g: 24, b: 27 },
+    grisSuave: { r: 113, g: 113, b: 122 },
+    linea: { r: 228, g: 228, b: 231 },
+  };
   const agruparCategorias = document.getElementById('cpdf-agrupar-categorias').checked;
   const mostrarDescripcion = document.getElementById('cpdf-mostrar-descripcion').checked;
   const soloDestacados = document.getElementById('cpdf-solo-destacados').checked;
@@ -1500,8 +1504,6 @@ async function generarCatalogoPDFDiseño() {
   btn.textContent = 'Generando…';
 
   try {
-    // Precargar todas las fotos principales EN PARALELO antes de armar
-    // el documento -- más rápido que una por una.
     const fotosPorId = {};
     await Promise.all(productos.map(async p => {
       const foto = (p.fotos || []).find(f => f.es_principal) || (p.fotos || [])[0];
@@ -1510,13 +1512,13 @@ async function generarCatalogoPDFDiseño() {
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('p', 'mm', 'a4');
-    const anchoPag = doc.internal.pageSize.getWidth();
-    const altoPag  = doc.internal.pageSize.getHeight();
-    const margen = 15;
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const M = 18;
 
-    dibujarPortadaPDF(doc, anchoPag, cat, titulo, subtitulo, rgbPrimario, agruparCategorias, productos, idsCategoriasElegidas);
+    const estado = { pagina: 0 };
 
-    // ---- Agrupar productos por sección (categoría) o todo junto ----
+    // ---- Agrupar en secciones ANTES de dibujar (la portada necesita saberlas) ----
     let secciones;
     if (agruparCategorias && (STATE.categorias || []).length) {
       secciones = (STATE.categorias || [])
@@ -1529,73 +1531,53 @@ async function generarCatalogoPDFDiseño() {
       secciones = [{ nombre: null, items: productos }];
     }
 
-    const espacio = 6;
-    const anchoCelda = (anchoPag - margen * 2 - espacio * (columnas - 1)) / columnas;
-    const altoFoto = anchoCelda;
-    const altoCelda = altoFoto + (mostrarDescripcion ? 30 : 20);
-    const inicioY = 25;
-    const finY = altoPag - 20;
+    dibujarPortadaPDF(doc, W, H, M, cat, titulo, subtitulo, C, secciones, productos.length);
 
-    doc.addPage();
-    dibujarPiePagina(doc, anchoPag, altoPag, nota);
-    let x = margen, y = inicioY, col = 0;
+    // ---- Cuadrícula de productos ----
+    const gutter = 7;
+    const anchoCelda = (W - M * 2 - gutter * (columnas - 1)) / columnas;
+    const altoFoto = anchoCelda * 0.95;
+    const altoTexto = mostrarDescripcion ? 26 : 18;
+    const altoCelda = altoFoto + altoTexto;
+    const topContenido = 34;
+    const finContenido = H - 24;
 
-    secciones.forEach(seccion => {
+    doc.addPage(); estado.pagina++;
+    dibujarCabeceraPagina(doc, W, M, cat, C);
+    dibujarPiePagina(doc, W, H, M, nota, C, estado.pagina);
+    let x = M, y = topContenido, col = 0;
+
+    secciones.forEach((seccion, iSeccion) => {
       if (seccion.nombre) {
-        if (y !== inicioY && y + 16 > finY - altoCelda) {
-          doc.addPage(); dibujarPiePagina(doc, anchoPag, altoPag, nota);
-          x = margen; y = inicioY; col = 0;
-        } else if (col !== 0) {
-          x = margen; y += altoCelda + espacio; col = 0;
+        if (col !== 0) { x = M; y += altoCelda + gutter; col = 0; }
+        // Si el encabezado no cabe con al menos una fila debajo, pasar de pagina
+        if (y + 14 + altoCelda > finContenido) {
+          doc.addPage(); estado.pagina++;
+          dibujarCabeceraPagina(doc, W, M, cat, C);
+          dibujarPiePagina(doc, W, H, M, nota, C, estado.pagina);
+          x = M; y = topContenido; col = 0;
         }
-        doc.setFillColor(rgbPrimario.r, rgbPrimario.g, rgbPrimario.b);
-        doc.rect(margen, y, anchoPag - margen * 2, 10, 'F');
-        doc.setTextColor(255, 255, 255); doc.setFont(undefined, 'bold'); doc.setFontSize(11);
-        doc.text(seccion.nombre, margen + 4, y + 7);
+        if (iSeccion > 0) y += 4;
+        dibujarTituloSeccion(doc, W, M, y, seccion.nombre, seccion.items.length, C);
         y += 16;
       }
 
       seccion.items.forEach(p => {
-        if (y + altoCelda > finY) {
-          doc.addPage(); dibujarPiePagina(doc, anchoPag, altoPag, nota);
-          x = margen; y = inicioY; col = 0;
+        if (y + altoCelda > finContenido) {
+          doc.addPage(); estado.pagina++;
+          dibujarCabeceraPagina(doc, W, M, cat, C);
+          dibujarPiePagina(doc, W, H, M, nota, C, estado.pagina);
+          x = M; y = topContenido; col = 0;
         }
 
-        const fotoB64 = fotosPorId[p.id];
-        doc.setFillColor(rgbClaro.r, rgbClaro.g, rgbClaro.b);
-        doc.roundedRect(x, y, anchoCelda, altoCelda, 2, 2, 'F');
-        doc.setDrawColor(220, 220, 220);
-        doc.rect(x + 2, y + 2, anchoCelda - 4, altoFoto - 4);
-        if (fotoB64) {
-          try { doc.addImage(fotoB64, 'JPEG', x + 2, y + 2, anchoCelda - 4, altoFoto - 4); } catch (e) {}
-        } else {
-          doc.setFontSize(7.5); doc.setTextColor(170, 170, 170);
-          doc.text('Sin foto', x + anchoCelda / 2, y + altoFoto / 2, { align: 'center' });
-        }
-
-        let cursorY = y + altoFoto + 6;
-        doc.setTextColor(30, 30, 30); doc.setFont(undefined, 'bold'); doc.setFontSize(9);
-        const nombreCorto = doc.splitTextToSize(p.nombre || '', anchoCelda - 4).slice(0, 2);
-        doc.text(nombreCorto, x + 2, cursorY);
-        cursorY += nombreCorto.length * 4 + 3;
-
-        doc.setFont(undefined, 'bold'); doc.setFontSize(10);
-        doc.setTextColor(rgbPrimario.r, rgbPrimario.g, rgbPrimario.b);
-        doc.text(`C$${Number(p.precio_oferta ?? p.precio ?? 0).toFixed(2)}`, x + 2, cursorY);
-
-        if (mostrarDescripcion && p.descripcion) {
-          cursorY += 5;
-          doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
-          const descCorta = doc.splitTextToSize(p.descripcion, anchoCelda - 4).slice(0, 2);
-          doc.text(descCorta, x + 2, cursorY);
-        }
+        dibujarTarjetaProducto(doc, x, y, anchoCelda, altoFoto, altoCelda, p, fotosPorId[p.id], C, mostrarDescripcion);
 
         col++;
-        if (col >= columnas) { col = 0; x = margen; y += altoCelda + espacio; }
-        else { x += anchoCelda + espacio; }
+        if (col >= columnas) { col = 0; x = M; y += altoCelda + gutter; }
+        else { x += anchoCelda + gutter; }
       });
 
-      if (col !== 0) { col = 0; x = margen; y += altoCelda + espacio; }
+      if (col !== 0) { col = 0; x = M; y += altoCelda + gutter; }
     });
 
     const nombreArchivo = (cat?.nombre_comercial || cat?.nombre || 'Catalogo')
@@ -1611,50 +1593,182 @@ async function generarCatalogoPDFDiseño() {
   }
 }
 
-function dibujarPortadaPDF(doc, anchoPag, cat, titulo, subtitulo, rgbPrimario, agruparCategorias, productos, idsCategoriasElegidas) {
-  doc.setFillColor(rgbPrimario.r, rgbPrimario.g, rgbPrimario.b);
-  doc.rect(0, 0, anchoPag, 80, 'F');
-  // Franja decorativa mas clara, para que la portada no se vea plana
+// ---- PORTADA: composicion editorial, no una banda plana ----
+function dibujarPortadaPDF(doc, W, H, M, cat, titulo, subtitulo, C, secciones, totalProductos) {
+  // Bloque de color que ocupa 62% de la pagina, con un corte diagonal
+  // suave abajo -- da profundidad sin depender de degradados (que jsPDF
+  // no soporta de forma nativa y confiable).
+  const altoBloque = H * 0.62;
+  doc.setFillColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.rect(0, 0, W, altoBloque, 'F');
+
+  // Corte diagonal: triangulo blanco en la esquina inferior derecha
   doc.setFillColor(255, 255, 255);
-  doc.rect(0, 74, anchoPag, 2, 'F');
+  doc.triangle(W, altoBloque - 32, W, altoBloque, 0, altoBloque, 'F');
 
+  // Linea fina de acento sobre el titulo
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.8);
+  doc.line(M, 52, M + 22, 52);
+  doc.setLineWidth(0.2);
+
+  // Nombre del negocio, en versalitas amplias
   doc.setTextColor(255, 255, 255);
-  doc.setFont(undefined, 'bold'); doc.setFontSize(26);
-  doc.text(cat?.nombre_comercial || cat?.nombre || 'Catálogo', anchoPag / 2, 32, { align: 'center' });
-  doc.setFont(undefined, 'normal'); doc.setFontSize(14);
-  doc.text(titulo, anchoPag / 2, 45, { align: 'center' });
-  if (subtitulo) { doc.setFontSize(11); doc.text(subtitulo, anchoPag / 2, 54, { align: 'center' }); }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  const nombreNegocio = (cat?.nombre_comercial || cat?.nombre || 'CATALOGO').toUpperCase();
+  doc.text(espaciarLetras(nombreNegocio), M, 46);
 
-  doc.setTextColor(60, 60, 60);
-  doc.setFontSize(10);
-  if (cat?.whatsapp) doc.text(`💬 WhatsApp: ${cat.whatsapp}`, anchoPag / 2, 96, { align: 'center' });
-  doc.setFontSize(9); doc.setTextColor(140, 140, 140);
-  doc.text(`Generado el ${new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' })}`, anchoPag / 2, 104, { align: 'center' });
+  // Titulo grande, dividido en varias lineas si hace falta
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(34);
+  const lineasTitulo = doc.splitTextToSize(titulo, W - M * 2 - 20).slice(0, 3);
+  let yTitulo = 74;
+  lineasTitulo.forEach(linea => { doc.text(linea, M, yTitulo); yTitulo += 14; });
 
-  // Índice de categorías en la portada, si se agrupo por categorias
-  if (agruparCategorias && (STATE.categorias || []).length) {
-    const categoriasConProductos = (STATE.categorias || [])
-      .filter(c => idsCategoriasElegidas.has(c.id) && productos.some(p => p.categoria_id === c.id));
-    if (categoriasConProductos.length) {
-      let y = 125;
-      doc.setTextColor(90, 90, 90); doc.setFont(undefined, 'bold'); doc.setFontSize(10);
-      doc.text('En este catálogo encontrarás:', anchoPag / 2, y, { align: 'center' });
-      y += 8;
-      doc.setFont(undefined, 'normal'); doc.setFontSize(9.5); doc.setTextColor(70, 70, 70);
-      categoriasConProductos.forEach(c => {
-        doc.text(`•  ${c.nombre}`, anchoPag / 2, y, { align: 'center' });
-        y += 6.5;
-      });
-    }
+  if (subtitulo) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(12);
+    const lineasSub = doc.splitTextToSize(subtitulo, W - M * 2 - 30).slice(0, 2);
+    yTitulo += 3;
+    lineasSub.forEach(linea => { doc.text(linea, M, yTitulo); yTitulo += 6.5; });
+  }
+
+  // Dato de volumen, como sello editorial
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text(espaciarLetras(`${totalProductos} PRODUCTOS`), M, altoBloque - 42);
+
+  // ---- Zona blanca inferior: indice + contacto ----
+  let y = altoBloque + 14;
+  const conNombre = secciones.filter(s => s.nombre);
+  if (conNombre.length) {
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text(espaciarLetras('CONTENIDO'), M, y);
+    y += 7;
+
+    doc.setFontSize(10.5);
+    conNombre.slice(0, 8).forEach((s, i) => {
+      doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(i + 1).padStart(2, '0'), M, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(s.nombre, M + 10, y);
+      doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+      doc.setFontSize(9);
+      doc.text(`${s.items.length}`, W - M, y, { align: 'right' });
+      doc.setFontSize(10.5);
+      // Linea punteada sutil entre el nombre y el conteo
+      doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+      doc.line(M + 12 + doc.getTextWidth(s.nombre), y - 1, W - M - 6, y - 1);
+      y += 7.5;
+    });
+  }
+
+  // Contacto, anclado abajo
+  const yContacto = H - 26;
+  doc.setDrawColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.setLineWidth(0.6);
+  doc.line(M, yContacto - 8, M + 16, yContacto - 8);
+  doc.setLineWidth(0.2);
+  doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  if (cat?.whatsapp) doc.text(`WhatsApp  ${cat.whatsapp}`, M, yContacto);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  doc.text(new Date().toLocaleDateString('es-NI', { month: 'long', year: 'numeric' }), W - M, yContacto, { align: 'right' });
+}
+
+// ---- Cabecera discreta en cada pagina interior ----
+function dibujarCabeceraPagina(doc, W, M, cat, C) {
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+  doc.text(espaciarLetras((cat?.nombre_comercial || cat?.nombre || '').toUpperCase().slice(0, 40)), M, 14);
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.line(M, 18, W - M, 18);
+}
+
+// ---- Titulo de seccion: numeracion + regla, estilo editorial ----
+function dibujarTituloSeccion(doc, W, M, y, nombre, cantidad, C) {
+  doc.setFillColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.rect(M, y - 4, 3, 10, 'F');
+  doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+  doc.text(nombre, M + 7, y + 4);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  doc.text(`${cantidad} ${cantidad === 1 ? 'producto' : 'productos'}`, W - M, y + 4, { align: 'right' });
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.line(M, y + 8, W - M, y + 8);
+}
+
+// ---- Tarjeta de producto ----
+function dibujarTarjetaProducto(doc, x, y, ancho, altoFoto, altoCelda, p, fotoB64, C, mostrarDescripcion) {
+  // Marco sutil de la foto
+  doc.setFillColor(C.claro.r, C.claro.g, C.claro.b);
+  doc.rect(x, y, ancho, altoFoto, 'F');
+  if (fotoB64) {
+    try { doc.addImage(fotoB64, 'JPEG', x, y, ancho, altoFoto); } catch (e) {}
+  } else {
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    doc.text(espaciarLetras('SIN IMAGEN'), x + ancho / 2, y + altoFoto / 2, { align: 'center' });
+  }
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.rect(x, y, ancho, altoFoto);
+
+  // Cinta de destacado, si aplica
+  if (p.destacado) {
+    doc.setFillColor(C.primario.r, C.primario.g, C.primario.b);
+    doc.rect(x, y, 16, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5);
+    doc.text('DESTACADO', x + 8, y + 3.5, { align: 'center' });
+  }
+
+  let cy = y + altoFoto + 5.5;
+  doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+  const lineasNombre = doc.splitTextToSize(p.nombre || '', ancho).slice(0, 2);
+  lineasNombre.forEach(l => { doc.text(l, x, cy); cy += 4; });
+
+  cy += 1.5;
+  const precio = Number(p.precio_oferta ?? p.precio ?? 0);
+  const hayOferta = p.precio_oferta != null && Number(p.precio_oferta) < Number(p.precio ?? 0);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
+  doc.setTextColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.text(`C$${precio.toFixed(2)}`, x, cy);
+  if (hayOferta) {
+    const anchoPrecio = doc.getTextWidth(`C$${precio.toFixed(2)}`);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    const precioViejo = `C$${Number(p.precio).toFixed(2)}`;
+    doc.text(precioViejo, x + anchoPrecio + 3, cy);
+    doc.setLineWidth(0.3);
+    doc.line(x + anchoPrecio + 3, cy - 1.2, x + anchoPrecio + 3 + doc.getTextWidth(precioViejo), cy - 1.2);
+    doc.setLineWidth(0.2);
+  }
+
+  if (mostrarDescripcion && p.descripcion) {
+    cy += 4.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8);
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    doc.splitTextToSize(p.descripcion, ancho).slice(0, 2).forEach(l => { doc.text(l, x, cy); cy += 3.2; });
   }
 }
 
-function dibujarPiePagina(doc, anchoPag, altoPag, nota) {
-  doc.setDrawColor(230, 230, 230);
-  doc.line(15, altoPag - 15, anchoPag - 15, altoPag - 15);
-  doc.setFontSize(8); doc.setTextColor(150, 150, 150); doc.setFont(undefined, 'normal');
-  if (nota) doc.text(nota, 15, altoPag - 9);
-  doc.text('Creado con Catálogo360', anchoPag - 15, altoPag - 9, { align: 'right' });
+function dibujarPiePagina(doc, W, H, M, nota, C, numeroPagina) {
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.line(M, H - 18, W - M, H - 18);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  if (nota) doc.text(String(nota).slice(0, 90), M, H - 12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(String(numeroPagina).padStart(2, '0'), W - M, H - 12, { align: 'right' });
+}
+
+// jsPDF no tiene control de espaciado entre letras -- se simula
+// insertando espacios finos, para lograr el look de versalitas amplias
+// tipico del diseño editorial.
+function espaciarLetras(texto) {
+  return String(texto || '').split('').join(' ');
 }
 
 function hexARgb(hex) {
