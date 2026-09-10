@@ -580,11 +580,23 @@ async function fetchVentasDetalles() {
    venta), para que cuadre exacto con Ingresos - Costos, igual que se
    corrigió en el Dashboard. */
 function calcVentasResumen(ventas) {
+  // Una venta MIXTA (algunos artículos normales + alguno marcado como
+  // regalía) ya calcula bien su total -- la línea de regalía suma C$0
+  // sola, sin que haga falta ningún ajuste aquí. El caso real que sí
+  // distorsiona el ticket promedio es una venta COMPLETAMENTE regalada
+  // (total=C$0): cuenta como una transacción más, pero no aporta nada
+  // al total, y arrastra el promedio hacia abajo sin que sea justo.
+  // Se excluye SOLO del ticket/conteo -- sigue existiendo normal en el
+  // historial de ventas, y su costo real se sigue sumando abajo.
+  const ventasParaTicket = ventas.filter(v => Number(v.total) > 0);
+
   const total    = ventas.reduce((s,v) => s + (Number(v.total) - Number(v.impuesto||0)), 0);
   const costo    = ventas.reduce((s,v) => s+Number(v.costo_total),0);
   const ganancia = total - costo;
-  const count    = ventas.length;
-  const ticket   = count>0 ? total/count : 0;
+  const count    = ventas.length; // cuenta TODAS las transacciones, regalías incluidas -- así se usa en otros lugares (ej. "X transacciones")
+  const ticket   = ventasParaTicket.length>0
+    ? ventasParaTicket.reduce((s,v) => s + (Number(v.total) - Number(v.impuesto||0)), 0) / ventasParaTicket.length
+    : 0;
   // "Venta mayor" usa el total real cobrado al cliente (con IVA incluido),
   // igual que la columna "Total" del historial de Ventas — es el monto
   // real de una transacción individual, no un agregado de ingresos.
