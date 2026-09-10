@@ -189,10 +189,16 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   profesional: 'c360.html',
   plantilla2: 'c360-vibrante.html',
   navidad: 'c360-navidad.html',
+  navidad2: 'c360-navidad2.html',
+  navidadroja: 'c360-navidad3.html',
   valentin: 'c360-valentin.html',
   halloween: 'c360-halloween.html',
   backtoschool: 'c360-backtoschool.html',
   verano: 'c360-verano.html',
+  veranocoastal: 'c360-verano2.html',
+  'Lujo y estilo': 'c360-luxury.html',
+  'Cafeteria': 'c360-cafeteria.html',
+  'Restaurante': 'c360-restaurant.html',
 };
 
 /**
