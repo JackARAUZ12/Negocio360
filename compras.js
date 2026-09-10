@@ -1367,7 +1367,7 @@ function renderCarrito() {
 
   tbody.innerHTML = STATE.carrito.map((linea, idx) => `
     <tr>
-      <td style="font-weight:500">${escHtml(linea.producto.nombre)}</td>
+      <td style="font-weight:500">${escHtml(linea.producto.nombre)}${linea.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía del proveedor</div>` : ''}</td>
       <td>
         <input type="text" inputmode="decimal" class="carrito-input" value="${linea.cantidad}"
           min="0.01"
@@ -1376,11 +1376,14 @@ function renderCarrito() {
           style="width:70px"/>
       </td>
       <td>
-        <input type="text" inputmode="decimal" class="carrito-input" value="${linea.costoUnitario}"
-          min="0"
-          oninput="saneaDecimalInput(this)"
-          onchange="actualizarLineaCarrito(${idx},'costoUnitario',this.value)"
-          style="width:90px"/>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="text" inputmode="decimal" class="carrito-input" value="${linea.costoUnitario}"
+            min="0"
+            oninput="saneaDecimalInput(this)"
+            onchange="actualizarLineaCarrito(${idx},'costoUnitario',this.value)"
+            style="width:90px"/>
+          <button type="button" onclick="alternarRegaliaCompra(${idx})" title="${linea.esRegalia?'Quitar regalía':'Marcar como regalía del proveedor (costo C$0)'}" style="flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid ${linea.esRegalia?'#d6336c':'var(--border)'};background:${linea.esRegalia?'#d6336c22':'var(--bg-hover,#f0f0f5)'};cursor:pointer;font-size:13px">🎀</button>
+        </div>
       </td>
       <td>
         <input type="text" inputmode="decimal" class="carrito-input" value="${linea.descuento}"
@@ -1435,6 +1438,31 @@ function eliminarLineaCarrito(idx) {
   STATE.carrito.splice(idx, 1);
   renderCarrito();
   actualizarResumen();
+}
+
+// Mismo mecanismo exacto ya probado en Ventas/Proformas/Creditos, en
+// la direccion contraria: aca el inventario AUMENTA igual que
+// cualquier compra normal (nunca se duplica esa logica), solo que el
+// costo de esta linea queda en C$0 -- para cuando un proveedor regala
+// mercaderia al comprar por volumen. Costo editable despues igual que
+// en Ventas (puede ser un costo simbolico, no forzado a C$0 fijo).
+function alternarRegaliaCompra(idx) {
+  const linea = STATE.carrito[idx];
+  if (!linea) return;
+  if (linea.esRegalia) {
+    linea.esRegalia = false;
+    linea.costoUnitario = linea.costoAntesRegalia != null ? linea.costoAntesRegalia : linea.costoUnitario;
+    linea.costoAntesRegalia = undefined;
+  } else {
+    linea.costoAntesRegalia = linea.costoUnitario;
+    linea.esRegalia = true;
+    linea.costoUnitario = 0;
+    // Un descuento sobre un costo ya en C$0 daria un subtotal
+    // negativo sin sentido -- se limpia al marcar como regalia.
+    linea.descuento = 0;
+  }
+  recalcularLinea(linea);
+  renderCarrito();
 }
 
 /* =====================================================
@@ -1908,6 +1936,7 @@ async function guardarCompra() {
         subtotal:       linea.subtotal,
         stock_antes:    stockAntes,
         stock_despues:  stockDespues,
+        es_regalia:     !!linea.esRegalia,
       });
       if (errDet) throw errDet;
 
