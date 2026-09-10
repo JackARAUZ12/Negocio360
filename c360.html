@@ -1845,6 +1845,21 @@
       btn.style.display = 'none';
       if (banner) banner.style.display = 'none';
 
+      // html2canvas todavia no entiende color-mix() (usado en el
+      // header/barra de filtros para el efecto de fondo semitransparente
+      // con blur al hacer scroll) -- sin esto tira un error real y
+      // detiene toda la captura. Para el PDF ese efecto no tiene sentido
+      // de todos modos (es un efecto de scroll, no de documento
+      // estatico), asi que se sobreescribe con un fondo solido SOLO
+      // durante la captura -- se quita justo despues, sin tocar como se
+      // ve la pagina normalmente.
+      const estiloTemporalPDF = document.createElement('style');
+      estiloTemporalPDF.id = 'c-pdf-fix-temporal';
+      estiloTemporalPDF.textContent = `
+        .c-header, .c-filtros-barra { background: var(--bg) !important; backdrop-filter: none !important; }
+      `;
+      document.head.appendChild(estiloTemporalPDF);
+
       try {
         const canvas = await html2canvas(app, {
           scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: app.scrollWidth,
@@ -1877,6 +1892,7 @@
         console.error('descargarCatalogoPDF:', e);
         alert('No se pudo generar el PDF. Intenta de nuevo.');
       } finally {
+        document.getElementById('c-pdf-fix-temporal')?.remove();
         if (btnWa) btnWa.style.display = btnWaDisplayPrevio;
         if (banner) banner.style.display = bannerDisplayPrevio;
         btn.style.display = '';
@@ -1963,6 +1979,14 @@
       document.getElementById('c360p-app').style.display = 'block';
 
       activarRevelado();
+
+      // Llegada directa desde el panel de Negocio360 (botón "Descargar
+      // PDF" en catalogo360.html) -- dispara la descarga sola, sin que
+      // el dueño del negocio tenga que ir a buscar el botón flotante
+      // dentro de su propio catálogo público.
+      if (params.get('pdf') === '1') {
+        setTimeout(() => descargarCatalogoPDF(), 600);
+      }
     }
 
     function mostrarError(msg) {

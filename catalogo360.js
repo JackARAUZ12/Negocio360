@@ -1320,6 +1320,14 @@ function copiarEnlaceCatalogo() {
   marcarCatalogoComoCompartido();
   showToast('🔗 Enlace copiado');
 }
+// Abre el catalogo publico en una pestaña nueva con ?pdf=1 -- ese
+// parametro le dice a la plantilla que dispare la descarga sola, sin
+// que el dueño del negocio tenga que ir a buscar el boton flotante
+// dentro de su propio catalogo publico.
+function descargarCatalogoComoPDF() {
+  marcarCatalogoComoCompartido();
+  window.open(`${urlPublicaActual()}&pdf=1`, '_blank');
+}
 function abrirVistaPrevia() {
   window.open(`${archivoDePlantilla(STATE.catalogoActual.plantilla)}?preview=${STATE.catalogoActual.id}`, '_blank');
 }
