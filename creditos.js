@@ -1226,6 +1226,7 @@
         cantidad: it.cantidad, precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
         ganancia: round2((it.precio-it.costo)*it.cantidad),
         escala_id: (it.escala_id && idsEscalaValidos1.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre||null,
+        es_regalia: !!it.esRegalia,
         vendido_sin_stock: !!it.sinStock,
       }));
       let { error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles);
@@ -1482,6 +1483,7 @@
           precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
           ganancia: round2((it.precio-it.costo)*it.cantidad),
           escala_id: (it.escala_id && idsEscalaValidos2.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre || null,
+          es_regalia: !!it.esRegalia,
           vendido_sin_stock: !!it.sinStock,
         }));
         let { error: errDet } = await _sb.from('venta_detalles').insert(detalles);

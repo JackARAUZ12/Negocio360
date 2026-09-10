@@ -634,6 +634,24 @@ function recalcularLineaProf(l) {
   l.subtotal = round2(l.cantidad * l.precio - (l.descuento || 0));
   l.ganancia = round2(l.cantidad * (l.precio - l.costo) - (l.descuento || 0));
 }
+// Mismo mecanismo exacto ya probado en Ventas -- precio a C$0, sin
+// tocar como se descuenta el stock, restaurable, y limpia el
+// descuento para nunca dejar un subtotal negativo sin sentido.
+function alternarRegaliaProf(idx) {
+  const l = STATE.carrito[idx]; if (!l) return;
+  if (l.esRegalia) {
+    l.esRegalia = false;
+    l.precio = l.precioAntesRegalia != null ? l.precioAntesRegalia : l.precio;
+    l.precioAntesRegalia = undefined;
+  } else {
+    l.precioAntesRegalia = l.precio;
+    l.esRegalia = true;
+    l.precio = 0;
+    l.descuento = 0;
+  }
+  recalcularLineaProf(l);
+  renderCarritoProf();
+}
 function renderCarritoProf() {
   const tbody = document.getElementById('np-carrito-tbody');
   if (!tbody) return;
@@ -644,9 +662,14 @@ function renderCarritoProf() {
   }
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
-      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${l.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
+      <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${l.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
-      <td><input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" ${l.esRegalia?'disabled':''} onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/>
+          <button type="button" onclick="alternarRegaliaProf(${idx})" title="${l.esRegalia?'Quitar regalía':'Marcar como regalía (precio C$0)'}" style="flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid ${l.esRegalia?'#d6336c':'var(--border)'};background:${l.esRegalia?'#d6336c22':'var(--bg-hover,#f0f0f5)'};cursor:pointer;font-size:13px">🎀</button>
+        </div>
+      </td>
       <td class="col-costo-prof" style="display:none"><input type="number" class="carrito-input" value="${l.costo||0}" min="0" step="0.01" title="Ajustar el costo solo para esta proforma" onchange="actualizarLineaProf(${idx},'costo',this.value)" style="width:90px"/></td>
       <td><input type="number" class="carrito-input" value="${l.descuento}" min="0" step="0.01" onchange="actualizarLineaProf(${idx},'descuento',this.value)" style="width:80px"/></td>
       <td class="td-right td-money">${fmt(l.subtotal)}</td>
@@ -943,6 +966,7 @@ async function guardarProforma() {
       subtotal: l.subtotal, ganancia: l.ganancia || 0,
       escala_id: l.escalaId || null, escala_nombre: l.escalaNombre || null,
       origen_stock_id: l.origenStockId || null, origen_stock_nombre: l.origenStockNombre || null,
+      es_regalia: !!l.esRegalia,
     }));
     let { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
     if (errDet) {
@@ -1256,6 +1280,7 @@ function abrirPagoParcial() {
     precio: d.precio, costo: d.costo, cantidad: d.cantidad,
     escala_id: d.escala_id, escala_nombre: d.escala_nombre, combo_id: d.combo_id,
     origen_stock_id: d.origen_stock_id, origen_stock_nombre: d.origen_stock_nombre,
+    esRegalia: !!d.es_regalia,
   }));
   const payload = { proformaId: p.id, numeroProforma: p.numero_proforma, clienteId: p.cliente_id, items };
   const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
@@ -1524,6 +1549,7 @@ async function confirmarConvertirAVenta() {
       subtotal: d.subtotal, ganancia: d.ganancia,
       escala_id: (d.escala_id && idsEscalaValidos.has(d.escala_id)) ? d.escala_id : null,
       escala_nombre: d.escala_nombre,
+      es_regalia: !!d.es_regalia,
       vendido_sin_stock: d.tipo_item === 'producto' && d.producto_id && !d.origen_stock_id
         ? Number(d.cantidad) > (stockPorProducto[d.producto_id] ?? Infinity)
         : false,

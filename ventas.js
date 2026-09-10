@@ -2809,6 +2809,31 @@ function cambiarCostoManual(productoId, val) {
   renderCarrito(item.tipo);
 }
 
+// Marca/desmarca un artículo del carrito como REGALÍA -- se sigue
+// descontando del inventario exactamente igual que cualquier venta
+// (nunca se duplica esa lógica), pero el precio se pone en C$0, así
+// que no genera ingreso ni movimiento en Caja. Al desmarcarlo, se
+// restaura el precio que tenía antes -- nunca se pierde ese dato.
+function alternarRegalia(productoId) {
+  const item = S.carrito.find(c => c.id===productoId);
+  if (!item) return;
+  if (item.esRegalia) {
+    item.esRegalia = false;
+    item.precio = item.precioAntesRegalia != null ? item.precioAntesRegalia : item.precio;
+    item.precioAntesRegalia = undefined;
+  } else {
+    item.precioAntesRegalia = item.precio;
+    item.esRegalia = true;
+    item.precio = 0;
+    // Un descuento sobre un precio ya en C$0 daría un subtotal
+    // negativo sin sentido -- se limpia al marcar como regalía.
+    item.descuento = 0;
+    item.descuentoPorcentaje = 0;
+  }
+  recalcItem(item);
+  renderCarrito(item.tipo);
+}
+
 // Muestra u oculta la columna de Costo en el carrito de Nueva Venta,
 // segun la preferencia guardada en Configurar Venta rapida --
 // desactivada por defecto, ya que el costo suele ser informacion
@@ -2859,6 +2884,7 @@ function renderCarrito(tipo) {
         ${item.sku ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${esc(item.sku)}</div>` : ''}
         ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
         ${item.esPromocion ? `<div style="font-size:11px;color:var(--success);font-weight:600">🎁 Promoción</div>` : ''}
+        ${item.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía (sin costo para el cliente)</div>` : ''}
         ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
         ${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}
         ${item.precioEditado ? `<div style="font-size:10.5px;color:var(--text-muted)">✏️ Precio ajustado solo para esta venta</div>` : ''}
@@ -2869,10 +2895,16 @@ function renderCarrito(tipo) {
           onchange="cambiarCantidad('${item.id}',this.value)"/>
       </td>
       <td>
-        <input type="number" class="cart-desc-input" value="${item.precio}"
-          min="0" step="0.01" title="Ajustar el precio solo para esta venta — no cambia el precio guardado en Productos/Servicios"
-          onchange="cambiarPrecioManual('${item.id}',this.value)"
-          style="font-family:var(--font-mono);font-weight:600;width:90px"/>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="number" class="cart-desc-input" value="${item.precio}"
+            min="0" step="0.01" title="Ajustar el precio solo para esta venta — no cambia el precio guardado en Productos/Servicios"
+            ${item.esRegalia ? 'disabled' : ''}
+            onchange="cambiarPrecioManual('${item.id}',this.value)"
+            style="font-family:var(--font-mono);font-weight:600;width:90px"/>
+          <button type="button" onclick="alternarRegalia('${item.id}')"
+            title="${item.esRegalia ? 'Quitar regalía (restaura el precio anterior)' : 'Marcar como regalía (precio C$0, se sigue descontando del inventario)'}"
+            style="flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid ${item.esRegalia ? '#d6336c' : 'var(--border)'};background:${item.esRegalia ? '#d6336c22' : 'var(--bg-hover,#f0f0f5)'};cursor:pointer;font-size:13px">🎀</button>
+        </div>
       </td>
       <td class="col-costo-venta" style="display:none">
         <input type="number" class="cart-desc-input" value="${item.costo||0}"
@@ -3843,6 +3875,7 @@ async function confirmarVenta(conImpresion) {
       escala_id:      item.escalaId || null,
       escala_nombre:  item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
+      es_regalia:     !!item.esRegalia,
     }));
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
@@ -5056,6 +5089,7 @@ async function confirmarVentaRapida() {
       escala_id:       item.escalaId || null,
       escala_nombre:   item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
+      es_regalia:      !!item.esRegalia,
     }));
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
