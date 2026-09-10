@@ -2226,8 +2226,18 @@ function guardarMonedaVis() {
   location.reload();
 }
 window.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    const btn = document.getElementById('btn-moneda-vis-texto');
-    if (btn) btn.textContent = monedaParaMostrar(STATE.empresaConfig?.moneda);
-  }, 800);
+  // Antes esperaba 800ms fijos, sin importar si los datos reales ya
+  // habian llegado -- en conexiones lentas el texto se quedaba con el
+  // valor por defecto. Ahora revisa cada 100ms si ya llego
+  // empresaConfig, y actualiza en cuanto este listo (maximo 3s de
+  // espera, para nunca quedarse esperando para siempre).
+  let intentos = 0;
+  const intervalo = setInterval(() => {
+    intentos++;
+    if (STATE.empresaConfig || intentos >= 30) {
+      clearInterval(intervalo);
+      const btn = document.getElementById('btn-moneda-vis-texto');
+      if (btn) btn.textContent = monedaParaMostrar(STATE.empresaConfig?.moneda);
+    }
+  }, 100);
 });

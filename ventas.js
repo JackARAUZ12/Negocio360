@@ -5900,6 +5900,6 @@ function guardarMonedaVis() {
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
     const btn = document.getElementById('btn-moneda-vis-texto');
-    if (btn) btn.textContent = monedaParaMostrar(S.moneda);
+    if (btn) btn.textContent = monedaParaMostrar(S.empresaConfig?.moneda);
   }, 800);
 });

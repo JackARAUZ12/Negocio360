@@ -2844,8 +2844,13 @@ function guardarMonedaVis() {
   location.reload();
 }
 window.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    const btn = document.getElementById('btn-moneda-vis-texto');
-    if (btn) btn.textContent = monedaParaMostrar(CS.empresaConfig?.moneda);
-  }, 800);
+  let intentos = 0;
+  const intervalo = setInterval(() => {
+    intentos++;
+    if (CS.empresaConfig || intentos >= 30) {
+      clearInterval(intervalo);
+      const btn = document.getElementById('btn-moneda-vis-texto');
+      if (btn) btn.textContent = monedaParaMostrar(CS.empresaConfig?.moneda);
+    }
+  }, 100);
 });
