@@ -1214,11 +1214,18 @@
 
       // Reemplazar los detalles de la venta
       await _sb.from('venta_detalles').delete().eq('venta_id', credito.venta_id);
+      const idsEscalaAValidar1 = [...new Set(CS.ncItems.filter(it => it.escala_id).map(it => it.escala_id))];
+      let idsEscalaValidos1 = new Set();
+      if (idsEscalaAValidar1.length) {
+        const { data: escReales1 } = await _sb.from('precios_escala').select('id').in('id', idsEscalaAValidar1);
+        idsEscalaValidos1 = new Set((escReales1 || []).map(e => e.id));
+      }
       const nuevosDetalles = CS.ncItems.map(it => ({
         venta_id: credito.venta_id, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
         combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item,
         cantidad: it.cantidad, precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
-        ganancia: round2((it.precio-it.costo)*it.cantidad), escala_id: it.escala_id||null, escala_nombre: it.escala_nombre||null,
+        ganancia: round2((it.precio-it.costo)*it.cantidad),
+        escala_id: (it.escala_id && idsEscalaValidos1.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre||null,
         vendido_sin_stock: !!it.sinStock,
       }));
       let { error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles);
@@ -1462,13 +1469,19 @@
         if (errVenta) throw errVenta;
         ventaId = venta.id;
 
+        const idsEscalaAValidar2 = [...new Set(CS.ncItems.filter(it => it.escala_id).map(it => it.escala_id))];
+        let idsEscalaValidos2 = new Set();
+        if (idsEscalaAValidar2.length) {
+          const { data: escReales2 } = await _sb.from('precios_escala').select('id').in('id', idsEscalaAValidar2);
+          idsEscalaValidos2 = new Set((escReales2 || []).map(e => e.id));
+        }
         const detalles = CS.ncItems.map(it => ({
           venta_id: ventaId, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
           combo_id: it.esCombo ? it.producto_id : null,
           producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item, cantidad: it.cantidad,
           precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
           ganancia: round2((it.precio-it.costo)*it.cantidad),
-          escala_id: it.escala_id || null, escala_nombre: it.escala_nombre || null,
+          escala_id: (it.escala_id && idsEscalaValidos2.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre || null,
           vendido_sin_stock: !!it.sinStock,
         }));
         let { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
