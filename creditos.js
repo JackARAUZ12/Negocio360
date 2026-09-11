@@ -2399,7 +2399,10 @@
               <td>${fmtDate(p.fecha)}</td><td>${esc(p.comprobante_numero||'—')}</td>
               <td>${fmt(p.monto)}</td><td>${esc(p.metodo_pago_nombre||'—')}</td>
               <td style="max-width:220px;white-space:normal;font-size:12.5px;color:var(--text-secondary)">${p.observaciones ? esc(p.observaciones) : '—'}</td>
-              <td><button class="btn-icon" title="Volver a descargar comprobante" onclick="reimprimirComprobantePago('${p.id}')">🖨️</button></td>
+              <td style="white-space:nowrap">
+                <button class="btn-icon" title="Volver a descargar comprobante" onclick="reimprimirComprobantePago('${p.id}')">🖨️</button>
+                <button class="btn-icon" title="Anular este pago (lo revierte por completo)" onclick="confirmarAnularPago('${p.id}','${credito.id}')" style="color:var(--danger)">🗑️</button>
+              </td>
             </tr>`).join('') || '<tr><td colspan="6" class="empty-cell">Todavía no hay pagos registrados</td></tr>'}
           </tbody>
         </table>
@@ -2410,6 +2413,112 @@
       </ul>`;
   }
   window.abrirDetalleCredito = abrirDetalleCredito;
+
+  // ------------------------------------------------------------
+  // ANULAR UN PAGO YA REGISTRADO
+  // Revierte por completo un pago: lo borra, borra su movimiento de
+  // Caja, devuelve el monto al saldo del credito, y descuenta lo
+  // pagado de las cuotas -- exactamente al reves de como se aplico.
+  // Pensado para el caso real de un pago tecleado por error o
+  // duplicado sin querer.
+  // ------------------------------------------------------------
+  async function confirmarAnularPago(pagoId, creditoId) {
+    try {
+      const { data: pago } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!pago) { showToast('No se encontró ese pago', 'error'); return; }
+
+      const ok = confirm(
+        `¿Anular este pago de ${fmt(pago.monto)} del ${fmtDate(pago.fecha)}?\n\n` +
+        `Esto lo quitará del historial, lo restará de Caja, y devolverá ${fmt(pago.monto)} al saldo pendiente del crédito.\n\n` +
+        `Esta acción no se puede deshacer.`
+      );
+      if (!ok) return;
+
+      await anularPagoCredito(pagoId, creditoId);
+    } catch (e) {
+      console.error('confirmarAnularPago:', e);
+      showToast('No se pudo anular el pago', 'error');
+    }
+  }
+  window.confirmarAnularPago = confirmarAnularPago;
+
+  async function anularPagoCredito(pagoId, creditoId) {
+    try {
+      const { data: pago } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!pago) throw new Error('Pago no encontrado');
+      const monto = Number(pago.monto) || 0;
+
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!credito) throw new Error('Crédito no encontrado');
+
+      // 1. Quitar el movimiento de Caja que genero este pago. Se busca
+      // por referencia + monto + fecha porque los movimientos guardan
+      // el credito_id como referencia, no el id del pago individual.
+      const { data: movs } = await _sb.from('movimientos_financieros')
+        .select('id, created_at')
+        .eq('auth_user_id', CS.userId)
+        .eq('referencia_id', creditoId)
+        .eq('monto', monto)
+        .eq('fecha', pago.fecha);
+      if (movs && movs.length) {
+        // Si hay varios del mismo monto y fecha, se borra el mas cercano
+        // en tiempo al pago -- nunca todos de golpe.
+        const objetivo = movs.reduce((mejor, m) => {
+          const dif = Math.abs(new Date(m.created_at) - new Date(pago.created_at));
+          return (!mejor || dif < mejor.dif) ? { id: m.id, dif } : mejor;
+        }, null);
+        if (objetivo) await _sb.from('movimientos_financieros').delete().eq('id', objetivo.id);
+      }
+
+      // 2. Descontar de las cuotas, de la ultima hacia atras (al reves
+      // de como se aplico, que va de la primera hacia adelante).
+      const { data: cuotas } = await _sb.from('creditos_cuotas')
+        .select('*').eq('credito_id', creditoId).order('numero', { ascending: false });
+      let restante = monto;
+      for (const cuota of (cuotas || [])) {
+        if (restante <= 0.01) break;
+        const pagadoCuota = Number(cuota.monto_pagado) || 0;
+        if (pagadoCuota <= 0) continue;
+        const quitar = Math.min(pagadoCuota, restante);
+        const nuevoPagado = round2(pagadoCuota - quitar);
+        const totalCuota = Number(cuota.monto_total) || 0;
+        const nuevoEstado = nuevoPagado <= 0.01 ? 'pendiente' : (nuevoPagado >= totalCuota - 0.01 ? 'pagada' : 'parcial');
+        await _sb.from('creditos_cuotas').update({
+          monto_pagado: nuevoPagado, estado: nuevoEstado, updated_at: new Date().toISOString(),
+        }).eq('id', cuota.id);
+        restante = round2(restante - quitar);
+      }
+
+      // 3. Devolver el monto al saldo del credito (nunca mas alla del total)
+      const saldoNuevo = round2(Math.min(Number(credito.total_financiado) || Number(credito.capital_financiado) || 0,
+                                         (Number(credito.saldo_pendiente) || 0) + monto));
+      await _sb.from('creditos').update({
+        saldo_pendiente: saldoNuevo,
+        estado: saldoNuevo > 0.01 && credito.estado === 'cancelado' ? 'activo' : credito.estado,
+        updated_at: new Date().toISOString(),
+      }).eq('id', creditoId);
+
+      // 4. Borrar el pago (al final, para que si algo falla antes, el
+      // pago siga existiendo y no quede un registro a medias)
+      await _sb.from('creditos_pagos').delete().eq('id', pagoId).eq('auth_user_id', CS.userId);
+
+      // 5. Dejar rastro en el historial del credito
+      try {
+        await _sb.from('creditos_historial').insert({
+          credito_id: creditoId, auth_user_id: CS.userId, tipo_evento: 'pago_anulado',
+          descripcion: `Se anuló un pago de ${fmt(monto)} del ${fmtDate(pago.fecha)}`,
+        });
+      } catch (e) { /* el historial es informativo -- si falla, la anulación ya se hizo bien */ }
+
+      showToast('Pago anulado correctamente');
+      await abrirDetalleCredito(creditoId);
+      if (typeof cargarCreditos === 'function') cargarCreditos();
+    } catch (e) {
+      console.error('anularPagoCredito:', e);
+      showToast('No se pudo anular el pago: ' + (e.message || 'intenta de nuevo'), 'error');
+    }
+  }
+  window.anularPagoCredito = anularPagoCredito;
 
   // Reconstruye y muestra de nuevo el mismo comprobante de un pago ya
   // hecho — los datos numéricos vienen tal cual quedaron guardados en
