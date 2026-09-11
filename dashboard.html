@@ -1915,7 +1915,7 @@ function renderUserInfo(user, authEmail) {
 async function loadKPIs(userId) {
   const today      = todayISO();
   const monthStart = startOfMonthISO();
-  const sym        = empresaConfig?.moneda || 'C$';
+  const sym        = monedaParaMostrar(empresaConfig?.moneda);
 
   // Ventas del día
   try {
@@ -2150,7 +2150,7 @@ async function loadOtrosMovimientosCaja(userId) {
    FINANCIAL SUMMARY
 ===================================================== */
 function renderFinancial() {
-  const sym  = empresaConfig?.moneda || 'C$';
+  const sym  = monedaParaMostrar(empresaConfig?.moneda);
   const ing  = dashData.ingresosM     || 0;
   const cos  = dashData.costosM       || 0;
   const brut = dashData.gananciaBruta || (ing - cos);
@@ -2333,7 +2333,7 @@ async function loadTopProductos(userId) {
       .slice(0, 5);
 
     const colors = ['#5a5af4','#8b5cf6','#22c55e','#f97316','#06b6d4'];
-    const sym    = empresaConfig?.moneda || 'C$';
+    const sym    = monedaParaMostrar(empresaConfig?.moneda);
 
     if (list) {
       list.innerHTML = '';
@@ -2364,7 +2364,7 @@ async function loadAlertasFacturas(userId) {
       .eq('auth_user_id', userId).eq('estado_pago', 'pendiente');
     if (data) {
       const total = data.reduce((s, r) => s + (r.total || 0), 0);
-      const sym   = empresaConfig?.moneda || 'C$';
+      const sym   = monedaParaMostrar(empresaConfig?.moneda);
       document.getElementById('alert-facturas-title').textContent =
         data.length > 0 ? `${data.length} factura${data.length !== 1 ? 's' : ''} por cobrar` : 'Sin facturas pendientes';
       document.getElementById('alert-facturas-desc').textContent =
@@ -2485,7 +2485,7 @@ function renderDonutChart(categoryMap) {
   const values = Object.values(categoryMap);
   const total  = values.reduce((a, b) => a + b, 0);
   const colors = ['#5a5af4','#22c55e','#f97316','#8b5cf6','#06b6d4','#f59e0b','#ef4444','#ec4899'];
-  const sym    = empresaConfig?.moneda || 'C$';
+  const sym    = monedaParaMostrar(empresaConfig?.moneda);
   if (!labels.length) return;
   if (donutChart) donutChart.destroy();
   donutChart = new Chart(ctx, {
