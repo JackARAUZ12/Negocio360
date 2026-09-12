@@ -1821,36 +1821,7 @@ function mostrarErrorTabla() {
 // Toggle: "Descontar de caja" (compra nueva) vs "Ya lo tenía"
 // (inventario físico previo, útil al iniciar con el sistema)
 // ============================================================
-function setCajaImpacto(descontar) {
-  const input = $('inputDescontarCaja');
-  if (input) input.value = descontar ? 'true' : 'false';
 
-  const btnSi = $('toggleDescontarCaja');
-  const btnNo = $('toggleNoDescontarCaja');
-  if (btnSi) btnSi.classList.toggle('active', descontar);
-  if (btnNo) btnNo.classList.toggle('active', !descontar);
-
-  actualizarCajaImpactoPreview();
-}
-
-function actualizarCajaImpactoPreview() {
-  const hint = $('cajaImpactoHint');
-  if (!hint) return;
-
-  const descontar   = $('inputDescontarCaja')?.value !== 'false';
-  const costo       = parseFloat($('inputCosto')?.value) || 0;
-  const stockActual = parseFloat($('inputStockActual')?.value) || 0;
-  const monto       = costo * stockActual;
-
-  if (!descontar) {
-    hint.textContent = 'No se afectará tu caja. Úsalo para productos que ya tenías en tu inventario físico antes de empezar a usar el sistema.';
-    return;
-  }
-
-  hint.textContent = monto > 0
-    ? `Se descontará ${fmtMoney(monto)} de tu caja al guardar (costo × cantidad). Úsalo cuando estés comprando este producto ahora.`
-    : 'Se registrará un gasto en Caja por el costo total del stock inicial. Úsalo cuando estés comprando este producto ahora.';
-}
 
 // ============================================================
 // REGISTRAR COMPRA EN CAJA
@@ -1859,93 +1830,6 @@ function actualizarCajaImpactoPreview() {
 // (saldo_anterior / saldo_resultante como fuente de verdad).
 // No depende de caja.js/cajaAPI.js — autocontenido para no
 // arriesgar nada del módulo de Caja.
-// ============================================================
-async function registrarCompraEnCaja(nombreProducto, monto, productoId, cantidad, costoUnitario, sku) {
-  try {
-    const { data: ultMov } = await supabaseClient
-      .from('movimientos_financieros')
-      .select('saldo_resultante')
-      .eq('auth_user_id', STATE.user.id)
-      .eq('estado', 'completado')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const saldoAnterior   = ultMov ? Number(ultMov.saldo_resultante) : 0;
-    const saldoResultante = saldoAnterior - monto;
-
-    const { data: movInsertado, error } = await supabaseClient.from('movimientos_financieros').insert({
-      auth_user_id:       STATE.user.id,
-      tipo_flujo:         'EGRESO',
-      tipo_movimiento:    'COMPRA',
-      concepto:           `Compra de inventario: ${nombreProducto}`,
-      monto:               monto,
-      saldo_anterior:      saldoAnterior,
-      saldo_resultante:    saldoResultante,
-      metodo_pago_nombre: 'Efectivo',
-      referencia_tipo:    'producto',
-      referencia_id:       productoId || null,
-      fecha:               ymdLocal(new Date()),
-      estado:              'completado',
-    }).select('id').single();
-
-    if (error) throw error;
-
-    // También se deja el registro FORMAL en Compras — antes esta
-    // compra solo se veía como un movimiento suelto de Caja, y nunca
-    // aparecía en el historial ni en los reportes de Compras. Esto es
-    // aparte del descuento de Caja de arriba (que ya funcionaba bien)
-    // — si esta parte fallara por cualquier motivo, el dinero ya
-    // descontado de Caja no se ve afectado, solo faltaría este
-    // registro adicional.
-    try {
-      const { data: numero } = await supabaseClient.rpc('siguiente_numero_compra', { p_user_id: STATE.user.id });
-      const { data: compraInsertada, error: errCompra } = await supabaseClient.from('compras').insert({
-        auth_user_id:  STATE.user.id,
-        numero:        numero || `C-${Date.now()}`,
-        fecha:         ymdLocal(new Date()),
-        subtotal:      monto,
-        total:         monto,
-        metodo_pago_nombre: 'Efectivo',
-        estado:        'completada',
-        observaciones: 'Generada automáticamente al registrar stock inicial de un producto',
-        movimiento_caja_id: movInsertado?.id || null,
-      }).select('id').single();
-      if (errCompra) throw errCompra;
-
-      if (compraInsertada && productoId) {
-        await supabaseClient.from('detalle_compras').insert({
-          auth_user_id:    STATE.user.id,
-          compra_id:       compraInsertada.id,
-          producto_id:     productoId,
-          producto_nombre: nombreProducto,
-          producto_sku:    sku || null,
-          cantidad:        cantidad || 1,
-          costo_unitario:  costoUnitario != null ? costoUnitario : monto,
-          descuento:       0,
-          iva_porcentaje:  0,
-          iva_monto:       0,
-          subtotal:        monto,
-          stock_despues:   cantidad || null,
-        });
-      }
-    } catch (eCompra) {
-      console.warn('No se pudo crear el registro formal en Compras (el dinero de Caja ya se descontó bien):', eCompra);
-    }
-
-    // Mantener sincronizado el caché local que usan dashboard/caja
-    try {
-      localStorage.setItem('n360_caja', saldoResultante.toString());
-      localStorage.setItem('n360_capital', saldoResultante.toString());
-      localStorage.setItem('n360_caja_updated', new Date().toISOString());
-    } catch (_) { /* silencioso */ }
-
-    return { ok: true, saldoResultante };
-  } catch (e) {
-    console.warn('registrarCompraEnCaja:', e);
-    return { ok: false, error: e.message };
-  }
-}
 
 // ============================================================
 // MODAL NUEVO / EDITAR
@@ -2416,7 +2300,6 @@ function resetFormulario() {
   renderPresentacionesEditor();
   aplicarVisibilidadPresentaciones();
   // Por defecto: "Descontar de caja" (caso más común — compra nueva)
-  setCajaImpacto(true);
   // Fecha de creación: hoy por defecto, pero editable — útil cuando el
   // producto ya existía antes de usar el sistema (inventario histórico).
   const inputFecha = $('inputFechaCreacion');
@@ -2568,7 +2451,6 @@ async function guardarProducto() {
 
   try {
     let error = null;
-    let cajaInfo = null; // { montoDescontado } si se registró movimiento de caja
     let productoIdGuardado = null;
 
     if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
@@ -2611,18 +2493,12 @@ async function guardarProducto() {
       error = res.error;
       productoIdGuardado = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
 
-      // Impacto en caja: solo para productos con costo × cantidad > 0,
-      // y solo si el usuario eligió "Descontar de caja"
-      if (!error && tipo === 'producto') {
-        const descontarCaja = $('inputDescontarCaja')?.value !== 'false';
-        const montoCompra   = (isNaN(costo) ? 0 : costo) * (isNaN(stockActual) ? 0 : stockActual);
-
-        if (descontarCaja && montoCompra > 0) {
-          const insertedId = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
-          const resultCaja = await registrarCompraEnCaja(nombre, montoCompra, insertedId, stockActual, costo, payload.sku);
-          if (resultCaja.ok) cajaInfo = { montoDescontado: montoCompra };
-        }
-      }
+      // NOTA: antes, al crear un producto con stock inicial, aquí se
+      // descontaba de Caja automáticamente. Se quitó a propósito: el
+      // módulo de Compras ya maneja ese flujo completo (con proveedor,
+      // factura, método de pago y su propio registro en Caja), y tener
+      // dos caminos distintos para lo mismo causaba doble descuento.
+      // Para registrar una compra real, se usa el módulo de Compras.
 
     } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
       // En edición: el stock actual ahora SÍ se puede ajustar directamente
@@ -2719,7 +2595,7 @@ async function guardarProducto() {
     cerrarModalProducto();
     const detalleMensaje = tipoPrecio === 'escala'
       ? `${nombre} · ${STATE.formEscalas.filter(f => (f.nombre||'').trim()).length} precio(s) de escala guardados`
-      : (cajaInfo ? `${nombre} · Se descontó ${fmtMoney(cajaInfo.montoDescontado)} de caja` : nombre);
+      : nombre;
     showToast(
       'success',
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
@@ -2918,7 +2794,6 @@ async function duplicarProducto(id) {
 
   setTipoModal(p.tipo, false);
   configurarCamposSegunModo('crear'); // duplicar actúa como crear
-  actualizarCajaImpactoPreview();
 
   $('modalProductoTitle').textContent = `Duplicar: ${p.nombre}`;
   $('btnGuardarProducto').textContent = 'Crear copia';
@@ -3263,10 +3138,6 @@ function initEventos() {
   if (btnServ) btnServ.addEventListener('click', () => setTipoModal('servicio', true));
 
   // Toggle de impacto en caja (nuevo producto)
-  const btnDescontarCaja   = $('toggleDescontarCaja');
-  const btnNoDescontarCaja = $('toggleNoDescontarCaja');
-  if (btnDescontarCaja)   btnDescontarCaja.addEventListener('click', () => setCajaImpacto(true));
-  if (btnNoDescontarCaja) btnNoDescontarCaja.addEventListener('click', () => setCajaImpacto(false));
 
   const btnGuardar = $('btnGuardarProducto');
   if (btnGuardar) btnGuardar.addEventListener('click', guardarProducto);
@@ -3348,10 +3219,6 @@ function initEventos() {
     });
   }
 
-  // Actualizar preview de caja cuando cambia el costo (el stock ya
-  // dispara actualizarCajaImpactoPreview() vía oninput en el HTML)
-  const inputCostoEl = $('inputCosto');
-  if (inputCostoEl) inputCostoEl.addEventListener('input', actualizarCajaImpactoPreview);
 }
 
 // ============================================================
