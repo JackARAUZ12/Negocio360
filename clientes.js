@@ -747,12 +747,60 @@ function abrirEditar(clienteId) {
   openModal('modal-cliente');
 }
 
+// ============================================================
+// CONTACTOS ASOCIADOS -- personas de contacto dentro de una misma
+// empresa/cliente. Se guardan como una lista en el campo 'contactos'
+// del cliente, no como registros aparte -- asi no hace falta ninguna
+// tabla nueva ni cambia nada de como funciona el resto del modulo.
+// ============================================================
+let CONTACTOS_CLIENTE = [];
+
+function renderContactosCliente() {
+  const wrap = document.getElementById('fc-contactos-lista');
+  if (!wrap) return;
+  if (!CONTACTOS_CLIENTE.length) {
+    wrap.innerHTML = `<div style="font-size:12px;color:var(--text-muted);font-style:italic">Sin contactos agregados</div>`;
+    return;
+  }
+  wrap.innerHTML = CONTACTOS_CLIENTE.map((c, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:center">
+      <input type="text" placeholder="Nombre" value="${escAttr(c.nombre || '')}"
+        oninput="actualizarContactoCliente(${i},'nombre',this.value)"/>
+      <input type="text" placeholder="Cargo" value="${escAttr(c.cargo || '')}"
+        oninput="actualizarContactoCliente(${i},'cargo',this.value)"/>
+      <input type="text" placeholder="Teléfono o correo" value="${escAttr(c.contacto || '')}"
+        oninput="actualizarContactoCliente(${i},'contacto',this.value)"/>
+      <button type="button" class="btn-icon" title="Quitar este contacto"
+        onclick="quitarContactoCliente(${i})" style="color:var(--danger)">✕</button>
+    </div>
+  `).join('');
+}
+
+function agregarContactoCliente() {
+  CONTACTOS_CLIENTE.push({ nombre: '', cargo: '', contacto: '' });
+  renderContactosCliente();
+}
+function actualizarContactoCliente(idx, campo, valor) {
+  if (!CONTACTOS_CLIENTE[idx]) return;
+  CONTACTOS_CLIENTE[idx][campo] = valor;
+}
+function quitarContactoCliente(idx) {
+  CONTACTOS_CLIENTE.splice(idx, 1);
+  renderContactosCliente();
+}
+function escAttr(s) {
+  return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function limpiarFormCliente() {
   ['fc-nombre','fc-telefono','fc-correo','fc-empresa','fc-direccion','fc-observaciones',
-   'fc-monto-recurrente','fc-dia-mes'].forEach(id => {
+   'fc-monto-recurrente','fc-dia-mes',
+   'fc-ruc','fc-direccion-factura','fc-fecha-aniversario'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  CONTACTOS_CLIENTE = [];
+  renderContactosCliente();
   const est = document.getElementById('fc-estado');
   if (est) est.value = 'activo';
 
@@ -783,6 +831,11 @@ function rellenarFormCliente(c) {
   set('fc-empresa',      c.empresa);
   set('fc-direccion',    c.direccion);
   set('fc-observaciones',c.observaciones);
+  set('fc-ruc',                c.ruc);
+  set('fc-direccion-factura',  c.direccion_factura);
+  set('fc-fecha-aniversario',  c.fecha_aniversario);
+  CONTACTOS_CLIENTE = Array.isArray(c.contactos) ? [...c.contactos] : [];
+  renderContactosCliente();
   const est = document.getElementById('fc-estado');
   if (est) est.value = c.estado || 'activo';
 
@@ -837,6 +890,10 @@ async function guardarCliente() {
     empresa:       document.getElementById('fc-empresa')?.value.trim()  || null,
     direccion:     document.getElementById('fc-direccion')?.value.trim()|| null,
     observaciones: document.getElementById('fc-observaciones')?.value.trim() || null,
+    ruc:               document.getElementById('fc-ruc')?.value.trim() || null,
+    direccion_factura: document.getElementById('fc-direccion-factura')?.value.trim() || null,
+    fecha_aniversario: document.getElementById('fc-fecha-aniversario')?.value || null,
+    contactos:         (CONTACTOS_CLIENTE || []).filter(c => (c.nombre || '').trim()),
     estado:        document.getElementById('fc-estado')?.value || 'activo',
     activo:        true,
     tipo_cliente:  tipoCliente,
@@ -1161,6 +1218,13 @@ async function abrirPerfil(clienteId) {
   setPerfilField('perfil-empresa-val', cl.empresa);
   setPerfilField('perfil-observaciones', cl.observaciones);
   setPerfilField('perfil-creado',   fmtFecha(cl.created_at));
+  setPerfilField('perfil-ruc', cl.ruc);
+  setPerfilField('perfil-aniversario', cl.fecha_aniversario ? fmtFecha(cl.fecha_aniversario) : null);
+  setPerfilField('perfil-direccion-factura', cl.direccion_factura);
+  const contactos = Array.isArray(cl.contactos) ? cl.contactos.filter(c => (c.nombre||'').trim()) : [];
+  setPerfilField('perfil-contactos', contactos.length
+    ? contactos.map(c => `${c.nombre}${c.cargo ? ' (' + c.cargo + ')' : ''}${c.contacto ? ' — ' + c.contacto : ''}`).join(' · ')
+    : null);
 
   // Estadísticas (del campo calculado, actualizar desde ventas siempre)
   await cargarStatsCliente(cl.id);
