@@ -952,6 +952,11 @@
   window.closeMobileSidebar      = closeMobileSidebar;
   window.toggleTheme             = toggleTheme;
   window.navigate                = navigate;
+  // GS vive dentro de este IIFE, pero el modal de moneda de
+  // visualizacion esta definido FUERA (al final del archivo) y
+  // necesita leer GS.empresaConfig -- sin esto, al abrir el modal
+  // lanzaba "GS is not defined" y no pasaba nada al tocar el boton.
+  window.GS                      = GS;
 
   document.addEventListener('DOMContentLoaded', () => {
     initGastos();
