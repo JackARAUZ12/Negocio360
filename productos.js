@@ -321,6 +321,11 @@ async function cargarDatosEmpresa() {
     const btnVencer = $('btnProximosVencer');
     if (btnVencer) btnVencer.style.display = empresa?.maneja_lotes_vencimiento === true ? '' : 'none';
 
+    // Presentaciones de venta: se lee una sola vez aquí, y el resto del
+    // módulo solo consulta STATE.manejaPresentaciones -- si está apagado,
+    // nada de presentaciones se muestra ni se consulta.
+    STATE.manejaPresentaciones = empresa?.maneja_presentaciones === true;
+
     // ── FIX MONEDA ────────────────────────────────────────────
     // Orden de prioridad:
     // 1. configuracion_empresa.moneda  (fuente principal del onboarding)
@@ -530,6 +535,97 @@ function actualizarFilaEscala(i, campo, valor) {
 function eliminarFilaEscala(i) {
   STATE.formEscalas.splice(i, 1);
   renderEscalasEditor();
+}
+
+/* ============================================================
+   PRESENTACIONES DE VENTA -- sistema APARTE de las escalas de
+   precio. Una escala cambia el precio por volumen pero siempre
+   descuenta 1 unidad por unidad. Una presentacion, en cambio,
+   tiene un FACTOR: vender 1 blister descuenta 10 del inventario.
+   Solo se muestra si el negocio lo activo en Configuracion.
+   ============================================================ */
+function renderPresentacionesEditor() {
+  const cont = $('presentacionesEditorBody');
+  if (!cont) return;
+  const filas = STATE.formPresentaciones || [];
+  cont.innerHTML = filas.map((fila, i) => `
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" placeholder="Ej: Blíster de 10"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaPresentacion(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" placeholder="Factor" min="0.0001" step="any"
+             title="Cuántas unidades del inventario descuenta"
+             value="${fila.factor ?? ''}"
+             oninput="actualizarFilaPresentacion(${i}, 'factor', this.value)" />
+      <input type="number" class="form-input" placeholder="Precio" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaPresentacion(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar presentación"
+              onclick="eliminarFilaPresentacion(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ninguna presentación. Si no agregas ninguna, el producto se vende por unidad como siempre.</p>';
+}
+
+function agregarFilaPresentacion() {
+  if (!STATE.formPresentaciones) STATE.formPresentaciones = [];
+  STATE.formPresentaciones.push({ nombre: '', factor: '', precio: '' });
+  renderPresentacionesEditor();
+}
+function actualizarFilaPresentacion(i, campo, valor) {
+  if (!STATE.formPresentaciones?.[i]) return;
+  STATE.formPresentaciones[i][campo] = valor;
+}
+function eliminarFilaPresentacion(i) {
+  STATE.formPresentaciones.splice(i, 1);
+  renderPresentacionesEditor();
+}
+
+// Muestra u oculta la seccion de presentaciones segun si el negocio
+// la activo en Configuracion. Si esta apagada, la seccion ni aparece
+// -- el formulario se ve exactamente igual que siempre.
+function aplicarVisibilidadPresentaciones() {
+  const wrap = $('wrapPresentaciones');
+  if (wrap) wrap.style.display = STATE.manejaPresentaciones ? '' : 'none';
+}
+
+async function cargarPresentacionesDeProducto(productoId) {
+  if (!STATE.manejaPresentaciones) return;
+  try {
+    const { data } = await supabaseClient.from('producto_presentaciones')
+      .select('nombre,factor,precio')
+      .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id)
+      .order('orden');
+    STATE.formPresentaciones = (data || []).map(p => ({ nombre: p.nombre, factor: p.factor, precio: p.precio }));
+    renderPresentacionesEditor();
+  } catch (e) {
+    console.warn('cargarPresentacionesDeProducto:', e);
+  }
+}
+
+// Mismo enfoque que sincronizarEscalas: reemplaza el set completo
+// (simple y seguro para listas pequeñas, sin logica de diff).
+async function sincronizarPresentaciones(productoId, filas) {
+  const limpias = (filas || [])
+    .filter(f => (f.nombre || '').trim() && parseFloat(f.factor) > 0)
+    .map((f, i) => ({
+      auth_user_id: STATE.user.id,
+      producto_id:  productoId,
+      nombre:       f.nombre.trim(),
+      factor:       parseFloat(f.factor),
+      precio:       isNaN(parseFloat(f.precio)) ? 0 : parseFloat(f.precio),
+      orden:        i,
+      activo:       true,
+    }));
+
+  const { error: errDel } = await supabaseClient
+    .from('producto_presentaciones').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('producto_presentaciones').insert(limpias);
+    if (errIns) throw errIns;
+  }
 }
 
 async function sincronizarEscalas(productoId, filas) {
@@ -2314,6 +2410,11 @@ function resetFormulario() {
   STATE.formEscalas = [];
   setTipoPrecio('fijo');
   renderEscalasEditor();
+  STATE.formPresentaciones = [];
+  const inputUM = $('inputUnidadMedida');
+  if (inputUM) inputUM.value = '';
+  renderPresentacionesEditor();
+  aplicarVisibilidadPresentaciones();
   // Por defecto: "Descontar de caja" (caso más común — compra nueva)
   setCajaImpacto(true);
   // Fecha de creación: hoy por defecto, pero editable — útil cuando el
@@ -2354,6 +2455,14 @@ function cargarFormulario(p) {
   STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
   setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
   renderEscalasEditor();
+
+  // Presentaciones de venta (si el negocio activó la función)
+  const inputUMEdit = $('inputUnidadMedida');
+  if (inputUMEdit) inputUMEdit.value = p.unidad_medida || '';
+  STATE.formPresentaciones = [];
+  renderPresentacionesEditor();
+  aplicarVisibilidadPresentaciones();
+  cargarPresentacionesDeProducto(p.id);
 
   // Fecha de creación: editable, para poder corregirla cuando el producto
   // ya existía antes de usar el sistema (no siempre coincide con "hoy").
@@ -2476,6 +2585,7 @@ async function guardarProducto() {
         costo:         isNaN(costo)       ? 0 : costo,
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
+        unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         garantia_meses: garantiaMeses,
@@ -2533,6 +2643,7 @@ async function guardarProducto() {
         costo:         isNaN(costo)  ? 0 : costo,
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
+        unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
@@ -2594,6 +2705,11 @@ async function guardarProducto() {
     if (productoIdGuardado) {
       try {
         await sincronizarEscalas(productoIdGuardado, tipoPrecio === 'escala' ? STATE.formEscalas : []);
+        // Presentaciones: solo se tocan si el negocio activó la función.
+        // Si está apagada, ni se consulta -- nada cambia para quien no la usa.
+        if (STATE.manejaPresentaciones) {
+          await sincronizarPresentaciones(productoIdGuardado, STATE.formPresentaciones || []);
+        }
       } catch (eEscalas) {
         console.error('sincronizarEscalas:', eEscalas);
         showToast('warning', 'Producto guardado', 'No se pudieron guardar los precios de la escala, intenta editarlo de nuevo.');
