@@ -1054,7 +1054,7 @@ async function loadMetodosPago() {
    ============================================================ */
 async function loadProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = data || [];
 
@@ -1133,6 +1133,31 @@ async function loadEscalasCache() {
     } catch (eCombo) { /* si falla, los combos con escala solo no muestran precios — no rompe nada más */ }
     S.escalasPorProducto = map;
   } catch(e) { S.escalasPorProducto = {}; }
+}
+
+/* ============================================================
+   PRESENTACIONES DE VENTA — solo se cargan si el negocio activó
+   la función en Configuración. Si está apagada, este mapa queda
+   vacío y el carrito nunca muestra ningún selector: todo
+   funciona exactamente igual que siempre.
+   ============================================================ */
+async function cargarPresentaciones() {
+  S.presentacionesPorProducto = {};
+  if (S.empresaConfig?.maneja_presentaciones !== true) return;
+  try {
+    const { data } = await sb.from('producto_presentaciones')
+      .select('id,producto_id,nombre,factor,precio,orden')
+      .eq('auth_user_id', S.userId).eq('activo', true).order('orden');
+    const map = {};
+    (data || []).forEach(p => {
+      if (!map[p.producto_id]) map[p.producto_id] = [];
+      map[p.producto_id].push(p);
+    });
+    S.presentacionesPorProducto = map;
+  } catch (e) {
+    console.warn('cargarPresentaciones:', e);
+    S.presentacionesPorProducto = {};
+  }
 }
 
 /* ============================================================
@@ -2329,6 +2354,16 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       // descuenta esta línea (null = esta misma cuenta, como siempre).
       origenStockId:     esRemoto ? origen.sucursalId    : null,
       origenStockNombre: esRemoto ? origen.nombreCuenta  : null,
+      // Presentaciones de venta disponibles para este producto. Si el
+      // negocio no activo la funcion, este arreglo siempre queda vacio
+      // y el carrito no muestra ningun selector -- todo igual que hoy.
+      presentaciones: (tipo === 'producto' && !prod.esCombo)
+        ? (S.presentacionesPorProducto?.[prod.id] || []) : [],
+      unidadMedida: prod.unidad_medida || null,
+      presentacionId: null,
+      presentacionNombre: null,
+      presentacionFactor: null,
+      precioBase: null,
     };
     S.carrito.push(item);
   }
@@ -2386,6 +2421,44 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 
   renderCarritoVentaRapida();
   showToast(`${prod.nombre} · ${escalaElegida.nombre}${esRemoto ? ' · desde '+origen.nombreCuenta : ''} agregado`, 'success');
+}
+
+// Cuantas unidades del INVENTARIO descuenta realmente una linea del
+// carrito. Sin presentaciones (el caso de todos los negocios que no
+// activaron la funcion) devuelve la cantidad tal cual -- exactamente
+// el comportamiento de siempre. Con una presentacion elegida, se
+// multiplica por su factor: vender 1 blister de 10 descuenta 10.
+function unidadesInventario(item) {
+  const factor = Number(item?.presentacionFactor);
+  const cantidad = Number(item?.cantidad) || 0;
+  if (!factor || factor <= 0) return cantidad;
+  return cantidad * factor;
+}
+
+// Cambia la presentacion elegida de una linea del carrito. Ajusta el
+// precio al de esa presentacion, pero NUNCA pisa un precio que el
+// vendedor haya escrito a mano ni una regalia ya marcada.
+function cambiarPresentacion(productoId, presentacionId) {
+  const item = S.carrito.find(c => c.id === productoId);
+  if (!item) return;
+
+  if (!presentacionId) {
+    // Volver a "por unidad": se restaura el precio base del producto
+    item.presentacionId = null;
+    item.presentacionNombre = null;
+    item.presentacionFactor = null;
+    if (!item.esRegalia && !item.precioEditado) item.precio = Number(item.precioBase ?? item.precio) || 0;
+  } else {
+    const p = (item.presentaciones || []).find(x => x.id === presentacionId);
+    if (!p) return;
+    if (item.precioBase == null) item.precioBase = item.precio;
+    item.presentacionId = p.id;
+    item.presentacionNombre = p.nombre;
+    item.presentacionFactor = Number(p.factor) || 1;
+    if (!item.esRegalia && !item.precioEditado) item.precio = Number(p.precio) || 0;
+  }
+  recalcItem(item);
+  renderCarrito(item.tipo);
 }
 
 function recalcItem(item) {
@@ -2885,6 +2958,15 @@ function renderCarrito(tipo) {
         ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
         ${item.esPromocion ? `<div style="font-size:11px;color:var(--success);font-weight:600">🎁 Promoción</div>` : ''}
         ${item.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía (sin costo para el cliente)</div>` : ''}
+        ${(item.presentaciones && item.presentaciones.length) ? `
+          <select onchange="cambiarPresentacion('${item.id}', this.value)"
+                  title="Presentación de venta — cambia el precio y cuánto se descuenta del inventario"
+                  style="margin-top:4px;font-size:11.5px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface,#fff);color:var(--text-primary,#111);max-width:190px">
+            <option value="">Por unidad (${item.unidadMedida || 'unidad'})</option>
+            ${item.presentaciones.map(p => `
+              <option value="${p.id}" ${item.presentacionId === p.id ? 'selected' : ''}>${esc(p.nombre)} (×${p.factor})</option>
+            `).join('')}
+          </select>` : ''}
         ${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}
         ${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}
         ${item.precioEditado ? `<div style="font-size:10.5px;color:var(--text-muted)">✏️ Precio ajustado solo para esta venta</div>` : ''}
@@ -3875,6 +3957,9 @@ async function confirmarVenta(conImpresion) {
       escala_nombre:  item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
       es_regalia:     !!item.esRegalia,
+      presentacion_id:     item.presentacionId || null,
+      presentacion_nombre: item.presentacionNombre || null,
+      presentacion_factor: item.presentacionFactor || null,
     }));
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
@@ -3899,7 +3984,7 @@ async function confirmarVenta(conImpresion) {
         // igual, registrada aquí, solo cambia de dónde sale el stock.
         try {
           const { error: errRemoto } = await sb.rpc('descontar_stock_remoto', {
-            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: item.cantidad,
+            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: unidadesInventario(item),
           });
           if (errRemoto) console.warn('Error descontando stock remoto:', item.nombre, errRemoto);
         } catch (eRemoto) { console.warn('Error descontando stock remoto:', item.nombre, eRemoto); }
@@ -3907,7 +3992,7 @@ async function confirmarVenta(conImpresion) {
       }
       const prod = S.productosCache.find(p => p.id===item.id);
       if (!prod) continue;
-      const nuevoStock = parseFloat(prod.stock_actual||0) - item.cantidad;
+      const nuevoStock = parseFloat(prod.stock_actual||0) - unidadesInventario(item);
       const { error: errStock } = await sb.from('productos')
         .update({ stock_actual: Math.max(0, nuevoStock) })
         .eq('id', item.id).eq('auth_user_id', S.userId);
@@ -3921,7 +4006,7 @@ async function confirmarVenta(conImpresion) {
       // se actualizó igual que siempre. Si el producto no tiene
       // lotes registrados, esto simplemente no hace nada.
       if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
-        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: item.cantidad })
+        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
           .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
       }
     }
@@ -5089,6 +5174,9 @@ async function confirmarVentaRapida() {
       escala_nombre:   item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
       es_regalia:      !!item.esRegalia,
+      presentacion_id:      item.presentacionId || null,
+      presentacion_nombre:  item.presentacionNombre || null,
+      presentacion_factor:  item.presentacionFactor || null,
     }));
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
@@ -5104,19 +5192,19 @@ async function confirmarVentaRapida() {
       if (item.origenStockId) {
         try {
           const { error: errRemoto } = await sb.rpc('descontar_stock_remoto', {
-            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: item.cantidad,
+            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: unidadesInventario(item),
           });
           if (errRemoto) console.warn('Error descontando stock remoto:', item.nombre, errRemoto);
         } catch (eRemoto) { console.warn('Error descontando stock remoto:', item.nombre, eRemoto); }
         continue;
       }
-      const nuevoStock = Math.max(0, item.stockDisponible - item.cantidad);
+      const nuevoStock = Math.max(0, item.stockDisponible - unidadesInventario(item));
       const { error: errStock } = await sb.from('productos')
         .update({ stock_actual: nuevoStock }).eq('id', item.id).eq('auth_user_id', S.userId);
       if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
 
       if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
-        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: item.cantidad })
+        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
           .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
       }
     }
@@ -5802,6 +5890,7 @@ async function initVentas() {
       loadClientesCache(),
       loadEscalasCache(),
       loadPromocionesCache(),
+      cargarPresentaciones(),
     ]);
 
     // 6. Cargar KPIs y tabla
