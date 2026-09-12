@@ -1108,6 +1108,30 @@
           <div class="cfg-status" id="lv-status"></div>
         </div>
 
+        <!-- PRESENTACIONES / UNIDADES DE VENTA -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Presentaciones de venta</div>
+              <div class="cfg-card-desc">Para negocios que venden el mismo producto en varias presentaciones — una farmacia que vende por tableta, blíster de 10 o caja de 100; una ferretería que vende por metro o rollo completo. Cada presentación tiene su propio precio y descuenta del inventario la cantidad que corresponde.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar presentaciones de venta</div>
+              <div class="cfg-row-sub" id="pv-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="pv-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onTogglePresentacionesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="pv-status"></div>
+        </div>
+
         <!-- EDITAR PERFIL -->
         <div class="cfg-card fade-in stagger-2">
           <div class="cfg-card-header">
@@ -1396,6 +1420,64 @@ async function guardarLotesVencimiento(activo) {
 }
 
 /* =====================================================
+   PRESENTACIONES DE VENTA — mismo patrón que lotes y vencimientos,
+   guardado en configuracion_empresa.maneja_presentaciones, apagado
+   por defecto para no afectar a nadie que no lo active a propósito.
+===================================================== */
+async function cargarPresentaciones() {
+  const toggle = document.getElementById('pv-toggle');
+  const sub    = document.getElementById('pv-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('maneja_presentaciones')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.maneja_presentaciones === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — en Productos puedes definir presentaciones, y al vender podrás elegir cuál.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarPresentaciones:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onTogglePresentacionesClick(evt) {
+  const toggle = document.getElementById('pv-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarPresentaciones(toggle.checked);
+}
+
+async function guardarPresentaciones(activo) {
+  const toggle = document.getElementById('pv-toggle');
+  const sub = document.getElementById('pv-row-sub');
+  const statusEl = document.getElementById('pv-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ maneja_presentaciones: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — en Productos puedes definir presentaciones, y al vender podrás elegir cuál.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Presentaciones de venta activado.' : 'Presentaciones de venta desactivado.', true);
+  } catch (e) {
+    console.error('guardarPresentaciones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/* =====================================================
    EDITAR MÓDULOS — activar/desactivar módulos opcionales
    La lista de módulos sale de modulos-guard.js (ModulosGuard),
    así que agregar un módulo opcional nuevo en el futuro NO
@@ -1623,6 +1705,7 @@ async function initConfiguracion() {
       cargarMultiusuario();
       cargarModulosOpcionales();
       cargarLotesVencimiento();
+      cargarPresentaciones();
     };
 
     if (window.PerfilesGuardConfig) {
