@@ -971,6 +971,55 @@
 <!-- =====================================================
      MODAL: NUEVO / EDITAR CLIENTE
 ===================================================== -->
+<div class="modal-overlay" id="modal-interaccion" onclick="if(event.target===this)closeModal('modal-interaccion')">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-interaccion-title">Registrar interacción</div>
+      <button class="modal-close" onclick="closeModal('modal-interaccion')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>Tipo <span style="color:var(--danger)">*</span></label>
+          <select id="fi-tipo">
+            <option value="llamada">Llamada</option>
+            <option value="visita">Visita</option>
+            <option value="reunion">Reunión</option>
+            <option value="mensaje">Mensaje / WhatsApp</option>
+            <option value="correo">Correo</option>
+            <option value="cotizacion">Cotización enviada</option>
+            <option value="reclamo">Reclamo</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="fi-fecha"/>
+        </div>
+        <div class="form-group full-col">
+          <label>Asunto</label>
+          <input type="text" id="fi-titulo" placeholder="Ej: Consultó por precios de mayoreo"/>
+        </div>
+        <div class="form-group full-col">
+          <label>Detalle</label>
+          <textarea id="fi-descripcion" rows="4" placeholder="Qué se habló, qué quedó pendiente, próximos pasos…"></textarea>
+        </div>
+        <div class="form-group full-col">
+          <label>Registrado por</label>
+          <input type="text" id="fi-registrado-por" placeholder="Nombre de quien atendió (opcional)"/>
+        </div>
+      </div>
+      <p id="fi-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('modal-interaccion')">Cancelar</button>
+      <button class="btn-primary" id="fi-btn-guardar" onclick="guardarInteraccion()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-cliente" onclick="if(event.target===this)closeModal('modal-cliente')">
   <div class="modal-box modal-md">
     <div class="modal-header">
@@ -1282,6 +1331,21 @@
         <div class="info-item full">
           <div class="info-label">Observaciones</div>
           <div class="info-value" id="perfil-observaciones" style="color:var(--text-secondary)">—</div>
+        </div>
+      </div>
+
+      <!-- INTERACCIONES (CRM) -->
+      <div class="historial-section">
+        <div class="historial-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span style="display:flex;align-items:center;gap:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Interacciones
+            <span style="font-size:11.5px;color:var(--text-muted);font-weight:400">— Llamadas, visitas, mensajes y reuniones</span>
+          </span>
+          <button class="btn-primary btn-sm" onclick="abrirModalInteraccion()">+ Registrar interacción</button>
+        </div>
+        <div id="interacciones-lista" style="display:flex;flex-direction:column;gap:0;margin-top:10px">
+          <div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:8px 0">Cargando…</div>
         </div>
       </div>
 

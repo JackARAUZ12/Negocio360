@@ -1231,6 +1231,7 @@ async function abrirPerfil(clienteId) {
 
   // Historial de ventas
   await cargarHistorialVentas(cl.id);
+  await cargarInteraccionesCliente(cl.id);
 
   openModal('modal-perfil');
 }
@@ -1273,6 +1274,141 @@ async function cargarStatsCliente(clienteId) {
     }).eq('id', clienteId).eq('auth_user_id', CS.userId).then(() => {});
 
   } catch(e) { console.warn('cargarStatsCliente:', e); }
+}
+
+// ============================================================
+// INTERACCIONES (CRM) -- registro de llamadas, visitas, mensajes y
+// reuniones con cada cliente. Es lo que convierte el modulo de un
+// directorio de contactos en un CRM real: queda constancia de CADA
+// contacto con el cliente, no solo de sus compras.
+// ============================================================
+const TIPOS_INTERACCION = {
+  llamada:    { label: 'Llamada',            icono: '📞', color: '#2563eb' },
+  visita:     { label: 'Visita',             icono: '🚗', color: '#7c3aed' },
+  reunion:    { label: 'Reunión',            icono: '🤝', color: '#0891b2' },
+  mensaje:    { label: 'Mensaje / WhatsApp', icono: '💬', color: '#16a34a' },
+  correo:     { label: 'Correo',             icono: '✉️', color: '#64748b' },
+  cotizacion: { label: 'Cotización enviada', icono: '📄', color: '#ca8a04' },
+  reclamo:    { label: 'Reclamo',            icono: '⚠️', color: '#dc2626' },
+  otro:       { label: 'Otro',               icono: '•',  color: '#71717a' },
+};
+
+async function cargarInteraccionesCliente(clienteId) {
+  const wrap = document.getElementById('interacciones-lista');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:8px 0">Cargando…</div>`;
+  try {
+    const { data, error } = await sb.from('cliente_interacciones')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .eq('auth_user_id', CS.userId)
+      .order('fecha', { ascending: false });
+    if (error) throw error;
+    CS.interaccionesCliente = data || [];
+    renderInteraccionesCliente();
+  } catch (e) {
+    console.error('cargarInteraccionesCliente:', e);
+    wrap.innerHTML = `<div style="font-size:12.5px;color:var(--danger);padding:8px 0">No se pudieron cargar las interacciones</div>`;
+  }
+}
+
+function renderInteraccionesCliente() {
+  const wrap = document.getElementById('interacciones-lista');
+  if (!wrap) return;
+  const lista = CS.interaccionesCliente || [];
+  if (!lista.length) {
+    wrap.innerHTML = `<div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:10px 0">Sin interacciones registradas todavía. Usa el botón de arriba para registrar la primera.</div>`;
+    return;
+  }
+  wrap.innerHTML = lista.map(i => {
+    const t = TIPOS_INTERACCION[i.tipo] || TIPOS_INTERACCION.otro;
+    return `
+      <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${t.color}22;display:flex;align-items:center;justify-content:center;font-size:13px">${t.icono}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:${t.color}">${t.label}</span>
+            <span style="font-size:11.5px;color:var(--text-muted)">${fmtFechaHora(i.fecha)}</span>
+            ${i.registrado_por ? `<span style="font-size:11px;color:var(--text-muted)">· ${escHtmlCli(i.registrado_por)}</span>` : ''}
+          </div>
+          ${i.titulo ? `<div style="font-size:13px;font-weight:600;margin-top:2px">${escHtmlCli(i.titulo)}</div>` : ''}
+          ${i.descripcion ? `<div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;white-space:pre-wrap">${escHtmlCli(i.descripcion)}</div>` : ''}
+        </div>
+        <button class="btn-icon" title="Eliminar esta interacción" onclick="eliminarInteraccion('${i.id}')" style="flex-shrink:0;color:var(--danger)">✕</button>
+      </div>`;
+  }).join('');
+}
+
+function abrirModalInteraccion() {
+  if (!CS.clienteActivo?.id) { showToast('Abre un cliente primero', 'error'); return; }
+  document.getElementById('fi-tipo').value = 'llamada';
+  // Prellenar con la fecha y hora de ahora mismo, en formato local
+  const ahora = new Date();
+  const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  document.getElementById('fi-fecha').value = local;
+  document.getElementById('fi-titulo').value = '';
+  document.getElementById('fi-descripcion').value = '';
+  document.getElementById('fi-registrado-por').value = '';
+  document.getElementById('fi-error').textContent = '';
+  openModal('modal-interaccion');
+}
+
+async function guardarInteraccion() {
+  const btn = document.getElementById('fi-btn-guardar');
+  const error = document.getElementById('fi-error');
+  error.textContent = '';
+
+  const clienteId = CS.clienteActivo?.id;
+  if (!clienteId) { error.textContent = 'No hay un cliente seleccionado'; return; }
+
+  const fechaValor = document.getElementById('fi-fecha').value;
+  const payload = {
+    auth_user_id: CS.userId,
+    cliente_id: clienteId,
+    tipo: document.getElementById('fi-tipo').value || 'otro',
+    fecha: fechaValor ? new Date(fechaValor).toISOString() : new Date().toISOString(),
+    titulo: document.getElementById('fi-titulo').value.trim() || null,
+    descripcion: document.getElementById('fi-descripcion').value.trim() || null,
+    registrado_por: document.getElementById('fi-registrado-por').value.trim() || null,
+  };
+
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const { error: errIns } = await sb.from('cliente_interacciones').insert(payload);
+    if (errIns) throw errIns;
+    closeModal('modal-interaccion');
+    showToast('Interacción registrada');
+    await cargarInteraccionesCliente(clienteId);
+  } catch (e) {
+    console.error('guardarInteraccion:', e);
+    error.textContent = 'No se pudo guardar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+async function eliminarInteraccion(id) {
+  if (!confirm('¿Eliminar esta interacción del historial?')) return;
+  try {
+    const { error } = await sb.from('cliente_interacciones')
+      .delete().eq('id', id).eq('auth_user_id', CS.userId);
+    if (error) throw error;
+    showToast('Interacción eliminada');
+    if (CS.clienteActivo?.id) await cargarInteraccionesCliente(CS.clienteActivo.id);
+  } catch (e) {
+    console.error('eliminarInteraccion:', e);
+    showToast('No se pudo eliminar', 'error');
+  }
+}
+
+function fmtFechaHora(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('es-NI', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  } catch (e) { return String(iso); }
+}
+function escHtmlCli(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 async function cargarHistorialVentas(clienteId) {
