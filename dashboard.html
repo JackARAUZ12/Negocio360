@@ -2884,8 +2884,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <p id="mv-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
     </div>
     <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-moneda-vis')">Cancelar</button>
-      <button class="btn-primary" onclick="guardarMonedaVis()">Aplicar</button>
+      <button onclick="closeModal('modal-moneda-vis')" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
     </div>
   </div>
 </div>
