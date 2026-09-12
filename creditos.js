@@ -2910,6 +2910,12 @@
   window.closeMobileSidebar = closeMobileSidebar;
   window.toggleTheme = toggleTheme;
   window.navigate = navigate;
+  // CS vive dentro de este IIFE, pero el modal de moneda de
+  // visualizacion esta definido FUERA (al final del archivo) y
+  // necesita leer CS.empresaConfig -- sin esto, al abrir el modal
+  // lanzaba "CS is not defined" y no pasaba nada al tocar el boton.
+  // Mismo caso ya corregido antes en gastos.js.
+  window.CS = CS;
 
   document.addEventListener('DOMContentLoaded', () => {
     initCreditos();
