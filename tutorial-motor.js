@@ -234,5 +234,75 @@
     btn.onclick = () => mostrar(moduloKey, pasos);
   }
 
+  /**
+   * Boton "Adquirir sistema" -- SOLO se muestra en la cuenta de
+   * demostracion (Juan Perez). Lleva a WhatsApp para cotizar.
+   * Se autoejecuta al cargar cualquier pagina que incluya este
+   * archivo, pero no hace absolutamente nada si la cuenta no es la
+   * de demostracion: ninguna otra cuenta lo ve jamas.
+   */
+  const TM_WHATSAPP_VENTAS = '50581294177';
+
+  async function mostrarBotonAdquirirSiEsDemo() {
+    try {
+      if (!tmSb) return;
+      const { data: { user } } = await tmSb.auth.getUser();
+      if (!user || user.id !== TM_CUENTA_SIEMPRE_DEMO) return;
+      if (document.getElementById('tm-btn-adquirir')) return;
+
+      const style = document.createElement('style');
+      style.textContent = `
+        #tm-btn-adquirir {
+          position: fixed; right: 20px; bottom: 84px; z-index: 99998;
+          display: flex; align-items: center; gap: 8px;
+          padding: 11px 18px; border: 0; border-radius: 999px;
+          background: #25D366; color: #fff; cursor: pointer;
+          font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+          font-size: 13.5px; font-weight: 700;
+          box-shadow: 0 6px 20px -4px rgba(37,211,102,.55);
+          transition: transform .18s ease, box-shadow .18s ease;
+        }
+        #tm-btn-adquirir:hover { transform: translateY(-2px); box-shadow: 0 10px 26px -4px rgba(37,211,102,.65); }
+        @media (max-width: 640px) {
+          #tm-btn-adquirir { right: 14px; bottom: 76px; padding: 10px 15px; font-size: 12.5px; }
+        }
+      `;
+      document.head.appendChild(style);
+
+      const btn = document.createElement('button');
+      btn.id = 'tm-btn-adquirir';
+      btn.type = 'button';
+      btn.title = 'Cotizar Negocio360 por WhatsApp';
+      btn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M17.5 14.4c-.3-.2-1.7-.9-2-1-.3-.1-.5-.2-.7.2-.2.3-.7 1-.9 1.2-.2.2-.3.2-.6.1-1.8-.9-3-1.6-4.2-3.6-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5 0-.2-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5 1.9.8 2.6.9 3.5.8.6-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3z"/>
+          <path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3.1.8.8-3-.2-.3a8.2 8.2 0 1 1 7.2 3.9z"/>
+        </svg>
+        Adquirir sistema
+      `;
+      btn.onclick = () => {
+        const msg = encodeURIComponent('Hola, estuve probando la demostración de Negocio360 y quiero cotizar el sistema.');
+        window.open(`https://wa.me/${TM_WHATSAPP_VENTAS}?text=${msg}`, '_blank', 'noopener');
+      };
+      document.body.appendChild(btn);
+    } catch (e) {
+      // Si algo falla aqui, simplemente no se muestra el boton --
+      // nunca debe afectar el funcionamiento normal de la pagina.
+      console.warn('mostrarBotonAdquirirSiEsDemo:', e);
+    }
+  }
+
+  // Se intenta al cargar la pagina. Si la sesion todavia no esta
+  // lista, se reintenta una sola vez tras un momento.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      mostrarBotonAdquirirSiEsDemo();
+      setTimeout(mostrarBotonAdquirirSiEsDemo, 2500);
+    });
+  } else {
+    mostrarBotonAdquirirSiEsDemo();
+    setTimeout(mostrarBotonAdquirirSiEsDemo, 2500);
+  }
+
   window.Negocio360Tutorial = { mostrar, verificarYMostrar, agregarBotonAyuda };
 })();
