@@ -911,6 +911,22 @@
         PG.authUserId = session.user.id;
         PG.authEmail  = session.user.email || null;
 
+        // Si el dueño desactivó el sistema multiusuario en Configuración,
+        // no tiene sentido seguir pidiéndole un código de administrador
+        // para entrar ahí. Antes esta verificación faltaba en este flujo
+        // (solo estaba en el guardia general), y como el desbloqueo se
+        // guardaba en sessionStorage -- que se borra al cerrar el
+        // navegador -- el código se volvía a pedir en cada sesión nueva
+        // aunque el multiusuario estuviera apagado.
+        try {
+          const { data: cfgUsuario } = await PG.client
+            .from('usuarios')
+            .select('multiusuario_activo')
+            .eq('auth_user_id', PG.authUserId)
+            .maybeSingle();
+          if (cfgUsuario && cfgUsuario.multiusuario_activo === false) { onDesbloqueado(); return; }
+        } catch (_) { /* si falla la consulta, se sigue pidiendo el código (más seguro) */ }
+
         // Ya se desbloqueó antes en esta misma pestaña: no se vuelve a pedir.
         try {
           const raw = sessionStorage.getItem(PG_CFG_KEY);
@@ -962,6 +978,17 @@
         if (!session) { onDesbloqueado(); return; }
         PG.authUserId = session.user.id;
         PG.authEmail  = session.user.email || null;
+
+        // Mismo criterio que requerirCodigoAdmin: con el multiusuario
+        // apagado no hay perfiles que proteger, así que no se pide código.
+        try {
+          const { data: cfgUsuario } = await PG.client
+            .from('usuarios')
+            .select('multiusuario_activo')
+            .eq('auth_user_id', PG.authUserId)
+            .maybeSingle();
+          if (cfgUsuario && cfgUsuario.multiusuario_activo === false) { onDesbloqueado(); return; }
+        } catch (_) { /* si falla, se sigue pidiendo el código (más seguro) */ }
 
         PG.perfiles = await cargarPerfiles();
         const admin = PG.perfiles.find(p => p.tipo === 'admin');
