@@ -1108,6 +1108,40 @@
           <div class="cfg-status" id="lv-status"></div>
         </div>
 
+        <!-- CIERRES DE CAJA AUTOMÁTICOS -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Cierres de caja automáticos</div>
+              <div class="cfg-card-desc">Si los activas, el sistema genera los cierres solo, cada madrugada. Si prefieres seguir haciéndolos a mano desde Caja, déjalos apagados — todo funciona igual que siempre.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cierre diario automático</div>
+              <div class="cfg-row-sub" id="cad-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cad-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCierreAutoDiario(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cierre mensual automático</div>
+              <div class="cfg-row-sub" id="cam-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cam-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCierreAutoMensual(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="cierres-auto-status"></div>
+        </div>
+
         <!-- PRESENTACIONES / UNIDADES DE VENTA -->
         <div class="cfg-card fade-in stagger-1">
           <div class="cfg-card-header">
@@ -1419,6 +1453,84 @@ async function guardarLotesVencimiento(activo) {
   }
 }
 
+
+/* =====================================================
+   CIERRES DE CAJA AUTOMÁTICOS — opcionales, apagados por
+   defecto. Con ambos apagados, el flujo manual desde Caja
+   funciona exactamente igual que siempre.
+===================================================== */
+async function cargarCierresAuto() {
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('cierre_auto_diario, cierre_auto_mensual')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    pintarCierreAuto('cad', data?.cierre_auto_diario === true, 'diario');
+    pintarCierreAuto('cam', data?.cierre_auto_mensual === true, 'mensual');
+  } catch (e) {
+    console.error('cargarCierresAuto:', e);
+    const s1 = document.getElementById('cad-row-sub');
+    const s2 = document.getElementById('cam-row-sub');
+    if (s1) s1.textContent = 'No se pudo cargar el estado.';
+    if (s2) s2.textContent = 'No se pudo cargar el estado.';
+  }
+}
+
+function pintarCierreAuto(prefijo, activo, tipo) {
+  const toggle = document.getElementById(prefijo + '-toggle');
+  const sub    = document.getElementById(prefijo + '-row-sub');
+  if (!toggle || !sub) return;
+  toggle.checked = activo;
+  toggle.disabled = false;
+  if (tipo === 'diario') {
+    sub.textContent = activo
+      ? 'Activado — cada madrugada se crea el cierre del día anterior.'
+      : 'Desactivado — los cierres diarios los haces tú desde Caja.';
+  } else {
+    sub.textContent = activo
+      ? 'Activado — el día 1 de cada mes se crea el cierre del mes que terminó.'
+      : 'Desactivado — los cierres mensuales los haces tú desde Caja.';
+  }
+}
+
+function onToggleCierreAutoDiario(evt) {
+  const t = document.getElementById('cad-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarCierreAuto('cierre_auto_diario', t.checked, 'cad', 'diario');
+}
+function onToggleCierreAutoMensual(evt) {
+  const t = document.getElementById('cam-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarCierreAuto('cierre_auto_mensual', t.checked, 'cam', 'mensual');
+}
+
+async function guardarCierreAuto(campo, activo, prefijo, tipo) {
+  const toggle = document.getElementById(prefijo + '-toggle');
+  const statusEl = document.getElementById('cierres-auto-status');
+  toggle.disabled = true;
+  try {
+    const payload = {};
+    payload[campo] = activo;
+    const { error } = await sbClient
+      .from('configuracion_empresa').update(payload)
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    pintarCierreAuto(prefijo, activo, tipo);
+    setStatus(statusEl, activo
+      ? `Cierre ${tipo} automático activado.`
+      : `Cierre ${tipo} automático desactivado.`, true);
+  } catch (e) {
+    console.error('guardarCierreAuto:', e);
+    toggle.checked = !activo;
+    toggle.disabled = false;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  }
+}
+
 /* =====================================================
    PRESENTACIONES DE VENTA — mismo patrón que lotes y vencimientos,
    guardado en configuracion_empresa.maneja_presentaciones, apagado
@@ -1706,6 +1818,7 @@ async function initConfiguracion() {
       cargarModulosOpcionales();
       cargarLotesVencimiento();
       cargarPresentaciones();
+      cargarCierresAuto();
     };
 
     if (window.PerfilesGuardConfig) {

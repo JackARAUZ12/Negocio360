@@ -925,7 +925,11 @@ function renderCierres() {
     const flujoNeto = c.total_ingresos - c.total_egresos;
     return `
     <tr>
-      <td>${fmtDate(c.fecha)}</td>
+      <td>
+        ${fmtDate(c.fecha)}
+        ${c.tipo === 'mensual' ? `<div style="font-size:10.5px;font-weight:700;color:var(--accent);margin-top:2px">📅 MENSUAL${c.periodo_inicio ? ` · ${fmtDate(c.periodo_inicio)} al ${fmtDate(c.periodo_fin)}` : ''}</div>` : ''}
+        ${c.automatico ? `<div style="font-size:10px;color:var(--text-muted);margin-top:1px">generado automáticamente</div>` : ''}
+      </td>
       <td>${fmt(c.saldo_inicial)}</td>
       <td class="td-entrada">${fmt(c.total_ingresos)}</td>
       <td class="td-salida">${fmt(c.total_egresos)}</td>
@@ -1057,6 +1061,63 @@ function exportarDetalleCierrePDF() {
   doc.save(`negocio360_cierre_caja_${fecha}.pdf`);
 }
 
+// Cierre MENSUAL: consolida todo el mes en curso en un solo registro.
+// Es independiente de los cierres diarios -- pueden convivir ambos sin
+// chocar, y ninguno afecta al otro.
+async function crearCierreMensual() {
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const finMes    = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const desde = iso(inicioMes), hasta = iso(finMes);
+
+  const { data: existing } = await sbClient
+    .from('cierres_caja').select('id')
+    .eq('auth_user_id', STATE.userId).eq('fecha', hasta).eq('tipo', 'mensual')
+    .maybeSingle();
+  if (existing) { showToast('Ya existe un cierre mensual para este mes', 'error'); return; }
+
+  try {
+    setBtnLoading('btn-cierre-mensual', true);
+
+    const { data: movs } = await sbClient
+      .from('movimientos_financieros')
+      .select('tipo_flujo, monto, saldo_anterior')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+      .gte('fecha', desde).lte('fecha', hasta)
+      .order('created_at');
+
+    const lista = movs || [];
+    if (!lista.length) { showToast('No hay movimientos este mes para cerrar', 'error'); return; }
+
+    const saldoInicial  = Number(lista[0].saldo_anterior) || 0;
+    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
+    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+
+    const { error } = await sbClient.from('cierres_caja').insert({
+      auth_user_id:      STATE.userId,
+      fecha:             hasta,
+      tipo:              'mensual',
+      periodo_inicio:    desde,
+      periodo_fin:       hasta,
+      saldo_inicial:     saldoInicial,
+      total_ingresos:    totalIngresos,
+      total_egresos:     totalEgresos,
+      saldo_final:       saldoInicial + totalIngresos - totalEgresos,
+      movimientos_count: lista.length,
+    });
+    if (error) throw error;
+
+    showToast('Cierre mensual creado correctamente');
+    await loadCierres();
+  } catch(e) {
+    console.error('crearCierreMensual:', e);
+    showToast('Error al crear el cierre mensual', 'error');
+  } finally {
+    setBtnLoading('btn-cierre-mensual', false);
+  }
+}
+
 async function crearCierreDiario() {
   const hoy = todayISO();
 
@@ -1092,6 +1153,7 @@ async function crearCierreDiario() {
     await sbClient.from('cierres_caja').insert({
       auth_user_id:     STATE.userId,
       fecha:            hoy,
+      tipo:             'diario',
       saldo_inicial:    saldoInicial,
       total_ingresos:   totalIngresos,
       total_egresos:    totalEgresos,
