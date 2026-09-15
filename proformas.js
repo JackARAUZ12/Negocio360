@@ -1272,10 +1272,39 @@ function abrirConvertirAVenta(id) {
    calcula el crédito aquí: se crea con el mismo formulario real de
    Créditos, y esta pantalla solo reacciona cuando ya se creó de verdad.
 ===================================================== */
-function abrirPagoParcial() {
+async function abrirPagoParcial() {
   const p = STATE.proformaActual;
   if (!p) return;
-  const items = (STATE.detalleActual || []).map(d => ({
+
+  // BUG REAL CORREGIDO: este botón se vuelve clicable en cuanto se abre
+  // el detalle de la proforma, pero STATE.detalleActual se llena DESPUÉS,
+  // con una consulta aparte a la base de datos. Si el usuario hacía clic
+  // rápido (normal en un mayorista viendo muchas proformas seguidas),
+  // STATE.detalleActual todavía tenía los productos de la proforma
+  // ANTERIOR, o venía vacío -- y "Agrega al menos un producto" bloqueaba
+  // la creación del crédito, exactamente el síntoma reportado por
+  // ALL PLASTIC MAYORISTA. Ahora se piden los detalles frescos de la
+  // base de datos aquí mismo, sin depender de lo que ya estuviera en
+  // memoria -- mismo patrón ya usado en confirmarConvertirAVenta().
+  const btn = document.getElementById('det-prof-btn-pago-parcial');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cargando…'; }
+
+  let detalles;
+  try {
+    const { data, error } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
+    if (error) throw error;
+    detalles = data || [];
+  } catch (e) {
+    console.error('abrirPagoParcial:', e);
+    showToast('No se pudo cargar la proforma. Intenta de nuevo.', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💳 Pago parcial / a crédito'; }
+    return;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '💳 Pago parcial / a crédito'; }
+
+  if (!detalles.length) { showToast('Esta proforma no tiene productos', 'error'); return; }
+
+  const items = detalles.map(d => ({
     producto_id: d.producto_id, nombre: d.producto_nombre, tipo_item: d.tipo_item,
     precio: d.precio, costo: d.costo, cantidad: d.cantidad,
     escala_id: d.escala_id, escala_nombre: d.escala_nombre, combo_id: d.combo_id,
