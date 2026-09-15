@@ -2428,6 +2428,77 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 // activaron la funcion) devuelve la cantidad tal cual -- exactamente
 // el comportamiento de siempre. Con una presentacion elegida, se
 // multiplica por su factor: vender 1 blister de 10 descuenta 10.
+// ============================================================
+// COMISION BANCARIA (POS de tarjeta)
+// Si el metodo de pago usado tiene una comision configurada (ej.
+// un POS que cobra 4.5%), se registra automaticamente como GASTO
+// y como EGRESO de caja -- asi la caja refleja lo que de verdad
+// llega del banco, y la comision queda contabilizada donde debe.
+// Si el metodo no tiene comision (el caso de todos los negocios
+// que no la configuraron), esta funcion no hace absolutamente
+// nada y todo sigue igual que siempre.
+// ============================================================
+async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVenta, numeroVenta, ventaId, fecha }) {
+  try {
+    if (!metodoPagoId || !(Number(totalVenta) > 0)) return null;
+
+    const metodo = (S.metodosPago || []).find(m => m.id === metodoPagoId);
+    const pct = Number(metodo?.comision_porcentaje) || 0;
+    if (pct <= 0) return null;
+
+    const monto = round2(Number(totalVenta) * pct / 100);
+    if (!(monto > 0)) return null;
+
+    const concepto = `Comisión bancaria ${pct}% — ${metodoNombre || 'tarjeta'} (Venta ${numeroVenta})`;
+
+    // 1. Gasto (para que aparezca en el módulo de Gastos y en reportes)
+    await sb.from('gastos').insert({
+      auth_user_id: S.userId,
+      concepto,
+      categoria: 'Comisiones bancarias',
+      monto,
+      fecha,
+      tipo: 'operativo',
+      estado: 'activo',
+      observaciones: `Generado automáticamente por la venta ${numeroVenta}`,
+    });
+
+    // 2. Egreso en caja (para que el saldo cuadre con lo que realmente
+    //    deposita el banco, no con el total bruto cobrado al cliente)
+    const { data: ult } = await sb.from('movimientos_financieros')
+      .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado', 'completado')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const saldoAnt = Number(ult?.saldo_resultante) || 0;
+
+    await sb.from('movimientos_financieros').insert({
+      auth_user_id:       S.userId,
+      tipo_flujo:         'EGRESO',
+      tipo_movimiento:    'GASTO',
+      concepto,
+      monto,
+      saldo_anterior:     saldoAnt,
+      saldo_resultante:   round2(saldoAnt - monto),
+      metodo_pago_id:     metodoPagoId,
+      metodo_pago_nombre: metodoNombre || null,
+      referencia_tipo:    'venta',
+      referencia_id:      ventaId,
+      fecha,
+    });
+
+    // 3. Dejar constancia en la venta
+    await sb.from('ventas')
+      .update({ comision_porcentaje: pct, comision_monto: monto })
+      .eq('id', ventaId).eq('auth_user_id', S.userId);
+
+    return { pct, monto };
+  } catch (e) {
+    // Nunca debe tumbar la venta: si esto falla, la venta ya quedo
+    // guardada correctamente y solo se avisa en consola.
+    console.error('registrarComisionBancaria:', e);
+    return null;
+  }
+}
+
 function unidadesInventario(item) {
   const factor = Number(item?.presentacionFactor);
   const cantidad = Number(item?.cantidad) || 0;
@@ -4133,6 +4204,13 @@ async function confirmarVenta(conImpresion) {
       // Guardar referencia en la venta
       if (ultimoMovId) {
         await sb.from('ventas').update({ referencia_caja: ultimoMovId }).eq('id', ventaId);
+
+        // Comisión bancaria (si el método de pago tiene una configurada)
+        await registrarComisionBancaria({
+          metodoPagoId: S.metodoPagoId, metodoNombre: S.metodoPagoNombre,
+          totalVenta: Number(r.total) || 0, numeroVenta: S.numeroVenta,
+          ventaId: ventaId, fecha: fechaVentaElegida,
+        });
       }
     } catch(eCaja) {
       console.warn('No se pudo registrar en caja (caja.js lo manejará):', eCaja);
@@ -5314,6 +5392,13 @@ async function confirmarVentaRapida() {
       }
 
       if (ultimoMovId) await sb.from('ventas').update({ referencia_caja: ultimoMovId }).eq('id', ventaId);
+
+      // Comisión bancaria (si el método de pago tiene una configurada)
+      await registrarComisionBancaria({
+        metodoPagoId: VR.metodoPagoId, metodoNombre: VR.metodoPagoNombre,
+        totalVenta: Number(r.total) || 0, numeroVenta: VR.numeroVenta,
+        ventaId: ventaId, fecha: fechaVentaElegidaVR,
+      });
     } catch(eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
 
     if (montoIva > 0) {
@@ -5950,7 +6035,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initVentas();
   if (window.lucide) lucide.createIcons();
 });
-i
 
 
 /* ============================================================

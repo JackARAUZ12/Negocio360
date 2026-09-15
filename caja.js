@@ -509,6 +509,7 @@ function renderMetodosPago() {
           <div class="metodo-dot" style="background:${m.activo ? 'var(--success)' : 'var(--text-muted)'}"></div>
           ${escHtml(m.nombre)}
           ${m.es_default ? '<span class="badge-default">default</span>' : ''}
+          ${Number(m.comision_porcentaje) > 0 ? `<span class="badge-default" style="background:#f59e0b22;color:#b45309" title="El banco cobra esta comisión — se descuenta sola en cada venta">${Number(m.comision_porcentaje)}% comisión</span>` : ''}
         </div>
       </td>
       <td>${escHtml(m.descripcion || '—')}</td>
@@ -561,6 +562,7 @@ function editMetodo(id) {
   document.getElementById('metodo-nombre').value      = m.nombre;
   document.getElementById('metodo-descripcion').value = m.descripcion || '';
   document.getElementById('metodo-default').checked   = m.es_default;
+  document.getElementById('metodo-comision').value    = Number(m.comision_porcentaje) || 0;
   openModal('modal-metodo');
 }
 
@@ -570,6 +572,7 @@ function newMetodo() {
   document.getElementById('metodo-nombre').value      = '';
   document.getElementById('metodo-descripcion').value = '';
   document.getElementById('metodo-default').checked   = false;
+  document.getElementById('metodo-comision').value    = 0;
   openModal('modal-metodo');
 }
 
@@ -578,6 +581,7 @@ async function saveMetodo() {
   const nombre      = document.getElementById('metodo-nombre').value.trim();
   const descripcion = document.getElementById('metodo-descripcion').value.trim();
   const esDefault   = document.getElementById('metodo-default').checked;
+  const comision    = Math.min(100, Math.max(0, parseFloat(document.getElementById('metodo-comision')?.value) || 0));
 
   if (!nombre) { showToast('El nombre es requerido', 'error'); return; }
 
@@ -600,14 +604,14 @@ async function saveMetodo() {
     // métodos de pago" reportado por un cliente.
     if (id) {
       const { error: errUpd } = await sbClient.from('metodos_pago')
-        .update({ nombre, descripcion, es_default: esDefault })
+        .update({ nombre, descripcion, es_default: esDefault, comision_porcentaje: comision })
         .eq('id', id)
         .eq('auth_user_id', STATE.userId);
       if (errUpd) throw errUpd;
     } else {
       const orden = STATE.metodosPago.length + 1;
       const { error: errIns } = await sbClient.from('metodos_pago')
-        .insert({ auth_user_id: STATE.userId, nombre, descripcion, es_default: esDefault, orden });
+        .insert({ auth_user_id: STATE.userId, nombre, descripcion, es_default: esDefault, orden, comision_porcentaje: comision });
       if (errIns) throw errIns;
     }
 
