@@ -1312,10 +1312,26 @@ async function abrirPagoParcial() {
     esRegalia: !!d.es_regalia,
   }));
   const payload = { proformaId: p.id, numeroProforma: p.numero_proforma, clienteId: p.cliente_id, items };
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+
+  // BUG REAL CORREGIDO: con proformas de muchos productos (Mayoristas
+  // manejan proformas de 15-18 items), meter todo el payload codificado
+  // en la URL del iframe podia superar los 7,000+ caracteres -- algunos
+  // servidores/proxys rechazan esto con "414 URI Too Long", que es
+  // exactamente el error reportado. Ahora el payload se guarda en
+  // sessionStorage (compartido entre esta pagina y el iframe, mismo
+  // origen) y solo se pasa una clave corta en la URL -- sin limite de
+  // tamano, sin importar cuantos productos tenga la proforma.
+  const claveSesion = 'n360_pp_' + Date.now();
+  try {
+    sessionStorage.setItem(claveSesion, JSON.stringify(payload));
+  } catch (e) {
+    console.error('abrirPagoParcial (sessionStorage):', e);
+    showToast('No se pudo preparar el crédito. Intenta de nuevo.', 'error');
+    return;
+  }
 
   closeModal('modal-detalle-proforma');
-  document.getElementById('pp-iframe-embebido').src = `creditos.html?desde_proforma=${encoded}`;
+  document.getElementById('pp-iframe-embebido').src = `creditos.html?desde_proforma_clave=${claveSesion}`;
   document.getElementById('pp-modal-embebido').style.display = 'flex';
 }
 function cerrarPagoParcialEmbebido() {

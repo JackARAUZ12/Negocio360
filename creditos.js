@@ -1354,11 +1354,8 @@
   // crédito se crea con la MISMA función de siempre (confirmarNuevoCredito),
   // nunca con un cálculo aparte.
   CS.proformaOrigenId = null;
-  function abrirNuevoCreditoDesdeProforma(payloadEncoded) {
-    let payload;
-    try { payload = JSON.parse(decodeURIComponent(escape(atob(payloadEncoded)))); }
-    catch (e) { console.error('No se pudo leer la proforma:', e); return; }
-
+  function abrirNuevoCreditoDesdeProforma(payload) {
+    if (!payload) return;
     abrirNuevoCredito();
     CS.proformaOrigenId = payload.proformaId;
     document.getElementById('nc-cliente').value = payload.clienteId || '';
@@ -2885,8 +2882,16 @@
       // Nuevo Crédito ya con el cliente y los productos de la proforma
       // cargados, usando el MISMO formulario de siempre. Nunca se crea
       // el crédito con una lógica aparte.
-      const desdeProforma = params.get('desde_proforma');
-      if (desdeProforma) abrirNuevoCreditoDesdeProforma(desdeProforma);
+      const claveSesion = params.get('desde_proforma_clave');
+      if (claveSesion) {
+        try {
+          const crudo = sessionStorage.getItem(claveSesion);
+          if (crudo) {
+            abrirNuevoCreditoDesdeProforma(JSON.parse(crudo));
+            sessionStorage.removeItem(claveSesion); // no dejar basura acumulándose
+          }
+        } catch (e) { console.error('No se pudo leer la proforma desde sessionStorage:', e); }
+      }
 
       if (window.Negocio360Tutorial) {
         const pasosCreditos = [
