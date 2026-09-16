@@ -1685,9 +1685,34 @@
       <button class="modal-close" onclick="closeModal('modal-detalle-credito')">&times;</button>
     </div>
     <div class="modal-body" id="detalle-credito-body">Cargando…</div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn-ghost" onclick="closeModal('modal-detalle-credito')">Cerrar</button>
+      <button class="btn-ghost" id="btn-anular-credito" style="border-color:var(--danger);color:var(--danger)" onclick="abrirAnularCredito()">🚫 Anular crédito</button>
       <button class="btn-primary" onclick="abrirRegistrarPago(_creditoDetalleActual)">Registrar pago</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-anular-credito" onclick="if(event.target===this)closeModal('modal-anular-credito')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Anular crédito</h3>
+      <button class="modal-close" onclick="closeModal('modal-anular-credito')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="ac-resumen" style="padding:10px 12px;background:var(--bg-hover);border-radius:8px;font-size:13px;margin-bottom:14px"></div>
+      <div id="ac-aviso-productos" style="display:none;font-size:12.5px;color:var(--warning);margin-bottom:12px">
+        📦 Este crédito tiene productos vinculados — al anularlo, el inventario se devuelve automáticamente.
+      </div>
+      <div class="form-group">
+        <label>Motivo de la anulación *</label>
+        <textarea id="ac-motivo" rows="3" placeholder="Ej: crédito duplicado por doble clic, error al registrarlo, cliente canceló la compra…"></textarea>
+      </div>
+      <p id="ac-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-anular-credito')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-anular-credito" style="background:var(--danger);border-color:var(--danger)" onclick="confirmarAnularCredito()">Sí, anular este crédito</button>
     </div>
   </div>
 </div>
@@ -1885,7 +1910,7 @@
 <script src="cajaAPI.js"></script>
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
-<script src="creditos.js?v=20260916a"></script>
+<script src="creditos.js?v=20260916b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>

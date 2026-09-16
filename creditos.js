@@ -2351,6 +2351,24 @@
       productosFinanciados = detalles || [];
     }
 
+    // Guardado para que abrirAnularCredito() no tenga que volver a
+    // consultar todo -- ya tenemos el credito, sus pagos y su venta_id.
+    window._creditoDetalleData = { credito, pagos: pagos || [], productosFinanciados };
+
+    const btnAnular = document.getElementById('btn-anular-credito');
+    if (btnAnular) {
+      const tienePagos = (pagos || []).length > 0;
+      const yaAnulado = credito.estado === 'anulado';
+      btnAnular.disabled = tienePagos || yaAnulado;
+      btnAnular.title = yaAnulado
+        ? 'Este crédito ya está anulado'
+        : tienePagos
+          ? 'Este crédito tiene pagos registrados — anula cada pago primero desde el historial, y cuando el saldo quede completo, podrás anular el crédito.'
+          : 'Anular este crédito por completo';
+      btnAnular.style.opacity = (tienePagos || yaAnulado) ? '0.5' : '1';
+      btnAnular.style.cursor = (tienePagos || yaAnulado) ? 'not-allowed' : 'pointer';
+    }
+
     document.getElementById('det-credito-title').textContent = `Crédito ${credito.numero_credito}`;
     document.getElementById('detalle-credito-body').innerHTML = `
       <div class="form-row" style="margin-bottom:14px">
@@ -2429,6 +2447,139 @@
       </ul>`;
   }
   window.abrirDetalleCredito = abrirDetalleCredito;
+
+  /* ============================================================
+     ANULAR CREDITO -- opcion segura, con 3 casos manejados:
+     1. Sin pagos, sin venta real: anula directo.
+     2. Sin pagos, CON venta real (tipo 'venta'): ademas devuelve el
+        stock de cada producto/combo (mismo patron ya probado en
+        anularVenta() de ventas.js) y marca esa venta como anulada.
+     3. CON pagos: bloqueado desde el boton mismo (ver
+        abrirDetalleCredito) -- primero hay que anular cada pago por
+        separado con anularPagoCredito(), que ya revierte caja con
+        cuidado. Nunca se revierte dinero de caja de forma automatica
+        en bloque aqui, para no arriesgar un movimiento real mal
+        calculado.
+     Nunca se borra nada -- todo queda marcado 'anulado', con el
+     motivo guardado para siempre en creditos_historial.
+     ============================================================ */
+  function abrirAnularCredito() {
+    const info = window._creditoDetalleData;
+    if (!info) return;
+    const { credito, pagos } = info;
+    if ((pagos || []).length > 0) {
+      showToast('Este crédito tiene pagos registrados. Anula cada pago primero.', 'error');
+      return;
+    }
+    if (credito.estado === 'anulado') { showToast('Este crédito ya está anulado', 'error'); return; }
+
+    document.getElementById('ac-resumen').textContent =
+      `Crédito ${credito.numero_credito} — saldo actual ${fmt(credito.saldo_pendiente)}`;
+    document.getElementById('ac-aviso-productos').style.display = credito.venta_id ? '' : 'none';
+    document.getElementById('ac-motivo').value = '';
+    document.getElementById('ac-error').textContent = '';
+    openModal('modal-anular-credito');
+  }
+  window.abrirAnularCredito = abrirAnularCredito;
+
+  async function confirmarAnularCredito() {
+    const errEl = document.getElementById('ac-error');
+    errEl.textContent = '';
+    const info = window._creditoDetalleData;
+    if (!info) return;
+    const { credito } = info;
+    const motivo = document.getElementById('ac-motivo').value.trim();
+    if (!motivo) { errEl.textContent = 'Escribe el motivo de la anulación.'; return; }
+
+    // Candado contra doble clic -- mismo riesgo real ya corregido en
+    // crear credito y registrar pago.
+    if (CS.anulandoCredito) return;
+    CS.anulandoCredito = true;
+
+    const btn = document.getElementById('btn-confirmar-anular-credito');
+    if (btn) { btn.disabled = true; btn.textContent = 'Anulando…'; }
+
+    try {
+      // Verificacion fresca contra la base de datos -- no solo lo que
+      // ya estaba en memoria -- por si algo cambio mientras el modal
+      // estaba abierto (ej. otra pestaña registro un pago).
+      const { data: creditoFresco } = await _sb.from('creditos').select('*')
+        .eq('id', credito.id).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!creditoFresco) throw new Error('Crédito no encontrado');
+      if (creditoFresco.estado === 'anulado') { showToast('Este crédito ya estaba anulado', 'warning'); closeModal('modal-anular-credito'); closeModal('modal-detalle-credito'); return; }
+      const { data: pagosFrescos } = await _sb.from('creditos_pagos').select('id')
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).eq('estado','completado');
+      if ((pagosFrescos || []).length > 0) throw new Error('Este crédito ya tiene pagos registrados. Anula cada pago primero.');
+
+      // Si tiene una venta real vinculada (tipo 'venta' con
+      // productos), devolver el stock de cada producto/combo -- mismo
+      // patron exacto ya probado en anularVenta() de ventas.js -- y
+      // marcar esa venta como anulada tambien.
+      if (creditoFresco.venta_id) {
+        const { data: ventaActual } = await _sb.from('ventas').select('estado')
+          .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId).maybeSingle();
+        if (ventaActual && ventaActual.estado !== 'anulada') {
+          const { data: detalles } = await _sb.from('venta_detalles')
+            .select('producto_id, combo_id, tipo_item, cantidad')
+            .eq('venta_id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+          for (const d of (detalles || [])) {
+            if (d.tipo_item === 'producto' && d.producto_id) {
+              const { data: prod } = await _sb.from('productos')
+                .select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
+              if (prod) {
+                const nuevoStock = round2(Number(prod.stock_actual || 0) + Number(d.cantidad));
+                await _sb.from('productos').update({ stock_actual: nuevoStock })
+                  .eq('id', d.producto_id).eq('auth_user_id', CS.userId);
+              }
+            } else if (d.tipo_item === 'combo' && d.combo_id) {
+              const { data: itemsCombo } = await _sb.from('combo_items')
+                .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', CS.userId);
+              for (const compItem of (itemsCombo || [])) {
+                const { data: prodActual } = await _sb.from('productos')
+                  .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
+                if (!prodActual) continue;
+                const devolverCantidad = round2(Number(compItem.cantidad) * Number(d.cantidad));
+                const nuevoStock = round2(Number(prodActual.stock_actual || 0) + devolverCantidad);
+                await _sb.from('productos').update({ stock_actual: nuevoStock })
+                  .eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
+              }
+            }
+          }
+          await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
+            .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+        }
+      }
+
+      // Marcar el credito como anulado -- nunca se borra.
+      await _sb.from('creditos').update({ estado: 'anulado', saldo_pendiente: 0, updated_at: new Date().toISOString() })
+        .eq('id', credito.id).eq('auth_user_id', CS.userId);
+
+      // Marcar sus cuotas pendientes como anuladas tambien, para que
+      // no sigan apareciendo como "por cobrar" en ningun listado.
+      await _sb.from('creditos_cuotas').update({ estado: 'anulada' })
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).neq('estado', 'pagada');
+
+      // Si este credito vino de una proforma, liberarla de vuelta --
+      // que no quede "atada" a un credito que ya no existe.
+      await _sb.from('proformas')
+        .update({ estado: 'pendiente', credito_id: null, venta_id: null, fecha_pago_parcial: null })
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId);
+
+      await registrarHistorial(credito.id, 'anulado', `Crédito anulado — Motivo: ${motivo}`, { motivo });
+
+      showToast('Crédito anulado correctamente');
+      closeModal('modal-anular-credito');
+      closeModal('modal-detalle-credito');
+      await Promise.allSettled([loadKpis(), loadCreditos()]);
+    } catch (e) {
+      console.error('confirmarAnularCredito:', e);
+      errEl.textContent = e.message || 'No se pudo anular el crédito. Intenta de nuevo.';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Sí, anular este crédito'; }
+      CS.anulandoCredito = false;
+    }
+  }
+  window.confirmarAnularCredito = confirmarAnularCredito;
 
   // ------------------------------------------------------------
   // ANULAR UN PAGO YA REGISTRADO
