@@ -870,6 +870,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Gastos
         </div>
+        <div class="main-tab" data-tab="salarios" onclick="switchTab('salarios')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Salarios
+        </div>
         <div class="main-tab" data-tab="regalias" onclick="switchTab('regalias')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
           Regalías
@@ -1734,6 +1738,86 @@
       </div><!-- /panel-gastos -->
 
       <!-- =====================================================
+           TAB: SALARIOS (incluye pagos de salario y comisiones
+           de freelancers, unificados en un solo reporte)
+      ===================================================== -->
+      <div class="tab-panel" id="panel-salarios">
+
+        <div class="kpi-grid-4 fade-in">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--danger-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Total pagado</div>
+              <div class="kpi-value" id="sal-total">—</div>
+              <div class="kpi-sub" id="sal-count">0 pagos</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Salarios (empleados)</div>
+              <div class="kpi-value" id="sal-total-empleados">—</div>
+              <div class="kpi-sub" id="sal-count-empleados">0 pagos</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-3-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Comisiones (freelancers)</div>
+              <div class="kpi-value" id="sal-total-freelancers">—</div>
+              <div class="kpi-sub" id="sal-count-freelancers">0 pagos</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-4-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Pago más alto</div>
+              <div class="kpi-value" id="sal-mayor">—</div>
+              <div class="kpi-sub" id="sal-mayor-nombre">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col fade-in">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>Salarios vs. Comisiones</div>
+            </div>
+            <div class="chart-wrap pie"><canvas id="chart-salarios-tipo"></canvas></div>
+            <div class="panel-body" id="salarios-tipo-legend"></div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Pagado por mes</div>
+            </div>
+            <div class="chart-wrap tall"><canvas id="chart-salarios-mes"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Detalle de todos los pagos, empleados y freelancers juntos -->
+        <div class="panel-card fade-in">
+          <div class="panel-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>Detalle de pagos</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Fecha</th>
+                  <th>Método de pago</th>
+                  <th>Monto</th>
+                </tr>
+              </thead>
+              <tbody id="salarios-detalle-tbody"><tr><td colspan="5" class="empty-cell">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /panel-salarios -->
+
+      <!-- =====================================================
            TAB: REGALÍAS
       ===================================================== -->
       <div class="tab-panel" id="panel-regalias">
@@ -1888,6 +1972,17 @@
                 <div class="export-btns">
                   <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('gastos','pdf')">PDF</button>
                   <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('gastos','xlsx')">Excel</button>
+                </div>
+              </div>
+
+              <!-- Salarios -->
+              <div class="export-card">
+                <div class="export-card-icon">👤</div>
+                <div class="export-card-title">Salarios</div>
+                <div class="export-card-desc">Pagos de salario a empleados y comisiones a freelancers del período, con fecha, monto y método de pago de cada uno.</div>
+                <div class="export-btns">
+                  <button class="btn-primary btn-sm btn-export-pdf" onclick="exportar('salarios','pdf')">PDF</button>
+                  <button class="btn-primary btn-sm btn-export-xlsx" onclick="exportar('salarios','xlsx')">Excel</button>
                 </div>
               </div>
 
@@ -2054,7 +2149,7 @@
 
 </div><!-- /app -->
 
-<script src="reportes.js?v=20260901a"></script>
+<script src="reportes.js?v=20260916a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>

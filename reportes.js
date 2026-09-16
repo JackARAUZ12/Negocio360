@@ -391,6 +391,7 @@ async function loadTab(tab) {
     case 'clientes':    await loadClientesTab(); break;
     case 'creditos':    await loadCreditosTab(); break;
     case 'gastos':      await loadGastosTab();   break;
+    case 'salarios':    await loadSalariosTab(); break;
     case 'regalias':    await loadRegaliasTab(); break;
     case 'alertas':     await loadAlertas();     break;
     case 'exportar':    renderConfigExportar();  break;
@@ -738,6 +739,57 @@ async function fetchSalariosPagados() {
     return 0;
   }
 }
+
+/* ---- SALARIOS (detalle completo, para el reporte y exportacion) ----
+   Combina empleados_pagos (salario normal) y freelancers_pagos
+   (comision) en una sola lista unificada. Solo LEE de ambas tablas --
+   el modulo Salarios es quien las crea (y su propio egreso en Caja),
+   aqui no se duplica ni se modifica nada. */
+async function fetchSalarios() {
+  const { from, to } = getDateRange();
+  try {
+    // empleados_pagos NO tiene una relacion FK real hacia empleados en
+    // la base de datos -- un join anidado tipo "empleados(nombre)"
+    // fallaria. Se traen los empleados aparte y se unen a mano por
+    // empleado_id, mas robusto que depender de una FK que no existe.
+    const [{ data: pagosEmp }, { data: empleados }, { data: pagosFrl }, { data: freelancersLista }] = await Promise.all([
+      sb.from('empleados_pagos')
+        .select('id, fecha, total_pagado, metodo_pago_nombre, empleado_id')
+        .eq('auth_user_id', R.userId).gte('fecha', from).lte('fecha', to),
+      sb.from('empleados').select('id, nombre').eq('auth_user_id', R.userId),
+      sb.from('freelancers_pagos')
+        .select('id, fecha_pago, monto_pagado, metodo_pago_nombre, periodo_inicio, periodo_fin, freelancer_id')
+        .eq('auth_user_id', R.userId).gte('fecha_pago', from).lte('fecha_pago', to),
+      sb.from('freelancers').select('id, nombre, tipo_comision').eq('auth_user_id', R.userId),
+    ]);
+
+    const nombreEmpleado = {};
+    (empleados || []).forEach(e => { nombreEmpleado[e.id] = e.nombre; });
+    const infoFreelancer = {};
+    (freelancersLista || []).forEach(f => { infoFreelancer[f.id] = f; });
+
+    const filasEmp = (pagosEmp || []).map(p => ({
+      nombre: nombreEmpleado[p.empleado_id] || 'Empleado', tipo: 'Salario', fecha: p.fecha,
+      monto: Number(p.total_pagado || 0), metodo_pago: p.metodo_pago_nombre || 'Efectivo',
+    }));
+    const filasFrl = (pagosFrl || []).map(p => {
+      const frl = infoFreelancer[p.freelancer_id];
+      return {
+        nombre: frl?.nombre || 'Freelancer',
+        tipo: frl?.tipo_comision === 'porcentaje' ? 'Comisión (%)' : 'Comisión (fijo)',
+        fecha: p.fecha_pago, monto: Number(p.monto_pagado || 0), metodo_pago: p.metodo_pago_nombre || 'Efectivo',
+      };
+    });
+
+    R.cache.salarios = [...filasEmp, ...filasFrl].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  } catch (e) {
+    console.warn('fetchSalarios:', e);
+    R.cache.salarios = [];
+  }
+  return R.cache.salarios;
+}
+
+
 
 /* ---- CLIENTES ---- */
 async function fetchClientes() {
@@ -2160,6 +2212,66 @@ async function loadGastosTab() {
 }
 
 /* ============================================================
+   TAB: SALARIOS -- combina pagos de salario (empleados) y de
+   comision (freelancers) en un solo reporte unificado.
+   ============================================================ */
+async function loadSalariosTab() {
+  const tbody = document.getElementById('salarios-detalle-tbody');
+  try {
+    const filas = await fetchSalarios();
+
+    const total = filas.reduce((s,f) => s + Number(f.monto||0), 0);
+    const filasEmp = filas.filter(f => f.tipo === 'Salario');
+    const filasFrl = filas.filter(f => f.tipo !== 'Salario');
+    const totalEmp = filasEmp.reduce((s,f) => s + Number(f.monto||0), 0);
+    const totalFrl = filasFrl.reduce((s,f) => s + Number(f.monto||0), 0);
+    const mayor = filas.length ? filas.reduce((m,f) => Number(f.monto)>Number(m.monto)?f:m) : null;
+
+    setEl('sal-total',            fmt(total));
+    setEl('sal-count',            `${filas.length} pago${filas.length!==1?'s':''}`);
+    setEl('sal-total-empleados',  fmt(totalEmp));
+    setEl('sal-count-empleados',  `${filasEmp.length} pago${filasEmp.length!==1?'s':''}`);
+    setEl('sal-total-freelancers',fmt(totalFrl));
+    setEl('sal-count-freelancers',`${filasFrl.length} pago${filasFrl.length!==1?'s':''}`);
+    setEl('sal-mayor',            mayor ? fmt(mayor.monto) : '—');
+    setEl('sal-mayor-nombre',     mayor ? esc(mayor.nombre) : '—');
+
+    // Donut: Salarios vs Comisiones
+    if (total > 0) {
+      createDoughnutChart('chart-salarios-tipo', ['Salarios (empleados)', 'Comisiones (freelancers)'], [totalEmp, totalFrl], 'salarios-tipo');
+      renderDonutLegend('salarios-tipo-legend', ['Salarios (empleados)', 'Comisiones (freelancers)'], [totalEmp, totalFrl], total);
+    }
+
+    // Barras: pagado por mes, este año
+    const year = new Date().getFullYear();
+    const mesesLabel = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const porMes = new Array(12).fill(0);
+    filas.forEach(f => {
+      const d = parseFechaSegura(f.fecha);
+      if (!d || d.getFullYear() !== year) return;
+      porMes[d.getMonth()] += Number(f.monto||0);
+    });
+    createBarChart('chart-salarios-mes', mesesLabel,
+      [{ label:'Pagado', data:porMes, backgroundColor:'rgba(90,90,244,0.6)' }],
+      'salarios-mes');
+
+    if (tbody) {
+      tbody.innerHTML = filas.length ? filas.map(f => `
+        <tr>
+          <td>${esc(f.nombre)}</td>
+          <td><span class="badge ${f.tipo==='Salario'?'badge-accent':'badge-success'}">${esc(f.tipo)}</span></td>
+          <td>${fmtFecha(f.fecha)}</td>
+          <td>${esc(f.metodo_pago)}</td>
+          <td class="td-mono">${fmt(f.monto)}</td>
+        </tr>`).join('') : emptyRow(5,'No hay pagos de salario o comisión en este período');
+    }
+  } catch(e) {
+    console.error('loadSalariosTab:', e);
+    if (tbody) tbody.innerHTML = emptyRow(5,'No se pudo cargar el reporte de salarios');
+  }
+}
+
+/* ============================================================
    TAB: REGALÍAS -- cuanto se ha regalado (costo real, no precio de
    venta, ya que el precio de una regalia es C$0 o simbolico y no
    refleja el impacto real en el negocio). Reutiliza fetchVentas() y
@@ -2392,6 +2504,12 @@ async function ensureCaches() {
   if (!R.cache.creditosResumen || !R.cache.creditosResumen.length) {
     R.cache.creditosResumen = await fetchCreditosReporte();
   }
+  // Salarios (empleados + comisiones de freelancers, combinados) —
+  // si el usuario exporta sin haber visitado antes la pestaña
+  // Salarios, R.cache.salarios puede estar vacío o no existir aún.
+  if (!R.cache.salarios || !R.cache.salarios.length) {
+    R.cache.salarios = await fetchSalarios();
+  }
   // El "Reporte General" necesita el resumen financiero calculado —
   // si el usuario exporta sin haber visitado antes la pestaña
   // Ejecutivo/Financiero, R.cache.resumen puede estar vacío.
@@ -2564,6 +2682,13 @@ const COLUMNAS_REPORTES = {
     { key:'monto',     label:'Monto',     tipo:'moneda' },
     { key:'tipo',      label:'Tipo',      tipo:'texto' },
   ],
+  salarios: [
+    { key:'nombre',      label:'Nombre',          tipo:'texto' },
+    { key:'tipo',        label:'Tipo',            tipo:'texto' },
+    { key:'fecha',       label:'Fecha',           tipo:'texto' },
+    { key:'metodo_pago', label:'Método de pago',  tipo:'texto' },
+    { key:'monto',       label:'Monto',           tipo:'moneda' },
+  ],
   // Historial de pagos de créditos: una fila por cuota. Solo aparecen
   // clientes que adquirieron un crédito, con su información y el
   // detalle de cuotas ya pagadas y las que faltan (pendiente/vencida/parcial).
@@ -2580,8 +2705,8 @@ const COLUMNAS_REPORTES = {
   ],
 };
 
-const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', activos:'🏗️', gastos:'💸', creditos:'💳' };
-const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', activos:'Activos Fijos', gastos:'Gastos', creditos:'Créditos' };
+const ICONO_MODULO = { ventas:'🛒', compras:'📦', clientes:'👥', inventario:'🏭', activos:'🏗️', gastos:'💸', creditos:'💳', salarios:'👤' };
+const NOMBRE_MODULO = { ventas:'Ventas', compras:'Compras', clientes:'Clientes', inventario:'Inventario', activos:'Activos Fijos', gastos:'Gastos', creditos:'Créditos', salarios:'Salarios' };
 
 // ¿Está activa la columna `key` del reporte `tipoReporte`? Por defecto
 // (si el cliente no ha guardado configuración, o esta columna es nueva
@@ -2628,6 +2753,9 @@ function filaActivoFijo(a) {
 }
 function filaGasto(g) {
   return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), monto:Number(g.monto||0), tipo:g.tipo||'' };
+}
+function filaSalario(s) {
+  return { nombre:s.nombre||'', tipo:s.tipo||'', fecha:fmtFecha(s.fecha), metodo_pago:s.metodo_pago||'', monto:Number(s.monto||0) };
 }
 function filaCreditoPago(f) {
   return {
@@ -3134,6 +3262,25 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     }
   }
 
+  if (tipo==='salarios' || esGeneral) {
+    if (esGeneral) {
+      doc.addPage();
+      pintarCabecera();
+      startY = 28;
+      tituloSeccion('Salarios');
+    }
+    const cols = columnasActivas('salarios');
+    if (!cols.length) {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No hay columnas seleccionadas para Salarios (revisa "Configurar exportaciones").', 10, startY);
+    } else {
+      const rows = (R.cache.salarios||[]).map(s => filaAPDF(filaSalario(s), cols));
+      doc.autoTable({ startY, head:[headersPDF(cols)],
+        body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:8} });
+    }
+  }
+
   // ---- CRÉDITOS — historial de pagos de UN cliente (exportación individual) ----
   // Nunca mezcla clientes: siempre viene filtrado al que se elige en el modal.
   if (tipo === 'creditos') {
@@ -3373,6 +3520,17 @@ function hojaGastosXLSX(wb) {
     rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
 
+function hojaSalariosXLSX(wb) {
+  const cols = columnasActivas('salarios');
+  if (!cols.length) {
+    appendSheetXLSX(wb, 'Salarios', ['Aviso'], [['No hay columnas seleccionadas para Salarios (revisa "Configurar exportaciones").']], [null]);
+    return;
+  }
+  const rows = (R.cache.salarios||[]).map(s => filaAXLSX(filaSalario(s), cols));
+  appendSheetXLSX(wb, 'Salarios', headersXLSX(cols),
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+}
+
 // Historial de pagos de UN cliente (nunca mezcla clientes). `clienteId`
 // siempre llega desde el modal de exportación en el caso individual.
 function hojaCreditosXLSX(wb, clienteId, clienteNombre) {
@@ -3476,6 +3634,7 @@ async function exportarExcel(tipo, clienteId, clienteNombre) {
   if (tipo==='inventario' || esGeneral) hojaInventarioXLSX(wb);
   if (tipo==='activos') hojaActivosXLSX(wb);
   if (tipo==='gastos'     || esGeneral) hojaGastosXLSX(wb);
+  if (tipo==='salarios'   || esGeneral) hojaSalariosXLSX(wb);
   if (tipo==='creditos')  hojaCreditosXLSX(wb, clienteId, clienteNombre);
   if (esGeneral)          hojaCreditosResumenXLSX(wb);
 
