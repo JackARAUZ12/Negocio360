@@ -509,7 +509,6 @@ function renderMetodosPago() {
           <div class="metodo-dot" style="background:${m.activo ? 'var(--success)' : 'var(--text-muted)'}"></div>
           ${escHtml(m.nombre)}
           ${m.es_default ? '<span class="badge-default">default</span>' : ''}
-          ${Number(m.comision_porcentaje) > 0 ? `<span class="badge-default" style="background:#f59e0b22;color:#b45309" title="El banco cobra esta comisión — se descuenta sola en cada venta">${Number(m.comision_porcentaje)}% comisión</span>` : ''}
         </div>
       </td>
       <td>${escHtml(m.descripcion || '—')}</td>
@@ -562,7 +561,6 @@ function editMetodo(id) {
   document.getElementById('metodo-nombre').value      = m.nombre;
   document.getElementById('metodo-descripcion').value = m.descripcion || '';
   document.getElementById('metodo-default').checked   = m.es_default;
-  document.getElementById('metodo-comision').value    = Number(m.comision_porcentaje) || 0;
   openModal('modal-metodo');
 }
 
@@ -572,7 +570,6 @@ function newMetodo() {
   document.getElementById('metodo-nombre').value      = '';
   document.getElementById('metodo-descripcion').value = '';
   document.getElementById('metodo-default').checked   = false;
-  document.getElementById('metodo-comision').value    = 0;
   openModal('modal-metodo');
 }
 
@@ -581,7 +578,6 @@ async function saveMetodo() {
   const nombre      = document.getElementById('metodo-nombre').value.trim();
   const descripcion = document.getElementById('metodo-descripcion').value.trim();
   const esDefault   = document.getElementById('metodo-default').checked;
-  const comision    = Math.min(100, Math.max(0, parseFloat(document.getElementById('metodo-comision')?.value) || 0));
 
   if (!nombre) { showToast('El nombre es requerido', 'error'); return; }
 
@@ -604,14 +600,14 @@ async function saveMetodo() {
     // métodos de pago" reportado por un cliente.
     if (id) {
       const { error: errUpd } = await sbClient.from('metodos_pago')
-        .update({ nombre, descripcion, es_default: esDefault, comision_porcentaje: comision })
+        .update({ nombre, descripcion, es_default: esDefault })
         .eq('id', id)
         .eq('auth_user_id', STATE.userId);
       if (errUpd) throw errUpd;
     } else {
       const orden = STATE.metodosPago.length + 1;
       const { error: errIns } = await sbClient.from('metodos_pago')
-        .insert({ auth_user_id: STATE.userId, nombre, descripcion, es_default: esDefault, orden, comision_porcentaje: comision });
+        .insert({ auth_user_id: STATE.userId, nombre, descripcion, es_default: esDefault, orden });
       if (errIns) throw errIns;
     }
 
@@ -1636,6 +1632,7 @@ function abrirNuevoBanco() {
   document.getElementById('nb-nombre').value = '';
   document.getElementById('nb-numero-cuenta').value = '';
   document.getElementById('nb-saldo-inicial').value = '0';
+  document.getElementById('nb-comision').value = '';
   document.getElementById('nb-error').textContent = '';
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   document.getElementById('nb-moneda').value = monedaBase;
@@ -1652,6 +1649,7 @@ function abrirEditarBanco(bancoId) {
   document.getElementById('nb-numero-cuenta').value = banco.numero_cuenta || '';
   document.getElementById('nb-saldo-inicial').value = banco.saldo_inicial || 0;
   document.getElementById('nb-moneda').value = banco.moneda || 'NIO';
+  document.getElementById('nb-comision').value = banco.comision_porcentaje ?? '';
   document.getElementById('nb-error').textContent = '';
   actualizarAvisoMonedaBanco();
   openModal('modal-nuevo-banco');
@@ -1677,10 +1675,15 @@ async function guardarNuevoBanco() {
   const nombre = document.getElementById('nb-nombre').value.trim();
   if (!nombre) { errEl.textContent = 'El nombre del banco es requerido.'; return; }
 
+  const errComision = document.getElementById('nb-comision').value.trim();
   const payload = {
     nombre, numero_cuenta: document.getElementById('nb-numero-cuenta').value.trim() || null,
     saldo_inicial: round2(parseFloat(document.getElementById('nb-saldo-inicial').value) || 0),
     moneda: document.getElementById('nb-moneda').value === 'USD' ? 'USD' : 'NIO',
+    // null = "nunca configurada" (se le pedirá la primera vez que se
+    // use en una venta). Solo si escribió algo se guarda un número,
+    // recortado entre 0 y 100 -- nunca se fuerza a 0 por defecto.
+    comision_porcentaje: errComision === '' ? null : Math.min(100, Math.max(0, parseFloat(errComision) || 0)),
   };
 
   setBtnLoading('btn-guardar-banco', true);

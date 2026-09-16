@@ -1208,6 +1208,32 @@
           <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBanco()">✕</button>
         </div>
 
+        <!-- Primera vez que se usa este banco con tarjeta: pide la
+             comisión del POS, una sola vez -- de ahí en adelante se
+             recuerda sola. -->
+        <div id="banco-comision-configurar-wrap" style="display:none;margin-top:12px;padding:12px 14px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--warning-soft, #fff8e1)">
+          <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">💳 ¿Cuánto te cobra <span id="bcc-nombre-banco"></span> de comisión por cobrar con tarjeta?</div>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Solo se pregunta la primera vez — luego queda guardado para este banco.</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="bcc-porcentaje" min="0" max="100" step="0.01" placeholder="Ej: 4.5" style="max-width:110px"/>
+            <span style="font-size:13px">%</span>
+            <button type="button" class="btn-secondary btn-sm" onclick="guardarComisionBancoVenta()">Guardar</button>
+            <button type="button" class="btn-ghost btn-sm" onclick="omitirComisionBancoVenta()">No cobra comisión</button>
+          </div>
+        </div>
+
+        <!-- Comisión ya calculada, con el monto editable antes de
+             cerrar la venta -- mismo criterio que el precio de un
+             producto: se sugiere un monto, pero el vendedor puede
+             ajustarlo si el banco cobró distinto esa vez. -->
+        <div id="banco-comision-resultado-wrap" style="display:none;margin-top:12px;padding:10px 14px;border-radius:var(--radius-md);background:var(--bg-hover);display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <span style="font-size:12.5px;color:var(--text-secondary)">Comisión del banco (<span id="bcr-porcentaje-texto"></span>)</span>
+          <span style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:12.5px;color:var(--text-muted)">C$</span>
+            <input type="number" id="bcr-monto" min="0" step="0.01" style="width:90px;text-align:right" onchange="onEditarMontoComisionVenta()"/>
+          </span>
+        </div>
+
         <!-- PAGO SEPARADO — un monto por cada método, debe sumar el total exacto -->
         <div id="pago-separado-wrap" style="display:none;margin-top:16px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -1487,6 +1513,25 @@
       <div id="vr-banco-elegido-wrap" style="display:none;margin-top:14px;padding:12px 14px;border:1.5px solid var(--success);border-radius:var(--radius-md);background:var(--success-soft);display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Entra a: <span id="vr-banco-elegido-nombre"></span></span>
         <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBancoVR()">✕</button>
+      </div>
+
+      <div id="vr-banco-comision-configurar-wrap" style="display:none;margin-top:12px;padding:12px 14px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--warning-soft, #fff8e1)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">💳 ¿Cuánto te cobra <span id="vr-bcc-nombre-banco"></span> de comisión por cobrar con tarjeta?</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Solo se pregunta la primera vez — luego queda guardado para este banco.</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="vr-bcc-porcentaje" min="0" max="100" step="0.01" placeholder="Ej: 4.5" style="max-width:110px"/>
+          <span style="font-size:13px">%</span>
+          <button type="button" class="btn-secondary btn-sm" onclick="guardarComisionBancoVentaVR()">Guardar</button>
+          <button type="button" class="btn-ghost btn-sm" onclick="omitirComisionBancoVentaVR()">No cobra comisión</button>
+        </div>
+      </div>
+
+      <div id="vr-banco-comision-resultado-wrap" style="display:none;margin-top:12px;padding:10px 14px;border-radius:var(--radius-md);background:var(--bg-hover);display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span style="font-size:12.5px;color:var(--text-secondary)">Comisión del banco (<span id="vr-bcr-porcentaje-texto"></span>)</span>
+        <span style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:12.5px;color:var(--text-muted)">C$</span>
+          <input type="number" id="vr-bcr-monto" min="0" step="0.01" style="width:90px;text-align:right" onchange="onEditarMontoComisionVentaVR()"/>
+        </span>
       </div>
 
       <div id="vr-pago-separado-wrap" style="display:none;margin-top:14px">
@@ -1794,7 +1839,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
 <script src="escpos-usb.js?v=20260825a"></script>
-<script src="ventas.js?v=20260915b"></script>
+<script src="ventas.js?v=20260916a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>

@@ -2438,18 +2438,20 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 // que no la configuraron), esta funcion no hace absolutamente
 // nada y todo sigue igual que siempre.
 // ============================================================
-async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVenta, numeroVenta, ventaId, fecha }) {
+async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVenta, numeroVenta, ventaId, fecha, bancoId, bancoNombre, comisionMonto, comisionPct }) {
   try {
-    if (!metodoPagoId || !(Number(totalVenta) > 0)) return null;
+    if (!(Number(totalVenta) > 0)) return null;
 
-    const metodo = (S.metodosPago || []).find(m => m.id === metodoPagoId);
-    const pct = Number(metodo?.comision_porcentaje) || 0;
-    if (pct <= 0) return null;
+    // La comision ahora vive POR BANCO (cada banco cobra distinto),
+    // no por metodo de pago en general. Si no se eligio ningun banco
+    // en esta venta, o el monto calculado/editado quedo en 0, no hay
+    // nada que registrar -- comportamiento identico al de antes para
+    // quien no usa bancos o no tiene comision configurada.
+    const monto = round2(Number(comisionMonto) || 0);
+    if (!bancoId || !(monto > 0)) return null;
+    const pct = comisionPct;
 
-    const monto = round2(Number(totalVenta) * pct / 100);
-    if (!(monto > 0)) return null;
-
-    const concepto = `Comisión bancaria ${pct}% — ${metodoNombre || 'tarjeta'} (Venta ${numeroVenta})`;
+    const concepto = `Comisión bancaria ${pct}% — ${bancoNombre} (Venta ${numeroVenta})`;
 
     // 1. Gasto (para que aparezca en el módulo de Gastos y en reportes)
     await sb.from('gastos').insert({
@@ -2480,6 +2482,7 @@ async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVent
       saldo_resultante:   round2(saldoAnt - monto),
       metodo_pago_id:     metodoPagoId,
       metodo_pago_nombre: metodoNombre || null,
+      banco_id:           bancoId,
       referencia_tipo:    'venta',
       referencia_id:      ventaId,
       fecha,
@@ -3753,17 +3756,90 @@ function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
   }
 
   document.getElementById('banco-elegido-wrap').style.display = 'flex';
+
+  // Comisión bancaria: cada banco tiene su propio porcentaje, nunca
+  // uno general. Si nunca se configuró para este banco (null), se
+  // pide una sola vez aquí mismo; si ya tiene un valor (incluso 0,
+  // configurado a propósito como "no cobra"), se calcula directo.
+  const banco = (_bancosCache || []).find(b => b.id === bancoId);
+  document.getElementById('banco-comision-configurar-wrap').style.display = 'none';
+  document.getElementById('banco-comision-resultado-wrap').style.display = 'none';
+  S._comisionBancoPct = null;
+  S._comisionBancoMonto = 0;
+  S._comisionBancoMontoEditadoManual = false;
+
+  if (banco && banco.comision_porcentaje === null) {
+    document.getElementById('bcc-nombre-banco').textContent = bancoNombre;
+    document.getElementById('bcc-porcentaje').value = '';
+    document.getElementById('banco-comision-configurar-wrap').style.display = '';
+  } else if (banco) {
+    aplicarComisionBancoVenta(Number(banco.comision_porcentaje) || 0);
+  }
 }
+
+// Calcula y muestra la comision sobre el TOTAL de la venta (lo que
+// realmente pasa por el POS del banco, con impuestos incluidos --
+// distinto al caso de comision de freelancers, que se calcula sin
+// IVA porque ahi es sobre el valor del producto, no sobre lo que
+// procesa un banco). El monto queda SIEMPRE editable antes de
+// cerrar la venta, igual que el precio de un producto.
+function aplicarComisionBancoVenta(pct) {
+  S._comisionBancoPct = pct;
+  const totalVenta = S._resumen?.total || 0;
+  const monto = round2(totalVenta * pct / 100);
+  S._comisionBancoMonto = monto;
+  document.getElementById('bcr-porcentaje-texto').textContent = `${pct}%`;
+  document.getElementById('bcr-monto').value = monto.toFixed(2);
+  document.getElementById('banco-comision-resultado-wrap').style.display = pct > 0 ? 'flex' : 'none';
+}
+
+async function guardarComisionBancoVenta() {
+  const pct = Math.min(100, Math.max(0, parseFloat(document.getElementById('bcc-porcentaje').value) || 0));
+  const bancoId = S.bancoElegidoId;
+  if (!bancoId) return;
+  try {
+    await sb.from('bancos').update({ comision_porcentaje: pct }).eq('id', bancoId).eq('auth_user_id', S.userId);
+    // Actualizar tambien el cache en memoria, para no tener que
+    // recargar todo si se elige el mismo banco de nuevo en esta sesion.
+    const banco = (_bancosCache || []).find(b => b.id === bancoId);
+    if (banco) banco.comision_porcentaje = pct;
+  } catch (e) {
+    console.warn('guardarComisionBancoVenta:', e);
+  }
+  document.getElementById('banco-comision-configurar-wrap').style.display = 'none';
+  aplicarComisionBancoVenta(pct);
+}
+
+function omitirComisionBancoVenta() {
+  // "No cobra comisión" -- se guarda 0 explicito (distinto de null,
+  // que significa "todavia no se sabe"). Asi la proxima vez que se
+  // use este banco, ya no se vuelve a preguntar.
+  document.getElementById('bcc-porcentaje').value = '0';
+  guardarComisionBancoVenta();
+}
+
+function onEditarMontoComisionVenta() {
+  // El vendedor puede ajustar el monto sugerido si el banco cobro
+  // distinto esa vez en particular -- sin cambiar el porcentaje
+  // guardado del banco para el futuro.
+  const val = Math.max(0, parseFloat(document.getElementById('bcr-monto').value) || 0);
+  S._comisionBancoMonto = val;
+  S._comisionBancoMontoEditadoManual = true;
+}
+
 function simboloMonedaVenta(m) { return m === 'USD' ? '$' : 'C$'; }
 function cancelarSeleccionBanco() {
   // Regresa a elegir el método de pago desde cero — por si el
   // usuario tocó Tarjeta/Transferencia sin querer, o quiere cambiar
   // el banco elegido.
   S.metodoPagoId = null; S.metodoPagoNombre = null; S.bancoElegidoId = null; S.bancoElegidoNombre = null;
+  S._comisionBancoPct = null; S._comisionBancoMonto = 0; S._comisionBancoMontoEditadoManual = false;
   document.getElementById('metodo-pago-id-selected').value = '';
   document.getElementById('metodo-pago-nombre-selected').value = '';
   document.getElementById('banco-elegir-wrap').style.display = 'none';
   document.getElementById('banco-elegido-wrap').style.display = 'none';
+  document.getElementById('banco-comision-configurar-wrap').style.display = 'none';
+  document.getElementById('banco-comision-resultado-wrap').style.display = 'none';
   document.getElementById('metodos-grid').style.display = '';
   renderMetodosPagoModal();
 }
@@ -3814,11 +3890,65 @@ function elegirBancoVentaVR(bancoId, bancoNombre, monedaBanco) {
   }
 
   document.getElementById('vr-banco-elegido-wrap').style.display = 'flex';
+
+  const banco = (_bancosCache || []).find(b => b.id === bancoId);
+  document.getElementById('vr-banco-comision-configurar-wrap').style.display = 'none';
+  document.getElementById('vr-banco-comision-resultado-wrap').style.display = 'none';
+  VR._comisionBancoPct = null;
+  VR._comisionBancoMonto = 0;
+  VR._comisionBancoMontoEditadoManual = false;
+
+  if (banco && banco.comision_porcentaje === null) {
+    document.getElementById('vr-bcc-nombre-banco').textContent = bancoNombre;
+    document.getElementById('vr-bcc-porcentaje').value = '';
+    document.getElementById('vr-banco-comision-configurar-wrap').style.display = '';
+  } else if (banco) {
+    aplicarComisionBancoVentaVR(Number(banco.comision_porcentaje) || 0);
+  }
+}
+
+function aplicarComisionBancoVentaVR(pct) {
+  VR._comisionBancoPct = pct;
+  const totalVenta = calcularResumenVR().total;
+  const monto = round2(totalVenta * pct / 100);
+  VR._comisionBancoMonto = monto;
+  document.getElementById('vr-bcr-porcentaje-texto').textContent = `${pct}%`;
+  document.getElementById('vr-bcr-monto').value = monto.toFixed(2);
+  document.getElementById('vr-banco-comision-resultado-wrap').style.display = pct > 0 ? 'flex' : 'none';
+}
+
+async function guardarComisionBancoVentaVR() {
+  const pct = Math.min(100, Math.max(0, parseFloat(document.getElementById('vr-bcc-porcentaje').value) || 0));
+  const bancoId = VR.bancoElegidoId;
+  if (!bancoId) return;
+  try {
+    await sb.from('bancos').update({ comision_porcentaje: pct }).eq('id', bancoId).eq('auth_user_id', S.userId);
+    const banco = (_bancosCache || []).find(b => b.id === bancoId);
+    if (banco) banco.comision_porcentaje = pct;
+  } catch (e) {
+    console.warn('guardarComisionBancoVentaVR:', e);
+  }
+  document.getElementById('vr-banco-comision-configurar-wrap').style.display = 'none';
+  aplicarComisionBancoVentaVR(pct);
+}
+
+function omitirComisionBancoVentaVR() {
+  document.getElementById('vr-bcc-porcentaje').value = '0';
+  guardarComisionBancoVentaVR();
+}
+
+function onEditarMontoComisionVentaVR() {
+  const val = Math.max(0, parseFloat(document.getElementById('vr-bcr-monto').value) || 0);
+  VR._comisionBancoMonto = val;
+  VR._comisionBancoMontoEditadoManual = true;
 }
 function cancelarSeleccionBancoVR() {
   VR.metodoPagoId = null; VR.metodoPagoNombre = null; VR.bancoElegidoId = null; VR.bancoElegidoNombre = null;
+  VR._comisionBancoPct = null; VR._comisionBancoMonto = 0; VR._comisionBancoMontoEditadoManual = false;
   document.getElementById('vr-banco-elegir-wrap').style.display = 'none';
   document.getElementById('vr-banco-elegido-wrap').style.display = 'none';
+  document.getElementById('vr-banco-comision-configurar-wrap').style.display = 'none';
+  document.getElementById('vr-banco-comision-resultado-wrap').style.display = 'none';
   document.getElementById('vr-metodos-grid').style.display = '';
   renderMetodosPagoVR();
 }
@@ -4210,6 +4340,8 @@ async function confirmarVenta(conImpresion) {
           metodoPagoId: S.metodoPagoId, metodoNombre: S.metodoPagoNombre,
           totalVenta: Number(r.total) || 0, numeroVenta: S.numeroVenta,
           ventaId: ventaId, fecha: fechaVentaElegida,
+          bancoId: S.bancoElegidoId || null, bancoNombre: S.bancoElegidoNombre || null,
+          comisionMonto: S._comisionBancoMonto || 0, comisionPct: S._comisionBancoPct,
         });
       }
     } catch(eCaja) {
@@ -5398,6 +5530,8 @@ async function confirmarVentaRapida() {
         metodoPagoId: VR.metodoPagoId, metodoNombre: VR.metodoPagoNombre,
         totalVenta: Number(r.total) || 0, numeroVenta: VR.numeroVenta,
         ventaId: ventaId, fecha: fechaVentaElegidaVR,
+        bancoId: VR.bancoElegidoId || null, bancoNombre: VR.bancoElegidoNombre || null,
+        comisionMonto: VR._comisionBancoMonto || 0, comisionPct: VR._comisionBancoPct,
       });
     } catch(eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
 
