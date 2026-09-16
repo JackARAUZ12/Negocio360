@@ -1347,6 +1347,326 @@ function calcularConcepto(concepto, montoBase) {
 STATE.planillas = [];
 STATE.planillaSeleccion = new Map(); // empleado_id -> {incluido, base, deducciones, total}
 
+/* ============================================================
+   FREELANCERS -- submodulo aparte, para quien se le paga por
+   comision (monto fijo o % de sus ventas) en vez de un salario
+   fijo periodico. No toca ninguna tabla ni funcion de Empleados.
+   ============================================================ */
+STATE.freelancers = STATE.freelancers || [];
+STATE.perfilesVendedor = STATE.perfilesVendedor || [];
+
+async function abrirFreelancers() {
+  document.getElementById('panel-freelancers').style.display = '';
+  await cargarFreelancers();
+}
+
+async function cargarFreelancers() {
+  try {
+    const { data } = await sbClient.from('freelancers').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
+    STATE.freelancers = data || [];
+    renderFreelancers();
+  } catch (e) { console.warn('cargarFreelancers:', e); }
+}
+
+function renderFreelancers() {
+  const tbody = document.getElementById('freelancers-tbody');
+  if (!tbody) return;
+  const lista = STATE.freelancers || [];
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Aún no tienes freelancers registrados</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lista.map(f => `
+    <tr>
+      <td style="font-weight:600">${esc(f.nombre)}</td>
+      <td>${f.tipo_comision === 'porcentaje'
+        ? `${Number(f.porcentaje_comision)}% de sus ventas (sin IVA)`
+        : `${fmt(f.monto_fijo)} fijo`}</td>
+      <td>${f.perfil_vendedor_nombre ? esc(f.perfil_vendedor_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td><span class="status-badge badge-${f.estado}">${f.estado === 'activo' ? 'Activo' : 'Inactivo'}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn-secondary btn-sm" onclick="abrirPagoFreelancer('${f.id}')">💵 Pagar</button>
+        <button class="btn-icon" title="Editar" onclick="editarFreelancer('${f.id}')">✏️</button>
+        <button class="btn-icon" title="Eliminar" onclick="eliminarFreelancer('${f.id}')" style="color:var(--danger)">🗑️</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function cargarPerfilesVendedorSelect() {
+  try {
+    const { data } = await sbClient.from('perfiles_acceso').select('id,nombre')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.perfilesVendedor = data || [];
+  } catch (e) { STATE.perfilesVendedor = []; }
+  const sel = document.getElementById('frl-perfil-vendedor');
+  if (sel) {
+    sel.innerHTML = '<option value="">Selecciona un perfil…</option>' +
+      STATE.perfilesVendedor.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
+  }
+}
+
+function onCambiarTipoComisionFreelancer() {
+  const tipo = document.getElementById('frl-tipo-comision').value;
+  document.getElementById('frl-wrap-monto-fijo').style.display  = tipo === 'fijo' ? '' : 'none';
+  document.getElementById('frl-wrap-porcentaje').style.display  = tipo === 'porcentaje' ? '' : 'none';
+  document.getElementById('frl-wrap-vendedor').style.display    = tipo === 'porcentaje' ? '' : 'none';
+}
+
+async function abrirNuevoFreelancer() {
+  document.getElementById('frl-modal-title').textContent = 'Nuevo freelancer';
+  document.getElementById('frl-id').value = '';
+  document.getElementById('frl-nombre').value = '';
+  document.getElementById('frl-cedula').value = '';
+  document.getElementById('frl-telefono').value = '';
+  document.getElementById('frl-correo').value = '';
+  document.getElementById('frl-tipo-comision').value = 'fijo';
+  document.getElementById('frl-monto-fijo').value = '';
+  document.getElementById('frl-porcentaje').value = '';
+  document.getElementById('frl-estado').value = 'activo';
+  document.getElementById('frl-observaciones').value = '';
+  document.getElementById('frl-error').textContent = '';
+  await cargarPerfilesVendedorSelect();
+  onCambiarTipoComisionFreelancer();
+  openModal('modal-freelancer');
+}
+
+async function editarFreelancer(id) {
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('frl-modal-title').textContent = 'Editar freelancer';
+  document.getElementById('frl-id').value = f.id;
+  document.getElementById('frl-nombre').value = f.nombre || '';
+  document.getElementById('frl-cedula').value = f.cedula || '';
+  document.getElementById('frl-telefono').value = f.telefono || '';
+  document.getElementById('frl-correo').value = f.correo || '';
+  document.getElementById('frl-tipo-comision').value = f.tipo_comision || 'fijo';
+  document.getElementById('frl-monto-fijo').value = f.monto_fijo || '';
+  document.getElementById('frl-porcentaje').value = f.porcentaje_comision || '';
+  document.getElementById('frl-estado').value = f.estado || 'activo';
+  document.getElementById('frl-observaciones').value = f.observaciones || '';
+  document.getElementById('frl-error').textContent = '';
+  await cargarPerfilesVendedorSelect();
+  document.getElementById('frl-perfil-vendedor').value = f.perfil_vendedor_id || '';
+  onCambiarTipoComisionFreelancer();
+  openModal('modal-freelancer');
+}
+
+async function guardarFreelancer() {
+  const errEl = document.getElementById('frl-error');
+  errEl.textContent = '';
+
+  const nombre = document.getElementById('frl-nombre').value.trim();
+  if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
+
+  const tipo = document.getElementById('frl-tipo-comision').value;
+  const montoFijo = Math.max(0, parseFloat(document.getElementById('frl-monto-fijo').value) || 0);
+  const porcentaje = Math.min(100, Math.max(0, parseFloat(document.getElementById('frl-porcentaje').value) || 0));
+  const perfilId = document.getElementById('frl-perfil-vendedor').value || null;
+
+  if (tipo === 'porcentaje' && !perfilId) {
+    errEl.textContent = 'Elige el vendedor asociado para poder calcular sus ventas.';
+    return;
+  }
+  const perfilNombre = perfilId
+    ? (STATE.perfilesVendedor.find(p => p.id === perfilId)?.nombre || null)
+    : null;
+
+  const id = document.getElementById('frl-id').value || null;
+  const payload = {
+    auth_user_id: STATE.userId,
+    nombre,
+    cedula: document.getElementById('frl-cedula').value.trim() || null,
+    telefono: document.getElementById('frl-telefono').value.trim() || null,
+    correo: document.getElementById('frl-correo').value.trim() || null,
+    tipo_comision: tipo,
+    monto_fijo: montoFijo,
+    porcentaje_comision: porcentaje,
+    perfil_vendedor_id: tipo === 'porcentaje' ? perfilId : null,
+    perfil_vendedor_nombre: tipo === 'porcentaje' ? perfilNombre : null,
+    estado: document.getElementById('frl-estado').value,
+    observaciones: document.getElementById('frl-observaciones').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const btn = document.getElementById('frl-btn-guardar');
+  setBtnLoading('frl-btn-guardar', true);
+  try {
+    const { error } = id
+      ? await sbClient.from('freelancers').update(payload).eq('id', id).eq('auth_user_id', STATE.userId)
+      : await sbClient.from('freelancers').insert(payload);
+    if (error) throw error;
+    showToast(id ? 'Freelancer actualizado' : 'Freelancer agregado');
+    closeModal('modal-freelancer');
+    await cargarFreelancers();
+  } catch (e) {
+    console.error('guardarFreelancer:', e);
+    errEl.textContent = 'No se pudo guardar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    setBtnLoading('frl-btn-guardar', false);
+  }
+}
+
+async function eliminarFreelancer(id) {
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+  if (!confirm(`¿Eliminar a "${f.nombre}"? Su historial de pagos ya registrados no se borra.`)) return;
+  try {
+    const { error } = await sbClient.from('freelancers').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Freelancer eliminado');
+    await cargarFreelancers();
+  } catch (e) {
+    console.error('eliminarFreelancer:', e);
+    showToast('No se pudo eliminar', 'error');
+  }
+}
+
+/* ---------- Pagar comisión ---------- */
+
+async function abrirPagoFreelancer(id) {
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('pfl-modal-title').textContent = `Pagar comisión — ${f.nombre}`;
+  document.getElementById('pfl-freelancer-id').value = f.id;
+  document.getElementById('pfl-observaciones').value = '';
+  document.getElementById('pfl-error').textContent = '';
+  document.getElementById('pfl-resultado-calculo').style.display = 'none';
+
+  const esFijo = f.tipo_comision === 'fijo';
+  document.getElementById('pfl-bloque-fijo').style.display = esFijo ? '' : 'none';
+  document.getElementById('pfl-bloque-porcentaje').style.display = esFijo ? 'none' : '';
+  if (esFijo) {
+    document.getElementById('pfl-monto-fijo').value = f.monto_fijo || 0;
+  } else {
+    const hoy = todayISO();
+    document.getElementById('pfl-hasta').value = hoy;
+    document.getElementById('pfl-desde').value = hoy;
+  }
+
+  // Selector de método de pago, reutilizando lo ya cargado
+  const sel = document.getElementById('pfl-metodo-pago');
+  if (sel) {
+    sel.innerHTML = '<option value="">Efectivo (sin método específico)</option>' +
+      (STATE.metodosPago || []).filter(m => m.id).map(m => `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  }
+
+  openModal('modal-pagar-freelancer');
+}
+
+// EL CALCULO CLAVE: suma el "subtotal" (valor del producto, SIN el
+// IVA) de las ventas completadas de ese vendedor en el rango de
+// fechas elegido -- nunca "total" (que ya incluye impuesto). Es lo
+// que el negocio pidio explicitamente: la comision es sobre el
+// valor del producto, no sobre lo que el cliente pago con IVA.
+async function calcularComisionFreelancer() {
+  const errEl = document.getElementById('pfl-error');
+  errEl.textContent = '';
+  const id = document.getElementById('pfl-freelancer-id').value;
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f || !f.perfil_vendedor_nombre) {
+    errEl.textContent = 'Este freelancer no tiene un vendedor asociado configurado.';
+    return;
+  }
+  const desde = document.getElementById('pfl-desde').value;
+  const hasta = document.getElementById('pfl-hasta').value;
+  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; return; }
+  if (desde > hasta) { errEl.textContent = 'La fecha "Desde" no puede ser después de "Hasta".'; return; }
+
+  try {
+    const { data, error } = await sbClient.from('ventas')
+      .select('subtotal')
+      .eq('auth_user_id', STATE.userId)
+      .eq('estado', 'completada')
+      .eq('creado_por_nombre', f.perfil_vendedor_nombre)
+      .gte('fecha', desde).lte('fecha', hasta);
+    if (error) throw error;
+
+    const ventas = data || [];
+    // Suma del SUBTOTAL -- el valor del producto, nunca "total" (que
+    // ya trae el IVA sumado).
+    const baseCalculo = round2(ventas.reduce((s, v) => s + (Number(v.subtotal) || 0), 0));
+    const monto = round2(baseCalculo * (Number(f.porcentaje_comision) || 0) / 100);
+
+    STATE._calculoFreelancerActual = { baseCalculo, monto, numVentas: ventas.length, pct: f.porcentaje_comision };
+
+    document.getElementById('pfl-num-ventas').textContent    = ventas.length;
+    document.getElementById('pfl-base-calculo').textContent  = fmt(baseCalculo);
+    document.getElementById('pfl-pct-aplicado').textContent  = `${f.porcentaje_comision}%`;
+    document.getElementById('pfl-monto-calculado').textContent = fmt(monto);
+    document.getElementById('pfl-resultado-calculo').style.display = '';
+
+    if (!ventas.length) errEl.textContent = 'No se encontraron ventas de este vendedor en ese rango de fechas.';
+  } catch (e) {
+    console.error('calcularComisionFreelancer:', e);
+    errEl.textContent = 'No se pudo calcular: ' + (e.message || 'intenta de nuevo');
+  }
+}
+
+async function confirmarPagoFreelancer() {
+  const errEl = document.getElementById('pfl-error');
+  errEl.textContent = '';
+  const id = document.getElementById('pfl-freelancer-id').value;
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+
+  const esFijo = f.tipo_comision === 'fijo';
+  let monto, periodoInicio = null, periodoFin = null, baseCalculo = null, pctAplicado = null;
+
+  if (esFijo) {
+    monto = Math.max(0, parseFloat(document.getElementById('pfl-monto-fijo').value) || 0);
+    if (monto <= 0) { errEl.textContent = 'El monto a pagar debe ser mayor a cero.'; return; }
+  } else {
+    if (!STATE._calculoFreelancerActual) {
+      errEl.textContent = 'Primero calcula la comisión del período.';
+      return;
+    }
+    monto = STATE._calculoFreelancerActual.monto;
+    baseCalculo = STATE._calculoFreelancerActual.baseCalculo;
+    pctAplicado = STATE._calculoFreelancerActual.pct;
+    periodoInicio = document.getElementById('pfl-desde').value;
+    periodoFin = document.getElementById('pfl-hasta').value;
+    if (monto <= 0) { errEl.textContent = 'La comisión calculada es C$0 — no hay nada que pagar en ese período.'; return; }
+  }
+
+  const metodoSel = document.getElementById('pfl-metodo-pago');
+  const metodoId = metodoSel?.value || null;
+  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const observaciones = document.getElementById('pfl-observaciones').value.trim() || null;
+  const fecha = todayISO();
+
+  setBtnLoading('pfl-btn-pagar', true);
+  try {
+    const { data: pago, error: errPago } = await sbClient.from('freelancers_pagos').insert({
+      auth_user_id: STATE.userId, freelancer_id: f.id,
+      periodo_inicio: periodoInicio, periodo_fin: periodoFin,
+      monto_ventas_base: baseCalculo, porcentaje_aplicado: pctAplicado,
+      monto_pagado: monto, fecha_pago: fecha,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
+    }).select().single();
+    if (errPago) throw errPago;
+
+    // Egreso en Caja -- mismo mecanismo compartido que ya usa el pago
+    // de salario a empleados normales, nunca se omite.
+    const cajaRes = await window.CajaAPI.registrarMovimiento({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_COMISION_FREELANCER',
+      concepto: `Comisión a ${f.nombre}${esFijo ? '' : ` (${periodoInicio} al ${periodoFin})`}`,
+      monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      referencia_tipo: 'freelancer', referencia_id: pago.id, observaciones, fecha,
+    });
+    if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
+
+    showToast('Comisión pagada correctamente');
+    closeModal('modal-pagar-freelancer');
+    STATE._calculoFreelancerActual = null;
+  } catch (e) {
+    console.error('confirmarPagoFreelancer:', e);
+    errEl.textContent = 'No se pudo registrar el pago: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    setBtnLoading('pfl-btn-pagar', false);
+  }
+}
+
 async function abrirPlanillas() {
   document.getElementById('panel-planillas').style.display = '';
   await cargarPlanillas();

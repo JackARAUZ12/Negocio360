@@ -1233,6 +1233,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
             Reportes
           </button>
+          <button class="btn-secondary" onclick="abrirFreelancers()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Freelancers
+          </button>
           <button class="btn-primary" onclick="abrirNuevoEmpleado()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo empleado
@@ -1240,7 +1244,27 @@
         </div>
       </div>
 
-      <!-- ===== PANEL: PLANILLA (Fase 3) ===== -->
+      <!-- ===== PANEL: FREELANCERS (comision) ===== -->
+      <div class="panel-card fade-in" id="panel-freelancers" style="display:none;margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Freelancers — se les paga por comisión, no por salario fijo periódico
+          </div>
+          <button class="btn-primary btn-sm" onclick="abrirNuevoFreelancer()">+ Nuevo freelancer</button>
+        </div>
+        <p style="padding:0 16px;margin:-6px 0 14px;font-size:12.5px;color:var(--text-muted)">
+          Cada uno puede cobrar un <strong>monto fijo</strong> por pago, o un <strong>porcentaje de sus ventas</strong> —
+          si es porcentaje, se calcula sobre el valor del producto <strong>sin incluir el IVA</strong>.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nombre</th><th>Comisión</th><th>Vendedor asociado</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="freelancers-tbody"><tr><td colspan="5" class="empty-cell">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="panel-card fade-in" id="panel-planillas" style="display:none;margin-bottom:20px">
         <div class="panel-header">
           <div class="panel-title">
@@ -1394,6 +1418,110 @@
 <!-- =====================================================
      MODAL: NUEVO / EDITAR EMPLEADO
 =================================================== -->
+<div class="modal-overlay" id="modal-freelancer" onclick="if(event.target===this)closeModal('modal-freelancer')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <h3 id="frl-modal-title">Nuevo freelancer</h3>
+      <button class="modal-close" onclick="closeModal('modal-freelancer')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="frl-id"/>
+      <div class="form-row">
+        <div class="form-group"><label>Nombre completo *</label><input type="text" id="frl-nombre" placeholder="Ej: Carlos Ruiz"/></div>
+        <div class="form-group"><label>Cédula (opcional)</label><input type="text" id="frl-cedula"/></div>
+        <div class="form-group"><label>Teléfono (opcional)</label><input type="text" id="frl-telefono"/></div>
+        <div class="form-group"><label>Correo (opcional)</label><input type="text" id="frl-correo"/></div>
+      </div>
+
+      <label style="font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;display:block;margin:16px 0 8px">Cómo se le paga</label>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipo de comisión *</label>
+          <select id="frl-tipo-comision" onchange="onCambiarTipoComisionFreelancer()">
+            <option value="fijo">Monto fijo por pago</option>
+            <option value="porcentaje">Porcentaje de sus ventas</option>
+          </select>
+        </div>
+        <div class="form-group" id="frl-wrap-monto-fijo">
+          <label>Monto fijo (por pago)</label>
+          <input type="number" id="frl-monto-fijo" min="0" step="0.01" placeholder="0.00"/>
+        </div>
+        <div class="form-group" id="frl-wrap-porcentaje" style="display:none">
+          <label>Porcentaje de comisión (%)</label>
+          <input type="number" id="frl-porcentaje" min="0" max="100" step="0.01" placeholder="0"/>
+        </div>
+        <div class="form-group" id="frl-wrap-vendedor" style="display:none">
+          <label>Vendedor asociado *</label>
+          <select id="frl-perfil-vendedor"><option value="">Selecciona un perfil…</option></select>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
+            Se usa para saber cuáles ventas son suyas — debe coincidir con el perfil que usa para vender en el sistema.
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin:-6px 0 14px;padding:10px 12px;background:var(--bg-hover);border-radius:8px">
+        Si es por porcentaje, la comisión se calcula sobre el valor del producto vendido <strong>sin incluir el IVA</strong> — nunca sobre el total con impuesto.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Estado</label>
+          <select id="frl-estado"><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select>
+        </div>
+        <div class="form-group full"><label>Observaciones (opcional)</label><textarea id="frl-observaciones" rows="2"></textarea></div>
+      </div>
+      <p id="frl-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-freelancer')">Cancelar</button>
+      <button class="btn-primary" id="frl-btn-guardar" onclick="guardarFreelancer()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-pagar-freelancer" onclick="if(event.target===this)closeModal('modal-pagar-freelancer')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="pfl-modal-title">Pagar comisión</h3>
+      <button class="modal-close" onclick="closeModal('modal-pagar-freelancer')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pfl-freelancer-id"/>
+
+      <div id="pfl-bloque-fijo" style="display:none">
+        <div class="form-group">
+          <label>Monto a pagar</label>
+          <input type="number" id="pfl-monto-fijo" min="0" step="0.01"/>
+        </div>
+      </div>
+
+      <div id="pfl-bloque-porcentaje" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>Desde</label><input type="date" id="pfl-desde"/></div>
+          <div class="form-group"><label>Hasta</label><input type="date" id="pfl-hasta"/></div>
+        </div>
+        <button type="button" class="btn-secondary btn-sm" onclick="calcularComisionFreelancer()">Calcular comisión del período</button>
+        <div id="pfl-resultado-calculo" style="display:none;margin-top:12px;padding:12px;background:var(--bg-hover);border-radius:8px">
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Ventas encontradas</span><b id="pfl-num-ventas">0</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Valor de venta (sin IVA)</span><b id="pfl-base-calculo">C$0.00</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span>Porcentaje aplicado</span><b id="pfl-pct-aplicado">0%</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;border-top:1px solid var(--border);padding-top:8px"><span>Comisión a pagar</span><b id="pfl-monto-calculado">C$0.00</b></div>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:14px">
+        <label>Método de pago</label>
+        <select id="pfl-metodo-pago"><option value="">Efectivo (sin método específico)</option></select>
+      </div>
+      <div class="form-group"><label>Observaciones (opcional)</label><textarea id="pfl-observaciones" rows="2"></textarea></div>
+      <p id="pfl-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-pagar-freelancer')">Cancelar</button>
+      <button class="btn-primary" id="pfl-btn-pagar" onclick="confirmarPagoFreelancer()">Registrar pago</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-empleado" onclick="if(event.target===this)closeModal('modal-empleado')">
   <div class="modal-box modal-lg">
     <div class="modal-header">
@@ -1964,7 +2092,7 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js"></script>
-<script src="salarios.js?v=20260901a"></script>
+<script src="salarios.js?v=20260915a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
