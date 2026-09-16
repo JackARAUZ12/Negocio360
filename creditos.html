@@ -1685,6 +1685,7 @@
       <button class="modal-close" onclick="closeModal('modal-detalle-credito')">&times;</button>
     </div>
     <div class="modal-body" id="detalle-credito-body">Cargando…</div>
+    <div id="det-credito-aviso-anular" style="display:none;margin:0 20px 12px;padding:10px 12px;background:var(--danger-soft,#fee2e2);border-radius:8px;font-size:12.5px;color:var(--danger)"></div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn-ghost" onclick="closeModal('modal-detalle-credito')">Cerrar</button>
       <button class="btn-ghost" id="btn-anular-credito" style="border-color:var(--danger);color:var(--danger)" onclick="abrirAnularCredito()">🚫 Anular crédito</button>
@@ -1910,7 +1911,7 @@
 <script src="cajaAPI.js"></script>
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
-<script src="creditos.js?v=20260916b"></script>
+<script src="creditos.js?v=20260916c"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>

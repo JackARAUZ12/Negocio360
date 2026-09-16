@@ -2356,17 +2356,30 @@
     window._creditoDetalleData = { credito, pagos: pagos || [], productosFinanciados };
 
     const btnAnular = document.getElementById('btn-anular-credito');
+    const avisoAnular = document.getElementById('det-credito-aviso-anular');
     if (btnAnular) {
       const tienePagos = (pagos || []).length > 0;
       const yaAnulado = credito.estado === 'anulado';
-      btnAnular.disabled = tienePagos || yaAnulado;
-      btnAnular.title = yaAnulado
-        ? 'Este crédito ya está anulado'
+      const bloqueado = tienePagos || yaAnulado;
+      const razon = yaAnulado
+        ? 'Este crédito ya está anulado.'
         : tienePagos
-          ? 'Este crédito tiene pagos registrados — anula cada pago primero desde el historial, y cuando el saldo quede completo, podrás anular el crédito.'
-          : 'Anular este crédito por completo';
-      btnAnular.style.opacity = (tienePagos || yaAnulado) ? '0.5' : '1';
-      btnAnular.style.cursor = (tienePagos || yaAnulado) ? 'not-allowed' : 'pointer';
+          ? '🔒 No se puede anular: este crédito tiene pagos registrados. Anula cada pago primero desde el historial de abajo — cuando el saldo quede completo, podrás anular el crédito.'
+          : '';
+
+      // IMPORTANTE: el boton se deja SIEMPRE clicable (no se usa
+      // disabled=true) -- un boton con disabled nativo nunca dispara
+      // el clic en el navegador, asi que el aviso de abrirAnularCredito()
+      // JAMAS llegaba a mostrarse. Ahora, aunque se vea "apagado", el
+      // clic si funciona y explica el motivo -- ademas de este aviso
+      // que queda visible de inmediato, sin necesidad de tocar nada.
+      btnAnular.style.opacity = bloqueado ? '0.5' : '1';
+      btnAnular.style.cursor = bloqueado ? 'not-allowed' : 'pointer';
+      btnAnular.dataset.bloqueado = bloqueado ? '1' : '';
+      btnAnular.dataset.razon = razon;
+
+      if (razon) { avisoAnular.textContent = razon; avisoAnular.style.display = ''; }
+      else { avisoAnular.style.display = 'none'; }
     }
 
     document.getElementById('det-credito-title').textContent = `Crédito ${credito.numero_credito}`;
@@ -2468,7 +2481,7 @@
     if (!info) return;
     const { credito, pagos } = info;
     if ((pagos || []).length > 0) {
-      showToast('Este crédito tiene pagos registrados. Anula cada pago primero.', 'error');
+      showToast('🔒 No se puede anular: tiene pagos registrados. Anula cada pago primero desde el historial.', 'error');
       return;
     }
     if (credito.estado === 'anulado') { showToast('Este crédito ya está anulado', 'error'); return; }
