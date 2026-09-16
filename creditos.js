@@ -1447,21 +1447,30 @@
      CONFIRMAR NUEVO CRÉDITO
   =================================================== */
   async function confirmarNuevoCredito() {
+    // BUG REAL: crear un crédito dos veces (doble clic, doble toque en
+    // pantalla táctil, o la tecla Enter repetida) creaba DOS créditos
+    // REALES distintos por el mismo monto -- cada uno con su propio
+    // saldo pendiente, sumando de más en el estado de cuenta del
+    // cliente. Mismo candado ya usado en confirmarConvertirAVenta().
+    if (CS.creandoCredito) return;
+    CS.creandoCredito = true;
+
     const btn = document.getElementById('btn-crear-credito');
     const tipo = document.getElementById('nc-tipo').value;
     const clienteId = document.getElementById('nc-cliente').value;
-    if (!clienteId) { showToast('Selecciona un cliente', 'error'); return; }
-    if (tipo === 'venta' && !CS.ncItems.length) { showToast('Agrega al menos un producto o servicio', 'error'); return; }
-    if (tipo === 'financiero' && !document.getElementById('nc-producto-financiero-nombre').value.trim()) { showToast('Escribe el nombre del préstamo o financiamiento', 'error'); return; }
+    if (!clienteId) { showToast('Selecciona un cliente', 'error'); CS.creandoCredito = false; return; }
+    if (tipo === 'venta' && !CS.ncItems.length) { showToast('Agrega al menos un producto o servicio', 'error'); CS.creandoCredito = false; return; }
+    if (tipo === 'financiero' && !document.getElementById('nc-producto-financiero-nombre').value.trim()) { showToast('Escribe el nombre del préstamo o financiamiento', 'error'); CS.creandoCredito = false; return; }
 
     const montoOriginal = calcularMontoOriginal();
-    if (montoOriginal <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
+    if (montoOriginal <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.creandoCredito = false; return; }
 
     // Un préstamo/financiamiento sale de Caja: si no hay fondos suficientes, no se crea el crédito.
     if (tipo === 'financiero') {
       const saldoCaja = await window.CajaAPI.getCapital(CS.userId);
       if (montoOriginal > saldoCaja + 0.01) {
         showToast(`Fondos insuficientes en caja para este préstamo. Saldo disponible: ${fmt(saldoCaja)}`, 'error');
+        CS.creandoCredito = false;
         return;
       }
     }
@@ -1675,6 +1684,7 @@
       showToast('Error al crear el crédito: ' + (e.message||e), 'error');
     } finally {
       btn.disabled = false; btn.textContent = 'Crear crédito';
+      CS.creandoCredito = false;
     }
   }
   window.confirmarNuevoCredito = confirmarNuevoCredito;
