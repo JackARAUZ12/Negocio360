@@ -992,7 +992,16 @@ async function guardarProforma() {
    CARGA / ESTADOS AUTOMÁTICOS / TABLA / FILTROS
 ===================================================== */
 function calcularEstadoProforma(p) {
-  if (['convertida','rechazada'].includes(p.estado)) return p.estado;
+  // BUG REAL CORREGIDO: 'pago_parcial' faltaba en esta lista -- una
+  // proforma ya convertida a credito (via "Pago parcial / a credito")
+  // usa ese estado, distinto de 'convertida' (que solo usa el flujo
+  // de "Convertir a Venta"). Sin esta proteccion, cuando pasaba la
+  // fecha de vencimiento ORIGINAL de la proforma, el sistema la
+  // reescribia a 'vencida' -- borrando el rastro de que ya era un
+  // credito real y activo, aunque el credito siguiera existiendo y
+  // cobrandose con normalidad. Confirmado contra la base de datos:
+  // asi se veian las proformas de ALL PLASTIC que el cliente reporto.
+  if (['convertida','rechazada','pago_parcial'].includes(p.estado)) return p.estado;
   if (p.fecha_vencimiento && p.fecha_vencimiento < todayISO()) return 'vencida';
   return p.estado;
 }
