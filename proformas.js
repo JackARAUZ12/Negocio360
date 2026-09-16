@@ -1487,7 +1487,7 @@ function imprimirComprobanteProforma() {
           observaciones: v.origenProforma ? `Generado a partir de la proforma ${v.origenProforma}` : '',
           empresaNombre: STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
           empresaDireccion: STATE.empresaConfig?.direccion || '', empresaTelefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
-          empresaRuc: STATE.empresaConfig?.ruc || '', moneda_simbolo: STATE.empresaConfig?.moneda_simbolo || 'C$',
+          empresaRuc: STATE.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(STATE.empresaConfig?.moneda),
         }, (v.items||[]).map(it => ({
           nombre: it.producto_nombre, cantidad: it.cantidad,
           precio: it.cantidad > 0 ? round2(it.subtotal / it.cantidad) : it.subtotal,
@@ -1749,7 +1749,7 @@ async function confirmarConvertirAVenta() {
         empresaDireccion: STATE.empresaConfig?.direccion || '',
         empresaTelefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
         empresaRuc: STATE.empresaConfig?.ruc || '',
-        moneda_simbolo: STATE.empresaConfig?.moneda_simbolo || 'C$',
+        moneda_simbolo: monedaParaMostrar(STATE.empresaConfig?.moneda),
       }, detalles.map(d => ({
         nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
         descuento: d.descuento, subtotal: d.subtotal,

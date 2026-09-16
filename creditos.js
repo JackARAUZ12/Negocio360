@@ -2050,7 +2050,7 @@
             metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
-            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: CS.empresaConfig?.moneda_simbolo || 'C$',
+            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
           }, [{ nombre: `Pago de cuota — ${c.credito || 'crédito'}`, cantidad: 1, precio: c.monto, descuento: 0, subtotal: c.monto }]);
           doc.save(`Comprobante_pago_${c.numero || Date.now()}.pdf`);
           showToast('Comprobante generado');
@@ -2116,7 +2116,7 @@
             metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
-            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: CS.empresaConfig?.moneda_simbolo || 'C$',
+            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
           }, [{ nombre: `Pago de cuota — ${c.credito || 'crédito'}`, cantidad: 1, precio: c.monto, descuento: 0, subtotal: c.monto }]);
           doc.save(`Comprobante_pago_${c.numero || Date.now()}.pdf`);
         } catch (e) {
@@ -2155,7 +2155,7 @@
     const bizName = CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'La Empresa';
     const bizRuc = CS.empresaConfig?.ruc || '';
     const bizDireccion = CS.empresaConfig?.direccion || '';
-    const moneda = CS.empresaConfig?.moneda_simbolo || 'C$';
+    const moneda = monedaParaMostrar(CS.empresaConfig?.moneda);
     const nombreCliente = cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '________________';
     const hoy = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
     const numCuotas = (cuotas||[]).length || credito.num_cuotas || 0;
@@ -2277,7 +2277,7 @@
         empresaDireccion: CS.empresaConfig?.direccion || '',
         empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
         empresaRuc: CS.empresaConfig?.ruc || '',
-        moneda_simbolo: CS.empresaConfig?.moneda_simbolo || 'C$',
+        moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
       }, (productos||[]).map(p => ({
         nombre: p.producto_nombre, cantidad: p.cantidad, precio: p.precio, descuento: 0, subtotal: p.subtotal,
       })));

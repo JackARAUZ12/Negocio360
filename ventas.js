@@ -3619,7 +3619,7 @@ async function descargarReciboDeVenta(venta, items) {
         metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
         empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
         empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
-        empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+        empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
       }, (items||[]).map(i => ({
         nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
         descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
@@ -3675,7 +3675,7 @@ async function descargarComprobanteCartaVenta() {
       empresaDireccion: S.empresaConfig?.direccion || '',
       empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
       empresaRuc: S.empresaConfig?.ruc || '',
-      moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+      moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
     }, (items||[]).map(it => ({
       nombre: it.producto_nombre, cantidad: it.cantidad, precio: it.precio,
       descuento: it.descuento, subtotal: it.subtotal,
@@ -5659,7 +5659,7 @@ function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
           metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
           empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
           empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
-          empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+          empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
         }, (items||[]).map(i => ({
           nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: round2(i.cantidad*i.precio),
@@ -5847,7 +5847,7 @@ function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
           metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
           empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
           empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
-          empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: S.empresaConfig?.moneda_simbolo || 'C$',
+          empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
         }, (items||[]).map(i => ({
           nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
