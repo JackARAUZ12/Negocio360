@@ -1524,6 +1524,37 @@ async function eliminarFreelancer(id) {
 
 /* ---------- Pagar comisión ---------- */
 
+async function cargarBancosDisponiblesFrl() {
+  if (STATE._bancosCacheFrl) return STATE._bancosCacheFrl;
+  try {
+    const { data } = await sbClient.from('bancos').select('*')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
+    STATE._bancosCacheFrl = data || [];
+  } catch (e) { STATE._bancosCacheFrl = []; }
+  return STATE._bancosCacheFrl;
+}
+
+// Igual que ya funciona en Ventas: si el método elegido es tarjeta o
+// transferencia, se pregunta de que banco sale el dinero -- para
+// cualquier otro metodo (efectivo, etc.) el selector queda oculto y
+// el egreso se registra sin banco, igual que siempre.
+async function onCambiarMetodoPagoFreelancer() {
+  const sel = document.getElementById('pfl-metodo-pago');
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById('pfl-wrap-banco');
+  const bancoSel = document.getElementById('pfl-banco');
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesFrl();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
+
 async function abrirPagoFreelancer(id) {
   const f = (STATE.freelancers || []).find(x => x.id === id);
   if (!f) return;
@@ -1531,6 +1562,8 @@ async function abrirPagoFreelancer(id) {
   document.getElementById('pfl-freelancer-id').value = f.id;
   document.getElementById('pfl-observaciones').value = '';
   document.getElementById('pfl-error').textContent = '';
+  document.getElementById('pfl-wrap-banco').style.display = 'none';
+  document.getElementById('pfl-banco').value = '';
   document.getElementById('pfl-resultado-calculo').style.display = 'none';
   document.getElementById('pfl-lista-manual').style.display = 'none';
   document.getElementById('pfl-lista-manual').innerHTML = '';
@@ -1742,6 +1775,14 @@ async function confirmarPagoFreelancer() {
   const observaciones = document.getElementById('pfl-observaciones').value.trim() || null;
   const fecha = todayISO();
 
+  // Si el metodo es tarjeta/transferencia y hay bancos configurados,
+  // el selector queda visible -- en ese caso es obligatorio elegir uno.
+  let bancoId = null;
+  if (document.getElementById('pfl-wrap-banco').style.display !== 'none') {
+    bancoId = document.getElementById('pfl-banco').value || null;
+    if (!bancoId) { errEl.textContent = 'Elige de qué banco sale este pago.'; return; }
+  }
+
   setBtnLoading('pfl-btn-pagar', true);
   try {
     const { data: pago, error: errPago } = await sbClient.from('freelancers_pagos').insert({
@@ -1756,9 +1797,9 @@ async function confirmarPagoFreelancer() {
     // Egreso en Caja -- mismo mecanismo compartido que ya usa el pago
     // de salario a empleados normales, nunca se omite.
     const cajaRes = await window.CajaAPI.registrarMovimiento({
-      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_COMISION_FREELANCER',
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_COMISION',
       concepto: `Comisión a ${f.nombre}${esFijo ? '' : ` (${periodoInicio} al ${periodoFin})`}`,
-      monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       referencia_tipo: 'freelancer', referencia_id: pago.id, observaciones, fecha,
     });
     if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');

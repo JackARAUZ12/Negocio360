@@ -1531,7 +1531,11 @@
 
       <div class="form-group" style="margin-top:14px">
         <label>Método de pago</label>
-        <select id="pfl-metodo-pago"><option value="">Efectivo (sin método específico)</option></select>
+        <select id="pfl-metodo-pago" onchange="onCambiarMetodoPagoFreelancer()"><option value="">Efectivo (sin método específico)</option></select>
+      </div>
+      <div class="form-group" id="pfl-wrap-banco" style="display:none">
+        <label>¿De qué banco sale este pago? *</label>
+        <select id="pfl-banco"><option value="">Selecciona un banco…</option></select>
       </div>
       <div class="form-group"><label>Observaciones (opcional)</label><textarea id="pfl-observaciones" rows="2"></textarea></div>
       <p id="pfl-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
@@ -2113,7 +2117,7 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js"></script>
-<script src="salarios.js?v=20260915b"></script>
+<script src="salarios.js?v=20260915c"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
