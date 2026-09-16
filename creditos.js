@@ -1819,6 +1819,12 @@
   };
 
   async function confirmarRegistrarPagoCredito() {
+    // Mismo riesgo real ya corregido en confirmarNuevoCredito(): un
+    // doble clic aqui descontaria el pago DOS VECES del saldo, y
+    // duplicaria el ingreso en Caja. Mismo candado, misma proteccion.
+    if (CS.registrandoPago) return;
+    CS.registrandoPago = true;
+
     const btn = document.getElementById('btn-confirmar-pago');
     const creditoId = document.getElementById('rp-credito').value;
     const monto = round2(parseFloat(document.getElementById('rp-monto').value) || 0);
@@ -1827,8 +1833,8 @@
     const metodoNombre = metodoSel.selectedOptions[0]?.dataset.nombre || metodoSel.selectedOptions[0]?.textContent || 'Efectivo';
     const observaciones = document.getElementById('rp-observaciones').value.trim() || null;
 
-    if (!creditoId) { showToast('Selecciona un crédito', 'error'); return; }
-    if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); return; }
+    if (!creditoId) { showToast('Selecciona un crédito', 'error'); CS.registrandoPago = false; return; }
+    if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.registrandoPago = false; return; }
 
     // El banco ya se eligió al momento de cambiar el método a
     // Tarjeta/Transferencia (no aquí al final) — esto es solo un
@@ -1837,6 +1843,7 @@
     const metodoActualCred = (metodoNombre||'').toLowerCase();
     if ((metodoActualCred.includes('tarjeta') || metodoActualCred.includes('transferencia')) && (await cargarBancosDisponiblesCred()).length && !_bancoElegidoIdCred) {
       showToast('Elige a qué banco entra este pago', 'error');
+      CS.registrandoPago = false;
       return;
     }
     const bancoElegidoPago = _bancoElegidoIdCred || null;
@@ -1849,6 +1856,7 @@
       const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
       if (bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase && !CS.empresaConfig?.tasa_cambio_usd) {
         showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de registrar este pago', 'error');
+        CS.registrandoPago = false;
         return;
       }
     }
@@ -1969,6 +1977,7 @@
       showToast('Error al registrar el pago: ' + (e.message||e), 'error');
     } finally {
       btn.disabled = false; btn.textContent = 'Registrar pago';
+      CS.registrandoPago = false;
     }
   }
   window.confirmarRegistrarPagoCredito = confirmarRegistrarPagoCredito;
