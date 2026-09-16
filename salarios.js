@@ -1532,10 +1532,23 @@ async function abrirPagoFreelancer(id) {
   document.getElementById('pfl-observaciones').value = '';
   document.getElementById('pfl-error').textContent = '';
   document.getElementById('pfl-resultado-calculo').style.display = 'none';
+  document.getElementById('pfl-lista-manual').style.display = 'none';
+  document.getElementById('pfl-lista-manual').innerHTML = '';
+  document.getElementById('pfl-resultado-manual').style.display = 'none';
+  STATE._calculoFreelancerActual = null;
+  STATE._seleccionManualFreelancer = null;
 
   const esFijo = f.tipo_comision === 'fijo';
   document.getElementById('pfl-bloque-fijo').style.display = esFijo ? '' : 'none';
   document.getElementById('pfl-bloque-porcentaje').style.display = esFijo ? 'none' : '';
+
+  // Con perfil vinculado (SI entra al sistema): modo automatico, igual
+  // que siempre. Sin perfil (NO entra al sistema): modo manual, donde
+  // se elige a mano cuales ventas del periodo son suyas.
+  const tieneVendedor = !esFijo && !!f.perfil_vendedor_id;
+  document.getElementById('pfl-auto-porcentaje').style.display   = (!esFijo && tieneVendedor) ? '' : 'none';
+  document.getElementById('pfl-manual-porcentaje').style.display = (!esFijo && !tieneVendedor) ? '' : 'none';
+
   if (esFijo) {
     document.getElementById('pfl-monto-fijo').value = f.monto_fijo || 0;
   } else {
@@ -1552,6 +1565,85 @@ async function abrirPagoFreelancer(id) {
   }
 
   openModal('modal-pagar-freelancer');
+}
+
+// MODO MANUAL: trae TODAS las ventas completadas del rango de fechas
+// (sin filtrar por vendedor, ya que no hay ninguno vinculado) y las
+// muestra con una casilla para que quien SI tiene acceso marque a
+// mano cuales corresponden a este freelancer. Si una venta ya fue
+// contada en un pago anterior (de este u otro freelancer), se marca
+// como "ya pagada" y queda desmarcada por defecto -- para nunca pagar
+// la misma comision dos veces por accidente.
+async function buscarVentasParaSeleccionManual() {
+  const errEl = document.getElementById('pfl-error');
+  errEl.textContent = '';
+  const desde = document.getElementById('pfl-desde').value;
+  const hasta = document.getElementById('pfl-hasta').value;
+  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; return; }
+  if (desde > hasta) { errEl.textContent = 'La fecha "Desde" no puede ser después de "Hasta".'; return; }
+
+  try {
+    const { data: ventas, error } = await sbClient.from('ventas')
+      .select('id,numero_venta,fecha,cliente_nombre,subtotal')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completada')
+      .gte('fecha', desde).lte('fecha', hasta)
+      .order('fecha', { ascending: false });
+    if (error) throw error;
+
+    // Ventas ya usadas en CUALQUIER pago anterior (de cualquier
+    // freelancer) -- para avisar y evitar pagarlas dos veces.
+    const { data: pagosPrevios } = await sbClient.from('freelancers_pagos')
+      .select('ventas_ids').eq('auth_user_id', STATE.userId).not('ventas_ids', 'is', null);
+    const idsYaPagados = new Set();
+    (pagosPrevios || []).forEach(p => (p.ventas_ids || []).forEach(vid => idsYaPagados.add(vid)));
+
+    STATE._ventasParaSeleccionManual = (ventas || []).map(v => ({ ...v, yaPagada: idsYaPagados.has(v.id) }));
+    renderListaSeleccionManual();
+  } catch (e) {
+    console.error('buscarVentasParaSeleccionManual:', e);
+    errEl.textContent = 'No se pudo buscar las ventas: ' + (e.message || 'intenta de nuevo');
+  }
+}
+
+function renderListaSeleccionManual() {
+  const cont = document.getElementById('pfl-lista-manual');
+  const lista = STATE._ventasParaSeleccionManual || [];
+  if (!lista.length) {
+    cont.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-muted);font-size:12.5px">No hay ventas completadas en ese período</div>`;
+    cont.style.display = '';
+    return;
+  }
+  cont.innerHTML = lista.map(v => `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12.5px;${v.yaPagada ? 'opacity:.55' : ''}">
+      <input type="checkbox" value="${v.id}" onchange="actualizarSeleccionManual()"/>
+      <span style="flex:1">
+        <b>${esc(v.numero_venta || '')}</b> — ${esc(v.cliente_nombre || 'Cliente')}
+        <span style="color:var(--text-muted)"> · ${fmtDate(v.fecha)}</span>
+        ${v.yaPagada ? '<span style="color:var(--warning);font-weight:600"> · ya pagada antes</span>' : ''}
+      </span>
+      <span style="font-family:monospace;font-weight:600">${fmt(v.subtotal)}</span>
+    </label>`).join('');
+  cont.style.display = '';
+  actualizarSeleccionManual();
+}
+
+function actualizarSeleccionManual() {
+  const lista = STATE._ventasParaSeleccionManual || [];
+  const checks = document.querySelectorAll('#pfl-lista-manual input[type="checkbox"]:checked');
+  const idsElegidos = Array.from(checks).map(c => c.value);
+  const seleccionadas = lista.filter(v => idsElegidos.includes(v.id));
+
+  const base = round2(seleccionadas.reduce((s, v) => s + (Number(v.subtotal) || 0), 0));
+  const id = document.getElementById('pfl-freelancer-id').value;
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  const monto = round2(base * (Number(f?.porcentaje_comision) || 0) / 100);
+
+  STATE._seleccionManualFreelancer = { baseCalculo: base, monto, ventasIds: idsElegidos, pct: f?.porcentaje_comision };
+
+  document.getElementById('pfl-num-ventas-manual').textContent = idsElegidos.length;
+  document.getElementById('pfl-base-manual').textContent = fmt(base);
+  document.getElementById('pfl-monto-manual').textContent = fmt(monto);
+  document.getElementById('pfl-resultado-manual').style.display = idsElegidos.length ? '' : 'none';
 }
 
 // EL CALCULO CLAVE: suma el "subtotal" (valor del producto, SIN el
@@ -1611,12 +1703,13 @@ async function confirmarPagoFreelancer() {
   if (!f) return;
 
   const esFijo = f.tipo_comision === 'fijo';
-  let monto, periodoInicio = null, periodoFin = null, baseCalculo = null, pctAplicado = null;
+  const tieneVendedor = !esFijo && !!f.perfil_vendedor_id;
+  let monto, periodoInicio = null, periodoFin = null, baseCalculo = null, pctAplicado = null, ventasIds = null;
 
   if (esFijo) {
     monto = Math.max(0, parseFloat(document.getElementById('pfl-monto-fijo').value) || 0);
     if (monto <= 0) { errEl.textContent = 'El monto a pagar debe ser mayor a cero.'; return; }
-  } else {
+  } else if (tieneVendedor) {
     if (!STATE._calculoFreelancerActual) {
       errEl.textContent = 'Primero calcula la comisión del período.';
       return;
@@ -1627,6 +1720,20 @@ async function confirmarPagoFreelancer() {
     periodoInicio = document.getElementById('pfl-desde').value;
     periodoFin = document.getElementById('pfl-hasta').value;
     if (monto <= 0) { errEl.textContent = 'La comisión calculada es C$0 — no hay nada que pagar en ese período.'; return; }
+  } else {
+    // MODO MANUAL: sin vendedor vinculado, se paga sobre las ventas
+    // elegidas a mano.
+    if (!STATE._seleccionManualFreelancer || !STATE._seleccionManualFreelancer.ventasIds.length) {
+      errEl.textContent = 'Marca al menos una venta que corresponda a este freelancer.';
+      return;
+    }
+    monto = STATE._seleccionManualFreelancer.monto;
+    baseCalculo = STATE._seleccionManualFreelancer.baseCalculo;
+    pctAplicado = STATE._seleccionManualFreelancer.pct;
+    ventasIds = STATE._seleccionManualFreelancer.ventasIds;
+    periodoInicio = document.getElementById('pfl-desde').value;
+    periodoFin = document.getElementById('pfl-hasta').value;
+    if (monto <= 0) { errEl.textContent = 'La comisión de las ventas seleccionadas es C$0 — nada que pagar.'; return; }
   }
 
   const metodoSel = document.getElementById('pfl-metodo-pago');
@@ -1640,7 +1747,7 @@ async function confirmarPagoFreelancer() {
     const { data: pago, error: errPago } = await sbClient.from('freelancers_pagos').insert({
       auth_user_id: STATE.userId, freelancer_id: f.id,
       periodo_inicio: periodoInicio, periodo_fin: periodoFin,
-      monto_ventas_base: baseCalculo, porcentaje_aplicado: pctAplicado,
+      monto_ventas_base: baseCalculo, porcentaje_aplicado: pctAplicado, ventas_ids: ventasIds,
       monto_pagado: monto, fecha_pago: fecha,
       metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
     }).select().single();
@@ -1659,6 +1766,7 @@ async function confirmarPagoFreelancer() {
     showToast('Comisión pagada correctamente');
     closeModal('modal-pagar-freelancer');
     STATE._calculoFreelancerActual = null;
+    STATE._seleccionManualFreelancer = null;
   } catch (e) {
     console.error('confirmarPagoFreelancer:', e);
     errEl.textContent = 'No se pudo registrar el pago: ' + (e.message || 'intenta de nuevo');

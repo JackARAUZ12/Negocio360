@@ -1499,12 +1499,33 @@
           <div class="form-group"><label>Desde</label><input type="date" id="pfl-desde"/></div>
           <div class="form-group"><label>Hasta</label><input type="date" id="pfl-hasta"/></div>
         </div>
-        <button type="button" class="btn-secondary btn-sm" onclick="calcularComisionFreelancer()">Calcular comisión del período</button>
-        <div id="pfl-resultado-calculo" style="display:none;margin-top:12px;padding:12px;background:var(--bg-hover);border-radius:8px">
-          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Ventas encontradas</span><b id="pfl-num-ventas">0</b></div>
-          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Valor de venta (sin IVA)</span><b id="pfl-base-calculo">C$0.00</b></div>
-          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span>Porcentaje aplicado</span><b id="pfl-pct-aplicado">0%</b></div>
-          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;border-top:1px solid var(--border);padding-top:8px"><span>Comisión a pagar</span><b id="pfl-monto-calculado">C$0.00</b></div>
+
+        <!-- MODO AUTOMATICO: el freelancer tiene un perfil de vendedor
+             vinculado -- se calcula solo, igual que antes. -->
+        <div id="pfl-auto-porcentaje">
+          <button type="button" class="btn-secondary btn-sm" onclick="calcularComisionFreelancer()">Calcular comisión del período</button>
+          <div id="pfl-resultado-calculo" style="display:none;margin-top:12px;padding:12px;background:var(--bg-hover);border-radius:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Ventas encontradas</span><b id="pfl-num-ventas">0</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Valor de venta (sin IVA)</span><b id="pfl-base-calculo">C$0.00</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span>Porcentaje aplicado</span><b id="pfl-pct-aplicado">0%</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;border-top:1px solid var(--border);padding-top:8px"><span>Comisión a pagar</span><b id="pfl-monto-calculado">C$0.00</b></div>
+          </div>
+        </div>
+
+        <!-- MODO MANUAL: el freelancer NO tiene perfil (no entra al
+             sistema) -- quien SI tiene acceso marca a mano cuales
+             ventas del periodo le corresponden. -->
+        <div id="pfl-manual-porcentaje" style="display:none">
+          <p style="font-size:12px;color:var(--text-muted);margin:2px 0 8px">
+            Este freelancer no tiene un vendedor vinculado — marca a mano cuáles ventas del período le corresponden.
+          </p>
+          <button type="button" class="btn-secondary btn-sm" onclick="buscarVentasParaSeleccionManual()">Buscar ventas del período</button>
+          <div id="pfl-lista-manual" style="display:none;margin-top:10px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
+          <div id="pfl-resultado-manual" style="display:none;margin-top:12px;padding:12px;background:var(--bg-hover);border-radius:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>Ventas seleccionadas</span><b id="pfl-num-ventas-manual">0</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span>Valor de venta (sin IVA)</span><b id="pfl-base-manual">C$0.00</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;border-top:1px solid var(--border);padding-top:8px"><span>Comisión a pagar</span><b id="pfl-monto-manual">C$0.00</b></div>
+          </div>
         </div>
       </div>
 
@@ -2092,7 +2113,7 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js"></script>
-<script src="salarios.js?v=20260915a"></script>
+<script src="salarios.js?v=20260915b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
