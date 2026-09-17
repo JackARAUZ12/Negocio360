@@ -2070,7 +2070,7 @@ async function descargarPdfProformaActual() {
     // Siempre se pide fresco por proforma_id — nunca se reutiliza
     // STATE.detalleActual (podría ser el de OTRA proforma vista antes).
     const { data: itemsFrescos } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
-    const items = itemsFrescos || [];
+    const items = await enriquecerItemsConCombo(itemsFrescos || []);
     let cliente = null;
     if (p.cliente_id) {
       const { data } = await sbClient.from('clientes').select('telefono,correo').eq('id', p.cliente_id).maybeSingle();
