@@ -1166,6 +1166,30 @@
           <div class="cfg-status" id="pv-status"></div>
         </div>
 
+        <!-- NUMERO DE SERIE -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="11" x2="6" y2="13"/><line x1="9" y1="11" x2="9" y2="13"/><line x1="12" y1="11" x2="12" y2="13"/><line x1="15" y1="11" x2="15" y2="13"/><line x1="18" y1="11" x2="18" y2="13"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Número de serie</div>
+              <div class="cfg-card-desc">Para productos que necesitan rastrearse individualmente (electrónicos, equipos, etc.). Al activarlo, márcalo en cada producto que lo requiera desde su ficha — al venderlo, el sistema pedirá su número de serie, y quedará disponible para crear garantías en Servicio Postventa.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar número de serie</div>
+              <div class="cfg-row-sub" id="ns-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="ns-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleNumeroSerieClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="ns-status"></div>
+        </div>
+
         <!-- EDITAR PERFIL -->
         <div class="cfg-card fade-in stagger-2">
           <div class="cfg-card-header">
@@ -1589,6 +1613,59 @@ async function guardarPresentaciones(activo) {
   }
 }
 
+async function cargarNumeroSerie() {
+  const toggle = document.getElementById('ns-toggle');
+  const sub    = document.getElementById('ns-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_numero_serie')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_numero_serie === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarNumeroSerie:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleNumeroSerieClick(evt) {
+  const toggle = document.getElementById('ns-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarNumeroSerie(toggle.checked);
+}
+
+async function guardarNumeroSerie(activo) {
+  const toggle = document.getElementById('ns-toggle');
+  const sub = document.getElementById('ns-row-sub');
+  const statusEl = document.getElementById('ns-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_numero_serie: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Número de serie activado.' : 'Número de serie desactivado.', true);
+  } catch (e) {
+    console.error('guardarNumeroSerie:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
 /* =====================================================
    EDITAR MÓDULOS — activar/desactivar módulos opcionales
    La lista de módulos sale de modulos-guard.js (ModulosGuard),
@@ -1818,6 +1895,7 @@ async function initConfiguracion() {
       cargarModulosOpcionales();
       cargarLotesVencimiento();
       cargarPresentaciones();
+      cargarNumeroSerie();
       cargarCierresAuto();
     };
 
