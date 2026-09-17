@@ -1279,12 +1279,12 @@
         Siguiente →
       </button>
       <button class="btn-ghost" id="btn-confirmar-venta-imprimir" style="display:none"
-        onclick="confirmarVenta(true)">
+        onclick="iniciarConfirmarVenta(true)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         Cerrar venta e imprimir
       </button>
       <button class="btn-primary" id="btn-confirmar-venta" style="display:none;background:var(--success)"
-        onclick="confirmarVenta(false)">
+        onclick="iniciarConfirmarVenta(false)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         Cerrar venta
       </button>
@@ -1546,7 +1546,7 @@
     <div class="modal-footer">
       <button class="btn-ghost" onclick="confirmarCerrarVentaRapida()">Cancelar</button>
       <div style="flex:1"></div>
-      <button class="btn-primary" id="btn-vr-cobrar" style="background:var(--success)" onclick="confirmarVentaRapida()">
+      <button class="btn-primary" id="btn-vr-cobrar" style="background:var(--success)" onclick="iniciarConfirmarVentaRapida()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         Cobrar y cerrar venta
       </button>
@@ -1836,10 +1836,31 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-numeros-serie" onclick="if(event.target===this)cerrarModalNumerosSerie()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">📟 Números de serie</div>
+        <div class="modal-subtitle">Antes de cerrar la venta, registra el número de serie de cada unidad</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalNumerosSerie()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="ns-lista-campos"></div>
+      <p id="ns-venta-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarModalNumerosSerie()">Cancelar</button>
+      <button class="btn-primary" id="btn-continuar-con-series" onclick="continuarVentaConSeries()">Continuar con la venta</button>
+    </div>
+  </div>
+</div>
+
+
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js"></script>
 <script src="escpos-usb.js?v=20260825a"></script>
-<script src="ventas.js?v=20260917b"></script>
+<script src="ventas.js?v=20260917c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>

@@ -2509,6 +2509,142 @@ async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVent
   }
 }
 
+/* ============================================================
+   NUMEROS DE SERIE -- solo si el negocio activo la funcion en
+   Configuracion (S.empresaConfig.usa_numero_serie). Si esta
+   apagada, o ningun producto del carrito la requiere, ESTE
+   SISTEMA NO INTERVIENE EN NADA -- la venta se confirma exacto
+   igual que siempre, sin ningun paso extra.
+   ============================================================ */
+
+// Dado el carrito, calcula que "espacios" de numero de serie hacen
+// falta -- expandiendo combos en sus productos reales. Un producto
+// normal con cantidad 3 pide 3 espacios; un combo se abre en sus
+// componentes, y solo los que YA estan marcados "requiere serie"
+// piden espacio (multiplicado por cuantas veces se vendio el combo).
+async function calcularSlotsSerieRequeridos(carrito) {
+  if (S.empresaConfig?.usa_numero_serie !== true) return [];
+  const slots = [];
+
+  const productosDirectos = carrito.filter(it => it.tipo === 'producto' && !it.esCombo);
+  const combos = carrito.filter(it => it.esCombo);
+
+  if (productosDirectos.length) {
+    const ids = [...new Set(productosDirectos.map(it => it.id))];
+    const { data: prods } = await sb.from('productos').select('id,nombre,requiere_numero_serie').eq('auth_user_id', S.userId).in('id', ids);
+    const req = {}; (prods||[]).forEach(p => { req[p.id] = p; });
+    productosDirectos.forEach(it => {
+      const p = req[it.id];
+      if (p?.requiere_numero_serie) {
+        for (let i = 0; i < Number(it.cantidad); i++) {
+          slots.push({ producto_id: p.id, producto_nombre: p.nombre, combo_id: null, combo_nombre: null });
+        }
+      }
+    });
+  }
+
+  if (combos.length) {
+    const comboIds = [...new Set(combos.map(it => it.id))];
+    const { data: cis } = await sb.from('combo_items').select('combo_id,producto_id,cantidad').eq('auth_user_id', S.userId).in('combo_id', comboIds);
+    const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
+    const { data: prods } = await sb.from('productos').select('id,nombre,requiere_numero_serie').eq('auth_user_id', S.userId).in('id', prodIds);
+    const req = {}; (prods||[]).forEach(p => { req[p.id] = p; });
+    combos.forEach(it => {
+      const itemsCombo = (cis||[]).filter(ci => ci.combo_id === it.id);
+      for (let vez = 0; vez < Number(it.cantidad); vez++) {
+        itemsCombo.forEach(ci => {
+          const p = req[ci.producto_id];
+          if (p?.requiere_numero_serie) {
+            for (let i = 0; i < Number(ci.cantidad); i++) {
+              slots.push({ producto_id: p.id, producto_nombre: p.nombre, combo_id: it.id, combo_nombre: it.nombre });
+            }
+          }
+        });
+      }
+    });
+  }
+
+  return slots;
+}
+
+function renderModalNumerosSerie(slots) {
+  const cont = document.getElementById('ns-lista-campos');
+  cont.innerHTML = slots.map((s, i) => `
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">
+        ${esc(s.producto_nombre)}
+        ${s.combo_nombre ? `<span style="color:var(--text-muted);font-weight:400"> — parte del combo "${esc(s.combo_nombre)}"</span>` : ''}
+      </label>
+      <input type="text" class="form-input ns-input" data-idx="${i}" placeholder="Número de serie"/>
+    </div>`).join('');
+  document.getElementById('ns-venta-error').textContent = '';
+}
+
+function cerrarModalNumerosSerie() {
+  closeModal('modal-numeros-serie');
+  S._seriesSlotsPendientes = null;
+  S._accionVentaPendiente = null;
+}
+
+// Se dispara al presionar "Continuar con la venta": valida que todos
+// los campos esten llenos, guarda las series recolectadas, y recien
+// ahi ejecuta la confirmacion real de la venta (que nunca se habia
+// llamado todavia, para no descontar inventario dos veces si el
+// usuario cancela aqui).
+function continuarVentaConSeries() {
+  const slots = S._seriesSlotsPendientes || [];
+  const inputs = document.querySelectorAll('#ns-lista-campos .ns-input');
+  const valores = Array.from(inputs).map(inp => inp.value.trim());
+  if (valores.some(v => !v)) {
+    document.getElementById('ns-venta-error').textContent = 'Completa el número de serie de cada unidad.';
+    return;
+  }
+  S._seriesRecolectadas = slots.map((s, i) => ({ ...s, numero_serie: valores[i] }));
+  closeModal('modal-numeros-serie');
+  const accion = S._accionVentaPendiente;
+  S._seriesSlotsPendientes = null;
+  S._accionVentaPendiente = null;
+  if (accion) accion();
+}
+
+async function iniciarConfirmarVenta(conImpresion) {
+  const slots = await calcularSlotsSerieRequeridos(S.carrito || []);
+  if (!slots.length) { confirmarVenta(conImpresion); return; }
+  S._seriesSlotsPendientes = slots;
+  S._accionVentaPendiente = () => confirmarVenta(conImpresion);
+  renderModalNumerosSerie(slots);
+  openModal('modal-numeros-serie');
+}
+
+async function iniciarConfirmarVentaRapida() {
+  const slots = await calcularSlotsSerieRequeridos(VR.carrito || []);
+  if (!slots.length) { confirmarVentaRapida(); return; }
+  S._seriesSlotsPendientes = slots;
+  S._accionVentaPendiente = () => confirmarVentaRapida();
+  renderModalNumerosSerie(slots);
+  openModal('modal-numeros-serie');
+}
+
+// Despues de que la venta ya quedo guardada de verdad (con su id
+// real), registra las series recolectadas -- nunca antes, para no
+// dejar numeros de serie huerfanos si la venta llegara a fallar.
+async function registrarNumerosDeSerie(ventaId, clienteId, fecha) {
+  const series = S._seriesRecolectadas;
+  if (!series || !series.length) return;
+  try {
+    await sb.from('numeros_serie').insert(series.map(s => ({
+      auth_user_id: S.userId, producto_id: s.producto_id, numero_serie: s.numero_serie,
+      venta_id: ventaId, combo_id: s.combo_id, combo_nombre: s.combo_nombre,
+      cliente_id: clienteId || null, fecha_venta: fecha,
+    })));
+  } catch (e) {
+    console.error('registrarNumerosDeSerie:', e);
+    showToast('La venta se guardó, pero hubo un problema al registrar los números de serie', 'warning');
+  } finally {
+    S._seriesRecolectadas = null;
+  }
+}
+
 function unidadesInventario(item) {
   const factor = Number(item?.presentacionFactor);
   const cantidad = Number(item?.cantidad) || 0;
@@ -4211,6 +4347,10 @@ async function confirmarVenta(conImpresion) {
     }
     if (errDetalles) throw errDetalles;
 
+    // Números de serie recolectados (si la función está activa y el
+    // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
+    await registrarNumerosDeSerie(ventaId, S.clienteId || null, fechaVentaElegida);
+
     /* ----------------------------------------------------------
        PASO E: Actualizar stock de PRODUCTOS (no servicios) y, para
        los combos vendidos, el stock de CADA producto que los compone
@@ -5435,6 +5575,10 @@ async function confirmarVentaRapida() {
       ));
     }
     if (errDetalles) throw errDetalles;
+
+    // Números de serie recolectados (si la función está activa y el
+    // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
+    await registrarNumerosDeSerie(ventaId, null, fechaVentaElegidaVR);
 
     // Actualizar stock (solo productos normales, no servicios ni combos)
     for (const item of VR.carrito.filter(i => i.tipo==='producto' && !i.esCombo)) {
