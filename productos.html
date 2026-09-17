@@ -390,6 +390,8 @@
           </select>
           <select class="form-select" id="ordenProductos" title="Ordenar por"
                   style="max-width:190px;height:36px;font-size:12.5px">
+            <option value="az" selected>Nombre: A-Z</option>
+            <option value="za">Nombre: Z-A</option>
             <option value="reciente">Más reciente</option>
             <option value="antiguo">Más antiguo</option>
             <option value="precio_asc">Precio: menor a mayor</option>
@@ -1237,7 +1239,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260917a"></script>
+<script src="productos.js?v=20260917b"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

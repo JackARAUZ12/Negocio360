@@ -52,6 +52,7 @@ const STATE = {
   productos:    [],
   filtrados:    [],
   filtroActivo: 'todos',
+  ordenActivo:  'az',    // A-Z por nombre, predeterminado -- coincide con la opción ya marcada en el <select>
   filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
   proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
   escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
@@ -1523,6 +1524,10 @@ function actualizarStats() {
 function ordenarLista(lista, criterio) {
   const copia = [...lista];
   switch (criterio) {
+    case 'az':
+      return copia.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+    case 'za':
+      return copia.sort((a, b) => (b.nombre || '').localeCompare(a.nombre || '', 'es', { sensitivity: 'base' }));
     case 'antiguo':
       return copia.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     case 'precio_asc':
@@ -1539,8 +1544,9 @@ function ordenarLista(lista, criterio) {
         return ca.localeCompare(cb, 'es', { numeric: true });
       });
     case 'reciente':
-    default:
       return copia.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    default:
+      return copia.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
   }
 }
 
