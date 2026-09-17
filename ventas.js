@@ -4136,6 +4136,18 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
   try {
     const hoy = todayISO();
     const filas = [];
+
+    // Si esta venta tuvo numeros de serie capturados (Configuracion >
+    // Numero de serie), se consultan aqui -- directo de la base de
+    // datos, no de una variable en memoria, para que funcione sin
+    // importar el orden real en que se ejecutan las funciones despues
+    // de guardar la venta.
+    let seriesDeEstaVenta = [];
+    try {
+      const { data } = await sb.from('numeros_serie').select('producto_id,combo_id,numero_serie').eq('venta_id', ventaId);
+      seriesDeEstaVenta = data || [];
+    } catch (eSeries) { /* si falla, simplemente no se agrega numero de serie -- no bloquea la garantia */ }
+
     for (const item of carrito) {
       let nombreParaGarantia, productoIdParaGarantia, meses;
 
@@ -4155,6 +4167,17 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
 
       if (!meses || meses <= 0) continue;
 
+      // Si esta linea tuvo EXACTAMENTE un numero de serie asociado, se
+      // incluye en la garantia. Si se vendieron varias unidades con
+      // series distintas, no se puede saber cual corresponde a esta
+      // unica fila de garantia (hoy se crea 1 garantia por linea de
+      // venta, no una por unidad) -- en ese caso se deja vacio, igual
+      // que ya estaba, en vez de adivinar.
+      const seriesCoincidentes = item.esCombo
+        ? seriesDeEstaVenta.filter(s => s.combo_id === item.id)
+        : seriesDeEstaVenta.filter(s => s.producto_id === productoIdParaGarantia);
+      const numeroSerieGarantia = seriesCoincidentes.length === 1 ? seriesCoincidentes[0].numero_serie : null;
+
       const vencimiento = new Date(hoy + 'T00:00:00');
       vencimiento.setMonth(vencimiento.getMonth() + meses);
       const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: S.userId });
@@ -4165,6 +4188,7 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
         producto_id: productoIdParaGarantia, producto_nombre: nombreParaGarantia,
         venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
         fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
+        numero_serie: numeroSerieGarantia,
       });
     }
     if (filas.length) await sb.from('garantias_clientes').insert(filas);
