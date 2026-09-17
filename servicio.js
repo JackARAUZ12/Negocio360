@@ -548,6 +548,9 @@ function abrirModalGarantia() {
   document.getElementById('gt-fecha-compra').value = todayLocalISO();
   document.getElementById('gt-garantia-meses').value = '';
   document.getElementById('gt-observaciones').value = '';
+  document.getElementById('gt-buscar-serie').value = '';
+  document.getElementById('gt-serie-resultado').innerHTML = '';
+  STATE.serieEncontradaGarantia = null;
   openModal('modal-garantia');
 }
 
@@ -561,6 +564,40 @@ function buscarClienteGarantia(q) {
          onclick="elegirClienteGarantia('${c.id}','${esc(c.nombre)}')">${esc(c.nombre)}</div>
   `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
 }
+// Busca la venta original por su numero de serie, y si la encuentra,
+// autocompleta cliente/producto/fecha -- diferenciando si vino de un
+// combo. Es opcional: si no se usa, el modal funciona exactamente
+// igual que siempre (busqueda manual de cliente y producto).
+let _timeoutBusquedaSerie = null;
+function buscarPorSerieGarantia(valor) {
+  clearTimeout(_timeoutBusquedaSerie);
+  const cont = document.getElementById('gt-serie-resultado');
+  const q = valor.trim();
+  if (!q) { cont.innerHTML = ''; STATE.serieEncontradaGarantia = null; return; }
+  cont.innerHTML = '<span style="color:var(--text-muted)">Buscando…</span>';
+  _timeoutBusquedaSerie = setTimeout(async () => {
+    try {
+      const { data } = await sb.from('numeros_serie').select('*')
+        .eq('auth_user_id', STATE.userId).eq('numero_serie', q).maybeSingle();
+      if (!data) {
+        cont.innerHTML = '<span style="color:var(--danger)">⚠️ No se encontró ninguna venta con ese número de serie en el sistema.</span>';
+        STATE.serieEncontradaGarantia = null;
+        return;
+      }
+      const cliente = STATE.clientes.find(c => c.id === data.cliente_id);
+      const producto = STATE.productos.find(p => p.id === data.producto_id);
+      if (cliente) elegirClienteGarantia(cliente.id, cliente.nombre);
+      if (producto) elegirProductoGarantia(producto.id, producto.nombre);
+      if (data.fecha_venta) document.getElementById('gt-fecha-compra').value = data.fecha_venta;
+      STATE.serieEncontradaGarantia = { numero_serie: data.numero_serie, combo_nombre: data.combo_nombre };
+      cont.innerHTML = `<span style="color:var(--success)">✅ Encontrada — venta del ${fmtFechaCorta(data.fecha_venta)}${data.combo_nombre ? ` (parte del combo "${esc(data.combo_nombre)}")` : ''}</span>`;
+    } catch (e) {
+      console.error('buscarPorSerieGarantia:', e);
+      cont.innerHTML = '<span style="color:var(--danger)">No se pudo buscar. Intenta de nuevo.</span>';
+    }
+  }, 400);
+}
+
 function elegirClienteGarantia(id, nombre) {
   STATE.clienteElegidoGarantia = { id, nombre };
   document.getElementById('gt-cliente-id').value = id;
@@ -624,6 +661,8 @@ async function guardarGarantia() {
       venta_id: null, fecha_compra: fechaCompra, garantia_meses: garantiaMeses,
       fecha_vencimiento: ymdLocal(vencimiento), origen: 'manual', observaciones,
       usuario_nombre: STATE.currentUser?.nombre || 'Usuario',
+      numero_serie: STATE.serieEncontradaGarantia?.numero_serie || null,
+      combo_nombre: STATE.serieEncontradaGarantia?.combo_nombre || null,
     };
 
     const { error } = await sb.from('garantias_clientes').insert(payload);

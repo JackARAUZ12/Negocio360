@@ -1295,6 +1295,12 @@
           <div class="modal-body">
             <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Para compras viejas o que no se hicieron desde este sistema. Las garantías de ventas nuevas se registran solas.</p>
 
+            <div class="form-group" style="padding:10px 12px;background:var(--accent-soft);border-radius:8px;margin-bottom:12px">
+              <label>📟 Buscar por número de serie (opcional)</label>
+              <input type="text" id="gt-buscar-serie" placeholder="Escribe el número de serie de la venta..." oninput="buscarPorSerieGarantia(this.value)"/>
+              <div id="gt-serie-resultado" style="margin-top:6px;font-size:12.5px"></div>
+            </div>
+
             <div class="form-group">
               <label>Cliente (opcional)</label>
               <input type="text" id="gt-buscar-cliente" placeholder="Buscar cliente..." oninput="buscarClienteGarantia(this.value)"/>
@@ -1408,7 +1414,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="servicio.js?v=20260821c"></script>
+<script src="servicio.js?v=20260917a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>
