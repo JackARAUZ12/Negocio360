@@ -726,6 +726,13 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">Método de pago</div>
           <div class="detalle-value">${esc(venta.metodo_pago_nombre||'—')}</div>
         </div>
+        ${Number(venta.comision_monto) > 0 ? `
+        <div class="detalle-item">
+          <div class="detalle-label">Comisión del banco (${venta.comision_porcentaje}%)</div>
+          <div class="detalle-value" style="color:var(--warning);font-weight:600" title="Solo visible aquí, en el sistema — nunca aparece en la factura del cliente">
+            −${fmt(venta.comision_monto)}
+          </div>
+        </div>` : ''}
         <div class="detalle-item full">
           <div class="detalle-label">Cliente</div>
           <div class="detalle-value" style="font-weight:600">${esc(venta.cliente_nombre||'Consumidor Final')}</div>
