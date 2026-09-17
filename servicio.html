@@ -1209,6 +1209,10 @@
           <p>Reclamos, reparaciones y garantías — qué pasa después de la venta.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" onclick="abrirModalBuscarSerie()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Buscar número de serie
+          </button>
           <button class="btn-secondary" id="btn-nueva-garantia" style="display:none" onclick="abrirModalGarantia()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nueva garantía
@@ -1284,6 +1288,26 @@
       </div>
 
       <!-- MODAL: NUEVA GARANTÍA (manual) -->
+      <div class="modal-overlay" id="modal-buscar-serie">
+        <div class="modal-box" style="max-width:480px">
+          <div class="modal-header">
+            <span class="modal-title">🔎 Buscar número de serie</span>
+            <button class="modal-close" onclick="closeModal('modal-buscar-serie')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <input type="text" id="bs-input" placeholder="Escribe el número de serie..." oninput="buscarSerieIndependiente(this.value)" autofocus/>
+            </div>
+            <div id="bs-resultado" style="margin-top:10px"></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeModal('modal-buscar-serie')">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-overlay" id="modal-garantia">
         <div class="modal-box" style="max-width:520px">
           <div class="modal-header">
@@ -1414,7 +1438,7 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="servicio.js?v=20260917a"></script>
+<script src="servicio.js?v=20260917b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>

@@ -533,6 +533,58 @@ function renderTablaGarantias() {
 STATE.clienteElegidoGarantia = null;
 STATE.productoElegidoGarantia = null;
 
+function abrirModalBuscarSerie() {
+  document.getElementById('bs-input').value = '';
+  document.getElementById('bs-resultado').innerHTML = '';
+  openModal('modal-buscar-serie');
+}
+
+let _timeoutBuscarSerieIndep = null;
+function buscarSerieIndependiente(valor) {
+  clearTimeout(_timeoutBuscarSerieIndep);
+  const cont = document.getElementById('bs-resultado');
+  const q = valor.trim();
+  if (!q) { cont.innerHTML = ''; return; }
+  cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Buscando…</p>';
+  _timeoutBuscarSerieIndep = setTimeout(async () => {
+    try {
+      const { data } = await sb.from('numeros_serie').select('*')
+        .eq('auth_user_id', STATE.userId).eq('numero_serie', q).maybeSingle();
+      if (!data) {
+        cont.innerHTML = `
+          <div style="padding:12px;background:var(--danger-soft,#fee2e2);border-radius:8px;font-size:13px;color:var(--danger)">
+            ⚠️ Este número de serie <b>nunca se vendió en el sistema</b>.
+          </div>`;
+        return;
+      }
+      const cliente = STATE.clientes.find(c => c.id === data.cliente_id);
+      const producto = STATE.productos.find(p => p.id === data.producto_id);
+      cont.innerHTML = `
+        <div style="padding:12px;background:var(--success-soft,#dcfce7);border-radius:8px;font-size:13px">
+          <div style="font-weight:700;color:var(--success);margin-bottom:6px">✅ Número de serie registrado</div>
+          <div><b>Producto:</b> ${esc(producto?.nombre || 'Producto')}</div>
+          ${data.combo_nombre ? `<div style="color:var(--text-muted)">Parte del combo: ${esc(data.combo_nombre)}</div>` : ''}
+          <div><b>Cliente:</b> ${esc(cliente?.nombre || 'Sin cliente')}</div>
+          <div><b>Fecha de venta:</b> ${fmtFechaCorta(data.fecha_venta)}</div>
+          <button type="button" class="btn-primary btn-sm" style="margin-top:10px" onclick="crearGarantiaDesdeSerie('${data.numero_serie}')">🛡️ Crear garantía con estos datos</button>
+        </div>`;
+    } catch (e) {
+      console.error('buscarSerieIndependiente:', e);
+      cont.innerHTML = '<p style="color:var(--danger);font-size:12.5px">No se pudo buscar. Intenta de nuevo.</p>';
+    }
+  }, 400);
+}
+
+// Reutiliza el mismo flujo de la Fase 3 (buscarPorSerieGarantia) --
+// solo abre el modal de garantia normal, y deja que ese mismo campo
+// autocompleten todo, sin duplicar logica.
+function crearGarantiaDesdeSerie(numeroSerie) {
+  closeModal('modal-buscar-serie');
+  abrirModalGarantia();
+  document.getElementById('gt-buscar-serie').value = numeroSerie;
+  buscarPorSerieGarantia(numeroSerie);
+}
+
 function abrirModalGarantia() {
   document.getElementById('gt-error').textContent = '';
   STATE.clienteElegidoGarantia = null;
