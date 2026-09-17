@@ -3613,8 +3613,39 @@ function entregarPDFRecibo(doc, nombreArchivo, descargarAutomatico) {
   doc.save(nombreArchivo);
 }
 
+// Para el comprobante: si un item es un COMBO, agrega debajo de su
+// nombre la lista de productos que incluye (solo texto, no toca
+// precios ni cálculos). comprobante-carta.js no necesita ningún
+// cambio porque simplemente imprime el nombre tal cual llega.
+async function enriquecerItemsConCombo(items) {
+  const combosIds = [...new Set((items||[]).filter(it => it.tipo_item === 'combo' && it.combo_id).map(it => it.combo_id))];
+  if (!combosIds.length) return items;
+  try {
+    const { data: cis } = await sb.from('combo_items')
+      .select('combo_id, producto_id, cantidad').eq('auth_user_id', S.userId).in('combo_id', combosIds);
+    const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
+    const { data: prods } = await sb.from('productos').select('id,nombre').eq('auth_user_id', S.userId).in('id', prodIds);
+    const nombreProd = {}; (prods||[]).forEach(p => { nombreProd[p.id] = p.nombre; });
+    const porCombo = {};
+    (cis||[]).forEach(ci => {
+      if (!porCombo[ci.combo_id]) porCombo[ci.combo_id] = [];
+      porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
+    });
+    return (items||[]).map(it => {
+      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length) {
+        return { ...it, nombre: `${it.nombre}\nIncluye: ${porCombo[it.combo_id].join(', ')}` };
+      }
+      return it;
+    });
+  } catch (e) {
+    console.warn('enriquecerItemsConCombo:', e);
+    return items;
+  }
+}
+
 async function descargarReciboDeVenta(venta, items) {
   try {
+    items = await enriquecerItemsConCombo(items);
     await cargarConfigVentaRapida();
     const cfg = VR.config || {};
     const descargarAutomatico = cfg.descargar_pdf_automatico !== false;

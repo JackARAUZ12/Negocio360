@@ -1472,6 +1472,29 @@ function imprimirComprobanteProforma() {
   const ancho = esEpson ? '76mm' : (STATE.configTicket?.ancho_ticket || '80mm');
   const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial,Helvetica,sans-serif';
 
+async function enriquecerItemsConCombo(items) {
+  const combosIds = [...new Set((items||[]).filter(it => it.tipo_item === 'combo' && it.combo_id).map(it => it.combo_id))];
+  if (!combosIds.length) return items;
+  try {
+    const { data: cis } = await sbClient.from('combo_items')
+      .select('combo_id, producto_id, cantidad').eq('auth_user_id', STATE.userId).in('combo_id', combosIds);
+    const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
+    const { data: prods } = await sbClient.from('productos').select('id,nombre').eq('auth_user_id', STATE.userId).in('id', prodIds);
+    const nombreProd = {}; (prods||[]).forEach(p => { nombreProd[p.id] = p.nombre; });
+    const porCombo = {};
+    (cis||[]).forEach(ci => {
+      if (!porCombo[ci.combo_id]) porCombo[ci.combo_id] = [];
+      porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
+    });
+    return (items||[]).map(it => {
+      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length) {
+        return { ...it, nombre: `${it.nombre}\nIncluye: ${porCombo[it.combo_id].join(', ')}` };
+      }
+      return it;
+    });
+  } catch (e) { console.warn('enriquecerItemsConCombo:', e); return items; }
+}
+
   // Igual que en Ventas y Créditos: solo si el negocio eligió
   // "Carta / A4" a propósito se genera el comprobante profesional
   // real, nunca para quien tenga 58/76/80mm configurado.
@@ -1480,6 +1503,12 @@ function imprimirComprobanteProforma() {
       try {
         const v = STATE.ultimoComprobante;
         if (!v) throw new Error('No hay comprobante para imprimir');
+        const itemsCarta = await enriquecerItemsConCombo((v.items||[]).map(it => ({
+          nombre: it.producto_nombre, cantidad: it.cantidad,
+          precio: it.cantidad > 0 ? round2(it.subtotal / it.cantidad) : it.subtotal,
+          descuento: 0, subtotal: it.subtotal,
+          tipo_item: it.tipo_item, combo_id: it.combo_id,
+        })));
         const doc = await generarComprobanteCartaPDF('venta', {
           userId: STATE.userId, numero: v.numero, fecha: fmtFecha(v.fecha),
           cliente_nombre: v.cliente, subtotal: v.subtotal, descuento: v.descuento,
@@ -1488,11 +1517,7 @@ function imprimirComprobanteProforma() {
           empresaNombre: STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
           empresaDireccion: STATE.empresaConfig?.direccion || '', empresaTelefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
           empresaRuc: STATE.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(STATE.empresaConfig?.moneda),
-        }, (v.items||[]).map(it => ({
-          nombre: it.producto_nombre, cantidad: it.cantidad,
-          precio: it.cantidad > 0 ? round2(it.subtotal / it.cantidad) : it.subtotal,
-          descuento: 0, subtotal: it.subtotal,
-        })));
+        }, itemsCarta);
         doc.save(`Comprobante_${v.numero}.pdf`);
       } catch (e) {
         console.warn('No se pudo generar el comprobante carta:', e);
@@ -1737,6 +1762,11 @@ async function confirmarConvertirAVenta() {
     // estilo que ya usa el sistema, sin que la persona tenga que ir
     // a buscarlo aparte a Ventas.
     try {
+      const itemsCarta2 = await enriquecerItemsConCombo(detalles.map(d => ({
+        nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
+        descuento: d.descuento, subtotal: d.subtotal,
+        tipo_item: d.tipo_item, combo_id: d.combo_id,
+      })));
       const docCarta = await generarComprobanteCartaPDF('venta', {
         userId: STATE.userId,
         numero: ventaPayload.numero_venta,
@@ -1750,10 +1780,7 @@ async function confirmarConvertirAVenta() {
         empresaTelefono: STATE.empresaConfig?.telefono || STATE.empresaConfig?.whatsapp || '',
         empresaRuc: STATE.empresaConfig?.ruc || '',
         moneda_simbolo: monedaParaMostrar(STATE.empresaConfig?.moneda),
-      }, detalles.map(d => ({
-        nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
-        descuento: d.descuento, subtotal: d.subtotal,
-      })));
+      }, itemsCarta2);
       docCarta.save(`Comprobante_${ventaPayload.numero_venta}.pdf`);
     } catch (eCarta) {
       console.warn('No se pudo generar el comprobante tamaño carta automático:', eCarta);

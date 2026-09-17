@@ -2258,8 +2258,35 @@
     return (texto.trim() || 'cero') + ' córdobas';
   }
 
+  async function enriquecerItemsConCombo(items) {
+    const combosIds = [...new Set((items||[]).filter(it => it.tipo_item === 'combo' && it.combo_id).map(it => it.combo_id))];
+    if (!combosIds.length) return items;
+    try {
+      const { data: cis } = await _sb.from('combo_items')
+        .select('combo_id, producto_id, cantidad').eq('auth_user_id', CS.userId).in('combo_id', combosIds);
+      const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
+      const { data: prods } = await _sb.from('productos').select('id,nombre').eq('auth_user_id', CS.userId).in('id', prodIds);
+      const nombreProd = {}; (prods||[]).forEach(p => { nombreProd[p.id] = p.nombre; });
+      const porCombo = {};
+      (cis||[]).forEach(ci => {
+        if (!porCombo[ci.combo_id]) porCombo[ci.combo_id] = [];
+        porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
+      });
+      return (items||[]).map(it => {
+        if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length) {
+          return { ...it, nombre: `${it.nombre}\nIncluye: ${porCombo[it.combo_id].join(', ')}` };
+        }
+        return it;
+      });
+    } catch (e) { console.warn('enriquecerItemsConCombo:', e); return items; }
+  }
+
   window.descargarComprobanteCartaCredito = async function(credito, cliente, productos) {
     try {
+      const itemsEnriquecidos = await enriquecerItemsConCombo((productos||[]).map(p => ({
+        nombre: p.producto_nombre, cantidad: p.cantidad, precio: p.precio, descuento: 0, subtotal: p.subtotal,
+        tipo_item: p.tipo_item, combo_id: p.combo_id,
+      })));
       const doc = await generarComprobanteCartaPDF('credito', {
         userId: CS.userId,
         numero: credito.numero_credito,
@@ -2278,9 +2305,7 @@
         empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
         empresaRuc: CS.empresaConfig?.ruc || '',
         moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
-      }, (productos||[]).map(p => ({
-        nombre: p.producto_nombre, cantidad: p.cantidad, precio: p.precio, descuento: 0, subtotal: p.subtotal,
-      })));
+      }, itemsEnriquecidos);
       doc.save(`Comprobante_${credito.numero_credito}.pdf`);
     } catch (e) {
       console.error('descargarComprobanteCartaCredito:', e);
