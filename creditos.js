@@ -2359,7 +2359,7 @@
     const avisoAnular = document.getElementById('det-credito-aviso-anular');
     if (btnAnular) {
       const tienePagos = (pagos || []).length > 0;
-      const yaAnulado = credito.estado === 'anulado';
+      const yaAnulado = credito.estado === 'cancelado';
       const bloqueado = tienePagos || yaAnulado;
       const razon = yaAnulado
         ? 'Este crédito ya está anulado.'
@@ -2484,7 +2484,7 @@
       showToast('🔒 No se puede anular: tiene pagos registrados. Anula cada pago primero desde el historial.', 'error');
       return;
     }
-    if (credito.estado === 'anulado') { showToast('Este crédito ya está anulado', 'error'); return; }
+    if (credito.estado === 'cancelado') { showToast('Este crédito ya está anulado', 'error'); return; }
 
     document.getElementById('ac-resumen').textContent =
       `Crédito ${credito.numero_credito} — saldo actual ${fmt(credito.saldo_pendiente)}`;
@@ -2519,7 +2519,7 @@
       const { data: creditoFresco } = await _sb.from('creditos').select('*')
         .eq('id', credito.id).eq('auth_user_id', CS.userId).maybeSingle();
       if (!creditoFresco) throw new Error('Crédito no encontrado');
-      if (creditoFresco.estado === 'anulado') { showToast('Este crédito ya estaba anulado', 'warning'); closeModal('modal-anular-credito'); closeModal('modal-detalle-credito'); return; }
+      if (creditoFresco.estado === 'cancelado') { showToast('Este crédito ya estaba anulado', 'warning'); closeModal('modal-anular-credito'); closeModal('modal-detalle-credito'); return; }
       const { data: pagosFrescos } = await _sb.from('creditos_pagos').select('id')
         .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).eq('estado','completado');
       if ((pagosFrescos || []).length > 0) throw new Error('Este crédito ya tiene pagos registrados. Anula cada pago primero.');
@@ -2564,12 +2564,22 @@
       }
 
       // Marcar el credito como anulado -- nunca se borra.
-      await _sb.from('creditos').update({ estado: 'anulado', saldo_pendiente: 0, updated_at: new Date().toISOString() })
+      // BUG REAL: 'anulado' nunca fue un valor valido para creditos.estado
+      // (la restriccion real solo permite: en_proceso, activo, al_dia,
+      // con_atraso, cancelado, refinanciado) -- el update fallaba en
+      // silencio en produccion, dejando el credito activo a pesar de que
+      // la interfaz mostraba "anulado correctamente". Corregido a 'cancelado'.
+      await _sb.from('creditos').update({ estado: 'cancelado', saldo_pendiente: 0, updated_at: new Date().toISOString() })
         .eq('id', credito.id).eq('auth_user_id', CS.userId);
 
       // Marcar sus cuotas pendientes como anuladas tambien, para que
       // no sigan apareciendo como "por cobrar" en ningun listado.
-      await _sb.from('creditos_cuotas').update({ estado: 'anulada' })
+      // BUG REAL: 'anulada' nunca fue un valor valido para
+      // creditos_cuotas.estado (solo acepta: pendiente, parcial,
+      // pagada, vencida). Se marca 'pagada' con su monto correspondiente
+      // -- el credito padre ya queda en 0 y cancelado, asi que la cuota
+      // deja de contar para cualquier calculo de cobro pendiente.
+      await _sb.from('creditos_cuotas').update({ estado: 'pagada' })
         .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).neq('estado', 'pagada');
 
       // Si este credito vino de una proforma, liberarla de vuelta --
