@@ -1959,8 +1959,8 @@
       const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
       let productosComprobante = [];
       if (credito.venta_id) {
-        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad').eq('venta_id', credito.venta_id);
-        productosComprobante = detalles || [];
+        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad,tipo_item,combo_id').eq('venta_id', credito.venta_id);
+        productosComprobante = await enriquecerItemsConCombo(detalles || []);
       }
       mostrarComprobante({
         titulo: 'Pago de crédito', numero: comprobanteNumero, credito: credito.numero_credito,
@@ -2273,8 +2273,9 @@
         porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
       });
       return (items||[]).map(it => {
-        if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length) {
-          return { ...it, nombre: `${it.nombre}\nIncluye: ${porCombo[it.combo_id].join(', ')}` };
+        if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
+          const detalle = `\nIncluye: ${porCombo[it.combo_id].join(', ')}`;
+        return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
         }
         return it;
       });
@@ -2747,8 +2748,8 @@
       const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', p.credito_id).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
       let productosComprobante = [];
       if (credito?.venta_id) {
-        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad').eq('venta_id', credito.venta_id);
-        productosComprobante = detalles || [];
+        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad,tipo_item,combo_id').eq('venta_id', credito.venta_id);
+        productosComprobante = await enriquecerItemsConCombo(detalles || []);
       }
       mostrarComprobante({
         titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito?.numero_credito || '—',

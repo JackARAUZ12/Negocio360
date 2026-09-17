@@ -3632,8 +3632,9 @@ async function enriquecerItemsConCombo(items) {
       porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
     });
     return (items||[]).map(it => {
-      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length) {
-        return { ...it, nombre: `${it.nombre}\nIncluye: ${porCombo[it.combo_id].join(', ')}` };
+      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
+        const detalle = `\nIncluye: ${porCombo[it.combo_id].join(', ')}`;
+        return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
       }
       return it;
     });

@@ -1487,8 +1487,9 @@ async function enriquecerItemsConCombo(items) {
       porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
     });
     return (items||[]).map(it => {
-      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length) {
-        return { ...it, nombre: `${it.nombre}\nIncluye: ${porCombo[it.combo_id].join(', ')}` };
+      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
+        const detalle = `\nIncluye: ${porCombo[it.combo_id].join(', ')}`;
+        return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
       }
       return it;
     });
@@ -1748,10 +1749,11 @@ async function confirmarConvertirAVenta() {
     // Como esto ya es una venta real (con Caja e inventario afectados),
     // se muestra el mismo tipo de comprobante que usa Ventas — con la
     // opción de imprimir, respetando el tamaño de ticket configurado.
+    const detallesConCombo = await enriquecerItemsConCombo(detalles);
     mostrarComprobanteProforma({
       numero: ventaPayload.numero_venta, cliente: (p.cliente_nombre || 'Consumidor Final'),
       fecha: todayISO(), usuario: STATE.currentUser?.nombre || STATE.userEmail,
-      items: detalles, subtotal: p.subtotal, descuento: p.descuento || 0,
+      items: detallesConCombo, subtotal: p.subtotal, descuento: p.descuento || 0,
       impuesto: p.impuesto || 0, total: p.total, metodo: metodoNombre,
       origenProforma: p.numero_proforma,
     });
@@ -1762,11 +1764,10 @@ async function confirmarConvertirAVenta() {
     // estilo que ya usa el sistema, sin que la persona tenga que ir
     // a buscarlo aparte a Ventas.
     try {
-      const itemsCarta2 = await enriquecerItemsConCombo(detalles.map(d => ({
+      const itemsCarta2 = detallesConCombo.map(d => ({
         nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
         descuento: d.descuento, subtotal: d.subtotal,
-        tipo_item: d.tipo_item, combo_id: d.combo_id,
-      })));
+      }));
       const docCarta = await generarComprobanteCartaPDF('venta', {
         userId: STATE.userId,
         numero: ventaPayload.numero_venta,
