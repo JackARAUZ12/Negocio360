@@ -1214,6 +1214,32 @@
           <div class="cfg-status" id="mp-status"></div>
         </div>
 
+        <!-- MODULO DE HOTEL -- oculto por defecto en el HTML, solo se
+             muestra por JS si el usuario logueado es la cuenta
+             autorizada (ver cargarModuloHotel en el script). -->
+        <div class="cfg-card fade-in stagger-1" id="hotel-card" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22h20"/><path d="M6 18v4"/><path d="M18 18v4"/><path d="M6 14v.01"/><path d="M10 14v.01"/><path d="M14 14v.01"/><path d="M18 14v.01"/><path d="M2 10h20"/><path d="M4 10V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6"/><path d="M8 22V10"/><path d="M16 22V10"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Módulo de Hotel <span style="font-size:10.5px;background:var(--accent-soft);color:var(--accent);padding:2px 7px;border-radius:10px;font-weight:700">EN DESARROLLO</span></div>
+              <div class="cfg-card-desc">Sistema completo de gestión hotelera: habitaciones, reservaciones, check-in/check-out, y más — construyéndose por fases. Visible únicamente en esta cuenta.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Hotel</div>
+              <div class="cfg-row-sub" id="hotel-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="hotel-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModuloHotelClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="hotel-status"></div>
+        </div>
+
         <!-- EDITAR PERFIL -->
         <div class="cfg-card fade-in stagger-2">
           <div class="cfg-card-header">
@@ -1743,6 +1769,69 @@ async function guardarModeloProducto(activo) {
   }
 }
 
+// Cuenta autorizada para siquiera VER este modulo -- ninguna otra
+// cuenta del sistema llega a ver la tarjeta ni puede activarlo,
+// sin importar que tan curiosa sea la persona. Doble control real:
+// esta condicion aqui (visibilidad), y ademas RLS en la base de
+// datos aisla los datos de cada cuenta sin importar el modulo.
+const CUENTA_AUTORIZADA_HOTEL = 'b699660c-b808-4f0a-9b24-d0df60a92e83';
+
+async function cargarModuloHotel() {
+  if (currentAuthUserId !== CUENTA_AUTORIZADA_HOTEL) return; // se queda oculto, sin consultar nada
+  const card = document.getElementById('hotel-card');
+  const toggle = document.getElementById('hotel-toggle');
+  const sub = document.getElementById('hotel-row-sub');
+  card.style.display = '';
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modulo_hotel')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_hotel === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — el menú de Hotel aparece en el sidebar.'
+      : 'Desactivado — el módulo de hotel no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloHotel:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleModuloHotelClick(evt) {
+  const toggle = document.getElementById('hotel-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloHotel(toggle.checked);
+}
+
+async function guardarModuloHotel(activo) {
+  const toggle = document.getElementById('hotel-toggle');
+  const sub = document.getElementById('hotel-row-sub');
+  const statusEl = document.getElementById('hotel-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modulo_hotel: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — el menú de Hotel aparece en el sidebar.'
+      : 'Desactivado — el módulo de hotel no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Hotel activado.' : 'Módulo de Hotel desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloHotel:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
 /* =====================================================
    EDITAR MÓDULOS — activar/desactivar módulos opcionales
    La lista de módulos sale de modulos-guard.js (ModulosGuard),
@@ -1974,6 +2063,7 @@ async function initConfiguracion() {
       cargarPresentaciones();
       cargarNumeroSerie();
       cargarModeloProducto();
+      cargarModuloHotel();
       cargarCierresAuto();
     };
 
