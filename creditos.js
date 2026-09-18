@@ -2273,8 +2273,8 @@
         porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
       });
       return (items||[]).map(it => {
-        if (it.combo_id && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
-          const detalle = `\nIncluye: ${porCombo[it.combo_id].join(', ')}`;
+        if (it.combo_id && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\n  •')) {
+          const detalle = '\n' + porCombo[it.combo_id].map(x => `  • ${x}`).join('\n');
         return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
         }
         return it;

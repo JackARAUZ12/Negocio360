@@ -1428,6 +1428,30 @@ async function guardarConfigTicket() {
   }
 }
 
+async function enriquecerItemsConCombo(items) {
+  const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
+  if (!combosIds.length) return items;
+  try {
+    const { data: cis } = await sbClient.from('combo_items')
+      .select('combo_id, producto_id, cantidad').eq('auth_user_id', STATE.userId).in('combo_id', combosIds);
+    const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
+    const { data: prods } = await sbClient.from('productos').select('id,nombre').eq('auth_user_id', STATE.userId).in('id', prodIds);
+    const nombreProd = {}; (prods||[]).forEach(p => { nombreProd[p.id] = p.nombre; });
+    const porCombo = {};
+    (cis||[]).forEach(ci => {
+      if (!porCombo[ci.combo_id]) porCombo[ci.combo_id] = [];
+      porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
+    });
+    return (items||[]).map(it => {
+      if (it.combo_id && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\n  •')) {
+        const detalle = '\n' + porCombo[it.combo_id].map(x => `  • ${x}`).join('\n');
+        return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
+      }
+      return it;
+    });
+  } catch (e) { console.warn('enriquecerItemsConCombo:', e); return items; }
+}
+
 /* ===================================================
    COMPROBANTE DE LA VENTA (al convertir una proforma) — mismo
    formato tipo ticket que usa Créditos, respetando el tamaño de
@@ -1471,30 +1495,6 @@ function imprimirComprobanteProforma() {
   const esEpson = STATE.configTicket?.ancho_ticket === 'epson_tmu220';
   const ancho = esEpson ? '76mm' : (STATE.configTicket?.ancho_ticket || '80mm');
   const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial,Helvetica,sans-serif';
-
-async function enriquecerItemsConCombo(items) {
-  const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
-  if (!combosIds.length) return items;
-  try {
-    const { data: cis } = await sbClient.from('combo_items')
-      .select('combo_id, producto_id, cantidad').eq('auth_user_id', STATE.userId).in('combo_id', combosIds);
-    const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
-    const { data: prods } = await sbClient.from('productos').select('id,nombre').eq('auth_user_id', STATE.userId).in('id', prodIds);
-    const nombreProd = {}; (prods||[]).forEach(p => { nombreProd[p.id] = p.nombre; });
-    const porCombo = {};
-    (cis||[]).forEach(ci => {
-      if (!porCombo[ci.combo_id]) porCombo[ci.combo_id] = [];
-      porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
-    });
-    return (items||[]).map(it => {
-      if (it.combo_id && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
-        const detalle = `\nIncluye: ${porCombo[it.combo_id].join(', ')}`;
-        return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
-      }
-      return it;
-    });
-  } catch (e) { console.warn('enriquecerItemsConCombo:', e); return items; }
-}
 
   // Igual que en Ventas y Créditos: solo si el negocio eligió
   // "Carta / A4" a propósito se genera el comprobante profesional
