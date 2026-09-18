@@ -1221,9 +1221,9 @@
           <div class="cfg-status" id="mp-status"></div>
         </div>
 
-        <!-- MODULO DE HOTEL -- oculto por defecto en el HTML, solo se
-             muestra por JS si el usuario logueado es la cuenta
-             autorizada (ver cargarModuloHotel en el script). -->
+        <!-- MODULO DE HOTEL -- apagado por defecto para cualquier
+             cuenta; oculto brevemente en el HTML hasta que el JS
+             carga el estado real (ver cargarModuloHotel). -->
         <div class="cfg-card fade-in stagger-1" id="hotel-card" style="display:none">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">
@@ -1779,12 +1779,9 @@ async function guardarModeloProducto(activo) {
 // Cuenta autorizada para siquiera VER este modulo -- ninguna otra
 // cuenta del sistema llega a ver la tarjeta ni puede activarlo,
 // sin importar que tan curiosa sea la persona. Doble control real:
-// esta condicion aqui (visibilidad), y ademas RLS en la base de
-// datos aisla los datos de cada cuenta sin importar el modulo.
-const CUENTA_AUTORIZADA_HOTEL = 'b699660c-b808-4f0a-9b24-d0df60a92e83';
-
+// Modulo de Hotel -- apagado por defecto para todos, disponible
+// para cualquier cuenta que quiera activarlo desde aqui.
 async function cargarModuloHotel() {
-  if (currentAuthUserId !== CUENTA_AUTORIZADA_HOTEL) return; // se queda oculto, sin consultar nada
   const card = document.getElementById('hotel-card');
   const toggle = document.getElementById('hotel-toggle');
   const sub = document.getElementById('hotel-row-sub');
@@ -1878,12 +1875,7 @@ async function cargarModulosOpcionales() {
 function pintarModulosOpcionales() {
   const cont = document.getElementById('cfg-modulos-lista');
   if (!cont) return;
-  // Los modulos marcados soloJackarauz (en desarrollo, exclusivos de
-  // una sola cuenta) se quitan de la lista para cualquier otra
-  // cuenta -- este es el UNICO lugar que de verdad sabe que cuenta
-  // esta logueada, asi que el filtro real vive aqui.
-  const modulos = Object.values(window.ModulosGuard.MODULOS_OPCIONALES)
-    .filter(m => !m.soloJackarauz || currentAuthUserId === CUENTA_AUTORIZADA_HOTEL);
+  const modulos = Object.values(window.ModulosGuard.MODULOS_OPCIONALES);
 
   cont.innerHTML = modulos.map(m => {
     const activo = window.ModulosGuard.estaActivo(modulosOpcionalesCfg, m.key);

@@ -1,18 +1,15 @@
 /* =====================================================
    HOTEL-HABITACIONES.JS — NEGOCIO360
    Modulo de Habitaciones -- parte del sistema de Hotel, en
-   construccion por fases. Visible EXCLUSIVAMENTE en la cuenta
-   autorizada (ver CUENTA_AUTORIZADA_HOTEL) -- doble control:
-   esta pantalla redirige a cualquier otra cuenta que intente
-   entrar por URL directa, y ademas la tabla tiene RLS real, asi
-   que ni siquiera se podrian leer datos de otra cuenta.
+   construccion por fases. Disponible para cualquier cuenta,
+   apagado por defecto -- se activa desde Configuracion. La
+   tabla tiene RLS real, asi que cada cuenta solo ve sus propias
+   habitaciones sin importar quien mas use el modulo.
 ===================================================== */
 
 const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-const CUENTA_AUTORIZADA_HOTEL = 'b699660c-b808-4f0a-9b24-d0df60a92e83';
 
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
@@ -105,21 +102,13 @@ async function init() {
   try {
     const { data: { user }, error } = await sb.auth.getUser();
     if (error || !user) { window.location.href = 'login.html'; return; }
-
-    // Guard 1: solo la cuenta autorizada llega a ver esta pantalla en
-    // absoluto -- cualquier otra persona que entre por URL directa se
-    // manda de vuelta al dashboard, sin cargar ningun dato de hotel.
-    if (user.id !== CUENTA_AUTORIZADA_HOTEL) {
-      window.location.href = 'dashboard.html';
-      return;
-    }
     STATE.userId = user.id;
 
     await loadEmpresaConfig(user.id);
 
-    // Guard 2: aunque sea la cuenta correcta, si el interruptor de
-    // Configuracion esta apagado, tampoco se entra -- el modulo
-    // completo queda inactivo hasta que se active explicitamente.
+    // Guard: si el interruptor de Configuracion esta apagado, no se
+    // entra -- el modulo queda inactivo hasta que se active
+    // explicitamente, para CUALQUIER cuenta.
     if (STATE.empresaConfig?.usa_modulo_hotel !== true) {
       window.location.href = 'dashboard.html';
       return;
