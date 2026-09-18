@@ -58,7 +58,6 @@ const STATE = {
   escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
   formEscalas:  [],       // filas en edición dentro del modal de producto (antes de guardar)
   busqueda:     '',
-  ordenActivo:  'reciente',
   comboBusqueda: '',
   comboOrden:    'reciente',
   combosFiltrados: [],
