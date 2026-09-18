@@ -469,7 +469,7 @@ async function hacerCheckIn(id) {
       .eq('id', id).eq('auth_user_id', STATE.userId);
     if (e1) throw e1;
     const { error: e2 } = await sb.from('hotel_habitaciones')
-      .update({ estado: 'ocupada' }).eq('id', r.habitacion_id).eq('auth_user_id', STATE.userId);
+      .update({ estado: 'ocupada', en_este_estado_desde: new Date().toISOString() }).eq('id', r.habitacion_id).eq('auth_user_id', STATE.userId);
     if (e2) throw e2;
     showToast('Check-in registrado — la habitación ya aparece ocupada');
     await cargarReservaciones();
@@ -587,7 +587,7 @@ async function hacerCheckOut() {
     if (e1) throw e1;
 
     const { error: e2 } = await sb.from('hotel_habitaciones')
-      .update({ estado: 'limpieza' }).eq('id', r.habitacion_id).eq('auth_user_id', STATE.userId);
+      .update({ estado: 'limpieza', en_este_estado_desde: new Date().toISOString() }).eq('id', r.habitacion_id).eq('auth_user_id', STATE.userId);
     if (e2) throw e2;
 
     showToast('Check-out completado — la habitación pasó a limpieza');

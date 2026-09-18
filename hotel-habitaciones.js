@@ -339,16 +339,24 @@ async function guardarHabitacion() {
   if (tarifa <= 0) { errEl.textContent = 'La tarifa base debe ser mayor a cero.'; return; }
 
   const id = document.getElementById('hab-id').value || null;
+  const estadoNuevo = document.getElementById('hab-estado').value;
+  const habitacionExistente = id ? STATE.habitaciones.find(x => x.id === id) : null;
+  const cambioDeEstado = !habitacionExistente || habitacionExistente.estado !== estadoNuevo;
+
   const payload = {
     auth_user_id: STATE.userId, numero,
     piso: document.getElementById('hab-piso').value.trim() || null,
     tipo, tipo_personalizado: tipo === 'personalizado' ? tipoPersonalizado : null,
     capacidad, tarifa_base: tarifa,
-    estado: document.getElementById('hab-estado').value,
+    estado: estadoNuevo,
     comodidades: document.getElementById('hab-comodidades').value.trim() || null,
     notas: document.getElementById('hab-notas').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
+  // Solo se marca "cuando entro a este estado" si de verdad cambio --
+  // asi editar otro campo (la tarifa, por ejemplo) sin tocar el
+  // estado no reinicia el contador de tiempo en limpieza/mantenimiento.
+  if (cambioDeEstado) payload.en_este_estado_desde = new Date().toISOString();
 
   setBtnLoading('hab-btn-guardar', true);
   try {
