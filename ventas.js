@@ -1043,10 +1043,16 @@ async function anularVenta() {
    ============================================================ */
 async function loadMetodosPago() {
   try {
-    const { data } = await sb.from('metodos_pago').select('*')
+    const { data, error } = await sb.from('metodos_pago').select('*')
       .eq('auth_user_id', S.userId).eq('activo', true).order('orden');
+    if (error) throw error;
     S.metodosPago = data || [];
   } catch(e) {
+    // Antes esto fallaba en silencio -- ahora queda en consola para
+    // poder diagnosticar si vuelve a pasar (ej. problema de red
+    // puntual, RLS, etc.) en vez de simplemente mostrar 3 métodos
+    // sin ninguna pista de por qué.
+    console.error('loadMetodosPago: usando fallback de emergencia, motivo real:', e);
     // Fallback con métodos comunes si la tabla no existe aún
     S.metodosPago = [
       { id:'efectivo',     nombre:'Efectivo',      es_default:true },
