@@ -1624,7 +1624,12 @@ async function confirmarConvertirAVenta() {
 
     const detallesVenta = detalles.map(d => ({
       auth_user_id: STATE.userId, venta_id: ventaId, producto_id: d.producto_id, combo_id: d.combo_id || null,
-      producto_nombre: d.producto_nombre, producto_sku: d.producto_sku, tipo_item: d.tipo_item,
+      producto_nombre: d.producto_nombre, producto_sku: d.producto_sku,
+      // BUG REAL (preexistente): venta_detalles.tipo_item solo acepta
+      // 'producto'/'servicio' -- nunca 'combo'. proforma_detalles SI
+      // permite 'combo', asi que copiar el valor tal cual violaba la
+      // restriccion real al convertir una proforma con combos a venta.
+      tipo_item: d.tipo_item === 'combo' ? 'producto' : d.tipo_item,
       cantidad: d.cantidad, precio: d.precio, costo: d.costo, descuento: d.descuento,
       subtotal: d.subtotal, ganancia: d.ganancia,
       escala_id: (d.escala_id && idsEscalaValidos.has(d.escala_id)) ? d.escala_id : null,

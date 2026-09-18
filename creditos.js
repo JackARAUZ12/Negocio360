@@ -1264,7 +1264,10 @@
       }
       const nuevosDetalles = CS.ncItems.map(it => ({
         venta_id: credito.venta_id, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
-        combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item,
+        combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre,
+        // BUG REAL (preexistente): venta_detalles.tipo_item solo
+        // acepta 'producto'/'servicio', nunca 'combo'.
+        tipo_item: it.esCombo ? 'producto' : it.tipo_item,
         cantidad: it.cantidad, precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
         ganancia: round2((it.precio-it.costo)*it.cantidad),
         escala_id: (it.escala_id && idsEscalaValidos1.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre||null,
@@ -1527,7 +1530,10 @@
         const detalles = CS.ncItems.map(it => ({
           venta_id: ventaId, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
           combo_id: it.esCombo ? it.producto_id : null,
-          producto_nombre: it.nombre, tipo_item: it.esCombo ? 'combo' : it.tipo_item, cantidad: it.cantidad,
+          producto_nombre: it.nombre,
+          // BUG REAL (preexistente): venta_detalles.tipo_item solo
+          // acepta 'producto'/'servicio', nunca 'combo'.
+          tipo_item: it.esCombo ? 'producto' : it.tipo_item, cantidad: it.cantidad,
           precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
           ganancia: round2((it.precio-it.costo)*it.cantidad),
           escala_id: (it.escala_id && idsEscalaValidos2.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre || null,
