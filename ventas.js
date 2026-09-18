@@ -5846,8 +5846,14 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
   imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketVentaRapidaCSS(venta, items, resumen));
 }
 
-function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
+async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   const cfg   = VR.config || {};
+
+  // El detalle del combo se calcula UNA vez aqui -- se reutiliza tanto
+  // si termina generando el PDF carta (mas abajo) como el ticket
+  // termico normal. Los items del carrito tienen esCombo/id en vez de
+  // combo_id -- se adaptan al formato que ya espera la funcion.
+  items = await enriquecerItemsConCombo((items||[]).map(i => ({ ...i, combo_id: i.esCombo ? i.id : null })));
 
   // Mismo desvío que en Nueva Venta — solo se activa si el negocio
   // eligió "Carta / A4" a propósito en su configuración.
@@ -6032,8 +6038,14 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
   imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketNuevaVentaCSS(venta, items, resumen));
 }
 
-function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
+async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   const cfg   = VR.config || {};
+
+  // Mismo criterio que en Venta Rápida: se calcula una vez aquí y se
+  // reutiliza tanto si termina generando el PDF carta como el ticket
+  // térmico normal más abajo.
+  items = await enriquecerItemsConCombo((items||[]).map(i => ({ ...i, combo_id: i.esCombo ? i.id : null })));
+
 
   // Si el negocio eligió "Carta / A4" en su configuración de ticket,
   // se genera el comprobante de hoja completa en vez del ticket
