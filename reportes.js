@@ -281,6 +281,7 @@ async function loadEmpresaConfig(userId) {
     if (data) {
       R.empresaConfig = data;
       R.moneda = data.moneda || 'C$';
+      aplicarVisibilidadTabHotel();
       // NUEVO: configuración de columnas de exportación guardada por el cliente.
       // Si nunca configuró nada (o metadata viene vacío/null), queda {} y
       // todas las columnas se consideran activas por defecto (ver colActiva()).
@@ -392,6 +393,7 @@ async function loadTab(tab) {
     case 'creditos':    await loadCreditosTab(); break;
     case 'gastos':      await loadGastosTab();   break;
     case 'salarios':    await loadSalariosTab(); break;
+    case 'hotel':       await loadHotelTab();    break;
     case 'regalias':    await loadRegaliasTab(); break;
     case 'alertas':     await loadAlertas();     break;
     case 'exportar':    renderConfigExportar();  break;
@@ -2268,6 +2270,76 @@ async function loadSalariosTab() {
   } catch(e) {
     console.error('loadSalariosTab:', e);
     if (tbody) tbody.innerHTML = emptyRow(5,'No se pudo cargar el reporte de salarios');
+  }
+}
+
+/* ============================================================
+   TAB: HOTEL -- ocupacion, tarifa promedio (ADR), ingreso por
+   habitacion disponible (RevPAR), solo relevante para cuentas con
+   el modulo de Hotel activo. Se calcula sobre las reservas cuya
+   fecha de ENTRADA cae dentro del periodo seleccionado -- mismo
+   criterio que ya usa el resto de Reportes (filtrar por la fecha
+   del evento, no por rango de cobertura).
+   ============================================================ */
+function aplicarVisibilidadTabHotel() {
+  const tabNav = document.getElementById('tab-nav-hotel');
+  if (tabNav) tabNav.style.display = R.empresaConfig?.usa_modulo_hotel === true ? '' : 'none';
+}
+
+async function loadHotelTab() {
+  const tbody = document.getElementById('hot-tbody');
+  try {
+    const { from, to } = getDateRange();
+
+    const [{ data: reservas }, { data: habitaciones }] = await Promise.all([
+      sb.from('hotel_reservaciones').select('*, hotel_habitaciones(numero)')
+        .eq('auth_user_id', R.userId).neq('estado', 'cancelada')
+        .gte('fecha_entrada', from).lte('fecha_entrada', to)
+        .order('fecha_entrada', { ascending: false }),
+      sb.from('hotel_habitaciones').select('id').eq('auth_user_id', R.userId).eq('activo', true),
+    ]);
+
+    const lista = reservas || [];
+    const totalHabitaciones = (habitaciones || []).length;
+
+    // Dias del periodo elegido (inclusive) -- base para ocupacion y RevPAR.
+    const diasPeriodo = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
+    const nochesDisponibles = totalHabitaciones * diasPeriodo;
+
+    let nochesVendidas = 0, ingresoHabitacion = 0;
+    lista.forEach(r => {
+      const noches = Math.round((new Date(r.fecha_salida) - new Date(r.fecha_entrada)) / 86400000);
+      nochesVendidas += noches;
+      ingresoHabitacion += noches * Number(r.tarifa_acordada || 0);
+    });
+
+    const ocupacionPct = nochesDisponibles > 0 ? (nochesVendidas / nochesDisponibles) * 100 : 0;
+    const adr = nochesVendidas > 0 ? ingresoHabitacion / nochesVendidas : 0;
+    const revpar = nochesDisponibles > 0 ? ingresoHabitacion / nochesDisponibles : 0;
+
+    document.getElementById('hot-ocupacion').textContent = `${ocupacionPct.toFixed(1)}%`;
+    document.getElementById('hot-ocupacion-sub').textContent = `${nochesVendidas} de ${nochesDisponibles} noches`;
+    document.getElementById('hot-adr').textContent = fmt(adr);
+    document.getElementById('hot-revpar').textContent = fmt(revpar);
+    document.getElementById('hot-ingresos').textContent = fmt(ingresoHabitacion);
+    document.getElementById('hot-reservas-count').textContent = `${lista.length} reservación${lista.length===1?'':'es'}`;
+
+    const ESTADO_LABEL_REP = { confirmada:'Confirmada', pendiente:'Pendiente', completada:'Completada' };
+    tbody.innerHTML = lista.length ? lista.map(r => {
+      const noches = Math.round((new Date(r.fecha_salida) - new Date(r.fecha_entrada)) / 86400000);
+      return `<tr>
+        <td>${esc(r.cliente_nombre)}</td>
+        <td>Hab. ${esc(r.hotel_habitaciones?.numero || '—')}</td>
+        <td>${fmtFechaCorta(r.fecha_entrada)}</td>
+        <td>${fmtFechaCorta(r.fecha_salida)}</td>
+        <td>${noches}</td>
+        <td class="td-mono">${fmt(r.tarifa_acordada)}</td>
+        <td>${ESTADO_LABEL_REP[r.estado] || r.estado}</td>
+      </tr>`;
+    }).join('') : emptyRow(7, 'No hay reservaciones en este período');
+  } catch(e) {
+    console.error('loadHotelTab:', e);
+    if (tbody) tbody.innerHTML = emptyRow(7, 'No se pudo cargar el reporte de hotel');
   }
 }
 

@@ -874,6 +874,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           Salarios
         </div>
+        <!-- HOTEL -- oculta por defecto en el HTML, la muestra JS solo
+             si la cuenta activo usa_modulo_hotel (ver aplicarVisibilidadTabHotel). -->
+        <div class="main-tab" data-tab="hotel" onclick="switchTab('hotel')" id="tab-nav-hotel" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>
+          Hotel
+        </div>
         <div class="main-tab" data-tab="regalias" onclick="switchTab('regalias')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
           Regalías
@@ -1818,6 +1824,61 @@
       </div><!-- /panel-salarios -->
 
       <!-- =====================================================
+           TAB: HOTEL -- solo relevante para cuentas con el modulo
+           de Hotel activo (ver aplicarVisibilidadTabHotel en JS).
+      ===================================================== -->
+      <div class="tab-panel" id="panel-hotel">
+
+        <div class="kpi-grid-4 fade-in">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Ocupación</div>
+              <div class="kpi-value" id="hot-ocupacion">—</div>
+              <div class="kpi-sub" id="hot-ocupacion-sub">0 de 0 noches</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-3-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Tarifa promedio (ADR)</div>
+              <div class="kpi-value" id="hot-adr">—</div>
+              <div class="kpi-sub">Por noche vendida</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--accent-4-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">RevPAR</div>
+              <div class="kpi-value" id="hot-revpar">—</div>
+              <div class="kpi-sub">Ingreso por habitación disponible</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:var(--danger-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="kpi-body">
+              <div class="kpi-label">Ingresos del período</div>
+              <div class="kpi-value" id="hot-ingresos">—</div>
+              <div class="kpi-sub" id="hot-reservas-count">0 reservaciones</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card fade-in">
+          <div class="panel-header">
+            <div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>Reservaciones del período</div>
+          </div>
+          <div class="panel-body">
+            <table>
+              <thead><tr><th>Huésped</th><th>Habitación</th><th>Entrada</th><th>Salida</th><th>Noches</th><th>Tarifa</th><th>Estado</th></tr></thead>
+              <tbody id="hot-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /panel-hotel -->
+
+      <!-- =====================================================
            TAB: REGALÍAS
       ===================================================== -->
       <div class="tab-panel" id="panel-regalias">
@@ -2149,7 +2210,7 @@
 
 </div><!-- /app -->
 
-<script src="reportes.js?v=20260916a"></script>
+<script src="reportes.js?v=20260918a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>
