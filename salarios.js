@@ -1330,9 +1330,29 @@ function calcularConcepto(concepto, montoBase) {
   if (concepto.metodo_calculo === 'porcentaje') return round2(montoBase * (Number(concepto.valor)||0) / 100);
   if (concepto.metodo_calculo === 'monto_fijo') return round2(Number(concepto.valor)||0);
   if (concepto.metodo_calculo === 'tabla_progresiva') {
+    // La tabla de IR de Nicaragua (Ley 822, Arto. 23) esta expresada
+    // en terminos ANUALES -- pero el salario que se paga aqui es
+    // siempre periodico (mensual). Sin anualizar primero, casi
+    // cualquier sueldo mensual normal cae siempre en el primer tramo
+    // (exento), asi que el IR nunca se calculaba: este era el bug real.
+    // Ademas, el calculo es VERDADERAMENTE progresivo: cada tramo solo
+    // cobra su tasa sobre el EXCEDENTE de ese tramo, sumado a la cuota
+    // ya acumulada de los tramos anteriores completos -- no toda la
+    // base a la tasa del tramo en que cae (eso sobre-cobraria a
+    // cualquiera que pase de tramo). Se calcula dinamicamente a partir
+    // de los propios tramos configurados, para seguir funcionando bien
+    // si se editan los montos/tasas desde Conceptos de Nomina.
+    const anual = montoBase * 12;
     const tramos = concepto.tabla_progresiva || [];
+    let cuotaAcumulada = 0, limiteAnterior = 0;
     for (const t of tramos) {
-      if (t.hasta == null || montoBase <= Number(t.hasta)) return round2(montoBase * (Number(t.tasa)||0) / 100);
+      const limite = (t.hasta == null || t.hasta === '') ? Infinity : Number(t.hasta);
+      if (anual <= limite) {
+        const impuestoAnual = cuotaAcumulada + (anual - limiteAnterior) * (Number(t.tasa)||0) / 100;
+        return round2(impuestoAnual / 12); // de vuelta a mensual, lo que realmente se descuenta del pago
+      }
+      cuotaAcumulada += (limite - limiteAnterior) * (Number(t.tasa)||0) / 100;
+      limiteAnterior = limite;
     }
     return 0;
   }
