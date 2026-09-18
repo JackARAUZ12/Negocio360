@@ -5917,9 +5917,21 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   // Los <div class="fila-dato"> que ya se usan arriba (Cliente,
   // Fecha, etc.) nunca tuvieron ese problema, así que se usa el
   // mismo patrón aquí también, por seguridad y consistencia.
-  const filas = items.map(i => `
-    <div style="margin-top:5px">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
-    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`).join('');
+  const filas = items.map(i => {
+    // El nombre puede venir con detalle de combo agregado (varias
+    // lineas separadas por salto de linea) -- un <div> normal en HTML
+    // colapsa los saltos de linea en espacios, asi que cada linea se
+    // separa explicitamente en su propio <div> para que se vea igual
+    // que en el PDF: el nombre real arriba (junto al precio), y el
+    // listado de productos del combo debajo, uno por linea -- crece
+    // solo lo que necesite, sea un combo chico o uno con muchos productos.
+    const [nombreReal, ...lineasDetalle] = String(i.nombre || '').split('\n');
+    const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('');
+    return `
+    <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
+    ${detalleHtml}
+    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
+  }).join('');
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Ticket ${esc(venta.numero_venta)}</title>
@@ -6097,9 +6109,19 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   // Mismo cambio que en Venta Rápida: divs en vez de tabla, para
   // evitar que el nombre del producto y el subtotal se impriman
   // pegados en la misma línea física en esta impresora.
-  const filas = (items||[]).map(i => `
-    <div style="margin-top:5px">${esc(i.nombre)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
-    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`).join('');
+  const filas = (items||[]).map(i => {
+    // Mismo criterio que en Venta Rápida: el nombre puede traer el
+    // detalle del combo en lineas separadas por salto de linea -- se
+    // separan en sus propios <div> (un <div> normal colapsa los
+    // saltos de linea), asi el nombre real queda arriba junto al
+    // precio, y el listado de productos crece debajo lo que haga falta.
+    const [nombreReal, ...lineasDetalle] = String(i.nombre || '').split('\n');
+    const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('');
+    return `
+    <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
+    ${detalleHtml}
+    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
+  }).join('');
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Ticket ${esc(venta.numero_venta)}</title>
