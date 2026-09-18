@@ -3662,7 +3662,7 @@ function dibujarRecibo(doc, venta, items) {
     doc.setFontSize(8);
     nombreLineas.forEach((ln, i) => {
       doc.text(ln, M, y);
-      if (i === nombreLineas.length - 1) {
+      if (i === 0) {
         doc.text(fmt(it.subtotal), W - M, y, { align: 'right' });
       }
       linea(3.9);
