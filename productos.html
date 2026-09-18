@@ -411,16 +411,17 @@
           <table class="data-table" role="table">
             <thead id="theadProductos">
               <tr>
-                <th>Tipo</th>
-                <th>Creado</th>
-                <th>Actualizado</th>
                 <th>Nombre / SKU</th>
+                <th id="thModelo" style="display:none">Modelo</th>
+                <th>Tipo</th>
                 <th>Categoría</th>
                 <th>Precio</th>
                 <th>Costo</th>
                 <th>Margen</th>
                 <th>Stock</th>
                 <th>Estado</th>
+                <th>Creado</th>
+                <th>Actualizado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -1249,7 +1250,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260917d"></script>
+<script src="productos.js?v=20260917e"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

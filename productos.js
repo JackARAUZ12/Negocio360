@@ -1621,6 +1621,9 @@ function renderTabla() {
   if (theadNormal) theadNormal.style.display = esModoMateriaPrima ? 'none' : '';
   if (theadMP) theadMP.style.display = esModoMateriaPrima ? '' : 'none';
 
+  const thModelo = $('thModelo');
+  if (thModelo) thModelo.style.display = STATE.usaModeloProducto ? '' : 'none';
+
   const btnMP = $('btnNuevaMateriaPrima');
   if (btnMP) btnMP.style.display = esModoMateriaPrima ? '' : 'none';
   const btnNuevoServicio = $('btnNuevoServicio');
@@ -1632,7 +1635,7 @@ function renderTabla() {
 
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="11">
+      <tr><td colspan="12">
         <div class="empty-state">
           <div class="empty-state-icon">📦</div>
           <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin productos aún'}</h3>
@@ -1670,15 +1673,14 @@ function renderTabla() {
     return `
       <tr data-id="${p.id}">
         <td>
+          <div class="td-nombre">${escHtml(p.nombre)}</div>
+          ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+        </td>
+        <td style="display:${STATE.usaModeloProducto ? '' : 'none'}">${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>
           <span class="tipo-badge ${p.tipo === 'producto' ? 'tipo-producto' : 'tipo-servicio'}">
             ${p.tipo === 'producto' ? '📦' : '🔧'} ${p.tipo}
           </span>
-        </td>
-        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
-        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
-        <td>
-          <div class="td-nombre">${escHtml(p.nombre)}</div>
-          ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
         </td>
         <td>
           ${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}
@@ -1697,6 +1699,8 @@ function renderTabla() {
             ${p.activo ? 'Activo' : 'Inactivo'}
           </span>
         </td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
         <td>
           <div style="display:flex;align-items:center;gap:4px;">
             <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
@@ -1826,7 +1830,7 @@ function mostrarErrorTabla() {
   const tbody = $('productosTbody');
   if (!tbody) return;
   tbody.innerHTML = `
-    <tr><td colspan="11">
+    <tr><td colspan="12">
       <div class="empty-state">
         <div class="empty-state-icon">⚠️</div>
         <h3>Error al cargar datos</h3>
