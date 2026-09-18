@@ -203,9 +203,11 @@ function renderTablaReservaciones() {
         ? `<span style="color:var(--success);font-weight:600">Anticipo ${fmt(r.monto_anticipo)}</span>`
         : `<span style="color:var(--text-muted)">Al check-in</span>`}</td>
       <td><span class="hab-estado-badge hab-estado-${r.estado === 'confirmada' ? 'disponible' : r.estado === 'pendiente' ? 'limpieza' : r.estado === 'cancelada' ? 'bloqueada' : 'mantenimiento'}">${ESTADO_LABEL[r.estado] || r.estado}</span></td>
-      <td style="display:flex;gap:6px">
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        ${!r.check_in_at && r.estado === 'confirmada' ? `<button class="btn-primary btn-sm" onclick="hacerCheckIn('${r.id}')">🔑 Check-in</button>` : ''}
+        ${r.check_in_at && !r.check_out_at ? `<button class="btn-primary btn-sm" onclick="abrirModalEstadia('${r.id}')">🧾 Estadía</button>` : ''}
         <button class="btn-secondary btn-sm" onclick="abrirModalReservacion('${r.id}')">Editar</button>
-        ${r.estado !== 'cancelada' && r.estado !== 'completada' ? `<button class="btn-ghost btn-sm" onclick="cancelarReservacion('${r.id}')">Cancelar</button>` : ''}
+        ${r.estado !== 'cancelada' && r.estado !== 'completada' && !r.check_in_at ? `<button class="btn-ghost btn-sm" onclick="cancelarReservacion('${r.id}')">Cancelar</button>` : ''}
       </td>
     </tr>`).join('');
 }
@@ -404,5 +406,152 @@ async function cancelarReservacion(id) {
   } catch (e) {
     console.error('cancelarReservacion:', e);
     showToast('No se pudo cancelar. Intenta de nuevo.', 'error');
+  }
+}
+
+/* =====================================================
+   CHECK-IN / CHECK-OUT -- el huesped llega, la habitacion pasa a
+   ocupada; durante la estadia se le puede sumar cargos a su cuenta
+   (folio); al salir, se cobra el total real (habitacion + cargos -
+   anticipo ya pagado) y la habitacion pasa a limpieza, nunca
+   directo a disponible -- asi funciona un hotel de verdad.
+===================================================== */
+async function hacerCheckIn(id) {
+  const r = STATE.reservaciones.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`¿Registrar el check-in de ${r.cliente_nombre} en la Habitación ${r.hotel_habitaciones?.numero || ''}?`)) return;
+  try {
+    const { error: e1 } = await sb.from('hotel_reservaciones')
+      .update({ check_in_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', id).eq('auth_user_id', STATE.userId);
+    if (e1) throw e1;
+    const { error: e2 } = await sb.from('hotel_habitaciones')
+      .update({ estado: 'ocupada' }).eq('id', r.habitacion_id).eq('auth_user_id', STATE.userId);
+    if (e2) throw e2;
+    showToast('Check-in registrado — la habitación ya aparece ocupada');
+    await cargarReservaciones();
+  } catch (e) {
+    console.error('hacerCheckIn:', e);
+    showToast('No se pudo registrar el check-in. Intenta de nuevo.', 'error');
+  }
+}
+
+STATE.cargosEstadia = [];
+
+async function abrirModalEstadia(id) {
+  const r = STATE.reservaciones.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('est-reservacion-id').value = id;
+  document.getElementById('est-error').textContent = '';
+  document.getElementById('est-cargo-desc').value = '';
+  document.getElementById('est-cargo-monto').value = '';
+  document.getElementById('est-huesped-info').textContent =
+    `${r.cliente_nombre} — Habitación ${r.hotel_habitaciones?.numero || ''} · Entrada ${fmtFechaCorta(r.fecha_entrada)}`;
+
+  const { data } = await sb.from('hotel_cargos_estadia').select('*').eq('reservacion_id', id).order('created_at');
+  STATE.cargosEstadia = data || [];
+  renderEstadia(r);
+  openModal('modal-estadia');
+}
+
+function renderEstadia(r) {
+  const nNoches = noches(r.fecha_entrada, r.fecha_salida);
+  const montoHabitacion = nNoches * Number(r.tarifa_acordada || 0);
+  const totalCargos = STATE.cargosEstadia.reduce((s, c) => s + Number(c.monto || 0), 0);
+  const anticipo = r.tipo_pago === 'anticipo' ? Number(r.monto_anticipo || 0) : 0;
+  const total = montoHabitacion + totalCargos - anticipo;
+
+  document.getElementById('est-noches').textContent = nNoches;
+  document.getElementById('est-monto-habitacion').textContent = fmt(montoHabitacion);
+  document.getElementById('est-lista-cargos').innerHTML = STATE.cargosEstadia.map(c => `
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin:4px 0">
+      <span>${esc(c.descripcion)}</span><span>${fmt(c.monto)}</span>
+    </div>`).join('');
+
+  const filaAnticipo = document.getElementById('est-fila-anticipo');
+  if (anticipo > 0) {
+    filaAnticipo.style.display = 'flex';
+    document.getElementById('est-monto-anticipo').textContent = `- ${fmt(anticipo)}`;
+  } else {
+    filaAnticipo.style.display = 'none';
+  }
+  document.getElementById('est-total').textContent = fmt(Math.max(0, total));
+}
+
+async function agregarCargoEstadia() {
+  const id = document.getElementById('est-reservacion-id').value;
+  const desc = document.getElementById('est-cargo-desc').value.trim();
+  const monto = Math.max(0, parseFloat(document.getElementById('est-cargo-monto').value) || 0);
+  if (!desc || monto <= 0) { document.getElementById('est-error').textContent = 'Escribe una descripción y un monto mayor a cero.'; return; }
+
+  try {
+    const { error } = await sb.from('hotel_cargos_estadia').insert({
+      auth_user_id: STATE.userId, reservacion_id: id, descripcion: desc, monto,
+    });
+    if (error) throw error;
+    document.getElementById('est-cargo-desc').value = '';
+    document.getElementById('est-cargo-monto').value = '';
+    document.getElementById('est-error').textContent = '';
+    const r = STATE.reservaciones.find(x => x.id === id);
+    const { data } = await sb.from('hotel_cargos_estadia').select('*').eq('reservacion_id', id).order('created_at');
+    STATE.cargosEstadia = data || [];
+    renderEstadia(r);
+  } catch (e) {
+    console.error('agregarCargoEstadia:', e);
+    document.getElementById('est-error').textContent = 'No se pudo agregar el cargo. Intenta de nuevo.';
+  }
+}
+
+async function hacerCheckOut() {
+  const id = document.getElementById('est-reservacion-id').value;
+  const r = STATE.reservaciones.find(x => x.id === id);
+  if (!r) return;
+  const errEl = document.getElementById('est-error');
+  errEl.textContent = '';
+
+  const nNoches = noches(r.fecha_entrada, r.fecha_salida);
+  const montoHabitacion = nNoches * Number(r.tarifa_acordada || 0);
+  const totalCargos = STATE.cargosEstadia.reduce((s, c) => s + Number(c.monto || 0), 0);
+  const anticipo = r.tipo_pago === 'anticipo' ? Number(r.monto_anticipo || 0) : 0;
+  const totalCobrar = Math.max(0, montoHabitacion + totalCargos - anticipo);
+
+  setBtnLoading('est-btn-checkout', true);
+  try {
+    // El cobro final SIEMPRE se registra en Caja, incluso si es
+    // C$0.00 (ej. un anticipo que ya cubrio todo) -- para dejar
+    // rastro del cierre; un movimiento de C$0 es simplemente
+    // ignorado por CajaAPI si el monto no cambia nada relevante.
+    if (totalCobrar > 0 && window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'COBRO',
+        concepto: `Check-out — ${r.cliente_nombre} (Habitación ${r.hotel_habitaciones?.numero || ''})`,
+        monto: totalCobrar, referencia_tipo: 'hotel_reservacion', referencia_id: id,
+        metodo_pago_nombre: document.getElementById('est-metodo-pago').value,
+      });
+      if (!cajaRes.ok) {
+        errEl.textContent = 'No se pudo registrar el cobro en Caja: ' + cajaRes.error;
+        setBtnLoading('est-btn-checkout', false);
+        return;
+      }
+    }
+
+    const { error: e1 } = await sb.from('hotel_reservaciones').update({
+      check_out_at: new Date().toISOString(), estado: 'completada',
+      cobro_final_registrado_caja: true, updated_at: new Date().toISOString(),
+    }).eq('id', id).eq('auth_user_id', STATE.userId);
+    if (e1) throw e1;
+
+    const { error: e2 } = await sb.from('hotel_habitaciones')
+      .update({ estado: 'limpieza' }).eq('id', r.habitacion_id).eq('auth_user_id', STATE.userId);
+    if (e2) throw e2;
+
+    showToast('Check-out completado — la habitación pasó a limpieza');
+    closeModal('modal-estadia');
+    await cargarReservaciones();
+  } catch (e) {
+    console.error('hacerCheckOut:', e);
+    errEl.textContent = 'No se pudo completar el check-out. Intenta de nuevo.';
+  } finally {
+    setBtnLoading('est-btn-checkout', false);
   }
 }

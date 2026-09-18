@@ -1400,10 +1400,62 @@
     </div>
   </div>
 
+  <!-- MODAL: ESTADIA / CHECK-OUT -->
+  <div class="modal-overlay" id="modal-estadia">
+    <div class="modal-box modal-md">
+      <div class="modal-header">
+        <span class="modal-title">🧾 Cuenta de la estadía</span>
+        <button class="modal-close" onclick="closeModal('modal-estadia')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="est-reservacion-id"/>
+        <p id="est-huesped-info" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px"></p>
+
+        <div style="background:var(--bg-hover);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+            <span>Habitación (<span id="est-noches">0</span> noches)</span>
+            <span id="est-monto-habitacion">C$ 0.00</span>
+          </div>
+          <div id="est-lista-cargos"></div>
+          <div style="justify-content:space-between;font-size:13px;margin:6px 0;color:var(--text-muted);display:none" id="est-fila-anticipo">
+            <span>Anticipo ya pagado</span>
+            <span id="est-monto-anticipo">- C$ 0.00</span>
+          </div>
+          <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:15px">
+            <span>Total a cobrar</span>
+            <span id="est-total">C$ 0.00</span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group"><label>Agregar cargo (opcional)</label><input type="text" id="est-cargo-desc" placeholder="Ej: Minibar, servicio a la habitación"/></div>
+          <div class="form-group"><label>Monto</label><input type="number" id="est-cargo-monto" min="0" step="0.01" placeholder="0.00"/></div>
+        </div>
+        <button class="btn-secondary" style="margin-bottom:14px" onclick="agregarCargoEstadia()">+ Agregar cargo a la cuenta</button>
+
+        <div class="form-group full">
+          <label>Método de pago del cobro final</label>
+          <select id="est-metodo-pago">
+            <option value="Efectivo">Efectivo</option>
+            <option value="Transferencia">Transferencia</option>
+            <option value="Tarjeta">Tarjeta</option>
+          </select>
+        </div>
+        <p id="est-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-estadia')">Cerrar</button>
+        <button class="btn-primary" id="est-btn-checkout" onclick="hacerCheckOut()">✅ Completar Check-out</button>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /#app -->
 
 <script src="cajaAPI.js"></script>
-<script src="hotel-reservaciones.js?v=20260918b"></script>
+<script src="hotel-reservaciones.js?v=20260918c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>
