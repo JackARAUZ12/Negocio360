@@ -172,7 +172,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     body: filas,
     theme: 'striped',
     headStyles: { fillColor: _cc_hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255] },
-    styles: { fontSize: 9.5, cellPadding: 3.5 },
+    styles: { fontSize: 9.5, cellPadding: 3.5, valign: 'top' },
     columnStyles: { 1:{halign:'right'}, 2:{halign:'right'}, 3:{halign:'right'}, 4:{halign:'right'} },
     margin: { left: M, right: M },
   });
