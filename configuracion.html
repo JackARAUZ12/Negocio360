@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- Este archivo usa JS inline (sin version de cache como los .js
+     externos) -- si el navegador cachea el HTML completo, cambios
+     como este mismo (agregar una tarjeta nueva) nunca llegarian
+     hasta un refresco forzado. Se pide siempre version fresca. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Configuración — Negocio360</title>
 
 <!-- Supabase CDN -->
