@@ -1473,7 +1473,7 @@ function imprimirComprobanteProforma() {
   const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial,Helvetica,sans-serif';
 
 async function enriquecerItemsConCombo(items) {
-  const combosIds = [...new Set((items||[]).filter(it => it.tipo_item === 'combo' && it.combo_id).map(it => it.combo_id))];
+  const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
   if (!combosIds.length) return items;
   try {
     const { data: cis } = await sbClient.from('combo_items')
@@ -1487,7 +1487,7 @@ async function enriquecerItemsConCombo(items) {
       porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
     });
     return (items||[]).map(it => {
-      if (it.tipo_item === 'combo' && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
+      if (it.combo_id && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\nIncluye:')) {
         const detalle = `\nIncluye: ${porCombo[it.combo_id].join(', ')}`;
         return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
       }
