@@ -44,7 +44,7 @@
   const MODULOS_OPCIONALES = {};
   Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
     if (!m.obligatorio) {
-      MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '' };
+      MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '', soloJackarauz: m.soloJackarauz || false };
     }
   });
   const MODULOS_POR_ARCHIVO = {};

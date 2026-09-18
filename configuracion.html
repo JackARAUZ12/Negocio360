@@ -1878,7 +1878,12 @@ async function cargarModulosOpcionales() {
 function pintarModulosOpcionales() {
   const cont = document.getElementById('cfg-modulos-lista');
   if (!cont) return;
-  const modulos = Object.values(window.ModulosGuard.MODULOS_OPCIONALES);
+  // Los modulos marcados soloJackarauz (en desarrollo, exclusivos de
+  // una sola cuenta) se quitan de la lista para cualquier otra
+  // cuenta -- este es el UNICO lugar que de verdad sabe que cuenta
+  // esta logueada, asi que el filtro real vive aqui.
+  const modulos = Object.values(window.ModulosGuard.MODULOS_OPCIONALES)
+    .filter(m => !m.soloJackarauz || currentAuthUserId === CUENTA_AUTORIZADA_HOTEL);
 
   cont.innerHTML = modulos.map(m => {
     const activo = window.ModulosGuard.estaActivo(modulosOpcionalesCfg, m.key);

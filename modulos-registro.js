@@ -91,6 +91,14 @@
                                desc: 'Qué pasa después de la venta — reclamos, reparaciones, garantías y cambios, con seguimiento de estado y vigencia de garantía calculada sola.' },
     'contabilidad.html':       { key: 'contabilidad',       label: 'Contabilidad',        icon: '📒', obligatorio: false,
                                desc: 'Catálogo de cuentas y asientos contables con partida doble real (Debe = Haber siempre). Libro Mayor y Balance de Comprobación.' },
+
+    // ---- En desarrollo, exclusivo de una cuenta ----
+    // soloJackarauz: true -- este modulo NUNCA debe aparecer en la
+    // lista de "Editar modulos" de ninguna otra cuenta. El filtro
+    // real vive en configuracion.html (pintarModulosOpcionales),
+    // que es quien de verdad conoce que cuenta esta logueada.
+    'hotel-habitaciones.html': { key: 'hotel_habitaciones',  label: 'Hotel: Habitaciones', icon: '🛏️', obligatorio: false, soloJackarauz: true,
+                               desc: 'Sistema de gestion hotelera, en construccion por fases -- habitaciones, tarifas y estado en tiempo real.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
