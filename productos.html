@@ -874,6 +874,11 @@
             </label>
           </div>
 
+          <div class="form-group" id="wrapModelo" style="display:none;margin-top:6px">
+            <label class="form-label" for="inputModelo">Modelo</label>
+            <input type="text" class="form-input" id="inputModelo" placeholder="Ej: XR-450"/>
+          </div>
+
           <div class="form-group full" id="wrapMateriaPrima" style="margin-top:6px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
               <input type="checkbox" id="inputEsMateriaPrima" style="width:16px;height:16px" />
@@ -914,6 +919,11 @@
               <input type="checkbox" id="inputRequiereSerieEdit" style="width:16px;height:16px"/>
               <span>Requiere número de serie — al vender este producto, el sistema pedirá su número de serie</span>
             </label>
+          </div>
+
+          <div class="form-group" id="wrapModeloEdit" style="display:none;margin-top:6px">
+            <label class="form-label" for="inputModeloEdit">Modelo</label>
+            <input type="text" class="form-input" id="inputModeloEdit" placeholder="Ej: XR-450"/>
           </div>
 
           <div class="form-group full" id="wrapMateriaPrimaEdit" style="margin-top:6px">
@@ -1239,7 +1249,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260917c"></script>
+<script src="productos.js?v=20260917d"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

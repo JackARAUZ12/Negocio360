@@ -326,6 +326,7 @@ async function cargarDatosEmpresa() {
     // nada de presentaciones se muestra ni se consulta.
     STATE.manejaPresentaciones = empresa?.maneja_presentaciones === true;
     STATE.usaNumeroSerie = empresa?.usa_numero_serie === true;
+    STATE.usaModeloProducto = empresa?.usa_modelo_producto === true;
 
     // ── FIX MONEDA ────────────────────────────────────────────
     // Orden de prioridad:
@@ -594,6 +595,13 @@ function aplicarVisibilidadNumeroSerie() {
   const wrap2 = $('wrapNumeroSerieEdit');
   if (wrap1) wrap1.style.display = STATE.usaNumeroSerie ? '' : 'none';
   if (wrap2) wrap2.style.display = STATE.usaNumeroSerie ? '' : 'none';
+}
+
+function aplicarVisibilidadModelo() {
+  const wrap1 = $('wrapModelo');
+  const wrap2 = $('wrapModeloEdit');
+  if (wrap1) wrap1.style.display = STATE.usaModeloProducto ? '' : 'none';
+  if (wrap2) wrap2.style.display = STATE.usaModeloProducto ? '' : 'none';
 }
 
 async function cargarPresentacionesDeProducto(productoId) {
@@ -2315,6 +2323,9 @@ function resetFormulario() {
   const inputSerie = $('inputRequiereSerie');
   if (inputSerie) inputSerie.checked = false;
   aplicarVisibilidadNumeroSerie();
+  const inputModelo = $('inputModelo');
+  if (inputModelo) inputModelo.value = '';
+  aplicarVisibilidadModelo();
   // Por defecto: "Descontar de caja" (caso más común — compra nueva)
   // Fecha de creación: hoy por defecto, pero editable — útil cuando el
   // producto ya existía antes de usar el sistema (inventario histórico).
@@ -2365,6 +2376,9 @@ function cargarFormulario(p) {
   const inputSerieEdit = $('inputRequiereSerieEdit');
   if (inputSerieEdit) inputSerieEdit.checked = p.requiere_numero_serie === true;
   aplicarVisibilidadNumeroSerie();
+  const inputModeloEdit = $('inputModeloEdit');
+  if (inputModeloEdit) inputModeloEdit.value = p.modelo || '';
+  aplicarVisibilidadModelo();
 
   // Fecha de creación: editable, para poder corregirla cuando el producto
   // ya existía antes de usar el sistema (no siempre coincide con "hoy").
@@ -2488,6 +2502,7 @@ async function guardarProducto() {
         tipo_precio:   tipoPrecio,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
         requiere_numero_serie: $('inputRequiereSerie')?.checked === true,
+        modelo: ($('inputModelo')?.value || '').trim() || null,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         garantia_meses: garantiaMeses,
@@ -2541,6 +2556,7 @@ async function guardarProducto() {
         tipo_precio:   tipoPrecio,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
         requiere_numero_serie: $('inputRequiereSerieEdit')?.checked === true,
+        modelo: ($('inputModeloEdit')?.value || '').trim() || null,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
