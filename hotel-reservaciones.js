@@ -188,7 +188,7 @@ function aplicarFiltrosReservaciones() {
 function renderTablaReservaciones() {
   const tbody = document.getElementById('res-tbody');
   if (!STATE.filtradas.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-cell">No hay reservaciones que coincidan con el filtro.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-cell">No hay reservaciones que coincidan con el filtro.</td></tr>`;
     return;
   }
   tbody.innerHTML = STATE.filtradas.map(r => `
@@ -199,6 +199,9 @@ function renderTablaReservaciones() {
       <td>${fmtFechaCorta(r.fecha_salida)}</td>
       <td>${noches(r.fecha_entrada, r.fecha_salida)}</td>
       <td>${fmt(r.tarifa_acordada)}</td>
+      <td>${r.tipo_pago === 'anticipo'
+        ? `<span style="color:var(--success);font-weight:600">Anticipo ${fmt(r.monto_anticipo)}</span>`
+        : `<span style="color:var(--text-muted)">Al check-in</span>`}</td>
       <td><span class="hab-estado-badge hab-estado-${r.estado === 'confirmada' ? 'disponible' : r.estado === 'pendiente' ? 'limpieza' : r.estado === 'cancelada' ? 'bloqueada' : 'mantenimiento'}">${ESTADO_LABEL[r.estado] || r.estado}</span></td>
       <td style="display:flex;gap:6px">
         <button class="btn-secondary btn-sm" onclick="abrirModalReservacion('${r.id}')">Editar</button>
@@ -222,6 +225,11 @@ function hayCruceDeFechas(habitacionId, entrada, salida, ignorarReservacionId) {
     // Se cruzan si el inicio de una es antes del fin de la otra, en ambas direcciones.
     return entrada < r.fecha_salida && salida > r.fecha_entrada;
   });
+}
+
+function onCambiarTipoPagoReservacion() {
+  const esAnticipo = document.getElementById('res-tipo-pago').value === 'anticipo';
+  document.getElementById('res-wrap-anticipo').style.display = esAnticipo ? '' : 'none';
 }
 
 function onCambiarDatosReservacion() {
@@ -270,6 +278,13 @@ function abrirModalReservacion(id) {
     document.getElementById('res-tarifa').value = r.tarifa_acordada || '';
     document.getElementById('res-estado').value = (r.estado === 'confirmada' || r.estado === 'pendiente') ? r.estado : 'confirmada';
     document.getElementById('res-notas').value = r.notas || '';
+    document.getElementById('res-tipo-pago').value = r.tipo_pago || 'sin_pago';
+    document.getElementById('res-monto-anticipo').value = r.monto_anticipo || '';
+    document.getElementById('res-metodo-anticipo').value = r.metodo_pago_anticipo || 'Efectivo';
+    // Si el anticipo ya se registro en Caja, no se puede editar el
+    // monto desde aqui (evita que el numero en Caja y en la reserva
+    // queden desincronizados) -- solo se ve, ya fijo.
+    document.getElementById('res-monto-anticipo').disabled = !!r.anticipo_registrado_caja;
   } else {
     document.getElementById('res-modal-title').textContent = 'Nueva reservación';
     document.getElementById('res-habitacion').selectedIndex = 0;
@@ -281,7 +296,12 @@ function abrirModalReservacion(id) {
     document.getElementById('res-tarifa').value = '';
     document.getElementById('res-estado').value = 'confirmada';
     document.getElementById('res-notas').value = '';
+    document.getElementById('res-tipo-pago').value = 'sin_pago';
+    document.getElementById('res-monto-anticipo').value = '';
+    document.getElementById('res-monto-anticipo').disabled = false;
+    document.getElementById('res-metodo-anticipo').value = 'Efectivo';
   }
+  onCambiarTipoPagoReservacion();
   openModal('modal-reservacion');
 }
 
@@ -303,6 +323,10 @@ async function guardarReservacion() {
   const tarifa = Math.max(0, parseFloat(document.getElementById('res-tarifa').value) || 0);
   if (tarifa <= 0) { errEl.textContent = 'La tarifa acordada debe ser mayor a cero.'; return; }
 
+  const tipoPago = document.getElementById('res-tipo-pago').value;
+  const montoAnticipo = Math.max(0, parseFloat(document.getElementById('res-monto-anticipo').value) || 0);
+  if (tipoPago === 'anticipo' && montoAnticipo <= 0) { errEl.textContent = 'Escribe el monto del anticipo.'; return; }
+
   const id = document.getElementById('res-id').value || null;
 
   // Verificacion final de cruce de fechas, justo antes de guardar --
@@ -314,6 +338,12 @@ async function guardarReservacion() {
     return;
   }
 
+  // El anticipo se registra en Caja como dinero real que YA entro --
+  // pero solo la PRIMERA vez (la reserva existente que edito el campo
+  // esta deshabilitado, asi que este caso solo aplica al crear una
+  // reserva nueva marcada con anticipo desde el inicio).
+  const registrarAnticipoEnCaja = !id && tipoPago === 'anticipo' && montoAnticipo > 0;
+
   const payload = {
     auth_user_id: STATE.userId, habitacion_id: habitacionId,
     cliente_nombre: huesped, cliente_telefono: document.getElementById('res-telefono').value.trim() || null,
@@ -321,15 +351,38 @@ async function guardarReservacion() {
     num_personas: Math.max(1, parseInt(document.getElementById('res-personas').value) || 1),
     tarifa_acordada: tarifa, estado: document.getElementById('res-estado').value,
     notas: document.getElementById('res-notas').value.trim() || null,
+    tipo_pago: tipoPago,
+    monto_anticipo: tipoPago === 'anticipo' ? montoAnticipo : null,
+    metodo_pago_anticipo: tipoPago === 'anticipo' ? document.getElementById('res-metodo-anticipo').value : null,
     updated_at: new Date().toISOString(),
   };
 
   setBtnLoading('res-btn-guardar', true);
   try {
-    const { error } = id
-      ? await sb.from('hotel_reservaciones').update(payload).eq('id', id).eq('auth_user_id', STATE.userId)
-      : await sb.from('hotel_reservaciones').insert(payload);
-    if (error) throw error;
+    let reservaId = id;
+    if (id) {
+      const { error } = await sb.from('hotel_reservaciones').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+    } else {
+      const { data, error } = await sb.from('hotel_reservaciones').insert(payload).select('id').single();
+      if (error) throw error;
+      reservaId = data.id;
+    }
+
+    if (registrarAnticipoEnCaja && window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'OTRO_INGRESO',
+        concepto: `Anticipo de reservación — ${huesped}`,
+        monto: montoAnticipo, referencia_tipo: 'hotel_reservacion', referencia_id: reservaId,
+        fecha: entrada, metodo_pago_nombre: document.getElementById('res-metodo-anticipo').value,
+      });
+      if (cajaRes.ok) {
+        await sb.from('hotel_reservaciones').update({ anticipo_registrado_caja: true }).eq('id', reservaId);
+      } else {
+        showToast('La reservación se guardó, pero el anticipo no se pudo registrar en Caja: ' + cajaRes.error, 'error');
+      }
+    }
+
     showToast(id ? 'Reservación actualizada' : 'Reservación creada');
     closeModal('modal-reservacion');
     await cargarReservaciones();

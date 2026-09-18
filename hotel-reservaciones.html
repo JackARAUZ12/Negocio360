@@ -1328,7 +1328,7 @@
 
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Huésped</th><th>Habitación</th><th>Entrada</th><th>Salida</th><th>Noches</th><th>Tarifa</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Huésped</th><th>Habitación</th><th>Entrada</th><th>Salida</th><th>Noches</th><th>Tarifa</th><th>Pago</th><th>Estado</th><th></th></tr></thead>
           <tbody id="res-tbody"></tbody>
         </table>
       </div>
@@ -1340,7 +1340,7 @@
     <div class="modal-box modal-md">
       <div class="modal-header">
         <span class="modal-title" id="res-modal-title">Nueva reservación</span>
-        <button class="modal-close" onclick="closeModal(\'modal-reservacion\')">
+        <button class="modal-close" onclick="closeModal('modal-reservacion')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -1370,11 +1370,31 @@
             </select>
           </div>
         </div>
+
+        <div class="form-group full">
+          <label>Pago</label>
+          <select id="res-tipo-pago" onchange="onCambiarTipoPagoReservacion()">
+            <option value="sin_pago">Solo reserva — se paga completo al check-in</option>
+            <option value="anticipo">Se dio un anticipo / depósito</option>
+          </select>
+        </div>
+        <div class="form-row" id="res-wrap-anticipo" style="display:none">
+          <div class="form-group"><label>Monto del anticipo *</label><input type="number" id="res-monto-anticipo" min="0" step="0.01" placeholder="0.00"/></div>
+          <div class="form-group">
+            <label>Método de pago</label>
+            <select id="res-metodo-anticipo">
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Tarjeta">Tarjeta</option>
+            </select>
+          </div>
+        </div>
+
         <div class="form-group full"><label>Notas (opcional)</label><textarea id="res-notas" rows="2"></textarea></div>
         <p id="res-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
       </div>
       <div class="modal-footer">
-        <button class="btn-ghost" onclick="closeModal(\'modal-reservacion\')">Cancelar</button>
+        <button class="btn-ghost" onclick="closeModal('modal-reservacion')">Cancelar</button>
         <button class="btn-primary" id="res-btn-guardar" onclick="guardarReservacion()">Guardar</button>
       </div>
     </div>
@@ -1382,7 +1402,8 @@
 
 </div><!-- /#app -->
 
-<script src="hotel-reservaciones.js?v=20260918a"></script>
+<script src="cajaAPI.js"></script>
+<script src="hotel-reservaciones.js?v=20260918b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>
