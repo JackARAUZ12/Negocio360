@@ -21,6 +21,37 @@ function fmt(amount) {
   const n = (typeof convertirParaMostrar === 'function') ? convertirParaMostrar(amount, STATE.empresaConfig?.moneda) : Number(amount || 0);
   return `${sym} ${n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+// Desglosa un monto YA cobrado (IVA incluido) en su parte neta y su
+// IVA, y registra el IVA en Impuestos -- mismo patron real que ya usa
+// Ventas (registrarMovimientoImpuesto): a Caja entra el neto, porque
+// el IVA no es ingreso del negocio, es dinero recaudado para el
+// fisco. Devuelve el monto neto, que es lo que se debe registrar en
+// Caja en vez del monto completo.
+async function registrarIvaHotel(montoConIva, concepto, referenciaId) {
+  const ivaPct = STATE.empresaConfig?.iva_porcentaje_default ? Number(STATE.empresaConfig.iva_porcentaje_default) : 15;
+  if (STATE.empresaConfig?.iva_activo === false || ivaPct <= 0) return montoConIva; // negocio sin IVA activo: no se desglosa nada
+  const neto = round2(montoConIva / (1 + ivaPct/100));
+  const iva = round2(montoConIva - neto);
+  if (iva <= 0) return montoConIva;
+  try {
+    const { data: ultMov } = await sb.from('movimientos_impuestos')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId)
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    await sb.from('movimientos_impuestos').insert({
+      auth_user_id: STATE.userId, tipo_movimiento: 'IVA_VENTA', concepto,
+      monto: iva, saldo_anterior: saldoAnt, saldo_resultante: saldoAnt + iva,
+      referencia_venta_id: referenciaId, fecha: todayISO(),
+    });
+  } catch (e) {
+    console.warn('registrarIvaHotel:', e);
+  }
+  return neto;
+}
+
 function fmtFechaCorta(iso) {
   if (!iso) return '—';
   const d = new Date(iso + 'T00:00:00');
@@ -344,7 +375,17 @@ async function guardarReservacion() {
   // pero solo la PRIMERA vez (la reserva existente que edito el campo
   // esta deshabilitado, asi que este caso solo aplica al crear una
   // reserva nueva marcada con anticipo desde el inicio).
-  const registrarAnticipoEnCaja = !id && tipoPago === 'anticipo' && montoAnticipo > 0;
+  // Se registra en Caja siempre que se marque anticipo con monto > 0
+  // Y todavia no se haya registrado antes -- cubre tanto crear una
+  // reserva nueva CON anticipo desde el inicio, como editar una
+  // reserva ya existente para agregarle el anticipo despues (el caso
+  // real mas comun: se crea la reserva primero, y el anticipo se
+  // marca cuando el cliente de verdad paga, no siempre en el mismo
+  // instante). anticipo_registrado_caja es la bandera que evita que
+  // se registre dos veces si se vuelve a editar despues.
+  const reservaExistente = id ? STATE.reservaciones.find(x => x.id === id) : null;
+  const yaRegistrado = reservaExistente?.anticipo_registrado_caja === true;
+  const registrarAnticipoEnCaja = tipoPago === 'anticipo' && montoAnticipo > 0 && !yaRegistrado;
 
   const payload = {
     auth_user_id: STATE.userId, habitacion_id: habitacionId,
@@ -372,11 +413,13 @@ async function guardarReservacion() {
     }
 
     if (registrarAnticipoEnCaja && window.CajaAPI) {
+      const conceptoAnticipo = `Anticipo de reservación — ${huesped}`;
+      const montoNeto = await registrarIvaHotel(montoAnticipo, conceptoAnticipo, reservaId);
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'OTRO_INGRESO',
-        concepto: `Anticipo de reservación — ${huesped}`,
-        monto: montoAnticipo, referencia_tipo: 'hotel_reservacion', referencia_id: reservaId,
-        fecha: entrada, metodo_pago_nombre: document.getElementById('res-metodo-anticipo').value,
+        concepto: conceptoAnticipo,
+        monto: montoNeto, referencia_tipo: 'hotel_reservacion', referencia_id: reservaId,
+        metodo_pago_nombre: document.getElementById('res-metodo-anticipo').value,
       });
       if (cajaRes.ok) {
         await sb.from('hotel_reservaciones').update({ anticipo_registrado_caja: true }).eq('id', reservaId);
@@ -522,10 +565,12 @@ async function hacerCheckOut() {
     // rastro del cierre; un movimiento de C$0 es simplemente
     // ignorado por CajaAPI si el monto no cambia nada relevante.
     if (totalCobrar > 0 && window.CajaAPI) {
+      const conceptoCheckout = `Check-out — ${r.cliente_nombre} (Habitación ${r.hotel_habitaciones?.numero || ''})`;
+      const montoNeto = await registrarIvaHotel(totalCobrar, conceptoCheckout, id);
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'COBRO',
-        concepto: `Check-out — ${r.cliente_nombre} (Habitación ${r.hotel_habitaciones?.numero || ''})`,
-        monto: totalCobrar, referencia_tipo: 'hotel_reservacion', referencia_id: id,
+        concepto: conceptoCheckout,
+        monto: montoNeto, referencia_tipo: 'hotel_reservacion', referencia_id: id,
         metodo_pago_nombre: document.getElementById('est-metodo-pago').value,
       });
       if (!cajaRes.ok) {
