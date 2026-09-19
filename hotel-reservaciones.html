@@ -227,6 +227,7 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
+      overflow-x: hidden;
     }
     #main.sidebar-collapsed { margin-left: 64px; }
 
@@ -372,11 +373,13 @@
        existian heredadas de activos.html -- se definen aqui,
        verificadas contra el CSS real antes de usarlas).
     ===================================================== */
-    .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .page-content { padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; box-sizing: border-box; min-width: 0; overflow-x: hidden; }
     .hab-page-header {
       display: flex; align-items: flex-start; justify-content: space-between;
       gap: 14px; flex-wrap: wrap; margin-bottom: 20px;
     }
+    .hab-page-header > div:first-child { min-width: 0; }
+    .hab-page-subtitle { overflow-wrap: break-word; }
     .hab-page-header h1 { font-size: 26px; font-weight: 800; color: var(--text-primary); margin: 0 0 4px; }
     .hab-page-subtitle { font-size: 13.5px; color: var(--text-secondary); margin: 0; }
     .kpi-sub { font-size: 11px; color: var(--text-muted); }
@@ -578,8 +581,9 @@
     /* =====================================================
        TABLA
     ===================================================== */
-    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
     table { width: 100%; border-collapse: collapse; min-width: 640px; }
+    @media (max-width: 640px) { table { min-width: 0; } }
     thead th {
       padding: 10px 14px;
       font-size: 11px; font-weight: 700;
@@ -891,6 +895,7 @@
       :root { --sidebar-w: 210px; }
       #content { padding: 20px 16px 48px; }
       .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      #res-kpis { grid-template-columns: repeat(2, 1fr) !important; }
       #header { padding: 0 16px; }
       .user-name, .user-biz { max-width: 110px; }
     }
@@ -911,6 +916,7 @@
     /* Móviles */
     @media (max-width: 480px) {
       .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      #res-kpis { grid-template-columns: 1fr 1fr !important; }
       .kpi-card { padding: 14px; gap: 8px; }
       .kpi-icon { width: 34px; height: 34px; }
       .kpi-value { font-size: 15px; }
