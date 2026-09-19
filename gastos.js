@@ -631,6 +631,64 @@
   }
 
   /* ===================================================
+     GENERACION AUTOMATICA -- esta es la pieza que faltaba: el
+     sistema YA tenia toda la infraestructura de gastos programados
+     (crear, ejecutar, avanzar la fecha, pausar/reactivar), pero
+     ejecutarPagoProgramado() solo se disparaba cuando el usuario
+     hacia clic en "Registrar pago" a mano. Esta funcion revisa, al
+     abrir Gastos, cuales programaciones ya vencieron (fecha_proxima
+     <= hoy) y las ejecuta SOLA -- reutilizando exactamente la misma
+     funcion ya construida y probada, sin duplicar ninguna logica de
+     Caja/historial/avance de fecha.
+
+     IMPORTANTE (limite real del sistema, sin servidor propio con
+     tareas programadas): esto se dispara la PRIMERA VEZ que alguien
+     abre Gastos despues de la fecha -- no es un proceso corriendo
+     en segundo plano las 24 horas. Si un ciclo mensual vence un dia
+     que nadie entra al sistema, se genera en cuanto alguien lo abre
+     despues, con la fecha real que le tocaba (no la fecha de hoy).
+  =================================================== */
+  async function verificarYEjecutarGastosVencidos() {
+    try {
+      const hoy = todayISO();
+      const { data: vencidos } = await _sb.from('gastos_programados')
+        .select('*').eq('auth_user_id', GS.userId).eq('activo', true).lte('fecha_proxima', hoy);
+      if (!vencidos || !vencidos.length) return;
+
+      let generados = 0;
+      for (const prog of vencidos) {
+        // Por si el usuario no abrio el sistema en varios ciclos
+        // seguidos (ej. 3 meses de un gasto mensual): se generan
+        // TODOS los ciclos vencidos, uno por uno, con un tope de
+        // seguridad para nunca quedar en un bucle infinito por un
+        // error de calculo de fecha.
+        let fechaProxima = prog.fecha_proxima;
+        let tope = 24;
+        while (fechaProxima <= hoy && tope > 0) {
+          try {
+            await ejecutarPagoProgramado(
+              { ...prog, fecha_proxima: fechaProxima },
+              { fecha: fechaProxima, metodoId: null, metodoNombre: 'Automático', observaciones: 'Generado automáticamente por su fecha programada' }
+            );
+            generados++;
+          } catch (eUno) {
+            console.error('verificarYEjecutarGastosVencidos, un gasto individual falló:', prog.nombre, eUno);
+            break; // no reintenta el mismo indefinidamente si algo fallo de verdad
+          }
+          fechaProxima = calcularProximaFecha(fechaProxima, prog.frecuencia);
+          tope--;
+        }
+      }
+      if (generados > 0) {
+        showToast(`${generados} gasto${generados===1?'':'s'} recurrente${generados===1?'':'s'} generado${generados===1?'':'s'} automáticamente`);
+      }
+    } catch (e) {
+      console.error('verificarYEjecutarGastosVencidos:', e);
+      // Nunca bloquea la carga normal de Gastos si esto falla.
+    }
+  }
+
+  /* ===================================================
      MODAL REGISTRAR PAGO
   =================================================== */
   let _programadoEnPago = null;
@@ -901,6 +959,7 @@
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('app').style.display = 'flex';
       await loadMetodosPago();
+      await verificarYEjecutarGastosVencidos();
       await refrescarTodo();
       if (new URLSearchParams(window.location.search).get('action')==='new') openNuevoGasto();
 
