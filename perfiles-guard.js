@@ -820,10 +820,13 @@
   async function latirPresencia() {
     try {
       if (!PG.client || !PG.authUserId) return;
-      await PG.client
-        .from('usuarios')
-        .update({ ultima_conexion: new Date().toISOString() })
-        .eq('auth_user_id', PG.authUserId);
+      // Se usa una funcion RPC que calcula la hora DENTRO del propio
+      // servidor (now() de Postgres) en vez de mandar la hora del
+      // reloj del dispositivo -- un celular con la fecha/hora mal
+      // configurada podia dejar "ultima_conexion" en el pasado,
+      // incluso antes de la propia fecha de creacion de la cuenta
+      // (bug real confirmado en produccion).
+      await PG.client.rpc('actualizar_ultima_conexion');
     } catch (e) { /* best-effort: nunca interrumpe la página */ }
   }
 
