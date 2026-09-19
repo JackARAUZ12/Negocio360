@@ -66,6 +66,7 @@
     authEmail: null,
     perfiles: [],
     overlayEl: null,
+    limitePerfiles: 5,
   };
 
   function getSesion() {
@@ -479,7 +480,10 @@
     `;
 
     document.getElementById('pg-back').addEventListener('click', renderSelector);
-    document.getElementById('pg-nuevo-usuario').addEventListener('click', () => renderFormUsuario(null));
+    document.getElementById('pg-nuevo-usuario').addEventListener('click', () => {
+      if (PG.perfiles.length >= PG.limitePerfiles) { renderPaywallUsuarios(); return; }
+      renderFormUsuario(null);
+    });
     c.querySelectorAll('.pg-edit').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.closest('.pg-user-row').dataset.id;
@@ -496,6 +500,38 @@
         PG.perfiles = await cargarPerfiles();
         renderGestionUsuarios();
       });
+    });
+  }
+
+  // Se muestra cuando la cuenta ya alcanzo su limite de perfiles
+  // (5 por defecto, ajustable por cuenta desde el panel admin).
+  // No bloquea nada de lo ya existente -- solo impide crear MAS
+  // usuarios de los permitidos, ofreciendo el precio real y un
+  // camino directo a WhatsApp para ampliarlo.
+  function renderPaywallUsuarios() {
+    const c = card();
+    c.innerHTML = `
+      <div class="pg-back-arrow" id="pg-back">← Volver</div>
+      <div class="pg-title">Llegaste al límite de tu plan</div>
+      <div class="pg-subtitle">Tu cuenta permite hasta ${PG.limitePerfiles} usuario${PG.limitePerfiles===1?'':'s'}. Para agregar más, cada usuario adicional tiene un costo simple:</div>
+      <div class="pg-paywall-price">
+        <div class="pg-paywall-price-tag">$1<span>USD / usuario / mes</span></div>
+        <ul class="pg-paywall-list">
+          <li>✅ Su propio código de acceso (PIN)</li>
+          <li>✅ Permisos por módulo, a tu medida</li>
+          <li>✅ Se activa el mismo día</li>
+        </ul>
+      </div>
+      <button class="pg-btn pg-paywall-wa" id="pg-paywall-wa">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.2-1.7-.9-2-1-.3-.1-.5-.2-.7.2-.2.3-.7 1-.9 1.2-.2.2-.3.2-.6.1-1.8-.9-3-1.6-4.2-3.6-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5 0-.2-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5 1.9.8 2.6.9 3.5.8.6-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3z"/><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3.1.8.8-3-.2-.3a8.2 8.2 0 1 1 7.2 3.9z"/></svg>
+        Ampliar por WhatsApp
+      </button>
+    `;
+    document.getElementById('pg-back').addEventListener('click', () => renderGestionUsuarios());
+    document.getElementById('pg-paywall-wa').addEventListener('click', () => {
+      const nombreNegocio = document.title || 'mi negocio';
+      const msg = encodeURIComponent(`Hola, ya llegué al límite de ${PG.limitePerfiles} usuarios en mi cuenta de Negocio360 y quiero agregar más usuarios ($1/usuario).`);
+      window.open(`https://wa.me/50581294177?text=${msg}`, '_blank', 'noopener');
     });
   }
 
@@ -1165,8 +1201,9 @@
     // administrador ya lo hubiera suspendido. Esto corre en TODAS las
     // páginas porque perfiles-guard.js se carga en todas.
     const { data: cuentaEstado } = await PG.client
-      .from('usuarios').select('estado_cuenta').eq('auth_user_id', PG.authUserId).maybeSingle();
+      .from('usuarios').select('estado_cuenta, limite_perfiles').eq('auth_user_id', PG.authUserId).maybeSingle();
     const estado = cuentaEstado?.estado_cuenta || 'activa';
+    PG.limitePerfiles = cuentaEstado?.limite_perfiles || 5;
     if (estado === 'suspendida' || estado === 'cancelada') {
       mostrarBloqueoCuenta(estado);
       return;

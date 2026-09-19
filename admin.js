@@ -846,7 +846,7 @@ async function loadUsers() {
   try {
     const { data, error } = await sb
       .from('usuarios')
-      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion, ciclo_facturacion, precio_personalizado')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion, ciclo_facturacion, precio_personalizado, limite_perfiles')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -919,6 +919,10 @@ function renderUsersTable(users) {
           <button class="btn-icon btn-ghost btn-sm" onclick="mensajearCliente('${u.auth_user_id}')" title="Enviarle un mensaje por el chat de soporte">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             Mensaje
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="openLimiteUsuarios('${u.id}')" title="Editar cuántos usuarios (perfiles con PIN) puede crear esta cuenta">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Usuarios
           </button>
           ${u.plan === 'premium'
             ? `<button class="btn-icon btn-ghost btn-sm" onclick="openEditBilling('${u.id}')" title="Editar ciclo de facturación y precio de este cliente">
@@ -1141,6 +1145,74 @@ async function guardarEditBilling() {
     filterAndSearch();
   } catch (e) {
     console.error('guardarEditBilling:', e);
+    toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// LÍMITE DE USUARIOS (sistema multiusuario / perfiles con PIN)
+// ============================================================
+async function openLimiteUsuarios(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  window._editingLimiteUser = u;
+  document.getElementById('lu-nombre-cliente').textContent =
+    [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+  document.getElementById('lu-limite').value = u.limite_perfiles || 5;
+  document.getElementById('lu-actuales').textContent = 'Cargando…';
+
+  openModal('modal-limite-usuarios');
+
+  // Cuenta real de perfiles ya creados -- se carga bajo demanda (solo
+  // al abrir el modal de esa cuenta), no en la tabla completa de
+  // clientes, para no sumar una consulta extra por cada una de las
+  // filas cuando ni siquiera se va a ver este dato.
+  try {
+    const { count, error } = await sb
+      .from('perfiles_acceso')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id', u.auth_user_id);
+    document.getElementById('lu-actuales').textContent = error ? '—' : `${count ?? 0} perfil${count === 1 ? '' : 'es'}`;
+  } catch (e) {
+    console.error('openLimiteUsuarios, contar perfiles:', e);
+    document.getElementById('lu-actuales').textContent = '—';
+  }
+}
+
+async function guardarLimiteUsuarios() {
+  const u = window._editingLimiteUser;
+  if (!u) return;
+
+  const valorRaw = document.getElementById('lu-limite').value.trim();
+  const limite = Number(valorRaw);
+  if (valorRaw === '' || isNaN(limite) || !Number.isInteger(limite) || limite < 1) {
+    toast('Valor inválido', 'Ingresa un número entero de 1 o más.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-limite');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ limite_perfiles: limite })
+      .eq('id', u.id);
+    if (error) throw error;
+
+    const idx = allUsers.findIndex(x => x.id === u.id);
+    if (idx !== -1) allUsers[idx].limite_perfiles = limite;
+
+    closeModal('modal-limite-usuarios');
+    toast('Límite actualizado', `${u.nombre || u.email} ahora puede tener hasta ${limite} usuario${limite === 1 ? '' : 's'}`, 'success');
+  } catch (e) {
+    console.error('guardarLimiteUsuarios:', e);
     toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
   } finally {
     btn.disabled = false;

@@ -182,6 +182,59 @@
 .pg-btn-primary { background: var(--accent, #6C63FF); color: #fff; }
 .pg-btn-primary:hover { filter: brightness(1.07); }
 .pg-btn-primary:disabled { opacity: .55; cursor: not-allowed; filter: none; }
+
+/* Paywall de usuarios adicionales -- llamativo, distinto al resto
+   de la UI (que es mas neutra), a proposito: aqui se quiere que el
+   precio y el CTA destaquen. */
+.pg-paywall-price {
+  background: linear-gradient(135deg, var(--accent, #6C63FF) 0%, #8B7CF6 100%);
+  border-radius: 16px;
+  padding: 22px 20px;
+  margin-bottom: 16px;
+  text-align: center;
+  box-shadow: 0 10px 30px -8px rgba(108,99,255,.5);
+}
+.pg-paywall-price-tag {
+  font-size: 40px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.pg-paywall-price-tag span {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  opacity: .9;
+  margin-top: 4px;
+  letter-spacing: .3px;
+}
+.pg-paywall-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  text-align: left;
+  display: inline-block;
+}
+.pg-paywall-list li {
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  opacity: .95;
+}
+.pg-paywall-wa {
+  width: 100%;
+  background: #25D366;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 8px 20px -6px rgba(37,211,102,.55);
+}
+.pg-paywall-wa:hover { filter: brightness(1.06); }
+
 .pg-btn-ghost { background: var(--bg-app, #F0F2F5); color: var(--text-secondary, #6B7280); }
 .pg-btn-ghost:hover { filter: brightness(0.97); }
 .pg-btn-danger { background: var(--danger-light, #FEE2E2); color: var(--danger, #EF4444); }

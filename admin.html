@@ -1280,6 +1280,41 @@
 </div>
 
 <!-- ══════════════════════════════════════════
+     MODAL: LÍMITE DE USUARIOS (sistema multiusuario / perfiles)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-limite-usuarios">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Límite de usuarios — <span id="lu-nombre-cliente">—</span></span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="background:var(--bg-hover);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--text-secondary)">
+        Cuántos perfiles con PIN puede crear esta cuenta dentro de su sistema multiusuario (Admin cuenta como uno). El valor por defecto de cualquier cuenta nueva es 5 — al superarlo, el cliente ve una oferta de $1/usuario adicional por WhatsApp.
+      </div>
+      <div class="form-group">
+        <label>Perfiles actuales de esta cuenta</label>
+        <span id="lu-actuales" style="font-weight:600">—</span>
+      </div>
+      <div class="form-group">
+        <label>Límite permitido</label>
+        <input type="number" id="lu-limite" class="form-control" min="1" step="1" placeholder="5"/>
+        <span style="font-size:11.5px;color:var(--text-muted)">Puedes poner cualquier número — 5, 6, 7, 8...</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-limite-usuarios')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-guardar-limite" onclick="guardarLimiteUsuarios()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      MODAL: NUEVO CHAT GRUPAL
 ══════════════════════════════════════════ -->
 <div class="modal-overlay" id="modal-nuevo-chat-grupal">
