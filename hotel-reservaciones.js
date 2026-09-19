@@ -52,6 +52,35 @@ async function registrarIvaHotel(montoConIva, concepto, referenciaId) {
   return neto;
 }
 
+// Los numeros guardados vienen en formatos distintos ("57772533",
+// "+50587878108", "81294177"...) -- wa.me exige el numero completo
+// con codigo de pais, sin simbolos. Los locales de 8 digitos (el
+// formato normal en Nicaragua) se completan con 505 al inicio; los
+// que ya vienen con codigo de pais se dejan tal cual -- mismo
+// patron real ya usado en admin.js para este mismo problema.
+function normalizarNumeroWhatsApp(telefono) {
+  if (!telefono) return null;
+  const soloDigitos = String(telefono).replace(/[^\d]/g, '');
+  if (!soloDigitos) return null;
+  if (soloDigitos.length === 8) return '505' + soloDigitos;
+  return soloDigitos;
+}
+
+function enviarConfirmacionWhatsApp(id) {
+  const r = STATE.reservaciones.find(x => x.id === id);
+  if (!r) return;
+  const numero = normalizarNumeroWhatsApp(r.cliente_telefono);
+  if (!numero) { showToast('Esta reservación no tiene número de teléfono guardado', 'error'); return; }
+  const nombreNegocio = STATE.empresaConfig?.nombre_comercial || STATE.empresaConfig?.nombre_negocio || 'nuestro hotel';
+  const mensaje = `Hola ${r.cliente_nombre}, tu reservación en ${nombreNegocio} está confirmada:\n\n` +
+    `🏨 Habitación ${r.hotel_habitaciones?.numero || ''}\n` +
+    `📅 Entrada: ${fmtFechaCorta(r.fecha_entrada)}\n` +
+    `📅 Salida: ${fmtFechaCorta(r.fecha_salida)}\n` +
+    `💵 Tarifa: ${fmt(r.tarifa_acordada)} / noche\n\n` +
+    `¡Te esperamos!`;
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
+}
+
 function fmtFechaCorta(iso) {
   if (!iso) return '—';
   const d = new Date(iso + 'T00:00:00');
@@ -169,10 +198,11 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarHabitacionesParaSelect() {
   const { data } = await sb.from('hotel_habitaciones').select('id,numero,tarifa_base').eq('auth_user_id', STATE.userId).eq('activo', true).order('numero');
   STATE.habitaciones = data || [];
-  const sel = document.getElementById('res-habitacion');
-  sel.innerHTML = STATE.habitaciones.length
+  const opciones = STATE.habitaciones.length
     ? STATE.habitaciones.map(h => `<option value="${h.id}" data-tarifa="${h.tarifa_base}">Habitación ${esc(h.numero)}</option>`).join('')
     : '<option value="">No hay habitaciones registradas</option>';
+  document.getElementById('res-habitacion').innerHTML = opciones;
+  document.getElementById('bloq-habitacion').innerHTML = opciones;
 }
 
 async function cargarReservaciones() {
@@ -222,7 +252,25 @@ function renderTablaReservaciones() {
     tbody.innerHTML = `<tr><td colspan="9" class="empty-cell">No hay reservaciones que coincidan con el filtro.</td></tr>`;
     return;
   }
-  tbody.innerHTML = STATE.filtradas.map(r => `
+  tbody.innerHTML = STATE.filtradas.map(r => {
+    if (r.tipo_registro === 'bloqueo') {
+      return `
+    <tr style="opacity:.75">
+      <td style="font-weight:700">🚫 ${esc(r.notas || 'Bloqueo')}</td>
+      <td>Habitación ${esc(r.hotel_habitaciones?.numero || '—')}</td>
+      <td>${fmtFechaCorta(r.fecha_entrada)}</td>
+      <td>${fmtFechaCorta(r.fecha_salida)}</td>
+      <td>${noches(r.fecha_entrada, r.fecha_salida)}</td>
+      <td>—</td>
+      <td>—</td>
+      <td><span class="hab-estado-badge hab-estado-bloqueada">Bloqueado</span></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-secondary btn-sm" onclick="abrirModalBloqueo('${r.id}')">Editar</button>
+        <button class="btn-ghost btn-sm" onclick="cancelarReservacion('${r.id}')">Quitar</button>
+      </td>
+    </tr>`;
+    }
+    return `
     <tr>
       <td style="font-weight:700">${esc(r.cliente_nombre)}${r.cliente_telefono ? `<div style="font-size:11.5px;color:var(--text-muted);font-weight:400">${esc(r.cliente_telefono)}</div>` : ''}</td>
       <td>Habitación ${esc(r.hotel_habitaciones?.numero || '—')}</td>
@@ -235,12 +283,14 @@ function renderTablaReservaciones() {
         : `<span style="color:var(--text-muted)">Al check-in</span>`}</td>
       <td><span class="hab-estado-badge hab-estado-${r.estado === 'confirmada' ? 'disponible' : r.estado === 'pendiente' ? 'limpieza' : r.estado === 'cancelada' ? 'bloqueada' : 'mantenimiento'}">${ESTADO_LABEL[r.estado] || r.estado}</span></td>
       <td style="display:flex;gap:6px;flex-wrap:wrap">
+        ${r.cliente_telefono && r.estado !== 'cancelada' ? `<button class="btn-secondary btn-sm" onclick="enviarConfirmacionWhatsApp('${r.id}')" title="Enviar confirmación por WhatsApp">📱</button>` : ''}
         ${!r.check_in_at && r.estado === 'confirmada' ? `<button class="btn-primary btn-sm" onclick="hacerCheckIn('${r.id}')">🔑 Check-in</button>` : ''}
         ${r.check_in_at && !r.check_out_at ? `<button class="btn-primary btn-sm" onclick="abrirModalEstadia('${r.id}')">🧾 Estadía</button>` : ''}
         <button class="btn-secondary btn-sm" onclick="abrirModalReservacion('${r.id}')">Editar</button>
         ${r.estado !== 'cancelada' && r.estado !== 'completada' && !r.check_in_at ? `<button class="btn-ghost btn-sm" onclick="cancelarReservacion('${r.id}')">Cancelar</button>` : ''}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 /* =====================================================
@@ -598,5 +648,97 @@ async function hacerCheckOut() {
     errEl.textContent = 'No se pudo completar el check-out. Intenta de nuevo.';
   } finally {
     setBtnLoading('est-btn-checkout', false);
+  }
+}
+
+/* =====================================================
+   BLOQUEO MANUAL DE FECHAS -- reutiliza la MISMA tabla y la MISMA
+   funcion de deteccion de cruce (hayCruceDeFechas) que las
+   reservas reales -- un bloqueo con estado 'confirmada' cuenta
+   igual que una reserva real para efectos de disponibilidad, sin
+   duplicar ninguna logica.
+===================================================== */
+function abrirModalBloqueo(id) {
+  document.getElementById('bloq-error').textContent = '';
+  document.getElementById('bloq-disponibilidad').textContent = '';
+  document.getElementById('bloq-id').value = id || '';
+
+  if (id) {
+    const r = STATE.reservaciones.find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('bloq-habitacion').value = r.habitacion_id;
+    document.getElementById('bloq-entrada').value = r.fecha_entrada;
+    document.getElementById('bloq-salida').value = r.fecha_salida;
+    document.getElementById('bloq-motivo').value = r.notas || '';
+  } else {
+    document.getElementById('bloq-habitacion').selectedIndex = 0;
+    document.getElementById('bloq-entrada').value = '';
+    document.getElementById('bloq-salida').value = '';
+    document.getElementById('bloq-motivo').value = '';
+  }
+  openModal('modal-bloqueo');
+}
+
+function onCambiarDatosBloqueo() {
+  const habId = document.getElementById('bloq-habitacion').value;
+  const entrada = document.getElementById('bloq-entrada').value;
+  const salida = document.getElementById('bloq-salida').value;
+  const avisoEl = document.getElementById('bloq-disponibilidad');
+  const idActual = document.getElementById('bloq-id')?.value || null;
+
+  if (!habId || !entrada || !salida) { avisoEl.textContent = ''; return; }
+  if (salida <= entrada) { avisoEl.textContent = '⚠️ La fecha final debe ser después de la inicial.'; avisoEl.style.color = 'var(--danger)'; return; }
+
+  if (hayCruceDeFechas(habId, entrada, salida, idActual)) {
+    avisoEl.textContent = '⚠️ Esta habitación ya tiene una reservación o bloqueo en esas fechas.';
+    avisoEl.style.color = 'var(--danger)';
+  } else {
+    avisoEl.textContent = '✅ Disponible en esas fechas.';
+    avisoEl.style.color = 'var(--success)';
+  }
+}
+
+async function guardarBloqueo() {
+  const errEl = document.getElementById('bloq-error');
+  errEl.textContent = '';
+
+  const habitacionId = document.getElementById('bloq-habitacion').value;
+  if (!habitacionId) { errEl.textContent = 'Selecciona una habitación.'; return; }
+
+  const entrada = document.getElementById('bloq-entrada').value;
+  const salida = document.getElementById('bloq-salida').value;
+  if (!entrada || !salida) { errEl.textContent = 'Completa ambas fechas.'; return; }
+  if (salida <= entrada) { errEl.textContent = 'La fecha final debe ser después de la inicial.'; return; }
+
+  const motivo = document.getElementById('bloq-motivo').value.trim();
+  if (!motivo) { errEl.textContent = 'Escribe el motivo del bloqueo.'; return; }
+
+  const id = document.getElementById('bloq-id')?.value || null;
+  if (hayCruceDeFechas(habitacionId, entrada, salida, id)) {
+    errEl.textContent = 'Esta habitación ya tiene una reservación o bloqueo en esas fechas.';
+    return;
+  }
+
+  const payload = {
+    auth_user_id: STATE.userId, habitacion_id: habitacionId,
+    tipo_registro: 'bloqueo', cliente_nombre: 'Bloqueo', tarifa_acordada: 0,
+    fecha_entrada: entrada, fecha_salida: salida, notas: motivo,
+    estado: 'confirmada', updated_at: new Date().toISOString(),
+  };
+
+  setBtnLoading('bloq-btn-guardar', true);
+  try {
+    const { error } = id
+      ? await sb.from('hotel_reservaciones').update(payload).eq('id', id).eq('auth_user_id', STATE.userId)
+      : await sb.from('hotel_reservaciones').insert(payload);
+    if (error) throw error;
+    showToast(id ? 'Bloqueo actualizado' : 'Fechas bloqueadas');
+    closeModal('modal-bloqueo');
+    await cargarReservaciones();
+  } catch (e) {
+    console.error('guardarBloqueo:', e);
+    errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+  } finally {
+    setBtnLoading('bloq-btn-guardar', false);
   }
 }
