@@ -643,7 +643,7 @@
                 <th>Tipo</th>
                 <th>Concepto</th>
                 <th>Monto</th>
-                <th>Saldo global</th>
+                <th>Saldo del impuesto</th>
               </tr>
             </thead>
             <tbody id="impuestos-tbody">
@@ -955,8 +955,9 @@ async function cargarImpuestos() {
     // traerla completa es seguro y no afecta el rendimiento del historial
     // visible (que se sigue mostrando limitado a 100 filas).
     const { data: todosData, error: errTodos } = await sb.from('movimientos_impuestos')
-      .select('tipo_movimiento, monto, impuesto_id, impuesto_nombre, fecha')
-      .eq('auth_user_id', S.userId);
+      .select('id, tipo_movimiento, monto, impuesto_id, impuesto_nombre, fecha, created_at')
+      .eq('auth_user_id', S.userId)
+      .order('created_at', { ascending: true });
     if (errTodos) throw errTodos;
     S.movimientosTodos = todosData || [];
 
@@ -1000,6 +1001,30 @@ function calcularSaldoBucket(bucketKey) {
   const salidas = lista.filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO' && bucketDeMovimiento(m) === bucketKey)
     .reduce((s,m) => s + Number(m.monto||0), 0);
   return round2(entradas - salidas);
+}
+
+// El campo saldo_resultante guardado en cada movimiento es el saldo
+// GLOBAL (todos los impuestos combinados) en ese instante -- correcto
+// para Dashboard/Reportes, pero MUY confuso si se muestra tal cual en
+// la fila de un impuesto especifico: alguien que paga su Impuesto
+// Municipal (dejandolo en 0) veria en esa misma fila el saldo del
+// IVA, que nunca se toco. Esta funcion recalcula, para cada
+// movimiento, el saldo REAL de SU PROPIO bucket hasta ese punto --
+// recorriendo el historial completo en orden cronologico (S.movimientosTodos
+// ya viene ordenado created_at ascendente) y acumulando por separado
+// segun a que impuesto pertenece cada uno.
+function calcularSaldosPorBucketEnElTiempo() {
+  const mapa = new Map(); // id de movimiento -> saldo de su bucket en ese momento
+  const acumuladoPorBucket = {};
+  (S.movimientosTodos || []).forEach(m => {
+    const bucket = bucketDeMovimiento(m);
+    const actual = acumuladoPorBucket[bucket] || 0;
+    const delta = m.tipo_movimiento === 'PAGO_IMPUESTO' ? -Number(m.monto||0) : Number(m.monto||0);
+    const nuevo = round2(actual + delta);
+    acumuladoPorBucket[bucket] = nuevo;
+    mapa.set(m.id, nuevo);
+  });
+  return mapa;
 }
 
 function renderAcumuladores() {
@@ -1059,7 +1084,13 @@ function renderMiniKPIs() {
     .filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO')
     .reduce((s,m) => s + (Number(m.monto)||0), 0);
 
-  const ultimoPago = S.movimientos.find(m => m.tipo_movimiento === 'PAGO_IMPUESTO');
+  // Igual que el resto de este KPI: se usa el historico completo, no solo
+  // los ultimos 100 movimientos visibles en la tabla -- si una cuenta tiene
+  // mucho volumen de ventas, su ultimo pago real podria quedar fuera de esos
+  // 100 y este KPI diria "Sin pagos aun" de forma incorrecta.
+  const pagosOrdenados = todos.filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO')
+    .slice().sort((a,b) => new Date(b.created_at||b.fecha) - new Date(a.created_at||a.fecha));
+  const ultimoPago = pagosOrdenados[0] || null;
 
   document.getElementById('iva-mes').textContent = fmt(ivaMes);
   document.getElementById('iva-pagado-total').textContent = fmt(pagosTotal);
@@ -1087,9 +1118,15 @@ function renderTabla() {
     return;
   }
 
+  const saldosPorBucket = calcularSaldosPorBucketEnElTiempo();
   tbody.innerHTML = S.movimientos.map(m => {
     const esPago = m.tipo_movimiento === 'PAGO_IMPUESTO';
     const etiqueta = esPago ? 'Pago' : 'Acumulación';
+    // Saldo de ESE impuesto especifico despues de este movimiento -- no
+    // el saldo global combinado (que confundiria si hay mas de un
+    // impuesto con movimientos, mostrando un numero que no corresponde
+    // al impuesto de esta fila).
+    const saldoBucket = saldosPorBucket.has(m.id) ? saldosPorBucket.get(m.id) : m.saldo_resultante;
     return `
     <tr>
       <td class="td-fecha">${fmtFecha(m.created_at || m.fecha)}</td>
@@ -1097,7 +1134,7 @@ function renderTabla() {
       <td><span class="tipo-badge ${esPago?'pago':'iva'}">${esc(etiqueta)}</span></td>
       <td>${esc(m.concepto||'—')}</td>
       <td class="td-monto ${esPago?'out':'in'}">${esPago?'-':'+'}${fmt(m.monto)}</td>
-      <td class="td-saldo">${fmt(m.saldo_resultante)}</td>
+      <td class="td-saldo">${fmt(saldoBucket)}</td>
     </tr>`;
   }).join('');
 }
