@@ -315,6 +315,65 @@ function onCambiarTipoPagoReservacion() {
   document.getElementById('res-wrap-anticipo').style.display = esAnticipo ? '' : 'none';
 }
 
+/* =====================================================
+   BUSCADOR DE CLIENTE -- opcional: se puede vincular la reserva a
+   un cliente ya registrado (su historial de estadias queda
+   guardado), o simplemente escribir un nombre nuevo sin vincular,
+   igual que funcionaba antes. Nunca es obligatorio buscar.
+===================================================== */
+let _timeoutBuscarCliente = null;
+function buscarClienteReservacion(texto) {
+  // Si el usuario edita el nombre a mano despues de haber
+  // seleccionado un cliente, se quita el vinculo -- evita guardar
+  // un nombre distinto bajo el cliente_id de otra persona.
+  document.getElementById('res-cliente-id').value = '';
+  document.getElementById('res-cliente-vinculado').style.display = 'none';
+
+  clearTimeout(_timeoutBuscarCliente);
+  const cont = document.getElementById('res-cliente-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) { cont.style.display = 'none'; return; }
+
+  _timeoutBuscarCliente = setTimeout(async () => {
+    try {
+      const { data } = await sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp')
+        .eq('auth_user_id', STATE.userId).eq('activo', true)
+        .or(`nombre.ilike.%${q}%,telefono.ilike.%${q}%,whatsapp.ilike.%${q}%`)
+        .limit(6);
+      const resultados = data || [];
+      cont.innerHTML = resultados.map(c => {
+        const nombreCompleto = `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`;
+        const tel = c.telefono || c.whatsapp || '';
+        return `<div class="res-cliente-opcion" onclick="seleccionarClienteReservacion('${c.id}', ${JSON.stringify(nombreCompleto)}, ${JSON.stringify(tel)})">
+          <div class="rc-nombre">${esc(nombreCompleto)}</div>
+          ${tel ? `<div class="rc-detalle">${esc(tel)}</div>` : ''}
+        </div>`;
+      }).join('') + `<div class="res-cliente-opcion res-cliente-opcion-nuevo" onclick="document.getElementById('res-cliente-resultados').style.display='none'">
+        + Usar "${esc(q)}" como nombre nuevo (sin vincular a un cliente)
+      </div>`;
+      cont.style.display = '';
+    } catch (e) {
+      console.error('buscarClienteReservacion:', e);
+      cont.style.display = 'none';
+    }
+  }, 300);
+}
+
+function seleccionarClienteReservacion(id, nombre, telefono) {
+  document.getElementById('res-huesped-buscar').value = nombre;
+  document.getElementById('res-cliente-id').value = id;
+  if (telefono) document.getElementById('res-telefono').value = telefono;
+  document.getElementById('res-cliente-vinculado').style.display = '';
+  document.getElementById('res-cliente-resultados').style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const cont = document.getElementById('res-cliente-resultados');
+  const input = document.getElementById('res-huesped-buscar');
+  if (!cont || !input) return;
+  if (e.target !== input && !cont.contains(e.target)) cont.style.display = 'none';
+});
+
 function onCambiarDatosReservacion() {
   const habId = document.getElementById('res-habitacion').value;
   const entrada = document.getElementById('res-entrada').value;
@@ -355,7 +414,9 @@ function abrirModalReservacion(id) {
     document.getElementById('res-habitacion').value = r.habitacion_id;
     document.getElementById('res-entrada').value = r.fecha_entrada;
     document.getElementById('res-salida').value = r.fecha_salida;
-    document.getElementById('res-huesped').value = r.cliente_nombre || '';
+    document.getElementById('res-huesped-buscar').value = r.cliente_nombre || '';
+    document.getElementById('res-cliente-id').value = r.cliente_id || '';
+    document.getElementById('res-cliente-vinculado').style.display = r.cliente_id ? '' : 'none';
     document.getElementById('res-telefono').value = r.cliente_telefono || '';
     document.getElementById('res-personas').value = r.num_personas || 1;
     document.getElementById('res-tarifa').value = r.tarifa_acordada || '';
@@ -373,7 +434,9 @@ function abrirModalReservacion(id) {
     document.getElementById('res-habitacion').selectedIndex = 0;
     document.getElementById('res-entrada').value = '';
     document.getElementById('res-salida').value = '';
-    document.getElementById('res-huesped').value = '';
+    document.getElementById('res-huesped-buscar').value = '';
+    document.getElementById('res-cliente-id').value = '';
+    document.getElementById('res-cliente-vinculado').style.display = 'none';
     document.getElementById('res-telefono').value = '';
     document.getElementById('res-personas').value = 1;
     document.getElementById('res-tarifa').value = '';
@@ -400,7 +463,7 @@ async function guardarReservacion() {
   if (!entrada || !salida) { errEl.textContent = 'Completa las fechas de entrada y salida.'; return; }
   if (salida <= entrada) { errEl.textContent = 'La fecha de salida debe ser después de la entrada.'; return; }
 
-  const huesped = document.getElementById('res-huesped').value.trim();
+  const huesped = document.getElementById('res-huesped-buscar').value.trim();
   if (!huesped) { errEl.textContent = 'El nombre del huésped es obligatorio.'; return; }
 
   const tarifa = Math.max(0, parseFloat(document.getElementById('res-tarifa').value) || 0);
@@ -440,6 +503,7 @@ async function guardarReservacion() {
   const payload = {
     auth_user_id: STATE.userId, habitacion_id: habitacionId,
     cliente_nombre: huesped, cliente_telefono: document.getElementById('res-telefono').value.trim() || null,
+    cliente_id: document.getElementById('res-cliente-id').value || null,
     fecha_entrada: entrada, fecha_salida: salida,
     num_personas: Math.max(1, parseInt(document.getElementById('res-personas').value) || 1),
     tarifa_acordada: tarifa, estado: document.getElementById('res-estado').value,

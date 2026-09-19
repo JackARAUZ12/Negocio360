@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reservaciones — Negocio360</title>
+  <title>Huéspedes — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1267,7 +1267,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Reservaciones</span>
+      <span class="header-title">Huéspedes</span>
       <div class="header-spacer"></div>
       <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
         <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -1284,52 +1284,32 @@
     <div class="page-content">
       <div class="hab-page-header">
         <div>
-          <h1>Reservaciones</h1>
-          <p class="hab-page-subtitle">Crea y gestiona reservas de habitaciones, sin cruces de fecha.</p>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-secondary" onclick="abrirModalBloqueo()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-            Bloquear fechas
-          </button>
-          <button class="btn-primary" onclick="abrirModalReservacion()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nueva reservación
-          </button>
+          <h1>Huéspedes</h1>
+          <p class="hab-page-subtitle">Clientes que se han hospedado, con su historial de estadías.</p>
         </div>
       </div>
 
-      <div class="kpi-grid" id="res-kpis" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);max-width:600px">
         <div class="kpi-card">
-          <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+          <div class="kpi-icon" style="background:var(--accent-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
           <div class="kpi-body">
-            <div class="kpi-label">Total</div>
-            <div class="kpi-value" id="kpi-res-total">0</div>
-            <div class="kpi-sub">Reservaciones registradas</div>
+            <div class="kpi-label">Huéspedes registrados</div>
+            <div class="kpi-value" id="hu-kpi-total">0</div>
           </div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon" style="background:#dcfce7"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="kpi-icon" style="background:#dcfce7"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg></div>
           <div class="kpi-body">
-            <div class="kpi-label" style="color:#16a34a">Confirmadas</div>
-            <div class="kpi-value" id="kpi-res-confirmadas">0</div>
-            <div class="kpi-sub">Listas para el huésped</div>
+            <div class="kpi-label" style="color:#16a34a">Recurrentes</div>
+            <div class="kpi-value" id="hu-kpi-recurrentes">0</div>
+            <div class="kpi-sub">2 o más estadías</div>
           </div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon" style="background:#fef3c7"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <div class="kpi-icon" style="background:var(--accent-4-soft)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
           <div class="kpi-body">
-            <div class="kpi-label" style="color:#b45309">Pendientes</div>
-            <div class="kpi-value" id="kpi-res-pendientes">0</div>
-            <div class="kpi-sub">Por confirmar</div>
-          </div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:var(--bg-hover)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-          <div class="kpi-body">
-            <div class="kpi-label">Completadas</div>
-            <div class="kpi-value" id="kpi-res-completadas">0</div>
-            <div class="kpi-sub">Estadías finalizadas</div>
+            <div class="kpi-label">Total generado</div>
+            <div class="kpi-value" id="hu-kpi-total-gastado">C$ 0.00</div>
           </div>
         </div>
       </div>
@@ -1337,185 +1317,37 @@
       <div class="toolbar">
         <div class="search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="res-buscar" placeholder="Buscar huésped o habitación..." oninput="aplicarFiltrosReservaciones()"/>
+          <input type="text" id="hu-buscar" placeholder="Buscar huésped..." oninput="aplicarFiltrosHuespedes()"/>
         </div>
-        <select class="form-select" id="res-filtro-estado" onchange="aplicarFiltrosReservaciones()" style="max-width:170px">
-          <option value="">Todos los estados</option>
-          <option value="confirmada">Confirmada</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="cancelada">Cancelada</option>
-          <option value="completada">Completada</option>
-        </select>
       </div>
 
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Huésped</th><th>Habitación</th><th>Entrada</th><th>Salida</th><th>Noches</th><th>Tarifa</th><th>Pago</th><th>Estado</th><th></th></tr></thead>
-          <tbody id="res-tbody"></tbody>
+          <thead><tr><th>Huésped</th><th>Teléfono</th><th>Estadías</th><th>Última visita</th><th>Total generado</th><th></th></tr></thead>
+          <tbody id="hu-tbody"></tbody>
         </table>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: NUEVA / EDITAR RESERVACION -->
-  <div class="modal-overlay" id="modal-reservacion">
+  <!-- MODAL: HISTORIAL DEL HUESPED -->
+  <div class="modal-overlay" id="modal-historial-huesped">
     <div class="modal-box modal-md">
       <div class="modal-header">
-        <span class="modal-title" id="res-modal-title">Nueva reservación</span>
-        <button class="modal-close" onclick="closeModal('modal-reservacion')">
+        <span class="modal-title" id="hu-hist-titulo">Historial</span>
+        <button class="modal-close" onclick="closeModal('modal-historial-huesped')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="modal-body">
-        <input type="hidden" id="res-id"/>
-        <div class="form-group full">
-          <label>Habitación *</label>
-          <select id="res-habitacion" onchange="onCambiarDatosReservacion()"></select>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Fecha de entrada *</label><input type="date" id="res-entrada" onchange="onCambiarDatosReservacion()"/></div>
-          <div class="form-group"><label>Fecha de salida *</label><input type="date" id="res-salida" onchange="onCambiarDatosReservacion()"/></div>
-        </div>
-        <p id="res-disponibilidad" style="font-size:12.5px;margin:-4px 0 4px"></p>
-        <div class="form-group full" style="position:relative">
-          <label>Huésped *</label>
-          <input type="hidden" id="res-cliente-id"/>
-          <input type="text" id="res-huesped-buscar" placeholder="Buscar cliente existente, o escribir un nombre nuevo..." autocomplete="off"
-            oninput="buscarClienteReservacion(this.value)" onfocus="buscarClienteReservacion(this.value)"/>
-          <div id="res-cliente-resultados" class="res-cliente-dropdown" style="display:none"></div>
-          <p id="res-cliente-vinculado" style="font-size:12px;color:var(--success);margin:5px 0 0;display:none">✅ Vinculado a un cliente registrado — su historial de estadías quedará guardado.</p>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Teléfono (opcional)</label><input type="text" id="res-telefono" placeholder="8888-8888"/></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Personas *</label><input type="number" id="res-personas" min="1" value="1"/></div>
-          <div class="form-group"><label>Tarifa acordada / noche *</label><input type="number" id="res-tarifa" min="0" step="0.01"/></div>
-          <div class="form-group">
-            <label>Estado</label>
-            <select id="res-estado">
-              <option value="confirmada">Confirmada</option>
-              <option value="pendiente">Pendiente</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group full">
-          <label>Pago</label>
-          <select id="res-tipo-pago" onchange="onCambiarTipoPagoReservacion()">
-            <option value="sin_pago">Solo reserva — se paga completo al check-in</option>
-            <option value="anticipo">Se dio un anticipo / depósito</option>
-          </select>
-        </div>
-        <div class="form-row" id="res-wrap-anticipo" style="display:none">
-          <div class="form-group"><label>Monto del anticipo *</label><input type="number" id="res-monto-anticipo" min="0" step="0.01" placeholder="0.00"/></div>
-          <div class="form-group">
-            <label>Método de pago</label>
-            <select id="res-metodo-anticipo">
-              <option value="Efectivo">Efectivo</option>
-              <option value="Transferencia">Transferencia</option>
-              <option value="Tarjeta">Tarjeta</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group full"><label>Notas (opcional)</label><textarea id="res-notas" rows="2"></textarea></div>
-        <p id="res-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
-      </div>
+      <div class="modal-body" id="hu-hist-body"></div>
       <div class="modal-footer">
-        <button class="btn-ghost" onclick="closeModal('modal-reservacion')">Cancelar</button>
-        <button class="btn-primary" id="res-btn-guardar" onclick="guardarReservacion()">Guardar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: ESTADIA / CHECK-OUT -->
-  <!-- MODAL: BLOQUEAR FECHAS (sin huesped, sin cobro) -->
-  <div class="modal-overlay" id="modal-bloqueo">
-    <div class="modal-box modal-md">
-      <div class="modal-header">
-        <span class="modal-title">🚫 Bloquear fechas</span>
-        <button class="modal-close" onclick="closeModal('modal-bloqueo')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="bloq-id"/>
-        <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px">Para mantenimiento programado, uso personal, o cualquier motivo por el que la habitación no debe reservarse — sin necesidad de un huésped ni un cobro.</p>
-        <div class="form-group full">
-          <label>Habitación *</label>
-          <select id="bloq-habitacion" onchange="onCambiarDatosBloqueo()"></select>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Desde *</label><input type="date" id="bloq-entrada" onchange="onCambiarDatosBloqueo()"/></div>
-          <div class="form-group"><label>Hasta *</label><input type="date" id="bloq-salida" onchange="onCambiarDatosBloqueo()"/></div>
-        </div>
-        <p id="bloq-disponibilidad" style="font-size:12.5px;margin:-4px 0 4px"></p>
-        <div class="form-group full"><label>Motivo *</label><input type="text" id="bloq-motivo" placeholder="Ej: Mantenimiento del aire acondicionado"/></div>
-        <p id="bloq-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-ghost" onclick="closeModal('modal-bloqueo')">Cancelar</button>
-        <button class="btn-primary" id="bloq-btn-guardar" onclick="guardarBloqueo()">Bloquear</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modal-estadia">
-    <div class="modal-box modal-md">
-      <div class="modal-header">
-        <span class="modal-title">🧾 Cuenta de la estadía</span>
-        <button class="modal-close" onclick="closeModal('modal-estadia')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="est-reservacion-id"/>
-        <p id="est-huesped-info" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px"></p>
-
-        <div style="background:var(--bg-hover);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
-            <span>Habitación (<span id="est-noches">0</span> noches)</span>
-            <span id="est-monto-habitacion">C$ 0.00</span>
-          </div>
-          <div id="est-lista-cargos"></div>
-          <div style="justify-content:space-between;font-size:13px;margin:6px 0;color:var(--text-muted);display:none" id="est-fila-anticipo">
-            <span>Anticipo ya pagado</span>
-            <span id="est-monto-anticipo">- C$ 0.00</span>
-          </div>
-          <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:15px">
-            <span>Total a cobrar</span>
-            <span id="est-total">C$ 0.00</span>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group"><label>Agregar cargo (opcional)</label><input type="text" id="est-cargo-desc" placeholder="Ej: Minibar, servicio a la habitación"/></div>
-          <div class="form-group"><label>Monto</label><input type="number" id="est-cargo-monto" min="0" step="0.01" placeholder="0.00"/></div>
-        </div>
-        <button class="btn-secondary" style="margin-bottom:14px" onclick="agregarCargoEstadia()">+ Agregar cargo a la cuenta</button>
-
-        <div class="form-group full">
-          <label>Método de pago del cobro final</label>
-          <select id="est-metodo-pago">
-            <option value="Efectivo">Efectivo</option>
-            <option value="Transferencia">Transferencia</option>
-            <option value="Tarjeta">Tarjeta</option>
-          </select>
-        </div>
-        <p id="est-error" style="color:var(--danger);font-size:12.5px;margin-top:4px"></p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-ghost" onclick="closeModal('modal-estadia')">Cerrar</button>
-        <button class="btn-primary" id="est-btn-checkout" onclick="hacerCheckOut()">✅ Completar Check-out</button>
+        <button class="btn-ghost" onclick="closeModal('modal-historial-huesped')">Cerrar</button>
       </div>
     </div>
   </div>
 
 </div><!-- /#app -->
-
-<script src="cajaAPI.js"></script>
-<script src="hotel-reservaciones.js?v=20260919a"></script>
+<script src="hotel-huespedes.js?v=1"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js"></script>
