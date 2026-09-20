@@ -22,6 +22,35 @@ function fmt(amount) {
   return `${sym} ${n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+// Desglosa un monto YA cobrado (IVA incluido) en su parte neta y su
+// IVA, y registra el IVA en Impuestos -- mismo patron real ya
+// probado en Hotel (registrarIvaHotel): a Caja entra el neto, porque
+// el IVA no es ingreso del negocio, es dinero recaudado para el
+// fisco. Devuelve el monto neto, que es lo que se debe registrar en
+// Caja en vez del monto completo.
+async function registrarIvaRestaurante(montoConIva, concepto, referenciaId) {
+  const ivaPct = STATE.empresaConfig?.iva_porcentaje_default ? Number(STATE.empresaConfig.iva_porcentaje_default) : 15;
+  if (STATE.empresaConfig?.iva_activo === false || ivaPct <= 0) return montoConIva;
+  const neto = round2(montoConIva / (1 + ivaPct/100));
+  const iva = round2(montoConIva - neto);
+  if (iva <= 0) return montoConIva;
+  try {
+    const { data: ultMov } = await sb.from('movimientos_impuestos')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId)
+      .order('created_at', { ascending:false }).limit(1).maybeSingle();
+    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    await sb.from('movimientos_impuestos').insert({
+      auth_user_id: STATE.userId, tipo_movimiento: 'IVA_VENTA', concepto,
+      monto: iva, saldo_anterior: saldoAnt, saldo_resultante: saldoAnt + iva,
+      referencia_venta_id: referenciaId, fecha: todayISO(),
+    });
+  } catch (e) {
+    console.warn('registrarIvaRestaurante:', e);
+  }
+  return neto;
+}
 
 /* =====================================================
    SHELL: TEMA, SIDEBAR, NAVEGACIÓN (idéntico al resto del sistema)
@@ -182,7 +211,10 @@ function renderComandas() {
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">🍽️ ${nItems} platillo${nItems===1?'':'s'}</div>
       ${c.mesero_nombre ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">🧑‍🍳 ${esc(c.mesero_nombre)}</div>` : '<div style="margin-bottom:10px"></div>'}
       <div style="font-weight:800;font-size:16px;margin-bottom:10px">${fmt(totalComanda(c))}</div>
-      <button class="btn-primary" style="width:100%" onclick="abrirModalComandaDetalle('${c.id}')">Abrir comanda</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" style="flex:1" onclick="abrirModalComandaDetalle('${c.id}')">Abrir</button>
+        <button class="btn-primary" style="flex:1" onclick="abrirModalCobro('${c.id}')">💰 Cobrar</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -426,5 +458,135 @@ async function cancelarComanda() {
   } catch (e) {
     console.error('cancelarComanda:', e);
     showToast('No se pudo cancelar la comanda', 'error');
+  }
+}
+
+/* =====================================================
+   COBRO Y CIERRE DE CUENTA -- equivalente al check-out de Hotel:
+   cierra la comanda, cobra el total real (conectado con Caja e
+   Impuestos), y la mesa pasa a 'limpieza' -- nunca directo a
+   'disponible', misma leccion ya aplicada en Hotel (una mesa
+   recien desocupada necesita limpiarse antes de sentar a alguien
+   mas ahi).
+===================================================== */
+STATE.comandaCobroActual = null;
+
+async function abrirModalCobro(comandaId) {
+  document.getElementById('cb-error').textContent = '';
+  document.getElementById('cb-comanda-id').value = comandaId;
+  document.getElementById('cb-propina-pct').value = '15';
+  document.getElementById('cb-propina-manual').value = '';
+  document.getElementById('cb-dividir-entre').value = 1;
+  onCambiarPropinaComanda();
+
+  const { data: items } = await sb.from('restaurante_comanda_items').select('*')
+    .eq('comanda_id', comandaId).neq('estado', 'cancelado');
+  const c = STATE.comandas.find(x => x.id === comandaId);
+  STATE.comandaCobroActual = { comandaId, items: items || [], mesaNumero: c?.restaurante_mesas?.numero || '—' };
+
+  document.getElementById('cb-mesa-titulo').textContent = `Mesa ${STATE.comandaCobroActual.mesaNumero}`;
+  document.getElementById('cb-lista-items').innerHTML = (items || []).map(i => `
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span>${i.cantidad}× ${esc(i.nombre_producto)}</span>
+      <span>${fmt(i.cantidad * i.precio_unitario)}</span>
+    </div>`).join('');
+
+  renderResumenCobro();
+  openModal('modal-cobro');
+}
+
+function onCambiarPropinaComanda() {
+  const esOtro = document.getElementById('cb-propina-pct').value === 'otro';
+  document.getElementById('cb-wrap-propina-manual').style.display = esOtro ? '' : 'none';
+  renderResumenCobro();
+}
+
+function renderResumenCobro() {
+  if (!STATE.comandaCobroActual) return;
+  const subtotal = round2(STATE.comandaCobroActual.items.reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
+
+  const pctSel = document.getElementById('cb-propina-pct').value;
+  let propina;
+  if (pctSel === 'otro') {
+    propina = Math.max(0, parseFloat(document.getElementById('cb-propina-manual').value) || 0);
+  } else {
+    propina = round2(subtotal * Number(pctSel) / 100);
+  }
+
+  const total = round2(subtotal + propina);
+  document.getElementById('cb-subtotal').textContent = fmt(subtotal);
+  document.getElementById('cb-propina-monto').textContent = fmt(propina);
+  document.getElementById('cb-total').textContent = fmt(total);
+
+  const dividirEntre = Math.max(1, parseInt(document.getElementById('cb-dividir-entre').value) || 1);
+  document.getElementById('cb-por-persona').textContent = dividirEntre > 1
+    ? `${fmt(round2(total / dividirEntre))} por persona (${dividirEntre} personas)`
+    : '';
+}
+
+async function confirmarCobro() {
+  const errEl = document.getElementById('cb-error');
+  errEl.textContent = '';
+
+  if (!STATE.comandaCobroActual || !STATE.comandaCobroActual.items.length) {
+    errEl.textContent = 'Esta comanda no tiene platillos que cobrar.';
+    return;
+  }
+
+  const comandaId = STATE.comandaCobroActual.comandaId;
+  const subtotal = round2(STATE.comandaCobroActual.items.reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
+  const pctSel = document.getElementById('cb-propina-pct').value;
+  const propina = pctSel === 'otro'
+    ? Math.max(0, parseFloat(document.getElementById('cb-propina-manual').value) || 0)
+    : round2(subtotal * Number(pctSel) / 100);
+  const total = round2(subtotal + propina);
+  const metodoPago = document.getElementById('cb-metodo-pago').value;
+  const c = STATE.comandas.find(x => x.id === comandaId);
+
+  setBtnLoading('cb-btn-confirmar', true);
+  try {
+    // La propina no lleva IVA -- solo el consumo (subtotal) se
+    // desglosa. El total real que entra a Caja es neto-de-consumo +
+    // propina completa.
+    const conceptoCobro = `Cobro — Mesa ${STATE.comandaCobroActual.mesaNumero}`;
+    const subtotalNeto = await registrarIvaRestaurante(subtotal, conceptoCobro, comandaId);
+    const montoParaCaja = round2(subtotalNeto + propina);
+
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
+        concepto: conceptoCobro, monto: montoParaCaja,
+        referencia_tipo: 'restaurante_comanda', referencia_id: comandaId,
+        metodo_pago_nombre: metodoPago,
+      });
+      if (!cajaRes.ok) {
+        errEl.textContent = 'No se pudo registrar el cobro en Caja: ' + cajaRes.error;
+        setBtnLoading('cb-btn-confirmar', false);
+        return;
+      }
+    }
+
+    const { error: e1 } = await sb.from('restaurante_comandas').update({
+      estado: 'cerrada', cerrada_at: new Date().toISOString(),
+      propina_monto: propina, metodo_pago: metodoPago, total_cobrado: total,
+      updated_at: new Date().toISOString(),
+    }).eq('id', comandaId).eq('auth_user_id', STATE.userId);
+    if (e1) throw e1;
+
+    if (c) {
+      const { error: e2 } = await sb.from('restaurante_mesas')
+        .update({ estado: 'limpieza', en_este_estado_desde: new Date().toISOString() })
+        .eq('id', c.mesa_id).eq('auth_user_id', STATE.userId);
+      if (e2) throw e2;
+    }
+
+    showToast('Cuenta cobrada — la mesa pasó a limpieza');
+    closeModal('modal-cobro');
+    await cargarComandas();
+  } catch (e) {
+    console.error('confirmarCobro:', e);
+    errEl.textContent = 'No se pudo completar el cobro. Intenta de nuevo.';
+  } finally {
+    setBtnLoading('cb-btn-confirmar', false);
   }
 }
