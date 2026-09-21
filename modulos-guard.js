@@ -231,6 +231,56 @@
     return false;
   }
 
+  // Inyecta en el sidebar de CUALQUIER pagina del sistema (donde este
+  // script ya esta cargado) los enlaces a los modulos secundarios que
+  // la cuenta SI tiene activos (Hotel, Restaurante, Mis Negocios...) --
+  // agrupados en su propia seccion, al final del menu. Si esa cuenta
+  // nunca activo ninguno, esta funcion no agrega absolutamente nada:
+  // el sidebar de las 62 cuentas actuales queda exactamente igual que
+  // siempre. Tampoco duplica un enlace si la pagina actual YA tiene uno
+  // real hacia ese mismo archivo (por ejemplo, si en el futuro se
+  // agrega navegacion cruzada manual dentro de las propias paginas de
+  // Hotel entre si).
+  function inyectarModulosSecundariosEnSidebar(cfg) {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return; // esta pagina no usa el sidebar estandar -- no se toca nada
+
+    const porFlag = {};
+    Object.values(TODOS_MODULOS_OPCIONALES).forEach(m => {
+      if (!m.flagPropio) return;
+      if (!(cfg._flagsPropios && cfg._flagsPropios[m.flagPropio] === true)) return;
+      if (document.querySelector(`[onclick*="navigate('${m.archivo}')"]`)) return;
+      (porFlag[m.flagPropio] = porFlag[m.flagPropio] || []).push(m);
+    });
+
+    Object.values(porFlag).forEach(mods => {
+      if (!mods.length) return;
+      const nombreSeccion = (mods[0].label.split(' · ')[0] || 'Más').toUpperCase();
+
+      const titulo = document.createElement('div');
+      titulo.className = 'nav-section-title';
+      titulo.textContent = nombreSeccion;
+      nav.appendChild(titulo);
+
+      mods.forEach(m => {
+        const nombreCorto = m.label.includes(' · ') ? m.label.split(' · ')[1] : m.label;
+        const item = document.createElement('div');
+        item.className = 'nav-item';
+        item.setAttribute('onclick', `navigate('${m.archivo}')`);
+        item.setAttribute('data-tooltip', nombreCorto);
+        const icono = document.createElement('span');
+        icono.style.cssText = 'font-size:16px;width:18px;flex-shrink:0;text-align:center;display:inline-block';
+        icono.textContent = m.icon;
+        const label = document.createElement('span');
+        label.className = 'nav-label';
+        label.textContent = nombreCorto;
+        item.appendChild(icono);
+        item.appendChild(label);
+        nav.appendChild(item);
+      });
+    });
+  }
+
   async function init() {
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
     const client = window.supabase.createClient(MG_SUPABASE_URL, MG_SUPABASE_KEY);
@@ -240,6 +290,7 @@
     const cfg = await cargarConfigModulos(client, session.user.id);
     if (protegerPaginaActual(cfg)) return;
     ocultarEnSidebar(cfg);
+    inyectarModulosSecundariosEnSidebar(cfg);
     inyectarBuscadorSidebar();
   }
 
