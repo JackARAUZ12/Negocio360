@@ -41,14 +41,28 @@
   // ÚNICA fuente de verdad: modulos-registro.js (se carga antes que este
   // archivo). Cualquier módulo marcado obligatorio:false aparece aquí
   // solo con agregarlo allá — nada que tocar en este archivo nunca más.
-  const MODULOS_OPCIONALES = {};
+  //
+  // flagPropio (opcional, en el registro): para módulos secundarios que
+  // YA tienen su propio interruptor dedicado en Configuración (como
+  // "Módulo de Hotel" o "Módulo de Restaurante", apagados por defecto
+  // para toda cuenta nueva) -- estos NUNCA se muestran en el listado
+  // generico "Editar módulos" (serían un segundo control redundante
+  // para lo mismo), pero SÍ quedan protegidos igual contra acceso
+  // directo por URL, y SÍ los reconoce perfiles-guard.js para poder
+  // asignarlos/quitarlos por perfil una vez que la cuenta ya activó su
+  // interruptor propio.
+  const TODOS_MODULOS_OPCIONALES = {};
   Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
     if (!m.obligatorio) {
-      MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '' };
+      TODOS_MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '', flagPropio: m.flagPropio || null };
     }
   });
+  const MODULOS_OPCIONALES = {};
+  Object.entries(TODOS_MODULOS_OPCIONALES).forEach(([key, m]) => {
+    if (!m.flagPropio) MODULOS_OPCIONALES[key] = m;
+  });
   const MODULOS_POR_ARCHIVO = {};
-  Object.values(MODULOS_OPCIONALES).forEach(m => { MODULOS_POR_ARCHIVO[m.archivo] = m; });
+  Object.values(TODOS_MODULOS_OPCIONALES).forEach(m => { MODULOS_POR_ARCHIVO[m.archivo] = m; });
 
   function currentFile() {
     const f = location.pathname.split('/').pop() || 'dashboard.html';
@@ -58,18 +72,35 @@
   // Trae metadata.modulosOpcionales de configuracion_empresa. Si el dueño
   // nunca ha tocado nada, se devuelve {} y TODOS los módulos opcionales
   // quedan activos por defecto (comportamiento idéntico al de siempre).
+  //
+  // Ademas trae los flags propios de los modulos secundarios (Hotel,
+  // Restaurante, Mis Negocios...) en _flagsPropios -- estos SIEMPRE
+  // empiezan en false para cualquier cuenta, y solo el interruptor
+  // dedicado de cada uno (no este sistema generico) los enciende.
   async function cargarConfigModulos(client, authUserId) {
     try {
       const { data } = await client.from('configuracion_empresa')
-        .select('metadata').eq('auth_user_id', authUserId).maybeSingle();
-      return (data?.metadata && typeof data.metadata === 'object' && data.metadata.modulosOpcionales) || {};
+        .select('metadata, usa_modulo_hotel, usa_modulo_restaurante, usa_negocios_vinculados')
+        .eq('auth_user_id', authUserId).maybeSingle();
+      const cfg = (data?.metadata && typeof data.metadata === 'object' && data.metadata.modulosOpcionales) || {};
+      cfg._flagsPropios = {
+        usa_modulo_hotel: data?.usa_modulo_hotel === true,
+        usa_modulo_restaurante: data?.usa_modulo_restaurante === true,
+        usa_negocios_vinculados: data?.usa_negocios_vinculados === true,
+      };
+      return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);
-      return {};
+      return { _flagsPropios: {} };
     }
   }
 
-  function estaActivo(cfg, key) {
+  function estaActivo(cfg, key, flagPropio) {
+    // Modulo secundario con su propio interruptor dedicado (Hotel,
+    // Restaurante, Mis Negocios...): sin ese interruptor encendido,
+    // SIEMPRE se considera inactivo, sin importar nada mas -- asi
+    // ninguna cuenta nueva lo ve jamas hasta que lo active a proposito.
+    if (flagPropio && !(cfg._flagsPropios && cfg._flagsPropios[flagPropio] === true)) return false;
     if (cfg[key] === false) return false;
     // Restricción de Sucursales: si el perfil entró con una lista de
     // módulos permitidos para ESTA sucursal específica, se respeta
@@ -113,7 +144,7 @@
       const file = href.split('?')[0].split('/').pop();
       const mod = MODULOS_POR_ARCHIVO[file];
       if (!mod) return; // módulos obligatorios y otras páginas: intactos
-      if (!estaActivo(cfg, mod.key)) {
+      if (!estaActivo(cfg, mod.key, mod.flagPropio)) {
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
         item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar
@@ -193,7 +224,7 @@
   // entrar por URL directa (favoritos guardados, enlaces viejos, etc.).
   function protegerPaginaActual(cfg) {
     const mod = MODULOS_POR_ARCHIVO[currentFile()];
-    if (mod && !estaActivo(cfg, mod.key)) {
+    if (mod && !estaActivo(cfg, mod.key, mod.flagPropio)) {
       location.href = 'dashboard.html';
       return true;
     }

@@ -91,6 +91,33 @@
                                desc: 'Qué pasa después de la venta — reclamos, reparaciones, garantías y cambios, con seguimiento de estado y vigencia de garantía calculada sola.' },
     'contabilidad.html':       { key: 'contabilidad',       label: 'Contabilidad',        icon: '📒', obligatorio: false,
                                desc: 'Catálogo de cuentas y asientos contables con partida doble real (Debe = Haber siempre). Libro Mayor y Balance de Comprobación.' },
+
+    // ---- Hotel (secundario -- apagado por defecto para TODA cuenta,
+    // solo se enciende con el interruptor dedicado "Módulo de Hotel"
+    // en Configuración, nunca desde el listado genérico de arriba) ----
+    'hotel-habitaciones.html': { key: 'hotel_habitaciones', label: 'Hotel · Habitaciones', icon: '🛏️', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Habitaciones, precios y estados en tiempo real.' },
+    'hotel-reservaciones.html':{ key: 'hotel_reservaciones', label: 'Hotel · Reservaciones', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Reservas por habitación, sin cruces de fecha, con anticipo y bloqueo manual.' },
+    'hotel-mapa.html':         { key: 'hotel_mapa',         label: 'Hotel · Mapa',        icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Vista de calendario de todas las habitaciones y reservaciones, de un vistazo.' },
+    'hotel-housekeeping.html': { key: 'hotel_housekeeping', label: 'Hotel · Housekeeping', icon: '🧹', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Habitaciones pendientes de limpieza o mantenimiento, con alerta por tiempo.' },
+    'hotel-huespedes.html':    { key: 'hotel_huespedes',    label: 'Hotel · Huéspedes',   icon: '🧳', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Historial de estadías por huésped, conectado con Clientes.' },
+
+    // ---- Restaurante (secundario -- mismo criterio que Hotel) ----
+    'restaurante-mesas.html':    { key: 'restaurante_mesas',    label: 'Restaurante · Mesas',    icon: '🍽️', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+                               desc: 'Mesas, zonas y estados en tiempo real.' },
+    'restaurante-comandas.html': { key: 'restaurante_comandas', label: 'Restaurante · Comandas', icon: '📝', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+                               desc: 'Toma pedidos por mesa, envíalos a cocina, cobra y cierra la cuenta.' },
+    'restaurante-cocina.html':   { key: 'restaurante_cocina',   label: 'Restaurante · Cocina',   icon: '🍳', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+                               desc: 'Pantalla de cocina en tiempo real -- platillos por preparar y listos para servir.' },
+
+    // ---- Mis Negocios (secundario -- mismo criterio, aunque no es un
+    // rubro de negocio sino una funcion de cuenta) ----
+    'negocios-vinculados.html': { key: 'negocios_vinculados', label: 'Mis Negocios',      icon: '🏢', obligatorio: false, flagPropio: 'usa_negocios_vinculados',
+                               desc: 'Varios negocios bajo el mismo correo y contraseña, cada uno completamente independiente.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
