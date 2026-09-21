@@ -52,6 +52,7 @@ const STATE = {
   productos:    [],
   filtrados:    [],
   filtroActivo: 'todos',
+  categoriaActiva: 'productos', // 'productos' | 'servicios' | 'materia_prima' -- pestaña principal, separada del filtro secundario
   ordenActivo:  'az',    // A-Z por nombre, predeterminado -- coincide con la opción ya marcada en el <select>
   filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
   proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
@@ -411,6 +412,7 @@ async function cargarProductos() {
     if (error) throw error;
 
     STATE.productos = data || [];
+    actualizarContadoresCategorias();
     aplicarFiltros(); // ya llama a actualizarStats() al final
 
   } catch (e) {
@@ -1557,6 +1559,38 @@ function ordenarLista(lista, criterio) {
   }
 }
 
+// Cambia entre las 3 pestañas de categoria (Productos / Servicios /
+// Materia Prima) -- cada una es una seccion de verdad separada, no
+// un filtro mas. Al entrar a una categoria distinta, el filtro
+// secundario (activos/inactivos/stock bajo) se resetea a "todos",
+// para no arrastrar un filtro que no tenia sentido en la categoria
+// anterior.
+function cambiarCategoriaProductos(cat) {
+  STATE.categoriaActiva = cat;
+  STATE.filtroActivo = 'todos';
+
+  $$('.cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === 'todos'));
+
+  // "Stock bajo" no tiene sentido para Servicios (no manejan
+  // inventario) -- se oculta en esa categoria en vez de mostrar un
+  // filtro que siempre daria vacio.
+  const btnStock = $('btnFiltroStockBajo');
+  if (btnStock) btnStock.style.display = cat === 'servicios' ? 'none' : '';
+
+  aplicarFiltros();
+}
+
+function actualizarContadoresCategorias() {
+  const lista = STATE.productos || [];
+  const nProductos = lista.filter(p => p.tipo === 'producto' && !p.es_materia_prima).length;
+  const nServicios = lista.filter(p => p.tipo === 'servicio').length;
+  const nMateriaPrima = lista.filter(p => p.es_materia_prima === true).length;
+  const elP = $('catCountProductos'); if (elP) elP.textContent = nProductos;
+  const elS = $('catCountServicios'); if (elS) elS.textContent = nServicios;
+  const elM = $('catCountMateriaPrima'); if (elM) elM.textContent = nMateriaPrima;
+}
+
 function aplicarFiltros() {
   let lista = [...STATE.productos];
   const q   = STATE.busqueda.toLowerCase().trim();
@@ -1572,18 +1606,22 @@ function aplicarFiltros() {
     );
   }
 
-  switch (STATE.filtroActivo) {
-    case 'productos':  lista = lista.filter(p => p.tipo === 'producto' && !p.es_materia_prima);  break;
-    case 'servicios':  lista = lista.filter(p => p.tipo === 'servicio');  break;
+  // 1. Categoria (pestaña principal) -- separa de verdad Productos,
+  // Servicios y Materia Prima en 3 vistas distintas, antes de
+  // aplicar cualquier otro filtro.
+  switch (STATE.categoriaActiva) {
+    case 'servicios':     lista = lista.filter(p => p.tipo === 'servicio'); break;
     case 'materia_prima': lista = lista.filter(p => p.es_materia_prima === true); break;
-    case 'activos':    lista = lista.filter(p => p.activo === true && !p.es_materia_prima);      break;
-    case 'inactivos':  lista = lista.filter(p => p.activo === false && !p.es_materia_prima);     break;
+    default:               lista = lista.filter(p => p.tipo === 'producto' && !p.es_materia_prima); break;
+  }
+
+  // 2. Filtro secundario (dentro de la categoria ya seleccionada)
+  switch (STATE.filtroActivo) {
+    case 'activos':    lista = lista.filter(p => p.activo === true);      break;
+    case 'inactivos':  lista = lista.filter(p => p.activo === false);     break;
     // FIX: usa helper para evitar falsos positivos (0 <= 0)
-    case 'stock_bajo': lista = lista.filter(p => esStockBajo(p) && !p.es_materia_prima); break;
-    // "Todos" (default): la materia prima queda fuera de la vista
-    // general -- vive en su propio filtro dedicado, para que de
-    // verdad se sienta separada de lo que sí se vende.
-    default: lista = lista.filter(p => !p.es_materia_prima); break;
+    case 'stock_bajo': lista = lista.filter(p => esStockBajo(p)); break;
+    default: break; // "todos": no se filtra mas, ya viene acotado por la categoria
   }
 
   // Filtro secundario: Marca / Proveedor (opcional, independiente de filtroActivo)
@@ -1616,59 +1654,65 @@ function renderTabla() {
   if (countEl) countEl.textContent =
     `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
 
-  const esModoMateriaPrima = STATE.filtroActivo === 'materia_prima';
-  const theadNormal = $('theadProductos'), theadMP = $('theadMateriaPrima');
-  if (theadNormal) theadNormal.style.display = esModoMateriaPrima ? 'none' : '';
-  if (theadMP) theadMP.style.display = esModoMateriaPrima ? '' : 'none';
+  // 3 secciones GENUINAMENTE separadas -- cada una con su propio
+  // <thead> (columnas distintas, solo las que tienen sentido para
+  // esa categoria) y su propia funcion de filas, no una tabla
+  // compartida con una columna "Tipo" de mas.
+  const cat = STATE.categoriaActiva;
+  const theadProductos = $('theadProductos'), theadServicios = $('theadServicios'), theadMP = $('theadMateriaPrima');
+  if (theadProductos) theadProductos.style.display = cat === 'productos' ? '' : 'none';
+  if (theadServicios) theadServicios.style.display = cat === 'servicios' ? '' : 'none';
+  if (theadMP)        theadMP.style.display        = cat === 'materia_prima' ? '' : 'none';
 
   const thModelo = $('thModelo');
-  if (thModelo) thModelo.style.display = STATE.usaModeloProducto ? '' : 'none';
+  if (thModelo) thModelo.style.display = (cat === 'productos' && STATE.usaModeloProducto) ? '' : 'none';
 
   const btnMP = $('btnNuevaMateriaPrima');
-  if (btnMP) btnMP.style.display = esModoMateriaPrima ? '' : 'none';
+  if (btnMP) btnMP.style.display = cat === 'materia_prima' ? '' : 'none';
   const btnNuevoServicio = $('btnNuevoServicio');
-  if (btnNuevoServicio) btnNuevoServicio.style.display = esModoMateriaPrima ? 'none' : '';
+  if (btnNuevoServicio) btnNuevoServicio.style.display = cat === 'servicios' ? '' : 'none';
   const btnNuevoProducto = $('btnNuevoProducto');
-  if (btnNuevoProducto) btnNuevoProducto.style.display = esModoMateriaPrima ? 'none' : '';
+  if (btnNuevoProducto) btnNuevoProducto.style.display = cat === 'productos' ? '' : 'none';
 
-  if (esModoMateriaPrima) { renderTablaMateriaPrima(tbody); return; }
+  if (cat === 'materia_prima') { renderTablaMateriaPrima(tbody); return; }
+  if (cat === 'servicios')     { renderTablaServicios(tbody); return; }
+  renderTablaProductos(tbody);
+}
 
+function estadoVacioTabla(colspan, tipoTexto, onClickNuevo) {
+  return `
+    <tr><td colspan="${colspan}">
+      <div class="empty-state">
+        <div class="empty-state-icon">📦</div>
+        <h3>${STATE.busqueda ? 'Sin resultados' : `Sin ${tipoTexto} aún`}</h3>
+        <p>${STATE.busqueda
+          ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
+          : `Agrega tu primer ${tipoTexto.replace(/s$/, '')} para comenzar.`}</p>
+        ${!STATE.busqueda && onClickNuevo ? `<button class="btn btn-primary" onclick="${onClickNuevo}">+ Nuevo</button>` : ''}
+      </div>
+    </td></tr>`;
+}
+
+// ============================================================
+// TABLA -- PRODUCTOS (seccion propia, columnas propias -- ya sin
+// la columna "Tipo", redundante ahora que la pestaña ya lo dice)
+// ============================================================
+function renderTablaProductos(tbody) {
   if (STATE.filtrados.length === 0) {
-    tbody.innerHTML = `
-      <tr><td colspan="12">
-        <div class="empty-state">
-          <div class="empty-state-icon">📦</div>
-          <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin productos aún'}</h3>
-          <p>${STATE.busqueda
-            ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
-            : 'Agrega tu primer producto o servicio para comenzar.'}</p>
-          ${!STATE.busqueda
-            ? `<button class="btn btn-primary" onclick="abrirModalNuevo('producto')">+ Nuevo Producto</button>`
-            : ''}
-        </div>
-      </td></tr>
-    `;
+    tbody.innerHTML = estadoVacioTabla(11, 'productos', "abrirModalNuevo('producto')");
     return;
   }
 
   tbody.innerHTML = STATE.filtrados.map(p => {
-    // FIX: helper centralizado, evita 0 <= 0 falso positivo
     const stockBajo = esStockBajo(p);
-
-    const stockHtml = p.tipo === 'servicio'
-      ? '<span style="color:var(--text-muted);font-size:12px">N/A</span>'
-      : `<div class="td-stock">
-           <span>${fmtNum(p.stock_actual)}</span>
-           ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
-         </div>`;
-
-    // Botón 📉 siempre visible para productos
-    const movBtn = p.tipo === 'producto'
-      ? `<button class="row-action-btn mov-btn-especial"
-            title="Movimiento especial (merma)"
-            onclick="abrirMovimiento('${p.id}')"
-            style="opacity:1;color:var(--warning);">📉</button>`
-      : '<span style="width:30px;display:inline-block"></span>';
+    const stockHtml = `<div class="td-stock">
+         <span>${fmtNum(p.stock_actual)}</span>
+         ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
+       </div>`;
+    const movBtn = `<button class="row-action-btn mov-btn-especial"
+          title="Movimiento especial (merma)"
+          onclick="abrirMovimiento('${p.id}')"
+          style="opacity:1;color:var(--warning);">📉</button>`;
 
     return `
       <tr data-id="${p.id}">
@@ -1677,11 +1721,6 @@ function renderTabla() {
           ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
         </td>
         <td style="display:${STATE.usaModeloProducto ? '' : 'none'}">${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>
-        <td>
-          <span class="tipo-badge ${p.tipo === 'producto' ? 'tipo-producto' : 'tipo-servicio'}">
-            ${p.tipo === 'producto' ? '📦' : '🔧'} ${p.tipo}
-          </span>
-        </td>
         <td>
           ${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}
           ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}
@@ -1716,7 +1755,55 @@ function renderTabla() {
     `;
   }).join('');
 
-  // Hover para row-actions (el movBtn queda siempre visible separado)
+  activarHoverFilas(tbody);
+}
+
+// ============================================================
+// TABLA -- SERVICIOS (seccion propia: sin Stock ni Modelo, un
+// servicio no maneja inventario)
+// ============================================================
+function renderTablaServicios(tbody) {
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(9, 'servicios', "abrirModalNuevo('servicio')");
+    return;
+  }
+
+  tbody.innerHTML = STATE.filtrados.map(p => `
+    <tr data-id="${p.id}">
+      <td>
+        <div class="td-nombre">${escHtml(p.nombre)}</div>
+        ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+      </td>
+      <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="td-money">
+        ${p.tipo_precio === 'escala'
+          ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
+          : fmtMoney(p.precio)}
+      </td>
+      <td class="td-money">${fmtMoney(p.costo)}</td>
+      <td>${renderMargen(p.precio, p.costo)}</td>
+      <td>
+        <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+          ${p.activo ? 'Activo' : 'Inactivo'}
+        </span>
+      </td>
+      <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
+      <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
+      <td>
+        <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+          <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
+          <button class="row-action-btn edit" title="Editar"      onclick="abrirEditar('${p.id}')">✏️</button>
+          <button class="row-action-btn dup"  title="Duplicar"    onclick="duplicarProducto('${p.id}')">📋</button>
+          <button class="row-action-btn del"  title="Eliminar"    onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  activarHoverFilas(tbody);
+}
+
+function activarHoverFilas(tbody) {
   tbody.querySelectorAll('tr[data-id]').forEach(row => {
     const actions = row.querySelector('.row-actions');
     if (!actions) return;
@@ -1724,6 +1811,7 @@ function renderTabla() {
     row.addEventListener('mouseleave', () => actions.style.opacity = '0');
   });
 }
+
 
 // ============================================================
 // TABLA SIMPLIFICADA -- MATERIA PRIMA
@@ -2642,6 +2730,12 @@ async function guardarProducto() {
       STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
       detalleMensaje
     );
+    // Se cambia a la pestaña de categoria correcta antes de recargar
+    // -- si el usuario estaba viendo "Servicios" y acaba de crear un
+    // Producto, sin esto parecería que lo recien creado "se perdió".
+    const categoriaDelGuardado = esMateriaPrima ? 'materia_prima' : (tipo === 'servicio' ? 'servicios' : 'productos');
+    cambiarCategoriaProductos(categoriaDelGuardado);
+
     // Importante: primero las escalas y DESPUÉS los productos —
     // cargarProductos() dibuja la tabla de inmediato, así que si corriera
     // en paralelo con cargarEscalas() podría pintar la tabla con el mapa

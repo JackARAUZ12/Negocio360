@@ -357,6 +357,20 @@
         </div>
       </div>
 
+      <!-- PESTAÑAS DE CATEGORÍA -- Productos / Servicios / Materia Prima
+           completamente separadas, no un filtro mas -->
+      <div class="cat-tabs" id="catTabs">
+        <button class="cat-tab active" data-cat="productos" onclick="cambiarCategoriaProductos('productos')">
+          📦 Productos <span class="cat-tab-count" id="catCountProductos">0</span>
+        </button>
+        <button class="cat-tab" data-cat="servicios" onclick="cambiarCategoriaProductos('servicios')">
+          🔧 Servicios <span class="cat-tab-count" id="catCountServicios">0</span>
+        </button>
+        <button class="cat-tab" data-cat="materia_prima" onclick="cambiarCategoriaProductos('materia_prima')">
+          🧱 Materia Prima <span class="cat-tab-count" id="catCountMateriaPrima">0</span>
+        </button>
+      </div>
+
       <!-- TOOLBAR -->
       <div class="toolbar">
         <div class="search-wrapper">
@@ -371,17 +385,11 @@
                  placeholder="Escanear código de barras…" autocomplete="off" />
           <button class="search-clear" id="scanClear" title="Limpiar escaneo">✕</button>
         </div>
-        <div class="filters-group">
+        <div class="filters-group" id="filtrosSecundarios">
           <button class="filter-btn active" data-filtro="todos">Todos</button>
-          <button class="filter-btn" data-filtro="productos">📦 Productos</button>
-          <button class="filter-btn" data-filtro="servicios">🔧 Servicios</button>
           <button class="filter-btn" data-filtro="activos">✅ Activos</button>
           <button class="filter-btn" data-filtro="inactivos">⛔ Inactivos</button>
-          <button class="filter-btn" data-filtro="stock_bajo">⚠️ Stock bajo</button>
-        </div>
-        <div style="width:1px;align-self:stretch;background:var(--border);margin:0 4px" title="Materia prima -- insumos de producción, no se venden directo"></div>
-        <div class="filters-group">
-          <button class="filter-btn" id="tab-materia-prima" data-filtro="materia_prima" style="font-weight:800;background:#78350f22;border-color:#b45309;color:#b45309">🧱 Materia Prima</button>
+          <button class="filter-btn" id="btnFiltroStockBajo" data-filtro="stock_bajo">⚠️ Stock bajo</button>
         </div>
         <div class="toolbar-right">
           <select class="form-select" id="filtroMarca" title="Filtrar por marca / proveedor"
@@ -413,12 +421,24 @@
               <tr>
                 <th>Nombre / SKU</th>
                 <th id="thModelo" style="display:none">Modelo</th>
-                <th>Tipo</th>
                 <th>Categoría</th>
                 <th>Precio</th>
                 <th>Costo</th>
                 <th>Margen</th>
                 <th>Stock</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                <th>Actualizado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <thead id="theadServicios" style="display:none">
+              <tr>
+                <th>Nombre / SKU</th>
+                <th>Categoría</th>
+                <th>Precio</th>
+                <th>Costo</th>
+                <th>Margen</th>
                 <th>Estado</th>
                 <th>Creado</th>
                 <th>Actualizado</th>
@@ -1250,7 +1270,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260917e"></script>
+<script src="productos.js?v=20260921a"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
