@@ -753,6 +753,22 @@
     }
 
     if (profile.onboarding_completado === true) {
+      // Si esta cuenta alguna vez creo un negocio adicional bajo el
+      // mismo correo, se le muestra el selector en vez de ir directo
+      // al dashboard -- para el 99% de las cuentas (que nunca usan
+      // esta funcion) esta consulta siempre da 0 filas y el
+      // comportamiento queda IDENTICO al de siempre.
+      try {
+        const { count } = await sb.from('negocios_vinculados')
+          .select('id', { count: 'exact', head: true })
+          .eq('auth_user_id_principal', userId).eq('activo', true);
+        if (count && count > 0) {
+          window.location.href = 'negocios-vinculados.html';
+          return;
+        }
+      } catch (eNeg) {
+        console.warn('No se pudo verificar negocios vinculados, se continua normal:', eNeg);
+      }
       window.location.href = 'dashboard.html';
     } else {
       window.location.href = 'personalizacion.html';

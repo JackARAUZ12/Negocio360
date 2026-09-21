@@ -846,7 +846,7 @@ async function loadUsers() {
   try {
     const { data, error } = await sb
       .from('usuarios')
-      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion, ciclo_facturacion, precio_personalizado, limite_perfiles')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion, ciclo_facturacion, precio_personalizado, limite_perfiles, limite_negocios')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -923,6 +923,10 @@ function renderUsersTable(users) {
           <button class="btn-icon btn-ghost btn-sm" onclick="openLimiteUsuarios('${u.id}')" title="Editar cuántos usuarios (perfiles con PIN) puede crear esta cuenta">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             Usuarios
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="openLimiteNegocios('${u.id}')" title="Editar cuántos negocios puede crear esta cuenta bajo el mismo correo">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+            Negocios
           </button>
           ${u.plan === 'premium'
             ? `<button class="btn-icon btn-ghost btn-sm" onclick="openEditBilling('${u.id}')" title="Editar ciclo de facturación y precio de este cliente">
@@ -1213,6 +1217,75 @@ async function guardarLimiteUsuarios() {
     toast('Límite actualizado', `${u.nombre || u.email} ahora puede tener hasta ${limite} usuario${limite === 1 ? '' : 's'}`, 'success');
   } catch (e) {
     console.error('guardarLimiteUsuarios:', e);
+    toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// LÍMITE DE NEGOCIOS (varios negocios bajo el mismo correo)
+// ============================================================
+async function openLimiteNegocios(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  window._editingLimiteNegociosUser = u;
+  document.getElementById('ln-nombre-cliente').textContent =
+    [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+  document.getElementById('ln-limite').value = u.limite_negocios || 1;
+  document.getElementById('ln-actuales').textContent = 'Cargando…';
+
+  openModal('modal-limite-negocios');
+
+  // El negocio "principal" cuenta siempre como 1, aunque nunca haya
+  // creado ninguno adicional (no necesita fila en la base de datos
+  // hasta ese momento) -- por eso el conteo real es 1 + los
+  // vinculados que de verdad existan.
+  try {
+    const { count, error } = await sb
+      .from('negocios_vinculados')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id_principal', u.auth_user_id).eq('es_principal', false).eq('activo', true);
+    const total = 1 + (error ? 0 : (count ?? 0));
+    document.getElementById('ln-actuales').textContent = `${total} negocio${total === 1 ? '' : 's'}`;
+  } catch (e) {
+    console.error('openLimiteNegocios, contar negocios:', e);
+    document.getElementById('ln-actuales').textContent = '—';
+  }
+}
+
+async function guardarLimiteNegocios() {
+  const u = window._editingLimiteNegociosUser;
+  if (!u) return;
+
+  const valorRaw = document.getElementById('ln-limite').value.trim();
+  const limite = Number(valorRaw);
+  if (valorRaw === '' || isNaN(limite) || !Number.isInteger(limite) || limite < 1) {
+    toast('Valor inválido', 'Ingresa un número entero de 1 o más.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-limite-negocios');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ limite_negocios: limite })
+      .eq('id', u.id);
+    if (error) throw error;
+
+    const idx = allUsers.findIndex(x => x.id === u.id);
+    if (idx !== -1) allUsers[idx].limite_negocios = limite;
+
+    closeModal('modal-limite-negocios');
+    toast('Límite actualizado', `${u.nombre || u.email} ahora puede tener hasta ${limite} negocio${limite === 1 ? '' : 's'}`, 'success');
+  } catch (e) {
+    console.error('guardarLimiteNegocios:', e);
     toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
   } finally {
     btn.disabled = false;

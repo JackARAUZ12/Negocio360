@@ -1314,6 +1314,38 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-limite-negocios">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Límite de negocios — <span id="ln-nombre-cliente">—</span></span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="background:var(--bg-hover);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--text-secondary)">
+        Cuántos negocios puede crear esta cuenta bajo el MISMO correo y contraseña (cada negocio es completamente independiente -- su propio catálogo, ventas, todo). El valor por defecto de cualquier cuenta nueva es 1 -- al querer crear un segundo sin que tú lo hayas ampliado aquí, el cliente ve la tabla de precios ($10/mes, $100/año, $800 permanente) con un botón de WhatsApp.
+      </div>
+      <div class="form-group">
+        <label>Negocios actuales de esta cuenta</label>
+        <span id="ln-actuales" style="font-weight:600">—</span>
+      </div>
+      <div class="form-group">
+        <label>Límite permitido</label>
+        <input type="number" id="ln-limite" class="form-control" min="1" step="1" placeholder="1"/>
+        <span style="font-size:11.5px;color:var(--text-muted)">Puedes poner cualquier número — 1, 2, 3...</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-limite-negocios')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-guardar-limite-negocios" onclick="guardarLimiteNegocios()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════
      MODAL: NUEVO CHAT GRUPAL
 ══════════════════════════════════════════ -->
