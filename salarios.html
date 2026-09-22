@@ -1725,6 +1725,11 @@
         <div class="form-group"><label>Período desde</label><input type="date" id="pl-desde"/></div>
         <div class="form-group"><label>Período hasta</label><input type="date" id="pl-hasta"/></div>
         <div class="form-group"><label>Fecha de pago</label><input type="date" id="pl-fecha-pago"/></div>
+        <div class="form-group"><label>Método de pago</label><select id="pl-metodo" onchange="onCambiarMetodoPagoSalarios('pl')"></select></div>
+      </div>
+      <div class="form-group" id="pl-wrap-banco" style="display:none;margin-top:-6px">
+        <label>¿De qué banco sale el pago de toda la planilla? *</label>
+        <select id="pl-banco"></select>
       </div>
       <label style="font-size:12.5px;font-weight:600;margin:10px 0 6px;display:block">Empleados a incluir</label>
       <div id="pl-lista-empleados" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:10px"></div>
@@ -1846,6 +1851,11 @@
         <span style="font-size:20px;font-weight:800;color:var(--accent)" id="liq-total">—</span>
       </div>
       <div class="form-group"><label>Fecha de pago</label><input type="date" id="liq-fecha-pago"/></div>
+      <div class="form-group"><label>Método de pago</label><select id="liq-metodo" onchange="onCambiarMetodoPagoSalarios('liq')"></select></div>
+      <div class="form-group" id="liq-wrap-banco" style="display:none">
+        <label>¿De qué banco sale? *</label>
+        <select id="liq-banco"></select>
+      </div>
       <div class="form-group"><label>Observaciones</label><textarea id="liq-observaciones" rows="2"></textarea></div>
       <p style="font-size:11.5px;color:var(--warning);margin-top:6px">⚠️ Al confirmar, el empleado quedará marcado como inactivo y esto descontará de Caja.</p>
       <p id="liq-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
@@ -1939,6 +1949,11 @@
       </div>
       <div class="form-group"><label>Monto a pagar (calculado proporcional, editable)</label><input type="number" id="pb-monto" min="0" step="0.01"/></div>
       <div class="form-group"><label>Fecha de pago</label><input type="date" id="pb-fecha"/></div>
+      <div class="form-group"><label>Método de pago</label><select id="pb-metodo" onchange="onCambiarMetodoPagoSalarios('pb')"></select></div>
+      <div class="form-group" id="pb-wrap-banco" style="display:none">
+        <label>¿De qué banco sale? *</label>
+        <select id="pb-banco"></select>
+      </div>
       <div class="form-group"><label>Observaciones</label><input type="text" id="pb-observaciones"/></div>
       <p id="pb-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
     </div>
@@ -1983,6 +1998,11 @@
       <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px" id="adel-empleado-nombre">—</p>
       <div class="form-group"><label>Monto *</label><input type="number" id="adel-monto" min="0.01" step="0.01" placeholder="0.00"/></div>
       <div class="form-group"><label>Fecha</label><input type="date" id="adel-fecha"/></div>
+      <div class="form-group"><label>Método de pago</label><select id="adel-metodo" onchange="onCambiarMetodoPagoSalarios('adel')"></select></div>
+      <div class="form-group" id="adel-wrap-banco" style="display:none">
+        <label>¿De qué banco sale? *</label>
+        <select id="adel-banco"></select>
+      </div>
       <div class="form-group"><label>Motivo</label><input type="text" id="adel-motivo" placeholder="Ej: emergencia familiar"/></div>
       <p style="font-size:11.5px;color:var(--text-muted)">El adelanto queda pendiente — no descuenta dinero ahora. Se preguntará si se descuenta cuando se registre el próximo pago.</p>
       <p id="adel-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
@@ -2064,8 +2084,12 @@
       </div>
 
       <div class="form-row" style="margin-top:16px">
-        <div class="form-group"><label>Método de pago</label><select id="pg-sal-metodo"></select></div>
+        <div class="form-group"><label>Método de pago</label><select id="pg-sal-metodo" onchange="onCambiarMetodoPagoSalarios('pg-sal')"></select></div>
         <div class="form-group"><label>Fecha</label><input type="date" id="pg-sal-fecha"/></div>
+      </div>
+      <div class="form-group" id="pg-sal-wrap-banco" style="display:none">
+        <label>¿De qué banco sale? *</label>
+        <select id="pg-sal-banco"></select>
       </div>
       <div class="form-group"><label>Observaciones</label><textarea id="pg-sal-observaciones" rows="2"></textarea></div>
       <p id="pg-sal-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>

@@ -778,6 +778,9 @@ function abrirAdelanto(empleadoId) {
   document.getElementById('adel-monto').value = '';
   document.getElementById('adel-fecha').value = todayISO();
   document.getElementById('adel-motivo').value = '';
+  poblarSelectMetodoPago('adel-metodo');
+  document.getElementById('adel-wrap-banco').style.display = 'none';
+  document.getElementById('adel-banco').value = '';
   document.getElementById('adel-error').textContent = '';
   openModal('modal-adelanto');
 }
@@ -790,11 +793,15 @@ async function guardarAdelanto() {
   if (!(monto > 0)) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
   const fecha = document.getElementById('adel-fecha').value || todayISO();
   const motivo = document.getElementById('adel-motivo').value.trim() || null;
+  const mb = leerMetodoYBancoSalarios('adel', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
 
   setBtnLoading('btn-guardar-adelanto', true);
   try {
     const { data: adel, error } = await sbClient.from('empleados_adelantos').insert({
       auth_user_id: STATE.userId, empleado_id: emp.id, monto, fecha, motivo, estado: 'pendiente',
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     }).select().single();
     if (error) throw error;
 
@@ -805,6 +812,7 @@ async function guardarAdelanto() {
     if (window.CajaAPI) {
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
         concepto: `Adelanto de salario — ${emp.nombre}${motivo ? ': '+motivo : ''}`,
         monto, referencia_tipo: 'empleado', referencia_id: adel.id, fecha,
       });
@@ -984,9 +992,9 @@ async function confirmarPagoSal() {
 
   if (total <= 0) { errEl.textContent = 'El total a pagar debe ser mayor a cero.'; return; }
 
-  const metodoSel = document.getElementById('pg-sal-metodo');
-  const metodoId = metodoSel?.value || null;
-  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const mb = leerMetodoYBancoSalarios('pg-sal', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
   const fecha = document.getElementById('pg-sal-fecha').value || todayISO();
   const observaciones = document.getElementById('pg-sal-observaciones').value.trim() || null;
 
@@ -1017,7 +1025,7 @@ async function confirmarPagoSal() {
     const cajaRes = await window.CajaAPI.registrarMovimiento({
       auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
       concepto: `Pago de salario a ${emp.nombre}`, monto: total,
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       referencia_tipo: 'salario', referencia_id: pago.id, observaciones, fecha,
     });
     if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
@@ -1575,6 +1583,58 @@ async function onCambiarMetodoPagoFreelancer() {
   wrap.style.display = '';
 }
 
+// Version generica del helper de arriba -- reutilizada por los demas
+// formularios de Salarios que tambien registran un egreso en Caja
+// (adelanto, pago de planilla, bono anual, liquidacion). Se le pasa
+// el prefijo de IDs de cada modal (ej. "adel" para
+// #adel-metodo/#adel-wrap-banco/#adel-banco).
+async function onCambiarMetodoPagoSalarios(prefijo) {
+  const sel = document.getElementById(`${prefijo}-metodo`);
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById(`${prefijo}-wrap-banco`);
+  const bancoSel = document.getElementById(`${prefijo}-banco`);
+  if (!sel || !wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesFrl();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
+
+// Puebla un <select> de metodo de pago con los mismos metodos reales
+// de la cuenta (STATE.metodosPago), incluido el atributo data-nombre
+// que onCambiarMetodoPagoSalarios necesita para decidir si hace
+// falta pedir banco.
+function poblarSelectMetodoPago(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Efectivo (sin método específico)</option>' +
+    (STATE.metodosPago || []).filter(m => m.id).map(m =>
+      `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+}
+
+// Lee el metodo y (si aplica) el banco elegidos en un formulario --
+// centraliza la misma validacion ya usada en el pago a freelancer,
+// para los demas formularios de Salarios. Devuelve null si falta
+// elegir banco siendo obligatorio (y ya dejo el mensaje en errEl).
+function leerMetodoYBancoSalarios(prefijo, errEl) {
+  const metodoSel = document.getElementById(`${prefijo}-metodo`);
+  const metodoId = metodoSel?.value || null;
+  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  let bancoId = null;
+  const wrap = document.getElementById(`${prefijo}-wrap-banco`);
+  if (wrap && wrap.style.display !== 'none') {
+    bancoId = document.getElementById(`${prefijo}-banco`).value || null;
+    if (!bancoId) { if (errEl) errEl.textContent = 'Elige de qué banco sale este pago.'; return null; }
+  }
+  return { metodoId, metodoNombre, bancoId };
+}
+
 async function abrirPagoFreelancer(id) {
   const f = (STATE.freelancers || []).find(x => x.id === id);
   if (!f) return;
@@ -1873,6 +1933,9 @@ async function abrirNuevaPlanilla() {
   document.getElementById('pl-desde').value = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
   document.getElementById('pl-hasta').value = todayISO();
   document.getElementById('pl-fecha-pago').value = todayISO();
+  poblarSelectMetodoPago('pl-metodo');
+  document.getElementById('pl-wrap-banco').style.display = 'none';
+  document.getElementById('pl-banco').value = '';
   document.getElementById('pl-error').textContent = '';
   STATE.planillaSeleccion = new Map();
   openModal('modal-nueva-planilla');
@@ -1927,6 +1990,15 @@ async function guardarPlanilla(pagar) {
   const incluidos = Array.from(STATE.planillaSeleccion.entries()).filter(([id,s]) => s.incluido);
   if (!incluidos.length) { errEl.textContent = 'Elige al menos un empleado.'; return; }
 
+  // El banco solo hace falta si se va a pagar de una vez — un
+  // borrador no genera ningun movimiento de Caja todavia.
+  let mbPlanilla = { metodoId: null, metodoNombre: 'Efectivo', bancoId: null };
+  if (pagar) {
+    const mb = leerMetodoYBancoSalarios('pl', errEl);
+    if (!mb) return;
+    mbPlanilla = mb;
+  }
+
   const btnId = pagar ? 'btn-pagar-planilla' : 'btn-guardar-planilla-borrador';
   setBtnLoading(btnId, true);
   try {
@@ -1960,7 +2032,7 @@ async function guardarPlanilla(pagar) {
           deducciones: s.deducciones, deducciones_detalle: deduccionesDetalle,
           adelantos_descontados: 0, total_pagado: s.total,
           aportes_patronales: totalAportes, aportes_patronales_detalle: aportesDetalle,
-          metodo_pago_nombre: 'Efectivo', estado: 'pagado',
+          metodo_pago_id: mbPlanilla.metodoId, metodo_pago_nombre: mbPlanilla.metodoNombre, estado: 'pagado',
           comprobante_numero: `SAL-${Date.now().toString().slice(-8)}-${empId.slice(0,4)}`,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
           planilla_id: planilla.id,
@@ -1972,7 +2044,8 @@ async function guardarPlanilla(pagar) {
           const cajaRes = await window.CajaAPI.registrarMovimiento({
             auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
             concepto: `Pago de salario a ${s.nombre} — planilla ${nombre}`, monto: s.total,
-            metodo_pago_nombre: 'Efectivo', referencia_tipo: 'salario', referencia_id: pagoRow.id, fecha: fechaPago,
+            metodo_pago_id: mbPlanilla.metodoId, metodo_pago_nombre: mbPlanilla.metodoNombre, banco_id: mbPlanilla.bancoId,
+            referencia_tipo: 'salario', referencia_id: pagoRow.id, fecha: fechaPago,
           });
           if (!cajaRes.ok) console.error(`No se pudo descontar de Caja el pago de ${s.nombre}:`, cajaRes.error);
         }
@@ -2093,6 +2166,9 @@ async function abrirPagarBonoAnual(empleadoId) {
   document.getElementById('pb-monto').value = montoBase;
   document.getElementById('pb-fecha').value = todayISO();
   document.getElementById('pb-observaciones').value = '';
+  poblarSelectMetodoPago('pb-metodo');
+  document.getElementById('pb-wrap-banco').style.display = 'none';
+  document.getElementById('pb-banco').value = '';
   document.getElementById('pb-error').textContent = '';
   openModal('modal-pagar-bono');
 }
@@ -2104,12 +2180,15 @@ async function confirmarPagoBonoAnual() {
   const monto = round2(parseFloat(document.getElementById('pb-monto').value));
   if (!(monto > 0)) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
   const fecha = document.getElementById('pb-fecha').value || todayISO();
+  const mb = leerMetodoYBancoSalarios('pb', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
 
   setBtnLoading('btn-confirmar-bono', true);
   try {
     const { data: bonoRow, error } = await sbClient.from('empleados_bono_anual_pagos').insert({
       auth_user_id: STATE.userId, empleado_id: emp.id, fecha, periodo_desde: desde, periodo_hasta: hasta,
-      monto, cuota_numero: cuotaNumero, metodo_pago_nombre: 'Efectivo',
+      monto, cuota_numero: cuotaNumero, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
       observaciones: document.getElementById('pb-observaciones').value.trim() || null,
       comprobante_numero: `BON-${Date.now().toString().slice(-8)}`,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
@@ -2120,7 +2199,8 @@ async function confirmarPagoBonoAnual() {
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
         concepto: `${STATE.bonoAnualConfig?.nombre || 'Bono anual'} — ${emp.nombre} (cuota ${cuotaNumero})`,
-        monto, metodo_pago_nombre: 'Efectivo', referencia_tipo: 'salario', referencia_id: bonoRow.id, fecha,
+        monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        referencia_tipo: 'salario', referencia_id: bonoRow.id, fecha,
       });
       if (!cajaRes.ok) showToast('El bono se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
     }
@@ -2424,6 +2504,9 @@ async function abrirLiquidar(empleadoId) {
   document.getElementById('liq-otros-monto').value = '';
   document.getElementById('liq-otros-detalle').value = '';
   document.getElementById('liq-observaciones').value = '';
+  poblarSelectMetodoPago('liq-metodo');
+  document.getElementById('liq-wrap-banco').style.display = 'none';
+  document.getElementById('liq-banco').value = '';
   document.getElementById('liq-error').textContent = '';
 
   await recalcularLiquidacion();
@@ -2466,6 +2549,10 @@ async function confirmarLiquidacion() {
   if (!emp || !emp._calculo) return;
   if (!confirm(`¿Confirmar la liquidación de ${emp.nombre} por ${fmt(emp._calculo.total)}? El empleado quedará marcado como inactivo.`)) return;
 
+  const mb = leerMetodoYBancoSalarios('liq', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
+
   setBtnLoading('btn-confirmar-liquidacion', true);
   try {
     const c = emp._calculo;
@@ -2478,6 +2565,7 @@ async function confirmarLiquidacion() {
       otros_montos: c.otros, otros_detalle: document.getElementById('liq-otros-detalle').value.trim() || null,
       total_pagado: c.total, observaciones: document.getElementById('liq-observaciones').value.trim() || null,
       comprobante_numero: comprobanteNumero, usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     }).select().single();
     if (error) throw error;
 
@@ -2485,6 +2573,7 @@ async function confirmarLiquidacion() {
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
         concepto: `Liquidación final — ${emp.nombre}`, monto: c.total,
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
         referencia_tipo: 'salario', referencia_id: liq.id, fecha,
       });
       if (!cajaRes.ok) showToast('La liquidación se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
