@@ -245,21 +245,52 @@
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return; // esta pagina no usa el sidebar estandar -- no se toca nada
 
+    // El sistema tiene 2 plantillas de sidebar distintas en uso real:
+    // "nav-item" (div + onclick="navigate(...)" + span.nav-label, usada
+    // por Dashboard, Hotel, Restaurante...) y "sidebar-item" (a href=...
+    // + span.sidebar-icon + texto suelto, usada por Productos y otras
+    // paginas "core"). Se detecta cual usa la pagina actual mirando el
+    // primer item real del propio sidebar, para generar el HTML con la
+    // estructura y clases correctas en ambos casos.
+    const usaPatronSidebarItem = !!nav.querySelector('.sidebar-item') && !nav.querySelector('.nav-item');
+
     const porFlag = {};
     Object.values(TODOS_MODULOS_OPCIONALES).forEach(m => {
       if (!m.flagPropio) return;
       if (!(cfg._flagsPropios && cfg._flagsPropios[m.flagPropio] === true)) return;
-      if (document.querySelector(`[onclick*="navigate('${m.archivo}')"]`)) return;
+      const yaExiste = document.querySelector(`[onclick*="navigate('${m.archivo}')"], a[href="${m.archivo}"]`);
+      if (yaExiste) return;
       (porFlag[m.flagPropio] = porFlag[m.flagPropio] || []).push(m);
     });
 
     Object.values(porFlag).forEach(mods => {
       if (!mods.length) return;
-      const nombreSeccion = (mods[0].label.split(' · ')[0] || 'Más').toUpperCase();
+      const nombreSeccion = mods[0].label.includes(' · ') ? mods[0].label.split(' · ')[0] : 'Más';
+
+      if (usaPatronSidebarItem) {
+        const titulo = document.createElement('div');
+        titulo.className = 'sidebar-section-label';
+        titulo.textContent = nombreSeccion;
+        nav.appendChild(titulo);
+
+        mods.forEach(m => {
+          const nombreCorto = m.label.includes(' · ') ? m.label.split(' · ')[1] : m.label;
+          const a = document.createElement('a');
+          a.href = m.archivo;
+          a.className = 'sidebar-item';
+          const icono = document.createElement('span');
+          icono.className = 'sidebar-icon';
+          icono.textContent = m.icon;
+          a.appendChild(icono);
+          a.appendChild(document.createTextNode(nombreCorto));
+          nav.appendChild(a);
+        });
+        return;
+      }
 
       const titulo = document.createElement('div');
       titulo.className = 'nav-section-title';
-      titulo.textContent = nombreSeccion;
+      titulo.textContent = nombreSeccion.toUpperCase();
       nav.appendChild(titulo);
 
       mods.forEach(m => {
