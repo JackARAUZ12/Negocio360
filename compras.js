@@ -1526,6 +1526,27 @@ async function cargarBancosDisponiblesCompra() {
   return _bancosCacheCompra;
 }
 
+// Version simple (un <select> normal, sin las tarjetas visuales ni la
+// conversion de moneda del selector complejo de la Compra normal) --
+// usada solo en Compra Directa, un formulario mas chico y rapido.
+async function onCambiarMetodoPagoCompraDirecta() {
+  const sel = document.getElementById('cd-metodo-pago');
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById('cd-wrap-banco');
+  const bancoSel = document.getElementById('cd-banco');
+  if (!wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesCompra();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
+
 async function saldoActualBanco(bancoId) {
   const { data: movs } = await sbClient.from('movimientos_financieros')
     .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('estado', 'completado');
@@ -1672,6 +1693,8 @@ function abrirCompraDirecta() {
   document.getElementById('cd-observaciones').value = '';
   document.getElementById('cd-error').textContent = '';
   document.getElementById('cd-origen-caja-wrap').style.display = 'none';
+  document.getElementById('cd-wrap-banco').style.display = 'none';
+  document.getElementById('cd-banco').value = '';
   STATE.proveedorSeleccionadoDirectaCompra = null;
   populateMetodosSelect();
   openModal('modal-compra-directa');
@@ -1739,6 +1762,11 @@ async function guardarCompraDirecta() {
   const metodoSel = document.getElementById('cd-metodo-pago');
   const metodoPagoId = metodoSel?.value || null;
   const metodoPagoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  let bancoPagoId = null;
+  if (document.getElementById('cd-wrap-banco').style.display !== 'none') {
+    bancoPagoId = document.getElementById('cd-banco').value || null;
+    if (!bancoPagoId) { errEl.textContent = 'Indica de qué banco sale este pago.'; return; }
+  }
   const observaciones = document.getElementById('cd-observaciones')?.value.trim() || null;
   const proveedor = STATE.proveedorSeleccionadoDirectaCompra;
 
@@ -1773,7 +1801,7 @@ async function guardarCompraDirecta() {
       auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
       concepto: `Compra directa ${numero} — ${concepto}`, monto,
       saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
-      metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
+      metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre, banco_id: bancoPagoId,
       origen_caja: origenCaja || null, referencia_tipo: 'compra', referencia_id: compra.id,
       observaciones: `Proveedor: ${proveedor?.nombre || 'Sin proveedor'}`, fecha,
     }).select().single();
