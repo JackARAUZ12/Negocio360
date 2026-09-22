@@ -1327,10 +1327,15 @@
           </div>
           <div class="form-group">
             <label>Método de pago</label>
-            <select id="gasto-metodo">
+            <select id="gasto-metodo" onchange="onCambiarMetodoGasto('gasto')">
               <option value="">Efectivo (predeterminado)</option>
             </select>
           </div>
+        </div>
+
+        <div class="form-group" id="gasto-banco-wrap" style="display:none">
+          <label>¿De qué banco sale? *</label>
+          <select id="gasto-banco"></select>
         </div>
 
         <div class="form-group" id="gasto-origen-caja-wrap" style="display:none">
@@ -1404,9 +1409,13 @@
       </div>
       <div class="form-group">
         <label>Método de pago</label>
-        <select id="pago-metodo">
+        <select id="pago-metodo" onchange="onCambiarMetodoGasto('pago')">
           <option value="">Efectivo (predeterminado)</option>
         </select>
+      </div>
+      <div class="form-group" id="pago-banco-wrap" style="display:none">
+        <label>¿De qué banco sale? *</label>
+        <select id="pago-banco"></select>
       </div>
       <div class="form-group" id="pago-origen-caja-wrap" style="display:none">
         <label>¿De dónde sale este dinero? *</label>
