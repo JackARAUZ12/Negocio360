@@ -993,7 +993,7 @@ async function anularVenta() {
     if (descontarCaja) {
       try {
         const { data: movOriginal } = await sb.from('movimientos_financieros')
-          .select('monto').eq('referencia_tipo','venta').eq('referencia_id', id)
+          .select('monto, banco_id, metodo_pago_id, metodo_pago_nombre').eq('referencia_tipo','venta').eq('referencia_id', id)
           .eq('auth_user_id', S.userId).eq('tipo_flujo','INGRESO').maybeSingle();
 
         if (movOriginal && Number(movOriginal.monto) > 0) {
@@ -1013,6 +1013,9 @@ async function anularVenta() {
             monto:              montoDevolver,
             saldo_anterior:     saldoAnt,
             saldo_resultante:   saldoRes,
+            metodo_pago_id:     movOriginal.metodo_pago_id || null,
+            metodo_pago_nombre: movOriginal.metodo_pago_nombre || null,
+            banco_id:           movOriginal.banco_id || null,
             referencia_tipo:    'venta',
             referencia_id:      id,
             fecha:              todayISO(),
@@ -1385,6 +1388,10 @@ function abrirModalPagoRecurrente(clienteId) {
   if (sel) {
     sel.innerHTML = S.metodosPago.map(m => `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
   }
+  const wrapBancoPR = document.getElementById('pr-wrap-banco');
+  if (wrapBancoPR) wrapBancoPR.style.display = 'none';
+  const bancoSelPR = document.getElementById('pr-banco');
+  if (bancoSelPR) bancoSelPR.value = '';
 
   actualizarResumenPagoRecurrente();
   openModal('modal-pago-recurrente');
@@ -1489,6 +1496,11 @@ async function confirmarPagoRecurrente() {
   const metodoSel = document.getElementById('pr-metodo-pago');
   const metodoPagoId = metodoSel?.value || null;
   const metodoPagoNombre = metodoSel?.selectedOptions?.[0]?.dataset?.nombre || 'Efectivo';
+  let bancoPagoId = null;
+  if (document.getElementById('pr-wrap-banco')?.style.display !== 'none') {
+    bancoPagoId = document.getElementById('pr-banco')?.value || null;
+    if (!bancoPagoId) { showToast('Elige de qué banco entra este pago', 'error'); return; }
+  }
 
   const btn = document.getElementById('btn-confirmar-pago-recurrente');
   const btnHtmlOriginal = btn ? btn.innerHTML : '';
@@ -1580,6 +1592,7 @@ async function confirmarPagoRecurrente() {
         saldo_resultante:   saldoRes,
         metodo_pago_id:     metodoPagoId,
         metodo_pago_nombre: metodoPagoNombre,
+        banco_id:           bancoPagoId,
         referencia_tipo:    'venta',
         referencia_id:      ventaId,
         observaciones:      observaciones,
@@ -3890,6 +3903,27 @@ async function cargarBancosDisponibles() {
     _bancosCache = data || [];
   } catch (e) { _bancosCache = []; }
   return _bancosCache;
+}
+
+// Version simple (un <select> normal, sin tarjetas ni conversion de
+// moneda) del mismo mecanismo de arriba -- usada en Pago Recurrente,
+// que es un formulario mas chico y no maneja multi-moneda por banco.
+async function onCambiarMetodoPagoRecurrente() {
+  const sel = document.getElementById('pr-metodo-pago');
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById('pr-wrap-banco');
+  const bancoSel = document.getElementById('pr-banco');
+  if (!wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponibles();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
 }
 
 async function mostrarSelectorBanco(metodoPagoNombre) {

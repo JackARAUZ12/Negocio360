@@ -1785,7 +1785,11 @@
       <div class="form-grid-2">
         <div class="form-group">
           <label>Método de pago</label>
-          <select id="pr-metodo-pago"></select>
+          <select id="pr-metodo-pago" onchange="onCambiarMetodoPagoRecurrente()"></select>
+        </div>
+        <div class="form-group" id="pr-wrap-banco" style="display:none">
+          <label>¿De qué banco entra? *</label>
+          <select id="pr-banco"></select>
         </div>
         <div class="form-group" id="pr-wrap-iva" style="display:none">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
