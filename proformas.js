@@ -1930,6 +1930,22 @@ async function generarPDFProforma(p, items, cliente) {
   if (!STATE.configProforma) await cargarConfigProforma();
   const cfg = STATE.configProforma;
 
+  // Mismo mecanismo ya usado en el comprobante de Ventas: el codigo de
+  // barras no se guarda en proforma_detalles (solo producto_sku), asi
+  // que si esta opcion esta activa, se busca en vivo contra productos.
+  // Si esta apagada (el default), no se hace ninguna consulta de mas.
+  if (cfg.mostrar_codigo_barras === true && Array.isArray(items) && items.length) {
+    try {
+      const idsProd = [...new Set(items.map(it => it.producto_id).filter(Boolean))];
+      if (idsProd.length) {
+        const { data: prods } = await sbClient.from('productos').select('id, codigo_barras').in('id', idsProd);
+        const mapa = {};
+        (prods || []).forEach(pr => { mapa[pr.id] = pr.codigo_barras; });
+        items = items.map(it => ({ ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '' }));
+      }
+    } catch (e) { console.warn('generarPDFProforma, lookup codigo de barras:', e); }
+  }
+
   const biz = {
     nombre:    STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
     direccion: cfg.mostrar_direccion !== false ? (STATE.empresaConfig?.direccion || '') : '',
@@ -2003,21 +2019,42 @@ async function generarPDFProforma(p, items, cliente) {
   y += 10;
 
   // ---- Tabla de ítems ----
-  const filas = (items||[]).map(it => [
-    it.producto_nombre || 'Ítem',
-    Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
-    fmt(it.precio),
-    Number(it.descuento) > 0 ? fmt(it.descuento) : '—',
-    fmt(it.subtotal),
-  ]);
+  // Mismas 2 columnas opcionales del comprobante de Ventas, controladas
+  // desde la misma configuracion (mostrar_sku, mostrar_codigo_barras) --
+  // apagadas por defecto, sin cambiar nada para quien nunca las activa.
+  const colSku = cfg.mostrar_sku === true;
+  const colBarras = cfg.mostrar_codigo_barras === true;
+
+  const encabezadoTabla = ['Descripción'];
+  if (colSku) encabezadoTabla.push('SKU');
+  if (colBarras) encabezadoTabla.push('Código de barras');
+  encabezadoTabla.push('Cant.', 'Precio unit.', 'Descuento', 'Subtotal');
+
+  const filas = (items||[]).map(it => {
+    const fila = [it.producto_nombre || 'Ítem'];
+    if (colSku) fila.push(it.producto_sku || it.sku || '—');
+    if (colBarras) fila.push(it.codigo_barras || '—');
+    fila.push(
+      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
+      fmt(it.precio),
+      Number(it.descuento) > 0 ? fmt(it.descuento) : '—',
+      fmt(it.subtotal),
+    );
+    return fila;
+  });
+
+  const totalColumnasTabla = encabezadoTabla.length;
+  const columnStylesTabla = {};
+  for (let i = totalColumnasTabla - 4; i < totalColumnasTabla; i++) columnStylesTabla[i] = { halign: 'right' };
+
   doc.autoTable({
     startY: y,
-    head: [['Descripción', 'Cant.', 'Precio unit.', 'Descuento', 'Subtotal']],
+    head: [encabezadoTabla],
     body: filas,
     theme: 'striped',
     headStyles: { fillColor: hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108, 99, 255] },
-    styles: { fontSize: 9.5, cellPadding: 3.5 },
-    columnStyles: { 1: { halign:'right' }, 2: { halign:'right' }, 3: { halign:'right' }, 4: { halign:'right' } },
+    styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: 3.5 },
+    columnStyles: columnStylesTabla,
     margin: { left: M, right: M },
   });
 
