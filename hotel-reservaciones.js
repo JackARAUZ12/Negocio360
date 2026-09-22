@@ -12,7 +12,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
   habitaciones: [], reservaciones: [], filtradas: [],
-  busqueda: '', filtroEstado: '',
+  busqueda: '', filtroEstado: '', metodosPago: [], bancosCache: null,
 };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -23,6 +23,65 @@ function fmt(amount) {
 }
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+/* =====================================================
+   MÉTODOS DE PAGO / BANCOS -- antes, el anticipo y el cobro final
+   usaban un <select> con opciones de TEXTO fijo (Efectivo/Tarjeta/
+   Transferencia), sin conectar con la tabla real metodos_pago ni,
+   por lo tanto, con ningun banco especifico. Se conecta aqui con
+   el mismo mecanismo ya probado en el resto del sistema.
+===================================================== */
+async function loadMetodosPagoHotel() {
+  try {
+    const { data } = await sb.from('metodos_pago').select('id, nombre, es_default')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('orden');
+    STATE.metodosPago = data && data.length ? data : [{ id: null, nombre: 'Efectivo', es_default: true }];
+  } catch (e) {
+    console.warn('loadMetodosPagoHotel:', e);
+    STATE.metodosPago = [{ id: null, nombre: 'Efectivo', es_default: true }];
+  }
+}
+
+function poblarSelectMetodoPagoHotel(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = STATE.metodosPago.map(m =>
+    `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  const def = STATE.metodosPago.find(m => m.es_default);
+  if (def) sel.value = def.id || '';
+}
+
+async function cargarBancosDisponiblesHotel() {
+  if (STATE.bancosCache) return STATE.bancosCache;
+  try {
+    const { data } = await sb.from('bancos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.bancosCache = data || [];
+  } catch (e) { STATE.bancosCache = []; }
+  return STATE.bancosCache;
+}
+
+// Mismo mecanismo ya probado en Gastos/Salarios/Ventas/Compras/
+// Cuentas por Pagar: si el metodo elegido es Tarjeta o Transferencia
+// y ya hay bancos creados, se pide elegir de cual banco sale/entra
+// el dinero. Se le pasa el prefijo de IDs del formulario ("res" para
+// el anticipo, "est" para el cobro final del check-out).
+async function onCambiarMetodoPagoHotel(prefijo) {
+  const sel = document.getElementById(prefijo === 'res' ? 'res-metodo-anticipo' : 'est-metodo-pago');
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById(`${prefijo}-wrap-banco`);
+  const bancoSel = document.getElementById(`${prefijo}-banco`);
+  if (!wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesHotel();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
 
 // Desglosa un monto YA cobrado (IVA incluido) en su parte neta y su
 // IVA, y registra el IVA en Impuestos -- mismo patron real que ya usa
@@ -180,7 +239,7 @@ async function init() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    await Promise.all([cargarHabitacionesParaSelect(), cargarReservaciones()]);
+    await Promise.all([cargarHabitacionesParaSelect(), cargarReservaciones(), loadMetodosPagoHotel()]);
   } catch (e) {
     console.error('init hotel-reservaciones:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -313,6 +372,8 @@ function hayCruceDeFechas(habitacionId, entrada, salida, ignorarReservacionId) {
 function onCambiarTipoPagoReservacion() {
   const esAnticipo = document.getElementById('res-tipo-pago').value === 'anticipo';
   document.getElementById('res-wrap-anticipo').style.display = esAnticipo ? '' : 'none';
+  if (esAnticipo) onCambiarMetodoPagoHotel('res');
+  else { document.getElementById('res-wrap-banco').style.display = 'none'; document.getElementById('res-banco').value = ''; }
 }
 
 /* =====================================================
@@ -424,7 +485,22 @@ function abrirModalReservacion(id) {
     document.getElementById('res-notas').value = r.notas || '';
     document.getElementById('res-tipo-pago').value = r.tipo_pago || 'sin_pago';
     document.getElementById('res-monto-anticipo').value = r.monto_anticipo || '';
-    document.getElementById('res-metodo-anticipo').value = r.metodo_pago_anticipo || 'Efectivo';
+    poblarSelectMetodoPagoHotel('res-metodo-anticipo');
+    // Reservaciones creadas ANTES de esta conexion con Bancos guardaron
+    // el metodo como texto plano ("Efectivo"/"Tarjeta"/"Transferencia"),
+    // no como el id real de metodos_pago -- se busca por nombre en ese
+    // caso, para no dejar el selector vacio en una reserva vieja.
+    if (r.metodo_pago_anticipo) {
+      const coincideId = STATE.metodosPago.some(m => m.id === r.metodo_pago_anticipo);
+      if (coincideId) {
+        document.getElementById('res-metodo-anticipo').value = r.metodo_pago_anticipo;
+      } else {
+        const porNombre = STATE.metodosPago.find(m => (m.nombre||'').toLowerCase() === String(r.metodo_pago_anticipo).toLowerCase());
+        if (porNombre) document.getElementById('res-metodo-anticipo').value = porNombre.id || '';
+      }
+    }
+    document.getElementById('res-wrap-banco').style.display = 'none';
+    document.getElementById('res-banco').value = '';
     // Si el anticipo ya se registro en Caja, no se puede editar el
     // monto desde aqui (evita que el numero en Caja y en la reserva
     // queden desincronizados) -- solo se ve, ya fijo.
@@ -445,7 +521,9 @@ function abrirModalReservacion(id) {
     document.getElementById('res-tipo-pago').value = 'sin_pago';
     document.getElementById('res-monto-anticipo').value = '';
     document.getElementById('res-monto-anticipo').disabled = false;
-    document.getElementById('res-metodo-anticipo').value = 'Efectivo';
+    poblarSelectMetodoPagoHotel('res-metodo-anticipo');
+    document.getElementById('res-wrap-banco').style.display = 'none';
+    document.getElementById('res-banco').value = '';
   }
   onCambiarTipoPagoReservacion();
   openModal('modal-reservacion');
@@ -472,6 +550,11 @@ async function guardarReservacion() {
   const tipoPago = document.getElementById('res-tipo-pago').value;
   const montoAnticipo = Math.max(0, parseFloat(document.getElementById('res-monto-anticipo').value) || 0);
   if (tipoPago === 'anticipo' && montoAnticipo <= 0) { errEl.textContent = 'Escribe el monto del anticipo.'; return; }
+  let bancoAnticipoId = null;
+  if (tipoPago === 'anticipo' && document.getElementById('res-wrap-banco').style.display !== 'none') {
+    bancoAnticipoId = document.getElementById('res-banco').value || null;
+    if (!bancoAnticipoId) { errEl.textContent = 'Indica de qué banco entra el anticipo.'; return; }
+  }
 
   const id = document.getElementById('res-id').value || null;
 
@@ -529,11 +612,14 @@ async function guardarReservacion() {
     if (registrarAnticipoEnCaja && window.CajaAPI) {
       const conceptoAnticipo = `Anticipo de reservación — ${huesped}`;
       const montoNeto = await registrarIvaHotel(montoAnticipo, conceptoAnticipo, reservaId);
+      const selMetodoAnticipo = document.getElementById('res-metodo-anticipo');
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'OTRO_INGRESO',
         concepto: conceptoAnticipo,
         monto: montoNeto, referencia_tipo: 'hotel_reservacion', referencia_id: reservaId,
-        metodo_pago_nombre: document.getElementById('res-metodo-anticipo').value,
+        metodo_pago_id: selMetodoAnticipo?.value || null,
+        metodo_pago_nombre: selMetodoAnticipo?.selectedOptions[0]?.dataset.nombre || 'Efectivo',
+        banco_id: bancoAnticipoId,
       });
       if (cajaRes.ok) {
         await sb.from('hotel_reservaciones').update({ anticipo_registrado_caja: true }).eq('id', reservaId);
@@ -604,6 +690,9 @@ async function abrirModalEstadia(id) {
   document.getElementById('est-cargo-monto').value = '';
   document.getElementById('est-huesped-info').textContent =
     `${r.cliente_nombre} — Habitación ${r.hotel_habitaciones?.numero || ''} · Entrada ${fmtFechaCorta(r.fecha_entrada)}`;
+  poblarSelectMetodoPagoHotel('est-metodo-pago');
+  document.getElementById('est-wrap-banco').style.display = 'none';
+  document.getElementById('est-banco').value = '';
 
   const { data } = await sb.from('hotel_cargos_estadia').select('*').eq('reservacion_id', id).order('created_at');
   STATE.cargosEstadia = data || [];
@@ -672,6 +761,12 @@ async function hacerCheckOut() {
   const anticipo = r.tipo_pago === 'anticipo' ? Number(r.monto_anticipo || 0) : 0;
   const totalCobrar = Math.max(0, montoHabitacion + totalCargos - anticipo);
 
+  let bancoCheckoutId = null;
+  if (totalCobrar > 0 && document.getElementById('est-wrap-banco').style.display !== 'none') {
+    bancoCheckoutId = document.getElementById('est-banco').value || null;
+    if (!bancoCheckoutId) { errEl.textContent = 'Indica de qué banco entra el cobro.'; return; }
+  }
+
   setBtnLoading('est-btn-checkout', true);
   try {
     // El cobro final SIEMPRE se registra en Caja, incluso si es
@@ -681,11 +776,14 @@ async function hacerCheckOut() {
     if (totalCobrar > 0 && window.CajaAPI) {
       const conceptoCheckout = `Check-out — ${r.cliente_nombre} (Habitación ${r.hotel_habitaciones?.numero || ''})`;
       const montoNeto = await registrarIvaHotel(totalCobrar, conceptoCheckout, id);
+      const selMetodoCheckout = document.getElementById('est-metodo-pago');
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'COBRO',
         concepto: conceptoCheckout,
         monto: montoNeto, referencia_tipo: 'hotel_reservacion', referencia_id: id,
-        metodo_pago_nombre: document.getElementById('est-metodo-pago').value,
+        metodo_pago_id: selMetodoCheckout?.value || null,
+        metodo_pago_nombre: selMetodoCheckout?.selectedOptions[0]?.dataset.nombre || 'Efectivo',
+        banco_id: bancoCheckoutId,
       });
       if (!cajaRes.ok) {
         errEl.textContent = 'No se pudo registrar el cobro en Caja: ' + cajaRes.error;
