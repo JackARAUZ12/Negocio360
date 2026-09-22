@@ -1589,7 +1589,11 @@
       <div id="ncd-wrap-metodo-prima" style="display:none;margin-top:8px">
         <div class="form-group">
           <label>¿Con qué se pagó la prima? *</label>
-          <select id="ncd-metodo-prima"></select>
+          <select id="ncd-metodo-prima" onchange="onCambiarMetodoPagoCxP('ncd')"></select>
+        </div>
+        <div class="form-group" id="ncd-wrap-banco" style="display:none">
+          <label>¿De qué banco salió? *</label>
+          <select id="ncd-banco"></select>
         </div>
         <div id="ncd-prima-resumen" style="font-size:12px;color:var(--text-secondary)"></div>
       </div>
@@ -1719,7 +1723,11 @@
 
       <div class="form-row">
         <div><label>Monto a pagar *</label><input type="number" id="pg-monto" min="0.01" step="0.01"/></div>
-        <div><label>Método de pago</label><select id="pg-metodo"></select></div>
+        <div><label>Método de pago</label><select id="pg-metodo" onchange="onCambiarMetodoPagoCxP('pg')"></select></div>
+      </div>
+      <div class="form-group" id="pg-wrap-banco" style="display:none">
+        <label>¿De qué banco sale? *</label>
+        <select id="pg-banco"></select>
       </div>
       <label>Observaciones</label>
       <textarea id="pg-observaciones" placeholder="Opcional"></textarea>

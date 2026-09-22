@@ -206,6 +206,39 @@ function populateMetodosSelect() {
   });
 }
 
+// Mismo mecanismo ya probado en Gastos/Salarios/Ventas: si el metodo
+// elegido es Tarjeta o Transferencia y la cuenta ya tiene bancos
+// creados, se pide elegir de cual banco sale/entra el dinero. Se le
+// pasa el prefijo de IDs del formulario ("pg" para Registrar Pago,
+// "ncd" para la prima de una Nueva Cuenta Directa).
+let _bancosCacheCxP = null;
+async function cargarBancosDisponiblesCxP() {
+  if (_bancosCacheCxP) return _bancosCacheCxP;
+  try {
+    const { data } = await sbClient.from('bancos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    _bancosCacheCxP = data || [];
+  } catch (e) { _bancosCacheCxP = []; }
+  return _bancosCacheCxP;
+}
+
+async function onCambiarMetodoPagoCxP(prefijo) {
+  const sel = document.getElementById(`${prefijo}-metodo`) || document.getElementById(`${prefijo}-metodo-prima`);
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById(`${prefijo}-wrap-banco`);
+  const bancoSel = document.getElementById(`${prefijo}-banco`);
+  if (!wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesCxP();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
+
 /* =====================================================
    PRODUCTOS (solo tipo=producto, para el carrito)
 ===================================================== */
@@ -592,6 +625,8 @@ function abrirNuevaCuentaDirecta() {
   document.getElementById('ncd-prima-valor').value = '';
   document.getElementById('ncd-prima-valor').disabled = true;
   document.getElementById('ncd-wrap-metodo-prima').style.display = 'none';
+  document.getElementById('ncd-wrap-banco').style.display = 'none';
+  document.getElementById('ncd-banco').value = '';
   document.getElementById('ncd-tasa-interes').value = 0;
   document.getElementById('ncd-metodo-amortizacion').value = 'frances';
   document.getElementById('ncd-fecha-vencimiento').value = '';
@@ -771,11 +806,15 @@ async function guardarCuentaDirecta() {
   const primaTipo = document.getElementById('ncd-prima-tipo')?.value || 'ninguna';
   const primaValor = Number(document.getElementById('ncd-prima-valor')?.value) || 0;
   const primaMonto = calcularPrimaDirecta(montoOriginal, primaTipo, primaValor);
-  let metodoPrimaId = null, metodoPrimaNombre = null;
+  let metodoPrimaId = null, metodoPrimaNombre = null, bancoPrimaId = null;
   if (primaMonto > 0) {
     const selMetodo = document.getElementById('ncd-metodo-prima');
     metodoPrimaId = selMetodo?.value || null;
     metodoPrimaNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+    if (document.getElementById('ncd-wrap-banco').style.display !== 'none') {
+      bancoPrimaId = document.getElementById('ncd-banco').value || null;
+      if (!bancoPrimaId) { errEl.textContent = 'Indica de qué banco salió la prima.'; return; }
+    }
   }
   const capitalFinanciado = round2(montoOriginal - primaMonto);
   if (capitalFinanciado < 0) { errEl.textContent = 'La prima no puede ser mayor que el monto total.'; return; }
@@ -859,14 +898,14 @@ async function guardarCuentaDirecta() {
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
         concepto: `Prima — ${cuenta.numero} (${concepto})`, monto: primaMonto,
-        metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre,
+        metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre, banco_id: bancoPrimaId,
         referencia_tipo: 'cuenta_por_pagar', referencia_id: cuenta.id, observaciones: 'Prima / pago inicial',
       });
       if (!cajaRes.ok) showToast('La cuenta se guardó, pero la prima no se pudo registrar en Caja: ' + cajaRes.error, 'error');
       else {
         await sbClient.from('cuentas_por_pagar_pagos').insert({
           auth_user_id: STATE.userId, cuenta_id: cuenta.id, proveedor_id: STATE.proveedorSeleccionadoDirecto.id,
-          monto: primaMonto, metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre,
+          monto: primaMonto, metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre, banco_id: bancoPrimaId,
           observaciones: 'Prima / pago inicial', saldo_anterior: montoTotalConIntereses, saldo_nuevo: round2(montoTotalConIntereses-primaMonto),
           comprobante_numero: `PAG-${cuenta.numero}-PRIMA`,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
@@ -1286,6 +1325,8 @@ function abrirPagarGenerico() {
   document.getElementById('pg-monto').value = '';
   document.getElementById('pg-observaciones').value = '';
   populateMetodosSelect();
+  document.getElementById('pg-wrap-banco').style.display = 'none';
+  document.getElementById('pg-banco').value = '';
   poblarSelectCuentasPagables(null);
   STATE.cuentaActual = null;
   openModal('modal-pagar-cxp');
@@ -1294,6 +1335,8 @@ function abrirPagarDesdeTabla(id) {
   document.getElementById('pg-error').textContent = '';
   document.getElementById('pg-observaciones').value = '';
   populateMetodosSelect();
+  document.getElementById('pg-wrap-banco').style.display = 'none';
+  document.getElementById('pg-banco').value = '';
   poblarSelectCuentasPagables(id);
   onSelectCuentaPagarCxP();
   openModal('modal-pagar-cxp');
@@ -1333,6 +1376,11 @@ async function confirmarPagoCxP() {
   const metodoSel = document.getElementById('pg-metodo');
   const metodoId = metodoSel?.value || null;
   const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  let bancoId = null;
+  if (document.getElementById('pg-wrap-banco').style.display !== 'none') {
+    bancoId = document.getElementById('pg-banco').value || null;
+    if (!bancoId) { errEl.textContent = 'Indica de qué banco sale este pago.'; return; }
+  }
   const observaciones = document.getElementById('pg-observaciones')?.value.trim() || null;
 
   setBtnLoading('btn-confirmar-pago-cxp', true);
@@ -1385,7 +1433,7 @@ async function confirmarPagoCxP() {
     const cajaRes = await window.CajaAPI.registrarMovimiento({
       auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
       concepto: `Pago a proveedor — ${cuentaFresca.numero}`, monto,
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
     });
     if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
@@ -1393,7 +1441,7 @@ async function confirmarPagoCxP() {
     const comprobanteNumero = `PAG-${cuentaFresca.numero}-${Date.now().toString().slice(-5)}`;
     await sbClient.from('cuentas_por_pagar_pagos').insert({
       auth_user_id: STATE.userId, cuenta_id: cuentaFresca.id, proveedor_id: cuentaFresca.proveedor_id,
-      monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
+      monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId, observaciones,
       saldo_anterior: saldoAnterior, saldo_nuevo: saldoNuevo, comprobante_numero: comprobanteNumero,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     });
