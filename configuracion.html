@@ -1082,6 +1082,42 @@
           </button>
         </div>
 
+        <!-- SKU Y CÓDIGO DE BARRAS EN COMPROBANTES -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><line x1="7" y1="12" x2="7" y2="15"/><line x1="10" y1="12" x2="10" y2="15"/><line x1="14" y1="12" x2="14" y2="15"/><line x1="17" y1="12" x2="17" y2="15"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">SKU y código de barras en comprobantes</div>
+              <div class="cfg-card-desc">Muestra el SKU y/o código de barras de cada producto en las Proformas y en los comprobantes tamaño carta de Ventas y Créditos. Apagado por defecto.</div>
+            </div>
+          </div>
+
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label" id="skudoc-sku-label">Mostrar SKU</div>
+              <div class="cfg-row-sub" id="skudoc-sku-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="skudoc-sku-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleSkuDocClick(event, 'sku')"></span>
+            </label>
+          </div>
+
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label" id="skudoc-barras-label">Mostrar código de barras</div>
+              <div class="cfg-row-sub" id="skudoc-barras-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="skudoc-barras-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleSkuDocClick(event, 'barras')"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="skudoc-status"></div>
+        </div>
+
         <!-- SISTEMA MULTIUSUARIO -->
         <div class="cfg-card fade-in stagger-1">
           <div class="cfg-card-header">
@@ -1456,6 +1492,77 @@ async function cargarMultiusuario() {
   } catch (e) {
     console.error('cargarMultiusuario:', e);
     sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+// Un solo par de funciones para los 2 interruptores (SKU y código de
+// barras) -- comparten exactamente la misma tabla y el mismo patrón,
+// solo cambia el campo real (mostrar_sku / mostrar_codigo_barras).
+// A diferencia de multiusuario (que actualiza una fila que siempre
+// existe en usuarios), configuracion_proforma puede no tener fila
+// todavía para una cuenta que nunca configuró nada -- por eso se usa
+// upsert en vez de update, y el estado "sin fila" se trata como
+// apagado (el default real de la columna).
+const SKUDOC_CAMPOS = { sku: 'mostrar_sku', barras: 'mostrar_codigo_barras' };
+const SKUDOC_TEXTOS = {
+  sku:    { on: 'Mostrando SKU en Proformas y comprobantes', off: 'SKU oculto en Proformas y comprobantes' },
+  barras: { on: 'Mostrando código de barras en Proformas y comprobantes', off: 'Código de barras oculto en Proformas y comprobantes' },
+};
+
+async function cargarSkuDoc() {
+  const sub    = document.getElementById('skudoc-status');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_proforma')
+      .select('mostrar_sku, mostrar_codigo_barras')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+
+    ['sku', 'barras'].forEach(tipo => {
+      const activo = data ? (data[SKUDOC_CAMPOS[tipo]] === true) : false;
+      const toggle = document.getElementById(`skudoc-${tipo}-toggle`);
+      const label  = document.getElementById(`skudoc-${tipo}-label`);
+      const subEl  = document.getElementById(`skudoc-${tipo}-sub`);
+      toggle.checked = activo;
+      subEl.textContent = activo ? SKUDOC_TEXTOS[tipo].on : SKUDOC_TEXTOS[tipo].off;
+      toggle.disabled = false;
+    });
+  } catch (e) {
+    console.error('cargarSkuDoc:', e);
+    if (sub) sub.textContent = '';
+    ['sku', 'barras'].forEach(tipo => {
+      const subEl = document.getElementById(`skudoc-${tipo}-sub`);
+      if (subEl) subEl.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+    });
+  }
+}
+
+function onToggleSkuDocClick(evt, tipo) {
+  const toggle = document.getElementById(`skudoc-${tipo}-toggle`);
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarSkuDoc(tipo, toggle.checked);
+}
+
+async function guardarSkuDoc(tipo, activo) {
+  const toggle   = document.getElementById(`skudoc-${tipo}-toggle`);
+  const subEl    = document.getElementById(`skudoc-${tipo}-sub`);
+  const statusEl = document.getElementById('skudoc-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_proforma')
+      .upsert({ auth_user_id: currentAuthUserId, [SKUDOC_CAMPOS[tipo]]: activo, updated_at: new Date().toISOString() }, { onConflict: 'auth_user_id' });
+    if (error) throw error;
+    subEl.textContent = activo ? SKUDOC_TEXTOS[tipo].on : SKUDOC_TEXTOS[tipo].off;
+    setStatus(statusEl, activo ? 'Activado correctamente.' : 'Desactivado correctamente.', true);
+  } catch (e) {
+    console.error('guardarSkuDoc:', e);
+    toggle.checked = !activo; // revertir visualmente
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
   }
 }
 
@@ -2078,6 +2185,7 @@ async function initConfiguracion() {
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('app').style.display = 'flex';
       cargarMultiusuario();
+      cargarSkuDoc();
       cargarModulosOpcionales();
       cargarLotesVencimiento();
       cargarPresentaciones();

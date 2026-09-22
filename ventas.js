@@ -3804,6 +3804,7 @@ async function descargarReciboDeVenta(venta, items) {
       }, (items||[]).map(i => ({
         nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
         descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
+        sku: i.sku || i.producto_sku || null, producto_id: i.producto_id || i.id || null,
       })));
       entregarPDFRecibo(doc, `Comprobante_${venta.numero_venta}.pdf`, descargarAutomatico);
       return;
@@ -3860,6 +3861,7 @@ async function descargarComprobanteCartaVenta() {
     }, (items||[]).map(it => ({
       nombre: it.producto_nombre, cantidad: it.cantidad, precio: it.precio,
       descuento: it.descuento, subtotal: it.subtotal,
+      sku: it.producto_sku || null, producto_id: it.producto_id || null,
     })));
 
     doc.save(`Comprobante_${venta.numero_venta}.pdf`);
@@ -5882,6 +5884,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
         }, (items||[]).map(i => ({
           nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: round2(i.cantidad*i.precio),
+          sku: i.sku || i.producto_sku || null, producto_id: i.producto_id || i.id || null,
         })));
         entregarPDFRecibo(doc, `Comprobante_${venta.numero_venta}.pdf`, cfg.descargar_pdf_automatico !== false);
       } catch (e) {
@@ -6088,6 +6091,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
         }, (items||[]).map(i => ({
           nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
+          sku: i.sku || i.producto_sku || null, producto_id: i.producto_id || i.id || null,
         })));
         entregarPDFRecibo(doc, `Comprobante_${venta.numero_venta}.pdf`, cfg.descargar_pdf_automatico !== false);
       } catch (e) {

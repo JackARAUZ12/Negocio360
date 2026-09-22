@@ -2293,6 +2293,7 @@
       const itemsEnriquecidos = await enriquecerItemsConCombo((productos||[]).map(p => ({
         nombre: p.producto_nombre, cantidad: p.cantidad, precio: p.precio, descuento: 0, subtotal: p.subtotal,
         tipo_item: p.tipo_item, combo_id: p.combo_id,
+        sku: p.producto_sku || p.sku || null, producto_id: p.producto_id || null,
       })));
       const doc = await generarComprobanteCartaPDF('credito', {
         userId: CS.userId,

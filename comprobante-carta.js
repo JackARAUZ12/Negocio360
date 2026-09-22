@@ -91,6 +91,24 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   const cfg  = await _cc_cargarConfigDocumentos(datos.userId);
   const logo = await _cc_cargarLogo(datos.userId);
 
+  // El codigo de barras NO se guarda en el historico de la venta (solo
+  // el SKU) -- si esta opcion esta activa, se busca en vivo contra
+  // productos usando los producto_id de los items de ESTE comprobante.
+  // Si la opcion esta apagada (el caso por defecto), no se hace
+  // ninguna consulta extra -- cero impacto para quien nunca la usa.
+  if (cfg.mostrar_codigo_barras === true && Array.isArray(items) && items.length) {
+    try {
+      const ids = [...new Set(items.map(it => it.producto_id).filter(Boolean))];
+      if (ids.length) {
+        const sb = await _cc_clienteSupabase();
+        const { data: prods } = await sb.from('productos').select('id, codigo_barras').in('id', ids);
+        const mapa = {};
+        (prods || []).forEach(p => { mapa[p.id] = p.codigo_barras; });
+        items = items.map(it => ({ ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '' }));
+      }
+    } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras:', e); }
+  }
+
   const TITULOS = { venta: 'Comprobante de Venta', credito: 'Comprobante de Crédito' };
   const titulo = TITULOS[tipo] || 'Comprobante';
   const moneda = datos.moneda_simbolo || 'C$';
@@ -159,21 +177,48 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     y += 10;
   }
 
-  const filas = (items||[]).map(it => [
-    it.nombre || 'Ítem',
-    Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
-    fmtM(it.precio),
-    Number(it.descuento) > 0 ? fmtM(it.descuento) : '—',
-    fmtM(it.subtotal),
-  ]);
+  // Columnas SKU / Código de barras: opcionales, controladas desde
+  // Configuración general (mostrar_sku, mostrar_codigo_barras en
+  // configuracion_proforma) -- apagadas por defecto, no cambian nada
+  // para quien nunca las active. Se insertan justo despues de la
+  // descripcion, y el resto de columnas se calcula dinamicamente para
+  // no desalinear los estilos de alineacion (numeros a la derecha).
+  const colSku = cfg.mostrar_sku === true;
+  const colBarras = cfg.mostrar_codigo_barras === true;
+
+  const encabezado = ['Descripción'];
+  if (colSku) encabezado.push('SKU');
+  if (colBarras) encabezado.push('Código de barras');
+  encabezado.push('Cant.', 'Precio unit.', 'Descuento', 'Subtotal');
+
+  const filas = (items||[]).map(it => {
+    const fila = [it.nombre || 'Ítem'];
+    if (colSku) fila.push(it.sku || '—');
+    if (colBarras) fila.push(it.codigo_barras || '—');
+    fila.push(
+      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
+      fmtM(it.precio),
+      Number(it.descuento) > 0 ? fmtM(it.descuento) : '—',
+      fmtM(it.subtotal),
+    );
+    return fila;
+  });
+
+  // Los ultimos 4 indices (Cant./Precio/Descuento/Subtotal) siempre
+  // van alineados a la derecha, sin importar cuantas columnas nuevas
+  // se hayan insertado antes.
+  const totalColumnas = encabezado.length;
+  const columnStyles = {};
+  for (let i = totalColumnas - 4; i < totalColumnas; i++) columnStyles[i] = { halign: 'right' };
+
   doc.autoTable({
     startY: y,
-    head: [['Descripción', 'Cant.', 'Precio unit.', 'Descuento', 'Subtotal']],
+    head: [encabezado],
     body: filas,
     theme: 'striped',
     headStyles: { fillColor: _cc_hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255] },
-    styles: { fontSize: 9.5, cellPadding: 3.5, valign: 'top' },
-    columnStyles: { 1:{halign:'right'}, 2:{halign:'right'}, 3:{halign:'right'}, 4:{halign:'right'} },
+    styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: 3.5, valign: 'top' },
+    columnStyles,
     margin: { left: M, right: M },
   });
 

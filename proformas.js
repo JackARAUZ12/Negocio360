@@ -1509,6 +1509,7 @@ function imprimirComprobanteProforma() {
           precio: it.cantidad > 0 ? round2(it.subtotal / it.cantidad) : it.subtotal,
           descuento: 0, subtotal: it.subtotal,
           tipo_item: it.tipo_item, combo_id: it.combo_id,
+          sku: it.producto_sku || null, producto_id: it.producto_id || null,
         })));
         const doc = await generarComprobanteCartaPDF('venta', {
           userId: STATE.userId, numero: v.numero, fecha: fmtFecha(v.fecha),
@@ -1772,6 +1773,7 @@ async function confirmarConvertirAVenta() {
       const itemsCarta2 = detallesConCombo.map(d => ({
         nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
         descuento: d.descuento, subtotal: d.subtotal,
+        sku: d.producto_sku || null, producto_id: d.producto_id || null,
       }));
       const docCarta = await generarComprobanteCartaPDF('venta', {
         userId: STATE.userId,
