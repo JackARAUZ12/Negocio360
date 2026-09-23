@@ -271,8 +271,16 @@
     ['gasto-metodo','pago-metodo'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
-      sel.innerHTML = `<option value="">Efectivo (predeterminado)</option>` +
-        GS.metodosPago.map(m => `<option value="${m.id}">${escHtml(m.nombre)}</option>`).join('');
+      // Si la cuenta ya tiene metodos de pago reales (que normalmente
+      // ya incluyen su propio "Efectivo" marcado como default), se
+      // usan solo esos -- antes se concatenaba ademas una opcion fija
+      // "Efectivo (predeterminado)", duplicando la palabra "Efectivo"
+      // cuando la cuenta ya tenia su propio metodo con ese nombre.
+      if (GS.metodosPago.length) {
+        sel.innerHTML = GS.metodosPago.map(m => `<option value="${m.id||''}">${escHtml(m.nombre)}</option>`).join('');
+      } else {
+        sel.innerHTML = `<option value="">Efectivo (predeterminado)</option>`;
+      }
     });
   }
 
