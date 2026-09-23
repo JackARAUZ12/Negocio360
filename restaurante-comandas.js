@@ -12,7 +12,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let STATE = {
   userId: null, empresaConfig: {}, currentUser: {},
-  mesas: [], comandas: [], itemsComandaActual: [],
+  mesas: [], comandas: [], itemsComandaActual: [], metodosPago: [], bancosCache: null,
 };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -23,6 +23,61 @@ function fmt(amount) {
 }
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+/* =====================================================
+   MÉTODOS DE PAGO / BANCOS -- el selector de cobro usaba opciones
+   de TEXTO fijo (Efectivo/Tarjeta/Transferencia), sin conectar con
+   la tabla real metodos_pago ni con ningun banco especifico.
+===================================================== */
+async function loadMetodosPagoComanda() {
+  try {
+    const { data } = await sb.from('metodos_pago').select('id, nombre, es_default')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('orden');
+    STATE.metodosPago = data && data.length ? data : [{ id: null, nombre: 'Efectivo', es_default: true }];
+  } catch (e) {
+    console.warn('loadMetodosPagoComanda:', e);
+    STATE.metodosPago = [{ id: null, nombre: 'Efectivo', es_default: true }];
+  }
+}
+
+function poblarSelectMetodoPagoComanda() {
+  const sel = document.getElementById('cb-metodo-pago');
+  if (!sel) return;
+  sel.innerHTML = STATE.metodosPago.map(m =>
+    `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  const def = STATE.metodosPago.find(m => m.es_default);
+  if (def) sel.value = def.id || '';
+}
+
+async function cargarBancosDisponiblesComanda() {
+  if (STATE.bancosCache) return STATE.bancosCache;
+  try {
+    const { data } = await sb.from('bancos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.bancosCache = data || [];
+  } catch (e) { STATE.bancosCache = []; }
+  return STATE.bancosCache;
+}
+
+// Mismo mecanismo ya probado en el resto del sistema: si el metodo
+// elegido es Tarjeta o Transferencia y ya hay bancos creados, se
+// pide elegir de cual banco entra el cobro de la mesa.
+async function onCambiarMetodoPagoComanda() {
+  const sel = document.getElementById('cb-metodo-pago');
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById('cb-wrap-banco');
+  const bancoSel = document.getElementById('cb-banco');
+  if (!wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesComanda();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
 
 // Desglosa un monto YA cobrado (IVA incluido) en su parte neta y su
 // IVA, y registra el IVA en Impuestos -- mismo patron real ya
@@ -140,7 +195,7 @@ async function init() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    await cargarComandas();
+    await Promise.all([cargarComandas(), loadMetodosPagoComanda()]);
   } catch (e) {
     console.error('init restaurante-comandas:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -478,6 +533,9 @@ async function abrirModalCobro(comandaId) {
   document.getElementById('cb-propina-manual').value = '';
   document.getElementById('cb-dividir-entre').value = 1;
   onCambiarPropinaComanda();
+  poblarSelectMetodoPagoComanda();
+  document.getElementById('cb-wrap-banco').style.display = 'none';
+  document.getElementById('cb-banco').value = '';
 
   const { data: items } = await sb.from('restaurante_comanda_items').select('*')
     .eq('comanda_id', comandaId).neq('estado', 'cancelado');
@@ -540,7 +598,14 @@ async function confirmarCobro() {
     ? Math.max(0, parseFloat(document.getElementById('cb-propina-manual').value) || 0)
     : round2(subtotal * Number(pctSel) / 100);
   const total = round2(subtotal + propina);
-  const metodoPago = document.getElementById('cb-metodo-pago').value;
+  const selMetodo = document.getElementById('cb-metodo-pago');
+  const metodoId = selMetodo?.value || null;
+  const metodoNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  let bancoId = null;
+  if (document.getElementById('cb-wrap-banco').style.display !== 'none') {
+    bancoId = document.getElementById('cb-banco').value || null;
+    if (!bancoId) { errEl.textContent = 'Indica de qué banco entra el cobro.'; return; }
+  }
   const c = STATE.comandas.find(x => x.id === comandaId);
 
   setBtnLoading('cb-btn-confirmar', true);
@@ -557,7 +622,7 @@ async function confirmarCobro() {
         auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
         concepto: conceptoCobro, monto: montoParaCaja,
         referencia_tipo: 'restaurante_comanda', referencia_id: comandaId,
-        metodo_pago_nombre: metodoPago,
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       });
       if (!cajaRes.ok) {
         errEl.textContent = 'No se pudo registrar el cobro en Caja: ' + cajaRes.error;
@@ -568,7 +633,7 @@ async function confirmarCobro() {
 
     const { error: e1 } = await sb.from('restaurante_comandas').update({
       estado: 'cerrada', cerrada_at: new Date().toISOString(),
-      propina_monto: propina, metodo_pago: metodoPago, total_cobrado: total,
+      propina_monto: propina, metodo_pago: metodoNombre, total_cobrado: total,
       updated_at: new Date().toISOString(),
     }).eq('id', comandaId).eq('auth_user_id', STATE.userId);
     if (e1) throw e1;
