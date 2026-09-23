@@ -416,6 +416,27 @@ textarea { resize:vertical; min-height:88px }
 .theme-desc { font-size:.74rem; color:var(--muted); margin-top:2px }
 
 /* ═══════════════════════════════════════════════════════════
+   TARJETAS DE TIPO DE NEGOCIO -- primera cosa que ve el cliente
+   en Personalizacion. Mismo lenguaje visual que theme-card, mas
+   compacto porque hay muchas mas opciones.
+═══════════════════════════════════════════════════════════ */
+.negocio-categoria-titulo {
+  font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--muted); margin:18px 0 8px;
+}
+.negocio-categoria-titulo:first-child { margin-top:0 }
+.negocio-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:8px }
+.negocio-card {
+  padding:14px 10px; border-radius:var(--radius); border:1px solid var(--border);
+  cursor:pointer; transition:border-color .2s, background .2s, transform .15s;
+  display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px;
+}
+.negocio-card:hover { transform:translateY(-2px) }
+.negocio-card.selected { border-color:var(--accent); background:rgba(110,231,183,.07) }
+.negocio-card-icon { font-size:1.5rem }
+.negocio-card-nombre { font-size:.78rem; font-weight:600; line-height:1.2 }
+
+/* ═══════════════════════════════════════════════════════════
    UPLOAD DE LOGOS
 ═══════════════════════════════════════════════════════════ */
 .upload-zone {
@@ -641,6 +662,8 @@ textarea { resize:vertical; min-height:88px }
           </div>
         </div>
         <div class="card-body">
+          <div class="section-divider" style="margin-top:0"><span>¿Cuál es tu negocio? *</span></div>
+          <div id="negocioTiposWrap"></div>
           <div class="fields-grid cols-2">
             <div class="field">
               <label>Nombre comercial <span class="req">*</span></label>
@@ -650,41 +673,12 @@ textarea { resize:vertical; min-height:88px }
               <label>Razón social <span class="opt">(opcional)</span></label>
               <input type="text" id="razon_social" placeholder="Ej: Inversiones LA S.A.">
             </div>
-            <div class="field">
-              <label>Tipo de negocio <span class="req">*</span></label>
-              <select id="tipo_negocio">
-                <option value="">Selecciona el tipo…</option>
-                <optgroup label="Comercio">
-                  <option value="retail">Tienda / Retail</option>
-                  <option value="mayorista">Mayorista</option>
-                  <option value="distribuidor">Distribuidor</option>
-                  <option value="importador">Importador / Exportador</option>
-                </optgroup>
-                <optgroup label="Servicios">
-                  <option value="servicios_profesionales">Servicios profesionales</option>
-                  <option value="consultoria">Consultoría</option>
-                  <option value="salud">Salud / Médico</option>
-                  <option value="educacion">Educación / Academia</option>
-                  <option value="tecnologia">Tecnología / Software</option>
-                  <option value="reparacion">Reparación / Técnico</option>
-                </optgroup>
-                <optgroup label="Gastronomía">
-                  <option value="restaurante">Restaurante / Comida</option>
-                  <option value="cafeteria">Cafetería / Panadería</option>
-                  <option value="catering">Catering / Eventos</option>
-                </optgroup>
-                <optgroup label="Producción">
-                  <option value="manufactura">Manufactura</option>
-                  <option value="construccion">Construcción</option>
-                  <option value="agropecuario">Agropecuario</option>
-                </optgroup>
-                <optgroup label="Otros">
-                  <option value="transporte">Transporte / Logística</option>
-                  <option value="inmobiliaria">Inmobiliaria</option>
-                  <option value="entretenimiento">Entretenimiento</option>
-                  <option value="otro">Otro</option>
-                </optgroup>
-              </select>
+            <div class="field" style="display:none">
+              <!-- El tipo de negocio ya no se elige aqui -- vive como
+                   tarjetas al inicio del paso. Este input hidden
+                   mantiene exactamente el mismo id y comportamiento
+                   para validateStep()/collectStep(), que no cambian. -->
+              <input type="hidden" id="tipo_negocio" value="">
             </div>
             <div class="field">
               <label>Año de fundación <span class="opt">(opcional)</span></label>
@@ -1148,6 +1142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 4d. Renderizar progreso y componentes
   renderProgress();
   renderColorPresets();
+  renderTiposNegocio();
   applyThemeToPage('dark'); // Tema inicial
 
   // 4e. Pre-seleccionar Nicaragua (detección por IP sería ideal,
@@ -1394,6 +1389,18 @@ async function finalizarOnboarding() {
     // 11b. Actualizar texto del overlay
     updateSavingText('Guardando configuración…');
 
+    // 11b-bis. Configuracion automatica de modulos secundarios segun
+    // el tipo de negocio elegido -- SOLO enciende lo que corresponde,
+    // nunca apaga nada (si en el futuro alguien vuelve a pasar por
+    // aqui con un tipo distinto, no le quita un modulo que ya tenia).
+    // Esto corre unicamente en el flujo de personalizacion de una
+    // cuenta NUEVA -- una cuenta que ya completo onboarding antes
+    // jamas vuelve a ejecutar esta funcion (se redirige al dashboard
+    // apenas entra a esta pagina, visto arriba).
+    const modulosAuto = {};
+    if (formData.tipo_negocio === 'hotel') modulosAuto.usa_modulo_hotel = true;
+    if (['restaurante','cafeteria','catering','bar'].includes(formData.tipo_negocio)) modulosAuto.usa_modulo_restaurante = true;
+
     // 11c. Upsert final con onboarding_completado = true
     const { error: upsertErr } = await db
       .from('configuracion_empresa')
@@ -1401,6 +1408,7 @@ async function finalizarOnboarding() {
         {
           auth_user_id:          currentUser.id,
           ...formData,
+          ...modulosAuto,
           onboarding_step:       STEPS.length,
           onboarding_completado: true,
         },
@@ -1504,6 +1512,86 @@ function applyPalette(p, s, a) {
 }
 
 // Renderiza puntos de color preset bajo "Color principal"
+/* ════════════════════════════════════════════════════════════
+   TIPO DE NEGOCIO -- primera seccion visible del Paso 1. Mismos
+   valores que el select que reemplaza (para no romper nada de lo
+   que ya se guarda), mas "hotel" como opcion nueva -- ninguna de
+   las 62 cuentas existentes vuelve a ver esta pantalla (se
+   redirige al dashboard si onboarding_completado=true, arriba),
+   asi que agregar una opcion nueva aqui no les afecta en nada.
+   ════════════════════════════════════════════════════════════ */
+let tipoNegocioSeleccionado = '';
+const TIPOS_NEGOCIO = [
+  { categoria: 'Comercio', items: [
+    { v:'retail', icono:'👕', nombre:'Tienda / Retail' },
+    { v:'mayorista', icono:'📦', nombre:'Mayorista' },
+    { v:'distribuidor', icono:'🚚', nombre:'Distribuidor' },
+    { v:'importador', icono:'🌎', nombre:'Importador / Exportador' },
+    { v:'farmacia', icono:'💊', nombre:'Farmacia' },
+    { v:'ferreteria', icono:'🔧', nombre:'Ferretería' },
+    { v:'supermercado', icono:'🛒', nombre:'Supermercado / Minisuper' },
+    { v:'papeleria', icono:'📚', nombre:'Papelería / Librería' },
+    { v:'electronica', icono:'📱', nombre:'Electrónica' },
+    { v:'repuestos', icono:'🚗', nombre:'Repuestos' },
+  ]},
+  { categoria: 'Gastronomía', items: [
+    { v:'restaurante', icono:'🍽️', nombre:'Restaurante' },
+    { v:'cafeteria', icono:'☕', nombre:'Cafetería / Panadería' },
+    { v:'catering', icono:'🎉', nombre:'Catering / Eventos' },
+    { v:'bar', icono:'🍺', nombre:'Bar' },
+  ]},
+  { categoria: 'Hospedaje', items: [
+    { v:'hotel', icono:'🛏️', nombre:'Hotel / Hospedaje' },
+  ]},
+  { categoria: 'Servicios', items: [
+    { v:'servicios_profesionales', icono:'💼', nombre:'Servicios profesionales' },
+    { v:'consultoria', icono:'📊', nombre:'Consultoría' },
+    { v:'salud', icono:'⚕️', nombre:'Salud / Médico' },
+    { v:'veterinaria', icono:'🐾', nombre:'Veterinaria' },
+    { v:'educacion', icono:'🎓', nombre:'Educación / Academia' },
+    { v:'tecnologia', icono:'💻', nombre:'Tecnología / Software' },
+    { v:'reparacion', icono:'🛠️', nombre:'Reparación / Técnico' },
+    { v:'belleza', icono:'💇', nombre:'Salón de belleza / Barbería' },
+    { v:'taller_mecanico', icono:'🔩', nombre:'Taller mecánico' },
+    { v:'lavanderia', icono:'🧺', nombre:'Lavandería' },
+    { v:'gimnasio', icono:'🏋️', nombre:'Gimnasio' },
+  ]},
+  { categoria: 'Producción', items: [
+    { v:'manufactura', icono:'🏭', nombre:'Manufactura' },
+    { v:'construccion', icono:'🏗️', nombre:'Construcción' },
+    { v:'agropecuario', icono:'🌾', nombre:'Agropecuario' },
+  ]},
+  { categoria: 'Otros', items: [
+    { v:'transporte', icono:'🚛', nombre:'Transporte / Logística' },
+    { v:'inmobiliaria', icono:'🏠', nombre:'Inmobiliaria' },
+    { v:'entretenimiento', icono:'🎮', nombre:'Entretenimiento' },
+    { v:'otro', icono:'✨', nombre:'Otro' },
+  ]},
+];
+
+function renderTiposNegocio() {
+  const wrap = document.getElementById('negocioTiposWrap');
+  if (!wrap) return;
+  wrap.innerHTML = TIPOS_NEGOCIO.map(cat => `
+    <div class="negocio-categoria-titulo">${cat.categoria}</div>
+    <div class="negocio-grid">
+      ${cat.items.map(it => `
+        <div class="negocio-card" data-valor="${it.v}" onclick="seleccionarTipoNegocio('${it.v}')">
+          <div class="negocio-card-icon">${it.icono}</div>
+          <div class="negocio-card-nombre">${it.nombre}</div>
+        </div>`).join('')}
+    </div>
+  `).join('');
+}
+
+function seleccionarTipoNegocio(valor) {
+  tipoNegocioSeleccionado = valor;
+  document.getElementById('tipo_negocio').value = valor;
+  document.querySelectorAll('.negocio-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.valor === valor);
+  });
+}
+
 function renderColorPresets() {
   const presets   = [
     '#6EE7B7','#3B82F6','#F59E0B','#EF4444',
