@@ -2396,6 +2396,15 @@ function resetFormulario() {
   const form = $('formProducto');
   if (form) form.reset();
   $$('.form-error').forEach(el => el.textContent = '');
+  STATE.fotoProductoBlob = null;
+  STATE.fotoProductoEliminar = false;
+  const previewFoto = $('fotoProductoPreviewWrap');
+  if (previewFoto) previewFoto.innerHTML = '🖼️';
+  const btnQuitarFoto = $('btnQuitarFotoProducto');
+  if (btnQuitarFoto) btnQuitarFoto.style.display = 'none';
+  const inputFoto = $('inputFotoProducto');
+  if (inputFoto) inputFoto.value = '';
+  aplicarVisibilidadFotoProducto();
   const wrap = $('margenPreviewWrap');
   if (wrap) wrap.style.display = 'none';
   const avisoStock = $('avisoStockBloqueado');
@@ -2447,6 +2456,13 @@ function cargarFormulario(p) {
     if (el) el.value = val;
   });
 
+  // Foto existente (si la cuenta ya tenia inventario con imagenes activo
+  // cuando se guardo este producto)
+  if (p.imagen_url) {
+    $('fotoProductoPreviewWrap').innerHTML = `<img src="${escHtml(p.imagen_url)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoProducto').style.display = '';
+  }
+
   // Materia prima: checkbox real, se maneja aparte (.checked, no .value)
   const esMP = p.es_materia_prima === true;
   if ($('inputEsMateriaPrima')) $('inputEsMateriaPrima').checked = esMP;
@@ -2491,6 +2507,22 @@ async function guardarProducto() {
   const btn   = $('btnGuardarProducto');
   const errEl = $('errNombre');
   if (errEl) errEl.textContent = '';
+
+  // Foto: undefined = no se toco (no se envia el campo, se preserva lo
+  // que ya habia); string = foto nueva subida; null = se quito a proposito.
+  let imagenUrlFinal;
+  if (STATE.fotoProductoBlob) {
+    try {
+      imagenUrlFinal = await subirFotoInventario(STATE.fotoProductoBlob);
+    } catch (e) {
+      console.error('guardarProducto, subir foto:', e);
+      const errFoto = $('errFotoProducto');
+      if (errFoto) errFoto.textContent = 'No se pudo subir la foto. Intenta de nuevo.';
+      return;
+    }
+  } else if (STATE.fotoProductoEliminar) {
+    imagenUrlFinal = null;
+  }
 
   const tipo        = $('inputTipo')?.value || 'producto';
   const nombre      = ($('inputNombre')?.value || '').trim();
@@ -2610,6 +2642,7 @@ async function guardarProducto() {
       // Anclando a las 12:00 del mediodía UTC, la fecha elegida se mantiene
       // igual sin importar la zona horaria de quien la vea.
       if (fechaCreacionRaw) payload.created_at = fechaCreacionRaw + 'T12:00:00Z';
+      if (imagenUrlFinal !== undefined) payload.imagen_url = imagenUrlFinal;
 
       let res = await supabaseClient.from('productos').insert([payload]).select();
       if (res.error && fechaCreacionRaw) {
@@ -2662,6 +2695,7 @@ async function guardarProducto() {
       // antes del sistema y quedó registrado con la fecha de "hoy").
       // FIX: mismo anclaje a mediodía UTC que en creación, ver nota arriba.
       if (fechaCreacionRaw) updatePayload.created_at = fechaCreacionRaw + 'T12:00:00Z';
+      if (imagenUrlFinal !== undefined) updatePayload.imagen_url = imagenUrlFinal;
 
       let res = await supabaseClient
         .from('productos')
@@ -3795,6 +3829,75 @@ async function init() {
    esto explicitamente aqui ve algo distinto; el resto sigue igual.
 ============================================================ */
 let _tipoInventarioSeleccion = 'predeterminado';
+
+/* ============================================================
+   FOTO DEL PRODUCTO/SERVICIO -- mismo mecanismo ya probado en
+   catalogo360.js (comprimir a WebP antes de subir, para no gastar
+   almacenamiento). Solo se muestra el campo si la cuenta activo
+   "Inventario con imagenes" en la Configuracion de Inventario.
+============================================================ */
+function comprimirImagenInventario(archivo, anchoMax = 800, calidad = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(archivo);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > anchoMax) { h = Math.round(h * (anchoMax / w)); w = anchoMax; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error('No se pudo procesar la imagen')); return; }
+        resolve(blob);
+      }, 'image/webp', calidad);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+
+async function subirFotoInventario(blob) {
+  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.webp';
+  const ruta = STATE.user.id + '/productos/' + nombreArchivo;
+  const { error } = await supabaseClient.storage.from('inventario_fotos').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('inventario_fotos').getPublicUrl(ruta);
+  return data.publicUrl;
+}
+
+// Muestra u oculta el campo de foto segun si la cuenta activo la
+// funcion -- se llama al abrir el modal, tanto para crear como editar.
+function aplicarVisibilidadFotoProducto() {
+  const wrap = $('wrapFotoProducto');
+  if (wrap) wrap.style.display = STATE.empresa?.usa_inventario_imagenes ? '' : 'none';
+}
+
+function onSeleccionarFotoProducto(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const errEl = $('errFotoProducto');
+  if (errEl) errEl.textContent = '';
+
+  comprimirImagenInventario(archivo).then(blob => {
+    STATE.fotoProductoBlob = blob;
+    STATE.fotoProductoEliminar = false;
+    const preview = $('fotoProductoPreviewWrap');
+    preview.innerHTML = `<img src="${URL.createObjectURL(blob)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoProducto').style.display = '';
+  }).catch(e => {
+    console.error('onSeleccionarFotoProducto:', e);
+    if (errEl) errEl.textContent = 'No se pudo procesar esa imagen. Intenta con otra.';
+  });
+}
+
+function quitarFotoProducto() {
+  STATE.fotoProductoBlob = null;
+  STATE.fotoProductoEliminar = true;
+  $('fotoProductoPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoProducto').style.display = 'none';
+  $('inputFotoProducto').value = '';
+}
 
 async function abrirModalConfigInventario() {
   document.getElementById('configInvError').textContent = '';

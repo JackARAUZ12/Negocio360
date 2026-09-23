@@ -772,6 +772,18 @@
         <!-- INFORMACIÓN BÁSICA -->
         <div class="form-section-title">Información básica</div>
         <div class="form-grid">
+          <div class="form-group full" id="wrapFotoProducto" style="display:none">
+            <label class="form-label">Foto</label>
+            <div style="display:flex;align-items:center;gap:12px">
+              <div id="fotoProductoPreviewWrap" style="width:64px;height:64px;border-radius:10px;border:1px solid var(--border,#e2e8f0);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg-base,#f8fafc);font-size:22px;color:var(--text-muted,#94a3b8)">🖼️</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12.5px" onclick="document.getElementById('inputFotoProducto').click()">Elegir foto</button>
+                <button type="button" id="btnQuitarFotoProducto" style="display:none;background:none;border:none;color:var(--danger,#dc2626);font-size:11.5px;cursor:pointer;padding:0;text-align:left" onclick="quitarFotoProducto()">Quitar foto</button>
+              </div>
+              <input type="file" id="inputFotoProducto" accept="image/*" style="display:none" onchange="onSeleccionarFotoProducto(event)">
+            </div>
+            <span class="form-error" id="errFotoProducto"></span>
+          </div>
           <div class="form-group full">
             <label class="form-label" for="inputNombre">Nombre <span>*</span></label>
             <input type="text" class="form-input" id="inputNombre"
