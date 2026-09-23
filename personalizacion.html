@@ -437,6 +437,28 @@ textarea { resize:vertical; min-height:88px }
 .negocio-card-nombre { font-size:.78rem; font-weight:600; line-height:1.2 }
 
 /* ═══════════════════════════════════════════════════════════
+   TARJETAS DE MODULO -- Paso 6, seleccion MULTIPLE (a diferencia
+   de negocio-card que es una sola opcion). Mismo lenguaje visual,
+   con un checkmark propio en vez de solo el borde.
+═══════════════════════════════════════════════════════════ */
+.modulo-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:8px; margin-bottom:6px }
+.modulo-card {
+  padding:12px 10px; border-radius:var(--radius); border:1px solid var(--border);
+  cursor:pointer; transition:border-color .2s, background .2s;
+  display:flex; align-items:center; gap:10px;
+}
+.modulo-card:hover { border-color:var(--accent) }
+.modulo-card.selected { border-color:var(--accent); background:rgba(110,231,183,.07) }
+.modulo-card-check {
+  width:18px; height:18px; border-radius:5px; border:1.5px solid var(--border);
+  flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.7rem;
+  transition:all .2s;
+}
+.modulo-card.selected .modulo-card-check { background:var(--accent); border-color:var(--accent); color:#0f172a }
+.modulo-card-icon { font-size:1.15rem; flex-shrink:0 }
+.modulo-card-nombre { font-size:.8rem; font-weight:600; line-height:1.2 }
+
+/* ═══════════════════════════════════════════════════════════
    UPLOAD DE LOGOS
 ═══════════════════════════════════════════════════════════ */
 .upload-zone {
@@ -698,7 +720,7 @@ textarea { resize:vertical; min-height:88px }
           </div>
         </div>
         <div class="card-footer">
-          <div class="step-indicator">Paso 1 de 5</div>
+          <div class="step-indicator">Paso 1 de 6</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -785,7 +807,7 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 2 de 5</div>
+          <div class="step-indicator">Paso 2 de 6</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -873,7 +895,7 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 3 de 5</div>
+          <div class="step-indicator">Paso 3 de 6</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -913,7 +935,7 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 4 de 5</div>
+          <div class="step-indicator">Paso 4 de 6</div>
           <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
         </div>
       </div>
@@ -1035,7 +1057,33 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-footer">
           <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
-          <div class="step-indicator">Paso 5 de 5</div>
+          <div class="step-indicator">Paso 5 de 6</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PASO 6 — MÓDULOS
+      ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-6">
+        <div class="card-header">
+          <div class="step-icon blue">🧩</div>
+          <div>
+            <div class="card-title">Elige tus módulos</div>
+            <div class="card-subtitle">Los módulos principales (Ventas, Clientes, Caja...) siempre están disponibles. Aquí activas solo los adicionales que tu negocio realmente necesita — puedes cambiar esto después desde Configuración.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="moduloEspecialWrap" style="display:none">
+            <div class="section-divider" style="margin-top:0"><span>De tu rubro</span></div>
+            <div id="moduloEspecialCard"></div>
+          </div>
+          <div class="section-divider"><span>Módulos adicionales</span></div>
+          <div id="modulosSecundariosWrap"></div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 6 de 6</div>
           <button class="btn btn-finish" id="btnFinish" onclick="finalizarOnboarding()">🚀 Ir a mi Dashboard</button>
         </div>
       </div>
@@ -1078,6 +1126,7 @@ const STEPS = [
   { label: 'Contacto'   },
   { label: 'Finanzas'   },
   { label: 'Visual'     },
+  { label: 'Módulos'    },
 ];
 
 /* ════════════════════════════════════════════════════════════
@@ -1143,6 +1192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderProgress();
   renderColorPresets();
   renderTiposNegocio();
+  renderModulosSecundarios();
   applyThemeToPage('dark'); // Tema inicial
 
   // 4e. Pre-seleccionar Nicaragua (detección por IP sería ideal,
@@ -1193,6 +1243,7 @@ function goToStep(n) {
   currentStep = n;
   document.getElementById('step-' + currentStep).classList.add('active');
   renderProgress();
+  if (currentStep === 6) renderModuloEspecial();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1389,17 +1440,23 @@ async function finalizarOnboarding() {
     // 11b. Actualizar texto del overlay
     updateSavingText('Guardando configuración…');
 
-    // 11b-bis. Configuracion automatica de modulos secundarios segun
-    // el tipo de negocio elegido -- SOLO enciende lo que corresponde,
-    // nunca apaga nada (si en el futuro alguien vuelve a pasar por
-    // aqui con un tipo distinto, no le quita un modulo que ya tenia).
-    // Esto corre unicamente en el flujo de personalizacion de una
-    // cuenta NUEVA -- una cuenta que ya completo onboarding antes
-    // jamas vuelve a ejecutar esta funcion (se redirige al dashboard
-    // apenas entra a esta pagina, visto arriba).
+    // 11b-bis. Configuracion de modulos elegida en el Paso 6 -- SOLO
+    // enciende lo que el cliente selecciono, nunca apaga algo de
+    // fuera de este flujo. Esto corre unicamente para una cuenta
+    // NUEVA -- una cuenta que ya completo onboarding antes jamas
+    // vuelve a ejecutar esta funcion (se redirige al dashboard
+    // apenas entra a esta pagina, visto arriba) -- asi que las 62
+    // cuentas existentes, cuyo metadata.modulosOpcionales nunca tuvo
+    // estos "false" explicitos, siguen viendo sus modulos exactamente
+    // igual que siempre.
     const modulosAuto = {};
-    if (formData.tipo_negocio === 'hotel') modulosAuto.usa_modulo_hotel = true;
-    if (['restaurante','cafeteria','catering','bar'].includes(formData.tipo_negocio)) modulosAuto.usa_modulo_restaurante = true;
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'hotel') modulosAuto.usa_modulo_hotel = true;
+    if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
+
+    const modulosOpcionales = {};
+    MODULOS_SECUNDARIOS.forEach(m => {
+      if (!modulosSecundariosSeleccionados.has(m.key)) modulosOpcionales[m.key] = false;
+    });
 
     // 11c. Upsert final con onboarding_completado = true
     const { error: upsertErr } = await db
@@ -1409,6 +1466,7 @@ async function finalizarOnboarding() {
           auth_user_id:          currentUser.id,
           ...formData,
           ...modulosAuto,
+          metadata:              { modulosOpcionales },
           onboarding_step:       STEPS.length,
           onboarding_completado: true,
         },
@@ -1590,6 +1648,99 @@ function seleccionarTipoNegocio(valor) {
   document.querySelectorAll('.negocio-card').forEach(c => {
     c.classList.toggle('selected', c.dataset.valor === valor);
   });
+}
+
+/* ════════════════════════════════════════════════════════════
+   MODULOS -- Paso 6. Antes, una cuenta nueva arrancaba con
+   PRACTICAMENTE TODOS los modulos secundarios ya activos (la
+   forma en que estaActivo() esta escrita en modulos-guard.js: solo
+   se considera inactivo un modulo marcado false EXPLICITAMENTE --
+   una cuenta que nunca toco nada los tenia todos encendidos por
+   default). No se toca esa logica -- en vez de eso, al terminar el
+   onboarding de una cuenta NUEVA se escriben false explicitos para
+   los que el cliente NO eligio aqui. Las 62 cuentas existentes
+   jamas ejecutan este codigo (misma garantia que el Paso 1: se
+   redirige al dashboard si onboarding_completado=true).
+
+   Se dejan fuera de esta lista "notificaciones" y "personalizacion"
+   -- no tiene sentido ofrecer como "opcional, apagado por defecto"
+   el acceso a configurar la propia cuenta o a ver notificaciones.
+   ════════════════════════════════════════════════════════════ */
+const MODULOS_SECUNDARIOS = [
+  { key:'creditos', icono:'🧾', nombre:'Créditos' },
+  { key:'estadisticas', icono:'📈', nombre:'Estadísticas' },
+  { key:'impuestos', icono:'🧮', nombre:'Impuestos' },
+  { key:'cuentas_por_pagar', icono:'📇', nombre:'Cuentas por Pagar' },
+  { key:'salarios', icono:'🧑‍💼', nombre:'Salarios' },
+  { key:'auditoria', icono:'🕵️', nombre:'Auditoría' },
+  { key:'proformas', icono:'📄', nombre:'Proformas' },
+  { key:'codigos_barras', icono:'📊', nombre:'Códigos de Barras' },
+  { key:'sucursales', icono:'🏬', nombre:'Sucursales' },
+  { key:'consulta_inventario', icono:'🔎', nombre:'Consulta/Inventario' },
+  { key:'rutas', icono:'🗺️', nombre:'Rutas' },
+  { key:'delivery', icono:'🛵', nombre:'Delivery' },
+  { key:'activos', icono:'🏭', nombre:'Activos Fijos' },
+  { key:'agenda', icono:'📅', nombre:'Agenda' },
+  { key:'asistente', icono:'🤖', nombre:'Asistente IA' },
+  { key:'catalogo360', icono:'📇', nombre:'Catálogo360' },
+  { key:'produccion', icono:'🏭', nombre:'Producción' },
+  { key:'servicio', icono:'🛠️', nombre:'Servicio Postventa' },
+  { key:'contabilidad', icono:'📒', nombre:'Contabilidad' },
+];
+const modulosSecundariosSeleccionados = new Set(); // vacio = nada marcado por defecto
+let moduloEspecialActivo = false;
+
+function renderModulosSecundarios() {
+  const wrap = document.getElementById('modulosSecundariosWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="modulo-grid">${MODULOS_SECUNDARIOS.map(m => `
+    <div class="modulo-card" data-key="${m.key}" onclick="toggleModuloSecundario('${m.key}')">
+      <div class="modulo-card-check">✓</div>
+      <div class="modulo-card-icon">${m.icono}</div>
+      <div class="modulo-card-nombre">${m.nombre}</div>
+    </div>`).join('')}</div>`;
+}
+
+function toggleModuloSecundario(key) {
+  if (modulosSecundariosSeleccionados.has(key)) modulosSecundariosSeleccionados.delete(key);
+  else modulosSecundariosSeleccionados.add(key);
+  const card = document.querySelector(`.modulo-card[data-key="${key}"]`);
+  if (card) card.classList.toggle('selected', modulosSecundariosSeleccionados.has(key));
+}
+
+// El "modulo especial" (Hotel o Restaurante) solo aparece si el tipo
+// de negocio elegido en el Paso 1 coincide -- para cualquier otro
+// rubro, esta seccion completa queda oculta. Se pre-marca activado
+// (el cliente ya indico su rubro), pero puede desmarcarlo aqui mismo
+// si no lo quiere.
+function renderModuloEspecial() {
+  const wrap = document.getElementById('moduloEspecialWrap');
+  const card = document.getElementById('moduloEspecialCard');
+  if (!wrap || !card) return;
+
+  let especial = null;
+  if (tipoNegocioSeleccionado === 'hotel') especial = { icono:'🛏️', nombre:'Módulo de Hotel', desc:'Habitaciones, reservaciones, mapa y housekeeping.' };
+  else if (['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) especial = { icono:'🍽️', nombre:'Módulo de Restaurante', desc:'Mesas, comandas y cocina en tiempo real.' };
+
+  if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
+
+  moduloEspecialActivo = true;
+  wrap.style.display = '';
+  card.innerHTML = `
+    <div class="modulo-card selected" style="max-width:280px" onclick="toggleModuloEspecial()">
+      <div class="modulo-card-check">✓</div>
+      <div class="modulo-card-icon">${especial.icono}</div>
+      <div>
+        <div class="modulo-card-nombre">${especial.nombre}</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${especial.desc}</div>
+      </div>
+    </div>`;
+}
+
+function toggleModuloEspecial() {
+  moduloEspecialActivo = !moduloEspecialActivo;
+  const card = document.querySelector('#moduloEspecialCard .modulo-card');
+  if (card) card.classList.toggle('selected', moduloEspecialActivo);
 }
 
 function renderColorPresets() {
