@@ -3788,4 +3788,58 @@ async function init() {
   }
 }
 
+/* ============================================================
+   CONFIGURACIÓN DE INVENTARIO -- selector predeterminado / con
+   imágenes. Guarda en configuracion_empresa.usa_inventario_imagenes
+   (default false para toda cuenta) -- solo la cuenta que activa
+   esto explicitamente aqui ve algo distinto; el resto sigue igual.
+============================================================ */
+let _tipoInventarioSeleccion = 'predeterminado';
+
+async function abrirModalConfigInventario() {
+  document.getElementById('configInvError').textContent = '';
+  let actual = 'predeterminado';
+  try {
+    const { data } = await supabaseClient.from('configuracion_empresa')
+      .select('usa_inventario_imagenes').eq('auth_user_id', STATE.user.id).maybeSingle();
+    actual = data?.usa_inventario_imagenes ? 'imagenes' : 'predeterminado';
+  } catch (e) { console.warn('abrirModalConfigInventario:', e); }
+  elegirTipoInventario(actual);
+  document.getElementById('modalConfigInventario').classList.add('open');
+}
+
+function cerrarModalConfigInventario() {
+  document.getElementById('modalConfigInventario').classList.remove('open');
+}
+
+function elegirTipoInventario(valor) {
+  _tipoInventarioSeleccion = valor;
+  document.querySelectorAll('.config-inv-opcion').forEach(el => {
+    el.classList.toggle('selected', el.dataset.valor === valor);
+  });
+}
+
+async function guardarConfigInventario() {
+  const btn = document.getElementById('btnGuardarConfigInventario');
+  const errEl = document.getElementById('configInvError');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    const { error } = await supabaseClient.from('configuracion_empresa')
+      .upsert(
+        { auth_user_id: STATE.user.id, usa_inventario_imagenes: _tipoInventarioSeleccion === 'imagenes' },
+        { onConflict: 'auth_user_id' }
+      );
+    if (error) throw error;
+    cerrarModalConfigInventario();
+    // Solo esta cuenta se recarga -- para que la vista se actualice
+    // con (o sin) la columna de fotos en cada tarjeta/fila.
+    window.location.reload();
+  } catch (e) {
+    console.error('guardarConfigInventario:', e);
+    errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    btn.disabled = false;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', init);

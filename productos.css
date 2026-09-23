@@ -1815,3 +1815,34 @@ img { max-width: 100%; }
 .plantilla-dropdown-menu a:hover { background: var(--accent-light); }
 .plantilla-dropdown-menu a strong { display: block; font-size: 13px; }
 .plantilla-dropdown-menu a span { display: block; font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
+
+/* ============================================================
+   CONFIGURACIÓN DE INVENTARIO -- selector predeterminado / con
+   imágenes, y la foto en cada tarjeta/fila cuando está activo.
+   ============================================================ */
+.config-inv-opcion {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.config-inv-opcion:hover { border-color: var(--accent); }
+.config-inv-opcion.selected { border-color: #0ea5a0; background: rgba(14,165,160,.07); }
+.config-inv-icono { font-size: 24px; flex-shrink: 0; }
+.config-inv-nombre { font-weight: 700; font-size: 14px; }
+.config-inv-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+/* Foto en la tarjeta/fila de un producto -- responsive, no rompe el
+   layout si no hay foto (placeholder discreto). */
+.item-foto-thumb {
+  width: 40px; height: 40px; border-radius: 8px; object-fit: cover;
+  flex-shrink: 0; border: 1px solid var(--border); background: var(--bg-base);
+}
+.item-foto-placeholder {
+  width: 40px; height: 40px; border-radius: 8px; flex-shrink: 0;
+  border: 1px dashed var(--border); background: var(--bg-base);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; color: var(--text-muted);
+}
+@media (max-width: 640px) {
+  .item-foto-thumb, .item-foto-placeholder { width: 34px; height: 34px; }
+}

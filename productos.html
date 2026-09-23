@@ -269,6 +269,7 @@
           <p>Administra tu catálogo, precios, costos y stock</p>
         </div>
         <div class="page-header-actions">
+          <button class="btn" id="btnConfigInventario" onclick="abrirModalConfigInventario()" style="background:linear-gradient(135deg,#0ea5a0 0%,#22d3aa 100%);color:#fff;border:none;box-shadow:0 4px 14px -4px rgba(14,165,160,.5);font-weight:700">🖼️ Configuración de inventario</button>
           <div class="plantilla-dropdown" id="plantillaDropdown">
             <button type="button" class="btn btn-secondary" onclick="togglePlantillaDropdown(event)">📥 Descargar plantilla ▾</button>
             <div class="plantilla-dropdown-menu" id="plantillaDropdownMenu">
@@ -1253,6 +1254,44 @@
   </div>
 </div>
 <input type="file" id="inputImportarExcel" accept=".xlsx" style="display:none" onchange="onArchivoImportSeleccionado(event)" />
+
+<!-- ============================================================
+     CONFIGURACIÓN DE INVENTARIO
+     ============================================================ -->
+<div class="modal-overlay" id="modalConfigInventario" role="dialog" aria-modal="true" aria-labelledby="modalConfigInventarioTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalConfigInventarioTitle">🖼️ Configuración de inventario</h2>
+      <button class="modal-close" onclick="cerrarModalConfigInventario()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Elige cómo se ve tu inventario. Puedes cambiar esto cuando quieras.</p>
+      <div style="display:grid;gap:10px">
+        <label class="config-inv-opcion" data-valor="predeterminado" onclick="elegirTipoInventario('predeterminado')">
+          <input type="radio" name="tipoInventario" value="predeterminado" style="display:none">
+          <div class="config-inv-icono">📋</div>
+          <div>
+            <div class="config-inv-nombre">Predeterminado</div>
+            <div class="config-inv-desc">Solo texto — nombre, precio, stock. Igual que ahora, sin fotos.</div>
+          </div>
+        </label>
+        <label class="config-inv-opcion" data-valor="imagenes" onclick="elegirTipoInventario('imagenes')">
+          <input type="radio" name="tipoInventario" value="imagenes" style="display:none">
+          <div class="config-inv-icono">🖼️</div>
+          <div>
+            <div class="config-inv-nombre">Inventario con imágenes</div>
+            <div class="config-inv-desc">Agrega una foto a cada producto, combo, promoción, materia prima o servicio. Las fotos se optimizan automáticamente para no ocupar mucho espacio.</div>
+          </div>
+        </label>
+      </div>
+      <p id="configInvError" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:10px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModalConfigInventario()">Cancelar</button>
+      <button class="btn btn-primary" id="btnGuardarConfigInventario" onclick="guardarConfigInventario()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 
 <!-- ============================================================
