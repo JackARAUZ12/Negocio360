@@ -199,6 +199,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   'Lujo y estilo': 'c360-luxury.html',
   'Cafeteria': 'c360-cafeteria.html',
   'Restaurante': 'c360-restaurant.html',
+  blackfriday: 'c360-blackfriday.html',
 };
 
 /**

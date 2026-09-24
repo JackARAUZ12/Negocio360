@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0a" />
+<title id="bf-title">Black Friday</title>
+<meta id="bf-desc-meta" name="description" content="Ofertas Black Friday">
+<meta id="bf-og-title" property="og:title" content="Black Friday">
+<meta id="bf-og-desc" property="og:description" content="Ofertas Black Friday">
+<meta id="bf-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+<style>
+/* =====================================================================
+   CATÁLOGO360 -- PLANTILLA BLACK FRIDAY
+   Identidad propia: estética "drop / cierre de tienda". Cintas de
+   precaución, ticker de precios, cuenta regresiva real, precios que se
+   tachan en vivo y bolsa de pedido multi-producto por WhatsApp.
+   Prefijo de clases/ids: bf-  (no choca con ninguna otra plantilla)
+   ===================================================================== */
+:root {
+  --negro: #0a0a0a;
+  --negro-2: #121212;
+  --negro-3: #1b1b1b;
+  --volt: #d7ff3a;
+  --volt-rgb: 215,255,58;
+  --rojo: #ff3b2f;
+  --rojo-rgb: 255,59,47;
+  --blanco: #f6f5f0;
+
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-2: #1d1d1d;
+  --border: #2a2a2a;
+  --text: #f6f5f0;
+  --text-2: #b4b3ad;
+  --text-3: #75746f;
+  --precio: #f6f5f0;
+  --chip-bg: #171717;
+
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', Impact, sans-serif;
+  --font: 'Inter Tight', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --r-lg: 18px; --r-md: 12px; --r-sm: 8px;
+  --max-w: 1320px;
+  --hdr-h: 60px;
+  --ease: cubic-bezier(.22,1,.36,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-theme="claro"] {
+  --bg: #efede6;
+  --surface: #ffffff;
+  --surface-2: #f4f2ec;
+  --border: #dcd9cf;
+  --text: #0a0a0a;
+  --text-2: #4a4944;
+  --text-3: #8b8982;
+  --precio: #0a0a0a;
+  --chip-bg: #ffffff;
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--hdr-h) + 110px); }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); overflow-x:hidden; transition:background .3s, color .3s; -webkit-font-smoothing:antialiased; }
+body.bf-bloqueado { overflow:hidden; }
+img { max-width:100%; display:block; }
+a { color:inherit; text-decoration:none; }
+button, input, select { font-family:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:2px solid var(--volt); outline-offset:2px; }
+svg.bf-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
+.bf-wrap { max-width:var(--max-w); margin:0 auto; padding:0 16px; }
+@media (min-width:700px) { .bf-wrap { padding:0 28px; } }
+@media (min-width:1100px) { .bf-wrap { padding:0 44px; } }
+.bf-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+@keyframes bf-marquee { to { transform:translateX(-50%); } }
+@keyframes bf-marquee-rev { from { transform:translateX(-50%); } to { transform:translateX(0); } }
+@keyframes bf-sube { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:none; } }
+@keyframes bf-pop { 0% { transform:scale(.6) rotate(-14deg); opacity:0; } 70% { transform:scale(1.12) rotate(4deg); opacity:1; } 100% { transform:scale(1) rotate(-8deg); } }
+@keyframes bf-girar { to { transform:rotate(360deg); } }
+@keyframes bf-barrido { from { background-position:200% 0; } to { background-position:-200% 0; } }
+@keyframes bf-parpadeo { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+@keyframes bf-flip { 0% { transform:translateY(-55%); opacity:0; } 100% { transform:none; opacity:1; } }
+@keyframes bf-carga { 0% { transform:translateX(-100%); } 100% { transform:translateX(250%); } }
+@keyframes bf-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes bf-latido { 0%,100% { transform:scale(1); } 40% { transform:scale(1.18); } }
+@keyframes bf-glow { 0%,100% { box-shadow:0 0 0 0 rgba(var(--volt-rgb),.55); } 70% { box-shadow:0 0 0 14px rgba(var(--volt-rgb),0); } }
+@keyframes bf-sheet { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes bf-drawer { from { transform:translateX(100%); } to { transform:none; } }
+@keyframes bf-fade { from { opacity:0; } to { opacity:1; } }
+
+/* ===== REVELADO AL HACER SCROLL ===== */
+.bf-reveal { opacity:0; transform:translateY(34px); transition:opacity .8s var(--ease), transform .8s var(--ease); }
+.bf-reveal.visible { opacity:1; transform:none; }
+
+/* ===== INTRO: CORTINA METÁLICA QUE SE ABRE ===== */
+.bf-cortina { position:fixed; inset:0; z-index:1000; pointer-events:all; }
+.bf-cortina-mitad { position:absolute; left:0; right:0; height:50.5%; background:var(--negro); transition:transform .9s cubic-bezier(.76,0,.24,1); overflow:hidden; }
+.bf-cortina-mitad.arriba { top:0; }
+.bf-cortina-mitad.abajo { bottom:0; }
+.bf-cortina-mitad::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,.035) 22px 24px); }
+.bf-cortina.abierta .arriba { transform:translateY(-101%); }
+.bf-cortina.abierta .abajo { transform:translateY(101%); }
+.bf-cortina.abierta { pointer-events:none; }
+.bf-cortina-centro { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px; transition:opacity .35s ease; z-index:2; color:var(--blanco); }
+.bf-cortina.abierta .bf-cortina-centro { opacity:0; }
+.bf-cortina-logo { width:58px; height:58px; border-radius:14px; object-fit:cover; border:2px solid var(--volt); display:none; animation:bf-sube .5s var(--ease) both; }
+.bf-cortina-eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--volt); animation:bf-sube .5s var(--ease) .05s both; }
+.bf-cortina-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(56px,15vw,150px); line-height:.82; margin:0; letter-spacing:-.01em; text-transform:uppercase; animation:bf-sube .6s var(--ease) .12s both; }
+.bf-cortina-titulo span { display:block; color:transparent; -webkit-text-stroke:2px var(--volt); }
+.bf-cortina-barra { width:min(260px,60vw); height:3px; background:rgba(255,255,255,.1); overflow:hidden; border-radius:3px; margin-top:10px; }
+.bf-cortina-barra i { display:block; width:40%; height:100%; background:var(--volt); animation:bf-carga 1s ease-in-out infinite; }
+.bf-cortina-costura { position:absolute; left:0; right:0; top:50%; height:2px; background:var(--volt); transform:translateY(-1px); box-shadow:0 0 18px var(--volt); transition:opacity .3s; z-index:3; }
+.bf-cortina.abierta .bf-cortina-costura { opacity:0; }
+
+/* ===== TICKER SUPERIOR ===== */
+.bf-ticker { background:var(--volt); color:var(--negro); overflow:hidden; white-space:nowrap; font-family:var(--font-mono); font-size:11.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; height:30px; display:flex; align-items:center; }
+.bf-ticker-pista { display:inline-flex; animation:bf-marquee 38s linear infinite; }
+.bf-ticker:hover .bf-ticker-pista { animation-play-state:paused; }
+.bf-ticker-item { display:inline-flex; align-items:center; gap:10px; padding:0 22px; }
+.bf-ticker-item b { background:var(--negro); color:var(--volt); padding:2px 6px; border-radius:4px; }
+.bf-ticker-item::after { content:'✺'; margin-left:22px; }
+
+/* ===== HEADER ===== */
+.bf-header { position:sticky; top:0; z-index:80; background:rgba(10,10,10,.82); backdrop-filter:saturate(1.4) blur(14px); -webkit-backdrop-filter:saturate(1.4) blur(14px); border-bottom:1px solid rgba(255,255,255,.08); color:var(--blanco); }
+.bf-header-in { height:var(--hdr-h); display:flex; align-items:center; gap:12px; }
+.bf-header-marca { display:flex; align-items:center; gap:10px; min-width:0; cursor:pointer; }
+.bf-header-logo { width:34px; height:34px; border-radius:9px; object-fit:cover; display:none; }
+.bf-header-logo-letra { width:34px; height:34px; border-radius:9px; background:var(--volt); color:var(--negro); font-family:var(--font-display); font-weight:900; font-size:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.bf-header-nombre { font-weight:800; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:42vw; }
+.bf-header-sello { display:none; font-family:var(--font-mono); font-size:10px; font-weight:800; letter-spacing:.14em; padding:4px 8px; border:1px solid var(--volt); color:var(--volt); border-radius:4px; }
+@media (min-width:760px) { .bf-header-sello { display:inline-block; } }
+.bf-header-der { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.bf-icon-btn { position:relative; width:38px; height:38px; border-radius:10px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04); color:var(--blanco); display:flex; align-items:center; justify-content:center; font-size:17px; transition:border-color .2s, background .2s, transform .2s var(--spring); }
+.bf-icon-btn:hover { border-color:var(--volt); color:var(--volt); }
+.bf-icon-btn:active { transform:scale(.92); }
+.bf-badge { position:absolute; top:-6px; right:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--rojo); color:#fff; font-size:10px; font-weight:800; display:none; align-items:center; justify-content:center; font-family:var(--font-mono); }
+.bf-badge.on { display:flex; }
+.bf-badge.latido { animation:bf-latido .45s var(--spring); }
+.bf-header-wa { display:none; align-items:center; gap:7px; height:38px; padding:0 14px; border-radius:10px; background:var(--volt); color:var(--negro); font-weight:800; font-size:13px; }
+@media (min-width:760px) { .bf-header-wa.on { display:inline-flex; } }
+
+/* ===== HERO ===== */
+.bf-hero { position:relative; overflow:hidden; background:var(--negro); color:var(--blanco); padding:34px 0 46px; isolation:isolate; }
+@media (min-width:980px) { .bf-hero { padding:64px 0 80px; } }
+.bf-hero::before { content:''; position:absolute; inset:0; z-index:-1; background-image:linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); background-size:44px 44px; -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 40%, #000 30%, transparent 75%); mask-image:radial-gradient(ellipse 80% 70% at 50% 40%, #000 30%, transparent 75%); }
+.bf-hero-luz { position:absolute; z-index:-1; width:620px; height:620px; border-radius:50%; background:radial-gradient(circle, rgba(var(--volt-rgb),.18), transparent 65%); top:-220px; right:-160px; pointer-events:none; transition:transform .6s var(--ease); }
+.bf-hero-luz.roja { background:radial-gradient(circle, rgba(var(--rojo-rgb),.16), transparent 65%); top:auto; bottom:-300px; left:-220px; right:auto; }
+.bf-hero-grid { display:grid; grid-template-columns:1fr; gap:36px; align-items:center; }
+@media (min-width:980px) { .bf-hero-grid { grid-template-columns:1.15fr .85fr; gap:56px; } }
+.bf-hero-presenta { display:inline-flex; align-items:center; gap:10px; font-family:var(--font-mono); font-size:11px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:#9b9a94; margin-bottom:14px; animation:bf-sube .7s var(--ease) both; }
+.bf-hero-presenta i { width:8px; height:8px; border-radius:50%; background:var(--rojo); animation:bf-parpadeo 1.2s infinite; }
+.bf-hero-titulo { font-family:var(--font-display); font-weight:900; text-transform:uppercase; line-height:.8; margin:0; font-size:clamp(78px,21vw,210px); letter-spacing:-.015em; }
+.bf-hero-titulo .l1 { display:block; animation:bf-sube .8s var(--ease) .1s both; }
+.bf-hero-titulo .l2 { display:block; color:transparent; -webkit-text-stroke:2px var(--volt); background:linear-gradient(100deg, transparent 30%, rgba(var(--volt-rgb),.95) 50%, transparent 70%); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; animation:bf-sube .8s var(--ease) .2s both, bf-barrido 4.5s linear 1s infinite; }
+@media (min-width:700px) { .bf-hero-titulo .l2 { -webkit-text-stroke-width:3px; } }
+.bf-hero-desc { font-size:15px; line-height:1.6; color:#c9c8c2; max-width:520px; margin:22px 0 22px; animation:bf-sube .8s var(--ease) .3s both; }
+@media (min-width:700px) { .bf-hero-desc { font-size:16.5px; } }
+
+.bf-cuenta { animation:bf-sube .8s var(--ease) .38s both; margin-bottom:26px; }
+.bf-cuenta-label { font-family:var(--font-mono); font-size:10.5px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--volt); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.bf-cuenta-cajas { display:flex; gap:8px; }
+.bf-cuenta-caja { min-width:62px; padding:10px 8px 8px; border-radius:10px; background:#161616; border:1px solid #262626; text-align:center; overflow:hidden; }
+@media (min-width:700px) { .bf-cuenta-caja { min-width:78px; } }
+.bf-cuenta-num { display:block; font-family:var(--font-display); font-weight:900; font-size:clamp(32px,7vw,46px); line-height:1; font-variant-numeric:tabular-nums; }
+.bf-cuenta-num.cambia { animation:bf-flip .35s var(--ease); }
+.bf-cuenta-txt { display:block; font-family:var(--font-mono); font-size:9px; letter-spacing:.14em; color:#8a8984; margin-top:4px; text-transform:uppercase; }
+.bf-cuenta-sep { font-family:var(--font-display); font-size:34px; font-weight:900; color:#3a3a3a; align-self:center; }
+
+.bf-hero-acciones { display:flex; flex-wrap:wrap; gap:10px; animation:bf-sube .8s var(--ease) .46s both; }
+.bf-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; height:52px; padding:0 26px; border-radius:12px; border:2px solid transparent; font-weight:800; font-size:14.5px; letter-spacing:.01em; transition:transform .25s var(--spring), box-shadow .25s, background .2s, color .2s, border-color .2s; white-space:nowrap; }
+.bf-btn:active { transform:scale(.96); }
+.bf-btn-volt { background:var(--volt); color:var(--negro); box-shadow:0 10px 30px -8px rgba(var(--volt-rgb),.55); }
+.bf-btn-volt:hover { transform:translateY(-3px); box-shadow:0 16px 36px -8px rgba(var(--volt-rgb),.7); }
+.bf-btn-borde { background:transparent; color:var(--blanco); border-color:rgba(255,255,255,.25); }
+.bf-btn-borde:hover { border-color:var(--volt); color:var(--volt); }
+.bf-btn-negro { background:var(--negro); color:var(--blanco); }
+.bf-btn[disabled] { opacity:.45; cursor:not-allowed; transform:none; box-shadow:none; }
+@media (max-width:480px) { .bf-hero-acciones .bf-btn { flex:1 1 100%; } }
+
+.bf-hero-stats { display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; animation:bf-sube .8s var(--ease) .54s both; }
+.bf-stat { display:inline-flex; align-items:baseline; gap:6px; padding:8px 12px; border-radius:8px; border:1px dashed #333; font-family:var(--font-mono); font-size:11px; color:#a9a8a2; text-transform:uppercase; letter-spacing:.06em; }
+.bf-stat b { font-family:var(--font-display); font-size:22px; color:var(--blanco); letter-spacing:0; }
+.bf-stat.rojo b { color:var(--rojo); }
+
+/* Pila de ofertas en el hero */
+.bf-pila { position:relative; height:380px; max-width:420px; width:100%; margin:0 auto; perspective:1200px; animation:bf-sube .9s var(--ease) .3s both; }
+@media (min-width:980px) { .bf-pila { height:480px; } }
+.bf-pila-carta { position:absolute; left:50%; top:50%; width:min(78%,300px); background:var(--blanco); color:var(--negro); border-radius:16px; padding:10px 10px 14px; box-shadow:0 30px 60px -18px rgba(0,0,0,.8); transition:transform .8s var(--ease), opacity .8s var(--ease), filter .8s; cursor:pointer; }
+@media (min-width:980px) { .bf-pila-carta { width:320px; } }
+.bf-pila-carta[data-pos="0"] { transform:translate(-50%,-50%) rotate(-3deg); z-index:3; }
+.bf-pila-carta[data-pos="1"] { transform:translate(-18%,-56%) rotate(9deg) scale(.9); z-index:2; filter:brightness(.7); }
+.bf-pila-carta[data-pos="2"] { transform:translate(-82%,-44%) rotate(-14deg) scale(.84); z-index:1; filter:brightness(.5); }
+.bf-pila-carta[data-pos="oculta"] { transform:translate(-82%,-44%) rotate(-14deg) scale(.84); opacity:0; z-index:0; }
+.bf-pila-carta[data-pos="sale"] { transform:translate(-50%,40%) rotate(-24deg) scale(.8); opacity:0; z-index:4; }
+.bf-pila-img { width:100%; aspect-ratio:1/1; border-radius:10px; object-fit:cover; background:#e7e5de; }
+.bf-pila-info { display:flex; justify-content:space-between; align-items:flex-end; gap:10px; padding:10px 4px 0; }
+.bf-pila-nombre { font-weight:800; font-size:14px; line-height:1.2; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.bf-pila-precio { font-family:var(--font-display); font-weight:900; font-size:26px; line-height:1; white-space:nowrap; }
+.bf-pila-antes { font-family:var(--font-mono); font-size:11px; color:#8b8982; text-decoration:line-through; text-align:right; }
+.bf-pila-sticker { position:absolute; top:-18px; right:-14px; }
+
+/* Sticker estallido (descuento) */
+.bf-estallido { width:74px; height:74px; display:flex; align-items:center; justify-content:center; position:relative; transform:rotate(-8deg); animation:bf-pop .6s var(--spring) both; }
+.bf-estallido::before { content:''; position:absolute; inset:0; background:var(--rojo); clip-path:polygon(50% 0%,61% 12%,75% 5%,79% 20%,95% 21%,90% 36%,100% 50%,90% 64%,95% 79%,79% 80%,75% 95%,61% 88%,50% 100%,39% 88%,25% 95%,21% 80%,5% 79%,10% 64%,0% 50%,10% 36%,5% 21%,21% 20%,25% 5%,39% 12%); animation:bf-girar 14s linear infinite; }
+.bf-estallido span { position:relative; color:#fff; font-family:var(--font-display); font-weight:900; font-size:22px; line-height:.9; text-align:center; }
+.bf-estallido span small { display:block; font-family:var(--font-mono); font-size:8px; letter-spacing:.1em; font-weight:800; }
+.bf-estallido.volt::before { background:var(--volt); }
+.bf-estallido.volt span { color:var(--negro); }
+
+/* ===== CINTAS CRUZADAS ===== */
+.bf-cintas { position:relative; height:118px; overflow:hidden; background:var(--bg); }
+@media (min-width:700px) { .bf-cintas { height:170px; } }
+.bf-cinta { position:absolute; left:-10%; width:120%; top:50%; white-space:nowrap; overflow:hidden; padding:9px 0; font-family:var(--font-display); font-weight:900; font-size:24px; text-transform:uppercase; letter-spacing:.02em; }
+@media (min-width:700px) { .bf-cinta { font-size:34px; padding:12px 0; } }
+.bf-cinta.a { background:var(--volt); color:var(--negro); transform:translateY(-50%) rotate(-4deg); z-index:2; box-shadow:0 10px 30px -10px rgba(0,0,0,.5); }
+.bf-cinta.b { background:var(--negro); color:var(--blanco); transform:translateY(-50%) rotate(3.5deg); border-top:2px solid var(--rojo); border-bottom:2px solid var(--rojo); }
+html[data-theme="oscuro"] .bf-cinta.b { background:var(--rojo); border-color:var(--rojo); }
+.bf-cinta-pista { display:inline-flex; animation:bf-marquee 26s linear infinite; }
+.bf-cinta.b .bf-cinta-pista { animation-name:bf-marquee-rev; animation-duration:30s; }
+.bf-cinta-pista span { padding:0 18px; display:inline-flex; align-items:center; gap:18px; }
+.bf-cinta-pista span::after { content:'✺'; font-size:.8em; }
+
+/* ===== SECCIONES ===== */
+.bf-seccion { padding:46px 0; }
+@media (min-width:900px) { .bf-seccion { padding:72px 0; } }
+.bf-sec-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap; }
+.bf-sec-kicker { font-family:var(--font-mono); font-size:11px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; color:var(--rojo); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.bf-sec-kicker::before { content:''; width:22px; height:2px; background:currentColor; }
+.bf-sec-titulo { font-family:var(--font-display); font-weight:900; text-transform:uppercase; font-size:clamp(40px,8vw,78px); line-height:.86; margin:0; letter-spacing:-.005em; }
+.bf-sec-titulo em { font-style:normal; color:transparent; -webkit-text-stroke:1.5px var(--text); }
+.bf-sec-nav { display:flex; gap:8px; }
+.bf-sec-nav button { width:44px; height:44px; border-radius:50%; border:1.5px solid var(--border); background:var(--surface); color:var(--text); font-size:18px; transition:all .2s; }
+.bf-sec-nav button:hover { background:var(--volt); color:var(--negro); border-color:var(--volt); }
+@media (max-width:699px) { .bf-sec-nav { display:none; } }
+
+/* ===== RANKING DE REBAJAS (rail horizontal) ===== */
+.bf-rail { display:grid; grid-auto-flow:column; grid-auto-columns:78%; gap:14px; overflow-x:auto; scroll-snap-type:x mandatory; padding:4px 16px 18px; margin:0 -16px; scrollbar-width:none; overscroll-behavior-x:contain; scroll-padding-inline:16px; }
+.bf-rail::-webkit-scrollbar { display:none; }
+@media (min-width:600px) { .bf-rail { grid-auto-columns:44%; } }
+@media (min-width:980px) { .bf-rail { grid-auto-columns:calc((100% - 42px) / 4); margin:0; padding:4px 0 18px; scroll-padding-inline:0; } }
+.bf-top { scroll-snap-align:start; position:relative; border-radius:var(--r-lg); overflow:hidden; background:var(--negro); color:var(--blanco); cursor:pointer; aspect-ratio:3/4; isolation:isolate; transition:transform .4s var(--ease); }
+.bf-top:hover { transform:translateY(-6px); }
+.bf-top img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; transition:transform .8s var(--ease); }
+.bf-top:hover img { transform:scale(1.07); }
+.bf-top::after { content:''; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg, rgba(0,0,0,.1) 30%, rgba(0,0,0,.92) 100%); }
+.bf-top-rank { position:absolute; top:10px; left:14px; font-family:var(--font-display); font-weight:900; font-size:64px; line-height:1; color:transparent; -webkit-text-stroke:2px rgba(255,255,255,.85); }
+.bf-top-pct { position:absolute; top:14px; right:14px; background:var(--rojo); color:#fff; font-family:var(--font-display); font-weight:900; font-size:24px; padding:4px 10px; border-radius:8px; line-height:1; }
+.bf-top-info { position:absolute; left:0; right:0; bottom:0; padding:16px; }
+.bf-top-nombre { font-weight:800; font-size:16px; line-height:1.2; margin-bottom:8px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.bf-top-precios { display:flex; align-items:baseline; gap:8px; }
+.bf-top-precios b { font-family:var(--font-display); font-weight:900; font-size:30px; color:var(--volt); line-height:1; }
+.bf-top-precios s { font-family:var(--font-mono); font-size:12px; color:#aaa; }
+.bf-sin-foto { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:900; font-size:96px; color:rgba(var(--volt-rgb),.9); background:repeating-linear-gradient(-45deg, #141414 0 16px, #1a1a1a 16px 32px); z-index:-2; }
+
+/* ===== FILTROS (barra fija) ===== */
+.bf-filtros { position:sticky; top:var(--hdr-h); z-index:60; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); padding:12px 0 10px; margin-bottom:18px; border-bottom:1px solid var(--border); }
+.bf-filtros-fila { display:flex; gap:8px; align-items:center; }
+.bf-buscador { flex:1; min-width:0; display:flex; align-items:center; gap:10px; height:46px; padding:0 16px; border-radius:12px; background:var(--surface); border:1.5px solid var(--border); transition:border-color .2s; }
+.bf-buscador:focus-within { border-color:var(--volt); }
+html[data-theme="claro"] .bf-buscador:focus-within { border-color:var(--negro); }
+.bf-buscador input { flex:1; min-width:0; border:none; outline:none; background:none; color:var(--text); font-size:15px; }
+.bf-buscador input::placeholder { color:var(--text-3); }
+.bf-buscador-limpiar { border:none; background:none; color:var(--text-3); font-size:16px; display:none; padding:4px; }
+.bf-buscador-limpiar.on { display:block; }
+.bf-orden { height:46px; border-radius:12px; border:1.5px solid var(--border); background:var(--surface); color:var(--text); padding:0 12px; font-size:13px; font-weight:700; max-width:44vw; }
+.bf-chips { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; margin-top:10px; padding-bottom:2px; scroll-snap-type:x proximity; }
+.bf-chips::-webkit-scrollbar { display:none; }
+.bf-chip { flex-shrink:0; scroll-snap-align:start; height:36px; padding:0 15px; border-radius:999px; border:1.5px solid var(--border); background:var(--chip-bg); color:var(--text-2); font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px; transition:all .2s; }
+.bf-chip small { font-family:var(--font-mono); font-size:10.5px; opacity:.7; }
+.bf-chip:hover { border-color:var(--text-2); color:var(--text); }
+.bf-chip.on { background:var(--text); color:var(--bg); border-color:var(--text); }
+.bf-chip.fuego.on { background:var(--rojo); border-color:var(--rojo); color:#fff; }
+.bf-resultado { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:16px; }
+.bf-resultado h3 { margin:0; font-family:var(--font-display); font-weight:900; text-transform:uppercase; font-size:clamp(26px,5vw,40px); line-height:.9; }
+.bf-resultado span { font-family:var(--font-mono); font-size:11.5px; color:var(--text-3); white-space:nowrap; }
+
+/* ===== GRID DE PRODUCTOS ===== */
+.bf-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+@media (min-width:700px) { .bf-grid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:16px; } }
+@media (min-width:1100px) { .bf-grid { grid-template-columns:repeat(4, minmax(0,1fr)); gap:20px; } }
+.bf-card { position:relative; display:flex; flex-direction:column; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r-lg); overflow:hidden; transition:transform .35s var(--ease), border-color .25s, box-shadow .35s; animation:bf-sube .6s var(--ease) backwards; will-change:transform; }
+.bf-card:hover { border-color:var(--text); box-shadow:0 26px 50px -24px rgba(0,0,0,.55); }
+@media (hover:hover) and (pointer:fine) { .bf-card:hover { transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-4px); } }
+.bf-card-media { position:relative; aspect-ratio:1/1; background:var(--surface-2); overflow:hidden; cursor:pointer; }
+.bf-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:bf-shimmer 1.3s infinite; }
+.bf-card-media img { width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .4s, transform .7s var(--ease); }
+.bf-card-media img.cargada { opacity:1; }
+.bf-card:hover .bf-card-media img { transform:scale(1.06); }
+.bf-card-media .bf-sin-foto { font-size:64px; z-index:0; }
+.bf-card-sticker { position:absolute; bottom:8px; right:8px; z-index:2; }
+.bf-card-sticker .bf-estallido { width:58px; height:58px; }
+.bf-card-sticker .bf-estallido span { font-size:17px; }
+@media (min-width:700px) { .bf-card-sticker .bf-estallido { width:70px; height:70px; } .bf-card-sticker .bf-estallido span { font-size:21px; } }
+.bf-card-tag { position:absolute; top:8px; left:8px; z-index:2; font-family:var(--font-mono); font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:5px 8px; border-radius:6px; background:var(--negro); color:var(--volt); }
+.bf-card-tag.nuevo { background:var(--volt); color:var(--negro); }
+.bf-card-tag.agotado { background:#555; color:#fff; }
+.bf-card.agotada .bf-card-media img { filter:grayscale(1) contrast(.9); opacity:.55; }
+.bf-card.agotada .bf-card-media::after { content:'AGOTADO'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:900; font-size:clamp(26px,6vw,40px); color:#fff; letter-spacing:.04em; background:rgba(0,0,0,.35); transform:rotate(-12deg); }
+.bf-fav { position:absolute; top:8px; right:8px; z-index:3; width:34px; height:34px; border-radius:50%; border:none; background:rgba(255,255,255,.92); color:var(--negro); display:flex; align-items:center; justify-content:center; font-size:15px; box-shadow:0 4px 12px rgba(0,0,0,.2); transition:transform .25s var(--spring); }
+.bf-fav:active { transform:scale(.85); }
+.bf-fav.on { color:var(--rojo); }
+.bf-card-body { padding:10px 10px 12px; display:flex; flex-direction:column; flex:1; gap:4px; }
+@media (min-width:700px) { .bf-card-body { padding:14px 14px 16px; gap:6px; } }
+.bf-card-cat { font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bf-card-nombre { font-weight:700; font-size:13.5px; line-height:1.25; cursor:pointer; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-height:2.5em; }
+@media (min-width:700px) { .bf-card-nombre { font-size:15px; } }
+.bf-card-precios { margin-top:auto; padding-top:4px; }
+.bf-antes { position:relative; display:inline-block; font-family:var(--font-mono); font-size:11.5px; color:var(--text-3); }
+.bf-antes::after { content:''; position:absolute; left:-2px; right:-2px; top:52%; height:2px; background:var(--rojo); transform:scaleX(0); transform-origin:left; transition:transform .55s var(--ease) .15s; }
+.bf-card.visible .bf-antes::after, .bf-antes.tachar::after { transform:scaleX(1); }
+.bf-ahora { display:block; font-family:var(--font-display); font-weight:900; font-size:26px; line-height:1; color:var(--precio); font-variant-numeric:tabular-nums; }
+@media (min-width:700px) { .bf-ahora { font-size:30px; } }
+.bf-ahora.oferta { color:var(--rojo); }
+.bf-ahorro { display:inline-block; margin-top:5px; font-family:var(--font-mono); font-size:10px; font-weight:800; letter-spacing:.04em; background:rgba(var(--volt-rgb),.18); color:var(--text); padding:3px 6px; border-radius:5px; }
+html[data-theme="oscuro"] .bf-ahorro { color:var(--volt); }
+.bf-card-acciones { display:flex; gap:6px; margin-top:10px; }
+.bf-agregar { flex:1; height:40px; border-radius:10px; border:none; background:var(--text); color:var(--bg); font-weight:800; font-size:12.5px; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:background .2s, color .2s, transform .2s var(--spring); }
+.bf-agregar:hover { background:var(--volt); color:var(--negro); }
+.bf-agregar:active { transform:scale(.95); }
+.bf-agregar.hecho { background:var(--volt); color:var(--negro); }
+.bf-mini { width:40px; height:40px; flex-shrink:0; border-radius:10px; border:1.5px solid var(--border); background:transparent; color:var(--text-2); display:inline-flex; align-items:center; justify-content:center; font-size:16px; transition:all .2s; }
+.bf-mini:hover { border-color:#25D366; color:#25D366; }
+@media (max-width:380px) { .bf-mini.opcional { display:none; } .bf-agregar span { display:none; } }
+.bf-vacio { grid-column:1/-1; text-align:center; padding:60px 16px; color:var(--text-3); }
+.bf-vacio b { display:block; font-family:var(--font-display); font-size:44px; color:var(--text); text-transform:uppercase; margin-bottom:6px; }
+.bf-mas { display:flex; justify-content:center; margin-top:26px; }
+.bf-mas .bf-btn { background:transparent; color:var(--text); border-color:var(--text); }
+.bf-mas .bf-btn:hover { background:var(--text); color:var(--bg); }
+
+/* ===== RULETA DE OFERTAS ===== */
+.bf-ruleta-banda { background:var(--negro); color:var(--blanco); position:relative; overflow:hidden; }
+.bf-ruleta-banda::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(-45deg, rgba(var(--volt-rgb),.06) 0 2px, transparent 2px 22px); }
+.bf-ruleta-grid { position:relative; display:grid; grid-template-columns:1fr; gap:26px; align-items:center; }
+@media (min-width:900px) { .bf-ruleta-grid { grid-template-columns:1fr 1fr; gap:60px; } }
+.bf-ruleta-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(46px,9vw,92px); text-transform:uppercase; line-height:.84; margin:0 0 14px; }
+.bf-ruleta-titulo span { color:var(--volt); }
+.bf-ruleta-txt { color:#b9b8b2; font-size:15px; line-height:1.6; max-width:440px; margin:0 0 22px; }
+.bf-maquina { position:relative; background:#151515; border:2px solid #2a2a2a; border-radius:22px; padding:16px; max-width:420px; width:100%; margin:0 auto; box-shadow:inset 0 0 0 6px #0d0d0d, 0 30px 60px -20px rgba(0,0,0,.8); }
+.bf-maquina-luces { display:flex; justify-content:space-between; padding:0 6px 12px; }
+.bf-maquina-luces i { width:9px; height:9px; border-radius:50%; background:#333; }
+.bf-maquina.girando .bf-maquina-luces i { animation:bf-parpadeo .3s infinite; background:var(--volt); }
+.bf-maquina.girando .bf-maquina-luces i:nth-child(even) { animation-delay:.15s; background:var(--rojo); }
+.bf-maquina-ventana { position:relative; aspect-ratio:1/1; border-radius:14px; overflow:hidden; background:#0d0d0d; }
+.bf-maquina-ventana img { width:100%; height:100%; object-fit:cover; }
+.bf-maquina-ventana .bf-sin-foto { z-index:0; }
+.bf-maquina.girando .bf-maquina-ventana img { filter:blur(2px) saturate(1.3); }
+.bf-maquina-velo { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; background:rgba(10,10,10,.72); text-align:center; font-family:var(--font-display); font-weight:900; font-size:64px; color:var(--volt); transition:opacity .3s; }
+.bf-maquina-velo small { font-family:var(--font-mono); font-size:11px; letter-spacing:.2em; color:#9a9994; }
+.bf-maquina-velo.fuera { opacity:0; pointer-events:none; }
+.bf-maquina-resultado { min-height:62px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 4px 4px; }
+.bf-maquina-resultado b { font-weight:800; font-size:15px; line-height:1.25; }
+.bf-maquina-resultado span { font-family:var(--font-display); font-weight:900; font-size:28px; color:var(--volt); white-space:nowrap; }
+
+/* ===== CIERRE ===== */
+.bf-cierre { background:var(--negro); color:var(--blanco); padding:64px 0 calc(40px + var(--safe-b)); position:relative; overflow:hidden; }
+.bf-cierre-gigante { font-family:var(--font-display); font-weight:900; text-transform:uppercase; font-size:clamp(58px,15vw,200px); line-height:.8; margin:0 0 30px; }
+.bf-cierre-gigante span { display:block; color:transparent; -webkit-text-stroke:2px #3a3a3a; }
+.bf-cierre-grid { display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:40px; }
+@media (min-width:700px) { .bf-cierre-grid { grid-template-columns:repeat(2,1fr); } }
+@media (min-width:1000px) { .bf-cierre-grid { grid-template-columns:repeat(4,1fr); } }
+.bf-contacto { display:flex; align-items:center; gap:14px; padding:18px; border-radius:14px; border:1px solid #262626; background:#111; transition:border-color .2s, transform .25s var(--ease); min-width:0; }
+.bf-contacto:hover { border-color:var(--volt); transform:translateY(-3px); }
+.bf-contacto-ico { width:44px; height:44px; border-radius:12px; background:var(--volt); color:var(--negro); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.bf-contacto small { display:block; font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#8a8984; margin-bottom:2px; }
+.bf-contacto b { display:block; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bf-pie { display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; padding-top:22px; border-top:1px solid #222; font-family:var(--font-mono); font-size:11px; color:#77766f; }
+.bf-pie b { color:var(--volt); }
+
+/* ===== BOTONES FLOTANTES / BARRA MÓVIL ===== */
+.bf-flotante { position:fixed; right:22px; bottom:22px; z-index:70; display:none; flex-direction:column; gap:12px; }
+@media (min-width:760px) { .bf-flotante.on { display:flex; } }
+.bf-flot-btn { position:relative; width:58px; height:58px; border-radius:50%; border:none; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 14px 30px -8px rgba(0,0,0,.5); transition:transform .25s var(--spring); }
+.bf-flot-btn:hover { transform:scale(1.08); }
+.bf-flot-btn.wa { background:#25D366; color:#fff; }
+.bf-flot-btn.bolsa { background:var(--volt); color:var(--negro); animation:bf-glow 2.4s infinite; }
+.bf-flot-btn .bf-badge { top:-2px; right:-2px; }
+.bf-barra-movil { position:fixed; left:10px; right:10px; bottom:calc(10px + var(--safe-b)); z-index:70; display:none; }
+@media (max-width:759px) { .bf-barra-movil.on { display:flex; } body.bf-con-barra { padding-bottom:calc(76px + var(--safe-b)); } }
+.bf-barra-movil a, .bf-barra-movil button { flex:1; height:56px; border-radius:16px; border:none; display:flex; align-items:center; justify-content:center; gap:10px; font-weight:800; font-size:15px; box-shadow:0 16px 34px -10px rgba(0,0,0,.55); }
+.bf-barra-wa { background:#25D366; color:#fff; }
+.bf-barra-bolsa { background:var(--volt); color:var(--negro); justify-content:space-between !important; padding:0 18px; }
+.bf-barra-bolsa .cnt { background:var(--negro); color:var(--volt); font-family:var(--font-mono); font-size:12px; padding:3px 8px; border-radius:6px; }
+.bf-barra-bolsa .tot { font-family:var(--font-display); font-weight:900; font-size:24px; }
+
+/* ===== MODAL PRODUCTO ===== */
+.bf-overlay { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.7); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); display:none; align-items:flex-end; justify-content:center; animation:bf-fade .25s; }
+.bf-overlay.open { display:flex; }
+@media (min-width:760px) { .bf-overlay { align-items:center; padding:24px; } }
+.bf-modal { position:relative; width:100%; max-width:980px; max-height:94vh; max-height:94dvh; overflow-y:auto; overscroll-behavior:contain; background:var(--surface); color:var(--text); border-radius:22px 22px 0 0; animation:bf-sheet .38s var(--ease); }
+@media (min-width:760px) { .bf-modal { border-radius:22px; animation:bf-sube .35s var(--ease); display:grid; grid-template-columns:1.05fr 1fr; overflow:hidden; } }
+.bf-modal-agarre { width:44px; height:5px; border-radius:5px; background:var(--border); margin:10px auto 0; position:absolute; left:50%; transform:translateX(-50%); top:0; z-index:4; }
+@media (min-width:760px) { .bf-modal-agarre { display:none; } }
+.bf-modal-cerrar { position:absolute; top:14px; right:14px; z-index:5; width:40px; height:40px; border-radius:50%; border:none; background:rgba(10,10,10,.65); color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); }
+.bf-modal-galeria { position:relative; background:var(--surface-2); }
+@media (min-width:760px) { .bf-modal-galeria { max-height:94vh; } }
+.bf-modal-fotos { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; aspect-ratio:1/1; }
+@media (min-width:760px) { .bf-modal-fotos { height:100%; aspect-ratio:auto; min-height:520px; } }
+.bf-modal-fotos::-webkit-scrollbar { display:none; }
+.bf-modal-fotos img { flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; cursor:zoom-in; }
+.bf-modal-fotos .bf-sin-foto { position:relative; flex:0 0 100%; z-index:0; }
+.bf-modal-puntos { position:absolute; bottom:14px; left:0; right:0; display:flex; justify-content:center; gap:6px; }
+.bf-modal-puntos i { width:7px; height:7px; border-radius:7px; background:rgba(255,255,255,.5); transition:all .25s; }
+.bf-modal-puntos i.on { width:22px; background:var(--volt); }
+.bf-modal-sticker { position:absolute; top:16px; left:16px; }
+.bf-modal-body { padding:22px 18px calc(22px + var(--safe-b)); display:flex; flex-direction:column; }
+@media (min-width:760px) { .bf-modal-body { padding:40px 34px 30px; max-height:94vh; overflow-y:auto; } }
+.bf-modal-cat { font-family:var(--font-mono); font-size:10.5px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:var(--rojo); margin-bottom:8px; }
+.bf-modal-nombre { font-family:var(--font-display); font-weight:900; text-transform:uppercase; font-size:clamp(34px,6vw,50px); line-height:.9; margin:0 0 16px; }
+.bf-modal-precios { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px; margin-bottom:6px; }
+.bf-modal-precios .bf-ahora { font-size:44px; }
+.bf-modal-precios .bf-antes { font-size:14px; }
+.bf-modal-ahorro { margin-bottom:18px; }
+.bf-modal-desc { font-size:14.5px; line-height:1.7; color:var(--text-2); white-space:pre-wrap; margin:6px 0 20px; }
+.bf-cantidad { display:inline-flex; align-items:center; border:1.5px solid var(--border); border-radius:12px; height:52px; overflow:hidden; }
+.bf-cantidad button { width:46px; height:100%; border:none; background:transparent; color:var(--text); font-size:20px; font-weight:700; }
+.bf-cantidad button:hover { background:var(--surface-2); }
+.bf-cantidad span { min-width:34px; text-align:center; font-family:var(--font-mono); font-weight:800; font-size:16px; }
+.bf-modal-acciones { display:flex; gap:10px; flex-wrap:wrap; margin-top:auto; }
+.bf-modal-acciones .bf-btn { flex:1 1 180px; }
+.bf-modal-fila { display:flex; gap:10px; margin-bottom:10px; }
+.bf-modal-fila .bf-btn { flex:1; }
+.bf-btn-wa { background:#25D366; color:#fff; }
+.bf-btn-wa:hover { transform:translateY(-2px); box-shadow:0 12px 28px -10px rgba(37,211,102,.7); }
+.bf-btn-texto { background:transparent; color:var(--text-2); border-color:var(--border); }
+.bf-btn-texto:hover { color:var(--text); border-color:var(--text); }
+.bf-relacionados { margin-top:26px; padding-top:20px; border-top:1px dashed var(--border); }
+.bf-relacionados h4 { margin:0 0 12px; font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-3); }
+.bf-rel-scroll { display:flex; gap:10px; overflow-x:auto; scrollbar-width:none; padding-bottom:4px; }
+.bf-rel-scroll::-webkit-scrollbar { display:none; }
+.bf-rel { flex:0 0 116px; cursor:pointer; }
+.bf-rel-img { position:relative; width:116px; height:116px; border-radius:12px; overflow:hidden; background:var(--surface-2); }
+.bf-rel-img img { width:100%; height:100%; object-fit:cover; }
+.bf-rel-img .bf-sin-foto { font-size:40px; z-index:0; }
+.bf-rel-img em { position:absolute; top:6px; left:6px; font-style:normal; background:var(--rojo); color:#fff; font-family:var(--font-display); font-weight:900; font-size:14px; padding:2px 6px; border-radius:5px; }
+.bf-rel .n { font-size:12px; font-weight:700; margin-top:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.bf-rel .p { font-family:var(--font-display); font-weight:900; font-size:18px; }
+
+/* ===== BOLSA (drawer / sheet) ===== */
+.bf-bolsa { position:relative; width:100%; max-width:460px; max-height:90vh; max-height:90dvh; background:var(--surface); color:var(--text); display:flex; flex-direction:column; border-radius:22px 22px 0 0; animation:bf-sheet .38s var(--ease); }
+@media (min-width:760px) {
+  #bf-overlay-bolsa { align-items:stretch; justify-content:flex-end; padding:0; }
+  .bf-bolsa { height:100vh; max-height:none; border-radius:0; animation:bf-drawer .4s var(--ease); }
+}
+.bf-bolsa-head { display:flex; align-items:center; justify-content:space-between; padding:20px 18px 14px; border-bottom:1px solid var(--border); }
+.bf-bolsa-head h3 { margin:0; font-family:var(--font-display); font-weight:900; text-transform:uppercase; font-size:34px; line-height:1; }
+.bf-bolsa-head button { width:40px; height:40px; border-radius:50%; border:1.5px solid var(--border); background:transparent; color:var(--text); font-size:17px; display:flex; align-items:center; justify-content:center; }
+.bf-bolsa-lista { flex:1; overflow-y:auto; padding:8px 18px; overscroll-behavior:contain; }
+.bf-bolsa-item { display:grid; grid-template-columns:64px 1fr auto; gap:12px; align-items:center; padding:12px 0; border-bottom:1px dashed var(--border); animation:bf-sube .35s var(--ease) both; }
+.bf-bolsa-img { position:relative; width:64px; height:64px; border-radius:10px; overflow:hidden; background:var(--surface-2); }
+.bf-bolsa-img img { width:100%; height:100%; object-fit:cover; }
+.bf-bolsa-img .bf-sin-foto { font-size:28px; z-index:0; }
+.bf-bolsa-item .n { font-weight:700; font-size:13.5px; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.bf-bolsa-item .p { font-family:var(--font-mono); font-size:12px; color:var(--text-3); margin-top:3px; }
+.bf-bolsa-item .bf-cantidad { height:36px; border-radius:9px; }
+.bf-bolsa-item .bf-cantidad button { width:32px; font-size:16px; }
+.bf-bolsa-item .bf-cantidad span { min-width:24px; font-size:13px; }
+.bf-bolsa-vacia { text-align:center; padding:60px 10px; color:var(--text-3); }
+.bf-bolsa-vacia b { display:block; font-family:var(--font-display); font-size:40px; color:var(--text); text-transform:uppercase; margin:10px 0 6px; }
+.bf-bolsa-pie { padding:16px 18px calc(18px + var(--safe-b)); border-top:1px solid var(--border); background:var(--surface-2); }
+.bf-bolsa-linea { display:flex; justify-content:space-between; font-size:13.5px; color:var(--text-2); margin-bottom:6px; }
+.bf-bolsa-linea.ahorro { color:var(--rojo); font-weight:700; }
+.bf-bolsa-total { display:flex; justify-content:space-between; align-items:baseline; margin:10px 0 14px; }
+.bf-bolsa-total span { font-family:var(--font-mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-2); }
+.bf-bolsa-total b { font-family:var(--font-display); font-weight:900; font-size:40px; line-height:1; }
+.bf-bolsa-pie .bf-btn { width:100%; }
+.bf-bolsa-nota { font-size:11.5px; color:var(--text-3); text-align:center; margin-top:10px; }
+.bf-bolsa-vaciar { background:none; border:none; color:var(--text-3); font-size:12px; text-decoration:underline; margin-top:8px; width:100%; }
+
+/* ===== LIGHTBOX ===== */
+.bf-lightbox { position:fixed; inset:0; z-index:300; background:rgba(5,5,5,.96); display:none; align-items:center; justify-content:center; }
+.bf-lightbox.open { display:flex; }
+.bf-lightbox img { max-width:92vw; max-height:84vh; object-fit:contain; border-radius:10px; }
+.bf-lb-btn { position:absolute; width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; font-size:22px; display:flex; align-items:center; justify-content:center; }
+.bf-lb-btn.cerrar { top:18px; right:18px; font-size:18px; }
+.bf-lb-btn.izq { left:14px; top:50%; transform:translateY(-50%); }
+.bf-lb-btn.der { right:14px; top:50%; transform:translateY(-50%); }
+.bf-lb-cont { position:absolute; bottom:22px; left:50%; transform:translateX(-50%); color:#fff; font-family:var(--font-mono); font-size:12px; }
+
+/* ===== VARIOS ===== */
+.bf-toasts { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(90px + var(--safe-b)); z-index:500; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none; width:max-content; max-width:92vw; }
+@media (min-width:760px) { .bf-toasts { bottom:30px; } }
+.bf-toast { background:var(--volt); color:var(--negro); padding:12px 20px; border-radius:12px; font-weight:800; font-size:13.5px; box-shadow:0 14px 30px -8px rgba(0,0,0,.5); animation:bf-sube .3s var(--ease); display:flex; align-items:center; gap:8px; }
+.bf-vista-previa { display:none; background:var(--rojo); color:#fff; text-align:center; font-family:var(--font-mono); font-size:11.5px; font-weight:800; letter-spacing:.06em; padding:8px 14px; }
+.bf-cargador { min-height:70vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; color:var(--text-2); text-align:center; padding:24px; }
+.bf-cargador b { font-family:var(--font-display); font-weight:900; font-size:48px; text-transform:uppercase; color:var(--text); line-height:.9; }
+
+/* ===== MOVIMIENTO REDUCIDO ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  .bf-reveal { opacity:1; transform:none; }
+}
+</style>
+</head>
+<body class="bf-bloqueado">
+
+<!-- ===== INTRO: cortina que se abre cuando el catálogo ya cargó ===== -->
+<div class="bf-cortina" id="bf-cortina" aria-hidden="true">
+  <div class="bf-cortina-mitad arriba"></div>
+  <div class="bf-cortina-mitad abajo"></div>
+  <div class="bf-cortina-costura"></div>
+  <div class="bf-cortina-centro">
+    <img class="bf-cortina-logo" id="bf-cortina-logo" src="" alt="">
+    <div class="bf-cortina-eyebrow" id="bf-cortina-eyebrow">Abriendo las puertas</div>
+    <h1 class="bf-cortina-titulo">Black<span>Friday</span></h1>
+    <div class="bf-cortina-barra"><i></i></div>
+  </div>
+</div>
+
+<div id="bf-cargador" class="bf-cargador" style="display:none"></div>
+
+<div id="bf-app" style="display:none">
+  <div class="bf-vista-previa" id="bf-vista-previa">VISTA PREVIA — ESTE CATÁLOGO AÚN NO ES PÚBLICO</div>
+
+  <div class="bf-ticker" aria-hidden="true"><div class="bf-ticker-pista" id="bf-ticker"></div></div>
+
+  <header class="bf-header">
+    <div class="bf-wrap bf-header-in">
+      <div class="bf-header-marca" onclick="irArriba()">
+        <img id="bf-header-logo" class="bf-header-logo" src="" alt="">
+        <div id="bf-header-letra" class="bf-header-logo-letra"></div>
+        <span class="bf-header-nombre" id="bf-header-nombre"></span>
+        <span class="bf-header-sello">BLACK FRIDAY</span>
+      </div>
+      <div class="bf-header-der">
+        <button class="bf-icon-btn" onclick="enfocarBusqueda()" aria-label="Buscar" id="bf-ico-buscar"></button>
+        <button class="bf-icon-btn" onclick="verFavoritos()" aria-label="Favoritos"><span id="bf-ico-fav"></span><span class="bf-badge" id="bf-badge-fav"></span></button>
+        <button class="bf-icon-btn" onclick="toggleTema()" aria-label="Cambiar tema" id="bf-btn-tema"></button>
+        <button class="bf-icon-btn" id="bf-btn-bolsa-header" onclick="abrirBolsa()" aria-label="Mi bolsa" style="display:none"><span id="bf-ico-bolsa"></span><span class="bf-badge" id="bf-badge-bolsa"></span></button>
+        <a class="bf-header-wa" id="bf-header-wa" target="_blank" rel="noopener"></a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== HERO ===== -->
+  <section class="bf-hero" id="bf-hero">
+    <div class="bf-hero-luz" id="bf-hero-luz"></div>
+    <div class="bf-hero-luz roja"></div>
+    <div class="bf-wrap bf-hero-grid">
+      <div>
+        <div class="bf-hero-presenta"><i></i><span id="bf-hero-presenta"></span></div>
+        <h1 class="bf-hero-titulo"><span class="l1">Black</span><span class="l2">Friday</span></h1>
+        <p class="bf-hero-desc" id="bf-hero-desc"></p>
+        <div class="bf-cuenta" id="bf-cuenta">
+          <div class="bf-cuenta-label"><span id="bf-cuenta-ico"></span><span id="bf-cuenta-label"></span></div>
+          <div class="bf-cuenta-cajas">
+            <div class="bf-cuenta-caja" id="bf-caja-d"><span class="bf-cuenta-num" id="bf-cd-d">00</span><span class="bf-cuenta-txt">Días</span></div>
+            <div class="bf-cuenta-caja"><span class="bf-cuenta-num" id="bf-cd-h">00</span><span class="bf-cuenta-txt">Horas</span></div>
+            <div class="bf-cuenta-caja"><span class="bf-cuenta-num" id="bf-cd-m">00</span><span class="bf-cuenta-txt">Min</span></div>
+            <div class="bf-cuenta-caja"><span class="bf-cuenta-num" id="bf-cd-s">00</span><span class="bf-cuenta-txt">Seg</span></div>
+          </div>
+        </div>
+        <div class="bf-hero-acciones" id="bf-hero-acciones"></div>
+        <div class="bf-hero-stats" id="bf-hero-stats"></div>
+      </div>
+      <div class="bf-pila" id="bf-pila" style="display:none"></div>
+    </div>
+  </section>
+
+  <!-- ===== CINTAS CRUZADAS ===== -->
+  <div class="bf-cintas" aria-hidden="true">
+    <div class="bf-cinta b"><div class="bf-cinta-pista" id="bf-cinta-b"></div></div>
+    <div class="bf-cinta a"><div class="bf-cinta-pista" id="bf-cinta-a"></div></div>
+  </div>
+
+  <!-- ===== TOP REBAJAS ===== -->
+  <section class="bf-seccion bf-reveal" id="bf-sec-top" style="display:none">
+    <div class="bf-wrap">
+      <div class="bf-sec-head">
+        <div>
+          <div class="bf-sec-kicker" id="bf-top-kicker">Ranking</div>
+          <h2 class="bf-sec-titulo" id="bf-top-titulo">Las rebajas <em>más fuertes</em></h2>
+        </div>
+        <div class="bf-sec-nav">
+          <button onclick="moverRail('bf-rail-top',-1)" aria-label="Anterior">←</button>
+          <button onclick="moverRail('bf-rail-top',1)" aria-label="Siguiente">→</button>
+        </div>
+      </div>
+      <div class="bf-rail" id="bf-rail-top"></div>
+    </div>
+  </section>
+
+  <!-- ===== CATÁLOGO ===== -->
+  <section class="bf-seccion" id="bf-sec-catalogo" style="padding-top:20px">
+    <div class="bf-wrap">
+      <div class="bf-sec-head" style="margin-bottom:6px">
+        <div>
+          <div class="bf-sec-kicker">Todo el catálogo</div>
+          <h2 class="bf-sec-titulo">Elige <em>y llévatelo</em></h2>
+        </div>
+      </div>
+      <div class="bf-filtros" id="bf-filtros">
+        <div class="bf-filtros-fila">
+          <label class="bf-buscador">
+            <span id="bf-ico-buscar-2"></span>
+            <span class="bf-sr">Buscar productos</span>
+            <input type="search" id="bf-buscador" placeholder="Buscar ofertas…" autocomplete="off" oninput="onBuscar(this.value)">
+            <button type="button" class="bf-buscador-limpiar" id="bf-limpiar" onclick="limpiarBusqueda()" aria-label="Limpiar búsqueda">✕</button>
+          </label>
+          <select class="bf-orden" id="bf-orden" onchange="cambiarOrden(this.value)" aria-label="Ordenar">
+            <option value="descuento">Mayor descuento</option>
+            <option value="reciente">Más recientes</option>
+            <option value="precio_asc">Menor precio</option>
+            <option value="precio_desc">Mayor precio</option>
+            <option value="nombre">Nombre A-Z</option>
+          </select>
+        </div>
+        <div class="bf-chips" id="bf-chips"></div>
+      </div>
+      <div class="bf-resultado">
+        <h3 id="bf-resultado-titulo">Todo</h3>
+        <span id="bf-resultado-conteo"></span>
+      </div>
+      <div class="bf-grid" id="bf-grid"></div>
+      <div class="bf-mas" id="bf-mas" style="display:none"><button class="bf-btn" onclick="mostrarMas()">Ver más ofertas</button></div>
+    </div>
+  </section>
+
+  <!-- ===== RULETA ===== -->
+  <section class="bf-seccion bf-ruleta-banda" id="bf-sec-ruleta" style="display:none">
+    <div class="bf-wrap bf-ruleta-grid">
+      <div class="bf-reveal">
+        <div class="bf-sec-kicker" style="color:var(--volt)">¿No sabes qué elegir?</div>
+        <h2 class="bf-ruleta-titulo">Gira la <span>ruleta</span> de ofertas</h2>
+        <p class="bf-ruleta-txt">Deja que la suerte escoja por ti. Gira y descubre una oferta del catálogo al azar.</p>
+        <button class="bf-btn bf-btn-volt" id="bf-btn-girar" onclick="girarRuleta()"><span id="bf-ico-girar"></span> Girar ahora</button>
+      </div>
+      <div class="bf-maquina bf-reveal" id="bf-maquina">
+        <div class="bf-maquina-luces"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="bf-maquina-ventana" id="bf-maquina-ventana">
+          <div class="bf-maquina-velo" id="bf-maquina-velo">?<small>Presiona girar</small></div>
+        </div>
+        <div class="bf-maquina-resultado" id="bf-maquina-resultado"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== VISTOS RECIENTEMENTE ===== -->
+  <section class="bf-seccion bf-reveal" id="bf-sec-vistos" style="display:none">
+    <div class="bf-wrap">
+      <div class="bf-sec-head">
+        <div>
+          <div class="bf-sec-kicker">Tu historial</div>
+          <h2 class="bf-sec-titulo">Lo que <em>ya viste</em></h2>
+        </div>
+        <div class="bf-sec-nav">
+          <button onclick="moverRail('bf-rail-vistos',-1)" aria-label="Anterior">←</button>
+          <button onclick="moverRail('bf-rail-vistos',1)" aria-label="Siguiente">→</button>
+        </div>
+      </div>
+      <div class="bf-rail" id="bf-rail-vistos"></div>
+    </div>
+  </section>
+
+  <!-- ===== CIERRE ===== -->
+  <footer class="bf-cierre">
+    <div class="bf-wrap">
+      <h2 class="bf-cierre-gigante bf-reveal">No te quedes<span>sin el tuyo</span></h2>
+      <div class="bf-cierre-grid" id="bf-contactos"></div>
+      <div class="bf-pie">
+        <span>© <span id="bf-anio"></span> <b id="bf-pie-nombre"></b></span>
+        <span>Creado con <b>Catálogo360</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="bf-flotante" id="bf-flotante">
+    <button class="bf-flot-btn bolsa" id="bf-flot-bolsa" onclick="abrirBolsa()" aria-label="Mi bolsa" style="display:none"><span id="bf-ico-bolsa-2"></span><span class="bf-badge" id="bf-badge-bolsa-2"></span></button>
+    <button class="bf-flot-btn wa" id="bf-flot-wa" aria-label="WhatsApp"></button>
+  </div>
+  <div class="bf-barra-movil" id="bf-barra-movil"></div>
+</div>
+
+<!-- ===== MODAL DE PRODUCTO ===== -->
+<div class="bf-overlay" id="bf-overlay-modal" onclick="if(event.target===this)cerrarModal()" role="dialog" aria-modal="true" aria-label="Detalle del producto">
+  <div class="bf-modal" id="bf-modal">
+    <div class="bf-modal-agarre"></div>
+    <button class="bf-modal-cerrar" onclick="cerrarModal()" aria-label="Cerrar" id="bf-modal-cerrar"></button>
+    <div class="bf-modal-galeria">
+      <div class="bf-modal-fotos" id="bf-modal-fotos"></div>
+      <div class="bf-modal-puntos" id="bf-modal-puntos"></div>
+      <div class="bf-modal-sticker" id="bf-modal-sticker"></div>
+    </div>
+    <div class="bf-modal-body" id="bf-modal-body"></div>
+  </div>
+</div>
+
+<!-- ===== BOLSA ===== -->
+<div class="bf-overlay" id="bf-overlay-bolsa" onclick="if(event.target===this)cerrarBolsa()" role="dialog" aria-modal="true" aria-label="Mi bolsa">
+  <div class="bf-bolsa">
+    <div class="bf-bolsa-head">
+      <h3>Mi bolsa</h3>
+      <button onclick="cerrarBolsa()" aria-label="Cerrar" id="bf-bolsa-cerrar"></button>
+    </div>
+    <div class="bf-bolsa-lista" id="bf-bolsa-lista"></div>
+    <div class="bf-bolsa-pie" id="bf-bolsa-pie"></div>
+  </div>
+</div>
+
+<!-- ===== LIGHTBOX ===== -->
+<div class="bf-lightbox" id="bf-lightbox" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="bf-lb-btn cerrar" onclick="cerrarLightbox()" aria-label="Cerrar">✕</button>
+  <button class="bf-lb-btn izq" onclick="moverLightbox(-1)" aria-label="Anterior">‹</button>
+  <img id="bf-lb-img" src="" alt="">
+  <button class="bf-lb-btn der" onclick="moverLightbox(1)" aria-label="Siguiente">›</button>
+  <div class="bf-lb-cont" id="bf-lb-cont"></div>
+</div>
+
+<div class="bf-toasts" id="bf-toasts" aria-live="polite"></div>
+
+<script>
+const sb = c360CrearCliente();
+const PLANTILLA_KEY = 'blackfriday';
+const POR_PAGINA = 24;
+
+let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [];
+let CATEGORIA_ACTUAL = null, SOLO_FAV = false, SOLO_OFERTAS = false;
+let ORDEN = 'descuento', TEXTO = '', LIMITE = POR_PAGINA;
+let FAVORITOS = [], VISTOS = [], BOLSA = [];
+let ES_PREVIEW = false;
+let LB_FOTOS = [], LB_I = 0, MODAL_CANT = 1, MODAL_ID = null;
+let PILA_TIMER = null, CUENTA_TIMER = null, RULETA_GIRANDO = false;
+const MOV_REDUCIDO = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const ICO = {
+  heart: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  heartFill: '<svg class="bf-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  moon: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/></svg>',
+  sun: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  search: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  bag: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20.5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+  plus: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  check: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  wa: '<svg class="bf-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.2-.5-.5-1-1.1-1.3-1.7-.1-.2 0-.4.1-.5l.4-.5.3-.4v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.6.6-.9 1.3-.9 2.1.1.9.4 1.8 1 2.6 1.1 1.6 2.5 2.9 4.2 3.6.5.2.9.4 1.4.5.5.2 1 .2 1.6.1.6-.1 1.2-.5 1.5-1.1.2-.4.2-.8.1-1.1l-.6-.2z"/></svg>',
+  phone: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11 11 0 0 0 3.5.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1 11 11 0 0 0 .6 3.5 1 1 0 0 1-.3 1z"/></svg>',
+  mail: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  pin: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  share: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
+  close: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  bolt: '<svg class="bf-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>',
+  dice: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>',
+  trash: '<svg class="bf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+};
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+function esc(s){ return c360Esc(s); }
+function fmtC(n){ return c360FmtC(n); }
+function nombreNegocio(){ return CATALOGO?.nombre_comercial || CATALOGO?.nombre || ''; }
+function enOferta(p){ return p.etiqueta === 'oferta' && p.precio_oferta && Number(p.precio_oferta) < Number(p.precio); }
+function precioReal(p){ return enOferta(p) ? Number(p.precio_oferta) : Number(p.precio); }
+function descuento(p){ return enOferta(p) && Number(p.precio) > 0 ? Math.round((1 - Number(p.precio_oferta) / Number(p.precio)) * 100) : 0; }
+function fotoPrincipal(p){ return p?.fotos?.find(f => f.es_principal) || p?.fotos?.[0] || null; }
+function inicial(txt){ return esc((String(txt || '?').trim()[0] || '?').toUpperCase()); }
+function sinFoto(p){ return `<div class="bf-sin-foto">${inicial(p.nombre)}</div>`; }
+function nombreCat(p){ return CATEGORIAS.find(c => c.id === p.categoria_id)?.nombre || ''; }
+function claveLocal(k){ return `bf_${k}_${CATALOGO?.id || 'x'}`; }
+function leerLocal(k){ try { return JSON.parse(localStorage.getItem(claveLocal(k)) || '[]'); } catch(e) { return []; } }
+function guardarLocal(k, v){ try { localStorage.setItem(claveLocal(k), JSON.stringify(v)); } catch(e) {} }
+function registrarEvento(tipo, prodId){ c360RegistrarEvento(sb, CATALOGO?.id, tipo, prodId, ES_PREVIEW); }
+function linkWA(txt){ return c360LinkWA(CATALOGO.whatsapp, txt); }
+function irArriba(){ window.scrollTo({ top:0, behavior:'smooth' }); }
+function irACatalogo(){ $('bf-sec-catalogo').scrollIntoView({ behavior:'smooth' }); }
+function enfocarBusqueda(){ irACatalogo(); setTimeout(() => $('bf-buscador').focus({ preventScroll:true }), 450); }
+function toast(msg, ico){
+  const t = document.createElement('div'); t.className = 'bf-toast';
+  t.innerHTML = (ico || '') + `<span>${esc(msg)}</span>`;
+  $('bf-toasts').appendChild(t); setTimeout(() => t.remove(), 2400);
+}
+function bloquearScroll(on){ document.body.classList.toggle('bf-bloqueado', on); }
+function hayWhatsApp(){ return !!(CATALOGO && CATALOGO.whatsapp && String(CATALOGO.whatsapp).replace(/\D/g,'').length >= 7); }
+
+/* ---------- tema ---------- */
+function aplicarTema(t){
+  document.documentElement.setAttribute('data-theme', t);
+  $('bf-btn-tema').innerHTML = t === 'oscuro' ? ICO.sun : ICO.moon;
+}
+function toggleTema(){
+  const n = document.documentElement.getAttribute('data-theme') === 'oscuro' ? 'claro' : 'oscuro';
+  aplicarTema(n); try { localStorage.setItem('bf_tema', n); } catch(e) {}
+}
+
+/* ---------- arranque ---------- */
+function pintarIconos(){
+  $('bf-ico-buscar').innerHTML = ICO.search;
+  $('bf-ico-buscar-2').innerHTML = ICO.search;
+  $('bf-ico-fav').innerHTML = ICO.heart;
+  $('bf-ico-bolsa').innerHTML = ICO.bag;
+  $('bf-ico-bolsa-2').innerHTML = ICO.bag;
+  $('bf-flot-wa').innerHTML = ICO.wa;
+  $('bf-modal-cerrar').innerHTML = ICO.close;
+  $('bf-bolsa-cerrar').innerHTML = ICO.close;
+  $('bf-cuenta-ico').innerHTML = ICO.bolt;
+  $('bf-ico-girar').innerHTML = ICO.dice;
+}
+
+async function init(){
+  pintarIconos();
+  const inicio = Date.now();
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'); const idPreview = params.get('preview');
+  ES_PREVIEW = !!idPreview;
+
+  let r;
+  try { r = await c360CargarCatalogoPublico({ sb, slug, idPreview }); }
+  catch (e) { r = { error:'No pudimos conectar. Revisa tu internet e intenta de nuevo.' }; }
+  if (r.error) { mostrarError(r.error); return; }
+  if (c360RedirigirSiPlantillaCambio(r.catalogo, PLANTILLA_KEY)) return;
+
+  CATALOGO = r.catalogo; PRODUCTOS = r.productos; CATEGORIAS = r.categorias;
+  FAVORITOS = leerLocal('favoritos'); VISTOS = leerLocal('vistos');
+  BOLSA = leerLocal('bolsa').filter(b => PRODUCTOS.some(p => p.id === b.id && p.etiqueta !== 'agotado'));
+  if (!PRODUCTOS.some(enOferta)) ORDEN = 'reciente';
+  $('bf-orden').value = ORDEN;
+
+  let tema = 'oscuro';
+  try { tema = localStorage.getItem('bf_tema') || CATALOGO.tema_default || 'oscuro'; } catch(e) {}
+  aplicarTema(tema);
+
+  if (CATALOGO.logo_url) { const l = $('bf-cortina-logo'); l.src = CATALOGO.logo_url; l.style.display = 'block'; }
+  $('bf-cortina-eyebrow').textContent = nombreNegocio();
+  if (ES_PREVIEW && CATALOGO.estado !== 'publicado') $('bf-vista-previa').style.display = 'block';
+
+  renderTodo();
+  $('bf-app').style.display = 'block';
+  if (!ES_PREVIEW) registrarEvento('visita');
+
+  // La cortina se abre cuando ya hay datos (mínimo 900ms para que se lea)
+  const espera = MOV_REDUCIDO ? 0 : Math.max(0, 900 - (Date.now() - inicio));
+  setTimeout(abrirCortina, espera);
+}
+
+function abrirCortina(){
+  const c = $('bf-cortina');
+  c.classList.add('abierta');
+  bloquearScroll(false);
+  activarRevelado();
+  setTimeout(() => c.remove(), 1000);
+  abrirDesdeHash();
+}
+function mostrarError(msg){
+  $('bf-cortina')?.remove(); bloquearScroll(false);
+  const el = $('bf-cargador'); el.style.display = 'flex';
+  el.innerHTML = `<b>Tienda<br>cerrada</b><p>${esc(msg)}</p>`;
+}
+function abrirDesdeHash(){
+  const m = location.hash.match(/^#producto-(.+)$/);
+  if (m && PRODUCTOS.some(p => p.id === m[1])) setTimeout(() => abrirModal(m[1]), 350);
+}
+
+function renderTodo(){
+  renderMeta();
+  renderHeader();
+  renderHero();
+  renderTicker();
+  renderCintas();
+  renderTop();
+  renderChips();
+  aplicarFiltro();
+  renderRuleta();
+  renderVistos();
+  renderContactos();
+  renderAccionesFijas();
+  actualizarBadges();
+  iniciarCuenta();
+}
+
+function renderMeta(){
+  const c = CATALOGO, nombre = nombreNegocio();
+  document.title = `${nombre} · Black Friday`;
+  $('bf-desc-meta').setAttribute('content', c.descripcion || `Ofertas Black Friday de ${nombre}`);
+  $('bf-og-title').setAttribute('content', `${nombre} · Black Friday`);
+  $('bf-og-desc').setAttribute('content', c.descripcion || `Ofertas Black Friday de ${nombre}`);
+  const img = c.banner_url || c.logo_url;
+  if (img) $('bf-og-image').setAttribute('content', img);
+  c360InsertarJSONLD('bf-jsonld', c, PRODUCTOS);
+}
+
+function renderHeader(){
+  const nombre = nombreNegocio();
+  $('bf-header-nombre').textContent = nombre;
+  if (CATALOGO.logo_url) { const l = $('bf-header-logo'); l.src = CATALOGO.logo_url; l.style.display = 'block'; $('bf-header-letra').style.display = 'none'; }
+  else $('bf-header-letra').innerHTML = inicial(nombre);
+  if (hayWhatsApp()) {
+    const a = $('bf-header-wa'); a.classList.add('on');
+    a.href = linkWA(`Hola ${nombre}, vi su catálogo Black Friday y tengo una consulta.`);
+    a.innerHTML = ICO.wa + ' Escríbenos';
+    a.onclick = () => registrarEvento('click_whatsapp');
+    $('bf-btn-bolsa-header').style.display = 'flex';
+  }
+  $('bf-pie-nombre').textContent = nombre;
+  $('bf-anio').textContent = new Date().getFullYear();
+}
+
+/* ---------- HERO ---------- */
+function renderHero(){
+  const c = CATALOGO;
+  $('bf-hero-presenta').textContent = `${nombreNegocio()} presenta`;
+  $('bf-hero-desc').textContent = c.descripcion || 'Los mejores precios del año ya están aquí. Elige lo que te gusta y pídelo directo por WhatsApp antes de que se acabe.';
+
+  let acc = `<button class="bf-btn bf-btn-volt" onclick="irACatalogo()">${ICO.bolt} Ver ofertas</button>`;
+  if (hayWhatsApp()) acc += `<a class="bf-btn bf-btn-borde" href="${esc(linkWA(`Hola ${nombreNegocio()}, quiero información sobre sus ofertas de Black Friday.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} WhatsApp</a>`;
+  $('bf-hero-acciones').innerHTML = acc;
+
+  const ofertas = PRODUCTOS.filter(enOferta);
+  const maxDesc = ofertas.reduce((m, p) => Math.max(m, descuento(p)), 0);
+  let stats = '';
+  if (maxDesc > 0) stats += `<span class="bf-stat rojo">Hasta <b>-${maxDesc}%</b></span>`;
+  if (ofertas.length) stats += `<span class="bf-stat"><b>${ofertas.length}</b> ${ofertas.length === 1 ? 'oferta' : 'ofertas'}</span>`;
+  if (PRODUCTOS.length) stats += `<span class="bf-stat"><b>${PRODUCTOS.length}</b> ${PRODUCTOS.length === 1 ? 'producto' : 'productos'}</span>`;
+  $('bf-hero-stats').innerHTML = stats;
+
+  // Pila de cartas: las ofertas más fuertes, luego destacados, luego el resto
+  const candidatos = [...PRODUCTOS].filter(p => fotoPrincipal(p) && p.etiqueta !== 'agotado')
+    .sort((a, b) => (descuento(b) - descuento(a)) || ((b.destacado ? 1 : 0) - (a.destacado ? 1 : 0)))
+    .slice(0, 6);
+  const pila = $('bf-pila');
+  if (!candidatos.length) { pila.style.display = 'none'; return; }
+  pila.style.display = 'block';
+  pila.innerHTML = candidatos.map((p, i) => {
+    const d = descuento(p);
+    return `<div class="bf-pila-carta" data-pos="${i < 3 ? i : 'oculta'}" style="${i >= 3 ? 'opacity:0;pointer-events:none' : ''}" onclick="abrirModal('${p.id}')">
+      ${d ? `<div class="bf-pila-sticker"><div class="bf-estallido"><span>-${d}%<small>OFF</small></span></div></div>` : (p.destacado ? `<div class="bf-pila-sticker"><div class="bf-estallido volt"><span>TOP<small>PICK</small></span></div></div>` : '')}
+      <img class="bf-pila-img" src="${esc(fotoPrincipal(p).url)}" alt="${esc(p.nombre)}" loading="eager">
+      <div class="bf-pila-info">
+        <div class="bf-pila-nombre">${esc(p.nombre)}</div>
+        <div>${d ? `<div class="bf-pila-antes">${fmtC(p.precio)}</div>` : ''}<div class="bf-pila-precio">${fmtC(precioReal(p))}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+  if (candidatos.length > 1 && !MOV_REDUCIDO) {
+    clearInterval(PILA_TIMER);
+    PILA_TIMER = setInterval(rotarPila, 3400);
+  }
+  // Luz que sigue el cursor (solo escritorio)
+  if (window.matchMedia('(pointer:fine)').matches && !MOV_REDUCIDO) {
+    $('bf-hero').addEventListener('mousemove', e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      $('bf-hero-luz').style.transform = `translate(${x * 120}px, ${y * 120}px)`;
+    });
+  }
+}
+function rotarPila(){
+  if (document.hidden) return;
+  const cartas = [...$('bf-pila').children];
+  if (cartas.length < 2) return;
+  const frente = cartas.find(c => c.dataset.pos === '0');
+  frente.dataset.pos = 'sale';
+  setTimeout(() => {
+    // la carta del frente pasa al final de la cola
+    $('bf-pila').appendChild(frente);
+    const orden = [...$('bf-pila').children];
+    orden.forEach((c, i) => {
+      c.dataset.pos = i < 3 ? String(i) : 'oculta';
+      c.style.opacity = i < 3 ? '' : '0';
+      c.style.pointerEvents = i < 3 ? '' : 'none';
+    });
+  }, 520);
+  // reordenar las que quedan adelante mientras la primera sale
+  cartas.filter(c => c !== frente).forEach((c, i) => { if (i < 3) { c.dataset.pos = String(i); c.style.opacity = ''; c.style.pointerEvents = ''; } });
+}
+
+/* ---------- CUENTA REGRESIVA (fechas reales) ---------- */
+function objetivoCuenta(){
+  const ahora = new Date(), y = ahora.getFullYear();
+  const dow = new Date(y, 10, 1).getDay();
+  const primerJueves = 1 + ((4 - dow + 7) % 7);
+  const viernes = new Date(y, 10, primerJueves + 22);      // viernes después del 4to jueves de noviembre
+  const lunes = new Date(y, 10, primerJueves + 25);        // Cyber Monday
+  const finLunes = new Date(y, 10, primerJueves + 26);
+  if (ahora < viernes && viernes - ahora < 45 * 864e5) return { t:viernes, label:'El Black Friday arranca en' };
+  if (ahora >= viernes && ahora < lunes) return { t:lunes, label:'El fin de semana Black Friday termina en' };
+  if (ahora >= lunes && ahora < finLunes) return { t:finLunes, label:'El Cyber Monday termina en' };
+  const manana = new Date(y, ahora.getMonth(), ahora.getDate() + 1);
+  return { t:manana, label:'Las ofertas de hoy terminan en' };
+}
+function iniciarCuenta(){
+  let obj = objetivoCuenta();
+  $('bf-cuenta-label').textContent = obj.label;
+  const previo = {};
+  const poner = (id, v) => {
+    if (previo[id] === v) return;
+    const el = $(id); el.textContent = v; previo[id] = v;
+    if (!MOV_REDUCIDO) { el.classList.remove('cambia'); void el.offsetWidth; el.classList.add('cambia'); }
+  };
+  const tick = () => {
+    let ms = obj.t - new Date();
+    if (ms <= 0) { obj = objetivoCuenta(); $('bf-cuenta-label').textContent = obj.label; ms = obj.t - new Date(); }
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sg = s % 60;
+    $('bf-caja-d').style.display = d > 0 ? '' : 'none';
+    poner('bf-cd-d', String(d).padStart(2, '0'));
+    poner('bf-cd-h', String(h).padStart(2, '0'));
+    poner('bf-cd-m', String(m).padStart(2, '0'));
+    poner('bf-cd-s', String(sg).padStart(2, '0'));
+  };
+  tick(); clearInterval(CUENTA_TIMER); CUENTA_TIMER = setInterval(tick, 1000);
+}
+
+/* ---------- TICKER y CINTAS ---------- */
+function renderTicker(){
+  const ofertas = PRODUCTOS.filter(enOferta).sort((a, b) => descuento(b) - descuento(a)).slice(0, 10);
+  let items = ofertas.map(p => `<span class="bf-ticker-item"><b>-${descuento(p)}%</b>${esc(p.nombre)} · ${fmtC(precioReal(p))}</span>`);
+  if (items.length < 4) {
+    items = items.concat([
+      `<span class="bf-ticker-item"><b>BLACK FRIDAY</b>${esc(nombreNegocio())}</span>`,
+      `<span class="bf-ticker-item">Precios de locura</span>`,
+      hayWhatsApp() ? `<span class="bf-ticker-item">Pide directo por WhatsApp</span>` : `<span class="bf-ticker-item">Ofertas de temporada</span>`,
+      `<span class="bf-ticker-item">Por tiempo limitado</span>`,
+    ]);
+  }
+  const bloque = items.join('');
+  $('bf-ticker').innerHTML = bloque + bloque;
+}
+function renderCintas(){
+  const maxDesc = PRODUCTOS.reduce((m, p) => Math.max(m, descuento(p)), 0);
+  const a = ['Black Friday', maxDesc ? `Hasta -${maxDesc}%` : 'Precios de locura', 'Black Friday', 'Solo por tiempo limitado'];
+  const b = ['No te lo pierdas', nombreNegocio() || 'Ofertas', 'Cyber Deals', 'Hasta agotar existencias'];
+  const armar = arr => { const s = arr.map(t => `<span>${esc(t)}</span>`).join(''); return s + s + s + s; };
+  $('bf-cinta-a').innerHTML = armar(a);
+  $('bf-cinta-b').innerHTML = armar(b);
+}
+
+/* ---------- TOP REBAJAS ---------- */
+function tarjetaTop(p, i, sinRank){
+  const f = fotoPrincipal(p), d = descuento(p);
+  return `<article class="bf-top" onclick="abrirModal('${p.id}')">
+    ${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy">` : sinFoto(p)}
+    ${sinRank ? '' : `<div class="bf-top-rank">${String(i + 1).padStart(2, '0')}</div>`}
+    ${d ? `<div class="bf-top-pct">-${d}%</div>` : ''}
+    <div class="bf-top-info">
+      <div class="bf-top-nombre">${esc(p.nombre)}</div>
+      <div class="bf-top-precios"><b>${fmtC(precioReal(p))}</b>${d ? `<s>${fmtC(p.precio)}</s>` : ''}</div>
+    </div>
+  </article>`;
+}
+function renderTop(){
+  let lista = PRODUCTOS.filter(p => enOferta(p) && p.etiqueta !== 'agotado').sort((a, b) => descuento(b) - descuento(a));
+  if (lista.length) { $('bf-top-kicker').textContent = 'Ranking de descuentos'; $('bf-top-titulo').innerHTML = 'Las rebajas <em>más fuertes</em>'; }
+  else {
+    lista = PRODUCTOS.filter(p => p.destacado);
+    $('bf-top-kicker').textContent = 'Selección especial'; $('bf-top-titulo').innerHTML = 'Lo más <em>buscado</em>';
+  }
+  lista = lista.slice(0, 10);
+  if (lista.length < 2) { $('bf-sec-top').style.display = 'none'; return; }
+  $('bf-sec-top').style.display = 'block';
+  $('bf-rail-top').innerHTML = lista.map((p, i) => tarjetaTop(p, i)).join('');
+}
+function moverRail(id, dir){ const r = $(id); r.scrollBy({ left: dir * r.clientWidth * .8, behavior:'smooth' }); }
+
+/* ---------- FILTROS ---------- */
+function renderChips(){
+  const nOfertas = PRODUCTOS.filter(enOferta).length;
+  const conteo = {}; PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id] || 0) + 1; });
+  let html = `<button class="bf-chip ${!CATEGORIA_ACTUAL && !SOLO_FAV && !SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('todo')">Todo <small>${PRODUCTOS.length}</small></button>`;
+  if (nOfertas) html += `<button class="bf-chip fuego ${SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('ofertas')">🔥 Ofertas <small>${nOfertas}</small></button>`;
+  html += `<button class="bf-chip ${SOLO_FAV ? 'on' : ''}" onclick="elegirChip('fav')">${SOLO_FAV ? ICO.heartFill : ICO.heart} Favoritos <small>${FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length}</small></button>`;
+  html += CATEGORIAS.filter(c => conteo[c.id]).map(c => `<button class="bf-chip ${CATEGORIA_ACTUAL?.id === c.id ? 'on' : ''}" onclick="elegirChip('cat','${c.id}')">${esc(c.nombre)} <small>${conteo[c.id]}</small></button>`).join('');
+  $('bf-chips').innerHTML = html;
+}
+function elegirChip(tipo, id){
+  if (tipo === 'todo') { CATEGORIA_ACTUAL = null; SOLO_FAV = false; SOLO_OFERTAS = false; }
+  else if (tipo === 'ofertas') { SOLO_OFERTAS = !SOLO_OFERTAS; SOLO_FAV = false; }
+  else if (tipo === 'fav') { SOLO_FAV = !SOLO_FAV; SOLO_OFERTAS = false; }
+  else if (tipo === 'cat') { CATEGORIA_ACTUAL = CATEGORIA_ACTUAL?.id === id ? null : (CATEGORIAS.find(c => c.id === id) || null); }
+  LIMITE = POR_PAGINA;
+  renderChips(); aplicarFiltro();
+  const barra = $('bf-filtros');
+  if (barra.getBoundingClientRect().top > window.innerHeight * .6 || $('bf-grid').getBoundingClientRect().top < 0) irACatalogo();
+}
+function verFavoritos(){ SOLO_FAV = false; elegirChip('fav'); irACatalogo(); }
+let _busTimer = null;
+function onBuscar(v){
+  $('bf-limpiar').classList.toggle('on', !!v);
+  clearTimeout(_busTimer);
+  _busTimer = setTimeout(() => { TEXTO = v.trim().toLowerCase(); LIMITE = POR_PAGINA; aplicarFiltro(); }, 140);
+}
+function limpiarBusqueda(){ $('bf-buscador').value = ''; onBuscar(''); $('bf-buscador').focus(); }
+function cambiarOrden(v){ ORDEN = v; aplicarFiltro(); }
+function mostrarMas(){ LIMITE += POR_PAGINA; aplicarFiltro(true); }
+
+function aplicarFiltro(conservarScroll){
+  let lista = c360FiltrarYOrdenar(PRODUCTOS, {
+    categoriaId: CATEGORIA_ACTUAL?.id || null,
+    soloFavoritos: SOLO_FAV, favoritos: FAVORITOS,
+    soloOfertas: SOLO_OFERTAS,
+    textoBusqueda: TEXTO,
+    orden: ORDEN === 'descuento' ? 'reciente' : ORDEN,
+  });
+  if (ORDEN === 'descuento') lista = lista.sort((a, b) => (descuento(b) - descuento(a)) || ((b.destacado ? 1 : 0) - (a.destacado ? 1 : 0)));
+  // los agotados siempre al final
+  lista = lista.filter(p => p.etiqueta !== 'agotado').concat(lista.filter(p => p.etiqueta === 'agotado'));
+
+  let titulo = 'Todo';
+  if (SOLO_FAV) titulo = 'Tus favoritos';
+  else if (SOLO_OFERTAS) titulo = 'Solo ofertas';
+  if (CATEGORIA_ACTUAL) titulo = CATEGORIA_ACTUAL.nombre;
+  if (TEXTO) titulo = `“${TEXTO}”`;
+  $('bf-resultado-titulo').textContent = titulo;
+  $('bf-resultado-conteo').textContent = `${lista.length} ${lista.length === 1 ? 'resultado' : 'resultados'}`;
+
+  const g = $('bf-grid');
+  if (!lista.length) {
+    g.innerHTML = `<div class="bf-vacio"><b>${SOLO_FAV ? 'Sin favoritos' : 'Nada por aquí'}</b>${SOLO_FAV ? 'Toca el corazón de un producto para guardarlo.' : 'Prueba con otra búsqueda o categoría.'}</div>`;
+    $('bf-mas').style.display = 'none'; return;
+  }
+  const visibles = lista.slice(0, LIMITE);
+  g.innerHTML = visibles.map((p, i) => tarjetaHTML(p, conservarScroll ? Math.max(0, i - (LIMITE - POR_PAGINA)) : i)).join('');
+  $('bf-mas').style.display = lista.length > LIMITE ? 'flex' : 'none';
+  observarTarjetas();
+}
+
+function tarjetaHTML(p, i){
+  const f = fotoPrincipal(p), d = descuento(p), agotado = p.etiqueta === 'agotado';
+  const fav = FAVORITOS.includes(p.id), enBolsa = BOLSA.some(b => b.id === p.id);
+  const cat = nombreCat(p);
+  let tag = '';
+  if (agotado) tag = '';
+  else if (p.etiqueta === 'nuevo') tag = `<span class="bf-card-tag nuevo">Nuevo</span>`;
+  else if (p.destacado) tag = `<span class="bf-card-tag">★ Top</span>`;
+  const retraso = Math.min(i, 12) * 40;
+  return `<article class="bf-card ${agotado ? 'agotada' : ''}" data-id="${p.id}" style="animation-delay:${retraso}ms">
+    <div class="bf-card-media ${f ? 'cargando' : ''}" onclick="abrirModal('${p.id}')">
+      ${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy" onload="this.classList.add('cargada');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">` : sinFoto(p)}
+      ${tag}
+      ${d && !agotado ? `<div class="bf-card-sticker"><div class="bf-estallido"><span>-${d}%<small>OFF</small></span></div></div>` : ''}
+    </div>
+    <button class="bf-fav ${fav ? 'on' : ''}" onclick="toggleFav('${p.id}', this)" aria-label="${fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">${fav ? ICO.heartFill : ICO.heart}</button>
+    <div class="bf-card-body">
+      ${cat ? `<div class="bf-card-cat">${esc(cat)}</div>` : ''}
+      <div class="bf-card-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+      <div class="bf-card-precios">
+        ${d ? `<span class="bf-antes">${fmtC(p.precio)}</span>` : ''}
+        <span class="bf-ahora ${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</span>
+        ${d ? `<span class="bf-ahorro">Ahorras ${fmtC(Number(p.precio) - precioReal(p))}</span>` : ''}
+      </div>
+      ${!agotado && hayWhatsApp() ? `<div class="bf-card-acciones">
+        <button class="bf-agregar ${enBolsa ? 'hecho' : ''}" onclick="agregarABolsa('${p.id}', 1, this)">${enBolsa ? ICO.check : ICO.plus}<span>${enBolsa ? 'En tu bolsa' : 'Agregar'}</span></button>
+        <button class="bf-mini opcional" onclick="consultarProducto('${p.id}')" aria-label="Consultar por WhatsApp">${ICO.wa}</button>
+      </div>` : ''}
+    </div>
+  </article>`;
+}
+
+// Tachado animado del precio anterior cuando la tarjeta entra en pantalla
+let _obsCards = null;
+function observarTarjetas(){
+  const cards = document.querySelectorAll('#bf-grid .bf-card');
+  if (!('IntersectionObserver' in window) || MOV_REDUCIDO) { cards.forEach(c => c.classList.add('visible')); return; }
+  if (!_obsCards) _obsCards = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); _obsCards.unobserve(e.target); } }), { threshold:.35 });
+  cards.forEach(c => _obsCards.observe(c));
+}
+// Inclinación 3D de las tarjetas (solo mouse)
+if (window.matchMedia('(hover:hover) and (pointer:fine)').matches && !MOV_REDUCIDO) {
+  document.addEventListener('mousemove', e => {
+    const card = e.target.closest && e.target.closest('.bf-card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--ry', `${((e.clientX - r.left) / r.width - .5) * 8}deg`);
+    card.style.setProperty('--rx', `${-((e.clientY - r.top) / r.height - .5) * 8}deg`);
+  });
+}
+
+/* ---------- FAVORITOS ---------- */
+function toggleFav(id, btn){
+  const i = FAVORITOS.indexOf(id);
+  if (i === -1) FAVORITOS.push(id); else FAVORITOS.splice(i, 1);
+  guardarLocal('favoritos', FAVORITOS);
+  const on = FAVORITOS.includes(id);
+  if (btn) { btn.classList.toggle('on', on); btn.innerHTML = on ? ICO.heartFill : ICO.heart; }
+  document.querySelectorAll(`.bf-card[data-id="${id}"] .bf-fav`).forEach(b => { b.classList.toggle('on', on); b.innerHTML = on ? ICO.heartFill : ICO.heart; });
+  actualizarBadges(); renderChips();
+  if (SOLO_FAV) aplicarFiltro();
+  if (on) toast('Guardado en favoritos', ICO.heartFill);
+}
+
+/* ---------- BOLSA ---------- */
+function agregarABolsa(id, cant, btn){
+  const p = PRODUCTOS.find(x => x.id === id);
+  if (!p || p.etiqueta === 'agotado' || !hayWhatsApp()) return;
+  const it = BOLSA.find(b => b.id === id);
+  if (it) it.cant = Math.min(99, it.cant + cant); else BOLSA.push({ id, cant });
+  guardarLocal('bolsa', BOLSA);
+  document.querySelectorAll(`.bf-card[data-id="${id}"] .bf-agregar`).forEach(b => { b.classList.add('hecho'); b.innerHTML = ICO.check + '<span>En tu bolsa</span>'; });
+  actualizarBadges(true); renderAccionesFijas();
+  toast(`${p.nombre.length > 26 ? p.nombre.slice(0, 26) + '…' : p.nombre} agregado`, ICO.bag);
+}
+function cambiarCantBolsa(id, delta){
+  const it = BOLSA.find(b => b.id === id); if (!it) return;
+  it.cant += delta;
+  if (it.cant <= 0) BOLSA = BOLSA.filter(b => b.id !== id);
+  guardarLocal('bolsa', BOLSA);
+  if (!BOLSA.some(b => b.id === id)) document.querySelectorAll(`.bf-card[data-id="${id}"] .bf-agregar`).forEach(b => { b.classList.remove('hecho'); b.innerHTML = ICO.plus + '<span>Agregar</span>'; });
+  renderBolsa(); actualizarBadges(); renderAccionesFijas();
+}
+function vaciarBolsa(){
+  BOLSA = []; guardarLocal('bolsa', BOLSA);
+  document.querySelectorAll('.bf-agregar.hecho').forEach(b => { b.classList.remove('hecho'); b.innerHTML = ICO.plus + '<span>Agregar</span>'; });
+  renderBolsa(); actualizarBadges(); renderAccionesFijas();
+}
+function totalesBolsa(){
+  let total = 0, antes = 0, piezas = 0;
+  BOLSA.forEach(b => { const p = PRODUCTOS.find(x => x.id === b.id); if (!p) return; total += precioReal(p) * b.cant; antes += Number(p.precio) * b.cant; piezas += b.cant; });
+  return { total, ahorro: Math.max(0, antes - total), piezas };
+}
+function abrirBolsa(){ renderBolsa(); $('bf-overlay-bolsa').classList.add('open'); bloquearScroll(true); }
+function cerrarBolsa(){ $('bf-overlay-bolsa').classList.remove('open'); if (!$('bf-overlay-modal').classList.contains('open')) bloquearScroll(false); }
+function renderBolsa(){
+  const lista = $('bf-bolsa-lista'), pie = $('bf-bolsa-pie');
+  if (!BOLSA.length) {
+    lista.innerHTML = `<div class="bf-bolsa-vacia"><div style="font-size:44px">${ICO.bag}</div><b>Bolsa vacía</b>Agrega productos y envía tu pedido completo en un solo mensaje.</div>`;
+    pie.innerHTML = `<button class="bf-btn bf-btn-volt" onclick="cerrarBolsa();irACatalogo()">Ver ofertas</button>`;
+    return;
+  }
+  lista.innerHTML = BOLSA.map(b => {
+    const p = PRODUCTOS.find(x => x.id === b.id); if (!p) return '';
+    const f = fotoPrincipal(p);
+    return `<div class="bf-bolsa-item">
+      <div class="bf-bolsa-img">${f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(p)}</div>
+      <div style="min-width:0"><div class="n">${esc(p.nombre)}</div><div class="p">${fmtC(precioReal(p))} c/u${descuento(p) ? ` · <span style="color:var(--rojo)">-${descuento(p)}%</span>` : ''}</div></div>
+      <div class="bf-cantidad"><button onclick="cambiarCantBolsa('${p.id}',-1)" aria-label="Quitar uno">${b.cant === 1 ? ICO.trash : '−'}</button><span>${b.cant}</span><button onclick="cambiarCantBolsa('${p.id}',1)" aria-label="Agregar uno">+</button></div>
+    </div>`;
+  }).join('');
+  const t = totalesBolsa();
+  pie.innerHTML = `
+    ${t.ahorro > 0 ? `<div class="bf-bolsa-linea ahorro"><span>Tu ahorro Black Friday</span><span>-${fmtC(t.ahorro)}</span></div>` : ''}
+    <div class="bf-bolsa-total"><span>Total · ${t.piezas} ${t.piezas === 1 ? 'pieza' : 'piezas'}</span><b>${fmtC(t.total)}</b></div>
+    <button class="bf-btn bf-btn-wa" onclick="enviarPedido()">${ICO.wa} Enviar pedido por WhatsApp</button>
+    <div class="bf-bolsa-nota">El negocio confirmará disponibilidad y forma de entrega por WhatsApp.</div>
+    <button class="bf-bolsa-vaciar" onclick="vaciarBolsa()">Vaciar bolsa</button>`;
+}
+function enviarPedido(){
+  if (!BOLSA.length || !hayWhatsApp()) return;
+  const lineas = BOLSA.map(b => { const p = PRODUCTOS.find(x => x.id === b.id); return p ? `• ${b.cant} × ${p.nombre} — ${fmtC(precioReal(p) * b.cant)}` : null; }).filter(Boolean);
+  const t = totalesBolsa();
+  const msg = `Hola ${nombreNegocio()}, quiero hacer este pedido de su catálogo Black Friday:\n\n${lineas.join('\n')}\n\nTotal: ${fmtC(t.total)}${t.ahorro > 0 ? ` (ahorro de ${fmtC(t.ahorro)})` : ''}\n\n¿Me confirman disponibilidad?`;
+  registrarEvento('click_whatsapp');
+  window.open(linkWA(msg), '_blank');
+}
+function consultarProducto(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || !hayWhatsApp()) return;
+  const d = descuento(p);
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWA(`Hola, vi en su catálogo Black Friday "${p.nombre}" a ${fmtC(precioReal(p))}${d ? ` (antes ${fmtC(p.precio)}, -${d}%)` : ''}. ¿Está disponible?`), '_blank');
+}
+
+function actualizarBadges(latir){
+  const nFav = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length;
+  const bf = $('bf-badge-fav'); bf.textContent = nFav; bf.classList.toggle('on', nFav > 0);
+  const piezas = totalesBolsa().piezas;
+  ['bf-badge-bolsa', 'bf-badge-bolsa-2'].forEach(id => {
+    const b = $(id); b.textContent = piezas; b.classList.toggle('on', piezas > 0);
+    if (latir && !MOV_REDUCIDO) { b.classList.remove('latido'); void b.offsetWidth; b.classList.add('latido'); }
+  });
+}
+
+/* Botones flotantes (escritorio) y barra inferior (móvil) */
+function renderAccionesFijas(){
+  if (!hayWhatsApp()) return;
+  const flot = $('bf-flotante'); flot.classList.add('on');
+  const urlWA = linkWA(`Hola ${nombreNegocio()}, vi su catálogo Black Friday y tengo una consulta.`);
+  $('bf-flot-wa').onclick = () => { registrarEvento('click_whatsapp'); window.open(urlWA, '_blank'); };
+  $('bf-flot-bolsa').style.display = BOLSA.length ? 'flex' : 'none';
+
+  const barra = $('bf-barra-movil'); barra.classList.add('on'); document.body.classList.add('bf-con-barra');
+  if (BOLSA.length) {
+    const t = totalesBolsa();
+    barra.innerHTML = `<button class="bf-barra-bolsa" onclick="abrirBolsa()"><span style="display:flex;align-items:center;gap:10px">${ICO.bag} Ver mi bolsa <span class="cnt">${t.piezas}</span></span><span class="tot">${fmtC(t.total)}</span></button>`;
+  } else {
+    barra.innerHTML = `<a class="bf-barra-wa" href="${esc(urlWA)}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} Escribir por WhatsApp</a>`;
+  }
+}
+
+/* ---------- MODAL ---------- */
+function abrirModal(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  MODAL_ID = id; MODAL_CANT = 1;
+  registrarEvento('vista_producto', id); registrarVisto(id);
+  const d = descuento(p), agotado = p.etiqueta === 'agotado', cat = nombreCat(p);
+
+  const fotos = p.fotos.length ? p.fotos : [];
+  $('bf-modal-fotos').innerHTML = fotos.length ? fotos.map((f, i) => `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" onclick="abrirLightbox(${i})">`).join('') : sinFoto(p);
+  $('bf-modal-fotos').scrollLeft = 0;
+  $('bf-modal-puntos').innerHTML = fotos.length > 1 ? fotos.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
+  $('bf-modal-sticker').innerHTML = d && !agotado ? `<div class="bf-estallido" style="width:84px;height:84px"><span style="font-size:26px">-${d}%<small>OFF</small></span></div>` : '';
+  LB_FOTOS = fotos.map(f => f.url);
+
+  let acciones = '';
+  if (agotado) acciones = `<button class="bf-btn bf-btn-texto" disabled style="width:100%">Agotado por ahora</button>`;
+  else if (hayWhatsApp()) acciones = `
+    <div class="bf-modal-fila">
+      <div class="bf-cantidad"><button onclick="cambiarCantModal(-1)" aria-label="Menos">−</button><span id="bf-modal-cant">1</span><button onclick="cambiarCantModal(1)" aria-label="Más">+</button></div>
+      <button class="bf-btn bf-btn-volt" onclick="agregarDesdeModal()">${ICO.bag} Agregar a mi bolsa</button>
+    </div>
+    <div class="bf-modal-acciones">
+      <button class="bf-btn bf-btn-wa" onclick="consultarProducto('${p.id}')">${ICO.wa} Preguntar por WhatsApp</button>
+    </div>`;
+  if (CATALOGO.telefono) acciones += `<div class="bf-modal-acciones" style="margin-top:10px"><a class="bf-btn bf-btn-texto" href="tel:${esc(CATALOGO.telefono)}" onclick="registrarEvento('click_telefono','${p.id}')">${ICO.phone} Llamar</a><button class="bf-btn bf-btn-texto" onclick="compartir('${p.id}')">${ICO.share} Compartir</button></div>`;
+  else acciones += `<div class="bf-modal-acciones" style="margin-top:10px"><button class="bf-btn bf-btn-texto" onclick="compartir('${p.id}')">${ICO.share} Compartir</button></div>`;
+
+  const rel = PRODUCTOS.filter(x => x.id !== p.id && (p.categoria_id ? x.categoria_id === p.categoria_id : enOferta(x))).slice(0, 8);
+  $('bf-modal-body').innerHTML = `
+    ${cat ? `<div class="bf-modal-cat">${esc(cat)}</div>` : ''}
+    <h2 class="bf-modal-nombre">${esc(p.nombre)}</h2>
+    <div class="bf-modal-precios">
+      <span class="bf-ahora ${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</span>
+      ${d ? `<span class="bf-antes tachar">${fmtC(p.precio)}</span>` : ''}
+    </div>
+    ${d ? `<div class="bf-modal-ahorro"><span class="bf-ahorro">Ahorras ${fmtC(Number(p.precio) - precioReal(p))}</span></div>` : '<div style="height:12px"></div>'}
+    ${p.descripcion ? `<div class="bf-modal-desc">${esc(p.descripcion)}</div>` : ''}
+    ${acciones}
+    ${rel.length ? `<div class="bf-relacionados"><h4>También en oferta</h4><div class="bf-rel-scroll">${rel.map(r => {
+      const f = fotoPrincipal(r), rd = descuento(r);
+      return `<div class="bf-rel" onclick="abrirModal('${r.id}')"><div class="bf-rel-img">${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : sinFoto(r)}${rd ? `<em>-${rd}%</em>` : ''}</div><div class="n">${esc(r.nombre)}</div><div class="p">${fmtC(precioReal(r))}</div></div>`;
+    }).join('')}</div></div>` : ''}`;
+  $('bf-modal').scrollTop = 0; $('bf-modal-body').scrollTop = 0;
+  $('bf-overlay-modal').classList.add('open'); bloquearScroll(true);
+  history.replaceState(null, '', `#producto-${id}`);
+}
+function cerrarModal(){
+  $('bf-overlay-modal').classList.remove('open');
+  if (!$('bf-overlay-bolsa').classList.contains('open')) bloquearScroll(false);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+function cambiarCantModal(d){ MODAL_CANT = Math.max(1, Math.min(99, MODAL_CANT + d)); $('bf-modal-cant').textContent = MODAL_CANT; }
+function agregarDesdeModal(){ agregarABolsa(MODAL_ID, MODAL_CANT); cerrarModal(); }
+$('bf-modal-fotos').addEventListener('scroll', e => {
+  const el = e.currentTarget, i = Math.round(el.scrollLeft / el.clientWidth);
+  [...$('bf-modal-puntos').children].forEach((d, j) => d.classList.toggle('on', i === j));
+}, { passive:true });
+function compartir(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  const url = `${location.origin}${location.pathname}${location.search}#producto-${id}`;
+  const texto = `${p.nombre} — ${fmtC(precioReal(p))}${descuento(p) ? ` (-${descuento(p)}%)` : ''}`;
+  if (navigator.share) navigator.share({ title:p.nombre, text:texto, url }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Enlace copiado', ICO.check)).catch(() => {});
+}
+
+/* ---------- VISTOS ---------- */
+function registrarVisto(id){
+  VISTOS = VISTOS.filter(v => v !== id); VISTOS.unshift(id); VISTOS = VISTOS.slice(0, 10);
+  guardarLocal('vistos', VISTOS); renderVistos();
+}
+function renderVistos(){
+  const lista = VISTOS.map(id => PRODUCTOS.find(p => p.id === id)).filter(Boolean);
+  if (lista.length < 2) { $('bf-sec-vistos').style.display = 'none'; return; }
+  $('bf-sec-vistos').style.display = 'block';
+  $('bf-rail-vistos').innerHTML = lista.map((p, i) => tarjetaTop(p, i, true)).join('');
+  $('bf-sec-vistos').classList.add('visible');
+}
+
+/* ---------- RULETA ---------- */
+function poolRuleta(){
+  const disp = PRODUCTOS.filter(p => p.etiqueta !== 'agotado');
+  const conOferta = disp.filter(enOferta);
+  return conOferta.length >= 3 ? conOferta : disp;
+}
+function renderRuleta(){ $('bf-sec-ruleta').style.display = poolRuleta().length >= 2 ? 'block' : 'none'; }
+function girarRuleta(){
+  if (RULETA_GIRANDO) return;
+  const pool = poolRuleta(); if (pool.length < 2) return;
+  RULETA_GIRANDO = true;
+  const maq = $('bf-maquina'), ven = $('bf-maquina-ventana'), btn = $('bf-btn-girar');
+  maq.classList.add('girando'); btn.disabled = true;
+  $('bf-maquina-velo').classList.add('fuera');
+  $('bf-maquina-resultado').innerHTML = '';
+  const ganador = pool[Math.floor(Math.random() * pool.length)];
+  const pasos = MOV_REDUCIDO ? 1 : 18;
+  let n = 0;
+  const pintar = p => {
+    const f = fotoPrincipal(p);
+    ven.querySelectorAll('img, .bf-sin-foto').forEach(e => e.remove());
+    ven.insertAdjacentHTML('afterbegin', f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(p));
+  };
+  const paso = () => {
+    n++;
+    const p = n >= pasos ? ganador : pool[Math.floor(Math.random() * pool.length)];
+    pintar(p);
+    if (n < pasos) { setTimeout(paso, 50 + Math.pow(n / pasos, 3) * 380); return; }
+    maq.classList.remove('girando'); btn.disabled = false; RULETA_GIRANDO = false;
+    const d = descuento(ganador);
+    $('bf-maquina-resultado').innerHTML = `<b>${esc(ganador.nombre)}${d ? ` <span style="font-family:var(--font-mono);font-size:12px;color:var(--rojo)">-${d}%</span>` : ''}</b><span>${fmtC(precioReal(ganador))}</span>`;
+    setTimeout(() => abrirModal(ganador.id), 650);
+  };
+  paso();
+}
+
+/* ---------- CONTACTO ---------- */
+function renderContactos(){
+  const c = CATALOGO; let html = '';
+  if (hayWhatsApp()) html += `<a class="bf-contacto" href="${esc(linkWA(`Hola ${nombreNegocio()}, vi su catálogo Black Friday.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')"><div class="bf-contacto-ico">${ICO.wa}</div><div style="min-width:0"><small>WhatsApp</small><b>${esc(c.whatsapp)}</b></div></a>`;
+  if (c.telefono) html += `<a class="bf-contacto" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')"><div class="bf-contacto-ico">${ICO.phone}</div><div style="min-width:0"><small>Llámanos</small><b>${esc(c.telefono)}</b></div></a>`;
+  if (c.email) html += `<a class="bf-contacto" href="mailto:${esc(c.email)}"><div class="bf-contacto-ico">${ICO.mail}</div><div style="min-width:0"><small>Correo</small><b>${esc(c.email)}</b></div></a>`;
+  if (c.ubicacion) html += `<a class="bf-contacto" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.ubicacion)}" target="_blank" rel="noopener"><div class="bf-contacto-ico">${ICO.pin}</div><div style="min-width:0"><small>Visítanos</small><b>${esc(c.ubicacion)}</b></div></a>`;
+  $('bf-contactos').innerHTML = html;
+  $('bf-contactos').style.display = html ? '' : 'none';
+}
+
+/* ---------- LIGHTBOX ---------- */
+function abrirLightbox(i){ if (!LB_FOTOS.length) return; LB_I = i || 0; pintarLB(); $('bf-lightbox').classList.add('open'); }
+function cerrarLightbox(){ $('bf-lightbox').classList.remove('open'); }
+function moverLightbox(d){ LB_I = (LB_I + d + LB_FOTOS.length) % LB_FOTOS.length; pintarLB(); }
+function pintarLB(){ $('bf-lb-img').src = LB_FOTOS[LB_I]; $('bf-lb-cont').textContent = `${LB_I + 1} / ${LB_FOTOS.length}`; }
+(function(){
+  let x0 = null; const lb = $('bf-lightbox');
+  lb.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive:true });
+  lb.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) moverLightbox(dx > 0 ? -1 : 1); x0 = null; }, { passive:true });
+})();
+
+/* ---------- revelado y teclado ---------- */
+function activarRevelado(){
+  const els = document.querySelectorAll('.bf-reveal');
+  if (!('IntersectionObserver' in window) || MOV_REDUCIDO) { els.forEach(e => e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  els.forEach(e => obs.observe(e));
+}
+document.addEventListener('keydown', e => {
+  if ($('bf-lightbox').classList.contains('open')) {
+    if (e.key === 'Escape') cerrarLightbox();
+    if (e.key === 'ArrowLeft') moverLightbox(-1);
+    if (e.key === 'ArrowRight') moverLightbox(1);
+    return;
+  }
+  if (e.key === 'Escape') {
+    if ($('bf-overlay-modal').classList.contains('open')) cerrarModal();
+    else if ($('bf-overlay-bolsa').classList.contains('open')) cerrarBolsa();
+  }
+});
+
+init();
+</script>
+</body>
+</html>
