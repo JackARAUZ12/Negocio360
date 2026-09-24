@@ -2002,16 +2002,35 @@ function renderUserInfo(user, authEmail) {
 /* =====================================================
    KPIs
 ===================================================== */
+// Mismo mecanismo ya corregido en ventas.js: un perfil "restringido"
+// (ej. un vendedor) solo debe ver sus propias cifras, nunca las
+// generales del negocio. Dashboard es un modulo PRINCIPAL -- lo ve
+// cualquier perfil sin excepcion -- asi que sus KPIs de ventas y
+// ganancia necesitan el mismo filtro, o un vendedor restringido veia
+// aqui la ganancia de TODO el negocio aunque Ventas ya estuviera bien.
+function obtenerRestriccionPerfilDashboard() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    if (!raw) return null;
+    const perfil = JSON.parse(raw);
+    if (perfil?.tipo === 'restringido' && perfil?.nombre) return perfil.nombre;
+    return null;
+  } catch (_) { return null; }
+}
+
 async function loadKPIs(userId) {
   const today      = todayISO();
   const monthStart = startOfMonthISO();
   const sym        = monedaParaMostrar(empresaConfig?.moneda);
+  const restriccionKpiDash = obtenerRestriccionPerfilDashboard();
 
   // Ventas del día
   try {
-    const { data } = await sbClient.from('ventas').select('total, impuesto')
+    let qDia = sbClient.from('ventas').select('total, impuesto')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', today).lte('fecha', today + 'T23:59:59');
+    if (restriccionKpiDash) qDia = qDia.eq('creado_por_nombre', restriccionKpiDash);
+    const { data } = await qDia;
     if (data) {
       // FIX: usar ingreso NETO (total - impuesto), el IVA no es ingreso propio,
       // es dinero recaudado para el fisco y ya se contabiliza aparte en Impuestos.
@@ -2026,9 +2045,11 @@ async function loadKPIs(userId) {
 
   // Ventas del mes
   try {
-    const { data } = await sbClient.from('ventas').select('total, impuesto, fecha')
+    let qMesDash = sbClient.from('ventas').select('total, impuesto, fecha')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
+    if (restriccionKpiDash) qMesDash = qMesDash.eq('creado_por_nombre', restriccionKpiDash);
+    const { data } = await qMesDash;
     if (data) {
       // FIX: ingreso NETO (sin IVA), igual que en "Ventas del día"
       const total = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
@@ -2045,9 +2066,11 @@ async function loadKPIs(userId) {
   // "Ganancia del mes" se actualiza con la ganancia NETA una vez que
   // los gastos se hayan cargado, ver actualizarGananciaMesKPI())
   try {
-    const { data } = await sbClient.from('ventas').select('total, impuesto, costo_total')
+    let qGanDash = sbClient.from('ventas').select('total, impuesto, costo_total')
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
+    if (restriccionKpiDash) qGanDash = qGanDash.eq('creado_por_nombre', restriccionKpiDash);
+    const { data } = await qGanDash;
     if (data) {
       // FIX: ingresos = total NETO de IVA (total - impuesto), no el total cobrado
       // al cliente. El IVA se recauda para el fisco, no es ingreso del negocio.
@@ -2297,15 +2320,18 @@ function actualizarGananciaMesKPI(ingresos, gananciaNeta, noData) {
 async function loadVentasPorDia(userId, days = 7) {
   const labels = [];
   const values = [];
+  const restriccionChart = obtenerRestriccionPerfilDashboard();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const iso = ymd(d);
     labels.push(d.toLocaleDateString('es-NI', { day:'numeric', month:'short' }));
     try {
-      const { data } = await sbClient.from('ventas').select('total')
+      let qChart = sbClient.from('ventas').select('total')
         .eq('auth_user_id', userId).eq('estado','completada')
         .gte('fecha', iso).lt('fecha', iso + 'T24:00:00');
+      if (restriccionChart) qChart = qChart.eq('creado_por_nombre', restriccionChart);
+      const { data } = await qChart;
       values.push(data ? data.reduce((s, r) => s + (r.total || 0), 0) : 0);
     } catch { values.push(0); }
   }
@@ -2332,14 +2358,16 @@ async function loadVentasCategorias(userId) {
     // Nota: los pagos recurrentes SÍ quedan incluidos aquí, porque cada
     // pago recurrente crea una fila en venta_detalles con tipo_item
     // 'servicio' (ver ventas.js, registro de pago recurrente).
-    const { data: ventasMes, error: errV } = await sbClient
+    const restriccionCat = obtenerRestriccionPerfilDashboard();
+    let qVentasMesCat = sbClient
       .from('ventas')
       .select('id')
       .eq('auth_user_id', userId)
       .eq('estado', 'completada')
       .gte('fecha', monthStart)
       .lte('fecha', today);
-
+    if (restriccionCat) qVentasMesCat = qVentasMesCat.eq('creado_por_nombre', restriccionCat);
+    const { data: ventasMes, error: errV } = await qVentasMesCat;
     if (errV || !ventasMes || ventasMes.length === 0) { renderDonutChart({}); return; }
 
     const ventaIds = ventasMes.map(v => v.id);
@@ -2372,13 +2400,16 @@ async function loadTopProductos(userId) {
     const today      = todayISO();
 
     // Step 1: Get IDs of completed ventas this month
-    const { data: ventasMes, error: errV } = await sbClient
+    const restriccionTop = obtenerRestriccionPerfilDashboard();
+    let qVentasMesTop = sbClient
       .from('ventas')
       .select('id')
       .eq('auth_user_id', userId)
       .eq('estado', 'completada')
       .gte('fecha', monthStart)
       .lte('fecha', today);
+    if (restriccionTop) qVentasMesTop = qVentasMesTop.eq('creado_por_nombre', restriccionTop);
+    const { data: ventasMes, error: errV } = await qVentasMesTop;
 
     if (errV || !ventasMes || ventasMes.length === 0) {
       if (list) list.innerHTML = `
@@ -2450,8 +2481,11 @@ async function loadTopProductos(userId) {
 ===================================================== */
 async function loadAlertasFacturas(userId) {
   try {
-    const { data } = await sbClient.from('ventas').select('id, total')
+    const restriccionAlertas = obtenerRestriccionPerfilDashboard();
+    let qFacturas = sbClient.from('ventas').select('id, total')
       .eq('auth_user_id', userId).eq('estado_pago', 'pendiente');
+    if (restriccionAlertas) qFacturas = qFacturas.eq('creado_por_nombre', restriccionAlertas);
+    const { data } = await qFacturas;
     if (data) {
       const total = data.reduce((s, r) => s + (r.total || 0), 0);
       const sym   = monedaParaMostrar(empresaConfig?.moneda);
