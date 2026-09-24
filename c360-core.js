@@ -202,6 +202,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   blackfriday: 'c360-blackfriday.html',
   purisima: 'c360-purisima.html',
   madres: 'c360-madres.html',
+  showroom: 'c360-showroom.html',
 };
 
 /**
