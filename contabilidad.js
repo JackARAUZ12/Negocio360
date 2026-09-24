@@ -1200,10 +1200,12 @@ function exportarFlujoEfectivo(formato) {
 ===================================================== */
 const TIPOS_TRANSACCION = {
   venta: { label: 'Venta (en efectivo/tarjeta)', ejemplo: 'Debe: Caja — Haber: Ventas' },
+  iva_ventas: { label: 'IVA cobrado en ventas (opcional — separa el IVA del total)', ejemplo: 'De la misma venta: Haber: Ventas (neto) — Haber: IVA por Pagar' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
   gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
+  iva_gastos: { label: 'IVA pagado en gastos (opcional — separa el IVA del gasto)', ejemplo: 'Del mismo gasto: Debe: Gastos (neto) — Debe: IVA Acreditable' },
   compra: { label: 'Compra (pagada de una vez)', ejemplo: 'Debe: Inventario — Haber: Caja' },
   cxp_generada: { label: 'Cuenta por pagar (compra a crédito con proveedor)', ejemplo: 'Debe: Inventario — Haber: Cuentas por Pagar' },
   pago_cxp: { label: 'Pago a proveedor (de una cuenta por pagar)', ejemplo: 'Debe: Cuentas por Pagar — Haber: Caja' },
@@ -1443,7 +1445,7 @@ async function generarAsientosAutomaticos() {
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
-    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha) {
+    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha, obtenerDivisionIva) {
       const m = mapeo.get(tipo);
       if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
       campoFecha = campoFecha || 'fecha';
@@ -1488,10 +1490,40 @@ async function generarAsientosAutomaticos() {
         }).select().single();
         if (errA || !asiento) continue;
 
-        const lineas = [
-          { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
-          { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 1 },
-          ...lineasExtra.map((l, i) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: l.cuenta_id, debe: l.debe||0, haber: l.haber||0, orden: 2+i, descripcion: l.descripcion||null })),
+        // Si hay un monto de IVA a separar de esta transaccion (venta
+        // o gasto con IVA, y el mapeo de esa cuenta ya esta
+        // configurado), la linea principal de Haber (o Debe, para
+        // gastos) se DIVIDE en 2 -- el monto neto a la cuenta de
+        // siempre, y el IVA a su propia cuenta. Si no aplica (nadie
+        // configuro el mapeo de IVA, o esta transaccion no tiene IVA),
+        // el asiento queda IGUAL que siempre: una sola linea por lado.
+        const divisionIva = obtenerDivisionIva ? await obtenerDivisionIva(fila) : null;
+
+        let lineas;
+        if (divisionIva && divisionIva.montoIva > 0 && divisionIva.montoIva < monto) {
+          const montoNeto = round2(monto - divisionIva.montoIva);
+          if (divisionIva.lado === 'haber') {
+            lineas = [
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: montoNeto, orden: 1 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: 0, haber: divisionIva.montoIva, orden: 2, descripcion: 'IVA' },
+            ];
+          } else {
+            lineas = [
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: montoNeto, haber: 0, orden: 0 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: divisionIva.montoIva, haber: 0, orden: 1, descripcion: 'IVA' },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 2 },
+            ];
+          }
+        } else {
+          lineas = [
+            { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
+            { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 1 },
+          ];
+        }
+        lineas = [
+          ...lineas,
+          ...lineasExtra.map((l, i) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: l.cuenta_id, debe: l.debe||0, haber: l.haber||0, orden: 10+i, descripcion: l.descripcion||null })),
         ];
         await sbClient.from('asientos_detalle').insert(lineas);
 
@@ -1523,10 +1555,34 @@ async function generarAsientosAutomaticos() {
     // "Crédito otorgado", porque en una venta a crédito NO entra
     // dinero a la Caja en ese momento; contarla igual que una venta en
     // efectivo habría duplicado el dinero (0% margen de error).
-    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito'), obtenerCostoVentaVendido);
+    // IVA cobrado en la venta (opcional): si el mapeo iva_ventas esta
+    // configurado, se separa de la cuenta de Ventas hacia su propia
+    // cuenta de "IVA por Pagar" -- si nadie lo configuro, esta funcion
+    // no hace nada y el asiento sigue igual que siempre.
+    const mapeoIvaVentas = mapeo.get('iva_ventas');
+    async function obtenerDivisionIvaVenta(venta) {
+      if (!mapeoIvaVentas || !mapeoIvaVentas.cuenta_haber_id) return null;
+      const iva = round2(Number(venta.impuesto || 0));
+      if (iva <= 0) return null;
+      return { montoIva: iva, cuentaIvaId: mapeoIvaVentas.cuenta_haber_id, lado: 'haber' };
+    }
+
+    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito'), obtenerCostoVentaVendido, undefined, obtenerDivisionIvaVenta);
     await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.eq('metodo_pago', 'credito'), obtenerCostoVentaVendido);
     await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
-    await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ');
+    // IVA pagado en el gasto (opcional): si el mapeo iva_gastos esta
+    // configurado, se separa de la cuenta de Gastos hacia su propia
+    // cuenta de "IVA Acreditable" -- si nadie lo configuro, el
+    // asiento sigue igual que siempre.
+    const mapeoIvaGastos = mapeo.get('iva_gastos');
+    async function obtenerDivisionIvaGasto(gasto) {
+      if (!mapeoIvaGastos || !mapeoIvaGastos.cuenta_debe_id) return null;
+      const iva = round2(Number(gasto.impuesto || 0));
+      if (iva <= 0) return null;
+      return { montoIva: iva, cuentaIvaId: mapeoIvaGastos.cuenta_debe_id, lado: 'debe' };
+    }
+
+    await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ', null, null, undefined, obtenerDivisionIvaGasto);
     await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
 

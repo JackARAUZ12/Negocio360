@@ -320,6 +320,17 @@
     wrap.style.display = '';
   }
 
+  // Muestra/oculta el campo de IVA del gasto -- si nadie configura el
+  // mapeo contable "iva_gastos" (Contabilidad), este monto simplemente
+  // queda guardado sin usarse todavia, sin afectar nada mas.
+  function onToggleIvaGasto(prefijo) {
+    const check = document.getElementById(`${prefijo}-tiene-iva`);
+    const wrap = document.getElementById(`${prefijo}-wrap-iva`);
+    if (!check || !wrap) return;
+    wrap.style.display = check.checked ? '' : 'none';
+    if (!check.checked) document.getElementById(`${prefijo}-iva`).value = '';
+  }
+
   /* ===================================================
      KPIs
   =================================================== */
@@ -588,10 +599,20 @@
 
     const metodoNombre = GS.metodosPago.find(m=>m.id===metodoId)?.nombre || 'Efectivo';
 
+    // IVA opcional del gasto -- si el checkbox no esta marcado, queda 0
+    // (comportamiento identico al de siempre). Nunca puede ser mayor
+    // que el monto total del gasto.
+    let ivaGasto = 0;
+    if (document.getElementById('gasto-tiene-iva').checked) {
+      ivaGasto = parseFloat(document.getElementById('gasto-iva').value) || 0;
+      if (ivaGasto <= 0) { showToast('Indica cuánto de ese monto es IVA', 'error'); return; }
+      if (ivaGasto >= monto) { showToast('El IVA no puede ser mayor o igual al monto del gasto', 'error'); return; }
+    }
+
     try {
       setBtnLoading('btn-save-gasto', true);
       if (tipo==='inmediato') {
-        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId });
+        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto });
       } else {
         const frecuencia = document.getElementById('gasto-frecuencia').value;
         const pagarYa    = document.getElementById('gasto-pagar-ya').checked;
@@ -611,10 +632,10 @@
   /* ===================================================
      GASTO INMEDIATO
   =================================================== */
-  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId }) {
+  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto }) {
     const { data: gastoRow, error: errGasto } = await _sb.from('gastos').insert({
       auth_user_id: GS.userId, tipo:'inmediato', concepto, categoria, monto, fecha,
-      metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre,
+      metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre, impuesto: ivaGasto || 0,
       observaciones: observaciones||null, empleado: empleado||null, estado:'activo',
     }).select().single();
     if (errGasto) throw errGasto;
