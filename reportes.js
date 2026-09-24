@@ -404,6 +404,16 @@ async function loadTab(tab) {
    REFRESH ALL
    ============================================================ */
 async function refreshAll() {
+  // BUG REAL CORREGIDO: ensureCaches() (usado al exportar) solo vuelve
+  // a consultar un caché si esta VACIO -- si el usuario ya habia visto
+  // datos con el periodo por defecto y luego cambiaba a un rango
+  // personalizado, el export seguia usando los datos VIEJOS del
+  // periodo anterior (el caché nunca se vaciaba). Se limpian aqui,
+  // cada vez que cambia el periodo o las fechas, para que la proxima
+  // consulta (en pantalla o al exportar) siempre traiga el rango real.
+  Object.keys(R.cache).forEach(k => {
+    R.cache[k] = Array.isArray(R.cache[k]) ? [] : {};
+  });
   actualizarPeriodoInfo();
   await loadTab(R.tabActivo);
 }
