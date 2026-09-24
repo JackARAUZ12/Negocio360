@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0a1733" />
+<title id="pu-title">La Purísima</title>
+<meta id="pu-desc-meta" name="description" content="Catálogo de la Purísima">
+<meta id="pu-og-title" property="og:title" content="La Purísima">
+<meta id="pu-og-desc" property="og:description" content="Catálogo de la Purísima">
+<meta id="pu-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,500;1,9..144,700&family=Figtree:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+/* =====================================================================
+   CATÁLOGO360 -- PLANTILLA LA PURÍSIMA / GRITERÍA
+   Identidad propia: una noche de Gritería nicaragüense. Pólvora real
+   en canvas, festones de papel picado celeste y blanco, altares en
+   arco con luces, botón "¡Gritá!" con respuesta y gorra sorpresa, y
+   pedido multi-producto por WhatsApp ("Tu gorra"). Voseo nica.
+   Prefijo de clases/ids: pu-  (no choca con ninguna otra plantilla)
+   ===================================================================== */
+:root {
+  --noche: #0a1733;
+  --noche-2: #10224a;
+  --noche-3: #183066;
+  --celeste: #86cdf5;
+  --celeste-rgb: 134,205,245;
+  --celeste-fuerte: #2f8fd6;
+  --oro: #f4c768;
+  --oro-rgb: 244,199,104;
+  --vela: #ffb347;
+  --coral: #ff6f61;
+  --rosa: #f6a5c8;
+  --blanco: #fbfaf6;
+
+  --bg: #0a1733;
+  --surface: #10224a;
+  --surface-2: #162c5c;
+  --border: #22407c;
+  --text: #f4f7ff;
+  --text-2: #b8c6e6;
+  --text-3: #7c90bd;
+  --acento: var(--oro);
+  --precio: var(--oro);
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font: 'Figtree', system-ui, -apple-system, sans-serif;
+  --font-mano: 'Caveat', 'Comic Sans MS', cursive;
+  --r-lg: 22px; --r-md: 14px; --r-sm: 10px;
+  --arco: 999px 999px 16px 16px;
+  --max-w: 1280px;
+  --hdr-h: 62px;
+  --ease: cubic-bezier(.22,1,.36,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-theme="claro"] {
+  --bg: #f2f8fd;
+  --surface: #ffffff;
+  --surface-2: #e7f2fb;
+  --border: #cfe2f3;
+  --text: #0d2150;
+  --text-2: #3b5486;
+  --text-3: #7a8fb5;
+  --acento: var(--celeste-fuerte);
+  --precio: #0d2150;
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--hdr-h) + 120px); }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); overflow-x:hidden; transition:background .35s, color .35s; -webkit-font-smoothing:antialiased; }
+body.pu-bloqueado { overflow:hidden; }
+img { max-width:100%; display:block; }
+a { color:inherit; text-decoration:none; }
+button, input, select { font-family:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:2px solid var(--oro); outline-offset:3px; }
+svg.pu-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
+.pu-wrap { max-width:var(--max-w); margin:0 auto; padding:0 16px; }
+@media (min-width:700px) { .pu-wrap { padding:0 28px; } }
+@media (min-width:1100px) { .pu-wrap { padding:0 44px; } }
+.pu-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+@keyframes pu-sube { from { opacity:0; transform:translateY(26px); } to { opacity:1; transform:none; } }
+@keyframes pu-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes pu-titilar { 0%,100% { opacity:.25; transform:scale(.8); } 50% { opacity:1; transform:scale(1.15); } }
+@keyframes pu-bombillo { 0%,100% { opacity:.45; box-shadow:0 0 4px 1px rgba(var(--oro-rgb),.4); } 50% { opacity:1; box-shadow:0 0 12px 4px rgba(var(--oro-rgb),.85); } }
+@keyframes pu-mecer { 0%,100% { transform:rotate(-5deg); } 50% { transform:rotate(5deg); } }
+@keyframes pu-llama { 0%,100% { transform:scaleY(1) skewX(0); opacity:1; } 25% { transform:scaleY(1.12) skewX(-3deg); } 50% { transform:scaleY(.92) skewX(2deg); opacity:.9; } 75% { transform:scaleY(1.06) skewX(-1deg); } }
+@keyframes pu-flotar { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-10px); } }
+@keyframes pu-sheet { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes pu-drawer { from { transform:translateX(100%); } to { transform:none; } }
+@keyframes pu-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes pu-latido { 0%,100% { transform:scale(1); } 40% { transform:scale(1.22); } }
+@keyframes pu-grito { 0% { transform:scale(.4) rotate(-6deg); opacity:0; } 60% { transform:scale(1.08) rotate(2deg); opacity:1; } 100% { transform:scale(1) rotate(-2deg); opacity:1; } }
+@keyframes pu-caer { from { transform:translateY(-10vh) rotate(0); opacity:1; } to { transform:translateY(110vh) rotate(540deg); opacity:.9; } }
+@keyframes pu-halo { 0%,100% { opacity:.55; transform:scale(1); } 50% { opacity:.9; transform:scale(1.06); } }
+
+.pu-reveal { opacity:0; transform:translateY(30px); transition:opacity .9s var(--ease), transform .9s var(--ease); }
+.pu-reveal.visible { opacity:1; transform:none; }
+
+/* ===== CANVAS DE PÓLVORA (siempre encima, nunca bloquea clics) ===== */
+#pu-polvora { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:950; }
+
+/* ===== INTRO: la Gritería ===== */
+.pu-intro { position:fixed; inset:0; z-index:900; background:radial-gradient(ellipse at 50% 120%, #1b3a7a 0%, var(--noche) 55%, #050c1f 100%); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; gap:10px; color:var(--blanco); transition:opacity .8s ease, visibility .8s; cursor:pointer; }
+.pu-intro.fuera { opacity:0; visibility:hidden; }
+.pu-intro-estrellas { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.pu-estrella { position:absolute; width:2px; height:2px; border-radius:50%; background:#fff; animation:pu-titilar ease-in-out infinite; }
+.pu-intro-logo { width:62px; height:62px; border-radius:50%; object-fit:cover; border:2px solid var(--oro); box-shadow:0 0 0 6px rgba(var(--oro-rgb),.15); display:none; margin-bottom:8px; animation:pu-sube .6s var(--ease) both; }
+.pu-intro-pregunta { font-family:var(--font-mano); font-weight:700; font-size:clamp(34px,8vw,64px); line-height:1; color:var(--celeste); opacity:0; }
+.pu-intro-respuesta { font-family:var(--font-display); font-style:italic; font-weight:900; font-size:clamp(36px,8.5vw,76px); line-height:1.02; color:var(--oro); text-shadow:0 0 40px rgba(var(--oro-rgb),.45); opacity:0; max-width:14ch; }
+.pu-intro-pregunta.on, .pu-intro-respuesta.on { animation:pu-grito .7s var(--spring) forwards; }
+.pu-intro-negocio { font-size:12px; font-weight:700; letter-spacing:.24em; text-transform:uppercase; color:rgba(255,255,255,.6); margin-top:14px; opacity:0; transition:opacity .6s .2s; }
+.pu-intro-negocio.on { opacity:1; }
+.pu-intro-saltar { position:absolute; bottom:calc(24px + var(--safe-b)); font-size:11.5px; color:rgba(255,255,255,.45); letter-spacing:.08em; }
+
+/* ===== HEADER ===== */
+.pu-header { position:sticky; top:0; z-index:80; background:color-mix(in srgb, var(--noche) 86%, transparent); backdrop-filter:saturate(1.3) blur(14px); -webkit-backdrop-filter:saturate(1.3) blur(14px); color:var(--blanco); border-bottom:1px solid rgba(var(--celeste-rgb),.14); }
+.pu-header-in { height:var(--hdr-h); display:flex; align-items:center; gap:12px; }
+.pu-marca { display:flex; align-items:center; gap:10px; min-width:0; cursor:pointer; }
+.pu-marca-logo { width:36px; height:36px; border-radius:50%; object-fit:cover; border:1.5px solid var(--oro); display:none; }
+.pu-marca-letra { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--celeste),#fff); color:var(--noche); font-family:var(--font-display); font-weight:900; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pu-marca-nombre { font-family:var(--font-display); font-weight:700; font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw; }
+.pu-marca-sello { display:none; font-family:var(--font-mano); font-size:19px; color:var(--oro); margin-left:4px; white-space:nowrap; }
+@media (min-width:820px) { .pu-marca-sello { display:inline; } }
+.pu-header-der { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.pu-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; border:1px solid rgba(var(--celeste-rgb),.25); background:rgba(255,255,255,.05); color:var(--blanco); display:flex; align-items:center; justify-content:center; font-size:17px; transition:border-color .2s, color .2s, transform .2s var(--spring); }
+.pu-icon-btn:hover { border-color:var(--oro); color:var(--oro); }
+.pu-icon-btn:active { transform:scale(.9); }
+.pu-badge { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--oro); color:var(--noche); font-size:10px; font-weight:800; display:none; align-items:center; justify-content:center; }
+.pu-badge.on { display:flex; }
+.pu-badge.latido { animation:pu-latido .45s var(--spring); }
+.pu-header-wa { display:none; align-items:center; gap:7px; height:40px; padding:0 16px; border-radius:999px; background:linear-gradient(135deg,var(--celeste),#dff2ff); color:var(--noche); font-weight:800; font-size:13px; }
+@media (min-width:820px) { .pu-header-wa.on { display:inline-flex; } }
+
+/* ===== FESTÓN de papel picado ===== */
+.pu-feston { position:relative; height:54px; pointer-events:none; overflow:hidden; }
+@media (min-width:700px) { .pu-feston { height:66px; } }
+.pu-feston svg.cuerda { position:absolute; inset:0; width:100%; height:100%; }
+.pu-bandera { position:absolute; top:0; width:30px; height:38px; transform-origin:50% 0; animation:pu-mecer ease-in-out infinite; }
+@media (min-width:700px) { .pu-bandera { width:38px; height:46px; } }
+.pu-bandera::before { content:''; position:absolute; inset:0; clip-path:polygon(0 0,100% 0,100% 78%,84% 100%,67% 82%,50% 100%,33% 82%,16% 100%,0 78%); background:radial-gradient(circle at 50% 36%, rgba(10,23,51,.55) 0 3.5px, transparent 4px), radial-gradient(circle at 26% 60%, rgba(10,23,51,.45) 0 2.2px, transparent 2.6px), radial-gradient(circle at 74% 60%, rgba(10,23,51,.45) 0 2.2px, transparent 2.6px), var(--c); box-shadow:0 6px 10px rgba(0,0,0,.25); }
+
+/* ===== HERO: noche + altar ===== */
+.pu-hero { position:relative; overflow:hidden; color:var(--blanco); background:radial-gradient(ellipse 90% 70% at 70% 110%, rgba(var(--celeste-rgb),.22), transparent 60%), radial-gradient(ellipse 60% 50% at 10% 0%, rgba(var(--oro-rgb),.10), transparent 60%), linear-gradient(180deg, #06102a 0%, var(--noche) 45%, #122a5c 100%); padding-bottom:56px; isolation:isolate; }
+@media (min-width:980px) { .pu-hero { padding-bottom:90px; } }
+.pu-hero-estrellas { position:absolute; inset:0; z-index:-1; pointer-events:none; }
+.pu-hero-grid { display:grid; grid-template-columns:1fr; gap:36px; align-items:center; padding-top:8px; }
+@media (min-width:980px) { .pu-hero-grid { grid-template-columns:1.1fr .9fr; gap:56px; padding-top:24px; } }
+.pu-hero-mano { font-family:var(--font-mano); font-weight:700; font-size:clamp(26px,5.5vw,36px); color:var(--celeste); line-height:1; margin-bottom:6px; animation:pu-sube .8s var(--ease) both; transform:rotate(-2deg); display:inline-block; }
+.pu-hero-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(50px,12.5vw,118px); line-height:.9; letter-spacing:-.02em; margin:0; animation:pu-sube .8s var(--ease) .1s both; }
+.pu-hero-titulo em { display:block; font-style:italic; font-weight:700; color:var(--oro); text-shadow:0 0 50px rgba(var(--oro-rgb),.35); }
+.pu-hero-negocio { display:inline-flex; align-items:center; gap:10px; margin:18px 0 0; font-size:12px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:rgba(255,255,255,.7); animation:pu-sube .8s var(--ease) .18s both; }
+.pu-hero-negocio::before { content:'✦'; color:var(--oro); letter-spacing:0; }
+.pu-hero-desc { font-size:15.5px; line-height:1.65; color:#c9d5ef; max-width:520px; margin:16px 0 24px; animation:pu-sube .8s var(--ease) .24s both; }
+@media (min-width:700px) { .pu-hero-desc { font-size:17px; } }
+
+.pu-cuenta { display:inline-flex; flex-direction:column; gap:10px; padding:14px 16px; border-radius:18px; background:rgba(255,255,255,.05); border:1px solid rgba(var(--celeste-rgb),.2); backdrop-filter:blur(6px); margin-bottom:26px; animation:pu-sube .8s var(--ease) .3s both; }
+.pu-cuenta-label { font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--celeste); display:flex; align-items:center; gap:8px; }
+.pu-cuenta-cajas { display:flex; gap:14px; }
+.pu-cuenta-caja { text-align:center; min-width:46px; }
+.pu-cuenta-num { display:block; font-family:var(--font-display); font-weight:700; font-size:clamp(30px,7vw,40px); line-height:1; font-variant-numeric:tabular-nums; color:#fff; }
+.pu-cuenta-txt { display:block; font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#8ea3cf; margin-top:4px; }
+.pu-cuenta-fiesta { font-family:var(--font-display); font-style:italic; font-weight:700; font-size:clamp(24px,5vw,32px); color:var(--oro); }
+
+.pu-hero-acciones { display:flex; flex-wrap:wrap; gap:10px; animation:pu-sube .8s var(--ease) .38s both; }
+.pu-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; height:52px; padding:0 26px; border-radius:999px; border:1.5px solid transparent; font-weight:800; font-size:14.5px; transition:transform .25s var(--spring), box-shadow .25s, background .2s, color .2s, border-color .2s; white-space:nowrap; }
+.pu-btn:active { transform:scale(.96); }
+.pu-btn-oro { background:linear-gradient(135deg,#ffe3a3,var(--oro) 55%,#e8a93c); color:#2a1a00; box-shadow:0 12px 30px -10px rgba(var(--oro-rgb),.7); }
+.pu-btn-oro:hover { transform:translateY(-3px); box-shadow:0 18px 38px -10px rgba(var(--oro-rgb),.85); }
+.pu-btn-celeste { background:linear-gradient(135deg,#e2f4ff,var(--celeste)); color:var(--noche); box-shadow:0 12px 30px -12px rgba(var(--celeste-rgb),.8); }
+.pu-btn-celeste:hover { transform:translateY(-3px); }
+.pu-btn-vidrio { background:rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.28); }
+.pu-btn-vidrio:hover { border-color:var(--oro); color:var(--oro); }
+.pu-btn-wa { background:#25D366; color:#fff; }
+.pu-btn-wa:hover { transform:translateY(-2px); box-shadow:0 12px 28px -10px rgba(37,211,102,.7); }
+.pu-btn-linea { background:transparent; color:var(--text-2); border-color:var(--border); }
+.pu-btn-linea:hover { color:var(--text); border-color:var(--text); }
+.pu-btn[disabled] { opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; }
+@media (max-width:480px) { .pu-hero-acciones .pu-btn { flex:1 1 100%; } }
+
+/* Altar en arco con bombillos */
+.pu-altar { position:relative; width:min(84%,380px); margin:10px auto 0; animation:pu-sube 1s var(--ease) .25s both; }
+@media (min-width:980px) { .pu-altar { width:min(100%,420px); } }
+.pu-altar-halo { position:absolute; inset:-14% -18% 10%; background:radial-gradient(ellipse at 50% 40%, rgba(var(--oro-rgb),.32), transparent 65%); animation:pu-halo 4s ease-in-out infinite; pointer-events:none; }
+.pu-altar-arco { position:relative; aspect-ratio:4/5; border-radius:var(--arco); padding:12px; background:linear-gradient(180deg, rgba(255,255,255,.95), #dff1fd); box-shadow:0 40px 80px -30px rgba(0,0,0,.8), inset 0 0 0 2px rgba(var(--oro-rgb),.6); cursor:pointer; transition:transform .5s var(--ease); }
+.pu-altar-arco:hover { transform:translateY(-6px); }
+.pu-altar-img { width:100%; height:100%; object-fit:cover; border-radius:var(--arco); background:var(--celeste); }
+.pu-altar-luces { position:absolute; inset:-10px; pointer-events:none; }
+.pu-bombillo { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%; background:#fff6d8; animation:pu-bombillo 1.6s ease-in-out infinite; }
+.pu-altar-placa { position:absolute; left:50%; bottom:-22px; transform:translateX(-50%); width:86%; background:var(--noche-2); border:1px solid rgba(var(--oro-rgb),.5); border-radius:14px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px; box-shadow:0 16px 30px -12px rgba(0,0,0,.7); }
+.pu-altar-placa b { font-size:13.5px; font-weight:700; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; color:#fff; }
+.pu-altar-placa span { font-family:var(--font-display); font-weight:700; font-size:20px; color:var(--oro); white-space:nowrap; }
+.pu-velas { position:absolute; bottom:-6px; left:-16px; right:-16px; display:flex; justify-content:space-between; pointer-events:none; }
+.pu-vela { position:relative; width:14px; height:44px; border-radius:3px 3px 2px 2px; background:linear-gradient(90deg,#f3eee2,#fffdf6 40%,#e6dfcf); }
+.pu-vela.corta { height:32px; margin-top:12px; }
+.pu-vela::before { content:''; position:absolute; left:50%; top:-16px; width:10px; height:16px; margin-left:-5px; border-radius:50% 50% 45% 45% / 60% 60% 40% 40%; background:radial-gradient(ellipse at 50% 70%, #fff 0%, #ffe28a 35%, var(--vela) 70%, transparent 72%); transform-origin:50% 100%; animation:pu-llama 1.4s ease-in-out infinite; filter:drop-shadow(0 0 8px rgba(255,179,71,.9)); }
+.pu-vela::after { content:''; position:absolute; left:50%; top:-30px; width:44px; height:44px; margin-left:-22px; border-radius:50%; background:radial-gradient(circle, rgba(255,179,71,.35), transparent 70%); }
+.pu-velas > div { display:flex; gap:6px; align-items:flex-end; }
+
+/* ===== SECCIONES ===== */
+.pu-seccion { padding:52px 0; }
+@media (min-width:900px) { .pu-seccion { padding:80px 0; } }
+.pu-head { text-align:center; margin-bottom:30px; }
+.pu-head-mano { font-family:var(--font-mano); font-weight:700; font-size:clamp(24px,4.5vw,30px); color:var(--acento); line-height:1; }
+.pu-head-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(34px,6.4vw,60px); line-height:1; letter-spacing:-.015em; margin:6px 0 0; }
+.pu-head-titulo em { font-style:italic; font-weight:700; color:var(--acento); }
+.pu-head-sub { color:var(--text-2); font-size:14.5px; margin:10px auto 0; max-width:460px; line-height:1.55; }
+.pu-orn { display:flex; align-items:center; justify-content:center; gap:10px; color:var(--oro); margin:12px 0 0; font-size:12px; }
+.pu-orn::before, .pu-orn::after { content:''; width:40px; height:1px; background:linear-gradient(90deg, transparent, var(--oro)); }
+.pu-orn::after { transform:scaleX(-1); }
+
+/* Rails horizontales */
+.pu-rail { display:grid; grid-auto-flow:column; grid-auto-columns:62%; gap:14px; overflow-x:auto; scroll-snap-type:x mandatory; padding:6px 16px 22px; margin:0 -16px; scrollbar-width:none; scroll-padding-inline:16px; overscroll-behavior-x:contain; }
+.pu-rail::-webkit-scrollbar { display:none; }
+@media (min-width:600px) { .pu-rail { grid-auto-columns:36%; } }
+@media (min-width:980px) { .pu-rail { grid-auto-columns:calc((100% - 56px) / 5); margin:0; padding:6px 0 22px; scroll-padding-inline:0; } }
+.pu-rail-nav { display:none; justify-content:center; gap:10px; margin-top:4px; }
+@media (min-width:980px) { .pu-rail-nav.on { display:flex; } }
+.pu-rail-nav button { width:44px; height:44px; border-radius:50%; border:1.5px solid var(--border); background:var(--surface); color:var(--text); font-size:17px; transition:all .2s; }
+.pu-rail-nav button:hover { border-color:var(--acento); color:var(--acento); }
+
+/* Altares = categorías */
+.pu-altar-cat { scroll-snap-align:start; cursor:pointer; text-align:center; }
+.pu-altar-cat-marco { position:relative; aspect-ratio:3/4; border-radius:var(--arco); padding:8px; background:linear-gradient(180deg, rgba(var(--oro-rgb),.8), rgba(var(--celeste-rgb),.5)); transition:transform .45s var(--ease), box-shadow .45s; }
+.pu-altar-cat:hover .pu-altar-cat-marco { transform:translateY(-8px); box-shadow:0 26px 50px -22px rgba(var(--oro-rgb),.6); }
+.pu-altar-cat-in { position:relative; width:100%; height:100%; border-radius:var(--arco); overflow:hidden; background:var(--surface-2); }
+.pu-altar-cat-in img { width:100%; height:100%; object-fit:cover; transition:transform .8s var(--ease); }
+.pu-altar-cat:hover img { transform:scale(1.08); }
+.pu-altar-cat-in::after { content:''; position:absolute; inset:0; background:linear-gradient(180deg, transparent 50%, rgba(6,16,42,.75)); }
+.pu-altar-cat-num { position:absolute; bottom:12px; left:0; right:0; z-index:1; color:#fff; font-size:11.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+.pu-altar-cat-nombre { font-family:var(--font-display); font-weight:700; font-size:18px; margin-top:12px; line-height:1.15; }
+.pu-altar-cat-vela { display:flex; justify-content:center; margin-top:-6px; }
+
+/* Relleno para productos sin foto */
+.pu-sin-foto { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-style:italic; font-weight:900; font-size:72px; color:rgba(255,255,255,.95); background:radial-gradient(circle at 30% 20%, rgba(255,255,255,.35) 0 2px, transparent 3px) 0 0/28px 28px, linear-gradient(160deg, var(--celeste), var(--celeste-fuerte)); }
+
+/* ===== FILTROS ===== */
+.pu-filtros { position:sticky; top:var(--hdr-h); z-index:60; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); padding:12px 0 10px; margin-bottom:20px; }
+.pu-filtros-fila { display:flex; gap:8px; }
+.pu-buscador { flex:1; min-width:0; display:flex; align-items:center; gap:10px; height:48px; padding:0 18px; border-radius:999px; background:var(--surface); border:1.5px solid var(--border); transition:border-color .2s, box-shadow .2s; }
+.pu-buscador:focus-within { border-color:var(--acento); box-shadow:0 0 0 4px rgba(var(--celeste-rgb),.15); }
+.pu-buscador input { flex:1; min-width:0; border:none; outline:none; background:none; color:var(--text); font-size:15px; }
+.pu-buscador input::placeholder { color:var(--text-3); }
+.pu-limpiar { border:none; background:none; color:var(--text-3); font-size:16px; display:none; padding:4px; }
+.pu-limpiar.on { display:block; }
+.pu-orden { height:48px; border-radius:999px; border:1.5px solid var(--border); background:var(--surface); color:var(--text); padding:0 14px; font-size:13px; font-weight:700; max-width:42vw; }
+.pu-chips { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; margin-top:10px; padding-bottom:2px; }
+.pu-chips::-webkit-scrollbar { display:none; }
+.pu-chip { flex-shrink:0; height:38px; padding:0 16px; border-radius:999px; border:1.5px solid var(--border); background:var(--surface); color:var(--text-2); font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px; transition:all .2s; }
+.pu-chip small { font-size:11px; opacity:.65; font-weight:600; }
+.pu-chip:hover { border-color:var(--acento); color:var(--text); }
+.pu-chip.on { background:var(--acento); border-color:var(--acento); color:var(--noche); }
+html[data-theme="claro"] .pu-chip.on { color:#fff; }
+.pu-resultado { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:16px; }
+.pu-resultado h3 { margin:0; font-family:var(--font-display); font-weight:700; font-size:clamp(24px,4.4vw,34px); line-height:1.05; }
+.pu-resultado span { font-size:12.5px; color:var(--text-3); white-space:nowrap; }
+
+/* ===== GRID Y TARJETAS ===== */
+.pu-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+@media (min-width:700px) { .pu-grid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px; } }
+@media (min-width:1100px) { .pu-grid { grid-template-columns:repeat(4, minmax(0,1fr)); gap:22px; } }
+.pu-card { position:relative; display:flex; flex-direction:column; padding:8px 8px 12px; border-radius:var(--r-lg); background:var(--surface); border:1px solid var(--border); transition:transform .4s var(--ease), box-shadow .4s, border-color .3s; animation:pu-sube .7s var(--ease) backwards; }
+@media (min-width:700px) { .pu-card { padding:10px 10px 16px; } }
+.pu-card:hover { transform:translateY(-6px); border-color:rgba(var(--oro-rgb),.7); box-shadow:0 26px 50px -26px rgba(var(--oro-rgb),.55); }
+html[data-theme="claro"] .pu-card:hover { border-color:var(--celeste-fuerte); box-shadow:0 26px 50px -26px rgba(47,143,214,.45); }
+.pu-card-media { position:relative; aspect-ratio:4/5; border-radius:var(--arco); overflow:hidden; background:var(--surface-2); cursor:pointer; }
+.pu-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:pu-shimmer 1.3s infinite; }
+.pu-card-media img { width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .45s, transform .8s var(--ease); }
+.pu-card-media img.cargada { opacity:1; }
+.pu-card:hover .pu-card-media img { transform:scale(1.07); }
+.pu-card-media::after { content:''; position:absolute; inset:5px; border-radius:var(--arco); border:1px solid rgba(255,255,255,.55); pointer-events:none; }
+.pu-card-media .pu-sin-foto { font-size:56px; }
+.pu-listón { position:absolute; left:50%; bottom:10px; transform:translateX(-50%); z-index:2; white-space:nowrap; font-size:11px; font-weight:800; letter-spacing:.04em; padding:5px 12px; border-radius:999px; background:var(--coral); color:#fff; box-shadow:0 8px 16px -6px rgba(0,0,0,.4); }
+.pu-listón.nuevo { background:var(--celeste); color:var(--noche); }
+.pu-listón.top { background:linear-gradient(135deg,#ffe3a3,var(--oro)); color:#2a1a00; }
+.pu-card.agotada .pu-card-media img { filter:grayscale(.9); opacity:.5; }
+.pu-listón.agotado { background:#6b7896; }
+.pu-fav { position:absolute; top:16px; right:16px; z-index:3; width:34px; height:34px; border-radius:50%; border:none; background:rgba(255,255,255,.94); color:var(--noche); display:flex; align-items:center; justify-content:center; font-size:15px; box-shadow:0 4px 12px rgba(0,0,0,.2); transition:transform .25s var(--spring); }
+.pu-fav:active { transform:scale(.85); }
+.pu-fav.on { color:#e14b7a; }
+.pu-card-body { padding:12px 4px 0; display:flex; flex-direction:column; flex:1; gap:3px; text-align:center; }
+.pu-card-cat { font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pu-card-nombre { font-family:var(--font-display); font-weight:700; font-size:15px; line-height:1.2; cursor:pointer; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-height:2.4em; }
+@media (min-width:700px) { .pu-card-nombre { font-size:17px; } }
+.pu-card-precios { margin-top:auto; padding-top:6px; display:flex; align-items:baseline; justify-content:center; gap:8px; flex-wrap:wrap; }
+.pu-ahora { font-family:var(--font-display); font-weight:700; font-size:20px; color:var(--precio); font-variant-numeric:tabular-nums; }
+@media (min-width:700px) { .pu-ahora { font-size:22px; } }
+.pu-ahora.oferta { color:var(--coral); }
+.pu-antes { font-size:12px; color:var(--text-3); text-decoration:line-through; }
+.pu-agregar { margin-top:10px; height:42px; border-radius:999px; border:1.5px solid var(--acento); background:transparent; color:var(--text); font-weight:800; font-size:13px; display:inline-flex; align-items:center; justify-content:center; gap:7px; transition:all .25s; }
+.pu-agregar:hover { background:var(--acento); color:var(--noche); }
+html[data-theme="claro"] .pu-agregar:hover { color:#fff; }
+.pu-agregar.hecho { background:var(--acento); color:var(--noche); }
+html[data-theme="claro"] .pu-agregar.hecho { color:#fff; }
+.pu-agregar:active { transform:scale(.95); }
+@media (max-width:380px) { .pu-agregar .txt-largo { display:none; } }
+.pu-vacio { grid-column:1/-1; text-align:center; padding:56px 16px; color:var(--text-3); }
+.pu-vacio b { display:block; font-family:var(--font-display); font-style:italic; font-size:30px; color:var(--text); margin-bottom:6px; }
+.pu-mas { display:flex; justify-content:center; margin-top:28px; }
+
+/* ===== GRITERÍA (interactivo) ===== */
+.pu-griteria { position:relative; overflow:hidden; color:#fff; text-align:center; background:radial-gradient(ellipse 70% 60% at 50% 100%, rgba(var(--oro-rgb),.2), transparent 70%), linear-gradient(180deg, #081330, #0f2554); isolation:isolate; }
+.pu-griteria .pu-hero-estrellas { z-index:-1; }
+.pu-griteria-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(38px,8vw,78px); line-height:.98; margin:6px 0 12px; letter-spacing:-.02em; }
+.pu-griteria-titulo em { font-style:italic; font-weight:700; color:var(--oro); }
+.pu-griteria-txt { color:#c2cfea; font-size:15px; max-width:460px; margin:0 auto 28px; line-height:1.6; }
+.pu-gritar { position:relative; display:inline-flex; flex-direction:column; align-items:center; gap:4px; border:none; padding:22px 34px; border-radius:30px; background:linear-gradient(135deg,#e6f6ff,var(--celeste)); color:var(--noche); box-shadow:0 20px 50px -14px rgba(var(--celeste-rgb),.8), inset 0 -4px 0 rgba(0,0,0,.08); transition:transform .2s var(--spring); animation:pu-flotar 3.5s ease-in-out infinite; }
+.pu-gritar:hover { transform:scale(1.04); }
+.pu-gritar:active { transform:scale(.94); }
+.pu-gritar b { font-family:var(--font-mano); font-weight:700; font-size:clamp(28px,6vw,40px); line-height:1; }
+.pu-gritar small { font-size:11px; font-weight:800; letter-spacing:.2em; text-transform:uppercase; opacity:.7; }
+.pu-respuesta { min-height:84px; display:flex; align-items:center; justify-content:center; margin-top:22px; }
+.pu-respuesta span { font-family:var(--font-display); font-style:italic; font-weight:900; font-size:clamp(28px,6vw,48px); color:var(--oro); text-shadow:0 0 30px rgba(var(--oro-rgb),.5); animation:pu-grito .7s var(--spring) both; }
+.pu-gritos-cont { font-size:12px; color:#8ea3cf; margin-top:6px; min-height:18px; }
+.pu-gorra-sorpresa { max-width:420px; margin:18px auto 0; display:none; align-items:center; gap:14px; text-align:left; padding:12px; border-radius:20px; background:rgba(255,255,255,.07); border:1px solid rgba(var(--oro-rgb),.45); animation:pu-sube .6s var(--ease) both; cursor:pointer; }
+.pu-gorra-sorpresa.on { display:flex; }
+.pu-gorra-sorpresa-img { position:relative; width:86px; height:100px; flex-shrink:0; border-radius:999px 999px 12px 12px; overflow:hidden; background:var(--noche-3); }
+.pu-gorra-sorpresa-img img { width:100%; height:100%; object-fit:cover; }
+.pu-gorra-sorpresa-img .pu-sin-foto { font-size:36px; }
+.pu-gorra-sorpresa small { display:block; font-family:var(--font-mano); font-size:20px; color:var(--celeste); line-height:1; }
+.pu-gorra-sorpresa b { display:block; font-family:var(--font-display); font-size:18px; line-height:1.2; margin:4px 0; }
+.pu-gorra-sorpresa em { font-style:normal; font-family:var(--font-display); font-weight:700; color:var(--oro); font-size:20px; }
+.pu-dulce { position:fixed; top:0; z-index:940; font-size:26px; pointer-events:none; animation:pu-caer linear forwards; }
+
+/* ===== CIERRE ===== */
+.pu-cierre { position:relative; color:#fff; text-align:center; background:linear-gradient(180deg, #0f2554, #06102a); padding:10px 0 calc(40px + var(--safe-b)); overflow:hidden; isolation:isolate; }
+.pu-cierre-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(40px,9vw,92px); line-height:.95; margin:30px 0 10px; letter-spacing:-.02em; }
+.pu-cierre-titulo em { display:block; font-style:italic; font-weight:700; color:var(--oro); }
+.pu-cierre-sub { color:#b9c7e6; font-size:15px; margin:0 auto 36px; max-width:440px; line-height:1.6; }
+.pu-contactos { display:grid; grid-template-columns:1fr; gap:12px; max-width:1000px; margin:0 auto 36px; text-align:left; }
+@media (min-width:700px) { .pu-contactos { grid-template-columns:repeat(2,1fr); } }
+@media (min-width:1000px) { .pu-contactos { grid-template-columns:repeat(4,1fr); } }
+.pu-contacto { display:flex; align-items:center; gap:14px; padding:16px; border-radius:18px; background:rgba(255,255,255,.05); border:1px solid rgba(var(--celeste-rgb),.2); transition:border-color .2s, transform .25s var(--ease); min-width:0; }
+.pu-contacto:hover { border-color:var(--oro); transform:translateY(-3px); }
+.pu-contacto-ico { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#e6f6ff,var(--celeste)); color:var(--noche); display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+.pu-contacto small { display:block; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:#8ea3cf; margin-bottom:2px; font-weight:700; }
+.pu-contacto b { display:block; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pu-pie { font-size:12px; color:#7c90bd; }
+.pu-pie b { color:var(--oro); }
+
+/* ===== FLOTANTES / BARRA MÓVIL ===== */
+.pu-flotante { position:fixed; right:22px; bottom:22px; z-index:70; display:none; flex-direction:column; gap:12px; }
+@media (min-width:820px) { .pu-flotante.on { display:flex; } }
+.pu-flot-btn { position:relative; width:58px; height:58px; border-radius:50%; border:none; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 14px 30px -8px rgba(0,0,0,.5); transition:transform .25s var(--spring); }
+.pu-flot-btn:hover { transform:scale(1.08); }
+.pu-flot-btn.wa { background:#25D366; color:#fff; }
+.pu-flot-btn.gorra { background:linear-gradient(135deg,#ffe3a3,var(--oro)); color:#2a1a00; }
+.pu-flot-btn .pu-badge { background:var(--noche); color:var(--oro); top:-2px; right:-2px; }
+.pu-barra-movil { position:fixed; left:10px; right:10px; bottom:calc(10px + var(--safe-b)); z-index:70; display:none; }
+@media (max-width:819px) { .pu-barra-movil.on { display:flex; } body.pu-con-barra { padding-bottom:calc(76px + var(--safe-b)); } }
+.pu-barra-movil a, .pu-barra-movil button { flex:1; height:56px; border-radius:999px; border:none; display:flex; align-items:center; justify-content:center; gap:10px; font-weight:800; font-size:15px; box-shadow:0 16px 34px -10px rgba(0,0,0,.55); }
+.pu-barra-wa { background:#25D366; color:#fff; }
+.pu-barra-gorra { background:linear-gradient(135deg,#ffe3a3,var(--oro)); color:#2a1a00; justify-content:space-between !important; padding:0 20px; }
+.pu-barra-gorra .cnt { background:var(--noche); color:var(--oro); font-size:12px; padding:2px 8px; border-radius:999px; }
+.pu-barra-gorra .tot { font-family:var(--font-display); font-weight:900; font-size:20px; }
+
+/* ===== MODAL PRODUCTO ===== */
+.pu-overlay { position:fixed; inset:0; z-index:200; background:rgba(4,10,28,.72); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); display:none; align-items:flex-end; justify-content:center; animation:pu-fade .25s; }
+.pu-overlay.open { display:flex; }
+@media (min-width:820px) { .pu-overlay { align-items:center; padding:24px; } }
+.pu-modal { position:relative; width:100%; max-width:960px; max-height:94vh; max-height:94dvh; overflow-y:auto; overscroll-behavior:contain; background:var(--surface); color:var(--text); border-radius:26px 26px 0 0; animation:pu-sheet .4s var(--ease); }
+@media (min-width:820px) { .pu-modal { border-radius:26px; animation:pu-sube .35s var(--ease); display:grid; grid-template-columns:1fr 1fr; overflow:hidden; } }
+.pu-modal-agarre { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:44px; height:5px; border-radius:5px; background:rgba(255,255,255,.6); z-index:4; }
+@media (min-width:820px) { .pu-modal-agarre { display:none; } }
+.pu-modal-cerrar { position:absolute; top:14px; right:14px; z-index:5; width:40px; height:40px; border-radius:50%; border:none; background:rgba(6,16,42,.6); color:#fff; font-size:17px; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); }
+.pu-modal-galeria { position:relative; padding:18px 18px 0; background:linear-gradient(180deg, var(--noche), var(--noche-3)); }
+@media (min-width:820px) { .pu-modal-galeria { padding:30px; display:flex; flex-direction:column; justify-content:center; } }
+.pu-modal-arco { position:relative; border-radius:var(--arco); overflow:hidden; aspect-ratio:4/5; max-height:58vh; margin:0 auto; background:var(--surface-2); box-shadow:inset 0 0 0 2px rgba(var(--oro-rgb),.6); }
+@media (min-width:820px) { .pu-modal-arco { max-height:72vh; } }
+.pu-modal-fotos { display:flex; height:100%; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+.pu-modal-fotos::-webkit-scrollbar { display:none; }
+.pu-modal-fotos img { flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; cursor:zoom-in; }
+.pu-modal-fotos .pu-sin-foto { position:relative; flex:0 0 100%; }
+.pu-modal-puntos { display:flex; justify-content:center; gap:6px; padding:12px 0 14px; min-height:34px; }
+.pu-modal-puntos i { width:7px; height:7px; border-radius:7px; background:rgba(255,255,255,.35); transition:all .25s; }
+.pu-modal-puntos i.on { width:22px; background:var(--oro); }
+.pu-modal-body { padding:22px 20px calc(24px + var(--safe-b)); display:flex; flex-direction:column; }
+@media (min-width:820px) { .pu-modal-body { padding:44px 36px 32px; max-height:94vh; overflow-y:auto; } }
+.pu-modal-cat { font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; color:var(--acento); margin-bottom:8px; }
+.pu-modal-nombre { font-family:var(--font-display); font-weight:900; font-size:clamp(28px,5vw,40px); line-height:1.02; margin:0 0 14px; letter-spacing:-.01em; }
+.pu-modal-precios { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px; }
+.pu-modal-precios .pu-ahora { font-size:34px; }
+.pu-modal-precios .pu-antes { font-size:15px; }
+.pu-ahorro { display:inline-block; margin-top:8px; font-size:12px; font-weight:800; padding:4px 10px; border-radius:999px; background:rgba(255,111,97,.15); color:var(--coral); }
+.pu-modal-desc { font-size:14.5px; line-height:1.7; color:var(--text-2); white-space:pre-wrap; margin:18px 0 20px; }
+.pu-cantidad { display:inline-flex; align-items:center; border:1.5px solid var(--border); border-radius:999px; height:52px; overflow:hidden; flex-shrink:0; }
+.pu-cantidad button { width:44px; height:100%; border:none; background:transparent; color:var(--text); font-size:20px; font-weight:700; }
+.pu-cantidad button:hover { background:var(--surface-2); }
+.pu-cantidad span { min-width:30px; text-align:center; font-weight:800; font-size:16px; }
+.pu-modal-fila { display:flex; gap:10px; margin-bottom:10px; }
+.pu-modal-fila .pu-btn { flex:1; min-width:0; }
+.pu-modal-extra { display:flex; gap:10px; margin-top:10px; }
+.pu-modal-extra .pu-btn { flex:1; }
+.pu-relacionados { margin-top:26px; padding-top:20px; border-top:1px dashed var(--border); }
+.pu-relacionados h4 { margin:0 0 12px; font-family:var(--font-mano); font-size:22px; font-weight:700; color:var(--acento); }
+.pu-rel-scroll { display:flex; gap:12px; overflow-x:auto; scrollbar-width:none; padding-bottom:4px; }
+.pu-rel-scroll::-webkit-scrollbar { display:none; }
+.pu-rel { flex:0 0 110px; cursor:pointer; text-align:center; }
+.pu-rel-img { position:relative; width:110px; height:132px; border-radius:999px 999px 12px 12px; overflow:hidden; background:var(--surface-2); }
+.pu-rel-img img { width:100%; height:100%; object-fit:cover; }
+.pu-rel-img .pu-sin-foto { font-size:34px; }
+.pu-rel .n { font-size:12px; font-weight:600; margin-top:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.pu-rel .p { font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--precio); }
+
+/* ===== GORRA (bolsa) ===== */
+.pu-gorra { position:relative; width:100%; max-width:460px; max-height:90vh; max-height:90dvh; background:var(--surface); color:var(--text); display:flex; flex-direction:column; border-radius:26px 26px 0 0; animation:pu-sheet .4s var(--ease); overflow:hidden; }
+@media (min-width:820px) {
+  #pu-overlay-gorra { align-items:stretch; justify-content:flex-end; padding:0; }
+  .pu-gorra { height:100vh; max-height:none; border-radius:0; animation:pu-drawer .42s var(--ease); }
+}
+.pu-gorra-head { position:relative; padding:22px 20px 16px; background:linear-gradient(180deg, var(--noche), var(--noche-3)); color:#fff; }
+.pu-gorra-head small { font-family:var(--font-mano); font-size:22px; color:var(--celeste); display:block; line-height:1; }
+.pu-gorra-head h3 { margin:2px 0 0; font-family:var(--font-display); font-weight:900; font-size:34px; line-height:1; }
+.pu-gorra-head button { position:absolute; top:18px; right:16px; width:40px; height:40px; border-radius:50%; border:1px solid rgba(255,255,255,.3); background:transparent; color:#fff; font-size:16px; display:flex; align-items:center; justify-content:center; }
+.pu-gorra-lista { flex:1; overflow-y:auto; padding:6px 20px; overscroll-behavior:contain; }
+.pu-gorra-item { display:grid; grid-template-columns:58px 1fr auto; gap:12px; align-items:center; padding:12px 0; border-bottom:1px dashed var(--border); animation:pu-sube .35s var(--ease) both; }
+.pu-gorra-img { position:relative; width:58px; height:70px; border-radius:999px 999px 10px 10px; overflow:hidden; background:var(--surface-2); }
+.pu-gorra-img img { width:100%; height:100%; object-fit:cover; }
+.pu-gorra-img .pu-sin-foto { font-size:26px; }
+.pu-gorra-item .n { font-weight:700; font-size:14px; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.pu-gorra-item .p { font-size:12.5px; color:var(--text-3); margin-top:3px; }
+.pu-gorra-item .pu-cantidad { height:38px; }
+.pu-gorra-item .pu-cantidad button { width:32px; font-size:16px; }
+.pu-gorra-item .pu-cantidad span { min-width:22px; font-size:13px; }
+.pu-gorra-vacia { text-align:center; padding:56px 10px; color:var(--text-3); }
+.pu-gorra-vacia b { display:block; font-family:var(--font-display); font-style:italic; font-size:28px; color:var(--text); margin:10px 0 6px; }
+.pu-gorra-pie { padding:16px 20px calc(18px + var(--safe-b)); border-top:1px solid var(--border); background:var(--surface-2); }
+.pu-gorra-linea { display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:6px; color:var(--coral); font-weight:700; }
+.pu-gorra-total { display:flex; justify-content:space-between; align-items:baseline; margin:8px 0 14px; }
+.pu-gorra-total span { font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text-2); }
+.pu-gorra-total b { font-family:var(--font-display); font-weight:900; font-size:34px; line-height:1; }
+.pu-gorra-pie .pu-btn { width:100%; }
+.pu-gorra-nota { font-size:11.5px; color:var(--text-3); text-align:center; margin-top:10px; }
+.pu-gorra-vaciar { background:none; border:none; color:var(--text-3); font-size:12px; text-decoration:underline; margin-top:8px; width:100%; }
+
+/* ===== LIGHTBOX ===== */
+.pu-lightbox { position:fixed; inset:0; z-index:300; background:rgba(4,10,28,.96); display:none; align-items:center; justify-content:center; }
+.pu-lightbox.open { display:flex; }
+.pu-lightbox img { max-width:92vw; max-height:84vh; object-fit:contain; border-radius:12px; }
+.pu-lb-btn { position:absolute; width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:#fff; font-size:22px; display:flex; align-items:center; justify-content:center; }
+.pu-lb-btn.cerrar { top:18px; right:18px; font-size:18px; }
+.pu-lb-btn.izq { left:14px; top:50%; transform:translateY(-50%); }
+.pu-lb-btn.der { right:14px; top:50%; transform:translateY(-50%); }
+.pu-lb-cont { position:absolute; bottom:22px; left:50%; transform:translateX(-50%); color:#fff; font-size:12px; }
+
+/* ===== VARIOS ===== */
+.pu-toasts { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(90px + var(--safe-b)); z-index:960; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none; width:max-content; max-width:92vw; }
+@media (min-width:820px) { .pu-toasts { bottom:30px; } }
+.pu-toast { background:var(--noche); color:#fff; border:1px solid rgba(var(--oro-rgb),.5); padding:12px 20px; border-radius:999px; font-weight:700; font-size:13.5px; box-shadow:0 14px 30px -8px rgba(0,0,0,.5); animation:pu-sube .3s var(--ease); display:flex; align-items:center; gap:8px; }
+.pu-toast svg { color:var(--oro); }
+.pu-vista-previa { display:none; background:var(--oro); color:#2a1a00; text-align:center; font-size:12px; font-weight:800; padding:8px 14px; }
+.pu-error { min-height:80vh; display:none; align-items:center; justify-content:center; flex-direction:column; gap:12px; text-align:center; padding:24px; color:var(--text-2); }
+.pu-error b { font-family:var(--font-display); font-style:italic; font-size:40px; color:var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  .pu-reveal { opacity:1; transform:none; }
+  .pu-intro-pregunta, .pu-intro-respuesta { opacity:1; }
+}
+</style>
+</head>
+<body class="pu-bloqueado">
+
+<canvas id="pu-polvora" aria-hidden="true"></canvas>
+
+<!-- ===== INTRO ===== -->
+<div class="pu-intro" id="pu-intro" onclick="saltarIntro()" aria-hidden="true">
+  <div class="pu-intro-estrellas" id="pu-intro-estrellas"></div>
+  <img class="pu-intro-logo" id="pu-intro-logo" src="" alt="">
+  <div class="pu-intro-pregunta" id="pu-intro-pregunta">¿Quién causa tanta alegría?</div>
+  <div class="pu-intro-respuesta" id="pu-intro-respuesta">¡La Concepción de María!</div>
+  <div class="pu-intro-negocio" id="pu-intro-negocio"></div>
+  <div class="pu-intro-saltar">Tocá para entrar</div>
+</div>
+
+<div class="pu-error" id="pu-error"></div>
+
+<div id="pu-app" style="display:none">
+  <div class="pu-vista-previa" id="pu-vista-previa">Vista previa — este catálogo todavía no es público</div>
+
+  <header class="pu-header">
+    <div class="pu-wrap pu-header-in">
+      <div class="pu-marca" onclick="irArriba()">
+        <img class="pu-marca-logo" id="pu-marca-logo" src="" alt="">
+        <div class="pu-marca-letra" id="pu-marca-letra"></div>
+        <span class="pu-marca-nombre" id="pu-marca-nombre"></span>
+        <span class="pu-marca-sello">¡Feliz Purísima!</span>
+      </div>
+      <div class="pu-header-der">
+        <button class="pu-icon-btn" onclick="enfocarBusqueda()" aria-label="Buscar" id="pu-ico-buscar"></button>
+        <button class="pu-icon-btn" onclick="verFavoritos()" aria-label="Favoritos"><span id="pu-ico-fav"></span><span class="pu-badge" id="pu-badge-fav"></span></button>
+        <button class="pu-icon-btn" onclick="toggleTema()" aria-label="Cambiar tema" id="pu-btn-tema"></button>
+        <button class="pu-icon-btn" id="pu-btn-gorra" onclick="abrirGorra()" aria-label="Tu gorra" style="display:none"><span id="pu-ico-gorra"></span><span class="pu-badge" id="pu-badge-gorra"></span></button>
+        <a class="pu-header-wa" id="pu-header-wa" target="_blank" rel="noopener"></a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== HERO ===== -->
+  <section class="pu-hero" id="pu-hero">
+    <div class="pu-hero-estrellas" id="pu-hero-estrellas"></div>
+    <div class="pu-feston" id="pu-feston-hero"></div>
+    <div class="pu-wrap pu-hero-grid">
+      <div>
+        <div class="pu-hero-mano">¡Llegó la Gritería!</div>
+        <h1 class="pu-hero-titulo">La Purísima<em>en tu casa</em></h1>
+        <div class="pu-hero-negocio" id="pu-hero-negocio"></div>
+        <p class="pu-hero-desc" id="pu-hero-desc"></p>
+        <div class="pu-cuenta" id="pu-cuenta">
+          <div class="pu-cuenta-label"><span id="pu-cuenta-ico"></span><span id="pu-cuenta-label"></span></div>
+          <div class="pu-cuenta-cajas" id="pu-cuenta-cajas">
+            <div class="pu-cuenta-caja" id="pu-caja-d"><span class="pu-cuenta-num" id="pu-cd-d">0</span><span class="pu-cuenta-txt">Días</span></div>
+            <div class="pu-cuenta-caja"><span class="pu-cuenta-num" id="pu-cd-h">00</span><span class="pu-cuenta-txt">Horas</span></div>
+            <div class="pu-cuenta-caja"><span class="pu-cuenta-num" id="pu-cd-m">00</span><span class="pu-cuenta-txt">Min</span></div>
+            <div class="pu-cuenta-caja"><span class="pu-cuenta-num" id="pu-cd-s">00</span><span class="pu-cuenta-txt">Seg</span></div>
+          </div>
+          <div class="pu-cuenta-fiesta" id="pu-cuenta-fiesta" style="display:none"></div>
+        </div>
+        <div class="pu-hero-acciones" id="pu-hero-acciones"></div>
+      </div>
+      <div class="pu-altar" id="pu-altar" style="display:none">
+        <div class="pu-altar-halo"></div>
+        <div class="pu-altar-arco" id="pu-altar-arco">
+          <img class="pu-altar-img" id="pu-altar-img" src="" alt="">
+        </div>
+        <div class="pu-altar-luces" id="pu-altar-luces"></div>
+        <div class="pu-velas">
+          <div><span class="pu-vela"></span><span class="pu-vela corta"></span></div>
+          <div><span class="pu-vela corta"></span><span class="pu-vela"></span></div>
+        </div>
+        <div class="pu-altar-placa" id="pu-altar-placa"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ALTARES (categorías) ===== -->
+  <section class="pu-seccion pu-reveal" id="pu-sec-altares" style="display:none">
+    <div class="pu-wrap">
+      <div class="pu-head">
+        <div class="pu-head-mano">Andá de altar en altar</div>
+        <h2 class="pu-head-titulo">Visitá nuestros <em>altares</em></h2>
+        <div class="pu-orn">✦</div>
+      </div>
+      <div class="pu-rail" id="pu-rail-altares"></div>
+      <div class="pu-rail-nav" id="pu-nav-altares"><button onclick="moverRail('pu-rail-altares',-1)" aria-label="Anterior">←</button><button onclick="moverRail('pu-rail-altares',1)" aria-label="Siguiente">→</button></div>
+    </div>
+  </section>
+
+  <!-- ===== PARA TU GORRA (destacados / ofertas) ===== -->
+  <section class="pu-seccion pu-reveal" id="pu-sec-especiales" style="display:none;padding-top:0">
+    <div class="pu-wrap">
+      <div class="pu-head">
+        <div class="pu-head-mano" id="pu-esp-mano">Lo que no puede faltar</div>
+        <h2 class="pu-head-titulo" id="pu-esp-titulo">Especiales de <em>Purísima</em></h2>
+        <div class="pu-orn">✦</div>
+      </div>
+      <div class="pu-rail" id="pu-rail-especiales"></div>
+      <div class="pu-rail-nav" id="pu-nav-especiales"><button onclick="moverRail('pu-rail-especiales',-1)" aria-label="Anterior">←</button><button onclick="moverRail('pu-rail-especiales',1)" aria-label="Siguiente">→</button></div>
+    </div>
+  </section>
+
+  <!-- ===== CATÁLOGO ===== -->
+  <section class="pu-seccion" id="pu-sec-catalogo" style="padding-top:16px">
+    <div class="pu-wrap">
+      <div class="pu-head">
+        <div class="pu-head-mano">Escogé con calma</div>
+        <h2 class="pu-head-titulo">Todo el <em>catálogo</em></h2>
+      </div>
+      <div class="pu-filtros">
+        <div class="pu-filtros-fila">
+          <label class="pu-buscador">
+            <span id="pu-ico-buscar-2"></span>
+            <span class="pu-sr">Buscar productos</span>
+            <input type="search" id="pu-buscador" placeholder="¿Qué andás buscando?" autocomplete="off" oninput="onBuscar(this.value)">
+            <button type="button" class="pu-limpiar" id="pu-limpiar" onclick="limpiarBusqueda()" aria-label="Limpiar búsqueda">✕</button>
+          </label>
+          <select class="pu-orden" id="pu-orden" onchange="cambiarOrden(this.value)" aria-label="Ordenar">
+            <option value="reciente">Más recientes</option>
+            <option value="precio_asc">Menor precio</option>
+            <option value="precio_desc">Mayor precio</option>
+            <option value="nombre">Nombre A-Z</option>
+          </select>
+        </div>
+        <div class="pu-chips" id="pu-chips"></div>
+      </div>
+      <div class="pu-resultado"><h3 id="pu-res-titulo">Todo</h3><span id="pu-res-conteo"></span></div>
+      <div class="pu-grid" id="pu-grid"></div>
+      <div class="pu-mas" id="pu-mas" style="display:none"><button class="pu-btn pu-btn-linea" onclick="mostrarMas()">Ver más productos</button></div>
+    </div>
+  </section>
+
+  <!-- ===== GRITERÍA ===== -->
+  <section class="pu-seccion pu-griteria" id="pu-sec-griteria">
+    <div class="pu-hero-estrellas" id="pu-grit-estrellas"></div>
+    <div class="pu-wrap pu-reveal">
+      <div class="pu-head-mano" style="color:var(--celeste)">Esta noche se grita</div>
+      <h2 class="pu-griteria-titulo">¡Gritá con <em>nosotros!</em></h2>
+      <p class="pu-griteria-txt">Tocá el botón, echá tu grito y recibí tu gorra: te regalamos una recomendación sorpresa del catálogo.</p>
+      <button class="pu-gritar" id="pu-gritar" onclick="gritar(event)"><small>Tocá y gritá</small><b>¿Quién causa tanta alegría?</b></button>
+      <div class="pu-respuesta" id="pu-respuesta"></div>
+      <div class="pu-gritos-cont" id="pu-gritos-cont"></div>
+      <div class="pu-gorra-sorpresa" id="pu-gorra-sorpresa"></div>
+    </div>
+  </section>
+
+  <!-- ===== VISTOS ===== -->
+  <section class="pu-seccion pu-reveal" id="pu-sec-vistos" style="display:none">
+    <div class="pu-wrap">
+      <div class="pu-head">
+        <div class="pu-head-mano">Ya pasaste por aquí</div>
+        <h2 class="pu-head-titulo">Vistos <em>recientemente</em></h2>
+      </div>
+      <div class="pu-rail" id="pu-rail-vistos"></div>
+    </div>
+  </section>
+
+  <!-- ===== CIERRE ===== -->
+  <footer class="pu-cierre">
+    <div class="pu-hero-estrellas" id="pu-cierre-estrellas"></div>
+    <div class="pu-feston" id="pu-feston-cierre"></div>
+    <div class="pu-wrap">
+      <h2 class="pu-cierre-titulo pu-reveal">¡Feliz Purísima<em>les desea <span id="pu-cierre-nombre"></span>!</em></h2>
+      <p class="pu-cierre-sub">Que la alegría de la Gritería llegue a tu casa. Escribinos y con gusto te atendemos.</p>
+      <div class="pu-contactos" id="pu-contactos"></div>
+      <div class="pu-pie">© <span id="pu-anio"></span> <b id="pu-pie-nombre"></b> · Creado con <b>Catálogo360</b></div>
+    </div>
+  </footer>
+
+  <div class="pu-flotante" id="pu-flotante">
+    <button class="pu-flot-btn gorra" id="pu-flot-gorra" onclick="abrirGorra()" aria-label="Tu gorra" style="display:none"><span id="pu-ico-gorra-2"></span><span class="pu-badge" id="pu-badge-gorra-2"></span></button>
+    <button class="pu-flot-btn wa" id="pu-flot-wa" aria-label="WhatsApp"></button>
+  </div>
+  <div class="pu-barra-movil" id="pu-barra-movil"></div>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div class="pu-overlay" id="pu-overlay-modal" onclick="if(event.target===this)cerrarModal()" role="dialog" aria-modal="true" aria-label="Detalle del producto">
+  <div class="pu-modal" id="pu-modal">
+    <div class="pu-modal-agarre"></div>
+    <button class="pu-modal-cerrar" id="pu-modal-cerrar" onclick="cerrarModal()" aria-label="Cerrar"></button>
+    <div class="pu-modal-galeria">
+      <div class="pu-modal-arco"><div class="pu-modal-fotos" id="pu-modal-fotos"></div></div>
+      <div class="pu-modal-puntos" id="pu-modal-puntos"></div>
+    </div>
+    <div class="pu-modal-body" id="pu-modal-body"></div>
+  </div>
+</div>
+
+<!-- ===== GORRA ===== -->
+<div class="pu-overlay" id="pu-overlay-gorra" onclick="if(event.target===this)cerrarGorra()" role="dialog" aria-modal="true" aria-label="Tu gorra">
+  <div class="pu-gorra">
+    <div class="pu-gorra-head">
+      <small>Lo que llevás</small>
+      <h3>Tu gorra</h3>
+      <button onclick="cerrarGorra()" aria-label="Cerrar" id="pu-gorra-cerrar"></button>
+    </div>
+    <div class="pu-gorra-lista" id="pu-gorra-lista"></div>
+    <div class="pu-gorra-pie" id="pu-gorra-pie"></div>
+  </div>
+</div>
+
+<!-- ===== LIGHTBOX ===== -->
+<div class="pu-lightbox" id="pu-lightbox" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="pu-lb-btn cerrar" onclick="cerrarLightbox()" aria-label="Cerrar">✕</button>
+  <button class="pu-lb-btn izq" onclick="moverLightbox(-1)" aria-label="Anterior">‹</button>
+  <img id="pu-lb-img" src="" alt="">
+  <button class="pu-lb-btn der" onclick="moverLightbox(1)" aria-label="Siguiente">›</button>
+  <div class="pu-lb-cont" id="pu-lb-cont"></div>
+</div>
+
+<div class="pu-toasts" id="pu-toasts" aria-live="polite"></div>
+
+<script>
+const sb = c360CrearCliente();
+const PLANTILLA_KEY = 'purisima';
+const POR_PAGINA = 24;
+const MOV_REDUCIDO = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [];
+let CATEGORIA_ACTUAL = null, SOLO_FAV = false, SOLO_OFERTAS = false;
+let ORDEN = 'reciente', TEXTO = '', LIMITE = POR_PAGINA;
+let FAVORITOS = [], VISTOS = [], GORRA = [];
+let ES_PREVIEW = false, LISTO = false, INTRO_TERMINADA = false;
+let LB_FOTOS = [], LB_I = 0, MODAL_ID = null, MODAL_CANT = 1;
+let CUENTA_TIMER = null, GRITOS = 0;
+
+const ICO = {
+  heart: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  heartFill: '<svg class="pu-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  moon: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/></svg>',
+  sun: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  search: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  gorra: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12l-1.2 11a1.5 1.5 0 0 1-1.5 1.3H8.7a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M9 9c0-2.2 1.3-4 3-4s3 1.8 3 4"/><path d="M5 9h14"/><circle cx="10" cy="14" r=".9" fill="currentColor"/><circle cx="14" cy="16" r=".9" fill="currentColor"/></svg>',
+  plus: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  check: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  wa: '<svg class="pu-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.2-.5-.5-1-1.1-1.3-1.7-.1-.2 0-.4.1-.5l.4-.5.3-.4v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.6.6-.9 1.3-.9 2.1.1.9.4 1.8 1 2.6 1.1 1.6 2.5 2.9 4.2 3.6.5.2.9.4 1.4.5.5.2 1 .2 1.6.1.6-.1 1.2-.5 1.5-1.1.2-.4.2-.8.1-1.1l-.6-.2z"/></svg>',
+  phone: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11 11 0 0 0 3.5.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1 11 11 0 0 0 .6 3.5 1 1 0 0 1-.3 1z"/></svg>',
+  mail: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  pin: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  share: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
+  close: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  star: '<svg class="pu-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6 4.6 2.3 7.2L12 16.6 5.7 21l2.3-7.2-6-4.6h7.6z"/></svg>',
+  trash: '<svg class="pu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+};
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+function esc(s){ return c360Esc(s); }
+function fmtC(n){ return c360FmtC(n); }
+function nombreNegocio(){ return CATALOGO?.nombre_comercial || CATALOGO?.nombre || ''; }
+function enOferta(p){ return p.etiqueta === 'oferta' && p.precio_oferta && Number(p.precio_oferta) < Number(p.precio); }
+function precioReal(p){ return enOferta(p) ? Number(p.precio_oferta) : Number(p.precio); }
+function descuento(p){ return enOferta(p) && Number(p.precio) > 0 ? Math.round((1 - Number(p.precio_oferta) / Number(p.precio)) * 100) : 0; }
+function fotoPrincipal(p){ return p?.fotos?.find(f => f.es_principal) || p?.fotos?.[0] || null; }
+function inicial(t){ return esc((String(t || '?').trim()[0] || '?').toUpperCase()); }
+function sinFoto(p){ return `<div class="pu-sin-foto">${inicial(p.nombre)}</div>`; }
+function nombreCat(p){ return CATEGORIAS.find(c => c.id === p.categoria_id)?.nombre || ''; }
+function claveLocal(k){ return `pu_${k}_${CATALOGO?.id || 'x'}`; }
+function leerLocal(k){ try { return JSON.parse(localStorage.getItem(claveLocal(k)) || '[]'); } catch(e) { return []; } }
+function guardarLocal(k, v){ try { localStorage.setItem(claveLocal(k), JSON.stringify(v)); } catch(e) {} }
+function registrarEvento(tipo, prodId){ c360RegistrarEvento(sb, CATALOGO?.id, tipo, prodId, ES_PREVIEW); }
+function hayWhatsApp(){ return !!(CATALOGO && CATALOGO.whatsapp && String(CATALOGO.whatsapp).replace(/\D/g,'').length >= 7); }
+function linkWA(txt){ return c360LinkWA(CATALOGO.whatsapp, txt); }
+function irArriba(){ window.scrollTo({ top:0, behavior:'smooth' }); }
+function irACatalogo(){ $('pu-sec-catalogo').scrollIntoView({ behavior:'smooth' }); }
+function enfocarBusqueda(){ irACatalogo(); setTimeout(() => $('pu-buscador').focus({ preventScroll:true }), 450); }
+function bloquearScroll(on){ document.body.classList.toggle('pu-bloqueado', on); }
+function toast(msg, ico){
+  const t = document.createElement('div'); t.className = 'pu-toast';
+  t.innerHTML = (ico || '') + `<span>${esc(msg)}</span>`;
+  $('pu-toasts').appendChild(t); setTimeout(() => t.remove(), 2400);
+}
+function aplicarTema(t){ document.documentElement.setAttribute('data-theme', t); $('pu-btn-tema').innerHTML = t === 'oscuro' ? ICO.sun : ICO.moon; }
+function toggleTema(){ const n = document.documentElement.getAttribute('data-theme') === 'oscuro' ? 'claro' : 'oscuro'; aplicarTema(n); try { localStorage.setItem('pu_tema', n); } catch(e) {} }
+
+/* =====================================================================
+   PÓLVORA -- motor de fuegos artificiales en canvas
+   Solo corre mientras hay partículas vivas (no gasta batería en reposo).
+   ===================================================================== */
+const Polvora = (() => {
+  const cv = $('pu-polvora'), ctx = cv.getContext('2d');
+  const COLORES = ['#86cdf5', '#ffffff', '#f4c768', '#f6a5c8', '#bfe6ff', '#ffe3a3'];
+  let W = 0, H = 0, dpr = 1, cohetes = [], chispas = [], corriendo = false;
+  function medir(){ dpr = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  medir(); addEventListener('resize', medir);
+  function estallar(x, y){
+    const base = COLORES[Math.floor(Math.random() * COLORES.length)];
+    const alt = COLORES[Math.floor(Math.random() * COLORES.length)];
+    const n = W < 600 ? 46 : 70;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + Math.random() * .2, v = 1.8 + Math.random() * 3.4;
+      chispas.push({ x, y, vx:Math.cos(a) * v, vy:Math.sin(a) * v, vida:1, dec:.011 + Math.random() * .012, c: i % 3 ? base : alt, r:1.4 + Math.random() * 1.4 });
+    }
+  }
+  function lanzar(x0, y0, x1, y1){
+    if (MOV_REDUCIDO) return;
+    cohetes.push({ x:x0, y:y0, tx:x1, ty:y1, t:0, dur:38 + Math.random() * 18, rastro:[] });
+    arrancar();
+  }
+  function arrancar(){ if (!corriendo) { corriendo = true; requestAnimationFrame(cuadro); } }
+  function cuadro(){
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    cohetes = cohetes.filter(k => {
+      k.t++; const p = k.t / k.dur, e = 1 - Math.pow(1 - p, 3);
+      const x = k.x + (k.tx - k.x) * e, y = k.y + (k.ty - k.y) * e;
+      k.rastro.push([x, y]); if (k.rastro.length > 10) k.rastro.shift();
+      ctx.strokeStyle = 'rgba(255,226,150,.8)'; ctx.lineWidth = 2; ctx.beginPath();
+      k.rastro.forEach(([rx, ry], i) => i ? ctx.lineTo(rx, ry) : ctx.moveTo(rx, ry)); ctx.stroke();
+      if (p >= 1) { estallar(x, y); return false; }
+      return true;
+    });
+    chispas = chispas.filter(s => {
+      s.vx *= .985; s.vy = s.vy * .985 + .045; s.x += s.vx; s.y += s.vy; s.vida -= s.dec;
+      if (s.vida <= 0) return false;
+      ctx.globalAlpha = Math.max(0, s.vida); ctx.fillStyle = s.c;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      return true;
+    });
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    if (cohetes.length || chispas.length) requestAnimationFrame(cuadro);
+    else { corriendo = false; ctx.clearRect(0, 0, W, H); }
+  }
+  // Lanza desde abajo hacia un punto dentro de un rectángulo de la pantalla
+  function sobre(rect, cantidad){
+    for (let i = 0; i < (cantidad || 1); i++) {
+      setTimeout(() => {
+        const x = rect.left + rect.width * (.15 + Math.random() * .7);
+        const y = Math.max(40, rect.top + rect.height * (.12 + Math.random() * .35));
+        lanzar(x + (Math.random() - .5) * 60, Math.min(H + 10, rect.bottom + 20), x, y);
+      }, i * 260);
+    }
+  }
+  return { lanzar, sobre, estallar:(x, y) => { if (!MOV_REDUCIDO) { estallar(x, y); arrancar(); } } };
+})();
+
+/* Estrellas titilantes */
+function sembrarEstrellas(id, n){
+  const el = $(id); if (!el) return; let h = '';
+  for (let i = 0; i < n; i++) {
+    const s = Math.random() < .15 ? 3 : 2;
+    h += `<span class="pu-estrella" style="left:${Math.random() * 100}%;top:${Math.random() * 100}%;width:${s}px;height:${s}px;animation-duration:${2 + Math.random() * 4}s;animation-delay:-${Math.random() * 5}s"></span>`;
+  }
+  el.innerHTML = h;
+}
+/* Festón de papel picado colgando en curva */
+function armarFeston(id){
+  const el = $(id); if (!el) return;
+  const ancho = el.clientWidth || innerWidth, paso = ancho < 700 ? 34 : 44, n = Math.ceil(ancho / paso) + 1;
+  const colores = ['#86cdf5', '#ffffff', '#86cdf5', '#ffffff', '#f4c768'];
+  const sag = ancho < 700 ? 10 : 16;
+  let h = `<svg class="cuerda" viewBox="0 0 ${ancho} 60" preserveAspectRatio="none"><path d="M0,2 Q${ancho / 2},${sag * 2} ${ancho},2" fill="none" stroke="rgba(244,199,104,.7)" stroke-width="1.5"/></svg>`;
+  for (let i = 0; i < n; i++) {
+    const x = i * paso + 4, t = x / ancho, y = 2 + sag * 4 * t * (1 - t) - 1;
+    h += `<span class="pu-bandera" style="left:${x}px;top:${y}px;--c:${colores[i % colores.length]};animation-duration:${2.6 + (i % 5) * .35}s;animation-delay:-${(i % 7) * .4}s"></span>`;
+  }
+  el.innerHTML = h;
+}
+/* Bombillos alrededor del arco del altar */
+function armarBombillos(){
+  const el = $('pu-altar-luces'); let h = '';
+  const arriba = 16, lados = 7, ry = 40; // ry: % del alto que ocupa la curva
+  for (let i = 0; i <= arriba; i++) {
+    const a = Math.PI - (Math.PI * i) / arriba;
+    h += `<span class="pu-bombillo" style="left:${50 + 50 * Math.cos(a)}%;top:${ry - ry * Math.sin(a)}%;animation-delay:-${(i % 4) * .4}s"></span>`;
+  }
+  for (let i = 1; i <= lados; i++) {
+    const y = ry + ((100 - ry) * i) / (lados + .5);
+    h += `<span class="pu-bombillo" style="left:0%;top:${y}%;animation-delay:-${(i % 4) * .4}s"></span><span class="pu-bombillo" style="left:100%;top:${y}%;animation-delay:-${((i + 2) % 4) * .4}s"></span>`;
+  }
+  el.innerHTML = h;
+}
+
+/* ---------- arranque ---------- */
+function pintarIconos(){
+  $('pu-ico-buscar').innerHTML = ICO.search; $('pu-ico-buscar-2').innerHTML = ICO.search;
+  $('pu-ico-fav').innerHTML = ICO.heart; $('pu-ico-gorra').innerHTML = ICO.gorra; $('pu-ico-gorra-2').innerHTML = ICO.gorra;
+  $('pu-flot-wa').innerHTML = ICO.wa; $('pu-modal-cerrar').innerHTML = ICO.close; $('pu-gorra-cerrar').innerHTML = ICO.close;
+  $('pu-cuenta-ico').innerHTML = ICO.star;
+}
+
+async function init(){
+  pintarIconos();
+  sembrarEstrellas('pu-intro-estrellas', 60);
+  const inicioIntro = Date.now();
+  correrIntro();
+
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'), idPreview = params.get('preview');
+  ES_PREVIEW = !!idPreview;
+  let r;
+  try { r = await c360CargarCatalogoPublico({ sb, slug, idPreview }); }
+  catch (e) { r = { error:'No pudimos conectar. Revisá tu internet e intentá de nuevo.' }; }
+  if (r.error) { mostrarError(r.error); return; }
+  if (c360RedirigirSiPlantillaCambio(r.catalogo, PLANTILLA_KEY)) return;
+
+  CATALOGO = r.catalogo; PRODUCTOS = r.productos; CATEGORIAS = r.categorias;
+  FAVORITOS = leerLocal('favoritos'); VISTOS = leerLocal('vistos');
+  GORRA = leerLocal('gorra').filter(g => PRODUCTOS.some(p => p.id === g.id && p.etiqueta !== 'agotado'));
+  try { GRITOS = Number(localStorage.getItem(claveLocal('gritos')) || 0) || 0; } catch(e) {}
+
+  let tema = 'oscuro';
+  try { tema = localStorage.getItem('pu_tema') || CATALOGO.tema_default || 'oscuro'; } catch(e) {}
+  aplicarTema(tema);
+  if (ES_PREVIEW && CATALOGO.estado !== 'publicado') $('pu-vista-previa').style.display = 'block';
+
+  $('pu-intro-negocio').textContent = nombreNegocio();
+  $('pu-intro-negocio').classList.add('on');
+  if (CATALOGO.logo_url) { const l = $('pu-intro-logo'); l.src = CATALOGO.logo_url; l.style.display = 'block'; }
+
+  $('pu-app').style.display = 'block';
+  renderTodo();
+  if (!ES_PREVIEW) registrarEvento('visita');
+  LISTO = true;
+  // La intro dura lo justo para leer el grito y su respuesta
+  const minimo = MOV_REDUCIDO ? 0 : 2600;
+  setTimeout(terminarIntro, Math.max(0, minimo - (Date.now() - inicioIntro)));
+}
+
+function correrIntro(){
+  if (MOV_REDUCIDO) { $('pu-intro-pregunta').classList.add('on'); $('pu-intro-respuesta').classList.add('on'); return; }
+  setTimeout(() => $('pu-intro-pregunta').classList.add('on'), 150);
+  setTimeout(() => {
+    $('pu-intro-respuesta').classList.add('on');
+    Polvora.sobre({ left:0, top:0, width:innerWidth, height:innerHeight * .8, bottom:innerHeight }, 3);
+  }, 1050);
+}
+function saltarIntro(){ if (LISTO) terminarIntro(); }
+function terminarIntro(){
+  if (INTRO_TERMINADA) return; INTRO_TERMINADA = true;
+  const i = $('pu-intro'); i.classList.add('fuera');
+  bloquearScroll(false);
+  setTimeout(() => i.remove(), 900);
+  activarRevelado();
+  iniciarPolvoraAmbiente();
+  abrirDesdeHash();
+}
+function mostrarError(msg){
+  $('pu-intro')?.remove(); bloquearScroll(false);
+  const e = $('pu-error'); e.style.display = 'flex';
+  e.innerHTML = `<div style="font-size:44px">🕯️</div><b>¡Ay, no!</b><p>${esc(msg)}</p>`;
+}
+function abrirDesdeHash(){
+  const m = location.hash.match(/^#producto-(.+)$/);
+  if (m && PRODUCTOS.some(p => p.id === m[1])) setTimeout(() => abrirModal(m[1]), 400);
+}
+
+function renderTodo(){
+  renderMeta(); renderHeader(); renderHero();
+  sembrarEstrellas('pu-hero-estrellas', 50); sembrarEstrellas('pu-grit-estrellas', 40); sembrarEstrellas('pu-cierre-estrellas', 36);
+  armarFeston('pu-feston-hero'); armarFeston('pu-feston-cierre');
+  renderAltares(); renderEspeciales(); renderChips(); aplicarFiltro();
+  renderVistos(); renderContactos(); renderAccionesFijas(); actualizarBadges();
+  actualizarGritos(); iniciarCuenta();
+}
+
+function renderMeta(){
+  const c = CATALOGO, nombre = nombreNegocio();
+  document.title = `${nombre} · ¡Feliz Purísima!`;
+  const d = c.descripcion || `Catálogo de la Purísima de ${nombre}`;
+  $('pu-desc-meta').setAttribute('content', d);
+  $('pu-og-title').setAttribute('content', `${nombre} · ¡Feliz Purísima!`);
+  $('pu-og-desc').setAttribute('content', d);
+  const img = c.banner_url || c.logo_url; if (img) $('pu-og-image').setAttribute('content', img);
+  c360InsertarJSONLD('pu-jsonld', c, PRODUCTOS);
+}
+function renderHeader(){
+  const nombre = nombreNegocio();
+  $('pu-marca-nombre').textContent = nombre;
+  if (CATALOGO.logo_url) { const l = $('pu-marca-logo'); l.src = CATALOGO.logo_url; l.style.display = 'block'; $('pu-marca-letra').style.display = 'none'; }
+  else $('pu-marca-letra').innerHTML = inicial(nombre);
+  if (hayWhatsApp()) {
+    const a = $('pu-header-wa'); a.classList.add('on');
+    a.href = linkWA(`¡Hola ${nombre}! Vi su catálogo de la Purísima y tengo una consulta.`);
+    a.innerHTML = ICO.wa + ' Escribinos'; a.onclick = () => registrarEvento('click_whatsapp');
+    $('pu-btn-gorra').style.display = 'flex';
+  }
+  $('pu-cierre-nombre').textContent = nombre;
+  $('pu-pie-nombre').textContent = nombre;
+  $('pu-anio').textContent = new Date().getFullYear();
+}
+
+/* ---------- HERO ---------- */
+function renderHero(){
+  $('pu-hero-negocio').textContent = nombreNegocio();
+  $('pu-hero-desc').textContent = CATALOGO.descripcion || 'Celebrá la Gritería con lo mejor para tu altar, tu familia y tu gorra. Escogé lo que te guste y pedilo directo por WhatsApp.';
+  let acc = `<button class="pu-btn pu-btn-oro" onclick="irACatalogo()">${ICO.star} Ver el catálogo</button>`;
+  if (hayWhatsApp()) acc += `<a class="pu-btn pu-btn-vidrio" href="${esc(linkWA(`¡Hola ${nombreNegocio()}! Quiero información de su catálogo de la Purísima.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} Escribinos</a>`;
+  $('pu-hero-acciones').innerHTML = acc;
+
+  const conFoto = PRODUCTOS.filter(p => fotoPrincipal(p) && p.etiqueta !== 'agotado');
+  const p = conFoto.find(x => x.destacado) || conFoto.find(enOferta) || conFoto[0];
+  if (!p) return;
+  $('pu-altar').style.display = 'block';
+  const img = $('pu-altar-img'); img.src = fotoPrincipal(p).url; img.alt = p.nombre;
+  $('pu-altar-arco').onclick = () => abrirModal(p.id);
+  $('pu-altar-placa').innerHTML = `<b>${esc(p.nombre)}</b><span>${fmtC(precioReal(p))}</span>`;
+  $('pu-altar-placa').onclick = () => abrirModal(p.id);
+  armarBombillos();
+}
+
+/* ---------- CUENTA REGRESIVA a la Gritería (7 de dic, 6 p.m.) ---------- */
+function estadoFiesta(){
+  const ahora = new Date(), y = ahora.getFullYear();
+  const inicio = new Date(y, 11, 7, 18, 0, 0), fin7 = new Date(y, 11, 8), fin8 = new Date(y, 11, 9);
+  if (ahora < inicio) return { t:inicio, label:'La Gritería empieza en' };
+  if (ahora < fin7) return { fiesta:'¡Es noche de Gritería!', label:'Hoy se grita' };
+  if (ahora < fin8) return { fiesta:'¡Feliz día de la Inmaculada!', label:'8 de diciembre' };
+  return { t:new Date(y + 1, 11, 7, 18, 0, 0), label:'Falta para la próxima Gritería' };
+}
+function iniciarCuenta(){
+  let est = estadoFiesta();
+  const pintarEstado = () => {
+    $('pu-cuenta-label').textContent = est.label;
+    $('pu-cuenta-cajas').style.display = est.fiesta ? 'none' : 'flex';
+    $('pu-cuenta-fiesta').style.display = est.fiesta ? 'block' : 'none';
+    $('pu-cuenta-fiesta').textContent = est.fiesta || '';
+  };
+  pintarEstado();
+  const tick = () => {
+    if (est.fiesta) return;
+    let ms = est.t - new Date();
+    if (ms <= 0) { est = estadoFiesta(); pintarEstado(); return; }
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    $('pu-caja-d').style.display = d > 0 ? '' : 'none';
+    $('pu-cd-d').textContent = d;
+    $('pu-cd-h').textContent = String(h).padStart(2, '0');
+    $('pu-cd-m').textContent = String(m).padStart(2, '0');
+    $('pu-cd-s').textContent = String(s % 60).padStart(2, '0');
+  };
+  tick(); clearInterval(CUENTA_TIMER); CUENTA_TIMER = setInterval(tick, 1000);
+}
+/* Pólvora de ambiente: de vez en cuando revienta un cohete sobre el hero o la Gritería (solo si se ven) */
+function iniciarPolvoraAmbiente(){
+  if (MOV_REDUCIDO || !('IntersectionObserver' in window)) return;
+  const visibles = new Set();
+  const obs = new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? visibles.add(e.target) : visibles.delete(e.target)), { threshold:.35 });
+  ['pu-hero', 'pu-sec-griteria'].forEach(id => obs.observe($(id)));
+  const ciclo = () => {
+    const fiesta = !!estadoFiesta().fiesta;
+    if (!document.hidden && visibles.size && !document.body.classList.contains('pu-bloqueado')) {
+      const el = [...visibles][Math.floor(Math.random() * visibles.size)];
+      const r = el.getBoundingClientRect();
+      Polvora.sobre({ left:r.left, top:Math.max(r.top, 0), width:r.width, height:Math.min(r.height, innerHeight) * .7, bottom:Math.min(r.bottom, innerHeight) }, fiesta ? 2 : 1);
+    }
+    setTimeout(ciclo, (fiesta ? 2600 : 5200) + Math.random() * 2400);
+  };
+  setTimeout(ciclo, 2200);
+}
+
+/* ---------- ALTARES = categorías ---------- */
+function renderAltares(){
+  const conteo = {}; PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id] || 0) + 1; });
+  const cats = CATEGORIAS.filter(c => conteo[c.id]);
+  if (cats.length < 2) { $('pu-sec-altares').style.display = 'none'; return; }
+  $('pu-sec-altares').style.display = 'block';
+  $('pu-rail-altares').innerHTML = cats.map(c => {
+    const img = c.imagen_url || fotoPrincipal(PRODUCTOS.find(p => p.categoria_id === c.id && fotoPrincipal(p)))?.url;
+    return `<div class="pu-altar-cat" onclick="elegirChip('cat','${c.id}')">
+      <div class="pu-altar-cat-marco"><div class="pu-altar-cat-in">${img ? `<img src="${esc(img)}" alt="${esc(c.nombre)}" loading="lazy">` : `<div class="pu-sin-foto">${inicial(c.nombre)}</div>`}<div class="pu-altar-cat-num">${conteo[c.id]} ${conteo[c.id] === 1 ? 'producto' : 'productos'}</div></div></div>
+      <div class="pu-altar-cat-vela"><span class="pu-vela corta" style="transform:scale(.7)"></span></div>
+      <div class="pu-altar-cat-nombre">${esc(c.nombre)}</div>
+    </div>`;
+  }).join('');
+  $('pu-nav-altares').classList.toggle('on', cats.length > 5);
+}
+function moverRail(id, dir){ const r = $(id); r.scrollBy({ left:dir * r.clientWidth * .8, behavior:'smooth' }); }
+
+/* ---------- ESPECIALES ---------- */
+function tarjetaRail(p){
+  const f = fotoPrincipal(p), d = descuento(p);
+  return `<div class="pu-altar-cat" onclick="abrirModal('${p.id}')" style="scroll-snap-align:start">
+    <div class="pu-altar-cat-marco"><div class="pu-altar-cat-in">${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy">` : sinFoto(p)}${d ? `<span class="pu-listón" style="bottom:12px">-${d}%</span>` : ''}</div></div>
+    <div class="pu-altar-cat-nombre" style="font-size:16px">${esc(p.nombre)}</div>
+    <div class="pu-card-precios" style="padding-top:2px"><span class="pu-ahora ${d ? 'oferta' : ''}" style="font-size:18px">${fmtC(precioReal(p))}</span>${d ? `<span class="pu-antes">${fmtC(p.precio)}</span>` : ''}</div>
+  </div>`;
+}
+function renderEspeciales(){
+  let lista = PRODUCTOS.filter(p => p.destacado && p.etiqueta !== 'agotado');
+  const ofertas = PRODUCTOS.filter(p => enOferta(p) && p.etiqueta !== 'agotado' && !p.destacado).sort((a, b) => descuento(b) - descuento(a));
+  lista = lista.concat(ofertas).slice(0, 10);
+  if (lista.length < 2) { $('pu-sec-especiales').style.display = 'none'; return; }
+  if (!PRODUCTOS.some(p => p.destacado)) { $('pu-esp-mano').textContent = 'Precios de Purísima'; $('pu-esp-titulo').innerHTML = 'Ofertas para <em>tu gorra</em>'; }
+  $('pu-sec-especiales').style.display = 'block';
+  $('pu-rail-especiales').innerHTML = lista.map(tarjetaRail).join('');
+  $('pu-nav-especiales').classList.toggle('on', lista.length > 5);
+}
+
+/* ---------- FILTROS ---------- */
+function renderChips(){
+  const nOf = PRODUCTOS.filter(enOferta).length;
+  const nFav = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length;
+  const conteo = {}; PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id] || 0) + 1; });
+  let h = `<button class="pu-chip ${!CATEGORIA_ACTUAL && !SOLO_FAV && !SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('todo')">Todo <small>${PRODUCTOS.length}</small></button>`;
+  if (nOf) h += `<button class="pu-chip ${SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('ofertas')">🎆 Ofertas <small>${nOf}</small></button>`;
+  h += `<button class="pu-chip ${SOLO_FAV ? 'on' : ''}" onclick="elegirChip('fav')">${SOLO_FAV ? ICO.heartFill : ICO.heart} Favoritos <small>${nFav}</small></button>`;
+  h += CATEGORIAS.filter(c => conteo[c.id]).map(c => `<button class="pu-chip ${CATEGORIA_ACTUAL?.id === c.id ? 'on' : ''}" onclick="elegirChip('cat','${c.id}')">${esc(c.nombre)} <small>${conteo[c.id]}</small></button>`).join('');
+  $('pu-chips').innerHTML = h;
+}
+function elegirChip(tipo, id){
+  if (tipo === 'todo') { CATEGORIA_ACTUAL = null; SOLO_FAV = false; SOLO_OFERTAS = false; }
+  else if (tipo === 'ofertas') { SOLO_OFERTAS = !SOLO_OFERTAS; SOLO_FAV = false; }
+  else if (tipo === 'fav') { SOLO_FAV = !SOLO_FAV; SOLO_OFERTAS = false; }
+  else if (tipo === 'cat') { CATEGORIA_ACTUAL = CATEGORIA_ACTUAL?.id === id ? null : (CATEGORIAS.find(c => c.id === id) || null); }
+  LIMITE = POR_PAGINA; renderChips(); aplicarFiltro();
+  const g = $('pu-grid').getBoundingClientRect();
+  if (g.top > innerHeight * .7 || g.top < 0) irACatalogo();
+}
+function verFavoritos(){ SOLO_FAV = false; elegirChip('fav'); }
+let _bus = null;
+function onBuscar(v){ $('pu-limpiar').classList.toggle('on', !!v); clearTimeout(_bus); _bus = setTimeout(() => { TEXTO = v.trim().toLowerCase(); LIMITE = POR_PAGINA; aplicarFiltro(); }, 140); }
+function limpiarBusqueda(){ $('pu-buscador').value = ''; onBuscar(''); $('pu-buscador').focus(); }
+function cambiarOrden(v){ ORDEN = v; aplicarFiltro(); }
+function mostrarMas(){ LIMITE += POR_PAGINA; aplicarFiltro(true); }
+
+function aplicarFiltro(agregando){
+  let lista = c360FiltrarYOrdenar(PRODUCTOS, {
+    categoriaId:CATEGORIA_ACTUAL?.id || null, soloFavoritos:SOLO_FAV, favoritos:FAVORITOS,
+    soloOfertas:SOLO_OFERTAS, textoBusqueda:TEXTO, orden:ORDEN,
+  });
+  lista = lista.filter(p => p.etiqueta !== 'agotado').concat(lista.filter(p => p.etiqueta === 'agotado'));
+  let titulo = 'Todo';
+  if (SOLO_FAV) titulo = 'Tus favoritos'; else if (SOLO_OFERTAS) titulo = 'Ofertas de Purísima';
+  if (CATEGORIA_ACTUAL) titulo = CATEGORIA_ACTUAL.nombre;
+  if (TEXTO) titulo = `“${TEXTO}”`;
+  $('pu-res-titulo').textContent = titulo;
+  $('pu-res-conteo').textContent = `${lista.length} ${lista.length === 1 ? 'producto' : 'productos'}`;
+  const g = $('pu-grid');
+  if (!lista.length) {
+    g.innerHTML = `<div class="pu-vacio"><b>${SOLO_FAV ? 'Todavía no tenés favoritos' : 'No encontramos nada'}</b>${SOLO_FAV ? 'Tocá el corazón de un producto para guardarlo.' : 'Probá con otra palabra o categoría.'}</div>`;
+    $('pu-mas').style.display = 'none'; return;
+  }
+  const desde = agregando ? LIMITE - POR_PAGINA : 0;
+  g.innerHTML = lista.slice(0, LIMITE).map((p, i) => tarjetaHTML(p, Math.max(0, i - desde))).join('');
+  $('pu-mas').style.display = lista.length > LIMITE ? 'flex' : 'none';
+}
+function tarjetaHTML(p, i){
+  const f = fotoPrincipal(p), d = descuento(p), agotado = p.etiqueta === 'agotado';
+  const fav = FAVORITOS.includes(p.id), enGorra = GORRA.some(g => g.id === p.id), cat = nombreCat(p);
+  let liston = '';
+  if (agotado) liston = `<span class="pu-listón agotado">Agotado</span>`;
+  else if (d) liston = `<span class="pu-listón">-${d}% Purísima</span>`;
+  else if (p.etiqueta === 'nuevo') liston = `<span class="pu-listón nuevo">Nuevo</span>`;
+  else if (p.destacado) liston = `<span class="pu-listón top">★ Especial</span>`;
+  return `<article class="pu-card ${agotado ? 'agotada' : ''}" data-id="${p.id}" style="animation-delay:${Math.min(i, 12) * 45}ms">
+    <div class="pu-card-media ${f ? 'cargando' : ''}" onclick="abrirModal('${p.id}')">
+      ${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy" onload="this.classList.add('cargada');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">` : sinFoto(p)}
+      ${liston}
+    </div>
+    <button class="pu-fav ${fav ? 'on' : ''}" onclick="toggleFav('${p.id}')" aria-label="${fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">${fav ? ICO.heartFill : ICO.heart}</button>
+    <div class="pu-card-body">
+      ${cat ? `<div class="pu-card-cat">${esc(cat)}</div>` : ''}
+      <div class="pu-card-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+      <div class="pu-card-precios"><span class="pu-ahora ${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</span>${d ? `<span class="pu-antes">${fmtC(p.precio)}</span>` : ''}</div>
+      ${!agotado && hayWhatsApp() ? `<button class="pu-agregar ${enGorra ? 'hecho' : ''}" onclick="agregarAGorra('${p.id}', 1)">${enGorra ? ICO.check : ICO.gorra}<span>${enGorra ? 'En tu gorra' : 'A mi gorra'}</span></button>` : ''}
+    </div>
+  </article>`;
+}
+function marcarBotones(id){
+  const en = GORRA.some(g => g.id === id);
+  document.querySelectorAll(`.pu-card[data-id="${id}"] .pu-agregar`).forEach(b => { b.classList.toggle('hecho', en); b.innerHTML = (en ? ICO.check : ICO.gorra) + `<span>${en ? 'En tu gorra' : 'A mi gorra'}</span>`; });
+}
+
+/* ---------- FAVORITOS ---------- */
+function toggleFav(id){
+  const i = FAVORITOS.indexOf(id); if (i === -1) FAVORITOS.push(id); else FAVORITOS.splice(i, 1);
+  guardarLocal('favoritos', FAVORITOS);
+  const on = FAVORITOS.includes(id);
+  document.querySelectorAll(`.pu-card[data-id="${id}"] .pu-fav`).forEach(b => { b.classList.toggle('on', on); b.innerHTML = on ? ICO.heartFill : ICO.heart; });
+  actualizarBadges(); renderChips(); if (SOLO_FAV) aplicarFiltro();
+  if (on) toast('Guardado en favoritos', ICO.heartFill);
+}
+
+/* ---------- GORRA (pedido multi-producto) ---------- */
+function agregarAGorra(id, cant){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || p.etiqueta === 'agotado' || !hayWhatsApp()) return;
+  const it = GORRA.find(g => g.id === id);
+  if (it) it.cant = Math.min(99, it.cant + cant); else GORRA.push({ id, cant });
+  guardarLocal('gorra', GORRA); marcarBotones(id);
+  actualizarBadges(true); renderAccionesFijas();
+  toast(`${p.nombre.length > 24 ? p.nombre.slice(0, 24) + '…' : p.nombre} va en tu gorra`, ICO.gorra);
+}
+function cambiarCantGorra(id, d){
+  const it = GORRA.find(g => g.id === id); if (!it) return;
+  it.cant += d; if (it.cant <= 0) GORRA = GORRA.filter(g => g.id !== id);
+  guardarLocal('gorra', GORRA); marcarBotones(id); renderGorra(); actualizarBadges(); renderAccionesFijas();
+}
+function vaciarGorra(){ const ids = GORRA.map(g => g.id); GORRA = []; guardarLocal('gorra', GORRA); ids.forEach(marcarBotones); renderGorra(); actualizarBadges(); renderAccionesFijas(); }
+function totalesGorra(){
+  let total = 0, antes = 0, piezas = 0;
+  GORRA.forEach(g => { const p = PRODUCTOS.find(x => x.id === g.id); if (!p) return; total += precioReal(p) * g.cant; antes += Number(p.precio) * g.cant; piezas += g.cant; });
+  return { total, ahorro:Math.max(0, antes - total), piezas };
+}
+function abrirGorra(){ renderGorra(); $('pu-overlay-gorra').classList.add('open'); bloquearScroll(true); }
+function cerrarGorra(){ $('pu-overlay-gorra').classList.remove('open'); if (!$('pu-overlay-modal').classList.contains('open')) bloquearScroll(false); }
+function renderGorra(){
+  const lista = $('pu-gorra-lista'), pie = $('pu-gorra-pie');
+  if (!GORRA.length) {
+    lista.innerHTML = `<div class="pu-gorra-vacia"><div style="font-size:46px">🧺</div><b>Tu gorra está vacía</b>Agregá lo que te guste y mandá todo tu pedido en un solo mensaje.</div>`;
+    pie.innerHTML = `<button class="pu-btn pu-btn-oro" onclick="cerrarGorra();irACatalogo()">Ver el catálogo</button>`; return;
+  }
+  lista.innerHTML = GORRA.map(g => {
+    const p = PRODUCTOS.find(x => x.id === g.id); if (!p) return '';
+    const f = fotoPrincipal(p);
+    return `<div class="pu-gorra-item">
+      <div class="pu-gorra-img">${f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(p)}</div>
+      <div style="min-width:0"><div class="n">${esc(p.nombre)}</div><div class="p">${fmtC(precioReal(p))} c/u</div></div>
+      <div class="pu-cantidad"><button onclick="cambiarCantGorra('${p.id}',-1)" aria-label="Quitar uno">${g.cant === 1 ? ICO.trash : '−'}</button><span>${g.cant}</span><button onclick="cambiarCantGorra('${p.id}',1)" aria-label="Agregar uno">+</button></div>
+    </div>`;
+  }).join('');
+  const t = totalesGorra();
+  pie.innerHTML = `
+    ${t.ahorro > 0 ? `<div class="pu-gorra-linea"><span>Te ahorrás</span><span>-${fmtC(t.ahorro)}</span></div>` : ''}
+    <div class="pu-gorra-total"><span>Total · ${t.piezas} ${t.piezas === 1 ? 'pieza' : 'piezas'}</span><b>${fmtC(t.total)}</b></div>
+    <button class="pu-btn pu-btn-wa" onclick="enviarPedido(event)">${ICO.wa} Mandar mi pedido por WhatsApp</button>
+    <div class="pu-gorra-nota">El negocio te confirma disponibilidad y entrega por WhatsApp.</div>
+    <button class="pu-gorra-vaciar" onclick="vaciarGorra()">Vaciar gorra</button>`;
+}
+function enviarPedido(ev){
+  if (!GORRA.length || !hayWhatsApp()) return;
+  const lineas = GORRA.map(g => { const p = PRODUCTOS.find(x => x.id === g.id); return p ? `• ${g.cant} × ${p.nombre} — ${fmtC(precioReal(p) * g.cant)}` : null; }).filter(Boolean);
+  const t = totalesGorra();
+  const msg = `¡Hola ${nombreNegocio()}! ¿Quién causa tanta alegría? 🎆\nQuiero hacer este pedido de su catálogo de la Purísima:\n\n${lineas.join('\n')}\n\nTotal: ${fmtC(t.total)}\n\n¿Me confirman si está disponible?`;
+  registrarEvento('click_whatsapp');
+  if (ev && ev.clientX) Polvora.estallar(ev.clientX, ev.clientY - 40);
+  window.open(linkWA(msg), '_blank');
+}
+function consultarProducto(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || !hayWhatsApp()) return;
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWA(`¡Hola! Vi en su catálogo de la Purísima "${p.nombre}" a ${fmtC(precioReal(p))}. ¿Lo tienen disponible?`), '_blank');
+}
+function actualizarBadges(latir){
+  const nFav = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length;
+  const bf = $('pu-badge-fav'); bf.textContent = nFav; bf.classList.toggle('on', nFav > 0);
+  const piezas = totalesGorra().piezas;
+  ['pu-badge-gorra', 'pu-badge-gorra-2'].forEach(id => {
+    const b = $(id); b.textContent = piezas; b.classList.toggle('on', piezas > 0);
+    if (latir && !MOV_REDUCIDO) { b.classList.remove('latido'); void b.offsetWidth; b.classList.add('latido'); }
+  });
+}
+function renderAccionesFijas(){
+  if (!hayWhatsApp()) return;
+  $('pu-flotante').classList.add('on');
+  const url = linkWA(`¡Hola ${nombreNegocio()}! Vi su catálogo de la Purísima y tengo una consulta.`);
+  $('pu-flot-wa').onclick = () => { registrarEvento('click_whatsapp'); window.open(url, '_blank'); };
+  $('pu-flot-gorra').style.display = GORRA.length ? 'flex' : 'none';
+  const barra = $('pu-barra-movil'); barra.classList.add('on'); document.body.classList.add('pu-con-barra');
+  if (GORRA.length) {
+    const t = totalesGorra();
+    barra.innerHTML = `<button class="pu-barra-gorra" onclick="abrirGorra()"><span style="display:flex;align-items:center;gap:10px">${ICO.gorra} Tu gorra <span class="cnt">${t.piezas}</span></span><span class="tot">${fmtC(t.total)}</span></button>`;
+  } else {
+    barra.innerHTML = `<a class="pu-barra-wa" href="${esc(url)}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} Escribinos por WhatsApp</a>`;
+  }
+}
+
+/* ---------- MODAL ---------- */
+function abrirModal(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  MODAL_ID = id; MODAL_CANT = 1;
+  registrarEvento('vista_producto', id); registrarVisto(id);
+  const d = descuento(p), agotado = p.etiqueta === 'agotado', cat = nombreCat(p);
+  const fotos = p.fotos || [];
+  $('pu-modal-fotos').innerHTML = fotos.length ? fotos.map((f, i) => `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" onclick="abrirLightbox(${i})">`).join('') : sinFoto(p);
+  $('pu-modal-fotos').scrollLeft = 0;
+  $('pu-modal-puntos').innerHTML = fotos.length > 1 ? fotos.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
+  LB_FOTOS = fotos.map(f => f.url);
+
+  let acciones = '';
+  if (agotado) acciones = `<button class="pu-btn pu-btn-linea" disabled style="width:100%">Se nos acabó por ahora</button>`;
+  else if (hayWhatsApp()) acciones = `
+    <div class="pu-modal-fila">
+      <div class="pu-cantidad"><button onclick="cambiarCantModal(-1)" aria-label="Menos">−</button><span id="pu-modal-cant">1</span><button onclick="cambiarCantModal(1)" aria-label="Más">+</button></div>
+      <button class="pu-btn pu-btn-oro" onclick="agregarDesdeModal()">${ICO.gorra} A mi gorra</button>
+    </div>
+    <button class="pu-btn pu-btn-wa" style="width:100%" onclick="consultarProducto('${p.id}')">${ICO.wa} Preguntar por WhatsApp</button>`;
+  acciones += `<div class="pu-modal-extra">${CATALOGO.telefono ? `<a class="pu-btn pu-btn-linea" href="tel:${esc(CATALOGO.telefono)}" onclick="registrarEvento('click_telefono','${p.id}')">${ICO.phone} Llamar</a>` : ''}<button class="pu-btn pu-btn-linea" onclick="compartir('${p.id}')">${ICO.share} Compartir</button></div>`;
+
+  const rel = PRODUCTOS.filter(x => x.id !== p.id && x.etiqueta !== 'agotado' && (p.categoria_id ? x.categoria_id === p.categoria_id : true)).slice(0, 8);
+  $('pu-modal-body').innerHTML = `
+    ${cat ? `<div class="pu-modal-cat">${esc(cat)}</div>` : ''}
+    <h2 class="pu-modal-nombre">${esc(p.nombre)}</h2>
+    <div class="pu-modal-precios"><span class="pu-ahora ${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</span>${d ? `<span class="pu-antes">${fmtC(p.precio)}</span>` : ''}</div>
+    ${d ? `<div><span class="pu-ahorro">Te ahorrás ${fmtC(Number(p.precio) - precioReal(p))} (-${d}%)</span></div>` : ''}
+    ${p.descripcion ? `<div class="pu-modal-desc">${esc(p.descripcion)}</div>` : '<div style="height:20px"></div>'}
+    ${acciones}
+    ${rel.length ? `<div class="pu-relacionados"><h4>También te puede gustar</h4><div class="pu-rel-scroll">${rel.map(r => {
+      const f = fotoPrincipal(r);
+      return `<div class="pu-rel" onclick="abrirModal('${r.id}')"><div class="pu-rel-img">${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : sinFoto(r)}</div><div class="n">${esc(r.nombre)}</div><div class="p">${fmtC(precioReal(r))}</div></div>`;
+    }).join('')}</div></div>` : ''}`;
+  $('pu-modal').scrollTop = 0; $('pu-modal-body').scrollTop = 0;
+  $('pu-overlay-modal').classList.add('open'); bloquearScroll(true);
+  history.replaceState(null, '', `#producto-${id}`);
+}
+function cerrarModal(){
+  $('pu-overlay-modal').classList.remove('open');
+  if (!$('pu-overlay-gorra').classList.contains('open')) bloquearScroll(false);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+function cambiarCantModal(d){ MODAL_CANT = Math.max(1, Math.min(99, MODAL_CANT + d)); $('pu-modal-cant').textContent = MODAL_CANT; }
+function agregarDesdeModal(){ agregarAGorra(MODAL_ID, MODAL_CANT); cerrarModal(); }
+$('pu-modal-fotos').addEventListener('scroll', e => {
+  const el = e.currentTarget, i = Math.round(el.scrollLeft / el.clientWidth);
+  [...$('pu-modal-puntos').children].forEach((d, j) => d.classList.toggle('on', i === j));
+}, { passive:true });
+function compartir(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  const url = `${location.origin}${location.pathname}${location.search}#producto-${id}`;
+  if (navigator.share) navigator.share({ title:p.nombre, text:`${p.nombre} — ${fmtC(precioReal(p))}`, url }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Enlace copiado', ICO.check)).catch(() => {});
+}
+
+/* ---------- VISTOS ---------- */
+function registrarVisto(id){ VISTOS = VISTOS.filter(v => v !== id); VISTOS.unshift(id); VISTOS = VISTOS.slice(0, 10); guardarLocal('vistos', VISTOS); renderVistos(); }
+function renderVistos(){
+  const lista = VISTOS.map(id => PRODUCTOS.find(p => p.id === id)).filter(Boolean);
+  if (lista.length < 2) { $('pu-sec-vistos').style.display = 'none'; return; }
+  $('pu-sec-vistos').style.display = 'block'; $('pu-sec-vistos').classList.add('visible');
+  $('pu-rail-vistos').innerHTML = lista.map(tarjetaRail).join('');
+}
+
+/* ---------- ¡GRITÁ! ---------- */
+const RESPUESTAS = ['¡La Concepción de María!', '¡La Concepción de María!', '¡María!', '¡La Purísima!'];
+function actualizarGritos(){
+  $('pu-gritos-cont').textContent = GRITOS ? `Ya gritaste ${GRITOS} ${GRITOS === 1 ? 'vez' : 'veces'} 🎉` : '';
+}
+function gritar(ev){
+  GRITOS++; try { localStorage.setItem(claveLocal('gritos'), String(GRITOS)); } catch(e) {}
+  const resp = GRITOS === 1 ? RESPUESTAS[0] : RESPUESTAS[Math.floor(Math.random() * RESPUESTAS.length)];
+  $('pu-respuesta').innerHTML = `<span>${esc(resp)}</span>`;
+  actualizarGritos();
+  const r = $('pu-gritar').getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  // pólvora sobre el botón y lluvia de dulces (la gorra)
+  if (!MOV_REDUCIDO) {
+    Polvora.lanzar(cx, innerHeight + 10, cx + (Math.random() - .5) * 200, Math.max(60, r.top - 140));
+    Polvora.lanzar(cx - 120, innerHeight + 10, Math.max(40, cx - 220), Math.max(80, r.top - 60));
+    Polvora.lanzar(cx + 120, innerHeight + 10, Math.min(innerWidth - 40, cx + 220), Math.max(80, r.top - 80));
+    lluviaDulces();
+  }
+  // gorra sorpresa: un producto recomendado (prefiere ofertas y destacados)
+  const disp = PRODUCTOS.filter(p => p.etiqueta !== 'agotado');
+  if (!disp.length) return;
+  const pesos = disp.map(p => 1 + (enOferta(p) ? 2 : 0) + (p.destacado ? 2 : 0));
+  let x = Math.random() * pesos.reduce((a, b) => a + b, 0), elegido = disp[0];
+  for (let i = 0; i < disp.length; i++) { x -= pesos[i]; if (x <= 0) { elegido = disp[i]; break; } }
+  const f = fotoPrincipal(elegido), d = descuento(elegido);
+  const caja = $('pu-gorra-sorpresa');
+  caja.classList.remove('on'); void caja.offsetWidth;
+  caja.innerHTML = `<div class="pu-gorra-sorpresa-img">${f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(elegido)}</div>
+    <div style="min-width:0;flex:1"><small>Tu gorra de hoy 🎁</small><b>${esc(elegido.nombre)}</b><em>${fmtC(precioReal(elegido))}</em>${d ? ` <span class="pu-antes">${fmtC(elegido.precio)}</span>` : ''}</div>`;
+  caja.onclick = () => abrirModal(elegido.id);
+  setTimeout(() => caja.classList.add('on'), MOV_REDUCIDO ? 0 : 500);
+}
+function lluviaDulces(){
+  const dulces = ['🍬', '🍭', '🍊', '🍋', '🎉', '✨', '🍬', '🧁'];
+  const n = innerWidth < 600 ? 14 : 22;
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement('span'); s.className = 'pu-dulce';
+    s.textContent = dulces[Math.floor(Math.random() * dulces.length)];
+    s.style.left = `${Math.random() * 100}vw`;
+    s.style.animationDuration = `${2.2 + Math.random() * 1.8}s`;
+    s.style.animationDelay = `${Math.random() * .6}s`;
+    s.style.fontSize = `${18 + Math.random() * 16}px`;
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 4800);
+  }
+}
+
+/* ---------- CONTACTO ---------- */
+function renderContactos(){
+  const c = CATALOGO; let h = '';
+  if (hayWhatsApp()) h += `<a class="pu-contacto" href="${esc(linkWA(`¡Hola ${nombreNegocio()}! Vi su catálogo de la Purísima.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')"><div class="pu-contacto-ico">${ICO.wa}</div><div style="min-width:0"><small>WhatsApp</small><b>${esc(c.whatsapp)}</b></div></a>`;
+  if (c.telefono) h += `<a class="pu-contacto" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')"><div class="pu-contacto-ico">${ICO.phone}</div><div style="min-width:0"><small>Llamanos</small><b>${esc(c.telefono)}</b></div></a>`;
+  if (c.email) h += `<a class="pu-contacto" href="mailto:${esc(c.email)}"><div class="pu-contacto-ico">${ICO.mail}</div><div style="min-width:0"><small>Correo</small><b>${esc(c.email)}</b></div></a>`;
+  if (c.ubicacion) h += `<a class="pu-contacto" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.ubicacion)}" target="_blank" rel="noopener"><div class="pu-contacto-ico">${ICO.pin}</div><div style="min-width:0"><small>Visitanos</small><b>${esc(c.ubicacion)}</b></div></a>`;
+  $('pu-contactos').innerHTML = h; $('pu-contactos').style.display = h ? '' : 'none';
+}
+
+/* ---------- LIGHTBOX ---------- */
+function abrirLightbox(i){ if (!LB_FOTOS.length) return; LB_I = i || 0; pintarLB(); $('pu-lightbox').classList.add('open'); }
+function cerrarLightbox(){ $('pu-lightbox').classList.remove('open'); }
+function moverLightbox(d){ LB_I = (LB_I + d + LB_FOTOS.length) % LB_FOTOS.length; pintarLB(); }
+function pintarLB(){ $('pu-lb-img').src = LB_FOTOS[LB_I]; $('pu-lb-cont').textContent = `${LB_I + 1} / ${LB_FOTOS.length}`; }
+(function(){
+  let x0 = null; const lb = $('pu-lightbox');
+  lb.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive:true });
+  lb.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) moverLightbox(dx > 0 ? -1 : 1); x0 = null; }, { passive:true });
+})();
+
+/* ---------- revelado, teclado y redimensión ---------- */
+function activarRevelado(){
+  const els = document.querySelectorAll('.pu-reveal');
+  if (!('IntersectionObserver' in window) || MOV_REDUCIDO) { els.forEach(e => e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  els.forEach(e => obs.observe(e));
+}
+document.addEventListener('keydown', e => {
+  if ($('pu-lightbox').classList.contains('open')) {
+    if (e.key === 'Escape') cerrarLightbox();
+    if (e.key === 'ArrowLeft') moverLightbox(-1);
+    if (e.key === 'ArrowRight') moverLightbox(1);
+    return;
+  }
+  if (e.key === 'Escape') {
+    if ($('pu-overlay-modal').classList.contains('open')) cerrarModal();
+    else if ($('pu-overlay-gorra').classList.contains('open')) cerrarGorra();
+  }
+});
+let _rs = null, _ancho = innerWidth;
+addEventListener('resize', () => {
+  if (Math.abs(innerWidth - _ancho) < 40) return; // ignora el cambio de alto de la barra del navegador móvil
+  _ancho = innerWidth; clearTimeout(_rs);
+  _rs = setTimeout(() => { if (CATALOGO) { armarFeston('pu-feston-hero'); armarFeston('pu-feston-cierre'); } }, 200);
+});
+
+init();
+</script>
+</body>
+</html>
