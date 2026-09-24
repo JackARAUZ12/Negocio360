@@ -1097,6 +1097,7 @@
   window.toggleTheme             = toggleTheme;
   window.navigate                = navigate;
   window.onCambiarMetodoGasto    = onCambiarMetodoGasto;
+  window.onToggleIvaGasto        = onToggleIvaGasto;
   // GS vive dentro de este IIFE, pero el modal de moneda de
   // visualizacion esta definido FUERA (al final del archivo) y
   // necesita leer GS.empresaConfig -- sin esto, al abrir el modal
