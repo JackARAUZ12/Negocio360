@@ -1697,6 +1697,18 @@ function estadoVacioTabla(colspan, tipoTexto, onClickNuevo) {
 // TABLA -- PRODUCTOS (seccion propia, columnas propias -- ya sin
 // la columna "Tipo", redundante ahora que la pestaña ya lo dice)
 // ============================================================
+// Celda de nombre + SKU, con miniatura si la cuenta activo "Inventario
+// con imagenes" -- para cualquier otra cuenta, se ve exactamente igual
+// que siempre (sin espacio de mas reservado para la foto).
+function celdaNombreConFoto(p) {
+  const nombreHtml = `<div class="td-nombre">${escHtml(p.nombre)}</div>${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}`;
+  if (!STATE.empresa?.usa_inventario_imagenes) return nombreHtml;
+  const foto = p.imagen_url
+    ? `<img src="${escHtml(p.imagen_url)}" class="item-foto-thumb" alt="">`
+    : `<div class="item-foto-placeholder">🖼️</div>`;
+  return `<div style="display:flex;align-items:center;gap:8px">${foto}<div>${nombreHtml}</div></div>`;
+}
+
 function renderTablaProductos(tbody) {
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = estadoVacioTabla(11, 'productos', "abrirModalNuevo('producto')");
@@ -1717,8 +1729,7 @@ function renderTablaProductos(tbody) {
     return `
       <tr data-id="${p.id}">
         <td>
-          <div class="td-nombre">${escHtml(p.nombre)}</div>
-          ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+          ${celdaNombreConFoto(p)}
         </td>
         <td style="display:${STATE.usaModeloProducto ? '' : 'none'}">${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td>
@@ -1771,8 +1782,7 @@ function renderTablaServicios(tbody) {
   tbody.innerHTML = STATE.filtrados.map(p => `
     <tr data-id="${p.id}">
       <td>
-        <div class="td-nombre">${escHtml(p.nombre)}</div>
-        ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+        ${celdaNombreConFoto(p)}
       </td>
       <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td class="td-money">
@@ -1851,8 +1861,7 @@ function renderTablaMateriaPrima(tbody) {
     return `
       <tr data-id="${p.id}">
         <td>
-          <div class="td-nombre">${escHtml(p.nombre)}</div>
-          ${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}
+          ${celdaNombreConFoto(p)}
         </td>
         <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td>${p.proveedor_nombre ? escHtml(p.proveedor_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
