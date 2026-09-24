@@ -1709,7 +1709,61 @@ function celdaNombreConFoto(p) {
   return `<div style="display:flex;align-items:center;gap:8px">${foto}<div>${nombreHtml}</div></div>`;
 }
 
+// Alterna entre la tabla normal y la cuadricula tipo catalogo -- solo
+// la cuadricula muestra la foto grande; ambas leen los MISMOS datos
+// (STATE.filtrados), nada de la logica de guardado cambia.
+function mostrarCatalogoOTabla(mostrarCatalogo) {
+  const tableCard = document.getElementById('tableCardProductos');
+  const grid = document.getElementById('catalogoGrid');
+  if (tableCard) tableCard.style.display = mostrarCatalogo ? 'none' : '';
+  if (grid) grid.style.display = mostrarCatalogo ? '' : 'none';
+}
+
+function renderCatalogoGrid(items, mostrarStock) {
+  const grid = document.getElementById('catalogoGrid');
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0">Nada por aquí todavía.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(p => {
+    const foto = p.imagen_url
+      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="">`
+      : `<div class="catalogo-card-foto-placeholder">🖼️</div>`;
+    const precioHtml = p.tipo_precio === 'escala'
+      ? `<b>${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</b>`
+      : `<b>${fmtMoney(p.precio)}</b>`;
+    return `
+      <div class="catalogo-card" data-id="${p.id}">
+        <div class="catalogo-card-foto-wrap">
+          <span class="catalogo-card-estado" style="color:${p.activo ? 'var(--success,#16a34a)' : 'var(--text-muted)'}">${p.activo ? '● Activo' : '● Inactivo'}</span>
+          ${foto}
+        </div>
+        <div class="catalogo-card-body">
+          <div class="catalogo-card-nombre">${escHtml(p.nombre)}</div>
+          ${p.sku ? `<div class="catalogo-card-sku">${escHtml(p.sku)}</div>` : ''}
+          ${p.categoria ? `<div class="catalogo-card-categoria">${escHtml(p.categoria)}</div>` : ''}
+          <div class="catalogo-card-precios">
+            <span style="color:var(--text-muted)">Precio</span>
+            ${precioHtml}
+          </div>
+          ${mostrarStock ? `<div class="catalogo-card-stock">Stock: ${fmtNum(p.stock_actual)}</div>` : ''}
+          <div class="catalogo-card-acciones">
+            <button class="btn btn-secondary" onclick="abrirDetalle('${p.id}')">👁 Ver</button>
+            <button class="btn btn-primary" onclick="abrirEditar('${p.id}')">✏️ Editar</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function renderTablaProductos(tbody) {
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTabla(true);
+    renderCatalogoGrid(STATE.filtrados, true);
+    return;
+  }
+  mostrarCatalogoOTabla(false);
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = estadoVacioTabla(11, 'productos', "abrirModalNuevo('producto')");
     return;
@@ -1774,6 +1828,12 @@ function renderTablaProductos(tbody) {
 // servicio no maneja inventario)
 // ============================================================
 function renderTablaServicios(tbody) {
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTabla(true);
+    renderCatalogoGrid(STATE.filtrados, false);
+    return;
+  }
+  mostrarCatalogoOTabla(false);
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = estadoVacioTabla(9, 'servicios', "abrirModalNuevo('servicio')");
     return;
@@ -1838,6 +1898,12 @@ function irAIngresarMateriaPrima() {
   window.location.href = 'produccion.html?abrir=materia-prima';
 }
 function renderTablaMateriaPrima(tbody) {
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTabla(true);
+    renderCatalogoGrid(STATE.filtrados, true);
+    return;
+  }
+  mostrarCatalogoOTabla(false);
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = `
       <tr><td colspan="8">

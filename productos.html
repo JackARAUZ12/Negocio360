@@ -421,7 +421,7 @@
       </div>
 
       <!-- TABLA PRINCIPAL -->
-      <div class="table-card">
+      <div class="table-card" id="tableCardProductos">
         <div class="table-wrapper">
           <table class="data-table" role="table">
             <thead id="theadProductos">
@@ -484,6 +484,11 @@
           <span style="color:var(--text-muted);font-size:11px">Datos protegidos por RLS · Solo tus registros</span>
         </div>
       </div>
+
+      <!-- Vista de catálogo (tarjetas grandes) -- solo se muestra si la
+           cuenta activó "Inventario con imágenes". Mismos datos que la
+           tabla de arriba, solo cambia cómo se ven. -->
+      <div class="catalogo-grid" id="catalogoGrid" style="display:none"></div>
 
       <!-- ============================================================
            COMBOS / KITS — cuadro separado del de Productos/Servicios

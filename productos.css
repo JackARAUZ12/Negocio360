@@ -1846,3 +1846,49 @@ img { max-width: 100%; }
 @media (max-width: 640px) {
   .item-foto-thumb, .item-foto-placeholder { width: 34px; height: 34px; }
 }
+
+/* ============================================================
+   VISTA DE CATÁLOGO -- tarjetas grandes, tipo grid de tienda.
+   Aparece SOLO si la cuenta activo inventario con imagenes; la
+   tabla normal sigue existiendo igual para todos los demas.
+   ============================================================ */
+.catalogo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 16px;
+  margin-top: 4px;
+}
+.catalogo-card {
+  border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  background: var(--bg-surface, #fff); display: flex; flex-direction: column;
+  transition: box-shadow .2s, transform .15s;
+}
+.catalogo-card:hover { box-shadow: 0 8px 22px -10px rgba(0,0,0,.18); transform: translateY(-2px); }
+.catalogo-card-foto {
+  width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: var(--bg-base, #f1f5f9);
+  display: block;
+}
+.catalogo-card-foto-placeholder {
+  width: 100%; aspect-ratio: 1 / 1; background: var(--bg-base, #f1f5f9);
+  display: flex; align-items: center; justify-content: center; font-size: 34px; color: var(--text-muted);
+}
+.catalogo-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.catalogo-card-estado {
+  position: absolute; margin: 10px; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; background: rgba(255,255,255,.92);
+}
+.catalogo-card-foto-wrap { position: relative; }
+.catalogo-card-nombre { font-weight: 700; font-size: 13.5px; line-height: 1.25; }
+.catalogo-card-sku { font-size: 11px; color: var(--text-muted); }
+.catalogo-card-categoria { font-size: 11px; color: var(--text-secondary); }
+.catalogo-card-precios { display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px; }
+.catalogo-card-precios b { font-size: 13.5px; }
+.catalogo-card-stock { font-size: 11.5px; color: var(--text-secondary); }
+.catalogo-card-acciones { display: flex; gap: 6px; margin-top: 8px; }
+.catalogo-card-acciones button { flex: 1; font-size: 12px; padding: 7px 0; }
+
+@media (max-width: 640px) {
+  .catalogo-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 10px; }
+  .catalogo-card-body { padding: 9px 10px 10px; }
+  .catalogo-card-nombre { font-size: 12.5px; }
+}
