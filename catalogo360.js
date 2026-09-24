@@ -787,6 +787,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'Restaurante', nombre:'Restaurante', icono:'🍽️', desc:'Es hora de comer, ofrecelo de manera profesional a tus clientes', disponible:true, archivo:'c360-restaurant.html' },
   { key:'blackfriday', nombre:'Black Friday', icono:'🏷️', desc:'Agresiva y llamativa -- negro, amarillo neón y rojo, cuenta regresiva, ruleta de ofertas y bolsa de pedido por WhatsApp.', disponible:true, archivo:'c360-blackfriday.html' },
   { key:'purisima', nombre:'La Purísima', icono:'🕯️', desc:'Noche de Gritería -- celeste, blanco y oro, pólvora animada, altares con luces y botón "¡Gritá!" con gorra sorpresa.', disponible:true, archivo:'c360-purisima.html' },
+  { key:'madres', nombre:'Día de las Madres', icono:'💐', desc:'Una carta para mamá -- papel, flores que se dibujan solas, polaroids, regalos por presupuesto y dedicatoria que viaja con el pedido.', disponible:true, archivo:'c360-madres.html' },
 ];
 
 function archivoDePlantilla(key) {

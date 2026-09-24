@@ -201,6 +201,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   'Restaurante': 'c360-restaurant.html',
   blackfriday: 'c360-blackfriday.html',
   purisima: 'c360-purisima.html',
+  madres: 'c360-madres.html',
 };
 
 /**
