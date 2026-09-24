@@ -133,6 +133,7 @@
   // detección que perfiles-guard.js, para cubrir ambos estilos de sidebar
   // usados en el proyecto.
   function ocultarEnSidebar(cfg) {
+    const restriccionSuc = obtenerRestriccionSucursal();
     const nodos = document.querySelectorAll('[onclick*="navigate("], a[href$=".html"], a[href*=".html?"]');
     nodos.forEach(el => {
       let href = el.getAttribute('href');
@@ -143,7 +144,19 @@
       if (!href) return;
       const file = href.split('?')[0].split('/').pop();
       const mod = MODULOS_POR_ARCHIVO[file];
-      if (!mod) return; // módulos obligatorios y otras páginas: intactos
+      if (!mod) {
+        // Modulo obligatorio (o pagina fuera del registro): sigue sin
+        // tocarse por el sistema normal de modulos opcionales, pero SI
+        // se oculta cuando la sucursal/bodega actual lo tiene
+        // restringido -- mismo motivo que protegerPaginaActual().
+        const info = (window.NEGOCIO360_MODULOS || {})[file];
+        if (info && info.key !== 'dashboard' && restriccionSuc && !restriccionSuc.includes(info.key)) {
+          const item = el.closest('.nav-item') || el;
+          item.style.display = 'none';
+          item.classList.add('mg-oculto-modulo');
+        }
+        return;
+      }
       if (!estaActivo(cfg, mod.key, mod.flagPropio)) {
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
@@ -227,6 +240,26 @@
     if (mod && !estaActivo(cfg, mod.key, mod.flagPropio)) {
       location.href = 'dashboard.html';
       return true;
+    }
+
+    // La restriccion de sucursal/bodega (que modulos puede ver ESE
+    // perfil en ESA sucursal especifica) debe aplicar a CUALQUIER
+    // modulo, incluidos los obligatorios (Ventas, Caja, Clientes,
+    // Compras, Gastos, Reportes...). Antes, arriba de esto SOLO se
+    // revisaban los modulos opcionales (los unicos indexados en
+    // MODULOS_POR_ARCHIVO) -- un modulo obligatorio jamas se
+    // bloqueaba aqui, asi que desmarcarlo para un empleado de bodega
+    // (o de cualquier sucursal) nunca tenia efecto real: siempre
+    // podia entrar de todos modos. "dashboard" queda afuera a
+    // proposito -- es el destino al que se redirige cuando algo se
+    // bloquea, bloquearlo tambien causaria un loop de redireccion.
+    const infoCompleta = (window.NEGOCIO360_MODULOS || {})[currentFile()];
+    if (infoCompleta && infoCompleta.key !== 'dashboard') {
+      const restriccion = obtenerRestriccionSucursal();
+      if (restriccion && !restriccion.includes(infoCompleta.key)) {
+        location.href = 'dashboard.html';
+        return true;
+      }
     }
     return false;
   }

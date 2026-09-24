@@ -492,9 +492,14 @@ async function loadPerfilesCentral() {
   } catch (e) { STATE.perfiles = []; }
 }
 
-function listaModulosParaAccesos() {
+function listaModulosParaAccesos(tipo) {
   const registro = window.NEGOCIO360_MODULOS || {};
-  return Object.values(registro).filter(m => !m.soloAdmin);
+  const todos = Object.values(registro).filter(m => !m.soloAdmin);
+  // Una bodega es solo inventario -- no tiene sentido operativo darle
+  // acceso a Ventas, Caja, Salarios, etc. Se limita a Productos/
+  // Servicios, el unico modulo realmente relevante ahi.
+  if (tipo === 'bodega') return todos.filter(m => m.key === 'productos');
+  return todos;
 }
 
 function abrirAccesosSucursal(sucursalId) {
@@ -519,7 +524,7 @@ async function abrirAccesosSucursalInterno(sucursalId) {
   const mapaPermisos = {};
   (permisosActuales || []).forEach(p => { mapaPermisos[p.perfil_id] = p.modulos_permitidos || []; });
 
-  const modulos = listaModulosParaAccesos();
+  const modulos = listaModulosParaAccesos(s.tipo);
   const cont = document.getElementById('acc-suc-lista');
 
   if (!STATE.perfiles.length) {
