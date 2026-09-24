@@ -745,11 +745,60 @@ function aplicarFiltrosCombos() {
   renderTablaCombos();
 }
 
+function mostrarCatalogoOTablaCombos(mostrarCatalogo) {
+  const tableCard = document.getElementById('tableCardCombos');
+  const grid = document.getElementById('catalogoGridCombos');
+  if (tableCard) tableCard.style.display = mostrarCatalogo ? 'none' : '';
+  if (grid) grid.style.display = mostrarCatalogo ? '' : 'none';
+}
+
+function renderCatalogoGridCombos(items) {
+  const grid = document.getElementById('catalogoGridCombos');
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0">Aún no has creado ningún combo.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(c => {
+    const itemsCombo = STATE.comboItemsPorCombo[c.id] || [];
+    const foto = c.imagen_url
+      ? `<img src="${escHtml(c.imagen_url)}" class="catalogo-card-foto" alt="">`
+      : `<div class="catalogo-card-foto-placeholder">📦</div>`;
+    return `
+      <div class="catalogo-card" data-id="${c.id}">
+        <div class="catalogo-card-foto-wrap">
+          <span class="catalogo-card-estado" style="color:${c.activo ? 'var(--success,#16a34a)' : 'var(--text-muted)'}">${c.activo ? '● Activo' : '● Inactivo'}</span>
+          ${foto}
+        </div>
+        <div class="catalogo-card-body">
+          <div class="catalogo-card-nombre">📦 ${escHtml(c.nombre)}</div>
+          ${c.sku || c.codigo_barras ? `<div class="catalogo-card-sku">${escHtml(c.sku || c.codigo_barras)}</div>` : ''}
+          <div class="catalogo-card-categoria">${itemsCombo.length} producto${itemsCombo.length === 1 ? '' : 's'}</div>
+          <div class="catalogo-card-precios">
+            <span style="color:var(--text-muted)">Precio</span>
+            <b>${escHtml(precioLabelCombo(c))}</b>
+          </div>
+          <div class="catalogo-card-acciones">
+            <button class="btn btn-secondary" onclick="verDetalleCombo('${c.id}')">👁 Ver</button>
+            <button class="btn btn-primary" onclick="abrirEditarCombo('${c.id}')">✏️ Editar</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function renderTablaCombos() {
   const tbody = $('combosTbody');
   const countEl = $('combosCount');
   const lista = STATE.combosFiltrados;
   if (countEl) countEl.textContent = `${lista.length} combo${lista.length === 1 ? '' : 's'}`;
+
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTablaCombos(true);
+    renderCatalogoGridCombos(lista);
+    return;
+  }
+  mostrarCatalogoOTablaCombos(false);
   if (!tbody) return;
 
   if (!lista.length) {
@@ -796,6 +845,12 @@ function abrirModalCombo() {
   $('errComboEscalas').textContent = '';
   setComboTipoPrecio('fijo');
   renderComboItemsBody();
+  STATE.fotoComboBlob = null;
+  STATE.fotoComboEliminar = false;
+  $('fotoComboPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoCombo').style.display = 'none';
+  $('inputFotoCombo').value = '';
+  aplicarVisibilidadFotoCombo();
   $('modalCombo').classList.add('open');
 }
 
@@ -830,6 +885,17 @@ function abrirEditarCombo(id) {
   $('errComboEscalas').textContent = '';
   setComboTipoPrecio(c.tipo_precio === 'escala' ? 'escala' : 'fijo');
   renderComboItemsBody();
+  STATE.fotoComboBlob = null;
+  STATE.fotoComboEliminar = false;
+  if (c.imagen_url) {
+    $('fotoComboPreviewWrap').innerHTML = `<img src="${escHtml(c.imagen_url)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoCombo').style.display = '';
+  } else {
+    $('fotoComboPreviewWrap').innerHTML = '🖼️';
+    $('btnQuitarFotoCombo').style.display = 'none';
+  }
+  $('inputFotoCombo').value = '';
+  aplicarVisibilidadFotoCombo();
   $('modalCombo').classList.add('open');
 }
 
@@ -998,6 +1064,20 @@ async function guardarCombo() {
   if (!nombre) { $('errComboNombre').textContent = 'El nombre del combo es obligatorio.'; return; }
   if (!STATE.comboFormItems.length) { showToast('warning', 'Faltan productos', 'Agrega al menos un producto al combo.'); return; }
 
+  let imagenUrlCombo;
+  if (STATE.fotoComboBlob) {
+    try {
+      imagenUrlCombo = await subirFotoInventario(STATE.fotoComboBlob, 'combos');
+    } catch (e) {
+      console.error('guardarCombo, subir foto:', e);
+      const errFoto = $('errFotoCombo');
+      if (errFoto) errFoto.textContent = 'No se pudo subir la foto. Intenta de nuevo.';
+      return;
+    }
+  } else if (STATE.fotoComboEliminar) {
+    imagenUrlCombo = null;
+  }
+
   const tipoPrecio = $('comboInputTipoPrecio').value;
   let precioFijo = 0;
   let escalasValidas = [];
@@ -1026,6 +1106,7 @@ async function guardarCombo() {
       activo: $('comboActivo').checked,
       updated_at: new Date().toISOString(),
     };
+    if (imagenUrlCombo !== undefined) payload.imagen_url = imagenUrlCombo;
 
     let comboId = STATE.comboEditId;
     if (comboId) {
@@ -3575,10 +3656,59 @@ function precioVitrinaPromo(p) {
   return '<span style="color:var(--text-muted)">según lo elegido</span>';
 }
 
+function mostrarCatalogoOTablaPromos(mostrarCatalogo) {
+  const tableCard = document.getElementById('tableCardPromos');
+  const grid = document.getElementById('catalogoGridPromos');
+  if (tableCard) tableCard.style.display = mostrarCatalogo ? 'none' : '';
+  if (grid) grid.style.display = mostrarCatalogo ? '' : 'none';
+}
+
+function renderCatalogoGridPromos(items) {
+  const grid = document.getElementById('catalogoGridPromos');
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0">Aún no has creado ninguna promoción.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(p => {
+    const foto = p.imagen_url
+      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="">`
+      : `<div class="catalogo-card-foto-placeholder">🎉</div>`;
+    return `
+      <div class="catalogo-card" data-id="${p.id}">
+        <div class="catalogo-card-foto-wrap">
+          <span class="catalogo-card-estado" style="color:${p.activo ? 'var(--success,#16a34a)' : 'var(--text-muted)'};cursor:pointer" onclick="togglePromocionActiva('${p.id}', ${!p.activo})">${p.activo ? '● Activa' : '● Pausada'}</span>
+          ${foto}
+        </div>
+        <div class="catalogo-card-body">
+          <div class="catalogo-card-nombre">🎉 ${escHtml(p.nombre)}</div>
+          <div class="catalogo-card-sku">${escHtml(TIPO_PROMO_LABEL[p.tipo] || p.tipo)}</div>
+          <div class="catalogo-card-categoria">${escHtml(detallePromocion(p))}</div>
+          <div class="catalogo-card-precios">
+            <span style="color:var(--text-muted)">Precio</span>
+            <b>${precioVitrinaPromo(p)}</b>
+          </div>
+          <div class="catalogo-card-stock">${escHtml(vigenciaPromocion(p))}</div>
+          <div class="catalogo-card-acciones">
+            <button class="btn btn-secondary" onclick="eliminarPromocion('${p.id}')">🗑️ Eliminar</button>
+            <button class="btn btn-primary" onclick="abrirModalPromocion('${p.id}')">✏️ Editar</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function renderPromociones() {
   const tbody = $('promosTbody');
   const countEl = $('promosCount');
   if (countEl) countEl.textContent = `${STATE.promociones.length} promoción${STATE.promociones.length===1?'':'es'}`;
+
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTablaPromos(true);
+    renderCatalogoGridPromos(STATE.promociones);
+    return;
+  }
+  mostrarCatalogoOTablaPromos(false);
   if (!tbody) return;
 
   if (!STATE.promociones.length) {
@@ -3664,10 +3794,20 @@ function abrirModalPromocion(id) {
   STATE.grupoPromocionActual = [];
   $('pm-grupo-resultados').innerHTML = '';
   $('pm-buscar-grupo').value = '';
+  STATE.fotoPromoBlob = null;
+  STATE.fotoPromoEliminar = false;
+  $('fotoPromoPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoPromo').style.display = 'none';
+  $('inputFotoPromo').value = '';
+  aplicarVisibilidadFotoPromo();
 
   if (id) {
     const p = STATE.promociones.find(x => x.id === id);
     if (!p) return;
+    if (p.imagen_url) {
+      $('fotoPromoPreviewWrap').innerHTML = `<img src="${escHtml(p.imagen_url)}" style="width:100%;height:100%;object-fit:cover">`;
+      $('btnQuitarFotoPromo').style.display = '';
+    }
     $('modalPromocionTitle').textContent = '✏️ Editar promoción';
     $('pm-nombre').value = p.nombre;
     $('pm-tipo').value = p.tipo;
@@ -3785,7 +3925,22 @@ async function guardarPromocion() {
   if (fechaInicio && fechaFin && fechaFin < fechaInicio) { errEl.textContent = 'La fecha de vigencia final no puede ser antes que la inicial.'; return; }
   if (precioPromocionRaw !== '' && (isNaN(precioPromocion) || precioPromocion < 0)) { errEl.textContent = 'El precio de la promoción no es válido.'; return; }
 
+  let imagenUrlPromo;
+  if (STATE.fotoPromoBlob) {
+    try {
+      imagenUrlPromo = await subirFotoInventario(STATE.fotoPromoBlob, 'promociones');
+    } catch (e) {
+      console.error('guardarPromocion, subir foto:', e);
+      const errFoto = $('errFotoPromo');
+      if (errFoto) errFoto.textContent = 'No se pudo subir la foto. Intenta de nuevo.';
+      return;
+    }
+  } else if (STATE.fotoPromoEliminar) {
+    imagenUrlPromo = null;
+  }
+
   const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, precio_promocion: precioPromocion, garantia_meses: garantiaPromocion };
+  if (imagenUrlPromo !== undefined) payload.imagen_url = imagenUrlPromo;
   let productosGrupo = null;
 
   if (tipo === 'nxm_mismo') {
@@ -3932,9 +4087,9 @@ function comprimirImagenInventario(archivo, anchoMax = 800, calidad = 0.8) {
   });
 }
 
-async function subirFotoInventario(blob) {
+async function subirFotoInventario(blob, carpeta = 'productos') {
   const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.webp';
-  const ruta = STATE.user.id + '/productos/' + nombreArchivo;
+  const ruta = STATE.user.id + '/' + carpeta + '/' + nombreArchivo;
   const { error } = await supabaseClient.storage.from('inventario_fotos').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
   if (error) throw error;
   const { data } = supabaseClient.storage.from('inventario_fotos').getPublicUrl(ruta);
@@ -3972,6 +4127,63 @@ function quitarFotoProducto() {
   $('fotoProductoPreviewWrap').innerHTML = '🖼️';
   $('btnQuitarFotoProducto').style.display = 'none';
   $('inputFotoProducto').value = '';
+}
+
+// Mismo mecanismo de arriba, para Combos y Promociones -- sus propios
+// formularios/tablas, pero reutilizan la misma compresion y el mismo
+// bucket de Storage.
+function aplicarVisibilidadFotoCombo() {
+  const wrap = $('wrapFotoCombo');
+  if (wrap) wrap.style.display = STATE.empresa?.usa_inventario_imagenes ? '' : 'none';
+}
+function onSeleccionarFotoCombo(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const errEl = $('errFotoCombo');
+  if (errEl) errEl.textContent = '';
+  comprimirImagenInventario(archivo).then(blob => {
+    STATE.fotoComboBlob = blob;
+    STATE.fotoComboEliminar = false;
+    $('fotoComboPreviewWrap').innerHTML = `<img src="${URL.createObjectURL(blob)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoCombo').style.display = '';
+  }).catch(e => {
+    console.error('onSeleccionarFotoCombo:', e);
+    if (errEl) errEl.textContent = 'No se pudo procesar esa imagen. Intenta con otra.';
+  });
+}
+function quitarFotoCombo() {
+  STATE.fotoComboBlob = null;
+  STATE.fotoComboEliminar = true;
+  $('fotoComboPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoCombo').style.display = 'none';
+  $('inputFotoCombo').value = '';
+}
+
+function aplicarVisibilidadFotoPromo() {
+  const wrap = $('wrapFotoPromo');
+  if (wrap) wrap.style.display = STATE.empresa?.usa_inventario_imagenes ? '' : 'none';
+}
+function onSeleccionarFotoPromo(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const errEl = $('errFotoPromo');
+  if (errEl) errEl.textContent = '';
+  comprimirImagenInventario(archivo).then(blob => {
+    STATE.fotoPromoBlob = blob;
+    STATE.fotoPromoEliminar = false;
+    $('fotoPromoPreviewWrap').innerHTML = `<img src="${URL.createObjectURL(blob)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoPromo').style.display = '';
+  }).catch(e => {
+    console.error('onSeleccionarFotoPromo:', e);
+    if (errEl) errEl.textContent = 'No se pudo procesar esa imagen. Intenta con otra.';
+  });
+}
+function quitarFotoPromo() {
+  STATE.fotoPromoBlob = null;
+  STATE.fotoPromoEliminar = true;
+  $('fotoPromoPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoPromo').style.display = 'none';
+  $('inputFotoPromo').value = '';
 }
 
 async function abrirModalConfigInventario() {
