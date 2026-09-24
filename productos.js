@@ -3937,12 +3937,26 @@ async function guardarConfigInventario() {
   errEl.textContent = '';
   btn.disabled = true;
   try {
-    const { error } = await supabaseClient.from('configuracion_empresa')
-      .upsert(
-        { auth_user_id: STATE.user.id, usa_inventario_imagenes: _tipoInventarioSeleccion === 'imagenes' },
-        { onConflict: 'auth_user_id' }
-      );
+    const activar = _tipoInventarioSeleccion === 'imagenes';
+    // update puro -- a estas alturas (Productos, despues del onboarding)
+    // la fila de configuracion_empresa siempre deberia existir ya. Un
+    // upsert aqui fallaba con 400: al intentar el camino de INSERT,
+    // faltaba nombre_comercial (columna obligatoria sin valor por
+    // defecto), que este formulario nunca conoce ni deberia tocar.
+    const { data, error } = await supabaseClient.from('configuracion_empresa')
+      .update({ usa_inventario_imagenes: activar })
+      .eq('auth_user_id', STATE.user.id)
+      .select('auth_user_id');
     if (error) throw error;
+
+    // Caso raro: la cuenta nunca tuvo fila en configuracion_empresa.
+    // Se crea con lo minimo necesario para cumplir esa columna obligatoria.
+    if (!data || !data.length) {
+      const { error: errIns } = await supabaseClient.from('configuracion_empresa')
+        .insert({ auth_user_id: STATE.user.id, nombre_comercial: 'Mi negocio', usa_inventario_imagenes: activar });
+      if (errIns) throw errIns;
+    }
+
     cerrarModalConfigInventario();
     // Solo esta cuenta se recarga -- para que la vista se actualice
     // con (o sin) la columna de fotos en cada tarjeta/fila.
