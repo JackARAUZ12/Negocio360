@@ -2090,9 +2090,26 @@ async function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal')
    ============================================================ */
 async function cargarEstadoStockCompartido() {
   try {
-    const { data: activo, error } = await sb.rpc('obtener_stock_compartido');
-    if (error) throw error;
-    S.stockCompartidoActivo = !!activo;
+    // Se usa el RPC nuevo (trae activo + alcance + sucursal especifica
+    // en una sola llamada) -- si por algun motivo no responde bien,
+    // se cae al RPC viejo (solo el booleano), para no dejar el
+    // interruptor sin saber su estado real.
+    let activo = false;
+    try {
+      const { data: cfg, error: errCfg } = await sb.rpc('obtener_stock_compartido_config');
+      if (errCfg) throw errCfg;
+      const fila = Array.isArray(cfg) ? cfg[0] : cfg;
+      activo = !!fila?.activo;
+      S.stockCompartidoAlcance = fila?.alcance || 'todas';
+      S.stockCompartidoSucursalId = fila?.sucursal_id || null;
+    } catch (eCfg) {
+      console.warn('cargarEstadoStockCompartido, RPC nuevo falló, usando el viejo:', eCfg);
+      const { data: activoViejo } = await sb.rpc('obtener_stock_compartido');
+      activo = !!activoViejo;
+      S.stockCompartidoAlcance = 'todas';
+      S.stockCompartidoSucursalId = null;
+    }
+    S.stockCompartidoActivo = activo;
 
     // ¿Cuál fila de "sucursales" soy yo? — para saber cuándo la opción
     // elegida en el selector es "aquí mismo" (no hace falta descuento remoto).
@@ -2124,7 +2141,33 @@ async function cargarProductosGrupo() {
     const sbGrupo = crearClienteGrupo(sb);
     const { data, error } = await sbGrupo.from('productos').select('*');
     if (error) throw error;
-    S.productosCacheGrupo = data || [];
+
+    // El RPC de grupo (compartido con el Reporte General) siempre
+    // trae TODO el grupo -- el alcance elegido para Stock Compartido
+    // (todas/bodegas/sucursales/especifica) se aplica ACA, filtrando
+    // el resultado, sin tocar ese RPC (Reportes SIEMPRE necesita el
+    // grupo completo, es un concepto distinto).
+    let productosFiltrados = data || [];
+    const alcance = S.stockCompartidoAlcance || 'todas';
+    if (alcance !== 'todas') {
+      try {
+        const { data: sucs } = await sb.from('sucursales').select('id, auth_user_id_sucursal, auth_user_id_central, tipo');
+        const central = sucs?.[0]?.auth_user_id_central;
+        let idsPermitidos;
+        if (alcance === 'especifica') {
+          idsPermitidos = new Set([central, S.stockCompartidoSucursalId ? (sucs.find(s=>s.id===S.stockCompartidoSucursalId)?.auth_user_id_sucursal) : null].filter(Boolean));
+        } else {
+          idsPermitidos = new Set([central, ...(sucs||[]).filter(s => s.tipo === (alcance === 'bodegas' ? 'bodega' : 'sucursal')).map(s => s.auth_user_id_sucursal)].filter(Boolean));
+        }
+        productosFiltrados = productosFiltrados.filter(p => idsPermitidos.has(p.auth_user_id));
+      } catch (eFiltro) {
+        console.warn('cargarProductosGrupo, aplicar alcance:', eFiltro);
+        // Si algo falla calculando el alcance, se prefiere mostrar TODO
+        // el grupo (como siempre funcionaba) antes que dejar la venta
+        // sin poder ver ningun producto por un error de filtrado.
+      }
+    }
+    S.productosCacheGrupo = productosFiltrados;
   } catch (e) {
     console.warn('cargarProductosGrupo:', e);
     S.productosCacheGrupo = [];
@@ -2132,17 +2175,85 @@ async function cargarProductosGrupo() {
 }
 
 async function toggleStockCompartido(activo) {
+  // Al DESACTIVAR, comportamiento identico al de siempre -- sin modal.
+  if (!activo) {
+    try {
+      const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: false });
+      if (error) throw error;
+      S.stockCompartidoActivo = false;
+      showToast('Stock Compartido desactivado', 'success');
+    } catch (e) {
+      console.error('toggleStockCompartido:', e);
+      showToast('No se pudo cambiar Stock Compartido', 'error');
+      const chk = document.getElementById('chk-stock-compartido');
+      if (chk) chk.checked = true; // revertir el interruptor visualmente
+    }
+    return;
+  }
+  // Al ACTIVAR, se pregunta primero el alcance -- el checkbox se deja
+  // marcado visualmente mientras se decide, y se revierte si cancela.
+  await abrirModalStockCompartido();
+}
+
+async function abrirModalStockCompartido() {
+  document.getElementById('sc-error').textContent = '';
+  document.querySelector('input[name="sc-alcance"][value="todas"]').checked = true;
+  document.getElementById('sc-wrap-especifica').style.display = 'none';
+
+  const select = document.getElementById('sc-select-especifica');
+  select.innerHTML = '<option value="">Cargando...</option>';
   try {
-    const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: activo });
-    if (error) throw error;
-    S.stockCompartidoActivo = activo;
-    if (activo) await cargarProductosGrupo();
-    showToast(activo ? 'Stock Compartido activado para todo el grupo' : 'Stock Compartido desactivado', 'success');
+    const { data } = await sb.from('sucursales').select('id, nombre, tipo').eq('activa', true).order('nombre');
+    const lista = (data || []).filter(s => s.id !== undefined);
+    select.innerHTML = lista.length
+      ? lista.map(s => `<option value="${s.id}">${escHtml(s.nombre)} (${s.tipo === 'bodega' ? 'Bodega' : 'Sucursal'})</option>`).join('')
+      : '<option value="">No hay sucursales/bodegas creadas</option>';
   } catch (e) {
-    console.error('toggleStockCompartido:', e);
-    showToast('No se pudo cambiar Stock Compartido', 'error');
-    const chk = document.getElementById('chk-stock-compartido');
-    if (chk) chk.checked = !activo; // revertir el interruptor visualmente
+    console.warn('abrirModalStockCompartido, cargar sucursales:', e);
+    select.innerHTML = '<option value="">No se pudo cargar la lista</option>';
+  }
+
+  document.getElementById('modal-stock-compartido').style.display = 'flex';
+}
+
+function cancelarStockCompartido() {
+  document.getElementById('modal-stock-compartido').style.display = 'none';
+  const chk = document.getElementById('chk-stock-compartido');
+  if (chk) chk.checked = S.stockCompartidoActivo; // vuelve a lo que ya estaba, no a "activado"
+}
+
+function onCambiarAlcanceStockCompartido() {
+  const valor = document.querySelector('input[name="sc-alcance"]:checked')?.value;
+  document.getElementById('sc-wrap-especifica').style.display = valor === 'especifica' ? '' : 'none';
+}
+
+async function confirmarStockCompartido() {
+  const errEl = document.getElementById('sc-error');
+  errEl.textContent = '';
+  const alcance = document.querySelector('input[name="sc-alcance"]:checked')?.value || 'todas';
+  let sucursalId = null;
+  if (alcance === 'especifica') {
+    sucursalId = document.getElementById('sc-select-especifica').value;
+    if (!sucursalId) { errEl.textContent = 'Elige una sucursal o bodega.'; return; }
+  }
+
+  const btn = document.getElementById('sc-btn-confirmar');
+  btn.disabled = true;
+  try {
+    const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: true, p_alcance: alcance, p_sucursal_id: sucursalId });
+    if (error) throw error;
+    S.stockCompartidoActivo = true;
+    S.stockCompartidoAlcance = alcance;
+    S.stockCompartidoSucursalId = sucursalId;
+    await cargarProductosGrupo();
+    document.getElementById('modal-stock-compartido').style.display = 'none';
+    const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: 'una sucursal específica' };
+    showToast(`Stock Compartido activado — ${etiquetas[alcance]}`, 'success');
+  } catch (e) {
+    console.error('confirmarStockCompartido:', e);
+    errEl.textContent = 'No se pudo activar Stock Compartido. Intenta de nuevo.';
+  } finally {
+    btn.disabled = false;
   }
 }
 

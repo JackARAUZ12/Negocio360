@@ -575,6 +575,13 @@
     .n360-switch-slider::before{content:"";position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;transition:.15s;border-radius:50%}
     .n360-switch input:checked + .n360-switch-slider{background:var(--accent)}
     .n360-switch input:checked + .n360-switch-slider::before{transform:translateX(16px)}
+  .sc-alcance-opcion {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border: 1.5px solid var(--border, #e5e7eb); border-radius: 10px; cursor: pointer;
+    font-size: 12.5px; transition: border-color .15s, background .15s;
+  }
+  .sc-alcance-opcion:hover { border-color: var(--accent, #6C63FF); }
+  .sc-alcance-opcion input[type="radio"] { flex-shrink: 0; }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -1895,6 +1902,47 @@
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
       <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
       <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- STOCK COMPARTIDO -- elegir alcance al activar -->
+<div class="modal-overlay" id="modal-stock-compartido" onclick="if(event.target===this)cancelarStockCompartido()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">📦 Stock Compartido</span>
+      <button class="modal-close" onclick="cancelarStockCompartido()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px">¿De dónde se descuenta el stock al vender?</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="todas" checked onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Todas</strong> — sucursales y bodegas del grupo</span>
+        </label>
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="bodegas" onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Solo bodegas</strong></span>
+        </label>
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="sucursales" onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Solo sucursales</strong></span>
+        </label>
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="especifica" onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Una específica</strong></span>
+        </label>
+      </div>
+      <div id="sc-wrap-especifica" style="display:none;margin-top:10px">
+        <select id="sc-select-especifica" class="form-select" style="width:100%"></select>
+      </div>
+      <p id="sc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="cancelarStockCompartido()">Cancelar</button>
+      <button class="btn-icon btn-primary" id="sc-btn-confirmar" onclick="confirmarStockCompartido()">Activar</button>
     </div>
   </div>
 </div>
