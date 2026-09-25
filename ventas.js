@@ -1943,7 +1943,14 @@ function buscarProductosParaVenta(q, tipo) {
   if (!q.trim()) { results.classList.remove('open'); return; }
   const qLower = q.toLowerCase();
 
-  const lista = S.productosCache.filter(p =>
+  // Con un alcance restringido (bodegas/sucursales/especifica), NO se
+  // muestra automaticamente el inventario LOCAL de la cuenta donde se
+  // esta vendiendo -- ese inventario ya viene incluido en
+  // productosCacheGrupo cuando corresponde (si esta cuenta SI cae
+  // dentro del alcance elegido). Con alcance "todas" (o Stock
+  // Compartido apagado), el comportamiento sigue igual que siempre.
+  const alcanceRestringido = S.stockCompartidoActivo && S.stockCompartidoAlcance && S.stockCompartidoAlcance !== 'todas';
+  const lista = alcanceRestringido ? [] : S.productosCache.filter(p =>
     p.tipo === tipo && !p.es_materia_prima &&
     (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower))
   ).slice(0, 10);
@@ -1954,7 +1961,7 @@ function buscarProductosParaVenta(q, tipo) {
   // selector de "de dónde sacar stock" sí sepa encontrarlos.
   let listaGrupo = [];
   if (S.stockCompartidoActivo && tipo === 'producto') {
-    const nombresLocales = new Set(S.productosCache.map(p => p.nombre.trim().toLowerCase()));
+    const nombresLocales = alcanceRestringido ? new Set() : new Set(S.productosCache.map(p => p.nombre.trim().toLowerCase()));
     const vistos = new Set();
     listaGrupo = S.productosCacheGrupo.filter(p => {
       const clave = (p.nombre||'').trim().toLowerCase();
