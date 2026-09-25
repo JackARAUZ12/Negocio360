@@ -205,6 +205,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   showroom: 'c360-showroom.html',
   belleza: 'c360-belleza.html',
   anonuevo: 'c360-anonuevo.html',
+  tecnologia: 'c360-tecnologia.html',
 };
 
 /**

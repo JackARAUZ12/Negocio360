@@ -791,6 +791,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'showroom', nombre:'Showroom', icono:'🎬', desc:'Experiencia inmersiva de gran marca -- anillo 3D, escenas a pantalla completa que se cuentan con el scroll, comparador y tu color de marca.', disponible:true, archivo:'c360-showroom.html' },
   { key:'belleza', nombre:'Belleza & Salón', icono:'💄', desc:'Atelier de belleza -- reserva de citas con día y hora, menú de servicios con duración, antes y después deslizable y portafolio.', disponible:true, archivo:'c360-belleza.html' },
   { key:'anonuevo', nombre:'Año Nuevo', icono:'🥂', desc:'Gala de medianoche -- partículas de oro que forman el año, reloj de paletas 3D, fuegos artificiales al tocar, las 12 uvas y brindis con champán.', disponible:true, archivo:'c360-anonuevo.html' },
+  { key:'tecnologia', nombre:'Tecnología', icono:'💻', desc:'Laboratorio futurista -- circuito con pulsos de luz, producto en holograma, ficha técnica automática, comparador de specs y simulador de cuotas.', disponible:true, archivo:'c360-tecnologia.html' },
 ];
 
 function archivoDePlantilla(key) {
