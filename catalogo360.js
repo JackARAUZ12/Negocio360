@@ -795,6 +795,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'navidadvip', nombre:'Navidad VIP', icono:'🎄', desc:'Noche de invierno de lujo -- intro con globo de nieve, esferas de cristal colgantes con tus productos, calendario de Adviento de 24 puertas, carta a Santa compartible y pedido con envoltura de regalo.', disponible:true, archivo:'c360-navidad-vip.html' },
   { key:'graduacion', nombre:'Graduaciones', icono:'🎓', desc:'Ceremonia de graduación -- lluvia de birretes, diploma en pergamino, banderines de facultad, cuadro de honor y diploma personalizado descargable para el graduado.', disponible:true, archivo:'c360-graduacion.html' },
   { key:'supermercado', nombre:'Supermercado', icono:'🛒', desc:'Súper, pulpería o distribuidora -- precios de góndola, +/− en cada producto, pasillos, volante de ofertas, pegá tu lista de compras y pedido en ticket de caja con entrega y pago.', disponible:true, archivo:'c360-supermercado.html' },
+  { key:'ferreteria', nombre:'Ferretería', icono:'🔧', desc:'Ferretería y materiales de construcción -- estética de plano, calculadoras de obra (pintura, bloques, piso, concreto), filtro por medidas y cotización formal imprimible por WhatsApp.', disponible:true, archivo:'c360-ferreteria.html' },
 ];
 
 function archivoDePlantilla(key) {

@@ -209,6 +209,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   navidadvip: 'c360-navidad-vip.html',
   graduacion: 'c360-graduacion.html',
   supermercado: 'c360-supermercado.html',
+  ferreteria: 'c360-ferreteria.html',
 };
 
 /**
