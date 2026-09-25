@@ -2297,8 +2297,40 @@ async function abrirSelectorStockOrigen(nombreProducto, modo, callbackContinuar)
   try {
     const { data, error } = await sb.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
     if (error) throw error;
-    const opciones = data || [];
+    let opciones = data || [];
     if (!opciones.length) { callbackContinuar(null); return; }
+
+    // Si ya se eligio UNA sucursal/bodega especifica para Stock
+    // Compartido, no tiene sentido volver a preguntar de donde sacar
+    // el stock -- ya se sabe. Se usa esa cuenta directo, sin abrir
+    // el modal, siempre que tenga stock disponible de este producto.
+    if (S.stockCompartidoAlcance === 'especifica' && S.stockCompartidoSucursalId) {
+      const unica = opciones.find(o => o.sucursal_id === S.stockCompartidoSucursalId);
+      if (unica && Number(unica.stock_actual) > 0) {
+        callbackContinuar({
+          sucursalId: unica.sucursal_id, stockDisponible: Number(unica.stock_actual),
+          nombreCuenta: unica.nombre_cuenta, esLocal: unica.sucursal_id === S.miSucursalId,
+        });
+        return;
+      }
+      // Si esa cuenta especifica no tiene stock de este producto, se
+      // avisa igual que cuando no hay stock en ningun lado -- no se
+      // vuelve a mostrar el selector con las demas cuentas, porque el
+      // alcance elegido las excluye a proposito.
+      showToast(`Sin stock de "${nombreProducto}" en la cuenta elegida para Stock Compartido`, 'error');
+      callbackContinuar(null);
+      return;
+    }
+
+    // Con alcance "bodegas" o "sucursales" (varias cuentas posibles,
+    // pero no todas), el modal solo debe ofrecer las que corresponden
+    // -- con "todas" (o si no aplica ningun alcance), se muestran
+    // todas las opciones, como siempre.
+    if (S.stockCompartidoAlcance === 'bodegas' || S.stockCompartidoAlcance === 'sucursales') {
+      const tipoPermitido = S.stockCompartidoAlcance === 'bodegas' ? 'bodega' : 'sucursal';
+      opciones = opciones.filter(o => o.es_central || o.tipo_cuenta === tipoPermitido);
+      if (!opciones.length) { callbackContinuar(null); return; }
+    }
 
     S.stockOrigenPendiente = { modo, callback: callbackContinuar };
     document.getElementById('stock-origen-title').textContent = nombreProducto;
