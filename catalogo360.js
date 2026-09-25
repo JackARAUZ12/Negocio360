@@ -800,6 +800,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'reposteria', nombre:'Repostería', icono:'🧁', desc:'Pastelería y repostería -- pastel con velitas que se soplan, armá tu pastel con vista en vivo (tamaño, sabor, relleno, color y mensaje), vitrina con banderitas y pedido con fecha de entrega.', disponible:true, archivo:'c360-reposteria.html' },
   { key:'streetwear', nombre:'Moda urbana', icono:'🧢', desc:'Streetwear en modo drop: tallas y colores, armá tu outfit y guía de tallas', disponible:true, archivo:'c360-streetwear.html' },
   { key:'farmacia', nombre:'Farmacia', icono:'💊', desc:'Clínica y confiable: buscador por síntomas, botiquín del hogar y pedidos con receta', disponible:true, archivo:'c360-farmacia.html' },
+  { key:'floristeria', nombre:'Floristería', icono:'💐', desc:'Botánica y romántica: ocasiones, lenguaje de las flores, tarjeta dedicatoria y entrega programada', disponible:true, archivo:'c360-floristeria.html' },
 ];
 
 function archivoDePlantilla(key) {
