@@ -766,6 +766,7 @@
           <span class="n360-switch-slider"></span>
         </span>
       </label>
+      <button type="button" id="sc-btn-editar" onclick="abrirModalStockCompartido()" title="Cambiar de dónde se descuenta el stock (agregar o quitar sucursales/bodegas)" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;margin:0 8px 0 -2px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px">⚙️</button>
       <label id="vender-sin-stock-wrap" style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-right:6px" title="Permite facturar productos aunque no tengan existencias disponibles en este momento">
         <span>🧾 Vender sin stock</span>
         <span class="n360-switch">
@@ -1871,7 +1872,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js?v=20260917b"></script>
 <script src="escpos-usb.js?v=20260825a"></script>
-<script src="ventas.js?v=20260917j"></script>
+<script src="ventas.js?v=20260925a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js?v=20260921b"></script>
@@ -1932,17 +1933,21 @@
         </label>
         <label class="sc-alcance-opcion">
           <input type="radio" name="sc-alcance" value="especifica" onchange="onCambiarAlcanceStockCompartido()"/>
-          <span><strong>Una específica</strong></span>
+          <span><strong>Específicas</strong> — elige una o varias</span>
         </label>
       </div>
       <div id="sc-wrap-especifica" style="display:none;margin-top:10px">
-        <select id="sc-select-especifica" class="form-select" style="width:100%"></select>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--text-secondary)">Sucursales y bodegas</span>
+          <span id="sc-conteo-especifica" style="font-size:11.5px;color:var(--text-muted)"></span>
+        </div>
+        <div id="sc-lista-especifica" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
       </div>
       <p id="sc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:8px"></p>
     </div>
     <div class="modal-footer">
       <button class="btn-icon btn-ghost" onclick="cancelarStockCompartido()">Cancelar</button>
-      <button class="btn-icon btn-primary" id="sc-btn-confirmar" onclick="confirmarStockCompartido()">Activar</button>
+      <button class="btn-icon btn-primary" id="sc-btn-confirmar" onclick="confirmarStockCompartido()">Guardar</button>
     </div>
   </div>
 </div>

@@ -25,6 +25,8 @@ const S = {
 
   // Stock Compartido — grupo (Sucursales/Bodegas)
   stockCompartidoActivo: false,
+  stockCompartidoSucursalIds: [], // alcance "especifica": una o VARIAS sucursales/bodegas elegidas
+  cuentasGrupo:          {},      // auth_user_id -> { sucursalId, nombre, tipo } (para etiquetar resultados)
   miSucursalId:          null, // id en la tabla "sucursales" que representa a ESTA cuenta
   stockOrigenPendiente:  null,
   origenStockElegido:    null, // se consume una sola vez al agregar al carrito
@@ -1118,6 +1120,10 @@ async function loadProductosCache() {
 
     S.productosCache = [...productos, ...combosCache];
   } catch(e) { S.productosCache = []; }
+  // Con Stock Compartido activo, el stock del grupo tambien se refresca
+  // (ej. despues de una venta), para que la busqueda no muestre
+  // existencias viejas.
+  if (S.stockCompartidoActivo) await cargarProductosGrupo();
 }
 
 async function loadClientesCache() {
@@ -1962,16 +1968,37 @@ function buscarProductosParaVenta(q, tipo) {
   let listaGrupo = [];
   if (S.stockCompartidoActivo && tipo === 'producto') {
     const nombresLocales = alcanceRestringido ? new Set() : new Set(S.productosCache.map(p => p.nombre.trim().toLowerCase()));
-    const vistos = new Set();
-    listaGrupo = S.productosCacheGrupo.filter(p => {
-      const clave = (p.nombre||'').trim().toLowerCase();
-      if (p.tipo !== 'producto' || !clave || p.es_materia_prima) return false;
-      if (nombresLocales.has(clave)) return false; // ya está en la lista local, no se duplica
-      if (vistos.has(clave)) return false;
-      const coincide = clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower);
-      if (coincide) vistos.add(clave);
-      return coincide;
-    }).slice(0, 10 - lista.length);
+    if (alcanceRestringido) {
+      // Alcance restringido (una o varias especificas, solo bodegas o
+      // solo sucursales): se muestran UNICAMENTE los productos que tienen
+      // existencias en las cuentas permitidas, sumando lo de cada una y
+      // diciendo de donde sale -- asi se ven como disponibles, no como
+      // "en otra cuenta".
+      const porNombre = new Map();
+      S.productosCacheGrupo.forEach(p => {
+        const clave = (p.nombre||'').trim().toLowerCase();
+        if (p.tipo !== 'producto' || !clave || p.es_materia_prima || p.activo === false) return;
+        const stock = Number(p.stock_actual || 0);
+        if (!(stock > 0)) return;
+        if (!(clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.codigo_barras||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower))) return;
+        const cuenta = S.cuentasGrupo[p.auth_user_id]?.nombre || '';
+        const g = porNombre.get(clave);
+        if (g) { g.stockTotal += stock; if (cuenta && !g.cuentas.includes(cuenta)) g.cuentas.push(cuenta); }
+        else porNombre.set(clave, { ...p, stockTotal: stock, cuentas: cuenta ? [cuenta] : [] });
+      });
+      listaGrupo = [...porNombre.values()].slice(0, 10);
+    } else {
+      const vistos = new Set();
+      listaGrupo = S.productosCacheGrupo.filter(p => {
+        const clave = (p.nombre||'').trim().toLowerCase();
+        if (p.tipo !== 'producto' || !clave || p.es_materia_prima) return false;
+        if (nombresLocales.has(clave)) return false; // ya está en la lista local, no se duplica
+        if (vistos.has(clave)) return false;
+        const coincide = clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower);
+        if (coincide) vistos.add(clave);
+        return coincide;
+      }).slice(0, 10 - lista.length);
+    }
   }
 
   if (!lista.length && !listaGrupo.length) {
@@ -2020,15 +2047,32 @@ function buscarProductosParaVenta(q, tipo) {
     </div>`;
   }).join('');
 
-  const htmlGrupo = listaGrupo.map(p => `
-    <div class="prod-result-item" onclick="agregarProductoSoloEnGrupo('${esc(p.nombre).replace(/'/g,"\\'")}','${tipo}')">
+  const htmlGrupo = listaGrupo.map(p => {
+    const onclick = `agregarProductoSoloEnGrupo('${esc(p.nombre).replace(/'/g,"\\'")}','${tipo}')`;
+    if (alcanceRestringido) {
+      const stockNum = p.stockTotal;
+      const donde = p.cuentas.length ? p.cuentas.map(esc).join(' · ') : '';
+      return `
+    <div class="prod-result-item" onclick="${onclick}">
+      <div style="flex:1;min-width:0">
+        <div class="pri-name">${esc(p.nombre)}${p.tipo_precio === 'escala' ? ' <span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
+        <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
+        ${donde ? `<div style="font-family:inherit;font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">📦 ${donde}</div>` : ''}
+      </div>
+      <span class="pri-stock ${stockNum <= 5 ? 'stock-low' : 'stock-ok'}">Disponible: ${fmt2(stockNum)}</span>
+      <span class="pri-precio">${p.tipo_precio === 'escala' ? 'Escala' : fmt(p.precio)}</span>
+    </div>`;
+    }
+    return `
+    <div class="prod-result-item" onclick="${onclick}">
       <div style="flex:1">
         <div class="pri-name">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b);font-weight:700">📦 EN OTRA CUENTA</span></div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
       </div>
       <span class="pri-stock stock-low">Solo en otra sucursal/bodega</span>
       <span class="pri-precio">${fmt(p.precio)}</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   results.innerHTML = htmlLocal + htmlGrupo;
   results.classList.add('open');
@@ -2039,11 +2083,41 @@ function buscarProductosParaVenta(q, tipo) {
 // selector de origen — no hay ninguna fila local que buscar primero.
 async function agregarProductoSoloEnGrupo(nombreProducto, tipo, modo = 'normal') {
   abrirSelectorStockOrigen(nombreProducto, modo, async (origen) => {
-    if (!origen || origen.esLocal) {
+    if (!origen) {
       if (modo === 'vr') enfocarScannerVR();
       return;
     }
-    const refGrupo = S.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === nombreProducto.trim().toLowerCase());
+    const claveNombre = nombreProducto.trim().toLowerCase();
+    if (origen.esLocal) {
+      // El stock sale de ESTA misma cuenta (puede pasar cuando la cuenta
+      // donde se vende es una de las elegidas en Stock Compartido): se
+      // usa el producto local, con su stock y precio de siempre.
+      const local = S.productosCache.find(p => !p.esCombo && p.tipo === 'producto' && (p.nombre||'').trim().toLowerCase() === claveNombre);
+      if (!local) {
+        showToast('No se pudo encontrar ese producto', 'error');
+        if (modo === 'vr') enfocarScannerVR();
+        return;
+      }
+      S.origenStockElegido = origen;
+      if (local.tipo_precio === 'escala') { abrirSelectorEscala(local.id, 'producto', modo); return; }
+      if (modo === 'vr') {
+        agregarAlCarritoVR(local);
+        const status = document.getElementById('vr-scan-status');
+        if (status) status.textContent = `✅ ${local.nombre} agregado`;
+        enfocarScannerVR();
+      } else {
+        agregarAlCarritoConPrecio(local.id, 'producto', null);
+        document.getElementById('prod-results')?.classList.remove('open');
+      }
+      return;
+    }
+    // Se prefiere la ficha del producto en la cuenta de donde sale el
+    // stock (su precio/costo); si no se encuentra, cualquiera del grupo.
+    const uidOrigen = Object.keys(S.cuentasGrupo).find(uid => S.cuentasGrupo[uid].sucursalId === origen.sucursalId);
+    const mismoNombre = p => (p.nombre||'').trim().toLowerCase() === claveNombre && p.tipo === 'producto';
+    const refGrupo = S.productosCacheGrupo.find(p => mismoNombre(p) && uidOrigen && p.auth_user_id === uidOrigen)
+      || S.productosCacheGrupo.find(mismoNombre)
+      || S.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === claveNombre);
     if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
 
     S.origenStockElegido = origen;
@@ -2109,12 +2183,16 @@ async function cargarEstadoStockCompartido() {
       activo = !!fila?.activo;
       S.stockCompartidoAlcance = fila?.alcance || 'todas';
       S.stockCompartidoSucursalId = fila?.sucursal_id || null;
+      S.stockCompartidoSucursalIds = Array.isArray(fila?.sucursal_ids) && fila.sucursal_ids.length
+        ? fila.sucursal_ids.filter(Boolean)
+        : (S.stockCompartidoSucursalId ? [S.stockCompartidoSucursalId] : []);
     } catch (eCfg) {
       console.warn('cargarEstadoStockCompartido, RPC nuevo falló, usando el viejo:', eCfg);
       const { data: activoViejo } = await sb.rpc('obtener_stock_compartido');
       activo = !!activoViejo;
       S.stockCompartidoAlcance = 'todas';
       S.stockCompartidoSucursalId = null;
+      S.stockCompartidoSucursalIds = [];
     }
     S.stockCompartidoActivo = activo;
 
@@ -2131,6 +2209,7 @@ async function cargarEstadoStockCompartido() {
     // aplica y no se le muestra nada nuevo al usuario.
     if (wrap && S.miSucursalId) { wrap.style.display = 'flex'; }
     if (chk) chk.checked = S.stockCompartidoActivo;
+    actualizarBotonEditarStockCompartido();
 
     if (S.stockCompartidoActivo) await cargarProductosGrupo();
   } catch (e) {
@@ -2156,15 +2235,30 @@ async function cargarProductosGrupo() {
     // grupo completo, es un concepto distinto).
     let productosFiltrados = data || [];
     const alcance = S.stockCompartidoAlcance || 'todas';
-    if (alcance !== 'todas') {
+    let sucs = null;
+    try {
+      const r = await sb.from('sucursales').select('id, nombre, auth_user_id_sucursal, auth_user_id_central, tipo, es_central');
+      sucs = r.data || [];
+      // Nombre de cada cuenta del grupo, para mostrar en la busqueda
+      // de cual sucursal/bodega viene el stock.
+      S.cuentasGrupo = {};
+      sucs.forEach(x => {
+        const uid = x.auth_user_id_sucursal || x.auth_user_id_central;
+        if (uid) S.cuentasGrupo[uid] = { sucursalId: x.id, nombre: x.nombre, tipo: x.tipo, esCentral: !!x.es_central };
+      });
+    } catch (eSucs) { console.warn('cargarProductosGrupo, sucursales:', eSucs); }
+
+    if (alcance !== 'todas' && sucs) {
       try {
-        const { data: sucs } = await sb.from('sucursales').select('id, auth_user_id_sucursal, auth_user_id_central, tipo');
-        const central = sucs?.[0]?.auth_user_id_central;
+        const central = sucs[0]?.auth_user_id_central;
         let idsPermitidos;
         if (alcance === 'especifica') {
-          idsPermitidos = new Set([central, S.stockCompartidoSucursalId ? (sucs.find(s=>s.id===S.stockCompartidoSucursalId)?.auth_user_id_sucursal) : null].filter(Boolean));
+          // SOLO las cuentas elegidas (una o varias) -- ni la Central ni
+          // ninguna otra se cuela si no fue elegida.
+          const elegidas = new Set(S.stockCompartidoSucursalIds.length ? S.stockCompartidoSucursalIds : [S.stockCompartidoSucursalId].filter(Boolean));
+          idsPermitidos = new Set(sucs.filter(x => elegidas.has(x.id)).map(x => x.auth_user_id_sucursal || x.auth_user_id_central).filter(Boolean));
         } else {
-          idsPermitidos = new Set([central, ...(sucs||[]).filter(s => s.tipo === (alcance === 'bodegas' ? 'bodega' : 'sucursal')).map(s => s.auth_user_id_sucursal)].filter(Boolean));
+          idsPermitidos = new Set([central, ...sucs.filter(x => x.tipo === (alcance === 'bodegas' ? 'bodega' : 'sucursal')).map(x => x.auth_user_id_sucursal)].filter(Boolean));
         }
         productosFiltrados = productosFiltrados.filter(p => idsPermitidos.has(p.auth_user_id));
       } catch (eFiltro) {
@@ -2188,6 +2282,7 @@ async function toggleStockCompartido(activo) {
       const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: false });
       if (error) throw error;
       S.stockCompartidoActivo = false;
+      actualizarBotonEditarStockCompartido();
       showToast('Stock Compartido desactivado', 'success');
     } catch (e) {
       console.error('toggleStockCompartido:', e);
@@ -2204,23 +2299,44 @@ async function toggleStockCompartido(activo) {
 
 async function abrirModalStockCompartido() {
   document.getElementById('sc-error').textContent = '';
-  document.querySelector('input[name="sc-alcance"][value="todas"]').checked = true;
-  document.getElementById('sc-wrap-especifica').style.display = 'none';
+  // Se abre con lo que ya estaba configurado (si hay), para poder
+  // agregar o quitar cuentas sin empezar de cero.
+  const alcanceActual = S.stockCompartidoActivo ? (S.stockCompartidoAlcance || 'todas') : 'todas';
+  const radioActual = document.querySelector(`input[name="sc-alcance"][value="${alcanceActual}"]`) || document.querySelector('input[name="sc-alcance"][value="todas"]');
+  radioActual.checked = true;
+  document.getElementById('sc-wrap-especifica').style.display = radioActual.value === 'especifica' ? '' : 'none';
 
-  const select = document.getElementById('sc-select-especifica');
-  select.innerHTML = '<option value="">Cargando...</option>';
+  const cont = document.getElementById('sc-lista-especifica');
+  cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted)">Cargando...</div>';
   try {
-    const { data } = await sb.from('sucursales').select('id, nombre, tipo').eq('activa', true).order('nombre');
+    const { data } = await sb.from('sucursales').select('id, nombre, tipo, es_central').eq('activa', true).order('nombre');
     const lista = (data || []).filter(s => s.id !== undefined);
-    select.innerHTML = lista.length
-      ? lista.map(s => `<option value="${s.id}">${esc(s.nombre)} (${s.tipo === 'bodega' ? 'Bodega' : 'Sucursal'})</option>`).join('')
-      : '<option value="">No hay sucursales/bodegas creadas</option>';
+    const marcadas = new Set(S.stockCompartidoSucursalIds.length ? S.stockCompartidoSucursalIds : [S.stockCompartidoSucursalId].filter(Boolean));
+    cont.innerHTML = lista.length
+      ? lista.map(s => `
+        <label class="sc-alcance-opcion">
+          <input type="checkbox" value="${s.id}" ${marcadas.has(s.id) ? 'checked' : ''} onchange="onCambiarEspecificasStockCompartido()"/>
+          <span>${s.tipo === 'bodega' ? '📦' : (s.es_central ? '🏠' : '🏬')} <strong>${esc(s.nombre)}</strong> <span style="color:var(--text-muted);font-size:11.5px">${s.tipo === 'bodega' ? 'Bodega' : (s.es_central ? 'Central' : 'Sucursal')}</span></span>
+        </label>`).join('')
+      : '<div style="font-size:12.5px;color:var(--text-muted)">No hay sucursales/bodegas creadas</div>';
   } catch (e) {
     console.warn('abrirModalStockCompartido, cargar sucursales:', e);
-    select.innerHTML = '<option value="">No se pudo cargar la lista</option>';
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--danger,#dc2626)">No se pudo cargar la lista</div>';
   }
+  onCambiarEspecificasStockCompartido();
 
   document.getElementById('modal-stock-compartido').style.display = 'flex';
+}
+
+function actualizarBotonEditarStockCompartido() {
+  const btn = document.getElementById('sc-btn-editar');
+  if (btn) btn.style.display = (S.stockCompartidoActivo && S.miSucursalId) ? 'inline-flex' : 'none';
+}
+
+function onCambiarEspecificasStockCompartido() {
+  const n = document.querySelectorAll('#sc-lista-especifica input[type="checkbox"]:checked').length;
+  const el = document.getElementById('sc-conteo-especifica');
+  if (el) el.textContent = n ? `${n} seleccionada${n === 1 ? '' : 's'}` : 'Ninguna seleccionada';
 }
 
 function cancelarStockCompartido() {
@@ -2238,23 +2354,28 @@ async function confirmarStockCompartido() {
   const errEl = document.getElementById('sc-error');
   errEl.textContent = '';
   const alcance = document.querySelector('input[name="sc-alcance"]:checked')?.value || 'todas';
-  let sucursalId = null;
+  let sucursalId = null, sucursalIds = [];
   if (alcance === 'especifica') {
-    sucursalId = document.getElementById('sc-select-especifica').value;
-    if (!sucursalId) { errEl.textContent = 'Elige una sucursal o bodega.'; return; }
+    sucursalIds = [...document.querySelectorAll('#sc-lista-especifica input[type="checkbox"]:checked')].map(c => c.value);
+    if (!sucursalIds.length) { errEl.textContent = 'Elige al menos una sucursal o bodega.'; return; }
+    sucursalId = sucursalIds[0];
   }
 
   const btn = document.getElementById('sc-btn-confirmar');
   btn.disabled = true;
   try {
-    const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: true, p_alcance: alcance, p_sucursal_id: sucursalId });
+    const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: true, p_alcance: alcance, p_sucursal_id: sucursalId, p_sucursal_ids: alcance === 'especifica' ? sucursalIds : null });
     if (error) throw error;
     S.stockCompartidoActivo = true;
     S.stockCompartidoAlcance = alcance;
     S.stockCompartidoSucursalId = sucursalId;
+    S.stockCompartidoSucursalIds = sucursalIds;
+    const chkSc = document.getElementById('chk-stock-compartido');
+    if (chkSc) chkSc.checked = true;
+    actualizarBotonEditarStockCompartido();
     await cargarProductosGrupo();
     document.getElementById('modal-stock-compartido').style.display = 'none';
-    const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: 'una sucursal específica' };
+    const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: sucursalIds.length > 1 ? `${sucursalIds.length} cuentas específicas` : 'una sucursal específica' };
     showToast(`Stock Compartido activado — ${etiquetas[alcance]}`, 'success');
   } catch (e) {
     console.error('confirmarStockCompartido:', e);
@@ -2304,22 +2425,29 @@ async function abrirSelectorStockOrigen(nombreProducto, modo, callbackContinuar)
     // Compartido, no tiene sentido volver a preguntar de donde sacar
     // el stock -- ya se sabe. Se usa esa cuenta directo, sin abrir
     // el modal, siempre que tenga stock disponible de este producto.
-    if (S.stockCompartidoAlcance === 'especifica' && S.stockCompartidoSucursalId) {
-      const unica = opciones.find(o => o.sucursal_id === S.stockCompartidoSucursalId);
-      if (unica && Number(unica.stock_actual) > 0) {
+    if (S.stockCompartidoAlcance === 'especifica' && (S.stockCompartidoSucursalIds.length || S.stockCompartidoSucursalId)) {
+      const elegidas = new Set(S.stockCompartidoSucursalIds.length ? S.stockCompartidoSucursalIds : [S.stockCompartidoSucursalId]);
+      const conStock = opciones.filter(o => elegidas.has(o.sucursal_id) && Number(o.stock_actual) > 0);
+      // Una sola de las cuentas elegidas tiene stock: se usa directo,
+      // sin volver a preguntar.
+      if (conStock.length === 1) {
+        const unica = conStock[0];
         callbackContinuar({
           sucursalId: unica.sucursal_id, stockDisponible: Number(unica.stock_actual),
           nombreCuenta: unica.nombre_cuenta, esLocal: unica.sucursal_id === S.miSucursalId,
         });
         return;
       }
-      // Si esa cuenta especifica no tiene stock de este producto, se
-      // avisa igual que cuando no hay stock en ningun lado -- no se
-      // vuelve a mostrar el selector con las demas cuentas, porque el
-      // alcance elegido las excluye a proposito.
-      showToast(`Sin stock de "${nombreProducto}" en la cuenta elegida para Stock Compartido`, 'error');
-      callbackContinuar(null);
-      return;
+      // Ninguna de las elegidas tiene stock: se avisa, sin ofrecer las
+      // demas cuentas (el alcance elegido las excluye a proposito).
+      if (!conStock.length) {
+        showToast(`Sin stock de "${nombreProducto}" en ${elegidas.size > 1 ? 'las cuentas elegidas' : 'la cuenta elegida'} para Stock Compartido`, 'error');
+        callbackContinuar(null);
+        return;
+      }
+      // Varias de las elegidas tienen stock: se pregunta de cual, pero
+      // solo entre ellas.
+      opciones = conStock;
     }
 
     // Con alcance "bodegas" o "sucursales" (varias cuentas posibles,
