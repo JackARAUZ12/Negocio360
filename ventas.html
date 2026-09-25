@@ -1954,11 +1954,31 @@
           </span>
         </label>
         <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Si lo desactivas, solo tú (el administrador) podrás cambiar esto — a los demás usuarios les aparecerá bloqueado.</p>
+        <button type="button" class="btn-icon btn-ghost" style="width:100%;margin-top:10px;justify-content:center" onclick="abrirModalConfigPorUsuario()">👥 Configurar por usuario</button>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-icon btn-ghost" onclick="cancelarStockCompartido()">Cancelar</button>
       <button class="btn-icon btn-primary" id="sc-btn-confirmar" onclick="confirmarStockCompartido()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIGURAR STOCK COMPARTIDO POR USUARIO -- solo admin -->
+<div class="modal-overlay" id="modal-config-por-usuario" onclick="if(event.target===this)cerrarModalConfigPorUsuario()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">👥 Stock Compartido por usuario</span>
+      <button class="modal-close" onclick="cerrarModalConfigPorUsuario()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px">Elige de dónde saca inventario cada usuario al vender. Se guarda al instante por usuario — no hace falta un botón de "Guardar todo".</p>
+      <div id="cpu-lista" style="display:flex;flex-direction:column;gap:10px;max-height:360px;overflow-y:auto"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="cerrarModalConfigPorUsuario()">Cerrar</button>
     </div>
   </div>
 </div>

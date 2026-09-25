@@ -2437,6 +2437,67 @@ async function toggleSCPermitirUsuarios(permitir) {
   }
 }
 
+// Panel admin: en vez de que cada usuario configure la suya, el
+// admin la asigna directo por perfil -- reutiliza la MISMA tabla
+// stock_compartido_usuario que ya usa el "auto-servicio" (mismo
+// perfil_key que perfilStockCompartido() calcularia para ese
+// usuario al entrar), asi que ambos caminos conviven sin chocar.
+async function abrirModalConfigPorUsuario() {
+  const cont = document.getElementById('cpu-lista');
+  cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted)">Cargando usuarios...</div>';
+  document.getElementById('modal-config-por-usuario').style.display = 'flex';
+  try {
+    const { data: perfiles, error: errP } = await sb.from('perfiles_acceso')
+      .select('id, nombre').eq('auth_user_id', S.userId).eq('tipo', 'restringido').eq('activo', true).order('nombre');
+    if (errP) throw errP;
+    if (!perfiles || !perfiles.length) {
+      cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted)">Aún no tienes usuarios con perfil restringido creados.</div>';
+      return;
+    }
+
+    const { data: configs } = await sb.from('stock_compartido_usuario')
+      .select('perfil_key, activo, alcance').eq('auth_user_id', S.userId);
+    const mapaConfig = {};
+    (configs || []).forEach(c => { mapaConfig[c.perfil_key] = c; });
+
+    cont.innerHTML = perfiles.map(p => {
+      const cfg = mapaConfig[String(p.id)];
+      const alcanceActual = cfg?.activo ? (cfg.alcance || 'todas') : 'todas';
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+          <span style="font-size:12.5px;font-weight:600">${esc(p.nombre)}</span>
+          <select class="form-select" style="max-width:180px;font-size:12px" onchange="guardarAlcanceDeUsuario('${p.id}', '${esc(p.nombre).replace(/'/g,"\\'")}', this.value)">
+            <option value="todas" ${alcanceActual==='todas'?'selected':''}>Todas (sucursales y bodegas)</option>
+            <option value="bodegas" ${alcanceActual==='bodegas'?'selected':''}>Solo bodegas</option>
+            <option value="sucursales" ${alcanceActual==='sucursales'?'selected':''}>Solo sucursales</option>
+          </select>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('abrirModalConfigPorUsuario:', e);
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--danger,#dc2626)">No se pudo cargar la lista de usuarios.</div>';
+  }
+}
+
+function cerrarModalConfigPorUsuario() {
+  document.getElementById('modal-config-por-usuario').style.display = 'none';
+}
+
+async function guardarAlcanceDeUsuario(perfilId, perfilNombre, alcance) {
+  try {
+    const { error } = await sb.from('stock_compartido_usuario').upsert({
+      auth_user_id: S.userId, perfil_key: String(perfilId), perfil_nombre: perfilNombre,
+      activo: true, alcance, sucursal_ids: null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'auth_user_id,perfil_key' });
+    if (error) throw error;
+    showToast(`${perfilNombre}: ahora ve stock de "${alcance === 'todas' ? 'todas las sucursales y bodegas' : alcance}"`, 'success');
+  } catch (e) {
+    console.error('guardarAlcanceDeUsuario:', e);
+    showToast('No se pudo guardar la configuración de ese usuario', 'error');
+  }
+}
+
 function onCambiarEspecificasStockCompartido() {
   const n = document.querySelectorAll('#sc-lista-especifica input[type="checkbox"]:checked').length;
   const el = document.getElementById('sc-conteo-especifica');
