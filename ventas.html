@@ -1945,6 +1945,16 @@
         <div id="sc-lista-especifica" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
       </div>
       <p id="sc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:8px"></p>
+      <div id="sc-admin-wrap" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb)">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer">
+          <span style="font-size:12px;color:var(--text-secondary)">Permitir que los usuarios configuren Stock Compartido</span>
+          <span class="n360-switch">
+            <input type="checkbox" id="sc-chk-permitir-usuarios" onchange="toggleSCPermitirUsuarios(this.checked)"/>
+            <span class="n360-switch-slider"></span>
+          </span>
+        </label>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Si lo desactivas, solo tú (el administrador) podrás cambiar esto — a los demás usuarios les aparecerá bloqueado.</p>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-icon btn-ghost" onclick="cancelarStockCompartido()">Cancelar</button>

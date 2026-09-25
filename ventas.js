@@ -2221,13 +2221,34 @@ async function cargarEstadoStockCompartido() {
       .select('id').eq('auth_user_id_sucursal', S.userId).maybeSingle();
     S.miSucursalId = miFila?.id || null;
 
+    // ¿Puede este usuario tocar el interruptor? Solo si es el admin
+    // (dueño de la cuenta, o un perfil marcado 'admin'), o si el
+    // dueño dejo el permiso abierto para todos (por defecto, si).
+    let puedeConfigurar = true;
+    try {
+      const { data: cfgAdmin } = await sb.from('configuracion_empresa')
+        .select('permitir_usuarios_config_stock_compartido').eq('auth_user_id', S.userId).maybeSingle();
+      const esAdmin = perfilStockCompartido().key === 'admin';
+      puedeConfigurar = esAdmin || cfgAdmin?.permitir_usuarios_config_stock_compartido !== false;
+    } catch (ePerm) {
+      console.warn('cargarEstadoStockCompartido, permiso de configuración:', ePerm);
+    }
+    S.puedeConfigurarStockCompartido = puedeConfigurar;
+
     const wrap = document.getElementById('stock-compartido-wrap');
     const chk  = document.getElementById('chk-stock-compartido');
     // El interruptor solo se muestra si esta cuenta pertenece a un
     // grupo real (tiene al menos una sucursal/bodega) — si no, no
     // aplica y no se le muestra nada nuevo al usuario.
     if (wrap && S.miSucursalId) { wrap.style.display = 'flex'; }
-    if (chk) chk.checked = S.stockCompartidoActivo;
+    if (chk) {
+      chk.checked = S.stockCompartidoActivo;
+      chk.disabled = !puedeConfigurar;
+      if (wrap) wrap.title = puedeConfigurar
+        ? 'Al vender, elige de cuál sucursal o bodega de tu grupo se descuenta el stock'
+        : 'Solo el administrador puede configurar Stock Compartido';
+      if (wrap) wrap.style.opacity = puedeConfigurar ? '1' : '.55';
+    }
     actualizarBotonEditarStockCompartido();
 
     if (S.stockCompartidoActivo) await cargarProductosGrupo();
@@ -2295,6 +2316,15 @@ async function cargarProductosGrupo() {
 }
 
 async function toggleStockCompartido(activo) {
+  // Verificación explícita, por si el checkbox se manipula igual --
+  // el bloqueo visual (disabled) ya deberia prevenir esto en la
+  // practica, esto es solo una segunda capa.
+  if (S.puedeConfigurarStockCompartido === false) {
+    const chk = document.getElementById('chk-stock-compartido');
+    if (chk) chk.checked = S.stockCompartidoActivo;
+    showToast('Solo el administrador puede configurar Stock Compartido', 'error');
+    return;
+  }
   // Al DESACTIVAR, comportamiento identico al de siempre -- sin modal.
   if (!activo) {
     try {
@@ -2319,6 +2349,23 @@ async function abrirModalStockCompartido() {
   document.getElementById('sc-error').textContent = '';
   const paraQuien = document.getElementById('sc-para-quien');
   if (paraQuien) paraQuien.textContent = `Solo para ${perfilStockCompartido().nombre} — cada usuario configura la suya.`;
+
+  // Sección solo-admin: quien puede tocar el interruptor global de
+  // "permitir a los demas configurar esto" es unicamente el dueño de
+  // la cuenta o un perfil marcado admin -- nunca un perfil restringido.
+  const adminWrap = document.getElementById('sc-admin-wrap');
+  const esAdmin = perfilStockCompartido().key === 'admin';
+  if (adminWrap) {
+    adminWrap.style.display = esAdmin ? '' : 'none';
+    if (esAdmin) {
+      try {
+        const { data: cfgAdmin } = await sb.from('configuracion_empresa')
+          .select('permitir_usuarios_config_stock_compartido').eq('auth_user_id', S.userId).maybeSingle();
+        document.getElementById('sc-chk-permitir-usuarios').checked = cfgAdmin?.permitir_usuarios_config_stock_compartido !== false;
+      } catch (eAdmin) { console.warn('abrirModalStockCompartido, cargar permiso admin:', eAdmin); }
+    }
+  }
+
   // Se abre con lo que ya estaba configurado (si hay), para poder
   // agregar o quitar cuentas sin empezar de cero.
   const alcanceActual = S.stockCompartidoActivo ? (S.stockCompartidoAlcance || 'todas') : 'todas';
@@ -2372,7 +2419,22 @@ async function guardarStockCompartidoUsuario(activo, alcance, sucursalIds) {
 
 function actualizarBotonEditarStockCompartido() {
   const btn = document.getElementById('sc-btn-editar');
-  if (btn) btn.style.display = (S.stockCompartidoActivo && S.miSucursalId) ? 'inline-flex' : 'none';
+  if (btn) btn.style.display = (S.stockCompartidoActivo && S.miSucursalId && S.puedeConfigurarStockCompartido !== false) ? 'inline-flex' : 'none';
+}
+
+async function toggleSCPermitirUsuarios(permitir) {
+  try {
+    const { error } = await sb.from('configuracion_empresa')
+      .update({ permitir_usuarios_config_stock_compartido: permitir })
+      .eq('auth_user_id', S.userId);
+    if (error) throw error;
+    showToast(permitir ? 'Los usuarios ya pueden configurar Stock Compartido' : 'Bloqueado — solo tú puedes configurarlo ahora', 'success');
+  } catch (e) {
+    console.error('toggleSCPermitirUsuarios:', e);
+    showToast('No se pudo guardar el cambio', 'error');
+    const chk = document.getElementById('sc-chk-permitir-usuarios');
+    if (chk) chk.checked = !permitir;
+  }
 }
 
 function onCambiarEspecificasStockCompartido() {
