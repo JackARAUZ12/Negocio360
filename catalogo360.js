@@ -801,6 +801,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'streetwear', nombre:'Moda urbana', icono:'🧢', desc:'Streetwear en modo drop: tallas y colores, armá tu outfit y guía de tallas', disponible:true, archivo:'c360-streetwear.html' },
   { key:'farmacia', nombre:'Farmacia', icono:'💊', desc:'Clínica y confiable: buscador por síntomas, botiquín del hogar y pedidos con receta', disponible:true, archivo:'c360-farmacia.html' },
   { key:'floristeria', nombre:'Floristería', icono:'💐', desc:'Botánica y romántica: ocasiones, lenguaje de las flores, tarjeta dedicatoria y entrega programada', disponible:true, archivo:'c360-floristeria.html' },
+  { key:'deportes', nombre:'Deportes / Gym', icono:'🏆', desc:'Energía pura: filtro por deporte, asesor técnico (bate, guantes, proteína) y marcador LED', disponible:true, archivo:'c360-deportes.html' },
 ];
 
 function archivoDePlantilla(key) {

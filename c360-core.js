@@ -215,6 +215,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   streetwear: 'c360-streetwear.html',
   farmacia: 'c360-farmacia.html',
   floristeria: 'c360-floristeria.html',
+  deportes: 'c360-deportes.html',
 };
 
 /**
