@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="claro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#f7efeb" />
+<title id="be-title">Belleza</title>
+<meta id="be-desc-meta" name="description" content="Reserva tu cita">
+<meta id="be-og-title" property="og:title" content="Belleza">
+<meta id="be-og-desc" property="og:description" content="Reserva tu cita">
+<meta id="be-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,700;1,6..96,400;1,6..96,500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* =====================================================================
+   CATÁLOGO360 -- PLANTILLA BELLEZA / SALÓN  ("Atelier")
+   Estética de revista de belleza: nude, blush y negro, tipografía
+   Bodoni de alta moda, espejo ovalado con brillo en el hero.
+   Lo propio: reserva de cita real (servicios + fecha + hora + nombre)
+   enviada por WhatsApp; menú de servicios tipo carta con duración
+   leída de la descripción; deslizador "antes y después"; mosaico de
+   trabajos. Prefijo: be-  (no choca con ninguna otra plantilla)
+   ===================================================================== */
+:root {
+  --leche: #f7efeb;
+  --rubor: #e8c4bb;
+  --rubor-rgb: 232,196,187;
+  --rosa-fuerte: #c9776a;
+  --rosa-rgb: 201,119,106;
+  --cacao: #231a18;
+  --champan: #cdb08a;
+
+  --bg: #f7efeb;
+  --bg-rgb: 247,239,235;
+  --surface: #fffaf8;
+  --surface-2: #f0e3dd;
+  --border: #e6d6cf;
+  --text: #231a18;
+  --text-2: #6b5a55;
+  --text-3: #a8958f;
+  --acento: #231a18;
+  --sobre-acento: #fffaf8;
+  --resalte: var(--rosa-fuerte);
+  --sombra: 0 1px 2px rgba(60,30,25,.06), 0 18px 40px -20px rgba(60,30,25,.28);
+
+  --font-display: 'Bodoni Moda', 'Didot', Georgia, serif;
+  --font: 'Outfit', system-ui, -apple-system, sans-serif;
+  --max-w: 1260px;
+  --hdr-h: 64px;
+  --ease: cubic-bezier(.22,1,.36,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-theme="oscuro"] {
+  --bg: #161011;
+  --bg-rgb: 22,16,17;
+  --surface: #211819;
+  --surface-2: #2b2021;
+  --border: #3a2c2c;
+  --text: #f6ebe7;
+  --text-2: #c7b3ad;
+  --text-3: #8d7a75;
+  --acento: #e8c4bb;
+  --sobre-acento: #231a18;
+  --resalte: #e8a597;
+  --sombra: 0 1px 2px rgba(0,0,0,.3), 0 20px 44px -20px rgba(0,0,0,.7);
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--hdr-h) + 110px); }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); overflow-x:hidden; -webkit-font-smoothing:antialiased; transition:background .35s, color .35s; font-weight:400; }
+body.be-bloqueado { overflow:hidden; }
+img { max-width:100%; display:block; }
+a { color:inherit; text-decoration:none; }
+button, input, select, textarea { font-family:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:2px solid var(--resalte); outline-offset:3px; }
+svg.be-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
+.be-wrap { max-width:var(--max-w); margin:0 auto; padding:0 18px; }
+@media (min-width:760px) { .be-wrap { padding:0 32px; } }
+@media (min-width:1200px) { .be-wrap { padding:0 48px; } }
+.be-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+@keyframes be-sube { from { opacity:0; transform:translateY(26px); } to { opacity:1; transform:none; } }
+@keyframes be-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes be-brillo { 0% { transform:translateX(-130%) rotate(18deg); } 55%,100% { transform:translateX(230%) rotate(18deg); } }
+@keyframes be-destello { 0%,100% { opacity:0; transform:scale(.3) rotate(0); } 50% { opacity:1; transform:scale(1) rotate(90deg); } }
+@keyframes be-blob { 0%,100% { transform:translate(0,0) scale(1); } 33% { transform:translate(30px,-24px) scale(1.08); } 66% { transform:translate(-20px,18px) scale(.95); } }
+@keyframes be-marquee { to { transform:translateX(-50%); } }
+@keyframes be-sheet { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes be-drawer { from { transform:translateX(100%); } to { transform:none; } }
+@keyframes be-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes be-latido { 0%,100% { transform:scale(1); } 40% { transform:scale(1.22); } }
+@keyframes be-pista { 0%,100% { transform:translateX(0); } 50% { transform:translateX(10px); } }
+
+.be-reveal { opacity:0; transform:translateY(30px); transition:opacity .95s var(--ease), transform .95s var(--ease); }
+.be-reveal.visible { opacity:1; transform:none; }
+
+/* ===== CARGA ===== */
+.be-carga { position:fixed; inset:0; z-index:1000; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; transition:opacity .7s var(--ease), visibility .7s; }
+.be-carga.fuera { opacity:0; visibility:hidden; }
+.be-carga-espejo { position:relative; width:74px; height:96px; border-radius:50%; border:1.5px solid var(--text); overflow:hidden; }
+.be-carga-espejo::after { content:''; position:absolute; top:-20%; left:0; width:40%; height:140%; background:linear-gradient(90deg, transparent, rgba(255,255,255,.9), transparent); animation:be-brillo 1.6s ease-in-out infinite; }
+html[data-theme="oscuro"] .be-carga-espejo::after { background:linear-gradient(90deg, transparent, rgba(232,196,187,.6), transparent); }
+.be-carga-txt { font-family:var(--font-display); font-style:italic; font-size:18px; color:var(--text-2); min-height:22px; }
+.be-error { display:none; min-height:80vh; align-items:center; justify-content:center; flex-direction:column; gap:10px; text-align:center; padding:24px; color:var(--text-2); }
+.be-error b { font-family:var(--font-display); font-style:italic; font-weight:400; font-size:38px; color:var(--text); }
+
+/* ===== HEADER ===== */
+.be-header { position:sticky; top:0; z-index:80; background:rgba(var(--bg-rgb),.84); backdrop-filter:saturate(1.4) blur(16px); -webkit-backdrop-filter:saturate(1.4) blur(16px); border-bottom:1px solid var(--border); }
+.be-header-in { height:var(--hdr-h); display:flex; align-items:center; gap:12px; }
+.be-marca { display:flex; align-items:center; gap:11px; min-width:0; cursor:pointer; }
+.be-marca-logo { width:38px; height:38px; border-radius:50%; object-fit:cover; display:none; }
+.be-marca-letra { width:38px; height:38px; border-radius:50%; border:1px solid var(--text); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-style:italic; font-size:20px; flex-shrink:0; }
+.be-marca-nombre { font-family:var(--font-display); font-size:20px; font-weight:500; letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw; }
+.be-nav { display:none; gap:28px; margin-left:30px; font-size:13.5px; letter-spacing:.04em; color:var(--text-2); }
+.be-nav a { cursor:pointer; transition:color .2s; }
+.be-nav a:hover { color:var(--text); }
+@media (min-width:980px) { .be-nav { display:flex; } }
+.be-header-der { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.be-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:transparent; color:var(--text); display:flex; align-items:center; justify-content:center; font-size:17px; transition:border-color .2s, transform .2s var(--spring); }
+.be-icon-btn:hover { border-color:var(--text); }
+.be-icon-btn:active { transform:scale(.9); }
+.be-badge { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--resalte); color:#fff; font-size:10px; font-weight:700; display:none; align-items:center; justify-content:center; }
+.be-badge.on { display:flex; }
+.be-badge.latido { animation:be-latido .45s var(--spring); }
+.be-header-cta { display:none; align-items:center; gap:8px; height:40px; padding:0 18px; border-radius:999px; background:var(--acento); color:var(--sobre-acento); font-size:13px; font-weight:600; letter-spacing:.03em; border:none; }
+@media (min-width:820px) { .be-header-cta.on { display:inline-flex; } }
+
+/* ===== HERO ===== */
+.be-hero { position:relative; overflow:hidden; padding:30px 0 54px; isolation:isolate; }
+@media (min-width:980px) { .be-hero { padding:56px 0 90px; } }
+.be-blob { position:absolute; border-radius:50%; filter:blur(60px); opacity:.55; z-index:-1; animation:be-blob 16s ease-in-out infinite; pointer-events:none; }
+.be-blob.a { width:420px; height:420px; background:var(--rubor); top:-120px; right:-80px; }
+.be-blob.b { width:340px; height:340px; background:#f3dccf; bottom:-140px; left:-100px; animation-delay:-6s; }
+html[data-theme="oscuro"] .be-blob { opacity:.18; }
+.be-hero-grid { display:grid; grid-template-columns:1fr; gap:34px; align-items:center; }
+@media (min-width:980px) { .be-hero-grid { grid-template-columns:1.1fr .9fr; gap:60px; } }
+.be-hero-kicker { display:inline-flex; align-items:center; gap:12px; font-size:12px; font-weight:500; letter-spacing:.3em; text-transform:uppercase; color:var(--text-2); margin-bottom:18px; animation:be-sube .9s var(--ease) both; }
+.be-hero-kicker::before { content:''; width:34px; height:1px; background:currentColor; }
+.be-hero-titulo { font-family:var(--font-display); font-weight:400; font-size:clamp(52px,11.5vw,124px); line-height:.92; letter-spacing:-.025em; margin:0; animation:be-sube .9s var(--ease) .08s both; }
+.be-hero-titulo em { font-style:italic; color:var(--resalte); }
+.be-hero-desc { font-size:16.5px; line-height:1.7; color:var(--text-2); max-width:480px; margin:22px 0 26px; font-weight:300; animation:be-sube .9s var(--ease) .16s both; }
+@media (min-width:760px) { .be-hero-desc { font-size:18px; } }
+.be-hero-acciones { display:flex; flex-wrap:wrap; gap:12px; animation:be-sube .9s var(--ease) .24s both; }
+.be-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; height:54px; padding:0 30px; border-radius:999px; border:1px solid transparent; font-weight:500; font-size:14.5px; letter-spacing:.04em; transition:transform .3s var(--spring), background .25s, color .25s, border-color .25s, box-shadow .3s; white-space:nowrap; }
+.be-btn:active { transform:scale(.96); }
+.be-btn-oscuro { background:var(--acento); color:var(--sobre-acento); box-shadow:0 14px 34px -14px rgba(35,26,24,.55); }
+.be-btn-oscuro:hover { transform:translateY(-2px); }
+.be-btn-linea { background:transparent; color:var(--text); border-color:var(--text); }
+.be-btn-linea:hover { background:var(--text); color:var(--bg); }
+.be-btn-suave { background:transparent; color:var(--text-2); border-color:var(--border); }
+.be-btn-suave:hover { color:var(--text); border-color:var(--text); }
+.be-btn-wa { background:#25D366; color:#fff; }
+.be-btn-wa:hover { transform:translateY(-2px); box-shadow:0 12px 28px -10px rgba(37,211,102,.7); }
+.be-btn[disabled] { opacity:.45; cursor:not-allowed; transform:none; box-shadow:none; }
+@media (max-width:480px) { .be-hero-acciones .be-btn { flex:1 1 100%; } }
+.be-hero-datos { display:flex; gap:30px; margin-top:34px; padding-top:22px; border-top:1px solid var(--border); max-width:480px; animation:be-sube .9s var(--ease) .32s both; }
+.be-dato b { display:block; font-family:var(--font-display); font-size:32px; font-weight:400; line-height:1; }
+.be-dato span { display:block; font-size:12px; letter-spacing:.08em; color:var(--text-3); margin-top:6px; text-transform:uppercase; }
+
+/* Espejo ovalado */
+.be-espejo-zona { position:relative; width:min(82%,380px); margin:0 auto; animation:be-sube 1.1s var(--ease) .2s both; }
+@media (min-width:980px) { .be-espejo-zona { width:min(100%,420px); } }
+.be-espejo { position:relative; aspect-ratio:3/4; border-radius:50%; padding:10px; background:conic-gradient(from 210deg, #f4e4dc, #c9a79c, #fff6f2, #b89588, #f7e8e1, #d9bcb1, #f4e4dc); box-shadow:0 50px 90px -40px rgba(60,30,25,.55); cursor:pointer; transition:transform .6s var(--ease); }
+html[data-theme="oscuro"] .be-espejo { background:conic-gradient(from 210deg, #5a4540, #b8958a, #3d2f2c, #e8c4bb, #4b3935, #a88478, #5a4540); }
+.be-espejo:hover { transform:translateY(-6px) rotate(-1deg); }
+.be-espejo-in { position:relative; width:100%; height:100%; border-radius:50%; overflow:hidden; background:var(--surface-2); }
+.be-espejo-in img { width:100%; height:100%; object-fit:cover; }
+.be-espejo-in::after { content:''; position:absolute; top:-30%; left:0; width:38%; height:160%; background:linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation:be-brillo 6s ease-in-out 1.2s infinite; pointer-events:none; }
+.be-destello { position:absolute; width:18px; height:18px; pointer-events:none; animation:be-destello 3.2s ease-in-out infinite; }
+.be-destello::before, .be-destello::after { content:''; position:absolute; left:50%; top:50%; background:#fff; border-radius:2px; transform:translate(-50%,-50%); box-shadow:0 0 10px rgba(255,255,255,.9); }
+.be-destello::before { width:2px; height:100%; }
+.be-destello::after { width:100%; height:2px; }
+html[data-theme="claro"] .be-destello::before, html[data-theme="claro"] .be-destello::after { background:#d9a595; box-shadow:0 0 8px rgba(201,119,106,.5); }
+.be-espejo-etiqueta { position:absolute; left:-8%; bottom:12%; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:12px 16px; box-shadow:var(--sombra); max-width:70%; cursor:pointer; }
+.be-espejo-etiqueta small { display:block; font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--text-3); margin-bottom:3px; }
+.be-espejo-etiqueta b { display:block; font-family:var(--font-display); font-weight:500; font-size:17px; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.be-espejo-etiqueta span { font-size:13.5px; color:var(--resalte); font-weight:600; }
+
+/* ===== MARQUEE de categorías ===== */
+.be-marquee { overflow:hidden; border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:18px 0; white-space:nowrap; }
+.be-marquee-pista { display:inline-flex; animation:be-marquee 34s linear infinite; }
+.be-marquee:hover .be-marquee-pista { animation-play-state:paused; }
+.be-marquee-pista span { font-family:var(--font-display); font-style:italic; font-size:clamp(24px,4vw,40px); padding:0 26px; display:inline-flex; align-items:center; gap:26px; }
+.be-marquee-pista span::after { content:'✦'; font-style:normal; font-size:.45em; color:var(--resalte); }
+
+/* ===== SECCIONES ===== */
+.be-seccion { padding:clamp(56px,8vw,104px) 0; }
+.be-head { margin-bottom:34px; }
+.be-head.centro { text-align:center; }
+.be-kicker { font-size:12px; font-weight:500; letter-spacing:.3em; text-transform:uppercase; color:var(--resalte); margin-bottom:12px; }
+.be-titulo { font-family:var(--font-display); font-weight:400; font-size:clamp(38px,6.4vw,72px); line-height:.98; letter-spacing:-.02em; margin:0; }
+.be-titulo em { font-style:italic; color:var(--resalte); }
+.be-sub { color:var(--text-2); font-size:15.5px; line-height:1.65; max-width:480px; margin:14px 0 0; font-weight:300; }
+.be-head.centro .be-sub { margin:14px auto 0; }
+
+/* ===== ANTES / DESPUÉS ===== */
+.be-ad-rail { display:grid; grid-auto-flow:column; grid-auto-columns:84%; gap:18px; overflow-x:auto; scroll-snap-type:x mandatory; padding:4px 18px 16px; margin:0 -18px; scrollbar-width:none; scroll-padding-inline:18px; }
+.be-ad-rail::-webkit-scrollbar { display:none; }
+@media (min-width:700px) { .be-ad-rail { grid-auto-columns:46%; } }
+@media (min-width:1100px) { .be-ad-rail { grid-auto-columns:calc((100% - 36px) / 3); margin:0; padding:4px 0 16px; scroll-padding-inline:0; } }
+.be-ad-item { scroll-snap-align:start; }
+.be-ad { position:relative; aspect-ratio:4/5; border-radius:26px; overflow:hidden; background:var(--surface-2); user-select:none; touch-action:pan-y; cursor:ew-resize; box-shadow:var(--sombra); }
+.be-ad img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; pointer-events:none; -webkit-user-drag:none; }
+.be-ad .despues { clip-path:inset(0 0 0 var(--corte,50%)); }
+.be-ad-linea { position:absolute; top:0; bottom:0; left:var(--corte,50%); width:2px; margin-left:-1px; background:#fff; box-shadow:0 0 12px rgba(0,0,0,.25); pointer-events:none; }
+.be-ad-manija { position:absolute; top:50%; left:var(--corte,50%); width:46px; height:46px; margin:-23px 0 0 -23px; border-radius:50%; background:#fff; color:var(--cacao); display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 8px 20px rgba(0,0,0,.25); pointer-events:none; }
+.be-ad.pista .be-ad-manija { animation:be-pista 1.6s ease-in-out 2; }
+.be-ad-rotulo { position:absolute; top:14px; font-size:10.5px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; padding:6px 11px; border-radius:999px; background:rgba(255,255,255,.88); color:var(--cacao); pointer-events:none; }
+.be-ad-rotulo.izq { left:14px; }
+.be-ad-rotulo.der { right:14px; }
+.be-ad-nombre { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-top:14px; cursor:pointer; }
+.be-ad-nombre b { font-family:var(--font-display); font-weight:500; font-size:20px; }
+.be-ad-nombre span { color:var(--text-2); font-size:14px; white-space:nowrap; }
+
+/* ===== FAVORITOS (rail de óvalos) ===== */
+.be-rail { display:grid; grid-auto-flow:column; grid-auto-columns:58%; gap:20px; overflow-x:auto; scroll-snap-type:x mandatory; padding:4px 18px 16px; margin:0 -18px; scrollbar-width:none; scroll-padding-inline:18px; }
+.be-rail::-webkit-scrollbar { display:none; }
+@media (min-width:700px) { .be-rail { grid-auto-columns:32%; } }
+@media (min-width:1100px) { .be-rail { grid-auto-columns:calc((100% - 80px) / 5); margin:0; padding:4px 0 16px; scroll-padding-inline:0; } }
+.be-ovalo { scroll-snap-align:start; cursor:pointer; text-align:center; }
+.be-ovalo-img { position:relative; aspect-ratio:3/4; border-radius:50%; overflow:hidden; background:var(--surface-2); transition:transform .5s var(--ease), box-shadow .5s; }
+.be-ovalo:hover .be-ovalo-img { transform:translateY(-6px); box-shadow:var(--sombra); }
+.be-ovalo-img img { width:100%; height:100%; object-fit:cover; transition:transform 1s var(--ease); }
+.be-ovalo:hover img { transform:scale(1.07); }
+.be-ovalo-nombre { font-family:var(--font-display); font-size:19px; font-weight:500; margin-top:14px; line-height:1.15; }
+.be-ovalo-meta { font-size:13px; color:var(--text-2); margin-top:4px; }
+.be-rail-nav { display:none; justify-content:center; gap:10px; margin-top:8px; }
+@media (min-width:1100px) { .be-rail-nav.on { display:flex; } }
+.be-rail-nav button { width:46px; height:46px; border-radius:50%; border:1px solid var(--border); background:transparent; color:var(--text); font-size:17px; transition:all .2s; }
+.be-rail-nav button:hover { border-color:var(--text); }
+
+.be-sin-foto { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-style:italic; font-size:70px; color:var(--rosa-fuerte); background:radial-gradient(circle at 30% 25%, rgba(255,255,255,.7), transparent 55%), linear-gradient(160deg, var(--rubor), #f3dccf); }
+html[data-theme="oscuro"] .be-sin-foto { color:#f6ebe7; background:radial-gradient(circle at 30% 25%, rgba(255,255,255,.12), transparent 55%), linear-gradient(160deg, #4b3935, #2b2021); }
+
+/* ===== SERVICIOS: barra de filtros + vistas ===== */
+.be-filtros { position:sticky; top:var(--hdr-h); z-index:60; background:rgba(var(--bg-rgb),.9); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); padding:12px 0 10px; margin-bottom:22px; }
+.be-filtros-fila { display:flex; gap:8px; align-items:center; }
+.be-buscador { flex:1; min-width:0; display:flex; align-items:center; gap:10px; height:48px; padding:0 18px; border-radius:999px; background:var(--surface); border:1px solid var(--border); transition:border-color .2s, box-shadow .2s; }
+.be-buscador:focus-within { border-color:var(--text); box-shadow:0 0 0 4px rgba(var(--rubor-rgb),.35); }
+.be-buscador input { flex:1; min-width:0; border:none; outline:none; background:none; color:var(--text); font-size:15px; }
+.be-buscador input::placeholder { color:var(--text-3); }
+.be-limpiar { border:none; background:none; color:var(--text-3); font-size:16px; display:none; padding:4px; }
+.be-limpiar.on { display:block; }
+.be-vistas { display:flex; border:1px solid var(--border); border-radius:999px; padding:3px; background:var(--surface); flex-shrink:0; }
+.be-vistas button { height:40px; padding:0 14px; border-radius:999px; border:none; background:transparent; color:var(--text-2); font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px; transition:all .2s; }
+.be-vistas button.on { background:var(--acento); color:var(--sobre-acento); }
+@media (max-width:560px) { .be-vistas button span { display:none; } .be-vistas button { padding:0 12px; font-size:16px; } }
+.be-chips { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; margin-top:10px; }
+.be-chips::-webkit-scrollbar { display:none; }
+.be-chip { flex-shrink:0; height:38px; padding:0 17px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-2); font-size:13.5px; display:inline-flex; align-items:center; gap:6px; transition:all .2s; }
+.be-chip small { font-size:11.5px; opacity:.6; }
+.be-chip:hover { border-color:var(--text); color:var(--text); }
+.be-chip.on { background:var(--acento); color:var(--sobre-acento); border-color:var(--acento); }
+.be-resultado { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:18px; font-size:13px; color:var(--text-3); }
+.be-resultado b { font-family:var(--font-display); font-weight:500; font-size:24px; color:var(--text); }
+
+/* Vista MENÚ (carta de salón) */
+.be-menu { display:grid; grid-template-columns:1fr; gap:10px 60px; }
+@media (min-width:980px) { .be-menu { grid-template-columns:1fr 1fr; } }
+.be-menu-grupo { grid-column:1/-1; display:flex; align-items:baseline; gap:16px; margin:26px 0 6px; }
+.be-menu-grupo:first-child { margin-top:0; }
+.be-menu-grupo h4 { margin:0; font-family:var(--font-display); font-style:italic; font-weight:400; font-size:clamp(28px,4vw,38px); }
+.be-menu-grupo span { flex:1; height:1px; background:var(--border); }
+.be-menu-grupo small { font-size:12px; letter-spacing:.1em; color:var(--text-3); text-transform:uppercase; }
+.be-servicio { display:grid; grid-template-columns:auto 1fr auto; gap:14px; align-items:center; padding:14px 0; border-bottom:1px dashed var(--border); animation:be-sube .6s var(--ease) backwards; }
+.be-servicio-img { position:relative; width:58px; height:72px; border-radius:50%; overflow:hidden; background:var(--surface-2); cursor:pointer; flex-shrink:0; }
+.be-servicio-img img { width:100%; height:100%; object-fit:cover; }
+.be-servicio-img .be-sin-foto { font-size:26px; }
+.be-servicio-txt { min-width:0; cursor:pointer; }
+.be-servicio-fila { display:flex; align-items:baseline; gap:8px; }
+.be-servicio-nombre { font-family:var(--font-display); font-weight:500; font-size:18.5px; line-height:1.2; }
+.be-servicio-puntos { flex:1; min-width:16px; border-bottom:1px dotted var(--text-3); transform:translateY(-4px); opacity:.6; }
+.be-servicio-precio { font-weight:600; font-size:15.5px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.be-servicio-precio s { font-weight:400; color:var(--text-3); font-size:12.5px; margin-right:6px; }
+.be-servicio-precio.oferta { color:var(--resalte); }
+.be-servicio-desc { font-size:13.5px; color:var(--text-2); line-height:1.5; margin-top:4px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-weight:300; }
+.be-servicio-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.be-tag { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:500; padding:3px 10px; border-radius:999px; background:var(--surface-2); color:var(--text-2); }
+.be-tag.resalte { background:rgba(var(--rosa-rgb),.14); color:var(--resalte); }
+.be-tag.agotado { background:var(--border); color:var(--text-3); }
+.be-mas-btn { width:42px; height:42px; border-radius:50%; border:1px solid var(--text); background:transparent; color:var(--text); display:flex; align-items:center; justify-content:center; font-size:17px; transition:all .25s var(--spring); flex-shrink:0; }
+.be-mas-btn:hover { background:var(--text); color:var(--bg); }
+.be-mas-btn.on { background:var(--resalte); border-color:var(--resalte); color:#fff; }
+.be-mas-btn:active { transform:scale(.88); }
+.be-servicio.agotado { opacity:.55; }
+
+/* Vista GALERÍA */
+.be-galeria { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:26px 12px; }
+@media (min-width:760px) { .be-galeria { grid-template-columns:repeat(3, minmax(0,1fr)); gap:40px 22px; } }
+@media (min-width:1200px) { .be-galeria { grid-template-columns:repeat(4, minmax(0,1fr)); gap:46px 24px; } }
+.be-card { position:relative; display:flex; flex-direction:column; animation:be-sube .7s var(--ease) backwards; }
+.be-card-media { position:relative; aspect-ratio:3/4; border-radius:999px 999px 22px 22px; overflow:hidden; background:var(--surface-2); cursor:pointer; }
+.be-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:be-shimmer 1.3s infinite; }
+.be-card-media img { width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .5s, transform 1.1s var(--ease); }
+.be-card-media img.cargada { opacity:1; }
+.be-card:hover .be-card-media img { transform:scale(1.06); }
+.be-card-media::after { content:''; position:absolute; top:-30%; left:0; width:36%; height:160%; background:linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); transform:translateX(-130%) rotate(18deg); pointer-events:none; }
+@media (hover:hover) { .be-card:hover .be-card-media::after { animation:be-brillo 1.1s ease-out; } }
+.be-card-media .be-sin-foto { font-size:58px; }
+.be-card.agotada .be-card-media img { filter:grayscale(.85); opacity:.5; }
+.be-card-tag { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:2; white-space:nowrap; font-size:11px; font-weight:600; letter-spacing:.06em; padding:5px 12px; border-radius:999px; background:rgba(255,250,248,.92); color:var(--cacao); }
+.be-card-tag.oferta { background:var(--rosa-fuerte); color:#fff; }
+.be-card-fav { position:absolute; top:auto; bottom:-2px; right:0; }
+.be-card-body { padding:14px 2px 0; text-align:center; display:flex; flex-direction:column; flex:1; }
+.be-card-cat { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.be-card-nombre { font-family:var(--font-display); font-weight:500; font-size:19px; line-height:1.15; margin:4px 0 6px; cursor:pointer; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+@media (min-width:760px) { .be-card-nombre { font-size:21px; } }
+.be-card-meta { display:flex; justify-content:center; align-items:baseline; flex-wrap:wrap; gap:4px 10px; font-size:14px; margin-top:auto; }
+.be-card-meta b { font-weight:600; font-variant-numeric:tabular-nums; }
+.be-card-meta b.oferta { color:var(--resalte); }
+.be-card-meta s { color:var(--text-3); font-size:12.5px; }
+.be-card-meta .dur { color:var(--text-3); font-size:12.5px; }
+.be-card-btn { margin-top:12px; height:42px; border-radius:999px; border:1px solid var(--text); background:transparent; color:var(--text); font-size:13px; font-weight:500; letter-spacing:.03em; display:inline-flex; align-items:center; justify-content:center; gap:7px; transition:all .25s; }
+.be-card-btn:hover, .be-card-btn.on { background:var(--acento); color:var(--sobre-acento); border-color:var(--acento); }
+.be-fav { position:absolute; top:12px; right:12px; z-index:3; width:36px; height:36px; border-radius:50%; border:none; background:rgba(255,250,248,.92); color:var(--cacao); display:flex; align-items:center; justify-content:center; font-size:15px; box-shadow:0 4px 12px rgba(0,0,0,.12); transition:transform .25s var(--spring); }
+.be-fav:active { transform:scale(.85); }
+.be-fav.on { color:var(--rosa-fuerte); }
+.be-vacio { grid-column:1/-1; text-align:center; padding:60px 16px; color:var(--text-3); }
+.be-vacio b { display:block; font-family:var(--font-display); font-style:italic; font-weight:400; font-size:32px; color:var(--text); margin-bottom:6px; }
+.be-mas { display:flex; justify-content:center; margin-top:40px; }
+
+/* ===== MOSAICO "Nuestro trabajo" ===== */
+.be-mosaico { columns:2; column-gap:12px; }
+@media (min-width:760px) { .be-mosaico { columns:3; column-gap:18px; } }
+@media (min-width:1100px) { .be-mosaico { columns:4; } }
+.be-mosaico-item { break-inside:avoid; margin-bottom:12px; border-radius:18px; overflow:hidden; cursor:pointer; position:relative; background:var(--surface-2); }
+@media (min-width:760px) { .be-mosaico-item { margin-bottom:18px; } }
+.be-mosaico-item img { width:100%; height:auto; transition:transform 1s var(--ease); }
+.be-mosaico-item:hover img { transform:scale(1.05); }
+.be-mosaico-item span { position:absolute; left:0; right:0; bottom:0; padding:30px 14px 12px; font-family:var(--font-display); font-style:italic; font-size:16px; color:#fff; background:linear-gradient(transparent, rgba(20,12,10,.7)); opacity:0; transition:opacity .35s; }
+.be-mosaico-item:hover span { opacity:1; }
+@media (hover:none) { .be-mosaico-item span { opacity:1; } }
+
+/* ===== CÓMO RESERVAR ===== */
+.be-pasos { display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:820px) { .be-pasos { grid-template-columns:repeat(3,1fr); gap:22px; } }
+.be-paso { position:relative; padding:30px 26px; border-radius:26px; background:var(--surface); border:1px solid var(--border); overflow:hidden; }
+.be-paso-num { font-family:var(--font-display); font-style:italic; font-size:70px; line-height:.8; color:var(--rubor); margin-bottom:14px; }
+html[data-theme="oscuro"] .be-paso-num { color:#5a4540; }
+.be-paso h4 { margin:0 0 8px; font-family:var(--font-display); font-weight:500; font-size:23px; }
+.be-paso p { margin:0; color:var(--text-2); font-size:14.5px; line-height:1.6; font-weight:300; }
+
+/* ===== FOOTER ===== */
+.be-footer { background:var(--cacao); color:#f6ebe7; padding:clamp(64px,9vw,120px) 0 calc(40px + var(--safe-b)); }
+html[data-theme="oscuro"] .be-footer { background:#0e0a0a; }
+.be-footer-titulo { font-family:var(--font-display); font-weight:400; font-size:clamp(44px,8.5vw,110px); line-height:.92; letter-spacing:-.025em; margin:0 0 26px; }
+.be-footer-titulo em { font-style:italic; color:var(--rubor); }
+.be-footer-grid { display:grid; grid-template-columns:1fr; gap:14px; margin:36px 0 40px; }
+@media (min-width:700px) { .be-footer-grid { grid-template-columns:repeat(2,1fr); } }
+@media (min-width:1100px) { .be-footer-grid { grid-template-columns:repeat(4,1fr); } }
+.be-contacto { display:block; padding:20px; border-radius:20px; border:1px solid rgba(246,235,231,.14); transition:border-color .2s, background .2s; min-width:0; }
+.be-contacto:hover { border-color:var(--rubor); background:rgba(246,235,231,.04); }
+.be-contacto small { display:flex; align-items:center; gap:8px; font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:#b9a39c; margin-bottom:8px; }
+.be-contacto b { display:block; font-weight:500; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.be-footer .be-btn-oscuro { background:var(--rubor); color:var(--cacao); }
+.be-pie { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; font-size:12px; color:#9c8781; padding-top:22px; border-top:1px solid rgba(246,235,231,.1); }
+
+/* ===== BARRA "TU CITA" ===== */
+.be-cita-barra { position:fixed; left:50%; bottom:calc(14px + var(--safe-b)); z-index:75; transform:translate(-50%,160%); width:min(560px, calc(100vw - 20px)); display:flex; align-items:center; gap:12px; padding:10px 10px 10px 20px; border-radius:999px; background:var(--acento); color:var(--sobre-acento); box-shadow:0 22px 50px -16px rgba(35,26,24,.6); transition:transform .5s var(--spring); cursor:pointer; }
+.be-cita-barra.on { transform:translate(-50%,0); }
+.be-cita-barra:not(.on) { visibility:hidden; }
+.be-cita-barra-txt { flex:1; min-width:0; }
+.be-cita-barra-txt b { display:block; font-size:14.5px; font-weight:600; }
+.be-cita-barra-txt span { display:block; font-size:12.5px; opacity:.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.be-cita-barra-btn { height:44px; padding:0 20px; border-radius:999px; border:none; background:var(--sobre-acento); color:var(--acento); font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:7px; white-space:nowrap; }
+.be-flot-wa { position:fixed; right:22px; bottom:calc(22px + var(--safe-b)); z-index:70; width:56px; height:56px; border-radius:50%; border:none; background:#25D366; color:#fff; display:none; align-items:center; justify-content:center; font-size:24px; box-shadow:0 14px 30px -8px rgba(0,0,0,.4); transition:transform .25s var(--spring), bottom .4s var(--ease); }
+.be-flot-wa.on { display:flex; }
+.be-flot-wa:hover { transform:scale(1.08); }
+body.be-con-cita .be-flot-wa { bottom:calc(90px + var(--safe-b)); }
+@media (max-width:819px) { body.be-con-cita .be-flot-wa { display:none; } }
+body.be-con-cita { padding-bottom:calc(84px + var(--safe-b)); }
+
+/* ===== OVERLAYS ===== */
+.be-overlay { position:fixed; inset:0; z-index:200; background:rgba(30,18,16,.5); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); display:none; align-items:flex-end; justify-content:center; animation:be-fade .3s; }
+.be-overlay.open { display:flex; }
+@media (min-width:820px) { .be-overlay { align-items:center; padding:26px; } }
+.be-cerrar { position:absolute; top:14px; right:14px; z-index:6; width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:16px; display:flex; align-items:center; justify-content:center; }
+
+/* Modal de servicio/producto */
+.be-modal { position:relative; width:100%; max-width:1000px; max-height:94vh; max-height:94dvh; overflow-y:auto; overscroll-behavior:contain; background:var(--bg); color:var(--text); border-radius:30px 30px 0 0; animation:be-sheet .45s var(--ease); }
+@media (min-width:820px) { .be-modal { border-radius:30px; display:grid; grid-template-columns:1fr 1fr; overflow:hidden; animation:be-sube .4s var(--ease); } }
+.be-modal-agarre { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:40px; height:5px; border-radius:5px; background:var(--text-3); opacity:.5; z-index:6; }
+@media (min-width:820px) { .be-modal-agarre { display:none; } }
+.be-modal-galeria { position:relative; background:var(--surface-2); padding:26px 26px 14px; }
+@media (min-width:820px) { .be-modal-galeria { padding:36px; display:flex; flex-direction:column; justify-content:center; } }
+.be-modal-marco { position:relative; aspect-ratio:3/4; width:min(100%, calc(56vh * .75)); margin:0 auto; border-radius:999px 999px 26px 26px; overflow:hidden; background:var(--surface); }
+@media (min-width:820px) { .be-modal-marco { width:min(100%, calc(72vh * .75)); } }
+.be-modal-fotos { display:flex; height:100%; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+.be-modal-fotos::-webkit-scrollbar { display:none; }
+.be-modal-fotos img { flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; cursor:zoom-in; }
+.be-modal-fotos .be-sin-foto { position:relative; flex:0 0 100%; }
+.be-modal-marco .be-ad { position:absolute; inset:0; aspect-ratio:auto; border-radius:0; box-shadow:none; }
+.be-modal-marco .be-ad-rotulo { top:auto; bottom:16px; }
+.be-modal-puntos { display:flex; justify-content:center; gap:6px; padding:14px 0 4px; min-height:30px; }
+.be-modal-puntos i { width:7px; height:7px; border-radius:7px; background:var(--text-3); opacity:.4; transition:all .25s; }
+.be-modal-puntos i.on { width:22px; opacity:1; background:var(--resalte); }
+.be-modal-body { padding:28px 22px calc(26px + var(--safe-b)); display:flex; flex-direction:column; }
+@media (min-width:820px) { .be-modal-body { padding:56px 42px 34px; max-height:94vh; overflow-y:auto; } }
+.be-modal-cat { font-size:12px; letter-spacing:.26em; text-transform:uppercase; color:var(--resalte); margin-bottom:10px; }
+.be-modal-nombre { font-family:var(--font-display); font-weight:400; font-size:clamp(34px,5vw,50px); line-height:1; letter-spacing:-.015em; margin:0 0 16px; }
+.be-modal-meta { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin-bottom:6px; }
+.be-modal-precio { font-size:26px; font-weight:600; font-variant-numeric:tabular-nums; }
+.be-modal-precio.oferta { color:var(--resalte); }
+.be-modal-meta s { color:var(--text-3); }
+.be-modal-desc { font-size:15.5px; line-height:1.75; color:var(--text-2); white-space:pre-wrap; margin:18px 0 24px; font-weight:300; }
+.be-modal-acciones { display:flex; flex-direction:column; gap:10px; }
+.be-modal-acciones .be-btn { width:100%; }
+.be-modal-extra { display:flex; gap:10px; }
+.be-modal-extra .be-btn { flex:1; height:46px; font-size:13.5px; }
+.be-rel { margin-top:30px; padding-top:22px; border-top:1px solid var(--border); }
+.be-rel h4 { margin:0 0 14px; font-family:var(--font-display); font-style:italic; font-weight:400; font-size:22px; }
+.be-rel-scroll { display:flex; gap:14px; overflow-x:auto; scrollbar-width:none; padding-bottom:4px; }
+.be-rel-scroll::-webkit-scrollbar { display:none; }
+.be-rel-item { flex:0 0 108px; cursor:pointer; text-align:center; }
+.be-rel-img { position:relative; width:108px; height:136px; border-radius:50%; overflow:hidden; background:var(--surface-2); }
+.be-rel-img img { width:100%; height:100%; object-fit:cover; }
+.be-rel-img .be-sin-foto { font-size:34px; }
+.be-rel-item .n { font-size:12.5px; margin-top:8px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.be-rel-item .p { font-size:12.5px; color:var(--text-2); }
+
+/* Panel de reserva */
+.be-cita { position:relative; width:100%; max-width:500px; max-height:94vh; max-height:94dvh; background:var(--bg); color:var(--text); display:flex; flex-direction:column; border-radius:30px 30px 0 0; overflow:hidden; animation:be-sheet .45s var(--ease); }
+@media (min-width:820px) {
+  #be-overlay-cita { align-items:stretch; justify-content:flex-end; padding:0; }
+  .be-cita { height:100vh; max-height:none; border-radius:0; animation:be-drawer .45s var(--ease); }
+}
+.be-cita-head { padding:28px 22px 16px; border-bottom:1px solid var(--border); }
+.be-cita-head small { display:block; font-size:11.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--resalte); margin-bottom:6px; }
+.be-cita-head h3 { margin:0; font-family:var(--font-display); font-weight:400; font-size:38px; line-height:1; }
+.be-cita-cuerpo { flex:1; overflow-y:auto; padding:6px 22px 20px; overscroll-behavior:contain; }
+.be-cita-paso { padding:20px 0; border-bottom:1px solid var(--border); }
+.be-cita-paso:last-child { border-bottom:none; }
+.be-cita-paso-t { display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; margin-bottom:14px; }
+.be-cita-paso-t i { width:24px; height:24px; border-radius:50%; background:var(--acento); color:var(--sobre-acento); font-style:normal; font-size:12px; display:flex; align-items:center; justify-content:center; }
+.be-cita-paso-t em { margin-left:auto; font-style:normal; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-3); font-size:12.5px; }
+.be-cita-item { display:grid; grid-template-columns:48px 1fr auto; gap:12px; align-items:center; padding:10px 0; }
+.be-cita-item-img { position:relative; width:48px; height:60px; border-radius:50%; overflow:hidden; background:var(--surface-2); }
+.be-cita-item-img img { width:100%; height:100%; object-fit:cover; }
+.be-cita-item-img .be-sin-foto { font-size:22px; }
+.be-cita-item .n { font-family:var(--font-display); font-weight:500; font-size:16.5px; line-height:1.2; }
+.be-cita-item .m { font-size:12.5px; color:var(--text-3); margin-top:2px; }
+.be-cant { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; height:36px; overflow:hidden; }
+.be-cant button { width:32px; height:100%; border:none; background:transparent; color:var(--text); font-size:16px; }
+.be-cant span { min-width:20px; text-align:center; font-weight:600; font-size:13px; }
+.be-cita-vacia { text-align:center; padding:26px 8px; color:var(--text-3); font-size:14px; line-height:1.6; }
+.be-dias { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; padding-bottom:4px; margin:0 -22px; padding-left:22px; padding-right:22px; scroll-padding-inline:22px; scroll-snap-type:x proximity; }
+.be-dias::-webkit-scrollbar { display:none; }
+.be-dia { flex:0 0 58px; scroll-snap-align:start; height:74px; border-radius:18px; border:1px solid var(--border); background:var(--surface); color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; transition:all .2s; }
+.be-dia small { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); }
+.be-dia b { font-family:var(--font-display); font-size:22px; font-weight:500; line-height:1; }
+.be-dia em { font-style:normal; font-size:10px; color:var(--text-3); }
+.be-dia.on { background:var(--acento); border-color:var(--acento); color:var(--sobre-acento); }
+.be-dia.on small, .be-dia.on em { color:var(--sobre-acento); opacity:.75; }
+.be-franja-t { font-size:12px; color:var(--text-3); margin:14px 0 8px; letter-spacing:.06em; }
+.be-horas { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.be-hora { height:40px; border-radius:12px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:13px; font-weight:500; font-variant-numeric:tabular-nums; transition:all .2s; }
+.be-hora:hover:not([disabled]) { border-color:var(--text); }
+.be-hora.on { background:var(--acento); border-color:var(--acento); color:var(--sobre-acento); }
+.be-hora[disabled] { opacity:.3; cursor:not-allowed; text-decoration:line-through; }
+.be-campo { display:block; margin-bottom:12px; }
+.be-campo span { display:block; font-size:12px; color:var(--text-2); margin-bottom:6px; }
+.be-campo input, .be-campo textarea { width:100%; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:14px; padding:13px 15px; font-size:15px; outline:none; resize:none; transition:border-color .2s, box-shadow .2s; }
+.be-campo input:focus, .be-campo textarea:focus { border-color:var(--text); box-shadow:0 0 0 4px rgba(var(--rubor-rgb),.35); }
+.be-cita-pie { padding:16px 22px calc(18px + var(--safe-b)); border-top:1px solid var(--border); background:var(--surface); }
+.be-cita-resumen { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; margin-bottom:14px; }
+.be-cita-resumen small { display:block; font-size:12px; color:var(--text-3); line-height:1.5; }
+.be-cita-resumen b { font-family:var(--font-display); font-weight:500; font-size:34px; line-height:1; font-variant-numeric:tabular-nums; }
+.be-cita-pie .be-btn { width:100%; }
+.be-cita-nota { font-size:12px; color:var(--text-3); text-align:center; margin-top:10px; line-height:1.5; }
+.be-cita-vaciar { background:none; border:none; color:var(--text-3); font-size:12px; text-decoration:underline; margin-top:6px; width:100%; }
+
+/* Lightbox */
+.be-lightbox { position:fixed; inset:0; z-index:300; background:rgba(15,9,8,.95); display:none; align-items:center; justify-content:center; }
+.be-lightbox.open { display:flex; }
+.be-lightbox img { max-width:92vw; max-height:84vh; object-fit:contain; border-radius:16px; }
+.be-lb-btn { position:absolute; width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; font-size:22px; display:flex; align-items:center; justify-content:center; }
+.be-lb-btn.cerrar { top:18px; right:18px; font-size:18px; }
+.be-lb-btn.izq { left:14px; top:50%; transform:translateY(-50%); }
+.be-lb-btn.der { right:14px; top:50%; transform:translateY(-50%); }
+.be-lb-cont { position:absolute; bottom:22px; left:50%; transform:translateX(-50%); color:#fff; font-size:12px; }
+
+.be-toasts { position:fixed; left:50%; transform:translateX(-50%); top:calc(var(--hdr-h) + 12px); z-index:960; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none; width:max-content; max-width:92vw; }
+.be-toast { background:var(--acento); color:var(--sobre-acento); padding:12px 20px; border-radius:999px; font-size:13.5px; font-weight:500; box-shadow:0 14px 34px -12px rgba(0,0,0,.4); animation:be-sube .35s var(--ease); display:flex; align-items:center; gap:8px; }
+.be-vista-previa { display:none; background:var(--rosa-fuerte); color:#fff; text-align:center; font-size:12px; font-weight:600; padding:7px 14px; letter-spacing:.04em; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  .be-reveal { opacity:1; transform:none; }
+}
+</style>
+</head>
+<body class="be-bloqueado">
+
+<div class="be-carga" id="be-carga"><div class="be-carga-espejo"></div><div class="be-carga-txt" id="be-carga-txt"></div></div>
+<div class="be-error" id="be-error"></div>
+
+<div id="be-app" style="display:none">
+  <div class="be-vista-previa" id="be-vista-previa">Vista previa — este catálogo todavía no es público</div>
+
+  <header class="be-header">
+    <div class="be-wrap be-header-in">
+      <div class="be-marca" onclick="irArriba()">
+        <img class="be-marca-logo" id="be-marca-logo" src="" alt="">
+        <div class="be-marca-letra" id="be-marca-letra"></div>
+        <span class="be-marca-nombre" id="be-marca-nombre"></span>
+      </div>
+      <nav class="be-nav">
+        <a onclick="irA('be-sec-servicios')">Servicios</a>
+        <a onclick="irA('be-sec-trabajo')" id="be-nav-trabajo">Nuestro trabajo</a>
+        <a onclick="irA('be-footer')">Contacto</a>
+      </nav>
+      <div class="be-header-der">
+        <button class="be-icon-btn" onclick="enfocarBusqueda()" aria-label="Buscar" id="be-ico-buscar"></button>
+        <button class="be-icon-btn" onclick="verFavoritos()" aria-label="Favoritos"><span id="be-ico-fav"></span><span class="be-badge" id="be-badge-fav"></span></button>
+        <button class="be-icon-btn" onclick="toggleTema()" aria-label="Cambiar tema" id="be-btn-tema"></button>
+        <button class="be-header-cta" id="be-header-cta" onclick="abrirCita()"><span id="be-ico-cal"></span> Reservar <span class="be-badge" id="be-badge-cita" style="position:static;margin-left:2px"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== HERO ===== -->
+  <section class="be-hero">
+    <div class="be-blob a"></div><div class="be-blob b"></div>
+    <div class="be-wrap be-hero-grid">
+      <div>
+        <div class="be-hero-kicker" id="be-hero-kicker"></div>
+        <h1 class="be-hero-titulo">Tu momento<br>de <em>brillar</em></h1>
+        <p class="be-hero-desc" id="be-hero-desc"></p>
+        <div class="be-hero-acciones" id="be-hero-acciones"></div>
+        <div class="be-hero-datos" id="be-hero-datos"></div>
+      </div>
+      <div class="be-espejo-zona" id="be-espejo-zona" style="display:none">
+        <div class="be-espejo" id="be-espejo"><div class="be-espejo-in"><img id="be-espejo-img" src="" alt=""></div></div>
+        <span class="be-destello" style="top:6%;right:10%"></span>
+        <span class="be-destello" style="top:44%;left:-4%;animation-delay:-1.1s;width:12px;height:12px"></span>
+        <span class="be-destello" style="bottom:8%;right:2%;animation-delay:-2.2s;width:14px;height:14px"></span>
+        <div class="be-espejo-etiqueta" id="be-espejo-etiqueta"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="be-marquee" id="be-marquee" aria-hidden="true"><div class="be-marquee-pista" id="be-marquee-pista"></div></div>
+
+  <!-- ===== ANTES Y DESPUÉS ===== -->
+  <section class="be-seccion be-reveal" id="be-sec-ad" style="display:none">
+    <div class="be-wrap">
+      <div class="be-head">
+        <div class="be-kicker">Resultados reales</div>
+        <h2 class="be-titulo">Antes <em>y después</em></h2>
+        <p class="be-sub">Deslizá la línea para ver la transformación.</p>
+      </div>
+      <div class="be-ad-rail" id="be-ad-rail"></div>
+    </div>
+  </section>
+
+  <!-- ===== FAVORITOS ===== -->
+  <section class="be-seccion be-reveal" id="be-sec-favoritos" style="display:none">
+    <div class="be-wrap">
+      <div class="be-head centro">
+        <div class="be-kicker" id="be-fav-kicker">Los más pedidos</div>
+        <h2 class="be-titulo" id="be-fav-titulo">Favoritos <em>del salón</em></h2>
+      </div>
+      <div class="be-rail" id="be-rail-favoritos"></div>
+      <div class="be-rail-nav" id="be-nav-favoritos"><button onclick="moverRail('be-rail-favoritos',-1)" aria-label="Anterior">←</button><button onclick="moverRail('be-rail-favoritos',1)" aria-label="Siguiente">→</button></div>
+    </div>
+  </section>
+
+  <!-- ===== SERVICIOS ===== -->
+  <section class="be-seccion" id="be-sec-servicios" style="padding-top:20px">
+    <div class="be-wrap">
+      <div class="be-head">
+        <div class="be-kicker">Menú completo</div>
+        <h2 class="be-titulo">Servicios <em>&amp; productos</em></h2>
+      </div>
+      <div class="be-filtros">
+        <div class="be-filtros-fila">
+          <label class="be-buscador">
+            <span id="be-ico-buscar-2"></span>
+            <span class="be-sr">Buscar</span>
+            <input type="search" id="be-buscador" placeholder="Buscar un servicio o producto" autocomplete="off" oninput="onBuscar(this.value)">
+            <button type="button" class="be-limpiar" id="be-limpiar" onclick="limpiarBusqueda()" aria-label="Limpiar búsqueda">✕</button>
+          </label>
+          <div class="be-vistas" role="tablist" aria-label="Vista">
+            <button id="be-v-menu" onclick="cambiarVista('menu')" role="tab"><span id="be-ico-lista"></span><span>Menú</span></button>
+            <button id="be-v-galeria" onclick="cambiarVista('galeria')" role="tab"><span id="be-ico-grid"></span><span>Galería</span></button>
+          </div>
+        </div>
+        <div class="be-chips" id="be-chips"></div>
+      </div>
+      <div class="be-resultado"><b id="be-res-titulo">Todo</b><span id="be-res-conteo"></span></div>
+      <div id="be-lista"></div>
+      <div class="be-mas" id="be-mas" style="display:none"><button class="be-btn be-btn-linea" onclick="mostrarMas()">Ver más</button></div>
+    </div>
+  </section>
+
+  <!-- ===== NUESTRO TRABAJO ===== -->
+  <section class="be-seccion be-reveal" id="be-sec-trabajo" style="display:none;padding-top:0">
+    <div class="be-wrap">
+      <div class="be-head centro">
+        <div class="be-kicker">Portafolio</div>
+        <h2 class="be-titulo">Nuestro <em>trabajo</em></h2>
+      </div>
+      <div class="be-mosaico" id="be-mosaico"></div>
+    </div>
+  </section>
+
+  <!-- ===== CÓMO RESERVAR ===== -->
+  <section class="be-seccion be-reveal" id="be-sec-pasos" style="padding-top:0">
+    <div class="be-wrap">
+      <div class="be-head centro">
+        <div class="be-kicker">Así de fácil</div>
+        <h2 class="be-titulo">Reservá en <em>tres pasos</em></h2>
+      </div>
+      <div class="be-pasos">
+        <div class="be-paso"><div class="be-paso-num">01</div><h4>Elegí tus servicios</h4><p>Tocá el “+” de lo que querés. Podés combinar varios en una misma cita.</p></div>
+        <div class="be-paso"><div class="be-paso-num">02</div><h4>Escogé día y hora</h4><p>Seleccioná el día y la hora que mejor te quedan, y dejanos tu nombre.</p></div>
+        <div class="be-paso"><div class="be-paso-num">03</div><h4>Te confirmamos</h4><p>Tu solicitud llega directo a nuestro WhatsApp y te confirmamos la disponibilidad.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="be-footer" id="be-footer">
+    <div class="be-wrap">
+      <h2 class="be-footer-titulo be-reveal">Te esperamos<br>para <em>consentirte</em></h2>
+      <div id="be-footer-cta"></div>
+      <div class="be-footer-grid" id="be-contactos"></div>
+      <div class="be-pie"><span>© <span id="be-anio"></span> <span id="be-pie-nombre"></span></span><span>Creado con Catálogo360</span></div>
+    </div>
+  </footer>
+
+  <div class="be-cita-barra" id="be-cita-barra" onclick="abrirCita()"></div>
+  <button class="be-flot-wa" id="be-flot-wa" aria-label="WhatsApp"></button>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div class="be-overlay" id="be-overlay-modal" onclick="if(event.target===this)cerrarModal()" role="dialog" aria-modal="true" aria-label="Detalle">
+  <div class="be-modal" id="be-modal">
+    <div class="be-modal-agarre"></div>
+    <button class="be-cerrar" onclick="cerrarModal()" aria-label="Cerrar" data-ico="close"></button>
+    <div class="be-modal-galeria">
+      <div class="be-modal-marco" id="be-modal-marco"></div>
+      <div class="be-modal-puntos" id="be-modal-puntos"></div>
+    </div>
+    <div class="be-modal-body" id="be-modal-body"></div>
+  </div>
+</div>
+
+<!-- ===== RESERVA ===== -->
+<div class="be-overlay" id="be-overlay-cita" onclick="if(event.target===this)cerrarCita()" role="dialog" aria-modal="true" aria-label="Tu cita">
+  <div class="be-cita">
+    <button class="be-cerrar" onclick="cerrarCita()" aria-label="Cerrar" data-ico="close"></button>
+    <div class="be-cita-head"><small>Solicitud de cita</small><h3>Tu cita</h3></div>
+    <div class="be-cita-cuerpo" id="be-cita-cuerpo"></div>
+    <div class="be-cita-pie" id="be-cita-pie"></div>
+  </div>
+</div>
+
+<!-- ===== LIGHTBOX ===== -->
+<div class="be-lightbox" id="be-lightbox" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="be-lb-btn cerrar" onclick="cerrarLightbox()" aria-label="Cerrar">✕</button>
+  <button class="be-lb-btn izq" onclick="moverLightbox(-1)" aria-label="Anterior">‹</button>
+  <img id="be-lb-img" src="" alt="">
+  <button class="be-lb-btn der" onclick="moverLightbox(1)" aria-label="Siguiente">›</button>
+  <div class="be-lb-cont" id="be-lb-cont"></div>
+</div>
+
+<div class="be-toasts" id="be-toasts" aria-live="polite"></div>
+
+<script>
+const sb = c360CrearCliente();
+const PLANTILLA_KEY = 'belleza';
+const POR_PAGINA = 30;
+const DIAS_RESERVA = 21;
+const MOV_REDUCIDO = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [];
+let CATEGORIA_ACTUAL = null, SOLO_FAV = false, SOLO_OFERTAS = false;
+let TEXTO = '', LIMITE = POR_PAGINA, VISTA = 'menu';
+let FAVORITOS = [], CITA = [], DATOS = { fecha:null, hora:null, nombre:'', nota:'' };
+let ES_PREVIEW = false, MODAL_ID = null, LB_FOTOS = [], LB_I = 0;
+
+const ICO = {
+  heart: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  heartFill: '<svg class="be-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  moon: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/></svg>',
+  sun: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  search: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  cal: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+  plus: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  check: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  clock: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  lista: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/></svg>',
+  grid: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+  wa: '<svg class="be-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.2-.5-.5-1-1.1-1.3-1.7-.1-.2 0-.4.1-.5l.4-.5.3-.4v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.6.6-.9 1.3-.9 2.1.1.9.4 1.8 1 2.6 1.1 1.6 2.5 2.9 4.2 3.6.5.2.9.4 1.4.5.5.2 1 .2 1.6.1.6-.1 1.2-.5 1.5-1.1.2-.4.2-.8.1-1.1l-.6-.2z"/></svg>',
+  phone: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11 11 0 0 0 3.5.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1 11 11 0 0 0 .6 3.5 1 1 0 0 1-.3 1z"/></svg>',
+  mail: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  pin: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  share: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+  close: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  arrows: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>',
+  trash: '<svg class="be-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+};
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+function esc(s){ return c360Esc(s); }
+function fmtC(n){ return c360FmtC(n); }
+function nombreNegocio(){ return CATALOGO?.nombre_comercial || CATALOGO?.nombre || ''; }
+function enOferta(p){ return p.etiqueta === 'oferta' && p.precio_oferta && Number(p.precio_oferta) < Number(p.precio); }
+function precioReal(p){ return enOferta(p) ? Number(p.precio_oferta) : Number(p.precio); }
+function descuento(p){ return enOferta(p) && Number(p.precio) > 0 ? Math.round((1 - Number(p.precio_oferta) / Number(p.precio)) * 100) : 0; }
+function fotoPrincipal(p){ return p?.fotos?.find(f => f.es_principal) || p?.fotos?.[0] || null; }
+function inicial(t){ return esc((String(t || '?').trim()[0] || '?').toUpperCase()); }
+function sinFoto(p){ return `<div class="be-sin-foto">${inicial(p.nombre)}</div>`; }
+function nombreCat(p){ return CATEGORIAS.find(c => c.id === p.categoria_id)?.nombre || ''; }
+function claveLocal(k){ return `be_${k}_${CATALOGO?.id || 'x'}`; }
+function leerLocal(k, def){ try { const v = localStorage.getItem(claveLocal(k)); return v ? JSON.parse(v) : (def ?? []); } catch(e) { return def ?? []; } }
+function guardarLocal(k, v){ try { localStorage.setItem(claveLocal(k), JSON.stringify(v)); } catch(e) {} }
+function registrarEvento(tipo, prodId){ c360RegistrarEvento(sb, CATALOGO?.id, tipo, prodId, ES_PREVIEW); }
+function hayWhatsApp(){ return !!(CATALOGO && CATALOGO.whatsapp && String(CATALOGO.whatsapp).replace(/\D/g,'').length >= 7); }
+function linkWA(txt){ return c360LinkWA(CATALOGO.whatsapp, txt); }
+function irArriba(){ window.scrollTo({ top:0, behavior:'smooth' }); }
+function irA(id){ const el = $(id); if (el && el.style.display !== 'none') el.scrollIntoView({ behavior:'smooth' }); }
+function enfocarBusqueda(){ irA('be-sec-servicios'); setTimeout(() => $('be-buscador').focus({ preventScroll:true }), 550); }
+function bloquearScroll(on){ document.body.classList.toggle('be-bloqueado', on); }
+function toast(msg, ico){
+  const t = document.createElement('div'); t.className = 'be-toast';
+  t.innerHTML = (ico || '') + `<span>${esc(msg)}</span>`;
+  $('be-toasts').appendChild(t); setTimeout(() => t.remove(), 2300);
+}
+function aplicarTema(t){ document.documentElement.setAttribute('data-theme', t); $('be-btn-tema').innerHTML = t === 'oscuro' ? ICO.sun : ICO.moon; }
+function toggleTema(){ const n = document.documentElement.getAttribute('data-theme') === 'oscuro' ? 'claro' : 'oscuro'; aplicarTema(n); try { localStorage.setItem('be_tema', n); } catch(e) {} }
+
+/* ---------- DURACIÓN: se lee de la descripción o del nombre ----------
+   Ejemplos que entiende: "45 min", "1 h", "1h 30min", "2 horas",
+   "1 hora y 15 minutos", "1.5 h", "Duración: 90 minutos".               */
+function duracionMin(p){
+  const txt = `${p.descripcion || ''} ${p.nombre || ''}`;
+  const h = txt.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\b(?:\s*(?:y\s*)?(\d{1,2})\s*(?:min|mins|minutos)\b)?/i);
+  if (h) { const horas = parseFloat(h[1].replace(',', '.')); const extra = h[2] ? parseInt(h[2], 10) : 0; const t = Math.round(horas * 60 + extra); return t > 0 && t <= 600 ? t : 0; }
+  const m = txt.match(/(\d{1,3})\s*(?:min|mins|minutos)\b/i);
+  if (m) { const t = parseInt(m[1], 10); return t > 0 && t <= 600 ? t : 0; }
+  return 0;
+}
+function fmtDur(min){ if (!min) return ''; const h = Math.floor(min / 60), m = min % 60; return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`; }
+/* ---------- ANTES / DESPUÉS: el salón lo activa escribiendo "antes y después"
+   en la descripción (o el nombre) de un producto con 2 fotos o más.        */
+function esAntesDespues(p){ return (p.fotos || []).length >= 2 && /antes\s*(?:y|\/|&|-)\s*despu[eé]s/i.test(`${p.nombre || ''} ${p.descripcion || ''}`); }
+function fotosAD(p){ const f = [...(p.fotos || [])].sort((a, b) => a.orden - b.orden); return [f[0], f[1]]; }
+
+/* ---------- arranque ---------- */
+function pintarIconos(){
+  $('be-ico-buscar').innerHTML = ICO.search; $('be-ico-buscar-2').innerHTML = ICO.search;
+  $('be-ico-fav').innerHTML = ICO.heart; $('be-ico-cal').innerHTML = ICO.cal;
+  $('be-ico-lista').innerHTML = ICO.lista; $('be-ico-grid').innerHTML = ICO.grid;
+  $('be-flot-wa').innerHTML = ICO.wa;
+  document.querySelectorAll('[data-ico="close"]').forEach(b => b.innerHTML = ICO.close);
+}
+async function init(){
+  pintarIconos();
+  const inicio = Date.now();
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'), idPreview = params.get('preview');
+  ES_PREVIEW = !!idPreview;
+  let r;
+  try { r = await c360CargarCatalogoPublico({ sb, slug, idPreview }); }
+  catch (e) { r = { error:'No pudimos conectar. Revisá tu internet e intentá de nuevo.' }; }
+  if (r.error) { mostrarError(r.error); return; }
+  if (c360RedirigirSiPlantillaCambio(r.catalogo, PLANTILLA_KEY)) return;
+
+  CATALOGO = r.catalogo; PRODUCTOS = r.productos; CATEGORIAS = r.categorias;
+  FAVORITOS = leerLocal('favoritos');
+  CITA = leerLocal('cita').filter(c => PRODUCTOS.some(p => p.id === c.id && p.etiqueta !== 'agotado'));
+  DATOS = Object.assign({ fecha:null, hora:null, nombre:'', nota:'' }, leerLocal('datos', {}));
+  if (DATOS.fecha && DATOS.fecha < claveFecha(new Date())) { DATOS.fecha = null; DATOS.hora = null; }
+  $('be-carga-txt').textContent = nombreNegocio();
+
+  let tema = 'claro';
+  try { tema = localStorage.getItem('be_tema') || CATALOGO.tema_default || 'claro'; } catch(e) {}
+  aplicarTema(tema);
+  // vista inicial: menú si la mayoría no tiene foto o hay muchos servicios con duración; si no, galería
+  let vista = null; try { vista = localStorage.getItem(claveLocal('vista')); } catch(e) {}
+  const conFoto = PRODUCTOS.filter(fotoPrincipal).length;
+  VISTA = vista || (conFoto < PRODUCTOS.length * .6 || PRODUCTOS.filter(duracionMin).length >= PRODUCTOS.length * .4 ? 'menu' : 'galeria');
+  if (ES_PREVIEW && CATALOGO.estado !== 'publicado') $('be-vista-previa').style.display = 'block';
+
+  $('be-app').style.display = 'block';
+  renderTodo();
+  if (!ES_PREVIEW) registrarEvento('visita');
+  setTimeout(() => {
+    $('be-carga').classList.add('fuera'); bloquearScroll(false);
+    setTimeout(() => $('be-carga')?.remove(), 800);
+    activarRevelado(); abrirDesdeHash();
+  }, MOV_REDUCIDO ? 0 : Math.max(0, 1000 - (Date.now() - inicio)));
+}
+function mostrarError(msg){
+  $('be-carga')?.remove(); bloquearScroll(false);
+  const e = $('be-error'); e.style.display = 'flex';
+  e.innerHTML = `<b>No disponible</b><p>${esc(msg)}</p>`;
+}
+function abrirDesdeHash(){
+  const m = location.hash.match(/^#producto-(.+)$/);
+  if (m && PRODUCTOS.some(p => p.id === m[1])) setTimeout(() => abrirModal(m[1]), 300);
+}
+function renderTodo(){
+  renderMeta(); renderHeader(); renderHero(); renderMarquee(); renderAntesDespues(); renderFavoritos();
+  renderChips(); marcarVista(); aplicarFiltro(); renderMosaico(); renderFooter(); actualizarCitaUI();
+}
+function renderMeta(){
+  const c = CATALOGO, nombre = nombreNegocio();
+  document.title = `${nombre} · Reservá tu cita`;
+  const d = c.descripcion || `Servicios y reservas en ${nombre}`;
+  $('be-desc-meta').setAttribute('content', d); $('be-og-title').setAttribute('content', nombre); $('be-og-desc').setAttribute('content', d);
+  const img = c.banner_url || c.logo_url; if (img) $('be-og-image').setAttribute('content', img);
+  c360InsertarJSONLD('be-jsonld', c, PRODUCTOS);
+}
+function renderHeader(){
+  const nombre = nombreNegocio();
+  $('be-marca-nombre').textContent = nombre;
+  if (CATALOGO.logo_url) { const l = $('be-marca-logo'); l.src = CATALOGO.logo_url; l.style.display = 'block'; $('be-marca-letra').style.display = 'none'; }
+  else $('be-marca-letra').innerHTML = inicial(nombre);
+  if (hayWhatsApp()) {
+    $('be-header-cta').classList.add('on');
+    const b = $('be-flot-wa'); b.classList.add('on');
+    b.onclick = () => { registrarEvento('click_whatsapp'); window.open(linkWA(`Hola ${nombre}, quisiera información sobre sus servicios.`), '_blank'); };
+  }
+}
+
+/* ---------- HERO ---------- */
+function renderHero(){
+  $('be-hero-kicker').textContent = nombreNegocio();
+  $('be-hero-desc').textContent = CATALOGO.descripcion || 'Un espacio pensado para vos. Elegí tus servicios, escogé día y hora, y nosotros nos encargamos del resto.';
+  let acc = '';
+  if (hayWhatsApp()) acc += `<button class="be-btn be-btn-oscuro" onclick="abrirCita()">${ICO.cal} Reservar cita</button>`;
+  acc += `<button class="be-btn be-btn-linea" onclick="irA('be-sec-servicios')">Ver servicios</button>`;
+  $('be-hero-acciones').innerHTML = acc;
+  const precios = PRODUCTOS.filter(p => p.etiqueta !== 'agotado').map(precioReal).filter(v => v > 0);
+  let datos = `<div class="be-dato"><b>${PRODUCTOS.length}</b><span>${PRODUCTOS.length === 1 ? 'servicio' : 'servicios'}</span></div>`;
+  if (precios.length) datos += `<div class="be-dato"><b>${fmtC(Math.min(...precios)).replace('.00', '')}</b><span>desde</span></div>`;
+  const cats = CATEGORIAS.filter(c => PRODUCTOS.some(p => p.categoria_id === c.id)).length;
+  if (cats > 1) datos += `<div class="be-dato"><b>${cats}</b><span>especialidades</span></div>`;
+  $('be-hero-datos').innerHTML = datos;
+
+  const conFoto = PRODUCTOS.filter(p => fotoPrincipal(p) && p.etiqueta !== 'agotado');
+  const p = conFoto.find(x => x.destacado) || conFoto.find(enOferta) || conFoto[0];
+  if (!p) return;
+  $('be-espejo-zona').style.display = 'block';
+  const img = $('be-espejo-img'); img.src = fotoPrincipal(p).url; img.alt = p.nombre;
+  $('be-espejo').onclick = () => abrirModal(p.id);
+  const dur = duracionMin(p);
+  const et = $('be-espejo-etiqueta');
+  et.innerHTML = `<small>${p.destacado ? 'Favorito' : 'Destacado'}</small><b>${esc(p.nombre)}</b><span>${fmtC(precioReal(p))}${dur ? ` · ${fmtDur(dur)}` : ''}</span>`;
+  et.onclick = () => abrirModal(p.id);
+}
+function renderMarquee(){
+  const cats = CATEGORIAS.filter(c => PRODUCTOS.some(p => p.categoria_id === c.id)).map(c => c.nombre);
+  const palabras = cats.length >= 2 ? cats : PRODUCTOS.slice(0, 6).map(p => p.nombre);
+  if (palabras.length < 2) { $('be-marquee').style.display = 'none'; return; }
+  let bloque = palabras.map(t => `<span>${esc(t)}</span>`).join('');
+  while (bloque.length < 600) bloque += bloque; // que siempre llene la pantalla
+  $('be-marquee-pista').innerHTML = bloque + bloque;
+}
+
+/* ---------- ANTES / DESPUÉS ---------- */
+function htmlAD(p, conPista){
+  const [a, d] = fotosAD(p);
+  return `<div class="be-ad ${conPista ? 'pista' : ''}" data-ad style="--corte:50%">
+    <img src="${esc(a.url)}" alt="Antes: ${esc(p.nombre)}" draggable="false">
+    <img class="despues" src="${esc(d.url)}" alt="Después: ${esc(p.nombre)}" draggable="false">
+    <span class="be-ad-rotulo izq">Antes</span><span class="be-ad-rotulo der">Después</span>
+    <div class="be-ad-linea"></div><div class="be-ad-manija">${ICO.arrows}</div>
+  </div>`;
+}
+function renderAntesDespues(){
+  const lista = PRODUCTOS.filter(esAntesDespues).slice(0, 9);
+  if (!lista.length) { $('be-sec-ad').style.display = 'none'; return; }
+  $('be-sec-ad').style.display = 'block';
+  $('be-ad-rail').innerHTML = lista.map((p, i) => `<div class="be-ad-item">${htmlAD(p, i === 0)}
+    <div class="be-ad-nombre" onclick="abrirModal('${p.id}')"><b>${esc(p.nombre)}</b><span>${fmtC(precioReal(p))}</span></div></div>`).join('');
+  activarSliders($('be-ad-rail'));
+}
+// El deslizador responde a mouse y dedo; el scroll vertical del celular sigue funcionando
+function activarSliders(raiz){
+  raiz.querySelectorAll('[data-ad]').forEach(el => {
+    let activo = false, x0 = 0, y0 = 0, decidido = false;
+    const mover = cx => { const r = el.getBoundingClientRect(); el.style.setProperty('--corte', `${Math.max(0, Math.min(100, ((cx - r.left) / r.width) * 100)).toFixed(2)}%`); };
+    el.addEventListener('pointerdown', e => { activo = true; decidido = e.pointerType === 'mouse'; x0 = e.clientX; y0 = e.clientY; el.classList.remove('pista'); if (decidido) { el.setPointerCapture(e.pointerId); mover(e.clientX); } });
+    el.addEventListener('pointermove', e => {
+      if (!activo) return;
+      if (!decidido) {
+        const dx = Math.abs(e.clientX - x0), dy = Math.abs(e.clientY - y0);
+        if (dx < 6 && dy < 6) return;
+        if (dy > dx) { activo = false; return; } // gesto vertical: dejamos que la página haga scroll
+        decidido = true; el.setPointerCapture(e.pointerId);
+      }
+      mover(e.clientX);
+    });
+    const fin = () => { activo = false; };
+    el.addEventListener('pointerup', fin); el.addEventListener('pointercancel', fin);
+    el.addEventListener('keydown', e => {
+      const v = parseFloat(el.style.getPropertyValue('--corte')) || 50;
+      if (e.key === 'ArrowLeft') el.style.setProperty('--corte', `${Math.max(0, v - 5)}%`);
+      if (e.key === 'ArrowRight') el.style.setProperty('--corte', `${Math.min(100, v + 5)}%`);
+    });
+    el.tabIndex = 0; el.setAttribute('role', 'slider'); el.setAttribute('aria-label', 'Comparar antes y después');
+  });
+}
+
+/* ---------- FAVORITOS DEL SALÓN ---------- */
+function renderFavoritos(){
+  let lista = PRODUCTOS.filter(p => p.destacado && p.etiqueta !== 'agotado');
+  if (lista.length < 3) lista = lista.concat(PRODUCTOS.filter(p => enOferta(p) && !p.destacado && p.etiqueta !== 'agotado'));
+  lista = lista.slice(0, 10);
+  if (lista.length < 2) { $('be-sec-favoritos').style.display = 'none'; return; }
+  if (!PRODUCTOS.some(p => p.destacado)) { $('be-fav-kicker').textContent = 'Precios especiales'; $('be-fav-titulo').innerHTML = 'Promociones <em>del mes</em>'; }
+  $('be-sec-favoritos').style.display = 'block';
+  $('be-rail-favoritos').innerHTML = lista.map(p => {
+    const f = fotoPrincipal(p), dur = duracionMin(p), d = descuento(p);
+    return `<div class="be-ovalo" onclick="abrirModal('${p.id}')">
+      <div class="be-ovalo-img">${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy">` : sinFoto(p)}</div>
+      <div class="be-ovalo-nombre">${esc(p.nombre)}</div>
+      <div class="be-ovalo-meta">${fmtC(precioReal(p))}${d ? ` · <span style="color:var(--resalte)">-${d}%</span>` : ''}${dur ? ` · ${fmtDur(dur)}` : ''}</div>
+    </div>`;
+  }).join('');
+  $('be-nav-favoritos').classList.toggle('on', lista.length > 5);
+}
+function moverRail(id, dir){ const r = $(id); r.scrollBy({ left:dir * r.clientWidth * .8, behavior:'smooth' }); }
+
+/* ---------- SERVICIOS: filtros y vistas ---------- */
+function renderChips(){
+  const nOf = PRODUCTOS.filter(enOferta).length;
+  const nFav = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length;
+  const conteo = {}; PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id] || 0) + 1; });
+  let h = `<button class="be-chip ${!CATEGORIA_ACTUAL && !SOLO_FAV && !SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('todo')">Todo <small>${PRODUCTOS.length}</small></button>`;
+  h += CATEGORIAS.filter(c => conteo[c.id]).map(c => `<button class="be-chip ${CATEGORIA_ACTUAL?.id === c.id ? 'on' : ''}" onclick="elegirChip('cat','${c.id}')">${esc(c.nombre)} <small>${conteo[c.id]}</small></button>`).join('');
+  if (nOf) h += `<button class="be-chip ${SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('ofertas')">Promociones <small>${nOf}</small></button>`;
+  if (nFav) h += `<button class="be-chip ${SOLO_FAV ? 'on' : ''}" onclick="elegirChip('fav')">${ICO.heart} Favoritos <small>${nFav}</small></button>`;
+  $('be-chips').innerHTML = h;
+}
+function elegirChip(tipo, id){
+  if (tipo === 'todo') { CATEGORIA_ACTUAL = null; SOLO_FAV = false; SOLO_OFERTAS = false; }
+  else if (tipo === 'ofertas') { SOLO_OFERTAS = !SOLO_OFERTAS; SOLO_FAV = false; }
+  else if (tipo === 'fav') { SOLO_FAV = !SOLO_FAV; SOLO_OFERTAS = false; }
+  else if (tipo === 'cat') { CATEGORIA_ACTUAL = CATEGORIA_ACTUAL?.id === id ? null : (CATEGORIAS.find(c => c.id === id) || null); }
+  LIMITE = POR_PAGINA; renderChips(); aplicarFiltro();
+  const g = $('be-lista').getBoundingClientRect();
+  if (g.top > innerHeight * .8 || g.top < 0) irA('be-sec-servicios');
+}
+function verFavoritos(){ if (!FAVORITOS.length) { toast('Todavía no tenés favoritos', ICO.heart); return; } SOLO_FAV = false; elegirChip('fav'); irA('be-sec-servicios'); }
+let _bus = null;
+function onBuscar(v){ $('be-limpiar').classList.toggle('on', !!v); clearTimeout(_bus); _bus = setTimeout(() => { TEXTO = v.trim().toLowerCase(); LIMITE = POR_PAGINA; aplicarFiltro(); }, 140); }
+function limpiarBusqueda(){ $('be-buscador').value = ''; onBuscar(''); $('be-buscador').focus(); }
+function cambiarVista(v){ VISTA = v; try { localStorage.setItem(claveLocal('vista'), v); } catch(e) {} marcarVista(); aplicarFiltro(); }
+function marcarVista(){ $('be-v-menu').classList.toggle('on', VISTA === 'menu'); $('be-v-galeria').classList.toggle('on', VISTA === 'galeria'); }
+function mostrarMas(){ LIMITE += POR_PAGINA; aplicarFiltro(true); }
+function listaFiltrada(){
+  let lista = c360FiltrarYOrdenar(PRODUCTOS, {
+    categoriaId:CATEGORIA_ACTUAL?.id || null, soloFavoritos:SOLO_FAV, favoritos:FAVORITOS,
+    soloOfertas:SOLO_OFERTAS, textoBusqueda:TEXTO, orden:'reciente',
+  });
+  // la carta de un salón se lee en el orden que el negocio definió
+  lista.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  return lista.filter(p => p.etiqueta !== 'agotado').concat(lista.filter(p => p.etiqueta === 'agotado'));
+}
+function aplicarFiltro(agregando){
+  const lista = listaFiltrada();
+  let titulo = 'Todo';
+  if (SOLO_FAV) titulo = 'Tus favoritos'; else if (SOLO_OFERTAS) titulo = 'Promociones';
+  if (CATEGORIA_ACTUAL) titulo = CATEGORIA_ACTUAL.nombre;
+  if (TEXTO) titulo = `“${TEXTO}”`;
+  $('be-res-titulo').textContent = titulo;
+  $('be-res-conteo').textContent = `${lista.length} ${lista.length === 1 ? 'opción' : 'opciones'}`;
+  const cont = $('be-lista');
+  if (!lista.length) { cont.className = ''; cont.innerHTML = `<div class="be-vacio"><b>Sin resultados</b>Probá con otra búsqueda o categoría.</div>`; $('be-mas').style.display = 'none'; return; }
+  const visibles = lista.slice(0, LIMITE), desde = agregando ? LIMITE - POR_PAGINA : 0;
+  if (VISTA === 'menu') {
+    cont.className = 'be-menu';
+    // agrupado por categoría, como la carta de un salón
+    const grupos = [];
+    const agrupar = !CATEGORIA_ACTUAL && !TEXTO && CATEGORIAS.length > 0;
+    if (agrupar) {
+      CATEGORIAS.forEach(c => { const items = visibles.filter(p => p.categoria_id === c.id); if (items.length) grupos.push({ nombre:c.nombre, items }); });
+      const sueltos = visibles.filter(p => !CATEGORIAS.some(c => c.id === p.categoria_id));
+      if (sueltos.length) grupos.push({ nombre:'Otros', items:sueltos });
+    } else grupos.push({ nombre:null, items:visibles });
+    let i = 0;
+    cont.innerHTML = grupos.map(g => (g.nombre ? `<div class="be-menu-grupo"><h4>${esc(g.nombre)}</h4><span></span><small>${g.items.length}</small></div>` : '') + g.items.map(p => filaServicio(p, Math.max(0, (i++) - desde))).join('')).join('');
+  } else {
+    cont.className = 'be-galeria';
+    cont.innerHTML = visibles.map((p, i) => tarjeta(p, Math.max(0, i - desde))).join('');
+  }
+  $('be-mas').style.display = lista.length > LIMITE ? 'flex' : 'none';
+}
+function filaServicio(p, i){
+  const f = fotoPrincipal(p), d = descuento(p), dur = duracionMin(p), agotado = p.etiqueta === 'agotado', en = CITA.some(c => c.id === p.id);
+  const desc = (p.descripcion || '').trim();
+  let tags = '';
+  if (dur) tags += `<span class="be-tag">${ICO.clock} ${fmtDur(dur)}</span>`;
+  if (d) tags += `<span class="be-tag resalte">-${d}% promoción</span>`;
+  if (p.etiqueta === 'nuevo') tags += `<span class="be-tag resalte">Nuevo</span>`;
+  if (p.destacado) tags += `<span class="be-tag">★ Favorito</span>`;
+  if (agotado) tags += `<span class="be-tag agotado">No disponible</span>`;
+  return `<div class="be-servicio ${agotado ? 'agotado' : ''}" data-id="${p.id}" style="animation-delay:${Math.min(i, 14) * 30}ms">
+    <div class="be-servicio-img" onclick="abrirModal('${p.id}')">${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : sinFoto(p)}</div>
+    <div class="be-servicio-txt" onclick="abrirModal('${p.id}')">
+      <div class="be-servicio-fila"><span class="be-servicio-nombre">${esc(p.nombre)}</span><span class="be-servicio-puntos"></span><span class="be-servicio-precio ${d ? 'oferta' : ''}">${d ? `<s>${fmtC(p.precio)}</s>` : ''}${fmtC(precioReal(p))}</span></div>
+      ${desc ? `<div class="be-servicio-desc">${esc(desc)}</div>` : ''}
+      ${tags ? `<div class="be-servicio-tags">${tags}</div>` : ''}
+    </div>
+    ${!agotado && hayWhatsApp() ? `<button class="be-mas-btn ${en ? 'on' : ''}" data-add onclick="alternarCita('${p.id}')" aria-label="${en ? 'Quitar de mi cita' : 'Agregar a mi cita'}">${en ? ICO.check : ICO.plus}</button>` : '<span></span>'}
+  </div>`;
+}
+function tarjeta(p, i){
+  const f = fotoPrincipal(p), d = descuento(p), dur = duracionMin(p), agotado = p.etiqueta === 'agotado', en = CITA.some(c => c.id === p.id), fav = FAVORITOS.includes(p.id), cat = nombreCat(p);
+  let tag = '';
+  if (agotado) tag = `<span class="be-card-tag">No disponible</span>`;
+  else if (d) tag = `<span class="be-card-tag oferta">-${d}%</span>`;
+  else if (p.etiqueta === 'nuevo') tag = `<span class="be-card-tag">Nuevo</span>`;
+  return `<article class="be-card ${agotado ? 'agotada' : ''}" data-id="${p.id}" style="animation-delay:${Math.min(i, 12) * 45}ms">
+    <div class="be-card-media ${f ? 'cargando' : ''}" onclick="abrirModal('${p.id}')">
+      ${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy" onload="this.classList.add('cargada');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">` : sinFoto(p)}
+      ${tag}
+    </div>
+    <button class="be-fav ${fav ? 'on' : ''}" data-fav onclick="toggleFav('${p.id}')" aria-label="Favorito">${fav ? ICO.heartFill : ICO.heart}</button>
+    <div class="be-card-body">
+      ${cat ? `<div class="be-card-cat">${esc(cat)}</div>` : ''}
+      <div class="be-card-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+      <div class="be-card-meta"><b class="${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</b>${d ? `<s>${fmtC(p.precio)}</s>` : ''}${dur ? `<span class="dur">${ICO.clock} ${fmtDur(dur)}</span>` : ''}</div>
+      ${!agotado && hayWhatsApp() ? `<button class="be-card-btn ${en ? 'on' : ''}" data-add onclick="alternarCita('${p.id}')">${en ? ICO.check + ' En tu cita' : ICO.plus + ' Agregar a mi cita'}</button>` : ''}
+    </div>
+  </article>`;
+}
+function marcarItem(id){
+  const en = CITA.some(c => c.id === id), fav = FAVORITOS.includes(id);
+  document.querySelectorAll(`[data-id="${id}"]`).forEach(el => {
+    el.querySelectorAll('[data-add]').forEach(b => {
+      b.classList.toggle('on', en);
+      if (b.classList.contains('be-card-btn')) b.innerHTML = en ? ICO.check + ' En tu cita' : ICO.plus + ' Agregar a mi cita';
+      else { b.innerHTML = en ? ICO.check : ICO.plus; b.setAttribute('aria-label', en ? 'Quitar de mi cita' : 'Agregar a mi cita'); }
+    });
+    el.querySelectorAll('[data-fav]').forEach(b => { b.classList.toggle('on', fav); b.innerHTML = fav ? ICO.heartFill : ICO.heart; });
+  });
+}
+
+/* ---------- FAVORITOS ---------- */
+function toggleFav(id){
+  const i = FAVORITOS.indexOf(id); if (i === -1) FAVORITOS.push(id); else FAVORITOS.splice(i, 1);
+  guardarLocal('favoritos', FAVORITOS); marcarItem(id); actualizarBadgeFav(); renderChips();
+  if (SOLO_FAV) aplicarFiltro();
+  if (FAVORITOS.includes(id)) toast('Guardado en favoritos', ICO.heartFill);
+}
+function actualizarBadgeFav(){ const n = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length; const b = $('be-badge-fav'); b.textContent = n; b.classList.toggle('on', n > 0); }
+
+/* ---------- MOSAICO ---------- */
+function renderMosaico(){
+  const fotos = [];
+  PRODUCTOS.forEach(p => (p.fotos || []).forEach(f => fotos.push({ p, f })));
+  if (fotos.length < 6) { $('be-sec-trabajo').style.display = 'none'; $('be-nav-trabajo').style.display = 'none'; return; }
+  $('be-sec-trabajo').style.display = 'block';
+  $('be-mosaico').innerHTML = fotos.slice(0, 16).map(({ p, f }) => `<div class="be-mosaico-item" onclick="abrirModal('${p.id}')"><img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy"><span>${esc(p.nombre)}</span></div>`).join('');
+}
+
+/* =====================================================================
+   RESERVA DE CITA
+   Es una SOLICITUD: no conocemos la agenda del salón, así que el
+   mensaje pide confirmar disponibilidad. Se guarda en el navegador
+   para que el cliente no pierda lo que eligió.
+   ===================================================================== */
+function claveFecha(d){ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function fechaDeClave(k){ const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
+function fmtFechaLarga(k){ const t = fechaDeClave(k).toLocaleDateString('es-NI', { weekday:'long', day:'numeric', month:'long' }); return t.charAt(0).toUpperCase() + t.slice(1); }
+function fmtHora(h){ const [H, M] = h.split(':').map(Number); const ap = H >= 12 ? 'p. m.' : 'a. m.'; const h12 = H % 12 || 12; return `${h12}:${String(M).padStart(2, '0')} ${ap}`; }
+const HORAS = (() => { const r = []; for (let m = 8 * 60; m <= 19 * 60; m += 30) r.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`); return r; })();
+
+function alternarCita(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || p.etiqueta === 'agotado' || !hayWhatsApp()) return;
+  if (CITA.some(c => c.id === id)) { CITA = CITA.filter(c => c.id !== id); toast('Quitado de tu cita', ICO.check); }
+  else { CITA.push({ id, cant:1 }); toast(`${p.nombre.length > 28 ? p.nombre.slice(0, 28) + '…' : p.nombre} agregado`, ICO.check); }
+  guardarLocal('cita', CITA); marcarItem(id); actualizarCitaUI(true);
+}
+function agregarDesdeModal(abrir){
+  const id = MODAL_ID; if (!CITA.some(c => c.id === id)) { CITA.push({ id, cant:1 }); guardarLocal('cita', CITA); marcarItem(id); actualizarCitaUI(true); }
+  cerrarModal(); if (abrir) setTimeout(abrirCita, 200); else toast('Agregado a tu cita', ICO.check);
+}
+function cambiarCant(id, d){
+  const it = CITA.find(c => c.id === id); if (!it) return;
+  it.cant += d; if (it.cant <= 0) CITA = CITA.filter(c => c.id !== id);
+  guardarLocal('cita', CITA); marcarItem(id); renderCita(); actualizarCitaUI();
+}
+function totalesCita(){
+  let total = 0, min = 0, n = 0;
+  CITA.forEach(c => { const p = PRODUCTOS.find(x => x.id === c.id); if (!p) return; total += precioReal(p) * c.cant; min += duracionMin(p) * c.cant; n += c.cant; });
+  return { total, min, n };
+}
+function actualizarCitaUI(latir){
+  const t = totalesCita(), barra = $('be-cita-barra');
+  const bc = $('be-badge-cita'); bc.textContent = t.n; bc.classList.toggle('on', t.n > 0);
+  if (latir && !MOV_REDUCIDO) { bc.classList.remove('latido'); void bc.offsetWidth; bc.classList.add('latido'); }
+  if (!t.n || !hayWhatsApp()) { barra.classList.remove('on'); document.body.classList.remove('be-con-cita'); return; }
+  const cuando = DATOS.fecha && DATOS.hora ? ` · ${fechaDeClave(DATOS.fecha).toLocaleDateString('es-NI', { weekday:'short', day:'numeric' })} ${fmtHora(DATOS.hora)}` : '';
+  barra.innerHTML = `<div class="be-cita-barra-txt"><b>Tu cita · ${fmtC(t.total)}</b><span>${t.n} ${t.n === 1 ? 'servicio' : 'servicios'}${t.min ? ` · ${fmtDur(t.min)} aprox.` : ''}${cuando}</span></div><button class="be-cita-barra-btn" type="button">${DATOS.fecha && DATOS.hora ? 'Confirmar' : 'Elegir horario'} →</button>`;
+  barra.classList.add('on'); document.body.classList.add('be-con-cita');
+}
+function abrirCita(){
+  if (!hayWhatsApp()) { irA('be-footer'); return; }
+  renderCita(); $('be-overlay-cita').classList.add('open'); bloquearScroll(true);
+}
+function cerrarCita(){ $('be-overlay-cita').classList.remove('open'); if (!$('be-overlay-modal').classList.contains('open')) bloquearScroll(false); }
+function renderCita(){
+  const t = totalesCita();
+  let h = `<div class="be-cita-paso"><div class="be-cita-paso-t"><i>1</i> Servicios <em>${t.n ? `${t.n} elegido${t.n === 1 ? '' : 's'}` : ''}</em></div>`;
+  if (!CITA.length) h += `<div class="be-cita-vacia">Todavía no elegiste ningún servicio.<br><button class="be-btn be-btn-linea" style="height:44px;margin-top:12px" onclick="cerrarCita();irA('be-sec-servicios')">Ver servicios</button></div>`;
+  else h += CITA.map(c => {
+    const p = PRODUCTOS.find(x => x.id === c.id); if (!p) return '';
+    const f = fotoPrincipal(p), dur = duracionMin(p);
+    return `<div class="be-cita-item">
+      <div class="be-cita-item-img">${f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(p)}</div>
+      <div style="min-width:0"><div class="n">${esc(p.nombre)}</div><div class="m">${fmtC(precioReal(p))}${dur ? ` · ${fmtDur(dur)}` : ''}</div></div>
+      <div class="be-cant"><button onclick="cambiarCant('${p.id}',-1)" aria-label="Quitar">${c.cant === 1 ? ICO.trash : '−'}</button><span>${c.cant}</span><button onclick="cambiarCant('${p.id}',1)" aria-label="Agregar uno más">+</button></div>
+    </div>`;
+  }).join('');
+  h += `</div>`;
+
+  // Paso 2: día y hora
+  const hoy = new Date(); const dias = [];
+  for (let i = 0; i < DIAS_RESERVA; i++) dias.push(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i));
+  h += `<div class="be-cita-paso"><div class="be-cita-paso-t"><i>2</i> Día y hora <em>${DATOS.fecha ? esc(fmtFechaLarga(DATOS.fecha)) : 'Elegí un día'}</em></div>
+    <div class="be-dias" id="be-dias">${dias.map((d, i) => { const k = claveFecha(d); return `<button type="button" class="be-dia ${DATOS.fecha === k ? 'on' : ''}" onclick="elegirDia('${k}')"><small>${i === 0 ? 'Hoy' : i === 1 ? 'Mañ.' : d.toLocaleDateString('es-NI', { weekday:'short' }).replace('.', '')}</small><b>${d.getDate()}</b><em>${d.toLocaleDateString('es-NI', { month:'short' }).replace('.', '')}</em></button>`; }).join('')}</div>`;
+  if (DATOS.fecha) {
+    const esHoy = DATOS.fecha === claveFecha(hoy), ahoraMin = hoy.getHours() * 60 + hoy.getMinutes() + 30;
+    const bloque = (titulo, desde, hasta) => {
+      const hs = HORAS.filter(x => { const m = Number(x.slice(0, 2)) * 60 + Number(x.slice(3)); return m >= desde && m < hasta; });
+      return `<div class="be-franja-t">${titulo}</div><div class="be-horas">${hs.map(x => { const m = Number(x.slice(0, 2)) * 60 + Number(x.slice(3)); const pasada = esHoy && m < ahoraMin; return `<button type="button" class="be-hora ${DATOS.hora === x ? 'on' : ''}" ${pasada ? 'disabled' : ''} onclick="elegirHora('${x}')">${fmtHora(x).replace(' a. m.', '').replace(' p. m.', '')}</button>`; }).join('')}</div>`;
+    };
+    h += bloque('Mañana', 8 * 60, 12 * 60) + bloque('Tarde', 12 * 60, 17 * 60) + bloque('Noche', 17 * 60, 20 * 60);
+  }
+  h += `</div>`;
+
+  // Paso 3: datos
+  h += `<div class="be-cita-paso"><div class="be-cita-paso-t"><i>3</i> Tus datos</div>
+    <label class="be-campo"><span>¿A nombre de quién?</span><input type="text" id="be-nombre" maxlength="60" autocomplete="name" value="${esc(DATOS.nombre)}" placeholder="Tu nombre" oninput="DATOS.nombre=this.value;guardarLocal('datos',DATOS);pintarPieCita()"></label>
+    <label class="be-campo"><span>¿Alguna preferencia? (opcional)</span><textarea id="be-nota" rows="2" maxlength="200" placeholder="Ej.: con Karla, traigo foto de referencia…" oninput="DATOS.nota=this.value;guardarLocal('datos',DATOS)">${esc(DATOS.nota)}</textarea></label>
+  </div>`;
+  $('be-cita-cuerpo').innerHTML = h;
+  pintarPieCita();
+  const sel = $('be-dias')?.querySelector('.on'); if (sel) sel.scrollIntoView({ inline:'center', block:'nearest' });
+}
+function elegirDia(k){
+  DATOS.fecha = k;
+  const hoy = new Date();
+  if (DATOS.hora && k === claveFecha(hoy)) { const m = Number(DATOS.hora.slice(0, 2)) * 60 + Number(DATOS.hora.slice(3)); if (m < hoy.getHours() * 60 + hoy.getMinutes() + 30) DATOS.hora = null; }
+  guardarLocal('datos', DATOS);
+  const scroll = $('be-cita-cuerpo').scrollTop, diasScroll = $('be-dias').scrollLeft;
+  renderCita(); $('be-cita-cuerpo').scrollTop = scroll; $('be-dias').scrollLeft = diasScroll; actualizarCitaUI();
+}
+function elegirHora(x){
+  DATOS.hora = x; guardarLocal('datos', DATOS);
+  document.querySelectorAll('.be-hora').forEach(b => b.classList.toggle('on', b.getAttribute('onclick') === `elegirHora('${x}')`));
+  pintarPieCita(); actualizarCitaUI();
+}
+function pintarPieCita(){
+  const t = totalesCita(), pie = $('be-cita-pie');
+  if (!CITA.length) { pie.innerHTML = `<div class="be-cita-nota" style="margin:0">Agregá al menos un servicio para solicitar tu cita.</div>`; return; }
+  const falta = !DATOS.fecha ? 'Elegí un día' : !DATOS.hora ? 'Elegí una hora' : !DATOS.nombre.trim() ? 'Escribí tu nombre' : '';
+  pie.innerHTML = `
+    <div class="be-cita-resumen">
+      <div><small>${t.n} ${t.n === 1 ? 'servicio' : 'servicios'}${t.min ? ` · ${fmtDur(t.min)} aprox.` : ''}</small><small>${DATOS.fecha && DATOS.hora ? esc(fmtFechaLarga(DATOS.fecha)) + ' · ' + fmtHora(DATOS.hora) : 'Sin horario todavía'}</small></div>
+      <b>${fmtC(t.total)}</b>
+    </div>
+    <button class="be-btn be-btn-wa" ${falta ? 'disabled' : ''} onclick="enviarCita()">${ICO.wa} ${falta || 'Solicitar cita por WhatsApp'}</button>
+    <div class="be-cita-nota">Te confirmamos la disponibilidad por WhatsApp. El precio final puede variar según el largo o estado del cabello.</div>
+    <button class="be-cita-vaciar" onclick="vaciarCita()">Empezar de nuevo</button>`;
+}
+function vaciarCita(){ const ids = CITA.map(c => c.id); CITA = []; DATOS.fecha = null; DATOS.hora = null; guardarLocal('cita', CITA); guardarLocal('datos', DATOS); ids.forEach(marcarItem); renderCita(); actualizarCitaUI(); }
+function enviarCita(){
+  if (!CITA.length || !DATOS.fecha || !DATOS.hora || !DATOS.nombre.trim() || !hayWhatsApp()) return;
+  const t = totalesCita();
+  const lineas = CITA.map(c => { const p = PRODUCTOS.find(x => x.id === c.id); if (!p) return null; const dur = duracionMin(p); return `• ${c.cant > 1 ? `${c.cant} × ` : ''}${p.nombre} — ${fmtC(precioReal(p) * c.cant)}${dur ? ` (${fmtDur(dur * c.cant)})` : ''}`; }).filter(Boolean);
+  let msg = `Hola ${nombreNegocio()}, quisiera reservar una cita ✨\n\n📅 ${fmtFechaLarga(DATOS.fecha)}\n🕐 ${fmtHora(DATOS.hora)}\n👤 A nombre de: ${DATOS.nombre.trim()}\n\nServicios:\n${lineas.join('\n')}\n\nTotal aprox.: ${fmtC(t.total)}${t.min ? `\nDuración aprox.: ${fmtDur(t.min)}` : ''}`;
+  if (DATOS.nota.trim()) msg += `\n\n📝 ${DATOS.nota.trim()}`;
+  msg += `\n\n¿Tienen disponibilidad en ese horario?`;
+  registrarEvento('click_whatsapp');
+  window.open(linkWA(msg), '_blank');
+}
+
+/* ---------- MODAL ---------- */
+function abrirModal(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  MODAL_ID = id; registrarEvento('vista_producto', id);
+  const d = descuento(p), dur = duracionMin(p), agotado = p.etiqueta === 'agotado', cat = nombreCat(p), en = CITA.some(c => c.id === id);
+  const fotos = p.fotos || []; LB_FOTOS = fotos.map(f => f.url);
+  const marco = $('be-modal-marco');
+  if (esAntesDespues(p)) { marco.innerHTML = htmlAD(p, true); activarSliders(marco); $('be-modal-puntos').innerHTML = ''; }
+  else {
+    marco.innerHTML = `<div class="be-modal-fotos" id="be-modal-fotos">${fotos.length ? fotos.map((f, i) => `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" onclick="abrirLightbox(${i})">`).join('') : sinFoto(p)}</div>`;
+    $('be-modal-puntos').innerHTML = fotos.length > 1 ? fotos.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
+    $('be-modal-fotos').addEventListener('scroll', e => { const el = e.currentTarget, i = Math.round(el.scrollLeft / el.clientWidth); [...$('be-modal-puntos').children].forEach((dd, j) => dd.classList.toggle('on', i === j)); }, { passive:true });
+  }
+  let acciones = '';
+  if (agotado) acciones = `<button class="be-btn be-btn-suave" disabled>No disponible por ahora</button>`;
+  else if (hayWhatsApp()) acciones = `
+    <button class="be-btn be-btn-oscuro" onclick="agregarDesdeModal(true)">${ICO.cal} ${en ? 'Ver mi cita' : 'Reservar este servicio'}</button>
+    ${en ? '' : `<button class="be-btn be-btn-linea" onclick="agregarDesdeModal(false)">${ICO.plus} Agregar y seguir viendo</button>`}`;
+  acciones += `<div class="be-modal-extra">
+    ${hayWhatsApp() ? `<button class="be-btn be-btn-suave" onclick="consultar('${p.id}')">${ICO.wa} Consultar</button>` : ''}
+    ${CATALOGO.telefono ? `<a class="be-btn be-btn-suave" href="tel:${esc(CATALOGO.telefono)}" onclick="registrarEvento('click_telefono','${p.id}')">${ICO.phone} Llamar</a>` : ''}
+    <button class="be-btn be-btn-suave" onclick="compartir('${p.id}')">${ICO.share}</button>
+  </div>`;
+  const rel = PRODUCTOS.filter(x => x.id !== p.id && x.etiqueta !== 'agotado' && (p.categoria_id ? x.categoria_id === p.categoria_id : true)).slice(0, 8);
+  $('be-modal-body').innerHTML = `
+    ${cat ? `<div class="be-modal-cat">${esc(cat)}</div>` : ''}
+    <h2 class="be-modal-nombre">${esc(p.nombre)}</h2>
+    <div class="be-modal-meta"><span class="be-modal-precio ${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</span>${d ? `<s>${fmtC(p.precio)}</s><span class="be-tag resalte">-${d}%</span>` : ''}${dur ? `<span class="be-tag">${ICO.clock} ${fmtDur(dur)}</span>` : ''}</div>
+    ${p.descripcion ? `<div class="be-modal-desc">${esc(p.descripcion)}</div>` : '<div style="height:22px"></div>'}
+    <div class="be-modal-acciones">${acciones}</div>
+    ${rel.length ? `<div class="be-rel"><h4>Combinalo con…</h4><div class="be-rel-scroll">${rel.map(r => { const f = fotoPrincipal(r); return `<div class="be-rel-item" onclick="abrirModal('${r.id}')"><div class="be-rel-img">${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : sinFoto(r)}</div><div class="n">${esc(r.nombre)}</div><div class="p">${fmtC(precioReal(r))}</div></div>`; }).join('')}</div></div>` : ''}`;
+  $('be-modal').scrollTop = 0; $('be-modal-body').scrollTop = 0;
+  $('be-overlay-modal').classList.add('open'); bloquearScroll(true);
+  history.replaceState(null, '', `#producto-${id}`);
+}
+function cerrarModal(){
+  $('be-overlay-modal').classList.remove('open');
+  if (!$('be-overlay-cita').classList.contains('open')) bloquearScroll(false);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+function consultar(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || !hayWhatsApp()) return;
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWA(`Hola, quisiera más información sobre "${p.nombre}" (${fmtC(precioReal(p))}).`), '_blank');
+}
+function compartir(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  const url = `${location.origin}${location.pathname}${location.search}#producto-${id}`;
+  if (navigator.share) navigator.share({ title:p.nombre, text:`${p.nombre} — ${fmtC(precioReal(p))}`, url }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Enlace copiado', ICO.check)).catch(() => {});
+}
+
+/* ---------- FOOTER ---------- */
+function renderFooter(){
+  const c = CATALOGO; let h = '';
+  if (hayWhatsApp()) {
+    $('be-footer-cta').innerHTML = `<button class="be-btn be-btn-oscuro" onclick="abrirCita()">${ICO.cal} Reservar mi cita</button>`;
+    h += `<a class="be-contacto" href="${esc(linkWA(`Hola ${nombreNegocio()}, quisiera información sobre sus servicios.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')"><small>${ICO.wa} WhatsApp</small><b>${esc(c.whatsapp)}</b></a>`;
+  }
+  if (c.telefono) h += `<a class="be-contacto" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')"><small>${ICO.phone} Teléfono</small><b>${esc(c.telefono)}</b></a>`;
+  if (c.email) h += `<a class="be-contacto" href="mailto:${esc(c.email)}"><small>${ICO.mail} Correo</small><b>${esc(c.email)}</b></a>`;
+  if (c.ubicacion) h += `<a class="be-contacto" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.ubicacion)}" target="_blank" rel="noopener"><small>${ICO.pin} Cómo llegar</small><b>${esc(c.ubicacion)}</b></a>`;
+  $('be-contactos').innerHTML = h; $('be-contactos').style.display = h ? '' : 'none';
+  $('be-pie-nombre').textContent = nombreNegocio(); $('be-anio').textContent = new Date().getFullYear();
+  actualizarBadgeFav();
+}
+
+/* ---------- LIGHTBOX ---------- */
+function abrirLightbox(i){ if (!LB_FOTOS.length) return; LB_I = i || 0; pintarLB(); $('be-lightbox').classList.add('open'); }
+function cerrarLightbox(){ $('be-lightbox').classList.remove('open'); }
+function moverLightbox(d){ LB_I = (LB_I + d + LB_FOTOS.length) % LB_FOTOS.length; pintarLB(); }
+function pintarLB(){ $('be-lb-img').src = LB_FOTOS[LB_I]; $('be-lb-cont').textContent = `${LB_I + 1} / ${LB_FOTOS.length}`; }
+(function(){
+  let x0 = null; const lb = $('be-lightbox');
+  lb.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive:true });
+  lb.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) moverLightbox(dx > 0 ? -1 : 1); x0 = null; }, { passive:true });
+})();
+
+/* ---------- revelado y teclado ---------- */
+function activarRevelado(){
+  const els = document.querySelectorAll('.be-reveal');
+  if (!('IntersectionObserver' in window) || MOV_REDUCIDO) { els.forEach(e => e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  els.forEach(e => obs.observe(e));
+}
+document.addEventListener('keydown', e => {
+  if ($('be-lightbox').classList.contains('open')) {
+    if (e.key === 'Escape') cerrarLightbox();
+    if (e.key === 'ArrowLeft') moverLightbox(-1);
+    if (e.key === 'ArrowRight') moverLightbox(1);
+    return;
+  }
+  if (e.key === 'Escape') {
+    if ($('be-overlay-modal').classList.contains('open')) cerrarModal();
+    else if ($('be-overlay-cita').classList.contains('open')) cerrarCita();
+  }
+});
+
+init();
+</script>
+</body>
+</html>

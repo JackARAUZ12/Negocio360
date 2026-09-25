@@ -203,6 +203,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   purisima: 'c360-purisima.html',
   madres: 'c360-madres.html',
   showroom: 'c360-showroom.html',
+  belleza: 'c360-belleza.html',
 };
 
 /**
