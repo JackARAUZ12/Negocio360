@@ -1872,7 +1872,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js?v=20260917b"></script>
 <script src="escpos-usb.js?v=20260825a"></script>
-<script src="ventas.js?v=20260925a"></script>
+<script src="ventas.js?v=20260925b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js?v=20260921b"></script>
@@ -1917,7 +1917,8 @@
       </button>
     </div>
     <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px">¿De dónde se descuenta el stock al vender?</p>
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:4px">¿De dónde se descuenta el stock al vender?</p>
+      <p id="sc-para-quien" style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px">Esta configuración es solo para tu usuario — cada quien configura la suya.</p>
       <div style="display:flex;flex-direction:column;gap:8px">
         <label class="sc-alcance-opcion">
           <input type="radio" name="sc-alcance" value="todas" checked onchange="onCambiarAlcanceStockCompartido()"/>

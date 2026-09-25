@@ -2194,6 +2194,25 @@ async function cargarEstadoStockCompartido() {
       S.stockCompartidoSucursalId = null;
       S.stockCompartidoSucursalIds = [];
     }
+
+    // Configuración PROPIA de este usuario (cuenta + perfil): si ya
+    // configuró la suya, manda sobre la de grupo. Si nunca configuró
+    // nada, se queda con la de grupo, exactamente como antes.
+    try {
+      const yo = perfilStockCompartido();
+      const { data: propia, error: errPropia } = await sb.from('stock_compartido_usuario')
+        .select('activo, alcance, sucursal_ids')
+        .eq('auth_user_id', S.userId).eq('perfil_key', yo.key).maybeSingle();
+      if (errPropia) throw errPropia;
+      if (propia) {
+        activo = !!propia.activo;
+        S.stockCompartidoAlcance = propia.alcance || 'todas';
+        S.stockCompartidoSucursalIds = (propia.sucursal_ids || []).filter(Boolean);
+        S.stockCompartidoSucursalId = S.stockCompartidoSucursalIds[0] || null;
+      }
+    } catch (ePropia) {
+      console.warn('cargarEstadoStockCompartido, configuración propia:', ePropia);
+    }
     S.stockCompartidoActivo = activo;
 
     // ¿Cuál fila de "sucursales" soy yo? — para saber cuándo la opción
@@ -2279,11 +2298,10 @@ async function toggleStockCompartido(activo) {
   // Al DESACTIVAR, comportamiento identico al de siempre -- sin modal.
   if (!activo) {
     try {
-      const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: false });
-      if (error) throw error;
+      await guardarStockCompartidoUsuario(false, S.stockCompartidoAlcance || 'todas', S.stockCompartidoSucursalIds || []);
       S.stockCompartidoActivo = false;
       actualizarBotonEditarStockCompartido();
-      showToast('Stock Compartido desactivado', 'success');
+      showToast(`Stock Compartido desactivado para ${perfilStockCompartido().nombre}`, 'success');
     } catch (e) {
       console.error('toggleStockCompartido:', e);
       showToast('No se pudo cambiar Stock Compartido', 'error');
@@ -2299,6 +2317,8 @@ async function toggleStockCompartido(activo) {
 
 async function abrirModalStockCompartido() {
   document.getElementById('sc-error').textContent = '';
+  const paraQuien = document.getElementById('sc-para-quien');
+  if (paraQuien) paraQuien.textContent = `Solo para ${perfilStockCompartido().nombre} — cada usuario configura la suya.`;
   // Se abre con lo que ya estaba configurado (si hay), para poder
   // agregar o quitar cuentas sin empezar de cero.
   const alcanceActual = S.stockCompartidoActivo ? (S.stockCompartidoAlcance || 'todas') : 'todas';
@@ -2326,6 +2346,28 @@ async function abrirModalStockCompartido() {
   onCambiarEspecificasStockCompartido();
 
   document.getElementById('modal-stock-compartido').style.display = 'flex';
+}
+
+// ¿Quién está vendiendo? -- el perfil elegido con PIN (o el dueño si
+// no hay perfil / es el perfil Admin). Cada uno guarda su propia
+// configuración de Stock Compartido, dentro de su misma cuenta.
+function perfilStockCompartido() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    const perfil = raw ? JSON.parse(raw) : null;
+    if (!perfil || perfil.tipo === 'admin' || !perfil.id) return { key: 'admin', nombre: perfil?.nombre || 'Admin' };
+    return { key: String(perfil.id), nombre: perfil.nombre || 'este usuario' };
+  } catch (_) { return { key: 'admin', nombre: 'Admin' }; }
+}
+
+async function guardarStockCompartidoUsuario(activo, alcance, sucursalIds) {
+  const yo = perfilStockCompartido();
+  const { error } = await sb.from('stock_compartido_usuario').upsert({
+    auth_user_id: S.userId, perfil_key: yo.key, perfil_nombre: yo.nombre,
+    activo, alcance, sucursal_ids: alcance === 'especifica' ? sucursalIds : null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'auth_user_id,perfil_key' });
+  if (error) throw error;
 }
 
 function actualizarBotonEditarStockCompartido() {
@@ -2364,8 +2406,7 @@ async function confirmarStockCompartido() {
   const btn = document.getElementById('sc-btn-confirmar');
   btn.disabled = true;
   try {
-    const { error } = await sb.rpc('establecer_stock_compartido', { p_activo: true, p_alcance: alcance, p_sucursal_id: sucursalId, p_sucursal_ids: alcance === 'especifica' ? sucursalIds : null });
-    if (error) throw error;
+    await guardarStockCompartidoUsuario(true, alcance, alcance === 'especifica' ? sucursalIds : []);
     S.stockCompartidoActivo = true;
     S.stockCompartidoAlcance = alcance;
     S.stockCompartidoSucursalId = sucursalId;
@@ -2376,7 +2417,7 @@ async function confirmarStockCompartido() {
     await cargarProductosGrupo();
     document.getElementById('modal-stock-compartido').style.display = 'none';
     const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: sucursalIds.length > 1 ? `${sucursalIds.length} cuentas específicas` : 'una sucursal específica' };
-    showToast(`Stock Compartido activado — ${etiquetas[alcance]}`, 'success');
+    showToast(`Stock Compartido de ${perfilStockCompartido().nombre} — ${etiquetas[alcance]}`, 'success');
   } catch (e) {
     console.error('confirmarStockCompartido:', e);
     errEl.textContent = 'No se pudo activar Stock Compartido. Intenta de nuevo.';
