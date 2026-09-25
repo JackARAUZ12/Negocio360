@@ -799,6 +799,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'mascotas', nombre:'Mascotas', icono:'🐾', desc:'Tienda de mascotas o veterinaria -- huellitas que siguen el cursor, perro y gato animados, perfil de la mascota que personaliza la tienda y calculadora de comida con recordatorio de recompra.', disponible:true, archivo:'c360-mascotas.html' },
   { key:'reposteria', nombre:'Repostería', icono:'🧁', desc:'Pastelería y repostería -- pastel con velitas que se soplan, armá tu pastel con vista en vivo (tamaño, sabor, relleno, color y mensaje), vitrina con banderitas y pedido con fecha de entrega.', disponible:true, archivo:'c360-reposteria.html' },
   { key:'streetwear', nombre:'Moda urbana', icono:'🧢', desc:'Streetwear en modo drop: tallas y colores, armá tu outfit y guía de tallas', disponible:true, archivo:'c360-streetwear.html' },
+  { key:'farmacia', nombre:'Farmacia', icono:'💊', desc:'Clínica y confiable: buscador por síntomas, botiquín del hogar y pedidos con receta', disponible:true, archivo:'c360-farmacia.html' },
 ];
 
 function archivoDePlantilla(key) {

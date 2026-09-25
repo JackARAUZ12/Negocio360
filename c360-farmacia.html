@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="claro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0e9f86" />
+<title id="fa-title">Farmacia</title>
+<meta id="fa-desc-meta" name="description" content="">
+<meta id="fa-og-title" property="og:title" content="">
+<meta id="fa-og-desc" property="og:description" content="">
+<meta id="fa-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* =====================================================================
+   CATÁLOGO360 -- PLANTILLA FARMACIA
+   - Clínica, limpia, verde menta. Línea de electrocardiograma animada,
+     cruz con pulso y tarjetas en forma de cápsula.
+   - "¿Qué sentís?": buscador por síntomas (con aviso médico).
+   - "Botiquín del hogar": checklist que detecta lo que te falta y lo
+     agrega a la bolsa en un toque.
+   - Productos con "receta" en la descripción muestran "Requiere receta";
+     el pedido permite indicar que se enviará la receta por WhatsApp.
+   Prefijo: fa-
+   ===================================================================== */
+:root {
+  --menta: #0e9f86;
+  --menta-rgb: 14,159,134;
+  --menta-2: #0b8471;
+  --menta-suave: #e3f6f1;
+  --azul: #2d6cdf;
+  --rojo: #e5484d;
+  --ambar: #f5a524;
+  --bg: #f5f9f8;
+  --bg-rgb: 245,249,248;
+  --sup: #ffffff;
+  --sup-2: #edf3f2;
+  --txt: #0f2a26;
+  --txt-2: #4b6560;
+  --txt-3: #87a09b;
+  --linea: rgba(15,42,38,.09);
+  --sombra: 0 1px 2px rgba(15,42,38,.05), 0 8px 24px -10px rgba(15,42,38,.14);
+  --sombra-2: 0 24px 60px -20px rgba(15,42,38,.28);
+  --f-tit: 'Outfit', system-ui, sans-serif;
+  --f-ui: 'Manrope', system-ui, -apple-system, sans-serif;
+  --r: 18px;
+  --max: 1260px;
+  --hdr: 66px;
+  --ease: cubic-bezier(.22,1,.36,1);
+  --rebote: cubic-bezier(.34,1.56,.64,1);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-theme="oscuro"] {
+  --menta: #2fd1b2;
+  --menta-rgb: 47,209,178;
+  --menta-2: #25b89b;
+  --menta-suave: rgba(47,209,178,.12);
+  --bg: #0b1614;
+  --bg-rgb: 11,22,20;
+  --sup: #11201d;
+  --sup-2: #172b27;
+  --txt: #e6f3f0;
+  --txt-2: #9dbab4;
+  --txt-3: #5f7d77;
+  --linea: rgba(230,243,240,.09);
+  --sombra: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
+  --sombra-2: 0 24px 60px -20px rgba(0,0,0,.7);
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--hdr) + 80px); }
+body { margin:0; background:var(--bg); color:var(--txt); font-family:var(--f-ui); overflow-x:hidden; -webkit-font-smoothing:antialiased; transition:background .3s, color .3s; }
+body.fa-bloq { overflow:hidden; }
+img { display:block; max-width:100%; }
+a { color:inherit; text-decoration:none; }
+button, input, select, textarea { font-family:inherit; color:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:2.5px solid var(--menta); outline-offset:2px; }
+::selection { background:rgba(var(--menta-rgb),.25); }
+.fa-wrap { max-width:var(--max); margin:0 auto; padding:0 16px; }
+@media (min-width:768px) { .fa-wrap { padding:0 28px; } }
+.fa-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+svg.fa-i { width:1em; height:1em; flex-shrink:0; vertical-align:-.14em; }
+
+@keyframes fa-ecg { from { stroke-dashoffset:1000; } to { stroke-dashoffset:0; } }
+@keyframes fa-latido { 0%,100% { transform:scale(1); } 14% { transform:scale(1.14); } 28% { transform:scale(1); } 42% { transform:scale(1.1); } 70% { transform:scale(1); } }
+@keyframes fa-onda { from { transform:scale(.8); opacity:.6; } to { transform:scale(2.2); opacity:0; } }
+@keyframes fa-sube { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:none; } }
+@keyframes fa-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes fa-flota { 0%,100% { transform:translateY(0) rotate(var(--r0,0deg)); } 50% { transform:translateY(-14px) rotate(calc(var(--r0,0deg) + 8deg)); } }
+@keyframes fa-sheet { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes fa-drawer { from { transform:translateX(100%); } to { transform:none; } }
+@keyframes fa-pop { 0% { transform:scale(1); } 40% { transform:scale(1.3); } 100% { transform:scale(1); } }
+@keyframes fa-shimmer { from { background-position:-200% 0; } to { background-position:200% 0; } }
+@keyframes fa-check { from { stroke-dashoffset:24; } to { stroke-dashoffset:0; } }
+@keyframes fa-llenar { from { width:0; } }
+
+.fa-reveal { opacity:0; transform:translateY(26px); transition:opacity .7s var(--ease), transform .7s var(--ease); }
+.fa-reveal.visible { opacity:1; transform:none; }
+
+/* ===== INTRO ===== */
+.fa-intro { position:fixed; inset:0; z-index:1000; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; transition:opacity .5s ease, visibility .5s; }
+.fa-intro.fuera { opacity:0; visibility:hidden; }
+.fa-intro-cruz { position:relative; width:84px; height:84px; }
+.fa-intro-cruz::before, .fa-intro-cruz::after { content:''; position:absolute; inset:0; border-radius:24px; background:rgba(var(--menta-rgb),.35); animation:fa-onda 1.6s ease-out infinite; }
+.fa-intro-cruz::after { animation-delay:.8s; }
+.fa-intro-cruz svg { position:relative; z-index:1; width:84px; height:84px; animation:fa-latido 1.6s ease-in-out infinite; }
+.fa-intro-ecg { width:min(320px,80vw); height:50px; }
+.fa-intro-ecg path { fill:none; stroke:var(--menta); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1000; animation:fa-ecg 1.4s ease-out forwards; }
+.fa-intro-n { font-family:var(--f-tit); font-weight:700; font-size:20px; color:var(--txt); animation:fa-fade .5s ease .3s both; text-align:center; padding:0 20px; }
+.fa-error { display:none; min-height:80vh; align-items:center; justify-content:center; flex-direction:column; gap:8px; text-align:center; padding:24px; color:var(--txt-2); }
+.fa-error b { font-family:var(--f-tit); font-size:30px; color:var(--txt); }
+
+/* ===== HEADER ===== */
+.fa-aviso { background:var(--menta); color:#fff; font-size:12.5px; font-weight:700; text-align:center; padding:7px 14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fa-aviso span { display:inline-flex; align-items:center; gap:8px; }
+.fa-aviso i { width:7px; height:7px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px rgba(255,255,255,.3); animation:fa-latido 1.6s infinite; }
+.fa-header { position:sticky; top:0; z-index:80; background:rgba(var(--bg-rgb),.85); backdrop-filter:blur(16px) saturate(1.4); -webkit-backdrop-filter:blur(16px) saturate(1.4); border-bottom:1px solid var(--linea); }
+.fa-header-in { height:var(--hdr); display:flex; align-items:center; gap:12px; }
+.fa-marca { display:flex; align-items:center; gap:10px; min-width:0; cursor:pointer; }
+.fa-marca-cruz { width:40px; height:40px; flex-shrink:0; }
+.fa-marca img { height:40px; width:auto; max-width:120px; object-fit:contain; }
+.fa-marca b { font-family:var(--f-tit); font-weight:700; font-size:19px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw; line-height:1.1; }
+.fa-marca small { display:block; font-size:11px; font-weight:700; color:var(--menta); letter-spacing:.06em; text-transform:uppercase; }
+.fa-hacc { margin-left:auto; display:flex; gap:6px; }
+.fa-ico { position:relative; height:42px; min-width:42px; padding:0 12px; border-radius:999px; border:1px solid var(--linea); background:var(--sup); display:flex; align-items:center; justify-content:center; gap:7px; font-size:17px; font-weight:700; box-shadow:var(--sombra); transition:transform .2s var(--rebote), background .2s; }
+.fa-ico:hover { transform:translateY(-2px); }
+.fa-ico .t { display:none; font-size:13.5px; }
+@media (min-width:900px) { .fa-ico .t { display:inline; } }
+.fa-ico.bolsa { background:var(--menta); color:#fff; border-color:var(--menta); }
+.fa-badge { position:absolute; top:-5px; right:-5px; min-width:20px; height:20px; padding:0 5px; border-radius:999px; background:var(--rojo); color:#fff; font-size:11px; font-weight:800; display:none; align-items:center; justify-content:center; border:2px solid var(--bg); }
+.fa-badge.on { display:flex; }
+.fa-badge.pop { animation:fa-pop .45s var(--rebote); }
+@media (max-width:420px) { .fa-ico.opc { display:none; } }
+
+/* ===== HERO ===== */
+.fa-hero { position:relative; overflow:hidden; padding:clamp(34px,6vw,76px) 0 clamp(40px,6vw,70px); }
+.fa-hero::before { content:''; position:absolute; inset:0; background:radial-gradient(60% 70% at 85% 20%, rgba(var(--menta-rgb),.14), transparent 70%), radial-gradient(40% 50% at 5% 90%, rgba(45,108,223,.08), transparent 70%); pointer-events:none; }
+.fa-hero-grid { position:relative; display:grid; grid-template-columns:minmax(0,1fr); gap:34px; align-items:center; }
+@media (min-width:960px) { .fa-hero-grid { grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:50px; } }
+.fa-pill-estado { display:inline-flex; align-items:center; gap:8px; padding:7px 14px 7px 8px; border-radius:999px; background:var(--sup); border:1px solid var(--linea); box-shadow:var(--sombra); font-size:12.5px; font-weight:700; color:var(--txt-2); animation:fa-sube .6s var(--ease) both; max-width:100%; }
+.fa-pill-estado b { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; background:var(--menta-suave); color:var(--menta); font-size:11.5px; flex-shrink:0; }
+.fa-pill-estado span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.fa-titulo { font-family:var(--f-tit); font-weight:800; font-size:clamp(38px,6.4vw,72px); line-height:1.02; letter-spacing:-.025em; margin:18px 0 0; overflow-wrap:break-word; animation:fa-sube .7s var(--ease) .1s both; }
+.fa-titulo em { font-style:normal; color:var(--menta); position:relative; white-space:nowrap; }
+.fa-ecg-linea { display:block; width:100%; max-width:520px; height:46px; margin:10px 0 4px; }
+.fa-ecg-linea path { fill:none; stroke:var(--menta); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1000; animation:fa-ecg 2.4s ease-out .4s both; }
+.fa-ecg-linea circle { fill:var(--menta); animation:fa-latido 1.6s 2.6s infinite; transform-origin:center; transform-box:fill-box; }
+.fa-hero-desc { font-size:clamp(15px,1.5vw,17px); line-height:1.65; color:var(--txt-2); max-width:520px; margin:8px 0 24px; animation:fa-sube .7s var(--ease) .2s both; }
+.fa-buscador-hero { display:flex; align-items:center; gap:10px; height:60px; padding:0 8px 0 20px; border-radius:999px; background:var(--sup); border:1.5px solid var(--linea); box-shadow:var(--sombra-2); max-width:560px; animation:fa-sube .7s var(--ease) .3s both; transition:border-color .2s; }
+.fa-buscador-hero:focus-within { border-color:var(--menta); }
+.fa-buscador-hero > span { color:var(--menta); font-size:20px; }
+.fa-buscador-hero input { flex:1; min-width:0; border:none; outline:none; background:none; font-size:16px; font-weight:600; }
+.fa-buscador-hero input::placeholder { color:var(--txt-3); font-weight:500; }
+.fa-buscador-hero button { height:46px; padding:0 20px; border-radius:999px; border:none; background:var(--menta); color:#fff; font-weight:800; font-size:14px; flex-shrink:0; }
+@media (max-width:420px) { .fa-buscador-hero button { padding:0 14px; } .fa-buscador-hero { padding-left:16px; } }
+.fa-rapidos { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; animation:fa-sube .7s var(--ease) .4s both; }
+.fa-rapidos a, .fa-rapidos span { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--txt-2); padding:6px 12px; border-radius:999px; background:var(--sup); border:1px solid var(--linea); }
+.fa-hero-vis { position:relative; aspect-ratio:1/1; max-width:480px; width:100%; margin:0 auto; animation:fa-sube .9s var(--ease) .2s both; }
+.fa-hero-circ { position:absolute; inset:6%; border-radius:50%; background:linear-gradient(145deg, rgba(var(--menta-rgb),.22), rgba(var(--menta-rgb),.05)); border:1px solid rgba(var(--menta-rgb),.25); overflow:hidden; }
+.fa-hero-circ img { width:100%; height:100%; object-fit:cover; }
+.fa-hero-circ .fa-sin-foto { font-size:120px; background:transparent; }
+.fa-capsula { position:absolute; width:clamp(54px,9vw,78px); height:clamp(22px,3.6vw,32px); border-radius:999px; overflow:hidden; box-shadow:0 10px 24px -8px rgba(15,42,38,.35); animation:fa-flota 5s ease-in-out infinite; display:flex; }
+.fa-capsula::before, .fa-capsula::after { content:''; flex:1; }
+.fa-capsula::before { background:var(--c1); }
+.fa-capsula::after { background:var(--c2); }
+.fa-capsula.c1 { top:4%; left:2%; --c1:#0e9f86; --c2:#fff; --r0:-24deg; }
+.fa-capsula.c2 { top:20%; right:-2%; --c1:#2d6cdf; --c2:#dce8fb; --r0:30deg; animation-delay:-1.5s; }
+.fa-capsula.c3 { bottom:10%; left:-2%; --c1:#f5a524; --c2:#fff4df; --r0:12deg; animation-delay:-3s; }
+.fa-hero-tarj { position:absolute; right:0; bottom:6%; display:flex; align-items:center; gap:10px; padding:10px 14px 10px 10px; border-radius:16px; background:var(--sup); box-shadow:var(--sombra-2); border:1px solid var(--linea); max-width:74%; cursor:pointer; animation:fa-sube .6s var(--ease) .9s both; }
+.fa-hero-tarj-img { position:relative; width:48px; height:48px; border-radius:12px; overflow:hidden; background:var(--sup-2); flex-shrink:0; }
+.fa-hero-tarj-img img { width:100%; height:100%; object-fit:cover; }
+.fa-hero-tarj-img .fa-sin-foto { font-size:20px; }
+.fa-hero-tarj small { display:block; font-size:11px; font-weight:800; color:var(--menta); text-transform:uppercase; letter-spacing:.06em; }
+.fa-hero-tarj b { display:block; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fa-hero-tarj span { font-family:var(--f-tit); font-weight:700; font-size:16px; }
+.fa-hero-sello { position:absolute; top:8%; right:8%; width:86px; height:86px; border-radius:50%; background:var(--menta); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:10.5px; font-weight:800; line-height:1.15; text-transform:uppercase; letter-spacing:.04em; box-shadow:0 12px 30px -10px rgba(var(--menta-rgb),.8); animation:fa-sube .6s var(--rebote) 1s both; }
+.fa-hero-sello b { font-family:var(--f-tit); font-size:24px; letter-spacing:0; }
+
+/* ===== SECCIONES ===== */
+.fa-sec { padding:clamp(46px,6vw,84px) 0; }
+.fa-head { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
+.fa-head small { display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--menta); margin-bottom:8px; }
+.fa-head h2 { font-family:var(--f-tit); font-weight:800; font-size:clamp(28px,4vw,44px); line-height:1.05; letter-spacing:-.02em; margin:0; }
+.fa-head p { color:var(--txt-2); max-width:440px; margin:0; line-height:1.55; font-size:14.5px; }
+
+/* Síntomas */
+.fa-sintomas { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+@media (min-width:640px) { .fa-sintomas { grid-template-columns:repeat(4, minmax(0,1fr)); } }
+.fa-sintoma { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:16px 14px; border-radius:var(--r); border:1.5px solid var(--linea); background:var(--sup); box-shadow:var(--sombra); text-align:left; transition:transform .25s var(--rebote), border-color .2s, background .2s; min-width:0; }
+.fa-sintoma:hover { transform:translateY(-4px); border-color:rgba(var(--menta-rgb),.5); }
+.fa-sintoma .ic { width:44px; height:44px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--menta-suave); }
+.fa-sintoma b { display:block; font-size:14.5px; font-weight:800; line-height:1.2; }
+.fa-sintoma small { display:block; margin-top:3px; font-size:11.5px; font-weight:700; color:var(--txt-3); }
+.fa-sintoma.on { background:var(--menta); border-color:var(--menta); color:#fff; }
+.fa-sintoma.on .ic { background:rgba(255,255,255,.2); }
+.fa-sintoma.on small { color:rgba(255,255,255,.8); }
+.fa-sintoma[disabled] { opacity:.45; cursor:not-allowed; transform:none; }
+.fa-disclaimer { display:flex; gap:10px; align-items:flex-start; margin-top:14px; padding:12px 14px; border-radius:14px; background:rgba(245,165,36,.1); border:1px solid rgba(245,165,36,.3); font-size:12.5px; line-height:1.5; color:var(--txt-2); }
+.fa-disclaimer span { font-size:16px; }
+
+/* Botiquín */
+.fa-botiquin { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; border-radius:26px; background:var(--sup); border:1px solid var(--linea); box-shadow:var(--sombra); padding:clamp(18px,3vw,32px); overflow:hidden; position:relative; }
+@media (min-width:900px) { .fa-botiquin { grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:36px; } }
+.fa-caja { position:relative; border-radius:22px; background:linear-gradient(160deg, #e5484d, #c9363b); color:#fff; padding:24px 22px; display:flex; flex-direction:column; justify-content:space-between; min-height:250px; overflow:hidden; box-shadow:0 20px 40px -18px rgba(229,72,77,.6); }
+.fa-caja::before { content:''; position:absolute; left:50%; top:-14px; transform:translateX(-50%); width:90px; height:26px; border-radius:0 0 14px 14px; background:rgba(0,0,0,.18); }
+.fa-caja-cruz { position:absolute; right:-26px; top:-26px; width:150px; height:150px; opacity:.14; }
+.fa-caja h3 { font-family:var(--f-tit); font-weight:800; font-size:28px; margin:8px 0 6px; line-height:1.05; position:relative; }
+.fa-caja p { margin:0; font-size:13.5px; line-height:1.5; opacity:.9; position:relative; }
+.fa-caja-medidor { position:relative; margin-top:20px; }
+.fa-caja-items { position:relative; display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; }
+.fa-caja-items span { width:38px; height:38px; border-radius:12px; background:rgba(255,255,255,.16); display:flex; align-items:center; justify-content:center; font-size:19px; opacity:.45; filter:grayscale(.6); transition:all .3s var(--rebote); }
+.fa-caja-items span.on { opacity:1; filter:none; background:rgba(255,255,255,.3); transform:scale(1.06); }
+.fa-caja-medidor div { display:flex; justify-content:space-between; font-size:12.5px; font-weight:800; margin-bottom:8px; }
+.fa-caja-barra { height:12px; border-radius:999px; background:rgba(255,255,255,.25); overflow:hidden; }
+.fa-caja-barra i { display:block; height:100%; border-radius:999px; background:#fff; transition:width .6s var(--ease); }
+.fa-checks { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-content:start; }
+@media (min-width:560px) { .fa-checks { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+.fa-check { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:14px; border:1.5px solid var(--linea); background:var(--bg); text-align:left; transition:border-color .2s, background .2s; min-width:0; }
+.fa-check:hover { border-color:rgba(var(--menta-rgb),.4); }
+.fa-check .box { width:26px; height:26px; border-radius:8px; border:2px solid var(--txt-3); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+.fa-check .box svg { width:16px; height:16px; fill:none; stroke:#fff; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:24; stroke-dashoffset:24; }
+.fa-check.on .box { background:var(--menta); border-color:var(--menta); }
+.fa-check.on .box svg { animation:fa-check .35s var(--ease) forwards; }
+.fa-check .tx { flex:1; min-width:0; }
+.fa-check b { display:block; font-size:14px; font-weight:700; }
+.fa-check.on b { text-decoration:line-through; color:var(--txt-3); }
+.fa-check small { display:block; font-size:11.5px; font-weight:700; color:var(--txt-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fa-check small.hay { color:var(--menta); }
+.fa-check .em { font-size:20px; flex-shrink:0; }
+.fa-bot-acc { grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; align-items:center; border-top:1px solid var(--linea); padding-top:16px; }
+.fa-bot-acc p { margin:0 auto 0 0; font-size:13px; color:var(--txt-2); font-weight:600; }
+@media (max-width:560px) { .fa-bot-acc .fa-btn { flex:1 1 100%; } .fa-bot-acc p { flex:1 1 100%; } }
+
+/* Botones */
+.fa-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:50px; padding:0 22px; border-radius:999px; border:1.5px solid var(--linea); background:var(--sup); color:var(--txt); font-weight:800; font-size:14.5px; white-space:nowrap; transition:transform .2s var(--rebote), background .2s, box-shadow .2s; }
+.fa-btn:hover { transform:translateY(-2px); }
+.fa-btn:active { transform:scale(.97); }
+.fa-btn.menta { background:var(--menta); border-color:var(--menta); color:#fff; box-shadow:0 12px 26px -12px rgba(var(--menta-rgb),.8); }
+.fa-btn.menta:hover { background:var(--menta-2); }
+.fa-btn.wa { background:#1faa59; border-color:#1faa59; color:#fff; box-shadow:0 12px 26px -12px rgba(31,170,89,.8); }
+.fa-btn[disabled] { opacity:.45; cursor:not-allowed; transform:none; }
+
+/* Catálogo */
+.fa-filtros { position:sticky; top:var(--hdr); z-index:60; background:rgba(var(--bg-rgb),.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); padding:10px 0; margin-bottom:18px; }
+.fa-fila { display:flex; gap:8px; }
+.fa-buscar { flex:1; min-width:0; display:flex; align-items:center; gap:10px; height:48px; padding:0 16px; border-radius:999px; border:1.5px solid var(--linea); background:var(--sup); transition:border-color .2s; }
+.fa-buscar:focus-within { border-color:var(--menta); }
+.fa-buscar > span { color:var(--menta); }
+.fa-buscar input { flex:1; min-width:0; border:none; outline:none; background:none; font-size:15px; font-weight:600; }
+.fa-buscar input::placeholder { color:var(--txt-3); font-weight:500; }
+.fa-buscar button { border:none; background:var(--sup-2); width:26px; height:26px; border-radius:50%; display:none; align-items:center; justify-content:center; font-size:12px; }
+.fa-buscar button.on { display:flex; }
+.fa-orden { height:48px; border-radius:999px; border:1.5px solid var(--linea); background:var(--sup); padding:0 14px; font-size:13.5px; font-weight:700; max-width:40vw; }
+.fa-chips { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-top:10px; }
+.fa-chips::-webkit-scrollbar { display:none; }
+.fa-chip { flex-shrink:0; height:38px; padding:0 15px; border-radius:999px; border:1.5px solid var(--linea); background:var(--sup); font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; transition:all .2s; }
+.fa-chip small { font-size:11px; color:var(--txt-3); font-weight:800; }
+.fa-chip:hover { border-color:rgba(var(--menta-rgb),.5); }
+.fa-chip.on { background:var(--txt); color:var(--bg); border-color:var(--txt); }
+.fa-chip.on small { color:inherit; opacity:.6; }
+.fa-res { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:14px; }
+.fa-res b { font-family:var(--f-tit); font-weight:700; font-size:22px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.fa-res span { font-size:13px; font-weight:700; color:var(--txt-3); white-space:nowrap; }
+.fa-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+@media (min-width:720px) { .fa-grid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:16px; } }
+@media (min-width:1100px) { .fa-grid { grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px; } }
+.fa-card { position:relative; display:flex; flex-direction:column; background:var(--sup); border-radius:var(--r); border:1px solid var(--linea); box-shadow:var(--sombra); overflow:hidden; animation:fa-sube .55s var(--ease) backwards; transition:transform .3s var(--ease), box-shadow .3s; }
+@media (hover:hover) { .fa-card:hover { transform:translateY(-5px); box-shadow:var(--sombra-2); } }
+.fa-card-media { position:relative; aspect-ratio:1/1; background:var(--sup-2); overflow:hidden; cursor:pointer; margin:8px 8px 0; border-radius:14px; }
+.fa-card-media.cargando { background:linear-gradient(90deg, var(--sup-2) 25%, var(--bg) 50%, var(--sup-2) 75%); background-size:200% 100%; animation:fa-shimmer 1.3s infinite; }
+.fa-card-media img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .35s, transform .6s var(--ease); }
+.fa-card-media img.ok { opacity:1; }
+@media (hover:hover) { .fa-card:hover .fa-card-media img { transform:scale(1.05); } }
+.fa-card-media .fa-sin-foto { font-size:50px; }
+.fa-card.agotada .fa-card-media img { filter:grayscale(1); opacity:.5; }
+.fa-tags { position:absolute; top:8px; left:8px; z-index:2; display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.fa-tag { padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; background:var(--menta); color:#fff; }
+.fa-tag.rojo { background:var(--rojo); }
+.fa-tag.gris { background:#5b6e6a; }
+.fa-tag.rx { background:var(--sup); color:var(--azul); border:1.5px solid var(--azul); display:inline-flex; align-items:center; gap:4px; }
+.fa-fav { position:absolute; top:14px; right:14px; z-index:3; width:36px; height:36px; border-radius:50%; border:none; background:rgba(255,255,255,.92); color:#5b6e6a; display:flex; align-items:center; justify-content:center; font-size:15px; box-shadow:var(--sombra); transition:transform .2s var(--rebote), color .2s; }
+.fa-fav:hover { transform:scale(1.1); }
+.fa-fav.on { color:var(--rojo); }
+.fa-card-info { padding:12px 14px 14px; display:flex; flex-direction:column; flex:1; gap:4px; }
+.fa-card-cat { font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--menta); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fa-card-nombre { font-weight:700; font-size:14.5px; line-height:1.3; cursor:pointer; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-height:2.6em; }
+.fa-card-pres { font-size:12px; font-weight:700; color:var(--txt-3); min-height:1.2em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fa-card-pie { display:flex; align-items:flex-end; justify-content:space-between; gap:8px; margin-top:auto; padding-top:8px; }
+.fa-card-precio { min-width:0; }
+.fa-card-precio s { display:block; font-size:11.5px; color:var(--txt-3); font-weight:600; }
+.fa-card-precio b { font-family:var(--f-tit); font-weight:700; font-size:19px; white-space:nowrap; }
+.fa-card-precio b.oferta { color:var(--rojo); }
+.fa-add { width:42px; height:42px; border-radius:50%; border:none; background:var(--menta); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; box-shadow:0 8px 18px -8px rgba(var(--menta-rgb),.9); transition:transform .2s var(--rebote), background .2s; }
+.fa-add:hover { transform:scale(1.1); background:var(--menta-2); }
+.fa-add.hecho { background:var(--txt); }
+.fa-vacio { grid-column:1/-1; text-align:center; padding:56px 16px; color:var(--txt-3); background:var(--sup); border-radius:var(--r); border:1.5px dashed var(--linea); }
+.fa-vacio b { display:block; font-family:var(--f-tit); font-size:22px; color:var(--txt); margin-bottom:6px; }
+.fa-mas { display:flex; justify-content:center; margin-top:26px; }
+
+/* Footer */
+.fa-footer { background:var(--sup); border-top:1px solid var(--linea); padding:clamp(44px,6vw,70px) 0 calc(28px + var(--safe-b)); }
+.fa-foot-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:28px; }
+@media (min-width:860px) { .fa-foot-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:50px; } }
+.fa-foot-grid h3 { font-family:var(--f-tit); font-weight:800; font-size:clamp(26px,3.4vw,36px); margin:0 0 10px; letter-spacing:-.02em; line-height:1.1; }
+.fa-foot-grid p { margin:0 0 20px; color:var(--txt-2); line-height:1.6; max-width:460px; }
+.fa-contactos { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+@media (min-width:520px) { .fa-contactos { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+.fa-contacto { display:flex; align-items:center; gap:12px; padding:14px; border-radius:16px; border:1px solid var(--linea); background:var(--bg); min-width:0; transition:border-color .2s, transform .2s var(--rebote); }
+.fa-contacto:hover { border-color:rgba(var(--menta-rgb),.5); transform:translateY(-2px); }
+.fa-contacto-ico { width:40px; height:40px; border-radius:12px; background:var(--menta-suave); color:var(--menta); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.fa-contacto small { display:block; font-size:11px; font-weight:800; color:var(--txt-3); text-transform:uppercase; letter-spacing:.06em; }
+.fa-contacto b { display:block; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fa-pie { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; font-size:12.5px; color:var(--txt-3); margin-top:30px; padding-top:18px; border-top:1px solid var(--linea); }
+
+/* Flotantes */
+.fa-barra { position:fixed; left:12px; right:12px; bottom:calc(12px + var(--safe-b)); z-index:70; display:none; }
+@media (max-width:899px) { .fa-barra.on { display:flex; } body.fa-con-barra { padding-bottom:calc(80px + var(--safe-b)); } }
+.fa-barra button, .fa-barra a { flex:1; height:58px; border-radius:999px; border:none; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 8px 0 20px; font-weight:800; font-size:14.5px; box-shadow:0 16px 34px -12px rgba(15,42,38,.5); }
+.fa-barra .bolsa { background:var(--menta); color:#fff; }
+.fa-barra .bolsa .t { background:#fff; color:var(--menta-2); padding:0 16px; height:44px; border-radius:999px; display:flex; align-items:center; font-family:var(--f-tit); font-weight:700; font-size:16px; }
+.fa-barra .wa { background:#1faa59; color:#fff; justify-content:center; padding:0 20px; }
+.fa-flot-wa { position:fixed; right:22px; bottom:22px; z-index:70; width:60px; height:60px; border-radius:50%; border:none; background:#1faa59; color:#fff; font-size:26px; display:none; align-items:center; justify-content:center; box-shadow:0 14px 30px -10px rgba(31,170,89,.8); transition:transform .2s var(--rebote); }
+.fa-flot-wa:hover { transform:scale(1.08); }
+@media (min-width:900px) { .fa-flot-wa.on { display:flex; } }
+
+/* Overlays */
+.fa-overlay { position:fixed; inset:0; z-index:200; background:rgba(8,24,21,.5); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); display:none; align-items:flex-end; justify-content:center; animation:fa-fade .2s; }
+.fa-overlay.open { display:flex; }
+@media (min-width:820px) { .fa-overlay { align-items:center; padding:24px; } }
+.fa-cerrar { position:absolute; top:12px; right:12px; z-index:6; width:42px; height:42px; border-radius:50%; border:none; background:var(--sup); color:var(--txt); display:flex; align-items:center; justify-content:center; font-size:17px; box-shadow:var(--sombra); }
+.fa-modal { position:relative; width:100%; max-width:980px; max-height:94vh; max-height:94dvh; overflow-y:auto; overscroll-behavior:contain; background:var(--sup); border-radius:26px 26px 0 0; animation:fa-sheet .4s var(--ease); }
+@media (min-width:820px) { .fa-modal { display:grid; grid-template-columns:1fr 1fr; border-radius:26px; overflow:hidden; animation:fa-sube .35s var(--ease); } }
+.fa-modal-gal { position:relative; background:var(--sup-2); }
+.fa-modal-fotos { display:flex; aspect-ratio:1/1; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+@media (min-width:820px) { .fa-modal-fotos { aspect-ratio:auto; height:min(84vh,640px); } }
+.fa-modal-fotos::-webkit-scrollbar { display:none; }
+.fa-modal-fotos img { flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; cursor:zoom-in; }
+.fa-modal-fotos .fa-sin-foto { position:relative; flex:0 0 100%; font-size:90px; }
+.fa-puntos { position:absolute; left:0; right:0; bottom:14px; display:flex; justify-content:center; gap:6px; }
+.fa-puntos i { width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,.55); transition:all .2s; }
+.fa-puntos i.on { width:22px; border-radius:4px; background:var(--menta); }
+.fa-modal-body { padding:26px 20px calc(24px + var(--safe-b)); display:flex; flex-direction:column; }
+.fa-modal-body > * { flex-shrink:0; }
+@media (min-width:820px) { .fa-modal-body { padding:44px 34px 30px; max-height:min(84vh,640px); overflow-y:auto; } }
+.fa-modal-cat { font-size:12px; font-weight:800; color:var(--menta); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+.fa-modal-nombre { font-family:var(--f-tit); font-weight:800; font-size:clamp(24px,3vw,32px); line-height:1.12; letter-spacing:-.02em; margin:0 0 12px; overflow-wrap:anywhere; }
+.fa-modal-precio { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.fa-modal-precio b { font-family:var(--f-tit); font-weight:700; font-size:32px; }
+.fa-modal-precio b.oferta { color:var(--rojo); }
+.fa-modal-precio s { color:var(--txt-3); font-size:15px; }
+.fa-modal-precio span { padding:4px 10px; border-radius:999px; background:rgba(229,72,77,.12); color:var(--rojo); font-size:12.5px; font-weight:800; }
+.fa-rx-aviso { display:flex; gap:10px; align-items:flex-start; margin-top:14px; padding:12px 14px; border-radius:14px; background:rgba(45,108,223,.08); border:1px solid rgba(45,108,223,.25); font-size:13px; line-height:1.5; color:var(--txt-2); }
+.fa-rx-aviso b { color:var(--azul); }
+.fa-modal-desc { font-size:14.5px; line-height:1.7; color:var(--txt-2); white-space:pre-wrap; margin:16px 0 0; }
+.fa-cant { display:inline-flex; align-items:center; border-radius:999px; border:1.5px solid var(--linea); height:50px; background:var(--bg); flex-shrink:0; }
+.fa-cant button { width:42px; height:100%; border:none; background:none; font-size:19px; font-weight:700; }
+.fa-cant span { min-width:24px; text-align:center; font-weight:800; }
+.fa-mfila { display:flex; gap:8px; margin-top:20px; margin-bottom:8px; }
+.fa-mfila .fa-btn { flex:1; min-width:0; padding:0 14px; }
+.fa-mextra { display:flex; gap:8px; margin-top:8px; }
+.fa-mextra .fa-btn { flex:1; height:44px; font-size:13.5px; }
+.fa-mextra .fa-btn.ico { flex:0 0 44px; padding:0; }
+.fa-rel { margin-top:24px; padding-top:18px; border-top:1px solid var(--linea); }
+.fa-rel h4 { margin:0 0 12px; font-family:var(--f-tit); font-weight:700; font-size:17px; }
+.fa-rel-lista { display:flex; gap:10px; overflow-x:auto; scrollbar-width:none; }
+.fa-rel-lista::-webkit-scrollbar { display:none; }
+.fa-rel-item { flex:0 0 118px; min-width:0; cursor:pointer; }
+.fa-rel-item div { position:relative; aspect-ratio:1/1; border-radius:14px; overflow:hidden; background:var(--sup-2); }
+.fa-rel-item img { width:100%; height:100%; object-fit:cover; }
+.fa-rel-item .fa-sin-foto { font-size:30px; }
+.fa-rel-item b { display:block; font-size:12.5px; font-weight:700; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fa-rel-item span { font-size:13px; font-weight:800; color:var(--menta); }
+
+/* Bolsa */
+.fa-bolsa { position:relative; width:100%; max-width:470px; max-height:94vh; max-height:94dvh; background:var(--sup); border-radius:26px 26px 0 0; display:flex; flex-direction:column; animation:fa-sheet .4s var(--ease); }
+@media (min-width:820px) {
+  #fa-overlay-bolsa { align-items:stretch; justify-content:flex-end; padding:0; }
+  .fa-bolsa { height:100vh; max-height:none; border-radius:26px 0 0 26px; animation:fa-drawer .4s var(--ease); }
+}
+.fa-bolsa-head { padding:22px 20px 16px; border-bottom:1px solid var(--linea); display:flex; align-items:center; gap:12px; }
+.fa-bolsa-head .ic { width:46px; height:46px; border-radius:14px; background:var(--menta-suave); color:var(--menta); display:flex; align-items:center; justify-content:center; font-size:22px; }
+.fa-bolsa-head h3 { margin:0; font-family:var(--f-tit); font-weight:800; font-size:24px; }
+.fa-bolsa-head p { margin:2px 0 0; font-size:13px; color:var(--txt-3); font-weight:600; }
+.fa-bolsa-cuerpo { flex:1; overflow-y:auto; padding:6px 20px 16px; overscroll-behavior:contain; }
+.fa-bitem { display:grid; grid-template-columns:62px 1fr auto; gap:12px; padding:13px 0; border-bottom:1px solid var(--linea); align-items:center; animation:fa-sube .35s var(--ease) both; }
+.fa-bitem-img { position:relative; width:62px; height:62px; border-radius:14px; overflow:hidden; background:var(--sup-2); }
+.fa-bitem-img img { width:100%; height:100%; object-fit:cover; }
+.fa-bitem-img .fa-sin-foto { font-size:22px; }
+.fa-bitem b { display:block; font-size:14px; line-height:1.3; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.fa-bitem small { display:block; font-size:12.5px; font-weight:700; color:var(--txt-3); margin-top:2px; }
+.fa-bitem small.rx { color:var(--azul); }
+.fa-bitem .fa-cant { height:38px; }
+.fa-bitem .fa-cant button { width:30px; font-size:15px; }
+.fa-bitem .fa-cant span { min-width:20px; font-size:13.5px; }
+.fa-receta { display:flex; gap:12px; align-items:flex-start; margin-top:14px; padding:14px; border-radius:16px; border:1.5px solid rgba(45,108,223,.3); background:rgba(45,108,223,.06); cursor:pointer; text-align:left; width:100%; }
+.fa-receta .box { width:24px; height:24px; border-radius:7px; border:2px solid var(--azul); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.fa-receta .box svg { width:14px; height:14px; fill:none; stroke:#fff; stroke-width:3.2; stroke-linecap:round; stroke-linejoin:round; opacity:0; }
+.fa-receta.on .box { background:var(--azul); }
+.fa-receta.on .box svg { opacity:1; }
+.fa-receta b { display:block; font-size:14px; color:var(--azul); }
+.fa-receta small { display:block; font-size:12.5px; color:var(--txt-2); line-height:1.45; margin-top:2px; }
+.fa-nota { margin-top:14px; }
+.fa-nota label { display:block; font-size:12px; font-weight:800; color:var(--txt-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+.fa-nota textarea { width:100%; min-height:66px; border-radius:14px; border:1.5px solid var(--linea); background:var(--bg); padding:12px; font-size:14px; resize:vertical; outline:none; }
+.fa-nota textarea:focus { border-color:var(--menta); }
+.fa-bvacio { text-align:center; padding:56px 10px; color:var(--txt-3); }
+.fa-bvacio .ic { font-size:48px; margin-bottom:8px; }
+.fa-bvacio b { display:block; font-family:var(--f-tit); font-size:22px; color:var(--txt); margin-bottom:6px; }
+.fa-bolsa-pie { padding:16px 20px calc(18px + var(--safe-b)); border-top:1px solid var(--linea); background:var(--bg); }
+.fa-blinea { display:flex; justify-content:space-between; font-size:13.5px; font-weight:700; color:var(--rojo); margin-bottom:4px; }
+.fa-btotal { display:flex; justify-content:space-between; align-items:baseline; margin:4px 0 14px; }
+.fa-btotal span { font-size:14px; font-weight:700; color:var(--txt-2); }
+.fa-btotal b { font-family:var(--f-tit); font-weight:800; font-size:30px; }
+.fa-bolsa-pie .fa-btn { width:100%; height:54px; }
+.fa-bnota { font-size:12px; color:var(--txt-3); text-align:center; margin-top:10px; }
+.fa-bvaciar { display:block; margin:6px auto 0; border:none; background:none; font-size:12.5px; font-weight:700; color:var(--txt-3); text-decoration:underline; }
+
+.fa-lb { position:fixed; inset:0; z-index:300; background:rgba(4,14,12,.95); display:none; align-items:center; justify-content:center; }
+.fa-lb.open { display:flex; }
+.fa-lb img { max-width:92vw; max-height:86vh; object-fit:contain; border-radius:12px; }
+.fa-lb-btn { position:absolute; width:48px; height:48px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; font-size:22px; display:flex; align-items:center; justify-content:center; }
+.fa-lb-btn.x { top:18px; right:18px; font-size:17px; }
+.fa-lb-btn.izq { left:14px; top:50%; transform:translateY(-50%); }
+.fa-lb-btn.der { right:14px; top:50%; transform:translateY(-50%); }
+.fa-lb-cont { position:absolute; bottom:22px; left:50%; transform:translateX(-50%); color:#fff; font-size:13px; font-weight:700; }
+
+.fa-sin-foto { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--f-tit); font-weight:700; color:var(--menta); background:var(--menta-suave); }
+.fa-toasts { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(96px + var(--safe-b)); z-index:960; display:flex; flex-direction:column; gap:6px; align-items:center; pointer-events:none; width:max-content; max-width:92vw; }
+@media (min-width:900px) { .fa-toasts { bottom:30px; } }
+.fa-toast { background:var(--txt); color:var(--bg); padding:12px 18px; border-radius:999px; font-weight:700; font-size:13.5px; box-shadow:var(--sombra-2); animation:fa-sube .3s var(--rebote); display:flex; align-items:center; gap:8px; }
+.fa-toast i { color:var(--menta); font-style:normal; }
+.fa-preview { display:none; background:var(--ambar); color:#3d2800; text-align:center; font-size:12.5px; font-weight:800; padding:6px 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  .fa-reveal { opacity:1; transform:none; }
+}
+</style>
+</head>
+<body class="fa-bloq">
+
+<div class="fa-intro" id="fa-intro" aria-hidden="true">
+  <div class="fa-intro-cruz"><svg viewBox="0 0 84 84"><rect width="84" height="84" rx="24" fill="#0e9f86"/><path d="M34 18h16v16h16v16H50v16H34V50H18V34h16z" fill="#fff"/></svg></div>
+  <svg class="fa-intro-ecg" viewBox="0 0 320 50"><path d="M0 25h90l10-14 12 30 14-40 12 38 8-14h174"/></svg>
+  <div class="fa-intro-n" id="fa-intro-n"></div>
+</div>
+<div class="fa-error" id="fa-error"></div>
+
+<div id="fa-app" style="display:none">
+  <div class="fa-preview" id="fa-preview">Vista previa — este catálogo todavía no es público</div>
+  <div class="fa-aviso" id="fa-aviso"></div>
+  <header class="fa-header">
+    <div class="fa-wrap fa-header-in">
+      <div class="fa-marca" onclick="irArriba()">
+        <svg class="fa-marca-cruz" id="fa-marca-cruz" viewBox="0 0 84 84"><rect width="84" height="84" rx="24" fill="var(--menta)"/><path d="M34 18h16v16h16v16H50v16H34V50H18V34h16z" fill="#fff"/></svg>
+        <img id="fa-logo" alt="" style="display:none">
+        <div style="min-width:0"><b id="fa-marca-nombre"></b><small id="fa-marca-sub">Farmacia</small></div>
+      </div>
+      <div class="fa-hacc">
+        <button class="fa-ico opc" onclick="irA('fa-sec-botiquin')" aria-label="Botiquín"><span>🩹</span><span class="t">Botiquín</span></button>
+        <button class="fa-ico opc" onclick="toggleTema()" aria-label="Cambiar tema" id="fa-btn-tema"></button>
+        <button class="fa-ico bolsa" id="fa-btn-bolsa" onclick="abrirBolsa()" aria-label="Tu pedido" style="display:none"><span id="fa-i-bolsa"></span><span class="t">Pedido</span><span class="fa-badge" id="fa-badge"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <section class="fa-hero">
+    <div class="fa-wrap fa-hero-grid">
+      <div style="min-width:0">
+        <span class="fa-pill-estado"><b><span id="fa-i-pulso">●</span> Atendiendo</b><span id="fa-hero-pill"></span></span>
+        <h1 class="fa-titulo" id="fa-titulo"></h1>
+        <svg class="fa-ecg-linea" viewBox="0 0 520 46" preserveAspectRatio="none" aria-hidden="true"><path d="M0 23h170l10-12 10 26 14-34 12 32 8-12h286"/><circle cx="514" cy="23" r="5"/></svg>
+        <p class="fa-hero-desc" id="fa-hero-desc"></p>
+        <form class="fa-buscador-hero" onsubmit="event.preventDefault();buscarDesdeHero()">
+          <span id="fa-i-buscar"></span>
+          <label class="fa-sr" for="fa-buscar-hero">Buscar medicamento o producto</label>
+          <input id="fa-buscar-hero" type="search" placeholder="Buscá un medicamento o producto" autocomplete="off">
+          <button type="submit">Buscar</button>
+        </form>
+        <div class="fa-rapidos" id="fa-rapidos"></div>
+      </div>
+      <div class="fa-hero-vis" id="fa-hero-vis"></div>
+    </div>
+  </section>
+
+  <section class="fa-sec" id="fa-sec-sintomas" style="padding-top:10px">
+    <div class="fa-wrap">
+      <div class="fa-head fa-reveal"><div><small>🩺 Guía rápida</small><h2>¿Qué sentís hoy?</h2></div><p>Tocá un síntoma y te mostramos los productos relacionados que tenemos disponibles.</p></div>
+      <div class="fa-sintomas fa-reveal" id="fa-sintomas"></div>
+      <div class="fa-disclaimer fa-reveal"><span>⚠️</span><div>Esta guía es orientativa y no reemplaza la consulta médica. Si los síntomas persisten o son intensos, consultá a tu médico. Nuestro farmacéutico te asesora por WhatsApp.</div></div>
+    </div>
+  </section>
+
+  <section class="fa-sec" id="fa-sec-botiquin" style="padding-top:10px">
+    <div class="fa-wrap">
+      <div class="fa-head fa-reveal"><div><small>🩹 Prevención</small><h2>Botiquín del hogar</h2></div><p>Marcá lo que ya tenés en casa. Te decimos qué te falta y lo agregás al pedido en un toque.</p></div>
+      <div class="fa-botiquin fa-reveal" id="fa-botiquin"></div>
+    </div>
+  </section>
+
+  <section class="fa-sec" id="fa-sec-catalogo" style="padding-top:10px">
+    <div class="fa-wrap">
+      <div class="fa-head fa-reveal"><div><small>💊 Catálogo</small><h2>Todos los productos</h2></div></div>
+      <div class="fa-filtros">
+        <div class="fa-fila">
+          <label class="fa-buscar"><span id="fa-i-buscar-2"></span><span class="fa-sr">Buscar</span><input type="search" id="fa-buscador" placeholder="Buscar producto" autocomplete="off" oninput="onBuscar(this.value)"><button type="button" id="fa-limpiar" onclick="onBuscar('');document.getElementById('fa-buscador').focus()" aria-label="Limpiar">✕</button></label>
+          <select class="fa-orden" id="fa-orden" onchange="cambiarOrden(this.value)" aria-label="Ordenar"><option value="reciente">Recientes</option><option value="precio_asc">Menor precio</option><option value="precio_desc">Mayor precio</option><option value="nombre">A–Z</option></select>
+        </div>
+        <div class="fa-chips" id="fa-chips"></div>
+      </div>
+      <div class="fa-res"><b id="fa-res-t">Todos</b><span id="fa-res-n"></span></div>
+      <div class="fa-grid" id="fa-grid" data-grid></div>
+      <div class="fa-mas" id="fa-mas" style="display:none"><button class="fa-btn" onclick="verMas()">Ver más productos</button></div>
+    </div>
+  </section>
+
+  <footer class="fa-footer">
+    <div class="fa-wrap">
+      <div class="fa-foot-grid">
+        <div><h3 id="fa-foot-t"></h3><p id="fa-foot-desc"></p><div id="fa-foot-cta"></div></div>
+        <div class="fa-contactos" id="fa-contactos"></div>
+      </div>
+      <div class="fa-pie"><span>© <span id="fa-anio"></span> <span id="fa-pie-nombre"></span></span><span>Hecho con Catálogo360</span></div>
+    </div>
+  </footer>
+
+  <button class="fa-flot-wa" id="fa-flot-wa" aria-label="Consultar al farmacéutico"></button>
+  <div class="fa-barra" id="fa-barra"></div>
+</div>
+
+<div class="fa-overlay" id="fa-overlay-modal" onclick="if(event.target===this)cerrarModal()" role="dialog" aria-modal="true" aria-label="Detalle del producto">
+  <div class="fa-modal" id="fa-modal">
+    <button class="fa-cerrar" onclick="cerrarModal()" aria-label="Cerrar" data-ico="close"></button>
+    <div class="fa-modal-gal"><div class="fa-modal-fotos" id="fa-modal-fotos"></div><div class="fa-puntos" id="fa-puntos"></div></div>
+    <div class="fa-modal-body" id="fa-modal-body"></div>
+  </div>
+</div>
+
+<div class="fa-overlay" id="fa-overlay-bolsa" onclick="if(event.target===this)cerrarBolsa()" role="dialog" aria-modal="true" aria-label="Tu pedido">
+  <div class="fa-bolsa">
+    <button class="fa-cerrar" onclick="cerrarBolsa()" aria-label="Cerrar" data-ico="close"></button>
+    <div class="fa-bolsa-head"><span class="ic">💊</span><div><h3>Tu pedido</h3><p id="fa-bolsa-sub"></p></div></div>
+    <div class="fa-bolsa-cuerpo" id="fa-bolsa-cuerpo"></div>
+    <div class="fa-bolsa-pie" id="fa-bolsa-pie"></div>
+  </div>
+</div>
+
+<div class="fa-lb" id="fa-lb" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="fa-lb-btn x" onclick="cerrarLightbox()" aria-label="Cerrar">✕</button>
+  <button class="fa-lb-btn izq" onclick="moverLightbox(-1)" aria-label="Anterior">‹</button>
+  <img id="fa-lb-img" src="" alt="">
+  <button class="fa-lb-btn der" onclick="moverLightbox(1)" aria-label="Siguiente">›</button>
+  <div class="fa-lb-cont" id="fa-lb-cont"></div>
+</div>
+<div class="fa-toasts" id="fa-toasts" aria-live="polite"></div>
+
+<script>
+const sb = c360CrearCliente();
+const PLANTILLA_KEY = 'farmacia';
+const POR_PAGINA = 24;
+const MOV_REDUCIDO = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [];
+let CAT_ACTUAL = null, SINTOMA = null, SOLO_FAV = false, SOLO_OFERTAS = false, ORDEN = 'reciente', TEXTO = '', LIMITE = POR_PAGINA;
+let FAVORITOS = [], BOLSA = [], NOTA = '', CON_RECETA = false, TENGO = [];
+let ES_PREVIEW = false, MODAL_ID = null, MODAL_CANT = 1, LB_FOTOS = [], LB_I = 0;
+
+// Síntomas -> palabras clave (se buscan en nombre, descripción y categoría)
+const SINTOMAS = [
+  { k:'dolor', n:'Dolor y fiebre', ic:'🤒', re:/acetaminof|paracetamol|ibuprof|analg|dolor|fiebre|naproxeno|diclofenac|aspirina|dipirona|metamizol|panadol|tylenol|advil/i },
+  { k:'gripe', n:'Gripe y tos', ic:'🤧', re:/gripe|resfr|\btos\b|jarabe|antigrip|descongest|expector|garganta|pastilla(s)? para la garganta|vick|antitus|mucol|ambroxol|loratad.*descong/i },
+  { k:'alergia', n:'Alergias', ic:'🌼', re:/alerg|antihist|loratad|cetiriz|desloratad|clorfenir|fexofen/i },
+  { k:'estomago', n:'Estómago', ic:'🫃', re:/est[oó]mag|acidez|gastr|antiac|omepraz|diarr|suero|probi[oó]t|laxant|colitis|n[aá]usea|digest|sal andrews|pepto|electrolit/i },
+  { k:'piel', n:'Piel y heridas', ic:'🩹', re:/crema|pomada|ung[uü]ento|gasa|curita|vendaj|antis[eé]pt|alcohol|agua oxigenada|herida|quemadur|protector solar|bloqueador|dermat|hidratante|repelente/i },
+  { k:'vitaminas', n:'Vitaminas', ic:'💪', re:/vitamin|multivit|suplement|hierro|calcio|zinc|omega|complejo b|magnesio|col[aá]geno/i },
+  { k:'bebe', n:'Bebé y mamá', ic:'👶', re:/beb[eé]|pa[nñ]al|infantil|pedi[aá]tric|ni[nñ]os?|f[oó]rmula|toallitas h[uú]medas|chupete|mam[aá]|prenatal/i },
+  { k:'cuidado', n:'Cuidado personal', ic:'🧴', re:/cuidado personal|shampoo|jab[oó]n|desodor|cepillo|pasta dental|crema dental|enjuague|toalla(s)? sanitaria|preservativ|cond[oó]n|afeitar|higiene/i },
+];
+// Botiquín del hogar: artículo + palabras para encontrarlo en el catálogo
+const BOTIQUIN = [
+  { k:'alcohol', n:'Alcohol o antiséptico', em:'🧴', re:/alcohol|antis[eé]pt|agua oxigenada|yodo|clorhexid/i },
+  { k:'gasas', n:'Gasas estériles', em:'🩹', re:/gasa/i },
+  { k:'curitas', n:'Curitas / venditas', em:'🩹', re:/curita|vendita|bandita|apósito|aposito/i },
+  { k:'vendaje', n:'Venda y esparadrapo', em:'🦵', re:/venda|esparadrapo|cinta m[eé]dica|micropore/i },
+  { k:'termometro', n:'Termómetro', em:'🌡️', re:/term[oó]metro/i },
+  { k:'analgesico', n:'Analgésico (dolor/fiebre)', em:'💊', re:/acetaminof|paracetamol|ibuprof|analg/i },
+  { k:'suero', n:'Suero oral', em:'🥤', re:/suero|electrolit|rehidrat/i },
+  { k:'antialergico', n:'Antialérgico', em:'🌼', re:/alerg|loratad|cetiriz|antihist/i },
+  { k:'antiacido', n:'Antiácido', em:'🫃', re:/antiac|acidez|omepraz|sal andrews|gastr/i },
+  { k:'guantes', n:'Guantes desechables', em:'🧤', re:/guante/i },
+];
+
+const ICO = {
+  search:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  bag:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 7h12l1 14H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/><path d="M12 11v6M9 14h6"/></svg>',
+  heart:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.6 8.4 3.3 5 6.6 5c2.1 0 3.4 1.2 5.4 3.2C14 6.2 15.3 5 17.4 5c3.3 0 5 3.4 3.9 6.3-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
+  heartFill:'<svg class="fa-i" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.6 8.4 3.3 5 6.6 5c2.1 0 3.4 1.2 5.4 3.2C14 6.2 15.3 5 17.4 5c3.3 0 5 3.4 3.9 6.3-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
+  sun:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.5 13.5A8.5 8.5 0 1 1 10.5 3.5a7 7 0 0 0 10 10z"/></svg>',
+  plus:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  check:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  tick:'<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  close:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  trash:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  share:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
+  phone:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11 11 0 0 0 3.5.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1 11 11 0 0 0 .6 3.5 1 1 0 0 1-.3 1z"/></svg>',
+  mail:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  pin:'<svg class="fa-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  wa:'<svg class="fa-i" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.2-.5-.5-1-1.1-1.3-1.7-.1-.2 0-.4.1-.5l.4-.5.3-.4v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.6.6-.9 1.3-.9 2.1.1.9.4 1.8 1 2.6 1.1 1.6 2.5 2.9 4.2 3.6.5.2.9.4 1.4.5.5.2 1 .2 1.6.1.6-.1 1.2-.5 1.5-1.1.2-.4.2-.8.1-1.1l-.6-.2z"/></svg>',
+};
+const CRUZ_SVG = '<svg viewBox="0 0 84 84"><path d="M34 18h16v16h16v16H50v16H34V50H18V34h16z" fill="#fff"/></svg>';
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+function esc(s) { return c360Esc(String(s ?? '')); }
+function fmtC(n) { return c360FmtC(Number(n || 0)); }
+function arg(v) { return esc(JSON.stringify(String(v ?? ''))); }
+function nombreNegocio() { return CATALOGO?.nombre_comercial || CATALOGO?.nombre || 'Farmacia'; }
+function enOferta(p) { return p.etiqueta === 'oferta' && p.precio_oferta && Number(p.precio_oferta) < Number(p.precio); }
+function precioReal(p) { return enOferta(p) ? Number(p.precio_oferta) : Number(p.precio || 0); }
+function descuento(p) { return enOferta(p) && Number(p.precio) > 0 ? Math.round((1 - Number(p.precio_oferta) / Number(p.precio)) * 100) : 0; }
+function fotoPrincipal(p) { return p?.fotos?.find(f => f.es_principal) || p?.fotos?.[0] || null; }
+function inicial(t) { return esc((String(t || '?').trim()[0] || '?').toUpperCase()); }
+function sinFoto(p) { return `<div class="fa-sin-foto">${inicial(p?.nombre)}</div>`; }
+function nombreCat(p) { return CATEGORIAS.find(c => c.id === p.categoria_id)?.nombre || ''; }
+function textoProd(p) { return `${p.nombre} ${p.descripcion || ''} ${nombreCat(p)}`; }
+// "Requiere receta" si la descripción/nombre lo dice (receta, Rx, bajo prescripción)
+function requiereReceta(p) { const t = `${p.nombre} ${p.descripcion || ''}`; return /(requiere|con|bajo|necesita)\s+(receta|prescripci[oó]n)|venta\s+bajo\s+receta|\brx\b|antibi[oó]tico/i.test(t) && !/sin\s+receta|venta\s+libre/i.test(t); }
+// Presentación: "500 mg", "100 ml", "x 20 tabletas", "caja 10"
+function presentacion(p) {
+  const t = `${p.nombre} ${p.descripcion || ''}`;
+  const partes = [];
+  const m1 = t.match(/\b\d+(?:[.,]\d+)?\s?(mg|g|ml|mcg|ui|%)\b/i); if (m1) partes.push(m1[0].replace(/\s+/, ' '));
+  const m2 = t.match(/\b(?:x\s?)?(\d{1,3})\s?(tabletas|tabs?|c[aá]psulas|comprimidos|sobres|ampollas|unidades|und)\b/i); if (m2) partes.push(`${m2[1]} ${m2[2].toLowerCase()}`);
+  return partes.join(' · ');
+}
+// Solo las partes de la presentación que no estén ya en el nombre
+function presExtra(p) { const n = p.nombre.toLowerCase().replace(/\s+/g, ''); return presentacion(p).split(' · ').filter(x => x && !n.includes(x.toLowerCase().replace(/\s+/g, ''))).join(' · '); }
+function subtitulo(p) { return presExtra(p) || String(p.descripcion || '').split('\n')[0].slice(0, 60); }
+function claveLocal(k) { return `fa_${k}_${CATALOGO?.id || 'x'}`; }
+function leer(k, def) { try { const v = localStorage.getItem(claveLocal(k)); return v ? JSON.parse(v) : def; } catch { return def; } }
+function guardar(k, v) { try { localStorage.setItem(claveLocal(k), JSON.stringify(v)); } catch {} }
+function registrarEvento(tipo, prodId) { c360RegistrarEvento(sb, CATALOGO?.id, tipo, prodId, ES_PREVIEW); }
+function hayWhatsApp() { return !!(CATALOGO?.whatsapp && String(CATALOGO.whatsapp).replace(/\D/g, '').length >= 7); }
+function linkWA(t) { return c360LinkWA(CATALOGO.whatsapp, t); }
+function irArriba() { window.scrollTo({ top:0, behavior:'smooth' }); }
+function irA(id) { const el = $(id); if (el && el.style.display !== 'none') el.scrollIntoView({ behavior:'smooth', block:'start' }); }
+function bloquear(on) { document.body.classList.toggle('fa-bloq', on); }
+function toast(msg) { const t = document.createElement('div'); t.className = 'fa-toast'; t.innerHTML = `<i>✚</i>${esc(msg)}`; $('fa-toasts').appendChild(t); setTimeout(() => t.remove(), 2200); }
+function aplicarTema(t) { document.documentElement.setAttribute('data-theme', t); $('fa-btn-tema').innerHTML = t === 'oscuro' ? ICO.sun : ICO.moon; }
+function toggleTema() { const n = document.documentElement.getAttribute('data-theme') === 'oscuro' ? 'claro' : 'oscuro'; aplicarTema(n); try { localStorage.setItem('fa_tema', n); } catch {} }
+function disponibles() { return PRODUCTOS.filter(p => p.etiqueta !== 'agotado'); }
+
+/* ---------- inicio ---------- */
+function pintarIconos() {
+  $('fa-i-buscar').innerHTML = ICO.search; $('fa-i-buscar-2').innerHTML = ICO.search; $('fa-i-bolsa').innerHTML = ICO.bag; $('fa-flot-wa').innerHTML = ICO.wa;
+  document.querySelectorAll('[data-ico="close"]').forEach(b => b.innerHTML = ICO.close);
+}
+async function init() {
+  pintarIconos();
+  const inicio = Date.now();
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'), idPreview = params.get('preview');
+  ES_PREVIEW = !!idPreview;
+  let r;
+  try { r = await c360CargarCatalogoPublico({ sb, slug, idPreview }); }
+  catch (e) { r = { error:'No pudimos conectar. Revisá tu internet e intentá de nuevo.' }; }
+  if (r.error) { mostrarError(r.error); return; }
+  if (c360RedirigirSiPlantillaCambio(r.catalogo, PLANTILLA_KEY)) return;
+
+  CATALOGO = r.catalogo; PRODUCTOS = r.productos; CATEGORIAS = r.categorias;
+  FAVORITOS = leer('favoritos', []).filter(id => PRODUCTOS.some(p => p.id === id));
+  BOLSA = leer('bolsa', []).filter(x => PRODUCTOS.some(p => p.id === x.id && p.etiqueta !== 'agotado'));
+  TENGO = leer('botiquin', []);
+  CON_RECETA = !!leer('receta', false);
+  try { NOTA = localStorage.getItem(claveLocal('nota')) || ''; } catch {}
+  let tema = 'claro';
+  try { tema = localStorage.getItem('fa_tema') || CATALOGO.tema_default || 'claro'; } catch {}
+  aplicarTema(tema === 'oscuro' ? 'oscuro' : 'claro');
+  if (ES_PREVIEW && CATALOGO.estado !== 'publicado') $('fa-preview').style.display = 'block';
+  $('fa-intro-n').textContent = nombreNegocio();
+
+  $('fa-app').style.display = 'block';
+  renderTodo();
+  if (!ES_PREVIEW) registrarEvento('visita');
+  const espera = MOV_REDUCIDO ? 0 : Math.max(0, 1400 - (Date.now() - inicio));
+  setTimeout(() => { const i = $('fa-intro'); i.classList.add('fuera'); setTimeout(() => i.remove(), 600); bloquear(false); activarRevelado(); abrirDesdeHash(); }, espera);
+}
+function mostrarError(msg) { $('fa-intro')?.remove(); bloquear(false); const e = $('fa-error'); e.style.display = 'flex'; e.innerHTML = `<b>Catálogo no disponible</b><p>${esc(msg)}</p>`; }
+function renderTodo() { renderMeta(); renderHeader(); renderHero(); renderSintomas(); renderBotiquin(); renderChips(); aplicarFiltro(); renderFooter(); actualizarBolsaUI(); }
+function renderMeta() {
+  const c = CATALOGO, n = nombreNegocio();
+  document.title = `${n} · Farmacia`;
+  const d = c.descripcion || `Medicamentos y productos de salud en ${n}`;
+  $('fa-desc-meta').setAttribute('content', d); $('fa-og-title').setAttribute('content', n); $('fa-og-desc').setAttribute('content', d);
+  const img = c.banner_url || c.logo_url; if (img) $('fa-og-image').setAttribute('content', img);
+  c360InsertarJSONLD('fa-jsonld', c, PRODUCTOS);
+}
+function renderHeader() {
+  const c = CATALOGO, n = nombreNegocio();
+  $('fa-marca-nombre').textContent = n;
+  if (/farmacia/i.test(n)) $('fa-marca-sub').textContent = c.ubicacion ? String(c.ubicacion).split(',')[0] : 'Salud y bienestar';
+  if (c.logo_url) { const l = $('fa-logo'); l.src = c.logo_url; l.alt = n; l.style.display = 'block'; $('fa-marca-cruz').style.display = 'none'; }
+  if (hayWhatsApp()) $('fa-btn-bolsa').style.display = 'flex';
+  $('fa-aviso').innerHTML = `<span><i></i>${hayWhatsApp() ? 'Pedí por WhatsApp y te asesora nuestro farmacéutico' : `${PRODUCTOS.length} productos para tu salud`}${c.ubicacion ? ` · ${esc(c.ubicacion)}` : ''}</span>`;
+}
+function renderHero() {
+  const c = CATALOGO, n = nombreNegocio();
+  $('fa-hero-pill').textContent = c.ubicacion ? `Farmacia · ${c.ubicacion}` : `${PRODUCTOS.length} productos disponibles`;
+  $('fa-titulo').innerHTML = `Tu salud, <em>sin filas</em>.<br>${esc(n)}`;
+  $('fa-hero-desc').textContent = c.descripcion || 'Medicamentos, vitaminas, cuidado personal y todo para tu botiquín. Buscá lo que necesitás, armá tu pedido y te lo confirmamos por WhatsApp.';
+  let rap = '';
+  if (c.telefono) rap += `<a href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')">${ICO.phone} ${esc(c.telefono)}</a>`;
+  const nOf = PRODUCTOS.filter(enOferta).length;
+  if (nOf) rap += `<a href="#fa-sec-catalogo" onclick="event.preventDefault();toggleOfertas(true)">🏷️ ${nOf} en oferta</a>`;
+  rap += `<a href="#fa-sec-sintomas" onclick="event.preventDefault();irA('fa-sec-sintomas')">🩺 Buscar por síntoma</a>`;
+  $('fa-rapidos').innerHTML = rap;
+  const conFoto = PRODUCTOS.filter(p => fotoPrincipal(p) && p.etiqueta !== 'agotado');
+  const estrella = conFoto.find(p => p.destacado) || conFoto.find(enOferta) || conFoto[0];
+  const url = c.banner_url || fotoPrincipal(estrella)?.url;
+  $('fa-hero-vis').innerHTML = `<div class="fa-hero-circ">${url ? `<img src="${esc(url)}" alt="${esc(n)}">` : `<div class="fa-sin-foto">✚</div>`}</div>
+    <span class="fa-capsula c1"></span><span class="fa-capsula c2"></span><span class="fa-capsula c3"></span>
+    <div class="fa-hero-sello"><b>${PRODUCTOS.length}</b>productos</div>
+    ${estrella ? `<div class="fa-hero-tarj" onclick="abrirModal(${arg(estrella.id)})"><div class="fa-hero-tarj-img">${fotoPrincipal(estrella) ? `<img src="${esc(fotoPrincipal(estrella).url)}" alt="">` : sinFoto(estrella)}</div><div style="min-width:0"><small>${enOferta(estrella) ? 'En oferta' : 'Destacado'}</small><b>${esc(estrella.nombre)}</b><span>${fmtC(precioReal(estrella))}</span></div></div>` : ''}`;
+}
+function buscarDesdeHero() { const v = $('fa-buscar-hero').value; SINTOMA = null; CAT_ACTUAL = null; renderSintomas(); onBuscar(v); renderChips(); irA('fa-sec-catalogo'); }
+
+/* =====================================================================
+   ¿QUÉ SENTÍS? -- síntomas
+   ===================================================================== */
+function prodsDeSintoma(s) { return PRODUCTOS.filter(p => s.re.test(textoProd(p))); }
+function renderSintomas() {
+  $('fa-sintomas').innerHTML = SINTOMAS.map(s => {
+    const n = prodsDeSintoma(s).length;
+    return `<button class="fa-sintoma ${SINTOMA === s.k ? 'on' : ''}" onclick="elegirSintoma('${s.k}')" ${n ? '' : 'disabled'}><span class="ic">${s.ic}</span><div><b>${s.n}</b><small>${n ? `${n} producto${n === 1 ? '' : 's'}` : 'Consultanos'}</small></div></button>`;
+  }).join('');
+}
+function elegirSintoma(k) {
+  SINTOMA = SINTOMA === k ? null : k; CAT_ACTUAL = null; SOLO_FAV = false; SOLO_OFERTAS = false;
+  TEXTO = ''; $('fa-buscador').value = ''; $('fa-limpiar').classList.remove('on');
+  LIMITE = POR_PAGINA; renderSintomas(); renderChips(); aplicarFiltro();
+  if (SINTOMA) irA('fa-sec-catalogo');
+}
+
+/* =====================================================================
+   BOTIQUÍN DEL HOGAR
+   ===================================================================== */
+function prodBotiquin(b) {
+  // el más barato disponible que coincida
+  return disponibles().filter(p => b.re.test(`${p.nombre} ${nombreCat(p)}`)).sort((a, c) => precioReal(a) - precioReal(c))[0] || null;
+}
+function renderBotiquin() {
+  const listos = BOTIQUIN.filter(b => TENGO.includes(b.k)).length, pct = Math.round(listos / BOTIQUIN.length * 100);
+  const faltan = BOTIQUIN.filter(b => !TENGO.includes(b.k)).map(b => prodBotiquin(b)).filter(Boolean);
+  const totalF = faltan.reduce((s, p) => s + precioReal(p), 0);
+  $('fa-botiquin').innerHTML = `
+    <div class="fa-caja">
+      <svg class="fa-caja-cruz" viewBox="0 0 84 84"><path d="M34 18h16v16h16v16H50v16H34V50H18V34h16z" fill="#fff"/></svg>
+      <div><h3>${pct === 100 ? '¡Botiquín completo!' : 'Tu botiquín'}</h3><p>${pct === 100 ? 'Tenés lo básico para cualquier emergencia en casa. Revisá las fechas de vencimiento cada 6 meses.' : 'Lo básico para atender golpes, fiebre o malestares sin salir corriendo.'}</p><div class="fa-caja-items">${BOTIQUIN.map(b => `<span class="${TENGO.includes(b.k) ? 'on' : ''}" title="${esc(b.n)}">${b.em}</span>`).join('')}</div></div>
+      <div class="fa-caja-medidor"><div><span>${listos} de ${BOTIQUIN.length} artículos</span><span>${pct}%</span></div><div class="fa-caja-barra"><i style="width:${pct}%"></i></div></div>
+    </div>
+    <div class="fa-checks">${BOTIQUIN.map(b => { const on = TENGO.includes(b.k), p = prodBotiquin(b);
+      return `<button class="fa-check ${on ? 'on' : ''}" onclick="toggleBotiquin('${b.k}')" aria-pressed="${on}"><span class="box">${ICO.tick}</span><span class="tx"><b>${b.n}</b><small class="${p && !on ? 'hay' : ''}">${on ? 'Ya lo tengo' : p ? `${esc(p.nombre)} · ${fmtC(precioReal(p))}` : 'Consultá disponibilidad'}</small></span><span class="em">${b.em}</span></button>`; }).join('')}</div>
+    <div class="fa-bot-acc">
+      <p>${faltan.length ? `Te faltan <b>${faltan.length}</b> artículo${faltan.length === 1 ? '' : 's'} disponibles · ${fmtC(totalF)}` : pct === 100 ? '✅ Todo listo' : 'Lo que te falta no está en el catálogo: consultanos.'}</p>
+      ${TENGO.length ? `<button class="fa-btn" onclick="reiniciarBotiquin()">Reiniciar</button>` : ''}
+      ${faltan.length && hayWhatsApp() ? `<button class="fa-btn menta" onclick="completarBotiquin()">${ICO.plus} Completar mi botiquín</button>` : ''}
+    </div>`;
+}
+function toggleBotiquin(k) { const i = TENGO.indexOf(k); if (i === -1) TENGO.push(k); else TENGO.splice(i, 1); guardar('botiquin', TENGO); renderBotiquin(); }
+function reiniciarBotiquin() { TENGO = []; guardar('botiquin', TENGO); renderBotiquin(); }
+function completarBotiquin() {
+  const faltan = BOTIQUIN.filter(b => !TENGO.includes(b.k)).map(b => prodBotiquin(b)).filter(Boolean);
+  const unicos = [...new Set(faltan.map(p => p.id))];
+  unicos.forEach(id => { if (!BOLSA.some(x => x.id === id)) BOLSA.push({ id, cant:1 }); });
+  guardar('bolsa', BOLSA); actualizarBolsaUI(true);
+  toast(`${unicos.length} artículo${unicos.length === 1 ? '' : 's'} agregado${unicos.length === 1 ? '' : 's'}`);
+  abrirBolsa();
+}
+
+/* ---------- catálogo ---------- */
+function renderChips() {
+  const nOf = PRODUCTOS.filter(enOferta).length, nFav = FAVORITOS.length;
+  const conteo = {}; PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id] || 0) + 1; });
+  let h = `<button class="fa-chip ${!CAT_ACTUAL && !SOLO_FAV && !SOLO_OFERTAS && !SINTOMA ? 'on' : ''}" onclick="filtrarCategoria(null)">Todos <small>${PRODUCTOS.length}</small></button>`;
+  if (SINTOMA) { const s = SINTOMAS.find(x => x.k === SINTOMA); h += `<button class="fa-chip on" onclick="elegirSintoma('${s.k}')">${s.ic} ${s.n} ✕</button>`; }
+  if (nOf) h += `<button class="fa-chip ${SOLO_OFERTAS ? 'on' : ''}" onclick="toggleOfertas()">🏷️ Ofertas <small>${nOf}</small></button>`;
+  if (nFav) h += `<button class="fa-chip ${SOLO_FAV ? 'on' : ''}" onclick="toggleFavs()">❤️ Guardados <small>${nFav}</small></button>`;
+  h += CATEGORIAS.filter(c => conteo[c.id]).map(c => `<button class="fa-chip ${CAT_ACTUAL?.id === c.id ? 'on' : ''}" onclick="filtrarCategoria(${arg(c.id)})">${esc(c.nombre)} <small>${conteo[c.id]}</small></button>`).join('');
+  $('fa-chips').innerHTML = h;
+}
+function llevarAGrid() { const g = $('fa-grid').getBoundingClientRect(); if (g.top > innerHeight * .75 || g.top < 0) irA('fa-sec-catalogo'); }
+function filtrarCategoria(id) { CAT_ACTUAL = id ? (CAT_ACTUAL?.id === id ? null : CATEGORIAS.find(c => c.id === id) || null) : null; if (!id) { SOLO_FAV = false; SOLO_OFERTAS = false; SINTOMA = null; renderSintomas(); } LIMITE = POR_PAGINA; renderChips(); aplicarFiltro(); llevarAGrid(); }
+function toggleOfertas(forzar) { SOLO_OFERTAS = forzar ? true : !SOLO_OFERTAS; SOLO_FAV = false; LIMITE = POR_PAGINA; renderChips(); aplicarFiltro(); if (forzar) irA('fa-sec-catalogo'); }
+function toggleFavs() { SOLO_FAV = !SOLO_FAV; SOLO_OFERTAS = false; LIMITE = POR_PAGINA; renderChips(); aplicarFiltro(); }
+let _bus = null;
+function onBuscar(v) { $('fa-buscador').value = v; $('fa-limpiar').classList.toggle('on', !!v); clearTimeout(_bus); _bus = setTimeout(() => { TEXTO = String(v).trim().toLowerCase(); LIMITE = POR_PAGINA; aplicarFiltro(); }, 130); }
+function cambiarOrden(v) { ORDEN = v; aplicarFiltro(); }
+function verMas() { LIMITE += POR_PAGINA; aplicarFiltro(true); }
+function aplicarFiltro(agregando) {
+  let lista = c360FiltrarYOrdenar(PRODUCTOS, { categoriaId:CAT_ACTUAL?.id || null, soloFavoritos:SOLO_FAV, favoritos:FAVORITOS, soloOfertas:SOLO_OFERTAS, textoBusqueda:TEXTO, orden:ORDEN });
+  if (SINTOMA) { const s = SINTOMAS.find(x => x.k === SINTOMA); lista = lista.filter(p => s.re.test(textoProd(p))); }
+  lista = lista.filter(p => p.etiqueta !== 'agotado').concat(lista.filter(p => p.etiqueta === 'agotado'));
+  let t = 'Todos los productos';
+  if (SINTOMA) t = SINTOMAS.find(x => x.k === SINTOMA).n;
+  if (SOLO_FAV) t = 'Guardados'; else if (SOLO_OFERTAS) t = 'Ofertas';
+  if (CAT_ACTUAL) t = CAT_ACTUAL.nombre;
+  if (TEXTO) t = `“${TEXTO}”`;
+  $('fa-res-t').textContent = t; $('fa-res-n').textContent = `${lista.length} producto${lista.length === 1 ? '' : 's'}`;
+  const g = $('fa-grid');
+  if (!lista.length) { g.innerHTML = `<div class="fa-vacio"><b>No lo encontramos</b>${hayWhatsApp() ? `Puede que lo tengamos en bodega. <a href="${esc(linkWA(`¡Hola! ¿Tienen ${TEXTO || 'este producto'}?`))}" target="_blank" rel="noopener" style="color:var(--menta);font-weight:800" onclick="registrarEvento('click_whatsapp')">Preguntá por WhatsApp</a>` : 'Probá con otra búsqueda.'}</div>`; $('fa-mas').style.display = 'none'; return; }
+  const desde = agregando ? LIMITE - POR_PAGINA : 0;
+  g.innerHTML = lista.slice(0, LIMITE).map((p, i) => tarjeta(p, Math.max(0, i - desde))).join('');
+  $('fa-mas').style.display = lista.length > LIMITE ? 'flex' : 'none';
+}
+function tarjeta(p, i) {
+  const f = fotoPrincipal(p), d = descuento(p), agotado = p.etiqueta === 'agotado', fav = FAVORITOS.includes(p.id), cat = nombreCat(p), rx = requiereReceta(p), en = BOLSA.some(x => x.id === p.id);
+  let tags = '';
+  if (agotado) tags += `<span class="fa-tag gris">Agotado</span>`;
+  else if (d) tags += `<span class="fa-tag rojo">-${d}%</span>`;
+  else if (p.etiqueta === 'nuevo') tags += `<span class="fa-tag">Nuevo</span>`;
+  if (rx) tags += `<span class="fa-tag rx">℞ Receta</span>`;
+  return `<article class="fa-card ${agotado ? 'agotada' : ''}" style="animation-delay:${Math.min(i, 12) * 40}ms">
+    <div class="fa-card-media ${f ? 'cargando' : ''}" onclick="abrirModal(${arg(p.id)})">
+      ${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy" onload="this.classList.add('ok');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">` : sinFoto(p)}
+      <div class="fa-tags">${tags}</div>
+    </div>
+    <button class="fa-fav ${fav ? 'on' : ''}" data-fav="${esc(p.id)}" onclick="toggleFav(${arg(p.id)})" aria-label="${fav ? 'Quitar de guardados' : 'Guardar'}">${fav ? ICO.heartFill : ICO.heart}</button>
+    <div class="fa-card-info">
+      ${cat ? `<div class="fa-card-cat">${esc(cat)}</div>` : ''}
+      <div class="fa-card-nombre" onclick="abrirModal(${arg(p.id)})">${esc(p.nombre)}</div>
+      <div class="fa-card-pres">${esc(subtitulo(p))}</div>
+      <div class="fa-card-pie"><div class="fa-card-precio">${d ? `<s>${fmtC(p.precio)}</s>` : ''}<b class="${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</b></div>
+        ${!agotado && hayWhatsApp() ? `<button class="fa-add ${en ? 'hecho' : ''}" data-add="${esc(p.id)}" onclick="agregar(${arg(p.id)},1)" aria-label="Agregar al pedido">${en ? ICO.check : ICO.plus}</button>` : ''}
+      </div>
+    </div>
+  </article>`;
+}
+function marcarFav(id) { const fav = FAVORITOS.includes(id); document.querySelectorAll(`[data-fav="${CSS.escape(id)}"]`).forEach(b => { b.classList.toggle('on', fav); b.innerHTML = fav ? ICO.heartFill : ICO.heart; }); }
+function marcarAdd(id) { const en = BOLSA.some(x => x.id === id); document.querySelectorAll(`[data-add="${CSS.escape(id)}"]`).forEach(b => { b.classList.toggle('hecho', en); b.innerHTML = en ? ICO.check : ICO.plus; }); }
+function toggleFav(id) {
+  const i = FAVORITOS.indexOf(id); if (i === -1) FAVORITOS.push(id); else FAVORITOS.splice(i, 1);
+  guardar('favoritos', FAVORITOS); marcarFav(id); renderChips();
+  if (SOLO_FAV) { if (!FAVORITOS.length) SOLO_FAV = false; aplicarFiltro(); renderChips(); }
+  const mf = $('fa-mfav'); if (mf && MODAL_ID === id) mf.innerHTML = FAVORITOS.includes(id) ? ICO.heartFill + ' Guardado' : ICO.heart + ' Guardar';
+}
+
+/* ---------- pedido ---------- */
+function agregar(id, cant) {
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || p.etiqueta === 'agotado' || !hayWhatsApp()) return;
+  const it = BOLSA.find(x => x.id === id);
+  if (it) it.cant = Math.min(99, it.cant + (cant || 1)); else BOLSA.push({ id, cant:cant || 1 });
+  guardar('bolsa', BOLSA); actualizarBolsaUI(true); marcarAdd(id);
+  toast(requiereReceta(p) ? 'Agregado · requiere receta' : 'Agregado al pedido');
+}
+function cambiarCant(id, d) {
+  const it = BOLSA.find(x => x.id === id); if (!it) return;
+  it.cant += d; if (it.cant <= 0) BOLSA = BOLSA.filter(x => x.id !== id);
+  guardar('bolsa', BOLSA); renderBolsa(); actualizarBolsaUI(); marcarAdd(id);
+}
+function vaciar() { const ids = BOLSA.map(x => x.id); BOLSA = []; guardar('bolsa', BOLSA); renderBolsa(); actualizarBolsaUI(); ids.forEach(marcarAdd); }
+function totales() {
+  let total = 0, antes = 0, piezas = 0;
+  BOLSA.forEach(x => { const p = PRODUCTOS.find(q => q.id === x.id); if (!p) return; total += precioReal(p) * x.cant; antes += Number(p.precio || 0) * x.cant; piezas += x.cant; });
+  return { total, ahorro:Math.max(0, antes - total), piezas };
+}
+function hayRecetaEnBolsa() { return BOLSA.some(x => { const p = PRODUCTOS.find(q => q.id === x.id); return p && requiereReceta(p); }); }
+function actualizarBolsaUI(pop) {
+  if (!hayWhatsApp()) return;
+  const t = totales(), b = $('fa-badge');
+  b.textContent = t.piezas; b.classList.toggle('on', t.piezas > 0);
+  if (pop && !MOV_REDUCIDO) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+  $('fa-flot-wa').classList.add('on');
+  $('fa-flot-wa').onclick = () => { registrarEvento('click_whatsapp'); window.open(linkWA(`¡Hola ${nombreNegocio()}! Quisiera consultarle al farmacéutico.`), '_blank'); };
+  const barra = $('fa-barra'); barra.classList.add('on'); document.body.classList.add('fa-con-barra');
+  barra.innerHTML = t.piezas
+    ? `<button class="bolsa" onclick="abrirBolsa()"><span style="display:flex;align-items:center;gap:10px">${ICO.bag} Ver pedido · ${t.piezas}</span><span class="t">${fmtC(t.total)}</span></button>`
+    : `<a class="wa" href="${esc(linkWA(`¡Hola ${nombreNegocio()}! Quisiera consultarle al farmacéutico.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} Consultá al farmacéutico</a>`;
+}
+function abrirBolsa() { renderBolsa(); $('fa-overlay-bolsa').classList.add('open'); bloquear(true); }
+function cerrarBolsa() { $('fa-overlay-bolsa').classList.remove('open'); if (!$('fa-overlay-modal').classList.contains('open')) bloquear(false); }
+function guardarNota(v) { NOTA = v; try { localStorage.setItem(claveLocal('nota'), v); } catch {} }
+function toggleReceta() { CON_RECETA = !CON_RECETA; guardar('receta', CON_RECETA); $('fa-receta')?.classList.toggle('on', CON_RECETA); }
+function renderBolsa() {
+  const cuerpo = $('fa-bolsa-cuerpo'), pie = $('fa-bolsa-pie'), t = totales(), rx = hayRecetaEnBolsa();
+  $('fa-bolsa-sub').textContent = t.piezas ? `${t.piezas} producto${t.piezas === 1 ? '' : 's'}` : 'Todavía vacío';
+  if (!BOLSA.length) { cuerpo.innerHTML = `<div class="fa-bvacio"><div class="ic">💊</div><b>Tu pedido está vacío</b>Buscá tus medicamentos o completá tu botiquín.</div>`; pie.innerHTML = `<button class="fa-btn menta" onclick="cerrarBolsa();irA('fa-sec-catalogo')">Ver productos</button>`; return; }
+  cuerpo.innerHTML = BOLSA.map(x => { const p = PRODUCTOS.find(q => q.id === x.id); if (!p) return ''; const f = fotoPrincipal(p), pr = presExtra(p);
+    return `<div class="fa-bitem"><div class="fa-bitem-img">${f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(p)}</div><div style="min-width:0"><b>${esc(p.nombre)}</b><small>${fmtC(precioReal(p))}${pr ? ` · ${esc(pr)}` : ''}</small>${requiereReceta(p) ? `<small class="rx">℞ Requiere receta</small>` : ''}</div><div class="fa-cant"><button onclick="cambiarCant(${arg(p.id)},-1)" aria-label="Quitar uno">${x.cant === 1 ? ICO.trash : '−'}</button><span>${x.cant}</span><button onclick="cambiarCant(${arg(p.id)},1)" aria-label="Agregar uno">+</button></div></div>`; }).join('') +
+    `<button class="fa-receta ${CON_RECETA ? 'on' : ''}" id="fa-receta" onclick="toggleReceta()" type="button"><span class="box">${ICO.tick}</span><span><b>Tengo receta médica</b><small>${rx ? 'Algunos productos la requieren. ' : ''}Te la pedimos por WhatsApp como foto al confirmar el pedido.</small></span></button>
+    <div class="fa-nota"><label for="fa-nota-t">Nota para la farmacia</label><textarea id="fa-nota-t" maxlength="240" placeholder="Dirección de entrega, horario, alergias, forma de pago…" oninput="guardarNota(this.value)">${esc(NOTA)}</textarea></div>`;
+  pie.innerHTML = `${t.ahorro > 0 ? `<div class="fa-blinea"><span>Ahorrás en ofertas</span><span>−${fmtC(t.ahorro)}</span></div>` : ''}
+    <div class="fa-btotal"><span>Total estimado</span><b>${fmtC(t.total)}</b></div>
+    <button class="fa-btn wa" onclick="enviarPedido()">${ICO.wa} Enviar pedido por WhatsApp</button>
+    <div class="fa-bnota">${esc(nombreNegocio())} confirma disponibilidad y precio final.</div>
+    <button class="fa-bvaciar" onclick="vaciar()">Vaciar pedido</button>`;
+}
+function enviarPedido() {
+  if (!BOLSA.length || !hayWhatsApp()) return;
+  const lineas = BOLSA.map(x => { const p = PRODUCTOS.find(q => q.id === x.id); if (!p) return null; const pr = presExtra(p); return `• ${x.cant} × ${p.nombre}${pr ? ` (${pr})` : ''}${requiereReceta(p) ? ' ℞' : ''} — ${fmtC(precioReal(p) * x.cant)}`; }).filter(Boolean);
+  let msg = `¡Hola ${nombreNegocio()}! 💊 Quiero hacer este pedido:\n\n${lineas.join('\n')}\n\nTotal estimado: ${fmtC(totales().total)}`;
+  if (CON_RECETA) msg += `\n\n📄 Tengo receta médica, se la envío en foto.`;
+  else if (hayRecetaEnBolsa()) msg += `\n\n℞ Algunos productos requieren receta.`;
+  if (NOTA.trim()) msg += `\nNota: ${NOTA.trim()}`;
+  msg += `\n\n¿Me confirman disponibilidad? Gracias.`;
+  registrarEvento('click_whatsapp'); window.open(linkWA(msg), '_blank');
+}
+function consultar(id) { const p = PRODUCTOS.find(x => x.id === id); if (!p || !hayWhatsApp()) return; registrarEvento('click_whatsapp', p.id); window.open(linkWA(`¡Hola! Quisiera consultar sobre "${p.nombre}" (${fmtC(precioReal(p))}). ¿Está disponible?`), '_blank'); }
+
+/* ---------- modal ---------- */
+function abrirModal(id) {
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  MODAL_ID = id; MODAL_CANT = 1; registrarEvento('vista_producto', id);
+  const d = descuento(p), agotado = p.etiqueta === 'agotado', cat = nombreCat(p), fav = FAVORITOS.includes(p.id), pr = presentacion(p);
+  const fotos = p.fotos || []; LB_FOTOS = fotos.map(f => f.url);
+  $('fa-modal-fotos').innerHTML = fotos.length ? fotos.map((f, i) => `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" onclick="abrirLightbox(${i})">`).join('') : sinFoto(p);
+  $('fa-modal-fotos').scrollLeft = 0;
+  $('fa-puntos').innerHTML = fotos.length > 1 ? fotos.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
+  let acc = '';
+  if (agotado) acc = `<button class="fa-btn" disabled style="width:100%;margin-top:20px">Agotado por ahora</button>${hayWhatsApp() ? `<button class="fa-btn wa" style="width:100%;margin-top:8px" onclick="consultar(${arg(p.id)})">${ICO.wa} Avisame cuando llegue</button>` : ''}`;
+  else if (hayWhatsApp()) acc = `<div class="fa-mfila"><div class="fa-cant"><button onclick="cambiarCantModal(-1)" aria-label="Menos">−</button><span id="fa-mcant">1</span><button onclick="cambiarCantModal(1)" aria-label="Más">+</button></div><button class="fa-btn menta" onclick="agregarDesdeModal()">${ICO.plus} Agregar al pedido</button></div><button class="fa-btn wa" style="width:100%" onclick="consultar(${arg(p.id)})">${ICO.wa} Consultar al farmacéutico</button>`;
+  acc += `<div class="fa-mextra"><button class="fa-btn" id="fa-mfav" onclick="toggleFav(${arg(p.id)})">${fav ? ICO.heartFill + ' Guardado' : ICO.heart + ' Guardar'}</button><button class="fa-btn ico" onclick="compartir(${arg(p.id)})" aria-label="Compartir">${ICO.share}</button></div>`;
+  const rel = PRODUCTOS.filter(x => x.id !== p.id && x.etiqueta !== 'agotado' && x.categoria_id === p.categoria_id).concat(PRODUCTOS.filter(x => x.id !== p.id && x.etiqueta !== 'agotado' && x.categoria_id !== p.categoria_id)).slice(0, 8);
+  $('fa-modal-body').innerHTML = `
+    ${cat ? `<div class="fa-modal-cat">${esc(cat)}</div>` : ''}
+    <h2 class="fa-modal-nombre">${esc(p.nombre)}</h2>
+    <div class="fa-modal-precio">${`<b class="${d ? 'oferta' : ''}">${fmtC(precioReal(p))}</b>`}${d ? `<s>${fmtC(p.precio)}</s><span>-${d}%</span>` : ''}</div>
+    ${pr ? `<div style="margin-top:8px;font-size:13.5px;font-weight:700;color:var(--txt-3)">Presentación: ${esc(pr)}</div>` : ''}
+    ${requiereReceta(p) ? `<div class="fa-rx-aviso"><span>℞</span><div><b>Requiere receta médica.</b> Al confirmar el pedido te pediremos una foto de la receta por WhatsApp.</div></div>` : ''}
+    ${p.descripcion ? `<div class="fa-modal-desc">${esc(p.descripcion)}</div>` : ''}
+    ${acc}
+    ${rel.length ? `<div class="fa-rel"><h4>También te puede servir</h4><div class="fa-rel-lista">${rel.map(r => { const f = fotoPrincipal(r); return `<div class="fa-rel-item" onclick="abrirModal(${arg(r.id)})"><div>${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : sinFoto(r)}</div><b>${esc(r.nombre)}</b><span>${fmtC(precioReal(r))}</span></div>`; }).join('')}</div></div>` : ''}`;
+  $('fa-modal').scrollTop = 0; $('fa-modal-body').scrollTop = 0;
+  $('fa-overlay-modal').classList.add('open'); bloquear(true);
+  history.replaceState(null, '', `#producto-${encodeURIComponent(id)}`);
+}
+function cerrarModal() { $('fa-overlay-modal').classList.remove('open'); if (!$('fa-overlay-bolsa').classList.contains('open')) bloquear(false); history.replaceState(null, '', location.pathname + location.search); }
+function cambiarCantModal(d) { MODAL_CANT = clamp(MODAL_CANT + d, 1, 99); $('fa-mcant').textContent = MODAL_CANT; }
+function agregarDesdeModal() { agregar(MODAL_ID, MODAL_CANT); cerrarModal(); }
+$('fa-modal-fotos').addEventListener('scroll', e => { const el = e.currentTarget, i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth)); [...$('fa-puntos').children].forEach((d, j) => d.classList.toggle('on', i === j)); }, { passive:true });
+async function compartir(id) {
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  const url = `${location.origin}${location.pathname}${location.search}#producto-${encodeURIComponent(id)}`;
+  if (navigator.share) { try { await navigator.share({ title:p.nombre, text:`${p.nombre} — ${fmtC(precioReal(p))}`, url }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(url); toast('Enlace copiado'); } catch {}
+}
+function abrirDesdeHash() { const m = location.hash.match(/^#producto-(.+)$/); if (m) { const id = decodeURIComponent(m[1]); if (PRODUCTOS.some(p => p.id === id)) setTimeout(() => abrirModal(id), 300); } }
+
+/* ---------- footer ---------- */
+function renderFooter() {
+  const c = CATALOGO, n = nombreNegocio();
+  $('fa-foot-t').textContent = `Tu farmacia de confianza, ${n}`;
+  $('fa-foot-desc').textContent = 'Consultá con nuestro farmacéutico antes de automedicarte. Te ayudamos a encontrar el producto adecuado y te confirmamos precio y disponibilidad al momento.';
+  $('fa-foot-cta').innerHTML = hayWhatsApp() ? `<a class="fa-btn wa" href="${esc(linkWA(`¡Hola ${n}! Quisiera hacer una consulta.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} Hablar con el farmacéutico</a>` : '';
+  let h = '';
+  if (hayWhatsApp()) h += `<a class="fa-contacto" href="${esc(linkWA(`¡Hola ${n}!`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')"><span class="fa-contacto-ico">${ICO.wa}</span><div style="min-width:0"><small>WhatsApp</small><b>${esc(c.whatsapp)}</b></div></a>`;
+  if (c.telefono) h += `<a class="fa-contacto" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')"><span class="fa-contacto-ico">${ICO.phone}</span><div style="min-width:0"><small>Teléfono</small><b>${esc(c.telefono)}</b></div></a>`;
+  if (c.email) h += `<a class="fa-contacto" href="mailto:${esc(c.email)}"><span class="fa-contacto-ico">${ICO.mail}</span><div style="min-width:0"><small>Correo</small><b>${esc(c.email)}</b></div></a>`;
+  if (c.ubicacion) h += `<a class="fa-contacto" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.ubicacion)}" target="_blank" rel="noopener"><span class="fa-contacto-ico">${ICO.pin}</span><div style="min-width:0"><small>Ubicación</small><b>${esc(c.ubicacion)}</b></div></a>`;
+  $('fa-contactos').innerHTML = h;
+  $('fa-pie-nombre').textContent = n; $('fa-anio').textContent = new Date().getFullYear();
+}
+
+/* ---------- lightbox + revelado ---------- */
+function abrirLightbox(i) { if (!LB_FOTOS.length) return; LB_I = i || 0; pintarLB(); $('fa-lb').classList.add('open'); }
+function cerrarLightbox() { $('fa-lb').classList.remove('open'); }
+function moverLightbox(d) { LB_I = (LB_I + d + LB_FOTOS.length) % LB_FOTOS.length; pintarLB(); }
+function pintarLB() { $('fa-lb-img').src = LB_FOTOS[LB_I]; $('fa-lb-cont').textContent = `${LB_I + 1} / ${LB_FOTOS.length}`; }
+(function () { let x0 = null; const lb = $('fa-lb');
+  lb.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive:true });
+  lb.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) moverLightbox(dx > 0 ? -1 : 1); x0 = null; }, { passive:true }); })();
+function activarRevelado() {
+  const els = document.querySelectorAll('.fa-reveal');
+  if (!('IntersectionObserver' in window) || MOV_REDUCIDO) { els.forEach(e => e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  els.forEach(e => obs.observe(e));
+}
+document.addEventListener('keydown', e => {
+  if ($('fa-lb').classList.contains('open')) { if (e.key === 'Escape') cerrarLightbox(); if (e.key === 'ArrowLeft') moverLightbox(-1); if (e.key === 'ArrowRight') moverLightbox(1); return; }
+  if (e.key === 'Escape') { if ($('fa-overlay-modal').classList.contains('open')) cerrarModal(); else if ($('fa-overlay-bolsa').classList.contains('open')) cerrarBolsa(); }
+});
+
+init();
+</script>
+</body>
+</html>
