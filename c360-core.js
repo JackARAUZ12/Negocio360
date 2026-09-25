@@ -210,6 +210,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   graduacion: 'c360-graduacion.html',
   supermercado: 'c360-supermercado.html',
   ferreteria: 'c360-ferreteria.html',
+  mascotas: 'c360-mascotas.html',
 };
 
 /**

@@ -796,6 +796,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'graduacion', nombre:'Graduaciones', icono:'🎓', desc:'Ceremonia de graduación -- lluvia de birretes, diploma en pergamino, banderines de facultad, cuadro de honor y diploma personalizado descargable para el graduado.', disponible:true, archivo:'c360-graduacion.html' },
   { key:'supermercado', nombre:'Supermercado', icono:'🛒', desc:'Súper, pulpería o distribuidora -- precios de góndola, +/− en cada producto, pasillos, volante de ofertas, pegá tu lista de compras y pedido en ticket de caja con entrega y pago.', disponible:true, archivo:'c360-supermercado.html' },
   { key:'ferreteria', nombre:'Ferretería', icono:'🔧', desc:'Ferretería y materiales de construcción -- estética de plano, calculadoras de obra (pintura, bloques, piso, concreto), filtro por medidas y cotización formal imprimible por WhatsApp.', disponible:true, archivo:'c360-ferreteria.html' },
+  { key:'mascotas', nombre:'Mascotas', icono:'🐾', desc:'Tienda de mascotas o veterinaria -- huellitas que siguen el cursor, perro y gato animados, perfil de la mascota que personaliza la tienda y calculadora de comida con recordatorio de recompra.', disponible:true, archivo:'c360-mascotas.html' },
 ];
 
 function archivoDePlantilla(key) {
