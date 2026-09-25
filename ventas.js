@@ -2206,7 +2206,7 @@ async function abrirModalStockCompartido() {
     const { data } = await sb.from('sucursales').select('id, nombre, tipo').eq('activa', true).order('nombre');
     const lista = (data || []).filter(s => s.id !== undefined);
     select.innerHTML = lista.length
-      ? lista.map(s => `<option value="${s.id}">${escHtml(s.nombre)} (${s.tipo === 'bodega' ? 'Bodega' : 'Sucursal'})</option>`).join('')
+      ? lista.map(s => `<option value="${s.id}">${esc(s.nombre)} (${s.tipo === 'bodega' ? 'Bodega' : 'Sucursal'})</option>`).join('')
       : '<option value="">No hay sucursales/bodegas creadas</option>';
   } catch (e) {
     console.warn('abrirModalStockCompartido, cargar sucursales:', e);
