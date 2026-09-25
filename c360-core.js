@@ -212,6 +212,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   ferreteria: 'c360-ferreteria.html',
   mascotas: 'c360-mascotas.html',
   reposteria: 'c360-reposteria.html',
+  streetwear: 'c360-streetwear.html',
 };
 
 /**
