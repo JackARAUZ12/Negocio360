@@ -792,6 +792,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'belleza', nombre:'Belleza & Salón', icono:'💄', desc:'Atelier de belleza -- reserva de citas con día y hora, menú de servicios con duración, antes y después deslizable y portafolio.', disponible:true, archivo:'c360-belleza.html' },
   { key:'anonuevo', nombre:'Año Nuevo', icono:'🥂', desc:'Gala de medianoche -- partículas de oro que forman el año, reloj de paletas 3D, fuegos artificiales al tocar, las 12 uvas y brindis con champán.', disponible:true, archivo:'c360-anonuevo.html' },
   { key:'tecnologia', nombre:'Tecnología', icono:'💻', desc:'Laboratorio futurista -- circuito con pulsos de luz, producto en holograma, ficha técnica automática, comparador de specs y simulador de cuotas.', disponible:true, archivo:'c360-tecnologia.html' },
+  { key:'navidadvip', nombre:'Navidad VIP', icono:'🎄', desc:'Noche de invierno de lujo -- intro con globo de nieve, esferas de cristal colgantes con tus productos, calendario de Adviento de 24 puertas, carta a Santa compartible y pedido con envoltura de regalo.', disponible:true, archivo:'c360-navidad-vip.html' },
 ];
 
 function archivoDePlantilla(key) {

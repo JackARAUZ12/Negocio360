@@ -206,6 +206,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   belleza: 'c360-belleza.html',
   anonuevo: 'c360-anonuevo.html',
   tecnologia: 'c360-tecnologia.html',
+  navidadvip: 'c360-navidad-vip.html',
 };
 
 /**
