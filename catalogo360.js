@@ -794,6 +794,7 @@ const PLANTILLAS_CATALOGO360 = [
   { key:'tecnologia', nombre:'Tecnología', icono:'💻', desc:'Laboratorio futurista -- circuito con pulsos de luz, producto en holograma, ficha técnica automática, comparador de specs y simulador de cuotas.', disponible:true, archivo:'c360-tecnologia.html' },
   { key:'navidadvip', nombre:'Navidad VIP', icono:'🎄', desc:'Noche de invierno de lujo -- intro con globo de nieve, esferas de cristal colgantes con tus productos, calendario de Adviento de 24 puertas, carta a Santa compartible y pedido con envoltura de regalo.', disponible:true, archivo:'c360-navidad-vip.html' },
   { key:'graduacion', nombre:'Graduaciones', icono:'🎓', desc:'Ceremonia de graduación -- lluvia de birretes, diploma en pergamino, banderines de facultad, cuadro de honor y diploma personalizado descargable para el graduado.', disponible:true, archivo:'c360-graduacion.html' },
+  { key:'supermercado', nombre:'Supermercado', icono:'🛒', desc:'Súper, pulpería o distribuidora -- precios de góndola, +/− en cada producto, pasillos, volante de ofertas, pegá tu lista de compras y pedido en ticket de caja con entrega y pago.', disponible:true, archivo:'c360-supermercado.html' },
 ];
 
 function archivoDePlantilla(key) {

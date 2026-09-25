@@ -208,6 +208,7 @@ const C360_ARCHIVO_POR_PLANTILLA = {
   tecnologia: 'c360-tecnologia.html',
   navidadvip: 'c360-navidad-vip.html',
   graduacion: 'c360-graduacion.html',
+  supermercado: 'c360-supermercado.html',
 };
 
 /**
