@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#07060a" />
+<title id="ny-title">Año Nuevo</title>
+<meta id="ny-desc-meta" name="description" content="Celebrá el Año Nuevo">
+<meta id="ny-og-title" property="og:title" content="Año Nuevo">
+<meta id="ny-og-desc" property="og:description" content="Celebrá el Año Nuevo">
+<meta id="ny-og-image" property="og:image" content="">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="c360-core.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* =====================================================================
+   CATÁLOGO360 -- PLANTILLA AÑO NUEVO  ("Gala de Medianoche")
+   - Intro: miles de partículas de oro forman el año y explotan.
+   - Reloj de paletas 3D (split-flap) hacia la medianoche del 31.
+   - Polvo de oro con parallax y fuegos artificiales donde toqués.
+   - Pases VIP (destacados), Las 12 uvas (cada uva revela un deseo /
+     producto), copa de champán que se llena con el scroll y brindis.
+   - Tarjetas con borde de oro giratorio y reflejo que sigue al puntero.
+   Prefijo: ny-  (no choca con ninguna otra plantilla)
+   ===================================================================== */
+@property --ny-ang { syntax:'<angle>'; inherits:false; initial-value:0deg; }
+:root {
+  --noche: #07060a;
+  --noche-2: #0e0c14;
+  --noche-3: #16131f;
+  --oro: #e8c066;
+  --oro-rgb: 232,192,102;
+  --oro-claro: #fff1c2;
+  --oro-osc: #9a6b1c;
+  --champan: #f3e3bd;
+  --uva: #5b2a86;
+  --grad-oro: linear-gradient(100deg, #9a6b1c 0%, #f7dc8b 18%, #fff4cf 28%, #d9a93e 42%, #7d5412 55%, #f2d27e 70%, #fff1c2 80%, #b8862b 100%);
+
+  --bg: #07060a;
+  --bg-rgb: 7,6,10;
+  --surface: #110f17;
+  --surface-2: #1a1722;
+  --border: rgba(232,192,102,.16);
+  --text: #f6efe0;
+  --text-2: #b9ae98;
+  --text-3: #7c7364;
+  --vidrio: rgba(14,12,20,.72);
+
+  --font-display: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --max-w: 1280px;
+  --hdr-h: 62px;
+  --ease: cubic-bezier(.22,1,.36,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-theme="claro"] {
+  --bg: #f7f1e4;
+  --bg-rgb: 247,241,228;
+  --surface: #fffcf5;
+  --surface-2: #efe5cf;
+  --border: rgba(154,107,28,.22);
+  --text: #1c1508;
+  --text-2: #5d4f37;
+  --text-3: #9a8a6c;
+  --vidrio: rgba(255,252,245,.8);
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--hdr-h) + 110px); }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); overflow-x:hidden; -webkit-font-smoothing:antialiased; transition:background .4s, color .4s; }
+body.ny-bloqueado { overflow:hidden; }
+img { max-width:100%; display:block; }
+a { color:inherit; text-decoration:none; }
+button, input, select { font-family:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:2px solid var(--oro); outline-offset:3px; }
+svg.ny-ico { width:1em; height:1em; vertical-align:-0.14em; flex-shrink:0; }
+.ny-wrap { max-width:var(--max-w); margin:0 auto; padding:0 18px; }
+@media (min-width:760px) { .ny-wrap { padding:0 32px; } }
+@media (min-width:1200px) { .ny-wrap { padding:0 48px; } }
+.ny-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+/* Oro metálico animado para textos */
+.ny-oro { background:var(--grad-oro); background-size:260% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:ny-brillo-oro 7s linear infinite; }
+html[data-theme="claro"] .ny-seccion:not(.ny-brindis) .ny-oro { background:linear-gradient(100deg, #7d5412 0%, #c8962e 25%, #6b4610 45%, #b8862b 65%, #8a5f14 100%); background-size:260% 100%; -webkit-background-clip:text; background-clip:text; }
+
+@keyframes ny-brillo-oro { from { background-position:0% 0; } to { background-position:260% 0; } }
+@keyframes ny-sube { from { opacity:0; transform:translateY(28px); } to { opacity:1; transform:none; } }
+@keyframes ny-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes ny-giro { to { --ny-ang:360deg; } }
+@keyframes ny-marquee { to { transform:translateX(-50%); } }
+@keyframes ny-sheet { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes ny-drawer { from { transform:translateX(100%); } to { transform:none; } }
+@keyframes ny-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes ny-latido { 0%,100% { transform:scale(1); } 40% { transform:scale(1.25); } }
+@keyframes ny-flip-arriba { from { transform:rotateX(0deg); } to { transform:rotateX(-90deg); } }
+@keyframes ny-flip-abajo { from { transform:rotateX(90deg); } to { transform:rotateX(0deg); } }
+@keyframes ny-pulso { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+@keyframes ny-flotar { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-8px); } }
+@keyframes ny-burbuja { 0% { transform:translateY(0); opacity:0; } 10% { opacity:.9; } 100% { transform:translateY(-150px); opacity:0; } }
+@keyframes ny-choque { 0%,100% { transform:rotate(0); } 35% { transform:rotate(-14deg) translateX(10px); } 55% { transform:rotate(4deg); } }
+@keyframes ny-choque-der { 0%,100% { transform:scaleX(-1) rotate(0); } 35% { transform:scaleX(-1) rotate(-14deg) translateX(10px); } 55% { transform:scaleX(-1) rotate(4deg); } }
+@keyframes ny-uva-comer { 0% { transform:scale(1); } 30% { transform:scale(1.25, .8); } 60% { transform:scale(.6); opacity:.6; } 100% { transform:scale(0); opacity:0; } }
+@keyframes ny-aparece { 0% { transform:scale(.3) rotate(-20deg); opacity:0; } 70% { transform:scale(1.15) rotate(4deg); opacity:1; } 100% { transform:scale(1) rotate(0); opacity:1; } }
+
+.ny-reveal { opacity:0; transform:translateY(34px); transition:opacity 1s var(--ease), transform 1s var(--ease); }
+.ny-reveal.visible { opacity:1; transform:none; }
+
+/* ===== CANVAS GLOBALES ===== */
+#ny-fx { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:950; }
+
+/* ===== INTRO: partículas de oro forman el año ===== */
+.ny-intro { position:fixed; inset:0; z-index:1000; background:radial-gradient(ellipse at 50% 40%, #151022 0%, #07060a 65%); transition:opacity 1s ease, visibility 1s; cursor:pointer; overflow:hidden; }
+.ny-intro.fuera { opacity:0; visibility:hidden; pointer-events:none; }
+.ny-intro canvas { position:absolute; inset:0; width:100%; height:100%; }
+.ny-intro-texto { position:absolute; left:0; right:0; bottom:18%; text-align:center; color:var(--champan); padding:0 20px; pointer-events:none; }
+.ny-intro-negocio { font-family:var(--font-display); font-weight:600; letter-spacing:.34em; text-transform:uppercase; font-size:clamp(12px,2.6vw,17px); opacity:0; transform:translateY(12px); transition:opacity .9s ease, transform .9s var(--ease); }
+.ny-intro-toca { margin-top:16px; font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--text-3); opacity:0; transition:opacity .9s ease .3s; }
+.ny-intro.listo .ny-intro-negocio { opacity:1; transform:none; }
+.ny-intro.listo .ny-intro-toca { opacity:1; animation:ny-pulso 1.8s ease-in-out infinite; }
+.ny-error { display:none; min-height:80vh; align-items:center; justify-content:center; flex-direction:column; gap:10px; text-align:center; padding:24px; color:var(--text-2); }
+.ny-error b { font-family:var(--font-display); font-size:34px; color:var(--text); }
+
+/* ===== HEADER ===== */
+.ny-header { position:fixed; top:0; left:0; right:0; z-index:80; transition:background .4s, border-color .4s; border-bottom:1px solid transparent; color:#f6efe0; }
+.ny-header.solido { background:rgba(7,6,10,.78); backdrop-filter:saturate(1.4) blur(16px); -webkit-backdrop-filter:saturate(1.4) blur(16px); border-bottom-color:rgba(232,192,102,.16); }
+.ny-header-in { height:var(--hdr-h); display:flex; align-items:center; gap:12px; }
+.ny-marca { display:flex; align-items:center; gap:10px; min-width:0; cursor:pointer; }
+.ny-marca-logo { width:34px; height:34px; border-radius:50%; object-fit:cover; border:1px solid rgba(232,192,102,.5); display:none; }
+.ny-marca-nombre { font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
+.ny-header-der { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.ny-icon-btn { position:relative; width:40px; height:40px; border-radius:50%; border:1px solid rgba(232,192,102,.25); background:rgba(255,255,255,.03); color:#f6efe0; display:flex; align-items:center; justify-content:center; font-size:17px; transition:border-color .2s, color .2s, transform .2s var(--spring); }
+.ny-icon-btn:hover { border-color:var(--oro); color:var(--oro); }
+.ny-icon-btn:active { transform:scale(.9); }
+.ny-badge { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--oro); color:#1c1508; font-size:10px; font-weight:800; display:none; align-items:center; justify-content:center; }
+.ny-badge.on { display:flex; }
+.ny-badge.latido { animation:ny-latido .45s var(--spring); }
+
+/* ===== HERO ===== */
+.ny-hero { position:relative; min-height:100vh; min-height:100svh; display:flex; align-items:center; overflow:hidden; background:radial-gradient(ellipse 80% 60% at 50% 110%, #2a1d3d 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 50% -10%, #1d1530 0%, transparent 60%), #07060a; color:#f6efe0; padding:calc(var(--hdr-h) + 24px) 0 50px; isolation:isolate; cursor:crosshair; }
+.ny-hero canvas.polvo { position:absolute; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; }
+.ny-hero-in { width:100%; text-align:center; position:relative; }
+.ny-hero-kicker { display:inline-flex; align-items:center; gap:14px; font-family:var(--font-display); font-size:clamp(11px,2vw,14px); font-weight:600; letter-spacing:.42em; text-transform:uppercase; color:var(--champan); margin-bottom:10px; animation:ny-sube 1s var(--ease) both; }
+.ny-hero-kicker::before, .ny-hero-kicker::after { content:''; width:clamp(24px,5vw,60px); height:1px; background:linear-gradient(90deg, transparent, var(--oro)); }
+.ny-hero-kicker::after { transform:scaleX(-1); }
+.ny-hero-feliz { font-family:var(--font-display); font-weight:600; font-size:clamp(28px,6vw,64px); letter-spacing:.18em; text-transform:uppercase; margin:6px 0 0; line-height:1; animation:ny-sube 1s var(--ease) .1s both; }
+.ny-hero-anio { font-family:var(--font-display); font-weight:900; font-size:clamp(110px,27vw,330px); line-height:.86; letter-spacing:-.02em; margin:0; filter:drop-shadow(0 0 40px rgba(232,192,102,.25)) drop-shadow(0 20px 40px rgba(0,0,0,.6)); animation:ny-sube 1.1s var(--ease) .18s both; }
+.ny-hero-desc { font-size:clamp(14.5px,1.8vw,18px); color:#c9bfa9; max-width:560px; margin:14px auto 26px; line-height:1.65; animation:ny-sube 1s var(--ease) .3s both; }
+
+/* Reloj de paletas */
+.ny-reloj { display:inline-flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:28px; animation:ny-sube 1s var(--ease) .38s both; }
+.ny-reloj-label { font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--oro); }
+.ny-reloj-fila { display:flex; align-items:flex-start; gap:clamp(8px,2vw,18px); }
+.ny-reloj-unidad { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.ny-reloj-unidad small { font-size:10px; letter-spacing:.24em; text-transform:uppercase; color:#8f8570; }
+.ny-reloj-digitos { display:flex; gap:4px; }
+.ny-reloj-sep { font-family:var(--font-display); font-size:clamp(26px,5vw,44px); color:var(--oro); line-height:1; margin-top:clamp(10px,2.2vw,20px); animation:ny-pulso 1s steps(1) infinite; }
+.ny-flip { --dw:clamp(34px,7.4vw,64px); --dh:calc(var(--dw) * 1.42); position:relative; width:var(--dw); height:var(--dh); perspective:420px; font-family:var(--font-display); font-weight:800; font-size:calc(var(--dw) * 1.02); color:var(--oro-claro); }
+.ny-flip::after { content:''; position:absolute; left:0; right:0; top:50%; height:1px; background:rgba(0,0,0,.7); z-index:5; }
+.ny-half { position:absolute; left:0; right:0; height:50%; overflow:hidden; background:linear-gradient(180deg, #221c2c, #16121e); border:1px solid rgba(232,192,102,.18); }
+.ny-half span { position:absolute; left:0; right:0; height:200%; display:flex; align-items:center; justify-content:center; text-shadow:0 0 18px rgba(232,192,102,.35); }
+.ny-half.arriba { top:0; border-radius:10px 10px 0 0; border-bottom:none; transform-origin:50% 100%; }
+.ny-half.arriba span { top:0; }
+.ny-half.abajo { bottom:0; border-radius:0 0 10px 10px; border-top:none; background:linear-gradient(180deg, #1a1522, #120f19); transform-origin:50% 0; }
+.ny-half.abajo span { bottom:0; }
+.ny-half.hoja { display:none; backface-visibility:hidden; -webkit-backface-visibility:hidden; z-index:3; }
+.ny-flip.anim .ny-half.hoja.arriba { display:block; animation:ny-flip-arriba .28s ease-in forwards; }
+.ny-flip.anim .ny-half.hoja.abajo { display:block; animation:ny-flip-abajo .28s ease-out .28s both; }
+.ny-fiesta { font-family:var(--font-display); font-weight:800; font-size:clamp(26px,5vw,44px); letter-spacing:.06em; }
+
+.ny-hero-acciones { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; animation:ny-sube 1s var(--ease) .46s both; }
+.ny-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:9px; height:54px; padding:0 30px; border-radius:999px; border:1px solid transparent; font-weight:700; font-size:14.5px; letter-spacing:.04em; transition:transform .3s var(--spring), box-shadow .3s, background .25s, color .25s, border-color .25s; white-space:nowrap; overflow:hidden; }
+.ny-btn:active { transform:scale(.96); }
+.ny-btn-oro { background:var(--grad-oro); background-size:220% 100%; color:#1c1508; box-shadow:0 14px 40px -12px rgba(232,192,102,.6), inset 0 1px 0 rgba(255,255,255,.5); animation:ny-brillo-oro 6s linear infinite; }
+.ny-btn-oro:hover { transform:translateY(-3px); box-shadow:0 20px 50px -12px rgba(232,192,102,.8), inset 0 1px 0 rgba(255,255,255,.5); }
+.ny-btn-vidrio { background:rgba(255,255,255,.04); color:#f6efe0; border-color:rgba(232,192,102,.35); backdrop-filter:blur(6px); }
+.ny-btn-vidrio:hover { border-color:var(--oro); color:var(--oro); }
+.ny-btn-linea { background:transparent; color:var(--text); border-color:var(--border); }
+.ny-btn-linea:hover { border-color:var(--oro); color:var(--oro); }
+.ny-btn-wa { background:#25D366; color:#fff; }
+.ny-btn-wa:hover { transform:translateY(-2px); box-shadow:0 12px 28px -10px rgba(37,211,102,.7); }
+.ny-btn[disabled] { opacity:.45; cursor:not-allowed; transform:none; box-shadow:none; }
+@media (max-width:480px) { .ny-hero-acciones .ny-btn { flex:1 1 100%; } }
+.ny-hero-pista { margin-top:26px; font-size:11px; letter-spacing:.24em; text-transform:uppercase; color:#8f8570; display:inline-flex; align-items:center; gap:8px; animation:ny-sube 1s var(--ease) .6s both; }
+.ny-hero-pista i { width:6px; height:6px; border-radius:50%; background:var(--oro); animation:ny-pulso 1.2s ease-in-out infinite; }
+
+/* ===== MARQUEE DE DESEOS ===== */
+.ny-deseos { overflow:hidden; white-space:nowrap; padding:20px 0; background:#07060a; border-top:1px solid rgba(232,192,102,.18); border-bottom:1px solid rgba(232,192,102,.18); }
+.ny-deseos-pista { display:inline-flex; animation:ny-marquee 40s linear infinite; }
+.ny-deseos-pista span { font-family:var(--font-display); font-weight:700; font-size:clamp(20px,3.4vw,34px); letter-spacing:.14em; text-transform:uppercase; padding:0 28px; display:inline-flex; align-items:center; gap:28px; }
+.ny-deseos-pista span::after { content:'✦'; font-size:.6em; color:var(--oro); -webkit-text-fill-color:var(--oro); }
+
+/* ===== SECCIONES ===== */
+.ny-seccion { padding:clamp(64px,9vw,120px) 0; position:relative; }
+.ny-head { text-align:center; margin-bottom:clamp(30px,5vw,50px); }
+.ny-kicker { display:inline-flex; align-items:center; gap:12px; font-size:11.5px; font-weight:700; letter-spacing:.34em; text-transform:uppercase; color:var(--oro); margin-bottom:14px; }
+html[data-theme="claro"] .ny-kicker { color:var(--oro-osc); }
+.ny-kicker::before, .ny-kicker::after { content:''; width:26px; height:1px; background:currentColor; opacity:.6; }
+.ny-titulo { font-family:var(--font-display); font-weight:800; font-size:clamp(34px,6vw,70px); line-height:1.02; letter-spacing:.02em; margin:0; }
+.ny-sub { color:var(--text-2); font-size:15.5px; line-height:1.65; max-width:520px; margin:14px auto 0; }
+
+/* ===== PASES VIP (destacados) ===== */
+.ny-pases { display:grid; grid-auto-flow:column; grid-auto-columns:88%; gap:18px; overflow-x:auto; scroll-snap-type:x mandatory; padding:10px 18px 24px; margin:0 -18px; scrollbar-width:none; scroll-padding-inline:18px; overscroll-behavior-x:contain; }
+.ny-pases::-webkit-scrollbar { display:none; }
+@media (min-width:700px) { .ny-pases { grid-auto-columns:60%; } }
+@media (min-width:1100px) { .ny-pases { grid-auto-columns:calc((100% - 36px) / 3); margin:0; padding:10px 0 24px; scroll-padding-inline:0; } }
+.ny-pase { scroll-snap-align:start; position:relative; display:grid; grid-template-columns:1fr 92px; height:230px; border-radius:18px; cursor:pointer; filter:drop-shadow(0 24px 30px rgba(0,0,0,.45)); transition:transform .5s var(--ease); }
+@media (min-width:700px) { .ny-pase { grid-template-columns:1fr 110px; height:250px; } }
+.ny-pase:hover { transform:translateY(-6px) rotate(-.6deg); }
+.ny-pase-cuerpo { position:relative; overflow:hidden; border-radius:18px 0 0 18px; background:#16121e; -webkit-mask:radial-gradient(circle at 100% 0, transparent 12px, #000 12.5px) top/100% 51% no-repeat, radial-gradient(circle at 100% 100%, transparent 12px, #000 12.5px) bottom/100% 51% no-repeat; mask:radial-gradient(circle at 100% 0, transparent 12px, #000 12.5px) top/100% 51% no-repeat, radial-gradient(circle at 100% 100%, transparent 12px, #000 12.5px) bottom/100% 51% no-repeat; }
+.ny-pase-cuerpo img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform 1s var(--ease); }
+.ny-pase:hover .ny-pase-cuerpo img { transform:scale(1.07); }
+.ny-pase-cuerpo::after { content:''; position:absolute; inset:0; background:linear-gradient(95deg, rgba(7,6,10,.92) 0%, rgba(7,6,10,.55) 45%, rgba(7,6,10,.1) 100%); }
+.ny-pase-info { position:absolute; left:18px; right:14px; bottom:16px; top:16px; z-index:2; display:flex; flex-direction:column; color:#f6efe0; }
+.ny-pase-vip { font-family:var(--font-display); font-size:11px; font-weight:700; letter-spacing:.3em; color:var(--oro); }
+.ny-pase-nombre { font-family:var(--font-display); font-weight:700; font-size:clamp(19px,2.4vw,24px); line-height:1.12; margin-top:auto; max-width:92%; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+.ny-pase-cat { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#b9ae98; margin-top:6px; }
+.ny-pase-talon { position:relative; border-radius:0 18px 18px 0; background:linear-gradient(160deg, #fff1c2, #e8c066 35%, #b8862b 70%, #f2d27e); color:#1c1508; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:16px 8px; border-left:2px dashed rgba(28,21,8,.35); -webkit-mask:radial-gradient(circle at 0 0, transparent 12px, #000 12.5px) top/100% 51% no-repeat, radial-gradient(circle at 0 100%, transparent 12px, #000 12.5px) bottom/100% 51% no-repeat; mask:radial-gradient(circle at 0 0, transparent 12px, #000 12.5px) top/100% 51% no-repeat, radial-gradient(circle at 0 100%, transparent 12px, #000 12.5px) bottom/100% 51% no-repeat; }
+.ny-pase-talon small { font-size:9px; font-weight:800; letter-spacing:.2em; writing-mode:vertical-rl; transform:rotate(180deg); opacity:.75; }
+.ny-pase-precio { font-family:var(--font-display); font-weight:900; font-size:15px; text-align:center; line-height:1.1; }
+.ny-pase-precio s { display:block; font-family:var(--font); font-weight:600; font-size:10px; opacity:.6; }
+.ny-pase-barras { width:70%; height:34px; background:repeating-linear-gradient(90deg, #1c1508 0 2px, transparent 2px 4px, #1c1508 4px 5px, transparent 5px 8px, #1c1508 8px 11px, transparent 11px 13px); opacity:.85; }
+.ny-pase-pct { position:absolute; top:14px; right:14px; z-index:3; font-family:var(--font-display); font-weight:900; font-size:14px; padding:5px 10px; border-radius:999px; background:var(--oro); color:#1c1508; }
+
+/* ===== LAS 12 UVAS ===== */
+.ny-uvas-zona { display:grid; grid-template-columns:1fr; gap:34px; align-items:start; }
+@media (min-width:980px) { .ny-uvas-zona { grid-template-columns:1fr 1fr; gap:60px; align-items:center; } }
+.ny-racimo { display:grid; grid-template-columns:repeat(4, 1fr); gap:clamp(10px,2.4vw,18px); max-width:440px; margin:0 auto; width:100%; }
+.ny-uva { position:relative; aspect-ratio:1/1; border:none; background:none; padding:0; border-radius:50%; transition:transform .25s var(--spring); }
+.ny-uva:hover:not(.comida) { transform:scale(1.08) rotate(-4deg); }
+.ny-uva svg { width:100%; height:100%; overflow:visible; filter:drop-shadow(0 10px 14px rgba(40,10,60,.5)); }
+.ny-uva .fruta { transform-origin:50% 55%; }
+.ny-uva.comida .fruta { animation:ny-uva-comer .45s ease-in forwards; }
+.ny-uva-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:900; font-size:clamp(18px,4vw,26px); opacity:0; pointer-events:none; }
+.ny-uva.comida .ny-uva-num { animation:ny-aparece .5s var(--spring) .3s both; }
+.ny-uva.comida { cursor:default; }
+.ny-uva-anillo { position:absolute; inset:6%; border-radius:50%; border:1px dashed rgba(232,192,102,.35); opacity:0; }
+.ny-uva.comida .ny-uva-anillo { opacity:1; transition:opacity .4s .3s; }
+.ny-uvas-estado { text-align:center; margin-top:18px; font-size:13px; letter-spacing:.1em; color:var(--text-2); }
+.ny-uvas-estado b { color:var(--oro); font-family:var(--font-display); font-size:18px; }
+html[data-theme="claro"] .ny-uvas-estado b { color:var(--oro-osc); }
+.ny-deseo { min-height:250px; border-radius:24px; padding:22px; background:var(--surface); border:1px solid var(--border); position:relative; overflow:hidden; }
+.ny-deseo-vacio { height:100%; min-height:206px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; color:var(--text-3); font-size:14px; line-height:1.6; }
+.ny-deseo-vacio b { font-family:var(--font-display); font-size:22px; color:var(--text); }
+.ny-deseo-card { display:grid; grid-template-columns:120px 1fr; gap:18px; align-items:center; animation:ny-sube .6s var(--ease) both; }
+@media (min-width:600px) { .ny-deseo-card { grid-template-columns:150px 1fr; } }
+.ny-deseo-img { position:relative; aspect-ratio:3/4; border-radius:16px; overflow:hidden; background:var(--surface-2); cursor:pointer; }
+.ny-deseo-img img { width:100%; height:100%; object-fit:cover; }
+.ny-deseo-img .ny-sin-foto { font-size:44px; }
+.ny-deseo-num { font-size:11px; font-weight:800; letter-spacing:.24em; text-transform:uppercase; color:var(--oro); }
+html[data-theme="claro"] .ny-deseo-num { color:var(--oro-osc); }
+.ny-deseo-nombre { font-family:var(--font-display); font-weight:700; font-size:clamp(20px,2.6vw,26px); line-height:1.15; margin:8px 0 8px; cursor:pointer; }
+.ny-deseo-precio { font-size:16px; font-weight:700; }
+.ny-deseo-precio s { color:var(--text-3); font-weight:500; font-size:13px; margin-left:6px; }
+.ny-deseo-acciones { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.ny-deseo-acciones .ny-btn { height:44px; padding:0 18px; font-size:13px; }
+.ny-deseos-lista { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+.ny-deseos-lista button { width:38px; height:38px; border-radius:50%; overflow:hidden; border:1.5px solid var(--border); padding:0; background:var(--surface-2); position:relative; transition:transform .2s var(--spring), border-color .2s; }
+.ny-deseos-lista button:hover { transform:scale(1.1); border-color:var(--oro); }
+.ny-deseos-lista img { width:100%; height:100%; object-fit:cover; }
+.ny-deseos-lista .ny-sin-foto { font-size:15px; }
+
+/* ===== COLECCIÓN ===== */
+.ny-filtros { position:sticky; top:var(--hdr-h); z-index:60; background:rgba(var(--bg-rgb),.86); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); padding:12px 0 10px; margin-bottom:24px; }
+.ny-filtros-fila { display:flex; gap:8px; }
+.ny-buscador { flex:1; min-width:0; display:flex; align-items:center; gap:10px; height:48px; padding:0 18px; border-radius:999px; background:var(--surface); border:1px solid var(--border); transition:border-color .2s, box-shadow .2s; }
+.ny-buscador:focus-within { border-color:var(--oro); box-shadow:0 0 0 4px rgba(232,192,102,.14); }
+.ny-buscador input { flex:1; min-width:0; border:none; outline:none; background:none; color:var(--text); font-size:15px; }
+.ny-buscador input::placeholder { color:var(--text-3); }
+.ny-limpiar { border:none; background:none; color:var(--text-3); font-size:16px; display:none; padding:4px; }
+.ny-limpiar.on { display:block; }
+.ny-orden { height:48px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:0 14px; font-size:13px; font-weight:600; max-width:42vw; }
+.ny-chips { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; margin-top:10px; }
+.ny-chips::-webkit-scrollbar { display:none; }
+.ny-chip { flex-shrink:0; height:38px; padding:0 16px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-2); font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:6px; transition:all .2s; }
+.ny-chip small { opacity:.6; font-size:11.5px; }
+.ny-chip:hover { border-color:var(--oro); color:var(--text); }
+.ny-chip.on { background:var(--grad-oro); background-size:220% 100%; color:#1c1508; border-color:transparent; }
+.ny-resultado { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:20px; }
+.ny-resultado b { font-family:var(--font-display); font-size:clamp(22px,3.4vw,30px); }
+.ny-resultado span { font-size:12.5px; color:var(--text-3); }
+.ny-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; }
+@media (min-width:760px) { .ny-grid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:22px; } }
+@media (min-width:1200px) { .ny-grid { grid-template-columns:repeat(4, minmax(0,1fr)); gap:26px; } }
+/* Tarjeta con borde de oro giratorio + reflejo que sigue al puntero */
+.ny-card { position:relative; display:flex; flex-direction:column; border-radius:20px; padding:8px 8px 14px; border:1px solid transparent; background:linear-gradient(var(--surface), var(--surface)) padding-box, conic-gradient(from var(--ny-ang), rgba(232,192,102,.15), rgba(255,241,194,.9), rgba(154,107,28,.35), rgba(232,192,102,.15), rgba(255,241,194,.7), rgba(232,192,102,.15)) border-box; animation:ny-giro 7s linear infinite, ny-sube .8s var(--ease) backwards; transition:transform .45s var(--ease), box-shadow .45s; }
+@media (hover:hover) and (pointer:fine) { .ny-card { animation-play-state:paused, running; } .ny-card:hover { animation-play-state:running, running; } }
+.ny-card:hover { box-shadow:0 30px 60px -28px rgba(232,192,102,.45); }
+@media (hover:hover) and (pointer:fine) { .ny-card:hover { transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-4px); } }
+.ny-card::after { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; background:radial-gradient(circle at var(--mx,50%) var(--my,-20%), rgba(255,241,194,.16), transparent 42%); opacity:0; transition:opacity .3s; }
+.ny-card:hover::after { opacity:1; }
+.ny-card-media { position:relative; aspect-ratio:1/1; border-radius:14px; overflow:hidden; background:var(--surface-2); cursor:pointer; }
+.ny-card-media.cargando { background:linear-gradient(90deg, var(--surface-2) 25%, var(--surface) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:ny-shimmer 1.3s infinite; }
+.ny-card-media img { width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .45s, transform 1s var(--ease); }
+.ny-card-media img.cargada { opacity:1; }
+.ny-card:hover .ny-card-media img { transform:scale(1.06); }
+.ny-card-media .ny-sin-foto { font-size:56px; }
+.ny-card.agotada .ny-card-media img { filter:grayscale(1); opacity:.45; }
+.ny-medalla { position:absolute; top:10px; left:10px; z-index:2; width:52px; height:52px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; background:radial-gradient(circle at 35% 30%, #fff4cf, #e8c066 45%, #9a6b1c 100%); color:#1c1508; font-family:var(--font-display); font-weight:900; font-size:13px; line-height:1; box-shadow:0 6px 16px rgba(0,0,0,.45), inset 0 0 0 2px rgba(255,255,255,.35); }
+.ny-medalla small { font-family:var(--font); font-size:7px; font-weight:800; letter-spacing:.14em; margin-top:2px; }
+.ny-card-tag { position:absolute; top:10px; left:10px; z-index:2; font-size:10px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; padding:5px 10px; border-radius:999px; background:rgba(7,6,10,.78); color:var(--oro); border:1px solid rgba(232,192,102,.4); }
+.ny-fav { position:absolute; top:16px; right:16px; z-index:3; width:36px; height:36px; border-radius:50%; border:1px solid rgba(232,192,102,.35); background:rgba(7,6,10,.6); backdrop-filter:blur(6px); color:#f6efe0; display:flex; align-items:center; justify-content:center; font-size:15px; transition:transform .25s var(--spring), color .2s; }
+.ny-fav:active { transform:scale(.85); }
+.ny-fav.on { color:var(--oro); }
+.ny-card-body { padding:12px 4px 0; display:flex; flex-direction:column; flex:1; gap:3px; }
+.ny-card-cat { font-size:10px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ny-card-nombre { font-family:var(--font-display); font-weight:700; font-size:15px; line-height:1.25; cursor:pointer; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-height:2.5em; letter-spacing:.02em; }
+@media (min-width:760px) { .ny-card-nombre { font-size:17px; } }
+.ny-card-precio { margin-top:auto; padding-top:6px; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+.ny-card-precio b { font-size:17px; font-weight:800; }
+.ny-card-precio s { font-size:12.5px; color:var(--text-3); }
+.ny-agregar { margin-top:12px; height:42px; border-radius:999px; border:1px solid rgba(232,192,102,.45); background:transparent; color:var(--text); font-weight:700; font-size:13px; display:inline-flex; align-items:center; justify-content:center; gap:7px; transition:all .25s; }
+html[data-theme="claro"] .ny-agregar { border-color:rgba(154,107,28,.45); }
+.ny-agregar:hover, .ny-agregar.on { background:var(--grad-oro); background-size:220% 100%; color:#1c1508; border-color:transparent; }
+.ny-agregar:active { transform:scale(.95); }
+.ny-vacio { grid-column:1/-1; text-align:center; padding:60px 16px; color:var(--text-3); }
+.ny-vacio b { display:block; font-family:var(--font-display); font-size:28px; color:var(--text); margin-bottom:6px; }
+.ny-mas { display:flex; justify-content:center; margin-top:36px; }
+
+/* ===== BRINDIS (copa que se llena con el scroll) ===== */
+.ny-brindis { background:radial-gradient(ellipse 60% 60% at 50% 60%, #221733 0%, #07060a 70%); color:#f6efe0; overflow:hidden; }
+.ny-brindis-grid { display:grid; grid-template-columns:1fr; gap:30px; align-items:center; text-align:center; }
+@media (min-width:900px) { .ny-brindis-grid { grid-template-columns:1fr 1fr; text-align:left; gap:60px; } }
+.ny-copas { position:relative; height:clamp(300px,48vw,440px); display:flex; justify-content:center; align-items:flex-end; gap:0; }
+.ny-copa { width:clamp(110px,18vw,170px); height:auto; overflow:visible; transform-origin:60% 95%; filter:drop-shadow(0 0 24px rgba(232,192,102,.18)); }
+.ny-copa.der { transform:scaleX(-1); margin-left:-18px; }
+.ny-copas.choque .ny-copa.izq { animation:ny-choque .7s var(--ease); }
+.ny-copas.choque .ny-copa.der { animation:ny-choque-der .7s var(--ease); }
+.ny-copa .burbuja { animation:ny-burbuja linear infinite; }
+.ny-brindis-titulo { font-family:var(--font-display); font-weight:900; font-size:clamp(46px,9vw,110px); line-height:.95; margin:0 0 16px; letter-spacing:.02em; }
+.ny-brindis-txt { color:#c9bfa9; font-size:16px; line-height:1.65; max-width:460px; margin:0 auto 26px; }
+@media (min-width:900px) { .ny-brindis-txt { margin:0 0 26px; } }
+.ny-brindis .ny-hero-acciones { justify-content:center; animation:none; }
+@media (min-width:900px) { .ny-brindis .ny-hero-acciones { justify-content:flex-start; } }
+
+/* ===== FOOTER ===== */
+.ny-footer { background:#07060a; color:#f6efe0; padding:clamp(56px,8vw,100px) 0 calc(40px + var(--safe-b)); border-top:1px solid rgba(232,192,102,.16); }
+.ny-footer-titulo { font-family:var(--font-display); font-weight:800; font-size:clamp(34px,7vw,84px); line-height:1; text-align:center; margin:0 0 36px; letter-spacing:.04em; }
+.ny-contactos { display:grid; grid-template-columns:1fr; gap:12px; margin-bottom:36px; }
+@media (min-width:700px) { .ny-contactos { grid-template-columns:repeat(2,1fr); } }
+@media (min-width:1100px) { .ny-contactos { grid-template-columns:repeat(4,1fr); } }
+.ny-contacto { display:flex; align-items:center; gap:14px; padding:18px; border-radius:18px; border:1px solid rgba(232,192,102,.18); background:rgba(255,255,255,.02); transition:border-color .2s, transform .25s var(--ease); min-width:0; }
+.ny-contacto:hover { border-color:var(--oro); transform:translateY(-3px); }
+.ny-contacto-ico { width:44px; height:44px; border-radius:50%; background:var(--grad-oro); background-size:200% 100%; color:#1c1508; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+.ny-contacto small { display:block; font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:#8f8570; margin-bottom:3px; font-weight:700; }
+.ny-contacto b { display:block; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ny-pie { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; font-size:12px; color:#7c7364; padding-top:22px; border-top:1px solid rgba(232,192,102,.12); }
+.ny-pie b { color:var(--oro); }
+
+/* ===== FLOTANTES / BARRA MÓVIL ===== */
+.ny-flotante { position:fixed; right:22px; bottom:22px; z-index:70; display:none; flex-direction:column; gap:12px; }
+@media (min-width:820px) { .ny-flotante.on { display:flex; } }
+.ny-flot-btn { position:relative; width:58px; height:58px; border-radius:50%; border:none; display:flex; align-items:center; justify-content:center; font-size:23px; box-shadow:0 14px 30px -8px rgba(0,0,0,.6); transition:transform .25s var(--spring); }
+.ny-flot-btn:hover { transform:scale(1.08); }
+.ny-flot-btn.wa { background:#25D366; color:#fff; }
+.ny-flot-btn.ped { background:var(--grad-oro); background-size:220% 100%; color:#1c1508; }
+.ny-flot-btn .ny-badge { background:#07060a; color:var(--oro); top:-2px; right:-2px; }
+.ny-barra-movil { position:fixed; left:10px; right:10px; bottom:calc(10px + var(--safe-b)); z-index:70; display:none; }
+@media (max-width:819px) { .ny-barra-movil.on { display:flex; } body.ny-con-barra { padding-bottom:calc(76px + var(--safe-b)); } }
+.ny-barra-movil a, .ny-barra-movil button { flex:1; height:56px; border-radius:999px; border:none; display:flex; align-items:center; justify-content:center; gap:10px; font-weight:800; font-size:15px; box-shadow:0 16px 34px -10px rgba(0,0,0,.6); }
+.ny-barra-wa { background:#25D366; color:#fff; }
+.ny-barra-ped { background:var(--grad-oro); background-size:220% 100%; color:#1c1508; justify-content:space-between !important; padding:0 20px; }
+.ny-barra-ped .cnt { background:#1c1508; color:var(--oro); font-size:12px; padding:2px 8px; border-radius:999px; }
+.ny-barra-ped .tot { font-family:var(--font-display); font-weight:900; font-size:17px; }
+
+/* ===== OVERLAYS ===== */
+.ny-overlay { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.72); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); display:none; align-items:flex-end; justify-content:center; animation:ny-fade .3s; }
+.ny-overlay.open { display:flex; }
+@media (min-width:820px) { .ny-overlay { align-items:center; padding:26px; } }
+.ny-cerrar { position:absolute; top:14px; right:14px; z-index:6; width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:var(--vidrio); backdrop-filter:blur(10px); color:var(--text); font-size:16px; display:flex; align-items:center; justify-content:center; }
+.ny-modal { position:relative; width:100%; max-width:1000px; max-height:94vh; max-height:94dvh; overflow-y:auto; overscroll-behavior:contain; background:var(--bg); color:var(--text); border-radius:28px 28px 0 0; border:1px solid var(--border); animation:ny-sheet .45s var(--ease); }
+@media (min-width:820px) { .ny-modal { border-radius:28px; display:grid; grid-template-columns:1.05fr 1fr; overflow:hidden; animation:ny-sube .4s var(--ease); } }
+.ny-modal-agarre { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:40px; height:5px; border-radius:5px; background:var(--text-3); opacity:.5; z-index:6; }
+@media (min-width:820px) { .ny-modal-agarre { display:none; } }
+.ny-modal-galeria { position:relative; background:var(--surface); }
+.ny-modal-fotos { display:flex; aspect-ratio:1/1; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+@media (min-width:820px) { .ny-modal-fotos { aspect-ratio:auto; height:100%; min-height:560px; max-height:94vh; } }
+.ny-modal-fotos::-webkit-scrollbar { display:none; }
+.ny-modal-fotos img { flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:start; cursor:zoom-in; }
+.ny-modal-fotos .ny-sin-foto { position:relative; flex:0 0 100%; }
+.ny-modal-puntos { position:absolute; left:0; right:0; bottom:14px; display:flex; justify-content:center; gap:6px; }
+.ny-modal-puntos i { width:7px; height:7px; border-radius:7px; background:rgba(255,255,255,.4); transition:all .25s; }
+.ny-modal-puntos i.on { width:22px; background:var(--oro); }
+.ny-modal-body { padding:28px 22px calc(26px + var(--safe-b)); display:flex; flex-direction:column; }
+@media (min-width:820px) { .ny-modal-body { padding:54px 40px 34px; max-height:94vh; overflow-y:auto; } }
+.ny-modal-cat { font-size:11px; font-weight:800; letter-spacing:.26em; text-transform:uppercase; color:var(--oro); margin-bottom:10px; }
+html[data-theme="claro"] .ny-modal-cat { color:var(--oro-osc); }
+.ny-modal-nombre { font-family:var(--font-display); font-weight:800; font-size:clamp(28px,4.4vw,42px); line-height:1.05; margin:0 0 16px; }
+.ny-modal-precio { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+.ny-modal-precio b { font-size:30px; font-weight:800; }
+.ny-modal-precio s { color:var(--text-3); font-size:16px; }
+.ny-ahorro { display:inline-block; margin-top:8px; font-size:12.5px; font-weight:800; padding:5px 12px; border-radius:999px; background:rgba(232,192,102,.14); color:var(--oro); }
+html[data-theme="claro"] .ny-ahorro { color:var(--oro-osc); }
+.ny-modal-desc { font-size:15px; line-height:1.75; color:var(--text-2); white-space:pre-wrap; margin:18px 0 24px; }
+.ny-cantidad { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; height:52px; overflow:hidden; flex-shrink:0; }
+.ny-cantidad button { width:44px; height:100%; border:none; background:transparent; color:var(--text); font-size:20px; }
+.ny-cantidad button:hover { background:var(--surface); }
+.ny-cantidad span { min-width:28px; text-align:center; font-weight:800; }
+.ny-modal-fila { display:flex; gap:10px; margin-bottom:10px; }
+.ny-modal-fila .ny-btn { flex:1; min-width:0; height:52px; }
+.ny-modal-extra { display:flex; gap:10px; margin-top:4px; }
+.ny-modal-extra .ny-btn { flex:1; height:46px; font-size:13.5px; padding:0 14px; }
+.ny-rel { margin-top:28px; padding-top:22px; border-top:1px solid var(--border); }
+.ny-rel h4 { margin:0 0 14px; font-family:var(--font-display); font-size:16px; letter-spacing:.08em; }
+.ny-rel-scroll { display:flex; gap:12px; overflow-x:auto; scrollbar-width:none; padding-bottom:4px; }
+.ny-rel-scroll::-webkit-scrollbar { display:none; }
+.ny-rel-item { flex:0 0 112px; cursor:pointer; }
+.ny-rel-img { position:relative; width:112px; height:112px; border-radius:14px; overflow:hidden; background:var(--surface-2); border:1px solid var(--border); }
+.ny-rel-img img { width:100%; height:100%; object-fit:cover; }
+.ny-rel-img .ny-sin-foto { font-size:32px; }
+.ny-rel-item .n { font-size:12px; font-weight:600; margin-top:7px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.ny-rel-item .p { font-size:12.5px; font-weight:800; }
+
+.ny-ped { position:relative; width:100%; max-width:460px; max-height:92vh; max-height:92dvh; background:var(--bg); color:var(--text); display:flex; flex-direction:column; border-radius:28px 28px 0 0; overflow:hidden; border:1px solid var(--border); animation:ny-sheet .45s var(--ease); }
+@media (min-width:820px) {
+  #ny-overlay-ped { align-items:stretch; justify-content:flex-end; padding:0; }
+  .ny-ped { height:100vh; max-height:none; border-radius:0; border-width:0 0 0 1px; animation:ny-drawer .45s var(--ease); }
+}
+.ny-ped-head { padding:26px 22px 16px; border-bottom:1px solid var(--border); }
+.ny-ped-head small { display:block; font-size:11px; font-weight:800; letter-spacing:.3em; text-transform:uppercase; color:var(--oro); margin-bottom:6px; }
+html[data-theme="claro"] .ny-ped-head small { color:var(--oro-osc); }
+.ny-ped-head h3 { margin:0; font-family:var(--font-display); font-weight:800; font-size:30px; }
+.ny-ped-lista { flex:1; overflow-y:auto; padding:6px 22px; overscroll-behavior:contain; }
+.ny-ped-item { display:grid; grid-template-columns:62px 1fr auto; gap:12px; align-items:center; padding:13px 0; border-bottom:1px solid var(--border); animation:ny-sube .4s var(--ease) both; }
+.ny-ped-img { position:relative; width:62px; height:62px; border-radius:14px; overflow:hidden; background:var(--surface-2); border:1px solid var(--border); }
+.ny-ped-img img { width:100%; height:100%; object-fit:cover; }
+.ny-ped-img .ny-sin-foto { font-size:24px; }
+.ny-ped-item .n { font-weight:700; font-size:14px; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.ny-ped-item .p { font-size:12.5px; color:var(--text-3); margin-top:3px; }
+.ny-ped-item .ny-cantidad { height:38px; }
+.ny-ped-item .ny-cantidad button { width:32px; font-size:16px; }
+.ny-ped-item .ny-cantidad span { min-width:22px; font-size:13px; }
+.ny-ped-vacio { text-align:center; padding:60px 10px; color:var(--text-3); }
+.ny-ped-vacio b { display:block; font-family:var(--font-display); font-size:24px; color:var(--text); margin:12px 0 6px; }
+.ny-ped-pie { padding:16px 22px calc(18px + var(--safe-b)); border-top:1px solid var(--border); background:var(--surface); }
+.ny-ped-linea { display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:6px; color:var(--oro); font-weight:700; }
+html[data-theme="claro"] .ny-ped-linea { color:var(--oro-osc); }
+.ny-ped-total { display:flex; justify-content:space-between; align-items:baseline; margin:6px 0 14px; }
+.ny-ped-total span { font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text-2); }
+.ny-ped-total b { font-family:var(--font-display); font-weight:900; font-size:32px; }
+.ny-ped-pie .ny-btn { width:100%; }
+.ny-ped-nota { font-size:12px; color:var(--text-3); text-align:center; margin-top:10px; }
+.ny-ped-vaciar { background:none; border:none; color:var(--text-3); font-size:12px; text-decoration:underline; margin-top:6px; width:100%; }
+
+.ny-lightbox { position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.96); display:none; align-items:center; justify-content:center; }
+.ny-lightbox.open { display:flex; }
+.ny-lightbox img { max-width:92vw; max-height:84vh; object-fit:contain; border-radius:12px; }
+.ny-lb-btn { position:absolute; width:48px; height:48px; border-radius:50%; border:1px solid rgba(232,192,102,.3); background:rgba(255,255,255,.06); color:#fff; font-size:22px; display:flex; align-items:center; justify-content:center; }
+.ny-lb-btn.cerrar { top:18px; right:18px; font-size:18px; }
+.ny-lb-btn.izq { left:14px; top:50%; transform:translateY(-50%); }
+.ny-lb-btn.der { right:14px; top:50%; transform:translateY(-50%); }
+.ny-lb-cont { position:absolute; bottom:22px; left:50%; transform:translateX(-50%); color:#fff; font-size:12px; }
+
+.ny-sin-foto { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:900; color:#1c1508; background:radial-gradient(circle at 30% 25%, #fff4cf, #e8c066 45%, #9a6b1c); }
+.ny-toasts { position:fixed; left:50%; transform:translateX(-50%); top:calc(var(--hdr-h) + 12px); z-index:960; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none; width:max-content; max-width:92vw; }
+.ny-toast { background:rgba(14,12,20,.92); color:#f6efe0; border:1px solid rgba(232,192,102,.4); padding:12px 20px; border-radius:999px; font-weight:700; font-size:13.5px; box-shadow:0 14px 34px -12px rgba(0,0,0,.6); animation:ny-sube .35s var(--ease); display:flex; align-items:center; gap:8px; backdrop-filter:blur(10px); }
+.ny-toast svg { color:var(--oro); }
+.ny-vista-previa { position:fixed; left:0; right:0; top:0; z-index:90; display:none; background:var(--oro); color:#1c1508; text-align:center; font-size:12px; font-weight:800; padding:6px 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  .ny-reveal { opacity:1; transform:none; }
+}
+</style>
+</head>
+<body class="ny-bloqueado">
+
+<!-- Degradados compartidos para uvas y copas -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="ny-g-uva" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#b78ad8"/><stop offset="35%" stop-color="#6d3a98"/><stop offset="75%" stop-color="#3a1a57"/><stop offset="100%" stop-color="#1f0c30"/>
+    </radialGradient>
+    <linearGradient id="ny-g-champan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff1c2"/><stop offset="40%" stop-color="#f2d27e"/><stop offset="100%" stop-color="#c8962e"/>
+    </linearGradient>
+    <linearGradient id="ny-g-vidrio" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(255,255,255,.35)"/><stop offset="25%" stop-color="rgba(255,255,255,.05)"/><stop offset="80%" stop-color="rgba(255,255,255,.04)"/><stop offset="100%" stop-color="rgba(255,255,255,.28)"/>
+    </linearGradient>
+    <clipPath id="ny-clip-copa"><path d="M30 14 L90 14 C90 92 80 150 60 162 C40 150 30 92 30 14 Z"/></clipPath>
+    <clipPath id="ny-clip-nivel"><rect id="ny-nivel-rect" x="0" y="162" width="120" height="200"/></clipPath>
+  </defs>
+</svg>
+
+<canvas id="ny-fx" aria-hidden="true"></canvas>
+
+<div class="ny-intro" id="ny-intro" aria-hidden="true">
+  <canvas id="ny-intro-cv"></canvas>
+  <div class="ny-intro-texto"><div class="ny-intro-negocio" id="ny-intro-negocio"></div><div class="ny-intro-toca">Tocá para entrar</div></div>
+</div>
+<div class="ny-error" id="ny-error"></div>
+
+<div id="ny-app" style="display:none">
+  <div class="ny-vista-previa" id="ny-vista-previa">Vista previa — este catálogo todavía no es público</div>
+
+  <header class="ny-header" id="ny-header">
+    <div class="ny-wrap ny-header-in">
+      <div class="ny-marca" onclick="irArriba()">
+        <img class="ny-marca-logo" id="ny-marca-logo" src="" alt="">
+        <span class="ny-marca-nombre" id="ny-marca-nombre"></span>
+      </div>
+      <div class="ny-header-der">
+        <button class="ny-icon-btn" onclick="enfocarBusqueda()" aria-label="Buscar" id="ny-ico-buscar"></button>
+        <button class="ny-icon-btn" onclick="verFavoritos()" aria-label="Favoritos"><span id="ny-ico-fav"></span><span class="ny-badge" id="ny-badge-fav"></span></button>
+        <button class="ny-icon-btn" onclick="toggleTema()" aria-label="Cambiar tema" id="ny-btn-tema"></button>
+        <button class="ny-icon-btn" id="ny-btn-ped" onclick="abrirPedido()" aria-label="Tu pedido" style="display:none"><span id="ny-ico-ped"></span><span class="ny-badge" id="ny-badge-ped"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== HERO ===== -->
+  <section class="ny-hero" id="ny-hero">
+    <canvas class="polvo" id="ny-polvo" aria-hidden="true"></canvas>
+    <div class="ny-wrap ny-hero-in">
+      <div class="ny-hero-kicker" id="ny-hero-kicker"></div>
+      <div class="ny-hero-feliz ny-oro">Feliz Año Nuevo</div>
+      <h1 class="ny-hero-anio ny-oro" id="ny-hero-anio"></h1>
+      <p class="ny-hero-desc" id="ny-hero-desc"></p>
+      <div class="ny-reloj" id="ny-reloj">
+        <div class="ny-reloj-label" id="ny-reloj-label"></div>
+        <div class="ny-reloj-fila" id="ny-reloj-fila"></div>
+      </div>
+      <div class="ny-hero-acciones" id="ny-hero-acciones"></div>
+      <div class="ny-hero-pista"><i></i> Tocá el cielo para lanzar fuegos artificiales</div>
+    </div>
+  </section>
+
+  <div class="ny-deseos" aria-hidden="true"><div class="ny-deseos-pista ny-oro" id="ny-deseos-pista"></div></div>
+
+  <!-- ===== PASES VIP ===== -->
+  <section class="ny-seccion ny-reveal" id="ny-sec-pases" style="display:none">
+    <div class="ny-wrap">
+      <div class="ny-head">
+        <div class="ny-kicker">Acceso exclusivo</div>
+        <h2 class="ny-titulo"><span class="ny-oro" id="ny-pases-titulo">Pases VIP</span></h2>
+        <p class="ny-sub" id="ny-pases-sub">Lo mejor de nuestra colección para cerrar el año por todo lo alto.</p>
+      </div>
+      <div class="ny-pases" id="ny-pases"></div>
+    </div>
+  </section>
+
+  <!-- ===== LAS 12 UVAS ===== -->
+  <section class="ny-seccion ny-reveal" id="ny-sec-uvas" style="padding-top:0;display:none">
+    <div class="ny-wrap">
+      <div class="ny-head">
+        <div class="ny-kicker">La tradición de medianoche</div>
+        <h2 class="ny-titulo">Las <span class="ny-oro">12 uvas</span></h2>
+        <p class="ny-sub">Una uva por cada campanada, un deseo por cada uva. Comételas y descubrí los 12 deseos que tenemos para vos.</p>
+      </div>
+      <div class="ny-uvas-zona">
+        <div>
+          <div class="ny-racimo" id="ny-racimo"></div>
+          <div class="ny-uvas-estado" id="ny-uvas-estado"></div>
+        </div>
+        <div class="ny-deseo" id="ny-deseo"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== COLECCIÓN ===== -->
+  <section class="ny-seccion" id="ny-sec-coleccion" style="padding-top:20px">
+    <div class="ny-wrap">
+      <div class="ny-head">
+        <div class="ny-kicker">Colección de gala</div>
+        <h2 class="ny-titulo">Todo para <span class="ny-oro">celebrar</span></h2>
+      </div>
+      <div class="ny-filtros">
+        <div class="ny-filtros-fila">
+          <label class="ny-buscador">
+            <span id="ny-ico-buscar-2"></span>
+            <span class="ny-sr">Buscar</span>
+            <input type="search" id="ny-buscador" placeholder="¿Qué buscás para la noche?" autocomplete="off" oninput="onBuscar(this.value)">
+            <button type="button" class="ny-limpiar" id="ny-limpiar" onclick="limpiarBusqueda()" aria-label="Limpiar búsqueda">✕</button>
+          </label>
+          <select class="ny-orden" id="ny-orden" onchange="cambiarOrden(this.value)" aria-label="Ordenar">
+            <option value="reciente">Novedades</option>
+            <option value="precio_asc">Menor precio</option>
+            <option value="precio_desc">Mayor precio</option>
+            <option value="nombre">Nombre A-Z</option>
+          </select>
+        </div>
+        <div class="ny-chips" id="ny-chips"></div>
+      </div>
+      <div class="ny-resultado"><b id="ny-res-titulo">Todo</b><span id="ny-res-conteo"></span></div>
+      <div class="ny-grid" id="ny-grid"></div>
+      <div class="ny-mas" id="ny-mas" style="display:none"><button class="ny-btn ny-btn-linea" onclick="mostrarMas()">Ver más</button></div>
+    </div>
+  </section>
+
+  <!-- ===== BRINDIS ===== -->
+  <section class="ny-seccion ny-brindis" id="ny-sec-brindis">
+    <div class="ny-wrap ny-brindis-grid">
+      <div class="ny-copas" id="ny-copas">
+        <svg class="ny-copa izq" viewBox="0 0 120 300" aria-hidden="true"></svg>
+        <svg class="ny-copa der" viewBox="0 0 120 300" aria-hidden="true"></svg>
+      </div>
+      <div>
+        <div class="ny-kicker">Levantemos las copas</div>
+        <h2 class="ny-brindis-titulo"><span class="ny-oro">¡Salud!</span></h2>
+        <p class="ny-brindis-txt" id="ny-brindis-txt"></p>
+        <div class="ny-hero-acciones" id="ny-brindis-acciones"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="ny-footer" id="ny-footer">
+    <div class="ny-wrap">
+      <h2 class="ny-footer-titulo ny-reveal"><span class="ny-oro" id="ny-footer-titulo"></span></h2>
+      <div class="ny-contactos" id="ny-contactos"></div>
+      <div class="ny-pie"><span>© <span id="ny-anio"></span> <b id="ny-pie-nombre"></b></span><span>Creado con <b>Catálogo360</b></span></div>
+    </div>
+  </footer>
+
+  <div class="ny-flotante" id="ny-flotante">
+    <button class="ny-flot-btn ped" id="ny-flot-ped" onclick="abrirPedido()" aria-label="Tu pedido" style="display:none"><span id="ny-ico-ped-2"></span><span class="ny-badge" id="ny-badge-ped-2"></span></button>
+    <button class="ny-flot-btn wa" id="ny-flot-wa" aria-label="WhatsApp"></button>
+  </div>
+  <div class="ny-barra-movil" id="ny-barra-movil"></div>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div class="ny-overlay" id="ny-overlay-modal" onclick="if(event.target===this)cerrarModal()" role="dialog" aria-modal="true" aria-label="Detalle del producto">
+  <div class="ny-modal" id="ny-modal">
+    <div class="ny-modal-agarre"></div>
+    <button class="ny-cerrar" onclick="cerrarModal()" aria-label="Cerrar" data-ico="close"></button>
+    <div class="ny-modal-galeria"><div class="ny-modal-fotos" id="ny-modal-fotos"></div><div class="ny-modal-puntos" id="ny-modal-puntos"></div></div>
+    <div class="ny-modal-body" id="ny-modal-body"></div>
+  </div>
+</div>
+
+<!-- ===== PEDIDO ===== -->
+<div class="ny-overlay" id="ny-overlay-ped" onclick="if(event.target===this)cerrarPedido()" role="dialog" aria-modal="true" aria-label="Tu pedido">
+  <div class="ny-ped">
+    <button class="ny-cerrar" onclick="cerrarPedido()" aria-label="Cerrar" data-ico="close"></button>
+    <div class="ny-ped-head"><small>Para la gran noche</small><h3>Tu pedido</h3></div>
+    <div class="ny-ped-lista" id="ny-ped-lista"></div>
+    <div class="ny-ped-pie" id="ny-ped-pie"></div>
+  </div>
+</div>
+
+<div class="ny-lightbox" id="ny-lightbox" onclick="if(event.target===this)cerrarLightbox()">
+  <button class="ny-lb-btn cerrar" onclick="cerrarLightbox()" aria-label="Cerrar">✕</button>
+  <button class="ny-lb-btn izq" onclick="moverLightbox(-1)" aria-label="Anterior">‹</button>
+  <img id="ny-lb-img" src="" alt="">
+  <button class="ny-lb-btn der" onclick="moverLightbox(1)" aria-label="Siguiente">›</button>
+  <div class="ny-lb-cont" id="ny-lb-cont"></div>
+</div>
+
+<div class="ny-toasts" id="ny-toasts" aria-live="polite"></div>
+
+<script>
+const sb = c360CrearCliente();
+const PLANTILLA_KEY = 'anonuevo';
+const POR_PAGINA = 24;
+const MOV_REDUCIDO = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MOVIL = window.matchMedia('(max-width:760px)').matches;
+const HOY = new Date();
+// Año que se celebra: del 1 al 7 de enero se sigue festejando el año que empezó
+const ANIO = (HOY.getMonth() === 0 && HOY.getDate() <= 7) ? HOY.getFullYear() : HOY.getFullYear() + 1;
+
+let CATALOGO = null, PRODUCTOS = [], CATEGORIAS = [];
+let CATEGORIA_ACTUAL = null, SOLO_FAV = false, SOLO_OFERTAS = false;
+let ORDEN = 'reciente', TEXTO = '', LIMITE = POR_PAGINA;
+let FAVORITOS = [], PEDIDO = [], UVAS = [], DESEOS = [];
+let ES_PREVIEW = false, MODAL_ID = null, MODAL_CANT = 1, LB_FOTOS = [], LB_I = 0;
+
+const ICO = {
+  heart: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  heartFill: '<svg class="ny-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2 5.5 5.5 5c2-.3 3.7.8 4.5 2.3C10.8 5.8 12.5 4.7 14.5 5 18 5.5 19 9 17.5 12.5 15 16.65 12 21 12 21z"/></svg>',
+  moon: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/></svg>',
+  sun: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  search: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  copa: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l-.6 6.2a3.4 3.4 0 0 1-6.8 0z"/><path d="M12 12.6V20M8.5 21h7"/></svg>',
+  bag: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20.5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+  plus: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  check: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  star: '<svg class="ny-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6 4.6 2.3 7.2L12 16.6 5.7 21l2.3-7.2-6-4.6h7.6z"/></svg>',
+  wa: '<svg class="ny-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.2-.5-.5-1-1.1-1.3-1.7-.1-.2 0-.4.1-.5l.4-.5.3-.4v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.6.6-.9 1.3-.9 2.1.1.9.4 1.8 1 2.6 1.1 1.6 2.5 2.9 4.2 3.6.5.2.9.4 1.4.5.5.2 1 .2 1.6.1.6-.1 1.2-.5 1.5-1.1.2-.4.2-.8.1-1.1l-.6-.2z"/></svg>',
+  phone: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11 11 0 0 0 3.5.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1 11 11 0 0 0 .6 3.5 1 1 0 0 1-.3 1z"/></svg>',
+  mail: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  pin: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  share: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+  close: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  trash: '<svg class="ny-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+};
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const azar = (a, b) => a + Math.random() * (b - a);
+function esc(s){ return c360Esc(s); }
+function fmtC(n){ return c360FmtC(n); }
+function nombreNegocio(){ return CATALOGO?.nombre_comercial || CATALOGO?.nombre || ''; }
+function enOferta(p){ return p.etiqueta === 'oferta' && p.precio_oferta && Number(p.precio_oferta) < Number(p.precio); }
+function precioReal(p){ return enOferta(p) ? Number(p.precio_oferta) : Number(p.precio); }
+function descuento(p){ return enOferta(p) && Number(p.precio) > 0 ? Math.round((1 - Number(p.precio_oferta) / Number(p.precio)) * 100) : 0; }
+function fotoPrincipal(p){ return p?.fotos?.find(f => f.es_principal) || p?.fotos?.[0] || null; }
+function inicial(t){ return esc((String(t || '?').trim()[0] || '?').toUpperCase()); }
+function sinFoto(p){ return `<div class="ny-sin-foto">${inicial(p.nombre)}</div>`; }
+function nombreCat(p){ return CATEGORIAS.find(c => c.id === p.categoria_id)?.nombre || ''; }
+function claveLocal(k){ return `ny_${k}_${CATALOGO?.id || 'x'}`; }
+function leerLocal(k){ try { return JSON.parse(localStorage.getItem(claveLocal(k)) || '[]'); } catch(e) { return []; } }
+function guardarLocal(k, v){ try { localStorage.setItem(claveLocal(k), JSON.stringify(v)); } catch(e) {} }
+function registrarEvento(tipo, prodId){ c360RegistrarEvento(sb, CATALOGO?.id, tipo, prodId, ES_PREVIEW); }
+function hayWhatsApp(){ return !!(CATALOGO && CATALOGO.whatsapp && String(CATALOGO.whatsapp).replace(/\D/g,'').length >= 7); }
+function linkWA(txt){ return c360LinkWA(CATALOGO.whatsapp, txt); }
+function irArriba(){ window.scrollTo({ top:0, behavior:'smooth' }); }
+function irA(id){ const el = $(id); if (el && el.style.display !== 'none') el.scrollIntoView({ behavior:'smooth' }); }
+function enfocarBusqueda(){ irA('ny-sec-coleccion'); setTimeout(() => $('ny-buscador').focus({ preventScroll:true }), 600); }
+function bloquearScroll(on){ document.body.classList.toggle('ny-bloqueado', on); }
+function toast(msg, ico){
+  const t = document.createElement('div'); t.className = 'ny-toast';
+  t.innerHTML = (ico || '') + `<span>${esc(msg)}</span>`;
+  $('ny-toasts').appendChild(t); setTimeout(() => t.remove(), 2300);
+}
+function aplicarTema(t){ document.documentElement.setAttribute('data-theme', t); $('ny-btn-tema').innerHTML = t === 'oscuro' ? ICO.sun : ICO.moon; }
+function toggleTema(){ const n = document.documentElement.getAttribute('data-theme') === 'oscuro' ? 'claro' : 'oscuro'; aplicarTema(n); try { localStorage.setItem('ny_tema', n); } catch(e) {} }
+
+/* Destello dorado pre-dibujado: dibujar una imagen es mucho más barato que un degradado por partícula */
+function crearDestello(tam, rgb){
+  const c = document.createElement('canvas'); c.width = c.height = tam;
+  const x = c.getContext('2d'), g = x.createRadialGradient(tam / 2, tam / 2, 0, tam / 2, tam / 2, tam / 2);
+  g.addColorStop(0, `rgba(${rgb},1)`); g.addColorStop(.25, `rgba(${rgb},.55)`); g.addColorStop(1, `rgba(${rgb},0)`);
+  x.fillStyle = g; x.fillRect(0, 0, tam, tam); return c;
+}
+const DESTELLOS = [crearDestello(32, '255,236,170'), crearDestello(32, '232,192,102'), crearDestello(32, '255,250,235'), crearDestello(32, '255,200,120')];
+
+/* =====================================================================
+   FX GLOBAL: fuegos artificiales + confeti con física
+   Solo anima mientras haya partículas vivas.
+   ===================================================================== */
+const FX = (() => {
+  const cv = $('ny-fx'), ctx = cv.getContext('2d');
+  const PALETAS = [['#fff1c2', '#e8c066', '#ffffff'], ['#f2d27e', '#ffe9a8', '#c8962e'], ['#ffffff', '#fff1c2', '#b78ad8'], ['#e8c066', '#ffd48a', '#fff7e0']];
+  const CONFETI = ['#e8c066', '#fff1c2', '#c8962e', '#ffffff', '#f2d27e', '#b78ad8'];
+  let W = 0, H = 0, dpr = 1, cohetes = [], chispas = [], confeti = [], corriendo = false;
+  function medir(){ dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  medir(); addEventListener('resize', medir);
+  function arrancar(){ if (!corriendo) { corriendo = true; requestAnimationFrame(cuadro); } }
+  function estallar(x, y, fuerza){
+    const pal = PALETAS[Math.floor(Math.random() * PALETAS.length)];
+    const n = Math.round((MOVIL ? 70 : 120) * (fuerza || 1));
+    const tipo = Math.random();
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + azar(-.05, .05);
+      // anillo perfecto o esfera: dos formas distintas de estallido
+      const v = tipo < .35 ? azar(3.8, 4.2) : azar(1, 5.2);
+      chispas.push({ x, y, vx:Math.cos(a) * v, vy:Math.sin(a) * v, vida:1, dec:azar(.009, .016), c:pal[i % pal.length], img:DESTELLOS[i % 4], t:azar(2, 4), parpadeo:Math.random() < .35 });
+    }
+  }
+  function lanzar(x0, y0, x1, y1){
+    if (MOV_REDUCIDO) return;
+    cohetes.push({ x:x0, y:y0, tx:x1, ty:y1, t:0, dur:azar(34, 48), rastro:[] }); arrancar();
+  }
+  function sobre(rect, n){
+    for (let i = 0; i < (n || 1); i++) setTimeout(() => {
+      const x = rect.left + rect.width * azar(.15, .85), y = Math.max(50, rect.top + rect.height * azar(.1, .45));
+      lanzar(x + azar(-40, 40), H + 10, x, y);
+    }, i * 240);
+  }
+  function lluviaConfeti(x, y, n, abanico){
+    if (MOV_REDUCIDO) return;
+    for (let i = 0; i < n; i++) {
+      const a = abanico ? azar(-Math.PI * .85, -Math.PI * .15) : azar(0, Math.PI * 2), v = azar(4, 11);
+      confeti.push({ x, y, vx:Math.cos(a) * v, vy:Math.sin(a) * v - (abanico ? 2 : 0), rot:azar(0, 6.28), vr:azar(-.3, .3), giro:azar(0, 6.28), vg:azar(.08, .22), w:azar(6, 11), h:azar(9, 15), c:CONFETI[i % CONFETI.length], vida:1 });
+    }
+    arrancar();
+  }
+  function cuadro(){
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    cohetes = cohetes.filter(k => {
+      k.t++; const p = k.t / k.dur, e = 1 - Math.pow(1 - p, 3);
+      const x = k.x + (k.tx - k.x) * e, y = k.y + (k.ty - k.y) * e;
+      k.rastro.push([x, y]); if (k.rastro.length > 12) k.rastro.shift();
+      k.rastro.forEach(([rx, ry], i) => { ctx.globalAlpha = i / k.rastro.length * .8; ctx.drawImage(DESTELLOS[0], rx - 4, ry - 4, 8, 8); });
+      if (p >= 1) { estallar(x, y); return false; }
+      return true;
+    });
+    chispas = chispas.filter(s => {
+      s.vx *= .983; s.vy = s.vy * .983 + .05; s.x += s.vx; s.y += s.vy; s.vida -= s.dec;
+      if (s.vida <= 0) return false;
+      let a = s.vida; if (s.parpadeo && s.vida < .5) a *= Math.random() < .5 ? .2 : 1;
+      ctx.globalAlpha = a;
+      const tam = s.t * 3.2;
+      ctx.drawImage(s.img, s.x - tam / 2, s.y - tam / 2, tam, tam);
+      ctx.fillStyle = s.c; ctx.fillRect(s.x - .9, s.y - .9, 1.8, 1.8);
+      return true;
+    });
+    ctx.globalCompositeOperation = 'source-over';
+    confeti = confeti.filter(c => {
+      c.vx *= .985; c.vy = c.vy * .985 + .18; c.x += c.vx + Math.sin(c.giro) * .6; c.y += c.vy; c.rot += c.vr; c.giro += c.vg;
+      if (c.y > H + 30) return false;
+      if (c.vy > 0) c.vida -= .004;
+      ctx.save(); ctx.globalAlpha = clamp(c.vida, 0, 1);
+      ctx.translate(c.x, c.y); ctx.rotate(c.rot); ctx.scale(1, Math.cos(c.giro)); // aleteo 3D
+      ctx.fillStyle = c.c; ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+      ctx.restore();
+      return c.vida > 0;
+    });
+    ctx.globalAlpha = 1;
+    if (cohetes.length || chispas.length || confeti.length) requestAnimationFrame(cuadro);
+    else { corriendo = false; ctx.clearRect(0, 0, W, H); }
+  }
+  return { lanzar, sobre, confeti:lluviaConfeti, estallar:(x, y, f) => { if (!MOV_REDUCIDO) { estallar(x, y, f); arrancar(); } } };
+})();
+
+/* =====================================================================
+   INTRO: partículas de oro que forman el año
+   ===================================================================== */
+const Intro = (() => {
+  const cont = $('ny-intro'), cv = $('ny-intro-cv'), ctx = cv.getContext('2d');
+  let W, H, dpr, pts = [], fase = 'armar', t0 = 0, vivo = true, alSalir = null;
+  function medir(){ dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  function objetivos(texto){
+    const off = document.createElement('canvas'); off.width = W; off.height = H;
+    const o = off.getContext('2d');
+    const tam = Math.min(W * (texto.length > 4 ? .2 : .3), H * .42);
+    o.fillStyle = '#fff'; o.textAlign = 'center'; o.textBaseline = 'middle';
+    o.font = `900 ${tam}px Cinzel, Georgia, serif`;
+    o.fillText(texto, W / 2, H * .44);
+    const datos = o.getImageData(0, 0, W, H).data, paso = Math.max(3, Math.round(W / (MOVIL ? 150 : 240))), res = [];
+    for (let y = 0; y < H; y += paso) for (let x = 0; x < W; x += paso) if (datos[(y * W + x) * 4 + 3] > 140) res.push([x, y]);
+    const max = MOVIL ? 900 : 1900;
+    for (let i = res.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [res[i], res[j]] = [res[j], res[i]]; }
+    return res.slice(0, max);
+  }
+  async function iniciar(){
+    medir();
+    // esperamos la letra de gala (máx. 900 ms) para que el año se forme con ella
+    try { await Promise.race([document.fonts.load('900 100px Cinzel'), new Promise(r => setTimeout(r, 900))]); } catch(e) {}
+    const obj = objetivos(String(ANIO));
+    const cx = W / 2, cy = H * .44;
+    pts = obj.map(([tx, ty]) => {
+      const a = azar(0, Math.PI * 2), r = azar(Math.max(W, H) * .45, Math.max(W, H) * .9);
+      return { x:cx + Math.cos(a) * r, y:cy + Math.sin(a) * r, vx:0, vy:0, tx, ty, img:DESTELLOS[Math.floor(Math.random() * 3)], s:azar(6, 13), fase:azar(0, 6.28), k:azar(.018, .032), c:Math.random() < .5 ? '#fff4cf' : '#f2d27e' };
+    });
+    t0 = performance.now();
+    requestAnimationFrame(cuadro);
+    setTimeout(() => cont.classList.add('listo'), 1300);
+  }
+  function cuadro(ahora){
+    if (!vivo) return;
+    const t = (ahora - t0) / 1000;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of pts) {
+      if (fase === 'armar') {
+        p.vx += (p.tx - p.x) * p.k; p.vy += (p.ty - p.y) * p.k; p.vx *= .82; p.vy *= .82;
+        // leve temblor vivo cuando ya está armado
+        if (t > 1.6) { p.x += Math.sin(t * 2 + p.fase) * .15; }
+      } else { p.vy += .12; p.vx *= .985; p.vy *= .985; }
+      p.x += p.vx; p.y += p.vy;
+      const brillo = .55 + .45 * Math.sin(t * 3 + p.fase);
+      ctx.globalAlpha = fase === 'salir' ? Math.max(0, 1 - (t - p.tSalida) * .9) * brillo : brillo;
+      ctx.drawImage(p.img, p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+      ctx.fillStyle = p.c; ctx.fillRect(p.x - 1, p.y - 1, 2, 2); // núcleo brillante
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(cuadro);
+  }
+  function salir(){
+    if (fase === 'salir') return;
+    fase = 'salir';
+    const t = (performance.now() - t0) / 1000, cx = W / 2, cy = H * .44;
+    pts.forEach(p => { const a = Math.atan2(p.y - cy, p.x - cx), v = azar(4, 13); p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v - 2; p.tSalida = t; });
+    cont.classList.add('fuera');
+    FX.sobre({ left:0, top:0, width:W, height:H * .8, bottom:H }, 4);
+    setTimeout(() => { vivo = false; cont.remove(); }, 1300);
+    if (alSalir) alSalir();
+  }
+  return { iniciar, salir, detener:() => { vivo = false; }, alSalir:(fn) => { alSalir = fn; } };
+})();
+
+/* =====================================================================
+   POLVO DE ORO del hero (bokeh con parallax)
+   ===================================================================== */
+const Polvo = (() => {
+  const cv = $('ny-polvo'), ctx = cv.getContext('2d');
+  let W, H, dpr, motas = [], visible = true, px = 0, py = 0, ox = 0, oy = 0, activo = false;
+  function medir(){ const r = cv.getBoundingClientRect(); dpr = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  function iniciar(){
+    medir(); addEventListener('resize', medir);
+    const n = MOVIL ? 70 : 150;
+    motas = Array.from({ length:n }, () => { const prof = Math.random(); return { x:azar(0, W), y:azar(0, H), s:prof < .12 ? azar(18, 42) : azar(2, 7), a:prof < .12 ? azar(.08, .2) : azar(.35, .95), vy:azar(-.12, -.45) * (prof + .3), f:azar(0, 6.28), prof, img:DESTELLOS[Math.floor(Math.random() * 4)] }; });
+    const hero = $('ny-hero');
+    if (matchMedia('(pointer:fine)').matches) hero.addEventListener('pointermove', e => { const r = hero.getBoundingClientRect(); px = (e.clientX - r.left) / r.width - .5; py = (e.clientY - r.top) / r.height - .5; });
+    if ('IntersectionObserver' in window) new IntersectionObserver(es => { visible = es[0].isIntersecting; if (visible && !activo) { activo = true; requestAnimationFrame(cuadro); } }).observe(hero);
+    if (MOV_REDUCIDO) { dibujar(0); return; }
+    activo = true; requestAnimationFrame(cuadro);
+  }
+  function dibujar(t){
+    ctx.clearRect(0, 0, W, H); ctx.globalCompositeOperation = 'lighter';
+    ox += (px - ox) * .05; oy += (py - oy) * .05;
+    for (const m of motas) {
+      const dx = -ox * 60 * (m.prof + .2), dy = -oy * 40 * (m.prof + .2);
+      ctx.globalAlpha = m.a * (.6 + .4 * Math.sin(t * .002 + m.f));
+      ctx.drawImage(m.img, m.x + dx - m.s / 2, m.y + dy - m.s / 2, m.s, m.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function cuadro(t){
+    if (!visible || document.hidden) { activo = false; return; }
+    for (const m of motas) { m.y += m.vy; m.x += Math.sin(t * .0006 + m.f) * .18; if (m.y < -50) { m.y = H + 40; m.x = azar(0, W); } }
+    dibujar(t); requestAnimationFrame(cuadro);
+  }
+  return { iniciar };
+})();
+
+/* =====================================================================
+   RELOJ DE PALETAS 3D
+   ===================================================================== */
+function crearDigito(){ return `<div class="ny-flip" data-v="0"><div class="ny-half arriba"><span>0</span></div><div class="ny-half abajo"><span>0</span></div><div class="ny-half hoja arriba"><span>0</span></div><div class="ny-half hoja abajo"><span>0</span></div></div>`; }
+function ponerDigito(el, v){
+  const viejo = el.dataset.v; if (viejo === v) return;
+  el.dataset.v = v;
+  const [arr, aba, hojaArr, hojaAba] = el.children;
+  if (MOV_REDUCIDO) { [arr, aba, hojaArr, hojaAba].forEach(h => h.firstChild.textContent = v); return; }
+  arr.firstChild.textContent = v;        // detrás de la hoja ya está el número nuevo
+  aba.firstChild.textContent = viejo;    // abajo sigue el viejo hasta que caiga la hoja
+  hojaArr.firstChild.textContent = viejo;
+  hojaAba.firstChild.textContent = v;
+  el.classList.remove('anim'); void el.offsetWidth; el.classList.add('anim');
+  clearTimeout(el._t); el._t = setTimeout(() => { aba.firstChild.textContent = v; el.classList.remove('anim'); }, 600);
+}
+function iniciarReloj(){
+  const fila = $('ny-reloj-fila');
+  const unidades = [['d', 'Días'], ['h', 'Horas'], ['m', 'Min'], ['s', 'Seg']];
+  fila.innerHTML = unidades.map(([k, t], i) => `${i ? '<div class="ny-reloj-sep">:</div>' : ''}<div class="ny-reloj-unidad" id="ny-u-${k}"><div class="ny-reloj-digitos">${crearDigito()}${crearDigito()}${k === 'd' ? crearDigito() : ''}</div><small>${t}</small></div>`).join('');
+  const objetivo = new Date(ANIO, 0, 1, 0, 0, 0);
+  const tick = () => {
+    const ms = objetivo - new Date();
+    if (ms <= 0) { celebrar(); return; }
+    const s = Math.floor(ms / 1000);
+    const vals = { d:String(Math.floor(s / 86400)).padStart(3, '0'), h:String(Math.floor(s % 86400 / 3600)).padStart(2, '0'), m:String(Math.floor(s % 3600 / 60)).padStart(2, '0'), s:String(s % 60).padStart(2, '0') };
+    // días con 3 cifras solo si hacen falta
+    const dEl = $('ny-u-d'); const digD = dEl.querySelectorAll('.ny-flip');
+    digD[0].style.display = vals.d[0] === '0' ? 'none' : '';
+    Object.entries(vals).forEach(([k, v]) => { const digs = $(`ny-u-${k}`).querySelectorAll('.ny-flip'); [...v].forEach((ch, i) => { if (digs[i]) ponerDigito(digs[i], ch); }); });
+  };
+  $('ny-reloj-label').textContent = `Cuenta regresiva a la medianoche`;
+  tick(); const id = setInterval(() => { tick(); if (new Date() >= objetivo) clearInterval(id); }, 1000);
+  function celebrar(){
+    clearInterval(id);
+    $('ny-reloj').innerHTML = `<div class="ny-fiesta ny-oro">¡Feliz ${ANIO}!</div>`;
+    if (!MOV_REDUCIDO) { const r = $('ny-hero').getBoundingClientRect(); FX.sobre(r, 6); }
+  }
+}
+
+/* ---------- arranque ---------- */
+function pintarIconos(){
+  $('ny-ico-buscar').innerHTML = ICO.search; $('ny-ico-buscar-2').innerHTML = ICO.search;
+  $('ny-ico-fav').innerHTML = ICO.heart; $('ny-ico-ped').innerHTML = ICO.copa; $('ny-ico-ped-2').innerHTML = ICO.copa;
+  $('ny-flot-wa').innerHTML = ICO.wa;
+  document.querySelectorAll('[data-ico="close"]').forEach(b => b.innerHTML = ICO.close);
+}
+async function init(){
+  pintarIconos();
+  const inicio = Date.now();
+  if (!MOV_REDUCIDO) Intro.iniciar();
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('c'), idPreview = params.get('preview');
+  ES_PREVIEW = !!idPreview;
+  let r;
+  try { r = await c360CargarCatalogoPublico({ sb, slug, idPreview }); }
+  catch (e) { r = { error:'No pudimos conectar. Revisá tu internet e intentá de nuevo.' }; }
+  if (r.error) { mostrarError(r.error); return; }
+  if (c360RedirigirSiPlantillaCambio(r.catalogo, PLANTILLA_KEY)) return;
+
+  CATALOGO = r.catalogo; PRODUCTOS = r.productos; CATEGORIAS = r.categorias;
+  FAVORITOS = leerLocal('favoritos');
+  PEDIDO = leerLocal('pedido').filter(x => PRODUCTOS.some(p => p.id === x.id && p.etiqueta !== 'agotado'));
+  $('ny-intro-negocio').textContent = nombreNegocio();
+  let tema = 'oscuro';
+  try { tema = localStorage.getItem('ny_tema') || CATALOGO.tema_default || 'oscuro'; } catch(e) {}
+  aplicarTema(tema);
+  if (ES_PREVIEW && CATALOGO.estado !== 'publicado') $('ny-vista-previa').style.display = 'block';
+
+  $('ny-app').style.display = 'block';
+  renderTodo();
+  if (!ES_PREVIEW) registrarEvento('visita');
+
+  const entrar = () => { bloquearScroll(false); activarRevelado(); Polvo.iniciar(); abrirDesdeHash(); };
+  if (MOV_REDUCIDO) { $('ny-intro').remove(); entrar(); return; }
+  Intro.alSalir(entrar);
+  $('ny-intro').addEventListener('click', () => { if (Date.now() - inicio > 900) Intro.salir(); });
+  setTimeout(() => Intro.salir(), Math.max(0, 3600 - (Date.now() - inicio)));
+}
+function mostrarError(msg){
+  Intro.detener(); $('ny-intro')?.remove(); bloquearScroll(false);
+  const e = $('ny-error'); e.style.display = 'flex';
+  e.innerHTML = `<b>No disponible</b><p>${esc(msg)}</p>`;
+}
+function abrirDesdeHash(){
+  const m = location.hash.match(/^#producto-(.+)$/);
+  if (m && PRODUCTOS.some(p => p.id === m[1])) setTimeout(() => abrirModal(m[1]), 500);
+}
+function renderTodo(){
+  renderMeta(); renderHeader(); renderHero(); iniciarReloj(); renderDeseosMarquee(); renderPases(); renderUvas();
+  renderChips(); aplicarFiltro(); renderBrindis(); renderFooter(); renderAccionesFijas(); actualizarBadges();
+  iniciarHeaderScroll(); iniciarFuegosAlTocar(); iniciarInclinacion();
+}
+function renderMeta(){
+  const c = CATALOGO, nombre = nombreNegocio();
+  document.title = `${nombre} · Feliz ${ANIO}`;
+  const d = c.descripcion || `Celebrá el Año Nuevo con ${nombre}`;
+  $('ny-desc-meta').setAttribute('content', d); $('ny-og-title').setAttribute('content', `${nombre} · Feliz ${ANIO}`); $('ny-og-desc').setAttribute('content', d);
+  const img = c.banner_url || c.logo_url; if (img) $('ny-og-image').setAttribute('content', img);
+  c360InsertarJSONLD('ny-jsonld', c, PRODUCTOS);
+}
+function renderHeader(){
+  $('ny-marca-nombre').textContent = nombreNegocio();
+  if (CATALOGO.logo_url) { const l = $('ny-marca-logo'); l.src = CATALOGO.logo_url; l.style.display = 'block'; }
+  if (hayWhatsApp()) $('ny-btn-ped').style.display = 'flex';
+}
+function iniciarHeaderScroll(){ const h = $('ny-header'); const f = () => h.classList.toggle('solido', scrollY > 40); addEventListener('scroll', f, { passive:true }); f(); }
+
+/* ---------- HERO ---------- */
+function renderHero(){
+  $('ny-hero-kicker').textContent = nombreNegocio();
+  $('ny-hero-anio').textContent = ANIO;
+  $('ny-hero-desc').textContent = CATALOGO.descripcion || 'Despedí el año con estilo. Todo lo que necesitás para la noche más brillante, a un mensaje de distancia.';
+  let acc = `<button class="ny-btn ny-btn-oro" onclick="irA('ny-sec-coleccion')">${ICO.star} Ver colección de gala</button>`;
+  if (PRODUCTOS.length) acc += `<button class="ny-btn ny-btn-vidrio" onclick="irA('ny-sec-uvas')">🍇 Comer las 12 uvas</button>`;
+  $('ny-hero-acciones').innerHTML = acc;
+}
+// Tocar el cielo del hero lanza un cohete hasta ese punto
+function iniciarFuegosAlTocar(){
+  const hero = $('ny-hero');
+  hero.addEventListener('click', e => {
+    if (e.target.closest('button, a, input, select')) return;
+    FX.lanzar(e.clientX + azar(-30, 30), innerHeight + 10, e.clientX, e.clientY);
+  });
+}
+function renderDeseosMarquee(){
+  const palabras = ['Prosperidad', 'Salud', 'Amor', 'Éxito', 'Abundancia', 'Alegría', 'Nuevos comienzos', `Feliz ${ANIO}`];
+  let b = palabras.map(t => `<span>${esc(t)}</span>`).join('');
+  $('ny-deseos-pista').innerHTML = b + b;
+}
+
+/* ---------- PASES VIP ---------- */
+function renderPases(){
+  let lista = PRODUCTOS.filter(p => p.destacado && p.etiqueta !== 'agotado');
+  if (lista.length < 3) lista = lista.concat(PRODUCTOS.filter(p => enOferta(p) && !p.destacado && p.etiqueta !== 'agotado').sort((a, b) => descuento(b) - descuento(a)));
+  lista = lista.slice(0, 9);
+  if (lista.length < 2) { $('ny-sec-pases').style.display = 'none'; return; }
+  if (!PRODUCTOS.some(p => p.destacado)) { $('ny-pases-titulo').textContent = 'Ofertas de medianoche'; $('ny-pases-sub').textContent = 'Precios especiales para cerrar el año.'; }
+  $('ny-sec-pases').style.display = 'block';
+  $('ny-pases').innerHTML = lista.map((p, i) => {
+    const f = fotoPrincipal(p), d = descuento(p), cat = nombreCat(p);
+    return `<article class="ny-pase" onclick="abrirModal('${p.id}')">
+      <div class="ny-pase-cuerpo">${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy">` : sinFoto(p)}
+        <div class="ny-pase-info"><div class="ny-pase-vip">★ PASE VIP · N.º ${String(i + 1).padStart(3, '0')}</div><div class="ny-pase-nombre">${esc(p.nombre)}</div>${cat ? `<div class="ny-pase-cat">${esc(cat)}</div>` : ''}</div>
+        ${d ? `<div class="ny-pase-pct">-${d}%</div>` : ''}
+      </div>
+      <div class="ny-pase-talon"><small>ADMISIÓN ${ANIO}</small><div class="ny-pase-precio">${d ? `<s>${fmtC(p.precio)}</s>` : ''}${fmtC(precioReal(p)).replace('.00', '')}</div><div class="ny-pase-barras"></div></div>
+    </article>`;
+  }).join('');
+}
+
+/* ---------- LAS 12 UVAS ---------- */
+function uvaSVG(i){
+  // pequeñas variaciones para que no parezcan copias
+  const r = 22 + (i % 3), rot = (i * 37) % 30 - 15;
+  return `<svg viewBox="0 0 60 60" aria-hidden="true"><g class="fruta" transform="rotate(${rot} 30 32)">
+    <path d="M30 8 C30 4 33 2 36 2" stroke="#6b4c16" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path d="M31 6 C38 2 44 5 45 9 C39 11 34 10 31 6Z" fill="#6f8f3c"/>
+    <circle cx="30" cy="33" r="${r}" fill="url(#ny-g-uva)"/>
+    <ellipse cx="22" cy="24" rx="6" ry="4" fill="rgba(255,255,255,.55)" transform="rotate(-30 22 24)"/>
+    <circle cx="38" cy="42" r="2" fill="rgba(255,255,255,.25)"/>
+  </g></svg><span class="ny-uva-num ny-oro">${i + 1}</span><span class="ny-uva-anillo"></span>`;
+}
+function renderUvas(){
+  const pool = PRODUCTOS.filter(p => p.etiqueta !== 'agotado');
+  if (!pool.length) { $('ny-sec-uvas').style.display = 'none'; return; }
+  $('ny-sec-uvas').style.display = 'block';
+  // 12 deseos: primero ofertas y destacados, luego el resto; si hay menos de 12, se repiten
+  const orden = [...pool].sort((a, b) => ((enOferta(b) ? 2 : 0) + (b.destacado ? 1 : 0)) - ((enOferta(a) ? 2 : 0) + (a.destacado ? 1 : 0)) || Math.random() - .5);
+  UVAS = Array.from({ length:12 }, (_, i) => orden[i % orden.length].id);
+  DESEOS = [];
+  $('ny-racimo').innerHTML = UVAS.map((_, i) => `<button class="ny-uva" data-i="${i}" onclick="comerUva(${i}, event)" aria-label="Comer la uva ${i + 1}">${uvaSVG(i)}</button>`).join('');
+  pintarDeseo(null); pintarEstadoUvas();
+}
+function pintarEstadoUvas(){
+  const n = DESEOS.length;
+  $('ny-uvas-estado').innerHTML = n === 12 ? `<b>¡12 de 12!</b> · Que se te cumplan todos` : n ? `<b>${n}</b> de 12 deseos` : 'Tocá una uva para empezar';
+}
+function comerUva(i, ev){
+  const btn = document.querySelector(`.ny-uva[data-i="${i}"]`);
+  if (!btn || btn.classList.contains('comida')) return;
+  btn.classList.add('comida');
+  const p = PRODUCTOS.find(x => x.id === UVAS[i]);
+  DESEOS.push({ i, id:p.id });
+  const r = btn.getBoundingClientRect();
+  FX.estallar(r.left + r.width / 2, r.top + r.height / 2, .35);
+  pintarDeseo(p, i); pintarEstadoUvas();
+  if (DESEOS.length === 12) {
+    const z = $('ny-sec-uvas').getBoundingClientRect();
+    FX.sobre({ left:z.left, top:Math.max(0, z.top), width:z.width, height:innerHeight * .6, bottom:innerHeight }, 6);
+    FX.confeti(innerWidth / 2, innerHeight * .35, MOVIL ? 90 : 160);
+    toast('¡Te comiste las 12 uvas! Feliz año 🎉', ICO.star);
+  }
+}
+function pintarDeseo(p, i){
+  const caja = $('ny-deseo');
+  if (!p) { caja.innerHTML = `<div class="ny-deseo-vacio"><div style="font-size:44px">🍇</div><b>Tus 12 deseos</b>Cada uva que te comás revela algo especial que elegimos para vos.</div>`; return; }
+  const f = fotoPrincipal(p), d = descuento(p), en = PEDIDO.some(x => x.id === p.id);
+  caja.innerHTML = `<div class="ny-deseo-card">
+      <div class="ny-deseo-img" onclick="abrirModal('${p.id}')">${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}">` : sinFoto(p)}</div>
+      <div>
+        <div class="ny-deseo-num">Deseo n.º ${i + 1} ${d ? `· -${d}%` : ''}</div>
+        <div class="ny-deseo-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+        <div class="ny-deseo-precio">${fmtC(precioReal(p))}${d ? `<s>${fmtC(p.precio)}</s>` : ''}</div>
+        <div class="ny-deseo-acciones">
+          ${hayWhatsApp() ? `<button class="ny-btn ny-btn-oro" data-add="${p.id}" onclick="agregarAlPedido('${p.id}',1,event)">${en ? ICO.check + ' En tu pedido' : ICO.plus + ' Lo quiero'}</button>` : ''}
+          <button class="ny-btn ny-btn-linea" onclick="abrirModal('${p.id}')">Ver detalle</button>
+        </div>
+      </div>
+    </div>
+    ${DESEOS.length > 1 ? `<div class="ny-deseos-lista">${DESEOS.map(dd => { const q = PRODUCTOS.find(x => x.id === dd.id); const ff = fotoPrincipal(q); return `<button onclick="pintarDeseo(PRODUCTOS.find(x=>x.id==='${q.id}'), ${dd.i})" aria-label="${esc(q.nombre)}">${ff ? `<img src="${esc(ff.url)}" alt="">` : sinFoto(q)}</button>`; }).join('')}</div>` : ''}`;
+}
+
+/* ---------- COLECCIÓN ---------- */
+function renderChips(){
+  const nOf = PRODUCTOS.filter(enOferta).length;
+  const nFav = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length;
+  const conteo = {}; PRODUCTOS.forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id] || 0) + 1; });
+  let h = `<button class="ny-chip ${!CATEGORIA_ACTUAL && !SOLO_FAV && !SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('todo')">Todo <small>${PRODUCTOS.length}</small></button>`;
+  if (nOf) h += `<button class="ny-chip ${SOLO_OFERTAS ? 'on' : ''}" onclick="elegirChip('ofertas')">✦ Ofertas <small>${nOf}</small></button>`;
+  if (nFav) h += `<button class="ny-chip ${SOLO_FAV ? 'on' : ''}" onclick="elegirChip('fav')">Favoritos <small>${nFav}</small></button>`;
+  h += CATEGORIAS.filter(c => conteo[c.id]).map(c => `<button class="ny-chip ${CATEGORIA_ACTUAL?.id === c.id ? 'on' : ''}" onclick="elegirChip('cat','${c.id}')">${esc(c.nombre)} <small>${conteo[c.id]}</small></button>`).join('');
+  $('ny-chips').innerHTML = h;
+}
+function elegirChip(tipo, id){
+  if (tipo === 'todo') { CATEGORIA_ACTUAL = null; SOLO_FAV = false; SOLO_OFERTAS = false; }
+  else if (tipo === 'ofertas') { SOLO_OFERTAS = !SOLO_OFERTAS; SOLO_FAV = false; }
+  else if (tipo === 'fav') { SOLO_FAV = !SOLO_FAV; SOLO_OFERTAS = false; }
+  else if (tipo === 'cat') { CATEGORIA_ACTUAL = CATEGORIA_ACTUAL?.id === id ? null : (CATEGORIAS.find(c => c.id === id) || null); }
+  LIMITE = POR_PAGINA; renderChips(); aplicarFiltro();
+  const g = $('ny-grid').getBoundingClientRect();
+  if (g.top > innerHeight * .8 || g.top < 0) irA('ny-sec-coleccion');
+}
+function verFavoritos(){ if (!FAVORITOS.length) { toast('Todavía no tenés favoritos', ICO.heart); return; } SOLO_FAV = false; elegirChip('fav'); irA('ny-sec-coleccion'); }
+let _bus = null;
+function onBuscar(v){ $('ny-limpiar').classList.toggle('on', !!v); clearTimeout(_bus); _bus = setTimeout(() => { TEXTO = v.trim().toLowerCase(); LIMITE = POR_PAGINA; aplicarFiltro(); }, 140); }
+function limpiarBusqueda(){ $('ny-buscador').value = ''; onBuscar(''); $('ny-buscador').focus(); }
+function cambiarOrden(v){ ORDEN = v; aplicarFiltro(); }
+function mostrarMas(){ LIMITE += POR_PAGINA; aplicarFiltro(true); }
+function aplicarFiltro(agregando){
+  let lista = c360FiltrarYOrdenar(PRODUCTOS, { categoriaId:CATEGORIA_ACTUAL?.id || null, soloFavoritos:SOLO_FAV, favoritos:FAVORITOS, soloOfertas:SOLO_OFERTAS, textoBusqueda:TEXTO, orden:ORDEN });
+  lista = lista.filter(p => p.etiqueta !== 'agotado').concat(lista.filter(p => p.etiqueta === 'agotado'));
+  let titulo = 'Todo';
+  if (SOLO_FAV) titulo = 'Tus favoritos'; else if (SOLO_OFERTAS) titulo = 'Ofertas';
+  if (CATEGORIA_ACTUAL) titulo = CATEGORIA_ACTUAL.nombre;
+  if (TEXTO) titulo = `“${TEXTO}”`;
+  $('ny-res-titulo').textContent = titulo;
+  $('ny-res-conteo').textContent = `${lista.length} ${lista.length === 1 ? 'producto' : 'productos'}`;
+  const g = $('ny-grid');
+  if (!lista.length) { g.innerHTML = `<div class="ny-vacio"><b>Sin resultados</b>Probá con otra búsqueda o categoría.</div>`; $('ny-mas').style.display = 'none'; return; }
+  const desde = agregando ? LIMITE - POR_PAGINA : 0;
+  g.innerHTML = lista.slice(0, LIMITE).map((p, i) => tarjeta(p, Math.max(0, i - desde))).join('');
+  $('ny-mas').style.display = lista.length > LIMITE ? 'flex' : 'none';
+}
+function tarjeta(p, i){
+  const f = fotoPrincipal(p), d = descuento(p), agotado = p.etiqueta === 'agotado', fav = FAVORITOS.includes(p.id), en = PEDIDO.some(x => x.id === p.id), cat = nombreCat(p);
+  let marca = '';
+  if (agotado) marca = `<span class="ny-card-tag">Agotado</span>`;
+  else if (d) marca = `<div class="ny-medalla">-${d}%<small>GALA</small></div>`;
+  else if (p.etiqueta === 'nuevo') marca = `<span class="ny-card-tag">Nuevo</span>`;
+  else if (p.destacado) marca = `<span class="ny-card-tag">★ VIP</span>`;
+  return `<article class="ny-card ${agotado ? 'agotada' : ''}" data-id="${p.id}" style="animation-delay:0s, ${Math.min(i, 12) * 45}ms">
+    <div class="ny-card-media ${f ? 'cargando' : ''}" onclick="abrirModal('${p.id}')">
+      ${f ? `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" loading="lazy" onload="this.classList.add('cargada');this.parentElement.classList.remove('cargando')" onerror="this.parentElement.classList.remove('cargando')">` : sinFoto(p)}
+      ${marca}
+    </div>
+    <button class="ny-fav ${fav ? 'on' : ''}" data-fav onclick="toggleFav('${p.id}')" aria-label="Favorito">${fav ? ICO.heartFill : ICO.heart}</button>
+    <div class="ny-card-body">
+      ${cat ? `<div class="ny-card-cat">${esc(cat)}</div>` : ''}
+      <div class="ny-card-nombre" onclick="abrirModal('${p.id}')">${esc(p.nombre)}</div>
+      <div class="ny-card-precio"><b>${fmtC(precioReal(p))}</b>${d ? `<s>${fmtC(p.precio)}</s>` : ''}</div>
+      ${!agotado && hayWhatsApp() ? `<button class="ny-agregar ${en ? 'on' : ''}" data-add="${p.id}" onclick="agregarAlPedido('${p.id}',1,event)">${en ? ICO.check + ' En tu pedido' : ICO.plus + ' Agregar'}</button>` : ''}
+    </div>
+  </article>`;
+}
+// Inclinación 3D + reflejo que sigue al puntero (solo mouse)
+function iniciarInclinacion(){
+  if (!matchMedia('(hover:hover) and (pointer:fine)').matches || MOV_REDUCIDO) return;
+  document.addEventListener('pointermove', e => {
+    const c = e.target.closest?.('.ny-card'); if (!c) return;
+    const r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    c.style.setProperty('--ry', `${(x - .5) * 9}deg`); c.style.setProperty('--rx', `${(.5 - y) * 9}deg`);
+    c.style.setProperty('--mx', `${x * 100}%`); c.style.setProperty('--my', `${y * 100}%`);
+  });
+}
+function marcar(id){
+  const en = PEDIDO.some(x => x.id === id), fav = FAVORITOS.includes(id);
+  document.querySelectorAll(`[data-add="${id}"]`).forEach(b => { b.classList.toggle('on', en); b.innerHTML = en ? ICO.check + ' En tu pedido' : (b.classList.contains('ny-agregar') ? ICO.plus + ' Agregar' : ICO.plus + ' Lo quiero'); });
+  document.querySelectorAll(`.ny-card[data-id="${id}"] [data-fav]`).forEach(b => { b.classList.toggle('on', fav); b.innerHTML = fav ? ICO.heartFill : ICO.heart; });
+}
+
+/* ---------- FAVORITOS ---------- */
+function toggleFav(id){
+  const i = FAVORITOS.indexOf(id); if (i === -1) FAVORITOS.push(id); else FAVORITOS.splice(i, 1);
+  guardarLocal('favoritos', FAVORITOS); marcar(id); actualizarBadges(); renderChips();
+  if (SOLO_FAV) aplicarFiltro();
+  if (FAVORITOS.includes(id)) toast('Guardado en favoritos', ICO.heartFill);
+}
+
+/* ---------- PEDIDO ---------- */
+function agregarAlPedido(id, cant, ev){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || p.etiqueta === 'agotado' || !hayWhatsApp()) return;
+  const it = PEDIDO.find(x => x.id === id);
+  if (it) it.cant = Math.min(99, it.cant + cant); else PEDIDO.push({ id, cant });
+  guardarLocal('pedido', PEDIDO); marcar(id); actualizarBadges(true); renderAccionesFijas();
+  // lluvia de confeti dorado desde el botón
+  if (ev && ev.clientX) FX.confeti(ev.clientX, ev.clientY, MOVIL ? 26 : 40, true);
+  toast(`${p.nombre.length > 26 ? p.nombre.slice(0, 26) + '…' : p.nombre} agregado`, ICO.copa);
+}
+function cambiarCant(id, d){
+  const it = PEDIDO.find(x => x.id === id); if (!it) return;
+  it.cant += d; if (it.cant <= 0) PEDIDO = PEDIDO.filter(x => x.id !== id);
+  guardarLocal('pedido', PEDIDO); marcar(id); renderPedido(); actualizarBadges(); renderAccionesFijas();
+}
+function vaciarPedido(){ const ids = PEDIDO.map(x => x.id); PEDIDO = []; guardarLocal('pedido', PEDIDO); ids.forEach(marcar); renderPedido(); actualizarBadges(); renderAccionesFijas(); }
+function totales(){
+  let total = 0, antes = 0, piezas = 0;
+  PEDIDO.forEach(x => { const p = PRODUCTOS.find(q => q.id === x.id); if (!p) return; total += precioReal(p) * x.cant; antes += Number(p.precio) * x.cant; piezas += x.cant; });
+  return { total, ahorro:Math.max(0, antes - total), piezas };
+}
+function abrirPedido(){ renderPedido(); $('ny-overlay-ped').classList.add('open'); bloquearScroll(true); }
+function cerrarPedido(){ $('ny-overlay-ped').classList.remove('open'); if (!$('ny-overlay-modal').classList.contains('open')) bloquearScroll(false); }
+function renderPedido(){
+  const lista = $('ny-ped-lista'), pie = $('ny-ped-pie');
+  if (!PEDIDO.length) {
+    lista.innerHTML = `<div class="ny-ped-vacio"><div style="font-size:44px">🥂</div><b>Tu pedido está vacío</b>Agregá lo que querés para la noche y mandá todo en un solo mensaje.</div>`;
+    pie.innerHTML = `<button class="ny-btn ny-btn-oro" onclick="cerrarPedido();irA('ny-sec-coleccion')">Ver colección</button>`; return;
+  }
+  lista.innerHTML = PEDIDO.map(x => {
+    const p = PRODUCTOS.find(q => q.id === x.id); if (!p) return '';
+    const f = fotoPrincipal(p);
+    return `<div class="ny-ped-item">
+      <div class="ny-ped-img">${f ? `<img src="${esc(f.url)}" alt="">` : sinFoto(p)}</div>
+      <div style="min-width:0"><div class="n">${esc(p.nombre)}</div><div class="p">${fmtC(precioReal(p))} c/u</div></div>
+      <div class="ny-cantidad"><button onclick="cambiarCant('${p.id}',-1)" aria-label="Quitar uno">${x.cant === 1 ? ICO.trash : '−'}</button><span>${x.cant}</span><button onclick="cambiarCant('${p.id}',1)" aria-label="Agregar uno">+</button></div>
+    </div>`;
+  }).join('');
+  const t = totales();
+  pie.innerHTML = `
+    ${t.ahorro > 0 ? `<div class="ny-ped-linea"><span>Tu ahorro de fin de año</span><span>-${fmtC(t.ahorro)}</span></div>` : ''}
+    <div class="ny-ped-total"><span>Total · ${t.piezas} ${t.piezas === 1 ? 'pieza' : 'piezas'}</span><b>${fmtC(t.total)}</b></div>
+    <button class="ny-btn ny-btn-wa" onclick="enviarPedido(event)">${ICO.wa} Pedir por WhatsApp</button>
+    <div class="ny-ped-nota">${esc(nombreNegocio())} te confirma disponibilidad y entrega.</div>
+    <button class="ny-ped-vaciar" onclick="vaciarPedido()">Vaciar pedido</button>`;
+}
+function enviarPedido(ev){
+  if (!PEDIDO.length || !hayWhatsApp()) return;
+  const lineas = PEDIDO.map(x => { const p = PRODUCTOS.find(q => q.id === x.id); return p ? `• ${x.cant} × ${p.nombre} — ${fmtC(precioReal(p) * x.cant)}` : null; }).filter(Boolean);
+  const t = totales();
+  const msg = `¡Hola ${nombreNegocio()}! 🥂 Quiero hacer este pedido para Año Nuevo:\n\n${lineas.join('\n')}\n\nTotal: ${fmtC(t.total)}\n\n¿Me confirman disponibilidad? ¡Feliz ${ANIO}!`;
+  registrarEvento('click_whatsapp');
+  if (ev && ev.clientX) FX.confeti(ev.clientX, ev.clientY, 50, true);
+  window.open(linkWA(msg), '_blank');
+}
+function consultar(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p || !hayWhatsApp()) return;
+  registrarEvento('click_whatsapp', p.id);
+  window.open(linkWA(`¡Hola! Me interesa "${p.nombre}" (${fmtC(precioReal(p))}) para Año Nuevo. ¿Está disponible?`), '_blank');
+}
+function actualizarBadges(latir){
+  const nFav = FAVORITOS.filter(id => PRODUCTOS.some(p => p.id === id)).length;
+  const bf = $('ny-badge-fav'); bf.textContent = nFav; bf.classList.toggle('on', nFav > 0);
+  const piezas = totales().piezas;
+  ['ny-badge-ped', 'ny-badge-ped-2'].forEach(id => { const b = $(id); b.textContent = piezas; b.classList.toggle('on', piezas > 0); if (latir && !MOV_REDUCIDO) { b.classList.remove('latido'); void b.offsetWidth; b.classList.add('latido'); } });
+}
+function renderAccionesFijas(){
+  if (!hayWhatsApp()) return;
+  $('ny-flotante').classList.add('on');
+  const url = linkWA(`¡Hola ${nombreNegocio()}! Vi su catálogo de Año Nuevo y tengo una consulta.`);
+  $('ny-flot-wa').onclick = () => { registrarEvento('click_whatsapp'); window.open(url, '_blank'); };
+  $('ny-flot-ped').style.display = PEDIDO.length ? 'flex' : 'none';
+  const barra = $('ny-barra-movil'); barra.classList.add('on'); document.body.classList.add('ny-con-barra');
+  if (PEDIDO.length) { const t = totales(); barra.innerHTML = `<button class="ny-barra-ped" onclick="abrirPedido()"><span style="display:flex;align-items:center;gap:10px">${ICO.copa} Tu pedido <span class="cnt">${t.piezas}</span></span><span class="tot">${fmtC(t.total)}</span></button>`; }
+  else barra.innerHTML = `<a class="ny-barra-wa" href="${esc(url)}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')">${ICO.wa} Escribinos por WhatsApp</a>`;
+}
+
+/* ---------- BRINDIS: copas que se llenan con el scroll ---------- */
+function copaSVG(conBurbujas){
+  let burbujas = '';
+  if (conBurbujas) for (let i = 0; i < 9; i++) burbujas += `<circle class="burbuja" cx="${azar(40, 80).toFixed(1)}" cy="${azar(150, 165).toFixed(1)}" r="${azar(1, 2.4).toFixed(1)}" fill="rgba(255,255,255,.75)" style="animation-duration:${azar(1.6, 3.2).toFixed(2)}s;animation-delay:-${azar(0, 3).toFixed(2)}s"/>`;
+  return `<g clip-path="url(#ny-clip-copa)"><g clip-path="url(#ny-clip-nivel)"><rect x="20" y="0" width="80" height="170" fill="url(#ny-g-champan)"/>${burbujas}</g></g>
+    <path d="M30 14 L90 14 C90 92 80 150 60 162 C40 150 30 92 30 14 Z" fill="url(#ny-g-vidrio)" stroke="rgba(255,241,194,.75)" stroke-width="1.6"/>
+    <path d="M36 22 C36 80 42 128 52 150" stroke="rgba(255,255,255,.5)" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <path d="M58 162 L58 262 M62 162 L62 262" stroke="rgba(255,241,194,.7)" stroke-width="1.4"/>
+    <ellipse cx="60" cy="266" rx="32" ry="7" fill="rgba(255,241,194,.12)" stroke="rgba(255,241,194,.75)" stroke-width="1.6"/>`;
+}
+function renderBrindis(){
+  document.querySelector('.ny-copa.izq').innerHTML = copaSVG(true);
+  document.querySelector('.ny-copa.der').innerHTML = copaSVG(true);
+  $('ny-brindis-txt').textContent = `Gracias por acompañarnos este año. Que el ${ANIO} llegue lleno de brindis, abrazos y momentos que valgan la pena.`;
+  let acc = `<button class="ny-btn ny-btn-oro" onclick="brindar(event)">${ICO.copa} ¡Brindemos!</button>`;
+  if (hayWhatsApp()) acc += `<button class="ny-btn ny-btn-vidrio" onclick="abrirPedido()">${ICO.bag} Mi pedido</button>`;
+  $('ny-brindis-acciones').innerHTML = acc;
+  // nivel del champán según el avance del scroll por la sección
+  const rect = $('ny-nivel-rect'), sec = $('ny-sec-brindis');
+  const actualizar = () => {
+    const r = sec.getBoundingClientRect();
+    const p = clamp((innerHeight - r.top) / (innerHeight + r.height * .4), 0, 1);
+    rect.setAttribute('y', String(162 - p * 136));
+  };
+  if (MOV_REDUCIDO) rect.setAttribute('y', '40');
+  else { addEventListener('scroll', () => requestAnimationFrame(actualizar), { passive:true }); actualizar(); }
+}
+function brindar(ev){
+  const c = $('ny-copas'); c.classList.remove('choque'); void c.offsetWidth; c.classList.add('choque');
+  const r = c.getBoundingClientRect();
+  setTimeout(() => {
+    FX.estallar(r.left + r.width / 2, r.top + r.height * .25, .6);
+    FX.confeti(r.left + r.width / 2, r.top + r.height * .3, MOVIL ? 80 : 140, true);
+    FX.sobre({ left:0, top:0, width:innerWidth, height:innerHeight * .6, bottom:innerHeight }, 3);
+  }, 260);
+  toast(`¡Salud! Feliz ${ANIO} 🥂`, ICO.copa);
+}
+
+/* ---------- MODAL ---------- */
+function abrirModal(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  MODAL_ID = id; MODAL_CANT = 1; registrarEvento('vista_producto', id);
+  const d = descuento(p), agotado = p.etiqueta === 'agotado', cat = nombreCat(p);
+  const fotos = p.fotos || []; LB_FOTOS = fotos.map(f => f.url);
+  $('ny-modal-fotos').innerHTML = fotos.length ? fotos.map((f, i) => `<img src="${esc(f.url)}" alt="${esc(p.nombre)}" onclick="abrirLightbox(${i})">`).join('') : sinFoto(p);
+  $('ny-modal-fotos').scrollLeft = 0;
+  $('ny-modal-puntos').innerHTML = fotos.length > 1 ? fotos.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
+  let acc = '';
+  if (agotado) acc = `<button class="ny-btn ny-btn-linea" disabled style="width:100%">Agotado</button>`;
+  else if (hayWhatsApp()) acc = `
+    <div class="ny-modal-fila">
+      <div class="ny-cantidad"><button onclick="cambiarCantModal(-1)" aria-label="Menos">−</button><span id="ny-modal-cant">1</span><button onclick="cambiarCantModal(1)" aria-label="Más">+</button></div>
+      <button class="ny-btn ny-btn-oro" onclick="agregarDesdeModal(event)">${ICO.copa} Agregar al pedido</button>
+    </div>
+    <button class="ny-btn ny-btn-wa" style="width:100%;margin-bottom:10px" onclick="consultar('${p.id}')">${ICO.wa} Consultar por WhatsApp</button>`;
+  acc += `<div class="ny-modal-extra">${CATALOGO.telefono ? `<a class="ny-btn ny-btn-linea" href="tel:${esc(CATALOGO.telefono)}" onclick="registrarEvento('click_telefono','${p.id}')">${ICO.phone} Llamar</a>` : ''}<button class="ny-btn ny-btn-linea" onclick="compartir('${p.id}')">${ICO.share} Compartir</button></div>`;
+  const rel = PRODUCTOS.filter(x => x.id !== p.id && x.etiqueta !== 'agotado' && (p.categoria_id ? x.categoria_id === p.categoria_id : true)).slice(0, 8);
+  $('ny-modal-body').innerHTML = `
+    ${cat ? `<div class="ny-modal-cat">${esc(cat)}</div>` : ''}
+    <h2 class="ny-modal-nombre">${esc(p.nombre)}</h2>
+    <div class="ny-modal-precio"><b>${fmtC(precioReal(p))}</b>${d ? `<s>${fmtC(p.precio)}</s>` : ''}</div>
+    ${d ? `<div><span class="ny-ahorro">Ahorrás ${fmtC(Number(p.precio) - precioReal(p))} · -${d}%</span></div>` : ''}
+    ${p.descripcion ? `<div class="ny-modal-desc">${esc(p.descripcion)}</div>` : '<div style="height:22px"></div>'}
+    ${acc}
+    ${rel.length ? `<div class="ny-rel"><h4>TAMBIÉN PARA LA NOCHE</h4><div class="ny-rel-scroll">${rel.map(r => { const f = fotoPrincipal(r); return `<div class="ny-rel-item" onclick="abrirModal('${r.id}')"><div class="ny-rel-img">${f ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : sinFoto(r)}</div><div class="n">${esc(r.nombre)}</div><div class="p">${fmtC(precioReal(r))}</div></div>`; }).join('')}</div></div>` : ''}`;
+  $('ny-modal').scrollTop = 0; $('ny-modal-body').scrollTop = 0;
+  $('ny-overlay-modal').classList.add('open'); bloquearScroll(true);
+  history.replaceState(null, '', `#producto-${id}`);
+}
+function cerrarModal(){
+  $('ny-overlay-modal').classList.remove('open');
+  if (!$('ny-overlay-ped').classList.contains('open')) bloquearScroll(false);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+function cambiarCantModal(d){ MODAL_CANT = clamp(MODAL_CANT + d, 1, 99); $('ny-modal-cant').textContent = MODAL_CANT; }
+function agregarDesdeModal(ev){ agregarAlPedido(MODAL_ID, MODAL_CANT, ev); cerrarModal(); }
+$('ny-modal-fotos').addEventListener('scroll', e => { const el = e.currentTarget, i = Math.round(el.scrollLeft / el.clientWidth); [...$('ny-modal-puntos').children].forEach((d, j) => d.classList.toggle('on', i === j)); }, { passive:true });
+function compartir(id){
+  const p = PRODUCTOS.find(x => x.id === id); if (!p) return;
+  const url = `${location.origin}${location.pathname}${location.search}#producto-${id}`;
+  if (navigator.share) navigator.share({ title:p.nombre, text:`${p.nombre} — ${fmtC(precioReal(p))}`, url }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Enlace copiado', ICO.check)).catch(() => {});
+}
+
+/* ---------- FOOTER ---------- */
+function renderFooter(){
+  const c = CATALOGO; let h = '';
+  $('ny-footer-titulo').textContent = `Nos vemos en ${ANIO}`;
+  if (hayWhatsApp()) h += `<a class="ny-contacto" href="${esc(linkWA(`¡Hola ${nombreNegocio()}! Vi su catálogo de Año Nuevo.`))}" target="_blank" rel="noopener" onclick="registrarEvento('click_whatsapp')"><div class="ny-contacto-ico">${ICO.wa}</div><div style="min-width:0"><small>WhatsApp</small><b>${esc(c.whatsapp)}</b></div></a>`;
+  if (c.telefono) h += `<a class="ny-contacto" href="tel:${esc(c.telefono)}" onclick="registrarEvento('click_telefono')"><div class="ny-contacto-ico">${ICO.phone}</div><div style="min-width:0"><small>Llamanos</small><b>${esc(c.telefono)}</b></div></a>`;
+  if (c.email) h += `<a class="ny-contacto" href="mailto:${esc(c.email)}"><div class="ny-contacto-ico">${ICO.mail}</div><div style="min-width:0"><small>Correo</small><b>${esc(c.email)}</b></div></a>`;
+  if (c.ubicacion) h += `<a class="ny-contacto" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.ubicacion)}" target="_blank" rel="noopener"><div class="ny-contacto-ico">${ICO.pin}</div><div style="min-width:0"><small>Visitanos</small><b>${esc(c.ubicacion)}</b></div></a>`;
+  $('ny-contactos').innerHTML = h; $('ny-contactos').style.display = h ? '' : 'none';
+  $('ny-pie-nombre').textContent = nombreNegocio(); $('ny-anio').textContent = new Date().getFullYear();
+}
+
+/* ---------- LIGHTBOX ---------- */
+function abrirLightbox(i){ if (!LB_FOTOS.length) return; LB_I = i || 0; pintarLB(); $('ny-lightbox').classList.add('open'); }
+function cerrarLightbox(){ $('ny-lightbox').classList.remove('open'); }
+function moverLightbox(d){ LB_I = (LB_I + d + LB_FOTOS.length) % LB_FOTOS.length; pintarLB(); }
+function pintarLB(){ $('ny-lb-img').src = LB_FOTOS[LB_I]; $('ny-lb-cont').textContent = `${LB_I + 1} / ${LB_FOTOS.length}`; }
+(function(){
+  let x0 = null; const lb = $('ny-lightbox');
+  lb.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive:true });
+  lb.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) moverLightbox(dx > 0 ? -1 : 1); x0 = null; }, { passive:true });
+})();
+
+/* ---------- revelado y teclado ---------- */
+function activarRevelado(){
+  const els = document.querySelectorAll('.ny-reveal');
+  if (!('IntersectionObserver' in window) || MOV_REDUCIDO) { els.forEach(e => e.classList.add('visible')); return; }
+  const obs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } }), { threshold:.08 });
+  els.forEach(e => obs.observe(e));
+}
+document.addEventListener('keydown', e => {
+  if ($('ny-lightbox').classList.contains('open')) {
+    if (e.key === 'Escape') cerrarLightbox();
+    if (e.key === 'ArrowLeft') moverLightbox(-1);
+    if (e.key === 'ArrowRight') moverLightbox(1);
+    return;
+  }
+  if (e.key === 'Escape') {
+    if ($('ny-overlay-modal').classList.contains('open')) cerrarModal();
+    else if ($('ny-overlay-ped').classList.contains('open')) cerrarPedido();
+  }
+});
+
+init();
+</script>
+</body>
+</html>
