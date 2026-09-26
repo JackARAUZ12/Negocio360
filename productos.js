@@ -2516,13 +2516,28 @@ async function abrirEscanerCelular() {
   if (errEl) errEl.textContent = '';
   $('modalEscanerCelular').classList.add('open');
 
-  if (typeof ZXing === 'undefined') {
+  // El paquete puede exponerse como ZXingBrowser o como ZXing segun
+  // la version/build del CDN -- se prueban ambos nombres posibles,
+  // en vez de depender de adivinar cual es el correcto. Si la fuente
+  // principal del CDN fallo, hay un respaldo cargandose en paralelo
+  // (ver productos.html) -- se espera un poco antes de rendirse.
+  function obtenerNamespaceZXing() {
+    if (typeof ZXingBrowser !== 'undefined') return ZXingBrowser;
+    if (typeof ZXing !== 'undefined') return ZXing;
+    return null;
+  }
+  let ns = obtenerNamespaceZXing();
+  for (let intento = 0; !ns && intento < 15; intento++) {
+    await new Promise(r => setTimeout(r, 200));
+    ns = obtenerNamespaceZXing();
+  }
+  if (!ns || !ns.BrowserMultiFormatReader) {
     if (errEl) errEl.textContent = 'No se pudo cargar el lector. Revisa tu conexión a internet e intenta de nuevo.';
     return;
   }
 
   try {
-    _zxingReader = new ZXing.BrowserMultiFormatReader();
+    _zxingReader = new ns.BrowserMultiFormatReader();
     const video = $('videoEscanerCelular');
     // undefined = deja que el navegador elija la camara (preferentemente
     // la trasera en un celular) -- ZXing maneja el stream por su cuenta.
