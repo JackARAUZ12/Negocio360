@@ -159,6 +159,7 @@ function renderLotes() {
   const pie = document.getElementById('lt-pie');
   const lista = STATE.filtrados || [];
   if (pie) pie.textContent = `${lista.length} lote${lista.length === 1 ? '' : 's'}`;
+  actualizarKpisLotes();
   if (!tbody) return;
 
   if (!lista.length) {
@@ -175,13 +176,30 @@ function renderLotes() {
     else if (dias <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${dias} día${dias===1?'':'s'}`; }
     return `
       <tr data-lote-id="${l.id}">
+        <td class="lt-celda-numero"><strong>${l.numero_lote ? esc(l.numero_lote) : '<span style="color:var(--text-muted);font-weight:400">Sin número</span>'}</strong></td>
         <td>${esc(l.productos?.nombre || 'Producto eliminado')}</td>
-        <td class="lt-celda-numero">${l.numero_lote ? esc(l.numero_lote) : '<span style="color:var(--text-muted)">Sin número</span>'}</td>
         <td>${fmtNumLote(l.cantidad_actual)}</td>
         <td class="lt-celda-venc" style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</td>
         <td><button class="btn-icon btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button></td>
       </tr>`;
   }).join('');
+}
+
+function actualizarKpisLotes() {
+  const lista = STATE.lotes || [];
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  let vencidos = 0, porVencer = 0, vigentes = 0;
+  lista.forEach(l => {
+    const dias = Math.round((new Date(l.fecha_vencimiento + 'T00:00:00') - hoy) / 86400000);
+    if (dias < 0) vencidos++;
+    else if (dias <= 30) porVencer++;
+    else vigentes++;
+  });
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('lt-kpi-total', lista.length);
+  set('lt-kpi-vencidos', vencidos);
+  set('lt-kpi-porvencer', porVencer);
+  set('lt-kpi-vigentes', vigentes);
 }
 
 function fmtNumLote(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }

@@ -1294,6 +1294,25 @@
         </div>
       </div>
 
+      <div class="kpi-grid" id="lt-kpis" style="grid-template-columns:repeat(4,1fr);max-width:760px;margin-bottom:18px">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:var(--accent-soft)">📦</div>
+          <div class="kpi-body"><span class="kpi-value" id="lt-kpi-total">—</span><span class="kpi-label">Lotes activos</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#FEE2E2">🔴</div>
+          <div class="kpi-body"><span class="kpi-value" id="lt-kpi-vencidos">—</span><span class="kpi-label">Vencidos</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#FEF3C7">🟡</div>
+          <div class="kpi-body"><span class="kpi-value" id="lt-kpi-porvencer">—</span><span class="kpi-label">Vencen en 30 días</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#DCFCE7">🟢</div>
+          <div class="kpi-body"><span class="kpi-value" id="lt-kpi-vigentes">—</span><span class="kpi-label">Vigentes</span></div>
+        </div>
+      </div>
+
       <div class="search-wrapper" style="max-width:400px;margin-bottom:16px">
         <span class="search-icon">🔍</span>
         <input type="text" class="search-input" id="lt-buscar" placeholder="Buscar por producto o número de lote..." oninput="filtrarLotes()" autocomplete="off" />
@@ -1304,8 +1323,8 @@
           <table class="data-table" role="table">
             <thead>
               <tr>
+                <th>Lote</th>
                 <th>Producto</th>
-                <th>Número de lote</th>
                 <th>Cantidad</th>
                 <th>Vencimiento</th>
                 <th>Acciones</th>
