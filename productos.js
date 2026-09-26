@@ -2505,51 +2505,36 @@ let cbModoEscaneo = false;
 
 // Escanear con la camara del celular -- opcion adicional al lector
 // fisico de arriba (toggleModoEscaneoCB), sin tocar nada de ese
-// mecanismo. Usa jsQR (cargado desde CDN) para decodificar QR y
-// codigos de barras desde el video de la camara, cuadro por cuadro.
-let _streamEscanerCelular = null;
-let _rafEscanerCelular = null;
-let _canvasEscanerCelular = null;
+// mecanismo. Usa ZXing (cargado desde CDN) para decodificar tanto QR
+// como codigos de barras tradicionales (EAN-13, Code128, UPC...) --
+// jsQR se probo primero pero SOLO lee QR, nunca codigos de barras
+// normales de producto, que es el caso mas comun aqui.
+let _zxingReader = null;
 
 async function abrirEscanerCelular() {
   const errEl = $('errEscanerCelular');
   if (errEl) errEl.textContent = '';
   $('modalEscanerCelular').classList.add('open');
 
-  if (typeof jsQR === 'undefined') {
+  if (typeof ZXing === 'undefined') {
     if (errEl) errEl.textContent = 'No se pudo cargar el lector. Revisa tu conexión a internet e intenta de nuevo.';
     return;
   }
 
   try {
-    _streamEscanerCelular = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    _zxingReader = new ZXing.BrowserMultiFormatReader();
     const video = $('videoEscanerCelular');
-    video.srcObject = _streamEscanerCelular;
-    await video.play();
-    _canvasEscanerCelular = document.createElement('canvas');
-    _rafEscanerCelular = requestAnimationFrame(() => analizarFrameEscanerCelular(video));
+    // undefined = deja que el navegador elija la camara (preferentemente
+    // la trasera en un celular) -- ZXing maneja el stream por su cuenta.
+    await _zxingReader.decodeFromVideoDevice(undefined, video, (result) => {
+      if (result && result.getText) onCodigoDetectadoCelular(result.getText());
+      // Un error (NotFoundException) se dispara en CADA cuadro sin
+      // codigo detectado todavia -- es normal, no algo que avisar.
+    });
   } catch (e) {
     console.error('abrirEscanerCelular:', e);
     if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
   }
-}
-
-function analizarFrameEscanerCelular(video) {
-  if (!_streamEscanerCelular) return; // el modal ya se cerró
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    const canvas = _canvasEscanerCelular;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const codigo = jsQR(imageData.data, imageData.width, imageData.height);
-    if (codigo && codigo.data) {
-      onCodigoDetectadoCelular(codigo.data);
-      return;
-    }
-  }
-  _rafEscanerCelular = requestAnimationFrame(() => analizarFrameEscanerCelular(video));
 }
 
 function onCodigoDetectadoCelular(texto) {
@@ -2560,11 +2545,9 @@ function onCodigoDetectadoCelular(texto) {
 }
 
 function cerrarEscanerCelular() {
-  if (_rafEscanerCelular) cancelAnimationFrame(_rafEscanerCelular);
-  _rafEscanerCelular = null;
-  if (_streamEscanerCelular) {
-    _streamEscanerCelular.getTracks().forEach(t => t.stop());
-    _streamEscanerCelular = null;
+  if (_zxingReader) {
+    try { _zxingReader.reset(); } catch (_) { /* ya estaba detenido */ }
+    _zxingReader = null;
   }
   const modal = $('modalEscanerCelular');
   if (modal) modal.classList.remove('open');
