@@ -2544,6 +2544,7 @@ async function abrirEscanerNativo(errEl) {
     const video = $('videoEscanerCelular');
     video.srcObject = _streamEscanerCelular;
     await video.play();
+    configurarZoomEscaner(_streamEscanerCelular);
 
     // Deteccion automatica de fondo -- mejor esfuerzo, no critica: si
     // el codigo se ve bien y el navegador lo agarra solo, mejor. El
@@ -2670,6 +2671,41 @@ async function capturarYBuscarCodigo() {
   }
 }
 
+// Zoom real de la camara -- clave para codigos de barras pequeños:
+// de lejos no se lee bien, y de muy cerca el celular desenfoca. Con
+// zoom, el celular se queda a una distancia donde SI enfoca bien,
+// pero el codigo se ve mas grande igual. Solo funciona si el celular
+// lo soporta (la mayoria de Android con camara trasera si) -- si no,
+// el control simplemente no aparece, sin romper nada.
+let _trackCamaraEscaner = null;
+
+function configurarZoomEscaner(stream) {
+  const wrap = $('wrapZoomEscaner');
+  const rango = $('rangoZoomEscaner');
+  if (!wrap || !rango) return;
+  try {
+    _trackCamaraEscaner = stream.getVideoTracks()[0] || null;
+    const cap = _trackCamaraEscaner?.getCapabilities ? _trackCamaraEscaner.getCapabilities() : null;
+    if (cap && cap.zoom) {
+      rango.min = cap.zoom.min;
+      rango.max = cap.zoom.max;
+      rango.step = cap.zoom.step || 0.1;
+      rango.value = cap.zoom.min;
+      wrap.style.display = 'flex';
+    } else {
+      wrap.style.display = 'none';
+    }
+  } catch (e) {
+    console.warn('configurarZoomEscaner:', e);
+    wrap.style.display = 'none';
+  }
+}
+
+function onCambiarZoomEscaner(valor) {
+  if (!_trackCamaraEscaner) return;
+  _trackCamaraEscaner.applyConstraints({ advanced: [{ zoom: parseFloat(valor) }] }).catch(e => console.warn('onCambiarZoomEscaner:', e));
+}
+
 function onCodigoDetectadoCelular(texto) {
   const input = $('inputCodBarras');
   if (input) input.value = texto;
@@ -2687,6 +2723,9 @@ function cerrarEscanerCelular() {
     _streamEscanerCelular.getTracks().forEach(t => t.stop());
     _streamEscanerCelular = null;
   }
+  _trackCamaraEscaner = null;
+  const wrapZoom = $('wrapZoomEscaner');
+  if (wrapZoom) wrapZoom.style.display = 'none';
   const modal = $('modalEscanerCelular');
   if (modal) modal.classList.remove('open');
 }
