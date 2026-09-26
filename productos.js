@@ -2288,9 +2288,12 @@ async function cargarLotesDelProducto(producto) {
             if (diasRestantes < 0) { color = 'var(--danger, #dc2626)'; etiqueta = ' — ¡vencido!'; }
             else if (diasRestantes <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${diasRestantes} día${diasRestantes===1?'':'s'}`; }
             return `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px">
-                <span>${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número de lote'} · ${fmtNum(l.cantidad_actual)} unidades</span>
-                <span style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</span>
+              <div class="fila-lote" data-lote-id="${l.id}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px;gap:8px">
+                <span class="fila-lote-texto">${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número de lote'} · ${fmtNum(l.cantidad_actual)} unidades</span>
+                <span style="display:flex;align-items:center;gap:8px">
+                  <span style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</span>
+                  <button type="button" title="Editar número de lote o vencimiento" onclick="abrirEdicionLote('${l.id}', '${(l.numero_lote||'').replace(/'/g,"\\'")}', '${l.fecha_vencimiento}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;flex-shrink:0">✏️</button>
+                </span>
               </div>`;
           }).join('')}
         </div>`;
@@ -2406,6 +2409,39 @@ async function guardarAgregarALoteExistente(stockSinAsignarMax) {
    antes de tener control de lotes — a diferencia de Compras, esto
    NUNCA suma al stock_actual (esas unidades ya estaban contadas),
    solo les pone la etiqueta de fecha que les faltaba. */
+// Editar un lote ya existente -- corregir el numero de lote o la
+// fecha de vencimiento si se digitaron mal, sin tener que borrar el
+// lote y perder su historial de compra. Edicion inline en la misma
+// fila, sin necesitar un modal aparte.
+function abrirEdicionLote(loteId, numeroActual, vencimientoActual) {
+  const fila = document.querySelector(`.fila-lote[data-lote-id="${loteId}"]`);
+  if (!fila) return;
+  fila.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap">
+      <input type="text" id="editLoteNumero_${loteId}" value="${escHtml(numeroActual)}" placeholder="Número de lote" style="flex:1;min-width:100px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);font-size:12px"/>
+      <input type="date" id="editLoteVenc_${loteId}" value="${vencimientoActual}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);font-size:12px"/>
+      <button type="button" onclick="guardarEdicionLote('${loteId}')" style="background:var(--accent,#6C63FF);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600">Guardar</button>
+      <button type="button" onclick="cargarLotesDelProducto(STATE.productoLotesActual)" style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer">Cancelar</button>
+    </div>`;
+}
+
+async function guardarEdicionLote(loteId) {
+  const numero = ($(`editLoteNumero_${loteId}`)?.value || '').trim();
+  const vencimiento = $(`editLoteVenc_${loteId}`)?.value || '';
+  if (!vencimiento) { showToast('error', 'Falta la fecha', 'La fecha de vencimiento es obligatoria.'); return; }
+  try {
+    const { error } = await supabaseClient.from('producto_lotes')
+      .update({ numero_lote: numero || null, fecha_vencimiento: vencimiento, updated_at: new Date().toISOString() })
+      .eq('id', loteId);
+    if (error) throw error;
+    showToast('success', 'Lote actualizado', 'Se guardaron los cambios correctamente.');
+    await cargarLotesDelProducto(STATE.productoLotesActual);
+  } catch (e) {
+    console.error('guardarEdicionLote:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
 async function guardarLoteStockExistente(stockSinAsignarMax) {
   const producto = STATE.productoLotesActual;
   if (!producto) return;
