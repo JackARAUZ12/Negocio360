@@ -197,10 +197,10 @@ function actualizarKpisLotes() {
     else vigentes++;
   });
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set('lt-kpi-total', lista.length);
-  set('lt-kpi-vencidos', vencidos);
-  set('lt-kpi-porvencer', porVencer);
-  set('lt-kpi-vigentes', vigentes);
+  set('vc-kpi-total', lista.length);
+  set('vc-kpi-vencidos', vencidos);
+  set('vc-kpi-porvencer', porVencer);
+  set('vc-kpi-vigentes', vigentes);
 }
 
 function fmtNumLote(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
