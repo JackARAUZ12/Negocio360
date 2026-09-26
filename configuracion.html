@@ -1299,6 +1299,27 @@
           <div class="cfg-status" id="hotel-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="farmacia-card" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">💊</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Farmacia <span style="font-size:10.5px;background:var(--accent-soft);color:var(--accent);padding:2px 7px;border-radius:10px;font-weight:700">EN DESARROLLO</span></div>
+              <div class="cfg-card-desc">Lotes y Vencimientos conectados con Productos/Servicios — construyéndose por fases. Visible únicamente en esta cuenta.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Farmacia</div>
+              <div class="cfg-row-sub" id="farmacia-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="farmacia-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModuloFarmaciaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="farmacia-status"></div>
+        </div>
+
         <!-- EDITAR PERFIL -->
         <div class="cfg-card fade-in stagger-2">
           <div class="cfg-card-header">
@@ -1959,6 +1980,62 @@ async function guardarModuloHotel(activo) {
   }
 }
 
+// Modulo de Farmacia -- mismo patron exacto que Hotel/Restaurante.
+async function cargarModuloFarmacia() {
+  const card = document.getElementById('farmacia-card');
+  const toggle = document.getElementById('farmacia-toggle');
+  const sub = document.getElementById('farmacia-row-sub');
+  card.style.display = '';
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modulo_farmacia')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_farmacia === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — Lotes y Vencimientos aparecen en el sidebar.'
+      : 'Desactivado — el módulo de farmacia no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloFarmacia:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleModuloFarmaciaClick(evt) {
+  const toggle = document.getElementById('farmacia-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloFarmacia(toggle.checked);
+}
+
+async function guardarModuloFarmacia(activo) {
+  const toggle = document.getElementById('farmacia-toggle');
+  const sub = document.getElementById('farmacia-row-sub');
+  const statusEl = document.getElementById('farmacia-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modulo_farmacia: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — Lotes y Vencimientos aparecen en el sidebar.'
+      : 'Desactivado — el módulo de farmacia no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Farmacia activado.' : 'Módulo de Farmacia desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloFarmacia:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
 /* =====================================================
    EDITAR MÓDULOS — activar/desactivar módulos opcionales
    La lista de módulos sale de modulos-guard.js (ModulosGuard),
@@ -2192,6 +2269,7 @@ async function initConfiguracion() {
       cargarNumeroSerie();
       cargarModeloProducto();
       cargarModuloHotel();
+      cargarModuloFarmacia();
       cargarCierresAuto();
     };
 

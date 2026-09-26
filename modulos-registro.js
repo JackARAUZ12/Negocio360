@@ -118,6 +118,12 @@
     // rubro de negocio sino una funcion de cuenta) ----
     'negocios-vinculados.html': { key: 'negocios_vinculados', label: 'Mis Negocios',      icon: '🏢', obligatorio: false, flagPropio: 'usa_negocios_vinculados',
                                desc: 'Varios negocios bajo el mismo correo y contraseña, cada uno completamente independiente.' },
+
+    // ---- Farmacia (secundario -- mismo criterio que Hotel/Restaurante) ----
+    'lotes.html':        { key: 'farmacia_lotes',        label: 'Farmacia · Lotes',        icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
+    'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
