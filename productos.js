@@ -2514,6 +2514,7 @@ let cbModoEscaneo = false;
 //    antiguos), se cae a ZXing (cargado desde CDN) como respaldo.
 let _zxingReader = null;
 let _streamEscanerCelular = null;
+let _detectorEscaner = null;
 let _rafEscanerCelular = null;
 
 async function abrirEscanerCelular() {
@@ -2531,16 +2532,28 @@ async function abrirEscanerCelular() {
 async function abrirEscanerNativo(errEl) {
   try {
     const formatos = await BarcodeDetector.getSupportedFormats();
-    const detector = new BarcodeDetector({ formats: formatos });
-    _streamEscanerCelular = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    _detectorEscaner = new BarcodeDetector({ formats: formatos });
+    // Resolucion alta pedida a proposito -- un codigo de barras 1D
+    // necesita bastante nitidez para leerse bien; con la resolucion
+    // por defecto (a veces 640x480) las lineas finas del codigo
+    // quedan borrosas y nunca se detectan, aunque la camara este
+    // enfocando bien a simple vista.
+    _streamEscanerCelular = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
     const video = $('videoEscanerCelular');
     video.srcObject = _streamEscanerCelular;
     await video.play();
 
+    // Deteccion automatica de fondo -- mejor esfuerzo, no critica: si
+    // el codigo se ve bien y el navegador lo agarra solo, mejor. El
+    // boton "Capturar" (abajo) es el camino confiable que SIEMPRE
+    // funciona si el codigo esta a la vista, tomando una sola foto
+    // en vez de depender de leer cuadros de video en movimiento.
     const analizar = async () => {
       if (!_streamEscanerCelular) return; // se cerró mientras tanto
       try {
-        const codigos = await detector.detect(video);
+        const codigos = await _detectorEscaner.detect(video);
         if (codigos && codigos.length && codigos[0].rawValue) {
           onCodigoDetectadoCelular(codigos[0].rawValue);
           return;
@@ -2595,6 +2608,64 @@ async function abrirEscanerZXing(errEl) {
   } catch (e) {
     console.error('abrirEscanerZXing:', e);
     if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
+  }
+}
+
+// Captura manual -- toma UNA foto a resolucion completa (mucho mas
+// nitida que leer cuadros de video en movimiento) y busca el codigo
+// en esa imagen fija. Este es el camino CONFIABLE: si "Capturar" no
+// encuentra nada, se avisa claro y la camara sigue abierta para
+// intentar de nuevo (mejor enfoque, mas cerca, mas luz) -- nunca se
+// queda en silencio sin decir nada.
+async function capturarYBuscarCodigo() {
+  const video = $('videoEscanerCelular');
+  const estadoEl = $('estadoEscanerCelular');
+  const errEl = $('errEscanerCelular');
+  const btn = $('btnCapturarEscaner');
+  if (!video || !video.videoWidth) {
+    if (errEl) errEl.textContent = 'La cámara todavía no está lista. Espera un segundo e intenta de nuevo.';
+    return;
+  }
+  if (errEl) errEl.textContent = '';
+  if (estadoEl) estadoEl.textContent = '🔍 Buscando el código...';
+  if (btn) btn.disabled = true;
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    let texto = null;
+    if (_detectorEscaner) {
+      const codigos = await _detectorEscaner.detect(canvas);
+      if (codigos && codigos.length) texto = codigos[0].rawValue;
+    } else {
+      // Respaldo ZXing: decodifica desde una imagen fija en vez de
+      // video en vivo -- misma idea, otra libreria.
+      const ns = (typeof ZXingBrowser !== 'undefined') ? ZXingBrowser : (typeof ZXing !== 'undefined') ? ZXing : null;
+      if (ns) {
+        const img = new Image();
+        img.src = canvas.toDataURL('image/png');
+        await new Promise(res => { img.onload = res; });
+        const reader = new ns.BrowserMultiFormatReader();
+        const result = await reader.decodeFromImage(img).catch(() => null);
+        if (result) texto = (typeof result.getText === 'function') ? result.getText() : result.text;
+      }
+    }
+
+    if (texto) {
+      onCodigoDetectadoCelular(texto);
+    } else {
+      if (estadoEl) estadoEl.textContent = '';
+      if (errEl) errEl.textContent = 'No se detectó ningún código en esa foto. Acércate más, mejora la luz, y prueba de nuevo.';
+    }
+  } catch (e) {
+    console.error('capturarYBuscarCodigo:', e);
+    if (estadoEl) estadoEl.textContent = '';
+    if (errEl) errEl.textContent = 'No se detectó ningún código en esa foto. Acércate más, mejora la luz, y prueba de nuevo.';
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

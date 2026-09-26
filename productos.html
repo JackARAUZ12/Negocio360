@@ -1437,12 +1437,14 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="modal-close" onclick="cerrarEscanerCelular()" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">Apunta la cámara al código QR o de barras del producto.</p>
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">Apunta la cámara al código, deja que enfoque bien, y presiona "Capturar".</p>
       <div style="position:relative;border-radius:10px;overflow:hidden;background:#000">
         <video id="videoEscanerCelular" playsinline style="width:100%;display:block"></video>
         <div style="position:absolute;inset:0;border:2px solid rgba(255,255,255,.5);margin:15%;border-radius:8px;pointer-events:none"></div>
       </div>
-      <p id="errEscanerCelular" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:10px"></p>
+      <p id="estadoEscanerCelular" style="font-size:12.5px;color:var(--text-secondary);margin-top:10px;min-height:18px"></p>
+      <p id="errEscanerCelular" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:4px"></p>
+      <button type="button" class="btn btn-primary" id="btnCapturarEscaner" onclick="capturarYBuscarCodigo()" style="width:100%;margin-top:10px">📸 Capturar</button>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarEscanerCelular()">Cancelar</button>
