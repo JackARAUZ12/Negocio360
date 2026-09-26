@@ -1099,6 +1099,8 @@
     @media (max-width: 640px) {
       #vc-kpis { grid-template-columns: repeat(2, 1fr) !important; }
       .data-table th, .data-table td { padding: 10px 12px; font-size: 12.5px; }
+      #modal-alerta-venc .modal-footer { flex-direction: column-reverse; align-items: stretch; }
+      #modal-alerta-venc .btn-accion-tabla { width: 100%; padding: 10px; text-align: center; }
     }
   </style>
 
@@ -1419,8 +1421,8 @@
       <div id="alerta-venc-lista" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn-icon btn-ghost" onclick="cerrarAlertaVencimientos()">Cerrar</button>
-      <button class="btn-icon btn-primary" onclick="cerrarAlertaVencimientos()">Revisar abajo</button>
+      <button class="btn-accion-tabla btn-ghost" onclick="cerrarAlertaVencimientos()">Cerrar</button>
+      <button class="btn-accion-tabla btn-primary" onclick="cerrarAlertaVencimientos()">Revisar abajo</button>
     </div>
   </div>
 </div>
