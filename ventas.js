@@ -2456,20 +2456,32 @@ async function abrirModalConfigPorUsuario() {
     }
 
     const { data: configs } = await sb.from('stock_compartido_usuario')
-      .select('perfil_key, activo, alcance').eq('auth_user_id', S.userId);
+      .select('perfil_key, activo, alcance, sucursal_ids').eq('auth_user_id', S.userId);
     const mapaConfig = {};
     (configs || []).forEach(c => { mapaConfig[c.perfil_key] = c; });
+
+    const { data: sucursales } = await sb.from('sucursales').select('id, nombre, tipo').eq('activa', true).order('nombre');
+    const listaSucursales = sucursales || [];
 
     cont.innerHTML = perfiles.map(p => {
       const cfg = mapaConfig[String(p.id)];
       const alcanceActual = cfg?.activo ? (cfg.alcance || 'todas') : 'todas';
+      const sucursalActual = cfg?.sucursal_ids?.[0] || '';
+      const opcionesSuc = listaSucursales.map(s => `<option value="${s.id}" ${s.id===sucursalActual?'selected':''}>${esc(s.nombre)} (${s.tipo==='bodega'?'Bodega':'Sucursal'})</option>`).join('');
       return `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb)">
-          <span style="font-size:12.5px;font-weight:600">${esc(p.nombre)}</span>
-          <select class="form-select" style="max-width:180px;font-size:12px" onchange="guardarAlcanceDeUsuario('${p.id}', '${esc(p.nombre).replace(/'/g,"\\'")}', this.value)">
-            <option value="todas" ${alcanceActual==='todas'?'selected':''}>Todas (sucursales y bodegas)</option>
-            <option value="bodegas" ${alcanceActual==='bodegas'?'selected':''}>Solo bodegas</option>
-            <option value="sucursales" ${alcanceActual==='sucursales'?'selected':''}>Solo sucursales</option>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="font-size:12.5px;font-weight:600">${esc(p.nombre)}</span>
+            <select class="form-select" id="cpu-alcance-${p.id}" style="max-width:180px;font-size:12px" onchange="onCambiarAlcanceUsuario('${p.id}', '${esc(p.nombre).replace(/'/g,"\\'")}')">
+              <option value="todas" ${alcanceActual==='todas'?'selected':''}>Todas (sucursales y bodegas)</option>
+              <option value="bodegas" ${alcanceActual==='bodegas'?'selected':''}>Solo bodegas</option>
+              <option value="sucursales" ${alcanceActual==='sucursales'?'selected':''}>Solo sucursales</option>
+              <option value="especifica" ${alcanceActual==='especifica'?'selected':''}>Una específica</option>
+            </select>
+          </div>
+          <select class="form-select" id="cpu-sucursal-${p.id}" style="width:100%;font-size:12px;display:${alcanceActual==='especifica'?'':'none'}" onchange="guardarAlcanceDeUsuario('${p.id}', '${esc(p.nombre).replace(/'/g,"\\'")}', 'especifica', this.value)">
+            <option value="">Elige una sucursal o bodega...</option>
+            ${opcionesSuc}
           </select>
         </div>`;
     }).join('');
@@ -2483,15 +2495,27 @@ function cerrarModalConfigPorUsuario() {
   document.getElementById('modal-config-por-usuario').style.display = 'none';
 }
 
-async function guardarAlcanceDeUsuario(perfilId, perfilNombre, alcance) {
+function onCambiarAlcanceUsuario(perfilId, perfilNombre) {
+  const select = document.getElementById(`cpu-alcance-${perfilId}`);
+  const selectSuc = document.getElementById(`cpu-sucursal-${perfilId}`);
+  const valor = select.value;
+  if (selectSuc) selectSuc.style.display = valor === 'especifica' ? '' : 'none';
+  // "especifica" espera a que se elija la sucursal en el segundo
+  // selector -- las demas opciones se guardan de una vez.
+  if (valor !== 'especifica') guardarAlcanceDeUsuario(perfilId, perfilNombre, valor);
+}
+
+async function guardarAlcanceDeUsuario(perfilId, perfilNombre, alcance, sucursalId) {
+  if (alcance === 'especifica' && !sucursalId) return; // aun no eligio cual
   try {
     const { error } = await sb.from('stock_compartido_usuario').upsert({
       auth_user_id: S.userId, perfil_key: String(perfilId), perfil_nombre: perfilNombre,
-      activo: true, alcance, sucursal_ids: null,
+      activo: true, alcance, sucursal_ids: alcance === 'especifica' ? [sucursalId] : null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'auth_user_id,perfil_key' });
     if (error) throw error;
-    showToast(`${perfilNombre}: ahora ve stock de "${alcance === 'todas' ? 'todas las sucursales y bodegas' : alcance}"`, 'success');
+    const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: 'una sucursal específica' };
+    showToast(`${perfilNombre}: ahora ve stock de "${etiquetas[alcance]}"`, 'success');
   } catch (e) {
     console.error('guardarAlcanceDeUsuario:', e);
     showToast('No se pudo guardar la configuración de ese usuario', 'error');
