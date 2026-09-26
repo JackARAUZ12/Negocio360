@@ -2503,6 +2503,73 @@ function setTipoModal(tipo, habilitarToggle = true) {
    ============================================================ */
 let cbModoEscaneo = false;
 
+// Escanear con la camara del celular -- opcion adicional al lector
+// fisico de arriba (toggleModoEscaneoCB), sin tocar nada de ese
+// mecanismo. Usa jsQR (cargado desde CDN) para decodificar QR y
+// codigos de barras desde el video de la camara, cuadro por cuadro.
+let _streamEscanerCelular = null;
+let _rafEscanerCelular = null;
+let _canvasEscanerCelular = null;
+
+async function abrirEscanerCelular() {
+  const errEl = $('errEscanerCelular');
+  if (errEl) errEl.textContent = '';
+  $('modalEscanerCelular').classList.add('open');
+
+  if (typeof jsQR === 'undefined') {
+    if (errEl) errEl.textContent = 'No se pudo cargar el lector. Revisa tu conexión a internet e intenta de nuevo.';
+    return;
+  }
+
+  try {
+    _streamEscanerCelular = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = $('videoEscanerCelular');
+    video.srcObject = _streamEscanerCelular;
+    await video.play();
+    _canvasEscanerCelular = document.createElement('canvas');
+    _rafEscanerCelular = requestAnimationFrame(() => analizarFrameEscanerCelular(video));
+  } catch (e) {
+    console.error('abrirEscanerCelular:', e);
+    if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
+  }
+}
+
+function analizarFrameEscanerCelular(video) {
+  if (!_streamEscanerCelular) return; // el modal ya se cerró
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    const canvas = _canvasEscanerCelular;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const codigo = jsQR(imageData.data, imageData.width, imageData.height);
+    if (codigo && codigo.data) {
+      onCodigoDetectadoCelular(codigo.data);
+      return;
+    }
+  }
+  _rafEscanerCelular = requestAnimationFrame(() => analizarFrameEscanerCelular(video));
+}
+
+function onCodigoDetectadoCelular(texto) {
+  const input = $('inputCodBarras');
+  if (input) input.value = texto;
+  cerrarEscanerCelular();
+  showToast('success', 'Código detectado', texto);
+}
+
+function cerrarEscanerCelular() {
+  if (_rafEscanerCelular) cancelAnimationFrame(_rafEscanerCelular);
+  _rafEscanerCelular = null;
+  if (_streamEscanerCelular) {
+    _streamEscanerCelular.getTracks().forEach(t => t.stop());
+    _streamEscanerCelular = null;
+  }
+  const modal = $('modalEscanerCelular');
+  if (modal) modal.classList.remove('open');
+}
+
 function toggleModoEscaneoCB() {
   const input = $('inputCodBarras');
   const btn   = $('btnEscanearCB');

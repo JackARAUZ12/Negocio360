@@ -16,6 +16,7 @@
   <script src="tutorial-motor.js?v=20260915a"></script>
   <!-- SheetJS: lee el archivo .xlsx que el usuario sube para la importación masiva (y ahora también exporta el inventario) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <!-- jsPDF + autoTable: exportar inventario en PDF -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
@@ -843,6 +844,9 @@
                 </svg>
                 <span id="btnEscanearCBLabel">Escanear</span>
               </button>
+              <button type="button" class="btn-cb-scan" id="btnEscanearCelular" onclick="abrirEscanerCelular()" title="Usa la cámara de este dispositivo para leer un código QR o de barras">
+                📷 <span>Con celular</span>
+              </button>
             </div>
             <span class="cb-scan-hint" id="cbScanHint" style="display:none">
               📡 Esperando lectura del escáner… escanea el código o presiona Enter
@@ -1421,6 +1425,27 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border)">
       <button class="btn btn-secondary" onclick="$('modalMonedaVis').classList.remove('open')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarMonedaVis()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ESCANEAR CON LA CÁMARA DEL CELULAR -->
+<div class="modal-overlay" id="modalEscanerCelular">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2 class="modal-title">📷 Escanear con celular</h2>
+      <button class="modal-close" onclick="cerrarEscanerCelular()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">Apunta la cámara al código QR o de barras del producto.</p>
+      <div style="position:relative;border-radius:10px;overflow:hidden;background:#000">
+        <video id="videoEscanerCelular" playsinline style="width:100%;display:block"></video>
+        <div style="position:absolute;inset:0;border:2px solid rgba(255,255,255,.5);margin:15%;border-radius:8px;pointer-events:none"></div>
+      </div>
+      <p id="errEscanerCelular" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:10px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarEscanerCelular()">Cancelar</button>
     </div>
   </div>
 </div>
