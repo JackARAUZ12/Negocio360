@@ -2505,17 +2505,57 @@ let cbModoEscaneo = false;
 
 // Escanear con la camara del celular -- opcion adicional al lector
 // fisico de arriba (toggleModoEscaneoCB), sin tocar nada de ese
-// mecanismo. Usa ZXing (cargado desde CDN) para decodificar tanto QR
-// como codigos de barras tradicionales (EAN-13, Code128, UPC...) --
-// jsQR se probo primero pero SOLO lee QR, nunca codigos de barras
-// normales de producto, que es el caso mas comun aqui.
+// mecanismo. Dos caminos, en este orden:
+// 1) BarcodeDetector -- funcion NATIVA del navegador (Chrome/Android
+//    la trae de fabrica), lee QR y codigos de barras reales, y NO
+//    depende de ningun servidor externo -- cero riesgo de que un CDN
+//    falle o tarde en cargar.
+// 2) Si el navegador no la tiene (Safari/iOS viejo, navegadores
+//    antiguos), se cae a ZXing (cargado desde CDN) como respaldo.
 let _zxingReader = null;
+let _streamEscanerCelular = null;
+let _rafEscanerCelular = null;
 
 async function abrirEscanerCelular() {
   const errEl = $('errEscanerCelular');
   if (errEl) errEl.textContent = '';
   $('modalEscanerCelular').classList.add('open');
 
+  if ('BarcodeDetector' in window) {
+    await abrirEscanerNativo(errEl);
+  } else {
+    await abrirEscanerZXing(errEl);
+  }
+}
+
+async function abrirEscanerNativo(errEl) {
+  try {
+    const formatos = await BarcodeDetector.getSupportedFormats();
+    const detector = new BarcodeDetector({ formats: formatos });
+    _streamEscanerCelular = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = $('videoEscanerCelular');
+    video.srcObject = _streamEscanerCelular;
+    await video.play();
+
+    const analizar = async () => {
+      if (!_streamEscanerCelular) return; // se cerró mientras tanto
+      try {
+        const codigos = await detector.detect(video);
+        if (codigos && codigos.length && codigos[0].rawValue) {
+          onCodigoDetectadoCelular(codigos[0].rawValue);
+          return;
+        }
+      } catch (eDet) { /* un cuadro sin codigo legible -- normal, se sigue intentando */ }
+      _rafEscanerCelular = requestAnimationFrame(analizar);
+    };
+    _rafEscanerCelular = requestAnimationFrame(analizar);
+  } catch (e) {
+    console.error('abrirEscanerNativo:', e);
+    if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
+  }
+}
+
+async function abrirEscanerZXing(errEl) {
   // El paquete puede exponerse como ZXingBrowser o como ZXing segun
   // la version/build del CDN -- se prueban ambos nombres posibles,
   // en vez de depender de adivinar cual es el correcto. Si la fuente
@@ -2553,7 +2593,7 @@ async function abrirEscanerCelular() {
       // codigo detectado todavia -- es normal, no algo que avisar.
     });
   } catch (e) {
-    console.error('abrirEscanerCelular:', e);
+    console.error('abrirEscanerZXing:', e);
     if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
   }
 }
@@ -2569,6 +2609,11 @@ function cerrarEscanerCelular() {
   if (_zxingReader) {
     try { _zxingReader.reset(); } catch (_) { /* ya estaba detenido */ }
     _zxingReader = null;
+  }
+  if (_rafEscanerCelular) { cancelAnimationFrame(_rafEscanerCelular); _rafEscanerCelular = null; }
+  if (_streamEscanerCelular) {
+    _streamEscanerCelular.getTracks().forEach(t => t.stop());
+    _streamEscanerCelular = null;
   }
   const modal = $('modalEscanerCelular');
   if (modal) modal.classList.remove('open');
