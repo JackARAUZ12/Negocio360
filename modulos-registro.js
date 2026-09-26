@@ -124,6 +124,8 @@
                                desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
     'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
                                desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
+    'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
