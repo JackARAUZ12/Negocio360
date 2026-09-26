@@ -85,12 +85,14 @@ async function onCambiarMetodoPagoComanda() {
 // el IVA no es ingreso del negocio, es dinero recaudado para el
 // fisco. Devuelve el monto neto, que es lo que se debe registrar en
 // Caja en vez del monto completo.
-async function registrarIvaRestaurante(montoConIva, concepto, referenciaId) {
+async function registrarIvaRestaurante(subtotal, concepto, referenciaId) {
   const ivaPct = STATE.empresaConfig?.iva_porcentaje_default ? Number(STATE.empresaConfig.iva_porcentaje_default) : 15;
-  if (STATE.empresaConfig?.iva_activo === false || ivaPct <= 0) return montoConIva;
-  const neto = round2(montoConIva / (1 + ivaPct/100));
-  const iva = round2(montoConIva - neto);
-  if (iva <= 0) return montoConIva;
+  if (STATE.empresaConfig?.iva_activo !== true || ivaPct <= 0) return 0;
+  // El IVA se SUMA sobre el subtotal (los precios del menu son sin
+  // IVA) -- mismo criterio ya usado en renderResumenCobro(), donde
+  // el cliente ve "Subtotal + IVA + Propina = Total".
+  const iva = round2(subtotal * ivaPct / 100);
+  if (iva <= 0) return 0;
   try {
     const { data: ultMov } = await sb.from('movimientos_impuestos')
       .select('saldo_resultante').eq('auth_user_id', STATE.userId)
@@ -104,7 +106,7 @@ async function registrarIvaRestaurante(montoConIva, concepto, referenciaId) {
   } catch (e) {
     console.warn('registrarIvaRestaurante:', e);
   }
-  return neto;
+  return iva;
 }
 
 /* =====================================================
@@ -626,11 +628,36 @@ async function confirmarCobro() {
   setBtnLoading('cb-btn-confirmar', true);
   try {
     // La propina no lleva IVA -- solo el consumo (subtotal) se
-    // desglosa. El total real que entra a Caja es neto-de-consumo +
-    // propina completa.
+    // desglosa. El total real que entra a Caja es subtotal + IVA + propina.
     const conceptoCobro = `Cobro — Mesa ${STATE.comandaCobroActual.mesaNumero}`;
-    const subtotalNeto = await registrarIvaRestaurante(subtotal, conceptoCobro, comandaId);
-    const montoParaCaja = round2(subtotalNeto + propina);
+    const ivaCobro = await registrarIvaRestaurante(subtotal, conceptoCobro, comandaId);
+    const montoParaCaja = round2(subtotal + ivaCobro + propina);
+
+    // Descontar stock -- solo de productos reales con inventario
+    // (ej. gaseosa, helado, algo que se compra para revender). Un
+    // servicio (ej. un platillo a la carta, hecho al momento) nunca
+    // tiene stock que descontar -- se identifica consultando el tipo
+    // real de cada producto vendido en esta comanda.
+    try {
+      const idsProductos = [...new Set(STATE.comandaCobroActual.items.map(i => i.producto_id).filter(Boolean))];
+      if (idsProductos.length) {
+        const { data: productosReales } = await sb.from('productos')
+          .select('id, tipo, stock_actual').in('id', idsProductos);
+        const mapaProd = {};
+        (productosReales || []).forEach(p => { mapaProd[p.id] = p; });
+        for (const item of STATE.comandaCobroActual.items) {
+          const prod = mapaProd[item.producto_id];
+          if (prod && prod.tipo === 'producto') {
+            const nuevoStock = Math.max(0, round2(Number(prod.stock_actual || 0) - item.cantidad));
+            await sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', item.producto_id);
+          }
+        }
+      }
+    } catch (eStock) {
+      console.warn('confirmarCobro, descontar stock:', eStock);
+      // No se bloquea el cobro por esto -- ya se cobro exitosamente,
+      // el stock se puede ajustar despues manualmente si algo fallara.
+    }
 
     if (window.CajaAPI) {
       const cajaRes = await window.CajaAPI.registrarMovimiento({
@@ -648,7 +675,7 @@ async function confirmarCobro() {
 
     const { error: e1 } = await sb.from('restaurante_comandas').update({
       estado: 'cerrada', cerrada_at: new Date().toISOString(),
-      propina_monto: propina, metodo_pago: metodoNombre, total_cobrado: total,
+      propina_monto: propina, metodo_pago: metodoNombre, total_cobrado: montoParaCaja,
       updated_at: new Date().toISOString(),
     }).eq('id', comandaId).eq('auth_user_id', STATE.userId);
     if (e1) throw e1;
