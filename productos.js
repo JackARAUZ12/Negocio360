@@ -2542,7 +2542,13 @@ async function abrirEscanerCelular() {
     // undefined = deja que el navegador elija la camara (preferentemente
     // la trasera en un celular) -- ZXing maneja el stream por su cuenta.
     await _zxingReader.decodeFromVideoDevice(undefined, video, (result) => {
-      if (result && result.getText) onCodigoDetectadoCelular(result.getText());
+      if (!result) return; // sin codigo detectado en este cuadro -- normal, se sigue intentando
+      // El resultado puede traer el texto como metodo (getText()) o
+      // como propiedad (text), segun la version de la libreria -- se
+      // prueban ambas formas para no perder la deteccion por un
+      // nombre distinto.
+      const texto = (typeof result.getText === 'function') ? result.getText() : result.text;
+      if (texto) onCodigoDetectadoCelular(texto);
       // Un error (NotFoundException) se dispara en CADA cuadro sin
       // codigo detectado todavia -- es normal, no algo que avisar.
     });
