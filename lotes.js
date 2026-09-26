@@ -180,7 +180,7 @@ function renderLotes() {
         <td>${esc(l.productos?.nombre || 'Producto eliminado')}</td>
         <td>${fmtNumLote(l.cantidad_actual)}</td>
         <td class="lt-celda-venc" style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</td>
-        <td><button class="btn-icon btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button></td>
+        <td><button class="btn-accion-tabla btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button></td>
       </tr>`;
   }).join('');
 }
@@ -213,8 +213,8 @@ function abrirEdicionLoteInline(loteId) {
   fila.querySelector('.lt-celda-venc').innerHTML = `<input type="date" id="editVenc_${loteId}" value="${l.fecha_vencimiento}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>`;
   const celdaAcciones = fila.children[4];
   celdaAcciones.innerHTML = `
-    <button class="btn-icon btn-primary" onclick="guardarEdicionLoteInline('${loteId}')">Guardar</button>
-    <button class="btn-icon btn-ghost" onclick="renderLotes()">Cancelar</button>`;
+    <button class="btn-accion-tabla btn-primary" onclick="guardarEdicionLoteInline('${loteId}')">Guardar</button>
+    <button class="btn-accion-tabla btn-ghost" onclick="renderLotes()">Cancelar</button>`;
 }
 
 async function guardarEdicionLoteInline(loteId) {
