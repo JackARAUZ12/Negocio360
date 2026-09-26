@@ -563,6 +563,21 @@ function renderResumenCobro() {
   if (!STATE.comandaCobroActual) return;
   const subtotal = round2(STATE.comandaCobroActual.items.reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
 
+  // IVA opcional (Configuracion -- IVA / Impuestos): si esta activo,
+  // se suma sobre el subtotal, ANTES de la propina (que se calcula
+  // sobre el subtotal sin IVA, no sobre el total con IVA incluido).
+  const ivaActivo = STATE.empresaConfig?.iva_activo === true;
+  const ivaPct = Number(STATE.empresaConfig?.iva_porcentaje_default || 0);
+  const iva = ivaActivo && ivaPct > 0 ? round2(subtotal * ivaPct / 100) : 0;
+  const wrapIva = document.getElementById('cb-wrap-iva');
+  if (wrapIva) {
+    wrapIva.style.display = iva > 0 ? 'flex' : 'none';
+    const label = document.getElementById('cb-iva-label');
+    if (label) label.textContent = `IVA (${ivaPct}%)`;
+    const monto = document.getElementById('cb-iva-monto');
+    if (monto) monto.textContent = fmt(iva);
+  }
+
   const pctSel = document.getElementById('cb-propina-pct').value;
   let propina;
   if (pctSel === 'otro') {
@@ -571,7 +586,7 @@ function renderResumenCobro() {
     propina = round2(subtotal * Number(pctSel) / 100);
   }
 
-  const total = round2(subtotal + propina);
+  const total = round2(subtotal + iva + propina);
   document.getElementById('cb-subtotal').textContent = fmt(subtotal);
   document.getElementById('cb-propina-monto').textContent = fmt(propina);
   document.getElementById('cb-total').textContent = fmt(total);

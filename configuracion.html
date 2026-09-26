@@ -1299,6 +1299,38 @@
           <div class="cfg-status" id="hotel-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="iva-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🧾</div>
+            <div>
+              <div class="cfg-card-title">IVA / Impuestos</div>
+              <div class="cfg-card-desc">Se aplica en todo el sistema que cobre IVA (Ventas, Restaurante...). Apagado por defecto -- opcional.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cobrar IVA</div>
+              <div class="cfg-row-sub" id="iva-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="iva-toggle" disabled onchange="guardarIva(this.checked)" />
+              <span class="cfg-switch-track"></span>
+            </label>
+          </div>
+          <div class="cfg-row" id="iva-wrap-porcentaje" style="display:none">
+            <div>
+              <div class="cfg-row-label">Porcentaje de IVA</div>
+              <div class="cfg-row-sub">Ejemplo: 15 para 15%. Se aplica a todo el sistema.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="number" id="iva-porcentaje" min="0" max="100" step="0.5" style="width:80px;padding:7px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb);text-align:right" />
+              <span>%</span>
+              <button class="btn btn-secondary" style="padding:7px 12px;font-size:12.5px" onclick="guardarPorcentajeIva()">Guardar</button>
+            </div>
+          </div>
+          <div class="cfg-status" id="iva-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="farmacia-card" style="display:none">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">💊</div>
@@ -1981,6 +2013,76 @@ async function guardarModuloHotel(activo) {
 }
 
 // Modulo de Farmacia -- mismo patron exacto que Hotel/Restaurante.
+// IVA / Impuestos -- control central, afecta a todo el sistema que
+// cobre IVA (Ventas, Restaurante...). Apagado por defecto.
+async function cargarIva() {
+  const toggle = document.getElementById('iva-toggle');
+  const sub = document.getElementById('iva-row-sub');
+  const wrapPct = document.getElementById('iva-wrap-porcentaje');
+  const inputPct = document.getElementById('iva-porcentaje');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('iva_activo, iva_porcentaje_default')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.iva_activo === true;
+    toggle.checked = activo;
+    inputPct.value = data?.iva_porcentaje_default ?? 15;
+    wrapPct.style.display = activo ? 'flex' : 'none';
+    sub.textContent = activo ? `Activado — se cobra ${inputPct.value}% de IVA.` : 'Desactivado — no se cobra IVA en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarIva:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+async function guardarIva(activo) {
+  const toggle = document.getElementById('iva-toggle');
+  const sub = document.getElementById('iva-row-sub');
+  const wrapPct = document.getElementById('iva-wrap-porcentaje');
+  const statusEl = document.getElementById('iva-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ iva_activo: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    wrapPct.style.display = activo ? 'flex' : 'none';
+    const pct = document.getElementById('iva-porcentaje').value;
+    sub.textContent = activo ? `Activado — se cobra ${pct}% de IVA.` : 'Desactivado — no se cobra IVA en ningún lado.';
+    setStatus(statusEl, activo ? 'IVA activado.' : 'IVA desactivado.', true);
+  } catch (e) {
+    console.error('guardarIva:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+async function guardarPorcentajeIva() {
+  const pct = parseFloat(document.getElementById('iva-porcentaje').value);
+  const statusEl = document.getElementById('iva-status');
+  const sub = document.getElementById('iva-row-sub');
+  if (isNaN(pct) || pct < 0 || pct > 100) { setStatus(statusEl, 'El porcentaje debe estar entre 0 y 100.', false); return; }
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ iva_porcentaje_default: pct })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = `Activado — se cobra ${pct}% de IVA.`;
+    setStatus(statusEl, `Porcentaje de IVA actualizado a ${pct}%.`, true);
+  } catch (e) {
+    console.error('guardarPorcentajeIva:', e);
+    setStatus(statusEl, 'No se pudo guardar el porcentaje. Intenta de nuevo.', false);
+  }
+}
+
 async function cargarModuloFarmacia() {
   const card = document.getElementById('farmacia-card');
   const toggle = document.getElementById('farmacia-toggle');
@@ -2270,6 +2372,7 @@ async function initConfiguracion() {
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloFarmacia();
+      cargarIva();
       cargarCierresAuto();
     };
 
