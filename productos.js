@@ -2622,15 +2622,16 @@ async function capturarYBuscarCodigo() {
   const estadoEl = $('estadoEscanerCelular');
   const errEl = $('errEscanerCelular');
   const btn = $('btnCapturarEscaner');
-  if (!video || !video.videoWidth) {
-    if (errEl) errEl.textContent = 'La cámara todavía no está lista. Espera un segundo e intenta de nuevo.';
-    return;
-  }
   if (errEl) errEl.textContent = '';
   if (estadoEl) estadoEl.textContent = '🔍 Buscando el código...';
   if (btn) btn.disabled = true;
 
   try {
+    if (!video || !video.videoWidth) {
+      if (estadoEl) estadoEl.textContent = '';
+      if (errEl) errEl.textContent = 'La cámara todavía no está lista. Espera un segundo e intenta de nuevo.';
+      return;
+    }
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
