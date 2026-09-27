@@ -2892,6 +2892,13 @@ function cargarFormulario(p) {
   if ($('inputEsSustanciaControlada')) $('inputEsSustanciaControlada').checked = esSC;
   if ($('inputEsSustanciaControladaEdit')) $('inputEsSustanciaControladaEdit').checked = esSC;
 
+  if ($('inputPrincipioActivo')) $('inputPrincipioActivo').value = p.principio_activo || '';
+  if ($('inputPrincipioActivoEdit')) $('inputPrincipioActivoEdit').value = p.principio_activo || '';
+  if ($('inputConcentracion')) $('inputConcentracion').value = p.concentracion || '';
+  if ($('inputConcentracionEdit')) $('inputConcentracionEdit').value = p.concentracion || '';
+  if ($('inputPresentacion')) $('inputPresentacion').value = p.presentacion || '';
+  if ($('inputPresentacionEdit')) $('inputPresentacionEdit').value = p.presentacion || '';
+
   // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
   const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
   STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
@@ -3013,6 +3020,10 @@ async function guardarProducto() {
   const esSustanciaControladaEl = STATE.modalMode === 'editar' ? $('inputEsSustanciaControladaEdit') : $('inputEsSustanciaControlada');
   const esSustanciaControlada = esSustanciaControladaEl?.checked === true;
 
+  const principioActivo = (STATE.modalMode === 'editar' ? $('inputPrincipioActivoEdit') : $('inputPrincipioActivo'))?.value.trim() || null;
+  const concentracion   = (STATE.modalMode === 'editar' ? $('inputConcentracionEdit')   : $('inputConcentracion'))?.value.trim() || null;
+  const presentacion    = (STATE.modalMode === 'editar' ? $('inputPresentacionEdit')    : $('inputPresentacion'))?.value.trim() || null;
+
   // Stock actual: usar el campo visible según el modo. En edición ahora
   // también es editable directamente (antes solo se podía desde
   // Movimientos especiales); ese botón se mantiene igual para bajas
@@ -3060,6 +3071,7 @@ async function guardarProducto() {
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
+        principio_activo: principioActivo, concentracion, presentacion,
         activo,
       };
       // Fecha de creación manual (producto que ya existía antes del sistema).
@@ -3115,6 +3127,7 @@ async function guardarProducto() {
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
+        principio_activo: principioActivo, concentracion, presentacion,
         activo,
       };
       // Solo tocar stock_actual para productos (los servicios no manejan stock)
