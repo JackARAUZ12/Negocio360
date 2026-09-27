@@ -393,6 +393,62 @@
     }
   }
 
+  // Editar un gasto ya registrado -- limitado a proposito a los datos
+  // descriptivos (categoria, concepto, empleado, observaciones). El
+  // monto/fecha/metodo de pago YA generaron un movimiento real en
+  // Caja -- cambiarlos aqui dejaria ese movimiento desajustado, asi
+  // que quedan de solo lectura; para corregirlos, se cancela el
+  // gasto y se registra uno nuevo (funcion que ya existia).
+  function abrirEditarGastoInmediato(id) {
+    const g = GS.gastos.find(x => x.id === id);
+    if (!g) return;
+    document.getElementById('edit-gasto-error').textContent = '';
+    document.getElementById('edit-gasto-id').value = id;
+    document.getElementById('edit-gasto-categoria').value = g.categoria;
+    document.getElementById('edit-gasto-concepto').value = g.concepto || '';
+    document.getElementById('edit-gasto-observaciones').value = g.observaciones || '';
+    const empleadoWrap = document.getElementById('edit-gasto-empleado-wrap');
+    if (g.categoria === 'Salarios' || g.empleado) {
+      empleadoWrap.style.display = 'block';
+      document.getElementById('edit-gasto-empleado').value = g.empleado || '';
+    } else {
+      empleadoWrap.style.display = 'none';
+    }
+    document.getElementById('edit-gasto-monto-ro').textContent = fmt(g.monto);
+    document.getElementById('edit-gasto-fecha-ro').textContent = fmtDate(g.fecha);
+    openModal('modal-editar-gasto');
+  }
+
+  async function guardarEdicionGasto() {
+    const errEl = document.getElementById('edit-gasto-error');
+    errEl.textContent = '';
+    const id = document.getElementById('edit-gasto-id').value;
+    const categoria = document.getElementById('edit-gasto-categoria').value;
+    const concepto = document.getElementById('edit-gasto-concepto').value.trim();
+    const observaciones = document.getElementById('edit-gasto-observaciones').value.trim();
+    const empleadoWrap = document.getElementById('edit-gasto-empleado-wrap');
+    const empleado = empleadoWrap.style.display !== 'none' ? document.getElementById('edit-gasto-empleado').value.trim() : null;
+
+    if (!concepto) { errEl.textContent = 'El concepto es obligatorio.'; return; }
+    if (empleadoWrap.style.display !== 'none' && !empleado) { errEl.textContent = 'El nombre del empleado es obligatorio.'; return; }
+
+    setBtnLoading('btn-guardar-edit-gasto', true);
+    try {
+      const { error } = await _sb.from('gastos')
+        .update({ categoria, concepto, observaciones: observaciones || null, empleado: empleado || null })
+        .eq('id', id).eq('auth_user_id', GS.userId);
+      if (error) throw error;
+      showToast('Gasto actualizado.');
+      closeModal('modal-editar-gasto');
+      await refrescarTodo();
+    } catch (e) {
+      console.error('guardarEdicionGasto:', e);
+      errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    } finally {
+      setBtnLoading('btn-guardar-edit-gasto', false);
+    }
+  }
+
   function renderGastosTable() {
     const tbody = document.getElementById('gastos-tbody');
     if (!tbody) return;
@@ -424,6 +480,9 @@
           <button class="btn-icon" onclick="verDetalleGasto('${g.id}')" title="Ver detalle">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
+          ${g.tipo==='inmediato' && g.estado!=='cancelado' ? `<button class="btn-icon" onclick="abrirEditarGastoInmediato('${g.id}')" title="Editar">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>` : ''}
           ${g.estado!=='cancelado' ? `<button class="btn-icon btn-icon-danger" onclick="confirmarCancelarGasto('${g.id}')" title="Cancelar">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>` : ''}
@@ -1056,7 +1115,7 @@
 
   function populateCategoriaSelects() {
     const todasCategorias = [...CATEGORIAS_GASTO, ...GS.categoriasPersonalizadas];
-    ['gasto-categoria','edit-prog-categoria','filtro-categoria'].forEach(id => {
+    ['gasto-categoria','edit-prog-categoria','filtro-categoria','edit-gasto-categoria'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
       const valorPrevio = sel.value;
@@ -1152,6 +1211,8 @@
   window.navigate                = navigate;
   window.onCambiarMetodoGasto    = onCambiarMetodoGasto;
   window.abrirModalNuevaCategoria = abrirModalNuevaCategoria;
+  window.abrirEditarGastoInmediato = abrirEditarGastoInmediato;
+  window.guardarEdicionGasto       = guardarEdicionGasto;
   window.guardarNuevaCategoria    = guardarNuevaCategoria;
   window.onToggleIvaGasto        = onToggleIvaGasto;
   // GS vive dentro de este IIFE, pero el modal de moneda de
