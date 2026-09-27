@@ -2887,6 +2887,11 @@ function cargarFormulario(p) {
   if ($('inputEsMateriaPrima')) $('inputEsMateriaPrima').checked = esMP;
   if ($('inputEsMateriaPrimaEdit')) $('inputEsMateriaPrimaEdit').checked = esMP;
 
+  // Sustancia controlada (Farmacia): mismo patron que materia prima
+  const esSC = p.es_sustancia_controlada === true;
+  if ($('inputEsSustanciaControlada')) $('inputEsSustanciaControlada').checked = esSC;
+  if ($('inputEsSustanciaControladaEdit')) $('inputEsSustanciaControladaEdit').checked = esSC;
+
   // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
   const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
   STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
@@ -3004,6 +3009,10 @@ async function guardarProducto() {
   const esMateriaPrimaEl = STATE.modalMode === 'editar' ? $('inputEsMateriaPrimaEdit') : $('inputEsMateriaPrima');
   const esMateriaPrima = esMateriaPrimaEl?.checked === true;
 
+  // Sustancia controlada (Farmacia): mismo patron que materia prima
+  const esSustanciaControladaEl = STATE.modalMode === 'editar' ? $('inputEsSustanciaControladaEdit') : $('inputEsSustanciaControlada');
+  const esSustanciaControlada = esSustanciaControladaEl?.checked === true;
+
   // Stock actual: usar el campo visible según el modo. En edición ahora
   // también es editable directamente (antes solo se podía desde
   // Movimientos especiales); ese botón se mantiene igual para bajas
@@ -3050,6 +3059,7 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
+        es_sustancia_controlada: esSustanciaControlada,
         activo,
       };
       // Fecha de creación manual (producto que ya existía antes del sistema).
@@ -3104,6 +3114,7 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
+        es_sustancia_controlada: esSustanciaControlada,
         activo,
       };
       // Solo tocar stock_actual para productos (los servicios no manejan stock)
