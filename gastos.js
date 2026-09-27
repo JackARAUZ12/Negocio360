@@ -45,6 +45,7 @@
     empresaConfig: {},
     currentUser:   {},
     metodosPago:   [],
+    categoriasPersonalizadas: [],
     gastos:          [],
     gastosPage:      1,
     gastosPerPage:   15,
@@ -1004,13 +1005,65 @@
     el.disabled = loading; el.style.opacity = loading ? '0.6' : '1';
   }
 
+  // Categorias personalizadas -- se combinan con la lista fija del
+  // sistema, sin reemplazarla. Cada cuenta ve las suyas propias.
+  async function cargarCategoriasPersonalizadas() {
+    try {
+      const { data, error } = await _sb.from('categorias_gasto_personalizadas')
+        .select('nombre').eq('auth_user_id', GS.userId).order('nombre');
+      if (error) throw error;
+      GS.categoriasPersonalizadas = (data || []).map(c => c.nombre);
+      populateCategoriaSelects();
+    } catch (e) {
+      console.error('cargarCategoriasPersonalizadas:', e);
+    }
+  }
+
+  function abrirModalNuevaCategoria() {
+    document.getElementById('nueva-categoria-nombre').value = '';
+    document.getElementById('nueva-categoria-error').textContent = '';
+    openModal('modal-nueva-categoria');
+  }
+
+  async function guardarNuevaCategoria() {
+    const errEl = document.getElementById('nueva-categoria-error');
+    errEl.textContent = '';
+    const nombre = document.getElementById('nueva-categoria-nombre').value.trim();
+    if (!nombre) { errEl.textContent = 'Escribe un nombre para la categoría.'; return; }
+    const todasCategorias = [...CATEGORIAS_GASTO, ...GS.categoriasPersonalizadas];
+    if (todasCategorias.some(c => c.toLowerCase() === nombre.toLowerCase())) {
+      errEl.textContent = 'Ya existe una categoría con ese nombre.'; return;
+    }
+    const btn = document.getElementById('btn-guardar-categoria');
+    setBtnLoading('btn-guardar-categoria', true);
+    try {
+      const { error } = await _sb.from('categorias_gasto_personalizadas')
+        .insert({ auth_user_id: GS.userId, nombre });
+      if (error) throw error;
+      GS.categoriasPersonalizadas.push(nombre);
+      populateCategoriaSelects();
+      document.getElementById('gasto-categoria').value = nombre; // la deja lista para usar de una vez
+      toggleCategoriaEspecial();
+      showToast(`Categoría "${nombre}" agregada.`);
+      closeModal('modal-nueva-categoria');
+    } catch (e) {
+      console.error('guardarNuevaCategoria:', e);
+      errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    } finally {
+      setBtnLoading('btn-guardar-categoria', false);
+    }
+  }
+
   function populateCategoriaSelects() {
+    const todasCategorias = [...CATEGORIAS_GASTO, ...GS.categoriasPersonalizadas];
     ['gasto-categoria','edit-prog-categoria','filtro-categoria'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
+      const valorPrevio = sel.value;
       const isFiltro = id==='filtro-categoria';
       sel.innerHTML = (isFiltro ? '<option value="">Todas las categorías</option>' : '') +
-        CATEGORIAS_GASTO.map(c=>`<option value="${c}">${c}</option>`).join('');
+        todasCategorias.map(c=>`<option value="${c}">${c}</option>`).join('');
+      if (valorPrevio && todasCategorias.includes(valorPrevio)) sel.value = valorPrevio;
     });
     ['gasto-frecuencia','edit-prog-frecuencia'].forEach(id => {
       const sel = document.getElementById(id);
@@ -1033,6 +1086,7 @@
       GS.userId = user.id; GS.userEmail = user.email;
       if (user.email) checkAdminAccess(user.email);
       await loadEmpresaConfig(user.id);
+      await cargarCategoriasPersonalizadas();
       const profile = await loadUserProfile(user.id);
       if (profile) renderUserInfo(profile, user.email);
       else {
@@ -1097,6 +1151,8 @@
   window.toggleTheme             = toggleTheme;
   window.navigate                = navigate;
   window.onCambiarMetodoGasto    = onCambiarMetodoGasto;
+  window.abrirModalNuevaCategoria = abrirModalNuevaCategoria;
+  window.guardarNuevaCategoria    = guardarNuevaCategoria;
   window.onToggleIvaGasto        = onToggleIvaGasto;
   // GS vive dentro de este IIFE, pero el modal de moneda de
   // visualizacion esta definido FUERA (al final del archivo) y

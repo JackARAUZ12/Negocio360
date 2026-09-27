@@ -1304,9 +1304,12 @@
           </div>
           <div class="form-group">
             <label>Categoría *</label>
-            <select id="gasto-categoria" onchange="toggleCategoriaEspecial()">
-              <!-- poblado por JS -->
-            </select>
+            <div style="display:flex;gap:6px">
+              <select id="gasto-categoria" onchange="toggleCategoriaEspecial()" style="flex:1">
+                <!-- poblado por JS -->
+              </select>
+              <button type="button" class="btn-secondary" style="padding:0 12px;white-space:nowrap" onclick="abrirModalNuevaCategoria()" title="Agregar una categoría nueva">+ Nueva</button>
+            </div>
           </div>
         </div>
 
@@ -1587,6 +1590,28 @@
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
       <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
       <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-nueva-categoria" onclick="if(event.target===this)closeModal('modal-nueva-categoria')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">+ Nueva categoría de gasto</span>
+      <button class="modal-close" onclick="closeModal('modal-nueva-categoria')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nombre de la categoría *</label>
+        <input type="text" id="nueva-categoria-nombre" placeholder="Ej: Papelería, Limpieza, Seguros..." maxlength="40"/>
+      </div>
+      <p id="nueva-categoria-error" style="color:var(--danger,#dc2626);font-size:12.5px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('modal-nueva-categoria')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-categoria" onclick="guardarNuevaCategoria()">Guardar categoría</button>
     </div>
   </div>
 </div>
