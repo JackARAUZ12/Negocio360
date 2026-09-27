@@ -129,6 +129,11 @@ document.addEventListener('DOMContentLoaded', () => {
    CONTROL DE SUSTANCIAS -- registro de venta de
    medicamentos controlados: quien compro que, y cuando.
 ===================================================== */
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 async function cargarRegistros() {
   const tbody = document.getElementById('rsc-tbody');
   try {
