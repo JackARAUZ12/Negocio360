@@ -430,7 +430,7 @@ async function guardarNuevoRegistro() {
     // Ventas y Contabilidad la levante igual que cualquier otra.
     const { data: ventaNueva, error: errVenta } = await sb.from('ventas').insert({
       auth_user_id: STATE.userId, fecha, subtotal, descuento: 0, impuesto: 0,
-      total: subtotal, costo_total: costoTotal, ganancia,
+      total: subtotal, costo_total: costoTotal,
       metodo_pago: metodoNombre, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
       estado_pago: 'pagado', estado: 'completada', categoria: 'Sustancia controlada',
       cliente_nombre: compradorNombre,
