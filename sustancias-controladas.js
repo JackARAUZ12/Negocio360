@@ -217,6 +217,8 @@ function abrirModalNuevoRegistro() {
   document.getElementById('rsc-producto-nombre').value = '';
   document.getElementById('rsc-resultados-producto').style.display = 'none';
   document.getElementById('rsc-cantidad').value = '';
+  document.getElementById('rsc-precio-unitario').value = '';
+  document.getElementById('rsc-precio-hint').style.display = 'none';
   document.getElementById('rsc-fecha').value = todayISO();
   document.getElementById('rsc-comprador-nombre').value = '';
   document.getElementById('rsc-comprador-documento').value = '';
@@ -238,35 +240,53 @@ function buscarProductoControlado(q) {
   if (q.trim().length < 1) { cont.style.display = 'none'; return; }
   _timeoutBuscarRSC = setTimeout(async () => {
     try {
-      const { data } = await sb.from('productos').select('id,nombre,precio,costo,stock_actual')
+      const { data } = await sb.from('productos').select('id,nombre,precio,costo,stock_actual,tipo_precio')
         .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_sustancia_controlada', true)
         .ilike('nombre', `%${q}%`).limit(8);
       const lista = data || [];
       STATE._productosControladosCache = STATE._productosControladosCache || {};
       lista.forEach(p => { STATE._productosControladosCache[p.id] = p; });
       cont.innerHTML = lista.length
-        ? lista.map(p => `<div class="search-result-item" style="padding:8px 10px;cursor:pointer" onclick="seleccionarProductoControlado('${p.id}','${esc(p.nombre).replace(/'/g,"\\'")}')">${esc(p.nombre)} — ${fmtNumLote(p.precio)}</div>`).join('')
+        ? lista.map(p => `<div class="search-result-item" style="padding:8px 10px;cursor:pointer" onclick="seleccionarProductoControlado('${p.id}')">${esc(p.nombre)} — ${p.tipo_precio === 'escala' ? 'escala de precios' : fmtNumLote(p.precio)}</div>`).join('')
         : '<div style="padding:8px 10px;color:var(--text-muted);font-size:12.5px">Sin resultados -- solo aparecen productos marcados como sustancia controlada.</div>';
       cont.style.display = 'block';
     } catch (e) { console.error('buscarProductoControlado:', e); }
   }, 250);
 }
 
-function seleccionarProductoControlado(id, nombre) {
+async function seleccionarProductoControlado(id) {
+  const prod = STATE._productosControladosCache?.[id];
+  if (!prod) return;
   document.getElementById('rsc-producto-id').value = id;
-  document.getElementById('rsc-producto-nombre').value = nombre;
-  document.getElementById('rsc-buscar-producto').value = nombre;
+  document.getElementById('rsc-producto-nombre').value = prod.nombre;
+  document.getElementById('rsc-buscar-producto').value = prod.nombre;
   document.getElementById('rsc-resultados-producto').style.display = 'none';
+
+  const hint = document.getElementById('rsc-precio-hint');
+  const inputPrecio = document.getElementById('rsc-precio-unitario');
+  if (prod.tipo_precio === 'escala') {
+    // Sin precio fijo -- se trae la primera escala (la de menor
+    // "orden", normalmente la unidad individual) como sugerencia,
+    // pero el campo queda editable por si aplica otra.
+    try {
+      const { data } = await sb.from('precios_escala').select('precio').eq('producto_id', id).order('orden').limit(1).maybeSingle();
+      inputPrecio.value = data?.precio ?? '';
+    } catch (e) { console.warn('seleccionarProductoControlado, escala:', e); inputPrecio.value = ''; }
+    hint.style.display = 'block';
+  } else {
+    inputPrecio.value = prod.precio ?? 0;
+    hint.style.display = 'none';
+  }
   actualizarTotalCobrarRSC();
 }
 
 function actualizarTotalCobrarRSC() {
   const id = document.getElementById('rsc-producto-id').value;
-  const prod = STATE._productosControladosCache?.[id];
   const wrap = document.getElementById('rsc-resumen-cobro');
-  if (!prod) { wrap.style.display = 'none'; return; }
+  if (!id) { wrap.style.display = 'none'; return; }
   const cantidad = parseFloat(document.getElementById('rsc-cantidad').value) || 0;
-  const total = round2(Number(prod.precio || 0) * cantidad);
+  const precio = parseFloat(document.getElementById('rsc-precio-unitario').value) || 0;
+  const total = round2(precio * cantidad);
   document.getElementById('rsc-total-cobrar').textContent = fmtNumLote(total);
   wrap.style.display = 'flex';
 }
@@ -291,6 +311,7 @@ async function guardarNuevoRegistro() {
   const productoId = document.getElementById('rsc-producto-id').value;
   const productoNombre = document.getElementById('rsc-producto-nombre').value;
   const cantidad = parseFloat(document.getElementById('rsc-cantidad').value);
+  const precioUnitario = parseFloat(document.getElementById('rsc-precio-unitario').value);
   const fecha = document.getElementById('rsc-fecha').value;
   const compradorNombre = document.getElementById('rsc-comprador-nombre').value.trim();
   const compradorDocumento = document.getElementById('rsc-comprador-documento').value.trim();
@@ -301,6 +322,7 @@ async function guardarNuevoRegistro() {
 
   if (!productoId) { errEl.textContent = 'Elige un producto de la lista.'; return; }
   if (!cantidad || cantidad <= 0) { errEl.textContent = 'La cantidad debe ser mayor que 0.'; return; }
+  if (isNaN(precioUnitario) || precioUnitario <= 0) { errEl.textContent = 'El precio unitario debe ser mayor que 0.'; return; }
   if (!fecha) { errEl.textContent = 'La fecha es obligatoria.'; return; }
   if (!compradorNombre) { errEl.textContent = 'El nombre del comprador es obligatorio.'; return; }
 
@@ -311,7 +333,7 @@ async function guardarNuevoRegistro() {
   const btn = document.getElementById('rsc-btn-guardar');
   btn.disabled = true;
   try {
-    const precio = Number(prod.precio || 0);
+    const precio = precioUnitario;
     const costo = Number(prod.costo || 0);
     const subtotal = round2(precio * cantidad);
     const costoTotal = round2(costo * cantidad);
