@@ -218,7 +218,8 @@ function abrirModalNuevoRegistro() {
   document.getElementById('rsc-resultados-producto').style.display = 'none';
   document.getElementById('rsc-cantidad').value = '';
   document.getElementById('rsc-precio-unitario').value = '';
-  document.getElementById('rsc-precio-hint').style.display = 'none';
+  document.getElementById('rsc-precio-escala').style.display = 'none';
+  document.getElementById('rsc-precio-unitario').style.display = 'block';
   document.getElementById('rsc-fecha').value = todayISO();
   document.getElementById('rsc-comprador-nombre').value = '';
   document.getElementById('rsc-comprador-documento').value = '';
@@ -262,20 +263,27 @@ async function seleccionarProductoControlado(id) {
   document.getElementById('rsc-buscar-producto').value = prod.nombre;
   document.getElementById('rsc-resultados-producto').style.display = 'none';
 
-  const hint = document.getElementById('rsc-precio-hint');
   const inputPrecio = document.getElementById('rsc-precio-unitario');
+  const selectEscala = document.getElementById('rsc-precio-escala');
   if (prod.tipo_precio === 'escala') {
-    // Sin precio fijo -- se trae la primera escala (la de menor
-    // "orden", normalmente la unidad individual) como sugerencia,
-    // pero el campo queda editable por si aplica otra.
+    // Mismo patron que el selector de escala de Ventas -- se muestran
+    // TODAS las opciones para elegir, no se asume ninguna por defecto.
     try {
-      const { data } = await sb.from('precios_escala').select('precio').eq('producto_id', id).order('orden').limit(1).maybeSingle();
-      inputPrecio.value = data?.precio ?? '';
-    } catch (e) { console.warn('seleccionarProductoControlado, escala:', e); inputPrecio.value = ''; }
-    hint.style.display = 'block';
+      const { data } = await sb.from('precios_escala').select('id,nombre,precio').eq('producto_id', id).order('orden');
+      const escalas = data || [];
+      selectEscala.innerHTML = escalas.length
+        ? escalas.map((e,i) => `<option value="${e.precio}" ${i===0?'selected':''}>${esc(e.nombre)} — ${fmtNumLote(e.precio)}</option>`).join('')
+        : '<option value="0">Sin precios de escala configurados</option>';
+    } catch (e) {
+      console.warn('seleccionarProductoControlado, escala:', e);
+      selectEscala.innerHTML = '<option value="0">No se pudo cargar la escala</option>';
+    }
+    inputPrecio.style.display = 'none';
+    selectEscala.style.display = 'block';
   } else {
     inputPrecio.value = prod.precio ?? 0;
-    hint.style.display = 'none';
+    inputPrecio.style.display = 'block';
+    selectEscala.style.display = 'none';
   }
   actualizarTotalCobrarRSC();
 }
@@ -285,7 +293,10 @@ function actualizarTotalCobrarRSC() {
   const wrap = document.getElementById('rsc-resumen-cobro');
   if (!id) { wrap.style.display = 'none'; return; }
   const cantidad = parseFloat(document.getElementById('rsc-cantidad').value) || 0;
-  const precio = parseFloat(document.getElementById('rsc-precio-unitario').value) || 0;
+  const selectEscala = document.getElementById('rsc-precio-escala');
+  const precio = selectEscala.style.display !== 'none'
+    ? parseFloat(selectEscala.value) || 0
+    : parseFloat(document.getElementById('rsc-precio-unitario').value) || 0;
   const total = round2(precio * cantidad);
   document.getElementById('rsc-total-cobrar').textContent = fmtNumLote(total);
   wrap.style.display = 'flex';
@@ -311,7 +322,10 @@ async function guardarNuevoRegistro() {
   const productoId = document.getElementById('rsc-producto-id').value;
   const productoNombre = document.getElementById('rsc-producto-nombre').value;
   const cantidad = parseFloat(document.getElementById('rsc-cantidad').value);
-  const precioUnitario = parseFloat(document.getElementById('rsc-precio-unitario').value);
+  const selectEscalaRSC = document.getElementById('rsc-precio-escala');
+  const precioUnitario = selectEscalaRSC.style.display !== 'none'
+    ? parseFloat(selectEscalaRSC.value)
+    : parseFloat(document.getElementById('rsc-precio-unitario').value);
   const fecha = document.getElementById('rsc-fecha').value;
   const compradorNombre = document.getElementById('rsc-comprador-nombre').value.trim();
   const compradorDocumento = document.getElementById('rsc-comprador-documento').value.trim();
