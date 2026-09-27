@@ -134,6 +134,9 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+// Cantidad de unidades (no dinero) -- para eso ya existe fmt(), la
+// funcion real de moneda que trae este mismo shell.
+function fmtCantidad(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
 
 async function cargarRegistros() {
   const tbody = document.getElementById('rsc-tbody');
@@ -175,7 +178,7 @@ function renderRegistros() {
     <tr>
       <td>${r.fecha}</td>
       <td>${esc(r.producto_nombre)}</td>
-      <td>${fmtNumLote(r.cantidad)}</td>
+      <td>${fmtCantidad(r.cantidad)}</td>
       <td>${esc(r.comprador_nombre)}</td>
       <td>${r.comprador_documento ? esc(r.comprador_documento) : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td><button class="btn-accion-tabla btn-ghost" onclick="eliminarRegistroRSC('${r.id}')">🗑️ Eliminar</button></td>
@@ -248,7 +251,7 @@ function buscarProductoControlado(q) {
       STATE._productosControladosCache = STATE._productosControladosCache || {};
       lista.forEach(p => { STATE._productosControladosCache[p.id] = p; });
       cont.innerHTML = lista.length
-        ? lista.map(p => `<div class="search-result-item" style="padding:8px 10px;cursor:pointer" onclick="seleccionarProductoControlado('${p.id}')">${esc(p.nombre)} — ${p.tipo_precio === 'escala' ? 'escala de precios' : fmtNumLote(p.precio)}</div>`).join('')
+        ? lista.map(p => `<div class="search-result-item" style="padding:8px 10px;cursor:pointer" onclick="seleccionarProductoControlado('${p.id}')">${esc(p.nombre)} — ${p.tipo_precio === 'escala' ? 'escala de precios' : fmt(p.precio)}</div>`).join('')
         : '<div style="padding:8px 10px;color:var(--text-muted);font-size:12.5px">Sin resultados -- solo aparecen productos marcados como sustancia controlada.</div>';
       cont.style.display = 'block';
     } catch (e) { console.error('buscarProductoControlado:', e); }
@@ -296,7 +299,7 @@ async function abrirSelectorEscalaRSC() {
         <label class="esc-precio-opcion">
           <input type="radio" name="esc-rsc-radio" value="${e.id}" ${i===0?'checked':''}/>
           <span class="esc-precio-nombre">${esc(e.nombre)}</span>
-          <span class="esc-precio-valor">${fmtNumLote(e.precio)}</span>
+          <span class="esc-precio-valor">${fmt(e.precio)}</span>
         </label>`).join('')
       : '<p style="font-size:12.5px;color:var(--text-muted)">Este producto no tiene precios de escala configurados.</p>';
   } catch (e) {
@@ -322,7 +325,7 @@ function confirmarSeleccionEscalaRSC() {
   const escala = (STATE._escalasCacheRSC || []).find(e => e.id === radio.value);
   if (!escala) return;
   STATE._precioElegidoRSC = Number(escala.precio);
-  document.getElementById('rsc-precio-escala-label').value = `${escala.nombre} — ${fmtNumLote(escala.precio)}`;
+  document.getElementById('rsc-precio-escala-label').value = `${escala.nombre} — ${fmt(escala.precio)}`;
   document.getElementById('modal-escala-rsc').style.display = 'none';
   actualizarTotalCobrarRSC();
 }
@@ -337,7 +340,7 @@ function actualizarTotalCobrarRSC() {
     ? (STATE._precioElegidoRSC || 0)
     : parseFloat(document.getElementById('rsc-precio-unitario').value) || 0;
   const total = round2(precio * cantidad);
-  document.getElementById('rsc-total-cobrar').textContent = fmtNumLote(total);
+  document.getElementById('rsc-total-cobrar').textContent = fmt(total);
   wrap.style.display = 'flex';
 }
 
