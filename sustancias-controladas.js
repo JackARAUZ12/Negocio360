@@ -133,6 +133,7 @@ function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
 
 async function cargarRegistros() {
   const tbody = document.getElementById('rsc-tbody');
@@ -220,6 +221,8 @@ function abrirModalNuevoRegistro() {
   document.getElementById('rsc-comprador-nombre').value = '';
   document.getElementById('rsc-comprador-documento').value = '';
   document.getElementById('rsc-receta-numero').value = '';
+  document.getElementById('rsc-resumen-cobro').style.display = 'none';
+  cargarMetodosPagoRSC();
   document.getElementById('modal-nuevo-registro').style.display = 'flex';
 }
 
@@ -235,12 +238,14 @@ function buscarProductoControlado(q) {
   if (q.trim().length < 1) { cont.style.display = 'none'; return; }
   _timeoutBuscarRSC = setTimeout(async () => {
     try {
-      const { data } = await sb.from('productos').select('id,nombre')
+      const { data } = await sb.from('productos').select('id,nombre,precio,costo,stock_actual')
         .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_sustancia_controlada', true)
         .ilike('nombre', `%${q}%`).limit(8);
       const lista = data || [];
+      STATE._productosControladosCache = STATE._productosControladosCache || {};
+      lista.forEach(p => { STATE._productosControladosCache[p.id] = p; });
       cont.innerHTML = lista.length
-        ? lista.map(p => `<div class="search-result-item" style="padding:8px 10px;cursor:pointer" onclick="seleccionarProductoControlado('${p.id}','${esc(p.nombre).replace(/'/g,"\\'")}')">${esc(p.nombre)}</div>`).join('')
+        ? lista.map(p => `<div class="search-result-item" style="padding:8px 10px;cursor:pointer" onclick="seleccionarProductoControlado('${p.id}','${esc(p.nombre).replace(/'/g,"\\'")}')">${esc(p.nombre)} — ${fmtNumLote(p.precio)}</div>`).join('')
         : '<div style="padding:8px 10px;color:var(--text-muted);font-size:12.5px">Sin resultados -- solo aparecen productos marcados como sustancia controlada.</div>';
       cont.style.display = 'block';
     } catch (e) { console.error('buscarProductoControlado:', e); }
@@ -252,6 +257,32 @@ function seleccionarProductoControlado(id, nombre) {
   document.getElementById('rsc-producto-nombre').value = nombre;
   document.getElementById('rsc-buscar-producto').value = nombre;
   document.getElementById('rsc-resultados-producto').style.display = 'none';
+  actualizarTotalCobrarRSC();
+}
+
+function actualizarTotalCobrarRSC() {
+  const id = document.getElementById('rsc-producto-id').value;
+  const prod = STATE._productosControladosCache?.[id];
+  const wrap = document.getElementById('rsc-resumen-cobro');
+  if (!prod) { wrap.style.display = 'none'; return; }
+  const cantidad = parseFloat(document.getElementById('rsc-cantidad').value) || 0;
+  const total = round2(Number(prod.precio || 0) * cantidad);
+  document.getElementById('rsc-total-cobrar').textContent = fmtNumLote(total);
+  wrap.style.display = 'flex';
+}
+
+async function cargarMetodosPagoRSC() {
+  const sel = document.getElementById('rsc-metodo-pago');
+  try {
+    const { data } = await sb.from('metodos_pago').select('id,nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const lista = data || [];
+    sel.innerHTML = lista.length
+      ? lista.map(m => `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('')
+      : '<option value="">Efectivo</option>';
+  } catch (e) {
+    console.warn('cargarMetodosPagoRSC:', e);
+    sel.innerHTML = '<option value="">Efectivo</option>';
+  }
 }
 
 async function guardarNuevoRegistro() {
@@ -264,22 +295,80 @@ async function guardarNuevoRegistro() {
   const compradorNombre = document.getElementById('rsc-comprador-nombre').value.trim();
   const compradorDocumento = document.getElementById('rsc-comprador-documento').value.trim();
   const recetaNumero = document.getElementById('rsc-receta-numero').value.trim();
+  const selMetodo = document.getElementById('rsc-metodo-pago');
+  const metodoId = selMetodo?.value || null;
+  const metodoNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
 
   if (!productoId) { errEl.textContent = 'Elige un producto de la lista.'; return; }
   if (!cantidad || cantidad <= 0) { errEl.textContent = 'La cantidad debe ser mayor que 0.'; return; }
   if (!fecha) { errEl.textContent = 'La fecha es obligatoria.'; return; }
   if (!compradorNombre) { errEl.textContent = 'El nombre del comprador es obligatorio.'; return; }
 
+  const prod = STATE._productosControladosCache?.[productoId];
+  if (!prod) { errEl.textContent = 'Vuelve a elegir el producto de la lista.'; return; }
+  if (cantidad > Number(prod.stock_actual || 0)) { errEl.textContent = `Solo hay ${prod.stock_actual} en stock.`; return; }
+
   const btn = document.getElementById('rsc-btn-guardar');
   btn.disabled = true;
   try {
+    const precio = Number(prod.precio || 0);
+    const costo = Number(prod.costo || 0);
+    const subtotal = round2(precio * cantidad);
+    const costoTotal = round2(costo * cantidad);
+    const ganancia = round2(subtotal - costoTotal);
+
+    // 1) La venta real -- este producto NUNCA se vende desde Ventas
+    // (se bloquea ahi), asi que el UNICO punto de venta real para
+    // sustancias controladas es este modulo. Se crea igual que
+    // cualquier venta normal, para que aparezca en el historial de
+    // Ventas y Contabilidad la levante igual que cualquier otra.
+    const { data: ventaNueva, error: errVenta } = await sb.from('ventas').insert({
+      auth_user_id: STATE.userId, fecha, subtotal, descuento: 0, impuesto: 0,
+      total: subtotal, costo_total: costoTotal, ganancia,
+      metodo_pago: metodoNombre, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      estado_pago: 'pagado', estado: 'completada', categoria: 'Sustancia controlada',
+      cliente_nombre: compradorNombre,
+      observaciones: `Venta controlada — Farmacia${recetaNumero ? ` — Receta ${recetaNumero}` : ''}`,
+    }).select('id').single();
+    if (errVenta) throw errVenta;
+    const ventaId = ventaNueva.id;
+
+    // 2) El detalle -- una sola linea, el producto controlado
+    await sb.from('venta_detalles').insert({
+      venta_id: ventaId, auth_user_id: STATE.userId, producto_id: productoId,
+      producto_nombre: productoNombre, tipo_item: 'producto',
+      cantidad, precio, costo, descuento: 0, subtotal, ganancia,
+    });
+
+    // 3) Caja -- mismo mecanismo ya usado en el resto del sistema:
+    // se calcula el saldo real (ultimo movimiento + este ingreso).
+    const { data: ultMov } = await sb.from('movimientos_financieros')
+      .select('saldo_resultante').eq('auth_user_id', STATE.userId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+    const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
+      concepto: `Venta controlada — ${productoNombre}`, monto: subtotal,
+      saldo_anterior: saldoAnt, saldo_resultante: round2(saldoAnt + subtotal),
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      referencia_tipo: 'venta', referencia_id: ventaId, fecha,
+    }).select('id').single();
+    if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+
+    // 4) Descontar stock real del producto
+    await sb.from('productos').update({ stock_actual: round2(Number(prod.stock_actual) - cantidad) }).eq('id', productoId);
+
+    // 5) El registro de cumplimiento (quien compro que), ligado a la
+    // venta real recien creada.
     const { error } = await sb.from('registro_sustancias_controladas').insert({
       auth_user_id: STATE.userId, producto_id: productoId, producto_nombre: productoNombre,
       cantidad, fecha, comprador_nombre: compradorNombre,
       comprador_documento: compradorDocumento || null, receta_numero: recetaNumero || null,
+      venta_id: ventaId,
     });
     if (error) throw error;
-    showToast('Registro guardado correctamente.', 'success');
+
+    showToast('Venta registrada correctamente.', 'success');
     cerrarModalNuevoRegistro();
     await cargarRegistros();
   } catch (e) {

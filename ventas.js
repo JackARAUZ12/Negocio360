@@ -1072,9 +1072,13 @@ async function loadMetodosPago() {
    ============================================================ */
 async function loadProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida')
+    // Un producto marcado "es_sustancia_controlada" (Farmacia) NUNCA
+    // se vende desde aqui -- solo desde Farmacia > Control de
+    // Sustancias, que crea la venta real por su cuenta y ya aparece
+    // en el historial de Ventas igual que cualquier otra.
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
-    const productos = data || [];
+    const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
     // Combos: se agregan al MISMO catálogo de búsqueda/carrito que los
     // productos — con tipo:'producto' para que las validaciones de stock

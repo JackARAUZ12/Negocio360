@@ -1431,7 +1431,7 @@
       <div style="display:flex;gap:10px">
         <div style="flex:1">
           <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Cantidad *</label>
-          <input type="number" id="rsc-cantidad" min="0.01" step="0.01" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+          <input type="number" id="rsc-cantidad" min="0.01" step="0.01" oninput="actualizarTotalCobrarRSC()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
         </div>
         <div style="flex:1">
           <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Fecha *</label>
@@ -1451,6 +1451,13 @@
           <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">N.° de receta (opcional)</label>
           <input type="text" id="rsc-receta-numero" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
         </div>
+      </div>
+      <div>
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Método de pago</label>
+        <select id="rsc-metodo-pago" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"></select>
+      </div>
+      <div id="rsc-resumen-cobro" style="display:none;background:var(--bg-app);border-radius:8px;padding:10px 12px;font-size:13px;justify-content:space-between;font-weight:700">
+        <span>Total a cobrar</span><span id="rsc-total-cobrar">C$ 0.00</span>
       </div>
       <p id="rsc-error" style="color:var(--danger,#dc2626);font-size:12.5px"></p>
     </div>
