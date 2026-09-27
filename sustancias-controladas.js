@@ -218,7 +218,7 @@ function abrirModalNuevoRegistro() {
   document.getElementById('rsc-resultados-producto').style.display = 'none';
   document.getElementById('rsc-cantidad').value = '';
   document.getElementById('rsc-precio-unitario').value = '';
-  document.getElementById('rsc-precio-escala').style.display = 'none';
+  document.getElementById('rsc-wrap-precio-escala').style.display = 'none';
   document.getElementById('rsc-precio-unitario').style.display = 'block';
   document.getElementById('rsc-fecha').value = todayISO();
   document.getElementById('rsc-comprador-nombre').value = '';
@@ -264,27 +264,66 @@ async function seleccionarProductoControlado(id) {
   document.getElementById('rsc-resultados-producto').style.display = 'none';
 
   const inputPrecio = document.getElementById('rsc-precio-unitario');
-  const selectEscala = document.getElementById('rsc-precio-escala');
+  const wrapEscala = document.getElementById('rsc-wrap-precio-escala');
   if (prod.tipo_precio === 'escala') {
-    // Mismo patron que el selector de escala de Ventas -- se muestran
-    // TODAS las opciones para elegir, no se asume ninguna por defecto.
-    try {
-      const { data } = await sb.from('precios_escala').select('id,nombre,precio').eq('producto_id', id).order('orden');
-      const escalas = data || [];
-      selectEscala.innerHTML = escalas.length
-        ? escalas.map((e,i) => `<option value="${e.precio}" ${i===0?'selected':''}>${esc(e.nombre)} — ${fmtNumLote(e.precio)}</option>`).join('')
-        : '<option value="0">Sin precios de escala configurados</option>';
-    } catch (e) {
-      console.warn('seleccionarProductoControlado, escala:', e);
-      selectEscala.innerHTML = '<option value="0">No se pudo cargar la escala</option>';
-    }
     inputPrecio.style.display = 'none';
-    selectEscala.style.display = 'block';
+    wrapEscala.style.display = 'flex';
+    STATE._precioElegidoRSC = null;
+    await abrirSelectorEscalaRSC(); // igual que en Ventas: se pregunta de una vez, no se asume ninguna
   } else {
     inputPrecio.value = prod.precio ?? 0;
     inputPrecio.style.display = 'block';
-    selectEscala.style.display = 'none';
+    wrapEscala.style.display = 'none';
+    STATE._precioElegidoRSC = null;
   }
+  actualizarTotalCobrarRSC();
+}
+
+// ---- Selector de escala -- mismo patron/modal que usa Ventas ----
+async function abrirSelectorEscalaRSC() {
+  const id = document.getElementById('rsc-producto-id').value;
+  const prod = STATE._productosControladosCache?.[id];
+  if (!prod) return;
+  document.getElementById('esc-rsc-title').textContent = prod.nombre;
+  const lista = document.getElementById('esc-rsc-lista');
+  lista.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted)">Cargando…</p>';
+  document.getElementById('modal-escala-rsc').style.display = 'flex';
+  try {
+    const { data } = await sb.from('precios_escala').select('id,nombre,precio').eq('producto_id', id).order('orden');
+    STATE._escalasCacheRSC = data || [];
+    lista.innerHTML = STATE._escalasCacheRSC.length
+      ? STATE._escalasCacheRSC.map((e,i) => `
+        <label class="esc-precio-opcion">
+          <input type="radio" name="esc-rsc-radio" value="${e.id}" ${i===0?'checked':''}/>
+          <span class="esc-precio-nombre">${esc(e.nombre)}</span>
+          <span class="esc-precio-valor">${fmtNumLote(e.precio)}</span>
+        </label>`).join('')
+      : '<p style="font-size:12.5px;color:var(--text-muted)">Este producto no tiene precios de escala configurados.</p>';
+  } catch (e) {
+    console.error('abrirSelectorEscalaRSC:', e);
+    lista.innerHTML = '<p style="font-size:12.5px;color:var(--danger,#dc2626)">No se pudo cargar la escala.</p>';
+  }
+}
+
+function cerrarSelectorEscalaRSC() {
+  document.getElementById('modal-escala-rsc').style.display = 'none';
+  // Si nunca eligio nada (cerro sin confirmar la primera vez), no
+  // deja el formulario a medias -- se limpia el producto elegido.
+  if (!STATE._precioElegidoRSC) {
+    document.getElementById('rsc-producto-id').value = '';
+    document.getElementById('rsc-wrap-precio-escala').style.display = 'none';
+    actualizarTotalCobrarRSC();
+  }
+}
+
+function confirmarSeleccionEscalaRSC() {
+  const radio = document.querySelector('input[name="esc-rsc-radio"]:checked');
+  if (!radio) { showToast('Selecciona un precio', 'error'); return; }
+  const escala = (STATE._escalasCacheRSC || []).find(e => e.id === radio.value);
+  if (!escala) return;
+  STATE._precioElegidoRSC = Number(escala.precio);
+  document.getElementById('rsc-precio-escala-label').value = `${escala.nombre} — ${fmtNumLote(escala.precio)}`;
+  document.getElementById('modal-escala-rsc').style.display = 'none';
   actualizarTotalCobrarRSC();
 }
 
@@ -293,9 +332,9 @@ function actualizarTotalCobrarRSC() {
   const wrap = document.getElementById('rsc-resumen-cobro');
   if (!id) { wrap.style.display = 'none'; return; }
   const cantidad = parseFloat(document.getElementById('rsc-cantidad').value) || 0;
-  const selectEscala = document.getElementById('rsc-precio-escala');
-  const precio = selectEscala.style.display !== 'none'
-    ? parseFloat(selectEscala.value) || 0
+  const wrapEscala = document.getElementById('rsc-wrap-precio-escala');
+  const precio = wrapEscala.style.display !== 'none'
+    ? (STATE._precioElegidoRSC || 0)
     : parseFloat(document.getElementById('rsc-precio-unitario').value) || 0;
   const total = round2(precio * cantidad);
   document.getElementById('rsc-total-cobrar').textContent = fmtNumLote(total);
@@ -322,9 +361,9 @@ async function guardarNuevoRegistro() {
   const productoId = document.getElementById('rsc-producto-id').value;
   const productoNombre = document.getElementById('rsc-producto-nombre').value;
   const cantidad = parseFloat(document.getElementById('rsc-cantidad').value);
-  const selectEscalaRSC = document.getElementById('rsc-precio-escala');
-  const precioUnitario = selectEscalaRSC.style.display !== 'none'
-    ? parseFloat(selectEscalaRSC.value)
+  const wrapEscalaRSC = document.getElementById('rsc-wrap-precio-escala');
+  const precioUnitario = wrapEscalaRSC.style.display !== 'none'
+    ? (STATE._precioElegidoRSC || NaN)
     : parseFloat(document.getElementById('rsc-precio-unitario').value);
   const fecha = document.getElementById('rsc-fecha').value;
   const compradorNombre = document.getElementById('rsc-comprador-nombre').value.trim();
