@@ -356,6 +356,31 @@ async function cargarMetodosPagoRSC() {
     console.warn('cargarMetodosPagoRSC:', e);
     sel.innerHTML = '<option value="">Efectivo</option>';
   }
+  try {
+    const { data: bancosData } = await sb.from('bancos').select('id,nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE._bancosRSC = bancosData || [];
+  } catch (e) {
+    console.warn('cargarMetodosPagoRSC, bancos:', e);
+    STATE._bancosRSC = [];
+  }
+  onCambiarMetodoRSC();
+}
+
+// Mismo patron ya usado en Gastos/Compras: solo pide banco si el
+// metodo elegido es Tarjeta o Transferencia, y la cuenta ya tiene
+// bancos creados -- si no, se comporta igual que siempre (sin banco).
+function onCambiarMetodoRSC() {
+  const metodoSel = document.getElementById('rsc-metodo-pago');
+  const wrap = document.getElementById('rsc-banco-wrap');
+  const bancoSel = document.getElementById('rsc-banco');
+  if (!metodoSel || !wrap || !bancoSel) return;
+  const metodoNombre = (metodoSel.selectedOptions[0]?.textContent || '').toLowerCase();
+  const bancos = STATE._bancosRSC || [];
+  const necesitaBanco = (metodoNombre.includes('tarjeta') || metodoNombre.includes('transferencia')) && bancos.length > 0;
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+  bancoSel.innerHTML = '<option value="">Selecciona un banco...</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = 'block';
 }
 
 async function guardarNuevoRegistro() {
@@ -375,12 +400,15 @@ async function guardarNuevoRegistro() {
   const selMetodo = document.getElementById('rsc-metodo-pago');
   const metodoId = selMetodo?.value || null;
   const metodoNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const bancoWrap = document.getElementById('rsc-banco-wrap');
+  const bancoId = bancoWrap.style.display !== 'none' ? document.getElementById('rsc-banco').value : null;
 
   if (!productoId) { errEl.textContent = 'Elige un producto de la lista.'; return; }
   if (!cantidad || cantidad <= 0) { errEl.textContent = 'La cantidad debe ser mayor que 0.'; return; }
   if (isNaN(precioUnitario) || precioUnitario <= 0) { errEl.textContent = 'El precio unitario debe ser mayor que 0.'; return; }
   if (!fecha) { errEl.textContent = 'La fecha es obligatoria.'; return; }
   if (!compradorNombre) { errEl.textContent = 'El nombre del comprador es obligatorio.'; return; }
+  if (bancoWrap.style.display !== 'none' && !bancoId) { errEl.textContent = 'Indica de qué banco entra el dinero.'; return; }
 
   const prod = STATE._productosControladosCache?.[productoId];
   if (!prod) { errEl.textContent = 'Vuelve a elegir el producto de la lista.'; return; }
@@ -428,7 +456,7 @@ async function guardarNuevoRegistro() {
       auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
       concepto: `Venta controlada — ${productoNombre}`, monto: subtotal,
       saldo_anterior: saldoAnt, saldo_resultante: round2(saldoAnt + subtotal),
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       referencia_tipo: 'venta', referencia_id: ventaId, fecha,
     }).select('id').single();
     if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);

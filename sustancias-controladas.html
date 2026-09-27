@@ -1473,7 +1473,11 @@
       </div>
       <div>
         <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Método de pago</label>
-        <select id="rsc-metodo-pago" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"></select>
+        <select id="rsc-metodo-pago" onchange="onCambiarMetodoRSC()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"></select>
+      </div>
+      <div id="rsc-banco-wrap" style="display:none">
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Banco *</label>
+        <select id="rsc-banco" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"></select>
       </div>
       <div id="rsc-resumen-cobro" style="display:none;background:var(--bg-app);border-radius:8px;padding:10px 12px;font-size:13px;justify-content:space-between;font-weight:700">
         <span>Total a cobrar</span><span id="rsc-total-cobrar">C$ 0.00</span>
