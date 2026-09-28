@@ -186,12 +186,28 @@ async function cargarOpcionesConsultaProducto() {
 function renderListaProductosConsulta(lista) {
   const cont = document.getElementById('cpu-lista-productos');
   if (!cont) return;
+  _ULTIMA_LISTA_CONSULTA = lista; // para que "Marcar todos" sepa cuales son
   if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px;margin:2px 0">Sin productos que coincidan</p>'; return; }
-  cont.innerHTML = lista.map(p => `
+  const todosMarcados = lista.every(p => PRODUCTOS_SELECCIONADOS_CONSULTA.has(p.id));
+  cont.innerHTML = `
+    <label style="display:flex;align-items:center;gap:7px;padding:3px 0 7px;font-size:12.5px;cursor:pointer;font-weight:600;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:4px">
+      <input type="checkbox" ${todosMarcados ? 'checked' : ''} onchange="marcarTodosProductosConsulta(this.checked)"/>
+      <span>Marcar los ${lista.length} que aparecen aquí</span>
+    </label>` +
+    lista.map(p => `
     <label style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:13px;cursor:pointer">
       <input type="checkbox" value="${p.id}" ${PRODUCTOS_SELECCIONADOS_CONSULTA.has(p.id) ? 'checked' : ''} onchange="toggleProductoConsulta('${p.id}', this.checked)"/>
       <span>${esc(p.nombre)}</span>
     </label>`).join('');
+}
+
+let _ULTIMA_LISTA_CONSULTA = [];
+function marcarTodosProductosConsulta(marcarTodos) {
+  _ULTIMA_LISTA_CONSULTA.forEach(p => {
+    if (marcarTodos) PRODUCTOS_SELECCIONADOS_CONSULTA.add(p.id);
+    else PRODUCTOS_SELECCIONADOS_CONSULTA.delete(p.id);
+  });
+  renderListaProductosConsulta(_ULTIMA_LISTA_CONSULTA);
 }
 
 // El check se guarda aparte (no solo en el DOM) para que no se
