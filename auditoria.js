@@ -172,7 +172,11 @@ async function cargarOpcionesConsultaProducto() {
 
     const { data: perfiles } = await sbClient.from('perfiles_acceso')
       .select('nombre').eq('auth_user_id', STATE.userId).eq('activo', true);
-    const nombres = [...new Set((perfiles||[]).map(p => p.nombre).filter(Boolean))].sort();
+    // "Admin" (el dueño de la cuenta) tambien vende, pero nunca tenia
+    // fila en perfiles_acceso -- por eso jamas aparecia como opcion
+    // aqui, y sus propias ventas no se podian auditar desde este
+    // selector. Se agrega siempre como primera opcion.
+    const nombres = ['Admin', ...new Set((perfiles||[]).map(p => p.nombre).filter(Boolean).filter(n => n !== 'Admin'))];
     const selUser = document.getElementById('cpu-usuario');
     if (selUser) {
       selUser.innerHTML = '<option value="">Elige un usuario…</option>' +
