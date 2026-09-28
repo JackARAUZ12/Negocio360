@@ -358,21 +358,33 @@ async function consultarProductoPorUsuario() {
 
     // Una sola consulta trae los detalles de TODOS los productos
     // elegidos a la vez, sin importar cuantos sean.
+    //
+    // BUG REAL CORREGIDO: se filtraba por producto_id, pero si un
+    // producto se borro y se volvio a crear (o se duplico) en algun
+    // momento, las ventas VIEJAS quedan ligadas al ID viejo, que ya
+    // no existe en la lista de productos actual -- el checkbox solo
+    // puede marcar el ID de HOY, asi que esas ventas viejas nunca
+    // coincidian con el filtro y salian en cero, aunque el nombre
+    // del producto fuera identico. El nombre es estable en el
+    // tiempo aunque el ID cambie, asi que se filtra por nombre.
     const idsVentas = ventas.map(v => v.id);
+    const nombresPorId = Object.fromEntries(TODOS_LOS_PRODUCTOS_CONSULTA.map(p => [p.id, p.nombre]));
+    const nombresElegidos = idsProductos.map(id => nombresPorId[id]).filter(Boolean);
     const { data: detalles } = await sbClient.from('venta_detalles')
-      .select('producto_id, cantidad, subtotal')
-      .in('venta_id', idsVentas).in('producto_id', idsProductos);
+      .select('producto_nombre, cantidad, subtotal')
+      .in('venta_id', idsVentas).in('producto_nombre', nombresElegidos);
 
     const porProducto = {};
     (detalles||[]).forEach(d => {
-      const acc = (porProducto[d.producto_id] ||= { cantidad:0, monto:0 });
+      const acc = (porProducto[d.producto_nombre] ||= { cantidad:0, monto:0 });
       acc.cantidad += Number(d.cantidad)||0;
       acc.monto += Number(d.subtotal)||0;
     });
 
-    const nombresPorId = Object.fromEntries(TODOS_LOS_PRODUCTOS_CONSULTA.map(p => [p.id, p.nombre]));
     const filas = idsProductos
-      .map(id => ({ nombre: nombresPorId[id] || '—', cantidad: (porProducto[id]?.cantidad)||0, monto: (porProducto[id]?.monto)||0 }))
+      .map(id => nombresPorId[id])
+      .filter(Boolean)
+      .map(nombre => ({ nombre, cantidad: (porProducto[nombre]?.cantidad)||0, monto: (porProducto[nombre]?.monto)||0 }))
       .sort((a,b) => b.cantidad - a.cantidad);
 
     const totalGeneral = filas.reduce((s,f) => s + f.monto, 0);
