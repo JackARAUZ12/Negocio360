@@ -3558,11 +3558,11 @@ async function confirmarMovimiento() {
       try {
         await supabaseClient.from('gastos').insert([{
           auth_user_id: STATE.user.id,
-          descripcion:  `Merma de inventario — ${razonLabel}: ${p.nombre} (${fmtNum(cantidad)} u.)`,
+          concepto:     `Merma de inventario — ${razonLabel}: ${p.nombre} (${fmtNum(cantidad)} u.)`,
           monto:        costoTotal,
           categoria:    'Merma de inventario',
-          tipo:         'merma',
-          notas:        nota || null,
+          tipo:         'inmediato',
+          observaciones: nota || null,
           fecha:        ymdLocal(new Date()),
         }]);
       } catch (_) {

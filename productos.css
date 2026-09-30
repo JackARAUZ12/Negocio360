@@ -1079,6 +1079,13 @@ img { max-width: 100%; }
 
 .data-table tbody tr:hover .row-actions { opacity: 1; }
 
+/* En pantallas tactiles (celular/tablet) no existe el "hover" del
+   mouse -- si dependemos solo de eso, los botones quedan invisibles
+   para siempre, sin ninguna forma de saber donde tocar. */
+@media (hover: none) {
+  .row-actions { opacity: 1; }
+}
+
 .row-action-btn {
   width: 30px;
   height: 30px;
