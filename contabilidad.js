@@ -905,7 +905,7 @@ async function calcularMovimientoPorTipo(tiposCuenta, fechaDesde, fechaHasta) {
 // vista adicional consultando la tabla gastos directamente.
 async function calcularGastosPorCategoria(desde, hasta) {
   try {
-    const { data, error } = await supabaseClient.from('gastos')
+    const { data, error } = await sbClient.from('gastos')
       .select('categoria, monto').eq('auth_user_id', STATE.userId).eq('estado', 'activo')
       .gte('fecha', desde).lte('fecha', hasta);
     if (error) throw error;
