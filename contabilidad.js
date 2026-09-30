@@ -899,6 +899,30 @@ async function calcularMovimientoPorTipo(tiposCuenta, fechaDesde, fechaHasta) {
   return { filas, total };
 }
 
+// Desglose de gastos por categoria real (Publicidad, Salarios, etc.)
+// -- distinto del agrupado por cuenta contable que ya arma
+// calcularMovimientoPorTipo(). No toca ese calculo, solo agrega una
+// vista adicional consultando la tabla gastos directamente.
+async function calcularGastosPorCategoria(desde, hasta) {
+  try {
+    const { data, error } = await supabaseClient.from('gastos')
+      .select('categoria, monto').eq('auth_user_id', STATE.userId).eq('estado', 'activo')
+      .gte('fecha', desde).lte('fecha', hasta);
+    if (error) throw error;
+    const porCategoria = {};
+    (data || []).forEach(g => {
+      const cat = g.categoria || 'Sin categoría';
+      porCategoria[cat] = (porCategoria[cat] || 0) + (Number(g.monto) || 0);
+    });
+    return Object.entries(porCategoria)
+      .map(([categoria, monto]) => ({ categoria, monto: round2(monto) }))
+      .sort((a, b) => b.monto - a.monto);
+  } catch (e) {
+    console.error('calcularGastosPorCategoria:', e);
+    return [];
+  }
+}
+
 async function cargarEstadoResultados() {
   const desde = document.getElementById('er-desde').value;
   const hasta = document.getElementById('er-hasta').value;
@@ -909,6 +933,7 @@ async function cargarEstadoResultados() {
   const ingresos = await calcularMovimientoPorTipo(['ingreso'], desde, hasta);
   const costos   = await calcularMovimientoPorTipo(['costo'], desde, hasta);
   const gastos   = await calcularMovimientoPorTipo(['gasto'], desde, hasta);
+  const gastosPorCategoria = await calcularGastosPorCategoria(desde, hasta);
 
   const utilidadBruta = round2(ingresos.total - costos.total);
   const utilidadNeta = round2(utilidadBruta - gastos.total);
@@ -927,6 +952,10 @@ async function cargarEstadoResultados() {
       ${filaGrupo('Costo de Ventas', costos)}
       <tr style="font-weight:800;font-size:15px;background:var(--accent-soft);color:var(--accent)"><td>Utilidad Bruta</td><td style="text-align:right">${fmt(utilidadBruta)}</td></tr>
       ${filaGrupo('Gastos de Operación', gastos)}
+      ${gastosPorCategoria.length ? `
+      <tr><td colspan="2" style="padding:10px 12px 4px;font-size:12px;color:var(--text-muted)">Desglose por categoría</td></tr>
+      ${gastosPorCategoria.map(g => `<tr><td style="padding-left:24px;font-size:12.5px">${esc(g.categoria)}</td><td style="text-align:right;font-size:12.5px">${fmt(g.monto)}</td></tr>`).join('')}
+      ` : ''}
       <tr style="font-weight:800;font-size:16px;background:${utilidadNeta>=0?'var(--success-soft)':'var(--danger-soft)'};color:${utilidadNeta>=0?'var(--success)':'var(--danger)'}"><td>${utilidadNeta>=0?'Utilidad Neta del período':'Pérdida Neta del período'}</td><td style="text-align:right">${fmt(Math.abs(utilidadNeta))}</td></tr>
     </table>`;
 }
