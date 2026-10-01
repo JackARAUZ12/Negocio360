@@ -1299,6 +1299,32 @@
           <div class="cfg-status" id="hotel-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="facturacion-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🧾</div>
+            <div>
+              <div class="cfg-card-title">Datos de facturación</div>
+              <div class="cfg-card-desc">RUC, dirección y teléfono que aparecen en tus comprobantes, créditos y proformas -- editable aquí en cualquier momento.</div>
+            </div>
+          </div>
+          <div class="cfg-row" style="flex-direction:column;align-items:stretch;gap:10px">
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">RUC</label>
+              <input type="text" id="fact-ruc" placeholder="Ej: J0310000012345" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Dirección</label>
+              <input type="text" id="fact-direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Teléfono</label>
+              <input type="text" id="fact-telefono" placeholder="Ej: 8888-8888" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <button class="btn-primary" style="align-self:flex-start" onclick="guardarDatosFacturacion()">Guardar</button>
+          </div>
+          <div class="cfg-status" id="facturacion-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="iva-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🧾</div>
@@ -2029,6 +2055,47 @@ async function guardarModuloHotel(activo) {
 // Modulo de Farmacia -- mismo patron exacto que Hotel/Restaurante.
 // IVA / Impuestos -- control central, afecta a todo el sistema que
 // cobre IVA (Ventas, Restaurante...). Apagado por defecto.
+// Datos de facturacion -- RUC, direccion, telefono. Antes solo se
+// podian poner UNA VEZ al registrarse (direccion) o nunca (RUC, no
+// existia en ningun lado). Ahora editables aqui, y como Ventas,
+// Creditos y Proformas ya leen de esta misma configuracion, el
+// cambio llega a los 3 modulos de una vez, sin tocarlos.
+async function cargarDatosFacturacion() {
+  const statusEl = document.getElementById('facturacion-status');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('ruc, direccion, telefono')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    document.getElementById('fact-ruc').value = data?.ruc || '';
+    document.getElementById('fact-direccion').value = data?.direccion || '';
+    document.getElementById('fact-telefono').value = data?.telefono || '';
+  } catch (e) {
+    console.error('cargarDatosFacturacion:', e);
+    setStatus(statusEl, 'No se pudo cargar. Intenta recargar la página.', false);
+  }
+}
+
+async function guardarDatosFacturacion() {
+  const statusEl = document.getElementById('facturacion-status');
+  const ruc = document.getElementById('fact-ruc').value.trim();
+  const direccion = document.getElementById('fact-direccion').value.trim();
+  const telefono = document.getElementById('fact-telefono').value.trim();
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ ruc: ruc || null, direccion: direccion || null, telefono: telefono || null })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(statusEl, 'Datos de facturación guardados.', true);
+  } catch (e) {
+    console.error('guardarDatosFacturacion:', e);
+    setStatus(statusEl, 'No se pudo guardar. Intenta de nuevo.', false);
+  }
+}
+
 async function cargarIva() {
   const toggle = document.getElementById('iva-toggle');
   const sub = document.getElementById('iva-row-sub');
@@ -2433,6 +2500,7 @@ async function initConfiguracion() {
       cargarModuloHotel();
       cargarModuloFarmacia();
       cargarIva();
+      cargarDatosFacturacion();
       cargarCierresAuto();
     };
 
