@@ -1547,9 +1547,12 @@ function esTarjetaOTransferencia(m) {
 async function obtenerCuentasTransferencia() {
   const { data: bancos } = await sbClient.from('bancos')
     .select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+  // "Caja General" NO es una cuenta real propia -- es el TOTAL que
+  // suma efectivo + caja chica + todos los bancos, asi que no tiene
+  // sentido transferir "hacia/desde" ella misma. Solo Caja Chica y
+  // los bancos son cuentas reales que SI se pueden mover entre si.
   return [
-    { valor: 'general', label: '💵 Caja General', origen_caja: 'general', banco_id: null },
-    { valor: 'chica',   label: '👛 Caja Chica',   origen_caja: 'chica',   banco_id: null },
+    { valor: 'chica', label: '👛 Caja Chica', origen_caja: 'chica', banco_id: null },
     ...(bancos || []).map(b => ({ valor: 'banco:' + b.id, label: '🏦 ' + b.nombre, origen_caja: null, banco_id: b.id })),
   ];
 }
@@ -1558,13 +1561,25 @@ async function abrirNuevaTransferencia() {
   document.getElementById('tr-error').textContent = '';
   document.getElementById('tr-monto').value = '';
   document.getElementById('tr-nota').value = '';
-  const cuentas = await obtenerCuentasTransferencia();
-  const opciones = cuentas.map(c => `<option value="${c.valor}">${c.label}</option>`).join('');
-  document.getElementById('tr-origen').innerHTML = opciones;
-  document.getElementById('tr-destino').innerHTML = opciones;
-  // Por defecto, destino distinto del origen (si hay mas de 1 opcion)
-  if (cuentas.length > 1) document.getElementById('tr-destino').selectedIndex = 1;
+  const origenSel = document.getElementById('tr-origen');
+  const destinoSel = document.getElementById('tr-destino');
+  origenSel.innerHTML = '<option>Cargando saldos…</option>';
+  destinoSel.innerHTML = '<option>Cargando saldos…</option>';
   openModal('modal-transferencia');
+
+  const cuentas = await obtenerCuentasTransferencia();
+  // Se muestra el saldo actual de cada cuenta junto a su nombre --
+  // asi se ve de una vez cuanto hay disponible antes de transferir,
+  // sin tener que ir a revisar Bancos o Caja Chica por separado.
+  const cuentasConSaldo = await Promise.all(cuentas.map(async c => ({
+    ...c, saldo: await obtenerSaldoActualCuenta(c.origen_caja, c.banco_id),
+  })));
+  STATE._cuentasTransferenciaCache = cuentasConSaldo;
+  const opciones = cuentasConSaldo.map(c => `<option value="${c.valor}">${c.label} — ${fmt(c.saldo)}</option>`).join('');
+  origenSel.innerHTML = opciones;
+  destinoSel.innerHTML = opciones;
+  // Por defecto, destino distinto del origen (si hay mas de 1 opcion)
+  if (cuentasConSaldo.length > 1) destinoSel.selectedIndex = 1;
 }
 
 async function obtenerSaldoActualCuenta(origenCaja, bancoId) {
@@ -1587,10 +1602,11 @@ async function guardarTransferencia() {
   if (origenVal === destinoVal) { errEl.textContent = 'El origen y el destino deben ser distintos.'; return; }
   if (!monto || monto <= 0) { errEl.textContent = 'El monto debe ser mayor que 0.'; return; }
 
-  const cuentas = await obtenerCuentasTransferencia();
+  const cuentas = STATE._cuentasTransferenciaCache || await obtenerCuentasTransferencia();
   const origen = cuentas.find(c => c.valor === origenVal);
   const destino = cuentas.find(c => c.valor === destinoVal);
   if (!origen || !destino) { errEl.textContent = 'Elige cuentas válidas.'; return; }
+  if (monto > origen.saldo) { errEl.textContent = `No hay suficiente saldo en ${origen.label.replace(/^[^\s]+ /, '')} (disponible: ${fmt(origen.saldo)}).`; return; }
 
   setBtnLoading('btn-guardar-transferencia', true);
   try {
