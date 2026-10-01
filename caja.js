@@ -1583,6 +1583,9 @@ async function abrirNuevaTransferencia() {
 }
 
 async function obtenerSaldoActualCuenta(origenCaja, bancoId) {
+  // Caja Chica NO vive en movimientos_financieros -- tiene su propio
+  // sistema de sesiones (apertura/cierre), asi que se calcula aparte.
+  if (origenCaja === 'chica') return await calcularSaldoTeoricoCajaChica();
   let q = sbClient.from('movimientos_financieros').select('saldo_resultante')
     .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
     .order('created_at', { ascending: false }).limit(1);
@@ -2073,8 +2076,12 @@ function renderEstadoCajaChica() {
         <div style="font-size:32px;margin-bottom:8px">🔓</div>
         <div style="font-size:15px;font-weight:700;margin-bottom:6px">Caja Chica cerrada — todavía no se ha abierto hoy</div>
         <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:16px">Cuenta el dinero con el que arrancas el día antes de empezar a vender.</p>
-        <button class="btn-primary" onclick="abrirModalConteo('apertura')">Abrir Caja Chica</button>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <button class="btn-secondary" id="btn-abrir-monto-anterior" onclick="abrirCajaChicaConMontoAnterior()">Abrir con el monto de ayer</button>
+          <button class="btn-primary" onclick="abrirModalConteo('apertura')">Contar y abrir con monto nuevo</button>
+        </div>
       </div>`;
+    actualizarBotonMontoAnterior();
     return;
   }
 
@@ -2109,6 +2116,26 @@ function renderEstadoCajaChica() {
 
 // Trae los movimientos de HOY (leyendo el mismo libro de Caja
 // general, sin tocarlo) para mostrar cómo va el efectivo en vivo.
+// Saldo real disponible en Caja Chica ahora mismo -- reutilizable
+// (Transferencias tambien lo necesita). Si no hay sesion abierta
+// HOY, no hay caja chica activa de donde sacar dinero, asi que el
+// saldo disponible es 0 -- correcto, no es un error.
+async function calcularSaldoTeoricoCajaChica() {
+  const hoy = todayISO();
+  const { data: sesion } = await sbClient.from('caja_chica_sesiones')
+    .select('*').eq('auth_user_id', STATE.userId).eq('fecha', hoy).eq('estado', 'abierta').maybeSingle();
+  if (!sesion) return 0;
+  const { data: movs } = await sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, monto, metodo_pago_nombre, origen_caja').eq('auth_user_id', STATE.userId)
+    .eq('estado','completado').eq('fecha', hoy);
+  const lista = movs || [];
+  const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
+  const cuentaComoEgresoChica = m => m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : esEfectivo(m));
+  const ingEfectivo = lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
+  const egrEfectivo = lista.filter(m => m.tipo_flujo==='EGRESO'  && cuentaComoEgresoChica(m)).reduce((s,m)=>s+Number(m.monto||0),0);
+  return round2(Number(sesion.monto_apertura||0) + ingEfectivo - egrEfectivo);
+}
+
 async function renderResumenVivoCC(sesion) {
   const el = document.getElementById('cc-resumen-vivo');
   if (!el) return;
@@ -2176,6 +2203,48 @@ function renderHistorialCC() {
 }
 
 /* ---------- Modal de conteo de billetes ---------- */
+// Abrir Caja Chica de una vez con el monto EXACTO con el que cerro
+// la ultima vez -- sin tener que volver a contar billete por billete
+// si no cambio nada desde entonces.
+async function actualizarBotonMontoAnterior() {
+  const btn = document.getElementById('btn-abrir-monto-anterior');
+  if (!btn) return;
+  try {
+    const { data: ultima } = await sbClient.from('caja_chica_sesiones')
+      .select('monto_cierre_real').eq('auth_user_id', STATE.userId)
+      .eq('estado', 'cerrada').order('fecha', { ascending: false }).limit(1).maybeSingle();
+    if (ultima) {
+      btn.textContent = `Abrir con ${fmt(ultima.monto_cierre_real)} (de ayer)`;
+    } else {
+      btn.textContent = 'Abrir con el monto de ayer';
+      btn.disabled = true;
+      btn.title = 'No hay un cierre anterior todavía';
+    }
+  } catch (e) { console.warn('actualizarBotonMontoAnterior:', e); }
+}
+
+async function abrirCajaChicaConMontoAnterior() {
+  try {
+    const { data: ultima, error } = await sbClient.from('caja_chica_sesiones')
+      .select('monto_cierre_real, denominacion_cierre').eq('auth_user_id', STATE.userId)
+      .eq('estado', 'cerrada').order('fecha', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!ultima) { showToast('No hay un cierre anterior todavía -- usa "Contar y abrir con monto nuevo".', 'error'); return; }
+    const nombreUsuario = STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario';
+    const { error: errIns } = await sbClient.from('caja_chica_sesiones').insert({
+      auth_user_id: STATE.userId, fecha: todayISO(), estado: 'abierta',
+      monto_apertura: ultima.monto_cierre_real, denominacion_apertura: ultima.denominacion_cierre || null,
+      abierta_por: nombreUsuario, observaciones: 'Abierta automáticamente con el monto del cierre anterior',
+    });
+    if (errIns) throw errIns;
+    showToast('Caja Chica abierta con ' + fmt(ultima.monto_cierre_real) + ' (el mismo de ayer)');
+    await loadCajaChica();
+  } catch (e) {
+    console.error('abrirCajaChicaConMontoAnterior:', e);
+    showToast('No se pudo abrir. Intenta de nuevo.', 'error');
+  }
+}
+
 function abrirModalConteo(modo) {
   CC.modoConteo = modo;
   document.getElementById('cc-conteo-titulo').textContent = modo === 'apertura' ? 'Contar dinero para abrir Caja Chica' : 'Contar dinero para cerrar Caja Chica';
