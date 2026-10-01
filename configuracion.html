@@ -1317,6 +1317,17 @@
               <input type="text" id="fact-direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
             <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">¿Cómo le llamas a tu comprobante?</label>
+              <input type="text" id="fact-titulo" list="fact-titulo-opciones" placeholder="Comprobante" oninput="previsualizarColoresComprobante()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+              <datalist id="fact-titulo-opciones">
+                <option value="Comprobante">
+                <option value="Factura">
+                <option value="Recibo">
+                <option value="Nota de Venta">
+              </datalist>
+              <span style="font-size:11px;color:var(--text-muted)">Se usará en tus comprobantes de Ventas y Créditos, ej: "Factura de Venta".</span>
+            </div>
+            <div>
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Teléfono</label>
               <input type="text" id="fact-telefono" placeholder="Ej: 8888-8888" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
@@ -2090,19 +2101,25 @@ async function guardarModuloHotel(activo) {
 async function cargarDatosFacturacion() {
   const statusEl = document.getElementById('facturacion-status');
   try {
-    const { data, error } = await sbClient
-      .from('configuracion_empresa')
-      .select('ruc, direccion, telefono, color_principal, color_tabla, color_tabla_usa_mismo')
-      .eq('auth_user_id', currentAuthUserId)
-      .maybeSingle();
+    // RUC/direccion/telefono viven en configuracion_empresa, pero el
+    // color del comprobante lo lee comprobante-carta.js de OTRA tabla
+    // (configuracion_proforma, la misma que usa Proformas) -- se
+    // consultan ambas por separado para no guardar nada en el lugar
+    // equivocado.
+    const [{ data, error }, { data: dataProforma, error: errorProforma }] = await Promise.all([
+      sbClient.from('configuracion_empresa').select('ruc, direccion, telefono').eq('auth_user_id', currentAuthUserId).maybeSingle(),
+      sbClient.from('configuracion_proforma').select('color_principal, color_tabla, color_tabla_usa_mismo, titulo_comprobante').eq('auth_user_id', currentAuthUserId).maybeSingle(),
+    ]);
     if (error) throw error;
+    if (errorProforma) throw errorProforma;
     document.getElementById('fact-ruc').value = data?.ruc || '';
     document.getElementById('fact-direccion').value = data?.direccion || '';
     document.getElementById('fact-telefono').value = data?.telefono || '';
-    document.getElementById('fact-color-encabezado').value = data?.color_principal || '#6EE7B7';
-    const usaMismo = data?.color_tabla_usa_mismo !== false;
+    document.getElementById('fact-titulo').value = dataProforma?.titulo_comprobante || 'Comprobante';
+    document.getElementById('fact-color-encabezado').value = dataProforma?.color_principal || '#6EE7B7';
+    const usaMismo = dataProforma?.color_tabla_usa_mismo !== false;
     document.getElementById('fact-color-tabla-igual').checked = usaMismo;
-    document.getElementById('fact-color-tabla').value = data?.color_tabla || data?.color_principal || '#6EE7B7';
+    document.getElementById('fact-color-tabla').value = dataProforma?.color_tabla || dataProforma?.color_principal || '#6EE7B7';
     document.getElementById('fact-wrap-color-tabla').style.display = usaMismo ? 'none' : 'block';
     previsualizarColoresComprobante();
   } catch (e) {
@@ -2123,6 +2140,9 @@ function previsualizarColoresComprobante() {
   const colorTabla = usaMismo ? colorEncabezado : document.getElementById('fact-color-tabla').value;
   document.getElementById('fact-preview-encabezado').style.background = colorEncabezado;
   document.getElementById('fact-preview-tabla').style.background = colorTabla;
+  const titulo = document.getElementById('fact-titulo')?.value?.trim() || 'Comprobante';
+  const previewTitulo = document.getElementById('fact-preview-encabezado');
+  if (previewTitulo) previewTitulo.textContent = `Vista previa: ${titulo} de Venta`;
 }
 
 async function guardarDatosFacturacion() {
@@ -2130,19 +2150,21 @@ async function guardarDatosFacturacion() {
   const ruc = document.getElementById('fact-ruc').value.trim();
   const direccion = document.getElementById('fact-direccion').value.trim();
   const telefono = document.getElementById('fact-telefono').value.trim();
+  const titulo = document.getElementById('fact-titulo').value.trim();
   const colorEncabezado = document.getElementById('fact-color-encabezado').value;
   const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
   const colorTabla = document.getElementById('fact-color-tabla').value;
   try {
-    const { error } = await sbClient
-      .from('configuracion_empresa')
-      .update({
-        ruc: ruc || null, direccion: direccion || null, telefono: telefono || null,
-        color_principal: colorEncabezado, color_tabla_usa_mismo: usaMismo,
-        color_tabla: usaMismo ? null : colorTabla,
-      })
-      .eq('auth_user_id', currentAuthUserId);
+    const [{ error }, { error: errorProforma }] = await Promise.all([
+      sbClient.from('configuracion_empresa')
+        .update({ ruc: ruc || null, direccion: direccion || null, telefono: telefono || null })
+        .eq('auth_user_id', currentAuthUserId),
+      sbClient.from('configuracion_proforma')
+        .update({ color_principal: colorEncabezado, color_tabla_usa_mismo: usaMismo, color_tabla: usaMismo ? null : colorTabla, titulo_comprobante: titulo || null })
+        .eq('auth_user_id', currentAuthUserId),
+    ]);
     if (error) throw error;
+    if (errorProforma) throw errorProforma;
     setStatus(statusEl, 'Datos de facturación guardados.', true);
   } catch (e) {
     console.error('guardarDatosFacturacion:', e);

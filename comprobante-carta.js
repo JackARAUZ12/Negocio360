@@ -109,8 +109,9 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras:', e); }
   }
 
-  const TITULOS = { venta: 'Comprobante de Venta', credito: 'Comprobante de Crédito' };
-  const titulo = TITULOS[tipo] || 'Comprobante';
+  const palabraBase = (cfg.titulo_comprobante || '').trim() || 'Comprobante';
+  const TITULOS = { venta: `${palabraBase} de Venta`, credito: `${palabraBase} de Crédito` };
+  const titulo = TITULOS[tipo] || palabraBase;
   const moneda = datos.moneda_simbolo || 'C$';
   const fmtM = (n) => `${moneda} ${Number(n||0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}`;
 
