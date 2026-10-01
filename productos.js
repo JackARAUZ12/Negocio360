@@ -1832,6 +1832,8 @@ function renderCatalogoGrid(items, mostrarStock) {
           <div class="catalogo-card-acciones">
             <button class="btn btn-secondary" onclick="abrirDetalle('${p.id}')">👁 Ver</button>
             <button class="btn btn-primary" onclick="abrirEditar('${p.id}')">✏️ Editar</button>
+            <button class="btn btn-secondary" onclick="duplicarProducto('${p.id}')" title="Duplicar">📋</button>
+            <button class="btn btn-secondary" onclick="confirmarEliminarProducto('${p.id}')" title="Eliminar">🗑️</button>
           </div>
         </div>
       </div>`;
