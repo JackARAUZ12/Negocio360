@@ -1320,6 +1320,33 @@
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Teléfono</label>
               <input type="text" id="fact-telefono" placeholder="Ej: 8888-8888" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
+
+            <div style="border-top:1px solid var(--border,#e5e7eb);margin-top:4px;padding-top:12px">
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Color del encabezado del comprobante</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="color" id="fact-color-encabezado" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()"/>
+                <span style="font-size:12px;color:var(--text-muted)">Es el color de fondo de la parte de arriba, donde va el nombre de tu negocio.</span>
+              </div>
+            </div>
+
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;margin-top:4px">
+              <input type="checkbox" id="fact-color-tabla-igual" checked onchange="onToggleColorTablaIgual()" style="width:16px;height:16px"/>
+              <span>Usar el mismo color para la tabla de productos</span>
+            </label>
+
+            <div id="fact-wrap-color-tabla" style="display:none">
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Color de la tabla de productos</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="color" id="fact-color-tabla" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()"/>
+                <span style="font-size:12px;color:var(--text-muted)">El color de la fila de encabezado de la tabla (Descripción, Cant., Precio...).</span>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;overflow:hidden;margin-top:4px">
+              <div id="fact-preview-encabezado" style="padding:12px 14px;color:#fff;font-weight:700;font-size:13px">Vista previa: Mi Negocio</div>
+              <div id="fact-preview-tabla" style="padding:8px 14px;color:#fff;font-weight:600;font-size:12px">Descripción · Cant. · Precio</div>
+            </div>
+
             <button class="btn-primary" style="align-self:flex-start" onclick="guardarDatosFacturacion()">Guardar</button>
           </div>
           <div class="cfg-status" id="facturacion-status"></div>
@@ -2065,17 +2092,37 @@ async function cargarDatosFacturacion() {
   try {
     const { data, error } = await sbClient
       .from('configuracion_empresa')
-      .select('ruc, direccion, telefono')
+      .select('ruc, direccion, telefono, color_principal, color_tabla, color_tabla_usa_mismo')
       .eq('auth_user_id', currentAuthUserId)
       .maybeSingle();
     if (error) throw error;
     document.getElementById('fact-ruc').value = data?.ruc || '';
     document.getElementById('fact-direccion').value = data?.direccion || '';
     document.getElementById('fact-telefono').value = data?.telefono || '';
+    document.getElementById('fact-color-encabezado').value = data?.color_principal || '#6EE7B7';
+    const usaMismo = data?.color_tabla_usa_mismo !== false;
+    document.getElementById('fact-color-tabla-igual').checked = usaMismo;
+    document.getElementById('fact-color-tabla').value = data?.color_tabla || data?.color_principal || '#6EE7B7';
+    document.getElementById('fact-wrap-color-tabla').style.display = usaMismo ? 'none' : 'block';
+    previsualizarColoresComprobante();
   } catch (e) {
     console.error('cargarDatosFacturacion:', e);
     setStatus(statusEl, 'No se pudo cargar. Intenta recargar la página.', false);
   }
+}
+
+function onToggleColorTablaIgual() {
+  const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
+  document.getElementById('fact-wrap-color-tabla').style.display = usaMismo ? 'none' : 'block';
+  previsualizarColoresComprobante();
+}
+
+function previsualizarColoresComprobante() {
+  const colorEncabezado = document.getElementById('fact-color-encabezado').value;
+  const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
+  const colorTabla = usaMismo ? colorEncabezado : document.getElementById('fact-color-tabla').value;
+  document.getElementById('fact-preview-encabezado').style.background = colorEncabezado;
+  document.getElementById('fact-preview-tabla').style.background = colorTabla;
 }
 
 async function guardarDatosFacturacion() {
@@ -2083,10 +2130,17 @@ async function guardarDatosFacturacion() {
   const ruc = document.getElementById('fact-ruc').value.trim();
   const direccion = document.getElementById('fact-direccion').value.trim();
   const telefono = document.getElementById('fact-telefono').value.trim();
+  const colorEncabezado = document.getElementById('fact-color-encabezado').value;
+  const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
+  const colorTabla = document.getElementById('fact-color-tabla').value;
   try {
     const { error } = await sbClient
       .from('configuracion_empresa')
-      .update({ ruc: ruc || null, direccion: direccion || null, telefono: telefono || null })
+      .update({
+        ruc: ruc || null, direccion: direccion || null, telefono: telefono || null,
+        color_principal: colorEncabezado, color_tabla_usa_mismo: usaMismo,
+        color_tabla: usaMismo ? null : colorTabla,
+      })
       .eq('auth_user_id', currentAuthUserId);
     if (error) throw error;
     setStatus(statusEl, 'Datos de facturación guardados.', true);
