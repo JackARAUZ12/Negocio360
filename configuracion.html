@@ -1350,6 +1350,20 @@
             </label>
           </div>
           <div class="cfg-status" id="farmacia-status"></div>
+
+          <div id="fefo-row-wrap" style="display:none;border-top:1px solid var(--border,#e5e7eb);margin-top:14px;padding-top:14px">
+            <div class="cfg-row">
+              <div>
+                <div class="cfg-row-label">Vender primero el lote que vence antes (FEFO)</div>
+                <div class="cfg-row-sub" id="fefo-row-sub">Cargando estado actual…</div>
+              </div>
+              <label class="cfg-switch">
+                <input type="checkbox" id="fefo-toggle" disabled />
+                <span class="cfg-switch-track" onclick="onToggleFefoClick(event)"></span>
+              </label>
+            </div>
+            <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Es lo recomendado, pero no todas las farmacias lo manejan así -- apágalo si prefieres elegir el lote a vender manualmente.</p>
+          </div>
         </div>
 
         <!-- EDITAR PERFIL -->
@@ -2091,7 +2105,7 @@ async function cargarModuloFarmacia() {
   try {
     const { data, error } = await sbClient
       .from('configuracion_empresa')
-      .select('usa_modulo_farmacia')
+      .select('usa_modulo_farmacia, usa_farmacia_fase2, fefo_activo')
       .eq('auth_user_id', currentAuthUserId)
       .maybeSingle();
     if (error) throw error;
@@ -2101,9 +2115,55 @@ async function cargarModuloFarmacia() {
       ? 'Activado — Lotes y Vencimientos aparecen en el sidebar.'
       : 'Desactivado — el módulo de farmacia no aparece en ningún lado.';
     toggle.disabled = false;
+
+    // FEFO (fase 2) -- solo visible/relevante si esta cuenta ya tiene
+    // esa fase habilitada (por ahora, solo cuentas elegidas a mano).
+    const wrapFefo = document.getElementById('fefo-row-wrap');
+    if (data?.usa_farmacia_fase2 === true) {
+      wrapFefo.style.display = 'block';
+      const toggleFefo = document.getElementById('fefo-toggle');
+      const subFefo = document.getElementById('fefo-row-sub');
+      const fefoActivo = data?.fefo_activo !== false; // default true
+      toggleFefo.checked = fefoActivo;
+      subFefo.textContent = fefoActivo
+        ? 'Activado — al vender, se descuenta automáticamente el lote que vence primero.'
+        : 'Desactivado — puedes elegir manualmente qué lote vender.';
+      toggleFefo.disabled = false;
+    } else {
+      wrapFefo.style.display = 'none';
+    }
   } catch (e) {
     console.error('cargarModuloFarmacia:', e);
     sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleFefoClick(evt) {
+  const toggle = document.getElementById('fefo-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarFefoActivo(toggle.checked);
+}
+
+async function guardarFefoActivo(activo) {
+  const toggle = document.getElementById('fefo-toggle');
+  const sub = document.getElementById('fefo-row-sub');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ fefo_activo: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — al vender, se descuenta automáticamente el lote que vence primero.'
+      : 'Desactivado — puedes elegir manualmente qué lote vender.';
+  } catch (e) {
+    console.error('guardarFefoActivo:', e);
+    toggle.checked = !activo;
+    sub.textContent = 'No se pudo guardar el cambio. Intenta de nuevo.';
+  } finally {
+    toggle.disabled = false;
   }
 }
 

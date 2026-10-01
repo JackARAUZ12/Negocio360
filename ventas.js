@@ -2825,7 +2825,10 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
         showToast(`No se puede vender -- el único lote disponible (${candidato.numero_lote || 'sin número'}) venció el ${candidato.fecha_vencimiento}.`, 'error');
         return;
       }
-      loteFEFO = candidato;
+      // La auto-asignacion del lote (FEFO en si) es opcional -- el
+      // bloqueo de arriba (no vender algo vencido) siempre se queda
+      // activo, sea cual sea esta preferencia.
+      if (S.empresaConfig?.fefo_activo !== false) loteFEFO = candidato;
     }
   }
 
