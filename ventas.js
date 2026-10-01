@@ -2049,6 +2049,16 @@ function buscarProductosParaVenta(q, tipo) {
         <div class="pri-name">${esc(p.nombre)} ${p.esCombo ? '<span style="font-size:10px;color:var(--accent-4,var(--accent));font-weight:700">📦 COMBO</span>' : ''}${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
         ${p.descripcion ? `<div style="font-family:inherit;font-size:11px;color:var(--text-muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${esc(p.descripcion)}</div>` : ''}
+        ${(() => {
+          // Equivalente/sustituto -- solo cuando el producto buscado
+          // no tiene stock, y solo Farmacia fase 2. Mismo principio
+          // activo, otra marca, que SI tenga stock disponible.
+          if (stockNum > 0 || tipo !== 'producto' || S.empresaConfig?.usa_farmacia_fase2 !== true || !p.principio_activo) return '';
+          const equivalente = S.productosCache.find(o => o.id !== p.id && o.activo !== false
+            && (o.principio_activo||'').trim().toLowerCase() === p.principio_activo.trim().toLowerCase()
+            && Number(o.stock_actual||0) > 0);
+          return equivalente ? `<div style="font-size:11px;color:var(--success,#16a34a);margin-top:2px">💊 Equivalente disponible: ${esc(equivalente.nombre)}</div>` : '';
+        })()}
       </div>
       <span class="pri-stock ${stockCls}">${stockLabel}</span>
       <span class="pri-precio">${precioLabel}</span>
