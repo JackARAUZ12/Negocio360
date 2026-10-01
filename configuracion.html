@@ -821,6 +821,27 @@
     .cfg-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; cursor: pointer; }
     .cfg-back:hover { color: var(--accent); }
 
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent); color: #fff;
+  border: none; cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 13px; font-weight: 600;
+  transition: opacity .15s, transform .15s;
+  white-space: nowrap;
+}
+.btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-surface-2, var(--bg-app));
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 13px; font-weight: 600;
+}
 </style>
 <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -1310,15 +1331,15 @@
           <div class="cfg-row" style="flex-direction:column;align-items:stretch;gap:10px">
             <div>
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">RUC</label>
-              <input type="text" id="fact-ruc" placeholder="Ej: J0310000012345" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+              <input type="text" id="fact-ruc" placeholder="Ej: J0310000012345" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
             <div>
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Dirección</label>
-              <input type="text" id="fact-direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+              <input type="text" id="fact-direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
             <div>
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">¿Cómo le llamas a tu comprobante?</label>
-              <input type="text" id="fact-titulo" list="fact-titulo-opciones" placeholder="Comprobante" oninput="previsualizarColoresComprobante()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+              <input type="text" id="fact-titulo" list="fact-titulo-opciones" placeholder="Comprobante" oninput="previsualizarColoresComprobante()" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
               <datalist id="fact-titulo-opciones">
                 <option value="Comprobante">
                 <option value="Factura">
@@ -1329,26 +1350,26 @@
             </div>
             <div>
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Teléfono</label>
-              <input type="text" id="fact-telefono" placeholder="Ej: 8888-8888" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+              <input type="text" id="fact-telefono" placeholder="Ej: 8888-8888" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
 
             <div style="border-top:1px solid var(--border,#e5e7eb);margin-top:4px;padding-top:12px">
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Color del encabezado del comprobante</label>
               <div style="display:flex;align-items:center;gap:8px">
-                <input type="color" id="fact-color-encabezado" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()"/>
+                <input type="color" id="fact-color-encabezado" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()" onchange="guardarDatosFacturacion()"/>
                 <span style="font-size:12px;color:var(--text-muted)">Es el color de fondo de la parte de arriba, donde va el nombre de tu negocio.</span>
               </div>
             </div>
 
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;margin-top:4px">
-              <input type="checkbox" id="fact-color-tabla-igual" checked onchange="onToggleColorTablaIgual()" style="width:16px;height:16px"/>
+              <input type="checkbox" id="fact-color-tabla-igual" checked onchange="onToggleColorTablaIgual(); guardarDatosFacturacion();" style="width:16px;height:16px"/>
               <span>Usar el mismo color para la tabla de productos</span>
             </label>
 
             <div id="fact-wrap-color-tabla" style="display:none">
               <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Color de la tabla de productos</label>
               <div style="display:flex;align-items:center;gap:8px">
-                <input type="color" id="fact-color-tabla" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()"/>
+                <input type="color" id="fact-color-tabla" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()" onchange="guardarDatosFacturacion()"/>
                 <span style="font-size:12px;color:var(--text-muted)">El color de la fila de encabezado de la tabla (Descripción, Cant., Precio...).</span>
               </div>
             </div>
