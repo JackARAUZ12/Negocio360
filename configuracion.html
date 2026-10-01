@@ -1375,8 +1375,8 @@
             </div>
 
             <div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;overflow:hidden;margin-top:4px">
-              <div id="fact-preview-encabezado" style="padding:12px 14px;color:#fff;font-weight:700;font-size:13px">Vista previa: Mi Negocio</div>
-              <div id="fact-preview-tabla" style="padding:8px 14px;color:#fff;font-weight:600;font-size:12px">Descripción · Cant. · Precio</div>
+              <div id="fact-preview-encabezado" style="padding:12px 14px;font-weight:700;font-size:13px">Vista previa: Mi Negocio</div>
+              <div id="fact-preview-tabla" style="padding:8px 14px;font-weight:600;font-size:12px">Descripción · Cant. · Precio</div>
             </div>
 
             <button class="btn-primary" style="align-self:flex-start" onclick="guardarDatosFacturacion()">Guardar</button>
@@ -2155,15 +2155,26 @@ function onToggleColorTablaIgual() {
   previsualizarColoresComprobante();
 }
 
+function colorTextoSegunFondo(hex) {
+  const m = (hex || '').replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return '#fff';
+  const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  const luminosidad = (r * 299 + g * 587 + b * 114) / 1000;
+  return luminosidad > 150 ? '#141414' : '#fff';
+}
+
 function previsualizarColoresComprobante() {
   const colorEncabezado = document.getElementById('fact-color-encabezado').value;
   const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
   const colorTabla = usaMismo ? colorEncabezado : document.getElementById('fact-color-tabla').value;
-  document.getElementById('fact-preview-encabezado').style.background = colorEncabezado;
-  document.getElementById('fact-preview-tabla').style.background = colorTabla;
+  const previewEncabezado = document.getElementById('fact-preview-encabezado');
+  const previewTabla = document.getElementById('fact-preview-tabla');
+  previewEncabezado.style.background = colorEncabezado;
+  previewEncabezado.style.color = colorTextoSegunFondo(colorEncabezado);
+  previewTabla.style.background = colorTabla;
+  previewTabla.style.color = colorTextoSegunFondo(colorTabla);
   const titulo = document.getElementById('fact-titulo')?.value?.trim() || 'Comprobante';
-  const previewTitulo = document.getElementById('fact-preview-encabezado');
-  if (previewTitulo) previewTitulo.textContent = `Vista previa: ${titulo} de Venta`;
+  if (previewEncabezado) previewEncabezado.textContent = `Vista previa: ${titulo} de Venta`;
 }
 
 async function guardarDatosFacturacion() {
