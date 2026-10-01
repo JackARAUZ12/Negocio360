@@ -119,6 +119,13 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   doc.setFillColor(rC, gC, bC);
   doc.rect(0, 0, W, 38, 'F');
 
+  // Texto del encabezado: negro o blanco automaticamente, segun que
+  // tan claro sea el color de fondo elegido -- si el cliente pone un
+  // color claro (ej. blanco, amarillo palido), el texto blanco se
+  // volvia invisible. Formula estandar de luminosidad percibida (YIQ).
+  const luminosidad = (rC * 299 + gC * 587 + bC * 114) / 1000;
+  const colorTextoEncabezado = luminosidad > 150 ? [20, 20, 30] : [255, 255, 255];
+
   let textoX = M;
   const TAMANOS_LOGO = { pequeno: {ancho:32, alto:22}, mediano: {ancho:45, alto:28}, grande: {ancho:58, alto:34} };
   const cajaLogo = TAMANOS_LOGO[cfg.logo_tamano] || TAMANOS_LOGO.mediano;
@@ -130,7 +137,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     } catch (e) { /* si falla, se sigue sin logo */ }
   }
 
-  doc.setTextColor(255,255,255);
+  doc.setTextColor(...colorTextoEncabezado);
   const anchoDisponibleNombre = (W - M - 40) - textoX;
   let tamanoNombre = 20;
   doc.setFont(undefined, 'bold');
@@ -212,12 +219,17 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   const columnStyles = {};
   for (let i = totalColumnas - 4; i < totalColumnas; i++) columnStyles[i] = { halign: 'right' };
 
+  const colorFondoTabla = _cc_hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255];
+  const [rT, gT, bT] = colorFondoTabla;
+  const luminosidadTabla = (rT * 299 + gT * 587 + bT * 114) / 1000;
+  const colorTextoTabla = luminosidadTabla > 150 ? [20, 20, 30] : [255, 255, 255];
+
   doc.autoTable({
     startY: y,
     head: [encabezado],
     body: filas,
     theme: 'striped',
-    headStyles: { fillColor: _cc_hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255] },
+    headStyles: { fillColor: colorFondoTabla, textColor: colorTextoTabla },
     styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: 3.5, valign: 'top' },
     columnStyles,
     margin: { left: M, right: M },
