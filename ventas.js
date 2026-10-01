@@ -4328,7 +4328,7 @@ async function descargarReciboDeVenta(venta, items) {
         empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
         empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
       }, (items||[]).map(i => ({
-        nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
+        nombre: i.nombre || i.producto_nombre || "Ítem", cantidad: i.cantidad, precio: i.precio,
         descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
         sku: i.sku || i.producto_sku || null, producto_id: i.producto_id || i.id || null,
       })));
@@ -6443,7 +6443,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
           empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
           empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
         }, (items||[]).map(i => ({
-          nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
+          nombre: i.nombre || i.producto_nombre || "Ítem", cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: round2(i.cantidad*i.precio),
           sku: i.sku || i.producto_sku || null, producto_id: i.producto_id || i.id || null,
         })));
@@ -6650,7 +6650,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
           empresaDireccion: S.empresaConfig?.direccion || '', empresaTelefono: S.empresaConfig?.telefono || S.empresaConfig?.whatsapp || '',
           empresaRuc: S.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(S.empresaConfig?.moneda),
         }, (items||[]).map(i => ({
-          nombre: i.nombre, cantidad: i.cantidad, precio: i.precio,
+          nombre: i.nombre || i.producto_nombre || "Ítem", cantidad: i.cantidad, precio: i.precio,
           descuento: i.descuento||0, subtotal: i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio),
           sku: i.sku || i.producto_sku || null, producto_id: i.producto_id || i.id || null,
         })));
