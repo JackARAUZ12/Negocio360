@@ -2794,7 +2794,7 @@ window.confirmarSeleccionEscala = confirmarSeleccionEscala;
 window.abrirSelectorEscala      = abrirSelectorEscala;
 window.cerrarSelectorEscala     = cerrarSelectorEscala;
 
-function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
+async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   const prod = S.productosCache.find(p => p.id===productoId);
   if (!prod) return;
 
@@ -2807,6 +2807,27 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
 
   // Precio a usar: el de la escala elegida, o el precio fijo del producto
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
+
+  // FEFO + bloqueo de vencidos (Farmacia, fase 2 -- SOLO cuentas con
+  // el flag activo). Con el flag apagado, loteFEFO queda null y todo
+  // el resto del carrito se comporta exactamente igual que siempre.
+  let loteFEFO = null;
+  if (tipo === 'producto' && S?.empresaConfig?.usa_farmacia_fase2 === true) {
+    const { data: lotes } = await sb.from('producto_lotes')
+      .select('id, numero_lote, fecha_vencimiento, cantidad_actual')
+      .eq('producto_id', productoId).eq('activo', true).gt('cantidad_actual', 0)
+      .order('fecha_vencimiento', { ascending: true }).limit(1);
+    const candidato = lotes?.[0];
+    if (candidato) {
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      const vencimiento = new Date(candidato.fecha_vencimiento + 'T00:00:00');
+      if (vencimiento < hoy) {
+        showToast(`No se puede vender -- el único lote disponible (${candidato.numero_lote || 'sin número'}) venció el ${candidato.fecha_vencimiento}.`, 'error');
+        return;
+      }
+      loteFEFO = candidato;
+    }
+  }
 
   // Se busca una línea EXISTENTE del mismo producto Y la misma escala Y
   // el mismo origen de stock — así, el mismo producto con distinto
@@ -2860,6 +2881,11 @@ function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       presentacionNombre: null,
       presentacionFactor: null,
       precioBase: null,
+      // FEFO (Farmacia, fase 2) -- null si el flag esta apagado o el
+      // producto no maneja lotes, igual que siempre.
+      loteId: loteFEFO?.id || null,
+      loteNumero: loteFEFO?.numero_lote || null,
+      loteVencimiento: loteFEFO?.fecha_vencimiento || null,
     };
     S.carrito.push(item);
   }
@@ -4872,6 +4898,7 @@ async function confirmarVenta(conImpresion) {
       presentacion_id:     item.presentacionId || null,
       presentacion_nombre: item.presentacionNombre || null,
       presentacion_factor: item.presentacionFactor || null,
+      lote_id: item.loteId || null,
     }));
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
@@ -4882,6 +4909,19 @@ async function confirmarVenta(conImpresion) {
       ));
     }
     if (errDetalles) throw errDetalles;
+
+    // Descontar el lote especifico usado (FEFO, Farmacia fase 2) --
+    // aislado: si algo fallara aqui, la venta YA se confirmo
+    // exitosamente, no se revierte nada por esto.
+    try {
+      for (const item of S.carrito) {
+        if (!item.loteId) continue;
+        const { data: loteActual } = await sb.from('producto_lotes').select('cantidad_actual').eq('id', item.loteId).maybeSingle();
+        if (loteActual) {
+          await sb.from('producto_lotes').update({ cantidad_actual: Math.max(0, Number(loteActual.cantidad_actual) - item.cantidad) }).eq('id', item.loteId);
+        }
+      }
+    } catch (eLote) { console.warn('Descuento de lote FEFO:', eLote); }
 
     // Números de serie recolectados (si la función está activa y el
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
