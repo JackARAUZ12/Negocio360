@@ -938,7 +938,7 @@ async function cargarEstadoResultados() {
   const utilidadBruta = round2(ingresos.total - costos.total);
   const utilidadNeta = round2(utilidadBruta - gastos.total);
 
-  STATE.estadoResultadosActual = { desde, hasta, ingresos, costos, gastos, utilidadBruta, utilidadNeta };
+  STATE.estadoResultadosActual = { desde, hasta, ingresos, costos, gastos, utilidadBruta, utilidadNeta, gastosPorCategoria };
 
   const filaGrupo = (titulo, grupo, signo='') => `
     <tr style="font-weight:700;background:var(--bg-app)"><td colspan="2">${titulo}</td></tr>
@@ -969,6 +969,7 @@ function exportarEstadoResultados(formato) {
     ['COSTO DE VENTAS','',''], ...e.costos.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Costos', e.costos.total],
     ['','UTILIDAD BRUTA', e.utilidadBruta],
     ['GASTOS DE OPERACIÓN','',''], ...e.gastos.filas.map(f=>[f.cuenta.codigo, f.cuenta.nombre, f.saldo]), ['','Total Gastos', e.gastos.total],
+    ...((e.gastosPorCategoria||[]).length ? [['','Desglose por categoría',''], ...e.gastosPorCategoria.map(g=>['', '  '+g.categoria, g.monto])] : []),
     ['','UTILIDAD NETA', e.utilidadNeta],
   ];
   if (formato === 'excel') {
