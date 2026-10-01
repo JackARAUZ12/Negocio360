@@ -1364,6 +1364,13 @@
         </label>
       </div>
       <p id="configInvError" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:10px"></p>
+
+      <div style="border-top:1px solid var(--border,#e5e7eb);margin-top:18px;padding-top:16px">
+        <div class="config-inv-nombre" style="margin-bottom:4px">Columnas de la tabla de Productos</div>
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Elige qué columnas se ven y en qué orden -- incluidas las Acciones. Sin cambios, se queda como está ahora.</p>
+        <div id="listaColumnasProductos" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button class="btn btn-secondary" style="margin-top:10px;font-size:12.5px" onclick="restaurarColumnasProductosDefault()">Restaurar el orden de siempre</button>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarModalConfigInventario()">Cancelar</button>
@@ -1394,7 +1401,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260930b"></script>
+<script src="productos.js?v=20260930c"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

@@ -328,6 +328,7 @@ async function cargarDatosEmpresa() {
     STATE.manejaPresentaciones = empresa?.maneja_presentaciones === true;
     STATE.usaNumeroSerie = empresa?.usa_numero_serie === true;
     STATE.usaModeloProducto = empresa?.usa_modelo_producto === true;
+    STATE.ordenColumnasProductos = Array.isArray(empresa?.orden_columnas_productos) ? empresa.orden_columnas_productos : null;
 
     // ── FIX MONEDA ────────────────────────────────────────────
     // Orden de prioridad:
@@ -1840,6 +1841,45 @@ function renderCatalogoGrid(items, mostrarStock) {
   }).join('');
 }
 
+// Columnas disponibles para la tabla de Productos -- cada una sabe
+// generar su propio <th> y su propia celda <td>. Usado SOLO cuando
+// la cuenta configuro un orden propio (STATE.ordenColumnasProductos);
+// si no hay configuracion, se usa el camino de SIEMPRE, sin tocar.
+const COLUMNAS_PRODUCTOS_DISPONIBLES = {
+  nombre:      { label: 'Nombre / SKU', th: () => '<th>Nombre / SKU</th>', td: p => `<td>${celdaNombreConFoto(p)}</td>` },
+  modelo:      { label: 'Modelo', th: () => '<th>Modelo</th>', td: p => `<td>${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>` },
+  categoria:   { label: 'Categoría', th: () => '<th>Categoría</th>', td: p => `<td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}</td>` },
+  precio:      { label: 'Precio', th: () => '<th>Precio</th>', td: p => `<td class="td-money">${p.tipo_precio === 'escala' ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>` : fmtMoney(p.precio)}</td>` },
+  costo:       { label: 'Costo', th: () => '<th>Costo</th>', td: p => `<td class="td-money">${fmtMoney(p.costo)}</td>` },
+  margen:      { label: 'Margen', th: () => '<th>Margen</th>', td: p => `<td>${renderMargen(p.precio, p.costo)}</td>` },
+  stock:       { label: 'Stock', th: () => '<th>Stock</th>', td: p => { const bajo = esStockBajo(p); return `<td><div class="td-stock"><span>${fmtNum(p.stock_actual)}</span>${bajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}</div></td>`; } },
+  estado:      { label: 'Estado', th: () => '<th>Estado</th>', td: p => `<td><span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>` },
+  creado:      { label: 'Creado', th: () => '<th>Creado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>` },
+  actualizado: { label: 'Actualizado', th: () => '<th>Actualizado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>` },
+  acciones:    { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => {
+    const movBtn = `<button class="row-action-btn mov-btn-especial" title="Movimiento especial (merma)" onclick="abrirMovimiento('${p.id}')" style="opacity:1;color:var(--warning);">📉</button>`;
+    return `<td><div style="display:flex;align-items:center;gap:4px;"><div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+      <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
+      <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
+      <button class="row-action-btn dup" title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
+      <button class="row-action-btn del" title="Eliminar" onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+    </div>${movBtn}</div></td>`;
+  } },
+};
+const ORDEN_COLUMNAS_PRODUCTOS_DEFAULT = ['nombre','modelo','categoria','precio','costo','margen','stock','estado','creado','actualizado','acciones'];
+
+function renderTablaProductosDinamico(tbody, orden) {
+  const cols = orden.filter(c => c.visible !== false && COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave]);
+  const thead = document.getElementById('theadProductos');
+  if (thead) thead.innerHTML = `<tr>${cols.map(c => COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave].th()).join('')}</tr>`;
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(cols.length, 'productos', "abrirModalNuevo('producto')");
+    return;
+  }
+  tbody.innerHTML = STATE.filtrados.map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
+  activarHoverFilas(tbody);
+}
+
 function renderTablaProductos(tbody) {
   if (STATE.empresa?.usa_inventario_imagenes) {
     mostrarCatalogoOTabla(true);
@@ -1847,6 +1887,24 @@ function renderTablaProductos(tbody) {
     return;
   }
   mostrarCatalogoOTabla(false);
+
+  // Si la cuenta configuro su propio orden de columnas, se usa ese
+  // camino -- cualquier otra cuenta (sin configurar nada, el caso de
+  // TODAS las demas) sigue el camino de SIEMPRE, sin ningun cambio.
+  if (Array.isArray(STATE.ordenColumnasProductos) && STATE.ordenColumnasProductos.length) {
+    renderTablaProductosDinamico(tbody, STATE.ordenColumnasProductos);
+    return;
+  }
+
+  // Si antes hubo una configuracion dinamica en esta misma sesion y
+  // se quito, el thead queda con las columnas viejas -- se restaura
+  // al original (guardado la primera vez que se renderiza).
+  const thead = document.getElementById('theadProductos');
+  if (thead) {
+    if (!STATE._theadProductosOriginal) STATE._theadProductosOriginal = thead.innerHTML;
+    else thead.innerHTML = STATE._theadProductosOriginal;
+  }
+
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = estadoVacioTabla(11, 'productos', "abrirModalNuevo('producto')");
     return;
@@ -4475,6 +4533,48 @@ function quitarFotoPromo() {
   $('inputFotoPromo').value = '';
 }
 
+let _ordenColumnasEdicion = null;
+
+function clonarOrdenColumnas(orden) {
+  return orden.map(c => ({ ...c }));
+}
+
+function renderListaColumnasProductos() {
+  const cont = document.getElementById('listaColumnasProductos');
+  if (!cont) return;
+  cont.innerHTML = _ordenColumnasEdicion.map((c, i) => {
+    const info = COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave];
+    if (!info) return '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-app,#f8fafc);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;font-size:13px">
+          <input type="checkbox" ${c.visible !== false ? 'checked' : ''} onchange="toggleVisibilidadColumnaProducto('${c.clave}')"/>
+          ${info.label}
+        </label>
+        <button type="button" onclick="moverColumnaProducto('${c.clave}', -1)" ${i === 0 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↑</button>
+        <button type="button" onclick="moverColumnaProducto('${c.clave}', 1)" ${i === _ordenColumnasEdicion.length - 1 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↓</button>
+      </div>`;
+  }).join('');
+}
+
+function moverColumnaProducto(clave, direccion) {
+  const i = _ordenColumnasEdicion.findIndex(c => c.clave === clave);
+  const j = i + direccion;
+  if (i < 0 || j < 0 || j >= _ordenColumnasEdicion.length) return;
+  [_ordenColumnasEdicion[i], _ordenColumnasEdicion[j]] = [_ordenColumnasEdicion[j], _ordenColumnasEdicion[i]];
+  renderListaColumnasProductos();
+}
+
+function toggleVisibilidadColumnaProducto(clave) {
+  const c = _ordenColumnasEdicion.find(c => c.clave === clave);
+  if (c) c.visible = c.visible === false ? true : false;
+}
+
+function restaurarColumnasProductosDefault() {
+  _ordenColumnasEdicion = ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasProductos();
+}
+
 async function abrirModalConfigInventario() {
   document.getElementById('configInvError').textContent = '';
   let actual = 'predeterminado';
@@ -4484,6 +4584,12 @@ async function abrirModalConfigInventario() {
     actual = data?.usa_inventario_imagenes ? 'imagenes' : 'predeterminado';
   } catch (e) { console.warn('abrirModalConfigInventario:', e); }
   elegirTipoInventario(actual);
+
+  _ordenColumnasEdicion = Array.isArray(STATE.ordenColumnasProductos) && STATE.ordenColumnasProductos.length
+    ? clonarOrdenColumnas(STATE.ordenColumnasProductos)
+    : ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasProductos();
+
   document.getElementById('modalConfigInventario').classList.add('open');
 }
 
@@ -4505,13 +4611,22 @@ async function guardarConfigInventario() {
   btn.disabled = true;
   try {
     const activar = _tipoInventarioSeleccion === 'imagenes';
+
+    // Validacion de seguridad: si el usuario oculto TODAS las columnas
+    // por error (o dejo la lista vacia), se usa el orden por defecto en
+    // su lugar, para nunca guardar una tabla imposible de usar.
+    const colsVisibles = (_ordenColumnasEdicion || []).filter(c => c.visible !== false);
+    const ordenAGuardar = colsVisibles.length
+      ? _ordenColumnasEdicion
+      : ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
+
     // update puro -- a estas alturas (Productos, despues del onboarding)
     // la fila de configuracion_empresa siempre deberia existir ya. Un
     // upsert aqui fallaba con 400: al intentar el camino de INSERT,
     // faltaba nombre_comercial (columna obligatoria sin valor por
     // defecto), que este formulario nunca conoce ni deberia tocar.
     const { data, error } = await supabaseClient.from('configuracion_empresa')
-      .update({ usa_inventario_imagenes: activar })
+      .update({ usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar })
       .eq('auth_user_id', STATE.user.id)
       .select('auth_user_id');
     if (error) throw error;
@@ -4520,7 +4635,7 @@ async function guardarConfigInventario() {
     // Se crea con lo minimo necesario para cumplir esa columna obligatoria.
     if (!data || !data.length) {
       const { error: errIns } = await supabaseClient.from('configuracion_empresa')
-        .insert({ auth_user_id: STATE.user.id, nombre_comercial: 'Mi negocio', usa_inventario_imagenes: activar });
+        .insert({ auth_user_id: STATE.user.id, nombre_comercial: 'Mi negocio', usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar });
       if (errIns) throw errIns;
     }
 
