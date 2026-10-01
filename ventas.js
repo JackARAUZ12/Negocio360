@@ -1076,7 +1076,7 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
@@ -1960,9 +1960,13 @@ function buscarProductosParaVenta(q, tipo) {
   // dentro del alcance elegido). Con alcance "todas" (o Stock
   // Compartido apagado), el comportamiento sigue igual que siempre.
   const alcanceRestringido = S.stockCompartidoActivo && S.stockCompartidoAlcance && S.stockCompartidoAlcance !== 'todas';
+  // Buscar tambien por principio activo (ej. "paracetamol" encuentra
+  // la marca que sea) -- solo Farmacia fase 2, sin afectar a nadie mas.
+  const buscaPorGenerico = S.empresaConfig?.usa_farmacia_fase2 === true;
   const lista = alcanceRestringido ? [] : S.productosCache.filter(p =>
     p.tipo === tipo && !p.es_materia_prima &&
-    (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower))
+    (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower)
+      || (buscaPorGenerico && (p.principio_activo||'').toLowerCase().includes(qLower)))
   ).slice(0, 10);
 
   // Con Stock Compartido activo, también se muestran productos que
