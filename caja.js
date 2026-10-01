@@ -1380,6 +1380,7 @@ function setSection(section) {
   if (section === 'cierres')     loadCierres();
   if (section === 'cajachica')   loadCajaChica();
   if (section === 'bancos')      loadBancos();
+  if (section === 'transferencias') loadTransferencias();
 }
 
 /* =====================================================
@@ -1532,6 +1533,126 @@ let CC = { sesionHoy: null, modoConteo: null, historial: [] };
 function esTarjetaOTransferencia(m) {
   const metodo = (m.metodo_pago_nombre || '').toLowerCase();
   return metodo.includes('tarjeta') || metodo.includes('transferencia');
+}
+
+/* =====================================================
+   TRANSFERENCIAS ENTRE CUENTAS PROPIAS -- mueve dinero
+   entre Caja General, Caja Chica y los bancos, sin pasar
+   por Movimientos/Conciliacion manualmente. Cada
+   transferencia crea 2 movimientos reales ligados entre
+   si (egreso en origen, ingreso en destino), usando el
+   mismo mecanismo que ya calcula los saldos de Caja y
+   Bancos -- no se toca ese calculo, solo se alimenta.
+===================================================== */
+async function obtenerCuentasTransferencia() {
+  const { data: bancos } = await sbClient.from('bancos')
+    .select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+  return [
+    { valor: 'general', label: '💵 Caja General', origen_caja: 'general', banco_id: null },
+    { valor: 'chica',   label: '👛 Caja Chica',   origen_caja: 'chica',   banco_id: null },
+    ...(bancos || []).map(b => ({ valor: 'banco:' + b.id, label: '🏦 ' + b.nombre, origen_caja: null, banco_id: b.id })),
+  ];
+}
+
+async function abrirNuevaTransferencia() {
+  document.getElementById('tr-error').textContent = '';
+  document.getElementById('tr-monto').value = '';
+  document.getElementById('tr-nota').value = '';
+  const cuentas = await obtenerCuentasTransferencia();
+  const opciones = cuentas.map(c => `<option value="${c.valor}">${c.label}</option>`).join('');
+  document.getElementById('tr-origen').innerHTML = opciones;
+  document.getElementById('tr-destino').innerHTML = opciones;
+  // Por defecto, destino distinto del origen (si hay mas de 1 opcion)
+  if (cuentas.length > 1) document.getElementById('tr-destino').selectedIndex = 1;
+  openModal('modal-transferencia');
+}
+
+async function obtenerSaldoActualCuenta(origenCaja, bancoId) {
+  let q = sbClient.from('movimientos_financieros').select('saldo_resultante')
+    .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+    .order('created_at', { ascending: false }).limit(1);
+  q = bancoId ? q.eq('banco_id', bancoId) : q.eq('origen_caja', origenCaja).is('banco_id', null);
+  const { data } = await q.maybeSingle();
+  return data ? Number(data.saldo_resultante) : 0;
+}
+
+async function guardarTransferencia() {
+  const errEl = document.getElementById('tr-error');
+  errEl.textContent = '';
+  const origenVal = document.getElementById('tr-origen').value;
+  const destinoVal = document.getElementById('tr-destino').value;
+  const monto = parseFloat(document.getElementById('tr-monto').value);
+  const nota = document.getElementById('tr-nota').value.trim();
+
+  if (origenVal === destinoVal) { errEl.textContent = 'El origen y el destino deben ser distintos.'; return; }
+  if (!monto || monto <= 0) { errEl.textContent = 'El monto debe ser mayor que 0.'; return; }
+
+  const cuentas = await obtenerCuentasTransferencia();
+  const origen = cuentas.find(c => c.valor === origenVal);
+  const destino = cuentas.find(c => c.valor === destinoVal);
+  if (!origen || !destino) { errEl.textContent = 'Elige cuentas válidas.'; return; }
+
+  setBtnLoading('btn-guardar-transferencia', true);
+  try {
+    const transferenciaId = crypto.randomUUID();
+    const fecha = new Date().toISOString().slice(0, 10);
+    const notaTexto = nota ? ` — ${nota}` : '';
+
+    const saldoOrigenAnt = await obtenerSaldoActualCuenta(origen.origen_caja, origen.banco_id);
+    const { error: errSalida } = await sbClient.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'TRANSFERENCIA',
+      concepto: `Transferencia hacia ${destino.label}${notaTexto}`, monto,
+      saldo_anterior: saldoOrigenAnt, saldo_resultante: round2(saldoOrigenAnt - monto),
+      origen_caja: origen.origen_caja, banco_id: origen.banco_id,
+      estado: 'completado', fecha, transferencia_id: transferenciaId,
+    });
+    if (errSalida) throw errSalida;
+
+    const saldoDestinoAnt = await obtenerSaldoActualCuenta(destino.origen_caja, destino.banco_id);
+    const { error: errEntrada } = await sbClient.from('movimientos_financieros').insert({
+      auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'TRANSFERENCIA',
+      concepto: `Transferencia desde ${origen.label}${notaTexto}`, monto,
+      saldo_anterior: saldoDestinoAnt, saldo_resultante: round2(saldoDestinoAnt + monto),
+      origen_caja: destino.origen_caja, banco_id: destino.banco_id,
+      estado: 'completado', fecha, transferencia_id: transferenciaId,
+    });
+    if (errEntrada) throw errEntrada;
+
+    showToast('Transferencia realizada correctamente.');
+    closeModal('modal-transferencia');
+    await loadTransferencias();
+    if (typeof loadMovimientos === 'function') loadMovimientos();
+  } catch (e) {
+    console.error('guardarTransferencia:', e);
+    errEl.textContent = 'No se pudo completar la transferencia. Intenta de nuevo.';
+  } finally {
+    setBtnLoading('btn-guardar-transferencia', false);
+  }
+}
+
+async function loadTransferencias() {
+  const tbody = document.getElementById('transferencias-tbody');
+  try {
+    const { data, error } = await sbClient.from('movimientos_financieros')
+      .select('fecha, concepto, monto, tipo_flujo, transferencia_id')
+      .eq('auth_user_id', STATE.userId).eq('tipo_movimiento', 'TRANSFERENCIA')
+      .order('created_at', { ascending: false }).limit(100);
+    if (error) throw error;
+    // Cada transferencia genera 2 filas (egreso+ingreso) con el mismo
+    // transferencia_id -- se muestra solo la del egreso, que ya dice
+    // "hacia" el destino en su concepto.
+    const salidas = (data || []).filter(m => m.tipo_flujo === 'EGRESO');
+    if (!salidas.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin transferencias todavía.</td></tr>'; return; }
+    tbody.innerHTML = salidas.map(m => {
+      const partes = m.concepto.split(' — ');
+      const destino = partes[0].replace('Transferencia hacia ', '');
+      const nota = partes[1] || '';
+      return `<tr><td>${m.fecha}</td><td>Origen</td><td>${esc(destino)}</td><td>${fmt(m.monto)}</td><td>${esc(nota)}</td></tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('loadTransferencias:', e);
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">No se pudo cargar.</td></tr>';
+  }
 }
 
 async function loadBancos() {
