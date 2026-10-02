@@ -2110,8 +2110,33 @@ function renderEstadoCajaChica() {
       <p style="font-size:12.5px;color:var(--text-muted)">
         ${Math.abs(dif) < 0.5 ? 'Cuadró perfecto.' : (dif > 0 ? `Sobraron ${fmt(dif)}.` : `Faltaron ${fmt(Math.abs(dif))}.`)}
       </p>
-      <button class="btn-secondary" style="margin-top:10px" onclick="verReporteCC('${s.id}')">Ver reporte de hoy</button>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn-secondary" onclick="verReporteCC('${s.id}')">Ver reporte de hoy</button>
+        <button class="btn-secondary" onclick="reabrirCajaDeHoy('${s.id}')" title="Por si la cerraste por accidente">🔓 Reabrir caja de hoy</button>
+      </div>
     </div>`;
+}
+
+// Si se cerro por accidente (o hace falta seguir registrando algo
+// mas del mismo dia), se puede reabrir -- SOLO si el cierre es de
+// HOY (nunca de un dia anterior, para no alterar un corte ya
+// pasado). Preserva el monto de apertura original tal cual estaba.
+async function reabrirCajaDeHoy(sesionId) {
+  const ok = confirm('¿Reabrir la Caja Chica de hoy? Se mantendrá el monto de apertura original, y podrás seguir registrando movimientos.');
+  if (!ok) return;
+  try {
+    const { error } = await sbClient.from('caja_chica_sesiones').update({
+      estado: 'abierta', monto_cierre_teorico: null, monto_cierre_real: null, denominacion_cierre: null,
+      diferencia: null, total_ingresos: null, total_egresos: null,
+      total_ingresos_efectivo: null, total_egresos_efectivo: null, movimientos_count: null,
+    }).eq('id', sesionId).eq('auth_user_id', STATE.userId).eq('fecha', todayISO());
+    if (error) throw error;
+    showToast('Caja Chica reabierta.');
+    await loadCajaChica();
+  } catch (e) {
+    console.error('reabrirCajaDeHoy:', e);
+    showToast('No se pudo reabrir. Intenta de nuevo.', 'error');
+  }
 }
 
 // Trae los movimientos de HOY (leyendo el mismo libro de Caja
@@ -2280,6 +2305,14 @@ function leerDenominacionesContadas() {
 }
 
 async function confirmarConteoBilletes() {
+  // El cierre es la accion mas delicada (deja la caja inoperable
+  // hasta reabrirla) -- se pide confirmacion explicita solo para esa,
+  // la apertura no la necesita (no es destructiva).
+  if (CC.modoConteo === 'cierre') {
+    const ok = confirm('¿Confirmas que quieres CERRAR la caja de hoy? Después de cerrarla no podrás registrar más movimientos hasta que la abras de nuevo.');
+    if (!ok) { return; }
+  }
+
   const { detalle, total } = leerDenominacionesContadas();
   const obs = document.getElementById('cc-conteo-observaciones').value.trim() || null;
   const nombreUsuario = STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario';
