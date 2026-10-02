@@ -1849,6 +1849,7 @@ function renderCatalogoGrid(items, mostrarStock) {
 const COLUMNAS_PRODUCTOS_DISPONIBLES = {
   nombre:      { label: 'Nombre / SKU', th: () => '<th>Nombre / SKU</th>', td: p => `<td>${celdaNombreConFoto(p)}</td>` },
   modelo:      { label: 'Modelo', th: () => '<th>Modelo</th>', td: p => `<td>${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>` },
+  ubicacion:   { label: 'Ubicación', th: () => '<th>Ubicación</th>', td: p => `<td>${p.ubicacion_fisica ? escHtml(p.ubicacion_fisica) : '<span style="color:var(--text-muted)">—</span>'}</td>` },
   categoria:   { label: 'Categoría', th: () => '<th>Categoría</th>', td: p => `<td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}</td>` },
   precio:      { label: 'Precio', th: () => '<th>Precio</th>', td: p => `<td class="td-money">${p.tipo_precio === 'escala' ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>` : fmtMoney(p.precio)}</td>` },
   costo:       { label: 'Costo', th: () => '<th>Costo</th>', td: p => `<td class="td-money">${fmtMoney(p.costo)}</td>` },
@@ -1867,7 +1868,7 @@ const COLUMNAS_PRODUCTOS_DISPONIBLES = {
     </div>${movBtn}</div></td>`;
   } },
 };
-const ORDEN_COLUMNAS_PRODUCTOS_DEFAULT = ['nombre','modelo','categoria','precio','costo','margen','stock','estado','creado','actualizado','acciones'];
+const ORDEN_COLUMNAS_PRODUCTOS_DEFAULT = ['nombre','modelo','ubicacion','categoria','precio','costo','margen','stock','estado','creado','actualizado','acciones'];
 
 // Servicios reutiliza los MISMOS generadores de celda que Productos
 // para las columnas compartidas (nombre, categoria, precio, costo,
