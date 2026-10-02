@@ -126,6 +126,8 @@
                                desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
     'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
+    'recetas.html': { key: 'farmacia_recetas', label: 'Farmacia · Recetas', icon: '📝', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
+                               desc: 'Recetas medicas -- paciente, medico y medicamentos recetados.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;

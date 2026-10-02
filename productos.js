@@ -329,6 +329,7 @@ async function cargarDatosEmpresa() {
     STATE.usaNumeroSerie = empresa?.usa_numero_serie === true;
     STATE.usaModeloProducto = empresa?.usa_modelo_producto === true;
     STATE.ordenColumnasProductos = Array.isArray(empresa?.orden_columnas_productos) ? empresa.orden_columnas_productos : null;
+    STATE.ordenColumnasServicios = Array.isArray(empresa?.orden_columnas_servicios) ? empresa.orden_columnas_servicios : null;
 
     // ── FIX MONEDA ────────────────────────────────────────────
     // Orden de prioridad:
@@ -1868,6 +1869,41 @@ const COLUMNAS_PRODUCTOS_DISPONIBLES = {
 };
 const ORDEN_COLUMNAS_PRODUCTOS_DEFAULT = ['nombre','modelo','categoria','precio','costo','margen','stock','estado','creado','actualizado','acciones'];
 
+// Servicios reutiliza los MISMOS generadores de celda que Productos
+// para las columnas compartidas (nombre, categoria, precio, costo,
+// margen, estado, creado, actualizado) -- un servicio no tiene
+// modelo ni stock, y sus acciones no incluyen el boton de merma
+// (no maneja inventario).
+const COLUMNAS_SERVICIOS_DISPONIBLES = {
+  nombre: COLUMNAS_PRODUCTOS_DISPONIBLES.nombre,
+  categoria: COLUMNAS_PRODUCTOS_DISPONIBLES.categoria,
+  precio: COLUMNAS_PRODUCTOS_DISPONIBLES.precio,
+  costo: COLUMNAS_PRODUCTOS_DISPONIBLES.costo,
+  margen: COLUMNAS_PRODUCTOS_DISPONIBLES.margen,
+  estado: COLUMNAS_PRODUCTOS_DISPONIBLES.estado,
+  creado: COLUMNAS_PRODUCTOS_DISPONIBLES.creado,
+  actualizado: COLUMNAS_PRODUCTOS_DISPONIBLES.actualizado,
+  acciones: { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => `<td><div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+      <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
+      <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
+      <button class="row-action-btn dup" title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
+      <button class="row-action-btn del" title="Eliminar" onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+    </div></td>` },
+};
+const ORDEN_COLUMNAS_SERVICIOS_DEFAULT = ['nombre','categoria','precio','costo','margen','estado','creado','actualizado','acciones'];
+
+function renderTablaServiciosDinamico(tbody, orden) {
+  const cols = orden.filter(c => c.visible !== false && COLUMNAS_SERVICIOS_DISPONIBLES[c.clave]);
+  const thead = document.getElementById('theadServicios');
+  if (thead) thead.innerHTML = `<tr>${cols.map(c => COLUMNAS_SERVICIOS_DISPONIBLES[c.clave].th()).join('')}</tr>`;
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(cols.length, 'servicios', "abrirModalNuevo('servicio')");
+    return;
+  }
+  tbody.innerHTML = STATE.filtrados.map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_SERVICIOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
+  activarHoverFilas(tbody);
+}
+
 function renderTablaProductosDinamico(tbody, orden) {
   const cols = orden.filter(c => c.visible !== false && COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave]);
   const thead = document.getElementById('theadProductos');
@@ -1975,6 +2011,18 @@ function renderTablaServicios(tbody) {
     return;
   }
   mostrarCatalogoOTabla(false);
+
+  if (Array.isArray(STATE.ordenColumnasServicios) && STATE.ordenColumnasServicios.length) {
+    renderTablaServiciosDinamico(tbody, STATE.ordenColumnasServicios);
+    return;
+  }
+
+  const theadS = document.getElementById('theadServicios');
+  if (theadS) {
+    if (!STATE._theadServiciosOriginal) STATE._theadServiciosOriginal = theadS.innerHTML;
+    else theadS.innerHTML = STATE._theadServiciosOriginal;
+  }
+
   if (STATE.filtrados.length === 0) {
     tbody.innerHTML = estadoVacioTabla(9, 'servicios', "abrirModalNuevo('servicio')");
     return;
@@ -4575,6 +4623,44 @@ function restaurarColumnasProductosDefault() {
   renderListaColumnasProductos();
 }
 
+let _ordenColumnasServiciosEdicion = null;
+
+function renderListaColumnasServicios() {
+  const cont = document.getElementById('listaColumnasServicios');
+  if (!cont) return;
+  cont.innerHTML = _ordenColumnasServiciosEdicion.map((c, i) => {
+    const info = COLUMNAS_SERVICIOS_DISPONIBLES[c.clave];
+    if (!info) return '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-app,#f8fafc);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;font-size:13px">
+          <input type="checkbox" ${c.visible !== false ? 'checked' : ''} onchange="toggleVisibilidadColumnaServicio('${c.clave}')"/>
+          ${info.label}
+        </label>
+        <button type="button" onclick="moverColumnaServicio('${c.clave}', -1)" ${i === 0 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↑</button>
+        <button type="button" onclick="moverColumnaServicio('${c.clave}', 1)" ${i === _ordenColumnasServiciosEdicion.length - 1 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↓</button>
+      </div>`;
+  }).join('');
+}
+
+function moverColumnaServicio(clave, direccion) {
+  const i = _ordenColumnasServiciosEdicion.findIndex(c => c.clave === clave);
+  const j = i + direccion;
+  if (i < 0 || j < 0 || j >= _ordenColumnasServiciosEdicion.length) return;
+  [_ordenColumnasServiciosEdicion[i], _ordenColumnasServiciosEdicion[j]] = [_ordenColumnasServiciosEdicion[j], _ordenColumnasServiciosEdicion[i]];
+  renderListaColumnasServicios();
+}
+
+function toggleVisibilidadColumnaServicio(clave) {
+  const c = _ordenColumnasServiciosEdicion.find(c => c.clave === clave);
+  if (c) c.visible = c.visible === false ? true : false;
+}
+
+function restaurarColumnasServiciosDefault() {
+  _ordenColumnasServiciosEdicion = ORDEN_COLUMNAS_SERVICIOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasServicios();
+}
+
 async function abrirModalConfigInventario() {
   document.getElementById('configInvError').textContent = '';
   let actual = 'predeterminado';
@@ -4589,6 +4675,11 @@ async function abrirModalConfigInventario() {
     ? clonarOrdenColumnas(STATE.ordenColumnasProductos)
     : ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
   renderListaColumnasProductos();
+
+  _ordenColumnasServiciosEdicion = Array.isArray(STATE.ordenColumnasServicios) && STATE.ordenColumnasServicios.length
+    ? clonarOrdenColumnas(STATE.ordenColumnasServicios)
+    : ORDEN_COLUMNAS_SERVICIOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasServicios();
 
   document.getElementById('modalConfigInventario').classList.add('open');
 }
@@ -4620,13 +4711,18 @@ async function guardarConfigInventario() {
       ? _ordenColumnasEdicion
       : ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
 
+    const colsVisiblesServ = (_ordenColumnasServiciosEdicion || []).filter(c => c.visible !== false);
+    const ordenServiciosAGuardar = colsVisiblesServ.length
+      ? _ordenColumnasServiciosEdicion
+      : ORDEN_COLUMNAS_SERVICIOS_DEFAULT.map(clave => ({ clave, visible: true }));
+
     // update puro -- a estas alturas (Productos, despues del onboarding)
     // la fila de configuracion_empresa siempre deberia existir ya. Un
     // upsert aqui fallaba con 400: al intentar el camino de INSERT,
     // faltaba nombre_comercial (columna obligatoria sin valor por
     // defecto), que este formulario nunca conoce ni deberia tocar.
     const { data, error } = await supabaseClient.from('configuracion_empresa')
-      .update({ usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar })
+      .update({ usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar, orden_columnas_servicios: ordenServiciosAGuardar })
       .eq('auth_user_id', STATE.user.id)
       .select('auth_user_id');
     if (error) throw error;
@@ -4635,7 +4731,7 @@ async function guardarConfigInventario() {
     // Se crea con lo minimo necesario para cumplir esa columna obligatoria.
     if (!data || !data.length) {
       const { error: errIns } = await supabaseClient.from('configuracion_empresa')
-        .insert({ auth_user_id: STATE.user.id, nombre_comercial: 'Mi negocio', usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar });
+        .insert({ auth_user_id: STATE.user.id, nombre_comercial: 'Mi negocio', usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar, orden_columnas_servicios: ordenServiciosAGuardar });
       if (errIns) throw errIns;
     }
 
