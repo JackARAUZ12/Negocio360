@@ -3006,6 +3006,8 @@ function cargarFormulario(p) {
   if ($('inputConcentracionEdit')) $('inputConcentracionEdit').value = p.concentracion || '';
   if ($('inputPresentacion')) $('inputPresentacion').value = p.presentacion || '';
   if ($('inputPresentacionEdit')) $('inputPresentacionEdit').value = p.presentacion || '';
+  if ($('inputUbicacionFisica')) $('inputUbicacionFisica').value = p.ubicacion_fisica || '';
+  if ($('inputUbicacionFisicaEdit')) $('inputUbicacionFisicaEdit').value = p.ubicacion_fisica || '';
 
   // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
   const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
@@ -3131,6 +3133,7 @@ async function guardarProducto() {
   const principioActivo = (STATE.modalMode === 'editar' ? $('inputPrincipioActivoEdit') : $('inputPrincipioActivo'))?.value.trim() || null;
   const concentracion   = (STATE.modalMode === 'editar' ? $('inputConcentracionEdit')   : $('inputConcentracion'))?.value.trim() || null;
   const presentacion    = (STATE.modalMode === 'editar' ? $('inputPresentacionEdit')    : $('inputPresentacion'))?.value.trim() || null;
+  const ubicacionFisica = (STATE.modalMode === 'editar' ? $('inputUbicacionFisicaEdit') : $('inputUbicacionFisica'))?.value.trim() || null;
 
   // Stock actual: usar el campo visible según el modo. En edición ahora
   // también es editable directamente (antes solo se podía desde
@@ -3179,7 +3182,7 @@ async function guardarProducto() {
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
-        principio_activo: principioActivo, concentracion, presentacion,
+        principio_activo: principioActivo, concentracion, presentacion, ubicacion_fisica: ubicacionFisica,
         activo,
       };
       // Fecha de creación manual (producto que ya existía antes del sistema).
@@ -3235,7 +3238,7 @@ async function guardarProducto() {
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
-        principio_activo: principioActivo, concentracion, presentacion,
+        principio_activo: principioActivo, concentracion, presentacion, ubicacion_fisica: ubicacionFisica,
         activo,
       };
       // Solo tocar stock_actual para productos (los servicios no manejan stock)

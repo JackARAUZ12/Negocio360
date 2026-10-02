@@ -965,6 +965,10 @@
             </div>
             <input type="text" class="form-input" id="inputPresentacion" placeholder="Presentación, ej: Tableta, Jarabe, Ampolla" style="margin-top:6px"/>
           </div>
+          <div class="form-group full" style="margin-top:6px">
+            <label class="form-label">Ubicación física (opcional)</label>
+            <input type="text" class="form-input" id="inputUbicacionFisica" placeholder="Ej: Estante 3, Gaveta B"/>
+          </div>
         </div>
 
         <!-- Aviso modo edición: stock editable directamente -->
@@ -1027,6 +1031,10 @@
               <input type="text" class="form-input" id="inputConcentracionEdit" placeholder="Concentración, ej: 500mg"/>
             </div>
             <input type="text" class="form-input" id="inputPresentacionEdit" placeholder="Presentación, ej: Tableta, Jarabe, Ampolla" style="margin-top:6px"/>
+          </div>
+          <div class="form-group full" style="margin-top:6px">
+            <label class="form-label">Ubicación física (opcional)</label>
+            <input type="text" class="form-input" id="inputUbicacionFisicaEdit" placeholder="Ej: Estante 3, Gaveta B"/>
           </div>
         </div>
 
@@ -1408,7 +1416,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20260930c"></script>
+<script src="productos.js?v=20261002a"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
