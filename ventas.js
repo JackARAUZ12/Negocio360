@@ -2820,6 +2820,10 @@ async function aplicarRecetaPendienteDeVender() {
   sessionStorage.removeItem('n360_receta_a_vender'); // una sola vez, no se repite al recargar
   try {
     const { recetaId, items } = JSON.parse(raw);
+    // abrirNuevaVenta() limpia el carrito al abrirse -- se llama
+    // PRIMERO, y despues se agregan los medicamentos, para que el
+    // cliente vea de una vez la pantalla de venta con todo listo.
+    await abrirNuevaVenta();
     for (const item of (items || [])) {
       for (let i = 0; i < Math.max(1, Math.round(item.cantidad)); i++) {
         await agregarAlCarritoConPrecio(item.producto_id, 'producto', null);
