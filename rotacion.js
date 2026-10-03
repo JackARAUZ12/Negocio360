@@ -160,7 +160,7 @@ async function cargarRotacion() {
     // Todos los productos activos (tipo 'producto') -- los que no
     // vendieron nada en el rango tambien aparecen, como "sin movimiento".
     const { data: productos } = await sb.from('productos')
-      .select('id, nombre, costo, precio').eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true);
+      .select('id, nombre, costo, precio, stock_actual, stock_minimo, stock_maximo').eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true);
 
     const lista = (productos || []).map(p => {
       const v = porProducto[p.id];
@@ -169,7 +169,21 @@ async function cargarRotacion() {
       const precioPromedio = unidades > 0 ? ingresos / unidades : Number(p.precio || 0);
       const costo = Number(p.costo || 0);
       const margenPct = precioPromedio > 0 ? round2(((precioPromedio - costo) / precioPromedio) * 100) : 0;
-      return { id: p.id, nombre: p.nombre, unidades: round2(unidades), ingresos: round2(ingresos), margenPct };
+
+      // Alerta de reposicion: stock actual ya llego al minimo (o
+      // menos). La cantidad sugerida completa hasta el maximo si
+      // esta definido; si no, una heuristica simple (el doble del
+      // minimo) para dar un numero razonable de todas formas.
+      const stockActual = Number(p.stock_actual || 0);
+      const stockMinimo = Number(p.stock_minimo || 0);
+      const stockMaximo = p.stock_maximo != null ? Number(p.stock_maximo) : null;
+      const necesitaReponer = stockMinimo > 0 && stockActual <= stockMinimo;
+      const cantidadSugerida = necesitaReponer
+        ? round2(stockMaximo != null ? Math.max(0, stockMaximo - stockActual) : stockMinimo * 2)
+        : 0;
+
+      return { id: p.id, nombre: p.nombre, unidades: round2(unidades), ingresos: round2(ingresos), margenPct,
+        stockActual, stockMinimo, necesitaReponer, cantidadSugerida };
     });
 
     // Clasificacion por terciles de unidades vendidas (solo entre los
@@ -207,6 +221,26 @@ function renderRotacion() {
   set('rm-kpi-alta', STATE.rotacion.filter(x => x.rotacion === 'alta').length);
   set('rm-kpi-media', STATE.rotacion.filter(x => x.rotacion === 'media').length);
   set('rm-kpi-baja', STATE.rotacion.filter(x => x.rotacion === 'baja' || x.rotacion === 'sin_movimiento').length);
+
+  // Para reponer ya: solo los que SI tienen el minimo configurado y
+  // ya lo tocaron, priorizando primero los que mas se venden (alta
+  // rotacion) -- esos son los mas urgentes de no dejar sin stock.
+  const ordenPrioridad = { alta: 0, media: 1, baja: 2, sin_movimiento: 3 };
+  const paraReponer = STATE.rotacion.filter(x => x.necesitaReponer)
+    .sort((a, b) => (ordenPrioridad[a.rotacion] ?? 9) - (ordenPrioridad[b.rotacion] ?? 9));
+  const contReponer = document.getElementById('rm-reponer-lista');
+  const wrapReponer = document.getElementById('rm-reponer-wrap');
+  if (wrapReponer) wrapReponer.style.display = paraReponer.length ? '' : 'none';
+  if (contReponer) {
+    contReponer.innerHTML = paraReponer.map(r => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app,#fff7ed);border-radius:8px;margin-bottom:6px">
+        <div>
+          <strong style="font-size:13px">${esc(r.nombre)}</strong> ${ROTACION_LABEL[r.rotacion] || ''}
+          <div style="font-size:11.5px;color:var(--text-muted)">Stock actual: ${r.stockActual} (mínimo: ${r.stockMinimo})</div>
+        </div>
+        <span style="font-weight:700;font-size:13px;color:var(--warning,#d97706)">Pedir ~${r.cantidadSugerida}</span>
+      </div>`).join('');
+  }
 
   if (!tbody) return;
   if (!lista.length) {
