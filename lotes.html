@@ -1367,7 +1367,7 @@
 
   </div>
 </div><!-- /#app -->
-<script src="lotes.js?v=20261002a"></script>
+<script src="lotes.js?v=20261002b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
@@ -1416,6 +1416,33 @@
     </div>
     <div class="modal-footer">
       <button class="btn-accion-tabla btn-ghost" onclick="cerrarTrazabilidadLote()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-devolucion" onclick="if(event.target===this)cerrarDevolucionProveedor()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">↩️ Devolver a proveedor</span>
+      <button class="modal-close" onclick="cerrarDevolucionProveedor()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p id="dev-info" style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px"></p>
+      <div class="form-group">
+        <label>Cantidad a devolver *</label>
+        <input type="number" id="dev-cantidad" min="0.01" step="0.01"/>
+      </div>
+      <div class="form-group">
+        <label>Motivo</label>
+        <input type="text" id="dev-motivo" placeholder="Ej: Vencido, defectuoso, empaque dañado"/>
+      </div>
+      <p id="dev-error" style="color:var(--danger,#dc2626);font-size:12.5px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-accion-tabla btn-ghost" onclick="cerrarDevolucionProveedor()">Cancelar</button>
+      <button class="btn-accion-tabla btn-primary" id="btn-guardar-devolucion" onclick="guardarDevolucionProveedor()">Confirmar devolución</button>
     </div>
   </div>
 </div>

@@ -183,6 +183,7 @@ function renderLotes() {
         <td>
           <button class="btn-accion-tabla btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button>
           <button class="btn-accion-tabla btn-ghost" onclick="abrirTrazabilidadLote('${l.id}')">🔍 Trazabilidad</button>
+          <button class="btn-accion-tabla btn-ghost" onclick="abrirDevolucionProveedor('${l.id}')">↩️ Devolver a proveedor</button>
         </td>
       </tr>`;
   }).join('');
@@ -291,4 +292,96 @@ async function abrirTrazabilidadLote(loteId) {
 
 function cerrarTrazabilidadLote() {
   closeModal('modal-trazabilidad');
+}
+
+function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/* =====================================================
+   DEVOLUCION A PROVEEDOR -- cuando un lote esta vencido o
+   defectuoso. Descuenta el lote y el stock general, y deja
+   registro con motivo para consultar despues.
+===================================================== */
+let _loteDevolucionActual = null;
+
+async function abrirDevolucionProveedor(loteId) {
+  document.getElementById('dev-error').textContent = '';
+  document.getElementById('dev-cantidad').value = '';
+  document.getElementById('dev-motivo').value = '';
+  document.getElementById('dev-info').textContent = 'Cargando…';
+  openModal('modal-devolucion');
+  try {
+    const { data: lote, error } = await sb.from('producto_lotes')
+      .select('*, productos(nombre)').eq('id', loteId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (error) throw error;
+    if (!lote) { document.getElementById('dev-info').textContent = 'No se encontró el lote.'; return; }
+
+    let proveedorNombre = null;
+    if (lote.compra_id) {
+      const { data: compra } = await sb.from('compras').select('proveedor_nombre').eq('id', lote.compra_id).maybeSingle();
+      proveedorNombre = compra?.proveedor_nombre || null;
+    }
+
+    _loteDevolucionActual = { ...lote, proveedor_nombre: proveedorNombre };
+    document.getElementById('dev-info').textContent =
+      `${lote.productos?.nombre || 'Producto'} — Lote ${lote.numero_lote || 'sin número'} · Disponible: ${fmtNumLote(lote.cantidad_actual)}${proveedorNombre ? ' · Proveedor: ' + proveedorNombre : ''}`;
+    document.getElementById('dev-cantidad').max = lote.cantidad_actual;
+  } catch (e) {
+    console.error('abrirDevolucionProveedor:', e);
+    document.getElementById('dev-info').textContent = 'No se pudo cargar el lote.';
+  }
+}
+
+function cerrarDevolucionProveedor() {
+  closeModal('modal-devolucion');
+  _loteDevolucionActual = null;
+}
+
+async function guardarDevolucionProveedor() {
+  const errEl = document.getElementById('dev-error');
+  errEl.textContent = '';
+  if (!_loteDevolucionActual) return;
+
+  const cantidad = parseFloat(document.getElementById('dev-cantidad').value);
+  const motivo = document.getElementById('dev-motivo').value.trim() || null;
+  const lote = _loteDevolucionActual;
+
+  if (!cantidad || cantidad <= 0) { errEl.textContent = 'La cantidad debe ser mayor que 0.'; return; }
+  if (cantidad > Number(lote.cantidad_actual)) { errEl.textContent = `No puedes devolver más de lo disponible en el lote (${fmtNumLote(lote.cantidad_actual)}).`; return; }
+
+  document.getElementById('btn-guardar-devolucion').disabled = true;
+  try {
+    // 1) Descontar del lote
+    const { error: errLote } = await sb.from('producto_lotes')
+      .update({ cantidad_actual: round2(Number(lote.cantidad_actual) - cantidad) })
+      .eq('id', lote.id).eq('auth_user_id', STATE.userId);
+    if (errLote) throw errLote;
+
+    // 2) Descontar del stock general del producto
+    const { data: prod } = await sb.from('productos').select('stock_actual').eq('id', lote.producto_id).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (prod) {
+      await sb.from('productos').update({ stock_actual: Math.max(0, round2(Number(prod.stock_actual || 0) - cantidad)) })
+        .eq('id', lote.producto_id).eq('auth_user_id', STATE.userId);
+    }
+
+    // 3) Dejar registro
+    const { error: errReg } = await sb.from('devoluciones_proveedor').insert({
+      auth_user_id: STATE.userId, lote_id: lote.id, producto_id: lote.producto_id,
+      producto_nombre: lote.productos?.nombre || 'Producto', proveedor_nombre: lote.proveedor_nombre,
+      cantidad, motivo, fecha: todayISO(),
+    });
+    if (errReg) throw errReg;
+
+    showToast('Devolución registrada correctamente.');
+    cerrarDevolucionProveedor();
+    await cargarLotes();
+  } catch (e) {
+    console.error('guardarDevolucionProveedor:', e);
+    errEl.textContent = 'No se pudo registrar la devolución. Intenta de nuevo.';
+  } finally {
+    document.getElementById('btn-guardar-devolucion').disabled = false;
+  }
 }
