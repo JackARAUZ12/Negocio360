@@ -1722,6 +1722,7 @@ function renderModuloEspecial() {
   let especial = null;
   if (tipoNegocioSeleccionado === 'hotel') especial = { icono:'🛏️', nombre:'Módulo de Hotel', desc:'Habitaciones, reservaciones, mapa y housekeeping.' };
   else if (['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) especial = { icono:'🍽️', nombre:'Módulo de Restaurante', desc:'Mesas, comandas y cocina en tiempo real.' };
+  else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
 
