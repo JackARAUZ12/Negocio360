@@ -989,6 +989,7 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             Ver quién lo vio
           </button>
+          <button class="btn-icon btn-danger" id="btn-desactivar-anuncio" onclick="desactivarAnuncioActivo()" style="display:none">🔕 Desactivar</button>
         </div>
         <div class="card-body" id="anuncio-activo-preview">
           <p style="color:var(--text-muted, #888)">Cargando…</p>
@@ -1034,6 +1035,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Actualizar
           </button>
+          <button class="btn-icon btn-danger" id="btn-desactivar-encuesta" onclick="desactivarEncuestaActiva()" style="display:none">🔕 Desactivar</button>
         </div>
         <div class="card-body" id="encuesta-resultados">
           <p style="color:var(--text-muted, #888)">Cargando…</p>
@@ -1609,7 +1611,7 @@
     }
   });
 </script>
-<script src="admin.js?v=20261002a"></script>
+<script src="admin.js?v=20261002b"></script>
 
 <script src="bienvenida-negocio360.js?v=1"></script>
 </body>

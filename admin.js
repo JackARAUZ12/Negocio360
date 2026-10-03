@@ -1688,9 +1688,11 @@ let anuncioActivoActual = null;
 async function renderAnuncioActivoPreview() {
   const el = document.getElementById('anuncio-activo-preview');
   const btnVerLectores = document.getElementById('btn-ver-lectores-anuncio');
+  const btnDesactivar = document.getElementById('btn-desactivar-anuncio');
   if (!el) return;
   el.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
   if (btnVerLectores) btnVerLectores.style.display = 'none';
+  if (btnDesactivar) btnDesactivar.style.display = 'none';
   try {
     const { data, error } = await sb.from('anuncios_sistema')
       .select('*').eq('activo', true).order('created_at', { ascending:false }).limit(1).maybeSingle();
@@ -1699,6 +1701,7 @@ async function renderAnuncioActivoPreview() {
     if (!data) { el.innerHTML = '<p style="color:var(--text-muted)">No hay ningún anuncio activo en este momento.</p>'; return; }
 
     if (btnVerLectores) btnVerLectores.style.display = 'inline-flex';
+    if (btnDesactivar) btnDesactivar.style.display = 'inline-flex';
 
     const items = Array.isArray(data.items) ? data.items : [];
     el.innerHTML = `
@@ -1712,6 +1715,20 @@ async function renderAnuncioActivoPreview() {
   } catch (e) {
     el.innerHTML = '<p style="color:var(--text-muted)">No se pudo cargar el anuncio activo.</p>';
     console.error('renderAnuncioActivoPreview:', e);
+  }
+}
+
+async function desactivarAnuncioActivo() {
+  if (!anuncioActivoActual) return;
+  if (!confirm('¿Desactivar este anuncio? Dejará de aparecerle a cualquier cliente que entre después de ahora.')) return;
+  try {
+    const { error } = await sb.from('anuncios_sistema').update({ activo: false }).eq('id', anuncioActivoActual.id);
+    if (error) throw error;
+    toast('Anuncio desactivado', '', 'success');
+    await renderAnuncioActivoPreview();
+  } catch (e) {
+    console.error('desactivarAnuncioActivo:', e);
+    toast('No se pudo desactivar', e.message, 'error');
   }
 }
 
@@ -1783,16 +1800,22 @@ async function publicarEncuesta() {
   }
 }
 
+let encuestaActivaActual = null;
+
 async function cargarResultadosEncuesta() {
   const cont = document.getElementById('encuesta-resultados');
+  const btnDesactivar = document.getElementById('btn-desactivar-encuesta');
   if (!cont) return;
   cont.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  if (btnDesactivar) btnDesactivar.style.display = 'none';
   try {
     const { data: encuesta, error } = await sb.from('encuestas_sistema')
       .select('id,pregunta,created_at').eq('activa', true)
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
+    encuestaActivaActual = encuesta || null;
     if (!encuesta) { cont.innerHTML = '<p style="color:var(--text-muted)">No hay ninguna encuesta activa en este momento.</p>'; return; }
+    if (btnDesactivar) btnDesactivar.style.display = 'inline-flex';
 
     const { data: respuestas, error: errR } = await sb.from('encuestas_respuestas')
       .select('estrellas, comentario, created_at').eq('encuesta_id', encuesta.id)
@@ -1849,6 +1872,20 @@ async function cargarResultadosEncuesta() {
   } catch (e) {
     console.error('cargarResultadosEncuesta:', e);
     cont.innerHTML = '<p style="color:var(--text-muted)">No se pudieron cargar los resultados.</p>';
+  }
+}
+
+async function desactivarEncuestaActiva() {
+  if (!encuestaActivaActual) return;
+  if (!confirm('¿Desactivar esta encuesta? Dejará de aparecerle a cualquier cliente que entre después de ahora.')) return;
+  try {
+    const { error } = await sb.from('encuestas_sistema').update({ activa: false }).eq('id', encuestaActivaActual.id);
+    if (error) throw error;
+    toast('Encuesta desactivada', '', 'success');
+    await cargarResultadosEncuesta();
+  } catch (e) {
+    console.error('desactivarEncuestaActiva:', e);
+    toast('No se pudo desactivar', e.message, 'error');
   }
 }
 
