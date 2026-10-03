@@ -2814,11 +2814,9 @@ window.cerrarSelectorEscala     = cerrarSelectorEscala;
 let _recetaPendienteVincularId = null;
 
 async function aplicarRecetaPendienteDeVender() {
-  console.log('[receta] aplicarRecetaPendienteDeVender ejecutándose. usa_farmacia_fase2 =', S.empresaConfig?.usa_farmacia_fase2);
-  if (S.empresaConfig?.usa_farmacia_fase2 !== true) { console.log('[receta] Saliendo: el flag no está activo.'); return; }
+  if (S.empresaConfig?.usa_farmacia_fase2 !== true) return;
   const raw = sessionStorage.getItem('n360_receta_a_vender');
-  console.log('[receta] Dato en sessionStorage:', raw);
-  if (!raw) { console.log('[receta] Saliendo: no hay nada en sessionStorage.'); return; }
+  if (!raw) return;
   sessionStorage.removeItem('n360_receta_a_vender'); // una sola vez, no se repite al recargar
 
   let datos;

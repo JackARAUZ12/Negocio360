@@ -139,7 +139,7 @@ async function cargarRecetas() {
   const tbody = document.getElementById('rc-tbody');
   try {
     const { data, error } = await sb.from('farmacia_recetas')
-      .select('*, farmacia_receta_items(producto_id, producto_nombre, cantidad)')
+      .select('*, farmacia_receta_items(producto_id, producto_nombre, cantidad, productos(es_sustancia_controlada))')
       .eq('auth_user_id', STATE.userId).order('fecha', { ascending: false });
     if (error) throw error;
     STATE.registros = data || [];
@@ -221,10 +221,23 @@ function actualizarKpisRC() {
 function venderDesdeReceta(recetaId) {
   const receta = (STATE.registros || []).find(r => r.id === recetaId);
   if (!receta) { showToast('No se encontró la receta.', 'error'); return; }
-  const items = (receta.farmacia_receta_items || []).filter(i => i.producto_id);
-  if (!items.length) { showToast('Esta receta no tiene medicamentos con producto válido.', 'error'); return; }
-  const datosAGuardar = { recetaId: receta.id, items: items.map(i => ({ producto_id: i.producto_id, cantidad: i.cantidad })) };
-  console.log('[receta] Guardando en sessionStorage antes de navegar:', datosAGuardar);
+  const todos = (receta.farmacia_receta_items || []).filter(i => i.producto_id);
+  if (!todos.length) { showToast('Esta receta no tiene medicamentos con producto válido.', 'error'); return; }
+
+  // Las sustancias controladas NUNCA pueden venderse desde el
+  // carrito normal (regla de negocio ya existente) -- se separan y
+  // se avisa que esas se venden aparte, desde Control de Sustancias.
+  const controlados = todos.filter(i => i.productos?.es_sustancia_controlada === true);
+  const normales = todos.filter(i => i.productos?.es_sustancia_controlada !== true);
+
+  if (controlados.length) {
+    const nombres = controlados.map(i => i.producto_nombre).join(', ');
+    showToast(`${nombres} ${controlados.length > 1 ? 'son sustancias controladas' : 'es sustancia controlada'} -- véndelos aparte desde Farmacia · Control de Sustancias.`, 'error');
+  }
+
+  if (!normales.length) return; // todo era controlado, nada que mandar al carrito normal
+
+  const datosAGuardar = { recetaId: receta.id, items: normales.map(i => ({ producto_id: i.producto_id, cantidad: i.cantidad })) };
   sessionStorage.setItem('n360_receta_a_vender', JSON.stringify(datosAGuardar));
   window.location.href = 'ventas.html';
 }
