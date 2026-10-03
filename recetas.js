@@ -139,7 +139,7 @@ async function cargarRecetas() {
   const tbody = document.getElementById('rc-tbody');
   try {
     const { data, error } = await sb.from('farmacia_recetas')
-      .select('*, farmacia_receta_items(producto_nombre, cantidad)')
+      .select('*, farmacia_receta_items(producto_id, producto_nombre, cantidad)')
       .eq('auth_user_id', STATE.userId).order('fecha', { ascending: false });
     if (error) throw error;
     STATE.registros = data || [];
@@ -191,7 +191,12 @@ function renderRecetas() {
         <td>${r.medico_nombre ? esc(r.medico_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td>${r.numero_receta ? esc(r.numero_receta) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td style="max-width:220px">${meds || '<span style="color:var(--text-muted)">Sin medicamentos</span>'}</td>
-        <td><button class="btn-accion-tabla btn-ghost" onclick="eliminarRecetaRC('${r.id}')">🗑️ Eliminar</button></td>
+        <td>
+          ${r.venta_id
+            ? '<span style="font-size:11.5px;color:var(--text-muted)">✅ Ya vendida</span>'
+            : `<button class="btn-accion-tabla btn-primary" onclick="venderDesdeReceta('${r.id}')">🛒 Vender</button>`}
+          <button class="btn-accion-tabla btn-ghost" onclick="eliminarRecetaRC('${r.id}')">🗑️ Eliminar</button>
+        </td>
       </tr>`;
   }).join('');
 }
@@ -208,6 +213,21 @@ function actualizarKpisRC() {
   set('rc-kpi-mes', esteMes);
   set('rc-kpi-hoy', hoyCount);
   set('rc-kpi-pacientes', pacientes.size);
+}
+
+// Vender directo desde la receta -- deja los medicamentos listos
+// en el carrito de Ventas y la receta pre-seleccionada para
+// vincular, sin tener que buscar producto por producto de nuevo.
+function venderDesdeReceta(recetaId) {
+  const receta = (STATE.registros || []).find(r => r.id === recetaId);
+  if (!receta) { showToast('No se encontró la receta.', 'error'); return; }
+  const items = (receta.farmacia_receta_items || []).filter(i => i.producto_id);
+  if (!items.length) { showToast('Esta receta no tiene medicamentos con producto válido.', 'error'); return; }
+  sessionStorage.setItem('n360_receta_a_vender', JSON.stringify({
+    recetaId: receta.id,
+    items: items.map(i => ({ producto_id: i.producto_id, cantidad: i.cantidad })),
+  }));
+  window.location.href = 'ventas.html';
 }
 
 async function eliminarRecetaRC(id) {

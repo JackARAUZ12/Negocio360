@@ -2808,6 +2808,28 @@ window.confirmarSeleccionEscala = confirmarSeleccionEscala;
 window.abrirSelectorEscala      = abrirSelectorEscala;
 window.cerrarSelectorEscala     = cerrarSelectorEscala;
 
+// Venta iniciada desde el boton "Vender" de Recetas (Farmacia fase
+// 2) -- arma el carrito con los medicamentos de esa receta y la deja
+// lista para vincular, sin tener que volver a buscar cada producto.
+let _recetaPendienteVincularId = null;
+
+async function aplicarRecetaPendienteDeVender() {
+  if (S.empresaConfig?.usa_farmacia_fase2 !== true) return;
+  const raw = sessionStorage.getItem('n360_receta_a_vender');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_receta_a_vender'); // una sola vez, no se repite al recargar
+  try {
+    const { recetaId, items } = JSON.parse(raw);
+    for (const item of (items || [])) {
+      for (let i = 0; i < Math.max(1, Math.round(item.cantidad)); i++) {
+        await agregarAlCarritoConPrecio(item.producto_id, 'producto', null);
+      }
+    }
+    _recetaPendienteVincularId = recetaId || null;
+    showToast('Medicamentos de la receta agregados al carrito.');
+  } catch (e) { console.warn('aplicarRecetaPendienteDeVender:', e); }
+}
+
 // Vincular receta con la venta (Farmacia fase 2) -- gateado igual
 // que el resto de esta fase, sin afectar a ninguna otra cuenta.
 async function cargarRecetasPendientesParaVincular() {
@@ -2822,6 +2844,7 @@ async function cargarRecetasPendientesParaVincular() {
     const opciones = (data || []).map(r => `<option value="${r.id}">${esc(r.paciente_nombre)}${r.numero_receta ? ' — #' + esc(r.numero_receta) : ''} (${r.fecha})</option>`).join('');
     sel.innerHTML = '<option value="">Ninguna</option>' + opciones;
     wrap.style.display = (data && data.length) ? '' : 'none';
+    if (_recetaPendienteVincularId) { sel.value = _recetaPendienteVincularId; wrap.style.display = ''; }
   } catch (e) { console.warn('cargarRecetasPendientesParaVincular:', e); }
 }
 
@@ -6949,6 +6972,10 @@ async function initVentas() {
       loadPromocionesCache(),
       cargarPresentaciones(),
     ]);
+
+    // 5b. Si se vino desde "Vender" en Recetas (Farmacia fase 2),
+    // armar el carrito con los medicamentos de esa receta.
+    await aplicarRecetaPendienteDeVender();
 
     // 6. Cargar KPIs y tabla
     await Promise.allSettled([
