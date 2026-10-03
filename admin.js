@@ -1900,6 +1900,9 @@ function renderNotificacionesTabla(items) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             Ver lectores
           </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="toggleActivoNotificacion('${n.id}', ${n.activo === false ? 'true' : 'false'})" title="${n.activo === false ? 'Clientes nuevos no la ven' : 'Visible para clientes nuevos'}">
+            ${n.activo === false ? '🔕 Desactivada' : '🔔 Activa'}
+          </button>
           <button class="btn-icon btn-danger btn-sm" onclick="eliminarNotificacion('${n.id}')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             Eliminar
@@ -2032,6 +2035,18 @@ function renderStatsAuditoriaGlobal() {
   set('ag-stat-cuentas', new Set(AG_STATE.registros.map(r => r.auth_user_id)).size.toLocaleString('es-NI'));
   const ultimo = AG_STATE.registros[0];
   set('ag-stat-ultimo', ultimo ? `${ultimo.negocio} · ${formatTime(ultimo.created_at)}` : '—');
+}
+
+async function toggleActivoNotificacion(id, nuevoActivo) {
+  try {
+    const { error } = await sb.from('notificaciones').update({ activo: nuevoActivo }).eq('id', id);
+    if (error) throw error;
+    toast(nuevoActivo ? 'Notificación reactivada' : 'Notificación desactivada', nuevoActivo ? 'Vuelve a aparecer para clientes nuevos' : 'Clientes nuevos ya no la verán', 'success');
+    await loadNotificacionesSection();
+  } catch (e) {
+    console.error('toggleActivoNotificacion:', e);
+    toast('No se pudo cambiar el estado', e.message, 'error');
+  }
 }
 
 async function eliminarNotificacion(id) {

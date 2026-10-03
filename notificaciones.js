@@ -168,8 +168,8 @@ async function cargarNotificaciones() {
   // (misma tabla que usa el aviso emergente del Dashboard). Si los anuncios
   // fallan por cualquier razón, no debe tumbar las notificaciones normales.
   const [notifsRes, anunciosRes] = await Promise.all([
-    sb.from('notificaciones').select('*').order('created_at', { ascending: false }),
-    sb.from('anuncios_sistema').select('*').order('created_at', { ascending: false }).limit(50),
+    sb.from('notificaciones').select('*').eq('activo', true).order('created_at', { ascending: false }),
+    sb.from('anuncios_sistema').select('*').eq('activo', true).order('created_at', { ascending: false }).limit(50),
   ]);
   if (notifsRes.error) throw notifsRes.error;
   if (anunciosRes.error) console.warn('cargarNotificaciones (anuncios):', anunciosRes.error);
