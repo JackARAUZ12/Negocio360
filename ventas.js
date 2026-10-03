@@ -1796,7 +1796,7 @@ function goToPaso(n) {
   actualizarBotones();
 
   // Acciones específicas por paso
-  if (n===4) calcularResumen();
+  if (n===4) { calcularResumen(); cargarRecetasPendientesParaVincular(); }
   if (n===5) renderMetodosPagoModal();
   if (n===6) renderResumenFinal();
 }
@@ -2807,6 +2807,23 @@ function cerrarSelectorEscala() {
 window.confirmarSeleccionEscala = confirmarSeleccionEscala;
 window.abrirSelectorEscala      = abrirSelectorEscala;
 window.cerrarSelectorEscala     = cerrarSelectorEscala;
+
+// Vincular receta con la venta (Farmacia fase 2) -- gateado igual
+// que el resto de esta fase, sin afectar a ninguna otra cuenta.
+async function cargarRecetasPendientesParaVincular() {
+  const wrap = document.getElementById('wrap-vincular-receta');
+  if (!wrap) return;
+  if (S.empresaConfig?.usa_farmacia_fase2 !== true) { wrap.style.display = 'none'; return; }
+  try {
+    const { data } = await sb.from('farmacia_recetas')
+      .select('id, paciente_nombre, numero_receta, fecha').eq('auth_user_id', S.userId).is('venta_id', null)
+      .order('fecha', { ascending: false }).limit(30);
+    const sel = document.getElementById('sel-receta-vincular');
+    const opciones = (data || []).map(r => `<option value="${r.id}">${esc(r.paciente_nombre)}${r.numero_receta ? ' — #' + esc(r.numero_receta) : ''} (${r.fecha})</option>`).join('');
+    sel.innerHTML = '<option value="">Ninguna</option>' + opciones;
+    wrap.style.display = (data && data.length) ? '' : 'none';
+  } catch (e) { console.warn('cargarRecetasPendientesParaVincular:', e); }
+}
 
 async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   const prod = S.productosCache.find(p => p.id===productoId);
@@ -4939,6 +4956,15 @@ async function confirmarVenta(conImpresion) {
         }
       }
     } catch (eLote) { console.warn('Descuento de lote FEFO:', eLote); }
+
+    // Vincular la receta elegida (Farmacia fase 2) -- aislado: si
+    // algo fallara aqui, la venta YA se confirmo, no se revierte nada.
+    try {
+      const recetaId = document.getElementById('sel-receta-vincular')?.value;
+      if (recetaId) {
+        await sb.from('farmacia_recetas').update({ venta_id: ventaId }).eq('id', recetaId).eq('auth_user_id', S.userId);
+      }
+    } catch (eReceta) { console.warn('Vincular receta:', eReceta); }
 
     // Números de serie recolectados (si la función está activa y el
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
