@@ -1452,6 +1452,7 @@ async function finalizarOnboarding() {
     const modulosAuto = {};
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'hotel') modulosAuto.usa_modulo_hotel = true;
     if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; }
 
     const modulosOpcionales = {};
     MODULOS_SECUNDARIOS.forEach(m => {
