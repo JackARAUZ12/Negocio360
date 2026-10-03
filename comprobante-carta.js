@@ -180,7 +180,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   y += 8;
 
   if (datos.metodo_pago) {
-    doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(rC, gC, bC);
+    doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
     doc.text(`Método de pago: ${datos.metodo_pago}`, M, y);
     y += 10;
   }
@@ -241,7 +241,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   const filaTotal = (label, val, big) => {
     doc.setFontSize(big ? 13 : 10);
     doc.setFont(undefined, big ? 'bold' : 'normal');
-    doc.setTextColor(big ? rC : 90, big ? gC : 90, big ? bC : 110);
+    doc.setTextColor(big ? 20 : 90, big ? 20 : 90, big ? 30 : 110);
     doc.text(label, xEtiqueta, finalY);
     doc.text(val, xValor, finalY, { align: 'right' });
     finalY += big ? 8 : 6.5;
