@@ -2818,20 +2818,22 @@ async function aplicarRecetaPendienteDeVender() {
   const raw = sessionStorage.getItem('n360_receta_a_vender');
   if (!raw) return;
   sessionStorage.removeItem('n360_receta_a_vender'); // una sola vez, no se repite al recargar
-  try {
-    const { recetaId, items } = JSON.parse(raw);
-    // abrirNuevaVenta() limpia el carrito al abrirse -- se llama
-    // PRIMERO, y despues se agregan los medicamentos, para que el
-    // cliente vea de una vez la pantalla de venta con todo listo.
-    await abrirNuevaVenta();
-    for (const item of (items || [])) {
-      for (let i = 0; i < Math.max(1, Math.round(item.cantidad)); i++) {
-        await agregarAlCarritoConPrecio(item.producto_id, 'producto', null);
-      }
+
+  let datos;
+  try { datos = JSON.parse(raw); }
+  catch (e) { console.error('aplicarRecetaPendienteDeVender, dato corrupto:', e); return; }
+
+  // Fuera del try/catch a proposito: si algo real fallara aqui
+  // (abrir el modal o agregar un producto), que se vea el error en
+  // la consola en vez de fallar en silencio sin ningun rastro.
+  await abrirNuevaVenta();
+  for (const item of (datos.items || [])) {
+    for (let i = 0; i < Math.max(1, Math.round(item.cantidad)); i++) {
+      await agregarAlCarritoConPrecio(item.producto_id, 'producto', null);
     }
-    _recetaPendienteVincularId = recetaId || null;
-    showToast('Medicamentos de la receta agregados al carrito.');
-  } catch (e) { console.warn('aplicarRecetaPendienteDeVender:', e); }
+  }
+  _recetaPendienteVincularId = datos.recetaId || null;
+  showToast('Medicamentos de la receta agregados al carrito.');
 }
 
 // Vincular receta con la venta (Farmacia fase 2) -- gateado igual
