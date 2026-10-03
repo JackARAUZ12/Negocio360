@@ -229,11 +229,29 @@ function abrirModalNuevoRegistro() {
   document.getElementById('rsc-receta-numero').value = '';
   document.getElementById('rsc-resumen-cobro').style.display = 'none';
   cargarMetodosPagoRSC();
+  cargarRecetasPendientesParaVincularRSC();
   document.getElementById('modal-nuevo-registro').style.display = 'flex';
 }
 
 function cerrarModalNuevoRegistro() {
   document.getElementById('modal-nuevo-registro').style.display = 'none';
+}
+
+// Vincular receta (Farmacia fase 2) -- mismo patron ya usado en
+// Ventas, necesario para que una receta con SOLO sustancias
+// controladas pueda marcarse como vendida (en Ventas nunca entran).
+async function cargarRecetasPendientesParaVincularRSC() {
+  const wrap = document.getElementById('rsc-wrap-vincular-receta');
+  if (!wrap) return;
+  try {
+    const { data } = await sb.from('farmacia_recetas')
+      .select('id, paciente_nombre, numero_receta, fecha').eq('auth_user_id', STATE.userId).is('venta_id', null)
+      .order('fecha', { ascending: false }).limit(30);
+    const sel = document.getElementById('rsc-sel-receta-vincular');
+    const opciones = (data || []).map(r => `<option value="${r.id}">${esc(r.paciente_nombre)}${r.numero_receta ? ' — #' + esc(r.numero_receta) : ''} (${r.fecha})</option>`).join('');
+    sel.innerHTML = '<option value="">Ninguna</option>' + opciones;
+    wrap.style.display = (data && data.length) ? '' : 'none';
+  } catch (e) { console.warn('cargarRecetasPendientesParaVincularRSC:', e); }
 }
 
 let _timeoutBuscarRSC = null;
@@ -460,6 +478,15 @@ async function guardarNuevoRegistro() {
       referencia_tipo: 'venta', referencia_id: ventaId, fecha,
     }).select('id').single();
     if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+
+    // Vincular la receta elegida (Farmacia fase 2) -- aislado: si
+    // algo fallara aqui, el registro YA se confirmo, no se revierte nada.
+    try {
+      const recetaId = document.getElementById('rsc-sel-receta-vincular')?.value;
+      if (recetaId) {
+        await sb.from('farmacia_recetas').update({ venta_id: ventaId }).eq('id', recetaId).eq('auth_user_id', STATE.userId);
+      }
+    } catch (eReceta) { console.warn('Vincular receta (RSC):', eReceta); }
 
     // 4) Descontar stock real del producto
     await sb.from('productos').update({ stock_actual: round2(Number(prod.stock_actual) - cantidad) }).eq('id', productoId);

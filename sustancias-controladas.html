@@ -1384,7 +1384,7 @@
 
   </div>
 </div><!-- /#app -->
-<script src="sustancias-controladas.js?v=1"></script>
+<script src="sustancias-controladas.js?v=20261003a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
@@ -1481,6 +1481,12 @@
       </div>
       <div id="rsc-resumen-cobro" style="display:none;background:var(--bg-app);border-radius:8px;padding:10px 12px;font-size:13px;justify-content:space-between;font-weight:700">
         <span>Total a cobrar</span><span id="rsc-total-cobrar">C$ 0.00</span>
+      </div>
+      <div id="rsc-wrap-vincular-receta" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-app,#f8fafc);border-radius:8px">
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">📝 ¿Corresponde a una receta pendiente?</label>
+        <select id="rsc-sel-receta-vincular" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)">
+          <option value="">Ninguna</option>
+        </select>
       </div>
       <p id="rsc-error" style="color:var(--danger,#dc2626);font-size:12.5px"></p>
     </div>
