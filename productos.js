@@ -4240,7 +4240,7 @@ function abrirModalPromocion(id) {
   } else {
     $('modalPromocionTitle').textContent = '🎉 Nueva promoción';
     $('pm-nombre').value = '';
-    $('pm-tipo').value = 'nxm_mismo';
+    $('pm-tipo').value = '';
     $('pm-n-compra').value = 2; $('pm-m-paga').value = 1;
     $('pm-n-compra-grupo').value = 2; $('pm-m-paga-grupo').value = 1;
     $('pm-cantidad-disparador').value = 1; $('pm-precio-regalo').value = 0;
@@ -4252,7 +4252,25 @@ function abrirModalPromocion(id) {
   }
   onCambioTipoPromocion();
   onCambioProductoRegalo();
+
+  // Al editar, el tipo ya esta definido -- se va directo al paso 2.
+  // Al crear una nueva, se empieza eligiendo el tipo (paso 1).
+  $('pm-paso-1').style.display = id ? 'none' : '';
+  $('pm-paso-2').style.display = id ? '' : 'none';
+
   $('modalPromocion').classList.add('open');
+}
+
+function elegirTipoPromocion(tipo) {
+  $('pm-tipo').value = tipo;
+  onCambioTipoPromocion();
+  $('pm-paso-1').style.display = 'none';
+  $('pm-paso-2').style.display = '';
+}
+
+function volverPasoUnoPromocion() {
+  $('pm-paso-2').style.display = 'none';
+  $('pm-paso-1').style.display = '';
 }
 
 function cerrarModalPromocion() {
@@ -4320,6 +4338,7 @@ async function guardarPromocion() {
   const garantiaPromocionRaw = $('pm-garantia-meses').value;
   const garantiaPromocion = garantiaPromocionRaw === '' ? null : parseFloat(garantiaPromocionRaw);
 
+  if (!tipo) { errEl.textContent = 'Elige el tipo de promoción.'; return; }
   if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
   if (fechaInicio && fechaFin && fechaFin < fechaInicio) { errEl.textContent = 'La fecha de vigencia final no puede ser antes que la inicial.'; return; }
   if (precioPromocionRaw !== '' && (isNaN(precioPromocion) || precioPromocion < 0)) { errEl.textContent = 'El precio de la promoción no es válido.'; return; }

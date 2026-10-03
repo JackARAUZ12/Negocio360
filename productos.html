@@ -592,6 +592,35 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="pm-id"/>
+      <input type="hidden" id="pm-tipo"/>
+
+      <!-- PASO 1: elegir el tipo, con tarjetas grandes en vez de un select tecnico -->
+      <div id="pm-paso-1">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">¿Qué tipo de promoción quieres crear?</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" class="pm-tarjeta-tipo" onclick="elegirTipoPromocion('nxm_mismo')" style="text-align:left;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-md);background:var(--bg-app,#f8fafc);cursor:pointer">
+            <span style="font-size:22px">🎁</span>
+            <span><strong style="display:block;font-size:13.5px">Compra 2 y paga 1 (o 3x2, etc.)</strong><span style="font-size:12px;color:var(--text-muted)">Del mismo producto</span></span>
+          </button>
+          <button type="button" class="pm-tarjeta-tipo" onclick="elegirTipoPromocion('nxm_grupo')" style="text-align:left;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-md);background:var(--bg-app,#f8fafc);cursor:pointer">
+            <span style="font-size:22px">🎁</span>
+            <span><strong style="display:block;font-size:13.5px">Compra 2 y paga 1 (o 3x2, etc.)</strong><span style="font-size:12px;color:var(--text-muted)">Entre varios productos que tú elijas</span></span>
+          </button>
+          <button type="button" class="pm-tarjeta-tipo" onclick="elegirTipoPromocion('regalo')" style="text-align:left;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-md);background:var(--bg-app,#f8fafc);cursor:pointer">
+            <span style="font-size:22px">🎁</span>
+            <span><strong style="display:block;font-size:13.5px">Compra esto y llévate otro gratis</strong><span style="font-size:12px;color:var(--text-muted)">Un producto distinto como regalo</span></span>
+          </button>
+          <button type="button" class="pm-tarjeta-tipo" onclick="elegirTipoPromocion('descuento_cantidad')" style="text-align:left;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-md);background:var(--bg-app,#f8fafc);cursor:pointer">
+            <span style="font-size:22px">💰</span>
+            <span><strong style="display:block;font-size:13.5px">Descuento por comprar varios</strong><span style="font-size:12px;color:var(--text-muted)">% de descuento desde cierta cantidad</span></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- PASO 2: solo se ve despues de elegir el tipo -->
+      <div id="pm-paso-2" style="display:none">
+      <button type="button" onclick="volverPasoUnoPromocion()" style="background:none;border:none;color:var(--accent);font-size:12.5px;cursor:pointer;padding:0;margin-bottom:12px">← Cambiar tipo</button>
+
       <div class="form-group" id="wrapFotoPromo" style="display:none">
         <label>Foto</label>
         <div style="display:flex;align-items:center;gap:12px">
@@ -607,16 +636,6 @@
       <div class="form-group">
         <label>Nombre de la promoción *</label>
         <input type="text" id="pm-nombre" class="form-input" placeholder="Ej: 2x1 en jabones"/>
-      </div>
-
-      <div class="form-group">
-        <label>Tipo de promoción *</label>
-        <select id="pm-tipo" class="form-select" onchange="onCambioTipoPromocion()">
-          <option value="nxm_mismo">🎁 2x1 (o 3x2, etc.) — del mismo producto</option>
-          <option value="nxm_grupo">🎁 2x1 (o 3x2, etc.) — entre varios productos que yo elijo</option>
-          <option value="regalo">🎁 Compra un producto y llévate otro gratis</option>
-          <option value="descuento_cantidad">💰 Descuento por comprar varios</option>
-        </select>
       </div>
 
       <!-- NXM MISMO PRODUCTO -->
@@ -698,6 +717,7 @@
       <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Si dejas las fechas vacías, la promoción no vence sola — la desactivas cuando quieras.</p>
 
       <p id="pm-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+      </div><!-- /pm-paso-2 -->
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarModalPromocion()">Cancelar</button>
@@ -1416,7 +1436,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20261002b"></script>
+<script src="productos.js?v=20261002c"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
