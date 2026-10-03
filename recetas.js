@@ -223,10 +223,9 @@ function venderDesdeReceta(recetaId) {
   if (!receta) { showToast('No se encontró la receta.', 'error'); return; }
   const items = (receta.farmacia_receta_items || []).filter(i => i.producto_id);
   if (!items.length) { showToast('Esta receta no tiene medicamentos con producto válido.', 'error'); return; }
-  sessionStorage.setItem('n360_receta_a_vender', JSON.stringify({
-    recetaId: receta.id,
-    items: items.map(i => ({ producto_id: i.producto_id, cantidad: i.cantidad })),
-  }));
+  const datosAGuardar = { recetaId: receta.id, items: items.map(i => ({ producto_id: i.producto_id, cantidad: i.cantidad })) };
+  console.log('[receta] Guardando en sessionStorage antes de navegar:', datosAGuardar);
+  sessionStorage.setItem('n360_receta_a_vender', JSON.stringify(datosAGuardar));
   window.location.href = 'ventas.html';
 }
 
