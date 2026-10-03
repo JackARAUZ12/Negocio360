@@ -4381,7 +4381,6 @@ async function guardarPromocion() {
     const cantidadDisparador = parseInt($('pm-cantidad-disparador').value, 10);
     const precioRegalo = parseFloat($('pm-precio-regalo').value) || 0;
     if (!disparadorId || !regaloId) { errEl.textContent = 'Elige ambos productos.'; return; }
-    if (disparadorId === regaloId) { errEl.textContent = 'El producto que activa la promoción y el regalo deben ser distintos.'; return; }
     if (!cantidadDisparador || cantidadDisparador < 1) { errEl.textContent = 'La cantidad necesaria debe ser al menos 1.'; return; }
     Object.assign(payload, { producto_disparador_id: disparadorId, cantidad_disparador: cantidadDisparador, producto_regalo_id: regaloId, precio_regalo: precioRegalo });
   } else if (tipo === 'descuento_cantidad') {
