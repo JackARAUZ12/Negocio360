@@ -128,6 +128,8 @@
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
     'recetas.html': { key: 'farmacia_recetas', label: 'Farmacia · Recetas', icon: '📝', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
                                desc: 'Recetas medicas -- paciente, medico y medicamentos recetados.' },
+    'rotacion.html': { key: 'farmacia_rotacion', label: 'Farmacia · Rotación y Margen', icon: '📊', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
+                               desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
