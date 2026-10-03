@@ -180,7 +180,10 @@ function renderLotes() {
         <td>${esc(l.productos?.nombre || 'Producto eliminado')}</td>
         <td>${fmtNumLote(l.cantidad_actual)}</td>
         <td class="lt-celda-venc" style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</td>
-        <td><button class="btn-accion-tabla btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button></td>
+        <td>
+          <button class="btn-accion-tabla btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button>
+          <button class="btn-accion-tabla btn-ghost" onclick="abrirTrazabilidadLote('${l.id}')">🔍 Trazabilidad</button>
+        </td>
       </tr>`;
   }).join('');
 }
@@ -232,4 +235,60 @@ async function guardarEdicionLoteInline(loteId) {
     console.error('guardarEdicionLoteInline:', e);
     showToast('No se pudo guardar. Intenta de nuevo.', 'error');
   }
+}
+
+/* =====================================================
+   TRAZABILIDAD POR LOTE -- de que compra salio, y en que
+   ventas termino. Reutiliza compra_id (ya en producto_lotes)
+   y lote_id (ya en venta_detalles, agregado para FEFO).
+===================================================== */
+async function abrirTrazabilidadLote(loteId) {
+  const cont = document.getElementById('trazabilidad-contenido');
+  cont.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  openModal('modal-trazabilidad');
+  try {
+    const { data: lote, error } = await sb.from('producto_lotes')
+      .select('*, productos(nombre)').eq('id', loteId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (error) throw error;
+    if (!lote) { cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se encontró el lote.</p>'; return; }
+
+    let htmlCompra = '<p style="color:var(--text-muted);font-size:12.5px">Este lote no tiene una compra de origen registrada.</p>';
+    if (lote.compra_id) {
+      const { data: compra } = await sb.from('compras')
+        .select('numero, proveedor_nombre, fecha, total').eq('id', lote.compra_id).maybeSingle();
+      if (compra) {
+        htmlCompra = `<div style="background:var(--bg-app,#f8fafc);border-radius:8px;padding:10px 12px">
+          <div style="font-weight:700;font-size:13px">Compra #${esc(compra.numero || '—')}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${esc(compra.proveedor_nombre || 'Sin proveedor')} · ${compra.fecha} · ${fmt(compra.total)}</div>
+        </div>`;
+      }
+    }
+
+    const { data: detalles } = await sb.from('venta_detalles')
+      .select('cantidad, ventas(numero_venta, fecha, cliente_nombre)').eq('lote_id', loteId);
+    const ventasHtml = (detalles && detalles.length)
+      ? detalles.map(d => `<div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--bg-app,#f8fafc);border-radius:8px;margin-bottom:5px;font-size:12.5px">
+          <span>Venta #${esc(d.ventas?.numero_venta || '—')} · ${d.ventas?.fecha || ''} · ${esc(d.ventas?.cliente_nombre || 'Sin cliente')}</span>
+          <strong>${fmtNumLote(d.cantidad)} u.</strong>
+        </div>`).join('')
+      : '<p style="color:var(--text-muted);font-size:12.5px">Este lote todavía no se ha vendido.</p>';
+
+    cont.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-weight:700;font-size:14px">${esc(lote.productos?.nombre || 'Producto')} — Lote ${esc(lote.numero_lote || 'sin número')}</div>
+        <div style="font-size:12px;color:var(--text-muted)">Cantidad inicial: ${fmtNumLote(lote.cantidad_inicial)} · Actual: ${fmtNumLote(lote.cantidad_actual)} · Vence: ${lote.fecha_vencimiento}</div>
+      </div>
+      <div style="font-weight:600;font-size:12.5px;margin-bottom:6px">📥 De dónde salió</div>
+      ${htmlCompra}
+      <div style="font-weight:600;font-size:12.5px;margin:14px 0 6px">📤 En qué ventas terminó</div>
+      ${ventasHtml}
+    `;
+  } catch (e) {
+    console.error('abrirTrazabilidadLote:', e);
+    cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo cargar la trazabilidad.</p>';
+  }
+}
+
+function cerrarTrazabilidadLote() {
+  closeModal('modal-trazabilidad');
 }

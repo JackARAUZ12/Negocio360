@@ -1367,7 +1367,7 @@
 
   </div>
 </div><!-- /#app -->
-<script src="lotes.js?v=1"></script>
+<script src="lotes.js?v=20261002a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
@@ -1399,6 +1399,23 @@
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
       <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
       <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-trazabilidad" onclick="if(event.target===this)cerrarTrazabilidadLote()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">🔍 Trazabilidad del lote</span>
+      <button class="modal-close" onclick="cerrarTrazabilidadLote()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="trazabilidad-contenido" style="max-height:60vh;overflow-y:auto">
+      <p style="color:var(--text-muted)">Cargando…</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-accion-tabla btn-ghost" onclick="cerrarTrazabilidadLote()">Cerrar</button>
     </div>
   </div>
 </div>
