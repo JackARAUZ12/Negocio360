@@ -1950,6 +1950,41 @@ function applyEmpresaConfig(config) {
 }
 
 /* =====================================================
+   REGALO DE FIDELIDAD -- Catalogo360 Plan Basico gratis para
+   clientes de Negocio360, mostrado UNA SOLA VEZ (controlado por
+   configuracion_empresa.catalogo360_regalo_mostrado en la BD, no
+   por sessionStorage -- asi es "una sola vez" de verdad, aunque
+   cierre el navegador). Clientes independientes de Catalogo360
+   (sin cuenta de Negocio360) nunca ven esto.
+===================================================== */
+function mostrarRegaloFidelidadCatalogo360() {
+  const overlay = document.createElement('div');
+  overlay.id = 'regalo-c360-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(10,10,20,.72);backdrop-filter:blur(3px);padding:20px';
+  overlay.innerHTML = `
+    <div style="background:var(--bg-surface,#fff);border-radius:20px;max-width:380px;width:100%;padding:32px 26px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="font-size:48px;margin-bottom:10px">🎁</div>
+      <h2 style="font-size:19px;font-weight:800;margin:0 0 10px">Un regalo por tu fidelidad</h2>
+      <p style="font-size:13.5px;color:var(--text-secondary,#64748b);line-height:1.5;margin:0 0 22px">
+        Por ser cliente de Negocio360, te regalamos el <strong>Plan Básico de Catálogo360</strong> -- crea tu catálogo digital y compártelo por WhatsApp, totalmente gratis.
+      </p>
+      <button id="regalo-c360-btn" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent,#6366f1);color:#fff;font-weight:700;font-size:14px;cursor:pointer">Iniciar</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('regalo-c360-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('regalo-c360-btn');
+    btn.disabled = true; btn.textContent = 'Activando…';
+    try {
+      await sbClient.rpc('catalogo360_activar_regalo_fidelidad');
+    } catch (e) {
+      console.warn('catalogo360_activar_regalo_fidelidad:', e);
+    }
+    window.location.href = 'catalogo360.html';
+  });
+}
+
+/* =====================================================
    LOAD EMPRESA CONFIG
 ===================================================== */
 async function loadEmpresaConfig(userId) {
@@ -2707,6 +2742,9 @@ async function initDashboard() {
 
     // Load empresa config first — this also applies tema from personalizacion
     const resultConfig = await loadEmpresaConfig(userId);
+    if (resultConfig.ok && resultConfig.data && resultConfig.data.catalogo360_regalo_mostrado === false) {
+      mostrarRegaloFidelidadCatalogo360();
+    }
 
     const profile = await loadUserProfile(userId);
     if (profile) {
