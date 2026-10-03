@@ -943,6 +943,12 @@
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
             </div>
             <div class="form-group">
+              <label class="form-label" for="inputStockMaximo">Stock máximo (opcional)</label>
+              <input type="number" class="form-input" id="inputStockMaximo"
+                     placeholder="Sin límite" min="0" step="0.01" />
+              <span class="form-hint">Para saber cuánto comprar como máximo</span>
+            </div>
+            <div class="form-group">
               <label class="form-label" for="inputGarantiaMeses">Garantía (opcional)</label>
               <input type="number" class="form-input" id="inputGarantiaMeses"
                      placeholder="Ej: 12" min="0" step="1" />
@@ -1008,6 +1014,12 @@
               <input type="number" class="form-input" id="inputStockMinimoEdit"
                      placeholder="0" min="0" step="0.01" />
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inputStockMaximoEdit">Stock máximo (opcional)</label>
+              <input type="number" class="form-input" id="inputStockMaximoEdit"
+                     placeholder="Sin límite" min="0" step="0.01" />
+              <span class="form-hint">Para saber cuánto comprar como máximo</span>
             </div>
             <div class="form-group">
               <label class="form-label" for="inputGarantiaMesesEdit">Garantía (opcional)</label>
@@ -1436,7 +1448,7 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20261002d"></script>
+<script src="productos.js?v=20261002e"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

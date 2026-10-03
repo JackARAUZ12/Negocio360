@@ -2974,6 +2974,7 @@ function cargarFormulario(p) {
     ['inputPrecio',          p.precio        ?? ''],
     ['inputStockMinimo',     p.stock_minimo  ?? ''],
     ['inputStockMinimoEdit', p.stock_minimo  ?? ''],
+    ['inputStockMaximoEdit', p.stock_maximo  ?? ''],
     ['inputStockActualEdit', p.stock_actual  ?? ''],
     ['inputGarantiaMeses',     p.garantia_meses ?? ''],
     ['inputGarantiaMesesEdit', p.garantia_meses ?? ''],
@@ -3118,6 +3119,13 @@ async function guardarProducto() {
     ? parseFloat(stockMinimoRaw)
     : 0;
 
+  // Stock máximo: opcional, null si se deja vacío (sin límite)
+  const stockMaximoEl  = STATE.modalMode === 'editar' ? $('inputStockMaximoEdit') : $('inputStockMaximo');
+  const stockMaximoRaw = stockMaximoEl?.value;
+  const stockMaximo    = stockMaximoRaw !== '' && stockMaximoRaw !== undefined
+    ? parseFloat(stockMaximoRaw)
+    : null;
+
   // Garantía en meses (opcional) — igual criterio: campo visible según el modo
   const garantiaEl  = STATE.modalMode === 'editar' ? $('inputGarantiaMesesEdit') : $('inputGarantiaMeses');
   const garantiaRaw = garantiaEl?.value;
@@ -3180,6 +3188,7 @@ async function guardarProducto() {
         modelo: ($('inputModelo')?.value || '').trim() || null,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
+        stock_maximo:  tipo === 'producto' ? stockMaximo : null,
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
@@ -3236,6 +3245,7 @@ async function guardarProducto() {
         requiere_numero_serie: $('inputRequiereSerieEdit')?.checked === true,
         modelo: ($('inputModeloEdit')?.value || '').trim() || null,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
+        stock_maximo:  tipo === 'producto' ? stockMaximo : null,
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
