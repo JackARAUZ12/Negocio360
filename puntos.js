@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
    directo desde aqui: todo pasa por funciones de la base de
    datos (puntos_ajustar_manual), que validan dueno y saldo.
 ===================================================== */
-const PT = { config: null, clientes: [], filtrados: [], clienteActual: null };
+const PT = { config: null, tieneReglas: false, clientes: [], filtrados: [], clienteActual: null };
 const $pt = id => document.getElementById(id);
 function fmtPts(n) { return Number(n || 0).toLocaleString('es-NI'); }
 
@@ -165,6 +165,7 @@ async function cargarPuntos() {
 async function cargarReglas() {
   const { data, error } = await sb.from('puntos_configuracion').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
   if (error) throw error;
+  PT.tieneReglas = !!data;
   PT.config = data || { monto_base: 100, puntos_ganados: 1, incluir_iva: false, minimo_canje: 0, maximo_por_venta: null, vencimiento_meses: null };
   $pt('pt-monto-base').value = PT.config.monto_base;
   $pt('pt-puntos-ganados').value = PT.config.puntos_ganados;
@@ -173,6 +174,21 @@ async function cargarReglas() {
   $pt('pt-vencimiento').value = PT.config.vencimiento_meses ?? '';
   $pt('pt-incluir-iva').checked = PT.config.incluir_iva === true;
   actualizarResumenReglas();
+  pintarEstadoPrograma();
+}
+
+// Deja claro si el programa esta REALMENTE acumulando: sin reglas guardadas, no suma nada.
+function pintarEstadoPrograma() {
+  const el = $pt('pt-estado');
+  if (!el) return;
+  el.style.display = '';
+  if (PT.tieneReglas) {
+    el.className = 'pt-estado pt-estado-ok';
+    el.textContent = '✅ Programa en marcha: las ventas a clientes registrados ya acumulan puntos con estas reglas.';
+  } else {
+    el.className = 'pt-estado pt-estado-warn';
+    el.textContent = '⚠️ Todavía no has guardado las reglas: los puntos NO se acumulan hasta que presiones "Guardar reglas".';
+  }
 }
 
 function actualizarResumenReglas() {
@@ -213,6 +229,7 @@ async function guardarReglasPuntos() {
     }, { onConflict: 'auth_user_id' });
     if (error) throw error;
     msg.style.color = 'var(--success,#16a34a)'; msg.textContent = '✓ Reglas guardadas.';
+    PT.tieneReglas = true; pintarEstadoPrograma();
     showToast('Reglas del programa guardadas.');
   } catch (e) {
     console.error('guardarReglasPuntos:', e);

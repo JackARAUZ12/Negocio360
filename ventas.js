@@ -3836,6 +3836,82 @@ function cambiarIvaPorcentaje(val) {
   calcularResumen();
 }
 
+/* ============================================================
+   PROGRAMA DE PUNTOS (solo si el negocio lo activo)
+   La acumulacion REAL la hace la base de datos al crear la venta
+   (disparador). Aqui solo se muestra una vista previa en el Resumen
+   y se avisa cuantos puntos se ganaron al confirmar. Con el programa
+   apagado nada de esto consulta ni muestra nada.
+   ============================================================ */
+async function _puntosCfgVentas() {
+  if (S.empresaConfig?.usa_puntos !== true) return null;
+  if (S._puntosCfg === undefined) {
+    try {
+      const { data } = await sb.from('puntos_configuracion').select('*').eq('auth_user_id', S.userId).maybeSingle();
+      S._puntosCfg = data || null;
+    } catch (e) { S._puntosCfg = null; }
+  }
+  return S._puntosCfg;
+}
+
+// MISMA formula que el disparador de la base de datos.
+function calcularPuntosVenta(cfg, total, impuestos) {
+  const base = Number(total || 0) - (cfg.incluir_iva ? 0 : Number(impuestos || 0));
+  if (!(base > 0)) return 0;
+  let pts = Math.floor(base / Number(cfg.monto_base)) * Number(cfg.puntos_ganados);
+  if (cfg.maximo_por_venta) pts = Math.min(pts, Number(cfg.maximo_por_venta));
+  return Math.max(0, pts);
+}
+
+async function _saldoPuntosCliente(clienteId) {
+  S._saldoPuntos = S._saldoPuntos || {};
+  if (S._saldoPuntos[clienteId] === undefined) {
+    try {
+      const { data } = await sb.from('puntos_saldos').select('saldo').eq('auth_user_id', S.userId).eq('cliente_id', clienteId).maybeSingle();
+      S._saldoPuntos[clienteId] = Number(data?.saldo || 0);
+    } catch (e) { return null; }
+  }
+  return S._saldoPuntos[clienteId];
+}
+
+async function actualizarPuntosEstimados() {
+  const box = document.getElementById('res-puntos');
+  if (!box) return;
+  const tok = S._ptsTok = (S._ptsTok || 0) + 1;   // si llegan varias llamadas seguidas, gana la ultima
+  try {
+    const cfg = await _puntosCfgVentas();
+    if (!cfg) { box.style.display = 'none'; return; }
+    const r = S._resumen;
+    if (!r) return;
+    let html;
+    if (!S.clienteId) {
+      html = '🎁 Cliente final: esta venta no acumula puntos.';
+    } else {
+      const pts = calcularPuntosVenta(cfg, r.total, r.impuestos);
+      const saldo = await _saldoPuntosCliente(S.clienteId);
+      if (tok !== S._ptsTok) return;
+      const sal = saldo === null ? '' : ` <span style="color:var(--text-muted)">(saldo actual: ${Number(saldo).toLocaleString('es-NI')})</span>`;
+      html = pts > 0
+        ? `🎁 Esta venta le dará <strong>+${pts.toLocaleString('es-NI')} puntos</strong> a ${esc(S.clienteNombre || 'el cliente')}${sal}`
+        : `🎁 Esta venta no alcanza para sumar puntos (se gana 1 bloque por cada ${esc(fmt(cfg.monto_base))}).${sal}`;
+    }
+    if (tok !== S._ptsTok) return;
+    box.innerHTML = html;
+    box.style.display = '';
+  } catch (e) { console.warn('actualizarPuntosEstimados:', e); box.style.display = 'none'; }
+}
+
+// Aviso con los puntos REALES que quedaron registrados (los lee de la base de datos).
+async function mostrarPuntosGanados(ventaId, clienteId, clienteNombre) {
+  if (S.empresaConfig?.usa_puntos !== true || !clienteId || !ventaId) return;
+  try {
+    if (S._saldoPuntos) delete S._saldoPuntos[clienteId];
+    const { data } = await sb.from('puntos_movimientos').select('puntos')
+      .eq('venta_id', ventaId).eq('tipo', 'acumulacion').maybeSingle();
+    if (data && data.puntos > 0) showToast(`🎁 +${Number(data.puntos).toLocaleString('es-NI')} puntos para ${clienteNombre || 'el cliente'}`, 'success');
+  } catch (e) { console.warn('mostrarPuntosGanados:', e); }
+}
+
 function calcularResumen() {
   const subtotal  = round2(S.carrito.reduce((s,i) => s+i.cantidad*i.precio, 0));
   const descuentoManual = round2(S.carrito.reduce((s,i) => s+i.descuento, 0));
@@ -3891,6 +3967,7 @@ function calcularResumen() {
   setEl2('res-impuestos', fmt(impuestos));
   setEl2('res-total',     fmt(total));
   setEl2('res-ganancia',  fmt(ganancia));
+  actualizarPuntosEstimados();
 }
 
 function setEl2(id, val) {
@@ -5205,6 +5282,7 @@ async function confirmarVenta(conImpresion) {
     cerrarModalVenta();
     showToast(`✅ Venta ${S.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
     registrarGarantiasAutomaticas(ventaId, S.carrito, S.clienteId, S.clienteNombre);
+    mostrarPuntosGanados(ventaId, S.clienteId, S.clienteNombre);
 
     // Si esta pantalla se abrió incrustada desde Rutas (iframe), se le
     // avisa al padre que la venta sí se registró — igual que con los
