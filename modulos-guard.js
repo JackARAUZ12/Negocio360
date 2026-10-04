@@ -80,7 +80,7 @@
   async function cargarConfigModulos(client, authUserId) {
     try {
       const { data } = await client.from('configuracion_empresa')
-        .select('metadata, usa_modulo_hotel, usa_modulo_restaurante, usa_negocios_vinculados, usa_modulo_farmacia, usa_farmacia_fase2, usa_puntos')
+        .select('metadata, usa_modulo_hotel, usa_modulo_restaurante, usa_negocios_vinculados, usa_modulo_farmacia, usa_farmacia_fase2, usa_puntos, usa_modulo_veterinaria')
         .eq('auth_user_id', authUserId).maybeSingle();
       const cfg = (data?.metadata && typeof data.metadata === 'object' && data.metadata.modulosOpcionales) || {};
       cfg._flagsPropios = {
@@ -90,6 +90,7 @@
         usa_modulo_farmacia: data?.usa_modulo_farmacia === true,
         usa_farmacia_fase2: data?.usa_farmacia_fase2 === true,
         usa_puntos: data?.usa_puntos === true,
+        usa_modulo_veterinaria: data?.usa_modulo_veterinaria === true,
       };
       return cfg;
     } catch (e) {

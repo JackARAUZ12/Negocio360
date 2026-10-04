@@ -14,7 +14,7 @@
 
 <!-- Supabase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261003a"></script>
+<script src="modulos-registro.js?v=20261004b"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1416,6 +1416,27 @@
           <div class="cfg-status" id="iva-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="vet-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🐾</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Veterinaria</div>
+              <div class="cfg-card-desc">Fichas de mascotas, historia clínica, carnet de vacunación y recordatorios a los dueños.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Veterinaria</div>
+              <div class="cfg-row-sub" id="vet-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="vet-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleVetClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="vet-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎁</div>
@@ -2293,6 +2314,45 @@ async function guardarPorcentajeIva() {
   }
 }
 
+// Modulo de Veterinaria: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloVet() {
+  const toggle = document.getElementById('vet-toggle');
+  const sub = document.getElementById('vet-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_veterinaria').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_veterinaria === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — "Veterinaria" aparece en el menú.' : 'Desactivado — el módulo de Veterinaria no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloVet:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleVetClick(evt) {
+  const toggle = document.getElementById('vet-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloVet(toggle.checked);
+}
+async function guardarModuloVet(activo) {
+  const toggle = document.getElementById('vet-toggle');
+  const sub = document.getElementById('vet-row-sub');
+  const statusEl = document.getElementById('vet-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_veterinaria: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — "Veterinaria" aparece en el menú.' : 'Desactivado — el módulo de Veterinaria no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Veterinaria activado. Recarga la página para ver el menú.' : 'Módulo de Veterinaria desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloVet:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Programa de puntos: se activa/desactiva desde aqui. Apagado por
 // defecto -- sin activarlo, el modulo no aparece ni cambia nada.
 async function cargarModuloPuntos() {
@@ -2680,6 +2740,7 @@ async function initConfiguracion() {
       cargarModuloHotel();
       cargarModuloFarmacia();
       cargarModuloPuntos();
+      cargarModuloVet();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -2706,6 +2767,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20260915a"></script>
-<script src="modulos-guard.js?v=20261003a"></script>
+<script src="modulos-guard.js?v=20261004b"></script>
 </body>
 </html>

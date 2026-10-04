@@ -1452,6 +1452,7 @@ async function finalizarOnboarding() {
     const modulosAuto = {};
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'hotel') modulosAuto.usa_modulo_hotel = true;
     if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'veterinaria') { modulosAuto.usa_modulo_veterinaria = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
 
     const modulosOpcionales = {};
@@ -1722,6 +1723,7 @@ function renderModuloEspecial() {
   let especial = null;
   if (tipoNegocioSeleccionado === 'hotel') especial = { icono:'🛏️', nombre:'Módulo de Hotel', desc:'Habitaciones, reservaciones, mapa y housekeeping.' };
   else if (['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) especial = { icono:'🍽️', nombre:'Módulo de Restaurante', desc:'Mesas, comandas y cocina en tiempo real.' };
+  else if (tipoNegocioSeleccionado === 'veterinaria') especial = { icono:'🐾', nombre:'Módulo de Veterinaria', desc:'Mascotas, historia clínica, vacunas y recordatorios a los dueños.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }

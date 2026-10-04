@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Códigos de Barras — Negocio360</title>
+  <title>Recordatorios — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,8 +12,6 @@
   <script src="tutorial-motor.js?v=20260915a"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -229,6 +227,7 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
+      overflow-x: hidden;
     }
     #main.sidebar-collapsed { margin-left: 64px; }
 
@@ -370,6 +369,101 @@
     .kpi-delta.neutral  { color: var(--text-muted); }
 
     /* =====================================================
+       HABITACIONES -- estructura de pagina (estas clases NO
+       existian heredadas de activos.html -- se definen aqui,
+       verificadas contra el CSS real antes de usarlas).
+    ===================================================== */
+    .page-content { padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; box-sizing: border-box; min-width: 0; overflow-x: hidden; }
+    .hab-page-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 14px; flex-wrap: wrap; margin-bottom: 20px;
+    }
+    .hab-page-header > div:first-child { min-width: 0; }
+    .hab-page-subtitle { overflow-wrap: break-word; }
+    .hab-page-header h1 { font-size: 26px; font-weight: 800; color: var(--text-primary); margin: 0 0 4px; }
+    .hab-page-subtitle { font-size: 13.5px; color: var(--text-secondary); margin: 0; }
+    .kpi-sub { font-size: 11px; color: var(--text-muted); }
+    .modal-md { max-width: 560px; width: 100%; }
+    .form-group.full { grid-column: 1 / -1; }
+
+    /* =====================================================
+       HABITACIONES -- estilos especificos de este modulo
+    ===================================================== */
+    .toolbar {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      margin: 18px 0;
+    }
+    .search-box {
+      flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 9px 12px; color: var(--text-muted);
+    }
+    .search-box input {
+      border: none; outline: none; background: transparent; flex: 1;
+      font-size: 13.5px; color: var(--text-primary); font-family: inherit;
+    }
+    .form-select {
+      padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: var(--bg-surface); color: var(--text-primary); font-size: 13px; font-family: inherit;
+    }
+    .view-toggle { display: flex; gap: 2px; background: var(--bg-hover); border-radius: var(--radius-sm); padding: 3px; }
+    .view-toggle-btn {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text-muted);
+    }
+    .view-toggle-btn.active { background: var(--accent); color: #fff; }
+
+    .hab-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      gap: 14px;
+    }
+    .hab-card {
+      background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+      padding: 16px; box-shadow: var(--shadow-sm);
+    }
+    .hab-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .hab-card-titulo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px; }
+    .hab-estado-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+    .hab-estado-disponible    { background: #dcfce7; color: #16a34a; }
+    .hab-estado-ocupada       { background: #fee2e2; color: #dc2626; }
+    .hab-estado-limpieza      { background: #fef3c7; color: #b45309; }
+    .hab-estado-mantenimiento { background: var(--bg-hover); color: var(--text-secondary); }
+    .hab-estado-bloqueada     { background: #f3e8ff; color: #9333ea; }
+    .hab-card-datos { font-size: 12.5px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .hab-card-dato { display: flex; align-items: center; gap: 6px; }
+    .hab-card-tarifa { font-weight: 800; color: var(--text-primary); font-size: 14px; }
+    .hab-card-btns { display: flex; gap: 6px; }
+    .hab-card-btns .btn-secondary, .hab-card-btns .btn-primary { flex: 1; padding: 7px 10px; font-size: 12px; }
+    .hab-paginacion { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; font-size: 12.5px; color: var(--text-muted); }
+    .hab-pag-btns { display: flex; gap: 4px; align-items: center; }
+    .hab-pag-num {
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; border: 1px solid var(--border); background: var(--bg-surface); cursor: pointer; font-size: 12.5px;
+    }
+    .hab-pag-num.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .hab-pag-nav {
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; border: 1px solid var(--border); background: var(--bg-surface); cursor: pointer; color: var(--text-secondary);
+    }
+    .hab-pag-nav:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* =====================================================
+       BUSCADOR DE CLIENTE (Huesped) -- verificado, ninguna
+       clase asumida.
+    ===================================================== */
+    .res-cliente-dropdown {
+      position: absolute; left: 0; right: 0; top: 100%; z-index: 20; margin-top: 4px;
+      background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md); max-height: 220px; overflow-y: auto;
+    }
+    .res-cliente-opcion { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .res-cliente-opcion:last-child { border-bottom: none; }
+    .res-cliente-opcion:hover { background: var(--bg-hover); }
+    .res-cliente-opcion .rc-nombre { font-weight: 700; color: var(--text-primary); }
+    .res-cliente-opcion .rc-detalle { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+    .res-cliente-opcion-nuevo { color: var(--accent); font-weight: 600; }
+
+    /* =====================================================
        PANEL CARD (contenedor de sección)
     ===================================================== */
     .panel-card {
@@ -487,8 +581,9 @@
     /* =====================================================
        TABLA
     ===================================================== */
-    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
     table { width: 100%; border-collapse: collapse; min-width: 640px; }
+    @media (max-width: 640px) { table { min-width: 0; } }
     thead th {
       padding: 10px 14px;
       font-size: 11px; font-weight: 700;
@@ -820,6 +915,7 @@
     /* Móviles */
     @media (max-width: 480px) {
       .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      #hu-kpis { grid-template-columns: 1fr 1fr !important; max-width: 100% !important; }
       .kpi-card { padding: 14px; gap: 8px; }
       .kpi-icon { width: 34px; height: 34px; }
       .kpi-value { font-size: 15px; }
@@ -967,9 +1063,78 @@
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
     }
     .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .filtro-estado-btn.active, .tipo-repartidor-btn.active, .modo-venta-btn.active, .tipo-pago-btn.active,
+    .filtro-estado-activo-btn.active, .motivo-baja-btn.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+    .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:16px}
+    .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
+    /* Tabla -- clases usadas por lt-tbody, que nunca estaban
+       definidas en este archivo (se importaron del componente
+       correcto, mismo diseño ya usado en el resto del sistema). */
+    .table-card { background: var(--bg-card, var(--bg-surface)); border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow-sm); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .data-table thead { background: var(--bg-app); border-bottom: 1px solid var(--border); }
+    [data-theme="dark"] .data-table thead { background: rgba(255,255,255,0.03); }
+    .data-table th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; white-space: nowrap; }
+    .data-table td { padding: 13px 16px; color: var(--text-primary); border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table tbody tr { transition: background .15s; }
+    .data-table tbody tr:hover { background: var(--bg-table-alt, var(--bg-app)); }
+    .table-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--text-muted); }
+    .btn-accion-tabla { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-app); color: var(--text-primary); font-size: 12.5px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+    .btn-accion-tabla.btn-primary { background: var(--accent, #6C63FF); color: #fff; border: none; }
+    .btn-accion-tabla.btn-ghost:hover { background: var(--accent-soft); }
+
+    /* Responsive -- en pantalla chica, 2 KPIs por fila en vez de 4
+       forzadas (se veian apretadas y el numero se partia). */
+    @media (max-width: 640px) {
+      #lt-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+      .data-table th, .data-table td { padding: 10px 12px; font-size: 12.5px; }
+    }
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
+
+<style>
+  .vt-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px; }
+  .vt-kpi-click { cursor:pointer; }
+  .vt-chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .vt-chip { border:1px solid var(--border,#e5e7eb); background:var(--bg-surface,#fff); color:var(--text-secondary); padding:7px 14px; border-radius:20px; font-weight:700; font-size:13px; cursor:pointer; }
+  .vt-chip.activa { background:var(--accent,#6C63FF); color:#fff; border-color:var(--accent,#6C63FF); }
+  .vt-mascota { display:flex; align-items:center; gap:10px; }
+  .vt-emoji { width:38px; height:38px; border-radius:50%; background:var(--bg-app); display:flex; align-items:center; justify-content:center; font-size:20px; flex:none; }
+  .vt-nombre { font-weight:800; font-size:14px; } .vt-sub { font-size:12px; color:var(--text-muted); }
+  .vt-badge { display:inline-block; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:20px; white-space:nowrap; }
+  .vt-badge-rojo { background:#FEE2E2; color:#991B1B; } .vt-badge-ambar { background:#FEF3C7; color:#92400E; }
+  .vt-badge-azul { background:#DBEAFE; color:#1E40AF; } .vt-badge-verde { background:#DCFCE7; color:#166534; } .vt-badge-gris { background:var(--bg-app); color:var(--text-muted); }
+  .vt-wa { background:#25D366; color:#fff; border:none; padding:8px 14px; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .vt-wa[disabled] { background:var(--bg-app); color:var(--text-muted); cursor:not-allowed; }
+  @media (max-width:640px) { .vt-hide-m { display:none !important; } .vt-kpis { grid-template-columns:repeat(2,1fr); gap:10px; } }
+  /* Celular: cada fila se convierte en una TARJETA (nada queda fuera de pantalla) */
+  @media (max-width:640px) {
+    .vt-cards { min-width:0 !important; width:100%; display:block; }
+    .vt-cards thead { display:none; }
+    .vt-cards tbody { display:block; }
+    .vt-cards tbody tr { display:grid; grid-template-columns:1fr auto; gap:7px 10px; padding:14px; border-bottom:1px solid var(--border,#e5e7eb); }
+    .vt-cards tbody tr:last-child { border-bottom:none; }
+    .vt-cards tbody td { display:block; padding:0 !important; border:none !important; min-width:0; }
+    .vt-cards .vt-badge { white-space:normal; text-align:center; line-height:1.3; }
+    .vt-cards tbody td[colspan] { grid-column:1 / -1 !important; grid-row:auto !important; }
+    #rc-tbody td:nth-child(1) { grid-column:1; grid-row:1; }
+    #rc-tbody td:nth-child(4) { grid-column:2; grid-row:1; text-align:right; align-self:center; max-width:150px; }
+    #rc-tbody td:nth-child(3) { grid-column:1 / -1; grid-row:2; font-weight:700; font-size:14px; }
+    #rc-tbody td:nth-child(2) { grid-column:1 / -1; grid-row:3; }
+    #rc-tbody td:nth-child(6) { grid-column:1 / -1; grid-row:4; }
+    #rc-tbody td:nth-child(6) .vt-wa { width:100%; padding:11px 14px; font-size:14px; }
+  }
+</style>
 </head>
 <body>
 
@@ -982,7 +1147,7 @@
     </svg>
   </div>
   <div class="loader-spinner"></div>
-  <p style="font-size:13px;color:var(--text-muted)">Cargando Códigos de Barras…</p>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Sucursales…</p>
 </div>
 
 <!-- TOAST -->
@@ -1065,6 +1230,11 @@
         <span class="nav-label">Proformas</span>
       </div>
 
+      <div class="nav-item" onclick="navigate('codigos-barras.html')" data-tooltip="Códigos de Barras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
+        <span class="nav-label">Códigos de Barras</span>
+      </div>
+
       <div class="nav-item" onclick="navigate('sucursales.html')" data-tooltip="Sucursales">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="9" y1="15" x2="9" y2="15.01"/></svg>
         <span class="nav-label">Sucursales</span>
@@ -1073,11 +1243,6 @@
       <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         <span class="nav-label">Contabilidad</span>
-      </div>
-
-      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <span class="nav-label">Consulta/Inventario</span>
       </div>
 
       <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
@@ -1090,7 +1255,7 @@
         <span class="nav-label">Delivery</span>
       </div>
 
-      <div class="nav-item" onclick="navigate('activos.html')" data-tooltip="Activos Fijos">
+      <div class="nav-item active" onclick="navigate('activos.html')" data-tooltip="Activos Fijos">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="2" y1="13" x2="22" y2="13"/></svg>
         <span class="nav-label">Activos Fijos</span>
       </div>
@@ -1110,9 +1275,14 @@
         <span class="nav-label">Servicio Postventa</span>
       </div>
 
-      <div class="nav-item active" onclick="navigate('codigos-barras.html')" data-tooltip="Códigos de Barras">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
-        <span class="nav-label">Códigos de Barras</span>
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
       </div>
 
       <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
@@ -1160,13 +1330,8 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Códigos de Barras</span>
+      <span class="header-title">Recordatorios</span>
       <div class="header-spacer"></div>
-      <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
-      <div class="plan-badge">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        <span id="plan-text">Plan</span>
-      </div>
       <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
         <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -1175,228 +1340,86 @@
         <div class="user-avatar" id="header-avatar">--</div>
         <div class="user-info">
           <span class="user-name" id="header-name">Cargando…</span>
-          <span class="user-biz"  id="header-biz">—</span>
         </div>
       </div>
     </header>
 
-    <div id="content">
-
-      <div class="greeting-row fade-in">
-        <div class="greeting-text">
-          <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
-            <span id="greeting-text">Códigos de Barras</span>
-          </h1>
-          <p>Crea, administra e imprime códigos de barras — módulo independiente, no afecta Productos ni Inventario.</p>
-        </div>
-        <div class="greeting-actions">
-          <button class="btn-primary" onclick="abrirNuevoCodigo()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nuevo código
-          </button>
+    <div class="page-content">
+      <div class="hab-page-header">
+        <div>
+          <h1>💉 Recordatorios de vacunas</h1>
+          <p class="hab-page-subtitle">Refuerzos pendientes de tus pacientes. Avisa al dueño por WhatsApp con un solo botón.</p>
         </div>
       </div>
 
-      <!-- KPI CARDS -->
-      <div class="kpi-grid">
-        <div class="kpi-card fade-in stagger-1">
-          <div class="kpi-icon" style="background:var(--accent-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
-          </div>
-          <div class="kpi-body"><div class="kpi-label">Total de códigos</div><div class="kpi-value" id="kpi-total">—</div></div>
-        </div>
-        <div class="kpi-card fade-in stagger-2">
-          <div class="kpi-icon" style="background:var(--success-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div class="kpi-body"><div class="kpi-label">Creados este mes</div><div class="kpi-value" id="kpi-mes">—</div></div>
-        </div>
-        <div class="kpi-card fade-in stagger-3">
-          <div class="kpi-icon" style="background:var(--accent-3-soft)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </div>
-          <div class="kpi-body"><div class="kpi-label">Tipo</div><div class="kpi-value" style="font-size:16px">CODE 128</div></div>
-        </div>
+      <div class="vt-kpis">
+        <div class="kpi-card vt-kpi-click" onclick="filtrarRC('vencidos')"><div class="kpi-icon" style="background:#FEE2E2">⏰</div>
+          <div class="kpi-body"><div class="kpi-value" id="rc-kpi-vencidos">—</div><div class="kpi-label">Vencidos</div></div></div>
+        <div class="kpi-card vt-kpi-click" onclick="filtrarRC('semana')"><div class="kpi-icon" style="background:#FEF3C7">📅</div>
+          <div class="kpi-body"><div class="kpi-value" id="rc-kpi-semana">—</div><div class="kpi-label">Esta semana</div></div></div>
+        <div class="kpi-card vt-kpi-click" onclick="filtrarRC('mes')"><div class="kpi-icon" style="background:#DBEAFE">🗓️</div>
+          <div class="kpi-body"><div class="kpi-value" id="rc-kpi-mes">—</div><div class="kpi-label">En 30 días</div></div></div>
+        <div class="kpi-card vt-kpi-click" onclick="filtrarRC('todos')"><div class="kpi-icon" style="background:#E0E7FF">💉</div>
+          <div class="kpi-body"><div class="kpi-value" id="rc-kpi-total">—</div><div class="kpi-label">Pendientes en total</div></div></div>
       </div>
 
-      <div class="panel-card fade-in" style="margin-top:20px">
-        <!-- BÚSQUEDA -->
-        <div class="filtros-row">
-          <div class="search-wrap" style="margin-left:0;width:100%;max-width:420px">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="cb-search" placeholder="Buscar por nombre o código…" oninput="buscarCodigos()" />
-          </div>
-        </div>
+      <div class="vt-chips" id="rc-chips">
+        <button class="vt-chip activa" data-f="todos" onclick="filtrarRC('todos')">Todos</button>
+        <button class="vt-chip" data-f="vencidos" onclick="filtrarRC('vencidos')">⏰ Vencidos</button>
+        <button class="vt-chip" data-f="semana" onclick="filtrarRC('semana')">📅 Esta semana</button>
+        <button class="vt-chip" data-f="mes" onclick="filtrarRC('mes')">🗓️ Este mes</button>
+        <button class="vt-chip" data-f="sinaviso" onclick="filtrarRC('sinaviso')">📵 Sin avisar</button>
+      </div>
 
-        <!-- TABLA -->
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Código</th>
-                <th>Tipo</th>
-                <th>Fecha de creación</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="cb-tbody">
-              <tr><td colspan="5" class="empty-cell">Cargando códigos…</td></tr>
-            </tbody>
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table class="data-table vt-cards" role="table">
+            <thead><tr><th>Mascota</th><th>Dueño</th><th>Vacuna</th><th>Refuerzo</th><th class="vt-hide-m">Último aviso</th><th></th></tr></thead>
+            <tbody id="rc-tbody"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando…</td></tr></tbody>
           </table>
         </div>
-        <div class="table-hint">← Desliza para ver todas las columnas →</div>
-
-        <div class="paginacion-row" id="paginacion">
-          <span id="paginacion-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
-          <div class="pag-btns">
-            <button id="btn-pag-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
-            <button id="btn-pag-next" onclick="paginaSiguiente()">Siguiente →</button>
-          </div>
-        </div>
+        <div class="table-footer"><span id="rc-pie">Cargando datos...</span></div>
       </div>
-
-    </div><!-- /content -->
-  </div><!-- /main -->
-</div><!-- /app -->
-
-<!-- =====================================================
-     MODAL: NUEVO / EDITAR CÓDIGO
-=================================================== -->
-<div class="modal-overlay" id="modal-codigo" onclick="if(event.target===this)closeModal('modal-codigo')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <span class="modal-title" id="cb-modal-title">Nuevo código de barras</span>
-      <button class="modal-close" onclick="closeModal('modal-codigo')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
     </div>
-    <div class="modal-body">
-      <input type="hidden" id="cb-id"/>
-      <div class="form-group">
-        <label>Nombre o descripción *</label>
-        <input type="text" id="cb-nombre" placeholder="Ej: Caja pequeña, Etiqueta mostrador…"/>
-      </div>
-      <div class="form-group">
-        <label>Código de barras *</label>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="cb-codigo" placeholder="Ej: 200000000001" style="flex:1"/>
-          <button type="button" class="btn-secondary" id="cb-btn-generar" onclick="generarCodigoAutomatico()">🎲 Generar</button>
-        </div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px" id="cb-codigo-hint">Solo letras, números, guiones y espacios — sin acentos ni símbolos especiales.</div>
-      </div>
-      <div class="form-group">
-        <label>Tipo de código</label>
-        <select id="cb-tipo" disabled>
-          <option value="code128">Code 128</option>
-        </select>
-      </div>
-      <div id="cb-preview-wrap" style="display:none;text-align:center;background:#fff;border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;margin-top:6px">
-        <svg id="cb-preview-svg"></svg>
-      </div>
-      <p id="cb-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-codigo')">Cancelar</button>
-      <button class="btn-primary" id="btn-guardar-codigo" onclick="guardarCodigo()">Guardar</button>
-    </div>
+
   </div>
-</div>
-
-<!-- =====================================================
-     MODAL: VER DETALLE
-=================================================== -->
-<div class="modal-overlay" id="modal-ver-codigo" onclick="if(event.target===this)closeModal('modal-ver-codigo')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <span class="modal-title">Código de barras</span>
-      <button class="modal-close" onclick="closeModal('modal-ver-codigo')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body" style="text-align:center">
-      <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:14px">
-        <svg id="ver-codigo-svg"></svg>
-      </div>
-      <div style="text-align:left" class="form-row">
-        <div><label>Nombre</label><div class="stat-readonly" id="ver-codigo-nombre">—</div></div>
-        <div><label>Tipo</label><div class="stat-readonly">CODE 128</div></div>
-        <div><label>Creado</label><div class="stat-readonly" id="ver-codigo-fecha">—</div></div>
-      </div>
-    </div>
-    <div class="modal-footer" style="flex-wrap:wrap">
-      <button class="btn-ghost" onclick="closeModal('modal-ver-codigo')">Cerrar</button>
-      <button class="btn-secondary" onclick="descargarCodigoActual()">⬇️ Descargar</button>
-      <button class="btn-primary" onclick="abrirImprimirDesdeVer()">🖨️ Imprimir etiqueta</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: IMPRIMIR ETIQUETAS
-=================================================== -->
-<div class="modal-overlay" id="modal-imprimir-codigo" onclick="if(event.target===this)closeModal('modal-imprimir-codigo')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <span class="modal-title">Imprimir etiquetas</span>
-      <button class="modal-close" onclick="closeModal('modal-imprimir-codigo')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px" id="imp-codigo-nombre">—</p>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Tamaño de etiqueta</label>
-          <select id="imp-tamano">
-            <option value="25x15">25 × 15 mm (mini)</option>
-            <option value="30x20">30 × 20 mm (pequeña)</option>
-            <option value="40x30" selected>40 × 30 mm (estándar)</option>
-            <option value="50x25">50 × 25 mm (rectangular)</option>
-            <option value="60x40">60 × 40 mm (grande)</option>
-            <option value="100x50">100 × 50 mm (tipo envío)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Cantidad de copias</label>
-          <input type="number" id="imp-cantidad" value="1" min="1" max="200" step="1"/>
-        </div>
-      </div>
-      <p id="imp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-imprimir-codigo')">Cancelar</button>
-      <button class="btn-primary" onclick="generarPDFEtiquetas()">Generar PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     MODAL: CONFIRMAR ELIMINAR
-=================================================== -->
-<div class="modal-overlay" id="modal-confirmar-eliminar-cb" onclick="if(event.target===this)closeModal('modal-confirmar-eliminar-cb')">
-  <div class="modal-box modal-sm">
-    <div class="modal-header">
-      <h3>Eliminar código</h3>
-      <button class="modal-close" onclick="closeModal('modal-confirmar-eliminar-cb')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:13.5px">Esta acción no se puede deshacer.</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-confirmar-eliminar-cb')">Cancelar</button>
-      <button class="btn-primary" style="background:var(--danger)" id="btn-confirmar-eliminar-cb" onclick="eliminarCodigo()">Eliminar definitivamente</button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================
-     SCRIPT
-===================================================== -->
-<script src="codigos-barras.js"></script>
+</div><!-- /#app -->
+<script src="vet-comun.js?v=1"></script>
+<script src="vet-recordatorios.js?v=1"></script>
+<script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js?v=20261004b"></script>
+<div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
+      <span style="font-weight:700;font-size:15px">💱 Moneda de visualización</span>
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary,#666)">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <p style="font-size:12.5px;color:var(--text-secondary,#666);margin-bottom:14px">
+        Tus datos siempre se guardan en tu moneda oficial (<b id="mv-moneda-oficial">—</b>). Esto solo cambia cómo se <b>muestran</b> los números en este dispositivo — nada se modifica de verdad.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Ver todo en</label>
+        <select id="mv-select-moneda" onchange="onCambiarSelectMonedaVis()" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px">
+          <option value="" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Mi moneda oficial (sin conversión)</option>
+          <option value="NIO" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Córdobas (NIO)</option>
+          <option value="USD" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Dólares (USD)</option>
+        </select>
+      </div>
+      <div id="mv-wrap-tasa" style="display:none;margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Tu tasa de cambio (córdobas por 1 dólar)</label>
+        <input type="number" id="mv-tasa" min="0.01" step="0.01" placeholder="Ej: 36.60" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
+      </div>
+      <p id="mv-error" style="color:#ef4444;font-size:12.5px"></p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
