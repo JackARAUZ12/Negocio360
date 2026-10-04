@@ -908,7 +908,7 @@
       if (prod.tipo === 'producto' && existente.cantidad > stockReal) existente.sinStock = true;
     }
     else CS.ncItems.push({
-      producto_id: prod.id, nombre: prod.nombre, tipo_item: prod.tipo,
+      producto_id: prod.id, nombre: prod.nombre, sku: prod.sku || null, tipo_item: prod.tipo,
       precio: precioUsar, costo: Number(prod.costo)||0, cantidad,
       escala_id: escalaElegida ? escalaElegida.id : null,
       escala_nombre: escalaElegida ? escalaElegida.nombre : null,
@@ -1264,7 +1264,7 @@
       }
       const nuevosDetalles = CS.ncItems.map(it => ({
         venta_id: credito.venta_id, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
-        combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre,
+        combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre, producto_sku: it.sku || null,
         // BUG REAL (preexistente): venta_detalles.tipo_item solo
         // acepta 'producto'/'servicio', nunca 'combo'.
         tipo_item: it.esCombo ? 'producto' : it.tipo_item,
@@ -1530,7 +1530,7 @@
         const detalles = CS.ncItems.map(it => ({
           venta_id: ventaId, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
           combo_id: it.esCombo ? it.producto_id : null,
-          producto_nombre: it.nombre,
+          producto_nombre: it.nombre, producto_sku: it.sku || null,
           // BUG REAL (preexistente): venta_detalles.tipo_item solo
           // acepta 'producto'/'servicio', nunca 'combo'.
           tipo_item: it.esCombo ? 'producto' : it.tipo_item, cantidad: it.cantidad,
