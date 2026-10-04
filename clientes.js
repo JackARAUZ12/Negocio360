@@ -1229,11 +1229,29 @@ async function abrirPerfil(clienteId) {
   // Estadísticas (del campo calculado, actualizar desde ventas siempre)
   await cargarStatsCliente(cl.id);
 
+  // Puntos del programa de fidelidad (solo si el negocio lo activo)
+  await cargarPuntosCliente(cl.id);
+
   // Historial de ventas
   await cargarHistorialVentas(cl.id);
   await cargarInteraccionesCliente(cl.id);
 
   openModal('modal-perfil');
+}
+
+// Saldo de puntos en la ficha. Con el programa apagado (el caso de
+// todos los negocios que no lo activaron) no se muestra ni se consulta nada.
+async function cargarPuntosCliente(clienteId) {
+  const card = document.getElementById('perfil-stat-puntos-card');
+  if (!card) return;
+  card.style.display = 'none';
+  if (CS.empresaConfig?.usa_puntos !== true) return;
+  try {
+    const { data } = await sb.from('puntos_saldos').select('saldo')
+      .eq('auth_user_id', CS.userId).eq('cliente_id', clienteId).maybeSingle();
+    document.getElementById('perfil-stat-puntos').textContent = Number(data?.saldo || 0).toLocaleString('es-NI');
+    card.style.display = '';
+  } catch (e) { console.warn('cargarPuntosCliente:', e); }
 }
 
 function setPerfilField(id, val) {

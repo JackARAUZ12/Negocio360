@@ -14,7 +14,7 @@
 
 <!-- Supabase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261002a"></script>
+<script src="modulos-registro.js?v=20261003a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1416,6 +1416,27 @@
           <div class="cfg-status" id="iva-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="puntos-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🎁</div>
+            <div>
+              <div class="cfg-card-title">Programa de puntos</div>
+              <div class="cfg-card-desc">Tus clientes acumulan puntos por sus compras y los canjean por recompensas. Tú defines las reglas.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar programa de puntos</div>
+              <div class="cfg-row-sub" id="puntos-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="puntos-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onTogglePuntosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="puntos-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="farmacia-card" style="display:none">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">💊</div>
@@ -2272,6 +2293,57 @@ async function guardarPorcentajeIva() {
   }
 }
 
+// Programa de puntos: se activa/desactiva desde aqui. Apagado por
+// defecto -- sin activarlo, el modulo no aparece ni cambia nada.
+async function cargarModuloPuntos() {
+  const toggle = document.getElementById('puntos-toggle');
+  const sub = document.getElementById('puntos-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_puntos').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_puntos === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — "Programa de puntos" aparece en el menú.'
+      : 'Desactivado — el programa de puntos no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloPuntos:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onTogglePuntosClick(evt) {
+  const toggle = document.getElementById('puntos-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloPuntos(toggle.checked);
+}
+
+async function guardarModuloPuntos(activo) {
+  const toggle = document.getElementById('puntos-toggle');
+  const sub = document.getElementById('puntos-row-sub');
+  const statusEl = document.getElementById('puntos-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_puntos: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — "Programa de puntos" aparece en el menú.'
+      : 'Desactivado — el programa de puntos no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Programa de puntos activado. Recarga la página para ver el menú.' : 'Programa de puntos desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloPuntos:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
 async function cargarModuloFarmacia() {
   const card = document.getElementById('farmacia-card');
   const toggle = document.getElementById('farmacia-toggle');
@@ -2607,6 +2679,7 @@ async function initConfiguracion() {
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloFarmacia();
+      cargarModuloPuntos();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -2633,6 +2706,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20260915a"></script>
-<script src="modulos-guard.js?v=20261002a"></script>
+<script src="modulos-guard.js?v=20261003a"></script>
 </body>
 </html>

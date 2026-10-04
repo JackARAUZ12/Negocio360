@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rotación y Margen — Negocio360</title>
+  <title>Programa de puntos — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1101,6 +1101,41 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
+
+<style>
+  .pt-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:18px; }
+  .pt-card { padding:16px 18px; margin-bottom:18px; }
+  .pt-card-title { font-weight:800; font-size:15px; margin-bottom:6px; }
+  .pt-resumen { font-size:13px; color:var(--text-secondary); background:var(--bg-app); border-radius:10px; padding:10px 12px; margin:0 0 14px; line-height:1.5; }
+  .pt-form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .pt-field label { display:block; font-size:12.5px; font-weight:600; margin-bottom:5px; }
+  .pt-field input[type=number], .pt-field input[type=text], .pt-select, .pt-input {
+    width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--border,#e5e7eb);
+    background:var(--bg-surface,#fff); color:var(--text-primary); font-size:14px; box-sizing:border-box; }
+  .pt-select { width:auto; min-width:170px; }
+  .pt-check { display:flex; align-items:flex-end; }
+  .pt-check label { display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; }
+  .pt-actions { display:flex; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap; }
+  .pt-msg { font-size:12.5px; }
+  .pt-barra { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  .pt-saldo { font-weight:800; font-variant-numeric:tabular-nums; }
+  .pt-buscador { position:relative; flex:1; min-width:200px; max-width:420px; }
+  .pt-buscador-icono { position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; pointer-events:none; opacity:.7; }
+  .pt-buscador input { width:100%; padding:10px 12px 10px 36px; border-radius:10px; border:1px solid var(--border,#e5e7eb);
+    background:var(--bg-surface,#fff); color:var(--text-primary); font-size:14px; box-sizing:border-box; }
+  .pt-check input[type=checkbox] { width:18px; height:18px; margin:0; flex:none; accent-color:var(--accent,#6C63FF); }
+  .pt-resumen { border-left:3px solid var(--accent,#6C63FF); }
+  .pt-mov { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 12px; background:var(--bg-app); border-radius:8px; margin-bottom:6px; font-size:12.5px; }
+  .pt-mov-pos { color:var(--success,#16a34a); font-weight:800; white-space:nowrap; }
+  .pt-mov-neg { color:var(--danger,#dc2626); font-weight:800; white-space:nowrap; }
+  @media (max-width:640px) {
+    .pt-hide-m { display:none !important; }
+    .pt-kpis { grid-template-columns:repeat(2,1fr); gap:10px; }
+    .pt-card { padding:14px 12px; }
+    .pt-select { width:100%; }
+    .pt-buscador { max-width:none; flex-basis:100%; }
+  }
+</style>
 </head>
 <body>
 
@@ -1296,7 +1331,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Rotación y Margen</span>
+      <span class="header-title">Programa de puntos</span>
       <div class="header-spacer"></div>
       <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
         <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -1313,41 +1348,65 @@
     <div class="page-content">
       <div class="hab-page-header">
         <div>
-          <h1>📊 Rotación y Margen</h1>
-          <p class="hab-page-subtitle">Qué se vende más, qué se vende menos, y cuánto deja de ganancia cada producto.</p>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select id="rm-rango" class="form-select" onchange="cargarRotacion()" style="padding:8px 12px;border-radius:8px">
-            <option value="30">Últimos 30 días</option>
-            <option value="90">Últimos 90 días</option>
-            <option value="365">Último año</option>
-          </select>
+          <h1>🎁 Programa de puntos</h1>
+          <p class="hab-page-subtitle">Tus clientes acumulan puntos por sus compras. Define las reglas y consulta el saldo de cada cliente.</p>
         </div>
       </div>
 
-      <div class="table-card" id="rm-reponer-wrap" style="display:none;padding:14px 16px;margin-bottom:18px;border-left:3px solid var(--warning,#d97706)">
-        <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔔 Para reponer ya</div>
-        <div id="rm-reponer-lista"></div>
+      <div class="pt-kpis">
+        <div class="kpi-card"><div class="kpi-icon" style="background:#E0E7FF">👥</div>
+          <div class="kpi-body"><div class="kpi-value" id="pt-kpi-clientes">—</div><div class="kpi-label">Clientes con puntos</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon" style="background:#DCFCE7">🎁</div>
+          <div class="kpi-body"><div class="kpi-value" id="pt-kpi-circulacion">—</div><div class="kpi-label">Puntos en circulación</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon" style="background:#FEF3C7">⭐</div>
+          <div class="kpi-body"><div class="kpi-value" id="pt-kpi-ganados">—</div><div class="kpi-label">Puntos ganados</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon" style="background:#FCE7F3">🎉</div>
+          <div class="kpi-body"><div class="kpi-value" id="pt-kpi-canjeados">—</div><div class="kpi-label">Puntos canjeados</div></div></div>
       </div>
 
-      <div class="kpi-grid" id="rm-kpis" style="grid-template-columns:repeat(3,1fr);max-width:600px;margin-bottom:18px">
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:#DCFCE7">🟢</div>
-          <div class="kpi-body"><div class="kpi-value" id="rm-kpi-alta">—</div><div class="kpi-label">Alta rotación</div></div>
+      <div class="table-card pt-card">
+        <div class="pt-card-title">⚙️ Reglas del programa</div>
+        <p class="pt-resumen" id="pt-resumen">Cargando reglas…</p>
+        <div class="pt-form-grid">
+          <div class="pt-field">
+            <label for="pt-monto-base">Por cada compra de *</label>
+            <input type="number" id="pt-monto-base" min="0.01" step="0.01" oninput="actualizarResumenReglas()"/>
+          </div>
+          <div class="pt-field">
+            <label for="pt-puntos-ganados">El cliente gana (puntos) *</label>
+            <input type="number" id="pt-puntos-ganados" min="1" step="1" oninput="actualizarResumenReglas()"/>
+          </div>
+          <div class="pt-field">
+            <label for="pt-minimo-canje">Mínimo de puntos para canjear</label>
+            <input type="number" id="pt-minimo-canje" min="0" step="1" placeholder="0"/>
+          </div>
+          <div class="pt-field">
+            <label for="pt-maximo-venta">Máximo de puntos por venta</label>
+            <input type="number" id="pt-maximo-venta" min="1" step="1" placeholder="Sin límite"/>
+          </div>
+          <div class="pt-field">
+            <label for="pt-vencimiento">Los puntos vencen a los (meses)</label>
+            <input type="number" id="pt-vencimiento" min="1" step="1" placeholder="Nunca vencen"/>
+          </div>
+          <div class="pt-field pt-check">
+            <label><input type="checkbox" id="pt-incluir-iva"/> Incluir el IVA en el cálculo de puntos</label>
+          </div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:#FEF3C7">🟡</div>
-          <div class="kpi-body"><div class="kpi-value" id="rm-kpi-media">—</div><div class="kpi-label">Rotación media</div></div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:#FEE2E2">🔵</div>
-          <div class="kpi-body"><div class="kpi-value" id="rm-kpi-baja">—</div><div class="kpi-label">Baja rotación / sin movimiento</div></div>
+        <div class="pt-actions">
+          <button class="btn-accion-tabla btn-primary" id="pt-btn-guardar" onclick="guardarReglasPuntos()">Guardar reglas</button>
+          <span id="pt-config-msg" class="pt-msg"></span>
         </div>
       </div>
 
-      <div class="search-wrapper" style="max-width:400px;margin-bottom:16px">
-        <span class="search-icon">🔍</span>
-        <input type="text" class="search-input" id="rm-buscar" placeholder="Buscar producto..." oninput="filtrarRotacion()" autocomplete="off" />
+      <div class="pt-barra">
+        <div class="pt-buscador">
+          <span class="pt-buscador-icono">🔍</span>
+          <input type="text" id="pt-buscar" placeholder="Buscar cliente por nombre o teléfono..." oninput="filtrarClientesPuntos()" autocomplete="off" />
+        </div>
+        <select id="pt-filtro" class="pt-select" onchange="filtrarClientesPuntos()">
+          <option value="todos">Todos los clientes</option>
+          <option value="con_puntos">Solo con puntos</option>
+        </select>
       </div>
 
       <div class="table-card">
@@ -1355,27 +1414,26 @@
           <table class="data-table" role="table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th>Rotación</th>
-                <th>Unidades vendidas</th>
-                <th>Ingresos</th>
-                <th>Margen</th>
+                <th>Cliente</th>
+                <th class="pt-hide-m">Teléfono</th>
+                <th>Saldo</th>
+                <th class="pt-hide-m">Ganados</th>
+                <th class="pt-hide-m">Canjeados</th>
+                <th>Acciones</th>
               </tr>
             </thead>
-            <tbody id="rm-tbody">
-              <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando…</td></tr>
+            <tbody id="pt-tbody">
+              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Cargando…</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="table-footer">
-          <span id="lt-pie">Cargando datos...</span>
-        </div>
+        <div class="table-footer"><span id="pt-pie">Cargando datos...</span></div>
       </div>
     </div>
 
   </div>
 </div><!-- /#app -->
-<script src="rotacion.js?v=1"></script>
+<script src="puntos.js?v=20261003a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
@@ -1407,6 +1465,56 @@
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
       <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
       <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal-overlay" id="modal-ajuste-puntos" onclick="if(event.target===this)cerrarAjustePuntos()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">⭐ Ajustar puntos</span>
+      <button class="modal-close" onclick="cerrarAjustePuntos()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p id="aj-info" style="font-size:13px;color:var(--text-secondary);margin:0 0 12px"></p>
+      <div class="pt-field" style="margin-bottom:10px">
+        <label for="aj-tipo">¿Qué quieres hacer?</label>
+        <select id="aj-tipo" class="pt-select" style="width:100%">
+          <option value="sumar">➕ Sumar puntos</option>
+          <option value="restar">➖ Restar puntos</option>
+        </select>
+      </div>
+      <div class="pt-field" style="margin-bottom:10px">
+        <label for="aj-puntos">Cantidad de puntos *</label>
+        <input type="number" id="aj-puntos" min="1" step="1"/>
+      </div>
+      <div class="pt-field">
+        <label for="aj-nota">Motivo</label>
+        <input type="text" id="aj-nota" placeholder="Ej: Bono de bienvenida, corrección"/>
+      </div>
+      <p id="aj-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:10px 0 0"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-accion-tabla btn-ghost" onclick="cerrarAjustePuntos()">Cancelar</button>
+      <button class="btn-accion-tabla btn-primary" id="aj-btn-guardar" onclick="guardarAjustePuntos()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-historial-puntos" onclick="if(event.target===this)cerrarHistorialPuntos()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">📜 Historial de puntos</span>
+      <button class="modal-close" onclick="cerrarHistorialPuntos()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="hist-contenido" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-accion-tabla btn-ghost" onclick="cerrarHistorialPuntos()">Cerrar</button>
     </div>
   </div>
 </div>
