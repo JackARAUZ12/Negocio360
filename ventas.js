@@ -1702,6 +1702,9 @@ async function abrirNuevaVenta() {
   S.clienteNombre = 'Consumidor Final';
   S.clienteObjeto = null;
   S.carrito       = [];
+  S.canje         = null;
+  S._recompensas  = undefined;
+  S._saldoPuntos  = undefined;
   S.metodoPagoId  = null;
   S.metodoPagoNombre = 'Efectivo';
   cargarPreferenciaCostoVenta();
@@ -3890,7 +3893,8 @@ async function actualizarPuntosEstimados() {
       const pts = calcularPuntosVenta(cfg, r.total, r.impuestos);
       const saldo = await _saldoPuntosCliente(S.clienteId);
       if (tok !== S._ptsTok) return;
-      const sal = saldo === null ? '' : ` <span style="color:var(--text-muted)">(saldo actual: ${Number(saldo).toLocaleString('es-NI')})</span>`;
+      const canjeTxt = S.canje ? ` · canje −${_nPts(S.canje.costo)}` : '';
+      const sal = saldo === null ? '' : ` <span style="color:var(--text-muted)">(saldo actual: ${Number(saldo).toLocaleString('es-NI')}${canjeTxt})</span>`;
       html = pts > 0
         ? `🎁 Esta venta le dará <strong>+${pts.toLocaleString('es-NI')} puntos</strong> a ${esc(S.clienteNombre || 'el cliente')}${sal}`
         : `🎁 Esta venta no alcanza para sumar puntos (se gana 1 bloque por cada ${esc(fmt(cfg.monto_base))}).${sal}`;
@@ -3899,6 +3903,7 @@ async function actualizarPuntosEstimados() {
     box.innerHTML = html;
     box.style.display = '';
   } catch (e) { console.warn('actualizarPuntosEstimados:', e); box.style.display = 'none'; }
+  finally { renderCanjeUI(); }
 }
 
 // Aviso con los puntos REALES que quedaron registrados (los lee de la base de datos).
@@ -3906,10 +3911,128 @@ async function mostrarPuntosGanados(ventaId, clienteId, clienteNombre) {
   if (S.empresaConfig?.usa_puntos !== true || !clienteId || !ventaId) return;
   try {
     if (S._saldoPuntos) delete S._saldoPuntos[clienteId];
-    const { data } = await sb.from('puntos_movimientos').select('puntos')
-      .eq('venta_id', ventaId).eq('tipo', 'acumulacion').maybeSingle();
-    if (data && data.puntos > 0) showToast(`🎁 +${Number(data.puntos).toLocaleString('es-NI')} puntos para ${clienteNombre || 'el cliente'}`, 'success');
+    const { data } = await sb.from('puntos_movimientos').select('tipo, puntos')
+      .eq('venta_id', ventaId).in('tipo', ['acumulacion', 'canje']);
+    const ganados = (data || []).filter(m => m.tipo === 'acumulacion').reduce((t, m) => t + m.puntos, 0);
+    const gastados = (data || []).filter(m => m.tipo === 'canje').reduce((t, m) => t - m.puntos, 0);
+    const partes = [];
+    if (gastados > 0) partes.push(`🎉 −${_nPts(gastados)} canjeados`);
+    if (ganados > 0) partes.push(`🎁 +${_nPts(ganados)} ganados`);
+    if (partes.length) showToast(`${partes.join(' · ')} — ${clienteNombre || 'el cliente'}`, 'success');
   } catch (e) { console.warn('mostrarPuntosGanados:', e); }
+}
+
+/* ============================================================
+   CANJE DE PUNTOS (fase 3)
+   El descuento se suma al MISMO "descuento" de siempre (igual que
+   las promociones). La resta de puntos NO la hace el navegador: la
+   hace la base de datos en el instante de crear la venta, y valida
+   puntos, stock y vigencia -- si algo no cuadra, la venta se rechaza.
+   ============================================================ */
+const _nPts = v => Number(v || 0).toLocaleString('es-NI');
+
+// Descuento que da una recompensa sobre lo que falta por pagar. Funcion pura.
+function calcularDescuentoCanje(canje, restante) {
+  if (!canje || !(restante > 0)) return 0;
+  if (canje.tipo === 'descuento_monto') return round2(Math.min(Number(canje.valor), restante));
+  if (canje.tipo === 'descuento_porcentaje') return round2(Math.min(restante * Number(canje.valor) / 100, restante));
+  if (canje.tipo === 'producto_gratis') {
+    const linea = S.carrito.find(i => i.id === canje.producto_id && !i.esCombo && !i.esPromocion);
+    return linea ? round2(Math.min(Number(linea.precio), restante)) : 0;
+  }
+  return 0;
+}
+
+function describirRecompensaVenta(r) {
+  if (r.tipo === 'descuento_monto') return `${fmt(r.valor)} de descuento en esta compra`;
+  if (r.tipo === 'descuento_porcentaje') return `${Number(r.valor)}% de descuento en esta compra`;
+  return `Producto gratis: ${r.producto_nombre || 'producto'}`;
+}
+
+// Recompensas que se pueden ofrecer ahora mismo (activas, vigentes, con stock).
+async function _recompensasDisponibles() {
+  if (S._recompensas !== undefined) return S._recompensas;
+  try {
+    const { data } = await sb.from('puntos_recompensas').select('*').eq('auth_user_id', S.userId).eq('activa', true).order('costo_puntos');
+    const hoy = todayISO();
+    let lista = (data || []).filter(r => (!r.vigente_hasta || r.vigente_hasta >= hoy) && (r.stock_disponible === null || r.stock_disponible > 0));
+    const regalos = lista.filter(r => r.tipo === 'producto_gratis');
+    // Un regalo solo se ofrece si el producto existe y se puede vender desde aqui.
+    regalos.forEach(r => { const p = (S.productosCache || []).find(x => x.id === r.producto_id); r.producto_nombre = p ? p.nombre : null; });
+    S._recompensas = lista.filter(r => r.tipo !== 'producto_gratis' || r.producto_nombre);
+  } catch (e) { console.warn('_recompensasDisponibles:', e); S._recompensas = []; }
+  return S._recompensas;
+}
+
+// Zona del Resumen: boton "Canjear puntos" o el canje ya aplicado.
+async function renderCanjeUI() {
+  const box = document.getElementById('res-canje');
+  if (!box) return;
+  try {
+    const cfg = await _puntosCfgVentas();
+    if (!cfg || !S.clienteId) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    if (S.canje) {
+      const d = S._resumen?.descuentoPuntos || 0;
+      box.innerHTML = `<div class="cj-aplicado"><span>🎉 Canje aplicado: <strong>${esc(S.canje.nombre)}</strong> (−${_nPts(S.canje.costo)} puntos) · descuento ${esc(fmt(d))}</span><button type="button" class="cj-quitar" onclick="quitarCanje()">Quitar</button></div>`;
+      box.style.display = ''; return;
+    }
+    const recs = await _recompensasDisponibles();
+    if (!recs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.innerHTML = '<button type="button" class="cj-btn" onclick="abrirCanje()">🎉 Canjear puntos</button>';
+    box.style.display = '';
+  } catch (e) { console.warn('renderCanjeUI:', e); box.style.display = 'none'; }
+}
+
+async function abrirCanje() {
+  if (!S.clienteId) return;
+  const lista = document.getElementById('canje-lista');
+  const sub = document.getElementById('canje-subtitulo');
+  lista.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  sub.textContent = S.clienteNombre || '';
+  openModal('modal-canje');
+  S._recompensas = undefined;                       // datos frescos al abrir
+  if (S._saldoPuntos) delete S._saldoPuntos[S.clienteId];
+  const [recs, saldo, cfg] = await Promise.all([_recompensasDisponibles(), _saldoPuntosCliente(S.clienteId), _puntosCfgVentas()]);
+  if (saldo === null) { lista.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo consultar el saldo de puntos.</p>'; return; }
+  const minimo = Number(cfg?.minimo_canje || 0);
+  sub.textContent = `${S.clienteNombre || 'Cliente'} — saldo: ${_nPts(saldo)} puntos`;
+  if (!recs.length) { lista.innerHTML = '<p style="color:var(--text-muted)">No hay recompensas disponibles por ahora.</p>'; return; }
+  lista.innerHTML = recs.map(r => {
+    let nota = '', puede = true;
+    if (saldo < minimo) { puede = false; nota = `Se necesitan al menos ${_nPts(minimo)} puntos para canjear`; }
+    else if (saldo < r.costo_puntos) { puede = false; nota = `Faltan ${_nPts(r.costo_puntos - saldo)} puntos`; }
+    return `<div class="cj-item ${puede ? '' : 'cj-off'}">
+      <div>
+        <div class="cj-nombre">${esc(r.nombre)}</div>
+        <div class="cj-desc">${esc(describirRecompensaVenta(r))}</div>
+        <div class="cj-costo">${_nPts(r.costo_puntos)} puntos</div>
+        ${nota ? `<div class="cj-faltan">${esc(nota)}</div>` : ''}
+      </div>
+      ${puede ? `<button type="button" class="cj-btn-ok" onclick="aplicarCanje('${r.id}')">Canjear</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function aplicarCanje(recId) {
+  const rec = (S._recompensas || []).find(r => r.id === recId);
+  if (!rec || !S.clienteId) return;
+  const saldo = await _saldoPuntosCliente(S.clienteId);
+  if (saldo === null || saldo < rec.costo_puntos) { showToast('El cliente no tiene puntos suficientes.', 'error'); return; }
+  if (rec.tipo === 'producto_gratis') {
+    // El regalo entra al carrito como cualquier producto (con su stock y precio).
+    await agregarAlCarritoConPrecio(rec.producto_id, 'producto', null);
+    if (!S.carrito.some(i => i.id === rec.producto_id)) { showToast('No se pudo agregar el producto regalado (¿sin stock?).', 'error'); return; }
+  }
+  S.canje = { id: rec.id, nombre: rec.nombre, tipo: rec.tipo, valor: rec.valor, producto_id: rec.producto_id, costo: rec.costo_puntos, clienteId: S.clienteId };
+  closeModal('modal-canje');
+  calcularResumen();
+}
+
+function quitarCanje() {
+  const eraRegalo = S.canje && S.canje.tipo === 'producto_gratis';
+  S.canje = null;
+  calcularResumen();
+  if (eraRegalo) showToast('Canje quitado. Si se agregó un producto regalado, quítalo del carrito.', 'warning');
 }
 
 function calcularResumen() {
@@ -3921,15 +4044,26 @@ function calcularResumen() {
   // una columna ni un concepto nuevo en la venta.
   const resultadoPromos = calcularDescuentosPromociones(S.carrito, S.promociones);
   const descuentoPromociones = resultadoPromos.total;
-  const descuento = round2(descuentoManual + descuentoPromociones);
+  const descuentoBase = round2(descuentoManual + descuentoPromociones);
+  // Canje de puntos: se suma al mismo descuento. Si ya no aplica (cambio de
+  // cliente, se quito el producto regalado, o el descuento es 0), se quita solo.
+  let descuentoPuntos = 0;
+  if (S.canje) {
+    if (S.canje.clienteId !== S.clienteId) { S.canje = null; }
+    else {
+      descuentoPuntos = calcularDescuentoCanje(S.canje, Math.max(subtotal - descuentoBase, 0));
+      if (!(descuentoPuntos > 0)) { const nom = S.canje.nombre; S.canje = null; descuentoPuntos = 0; showToast(`El canje "${nom}" ya no aplica a esta venta y se quitó.`, 'warning'); }
+    }
+  }
+  const descuento = round2(descuentoBase + descuentoPuntos);
   const baseImponible = Math.max(subtotal - descuento, 0);
   const impuestos = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
   const total     = round2(subtotal - descuento + impuestos);
-  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones;
+  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, total, ganancia, costoTotal, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
+  S._resumen = { subtotal, descuento, impuestos, total, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle };
 
   // Aviso visual de promociones aplicadas — se inserta junto al
   // resumen si el contenedor existe; si no existe en el HTML, esto
@@ -4984,6 +5118,10 @@ async function confirmarVenta(conImpresion) {
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
       observaciones:      S.observaciones || null,
+      // Canje de puntos: va en el payload BASE para que el reintento sin
+      // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
+      ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
+        ? { canje_recompensa_id: S.canje.id, canje_descuento: r.descuentoPuntos } : {}),
     };
 
     // Campos opcionales de IVA (si la columna no existe en la tabla, Supabase

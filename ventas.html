@@ -584,6 +584,19 @@
   .sc-alcance-opcion input[type="radio"] { flex-shrink: 0; }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
+<style>
+  .cj-btn { width:100%; padding:11px 14px; border-radius:10px; font-weight:700; font-size:14px; border:1.5px dashed var(--accent,#6C63FF); color:var(--accent,#6C63FF); background:transparent; cursor:pointer; }
+  .cj-aplicado { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 12px; border-radius:10px; background:#DCFCE7; color:#166534; border:1px solid #86EFAC; font-size:13px; line-height:1.4; }
+  .cj-quitar { border:none; background:rgba(0,0,0,.08); color:inherit; padding:5px 12px; border-radius:20px; font-weight:700; font-size:12px; cursor:pointer; }
+  .cj-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border:1px solid var(--border,#e5e7eb); border-radius:12px; margin-bottom:8px; background:var(--bg-surface,#fff); }
+  .cj-item.cj-off { opacity:.55; }
+  .cj-nombre { font-weight:800; font-size:14px; }
+  .cj-desc { font-size:12.5px; color:var(--text-secondary); margin-top:2px; }
+  .cj-costo { font-size:12.5px; font-weight:800; color:var(--accent,#6C63FF); margin-top:3px; }
+  .cj-faltan { font-size:11.5px; color:var(--text-muted); margin-top:3px; }
+  .cj-btn-ok { border:none; background:var(--accent,#6C63FF); color:#fff; padding:9px 16px; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; }
+  @media (max-width:480px) { .cj-item { flex-direction:column; align-items:stretch; } .cj-btn-ok { width:100%; } }
+</style>
 </head>
 <body>
 
@@ -1147,6 +1160,8 @@
 
         <div id="res-puntos" style="display:none;margin-bottom:16px;padding:10px 12px;background:var(--bg-app,#f8fafc);border-left:3px solid var(--accent,#6C63FF);border-radius:8px;font-size:13px;line-height:1.45"></div>
 
+        <div id="res-canje" style="display:none;margin:-8px 0 16px"></div>
+
         <div id="wrap-vincular-receta" style="display:none;margin-bottom:16px;padding:10px 12px;background:var(--bg-app,#f8fafc);border-radius:8px">
           <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">📝 ¿Esta venta corresponde a una receta pendiente?</label>
           <select id="sel-receta-vincular" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)">
@@ -1578,6 +1593,21 @@
 <!-- =====================================================
      MODAL: DETALLE VENTA
 ===================================================== -->
+<div class="modal-overlay" id="modal-canje" onclick="if(event.target===this)closeModal('modal-canje')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">🎉 Canjear puntos</div>
+        <div class="modal-subtitle" id="canje-subtitulo"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-canje')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body"><div id="canje-lista"></div></div>
+  </div>
+</div>
+
 <div class="modal-overlay modal-md" id="modal-detalle" onclick="if(event.target===this)closeModal('modal-detalle')">
   <div class="modal-box modal-md">
     <div class="modal-header">
@@ -1881,7 +1911,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js?v=20261002a"></script>
 <script src="escpos-usb.js?v=20260825a"></script>
-<script src="ventas.js?v=20261003a"></script>
+<script src="ventas.js?v=20261004a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20260915a"></script>
 <script src="modulos-guard.js?v=20261003a"></script>

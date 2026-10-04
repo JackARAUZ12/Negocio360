@@ -1129,6 +1129,20 @@
   .pt-estado-warn { background:#FEF3C7; color:#92400E; border:1px solid #F59E0B; }
   .pt-estado-ok { background:#DCFCE7; color:#166534; border:1px solid #86EFAC; }
   .pt-nota { font-size:12px; color:var(--text-muted); margin:12px 0 0; line-height:1.45; }
+  .pt-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .pt-recs { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; }
+  .pt-rec { border:1px solid var(--border,#e5e7eb); border-radius:12px; padding:12px 14px; background:var(--bg-surface,#fff); display:flex; flex-direction:column; gap:6px; }
+  .pt-rec.pt-rec-off { opacity:.55; }
+  .pt-rec-nombre { font-weight:800; font-size:14px; }
+  .pt-rec-desc { font-size:12.5px; color:var(--text-secondary); }
+  .pt-rec-costo { font-weight:800; font-size:15px; color:var(--accent,#6C63FF); }
+  .pt-chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .pt-chip { font-size:11px; padding:2px 8px; border-radius:20px; background:var(--bg-app); color:var(--text-secondary); }
+  .pt-rec-acciones { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+  .pt-resultados { border:1px solid var(--border,#e5e7eb); border-radius:8px; margin-top:4px; max-height:170px; overflow-y:auto; background:var(--bg-surface,#fff); }
+  .pt-resultado { padding:8px 10px; cursor:pointer; font-size:13px; }
+  .pt-resultado:hover { background:var(--bg-app); }
+  .pt-elegido { margin-top:6px; padding:8px 10px; background:var(--bg-app); border-radius:8px; font-size:13px; font-weight:600; }
   .pt-mov { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 12px; background:var(--bg-app); border-radius:8px; margin-bottom:6px; font-size:12.5px; }
   .pt-mov-pos { color:var(--success,#16a34a); font-weight:800; white-space:nowrap; }
   .pt-mov-neg { color:var(--danger,#dc2626); font-weight:800; white-space:nowrap; }
@@ -1404,6 +1418,15 @@
         <p class="pt-nota">ℹ️ Las ventas a crédito todavía no suman puntos (llegará en una próxima actualización). Si se anula una venta, sus puntos se descuentan solos.</p>
       </div>
 
+      <div class="table-card pt-card">
+        <div class="pt-card-head">
+          <div class="pt-card-title" style="margin:0">🎉 Recompensas canjeables</div>
+          <button class="btn-accion-tabla btn-primary" onclick="abrirRecompensa()">+ Nueva recompensa</button>
+        </div>
+        <p class="pt-nota" style="margin:6px 0 12px">Lo que tus clientes pueden obtener a cambio de sus puntos. Se canjea desde Ventas, en el paso Resumen.</p>
+        <div id="pt-recompensas" class="pt-recs"><p style="color:var(--text-muted);font-size:13px">Cargando…</p></div>
+      </div>
+
       <div class="pt-barra">
         <div class="pt-buscador">
           <span class="pt-buscador-icono">🔍</span>
@@ -1439,7 +1462,7 @@
 
   </div>
 </div><!-- /#app -->
-<script src="puntos.js?v=20261003b"></script>
+<script src="puntos.js?v=20261003c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
@@ -1475,6 +1498,60 @@
   </div>
 </div>
 
+
+<div class="modal-overlay" id="modal-recompensa" onclick="if(event.target===this)cerrarRecompensa()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title" id="rc-titulo">🎉 Nueva recompensa</span>
+      <button class="modal-close" onclick="cerrarRecompensa()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="max-height:68vh;overflow-y:auto">
+      <div class="pt-field" style="margin-bottom:10px">
+        <label for="rc-nombre">Nombre *</label>
+        <input type="text" id="rc-nombre" placeholder="Ej: C$50 de descuento" maxlength="80"/>
+      </div>
+      <div class="pt-field" style="margin-bottom:10px">
+        <label for="rc-tipo">¿Qué recibe el cliente? *</label>
+        <select id="rc-tipo" class="pt-select" style="width:100%" onchange="cambiarTipoRecompensa()">
+          <option value="descuento_monto">💵 Un descuento en dinero</option>
+          <option value="descuento_porcentaje">🏷️ Un descuento en porcentaje</option>
+          <option value="producto_gratis">🎁 Un producto gratis</option>
+        </select>
+      </div>
+      <div class="pt-field" id="rc-wrap-valor" style="margin-bottom:10px">
+        <label for="rc-valor" id="rc-valor-label">Monto del descuento *</label>
+        <input type="number" id="rc-valor" min="0.01" step="0.01"/>
+      </div>
+      <div class="pt-field" id="rc-wrap-producto" style="margin-bottom:10px;display:none">
+        <label for="rc-producto-buscar">Producto que se regala *</label>
+        <input type="text" id="rc-producto-buscar" placeholder="Escribe para buscar…" oninput="buscarProductoRecompensa(this.value)" autocomplete="off"/>
+        <div id="rc-producto-resultados" class="pt-resultados" style="display:none"></div>
+        <div id="rc-producto-elegido" class="pt-elegido" style="display:none"></div>
+      </div>
+      <div class="pt-field" style="margin-bottom:10px">
+        <label for="rc-costo">Costo en puntos *</label>
+        <input type="number" id="rc-costo" min="1" step="1"/>
+      </div>
+      <div class="pt-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+        <div class="pt-field">
+          <label for="rc-stock">Cantidad disponible</label>
+          <input type="number" id="rc-stock" min="0" step="1" placeholder="Ilimitada"/>
+        </div>
+        <div class="pt-field">
+          <label for="rc-vigencia">Vigente hasta</label>
+          <input type="date" id="rc-vigencia"/>
+        </div>
+      </div>
+      <p id="rc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:10px 0 0"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-accion-tabla btn-ghost" onclick="cerrarRecompensa()">Cancelar</button>
+      <button class="btn-accion-tabla btn-primary" id="rc-btn-guardar" onclick="guardarRecompensa()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="modal-ajuste-puntos" onclick="if(event.target===this)cerrarAjustePuntos()">
   <div class="modal-box modal-sm">
