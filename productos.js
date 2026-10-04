@@ -2407,8 +2407,34 @@ async function cargarLotesDelProducto(producto) {
           }).join('')}
         </div>`;
     } else if (stockSinAsignar <= 0) {
-      htmlLotes = `<p style="font-size:12.5px;color:var(--text-muted)">Sin lotes registrados todavía — se agregan al comprar este producto desde Compras.</p>`;
+      htmlLotes = `<p style="font-size:12.5px;color:var(--text-muted)">Sin lotes registrados todavía.</p>`;
     }
+
+    // Nuevo lote = ingreso de mercaderia (suma al stock). Distinto de
+    // "asignar stock sin lote", que solo reparte lo que ya existia.
+    const htmlNuevoLote = `
+      <div style="margin-top:10px">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormNuevoLote"
+                onclick="document.getElementById('formNuevoLote').style.display='';this.style.display='none'">➕ Nuevo lote (ingreso de mercadería)</button>
+        <div id="formNuevoLote" style="display:none;margin-top:8px;padding:10px 12px;background:var(--bg-app);border-radius:8px">
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Suma estas unidades al stock del producto, como un ingreso de mercadería con su propio lote y vencimiento.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad *</label>
+              <input type="number" id="inputCantidadNuevoLote" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div>
+              <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
+              <input type="text" id="inputNumeroNuevoLote" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div>
+              <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
+              <input type="date" id="inputVencimientoNuevoLote" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="guardarNuevoLoteIngreso()">Guardar</button>
+          </div>
+        </div>
+      </div>`;
 
     // Aviso + formulario para el stock que ya existía antes de tener
     // lotes — mismo espíritu que el "saldo inicial" de Bancos. Ahora
@@ -2466,7 +2492,7 @@ async function cargarLotesDelProducto(producto) {
         </div>`;
     }
 
-    lista.innerHTML = htmlLotes + htmlSinAsignar;
+    lista.innerHTML = htmlLotes + htmlSinAsignar + htmlNuevoLote;
   } catch (e) {
     console.warn('cargarLotesDelProducto:', e);
     lista.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudieron cargar los lotes.</p>`;
@@ -2585,6 +2611,63 @@ async function guardarLoteStockExistente(stockSinAsignarMax) {
   }
 }
 
+// Nuevo lote como INGRESO de mercaderia: crea el lote, suma la cantidad
+// al stock del producto y deja rastro en el historial de movimientos.
+// El stock se lee fresco de la base de datos justo antes de sumar.
+async function guardarNuevoLoteIngreso() {
+  const producto = STATE.productoLotesActual;
+  if (!producto) return;
+
+  const cantidad = parseFloat($('inputCantidadNuevoLote')?.value);
+  const numeroLote = $('inputNumeroNuevoLote')?.value.trim() || null;
+  const fechaVencimiento = $('inputVencimientoNuevoLote')?.value;
+
+  if (!fechaVencimiento) { showToast('error', 'Falta la fecha', 'Indica la fecha de vencimiento.'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+
+  try {
+    const { data: prodFresco, error: errP } = await supabaseClient.from('productos')
+      .select('stock_actual').eq('id', producto.id).eq('auth_user_id', STATE.user.id).maybeSingle();
+    if (errP) throw errP;
+    const stockAntes = Number(prodFresco?.stock_actual || 0);
+    const stockDespues = round2(stockAntes + cantidad);
+
+    const { data: loteNuevo, error: errLote } = await supabaseClient.from('producto_lotes').insert({
+      auth_user_id: STATE.user.id, producto_id: producto.id, numero_lote: numeroLote,
+      fecha_vencimiento: fechaVencimiento, cantidad_inicial: cantidad, cantidad_actual: cantidad,
+      costo_unitario: producto.costo || null,
+    }).select('id').single();
+    if (errLote) throw errLote;
+
+    const { error: errStock } = await supabaseClient.from('productos')
+      .update({ stock_actual: stockDespues }).eq('id', producto.id).eq('auth_user_id', STATE.user.id);
+    if (errStock) {
+      // No dejar un lote "huerfano" que no sumo stock: se deshace.
+      await supabaseClient.from('producto_lotes').delete().eq('id', loteNuevo.id);
+      throw errStock;
+    }
+
+    try {
+      await supabaseClient.from('movimientos_inventario').insert([{
+        auth_user_id: STATE.user.id, producto_id: producto.id, tipo: 'entrada', razon: 'nuevo_lote',
+        cantidad, stock_antes: stockAntes, stock_despues: stockDespues,
+        nota: `Nuevo lote ${numeroLote || 'sin número'} (vence ${fechaVencimiento})`, descuenta_caja: false,
+      }]);
+    } catch (_) { console.warn('movimientos_inventario no disponible'); }
+
+    showToast('success', 'Lote agregado', `Se sumaron ${fmtNum(cantidad)} unidades al stock.`);
+    producto.stock_actual = stockDespues;
+    // El modal de edicion tiene su propio campo de stock: se actualiza
+    // para que guardar el producto despues NO pise el stock recien sumado.
+    if ($('inputStockActualEdit')) $('inputStockActualEdit').value = stockDespues;
+    await cargarLotesDelProducto(producto);
+    await cargarProductos();
+  } catch (e) {
+    console.warn('guardarNuevoLoteIngreso:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
 function cerrarModalProducto() {
   $('modalProducto').classList.remove('open');
   STATE.editTarget = null;
@@ -2609,6 +2692,15 @@ function configurarCamposSegunModo(modo) {
       avisoStock.classList.remove('visible');
       avisoStock.style.display = 'none';
     }
+  }
+
+  // Lote del stock inicial: solo al crear (o duplicar) y solo si el
+  // negocio maneja lotes y vencimientos. Siempre arranca vacio.
+  const grupoLote = $('grupoLoteInicial');
+  if (grupoLote) {
+    grupoLote.style.display = (!esEdicion && STATE.empresa?.maneja_lotes_vencimiento === true) ? '' : 'none';
+    if ($('inputNumeroLoteInicial')) $('inputNumeroLoteInicial').value = '';
+    if ($('inputVencimientoLoteInicial')) $('inputVencimientoLoteInicial').value = '';
   }
 }
 
@@ -3159,6 +3251,15 @@ async function guardarProducto() {
     $('inputNombre')?.focus();
     return;
   }
+
+  // Lote del stock inicial: si se escribio un numero de lote pero se
+  // dejo sin fecha de vencimiento, se avisa antes de guardar nada.
+  if (STATE.modalMode !== 'editar' && STATE.empresa?.maneja_lotes_vencimiento === true
+      && ($('inputNumeroLoteInicial')?.value || '').trim() && !$('inputVencimientoLoteInicial')?.value) {
+    if (errEl) errEl.textContent = 'Si indicas un número de lote, indica también su fecha de vencimiento.';
+    $('inputVencimientoLoteInicial')?.focus();
+    return;
+  }
   if (!btn) return;
 
   const textoOriginal = btn.textContent;
@@ -3303,6 +3404,28 @@ async function guardarProducto() {
     }
 
     if (error) throw error;
+
+    // Lote del stock inicial (solo crear/duplicar, producto, negocio con
+    // lotes, stock > 0 y fecha de vencimiento indicada). Aislado: si
+    // fallara, el producto YA quedo guardado y el stock sigue ahi como
+    // "sin lote", asignable despues desde el producto.
+    try {
+      const vencLoteInicial = $('inputVencimientoLoteInicial')?.value;
+      if (productoIdGuardado && STATE.modalMode !== 'editar' && tipo === 'producto'
+          && STATE.empresa?.maneja_lotes_vencimiento === true && stockActual > 0 && vencLoteInicial) {
+        const { error: errLoteIni } = await supabaseClient.from('producto_lotes').insert({
+          auth_user_id: STATE.user.id, producto_id: productoIdGuardado,
+          numero_lote: ($('inputNumeroLoteInicial')?.value || '').trim() || null,
+          fecha_vencimiento: vencLoteInicial,
+          cantidad_inicial: stockActual, cantidad_actual: stockActual,
+          costo_unitario: isNaN(costo) ? null : costo,
+        });
+        if (errLoteIni) throw errLoteIni;
+      }
+    } catch (eLoteIni) {
+      console.warn('Lote del stock inicial:', eLoteIni);
+      showToast('warning', 'Producto guardado', 'El lote del stock inicial no se pudo crear — puedes asignarlo después desde el producto.');
+    }
 
     // Sincronizar escalas de precio (crea/actualiza/elimina filas según corresponda).
     // Si falla, el producto YA quedó guardado — solo se avisa, no se revierte nada.
