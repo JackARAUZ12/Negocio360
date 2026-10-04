@@ -395,7 +395,9 @@ async function loadResumen() {
       .gte('fecha', monthStart)
       .lte('fecha', today);
 
-    const movs = data || [];
+    const movsTodos = data || [];
+    // Las transferencias entre cuentas propias no son ingresos ni egresos del negocio.
+    const movs = movsTodos.filter(r => !esTransferenciaInterna(r));
 
     // "Ingresos del mes" / "Egresos del mes" reflejan solo movimientos
     // LIGADOS a otra parte del sistema (venta, compra de producto, etc.
@@ -408,7 +410,7 @@ async function loadResumen() {
 
     const ingresos = movsIngresoRef.reduce((s,r) => s + Number(r.monto), 0);
     const egresos  = movsEgresoRef.reduce((s,r)  => s + Number(r.monto), 0);
-    const totalMov = movs.length;
+    const totalMov = movsTodos.length;
 
     setEl('kpi-caja', fmt(STATE.caja));
     setDelta('kpi-caja-delta',
@@ -700,11 +702,11 @@ function renderMovimientos() {
       <td class="td-monto td-salida">${!isIngreso ? fmt(m.monto) : '—'}</td>
       <td class="td-monto td-saldo">${fmt(m.saldo_resultante)}</td>
       <td class="td-actions">
-        ${m.estado !== 'anulado' ? `
+        ${m.estado === 'anulado' ? '<span class="anulado-label">Anulado</span>' : m.transferencia_id ? '<span class="anulado-label" style="cursor:help" title="Una transferencia se revierte desde la pestaña Transferencias">🔁 Transferencia</span>' : `
           <button class="btn-icon btn-icon-danger" onclick="confirmarAnular('${m.id}')" title="Anular">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-        ` : '<span class="anulado-label">Anulado</span>'}
+        `}
       </td>
     </tr>`;
   }).join('');
@@ -861,33 +863,18 @@ async function anularMovimiento() {
   try {
     setBtnLoading('btn-confirmar-anular', true);
 
-    // FIX: antes no se revisaba el resultado de este update — si fallaba
-    // (por RLS, conexión, etc.) el sistema igual mostraba "Movimiento
-    // anulado" sin haber cambiado nada en la base de datos, y el egreso
-    // seguía contando en Caja y en "Otros egresos" como si nada. Ahora se
-    // verifica el error Y que realmente se haya actualizado una fila
-    // (.select() para confirmarlo) antes de dar el aviso de éxito.
-    const { data, error } = await sbClient
-      .from('movimientos_financieros')
-      .update({
-        estado:         'anulado',
-        anulado_en:     new Date().toISOString(),
-        anulado_motivo: 'Anulado manualmente',
-      })
-      .eq('id', movToAnular)
-      .eq('auth_user_id', STATE.userId)
-      .select('id');
-
+    // La anulacion la hace la base de datos: marca el movimiento Y corrige por su monto exacto
+    // los saldos de los movimientos posteriores (antes el saldo en pantalla no se movia).
+    // Las patas de una transferencia no se anulan sueltas: se revierten desde Transferencias.
+    const { data, error } = await sbClient.rpc('anular_movimiento_caja', { p_id: movToAnular, p_motivo: 'Anulado manualmente' });
     if (error) throw error;
-    if (!data || !data.length) throw new Error('No se encontró el movimiento a anular (puede que ya no exista o no te pertenezca).');
+    if (!data?.ok) throw new Error(data?.mensaje || 'No se pudo anular el movimiento.');
 
     closeModal('modal-confirmar');
     movToAnular = null;
     showToast('Movimiento anulado');
 
-    await loadCaja();
-    await Promise.all([loadResumen(), loadMovimientos()]);
-    actualizarCacheLocal();
+    await refrescarTrasMovimiento();
   } catch(e) {
     console.error('anularMovimiento:', e);
     showToast('Error al anular: ' + (e.message || 'intenta de nuevo'), 'error');
@@ -970,8 +957,8 @@ async function verDetalleCierre(fecha) {
 
     const lista = movs || [];
     const saldoInicial  = lista.length > 0 ? Number(lista[0].saldo_anterior) : 0;
-    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO' && !esTransferenciaInterna(r)).reduce((s,r) => s + Number(r.monto), 0);
+    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO' && !esTransferenciaInterna(r)).reduce((s,r)  => s + Number(r.monto), 0);
     const saldoFinal    = saldoInicial + totalIngresos - totalEgresos;
 
     DETALLE_CIERRE_ACTUAL = { fecha, movimientos: lista, resumen: { saldoInicial, totalIngresos, totalEgresos, saldoFinal } };
@@ -1082,7 +1069,7 @@ async function crearCierreMensual() {
 
     const { data: movs } = await sbClient
       .from('movimientos_financieros')
-      .select('tipo_flujo, monto, saldo_anterior')
+      .select('tipo_flujo, monto, saldo_anterior, tipo_movimiento')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
       .gte('fecha', desde).lte('fecha', hasta)
       .order('created_at');
@@ -1091,8 +1078,8 @@ async function crearCierreMensual() {
     if (!lista.length) { showToast('No hay movimientos este mes para cerrar', 'error'); return; }
 
     const saldoInicial  = Number(lista[0].saldo_anterior) || 0;
-    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO' && !esTransferenciaInterna(r)).reduce((s,r) => s + Number(r.monto), 0);
+    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO' && !esTransferenciaInterna(r)).reduce((s,r)  => s + Number(r.monto), 0);
 
     const { error } = await sbClient.from('cierres_caja').insert({
       auth_user_id:      STATE.userId,
@@ -1138,7 +1125,7 @@ async function crearCierreDiario() {
 
     const { data: movHoy } = await sbClient
       .from('movimientos_financieros')
-      .select('tipo_flujo, monto, saldo_anterior')
+      .select('tipo_flujo, monto, saldo_anterior, tipo_movimiento')
       .eq('auth_user_id', STATE.userId)
       .eq('estado', 'completado')
       .eq('fecha', hoy)
@@ -1146,8 +1133,8 @@ async function crearCierreDiario() {
 
     const movs = movHoy || [];
     const saldoInicial  = movs.length > 0 ? Number(movs[0].saldo_anterior) : STATE.caja;
-    const totalIngresos = movs.filter(r => r.tipo_flujo === 'INGRESO').reduce((s,r) => s + Number(r.monto), 0);
-    const totalEgresos  = movs.filter(r => r.tipo_flujo === 'EGRESO').reduce((s,r)  => s + Number(r.monto), 0);
+    const totalIngresos = movs.filter(r => r.tipo_flujo === 'INGRESO' && !esTransferenciaInterna(r)).reduce((s,r) => s + Number(r.monto), 0);
+    const totalEgresos  = movs.filter(r => r.tipo_flujo === 'EGRESO' && !esTransferenciaInterna(r)).reduce((s,r)  => s + Number(r.monto), 0);
     const saldoFinal    = saldoInicial + totalIngresos - totalEgresos;
 
     await sbClient.from('cierres_caja').insert({
@@ -1535,6 +1522,28 @@ function esTarjetaOTransferencia(m) {
   return metodo.includes('tarjeta') || metodo.includes('transferencia');
 }
 
+// Un movimiento cuenta para un banco si es un cobro por tarjeta/transferencia
+// O una transferencia interna que entra/sale de ese banco (tiene banco_id).
+function esMovDeBanco(m) {
+  return esTarjetaOTransferencia(m) || (m.tipo_movimiento === 'TRANSFERENCIA' && !!m.banco_id);
+}
+function monedaBaseNegocio() { return STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO'; }
+// UNA sola formula del saldo de un banco: la usan la tarjeta de Banco y el selector de transferencias.
+function saldoBancoDe(b, movsDelBanco, monedaBase) {
+  const monedaBanco = b.moneda || 'NIO';
+  const montoDe = (m) => monedaBanco !== monedaBase ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+  return round2(Number(b.saldo_inicial || 0) + movsDelBanco.reduce((t, m) => t + (m.tipo_flujo === 'INGRESO' ? montoDe(m) : -montoDe(m)), 0));
+}
+async function calcularSaldoBanco(bancoId) {
+  const [{ data: b }, { data: movs }] = await Promise.all([
+    sbClient.from('bancos').select('*').eq('id', bancoId).eq('auth_user_id', STATE.userId).maybeSingle(),
+    sbClient.from('movimientos_financieros').select('tipo_flujo, monto, metodo_pago_nombre, banco_id, tipo_movimiento')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completado').eq('banco_id', bancoId),
+  ]);
+  if (!b) return 0;
+  return saldoBancoDe(b, (movs || []).filter(esMovDeBanco), monedaBaseNegocio());
+}
+
 /* =====================================================
    TRANSFERENCIAS ENTRE CUENTAS PROPIAS -- mueve dinero
    entre Caja General, Caja Chica y los bancos, sin pasar
@@ -1583,15 +1592,18 @@ async function abrirNuevaTransferencia() {
 }
 
 async function obtenerSaldoActualCuenta(origenCaja, bancoId) {
-  // Caja Chica NO vive en movimientos_financieros -- tiene su propio
-  // sistema de sesiones (apertura/cierre), asi que se calcula aparte.
+  // Cada cuenta se calcula con SU propia formula (la misma que muestra su pantalla):
+  // Caja Chica = sesion + efectivo del cajon; Banco = saldo inicial + sus movimientos.
   if (origenCaja === 'chica') return await calcularSaldoTeoricoCajaChica();
-  let q = sbClient.from('movimientos_financieros').select('saldo_resultante')
-    .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
-    .order('created_at', { ascending: false }).limit(1);
-  q = bancoId ? q.eq('banco_id', bancoId) : q.eq('origen_caja', origenCaja).is('banco_id', null);
-  const { data } = await q.maybeSingle();
-  return data ? Number(data.saldo_resultante) : 0;
+  if (bancoId) return await calcularSaldoBanco(bancoId);
+  return 0;
+}
+
+// Despues de mover dinero entre cuentas, TODAS las pantallas que lo muestran se actualizan.
+async function refrescarTrasMovimiento() {
+  await loadCaja();
+  await Promise.allSettled([loadResumen(), loadMovimientos(), loadBancos(), loadCajaChica(), loadTransferencias()]);
+  if (typeof actualizarCacheLocal === 'function') actualizarCacheLocal();
 }
 
 async function guardarTransferencia() {
@@ -1599,7 +1611,7 @@ async function guardarTransferencia() {
   errEl.textContent = '';
   const origenVal = document.getElementById('tr-origen').value;
   const destinoVal = document.getElementById('tr-destino').value;
-  const monto = parseFloat(document.getElementById('tr-monto').value);
+  const monto = round2(parseFloat(document.getElementById('tr-monto').value));
   const nota = document.getElementById('tr-nota').value.trim();
 
   if (origenVal === destinoVal) { errEl.textContent = 'El origen y el destino deben ser distintos.'; return; }
@@ -1609,38 +1621,29 @@ async function guardarTransferencia() {
   const origen = cuentas.find(c => c.valor === origenVal);
   const destino = cuentas.find(c => c.valor === destinoVal);
   if (!origen || !destino) { errEl.textContent = 'Elige cuentas válidas.'; return; }
-  if (monto > origen.saldo) { errEl.textContent = `No hay suficiente saldo en ${origen.label.replace(/^[^\s]+ /, '')} (disponible: ${fmt(origen.saldo)}).`; return; }
 
   setBtnLoading('btn-guardar-transferencia', true);
   try {
-    const transferenciaId = crypto.randomUUID();
-    const fecha = new Date().toISOString().slice(0, 10);
+    // Saldo FRESCO del origen (el que se vio al abrir el modal pudo cambiar).
+    const saldoOrigen = await obtenerSaldoActualCuenta(origen.origen_caja, origen.banco_id);
+    if (monto > saldoOrigen) { errEl.textContent = `No hay suficiente saldo en ${origen.label.replace(/^[^\s]+ /, '')} (disponible: ${fmt(saldoOrigen)}).`; return; }
+
     const notaTexto = nota ? ` — ${nota}` : '';
-
-    const saldoOrigenAnt = await obtenerSaldoActualCuenta(origen.origen_caja, origen.banco_id);
-    const { error: errSalida } = await sbClient.from('movimientos_financieros').insert({
-      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'TRANSFERENCIA',
-      concepto: `Transferencia hacia ${destino.label}${notaTexto}`, monto,
-      saldo_anterior: saldoOrigenAnt, saldo_resultante: round2(saldoOrigenAnt - monto),
-      origen_caja: origen.origen_caja, banco_id: origen.banco_id,
-      estado: 'completado', fecha, transferencia_id: transferenciaId,
+    // El servidor registra AMBAS patas juntas (o ninguna), continuando la cadena de saldos.
+    const { data, error } = await sbClient.rpc('registrar_transferencia_interna', {
+      p_transferencia_id: crypto.randomUUID(), p_monto: monto,
+      p_sale_origen_caja: origen.origen_caja, p_sale_banco: origen.banco_id,
+      p_entra_origen_caja: destino.origen_caja, p_entra_banco: destino.banco_id,
+      p_concepto_sale: `Transferencia hacia ${destino.label}${notaTexto}`,
+      p_concepto_entra: `Transferencia desde ${origen.label}${notaTexto}`,
+      p_es_reverso: false, p_fecha: todayISO(),
     });
-    if (errSalida) throw errSalida;
-
-    const saldoDestinoAnt = await obtenerSaldoActualCuenta(destino.origen_caja, destino.banco_id);
-    const { error: errEntrada } = await sbClient.from('movimientos_financieros').insert({
-      auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'TRANSFERENCIA',
-      concepto: `Transferencia desde ${origen.label}${notaTexto}`, monto,
-      saldo_anterior: saldoDestinoAnt, saldo_resultante: round2(saldoDestinoAnt + monto),
-      origen_caja: destino.origen_caja, banco_id: destino.banco_id,
-      estado: 'completado', fecha, transferencia_id: transferenciaId,
-    });
-    if (errEntrada) throw errEntrada;
+    if (error) throw error;
+    if (!data?.ok) { errEl.textContent = data?.mensaje || 'No se pudo completar la transferencia.'; return; }
 
     showToast('Transferencia realizada correctamente.');
     closeModal('modal-transferencia');
-    await loadTransferencias();
-    if (typeof loadMovimientos === 'function') loadMovimientos();
+    await refrescarTrasMovimiento();
   } catch (e) {
     console.error('guardarTransferencia:', e);
     errEl.textContent = 'No se pudo completar la transferencia. Intenta de nuevo.';
@@ -1649,28 +1652,88 @@ async function guardarTransferencia() {
   }
 }
 
+function nombreCuentaDeConcepto(concepto, prefijo) { return String(concepto || '').split(' — ')[0].replace(prefijo, '').trim(); }
+function notaDeConcepto(concepto) { return String(concepto || '').split(' — ').slice(1).join(' — '); }
+
 async function loadTransferencias() {
   const tbody = document.getElementById('transferencias-tbody');
   try {
     const { data, error } = await sbClient.from('movimientos_financieros')
-      .select('fecha, concepto, monto, tipo_flujo, transferencia_id')
+      .select('fecha, concepto, monto, tipo_flujo, transferencia_id, es_reverso, estado, created_at')
       .eq('auth_user_id', STATE.userId).eq('tipo_movimiento', 'TRANSFERENCIA')
-      .order('created_at', { ascending: false }).limit(100);
+      .order('created_at', { ascending: false }).limit(400);
     if (error) throw error;
-    // Cada transferencia genera 2 filas (egreso+ingreso) con el mismo
-    // transferencia_id -- se muestra solo la del egreso, que ya dice
-    // "hacia" el destino en su concepto.
-    const salidas = (data || []).filter(m => m.tipo_flujo === 'EGRESO');
-    if (!salidas.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin transferencias todavía.</td></tr>'; return; }
-    tbody.innerHTML = salidas.map(m => {
-      const partes = m.concepto.split(' — ');
-      const destino = partes[0].replace('Transferencia hacia ', '');
-      const nota = partes[1] || '';
-      return `<tr><td>${m.fecha}</td><td>Origen</td><td>${esc(destino)}</td><td>${fmt(m.monto)}</td><td>${esc(nota)}</td></tr>`;
+
+    // Cada transferencia son 2 filas (salida + entrada) con el mismo transferencia_id; si se
+    // revirtio, hay 2 filas mas marcadas como reverso. Se muestra UNA linea por transferencia.
+    const grupos = new Map();
+    (data || []).forEach(m => {
+      if (!m.transferencia_id) return;
+      const g = grupos.get(m.transferencia_id) || { id: m.transferencia_id };
+      if (m.es_reverso) g.reversada = true;
+      else if (m.tipo_flujo === 'EGRESO') g.egreso = m; else g.ingreso = m;
+      grupos.set(m.transferencia_id, g);
+    });
+    const lista = [...grupos.values()].filter(g => g.egreso && g.ingreso);
+    if (!lista.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">Sin transferencias todavía.</td></tr>'; return; }
+
+    tbody.innerHTML = lista.map(g => {
+      const anulada = g.egreso.estado === 'anulado' || g.ingreso.estado === 'anulado';
+      const estado = anulada ? '<span style="color:var(--text-muted)">🚫 Anulada</span>'
+        : g.reversada ? '<span style="color:var(--text-muted)">↩️ Revertida</span>'
+        : '<span style="color:var(--success,#16a34a)">✅ Activa</span>';
+      const accion = (!anulada && !g.reversada)
+        ? `<button class="btn-secondary btn-sm" onclick="revertirTransferencia('${g.id}')" title="Devuelve el dinero a la cuenta de origen">↩️ Revertir</button>` : '';
+      return `<tr><td>${g.egreso.fecha}</td><td>${esc(nombreCuentaDeConcepto(g.ingreso.concepto, 'Transferencia desde '))}</td>`
+        + `<td>${esc(nombreCuentaDeConcepto(g.egreso.concepto, 'Transferencia hacia '))}</td><td>${fmt(g.egreso.monto)}</td>`
+        + `<td>${esc(notaDeConcepto(g.egreso.concepto))}</td><td>${estado}</td><td>${accion}</td></tr>`;
     }).join('');
   } catch (e) {
     console.error('loadTransferencias:', e);
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">No se pudo cargar.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">No se pudo cargar.</td></tr>';
+  }
+}
+
+// Revertir = mover el dinero de vuelta con 2 movimientos nuevos (queda todo el historial).
+// Solo se puede una vez por transferencia, y solo si el dinero sigue estando en el destino.
+async function revertirTransferencia(transferenciaId) {
+  try {
+    const { data: patas, error } = await sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, concepto, origen_caja, banco_id, es_reverso, estado')
+      .eq('auth_user_id', STATE.userId).eq('transferencia_id', transferenciaId);
+    if (error) throw error;
+    const orig = (patas || []).filter(p => !p.es_reverso);
+    const egreso = orig.find(p => p.tipo_flujo === 'EGRESO');
+    const ingreso = orig.find(p => p.tipo_flujo === 'INGRESO');
+    if (!egreso || !ingreso) { showToast('No se encontró la transferencia.', 'error'); return; }
+    if ((patas || []).some(p => p.es_reverso)) { showToast('Esta transferencia ya fue revertida.', 'warning'); await loadTransferencias(); return; }
+    if (orig.some(p => p.estado !== 'completado')) { showToast('Esta transferencia está anulada y no se puede revertir.', 'error'); return; }
+
+    const monto = Number(egreso.monto);
+    const nombreDestino = nombreCuentaDeConcepto(egreso.concepto, 'Transferencia hacia ');
+    const nombreOrigen = nombreCuentaDeConcepto(ingreso.concepto, 'Transferencia desde ');
+    const saldoDestino = await obtenerSaldoActualCuenta(ingreso.origen_caja, ingreso.banco_id);
+    if (monto > saldoDestino) {
+      showToast(`No se puede revertir: en ${nombreDestino.replace(/^[^\s]+ /, '')} solo hay ${fmt(saldoDestino)} y se necesitan ${fmt(monto)}.`, 'error');
+      return;
+    }
+    if (!confirm(`¿Revertir esta transferencia?\n\nSe devolverán ${fmt(monto)} de ${nombreDestino} a ${nombreOrigen}.`)) return;
+
+    const { data, error: errRpc } = await sbClient.rpc('registrar_transferencia_interna', {
+      p_transferencia_id: transferenciaId, p_monto: monto,
+      p_sale_origen_caja: ingreso.origen_caja, p_sale_banco: ingreso.banco_id,
+      p_entra_origen_caja: egreso.origen_caja, p_entra_banco: egreso.banco_id,
+      p_concepto_sale: `Reversión de transferencia: sale de ${nombreDestino}`,
+      p_concepto_entra: `Reversión de transferencia: regresa a ${nombreOrigen}`,
+      p_es_reverso: true, p_fecha: todayISO(),
+    });
+    if (errRpc) throw errRpc;
+    if (!data?.ok) { showToast(data?.mensaje || 'No se pudo revertir la transferencia.', 'error'); await loadTransferencias(); return; }
+    showToast('Transferencia revertida: el dinero regresó a su cuenta de origen.');
+    await refrescarTrasMovimiento();
+  } catch (e) {
+    console.error('revertirTransferencia:', e);
+    showToast('No se pudo revertir la transferencia. Intenta de nuevo.', 'error');
   }
 }
 
@@ -1680,9 +1743,9 @@ async function loadBancos() {
     STATE.bancos = bancos || [];
 
     const { data: movs } = await sbClient.from('movimientos_financieros')
-      .select('tipo_flujo, monto, metodo_pago_nombre, banco_id, concepto, fecha')
+      .select('tipo_flujo, monto, metodo_pago_nombre, banco_id, concepto, fecha, tipo_movimiento')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completado');
-    const lista = (movs || []).filter(esTarjetaOTransferencia);
+    const lista = (movs || []).filter(esMovDeBanco);
 
     renderBancosGrid(lista);
     renderSinAsignar(lista);
@@ -1723,7 +1786,7 @@ function renderBancosGrid(lista) {
     // — nunca el monto en moneda base, para que cuadre contra el
     // estado de cuenta real del banco en SU propia moneda.
     const montoDe = (m) => monedaBanco !== monedaBase ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
-    const saldo = round2(Number(b.saldo_inicial||0) + delBanco.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0));
+    const saldo = saldoBancoDe(b, delBanco, monedaBase);
     return `
       <div class="panel-card" style="margin:0">
         <div class="panel-body" style="cursor:pointer" onclick="verBanco('${b.id}')">
@@ -2145,20 +2208,45 @@ async function reabrirCajaDeHoy(sesionId) {
 // (Transferencias tambien lo necesita). Si no hay sesion abierta
 // HOY, no hay caja chica activa de donde sacar dinero, asi que el
 // saldo disponible es 0 -- correcto, no es un error.
+/* =====================================================
+   REGLAS DE EFECTIVO DE CAJA CHICA -- UNA sola fuente de verdad
+   (la base de datos aplica las mismas reglas en el disparador de cierres).
+   Solo cuenta lo que toca el CAJON FISICO:
+    * El capital inicial y la pata "banco" de una transferencia NO son
+      efectivo del cajon, salvo que esten marcados expresamente como de 'chica'.
+    * Una transferencia solo resta del cajon si SALE de la Caja Chica.
+    * Las transferencias internas no son ingresos ni egresos del negocio.
+===================================================== */
+const COLS_MOV_CHICA = 'tipo_flujo, monto, metodo_pago_nombre, origen_caja, tipo_movimiento';
+function movEsEfectivo(m) { return (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo'); }
+function esTransferenciaInterna(m) { return m.tipo_movimiento === 'TRANSFERENCIA'; }
+function ingresoEsDeCajaChica(m) {
+  if (m.tipo_movimiento === 'TRANSFERENCIA' || m.tipo_movimiento === 'CAPITAL_AGREGADO') return m.origen_caja === 'chica';
+  return movEsEfectivo(m);
+}
+function egresoEsDeCajaChica(m) {
+  if (m.tipo_movimiento === 'TRANSFERENCIA') return m.origen_caja === 'chica';
+  return m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : movEsEfectivo(m));
+}
+// Totales del dia de la Caja Chica. 'lista' = movimientos completados de hoy.
+function totalesCajaChica(lista, apertura) {
+  const suma = arr => round2(arr.reduce((t, m) => t + Number(m.monto || 0), 0));
+  const ingEfectivo = suma(lista.filter(m => m.tipo_flujo === 'INGRESO' && ingresoEsDeCajaChica(m)));
+  const egrEfectivo = suma(lista.filter(m => m.tipo_flujo === 'EGRESO'  && egresoEsDeCajaChica(m)));
+  const ingTotal = suma(lista.filter(m => m.tipo_flujo === 'INGRESO' && !esTransferenciaInterna(m)));
+  const egrTotal = suma(lista.filter(m => m.tipo_flujo === 'EGRESO'  && !esTransferenciaInterna(m)));
+  return { ingEfectivo, egrEfectivo, ingTotal, egrTotal, teorico: round2(Number(apertura || 0) + ingEfectivo - egrEfectivo) };
+}
+
 async function calcularSaldoTeoricoCajaChica() {
   const hoy = todayISO();
   const { data: sesion } = await sbClient.from('caja_chica_sesiones')
     .select('*').eq('auth_user_id', STATE.userId).eq('fecha', hoy).eq('estado', 'abierta').maybeSingle();
   if (!sesion) return 0;
   const { data: movs } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto, metodo_pago_nombre, origen_caja').eq('auth_user_id', STATE.userId)
+    .select(COLS_MOV_CHICA).eq('auth_user_id', STATE.userId)
     .eq('estado','completado').eq('fecha', hoy);
-  const lista = movs || [];
-  const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
-  const cuentaComoEgresoChica = m => m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : esEfectivo(m));
-  const ingEfectivo = lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
-  const egrEfectivo = lista.filter(m => m.tipo_flujo==='EGRESO'  && cuentaComoEgresoChica(m)).reduce((s,m)=>s+Number(m.monto||0),0);
-  return round2(Number(sesion.monto_apertura||0) + ingEfectivo - egrEfectivo);
+  return totalesCajaChica(movs || [], sesion.monto_apertura).teorico;
 }
 
 async function renderResumenVivoCC(sesion) {
@@ -2167,21 +2255,11 @@ async function renderResumenVivoCC(sesion) {
   try {
     const hoy = todayISO();
     const { data: movs } = await sbClient.from('movimientos_financieros')
-      .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId)
+      .select(COLS_MOV_CHICA).eq('auth_user_id', STATE.userId)
       .eq('estado','completado').eq('fecha', hoy);
 
     const lista = movs || [];
-    const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
-    // Si Gastos/Compras ya dijeron explícitamente de dónde sale ese
-    // dinero, se respeta eso — "general" nunca toca el cajón físico,
-    // aunque haya sido en efectivo. Sin ese dato (Ventas, Créditos,
-    // Salarios, etc.), sigue funcionando como siempre: por método de pago.
-    const cuentaComoEgresoChica = m => m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : esEfectivo(m));
-    const ingEfectivo = lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0);
-    const egrEfectivo = lista.filter(m => m.tipo_flujo==='EGRESO'  && cuentaComoEgresoChica(m)).reduce((s,m)=>s+Number(m.monto||0),0);
-    const ingTotal    = lista.filter(m => m.tipo_flujo==='INGRESO').reduce((s,m)=>s+Number(m.monto||0),0);
-    const egrTotal    = lista.filter(m => m.tipo_flujo==='EGRESO').reduce((s,m)=>s+Number(m.monto||0),0);
-    const teorico = round2(Number(sesion.monto_apertura||0) + ingEfectivo - egrEfectivo);
+    const { ingEfectivo, egrEfectivo, ingTotal, egrTotal, teorico } = totalesCajaChica(lista, sesion.monto_apertura);
 
     el.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
@@ -2332,16 +2410,10 @@ async function confirmarConteoBilletes() {
       // movimientos de hoy, y se compara con lo contado en la mano.
       const hoy = todayISO();
       const { data: movs } = await sbClient.from('movimientos_financieros')
-        .select('tipo_flujo, monto, metodo_pago_nombre').eq('auth_user_id', STATE.userId)
+        .select(COLS_MOV_CHICA).eq('auth_user_id', STATE.userId)
         .eq('estado','completado').eq('fecha', hoy);
       const lista = movs || [];
-      const esEfectivo = m => (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo');
-      const cuentaComoEgresoChica = m => m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : esEfectivo(m));
-      const ingEfectivo = round2(lista.filter(m => m.tipo_flujo==='INGRESO' && esEfectivo(m)).reduce((s,m)=>s+Number(m.monto||0),0));
-      const egrEfectivo = round2(lista.filter(m => m.tipo_flujo==='EGRESO'  && cuentaComoEgresoChica(m)).reduce((s,m)=>s+Number(m.monto||0),0));
-      const ingTotal = round2(lista.filter(m => m.tipo_flujo==='INGRESO').reduce((s,m)=>s+Number(m.monto||0),0));
-      const egrTotal = round2(lista.filter(m => m.tipo_flujo==='EGRESO').reduce((s,m)=>s+Number(m.monto||0),0));
-      const teorico = round2(Number(CC.sesionHoy.monto_apertura||0) + ingEfectivo - egrEfectivo);
+      const { ingEfectivo, egrEfectivo, ingTotal, egrTotal, teorico } = totalesCajaChica(lista, CC.sesionHoy.monto_apertura);
       const diferencia = round2(total - teorico);
 
       const { error } = await sbClient.from('caja_chica_sesiones').update({

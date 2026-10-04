@@ -664,9 +664,9 @@ async function loadCrecimientoNegocio(usuarios, idsShadow) {
     // ---- Ingresos: consulta nueva, excluyendo sucursales/bodegas
     // para no contar el mismo dinero dos veces ----
     const [{ data: movsActual }, { data: movsAnterior }] = await Promise.all([
-      sb.from('movimientos_financieros').select('monto, auth_user_id')
+      sb.from('movimientos_financieros').select('monto, auth_user_id, tipo_movimiento')
         .eq('tipo_flujo', 'INGRESO').eq('estado', 'completado').gte('fecha', inicioMesActual),
-      sb.from('movimientos_financieros').select('monto, auth_user_id')
+      sb.from('movimientos_financieros').select('monto, auth_user_id, tipo_movimiento')
         .eq('tipo_flujo', 'INGRESO').eq('estado', 'completado').gte('fecha', inicioMesAnterior).lte('fecha', finMesAnterior),
     ]);
 
@@ -674,8 +674,9 @@ async function loadCrecimientoNegocio(usuarios, idsShadow) {
       .filter(m => !idsShadow.has(m.auth_user_id))
       .reduce((s,m) => s + (Number(m.monto)||0), 0);
 
-    const totalActual   = sumarSinSucursales(movsActual);
-    const totalAnterior = sumarSinSucursales(movsAnterior);
+    const sinTransf = lst => (lst || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA'); // transferencias internas no son ingresos
+    const totalActual   = sumarSinSucursales(sinTransf(movsActual));
+    const totalAnterior = sumarSinSucursales(sinTransf(movsAnterior));
 
     document.getElementById('stat-ingresos-mes').textContent = fmt(totalActual, 'C$');
     const difIngresos = totalActual - totalAnterior;

@@ -922,7 +922,8 @@ async function fetchMovimientos() {
     .eq('estado','completado')
     .gte('fecha', from).lte('fecha', to)
     .order('fecha');
-  R.cache.movimientos = data || [];
+  // Las transferencias entre cuentas propias no son ingresos ni egresos: se excluyen del flujo.
+  R.cache.movimientos = (data || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA');
   return R.cache.movimientos;
 }
 

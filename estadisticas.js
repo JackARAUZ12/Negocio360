@@ -264,7 +264,7 @@ async function cargarTodo() {
     sb.from('creditos').select('*').eq('auth_user_id', uid),
     sb.from('creditos_cuotas').select('*, creditos!inner(cliente_id, tipo, numero_credito)').eq('auth_user_id', uid).in('estado', ['vencida', 'pendiente', 'parcial']),
     sb.from('movimientos_financieros').select('*').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', from).lte('fecha', to).order('fecha', { ascending: true }),
-    sb.from('movimientos_financieros').select('tipo_flujo, monto').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', anterior.from).lte('fecha', anterior.to),
+    sb.from('movimientos_financieros').select('tipo_flujo, monto, tipo_movimiento').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', anterior.from).lte('fecha', anterior.to),
     sb.from('capital_negocio').select('*').eq('auth_user_id', uid).eq('is_current', true).maybeSingle(),
     // FIX: saldo de caja REAL más reciente — igual criterio que Reportes y
     // el Dashboard. NO se limita al período de análisis seleccionado arriba,
@@ -314,8 +314,9 @@ async function cargarTodo() {
     creditos: creditos.data || [],
     creditosCuotas: creditosCuotas.data || [],
     clientesMap,
-    movFin: movFin.data || [],
-    movFinAnt: movFinAnt.data || [],
+    // Las transferencias entre cuentas propias no son ingresos ni egresos del negocio.
+    movFin: (movFin.data || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA'),
+    movFinAnt: (movFinAnt.data || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA'),
     capital: capital.data || null,
     saldoActualReal: saldoReciente.data ? Number(saldoReciente.data.saldo_resultante) : null,
     productos: productos.data || [],
