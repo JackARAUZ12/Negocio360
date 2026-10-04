@@ -128,6 +128,8 @@
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
     'recetas.html': { key: 'farmacia_recetas', label: 'Farmacia · Recetas', icon: '📝', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
                                desc: 'Recetas medicas -- paciente, medico y medicamentos recetados.' },
+    'vet-agenda.html': { key: 'vet_agenda', label: 'Veterinaria · Agenda', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
+                       desc: 'Citas por día y por veterinario, con aviso al dueño por WhatsApp.' },
     'mascotas.html': { key: 'vet_mascotas', label: 'Veterinaria · Mascotas', icon: '🐾', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
                        desc: 'Fichas de mascotas, historia clínica y carnet de vacunación.' },
     'vet-recordatorios.html': { key: 'vet_recordatorios', label: 'Veterinaria · Recordatorios', icon: '💉', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',

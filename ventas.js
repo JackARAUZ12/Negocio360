@@ -1703,6 +1703,7 @@ async function abrirNuevaVenta() {
   S.clienteObjeto = null;
   S.carrito       = [];
   S.canje         = null;
+  S._vetConsultaId = null;
   S._recompensas  = undefined;
   S._saldoPuntos  = undefined;
   S.metodoPagoId  = null;
@@ -2839,6 +2840,34 @@ async function aplicarRecetaPendienteDeVender() {
   showToast('Medicamentos de la receta agregados al carrito.');
 }
 
+// Cobro desde la consulta veterinaria (solo si el modulo esta activo): abre la venta con
+// el dueno y los articulos de la "cuenta de la visita" ya cargados. Al confirmar, la venta
+// queda ligada a la consulta (ver mas abajo) y esta se muestra como cobrada.
+async function aplicarCobroVeterinaria() {
+  if (S.empresaConfig?.usa_modulo_veterinaria !== true) return;
+  const raw = sessionStorage.getItem('n360_vet_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_vet_cobro');          // una sola vez: no se repite al recargar
+  let d;
+  try { d = JSON.parse(raw); }
+  catch (e) { console.error('aplicarCobroVeterinaria, dato corrupto:', e); return; }
+
+  await abrirNuevaVenta();                              // reinicia el estado: lo demas se arma DESPUES
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else showToast('No se pudo seleccionar al dueño: elígelo manualmente.', 'warning');
+
+  let noAgregados = 0;
+  for (const it of (d.items || [])) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }             // ya no existe, esta inactivo o es sustancia controlada
+    for (let i = 0; i < Math.max(1, Math.round(it.cantidad)); i++) await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
+    if (!S.carrito.some(x => x.id === it.producto_id)) noAgregados++;
+  }
+  S._vetConsultaId = d.consultaId || null;
+  showToast(`Cuenta de ${d.mascota || 'la mascota'} cargada en la venta.`);
+  if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
+}
+
 // Vincular receta con la venta (Farmacia fase 2) -- gateado igual
 // que el resto de esta fase, sin afectar a ninguna otra cuenta.
 async function cargarRecetasPendientesParaVincular() {
@@ -2871,11 +2900,11 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   // Precio a usar: el de la escala elegida, o el precio fijo del producto
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
 
-  // FEFO + bloqueo de vencidos (Farmacia, fase 2 -- SOLO cuentas con
+  // FEFO + bloqueo de vencidos (Farmacia fase 2 o Veterinaria -- SOLO cuentas con
   // el flag activo). Con el flag apagado, loteFEFO queda null y todo
   // el resto del carrito se comporta exactamente igual que siempre.
   let loteFEFO = null;
-  if (tipo === 'producto' && S?.empresaConfig?.usa_farmacia_fase2 === true) {
+  if (tipo === 'producto' && (S?.empresaConfig?.usa_farmacia_fase2 === true || S?.empresaConfig?.usa_modulo_veterinaria === true)) {
     const { data: lotes } = await sb.from('producto_lotes')
       .select('id, numero_lote, fecha_vencimiento, cantidad_actual')
       .eq('producto_id', productoId).eq('activo', true).gt('cantidad_actual', 0)
@@ -5210,6 +5239,15 @@ async function confirmarVenta(conImpresion) {
       }
     } catch (eReceta) { console.warn('Vincular receta:', eReceta); }
 
+    // Cobro de una consulta veterinaria: la venta queda ligada a la consulta. Aislado:
+    // la venta YA se confirmo, nada de esto la revierte.
+    try {
+      if (S._vetConsultaId) {
+        await sb.from('vet_consultas').update({ venta_id: ventaId }).eq('id', S._vetConsultaId).eq('auth_user_id', S.userId);
+        S._vetConsultaId = null;
+      }
+    } catch (eVet) { console.warn('Vincular consulta veterinaria:', eVet); }
+
     // Números de serie recolectados (si la función está activa y el
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
     await registrarNumerosDeSerie(ventaId, S.clienteId || null, fechaVentaElegida);
@@ -7198,6 +7236,7 @@ async function initVentas() {
     // 5b. Si se vino desde "Vender" en Recetas (Farmacia fase 2),
     // armar el carrito con los medicamentos de esa receta.
     await aplicarRecetaPendienteDeVender();
+    await aplicarCobroVeterinaria();
 
     // 6. Cargar KPIs y tabla
     await Promise.allSettled([

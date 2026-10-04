@@ -7,7 +7,7 @@
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261004b"></script>
+  <script src="modulos-registro.js?v=20261004c"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20260915a"></script>
   <!-- Lucide Icons -->
@@ -1111,7 +1111,7 @@
   .vt-buscador input { width:100%; padding-left:36px; }
   .vt-in, .vt-ta { width:100%; } .vt-ta { min-height:64px; resize:vertical; }
   .vt-field { margin-bottom:10px; } .vt-field label { display:block; font-size:12.5px; font-weight:600; margin-bottom:5px; }
-  .vt-grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .vt-grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; }
   .vt-check { display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer; margin-bottom:10px; }
   .vt-check input { width:18px; height:18px; flex:none; margin:0; accent-color:var(--accent,#6C63FF); }
   .vt-mascota { display:flex; align-items:center; gap:10px; }
@@ -1137,6 +1137,9 @@
   .vt-item-tit { font-weight:800; font-size:14px; } .vt-item-fecha { font-size:12px; color:var(--text-muted); }
   .vt-item p { margin:6px 0 0; font-size:13px; line-height:1.45; } .vt-item p b { color:var(--text-secondary); }
   .vt-acciones { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .vt-bloque { background:var(--bg-app); border-radius:10px; padding:9px 12px; margin-top:8px; font-size:13px; } .vt-bloque b { font-size:12.5px; } .vt-bloque p { margin:4px 0 0; }
+  .vt-calc { background:#E0E7FF; color:#3730A3; border-radius:10px; padding:10px 12px; font-size:13.5px; font-weight:700; margin:2px 0 10px; line-height:1.4; }
+  .vt-cobrada { display:inline-block; background:#DCFCE7; color:#166534; font-weight:700; font-size:12px; padding:3px 10px; border-radius:20px; }
   @media (max-width:640px) {
     .vt-hide-m { display:none !important; }
     .vt-kpis { grid-template-columns:repeat(2,1fr); gap:10px; }
@@ -1414,8 +1417,8 @@
 
   </div>
 </div><!-- /#app -->
-<script src="vet-comun.js?v=1"></script>
-<script src="mascotas.js?v=1"></script>
+<script src="vet-comun.js?v=20261004a"></script>
+<script src="mascotas.js?v=20261004a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="perfiles-guard.js?v=20260915a"></script>
@@ -1504,7 +1507,10 @@
     <div class="modal-body" style="max-height:68vh;overflow-y:auto">
       <div class="vt-grid2">
         <div class="vt-field"><label for="co-fecha">Fecha *</label><input type="date" id="co-fecha" class="vt-in"/></div>
-        <div class="vt-field"><label for="co-vet">Veterinario</label><input type="text" id="co-vet" class="vt-in" maxlength="60"/></div>
+        <div class="vt-field" id="co-vet-wrap"><label>Veterinario</label>
+          <input type="text" id="co-vet" class="vt-in" maxlength="60"/>
+          <select id="co-vet-sel" class="vt-in" style="display:none"></select>
+          <div id="co-vet-fijo" class="vt-sub" style="display:none"></div></div>
       </div>
       <div class="vt-field"><label for="co-motivo">Motivo de la consulta *</label><input type="text" id="co-motivo" class="vt-in" maxlength="200" placeholder="Ej: vómitos desde ayer"/></div>
       <div class="vt-field"><label for="co-sintomas">Síntomas / examen físico</label><textarea id="co-sintomas" class="vt-ta"></textarea></div>
@@ -1534,10 +1540,57 @@
         <div class="vt-field"><label for="va-proxima">Próxima dosis (refuerzo)</label><input type="date" id="va-proxima" class="vt-in" oninput="this.dataset.manual='1'"/></div>
         <div class="vt-field"><label for="va-lote">Lote</label><input type="text" id="va-lote" class="vt-in" maxlength="40"/></div>
       </div>
-      <div class="vt-field"><label for="va-vet">Veterinario</label><input type="text" id="va-vet" class="vt-in" maxlength="60"/></div>
+      <div class="vt-field" id="va-vet-wrap"><label>Veterinario</label>
+          <input type="text" id="va-vet" class="vt-in" maxlength="60"/>
+          <select id="va-vet-sel" class="vt-in" style="display:none"></select>
+          <div id="va-vet-fijo" class="vt-sub" style="display:none"></div></div>
       <div class="vt-field"><label for="va-obs">Observaciones</label><textarea id="va-obs" class="vt-ta"></textarea></div>
       <p id="va-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0"></p></div>
     <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="cerrarVacuna()">Cancelar</button><button class="btn-accion-tabla btn-primary" id="va-btn-guardar" onclick="guardarVacuna()">Guardar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cargo" onclick="if(event.target===this)cerrarCargo()">
+  <div class="modal-box" style="max-width:480px;width:100%">
+    <div class="modal-header"><span class="modal-title" id="cg-titulo">💳 Agregar a la cuenta</span><button class="modal-close" onclick="cerrarCargo()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:68vh;overflow-y:auto">
+      <div class="vt-field"><label for="cg-buscar">Servicio o producto *</label>
+        <input type="text" id="cg-buscar" class="vt-in" placeholder="Escribe para buscar (consulta, vacuna, medicamento…)" oninput="buscarProductoCargo(this.value)" autocomplete="off"/>
+        <div id="cg-resultados" class="vt-resultados" style="display:none"></div>
+        <div id="cg-elegido" class="vt-elegido" style="display:none"></div>
+        <p class="vt-sub" style="margin:6px 0 0">Si no existe, créalo primero en Productos / Servicios.</p></div>
+      <div class="vt-field"><label for="cg-cantidad">Cantidad</label><input type="number" id="cg-cantidad" class="vt-in" min="0.01" step="0.01" value="1"/></div>
+      <p id="cg-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0"></p></div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="cerrarCargo()">Cancelar</button><button class="btn-accion-tabla btn-primary" id="cg-btn-guardar" onclick="guardarCargo()">Agregar</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-receta" onclick="if(event.target===this)cerrarReceta()">
+  <div class="modal-box" style="max-width:640px;width:100%">
+    <div class="modal-header"><span class="modal-title" id="rx-titulo">📝 Receta</span><button class="modal-close" onclick="cerrarReceta()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:68vh;overflow-y:auto">
+      <div id="rx-lista"></div>
+      <div style="border-top:1px solid var(--border,#e5e7eb);margin-top:10px;padding-top:12px">
+        <div style="font-weight:800;font-size:13.5px;margin-bottom:8px">Agregar medicamento</div>
+        <div class="vt-field"><label for="rx-med">Medicamento *</label><input type="text" id="rx-med" class="vt-in" maxlength="120" placeholder="Ej: Amoxicilina"/></div>
+        <div class="vt-grid2">
+          <div class="vt-field"><label for="rx-peso">Peso (kg)</label><input type="number" id="rx-peso" class="vt-in" min="0.01" step="0.01" oninput="recalcularDosis()"/></div>
+          <div class="vt-field"><label for="rx-dosis">Dosis (mg por kg)</label><input type="number" id="rx-dosis" class="vt-in" min="0.001" step="0.001" oninput="recalcularDosis()"/></div>
+          <div class="vt-field"><label for="rx-conc">Concentración</label><input type="number" id="rx-conc" class="vt-in" min="0.001" step="0.001" oninput="recalcularDosis()"/></div>
+          <div class="vt-field"><label for="rx-unidad">Presentación</label><select id="rx-unidad" class="vt-in" onchange="recalcularDosis()"><option value="mg/ml">mg por ml (líquido / inyectable)</option><option value="mg/tableta">mg por tableta</option></select></div>
+        </div>
+        <div id="rx-calc" class="vt-calc" style="display:none"></div>
+        <div class="vt-grid2">
+          <div class="vt-field"><label for="rx-cant">Cantidad por toma</label><input type="number" id="rx-cant" class="vt-in" min="0.01" step="0.01" oninput="this.dataset.manual='1'"/></div>
+          <div class="vt-field"><label for="rx-frec">Cada (horas)</label><select id="rx-frec" class="vt-in"><option value="">—</option><option value="6">6</option><option value="8">8</option><option value="12" selected>12</option><option value="24">24</option><option value="48">48</option><option value="72">72</option></select></div>
+          <div class="vt-field"><label for="rx-dias">Durante (días)</label><input type="number" id="rx-dias" class="vt-in" min="1" max="365" step="1"/></div>
+          <div class="vt-field"><label for="rx-via">Vía</label><select id="rx-via" class="vt-in"><option value="">—</option><option>oral</option><option>inyectable</option><option>tópica</option><option>oftálmica</option><option>ótica</option></select></div>
+        </div>
+        <div class="vt-field"><label for="rx-indic">Indicaciones</label><textarea id="rx-indic" class="vt-ta" placeholder="Ej: con comida; no suspender aunque mejore"></textarea></div>
+        <div class="vt-aviso">⚠️ La dosis calculada es una ayuda: confirma siempre con tu criterio clínico antes de entregar la receta.</div>
+        <p id="rx-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:8px 0 0"></p>
+        <button class="btn-accion-tabla btn-primary" id="rx-btn-guardar" onclick="guardarRecetaItem()" style="margin-top:8px">Agregar a la receta</button>
+      </div></div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="cerrarReceta()">Cerrar</button><button class="btn-accion-tabla btn-primary" onclick="imprimirReceta()">🖨️ Imprimir receta</button></div>
   </div>
 </div>
 

@@ -130,7 +130,8 @@ document.addEventListener('DOMContentLoaded', () => {
    MASCOTAS -- fichas, historia clinica y carnet de vacunacion
    (las utilidades puras estan en vet-comun.js)
 ===================================================== */
-const MV = { mascotas: [], filtradas: [], pend: [], proxPor: {}, ultima: {}, dueno: null, editId: null, volverAFicha: false, ficha: null, consultas: [], vacunas: [] };
+const MV = { mascotas: [], filtradas: [], pend: [], proxPor: {}, ultima: {}, dueno: null, editId: null, volverAFicha: false, ficha: null, consultas: [], vacunas: [],
+  equipo: [], citaActiva: null, cargos: {}, recetas: {}, consultaCtx: null, prodCargo: null, urlHecha: false };
 const $m = id => document.getElementById(id);
 const fechaCorta = ymd => { if (!ymd) return '—'; const p = vetPartes(ymd); return `${String(p.d).padStart(2, '0')}/${String(p.m).padStart(2, '0')}/${p.y}`; };
 
@@ -159,12 +160,13 @@ async function cargarMascotas() {
     const sel = $m('mv-especie');
     if (sel && sel.options.length <= 1) Object.entries(VET_ESPECIES).forEach(([k, v]) => sel.add(new Option(`${v.e} ${v.n}`, k)));
 
-    const [ms, vacs, cons] = await Promise.all([
+    const [ms, vacs, cons, eq] = await Promise.all([
       traerTodo(() => sb.from('vet_mascotas').select('*, clientes(nombre, apellido, telefono, whatsapp)').eq('auth_user_id', STATE.userId).order('id')),
       traerTodo(() => sb.from('vet_vacunas').select('id, mascota_id, nombre, tipo, fecha_aplicacion, proxima_dosis, created_at').eq('auth_user_id', STATE.userId).order('id')),
       traerTodo(() => sb.from('vet_consultas').select('mascota_id, fecha').eq('auth_user_id', STATE.userId).order('id')),
+      traerTodo(() => sb.from('vet_veterinarios').select('*').eq('auth_user_id', STATE.userId).eq('activo', true).order('id')),
     ]);
-    MV.mascotas = ms;
+    MV.mascotas = ms; MV.equipo = eq;
     const activas = new Set(ms.filter(m => m.activo).map(m => m.id));
     MV.pend = vetPendientesRefuerzo(vacs.filter(v => activas.has(v.mascota_id)));
     MV.proxPor = {}; MV.pend.forEach(p => { if (!MV.proxPor[p.mascota_id]) MV.proxPor[p.mascota_id] = p; });   // ya vienen ordenados por fecha
@@ -178,6 +180,7 @@ async function cargarMascotas() {
     $m('mv-kpi-proximos').textContent = prox;
     $m('mv-kpi-vencidos').textContent = venc;
     filtrarMascotas();
+    if (!MV.urlHecha) { MV.urlHecha = true; await procesarParametrosURL(); }   // viene de la Agenda (?cita=) o de un enlace (?ficha=)
   } catch (e) {
     console.error('cargarMascotas:', e);
     $m('mv-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger,#dc2626)">No se pudieron cargar las mascotas.</td></tr>';
@@ -334,7 +337,7 @@ async function abrirFicha(id) {
   openModal('modal-ficha');
   await cargarDetalleFicha();
 }
-function cerrarFicha() { closeModal('modal-ficha'); MV.ficha = null; }
+function cerrarFicha() { closeModal('modal-ficha'); MV.ficha = null; MV.citaActiva = null; }
 
 function pintarCabeceraFicha() {
   const m = MV.ficha, esp = VET_ESPECIES[m.especie] || VET_ESPECIES.otro, d = duenoDe(m);
@@ -371,11 +374,20 @@ async function cargarDetalleFicha() {
   const id = MV.ficha.id;
   try {
     const [c, v] = await Promise.all([
-      sb.from('vet_consultas').select('*').eq('mascota_id', id).eq('auth_user_id', STATE.userId).order('fecha', { ascending: false }).order('created_at', { ascending: false }),
+      sb.from('vet_consultas').select('*, ventas(numero_venta, estado)').eq('mascota_id', id).eq('auth_user_id', STATE.userId).order('fecha', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('vet_vacunas').select('*').eq('mascota_id', id).eq('auth_user_id', STATE.userId).order('fecha_aplicacion', { ascending: false }).order('created_at', { ascending: false }),
     ]);
     if (c.error) throw c.error; if (v.error) throw v.error;
-    MV.consultas = c.data || []; MV.vacunas = v.data || [];
+    MV.consultas = c.data || []; MV.vacunas = v.data || []; MV.cargos = {}; MV.recetas = {};
+    const ids = MV.consultas.map(x => x.id);
+    if (ids.length) {
+      const [cg, rx] = await Promise.all([
+        sb.from('vet_cargos').select('*, productos(precio)').eq('auth_user_id', STATE.userId).in('consulta_id', ids).order('created_at'),
+        sb.from('vet_recetas_items').select('*').eq('auth_user_id', STATE.userId).in('consulta_id', ids).order('created_at'),
+      ]);
+      (cg.data || []).forEach(x => { (MV.cargos[x.consulta_id] = MV.cargos[x.consulta_id] || []).push(x); });
+      (rx.data || []).forEach(x => { (MV.recetas[x.consulta_id] = MV.recetas[x.consulta_id] || []).push(x); });
+    }
     renderHistoria(); renderVacunas();
   } catch (e) { console.error('cargarDetalleFicha:', e); $m('fi-lista-hist').innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo cargar el historial.</p>'; }
 }
@@ -384,16 +396,29 @@ function renderHistoria() {
   const cont = $m('fi-lista-hist');
   if (!MV.consultas.length) { cont.innerHTML = '<p class="vt-sub" style="padding:8px 0">Todavía no hay consultas registradas para esta mascota.</p>'; return; }
   const linea = (t, v) => v ? `<p><b>${t}:</b> ${esc(v)}</p>` : '';
-  cont.innerHTML = MV.consultas.map(c => `
-    <div class="vt-item">
+  cont.innerHTML = MV.consultas.map(c => {
+    const cargos = MV.cargos[c.id] || [], rec = MV.recetas[c.id] || [];
+    const cobrada = c.ventas && c.ventas.estado === 'completada', anulada = c.ventas && c.ventas.estado === 'anulada';
+    const total = cargos.reduce((t, x) => t + Number(x.cantidad) * Number(x.productos?.precio || 0), 0);
+    const bloqueRec = rec.length ? `<div class="vt-bloque"><b>📝 Receta</b>${rec.map(r => `<p>• <b>${esc(r.medicamento)}</b> — ${esc(vetTextoPosologia(r))}</p>`).join('')}</div>` : '';
+    const bloqueCuenta = cargos.length ? `<div class="vt-bloque"><b>💳 Cuenta de la visita</b>${cargos.map(x => `<p>• ${esc(vetFormatoNumero(x.cantidad))} × ${esc(x.descripcion)}${x.productos?.precio ? ` — ${esc(fmt(x.cantidad * x.productos.precio))}` : ''}${cobrada ? '' : ` <button class="vt-link" onclick="eliminarCargo('${x.id}')">quitar</button>`}</p>`).join('')}
+        <p><b>Total estimado: ${esc(fmt(total))}</b> ${cobrada ? `<span class="vt-cobrada">✅ Cobrada · ${esc(c.ventas.numero_venta)}</span>` : ''}${anulada ? `<span class="vt-badge vt-badge-ambar">Venta ${esc(c.ventas.numero_venta)} anulada: puedes cobrar de nuevo</span>` : ''}</p></div>` : '';
+    return `<div class="vt-item">
       <div class="vt-item-cab">
         <div><div class="vt-item-tit">${esc(c.motivo)}</div><div class="vt-item-fecha">${fechaCorta(c.fecha)}${c.veterinario ? ' · ' + esc(c.veterinario) : ''}</div></div>
         <div>${c.peso ? `<span class="vt-badge vt-badge-gris">${c.peso} kg</span> ` : ''}${c.temperatura ? `<span class="vt-badge vt-badge-gris">${c.temperatura} °C</span>` : ''}</div>
       </div>
       ${linea('Síntomas', c.sintomas)}${linea('Diagnóstico', c.diagnostico)}${linea('Tratamiento', c.tratamiento)}${linea('Observaciones', c.observaciones)}
       ${c.proximo_control ? `<p><b>Próximo control:</b> ${fechaCorta(c.proximo_control)}</p>` : ''}
-      <div class="vt-acciones"><button class="btn-accion-tabla btn-ghost" onclick="eliminarConsulta('${c.id}')">🗑️ Eliminar</button></div>
-    </div>`).join('');
+      ${bloqueRec}${bloqueCuenta}
+      <div class="vt-acciones">
+        <button class="btn-accion-tabla btn-ghost" onclick="abrirReceta('${c.id}')">📝 Receta</button>
+        ${cobrada ? '' : `<button class="btn-accion-tabla btn-ghost" onclick="abrirCargo('${c.id}')">➕ Cuenta</button>`}
+        ${cargos.length && !cobrada ? `<button class="btn-accion-tabla btn-primary" onclick="cobrarConsulta('${c.id}')">💳 Cobrar</button>` : ''}
+        <button class="btn-accion-tabla btn-ghost" onclick="eliminarConsulta('${c.id}')">🗑️ Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderVacunas() {
@@ -443,7 +468,9 @@ async function enviarRecordatorio(vacunaId) {
 /* ---------- Consulta ---------- */
 function abrirConsulta() {
   ['co-motivo', 'co-sintomas', 'co-diagnostico', 'co-tratamiento', 'co-peso', 'co-temp', 'co-obs', 'co-proximo'].forEach(i => { $m(i).value = ''; });
-  $m('co-fecha').value = vetHoy(); $m('co-vet').value = ''; $m('co-error').textContent = '';
+  $m('co-fecha').value = vetHoy(); $m('co-error').textContent = '';
+  pintarVetCampoM('co', MV.citaActiva?.veterinario_id, MV.citaActiva?.veterinario);
+  if (MV.citaActiva && MV.citaActiva.motivo) $m('co-motivo').value = MV.citaActiva.motivo;
   openModal('modal-consulta');
 }
 function cerrarConsulta() { closeModal('modal-consulta'); }
@@ -459,12 +486,17 @@ async function guardarConsulta() {
   if (tempRaw !== '' && !(Number(tempRaw) >= 30 && Number(tempRaw) <= 45)) return fallo('La temperatura debe estar entre 30 y 45 °C.');
   if (prox && prox < fecha) return fallo('El próximo control no puede ser anterior a la consulta.');
   const v = id => $m(id).value.trim() || null;
+  const vetC = leerVetCampoM('co');
   const payload = { auth_user_id: STATE.userId, mascota_id: MV.ficha.id, fecha, motivo, sintomas: v('co-sintomas'), diagnostico: v('co-diagnostico'), tratamiento: v('co-tratamiento'),
-    peso: pesoRaw === '' ? null : Number(pesoRaw), temperatura: tempRaw === '' ? null : Number(tempRaw), observaciones: v('co-obs'), veterinario: v('co-vet'), proximo_control: prox };
+    peso: pesoRaw === '' ? null : Number(pesoRaw), temperatura: tempRaw === '' ? null : Number(tempRaw), observaciones: v('co-obs'), veterinario: vetC.nombre, veterinario_id: vetC.id, proximo_control: prox };
   const btn = $m('co-btn-guardar'); btn.disabled = true;
   try {
-    const { error } = await sb.from('vet_consultas').insert(payload);
+    const { data: nueva, error } = await sb.from('vet_consultas').insert(payload).select('id').single();
     if (error) throw error;
+    if (MV.citaActiva && nueva?.id) {   // la cita queda atendida y ligada a esta consulta
+      const { error: eCita } = await sb.from('vet_citas').update({ estado: 'atendida', consulta_id: nueva.id }).eq('id', MV.citaActiva.id).eq('auth_user_id', STATE.userId);
+      if (!eCita) MV.citaActiva = null;
+    }
     if (payload.peso) {   // el peso de la consulta pasa a ser el peso actual de la mascota
       const { error: e2 } = await sb.from('vet_mascotas').update({ peso_actual: payload.peso }).eq('id', MV.ficha.id).eq('auth_user_id', STATE.userId);
       if (!e2) { MV.ficha.peso_actual = payload.peso; pintarCabeceraFicha(); }
@@ -492,7 +524,8 @@ function abrirVacuna() {
   if (!selT.options.length) Object.entries(VET_TIPOS_REGISTRO).forEach(([k, v]) => selT.add(new Option(`${v.e} ${v.n}`, k)));
   selT.value = 'vacuna'; $m('va-nombre').value = ''; $m('va-fecha').value = vetHoy();
   const pr = $m('va-proxima'); pr.value = ''; pr.dataset.manual = '';
-  $m('va-lote').value = ''; $m('va-vet').value = ''; $m('va-obs').value = ''; $m('va-error').textContent = '';
+  $m('va-lote').value = ''; $m('va-obs').value = ''; $m('va-error').textContent = '';
+  pintarVetCampoM('va', null, '');
   openModal('modal-vacuna');
 }
 function cerrarVacuna() { closeModal('modal-vacuna'); }
@@ -520,7 +553,8 @@ async function guardarVacuna() {
   if (fecha > vetHoy()) return fallo('La fecha de aplicación no puede ser futura.');
   if (prox && prox < fecha) return fallo('El refuerzo no puede ser anterior a la aplicación.');
   const v = id => $m(id).value.trim() || null;
-  const payload = { auth_user_id: STATE.userId, mascota_id: MV.ficha.id, tipo: $m('va-tipo').value, nombre, fecha_aplicacion: fecha, proxima_dosis: prox, lote: v('va-lote'), veterinario: v('va-vet'), observaciones: v('va-obs') };
+  const vetV = leerVetCampoM('va');
+  const payload = { auth_user_id: STATE.userId, mascota_id: MV.ficha.id, tipo: $m('va-tipo').value, nombre, fecha_aplicacion: fecha, proxima_dosis: prox, lote: v('va-lote'), veterinario: vetV.nombre, veterinario_id: vetV.id, observaciones: v('va-obs') };
   const btn = $m('va-btn-guardar'); btn.disabled = true;
   try {
     const { error } = await sb.from('vet_vacunas').insert(payload);
@@ -558,4 +592,179 @@ async function eliminarMascota() {
     if (error) throw error;
     showToast('Mascota eliminada.'); cerrarFicha(); await cargarMascotas();
   } catch (e) { console.error('eliminarMascota:', e); showToast('No se pudo eliminar.', 'error'); }
+}
+
+
+/* =====================================================
+   FASE 2 -- equipo veterinario, cuenta de la visita (cobro) y recetas
+===================================================== */
+// Campo de veterinario: texto libre (sin equipo) / fijo (1 veterinario) / selector (varios).
+function pintarVetCampoM(pref, idPref, textoPrevio) {
+  const modo = vetModoEquipo(MV.equipo), txt = $m(pref + '-vet'), sel = $m(pref + '-vet-sel'), fijo = $m(pref + '-vet-fijo');
+  txt.style.display = modo === 'libre' ? '' : 'none'; sel.style.display = modo === 'varios' ? '' : 'none'; fijo.style.display = modo === 'unico' ? '' : 'none';
+  if (modo === 'libre') txt.value = textoPrevio || '';
+  if (modo === 'unico') fijo.textContent = '👨‍⚕️ ' + MV.equipo[0].nombre + ' (asignado automáticamente)';
+  if (modo === 'varios') {
+    sel.innerHTML = '<option value="">— Sin asignar —</option>' + MV.equipo.map(v => `<option value="${v.id}">${esc(v.nombre)}</option>`).join('');
+    sel.value = idPref || '';
+  }
+}
+function leerVetCampoM(pref) { return vetResolverVeterinario(MV.equipo, $m(pref + '-vet-sel').value, $m(pref + '-vet').value); }
+
+/* ---------- Venir desde la Agenda o desde un enlace ---------- */
+async function procesarParametrosURL() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const citaId = q.get('cita'), fichaId = q.get('ficha');
+    if (citaId) {
+      const { data: cita } = await sb.from('vet_citas').select('*').eq('id', citaId).eq('auth_user_id', STATE.userId).maybeSingle();
+      if (cita && cita.estado !== 'atendida' && cita.estado !== 'cancelada' && MV.mascotas.some(m => m.id === cita.mascota_id)) {
+        MV.citaActiva = cita;
+        await abrirFicha(cita.mascota_id);
+        MV.citaActiva = cita;                       // (abrirFicha no la borra, pero se asegura)
+        abrirConsulta();
+        return;
+      }
+      showToast('Esa cita ya no está disponible para atender.', 'warning');
+    }
+    if (fichaId && MV.mascotas.some(m => m.id === fichaId)) await abrirFicha(fichaId);
+  } catch (e) { console.warn('procesarParametrosURL:', e); }
+}
+
+/* ---------- Cuenta de la visita (cargos) ---------- */
+function abrirCargo(consultaId) {
+  MV.consultaCtx = consultaId; MV.prodCargo = null;
+  $m('cg-buscar').value = ''; $m('cg-resultados').style.display = 'none'; $m('cg-elegido').style.display = 'none';
+  $m('cg-cantidad').value = '1'; $m('cg-error').textContent = '';
+  openModal('modal-cargo');
+}
+function cerrarCargo() { closeModal('modal-cargo'); }
+function elegirProductoCargo(id, nombre) {
+  MV.prodCargo = { id, nombre };
+  $m('cg-resultados').style.display = 'none'; $m('cg-buscar').value = '';
+  const el = $m('cg-elegido'); el.textContent = '✔ ' + nombre; el.style.display = '';
+}
+let _timerCargo = null;
+function buscarProductoCargo(q) {
+  clearTimeout(_timerCargo);
+  const cont = $m('cg-resultados'); q = (q || '').trim();
+  if (q.length < 2) { cont.style.display = 'none'; return; }
+  _timerCargo = setTimeout(async () => {
+    try {
+      const { data, error } = await sb.from('productos').select('id, nombre, precio, tipo')
+        .eq('auth_user_id', STATE.userId).eq('activo', true)
+        .or('es_sustancia_controlada.is.null,es_sustancia_controlada.eq.false')   // las controladas se venden desde su propio modulo
+        .ilike('nombre', `%${q}%`).order('nombre').limit(8);
+      if (error) throw error;
+      cont.innerHTML = (data && data.length)
+        ? data.map(p => `<div class="vt-resultado" data-id="${p.id}" data-n="${esc(p.nombre)}">${p.tipo === 'servicio' ? '🛎️' : '📦'} ${esc(p.nombre)} <span style="color:var(--text-muted)">· ${esc(fmt(p.precio || 0))}</span></div>`).join('')
+        : '<div class="vt-resultado" style="cursor:default;color:var(--text-muted)">Sin resultados</div>';
+      cont.querySelectorAll('[data-id]').forEach(el => el.addEventListener('click', () => elegirProductoCargo(el.dataset.id, el.dataset.n)));
+      cont.style.display = '';
+    } catch (e) { console.error('buscarProductoCargo:', e); }
+  }, 250);
+}
+async function guardarCargo() {
+  const err = $m('cg-error'); err.textContent = '';
+  const cant = Number($m('cg-cantidad').value);
+  if (!MV.prodCargo) { err.textContent = 'Elige el servicio o producto.'; return; }
+  if (!(cant > 0)) { err.textContent = 'La cantidad debe ser mayor que 0.'; return; }
+  const btn = $m('cg-btn-guardar'); btn.disabled = true;
+  try {
+    const { error } = await sb.from('vet_cargos').insert({ auth_user_id: STATE.userId, consulta_id: MV.consultaCtx, producto_id: MV.prodCargo.id, descripcion: MV.prodCargo.nombre, cantidad: cant });
+    if (error) throw error;
+    showToast('Agregado a la cuenta.'); closeModal('modal-cargo'); await cargarDetalleFicha();
+  } catch (e) { console.error('guardarCargo:', e); err.textContent = 'No se pudo agregar. Intenta de nuevo.'; }
+  finally { btn.disabled = false; }
+}
+async function eliminarCargo(id) {
+  try {
+    const { error } = await sb.from('vet_cargos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    await cargarDetalleFicha();
+  } catch (e) { console.error('eliminarCargo:', e); showToast('No se pudo quitar.', 'error'); }
+}
+// Cobrar = abrir Ventas con el dueno y los articulos ya cargados. La venta queda ligada a la consulta.
+function cobrarConsulta(consultaId) {
+  const m = MV.ficha, cargos = (MV.cargos[consultaId] || []).filter(x => x.producto_id);
+  if (!m || !m.cliente_id) { showToast('Esta mascota no tiene dueño registrado: edítala y elige su dueño.', 'error'); return; }
+  if (!cargos.length) { showToast('La cuenta está vacía.', 'error'); return; }
+  sessionStorage.setItem('n360_vet_cobro', JSON.stringify({ consultaId, clienteId: m.cliente_id, mascota: m.nombre, items: cargos.map(x => ({ producto_id: x.producto_id, cantidad: Number(x.cantidad) })) }));
+  window.location.href = 'ventas.html';
+}
+
+/* ---------- Receta con dosis por peso ---------- */
+function abrirReceta(consultaId) {
+  MV.consultaCtx = consultaId;
+  const c = MV.consultas.find(x => x.id === consultaId);
+  ['rx-med', 'rx-dosis', 'rx-conc', 'rx-cant', 'rx-dias', 'rx-indic'].forEach(i => { $m(i).value = ''; });
+  $m('rx-cant').dataset.manual = ''; $m('rx-unidad').value = 'mg/ml'; $m('rx-frec').value = '12'; $m('rx-via').value = '';
+  $m('rx-peso').value = c?.peso || MV.ficha.peso_actual || '';
+  $m('rx-error').textContent = ''; $m('rx-calc').style.display = 'none';
+  $m('rx-titulo').textContent = `📝 Receta — ${MV.ficha.nombre}`;
+  renderRecetaLista(); openModal('modal-receta');
+}
+function cerrarReceta() { closeModal('modal-receta'); cargarDetalleFicha(); }
+function renderRecetaLista() {
+  const items = MV.recetas[MV.consultaCtx] || [];
+  $m('rx-lista').innerHTML = items.length
+    ? items.map(r => { const t = vetTotalADispensar(r.cantidad_por_toma, r.frecuencia_horas, r.duracion_dias);
+        return `<div class="vt-item"><div class="vt-item-cab"><div><div class="vt-item-tit">${esc(r.medicamento)}</div><div class="vt-item-fecha">${esc(vetTextoPosologia(r))}</div></div>
+          <button class="btn-accion-tabla btn-ghost" onclick="eliminarRecetaItem('${r.id}')">🗑️</button></div>
+          ${t ? `<p><b>Total a dispensar:</b> ${esc(vetFormatoNumero(t))} ${esc(r.unidad_toma || '')}</p>` : ''}${r.indicaciones ? `<p>${esc(r.indicaciones)}</p>` : ''}</div>`; }).join('')
+    : '<p class="vt-sub">Todavía no hay medicamentos en esta receta.</p>';
+}
+// Calcula en vivo: mg totales = peso x dosis, y cuanto dar segun la concentracion.
+function recalcularDosis() {
+  const r = vetCalcularDosis({ pesoKg: $m('rx-peso').value, dosisMgKg: $m('rx-dosis').value, concentracion: $m('rx-conc').value, unidad: $m('rx-unidad').value });
+  const box = $m('rx-calc');
+  if (!r) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.textContent = `${vetFormatoNumero(r.mgTotal)} mg en total → dar ${vetFormatoNumero(r.cantidad)} ${r.unidadTexto} por toma${r.redondeada ? ` (exacto: ${vetFormatoNumero(r.exacta)}, redondeado a cuartos)` : ''}`;
+  const cant = $m('rx-cant');
+  if (cant.dataset.manual !== '1') cant.value = r.cantidad;     // se rellena solo mientras no se haya escrito a mano
+}
+async function guardarRecetaItem() {
+  const err = $m('rx-error'); err.textContent = '';
+  const fallo = t => { err.textContent = t; };
+  const med = $m('rx-med').value.trim(), cantRaw = $m('rx-cant').value.trim(), indic = $m('rx-indic').value.trim();
+  if (!med) return fallo('Escribe el nombre del medicamento.');
+  if (cantRaw === '' && !indic) return fallo('Indica la cantidad por toma o escribe las indicaciones.');
+  if (cantRaw !== '' && !(Number(cantRaw) > 0)) return fallo('La cantidad por toma debe ser mayor que 0.');
+  const num = id => { const x = $m(id).value.trim(); return x === '' ? null : Number(x); };
+  const peso = num('rx-peso'), dosis = num('rx-dosis'), conc = num('rx-conc'), dias = num('rx-dias');
+  if (peso !== null && !(peso > 0)) return fallo('El peso debe ser mayor que 0.');
+  if (dosis !== null && !(dosis > 0)) return fallo('La dosis debe ser mayor que 0.');
+  if (conc !== null && !(conc > 0)) return fallo('La concentración debe ser mayor que 0.');
+  if (dias !== null && (!Number.isInteger(dias) || dias < 1 || dias > 365)) return fallo('Los días deben ser un número entero entre 1 y 365.');
+  const unidadConc = $m('rx-unidad').value;
+  const payload = { auth_user_id: STATE.userId, consulta_id: MV.consultaCtx, medicamento: med, peso_kg: peso, dosis_mg_kg: dosis, concentracion: conc, unidad_conc: conc !== null ? unidadConc : null,
+    cantidad_por_toma: cantRaw === '' ? null : Number(cantRaw), unidad_toma: cantRaw === '' ? null : (unidadConc === 'mg/tableta' ? (Number(cantRaw) === 1 ? 'tableta' : 'tabletas') : 'ml'),
+    frecuencia_horas: num('rx-frec'), duracion_dias: dias, via: $m('rx-via').value || null, indicaciones: indic || null };
+  const btn = $m('rx-btn-guardar'); btn.disabled = true;
+  try {
+    const { error } = await sb.from('vet_recetas_items').insert(payload);
+    if (error) throw error;
+    showToast('Medicamento agregado a la receta.');
+    const { data } = await sb.from('vet_recetas_items').select('*').eq('auth_user_id', STATE.userId).eq('consulta_id', MV.consultaCtx).order('created_at');
+    MV.recetas[MV.consultaCtx] = data || []; renderRecetaLista();
+    ['rx-med', 'rx-dosis', 'rx-conc', 'rx-cant', 'rx-dias', 'rx-indic'].forEach(i => { $m(i).value = ''; }); $m('rx-cant').dataset.manual = ''; $m('rx-calc').style.display = 'none';
+  } catch (e) { console.error('guardarRecetaItem:', e); fallo('No se pudo guardar. Intenta de nuevo.'); }
+  finally { btn.disabled = false; }
+}
+async function eliminarRecetaItem(id) {
+  try {
+    const { error } = await sb.from('vet_recetas_items').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    MV.recetas[MV.consultaCtx] = (MV.recetas[MV.consultaCtx] || []).filter(x => x.id !== id); renderRecetaLista();
+  } catch (e) { console.error('eliminarRecetaItem:', e); showToast('No se pudo quitar.', 'error'); }
+}
+function imprimirReceta() {
+  const items = MV.recetas[MV.consultaCtx] || [], c = MV.consultas.find(x => x.id === MV.consultaCtx), m = MV.ficha;
+  if (!items.length) { showToast('Agrega al menos un medicamento para imprimir.', 'error'); return; }
+  const esp = VET_ESPECIES[m.especie] || VET_ESPECIES.otro, d = duenoDe(m);
+  const html = vetHtmlReceta({ negocio: STATE.empresaConfig?.nombre_comercial, fecha: c?.fecha || vetHoy(), mascota: m.nombre, especie: esp.n, raza: m.raza, edad: vetEdad(m.fecha_nacimiento), peso: c?.peso || m.peso_actual, dueno: d.nombre, veterinario: c?.veterinario, items });
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Tu navegador bloqueó la ventana. Permite ventanas emergentes para imprimir.', 'error'); return; }
+  w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }
