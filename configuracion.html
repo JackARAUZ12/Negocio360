@@ -1320,6 +1320,29 @@
           <div class="cfg-status" id="hotel-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="rest-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Módulo de Restaurante</div>
+              <div class="cfg-card-desc">Mesas, comandas y cocina. Se activa solo cuando eliges Restaurante en la personalización; aquí puedes activarlo o apagarlo cuando quieras.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Restaurante</div>
+              <div class="cfg-row-sub" id="rest-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="rest-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModuloRestauranteClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="rest-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="facturacion-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🧾</div>
@@ -2153,6 +2176,62 @@ async function guardarModuloHotel(activo) {
   }
 }
 
+// Modulo de Restaurante -- mismo patron que Hotel. Se enciende solo al elegir Restaurante en
+// Personalizacion, y desde aqui cualquier cuenta lo puede activar o apagar cuando quiera.
+async function cargarModuloRestaurante() {
+  const toggle = document.getElementById('rest-toggle');
+  const sub = document.getElementById('rest-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modulo_restaurante')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_restaurante === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — Mesas, Comandas y Cocina aparecen en el menú.'
+      : 'Desactivado — el módulo de Restaurante no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloRestaurante:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleModuloRestauranteClick(evt) {
+  const toggle = document.getElementById('rest-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloRestaurante(toggle.checked);
+}
+
+async function guardarModuloRestaurante(activo) {
+  const toggle = document.getElementById('rest-toggle');
+  const sub = document.getElementById('rest-row-sub');
+  const statusEl = document.getElementById('rest-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modulo_restaurante: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — Mesas, Comandas y Cocina aparecen en el menú.'
+      : 'Desactivado — el módulo de Restaurante no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Restaurante activado. Recarga la página para ver el menú.' : 'Módulo de Restaurante desactivado. Recarga la página para quitarlo del menú.', true);
+  } catch (e) {
+    console.error('guardarModuloRestaurante:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
 // Modulo de Farmacia -- mismo patron exacto que Hotel/Restaurante.
 // IVA / Impuestos -- control central, afecta a todo el sistema que
 // cobre IVA (Ventas, Restaurante...). Apagado por defecto.
@@ -2738,6 +2817,7 @@ async function initConfiguracion() {
       cargarNumeroSerie();
       cargarModeloProducto();
       cargarModuloHotel();
+      cargarModuloRestaurante();
       cargarModuloFarmacia();
       cargarModuloPuntos();
       cargarModuloVet();
