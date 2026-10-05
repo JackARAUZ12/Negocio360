@@ -45,6 +45,25 @@
       color: var(--info);
     }
 
+    /* ── Panel de edición del producto (stock, garantía, materia prima…) ──
+       Antes era un aviso de texto en FILA: todo quedaba apretado y encimado, y en azul.
+       Ahora es una columna ordenada. Solo estilos: el JS sigue mostrándolo/ocultándolo igual. */
+    #avisoStockBloqueado { flex-direction: column; align-items: stretch; gap: 0; padding: 16px 18px; font-size: 13px; line-height: 1.5; color: var(--text-primary); }
+    #avisoStockBloqueado .edit-panel-intro { font-size: 12.5px; line-height: 1.55; color: var(--info); }
+    #avisoStockBloqueado .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; margin-top: 14px; }
+    #avisoStockBloqueado .form-label { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+    #avisoStockBloqueado .form-hint { color: var(--text-muted); line-height: 1.4; }
+    #avisoStockBloqueado > .form-group { margin-top: 12px !important; }
+    #wrapNumeroSerieEdit, #wrapMateriaPrimaEdit, #wrapSustanciaControladaEdit { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    #avisoStockBloqueado .form-group > label[style*="display:flex"] { align-items: flex-start !important; line-height: 1.4; }
+    #avisoStockBloqueado input[type="checkbox"] { flex: none; width: 18px !important; height: 18px !important; margin-top: 1px; accent-color: var(--accent); }
+    #avisoStockBloqueado .form-group > div[style*="display:flex"] { flex-wrap: wrap; }
+    #avisoStockBloqueado .form-group > div[style*="display:flex"] > .form-input { flex: 1 1 200px; min-width: 0; }
+    @media (max-width: 640px) {
+      #avisoStockBloqueado { padding: 14px; }
+      #avisoStockBloqueado .form-grid { grid-template-columns: 1fr; }
+    }
+
     /* ── Tarjetas de razón de merma ── */
     .razones-grid {
       display: grid;
@@ -1008,9 +1027,11 @@
 
         <!-- Aviso modo edición: stock editable directamente -->
         <div class="edit-lock-notice info-mode" id="avisoStockBloqueado">
-          ✏️ Puedes editar el stock actual directamente aquí. Para bajas con motivo (robo, daño, merma, etc.)
-          sigue usando <strong>Movimientos especiales</strong> (botón 📉 en la tabla), que además registra el
-          motivo y puede descontar el costo de caja automáticamente.
+          <div class="edit-panel-intro">
+            ✏️ Puedes editar el stock actual directamente aquí. Para bajas con motivo (robo, daño, merma, etc.)
+            sigue usando <strong>Movimientos especiales</strong> (botón 📉 en la tabla), que además registra el
+            motivo y puede descontar el costo de caja automáticamente.
+          </div>
           <div class="form-grid" style="margin-top:12px">
             <div class="form-group">
               <label class="form-label" for="inputStockActualEdit">Stock actual</label>
