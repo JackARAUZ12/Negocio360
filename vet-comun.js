@@ -248,3 +248,60 @@ function vetHtmlReceta({ negocio, fecha, mascota, especie, raza, edad, peso, due
     <div class="firma"><div>${vetEsc(veterinario || 'Firma y sello del veterinario')}</div></div>
   </body></html>`;
 }
+
+/* =====================================================
+   FASE 3 -- estancias (hospital, pension, bano) y certificados
+===================================================== */
+const VET_TIPOS_ESTANCIA = {
+  hospitalizacion: { e: '🏥', n: 'Hospitalización', verbo: 'Dar de alta' },
+  pension:         { e: '🏨', n: 'Pensión',         verbo: 'Registrar salida' },
+  estetica:        { e: '🛁', n: 'Baño / estética', verbo: 'Entregar' },
+};
+const VET_ESTADOS_ESTANCIA = {
+  activa: { n: 'En el local', clase: 'azul' }, lista: { n: 'Lista para recoger', clase: 'verde' },
+  finalizada: { n: 'Finalizada', clase: 'gris' }, cancelada: { n: 'Cancelada', clase: 'rojo' },
+};
+// 'YYYY-MM-DD' en HORA LOCAL de un instante (un ingreso a las 11 p. m. cuenta para ESE dia, no para el siguiente en UTC).
+function vetYmdLocal(iso) { const d = new Date(iso); return `${d.getFullYear()}-${_vp(d.getMonth() + 1)}-${_vp(d.getDate())}`; }
+// Dias cobrables: dias de calendario entre ingreso y salida (2 noches = 2); el minimo es 1 (mismo dia = 1).
+function vetDiasEstancia(ingreso, salida) {
+  if (!ingreso) return 1;
+  return Math.max(1, vetDiasEntre(vetYmdLocal(ingreso), vetYmdLocal(salida || new Date().toISOString())));
+}
+function vetMensajeListo({ dueno, mascota, negocio }) {
+  return `${dueno ? 'Hola ' + dueno : 'Hola'}, le saludamos de ${negocio || 'su veterinaria'} 🐾. Ya puede pasar a recoger a ${mascota} cuando guste. ¡Los esperamos!`;
+}
+function vetImprimirHtml(html) {
+  const w = window.open('', '_blank');
+  if (!w) return false;
+  w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
+  return true;
+}
+const _VET_CSS_CERT = `body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:36px;font-size:14px} h1{font-size:20px;margin:0} h2{text-align:center;font-size:18px;margin:18px 0 14px;letter-spacing:.5px;text-transform:uppercase}
+  .sub{color:#555;font-size:13px} .cab{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:10px}
+  .caja{border:1px solid #bbb;border-radius:8px;padding:10px 14px;margin:14px 0;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+  table{width:100%;border-collapse:collapse;margin-top:8px} th,td{border-bottom:1px solid #ddd;padding:8px 6px;text-align:left} th{font-size:12px;color:#555;text-transform:uppercase}
+  p{line-height:1.6} .obs{border-bottom:1px solid #999;height:26px;margin-top:6px} .firma{margin-top:70px;text-align:center} .firma div{border-top:1px solid #111;width:260px;margin:0 auto;padding-top:6px}`;
+function _vetCajaPaciente(d) {
+  return `<div class="caja"><div><b>Mascota:</b> ${vetEsc(d.mascota)}</div><div><b>Dueño:</b> ${vetEsc(d.dueno || '—')}</div>
+    <div><b>Especie / raza:</b> ${vetEsc([d.especie, d.raza].filter(Boolean).join(' · ') || '—')}</div><div><b>Sexo:</b> ${vetEsc(d.sexo || '—')}</div>
+    <div><b>Edad:</b> ${vetEsc(d.edad || '—')}</div><div><b>Microchip:</b> ${vetEsc(d.microchip || '—')}</div>${d.peso ? `<div><b>Peso:</b> ${vetEsc(d.peso)} kg</div>` : ''}</div>`;
+}
+function _vetCabCert(d, titulo) {
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${vetEsc(titulo)} — ${vetEsc(d.mascota)}</title><style>${_VET_CSS_CERT}</style></head><body>
+    <div class="cab"><div><h1>${vetEsc(d.negocio || 'Veterinaria')}</h1></div><div class="sub">${vetEsc(vetFechaLarga(d.fecha))}</div></div><h2>${vetEsc(titulo)}</h2>`;
+}
+function vetHtmlCertificadoVacunas(d) {
+  const filas = (d.vacunas || []).slice().sort((a, b) => String(a.fecha_aplicacion).localeCompare(String(b.fecha_aplicacion))).map(v =>
+    `<tr><td>${vetEsc(vetFechaLarga(v.fecha_aplicacion))}</td><td>${vetEsc((VET_TIPOS_REGISTRO[v.tipo] || VET_TIPOS_REGISTRO.otro).n)}</td><td><b>${vetEsc(v.nombre)}</b></td><td>${vetEsc(v.lote || '—')}</td><td>${v.proxima_dosis ? vetEsc(vetFechaLarga(v.proxima_dosis)) : '—'}</td></tr>`).join('');
+  return _vetCabCert(d, 'Certificado de vacunación') + _vetCajaPaciente(d)
+    + `<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Aplicación</th><th>Lote</th><th>Próxima dosis</th></tr></thead><tbody>${filas || '<tr><td colspan="5">Sin registros de vacunación.</td></tr>'}</tbody></table>`
+    + `<div class="firma"><div>${vetEsc(d.veterinario || 'Firma y sello del veterinario')}</div></div></body></html>`;
+}
+function vetHtmlCertificadoSalud(d) {
+  return _vetCabCert(d, 'Certificado de salud') + _vetCajaPaciente(d)
+    + `<p>Por medio de la presente se certifica que el paciente arriba descrito fue examinado clínicamente el ${vetEsc(vetFechaLarga(d.fecha))} y, al momento del examen, no presenta signos aparentes de enfermedad infectocontagiosa.</p>
+    <p><b>Observaciones:</b></p><div class="obs"></div><div class="obs"></div>
+    <p class="sub">Este certificado no sustituye los requisitos sanitarios que exija la autoridad competente para viajes o traslados.</p>
+    <div class="firma"><div>${vetEsc(d.veterinario || 'Firma y sello del veterinario')}</div></div></body></html>`;
+}

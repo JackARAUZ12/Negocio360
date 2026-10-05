@@ -121,8 +121,10 @@
 
     // ---- Farmacia (secundario -- mismo criterio que Hotel/Restaurante) ----
     'lotes.html':        { key: 'farmacia_lotes',        label: 'Farmacia · Lotes',        icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               flagsAlternos: ['usa_modulo_veterinaria'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes' },
                                desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
     'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               flagsAlternos: ['usa_modulo_veterinaria'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos' },
                                desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
     'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
@@ -130,6 +132,8 @@
                                desc: 'Recetas medicas -- paciente, medico y medicamentos recetados.' },
     'vet-agenda.html': { key: 'vet_agenda', label: 'Veterinaria · Agenda', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
                        desc: 'Citas por día y por veterinario, con aviso al dueño por WhatsApp.' },
+    'vet-estancias.html': { key: 'vet_estancias', label: 'Veterinaria · En el local', icon: '🏥', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
+                       desc: 'Hospitalización, pensión y baño: quién está hoy, su evolución y su cuenta.' },
     'mascotas.html': { key: 'vet_mascotas', label: 'Veterinaria · Mascotas', icon: '🐾', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
                        desc: 'Fichas de mascotas, historia clínica y carnet de vacunación.' },
     'vet-recordatorios.html': { key: 'vet_recordatorios', label: 'Veterinaria · Recordatorios', icon: '💉', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',

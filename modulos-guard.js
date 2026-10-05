@@ -54,7 +54,8 @@
   const TODOS_MODULOS_OPCIONALES = {};
   Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
     if (!m.obligatorio) {
-      TODOS_MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '', flagPropio: m.flagPropio || null };
+      TODOS_MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '', flagPropio: m.flagPropio || null,
+        flagsAlternos: m.flagsAlternos || [], etiquetasPorFlag: m.etiquetasPorFlag || null };
     }
   });
   const MODULOS_OPCIONALES = {};
@@ -99,12 +100,13 @@
     }
   }
 
-  function estaActivo(cfg, key, flagPropio) {
+  function estaActivo(cfg, key, flagPropio, flagsAlternos) {
     // Modulo secundario con su propio interruptor dedicado (Hotel,
     // Restaurante, Mis Negocios...): sin ese interruptor encendido,
     // SIEMPRE se considera inactivo, sin importar nada mas -- asi
     // ninguna cuenta nueva lo ve jamas hasta que lo active a proposito.
-    if (flagPropio && !(cfg._flagsPropios && cfg._flagsPropios[flagPropio] === true)) return false;
+    const flagsPosibles = [flagPropio, ...(flagsAlternos || [])].filter(Boolean);
+    if (flagsPosibles.length && !flagsPosibles.some(f => cfg._flagsPropios && cfg._flagsPropios[f] === true)) return false;
     if (cfg[key] === false) return false;
     // Restricción de Sucursales: si el perfil entró con una lista de
     // módulos permitidos para ESTA sucursal específica, se respeta
@@ -161,7 +163,7 @@
         }
         return;
       }
-      if (!estaActivo(cfg, mod.key, mod.flagPropio)) {
+      if (!estaActivo(cfg, mod.key, mod.flagPropio, mod.flagsAlternos)) {
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
         item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar
@@ -241,7 +243,7 @@
   // entrar por URL directa (favoritos guardados, enlaces viejos, etc.).
   function protegerPaginaActual(cfg) {
     const mod = MODULOS_POR_ARCHIVO[currentFile()];
-    if (mod && !estaActivo(cfg, mod.key, mod.flagPropio)) {
+    if (mod && !estaActivo(cfg, mod.key, mod.flagPropio, mod.flagsAlternos)) {
       location.href = 'dashboard.html';
       return true;
     }
@@ -294,11 +296,17 @@
     const porFlag = {};
     Object.values(TODOS_MODULOS_OPCIONALES).forEach(m => {
       if (!m.flagPropio) return;
-      if (!(cfg._flagsPropios && cfg._flagsPropios[m.flagPropio] === true)) return;
+      const flagActivo = [m.flagPropio, ...(m.flagsAlternos || [])].find(f => cfg._flagsPropios && cfg._flagsPropios[f] === true);
+      if (!flagActivo) return;
       const yaExiste = document.querySelector(`[onclick*="navigate('${m.archivo}')"], a[href="${m.archivo}"]`);
       if (yaExiste) return;
-      (porFlag[m.flagPropio] = porFlag[m.flagPropio] || []).push(m);
+      // Un modulo compartido (p. ej. Lotes: Farmacia y Veterinaria) se muestra UNA sola vez, bajo el
+      // primer flag activo y con la etiqueta de ese flag.
+      const etiqueta = (m.etiquetasPorFlag && m.etiquetasPorFlag[flagActivo]) || m.label;
+      (porFlag[flagActivo] = porFlag[flagActivo] || []).push({ ...m, label: etiqueta, compartido: flagActivo !== m.flagPropio });
     });
+    // Dentro de cada seccion, lo propio primero y lo compartido al final.
+    Object.values(porFlag).forEach(lista => lista.sort((a, b) => (a.compartido ? 1 : 0) - (b.compartido ? 1 : 0)));
 
     Object.values(porFlag).forEach(mods => {
       if (!mods.length) return;

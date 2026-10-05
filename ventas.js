@@ -1704,6 +1704,7 @@ async function abrirNuevaVenta() {
   S.carrito       = [];
   S.canje         = null;
   S._vetConsultaId = null;
+  S._vetEstanciaId = null;
   S._recompensas  = undefined;
   S._saldoPuntos  = undefined;
   S.metodoPagoId  = null;
@@ -2864,6 +2865,7 @@ async function aplicarCobroVeterinaria() {
     if (!S.carrito.some(x => x.id === it.producto_id)) noAgregados++;
   }
   S._vetConsultaId = d.consultaId || null;
+  S._vetEstanciaId = d.estanciaId || null;       // hospital / pension / bano
   showToast(`Cuenta de ${d.mascota || 'la mascota'} cargada en la venta.`);
   if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
 }
@@ -5246,6 +5248,10 @@ async function confirmarVenta(conImpresion) {
       if (S._vetConsultaId) {
         await sb.from('vet_consultas').update({ venta_id: ventaId }).eq('id', S._vetConsultaId).eq('auth_user_id', S.userId);
         S._vetConsultaId = null;
+      }
+      if (S._vetEstanciaId) {
+        await sb.from('vet_estancias').update({ venta_id: ventaId }).eq('id', S._vetEstanciaId).eq('auth_user_id', S.userId);
+        S._vetEstanciaId = null;
       }
     } catch (eVet) { console.warn('Vincular consulta veterinaria:', eVet); }
 

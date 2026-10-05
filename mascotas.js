@@ -768,3 +768,21 @@ function imprimirReceta() {
   if (!w) { showToast('Tu navegador bloqueó la ventana. Permite ventanas emergentes para imprimir.', 'error'); return; }
   w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }
+
+
+/* ---------- Certificados (se imprimen; "Guardar como PDF" desde el dialogo de impresion) ---------- */
+function datosCertificado() {
+  const m = MV.ficha, esp = VET_ESPECIES[m.especie] || VET_ESPECIES.otro, d = duenoDe(m);
+  // Firma: con UN veterinario, el suyo; con varios, quien atendio la consulta mas reciente (o el de la ultima vacuna).
+  const vet = vetModoEquipo(MV.equipo) === 'unico' ? MV.equipo[0].nombre : (MV.consultas.find(c => c.veterinario)?.veterinario || MV.vacunas.find(v => v.veterinario)?.veterinario || '');
+  return { negocio: STATE.empresaConfig?.nombre_comercial, fecha: vetHoy(), mascota: m.nombre, especie: esp.n, raza: m.raza, sexo: m.sexo === 'macho' ? 'Macho' : m.sexo === 'hembra' ? 'Hembra' : '', edad: vetEdad(m.fecha_nacimiento), peso: m.peso_actual, microchip: m.microchip, dueno: d.nombre, veterinario: vet };
+}
+function imprimirCertificadoVacunas() {
+  if (!MV.ficha) return;
+  if (!MV.vacunas.length) { showToast('Esta mascota todavía no tiene vacunas registradas.', 'error'); return; }
+  if (!vetImprimirHtml(vetHtmlCertificadoVacunas({ ...datosCertificado(), vacunas: MV.vacunas }))) showToast('Tu navegador bloqueó la ventana. Permite ventanas emergentes para imprimir.', 'error');
+}
+function imprimirCertificadoSalud() {
+  if (!MV.ficha) return;
+  if (!vetImprimirHtml(vetHtmlCertificadoSalud(datosCertificado()))) showToast('Tu navegador bloqueó la ventana. Permite ventanas emergentes para imprimir.', 'error');
+}

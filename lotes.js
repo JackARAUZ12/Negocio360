@@ -103,7 +103,7 @@ async function init() {
     STATE.userId = user.id;
 
     await loadEmpresaConfig(user.id);
-    if (STATE.empresaConfig?.usa_modulo_farmacia !== true) {
+    if (STATE.empresaConfig?.usa_modulo_farmacia !== true && STATE.empresaConfig?.usa_modulo_veterinaria !== true) {
       window.location.href = 'dashboard.html';
       return;
     }
