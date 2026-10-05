@@ -2380,6 +2380,7 @@ async function cargarLotesDelProducto(producto) {
     // tambien se puede elegir uno que se haya agotado (llego otra entrega del mismo lote).
     const lotes = (lotesTodos || []).filter(l => Number(l.cantidad_actual) > 0);
     STATE.lotesDestino = lotesTodos || [];
+    await cargarLotesDelNegocio();
 
     const hoy = new Date(); hoy.setHours(0,0,0,0);
     const stockTotal = Number(producto.stock_actual || 0);
@@ -2439,6 +2440,7 @@ async function cargarLotesDelProducto(producto) {
               <input type="number" id="inputCantidadNuevoLote" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
             <div id="camposNuevoLote" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex-basis:100%">${htmlSelectorLotesNegocio('inputNumeroNuevoLote', 'inputVencimientoNuevoLote')}</div>
               <div>
                 <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
                 <input type="text" id="inputNumeroNuevoLote" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
@@ -2489,6 +2491,7 @@ async function cargarLotesDelProducto(producto) {
             </div>
 
             <div id="subformLoteNuevo" style="${hayLotesExistentes ? 'display:none' : ''}">
+              ${htmlSelectorLotesNegocio('inputNumeroLoteExistente', 'inputVencimientoLoteExistente')}
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
                 <div>
                   <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad</label>
@@ -2632,6 +2635,41 @@ async function guardarLoteStockExistente(stockSinAsignarMax) {
 // Nuevo lote como INGRESO de mercaderia: crea el lote, suma la cantidad
 // al stock del producto y deja rastro en el historial de movimientos.
 // El stock se lee fresco de la base de datos justo antes de sumar.
+/* Lotes ya registrados en el negocio (de cualquier producto) para ELEGIR en vez de escribir a mano.
+   Solo vigentes (no vencidos) y sin repetir (mismo numero + vencimiento = una sola opcion). Elegir uno
+   solo rellena las casillas de numero y vencimiento: el lote del producto se crea igual que siempre. */
+async function cargarLotesDelNegocio() {
+  try {
+    const d = new Date(), hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const { data, error } = await supabaseClient.from('producto_lotes').select('numero_lote, fecha_vencimiento, productos(nombre)')
+      .eq('auth_user_id', STATE.user.id).eq('activo', true).gte('fecha_vencimiento', hoyISO)
+      .order('fecha_vencimiento', { ascending: true }).limit(300);
+    if (error) throw error;
+    const unicos = new Map();
+    (data || []).forEach(l => {
+      const k = `${(l.numero_lote || '').trim().toLowerCase()}|${l.fecha_vencimiento}`;
+      if (!unicos.has(k)) unicos.set(k, { numero: (l.numero_lote || '').trim(), venc: l.fecha_vencimiento, productos: [] });
+      const e = unicos.get(k), n = l.productos?.nombre;
+      if (n && e.productos.length < 2 && !e.productos.includes(n)) e.productos.push(n);
+    });
+    STATE.lotesNegocio = [...unicos.values()];
+  } catch (e) { console.warn('cargarLotesDelNegocio:', e); STATE.lotesNegocio = []; }
+}
+function htmlSelectorLotesNegocio(idNumero, idVenc) {
+  const lotes = STATE.lotesNegocio || [];
+  if (!lotes.length) return `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px">Todavía no hay lotes registrados en tu negocio: escribe el número y el vencimiento para crear el primero.</div>`;
+  return `<select onchange="elegirLoteDelNegocio(this,'${idNumero}','${idVenc}')" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);margin-bottom:6px">
+    <option value="">Elegir un lote ya registrado…</option>
+    ${lotes.map((l, i) => `<option value="${i}">${l.numero ? escHtml(l.numero) : 'Sin número'} · vence ${l.venc}${l.productos.length ? ' · ' + escHtml(l.productos.join(', ')) : ''}</option>`).join('')}
+  </select>`;
+}
+function elegirLoteDelNegocio(sel, idNumero, idVenc) {
+  const l = sel.value === '' ? null : (STATE.lotesNegocio || [])[Number(sel.value)];
+  if (!l) return;
+  if ($(idNumero)) $(idNumero).value = l.numero;
+  if ($(idVenc)) $(idVenc).value = l.venc;
+}
+
 // Al elegir un lote existente se ocultan numero y vencimiento (ese lote ya los tiene).
 function alCambiarDestinoLote() {
   const existente = !!$('selectDestinoLote')?.value;
@@ -2791,6 +2829,10 @@ function configurarCamposSegunModo(modo) {
     grupoLote.style.display = (!esEdicion && STATE.empresa?.maneja_lotes_vencimiento === true) ? '' : 'none';
     if ($('inputNumeroLoteInicial')) $('inputNumeroLoteInicial').value = '';
     if ($('inputVencimientoLoteInicial')) $('inputVencimientoLoteInicial').value = '';
+    if (grupoLote.style.display !== 'none' && $('selectorLotesInicial')) {      // lotes ya registrados para elegir (o aviso si no hay)
+      $('selectorLotesInicial').innerHTML = '';
+      cargarLotesDelNegocio().then(() => { const c = $('selectorLotesInicial'); if (c) c.innerHTML = htmlSelectorLotesNegocio('inputNumeroLoteInicial', 'inputVencimientoLoteInicial'); });
+    }
   }
 }
 
