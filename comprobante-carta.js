@@ -81,6 +81,38 @@ function _cc_hexARgb(hex) {
  *                            empresaTelefono, empresaRuc, moneda_simbolo }
  * @param {Array}  items  - [{ nombre, cantidad, precio, descuento, subtotal }]
  */
+/* ----------------------------------------------------------
+   Direccion y telefono del CLIENTE para el comprobante.
+   Si quien llama solo manda el cliente_id, se buscan en vivo
+   (igual que ya se hace con el codigo de barras). Si el llamador
+   ya mando direccion y telefono, NO se hace ninguna consulta.
+---------------------------------------------------------- */
+// Direccion de facturacion si existe; si no, la direccion normal. La ciudad se
+// agrega al final solo si la direccion no la menciona ya.
+function _cc_armarDireccionCliente(c) {
+  const base = String(c?.direccion_factura || '').trim() || String(c?.direccion || '').trim();
+  const ciudad = String(c?.ciudad || '').trim();
+  if (!base) return ciudad;
+  return ciudad && !base.toLowerCase().includes(ciudad.toLowerCase()) ? `${base}, ${ciudad}` : base;
+}
+async function _cc_datosCliente(datos) {
+  let direccion = String(datos.cliente_direccion || '').trim();
+  let telefono = String(datos.cliente_telefono || '').trim();
+  if ((!direccion || !telefono) && datos.cliente_id) {
+    try {
+      const sb = await _cc_clienteSupabase();
+      let q = sb.from('clientes').select('direccion, direccion_factura, ciudad, telefono').eq('id', datos.cliente_id);
+      if (datos.userId) q = q.eq('auth_user_id', datos.userId);
+      const { data } = await q.maybeSingle();
+      if (data) {
+        if (!direccion) direccion = _cc_armarDireccionCliente(data);
+        if (!telefono) telefono = String(data.telefono || '').trim();
+      }
+    } catch (e) { console.warn('_cc_datosCliente:', e); }     // sin esto el comprobante sale igual, solo sin esos datos
+  }
+  return { direccion, telefono };
+}
+
 async function generarComprobanteCartaPDF(tipo, datos, items) {
   if (!window.jspdf) throw new Error('jsPDF no está disponible');
   const { jsPDF } = window.jspdf;
@@ -167,11 +199,19 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
   doc.text('Cliente', W - M - 70, y);
   doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+  const dCliente = await _cc_datosCliente(datos);
+  // La columna derecha mide ~70 mm: los textos largos (nombre, direccion) se parten en
+  // varias lineas en vez de salirse de la hoja; con un tope para no empujar todo hacia abajo.
+  const envolverCliente = (texto, maxLineas) => {
+    const lineas = doc.splitTextToSize(String(texto), 68);
+    if (lineas.length > maxLineas) { lineas.length = maxLineas; lineas[maxLineas - 1] = lineas[maxLineas - 1].replace(/.{0,2}$/, '') + '…'; }
+    return lineas;
+  };
   const infoCliente = [
-    datos.cliente_nombre || 'Consumidor final',
-    datos.cliente_telefono ? `Tel: ${datos.cliente_telefono}` : '',
-    datos.cliente_direccion || '',
-  ].filter(Boolean);
+    ...envolverCliente(datos.cliente_nombre || 'Consumidor final', 2),
+    ...(dCliente.telefono ? [`Tel: ${dCliente.telefono}`] : []),
+    ...(dCliente.direccion ? envolverCliente(dCliente.direccion, 3) : []),
+  ];
   infoCliente.forEach((linea, i) => doc.text(linea, W - M - 70, y + 5 + i*5));
 
   y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + 10;

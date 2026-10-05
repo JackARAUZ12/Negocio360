@@ -4607,7 +4607,7 @@ async function descargarReciboDeVenta(venta, items) {
     if (cfg.ancho_ticket === 'carta') {
       const doc = await generarComprobanteCartaPDF('venta', {
         userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
-        cliente_nombre: venta.cliente_nombre, subtotal: venta.subtotal, descuento: venta.descuento,
+        cliente_nombre: venta.cliente_nombre, cliente_id: venta.cliente_id || null, subtotal: venta.subtotal, descuento: venta.descuento,
         impuesto: venta.impuesto, iva_porcentaje: venta.iva_porcentaje, total: venta.total,
         metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
         empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
@@ -4657,6 +4657,7 @@ async function descargarComprobanteCartaVenta() {
       numero: venta.numero_venta,
       fecha: fmtFecha(venta.fecha),
       cliente_nombre: venta.cliente_nombre,
+      cliente_id: venta.cliente_id || null,       // el comprobante busca su direccion y telefono
       cliente_telefono: '',
       subtotal: venta.subtotal,
       descuento: venta.descuento,
@@ -6745,7 +6746,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
       try {
         const doc = await generarComprobanteCartaPDF('venta', {
           userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
-          cliente_nombre: venta.cliente_nombre, subtotal: venta.subtotal, descuento: venta.descuento,
+          cliente_nombre: venta.cliente_nombre, cliente_id: venta.cliente_id || null, subtotal: venta.subtotal, descuento: venta.descuento,
           impuesto: venta.impuesto, iva_porcentaje: venta.iva_porcentaje, total: venta.total,
           metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
           empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',
@@ -6952,7 +6953,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
       try {
         const doc = await generarComprobanteCartaPDF('venta', {
           userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
-          cliente_nombre: venta.cliente_nombre, subtotal: venta.subtotal, descuento: venta.descuento,
+          cliente_nombre: venta.cliente_nombre, cliente_id: venta.cliente_id || null, subtotal: venta.subtotal, descuento: venta.descuento,
           impuesto: venta.impuesto, iva_porcentaje: venta.iva_porcentaje, total: venta.total,
           metodo_pago: venta.metodo_pago_nombre, observaciones: venta.observaciones,
           empresaNombre: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Mi Negocio',

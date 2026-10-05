@@ -1513,7 +1513,7 @@ function imprimirComprobanteProforma() {
         })));
         const doc = await generarComprobanteCartaPDF('venta', {
           userId: STATE.userId, numero: v.numero, fecha: fmtFecha(v.fecha),
-          cliente_nombre: v.cliente, subtotal: v.subtotal, descuento: v.descuento,
+          cliente_nombre: v.cliente, cliente_id: v.clienteId || null, subtotal: v.subtotal, descuento: v.descuento,
           impuesto: v.impuesto, total: v.total, metodo_pago: v.metodo,
           observaciones: v.origenProforma ? `Generado a partir de la proforma ${v.origenProforma}` : '',
           empresaNombre: STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio',
@@ -1757,7 +1757,7 @@ async function confirmarConvertirAVenta() {
     // opción de imprimir, respetando el tamaño de ticket configurado.
     const detallesConCombo = await enriquecerItemsConCombo(detalles);
     mostrarComprobanteProforma({
-      numero: ventaPayload.numero_venta, cliente: (p.cliente_nombre || 'Consumidor Final'),
+      numero: ventaPayload.numero_venta, clienteId: p.cliente_id || null, cliente: (p.cliente_nombre || 'Consumidor Final'),
       fecha: todayISO(), usuario: STATE.currentUser?.nombre || STATE.userEmail,
       items: detallesConCombo, subtotal: p.subtotal, descuento: p.descuento || 0,
       impuesto: p.impuesto || 0, total: p.total, metodo: metodoNombre,
@@ -1780,6 +1780,7 @@ async function confirmarConvertirAVenta() {
         numero: ventaPayload.numero_venta,
         fecha: fmtFecha(todayISO()),
         cliente_nombre: p.cliente_nombre || 'Consumidor Final',
+        cliente_id: p.cliente_id || null,
         subtotal: p.subtotal, descuento: p.descuento, impuesto: p.impuesto,
         iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0, total: p.total,
         metodo_pago: metodoNombre, observaciones: `Generado a partir de la proforma ${p.numero_proforma}`,
@@ -2000,11 +2001,20 @@ async function generarPDFProforma(p, items, cliente) {
   doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
   doc.text('Cliente', W - M - 70, y);
   doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+  // Direccion del cliente (facturacion o normal, + ciudad). Los textos largos se parten en varias
+  // lineas (la columna mide ~70 mm) con un tope, para que nada se salga de la hoja.
+  const direccionCliente = typeof _cc_armarDireccionCliente === 'function' ? _cc_armarDireccionCliente(cliente) : String(cliente?.direccion || '').trim();
+  const envolverCliente = (texto, maxLineas) => {
+    const lineas = doc.splitTextToSize(String(texto), 68);
+    if (lineas.length > maxLineas) { lineas.length = maxLineas; lineas[maxLineas - 1] = lineas[maxLineas - 1].replace(/.{0,2}$/, '') + '…'; }
+    return lineas;
+  };
   const infoCliente = [
-    p.cliente_nombre || 'Cliente final',
-    cliente?.telefono ? `Tel: ${cliente.telefono}` : '',
-    cliente?.correo ? cliente.correo : '',
-  ].filter(Boolean);
+    ...envolverCliente(p.cliente_nombre || 'Cliente final', 2),
+    ...(cliente?.telefono ? [`Tel: ${cliente.telefono}`] : []),
+    ...(cliente?.correo ? envolverCliente(cliente.correo, 1) : []),
+    ...(direccionCliente ? envolverCliente(direccionCliente, 3) : []),
+  ];
   infoCliente.forEach((linea, i) => doc.text(linea, W - M - 70, y + 5 + i*5));
 
   y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + 10;
@@ -2117,7 +2127,7 @@ async function descargarPdfProformaActual() {
     const items = await enriquecerItemsConCombo(itemsFrescos || []);
     let cliente = null;
     if (p.cliente_id) {
-      const { data } = await sbClient.from('clientes').select('telefono,correo').eq('id', p.cliente_id).maybeSingle();
+      const { data } = await sbClient.from('clientes').select('telefono,correo,direccion,direccion_factura,ciudad').eq('id', p.cliente_id).maybeSingle();
       cliente = data || null;
     }
     const doc = await generarPDFProforma(p, items, cliente);

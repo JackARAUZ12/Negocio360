@@ -1970,6 +1970,7 @@
       }
       mostrarComprobante({
         titulo: 'Pago de crédito', numero: comprobanteNumero, credito: credito.numero_credito,
+        clienteId: cliente?.id || null,
         cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
         usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombre,
         saldoAnterior, saldoNuevo, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
@@ -2052,7 +2053,7 @@
         try {
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
-            cliente_nombre: c.cliente, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
+            cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
             metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
@@ -2118,7 +2119,7 @@
           if (!c) throw new Error('No hay comprobante para imprimir');
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
-            cliente_nombre: c.cliente, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
+            cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
             metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
@@ -2302,6 +2303,7 @@
         cliente_nombre: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : 'Cliente',
         cliente_telefono: cliente?.telefono || '',
         cliente_direccion: cliente?.direccion || '',
+        cliente_id: credito?.cliente_id || cliente?.id || null,      // respaldo: si la direccion no vino, el comprobante la busca
         subtotal: credito.capital_financiado,
         descuento: 0,
         impuesto: Number(credito.total_financiado||0) - Number(credito.capital_financiado||0),
@@ -2760,6 +2762,7 @@
       }
       mostrarComprobante({
         titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito?.numero_credito || '—',
+        clienteId: cliente?.id || null,
         cliente: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '—', fecha: p.fecha,
         usuario: CS.currentUser?.nombre || CS.userEmail, monto: p.monto, metodo: p.metodo_pago_nombre || '—',
         saldoAnterior: p.saldo_anterior, saldoNuevo: p.saldo_nuevo,
