@@ -132,12 +132,20 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarLotes() {
   const tbody = document.getElementById('lt-tbody');
   try {
-    const { data, error } = await sb.from('producto_lotes')
-      .select('*, productos(nombre)')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).gt('cantidad_actual', 0)
-      .order('fecha_vencimiento', { ascending: true });
+    let consulta = sb.from('producto_lotes').select('*, productos(nombre)')
+      .eq('auth_user_id', STATE.userId).eq('activo', true);
+    if (!STATE.verAgotados) consulta = consulta.gt('cantidad_actual', 0);     // por defecto: solo lotes con unidades (como siempre)
+    const { data, error } = await consulta.order('fecha_vencimiento', { ascending: true });
     if (error) throw error;
     STATE.lotes = data || [];
+    STATE.agotadosCount = 0;
+    if (!STATE.verAgotados && !STATE.lotes.length) {
+      try {
+        const { count } = await sb.from('producto_lotes').select('id', { count: 'exact', head: true })
+          .eq('auth_user_id', STATE.userId).eq('activo', true).lte('cantidad_actual', 0);
+        STATE.agotadosCount = count || 0;
+      } catch (_) { /* solo afecta al texto del mensaje */ }
+    }
     STATE.filtrados = STATE.lotes;
     renderLotes();
   } catch (e) {
@@ -145,6 +153,8 @@ async function cargarLotes() {
     if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger,#dc2626)">No se pudieron cargar los lotes.</td></tr>';
   }
 }
+
+function alternarAgotados(valor) { STATE.verAgotados = !!valor; cargarLotes(); }
 
 function filtrarLotes() {
   const q = (document.getElementById('lt-buscar')?.value || '').trim().toLowerCase();
@@ -163,6 +173,14 @@ function renderLotes() {
   if (!tbody) return;
 
   if (!lista.length) {
+    const n = STATE.agotadosCount || 0;
+    if ((STATE.lotes || []).length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Ningún lote coincide con la búsqueda.</td></tr>'; return; }
+    if (n) {
+      const plural = (a, b) => n === 1 ? a : b;
+    const hint = ' Si te quedan unidades SIN lote, asígnalas a uno (con su vencimiento) en Productos/Servicios → editar el producto → «Asignar este stock a un lote».';
+      const mensaje = `No hay lotes con unidades disponibles. Tienes ${n} lote${plural('', 's')} agotado${plural('', 's')} (sin unidades): marca «Mostrar lotes agotados» para verlo${plural('', 's')}.` + hint;
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">' + mensaje + '</td></tr>'; return;
+    }
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Sin lotes registrados todavía -- se agregan al comprar un producto desde Compras, o desde el detalle de un producto en Productos/Servicios.</td></tr>';
     return;
   }
@@ -171,26 +189,28 @@ function renderLotes() {
   tbody.innerHTML = lista.map(l => {
     const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
     const dias = Math.round((venc - hoy) / 86400000);
+    const agotado = Number(l.cantidad_actual) <= 0;
     let color = 'var(--text-primary)', etiqueta = '';
-    if (dias < 0) { color = 'var(--danger,#dc2626)'; etiqueta = ' — ¡vencido!'; }
+    if (agotado) { color = 'var(--text-muted)'; }                      // sin unidades: nada que vigilar
+    else if (dias < 0) { color = 'var(--danger,#dc2626)'; etiqueta = ' — ¡vencido!'; }
     else if (dias <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${dias} día${dias===1?'':'s'}`; }
     return `
-      <tr data-lote-id="${l.id}">
+      <tr data-lote-id="${l.id}"${agotado ? ' style="opacity:.65"' : ''}>
         <td class="lt-celda-numero"><strong>${l.numero_lote ? esc(l.numero_lote) : '<span style="color:var(--text-muted);font-weight:400">Sin número</span>'}</strong></td>
         <td>${esc(l.productos?.nombre || 'Producto eliminado')}</td>
-        <td>${fmtNumLote(l.cantidad_actual)}</td>
+        <td>${fmtNumLote(l.cantidad_actual)}${agotado ? ' <span style="font-size:11px;font-weight:700;color:var(--text-muted)">· agotado</span>' : ''}</td>
         <td class="lt-celda-venc" style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</td>
         <td>
           <button class="btn-accion-tabla btn-ghost" onclick="abrirEdicionLoteInline('${l.id}')">✏️ Editar</button>
           <button class="btn-accion-tabla btn-ghost" onclick="abrirTrazabilidadLote('${l.id}')">🔍 Trazabilidad</button>
-          <button class="btn-accion-tabla btn-ghost" onclick="abrirDevolucionProveedor('${l.id}')">↩️ Devolver a proveedor</button>
+          ${agotado ? '' : `<button class="btn-accion-tabla btn-ghost" onclick="abrirDevolucionProveedor('${l.id}')">↩️ Devolver a proveedor</button>`}
         </td>
       </tr>`;
   }).join('');
 }
 
 function actualizarKpisLotes() {
-  const lista = STATE.lotes || [];
+  const lista = (STATE.lotes || []).filter(l => Number(l.cantidad_actual) > 0);      // los indicadores cuentan solo lotes con unidades
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   let vencidos = 0, porVencer = 0, vigentes = 0;
   lista.forEach(l => {

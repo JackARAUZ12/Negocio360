@@ -138,6 +138,14 @@ async function cargarVencimientos() {
       .order('fecha_vencimiento', { ascending: true });
     if (error) throw error;
     STATE.lotes = (data || []).sort((a,b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento));
+    STATE.agotadosCount = 0;
+    if (!STATE.lotes.length) {
+      try {
+        const { count } = await sb.from('producto_lotes').select('id', { count: 'exact', head: true })
+          .eq('auth_user_id', STATE.userId).eq('activo', true).lte('cantidad_actual', 0);
+        STATE.agotadosCount = count || 0;
+      } catch (_) { /* solo afecta al texto del mensaje */ }
+    }
     STATE.filtrados = STATE.lotes;
     renderVencimientos();
     mostrarAlertaVencimientosSiHaceFalta();
@@ -164,6 +172,14 @@ function renderVencimientos() {
   if (!tbody) return;
 
   if (!lista.length) {
+    const n = STATE.agotadosCount || 0;
+    if ((STATE.lotes || []).length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Ningún lote coincide con la búsqueda.</td></tr>'; return; }
+    if (n) {
+      const plural = (a, b) => n === 1 ? a : b;
+    const hint = ' Si te quedan unidades SIN lote, asígnalas a uno (con su vencimiento) en Productos/Servicios → editar el producto → «Asignar este stock a un lote».';
+      const mensaje = `No hay lotes con unidades disponibles. Tienes ${n} lote${plural('', 's')} agotado${plural('', 's')} (sin unidades): (ya no hay nada que vigilar en ${plural('él', 'ellos')}).` + hint;
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">' + mensaje + '</td></tr>'; return;
+    }
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Sin lotes registrados todavía -- se agregan al comprar un producto desde Compras, o desde el detalle de un producto en Productos/Servicios.</td></tr>';
     return;
   }
