@@ -1970,7 +1970,9 @@ async function generarPDFProforma(p, items, cliente) {
       textoX = M + w + 6;
     } catch (e) { /* si falla, se sigue sin logo */ }
   }
-  doc.setTextColor(255, 255, 255);
+  // Texto del encabezado con contraste: oscuro si el color elegido es claro (p. ej. blanco), blanco si es oscuro.
+  const luminosidadEnc = (rC * 299 + gC * 587 + bC * 114) / 1000;
+  doc.setTextColor(...(luminosidadEnc > 150 ? [20, 20, 30] : [255, 255, 255]));
   // El tamaño de letra del nombre se ajusta solo si no cabe en el
   // espacio disponible (entre el logo y la info de la derecha) — así
   // un logo grande + un nombre largo nunca se encima con nada.
@@ -2024,7 +2026,7 @@ async function generarPDFProforma(p, items, cliente) {
 
   // ---- Estado ----
   const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
-  doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(rC, gC, bC);
+  doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(...(luminosidadEnc > 150 ? [20, 20, 30] : [rC, gC, bC]));      // sobre fondo blanco: nunca un acento claro
   doc.text(`Estado: ${ei.label}`, M, y);
   y += 10;
 
@@ -2062,7 +2064,11 @@ async function generarPDFProforma(p, items, cliente) {
     head: [encabezadoTabla],
     body: filas,
     theme: 'striped',
-    headStyles: { fillColor: hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108, 99, 255] },
+    headStyles: (() => {
+      const fondo = hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108, 99, 255];
+      const lum = (fondo[0] * 299 + fondo[1] * 587 + fondo[2] * 114) / 1000;
+      return { fillColor: fondo, textColor: lum > 150 ? [20, 20, 30] : [255, 255, 255] };
+    })(),
     styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: 3.5 },
     columnStyles: columnStylesTabla,
     margin: { left: M, right: M },
@@ -2076,7 +2082,7 @@ async function generarPDFProforma(p, items, cliente) {
   const filaTotal = (label, val, big) => {
     doc.setFontSize(big ? 13 : 10);
     doc.setFont(undefined, big ? 'bold' : 'normal');
-    doc.setTextColor(big ? 108 : 90, big ? 99 : 90, big ? 255 : 110);
+    doc.setTextColor(big ? 20 : 90, big ? 20 : 90, big ? 30 : 110);
     doc.text(label, xEtiqueta, finalY);
     doc.text(val, xValor, finalY, { align: 'right' });
     finalY += big ? 8 : 6.5;
