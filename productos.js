@@ -2373,9 +2373,13 @@ async function cargarLotesDelProducto(producto) {
   STATE.productoLotesActual = producto;
 
   try {
-    const { data: lotes } = await supabaseClient.from('producto_lotes')
-      .select('*').eq('producto_id', producto.id).eq('activo', true).gt('cantidad_actual', 0)
+    const { data: lotesTodos } = await supabaseClient.from('producto_lotes')
+      .select('*').eq('producto_id', producto.id).eq('activo', true)
       .order('fecha_vencimiento', { ascending: true });
+    // La lista MUESTRA los lotes con unidades (igual que siempre); para un ingreso de mercaderia
+    // tambien se puede elegir uno que se haya agotado (llego otra entrega del mismo lote).
+    const lotes = (lotesTodos || []).filter(l => Number(l.cantidad_actual) > 0);
+    STATE.lotesDestino = lotesTodos || [];
 
     const hoy = new Date(); hoy.setHours(0,0,0,0);
     const stockTotal = Number(producto.stock_actual || 0);
@@ -2415,22 +2419,36 @@ async function cargarLotesDelProducto(producto) {
     const htmlNuevoLote = `
       <div style="margin-top:10px">
         <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormNuevoLote"
-                onclick="document.getElementById('formNuevoLote').style.display='';this.style.display='none'">➕ Nuevo lote (ingreso de mercadería)</button>
+                onclick="document.getElementById('formNuevoLote').style.display='';this.style.display='none'">➕ Ingreso de mercadería</button>
         <div id="formNuevoLote" style="display:none;margin-top:8px;padding:10px 12px;background:var(--bg-app);border-radius:8px">
-          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Suma estas unidades al stock del producto, como un ingreso de mercadería con su propio lote y vencimiento.</div>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Suma estas unidades al stock del producto: en un lote nuevo (con su número y vencimiento) o en un lote que ya tienes.</div>
+          ${(STATE.lotesDestino || []).length ? `
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;display:block;margin-bottom:3px">¿A qué lote?</label>
+            <select id="selectDestinoLote" onchange="alCambiarDestinoLote()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);max-width:100%">
+              <option value="">🆕 Lote nuevo</option>
+              ${STATE.lotesDestino.map(l => {
+                const vencido = new Date(l.fecha_vencimiento + 'T00:00:00') < hoy;
+                return `<option value="${l.id}" ${vencido ? 'disabled' : ''}>${l.numero_lote ? escHtml(l.numero_lote) : 'Sin número'} · vence ${l.fecha_vencimiento} · ${fmtNum(l.cantidad_actual)} u.${vencido ? ' (vencido)' : ''}${Number(l.cantidad_actual) <= 0 ? ' (agotado)' : ''}</option>`;
+              }).join('')}
+            </select>
+          </div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
             <div>
               <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad *</label>
               <input type="number" id="inputCantidadNuevoLote" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
             </div>
-            <div>
-              <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
-              <input type="text" id="inputNumeroNuevoLote" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+            <div id="camposNuevoLote" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
+                <input type="text" id="inputNumeroNuevoLote" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+              </div>
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
+                <input type="date" id="inputVencimientoNuevoLote" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+              </div>
             </div>
-            <div>
-              <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
-              <input type="date" id="inputVencimientoNuevoLote" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
-            </div>
+            <div id="hintLoteExistente" style="display:none;font-size:11.5px;color:var(--text-muted);align-self:center">Conserva el número y el vencimiento de ese lote.</div>
             <button type="button" class="btn btn-primary btn-sm" onclick="guardarNuevoLoteIngreso()">Guardar</button>
           </div>
         </div>
@@ -2614,9 +2632,81 @@ async function guardarLoteStockExistente(stockSinAsignarMax) {
 // Nuevo lote como INGRESO de mercaderia: crea el lote, suma la cantidad
 // al stock del producto y deja rastro en el historial de movimientos.
 // El stock se lee fresco de la base de datos justo antes de sumar.
+// Al elegir un lote existente se ocultan numero y vencimiento (ese lote ya los tiene).
+function alCambiarDestinoLote() {
+  const existente = !!$('selectDestinoLote')?.value;
+  if ($('camposNuevoLote')) $('camposNuevoLote').style.display = existente ? 'none' : 'flex';
+  if ($('hintLoteExistente')) $('hintLoteExistente').style.display = existente ? '' : 'none';
+}
+
+// Ingreso de mercaderia en un lote que YA existe: suma la cantidad al lote y al stock del producto.
+// Hay DOS cantidades que cambian a la vez, asi que: (1) cada cambio solo se aplica si el valor sigue
+// siendo el que se leyo (si justo se vendio algo, NO se pisa); (2) si el segundo paso falla, el
+// primero se deshace; (3) no se permite sumar a un lote vencido.
+async function guardarIngresoEnLoteExistente(loteId) {
+  const producto = STATE.productoLotesActual;
+  if (!producto) return;
+  const cantidad = parseFloat($('inputCantidadNuevoLote')?.value);
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+  const uid = STATE.user.id;
+  const d = new Date(), hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const cambio = () => showToast('error', 'El inventario cambió', 'Mientras guardabas hubo otro movimiento (por ejemplo una venta). Revisa las cantidades e intenta de nuevo.');
+  try {
+    const { data: lote, error: errL } = await supabaseClient.from('producto_lotes').select('*')
+      .eq('id', loteId).eq('producto_id', producto.id).eq('auth_user_id', uid).eq('activo', true).maybeSingle();
+    if (errL) throw errL;
+    if (!lote) { showToast('error', 'Lote no disponible', 'Ese lote ya no existe o fue desactivado.'); await cargarLotesDelProducto(producto); return; }
+    if (lote.fecha_vencimiento < hoyISO) { showToast('error', 'Lote vencido', 'No se puede sumar mercadería a un lote vencido. Crea un lote nuevo.'); return; }
+
+    const { data: prodFresco, error: errP } = await supabaseClient.from('productos')
+      .select('stock_actual').eq('id', producto.id).eq('auth_user_id', uid).maybeSingle();
+    if (errP) throw errP;
+    const stockAntes = Number(prodFresco?.stock_actual || 0), stockDespues = round2(stockAntes + cantidad);
+    const actualAntes = Number(lote.cantidad_actual), inicialAntes = Number(lote.cantidad_inicial);
+    const actualDespues = round2(actualAntes + cantidad), inicialDespues = round2(inicialAntes + cantidad);
+
+    // 1) el lote (solo si su cantidad sigue siendo la leida)
+    const r1 = await supabaseClient.from('producto_lotes')
+      .update({ cantidad_actual: actualDespues, cantidad_inicial: inicialDespues, updated_at: new Date().toISOString() })
+      .eq('id', loteId).eq('auth_user_id', uid).eq('cantidad_actual', actualAntes).select('id');
+    if (r1.error) throw r1.error;
+    if (!r1.data || r1.data.length !== 1) { cambio(); await cargarLotesDelProducto(producto); return; }
+
+    // 2) el stock del producto (con la misma proteccion); si falla, se deshace el lote
+    const r2 = await supabaseClient.from('productos').update({ stock_actual: stockDespues })
+      .eq('id', producto.id).eq('auth_user_id', uid).eq('stock_actual', stockAntes).select('id');
+    if (r2.error || !r2.data || r2.data.length !== 1) {
+      await supabaseClient.from('producto_lotes').update({ cantidad_actual: actualAntes, cantidad_inicial: inicialAntes })
+        .eq('id', loteId).eq('auth_user_id', uid).eq('cantidad_actual', actualDespues);
+      if (r2.error) throw r2.error;
+      cambio(); await cargarLotesDelProducto(producto); return;
+    }
+
+    try {
+      const { error: errMov } = await supabaseClient.from('movimientos_inventario').insert([{
+        auth_user_id: uid, producto_id: producto.id, tipo: 'entrada', razon: 'ingreso_lote',
+        cantidad, stock_antes: stockAntes, stock_despues: stockDespues,
+        nota: `Ingreso al lote ${lote.numero_lote || 'sin número'} (vence ${lote.fecha_vencimiento})`, descuenta_caja: false,
+      }]);
+      if (errMov) console.warn('movimientos_inventario:', errMov.message);
+    } catch (_) { console.warn('movimientos_inventario no disponible'); }
+
+    showToast('success', 'Mercadería agregada', `Se sumaron ${fmtNum(cantidad)} unidades al lote ${lote.numero_lote || 'sin número'}.`);
+    producto.stock_actual = stockDespues;
+    if ($('inputStockActualEdit')) $('inputStockActualEdit').value = stockDespues;   // para que guardar el producto despues NO pise el stock recien sumado
+    await cargarLotesDelProducto(producto);
+    await cargarProductos();
+  } catch (e) {
+    console.warn('guardarIngresoEnLoteExistente:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
 async function guardarNuevoLoteIngreso() {
   const producto = STATE.productoLotesActual;
   if (!producto) return;
+  const loteDestino = $('selectDestinoLote')?.value;          // vacio = lote nuevo (el camino de siempre)
+  if (loteDestino) return guardarIngresoEnLoteExistente(loteDestino);
 
   const cantidad = parseFloat($('inputCantidadNuevoLote')?.value);
   const numeroLote = $('inputNumeroNuevoLote')?.value.trim() || null;

@@ -1723,7 +1723,7 @@ function renderModuloEspecial() {
   let especial = null;
   if (tipoNegocioSeleccionado === 'hotel') especial = { icono:'🛏️', nombre:'Módulo de Hotel', desc:'Habitaciones, reservaciones, mapa y housekeeping.' };
   else if (['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) especial = { icono:'🍽️', nombre:'Módulo de Restaurante', desc:'Mesas, comandas y cocina en tiempo real.' };
-  else if (tipoNegocioSeleccionado === 'veterinaria') especial = { icono:'🐾', nombre:'Módulo de Veterinaria', desc:'Mascotas, historia clínica, vacunas y recordatorios a los dueños.' };
+  else if (tipoNegocioSeleccionado === 'veterinaria') especial = { icono:'🐾', nombre:'Módulo de Veterinaria', desc:'Agenda, mascotas, historia clínica, vacunas y recordatorios, recetas con dosis, hospital, pensión y baño, certificados y control de lotes con vencimientos.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
