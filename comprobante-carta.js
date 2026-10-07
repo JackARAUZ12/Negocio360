@@ -128,17 +128,21 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   // productos usando los producto_id de los items de ESTE comprobante.
   // Si la opcion esta apagada (el caso por defecto), no se hace
   // ninguna consulta extra -- cero impacto para quien nunca la usa.
-  if (cfg.mostrar_codigo_barras === true && Array.isArray(items) && items.length) {
+  // SKU: algunas ventas/creditos antiguos o creados por ciertos caminos guardaron producto_sku vacio;
+  // si la columna SKU esta activa y a un item le falta, se completa en vivo desde productos
+  // (por producto_id). Solo rellena lo que falta; nunca cambia un SKU ya guardado.
+  const faltaSku = cfg.mostrar_sku === true && Array.isArray(items) && items.some(it => !it.sku && it.producto_id);
+  if ((cfg.mostrar_codigo_barras === true || faltaSku) && Array.isArray(items) && items.length) {
     try {
       const ids = [...new Set(items.map(it => it.producto_id).filter(Boolean))];
       if (ids.length) {
         const sb = await _cc_clienteSupabase();
-        const { data: prods } = await sb.from('productos').select('id, codigo_barras').in('id', ids);
-        const mapa = {};
-        (prods || []).forEach(p => { mapa[p.id] = p.codigo_barras; });
-        items = items.map(it => ({ ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '' }));
+        const { data: prods } = await sb.from('productos').select('id, codigo_barras, sku').in('id', ids);
+        const mapa = {}, mapaSku = {};
+        (prods || []).forEach(p => { mapa[p.id] = p.codigo_barras; mapaSku[p.id] = p.sku; });
+        items = items.map(it => ({ ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '', sku: it.sku || mapaSku[it.producto_id] || '' }));
       }
-    } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras:', e); }
+    } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras/SKU:', e); }
   }
 
   const palabraBase = (cfg.titulo_comprobante || '').trim() || 'Comprobante';
