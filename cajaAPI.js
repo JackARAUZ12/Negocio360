@@ -46,6 +46,25 @@
     }
   }
 
+  // Convierte a la moneda del banco cuando el módulo que llama no lo hizo.
+  // Solo actúa si hay banco_id, el banco tiene moneda distinta a la base y
+  // monto_moneda_banco no llegó; si falta la tasa, deja null (como antes).
+  async function montoParaBanco(userId, params) {
+    try {
+      if (!params.banco_id || params.monto_moneda_banco != null) return params.monto_moneda_banco != null ? params.monto_moneda_banco : null;
+      const [{ data: b }, { data: cfg }] = await Promise.all([
+        sb.from('bancos').select('moneda').eq('id', params.banco_id).eq('auth_user_id', userId).maybeSingle(),
+        sb.from('configuracion_empresa').select('moneda, tasa_cambio_usd').eq('auth_user_id', userId).maybeSingle(),
+      ]);
+      const base = cfg?.moneda === 'USD' ? 'USD' : 'NIO';
+      const mb = b?.moneda || 'NIO';
+      const tasa = Number(cfg?.tasa_cambio_usd || 0);
+      if (mb === base || !tasa) return null;
+      const m = Number(params.monto);
+      return Math.round((base === 'NIO' ? m / tasa : m * tasa) * 100) / 100;
+    } catch (_) { return null; }
+  }
+
   window.CajaAPI = {
     /**
      * Registra un movimiento financiero (ingreso o egreso) y
@@ -68,6 +87,7 @@
 
         const saldoAnt = ult ? Number(ult.saldo_resultante) : 0;
         const monto    = Number(params.monto);
+        const montoBanco = await montoParaBanco(userId, params);
         const saldoRes = params.tipo_flujo === 'INGRESO'
           ? saldoAnt + monto
           : saldoAnt - monto;
@@ -86,7 +106,7 @@
           referencia_id:      params.referencia_id      || null,
           origen_caja:        params.origen_caja        || null,
           banco_id:           params.banco_id           || null,
-          monto_moneda_banco: params.monto_moneda_banco != null ? params.monto_moneda_banco : null,
+          monto_moneda_banco: montoBanco,
           observaciones:      params.observaciones      || null,
           fecha:              params.fecha              || todayISO(),
           estado:             'completado',

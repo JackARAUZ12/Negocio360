@@ -1244,6 +1244,30 @@ function actualizarCacheLocal() {
 /* =====================================================
    API PÚBLICA (para ventas.js, gastos.js, compras.js)
 ===================================================== */
+// Convierte a la moneda del banco cuando el módulo que llama no lo hizo.
+async function _montoParaBancoCaja(userId, params) {
+  try {
+    if (!params.banco_id || params.monto_moneda_banco != null) return params.monto_moneda_banco != null ? params.monto_moneda_banco : null;
+    const [{ data: b }, { data: cfg }] = await Promise.all([
+      sbClient.from('bancos').select('moneda').eq('id', params.banco_id).eq('auth_user_id', userId).maybeSingle(),
+      sbClient.from('configuracion_empresa').select('moneda, tasa_cambio_usd').eq('auth_user_id', userId).maybeSingle(),
+    ]);
+    const base = cfg?.moneda === 'USD' ? 'USD' : 'NIO';
+    const mb = b?.moneda || 'NIO';
+    const tasa = Number(cfg?.tasa_cambio_usd || 0);
+    if (mb === base || !tasa) return null;
+    const m = Number(params.monto);
+    return Math.round((base === 'NIO' ? m / tasa : m * tasa) * 100) / 100;
+  } catch (_) { return null; }
+}
+// Monto de un movimiento en la moneda del banco. Si quedó sin convertir (null),
+// se convierte con la tasa actual en vez de tratar los córdobas como dólares.
+function _montoMonedaBanco(m) {
+  if (m.monto_moneda_banco != null) return Number(m.monto_moneda_banco);
+  const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+  if (!tasa) return Number(m.monto);
+  return round2(monedaBaseNegocio() === 'NIO' ? Number(m.monto) / tasa : Number(m.monto) * tasa);
+}
 window.CajaAPI = {
   async registrarMovimiento(params) {
     try {
@@ -1261,6 +1285,7 @@ window.CajaAPI = {
 
       const saldoAnt = ult ? Number(ult.saldo_resultante) : 0;
       const monto    = Number(params.monto);
+      const montoBanco = await _montoParaBancoCaja(userId, params);
       const saldoRes = params.tipo_flujo === 'INGRESO'
         ? saldoAnt + monto
         : saldoAnt - monto;
@@ -1279,6 +1304,7 @@ window.CajaAPI = {
         referencia_id:      params.referencia_id      || null,
         origen_caja:        params.origen_caja        || null,
         banco_id:           params.banco_id           || null,
+        monto_moneda_banco: montoBanco,
         observaciones:      params.observaciones      || null,
         fecha:              params.fecha               || todayISO(),
         estado:             'completado',
@@ -1531,13 +1557,13 @@ function monedaBaseNegocio() { return STATE.empresaConfig?.moneda === 'USD' ? 'U
 // UNA sola formula del saldo de un banco: la usan la tarjeta de Banco y el selector de transferencias.
 function saldoBancoDe(b, movsDelBanco, monedaBase) {
   const monedaBanco = b.moneda || 'NIO';
-  const montoDe = (m) => monedaBanco !== monedaBase ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+  const montoDe = (m) => monedaBanco !== monedaBase ? _montoMonedaBanco(m) : Number(m.monto);
   return round2(Number(b.saldo_inicial || 0) + movsDelBanco.reduce((t, m) => t + (m.tipo_flujo === 'INGRESO' ? montoDe(m) : -montoDe(m)), 0));
 }
 async function calcularSaldoBanco(bancoId) {
   const [{ data: b }, { data: movs }] = await Promise.all([
     sbClient.from('bancos').select('*').eq('id', bancoId).eq('auth_user_id', STATE.userId).maybeSingle(),
-    sbClient.from('movimientos_financieros').select('tipo_flujo, monto, metodo_pago_nombre, banco_id, tipo_movimiento')
+    sbClient.from('movimientos_financieros').select('tipo_flujo, monto, monto_moneda_banco, metodo_pago_nombre, banco_id, tipo_movimiento')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completado').eq('banco_id', bancoId),
   ]);
   if (!b) return 0;
@@ -1785,7 +1811,7 @@ function renderBancosGrid(lista) {
     // monto YA CONVERTIDO a la moneda del banco (monto_moneda_banco)
     // — nunca el monto en moneda base, para que cuadre contra el
     // estado de cuenta real del banco en SU propia moneda.
-    const montoDe = (m) => monedaBanco !== monedaBase ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+    const montoDe = (m) => monedaBanco !== monedaBase ? _montoMonedaBanco(m) : Number(m.monto);
     const saldo = saldoBancoDe(b, delBanco, monedaBase);
     return `
       <div class="panel-card" style="margin:0">
@@ -1954,7 +1980,7 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
   const saldoInicial = Number(banco?.saldo_inicial || 0);
   const { data: previos } = await sbClient.from('movimientos_financieros')
     .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
-  const montoDe = (m) => CONC.esOtraMoneda ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto);
+  const montoDe = (m) => CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
   const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
   CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);
 
@@ -1971,7 +1997,7 @@ async function cargarMovimientosConciliacion() {
   renderMovimientosConciliacion();
 }
 
-function _montoConcMov(m) { return CONC.esOtraMoneda ? Number(m.monto_moneda_banco ?? m.monto) : Number(m.monto); }
+function _montoConcMov(m) { return CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto); }
 
 function renderMovimientosConciliacion() {
   const tbody = document.getElementById('cb-movimientos-tbody');
