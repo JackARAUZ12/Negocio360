@@ -138,7 +138,29 @@
     div.innerHTML = '<div class="pg-card" id="pg-card"></div>';
     document.body.appendChild(div);
     PG.overlayEl = div;
+    asegurarContrasteCard(div.firstElementChild);
     return div;
+  }
+
+  // Las paginas del sistema tienen temas distintos (claro/oscuro): el panel de usuarios toma
+  // --bg-card y --text-primary de la pagina, y en algunas quedaba fondo blanco con letras
+  // blancas. Aqui se mira el fondo REAL del panel y se fijan colores de texto/campos que
+  // siempre contrasten con ese fondo, sin cambiar el fondo que ya tenia.
+  function asegurarContrasteCard(el) {
+    try {
+      const m = (getComputedStyle(el).backgroundColor || '').match(/rgba?\(([^)]+)\)/);
+      let claro = true;
+      if (m) {
+        const p = m[1].split(',').map(v => parseFloat(v));
+        const alfa = p.length > 3 ? p[3] : 1;
+        if (alfa < 0.9) { el.style.background = '#fff'; }
+        else claro = (0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]) > 150;
+      } else { el.style.background = '#fff'; }
+      const v = claro
+        ? { '--text-primary': '#1A1D2E', '--text-secondary': '#4B5563', '--text-muted': '#6B7280', '--border': '#E5E7EB', '--bg-app': '#F0F2F5', '--bg-input': '#fff' }
+        : { '--text-primary': '#F0F0FA', '--text-secondary': '#C7CAD9', '--text-muted': '#9CA3AF', '--border': 'rgba(255,255,255,.16)', '--bg-app': 'rgba(255,255,255,.07)', '--bg-input': 'rgba(255,255,255,.07)' };
+      Object.keys(v).forEach(k => el.style.setProperty(k, v[k]));
+    } catch (_) { /* nunca debe impedir que se vea el selector */ }
   }
   // Bloqueo total de pantalla — funciona en CUALQUIER página, sin
   // depender de ningún estilo propio de esa página (por eso todo va
