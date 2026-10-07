@@ -298,6 +298,24 @@ async function checkAuth() {
 // FIX: nombre del negocio también se refleja en el logo del
 //      sidebar (antes decía "BizFlow" fijo)
 // ============================================================
+// Los campos de Farmacia (sustancia controlada, principio activo, concentracion, presentacion) solo se
+// muestran si el negocio usa Farmacia o Veterinaria, o si el producto que se edita YA trae esos datos
+// (para no esconderle informacion existente). En una pulperia, distribuidora, etc. no aparecen.
+function aplicarVisibilidadFarmacia() {
+  const e = STATE.empresa || {};
+  const negocioFarma = e.usa_modulo_farmacia === true || e.usa_farmacia_fase2 === true || e.usa_modulo_veterinaria === true
+    || String(e.tipo_negocio || '').toLowerCase().includes('farmacia');
+  ['', 'Edit'].forEach(suf => {
+    const tieneDatos = ['inputPrincipioActivo', 'inputConcentracion', 'inputPresentacion'].some(id => ($(id + suf)?.value || '').trim() !== '')
+      || $('inputEsSustanciaControlada' + suf)?.checked === true;
+    const mostrar = negocioFarma || tieneDatos;
+    const sc = $('wrapSustanciaControlada' + suf);
+    const df = $('wrapDatosFarma' + suf);
+    if (sc) sc.style.display = mostrar ? '' : 'none';
+    if (df) df.style.display = mostrar ? '' : 'none';
+  });
+}
+
 async function cargarDatosEmpresa() {
   try {
     const [resUsuario, resEmpresa] = await Promise.all([
@@ -2859,6 +2877,7 @@ function setTipoModal(tipo, habilitarToggle = true) {
   const wrapMPEdit = $('wrapMateriaPrimaEdit');
   if (wrapMP) wrapMP.style.display = tipo === 'producto' ? '' : 'none';
   if (wrapMPEdit) wrapMPEdit.style.display = tipo === 'producto' ? '' : 'none';
+  aplicarVisibilidadFarmacia();
 
   if (btnProd) btnProd.disabled = !habilitarToggle;
   if (btnServ) btnServ.disabled = !habilitarToggle;
@@ -3234,6 +3253,7 @@ function cargarFormulario(p) {
   if ($('inputPresentacionEdit')) $('inputPresentacionEdit').value = p.presentacion || '';
   if ($('inputUbicacionFisica')) $('inputUbicacionFisica').value = p.ubicacion_fisica || '';
   if ($('inputUbicacionFisicaEdit')) $('inputUbicacionFisicaEdit').value = p.ubicacion_fisica || '';
+  aplicarVisibilidadFarmacia();
 
   // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
   const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
