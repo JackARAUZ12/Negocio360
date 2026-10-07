@@ -357,6 +357,47 @@
     });
   }
 
+  // El Chat con Negocio360 es OBLIGATORIO (por ahi se envian los comprobantes a los
+  // clientes) y debe verse en TODAS las paginas. Su enlace esta escrito a mano en el
+  // menu de cada pagina y algunas (Ventas, Productos, Caja, Clientes, Compras, Gastos,
+  // Reportes, Creditos...) nunca lo tuvieron. Aqui se agrega SOLO si falta, con el mismo
+  // estilo de menu que use la pagina; si ya existe, no se toca nada.
+  function asegurarChatEnSidebar() {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
+    if (document.querySelector('[onclick*="navigate(\'chat.html\')"], a[href="chat.html"], [data-mg-chat]')) return;
+    const usaSidebarItem = !!nav.querySelector('.sidebar-item') && !nav.querySelector('.nav-item');
+    const referencia = nav.querySelector('[onclick*="navigate(\'notificaciones.html\')"], a[href="notificaciones.html"]');
+    let item;
+    if (usaSidebarItem) {
+      item = document.createElement('a');
+      item.href = 'chat.html';
+      item.className = 'sidebar-item';
+      const icono = document.createElement('span');
+      icono.className = 'sidebar-icon';
+      icono.textContent = '💬';
+      item.appendChild(icono);
+      item.appendChild(document.createTextNode('Chat con Negocio360'));
+    } else {
+      item = document.createElement('div');
+      item.className = 'nav-item';
+      item.setAttribute('onclick', "navigate('chat.html')");
+      item.setAttribute('data-tooltip', 'Chat con Negocio360');
+      const icono = document.createElement('span');
+      icono.style.cssText = 'font-size:16px;width:18px;flex-shrink:0;text-align:center;display:inline-block';
+      icono.textContent = '💬';
+      const label = document.createElement('span');
+      label.className = 'nav-label';
+      label.textContent = 'Chat con Negocio360';
+      item.appendChild(icono);
+      item.appendChild(label);
+    }
+    item.setAttribute('data-mg-chat', '1');
+    if (referencia && referencia.parentElement === nav) referencia.insertAdjacentElement('afterend', item);
+    else if (referencia && referencia.closest('.nav-item, .sidebar-item')) referencia.closest('.nav-item, .sidebar-item').insertAdjacentElement('afterend', item);
+    else nav.appendChild(item);
+  }
+
   async function init() {
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
     const client = window.supabase.createClient(MG_SUPABASE_URL, MG_SUPABASE_KEY);
@@ -367,6 +408,7 @@
     if (protegerPaginaActual(cfg)) return;
     ocultarEnSidebar(cfg);
     inyectarModulosSecundariosEnSidebar(cfg);
+    asegurarChatEnSidebar();
     inyectarBuscadorSidebar();
   }
 
