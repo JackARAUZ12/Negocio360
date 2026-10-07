@@ -1240,6 +1240,9 @@ const TIPOS_TRANSACCION = {
   cxp_generada: { label: 'Cuenta por pagar (compra a crédito con proveedor)', ejemplo: 'Debe: Inventario — Haber: Cuentas por Pagar' },
   pago_cxp: { label: 'Pago a proveedor (de una cuenta por pagar)', ejemplo: 'Debe: Cuentas por Pagar — Haber: Caja' },
   pago_salario: { label: 'Pago de salario', ejemplo: 'Debe: Sueldos y Salarios — Haber: Caja' },
+  capital_inicial: { label: 'Dinero inicial de caja / aportes de capital (apertura)', ejemplo: 'Debe: Caja General — Haber: Capital (Aporte de Socios)' },
+  credito_existente: { label: 'Créditos de clientes que ya existían antes de usar el sistema (apertura)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Capital' },
+  inventario_inicial: { label: 'Inventario que ya existía antes de usar el sistema (apertura)', ejemplo: 'Debe: Inventario — Haber: Capital' },
 };
 let STATE_MAPEO = [];
 
@@ -1429,6 +1432,93 @@ async function confirmarReiniciarContabilidad() {
   }
 }
 
+/* =====================================================
+   CONCILIAR INVENTARIO INICIAL — el inventario que el negocio ya tenia
+   antes de usar el sistema nunca paso por una compra, asi que no tiene
+   asiento. Aqui se calcula la diferencia entre el valor real de tus
+   productos (existencias x costo, igual que Productos y Reportes) y el
+   saldo contable de Inventario, y se registra UN asiento de apertura por
+   esa diferencia. Solo LEE productos; no modifica nada en ningun modulo.
+   Se hace una sola vez; exige tener todo lo demas ya generado.
+===================================================== */
+async function conciliarInventarioInicial() {
+  if (STATE.conciliandoInventario) return;
+  const errEl = document.getElementById('ga-error');
+  const resEl = document.getElementById('ga-resultado');
+  errEl.textContent = '';
+  STATE.conciliandoInventario = true;
+  try {
+    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('*').eq('auth_user_id', STATE.userId);
+    const mapeo = new Map((mapeoData||[]).map(m => [m.tipo_transaccion, m]));
+    const m = mapeo.get('inventario_inicial');
+    if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { errEl.textContent = 'Primero configura "Inventario que ya existía antes de usar el sistema" en la Contabilización automática (Debe: Inventario — Haber: Capital).'; return; }
+
+    const { data: yaHay } = await sbClient.from('asientos_contables').select('id').eq('auth_user_id', STATE.userId)
+      .eq('referencia_tipo', 'inventario_inicial').neq('estado', 'anulado').limit(1);
+    if (yaHay && yaHay.length) { errEl.textContent = 'El asiento de inventario inicial ya fue generado antes (no se duplica). Si necesitas rehacerlo, anúlalo primero.'; return; }
+
+    const { data: conteos } = await sbClient.rpc('contar_pendientes_contabilizar');
+    const pendientes = (conteos||[]).reduce((t, c) => t + (mapeo.get(c.tipo) ? Number(c.cantidad)||0 : 0), 0);
+    if (pendientes > 0) { errEl.textContent = `Primero presiona "Generar asientos": hay ${pendientes} movimiento(s) sin registrar y la diferencia saldría mal calculada.`; return; }
+
+    resEl.innerHTML = 'Calculando…';
+    let prods = [];
+    { let i = 0; const TAM = 1000;
+      while (true) {
+        const { data: pg } = await sbClient.from('productos').select('stock_actual, costo, tipo').eq('auth_user_id', STATE.userId).range(i, i + TAM - 1);
+        prods = prods.concat(pg || []);
+        if (!pg || pg.length < TAM) break;
+        i += TAM;
+      }
+    }
+    const valorReal = round2(prods.filter(p => p.tipo === 'producto').reduce((t, p) => t + Number(p.stock_actual||0) * Number(p.costo||0), 0));
+
+    let saldoContable = 0;
+    { let i = 0; const TAM = 1000;
+      while (true) {
+        const { data: pg } = await sbClient.from('asientos_detalle')
+          .select('debe, haber, asientos_contables!inner(estado)').eq('auth_user_id', STATE.userId)
+          .eq('cuenta_id', m.cuenta_debe_id).eq('asientos_contables.estado', 'registrado').range(i, i + TAM - 1);
+        (pg||[]).forEach(d => { saldoContable += Number(d.debe||0) - Number(d.haber||0); });
+        if (!pg || pg.length < TAM) break;
+        i += TAM;
+      }
+    }
+    saldoContable = round2(saldoContable);
+    const diferencia = round2(valorReal - saldoContable);
+    if (diferencia <= 0.01) {
+      resEl.innerHTML = `✅ Nada que conciliar: el inventario real (${fmt(valorReal)}) ya no supera el saldo contable (${fmt(saldoContable)}).`;
+      return;
+    }
+    if (!confirm(`Valor real del inventario: ${fmt(valorReal)}\nSaldo contable de Inventario: ${fmt(saldoContable)}\n\nSe registrará UN asiento de apertura por ${fmt(diferencia)}\n(Debe: Inventario — Haber: cuenta de Capital elegida).\n¿Continuar?`)) { resEl.innerHTML = ''; return; }
+
+    const { data: primero } = await sbClient.from('asientos_contables').select('fecha').eq('auth_user_id', STATE.userId).neq('estado', 'anulado').order('fecha', { ascending: true }).limit(1).maybeSingle();
+    const fecha = primero?.fecha || todayISO();
+    const numero = (await sbClient.rpc('generar_numero_asiento', { p_user_id: STATE.userId })).data;
+    const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
+      auth_user_id: STATE.userId, numero, fecha, concepto: 'Inventario inicial (existencias previas al sistema)',
+      estado: 'borrador', origen: 'automatico', referencia_tipo: 'inventario_inicial', referencia_id: STATE.userId,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+    }).select().single();
+    if (errA || !asiento) throw errA || new Error('No se pudo crear el asiento');
+    const { error: errD } = await sbClient.from('asientos_detalle').insert([
+      { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: diferencia, haber: 0, orden: 0 },
+      { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: diferencia, orden: 1 },
+    ]);
+    if (errD) throw errD;
+    const { error: errReg } = await sbClient.rpc('registrar_asiento_contable', { p_asiento_id: asiento.id });
+    if (errReg) throw errReg;
+    resEl.innerHTML = `✅ Asiento de inventario inicial registrado por ${fmt(diferencia)}.`;
+    showToast('Inventario inicial conciliado');
+    await cargarAsientos();
+  } catch (e) {
+    console.error('conciliarInventarioInicial:', e);
+    errEl.textContent = 'Error: ' + (e.message || '');
+  } finally {
+    STATE.conciliandoInventario = false;
+  }
+}
+
 async function generarAsientosAutomaticos() {
   // BUG REAL CORREGIDO: el mismo movimiento se convertia en asiento
   // hasta 14 veces -- el chequeo de "ya se genero antes" vivia solo
@@ -1475,7 +1565,7 @@ async function generarAsientosAutomaticos() {
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
-    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha, obtenerDivisionIva) {
+    async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha, obtenerDivisionIva, opts) {
       const m = mapeo.get(tipo);
       if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
       campoFecha = campoFecha || 'fecha';
@@ -1489,7 +1579,9 @@ async function generarAsientosAutomaticos() {
         while (true) {
           let query = sbClient.from(tabla).select('*').eq('auth_user_id', STATE.userId);
           if (campoEstado) query = query.eq(campoEstado, filtroEstado); // algunas tablas (ej. pagos ya hechos) no tienen "estado" — todas sus filas ya son reales
-          query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
+          // Los saldos de apertura (opts.sinRango) son pocos y se revisan siempre completos:
+          // la fecha 'pendiente mas antigua' que sugiere el modal no los conoce.
+          if (!opts?.sinRango) query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
           if (filtroExtra) query = filtroExtra(query);
           const { data: pagina } = await query.range(desdeIdx, desdeIdx + TAM - 1);
           filas = filas.concat(pagina || []);
@@ -1501,7 +1593,7 @@ async function generarAsientosAutomaticos() {
       for (const fila of (filas||[])) {
         const clave = `${tipo}:${fila.id}`;
         if (yaHechos.has(clave)) { saltados++; continue; }
-        const monto = round2(Number(fila[campoMonto] || 0));
+        const monto = opts?.obtenerMonto ? round2(Number(await opts.obtenerMonto(fila) || 0)) : round2(Number(fila[campoMonto] || 0));
         if (monto <= 0) continue;
 
         // Costo de lo vendido (si está configurado) — se agrega como
@@ -1514,7 +1606,7 @@ async function generarAsientosAutomaticos() {
         const fechaAsiento = String(fila[campoFecha]).slice(0, 10); // por si es timestamp completo (ej. created_at)
         const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
           auth_user_id: STATE.userId, numero, fecha: fechaAsiento,
-          concepto: `${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || ''}`.trim(),
+          concepto: `${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || fila.numero_credito || ''}`.trim(),
           estado: 'borrador', origen: 'automatico', referencia_tipo: tipo, referencia_id: fila.id,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
         }).select().single();
@@ -1622,6 +1714,24 @@ async function generarAsientosAutomaticos() {
     // cuando ocurre, es un movimiento aparte.
     await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', null, null, 'fecha_compra');
     await procesarTipo('pago_cxp', 'cuentas_por_pagar_pagos', 'monto', null, null, 'Pago a proveedor', null, null, 'created_at');
+
+    // SALDOS DE APERTURA (lo que el negocio ya tenia antes de usar el sistema).
+    // Solo se LEE de Caja y Creditos; nada se modifica ahi.
+    // 1) Dinero inicial / aportes de capital que entraron a Caja.
+    await procesarTipo('capital_inicial', 'movimientos_financieros', 'monto', 'completado', 'estado', 'Aporte de capital: ',
+      q => q.eq('tipo_movimiento', 'CAPITAL_AGREGADO'), null, 'fecha', null, { sinRango: true });
+    // 2) Creditos que ya existian (financieros): a Cuentas por Cobrar se debita
+    //    saldo pendiente + lo ya cobrado, porque esos cobros SI generan su asiento
+    //    (pago_credito) y sin este debito Cuentas por Cobrar quedaba en negativo.
+    await procesarTipo('credito_existente', 'creditos', 'saldo_pendiente', null, null, 'Saldo inicial de crédito existente ',
+      q => q.eq('es_existente', true).neq('estado', 'anulado'), null, 'created_at', null, {
+        sinRango: true,
+        obtenerMonto: async (cr) => {
+          const { data: pagos } = await sbClient.from('creditos_pagos').select('monto')
+            .eq('credito_id', cr.id).eq('auth_user_id', STATE.userId).eq('estado', 'completado');
+          return Number(cr.saldo_pendiente || 0) + (pagos || []).reduce((t, p) => t + Number(p.monto || 0), 0);
+        },
+      });
 
     let resumen = `✅ ${creados} asiento(s) nuevo(s) generado(s) y registrado(s).`;
     if (saltados) resumen += ` ${saltados} ya existían (no se duplicaron).`;
