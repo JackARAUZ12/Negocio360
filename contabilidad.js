@@ -1503,7 +1503,7 @@ async function conciliarInventarioInicial() {
     if (errA || !asiento) throw errA || new Error('No se pudo crear el asiento');
     const { error: errD } = await sbClient.from('asientos_detalle').insert([
       { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: diferencia, haber: 0, orden: 0 },
-      { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: diferencia, orden: 1 },
+      { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: diferencia, orden: 1 },
     ]);
     if (errD) throw errD;
     const { error: errReg } = await sbClient.rpc('registrar_asiento_contable', { p_asiento_id: asiento.id });
@@ -1595,6 +1595,9 @@ async function generarAsientosAutomaticos() {
         if (yaHechos.has(clave)) { saltados++; continue; }
         const monto = opts?.obtenerMonto ? round2(Number(await opts.obtenerMonto(fila) || 0)) : round2(Number(fila[campoMonto] || 0));
         if (monto <= 0) continue;
+        // Algunos gastos no sacan dinero de Caja (ej. merma de inventario): opts.cuentaHaber
+        // puede indicar otra cuenta de Haber para ese caso; si no, se usa la del mapeo.
+        const haberId = (opts?.cuentaHaber && opts.cuentaHaber(fila)) || m.cuenta_haber_id;
 
         // Costo de lo vendido (si está configurado) — se agrega como
         // 2 líneas MÁS dentro del MISMO asiento, no como uno aparte.
@@ -1627,20 +1630,20 @@ async function generarAsientosAutomaticos() {
           if (divisionIva.lado === 'haber') {
             lineas = [
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: montoNeto, orden: 1 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: montoNeto, orden: 1 },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: 0, haber: divisionIva.montoIva, orden: 2, descripcion: 'IVA' },
             ];
           } else {
             lineas = [
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: montoNeto, haber: 0, orden: 0 },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: divisionIva.montoIva, haber: 0, orden: 1, descripcion: 'IVA' },
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 2 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 2 },
             ];
           }
         } else {
           lineas = [
             { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
-            { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_haber_id, debe: 0, haber: monto, orden: 1 },
+            { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 1 },
           ];
         }
         lineas = [
@@ -1704,7 +1707,11 @@ async function generarAsientosAutomaticos() {
       return { montoIva: iva, cuentaIvaId: mapeoIvaGastos.cuenta_debe_id, lado: 'debe' };
     }
 
-    await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ', null, null, undefined, obtenerDivisionIvaGasto);
+    // Merma de inventario: se registra como gasto pero NO sale dinero de Caja; lo que baja es el
+    // Inventario (misma cuenta de Haber que usa 'costo_ventas'). Sin esto, Caja quedaba de menos
+    // y Inventario de mas por el monto de la merma.
+    const cuentaHaberGasto = g => (/^merma de inventario/i.test(String(g.concepto||'')) && !g.metodo_pago_nombre && mapeoCosto?.cuenta_haber_id) ? mapeoCosto.cuenta_haber_id : null;
+    await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ', null, null, undefined, obtenerDivisionIvaGasto, { cuentaHaber: cuentaHaberGasto });
     await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
 
