@@ -756,7 +756,52 @@ function openNuevoMovimiento() {
   document.getElementById('mov-id').value = '';
   document.getElementById('mov-fecha').value = todayISO();
   toggleTipoMovimiento();
+  actualizarBancoMovimiento();
   openModal('modal-movimiento');
+}
+
+// Si el metodo elegido es Tarjeta o Transferencia y la cuenta ya tiene bancos, se pide de/hacia cual
+// banco va el dinero (igual que en Ventas, Compras y Gastos). Con Efectivo no se muestra nada.
+function actualizarBancoMovimiento() {
+  const wrap = document.getElementById('mov-wrap-banco');
+  const sel = document.getElementById('mov-banco');
+  const hint = document.getElementById('mov-banco-hint');
+  if (!wrap || !sel) return;
+  const opt = document.getElementById('mov-metodo')?.selectedOptions?.[0];
+  const nombre = (opt?.dataset?.nombre || '').toLowerCase();
+  const necesita = (nombre.includes('tarjeta') || nombre.includes('transferencia')) && (STATE.bancos || []).length > 0;
+  if (!necesita) { wrap.style.display = 'none'; sel.value = ''; if (hint) hint.textContent = ''; return; }
+  const previo = sel.value;
+  const flujo = document.getElementById('mov-flujo')?.value;
+  document.getElementById('mov-banco-label').textContent = flujo === 'EGRESO' ? 'Banco del que sale el dinero *' : 'Banco al que entra el dinero *';
+  sel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    STATE.bancos.map(b => `<option value="${b.id}">${escHtml(b.nombre)}${(b.moneda || 'NIO') !== monedaBaseNegocio() ? ' (' + b.moneda + ')' : ''}</option>`).join('');
+  if (previo && STATE.bancos.some(b => b.id === previo)) sel.value = previo;
+  wrap.style.display = '';
+  actualizarHintBancoMovimiento();
+}
+
+// Monto convertido a la moneda del banco elegido (null si es la misma moneda o falta la tasa).
+function calcularMontoBancoMov(bancoId, monto) {
+  const b = (STATE.bancos || []).find(x => x.id === bancoId);
+  if (!b) return { banco: null, convertido: null, sinTasa: false };
+  const base = monedaBaseNegocio();
+  if ((b.moneda || 'NIO') === base) return { banco: b, convertido: null, sinTasa: false };
+  const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+  if (!tasa) return { banco: b, convertido: null, sinTasa: true };
+  return { banco: b, convertido: round2(base === 'NIO' ? monto / tasa : monto * tasa), sinTasa: false };
+}
+
+function actualizarHintBancoMovimiento() {
+  const hint = document.getElementById('mov-banco-hint');
+  if (!hint) return;
+  const bancoId = document.getElementById('mov-banco')?.value;
+  const monto = parseFloat(document.getElementById('mov-monto')?.value) || 0;
+  const r = calcularMontoBancoMov(bancoId, monto);
+  if (!r.banco) { hint.textContent = ''; return; }
+  if (r.sinTasa) { hint.style.color = 'var(--danger)'; hint.textContent = 'Falta configurar tu tasa de cambio en Caja › Bancos para usar este banco.'; return; }
+  hint.style.color = 'var(--text-muted)';
+  hint.textContent = r.convertido != null ? `Se registrará en el banco como ${simboloMoneda(r.banco.moneda)} ${r.convertido.toLocaleString('es-NI', { minimumFractionDigits: 2 })}` : '';
 }
 
 function toggleTipoMovimiento() {
@@ -800,6 +845,16 @@ async function saveMovimiento() {
   const metodoPago       = STATE.metodosPago.find(m => m.id === metodoPagoId);
   const metodoPagoNombre = metodoPago?.nombre || 'Efectivo';
 
+  // Banco (solo si el selector esta visible: Tarjeta/Transferencia con bancos creados)
+  let bancoId = null, montoMonedaBanco = null;
+  if (document.getElementById('mov-wrap-banco')?.style.display !== 'none') {
+    bancoId = document.getElementById('mov-banco').value || null;
+    if (!bancoId) { showToast('Selecciona el banco', 'error'); return; }
+    const r = calcularMontoBancoMov(bancoId, monto);
+    if (r.sinTasa) { showToast('Falta configurar tu tasa de cambio en Caja › Bancos', 'error'); return; }
+    montoMonedaBanco = r.convertido;
+  }
+
   try {
     setBtnLoading('btn-save-mov', true);
 
@@ -817,7 +872,7 @@ async function saveMovimiento() {
       ? saldoAnterior + monto
       : saldoAnterior - monto;
 
-    await sbClient.from('movimientos_financieros').insert({
+    const { error: errMov } = await sbClient.from('movimientos_financieros').insert({
       auth_user_id:       STATE.userId,
       tipo_flujo:         flujo,
       tipo_movimiento:    tipo,
@@ -827,10 +882,13 @@ async function saveMovimiento() {
       saldo_resultante:   saldoResultante,
       metodo_pago_id:     metodoPagoId || null,
       metodo_pago_nombre: metodoPagoNombre,
+      banco_id:           bancoId,
+      monto_moneda_banco: montoMonedaBanco,
       observaciones:      observaciones || null,
       fecha,
       estado:             'completado',
     });
+    if (errMov) throw errMov;
 
     STATE.caja = saldoResultante;
 
@@ -1769,7 +1827,7 @@ async function loadBancos() {
     STATE.bancos = bancos || [];
 
     const { data: movs } = await sbClient.from('movimientos_financieros')
-      .select('tipo_flujo, monto, metodo_pago_nombre, banco_id, concepto, fecha, tipo_movimiento')
+      .select('tipo_flujo, monto, monto_moneda_banco, metodo_pago_nombre, banco_id, concepto, fecha, tipo_movimiento')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completado');
     const lista = (movs || []).filter(esMovDeBanco);
 

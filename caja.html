@@ -1563,7 +1563,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Tipo de flujo *</label>
-            <select id="mov-flujo" onchange="toggleTipoMovimiento()">
+            <select id="mov-flujo" onchange="toggleTipoMovimiento(); actualizarBancoMovimiento()">
               <option value="INGRESO">💚 Ingreso</option>
               <option value="EGRESO">🔴 Egreso</option>
             </select>
@@ -1587,14 +1587,20 @@
         <div class="form-row">
           <div class="form-group">
             <label>Monto *</label>
-            <input type="number" id="mov-monto" placeholder="0.00" min="0.01" step="0.01"/>
+            <input type="number" id="mov-monto" placeholder="0.00" min="0.01" step="0.01" oninput="actualizarHintBancoMovimiento()"/>
           </div>
           <div class="form-group">
             <label>Método de pago</label>
-            <select id="mov-metodo">
+            <select id="mov-metodo" onchange="actualizarBancoMovimiento()">
               <option value="">Cargando…</option>
             </select>
           </div>
+        </div>
+
+        <div class="form-group" id="mov-wrap-banco" style="display:none">
+          <label id="mov-banco-label">Banco *</label>
+          <select id="mov-banco" onchange="actualizarHintBancoMovimiento()"></select>
+          <p id="mov-banco-hint" style="font-size:11.5px;color:var(--text-muted);margin-top:4px"></p>
         </div>
 
         <div class="form-group">
@@ -1897,7 +1903,7 @@
      SCRIPT
 ===================================================== -->
   <script src="cajaAPI.js?v=20261007a"></script>
-  <script src="caja.js?v=20261007a"></script>
+  <script src="caja.js?v=20261007b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
