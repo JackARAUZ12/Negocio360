@@ -1878,7 +1878,7 @@ const COLUMNAS_PRODUCTOS_DISPONIBLES = {
   actualizado: { label: 'Actualizado', th: () => '<th>Actualizado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>` },
   acciones:    { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => {
     const movBtn = `<button class="row-action-btn mov-btn-especial" title="Movimiento especial (merma)" onclick="abrirMovimiento('${p.id}')" style="opacity:1;color:var(--warning);">📉</button>`;
-    return `<td><div style="display:flex;align-items:center;gap:4px;"><div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+    return `<td><div style="display:flex;align-items:center;gap:4px;"><div class="row-actions" style="opacity:1;">
       <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
       <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
       <button class="row-action-btn dup" title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
@@ -1902,7 +1902,7 @@ const COLUMNAS_SERVICIOS_DISPONIBLES = {
   estado: COLUMNAS_PRODUCTOS_DISPONIBLES.estado,
   creado: COLUMNAS_PRODUCTOS_DISPONIBLES.creado,
   actualizado: COLUMNAS_PRODUCTOS_DISPONIBLES.actualizado,
-  acciones: { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => `<td><div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+  acciones: { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => `<td><div class="row-actions" style="opacity:1;">
       <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
       <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
       <button class="row-action-btn dup" title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
@@ -2003,7 +2003,7 @@ function renderTablaProductos(tbody) {
         <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
         <td>
           <div style="display:flex;align-items:center;gap:4px;">
-            <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+            <div class="row-actions" style="opacity:1;">
               <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
               <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
               <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
@@ -2068,7 +2068,7 @@ function renderTablaServicios(tbody) {
       <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
       <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
       <td>
-        <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+        <div class="row-actions" style="opacity:1;">
           <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
           <button class="row-action-btn edit" title="Editar"      onclick="abrirEditar('${p.id}')">✏️</button>
           <button class="row-action-btn dup"  title="Duplicar"    onclick="duplicarProducto('${p.id}')">📋</button>
@@ -2086,7 +2086,7 @@ function activarHoverFilas(tbody) {
     const actions = row.querySelector('.row-actions');
     if (!actions) return;
     row.addEventListener('mouseenter', () => actions.style.opacity = '1');
-    row.addEventListener('mouseleave', () => actions.style.opacity = '0');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '1');
   });
 }
 
@@ -2154,7 +2154,7 @@ function renderTablaMateriaPrima(tbody) {
         </td>
         <td>
           <div style="display:flex;align-items:center;gap:4px;">
-            <div class="row-actions" style="opacity:0;transition:opacity 0.18s ease;">
+            <div class="row-actions" style="opacity:1;">
               <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
               <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
               <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
@@ -2170,7 +2170,7 @@ function renderTablaMateriaPrima(tbody) {
     const actions = row.querySelector('.row-actions');
     if (!actions) return;
     row.addEventListener('mouseenter', () => actions.style.opacity = '1');
-    row.addEventListener('mouseleave', () => actions.style.opacity = '0');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '1');
   });
 }
 
