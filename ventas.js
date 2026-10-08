@@ -1076,7 +1076,7 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
@@ -2053,6 +2053,7 @@ function buscarProductosParaVenta(q, tipo) {
       <div style="flex:1">
         <div class="pri-name">${esc(p.nombre)} ${p.esCombo ? '<span style="font-size:10px;color:var(--accent-4,var(--accent));font-weight:700">📦 COMBO</span>' : ''}${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
+        ${p.ubicacion_fisica ? `<div style="font-size:11.5px;color:var(--accent);font-weight:600">📍 ${esc(p.ubicacion_fisica)}</div>` : ''}
         ${p.descripcion ? `<div style="font-family:inherit;font-size:11px;color:var(--text-muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${esc(p.descripcion)}</div>` : ''}
         ${(() => {
           // Equivalente/sustituto -- solo cuando el producto buscado
@@ -3784,6 +3785,7 @@ function renderCarrito(tipo) {
       <td>
         <div style="font-weight:600;font-size:13px">${esc(item.nombre)}</div>
         ${item.sku ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${esc(item.sku)}</div>` : ''}
+        ${(() => { const _u = (S.productosCache || []).find(x => x.id === item.id)?.ubicacion_fisica; return _u ? `<div style="font-size:11.5px;color:var(--accent);font-weight:600">📍 ${esc(_u)}</div>` : ''; })()}
         ${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}
         ${item.esPromocion ? `<div style="font-size:11px;color:var(--success);font-weight:600">🎁 Promoción</div>` : ''}
         ${item.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía (sin costo para el cliente)</div>` : ''}
