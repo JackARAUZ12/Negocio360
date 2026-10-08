@@ -143,7 +143,7 @@ function fmtDate(isoDate) {
 
 function fmtNum(val) {
   if (val === null || val === undefined) return '—';
-  return Number(val).toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return Number(val).toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
 function escHtml(str) {
@@ -347,12 +347,13 @@ async function loadProductosDisponibles() {
   try {
     const { data } = await sbClient
       .from('productos')
-      .select('id, nombre, sku, categoria, stock_actual, costo, precio, activo')
+      .select('*')
       .eq('auth_user_id', STATE.userId)
       .eq('tipo', 'producto')  // ← SOLO productos, nunca servicios
       .eq('activo', true)
       .order('nombre');
     STATE.productos = data || [];
+    try { await window.N360Unidades?.cargarPersonalizadas(sbClient, STATE.userId); } catch (_) {}
   } catch(e) { console.warn('loadProductosDisponibles:', e); }
 }
 
@@ -621,7 +622,7 @@ async function verDetalleCompra(compraId) {
       <tr>
         <td>${escHtml(l.producto_nombre)}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${escHtml(l.producto_sku||'—')}</td>
-        <td class="td-right">${fmtNum(l.cantidad)}</td>
+        <td class="td-right">${fmtNum(l.cantidad)}${l.cantidad_comprada ? `<div style="font-size:11px;color:var(--text-muted)">(${fmtNum(l.cantidad_comprada)} ${escHtml(nombreU(l.unidad_compra_codigo, Number(l.cantidad_comprada) !== 1) || 'u. de compra')})</div>` : ''}</td>
         <td class="td-right">${fmt(l.costo_unitario)}</td>
         <td class="td-right">${l.descuento > 0 ? fmt(l.descuento) : '—'}</td>
         <td class="td-right">${l.iva_porcentaje > 0 ? l.iva_porcentaje+'%' : '—'}</td>
@@ -1298,11 +1299,45 @@ function buscarProductoNuevaCompra() {
     <div class="search-result-item" onclick="agregarProductoAlCarrito('${p.id}')">
       <div class="sri-info">
         <span class="sri-nombre">${escHtml(p.nombre)}</span>
-        <span class="sri-meta">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}${p.categoria ? escHtml(p.categoria)+' · ' : ''}Stock: ${fmtNum(p.stock_actual)}</span>
+        <span class="sri-meta">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}${p.categoria ? escHtml(p.categoria)+' · ' : ''}Stock: ${fmtNum(p.stock_actual)}${abrevU(p.unidad_codigo) ? ' ' + abrevU(p.unidad_codigo) : ''}${productoTieneUnidadCompra(p) ? ' · Compra en ' + nombreU(p.unidad_compra_codigo) : ''}</span>
       </div>
       <span class="sri-costo">${fmt(p.costo)}</span>
     </div>
   `).join('');
+}
+
+/* ---- UNIDADES DE MEDIDA ---- */
+function abrevU(codigo) {
+  if (!codigo || codigo === 'unidad') return '';
+  return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
+}
+function nombreU(codigo, plural) {
+  const u = window.N360Unidades?.porCodigo(codigo);
+  return u ? (plural ? u.plural : u.nombre).toLowerCase() : '';
+}
+// Cuántas unidades de inventario (venta) trae 1 unidad de la línea.
+function factorLinea(l) { return Number(l.factorActivo) > 0 ? Number(l.factorActivo) : 1; }
+function productoTieneUnidadCompra(p) {
+  return !!(p && p.unidad_compra_codigo && Number(p.factor_compra) > 0);
+}
+
+// Cambia la línea entre "unidad de compra" (quintal) y "unidad de venta" (libra),
+// convirtiendo cantidad y costo para que el total en dinero no cambie.
+function cambiarUnidadLineaCompra(idx, modo) {
+  const l = STATE.carrito[idx];
+  if (!l || !productoTieneUnidadCompra(l.producto)) return;
+  const f = Number(l.producto.factor_compra);
+  const actual = factorLinea(l);
+  const destino = modo === 'compra' ? f : 1;
+  if (actual === destino) return;
+  const razon = destino / actual;                       // >1 al pasar a compra, <1 al volver a venta
+  l.cantidad = Math.round((l.cantidad / razon) * 10000) / 10000;
+  l.costoUnitario = Math.round((l.costoUnitario * razon) * 10000) / 10000;
+  if (l.costoAntesRegalia != null) l.costoAntesRegalia = Math.round((l.costoAntesRegalia * razon) * 10000) / 10000;
+  l.factorActivo = destino;
+  recalcularLinea(l);
+  renderCarrito();
+  actualizarResumen();
 }
 
 function agregarProductoAlCarrito(productoId) {
@@ -1318,7 +1353,10 @@ function agregarProductoAlCarrito(productoId) {
     const linea = {
       producto:       p,
       cantidad:       1,
-      costoUnitario:  Number(p.costo || 0),
+      factorActivo:   productoTieneUnidadCompra(p) ? Number(p.factor_compra) : 1,
+      costoUnitario:  productoTieneUnidadCompra(p)
+        ? Math.round(Number(p.costo || 0) * Number(p.factor_compra) * 10000) / 10000
+        : Number(p.costo || 0),
       descuento:      0,
       ivaPorc:        STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
       numeroLote:     '',
@@ -1367,13 +1405,22 @@ function renderCarrito() {
 
   tbody.innerHTML = STATE.carrito.map((linea, idx) => `
     <tr>
-      <td style="font-weight:500">${escHtml(linea.producto.nombre)}${linea.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía del proveedor</div>` : ''}</td>
+      <td style="font-weight:500">${escHtml(linea.producto.nombre)}${linea.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía del proveedor</div>` : ''}
+        ${productoTieneUnidadCompra(linea.producto) ? `
+          <div style="margin-top:4px;font-size:11.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="color:var(--text-muted)">Comprando en:</span>
+            <select onchange="cambiarUnidadLineaCompra(${idx}, this.value)" style="font-size:11.5px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface,#fff);color:var(--text-primary,#111)">
+              <option value="compra" ${factorLinea(linea) > 1 ? 'selected' : ''}>${escHtml(nombreU(linea.producto.unidad_compra_codigo, true))} (1 = ${fmtNum(linea.producto.factor_compra)} ${escHtml(abrevU(linea.producto.unidad_codigo) || nombreU(linea.producto.unidad_codigo, true) || 'u')})</option>
+              <option value="venta" ${factorLinea(linea) > 1 ? '' : 'selected'}>${escHtml(nombreU(linea.producto.unidad_codigo, true) || 'unidades')}</option>
+            </select>
+          </div>` : ''}</td>
       <td>
         <input type="text" inputmode="decimal" class="carrito-input" value="${linea.cantidad}"
           min="0.01"
           oninput="saneaDecimalInput(this)"
           onchange="actualizarLineaCarrito(${idx},'cantidad',this.value)"
           style="width:70px"/>
+        ${factorLinea(linea) > 1 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Entran ${fmtNum(linea.cantidad * factorLinea(linea))} ${escHtml(abrevU(linea.producto.unidad_codigo) || 'u')} al inventario</div>` : ''}
       </td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
@@ -1917,22 +1964,28 @@ async function guardarCompra() {
       // propia base de datos -- ya no se lee/calcula/escribe desde
       // aquí, eliminando de raíz el riesgo de basarse en un dato
       // viejo si algo más tocó este mismo producto al mismo tiempo.
+      // Si la línea se compró en otra unidad (ej. quintales y se vende en
+      // libras), al inventario, al detalle y a los lotes entra SIEMPRE la
+      // cantidad convertida a la unidad de venta; el dinero no cambia.
+      const factor     = factorLinea(linea);
+      const cantInv    = Math.round(Number(linea.cantidad) * factor * 10000) / 10000;
+      const costoInv   = factor > 1 ? Math.round((Number(linea.costoUnitario) / factor) * 10000) / 10000 : linea.costoUnitario;
       const stockAntesReferencia = Number(linea.producto.stock_actual || 0); // solo de referencia visual
-      let stockDespues = stockAntesReferencia + Number(linea.cantidad);
+      let stockDespues = stockAntesReferencia + Number(cantInv);
       let stockAntes = stockAntesReferencia;
 
       const { data: resultadoStock, error: errStock } = await sbClient
         .rpc('incrementar_stock_producto', {
           p_producto_id: linea.producto.id,
           p_auth_user_id: STATE.userId,
-          p_cantidad: Number(linea.cantidad),
+          p_cantidad: Number(cantInv),
         });
 
       if (!errStock && resultadoStock && resultadoStock.length) {
         // Caso normal: usa el valor REAL devuelto por la base de datos
         // (más confiable que cualquier cálculo hecho aquí en JS).
         stockDespues = Number(resultadoStock[0].stock_actual);
-        stockAntes = round2(stockDespues - Number(linea.cantidad));
+        stockAntes = Math.round((stockDespues - Number(cantInv)) * 1000) / 1000;
       } else {
         // Caso rarísimo: el producto no se encontró para actualizar.
         // NUNCA se le muestra esto al cliente ni se interrumpe su
@@ -1943,7 +1996,7 @@ async function guardarCompra() {
           await sbClient.from('log_stock_fallido').insert({
             auth_user_id: STATE.userId, compra_id: compra.id,
             producto_id: linea.producto.id, producto_nombre: linea.producto.nombre,
-            cantidad_no_aplicada: linea.cantidad,
+            cantidad_no_aplicada: cantInv,
             motivo: errStock ? String(errStock.message || errStock) : 'La actualización no encontró el producto (0 filas afectadas)',
           });
         } catch (eLog) { console.warn('No se pudo registrar en log_stock_fallido:', eLog); }
@@ -1956,8 +2009,13 @@ async function guardarCompra() {
         producto_id:    linea.producto.id,
         producto_nombre:linea.producto.nombre,
         producto_sku:   linea.producto.sku || null,
-        cantidad:       linea.cantidad,
-        costo_unitario: linea.costoUnitario,
+        cantidad:       cantInv,
+        costo_unitario: costoInv,
+        ...(factor > 1 ? {
+          cantidad_comprada:     Number(linea.cantidad),
+          unidad_compra_codigo:  linea.producto.unidad_compra_codigo,
+          factor_compra:         factor,
+        } : {}),
         descuento:      linea.descuento || 0,
         iva_porcentaje: linea.ivaPorc   || 0,
         iva_monto:      linea.ivaMonto  || 0,
@@ -1978,9 +2036,9 @@ async function guardarCompra() {
           producto_id:       linea.producto.id,
           numero_lote:       linea.numeroLote || null,
           fecha_vencimiento: linea.fechaVencimiento,
-          cantidad_inicial:  linea.cantidad,
-          cantidad_actual:   linea.cantidad,
-          costo_unitario:    linea.costoUnitario,
+          cantidad_inicial:  cantInv,
+          cantidad_actual:   cantInv,
+          costo_unitario:    costoInv,
           compra_id:         compra.id,
         });
         if (errLote) console.warn('No se pudo registrar el lote (la compra y el stock ya quedaron bien):', errLote);
@@ -2112,7 +2170,9 @@ async function guardarOrdenCompra() {
     const detallesPayload = STATE.carrito.map(l => ({
       auth_user_id: STATE.userId, orden_compra_id: orden.id,
       producto_id: l.producto.id, producto_nombre: l.producto.nombre, producto_sku: l.producto.sku || null,
-      cantidad: l.cantidad, costo_unitario: l.costoUnitario, descuento: l.descuento || 0,
+      cantidad: Math.round(l.cantidad * factorLinea(l) * 10000) / 10000,
+      costo_unitario: factorLinea(l) > 1 ? Math.round((l.costoUnitario / factorLinea(l)) * 10000) / 10000 : l.costoUnitario,
+      descuento: l.descuento || 0,
       iva_porcentaje: l.ivaPorc || 0, iva_monto: l.ivaMonto || 0, subtotal: l.subtotal,
     }));
     const { error: errDet } = await sbClient.from('orden_compra_detalles').insert(detallesPayload);

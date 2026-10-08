@@ -915,6 +915,17 @@
               <input type="checkbox" id="chkPermiteFraccion" style="width:16px;height:16px"/>
               <span>Permitir cantidades fraccionadas <span id="ejemploFraccion" style="color:var(--text-muted)"></span></span>
             </label>
+            <div id="wrapUnidadCompra" style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">
+              <label class="form-label" for="selUnidadCompra">Se compra en <span style="font-weight:400;color:var(--text-muted)">(opcional)</span></label>
+              <select class="form-input" id="selUnidadCompra" onchange="alCambiarUnidadCompra()"></select>
+              <div id="filaFactorCompra" style="display:none;margin-top:8px;font-size:13px;align-items:center;gap:6px;flex-wrap:wrap">
+                <span>1 <strong id="lblUnidadCompra"></strong> trae</span>
+                <input type="number" class="form-input" id="inputFactorCompra" min="0.001" step="any" placeholder="100" style="width:100px" oninput="actualizarHintUnidad()"/>
+                <strong id="lblUnidadVentaFactor"></strong>
+              </div>
+              <div id="hintUnidadCompra" style="font-size:12px;color:var(--text-secondary);margin-top:6px"></div>
+              <div class="form-error" id="errUnidadCompra"></div>
+            </div>
             <div id="panelUnidadNueva" style="display:none;margin-top:12px;padding:12px;border:1px dashed var(--border);border-radius:var(--radius-md)">
               <div style="font-weight:600;font-size:13px;margin-bottom:8px">Nueva unidad</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1506,7 +1517,7 @@
   });
 </script>
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="productos.js?v=20261008a"></script>
+<script src="productos.js?v=20261008c"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

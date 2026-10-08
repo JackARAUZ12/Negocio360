@@ -158,7 +158,7 @@ function fmtNum(val) {
   if (val === null || val === undefined) return '—';
   const n = parseFloat(val);
   if (isNaN(n)) return '—';
-  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
 // ============================================================
@@ -1873,7 +1873,7 @@ const COLUMNAS_PRODUCTOS_DISPONIBLES = {
   precio:      { label: 'Precio', th: () => '<th>Precio</th>', td: p => `<td class="td-money">${p.tipo_precio === 'escala' ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>` : fmtMoney(p.precio)}</td>` },
   costo:       { label: 'Costo', th: () => '<th>Costo</th>', td: p => `<td class="td-money">${fmtMoney(p.costo)}</td>` },
   margen:      { label: 'Margen', th: () => '<th>Margen</th>', td: p => `<td>${renderMargen(p.precio, p.costo)}</td>` },
-  stock:       { label: 'Stock', th: () => '<th>Stock</th>', td: p => { const bajo = esStockBajo(p); return `<td><div class="td-stock"><span>${fmtNum(p.stock_actual)}</span>${bajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}</div></td>`; } },
+  stock:       { label: 'Stock', th: () => '<th>Stock</th>', td: p => { const bajo = esStockBajo(p); return `<td><div class="td-stock"><span>${fmtNum(p.stock_actual)}${(p.unidad_codigo && p.unidad_codigo !== 'unidad' && window.N360Unidades?.porCodigo(p.unidad_codigo)) ? ' <small style="color:var(--text-muted)">' + escHtml(window.N360Unidades.porCodigo(p.unidad_codigo).abreviatura) + '</small>' : ''}</span>${bajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}</div></td>`; } },
   estado:      { label: 'Estado', th: () => '<th>Estado</th>', td: p => `<td><span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>` },
   creado:      { label: 'Creado', th: () => '<th>Creado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>` },
   actualizado: { label: 'Actualizado', th: () => '<th>Actualizado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>` },
@@ -2874,6 +2874,43 @@ function poblarSelectorUnidad(seleccion, textoLegacy, conSinDefinir) {
   sel.dataset.legacy = textoLegacy || '';
   sel.value = seleccion || 'unidad';
   if (sel.value !== (seleccion || 'unidad')) sel.value = 'unidad';
+  poblarSelectorCompra();
+}
+
+// "Se compra en": misma lista de unidades; vacío = igual que la de venta.
+function poblarSelectorCompra(seleccion) {
+  const sc = $('selUnidadCompra');
+  if (!sc || !window.N360Unidades) return;
+  const U = window.N360Unidades;
+  const actual = seleccion !== undefined ? seleccion : sc.value;
+  sc.innerHTML = '<option value="">Igual que la de venta</option>' + Object.keys(U.TIPOS).map(tipo => {
+    const items = U.todas().filter(u => u.tipo === tipo);
+    return items.length ? `<optgroup label="${U.TIPOS[tipo]}">` + items.map(u => `<option value="${escHtml(u.codigo)}">${escHtml(u.nombre)} (${escHtml(u.abreviatura)})</option>`).join('') + '</optgroup>' : '';
+  }).join('');
+  sc.value = actual || '';
+  if (sc.value !== (actual || '')) sc.value = '';
+}
+
+function alCambiarUnidadCompra() {
+  const sc = $('selUnidadCompra');
+  const fila = $('filaFactorCompra');
+  if (!sc || !fila) return;
+  fila.style.display = sc.value ? 'flex' : 'none';
+  if (!sc.value) $('inputFactorCompra').value = '';
+  actualizarHintUnidad();
+}
+
+// Devuelve un mensaje de error si la unidad de compra está mal configurada.
+function validarUnidadCompra(tipo) {
+  if (tipo !== 'producto') return '';
+  const sc = $('selUnidadCompra');
+  if (!sc || !sc.value) return '';
+  const venta = $('selUnidadVenta')?.value;
+  if (!window.N360Unidades?.porCodigo(venta)) return 'Primero elige en qué unidad se vende el producto.';
+  if (sc.value === venta) return 'La unidad de compra es la misma que la de venta: elige "Igual que la de venta".';
+  const f = parseFloat($('inputFactorCompra')?.value);
+  if (!(f > 0)) return 'Escribe cuántas unidades de venta trae cada unidad de compra (ej: 100).';
+  return '';
 }
 
 function alCambiarUnidadVenta() {
@@ -2891,6 +2928,18 @@ function alCambiarUnidadVenta() {
 }
 
 function actualizarHintUnidad() {
+  const U0 = window.N360Unidades;
+  const uv = U0?.porCodigo($('selUnidadVenta')?.value);
+  const uc = U0?.porCodigo($('selUnidadCompra')?.value);
+  if ($('lblUnidadCompra')) $('lblUnidadCompra').textContent = uc ? uc.nombre.toLowerCase() : '';
+  if ($('lblUnidadVentaFactor')) $('lblUnidadVentaFactor').textContent = uv ? uv.plural.toLowerCase() : 'unidades de venta';
+  const hc = $('hintUnidadCompra');
+  if (hc) {
+    const f = parseFloat($('inputFactorCompra')?.value);
+    hc.innerHTML = (uc && f > 0 && uv)
+      ? `Al comprar <strong>1 ${escHtml(uc.nombre.toLowerCase())}</strong> entran <strong>${f} ${escHtml(uv.plural.toLowerCase())}</strong> al inventario.`
+      : '';
+  }
   const sel = $('selUnidadVenta');
   const hint = $('hintUnidadVenta');
   const ej = $('ejemploFraccion');
@@ -2934,23 +2983,36 @@ async function guardarUnidadNueva() {
 }
 
 // Valores de unidad para guardar el producto. Servicios no llevan unidad.
-function leerUnidadParaGuardar(tipo) {
+function leerUnidadParaGuardar(tipo, previo) {
   if (tipo !== 'producto') return {};
   const sel = $('selUnidadVenta');
   if (!sel || !window.N360Unidades) return {};
   const v = sel.value;
-  if (v === '__sin') return {};
-  if (v === '__legacy') {
+  let out = {};
+  if (v === '__sin') out = {};
+  else if (v === '__legacy') {
     // Se conserva el texto anterior sin tocarlo.
-    return { permite_fraccion: $('chkPermiteFraccion')?.checked === true ? true : null };
+    out = { permite_fraccion: $('chkPermiteFraccion')?.checked === true ? true : null };
+  } else {
+    const u = window.N360Unidades.porCodigo(v);
+    if (u) out = {
+      unidad_codigo: u.codigo,
+      unidad_medida: u.nombre.toLowerCase(),
+      permite_fraccion: $('chkPermiteFraccion')?.checked === true,
+    };
   }
-  const u = window.N360Unidades.porCodigo(v);
-  if (!u) return {};
-  return {
-    unidad_codigo: u.codigo,
-    unidad_medida: u.nombre.toLowerCase(),
-    permite_fraccion: $('chkPermiteFraccion')?.checked === true,
-  };
+  // Unidad de compra: solo se envían estas columnas si hay algo que
+  // guardar (o algo que limpiar), para no tocarlas en productos normales.
+  const sc = $('selUnidadCompra');
+  const f = parseFloat($('inputFactorCompra')?.value);
+  if (sc && sc.value && f > 0) {
+    out.unidad_compra_codigo = sc.value;
+    out.factor_compra = f;
+  } else if (previo && previo.unidad_compra_codigo) {
+    out.unidad_compra_codigo = null;
+    out.factor_compra = null;
+  }
+  return out;
 }
 
 function aplicarUnidadAlFormulario(p) {
@@ -2970,7 +3032,10 @@ function aplicarUnidadAlFormulario(p) {
   const chk = $('chkPermiteFraccion');
   if (chk) chk.checked = (p && p.permite_fraccion != null) ? !!p.permite_fraccion : !!(u && u.fraccionable);
   $('panelUnidadNueva').style.display = 'none';
-  actualizarHintUnidad();
+  poblarSelectorCompra(p?.unidad_compra_codigo || '');
+  if ($('inputFactorCompra')) $('inputFactorCompra').value = p?.factor_compra || '';
+  if ($('errUnidadCompra')) $('errUnidadCompra').textContent = '';
+  alCambiarUnidadCompra();
 }
 
 function setTipoModal(tipo, habilitarToggle = true) {
@@ -3453,6 +3518,11 @@ async function guardarProducto() {
   const activo      = activoVal === 'true';
   const fechaCreacionRaw = ($('inputFechaCreacion')?.value || '').trim(); // yyyy-mm-dd
 
+  const errUC = $('errUnidadCompra');
+  if (errUC) errUC.textContent = '';
+  const msgUC = validarUnidadCompra(tipo);
+  if (msgUC) { if (errUC) errUC.textContent = msgUC; return; }
+
   const errEscalas = $('errEscalas');
   if (errEscalas) errEscalas.textContent = '';
   if (tipoPrecio === 'escala') {
@@ -3560,7 +3630,7 @@ async function guardarProducto() {
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
-        ...leerUnidadParaGuardar(tipo),
+        ...leerUnidadParaGuardar(tipo, STATE.modalMode === 'editar' ? STATE.editTarget : null),
         requiere_numero_serie: $('inputRequiereSerie')?.checked === true,
         modelo: ($('inputModelo')?.value || '').trim() || null,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
@@ -3619,7 +3689,7 @@ async function guardarProducto() {
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
-        ...leerUnidadParaGuardar(tipo),
+        ...leerUnidadParaGuardar(tipo, STATE.modalMode === 'editar' ? STATE.editTarget : null),
         requiere_numero_serie: $('inputRequiereSerieEdit')?.checked === true,
         modelo: ($('inputModeloEdit')?.value || '').trim() || null,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
