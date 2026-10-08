@@ -730,12 +730,18 @@ async function cargarDetalleComprasExport() {
   const det = await fetchComprasDetalles();
   det.sort((a,b) => String(a.created_at||'').localeCompare(String(b.created_at||'')));
   R.cache.comprasDetalles = det;
-  const ids = [...new Set(det.map(d => d.producto_id).filter(Boolean))];
-  const mapa = {};
+  await cargarDescripcionesExport(det);
+}
+
+// Descripciones de productos (para los reportes de Compras y Ventas).
+async function cargarDescripcionesExport(detalles) {
+  const mapa = R.cache.productosDescripcion || {};
+  const ids = [...new Set((detalles||[]).map(d => d.producto_id).filter(id => id && !(id in mapa)))];
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await sb.from('productos').select('id,descripcion')
       .eq('auth_user_id', R.userId).in('id', ids.slice(i, i + 200));
     (data || []).forEach(p => { mapa[p.id] = p.descripcion || ''; });
+    ids.slice(i, i + 200).forEach(id => { if (!(id in mapa)) mapa[id] = ''; });
   }
   R.cache.productosDescripcion = mapa;
 }
@@ -2590,6 +2596,7 @@ async function ensureCaches() {
   if (!R.cache.ventasDetalles || !R.cache.ventasDetalles.length) {
     R.cache.ventasDetalles = await fetchVentasDetalles();
   }
+  await cargarDescripcionesExport(R.cache.ventasDetalles);
   if (!R.cache.compras.length)   await fetchCompras();
   if (!R.cache.comprasDetalles || !R.cache.comprasDetalles.length) await cargarDetalleComprasExport();
   if (!R.cache.gastos.length)    await fetchGastos();
@@ -2739,7 +2746,12 @@ const COLUMNAS_REPORTES = {
     { key:'productos', label:'Productos vendidos', tipo:'texto' },
     { key:'servicios', label:'Servicios vendidos', tipo:'texto' },
     { key:'proveedor', label:'Proveedor',           tipo:'texto' },
-    { key:'total',     label:'Total',              tipo:'moneda' },
+    { key:'producto',    label:'Producto',          tipo:'texto' },
+    { key:'descripcion', label:'Descripción',       tipo:'texto' },
+    { key:'cantidad',    label:'Cantidad',          tipo:'cantidad' },
+    { key:'subTotal',    label:'Sub Total',         tipo:'moneda' },
+    { key:'subTotalNeto',label:'Sub Total Neto',    tipo:'moneda' },
+    { key:'total',     label:'Total venta',        tipo:'moneda' },
     { key:'ganancia',  label:'Ganancia',           tipo:'moneda' },
   ],
   compras: [
@@ -2842,6 +2854,50 @@ function filaVenta(v, detMap) {
     total: Number(v.total||0), ganancia: Number(v.ganancia||0),
   };
 }
+// Una fila por producto/servicio vendido (si hay columnas de detalle
+// activas). Sub Total = parte de la linea en el total cobrado (con IVA,
+// ya con descuentos); Sub Total Neto = esa misma parte sin IVA. Las
+// lineas suman exactamente el total de la venta. "Total venta" y
+// "Ganancia" salen solo en la primera linea para no contarse doble.
+function filasVentaExport(cols, detMap) {
+  const conDetalle = cols.some(c => COLS_DETALLE_COMPRA.includes(c.key));
+  if (!conDetalle) return R.cache.ventas.map(v => filaVenta(v, detMap));
+  const porVenta = {};
+  (R.cache.ventasDetalles || []).forEach(d => { (porVenta[d.venta_id] = porVenta[d.venta_id] || []).push(d); });
+  const prods = {};
+  (R.cache.productos || []).forEach(p => { prods[p.id] = p; });
+  const out = [];
+  R.cache.ventas.forEach(v => {
+    const base = filaVenta(v, detMap);
+    const lineas = porVenta[v.id] || [];
+    const total = Number(v.total||0), imp = Number(v.impuesto||0);
+    if (!lineas.length) {
+      out.push({ ...base, producto:'—', descripcion:'', cantidad:'', subTotal:total, subTotalNeto:total-imp });
+      return;
+    }
+    const sumLin = lineas.reduce((s,d) => s + Number(d.subtotal||0), 0);
+    lineas.forEach((d, i) => {
+      const parte = sumLin > 0 ? Number(d.subtotal||0) / sumLin : 1 / lineas.length;
+      const sub = total * parte;
+      const p = prods[d.producto_id];
+      const esServ = d.tipo_item === 'servicio';
+      const nombre = d.producto_nombre || (esServ ? 'Servicio' : 'Producto');
+      out.push({ ...base,
+        codigosBarras: p?.codigo_barras || '—',
+        productos: esServ ? 'No producto' : `${nombre} x${fmtNum(Number(d.cantidad||0))}`,
+        servicios: esServ ? nombre : '—',
+        proveedor: p?.proveedor_nombre || '—',
+        total: i === 0 ? base.total : '',
+        ganancia: i === 0 ? base.ganancia : '',
+        producto: nombre,
+        descripcion: R.cache.productosDescripcion?.[d.producto_id] || '',
+        cantidad: Number(d.cantidad||0),
+        subTotal: sub,
+        subTotalNeto: sub - imp * parte });
+    });
+  });
+  return out;
+}
 function filaCompra(c) {
   return { numero:c.numero, fecha:fmtFecha(c.fecha), proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
 }
@@ -2909,11 +2965,13 @@ function filaCreditoPago(f) {
 // Fila de "Totales" del reporte de Ventas, respetando solo las columnas
 // activas. La etiqueta "TOTALES" se coloca en la primera columna de
 // texto disponible que no sea numérica.
-function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExcel) {
+function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExcel, totImpuesto) {
   let etiquetaPuesta = false;
   return cols.map(c => {
     if (c.key === 'codigosBarras') return '';
     if (c.key === 'productos') return `Uds. producto: ${fmtNum(totUnidadesProd)}`;
+    if (c.key === 'subTotal')     return paraExcel ? totMonto : fmt(totMonto);
+    if (c.key === 'subTotalNeto') { const n = totMonto - (totImpuesto||0); return paraExcel ? n : fmt(n); }
     if (c.key === 'total')     return paraExcel ? totMonto : fmt(totMonto);
     if (c.key === 'ganancia')  return paraExcel ? totGanancia : fmt(totGanancia);
     if (!etiquetaPuesta) { etiquetaPuesta = true; return 'TOTALES'; }
@@ -3286,14 +3344,15 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       startY += 10;
     } else {
       const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
-      const filas  = R.cache.ventas.map(v => filaVenta(v, detMap));
+      const filas  = filasVentaExport(cols, detMap);
       const rows   = filas.map(f => filaAPDF(f, cols));
+      const totImpuesto = R.cache.ventas.reduce((s,v)=>s+Number(v.impuesto||0),0);
       const totUnidadesProd = totalUnidadesProducto(detMap);
       const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
       const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]],
-        foot:rows.length?[filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, false)]:[],
+        foot:rows.length?[filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, false, totImpuesto)]:[],
         theme:'striped', headStyles:{fillColor:[90,90,244]},
         footStyles:{fillColor:[230,230,250], textColor:[30,30,40], fontStyle:'bold'},
         margin:{left:10,right:10}, styles:{fontSize:8, overflow:'linebreak'} });
@@ -3594,13 +3653,14 @@ function hojaVentasXLSX(wb) {
     return;
   }
   const detMap = detalleVentaPorVenta(R.cache.ventasDetalles);
-  const filas  = R.cache.ventas.map(v => filaVenta(v, detMap));
+  const filas  = filasVentaExport(cols, detMap);
   const rows   = filas.map(f => filaAXLSX(f, cols));
+  const totImpuesto = R.cache.ventas.reduce((s,v)=>s+Number(v.impuesto||0),0);
   if (rows.length) {
     const totUnidadesProd = totalUnidadesProducto(detMap);
     const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
     const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
-    rows.push(filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, true));
+    rows.push(filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, true, totImpuesto));
   }
   appendSheetXLSX(wb, 'Ventas', headersXLSX(cols),
     rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
