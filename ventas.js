@@ -2835,9 +2835,8 @@ async function aplicarRecetaPendienteDeVender() {
   // la consola en vez de fallar en silencio sin ningun rastro.
   await abrirNuevaVenta();
   for (const item of (datos.items || [])) {
-    for (let i = 0; i < Math.max(1, Math.round(item.cantidad)); i++) {
-      await agregarAlCarritoConPrecio(item.producto_id, 'producto', null);
-    }
+    await agregarAlCarritoConPrecio(item.producto_id, 'producto', null);
+    if (Number(item.cantidad) > 0 && Number(item.cantidad) !== 1) cambiarCantidad(item.producto_id, Number(item.cantidad));
   }
   _recetaPendienteVincularId = datos.recetaId || null;
   showToast('Medicamentos de la receta agregados al carrito.');
@@ -2863,7 +2862,8 @@ async function aplicarCobroVeterinaria() {
   for (const it of (d.items || [])) {
     const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
     if (!prod) { noAgregados++; continue; }             // ya no existe, esta inactivo o es sustancia controlada
-    for (let i = 0; i < Math.max(1, Math.round(it.cantidad)); i++) await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
+    if (Number(it.cantidad) > 0 && Number(it.cantidad) !== 1) cambiarCantidad(it.producto_id, Number(it.cantidad));
     if (!S.carrito.some(x => x.id === it.producto_id)) noAgregados++;
   }
   S._vetConsultaId = d.consultaId || null;
@@ -4586,6 +4586,14 @@ function generarPDFRecibo(venta, items) {
     ruc:       S.empresaConfig?.ruc || '',
   };
   venta._hora = new Date().toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' });
+
+  // Unidad de medida junto a la cantidad (lb, kg...): viene del item o, si es un
+  // detalle guardado, se busca por producto_id en los productos ya cargados.
+  items = (items || []).map(i => {
+    if (i.unidadAbrev !== undefined) return i;
+    const cod = i.unidadCodigo || (S.productosCache || []).find(p => p.id === (i.producto_id || i.id))?.unidad_codigo;
+    return { ...i, unidadAbrev: abrevUnidad(cod) };
+  });
 
   // 1ª pasada (documento "borrador") solo para medir el alto necesario
   const draft = new jsPDF({ unit: 'mm', format: [80, 1000] });

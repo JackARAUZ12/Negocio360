@@ -247,7 +247,7 @@ async function guardarNuevoClienteProf() {
 async function loadProductos() {
   try {
     const { data } = await sbClient.from('productos')
-      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio')
+      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion')
       .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     const productos = data || [];
 
@@ -600,6 +600,16 @@ function cerrarSelectorEscalaProf() {
   STATE.escalaPendiente = null;
 }
 
+// Unidad de medida de una linea (lb, kg...). Nada para "unidad" ni sin unidad definida.
+function abrevUnidadProf(codigo) {
+  if (!codigo || codigo === 'unidad') return '';
+  return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
+}
+function unidadProdProf(id) {
+  const pr = (STATE.productos || []).find(x => x.id === id);
+  return pr ? { unidadCodigo: pr.unidad_codigo || null, permiteFraccion: pr.permite_fraccion } : { unidadCodigo: null, permiteFraccion: null };
+}
+
 function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
@@ -617,6 +627,7 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
       cantidad: 1, precio: precioUsar, descuento: 0, esCombo: !!p.esCombo,
+      unidadCodigo: p.unidad_codigo || null, permiteFraccion: p.permite_fraccion,
       escalaId: escalaElegida ? escalaElegida.id : null,
       escalaNombre: escalaElegida ? escalaElegida.nombre : null,
       sinStock: p.tipo === 'producto' && 1 > stockReal,
@@ -663,7 +674,7 @@ function renderCarritoProf() {
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
       <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${l.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
-      <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/></td>
+      <td><input type="number" class="carrito-input" value="${l.cantidad}" min="${l.permiteFraccion === false ? 1 : 0.001}" step="${l.permiteFraccion === false ? 1 : 'any'}" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/>${abrevUnidadProf(l.unidadCodigo) ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(abrevUnidadProf(l.unidadCodigo))}</div>` : ''}</td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/>
@@ -680,6 +691,15 @@ function renderCarritoProf() {
 }
 function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
   const l = STATE.carrito[idx]; if (!l) return;
+  if (campo === 'cantidad') {
+    let n = Math.round((parseFloat(valor) || 0) * 1000) / 1000;   // hasta 3 decimales
+    if (n > 0 && l.permiteFraccion === false && !Number.isInteger(n)) {
+      showToast(`"${l.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
+      renderCarritoProf();
+      return;
+    }
+    valor = n;
+  }
   l[campo] = parseFloat(valor) || 0;
   if (esPrecioManual) l.precioEditado = true;
   if (campo === 'cantidad' && l.tipo === 'producto' && !l.origenStockId) {
@@ -890,6 +910,7 @@ function abrirEditarProforma(id) {
       tipo: d.tipo_item === 'combo' ? 'producto' : d.tipo_item, esCombo: d.tipo_item === 'combo' || !!d.combo_id,
       costo: Number(d.costo||0), cantidad: Number(d.cantidad), precio: Number(d.precio), descuento: Number(d.descuento||0),
       escalaId: d.escala_id || null, escalaNombre: d.escala_nombre || null,
+      ...(d.combo_id ? {} : unidadProdProf(d.producto_id)),
     }));
     STATE.carrito.forEach(recalcularLineaProf);
     renderCarritoProf();
@@ -1254,7 +1275,7 @@ async function verDetalleProf(id) {
       <div class="table-wrap" style="margin-top:14px">
         <table><thead><tr><th>Ítem</th><th class="th-right">Cant.</th><th class="th-right">Precio</th><th class="th-right">Subtotal</th></tr></thead>
         <tbody>${STATE.detalleActual.map(d => `<tr>
-          <td>${esc(d.producto_nombre)}</td><td class="td-right">${fmtNum(d.cantidad)}</td>
+          <td>${esc(d.producto_nombre)}</td><td class="td-right">${fmtNum(d.cantidad)}${abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo) ? ' ' + esc(abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo)) : ''}</td>
           <td class="td-right td-money">${fmt(d.precio)}</td><td class="td-right td-money">${fmt(d.subtotal)}</td>
         </tr>`).join('') || '<tr><td colspan="4" class="empty-cell">Sin ítems</td></tr>'}</tbody></table>
       </div>`;
@@ -2047,7 +2068,7 @@ async function generarPDFProforma(p, items, cliente) {
     if (colSku) fila.push(it.producto_sku || it.sku || '—');
     if (colBarras) fila.push(it.codigo_barras || '—');
     fila.push(
-      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
+      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (abrevUnidadProf(unidadProdProf(it.producto_id).unidadCodigo) ? ' ' + abrevUnidadProf(unidadProdProf(it.producto_id).unidadCodigo) : ''),
       fmt(it.precio),
       Number(it.descuento) > 0 ? fmt(it.descuento) : '—',
       fmt(it.subtotal),
@@ -2190,6 +2211,7 @@ async function initProformas() {
     const { data: { user }, error } = await sbClient.auth.getUser();
     if (error || !user) { window.location.href = 'login.html'; return; }
     STATE.userId = user.id; STATE.userEmail = user.email;
+    try { window.N360Unidades?.cargarPersonalizadas(sbClient, user.id); } catch (_) {}
     if (user.email) checkAdminAccess(user.email);
     await cargarEstadoStockCompartido();
     await cargarConfigTicket();

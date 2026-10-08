@@ -745,9 +745,9 @@ async function cargarDescripcionesExport(detalles) {
   const mapa = R.cache.productosDescripcion || {};
   const ids = [...new Set((detalles||[]).map(d => d.producto_id).filter(id => id && !(id in mapa)))];
   for (let i = 0; i < ids.length; i += 200) {
-    const { data } = await sb.from('productos').select('id,descripcion')
+    const { data } = await sb.from('productos').select('id,descripcion,unidad_codigo')
       .eq('auth_user_id', R.userId).in('id', ids.slice(i, i + 200));
-    (data || []).forEach(p => { mapa[p.id] = p.descripcion || ''; });
+    (data || []).forEach(p => { mapa[p.id] = p.descripcion || ''; (R.cache.productosUnidad = R.cache.productosUnidad || {})[p.id] = p.unidad_codigo || null; });
     ids.slice(i, i + 200).forEach(id => { if (!(id in mapa)) mapa[id] = ''; });
   }
   R.cache.productosDescripcion = mapa;
@@ -2899,6 +2899,7 @@ function filasVentaExport(cols, detMap) {
         producto: nombre,
         descripcion: R.cache.productosDescripcion?.[d.producto_id] || '',
         cantidad: Number(d.cantidad||0),
+        _unidad: esServ ? '' : abrevExport(R.cache.productosUnidad?.[d.producto_id]),
         subTotal: sub,
         subTotalNeto: sub - imp * parte });
     });
@@ -2933,6 +2934,7 @@ function filasCompraExport(cols) {
         producto: d.producto_nombre || '—',
         descripcion: R.cache.productosDescripcion?.[d.producto_id] || '',
         cantidad: Number(d.cantidad||0),
+        _unidad: abrevExport(R.cache.productosUnidad?.[d.producto_id]),
         subTotal: sub,
         subTotalNeto: sub - Number(d.iva_monto||0) });
     });
@@ -2944,7 +2946,7 @@ function filaCliente(c) {
 }
 function filaProducto(p) {
   return { codigoBarras:p.codigo_barras||'—', producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
-    stock:Number(p.stock_actual||0), costo:Number(p.costo||0), precio:Number(p.precio||0),
+    stock:Number(p.stock_actual||0), _unidad: abrevExport(p.unidad_codigo), costo:Number(p.costo||0), precio:Number(p.precio||0),
     valorTotal:Number(p.stock_actual||0)*Number(p.costo||0) };
 }
 function filaActivoFijo(a) {
@@ -2987,10 +2989,15 @@ function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExc
 }
 
 // ---- Formateo de celdas según destino (PDF = texto, Excel = número) ----
-function celdaPDF(valor, tipoCol) {
+// Abreviatura de unidad (lb, kg...) de un producto para las columnas de cantidad/stock.
+function abrevExport(codigo) {
+  if (!codigo || codigo === 'unidad') return '';
+  return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
+}
+function celdaPDF(valor, tipoCol, unidad) {
   if (valor === '' || valor === null || valor === undefined) return '';
   if (tipoCol === 'moneda') return fmt(valor);
-  if (tipoCol === 'entero' || tipoCol === 'cantidad') return fmtNum(valor);
+  if (tipoCol === 'entero' || tipoCol === 'cantidad') return fmtNum(valor) + (tipoCol === 'cantidad' && unidad ? ' ' + unidad : '');
   return valor ?? '';
 }
 function celdaXLSX(valor, tipoCol) {
@@ -3007,8 +3014,19 @@ function celdaXLSX(valor, tipoCol) {
   if (tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
   return valor ?? '';
 }
-function filaAPDF(fila, cols)  { return cols.map(c => celdaPDF(fila[c.key], c.tipo)); }
-function filaAXLSX(fila, cols) { return cols.map(c => celdaXLSX(fila[c.key], c.tipo)); }
+const COLS_CON_UNIDAD = ['cantidad', 'stock'];
+function filaAPDF(fila, cols)  { return cols.map(c => celdaPDF(fila[c.key], c.tipo, COLS_CON_UNIDAD.includes(c.key) ? fila._unidad : '')); }
+// En Excel el valor sigue siendo un NUMERO (se puede sumar); la unidad se muestra
+// con el formato de la celda (ej. 1.5 lb), asi no se rompen filtros ni formulas.
+function filaAXLSX(fila, cols) {
+  const arr = cols.map(c => celdaXLSX(fila[c.key], c.tipo));
+  if (fila._unidad) {
+    const z = {};
+    cols.forEach((c, ci) => { if (COLS_CON_UNIDAD.includes(c.key) && c.tipo === 'cantidad' && typeof arr[ci] === 'number') z[ci] = `#,##0.###" ${String(fila._unidad).replace(/"/g, '')}"`; });
+    if (Object.keys(z).length) arr._z = z;
+  }
+  return arr;
+}
 function headersPDF(cols)  { return cols.map(c => c.label); }
 function headersXLSX(cols) { return cols.map(c => c.tipo==='moneda' ? `${c.label} (${sym()})` : c.label); }
 function formatosXLSX(cols) {
@@ -3627,7 +3645,7 @@ function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos) {
     formatos.forEach((f, ci) => {
       if (!f) return;
       const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-      if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = f;
+      if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = (row._z && row._z[ci]) || f;
     });
   });
 
