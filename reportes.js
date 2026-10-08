@@ -38,6 +38,8 @@ const R = {
     ventasDetalles: [],
     activos:        [],
     compras:        [],
+    comprasDetalles: [],
+    productosDescripcion: {},
     gastos:         [],
     clientes:       [],
     productos:      [],
@@ -701,7 +703,7 @@ function totalUnidadesProducto(detalleMap) {
 async function fetchCompras() {
   const { from, to } = getDateRange();
   const { data } = await sb.from('compras')
-    .select('id,numero,fecha,proveedor_id,proveedor_nombre,total,subtotal,estado,metodo_pago_nombre')
+    .select('id,numero,fecha,proveedor_id,proveedor_nombre,total,subtotal,estado,metodo_pago_nombre,concepto')
     .eq('auth_user_id', R.userId)
     .neq('estado','anulada')
     .gte('fecha', from).lte('fecha', to)
@@ -714,10 +716,28 @@ async function fetchComprasDetalles() {
   if (!R.cache.compras.length) return [];
   const ids = R.cache.compras.map(c => c.id);
   const { data } = await sb.from('detalle_compras')
-    .select('compra_id,producto_id,producto_nombre,cantidad,costo_unitario,subtotal')
+    .select('compra_id,producto_id,producto_nombre,cantidad,costo_unitario,subtotal,iva_monto,created_at')
     .eq('auth_user_id', R.userId)
     .in('compra_id', ids);
   return data || [];
+}
+
+// Detalle de compras para exportar (producto, descripcion, cantidad,
+// subtotal y subtotal neto). Se guarda aparte en R.cache; no toca los
+// datos que ya usan las pantallas. La descripcion sale de Productos.
+async function cargarDetalleComprasExport() {
+  if (!R.cache.compras.length) { R.cache.comprasDetalles = []; return; }
+  const det = await fetchComprasDetalles();
+  det.sort((a,b) => String(a.created_at||'').localeCompare(String(b.created_at||'')));
+  R.cache.comprasDetalles = det;
+  const ids = [...new Set(det.map(d => d.producto_id).filter(Boolean))];
+  const mapa = {};
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await sb.from('productos').select('id,descripcion')
+      .eq('auth_user_id', R.userId).in('id', ids.slice(i, i + 200));
+    (data || []).forEach(p => { mapa[p.id] = p.descripcion || ''; });
+  }
+  R.cache.productosDescripcion = mapa;
 }
 
 /* ---- GASTOS ---- */
@@ -2571,6 +2591,7 @@ async function ensureCaches() {
     R.cache.ventasDetalles = await fetchVentasDetalles();
   }
   if (!R.cache.compras.length)   await fetchCompras();
+  if (!R.cache.comprasDetalles || !R.cache.comprasDetalles.length) await cargarDetalleComprasExport();
   if (!R.cache.gastos.length)    await fetchGastos();
   if (!R.cache.clientes.length)  await fetchClientes();
   if (!R.cache.productos.length) await fetchProductos();
@@ -2725,7 +2746,12 @@ const COLUMNAS_REPORTES = {
     { key:'numero',    label:'#Compra',   tipo:'texto' },
     { key:'fecha',     label:'Fecha',     tipo:'texto' },
     { key:'proveedor', label:'Proveedor', tipo:'texto' },
-    { key:'total',     label:'Total',     tipo:'moneda' },
+    { key:'producto',    label:'Producto',          tipo:'texto' },
+    { key:'descripcion', label:'Descripción',       tipo:'texto' },
+    { key:'cantidad',    label:'Cantidad',          tipo:'cantidad' },
+    { key:'subTotal',    label:'Sub Total',         tipo:'moneda' },
+    { key:'subTotalNeto',label:'Sub Total Neto',    tipo:'moneda' },
+    { key:'total',     label:'Total compra', tipo:'moneda' },
     { key:'estado',    label:'Estado',    tipo:'texto' },
   ],
   clientes: [
@@ -2819,6 +2845,37 @@ function filaVenta(v, detMap) {
 function filaCompra(c) {
   return { numero:c.numero, fecha:fmtFecha(c.fecha), proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
 }
+// Una fila por producto comprado (si hay columnas de detalle activas).
+// Sub Total = lo cobrado por la linea (con IVA); Sub Total Neto = sin IVA.
+// El "Total compra" se muestra solo en la primera linea de cada compra
+// para que al sumar la columna no se cuente varias veces.
+const COLS_DETALLE_COMPRA = ['producto','descripcion','cantidad','subTotal','subTotalNeto'];
+function filasCompraExport(cols) {
+  const conDetalle = cols.some(c => COLS_DETALLE_COMPRA.includes(c.key));
+  if (!conDetalle) return R.cache.compras.map(c => filaCompra(c));
+  const porCompra = {};
+  (R.cache.comprasDetalles || []).forEach(d => { (porCompra[d.compra_id] = porCompra[d.compra_id] || []).push(d); });
+  const out = [];
+  R.cache.compras.forEach(c => {
+    const base = filaCompra(c);
+    const lineas = porCompra[c.id] || [];
+    if (!lineas.length) {
+      out.push({ ...base, producto: c.concepto || '—', descripcion:'', cantidad:'', subTotal:Number(c.total||0), subTotalNeto:Number(c.subtotal||0) });
+      return;
+    }
+    lineas.forEach((d, i) => {
+      const sub = Number(d.subtotal||0);
+      out.push({ ...base,
+        total: i === 0 ? base.total : '',
+        producto: d.producto_nombre || '—',
+        descripcion: R.cache.productosDescripcion?.[d.producto_id] || '',
+        cantidad: Number(d.cantidad||0),
+        subTotal: sub,
+        subTotalNeto: sub - Number(d.iva_monto||0) });
+    });
+  });
+  return out;
+}
 function filaCliente(c) {
   return { nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra) };
 }
@@ -2866,6 +2923,7 @@ function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExc
 
 // ---- Formateo de celdas según destino (PDF = texto, Excel = número) ----
 function celdaPDF(valor, tipoCol) {
+  if (valor === '' || valor === null || valor === undefined) return '';
   if (tipoCol === 'moneda') return fmt(valor);
   if (tipoCol === 'entero' || tipoCol === 'cantidad') return fmtNum(valor);
   return valor ?? '';
@@ -2879,6 +2937,7 @@ function celdaXLSX(valor, tipoCol) {
   // numero seguia siendo el monto en Cordobas -- una mezcla
   // confusa e incorrecta. Ahora se convierte igual que ya hacia el
   // PDF (celdaPDF ya usaba fmt(), que si convertia correctamente).
+  if (valor === '' || valor === null || valor === undefined) return '';
   if (tipoCol === 'moneda') return convertirParaMostrar(Number(valor||0), R.moneda);
   if (tipoCol === 'entero' || tipoCol === 'cantidad') return Number(valor||0);
   return valor ?? '';
@@ -3256,7 +3315,7 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.text('No hay columnas seleccionadas para Compras (revisa "Configurar exportaciones").', 10, startY);
       startY += 10;
     } else {
-      const rows = R.cache.compras.map(c => filaAPDF(filaCompra(c), cols));
+      const rows = filasCompraExport(cols).map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
         headStyles:{fillColor:[249,115,22]}, margin:{left:10,right:10}, styles:{fontSize:8} });
@@ -3553,7 +3612,7 @@ function hojaComprasXLSX(wb) {
     appendSheetXLSX(wb, 'Compras', ['Aviso'], [['No hay columnas seleccionadas para Compras (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = R.cache.compras.map(c => filaAXLSX(filaCompra(c), cols));
+  const rows = filasCompraExport(cols).map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Compras', headersXLSX(cols),
     rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
 }
