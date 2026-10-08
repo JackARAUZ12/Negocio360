@@ -2060,6 +2060,45 @@
           </div>
         </div>
 
+        <!-- Exportar toda mi informacion (Excel aqui o ZIP en segundo plano) -->
+        <div class="panel-card fade-in" style="margin-bottom:24px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar toda mi información
+            </div>
+          </div>
+          <div class="panel-body">
+            <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:16px;max-width:720px;line-height:1.7">
+              Descarga una copia completa de los datos de tu negocio: ventas con su detalle, compras, inventario y sus movimientos, clientes, créditos, caja, contabilidad, auditoría y más. Elige qué incluir.
+            </p>
+            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+              <button class="btn-secondary btn-sm" onclick="N360Export.marcarTodos(true)">Marcar todo</button>
+              <button class="btn-secondary btn-sm" onclick="N360Export.marcarTodos(false)">Quitar todo</button>
+            </div>
+            <div id="exp-todo-grupos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px"></div>
+
+            <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn-primary btn-sm" id="exp-todo-btn-excel" onclick="N360Export.exportarExcel()">Descargar en Excel (.xlsx)</button>
+              <button class="btn-secondary btn-sm" id="exp-todo-btn-cancelar" style="display:none" onclick="N360Export.cancelar()">Cancelar</button>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Se arma en este momento: mantén esta página abierta hasta que termine.</div>
+            <div id="exp-todo-progreso" style="display:none;margin-top:14px">
+              <div style="height:8px;background:var(--border);border-radius:99px;overflow:hidden"><div id="exp-todo-barra" style="height:100%;width:2%;background:var(--accent);transition:width .25s"></div></div>
+              <div id="exp-todo-texto" style="font-size:12.5px;color:var(--text-secondary);margin-top:6px"></div>
+            </div>
+
+            <div id="exp-todo-servidor-wrap" style="display:none;margin-top:24px;padding-top:18px;border-top:1px solid var(--border)">
+              <strong style="font-size:14px">En segundo plano (recomendado si tienes mucha información)</strong>
+              <p style="font-size:12.5px;color:var(--text-muted);margin:4px 0 12px;max-width:720px;line-height:1.6">Pides la exportación y puedes cerrar la página. Se prepara en nuestro servidor como un ZIP con un archivo CSV por tabla (se abren en Excel) y queda disponible aquí para descargar durante 48 horas.</p>
+              <button class="btn-primary btn-sm" id="exp-todo-btn-servidor" onclick="N360Export.pedirServidor()">Preparar en segundo plano (ZIP)</button>
+              <button class="btn-secondary btn-sm" onclick="N360Export.refrescar()">Actualizar lista</button>
+              <div id="exp-todo-lista"></div>
+            </div>
+            <div id="exp-todo-servidor-nd" style="display:none;margin-top:18px;font-size:12.5px;color:var(--text-muted)">La exportación en segundo plano se está activando para tu cuenta. Por ahora usa la descarga en Excel.</div>
+          </div>
+        </div>
+
         <!-- Configurar exportaciones: el cliente elige qué columnas aparecen -->
         <div class="panel-card fade-in" style="margin-bottom:24px">
           <div class="panel-header">
@@ -2211,7 +2250,8 @@
 </div><!-- /app -->
 
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="reportes.js?v=20261008b"></script>
+<script src="exportar-datos.js?v=20261008a"></script>
+<script src="reportes.js?v=20261008c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
 <script src="modulos-guard.js?v=20261007a"></script>

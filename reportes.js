@@ -3962,6 +3962,7 @@ async function initReportes() {
 
     R.userId    = user.id;
     try { window.N360Unidades?.cargarPersonalizadas(sb, user.id); } catch (_) {}
+    try { window.N360Export?.init(sb, user.id); } catch (_) {}
     R.userEmail = user.email;
     if (user.email) checkAdminAccess(user.email);
 
