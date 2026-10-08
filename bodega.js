@@ -108,7 +108,14 @@ function fmtNum(val) {
   if (val === null || val === undefined) return '—';
   const n = parseFloat(val);
   if (isNaN(n)) return '—';
-  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+// Stock con su unidad ("12,5 lb"); sin unidad definida queda como siempre.
+function fmtStockU(p) {
+  const cod = p && p.unidad_codigo;
+  const ab = (cod && cod !== 'unidad') ? (window.N360Unidades?.porCodigo(cod)?.abreviatura || '') : '';
+  return fmtNum(p && p.stock_actual) + (ab ? ' ' + ab : '');
 }
 
 // ============================================================
@@ -340,6 +347,7 @@ async function cargarDatosEmpresa() {
 async function cargarProductos() {
   try {
     mostrarSkeletons();
+    try { await window.N360Unidades?.cargarPersonalizadas(supabaseClient, STATE.user.id); } catch (_) {}
     const { data, error } = await supabaseClient
       .from('productos')
       .select('*')
@@ -1073,7 +1081,7 @@ function buscarProductoParaMover(q) {
   cont.innerHTML = coincidencias.map(p => `
     <div class="sri-item" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="seleccionarProductoParaMover('${p.id}')">
       <strong>${escHtml(p.nombre)}</strong>
-      <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}Stock: ${fmtNumeroSimple(p.stock_actual)}</div>
+      <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}Stock: ${fmtNumeroSimple(p.stock_actual)}${(p.unidad_codigo && p.unidad_codigo!=='unidad' && window.N360Unidades?.porCodigo(p.unidad_codigo)) ? ' ' + window.N360Unidades.porCodigo(p.unidad_codigo).abreviatura : ''}</div>
     </div>`).join('');
 }
 
@@ -1125,7 +1133,7 @@ async function confirmarMoverProducto() {
 }
 
 function fmtNumeroSimple(n) {
-  return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 });
+  return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 3 });
 }
 
 function datosParaExportarInventario() {
@@ -1404,7 +1412,7 @@ function renderTabla() {
     const stockHtml = p.tipo === 'servicio'
       ? '<span style="color:var(--text-muted);font-size:12px">N/A</span>'
       : `<div class="td-stock">
-           <span>${fmtNum(p.stock_actual)}</span>
+           <span>${fmtStockU(p)}</span>
            ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
          </div>`;
 
@@ -2134,7 +2142,7 @@ function abrirDetalle(id) {
       <div class="detail-item">
         <div class="detail-label">Stock Actual</div>
         <div class="detail-value" style="font-size:18px;font-weight:700">
-          ${fmtNum(p.stock_actual)}
+          ${fmtStockU(p)}
           ${stockBajo ? '<span class="stock-warn" style="font-size:12px">⚠ Stock bajo</span>' : ''}
         </div>
       </div>
@@ -2246,7 +2254,7 @@ function abrirMovimiento(id) {
   if (nombreEl) nombreEl.textContent = p.nombre;
 
   const stockEl = $('movStockActual');
-  if (stockEl) stockEl.textContent = `Stock actual: ${fmtNum(p.stock_actual)}`;
+  if (stockEl) stockEl.textContent = `Stock actual: ${fmtStockU(p)}`;
 
   const cantEl = $('movCantidad');
   const notaEl = $('movNota');

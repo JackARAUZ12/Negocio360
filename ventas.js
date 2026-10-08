@@ -770,7 +770,7 @@ async function abrirDetalle(ventaId) {
               <tr>
                 <td style="font-weight:500">${esc(it.producto_nombre)}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
                 <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
-                <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
+                <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:3})}</td>
                 <td>${fmt(it.precio)}</td>
                 <td>${Number(it.descuento)>0 ? fmt(it.descuento) : '—'}</td>
                 <td style="font-weight:600">${fmt(it.subtotal)}</td>
@@ -3641,6 +3641,12 @@ function abrevUnidad(codigo) {
   if (!codigo || codigo === 'unidad') return '';
   return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
 }
+// "1.5 lb" para tickets: sin unidad queda igual que siempre.
+function cantTicket(i) {
+  const ab = abrevUnidad(i.unidadCodigo);
+  const n = Number(i.cantidad);
+  return Number.isFinite(n) ? n.toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false }) + (ab ? ' ' + ab : '') : String(i.cantidad);
+}
 function fmtCant(n) {
   return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false });
 }
@@ -4158,7 +4164,7 @@ function calcularResumen() {
           <tr>
             <td style="font-weight:500">${esc(i.nombre)}</td>
             <td><span class="tipo-item-badge ${i.tipo==='producto'?'badge-prod':'badge-serv'}">${i.tipo}</span></td>
-            <td>${i.cantidad}</td>
+            <td>${cantTicket(i)}</td>
             <td>${fmt(i.precio)}</td>
             <td style="font-weight:700">${fmt(i.subtotal)}</td>
           </tr>`).join('')}
@@ -4529,7 +4535,7 @@ function dibujarRecibo(doc, venta, items) {
       }
       linea(3.9);
     });
-    const cant = Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 });
+    const cant = Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidadAbrev ? ' ' + it.unidadAbrev : '');
     doc.setFontSize(7.8);
     doc.setTextColor(0, 0, 0);
     doc.text(`${cant} x ${fmt(it.precio)}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
@@ -6724,7 +6730,7 @@ async function confirmarVentaRapida() {
 // Arma los datos base del recibo a partir de una venta ya guardada —
 // compartido entre las 3 vías de impresión posibles.
 function construirDatosReciboDesdeVenta(cfg, venta, items) {
-  const lineasItems = (items||[]).map(i => `${i.cantidad}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
+  const lineasItems = (items||[]).map(i => `${cantTicket(i)}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
   return {
     nombreNegocio: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360',
     encabezadoLineas: [
@@ -6866,7 +6872,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
     ${detalleHtml}
-    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
+    <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(i.precio)}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
 
   const html = `<!DOCTYPE html>
@@ -7057,7 +7063,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
     ${detalleHtml}
-    <div class="fila-dato"><span>${i.cantidad} x ${fmt(i.precio)}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
+    <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(i.precio)}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
 
   const html = `<!DOCTYPE html>

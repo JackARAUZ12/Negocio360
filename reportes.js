@@ -171,7 +171,14 @@ function fmtShort(n) {
 
 function fmtNum(n) {
   const v = parseFloat(n||0);
-  return v.toLocaleString('es-NI', { minimumFractionDigits:0, maximumFractionDigits:2 });
+  return v.toLocaleString('es-NI', { minimumFractionDigits:0, maximumFractionDigits:3 });
+}
+
+// Stock con su unidad en pantalla ("12,5 lb"); sin unidad queda igual.
+function fmtStockU(p) {
+  const cod = p && p.unidad_codigo;
+  const ab = (cod && cod !== 'unidad') ? (window.N360Unidades?.porCodigo(cod)?.abreviatura || '') : '';
+  return fmtNum(p && p.stock_actual) + (ab ? ' ' + ab : '');
 }
 
 function esc(s) {
@@ -843,7 +850,7 @@ async function fetchClientes() {
 /* ---- PRODUCTOS ---- */
 async function fetchProductos() {
   const { data } = await sb.from('productos')
-    .select('id,nombre,sku,codigo_barras,tipo,categoria,proveedor_id,proveedor_nombre,precio,costo,stock_actual,stock_minimo,activo')
+    .select('id,nombre,sku,codigo_barras,tipo,categoria,proveedor_id,proveedor_nombre,precio,costo,stock_actual,stock_minimo,activo,unidad_codigo')
     .eq('auth_user_id', R.userId)
     .order('nombre');
   R.cache.productos = data || [];
@@ -1604,7 +1611,7 @@ async function loadInventario() {
         <tr>
           <td class="td-rank">${rankIcon(i)}</td>
           <td style="font-weight:500">${esc(p.nombre)}</td>
-          <td class="td-right td-mono">${fmtNum(p.stock_actual)}</td>
+          <td class="td-right td-mono">${fmtStockU(p)}</td>
           <td class="td-right td-mono" style="color:var(--accent)">${fmt(p.valor)}</td>
         </tr>`).join('') : emptyRow(4,'Sin productos con stock');
     }
@@ -1618,7 +1625,7 @@ async function loadInventario() {
         const badgeTxt = Number(p.stock_actual)===0 ? 'Sin stock' : 'Stock bajo';
         return `<tr>
           <td style="font-weight:500">${esc(p.nombre)}</td>
-          <td class="td-right td-mono" style="color:var(--danger)">${fmtNum(p.stock_actual)}</td>
+          <td class="td-right td-mono" style="color:var(--danger)">${fmtStockU(p)}</td>
           <td class="td-right td-mono">${fmtNum(p.stock_minimo)}</td>
           <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
         </tr>`;
@@ -1775,7 +1782,7 @@ function renderInventarioTablaCompleta(activos, filtroProveedorId) {
         ${esc(p.categoria||'—')}
         ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted)">🏷️ ${esc(p.proveedor_nombre)}</div>` : ''}
       </td>
-      <td class="td-right td-mono">${fmtNum(p.stock_actual)}</td>
+      <td class="td-right td-mono">${fmtStockU(p)}</td>
       <td class="td-right td-mono">${fmt(costo)}</td>
       <td class="td-right td-mono">${fmt(precio)}</td>
       <td class="td-right" ${margenCls}>${margen}%</td>
@@ -3644,7 +3651,7 @@ function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos) {
 
 const NUM_MONEDA = '#,##0.00';
 const NUM_ENTERO = '#,##0';
-const NUM_CANT   = '#,##0.##';
+const NUM_CANT   = '#,##0.###';
 
 function hojaVentasXLSX(wb) {
   const cols = columnasActivas('ventas');
@@ -3936,6 +3943,7 @@ async function initReportes() {
     if (error||!user) { window.location.href = 'login.html'; return; }
 
     R.userId    = user.id;
+    try { window.N360Unidades?.cargarPersonalizadas(sb, user.id); } catch (_) {}
     R.userEmail = user.email;
     if (user.email) checkAdminAccess(user.email);
 

@@ -31,7 +31,12 @@ function fmt(n) {
   const v = convertirParaMostrar(parseFloat(n || 0), STATE.empresaConfig?.moneda);
   return `${sym} ${Number(v || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function fmtNum(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 }); }
+function fmtStockU(p) {
+  const cod = p && p.unidad_codigo;
+  const ab = (cod && cod !== 'unidad') ? (window.N360Unidades?.porCodigo(cod)?.abreviatura || '') : '';
+  return fmtNum(p && p.stock_actual) + (ab ? ' ' + ab : '');
+}
+function fmtNum(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 3 }); }
 
 /* =====================================================
    THEME / SIDEBAR (idéntico al resto del sistema)
@@ -104,6 +109,7 @@ async function checkAdminAccess(email) {
    nombre de cada cuenta (sucursal/bodega/Central) para mostrarlo.
 ===================================================== */
 async function cargarTodo() {
+  try { const { data: { user: _u } } = await sb.auth.getUser(); if (_u) await window.N360Unidades?.cargarPersonalizadas(sb, _u.id); } catch (_) {}
   const { data: productos, error } = await sb.from('productos').select('*');
   if (error) { console.error('cargarTodo productos:', error); STATE.productos = []; return; }
   STATE.productos = productos || [];
@@ -218,7 +224,7 @@ function mostrarDetalle(filas) {
   const filasHtml = filasConCuenta.map(p => `
     <tr>
       <td style="font-weight:600">${p._cuenta.tipo === 'bodega' ? '📦' : (p._cuenta.esCentral ? '🏠' : '🏬')} ${esc(p._cuenta.nombre)}</td>
-      ${esProducto ? `<td>${fmtNum(p.stock_actual)}</td><td>${fmt(p.costo)}</td>` : ''}
+      ${esProducto ? `<td>${fmtStockU(p)}</td><td>${fmt(p.costo)}</td>` : ''}
       <td>${fmt(p.precio)}</td>
       <td><span class="status-badge ${p.activo !== false ? 'badge-activo' : 'badge-inactivo'}">${p.activo !== false ? 'Activo' : 'Inactivo'}</span></td>
     </tr>`).join('');

@@ -132,15 +132,31 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   // si la columna SKU esta activa y a un item le falta, se completa en vivo desde productos
   // (por producto_id). Solo rellena lo que falta; nunca cambia un SKU ya guardado.
   const faltaSku = cfg.mostrar_sku === true && Array.isArray(items) && items.some(it => !it.sku && it.producto_id);
-  if ((cfg.mostrar_codigo_barras === true || faltaSku) && Array.isArray(items) && items.length) {
+  // Unidad de medida (lb, kg, m...): si la pagina cargo el catalogo de unidades,
+  // se completa en vivo por producto_id para mostrar "1.5 lb" en vez de "1.5".
+  const faltaUnidad = !!window.N360Unidades && Array.isArray(items) && items.some(it => it.unidad === undefined && it.producto_id);
+  if ((cfg.mostrar_codigo_barras === true || faltaSku || faltaUnidad) && Array.isArray(items) && items.length) {
     try {
       const ids = [...new Set(items.map(it => it.producto_id).filter(Boolean))];
       if (ids.length) {
         const sb = await _cc_clienteSupabase();
-        const { data: prods } = await sb.from('productos').select('id, codigo_barras, sku').in('id', ids);
-        const mapa = {}, mapaSku = {};
-        (prods || []).forEach(p => { mapa[p.id] = p.codigo_barras; mapaSku[p.id] = p.sku; });
-        items = items.map(it => ({ ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '', sku: it.sku || mapaSku[it.producto_id] || '' }));
+        let prods = null;
+        try {
+          const r = await sb.from('productos').select('id, codigo_barras, sku, unidad_codigo').in('id', ids);
+          if (!r.error) prods = r.data;
+        } catch (_) {}
+        if (!prods) { // respaldo: sin la columna de unidad, igual que antes
+          const r2 = await sb.from('productos').select('id, codigo_barras, sku').in('id', ids);
+          prods = r2.data;
+        }
+        const mapa = {}, mapaSku = {}, mapaUni = {};
+        (prods || []).forEach(p => { mapa[p.id] = p.codigo_barras; mapaSku[p.id] = p.sku; mapaUni[p.id] = p.unidad_codigo; });
+        items = items.map(it => {
+          const cod = mapaUni[it.producto_id];
+          const u = (cod && cod !== 'unidad') ? (window.N360Unidades?.porCodigo(cod)?.abreviatura || '') : '';
+          return { ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '', sku: it.sku || mapaSku[it.producto_id] || '',
+                   unidad: it.unidad !== undefined ? it.unidad : u };
+        });
       }
     } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras/SKU:', e); }
   }
@@ -248,7 +264,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     if (colSku) fila.push(it.sku || '—');
     if (colBarras) fila.push(it.codigo_barras || '—');
     fila.push(
-      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 2 }),
+      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidad ? ' ' + it.unidad : ''),
       fmtM(it.precio),
       Number(it.descuento) > 0 ? fmtM(it.descuento) : '—',
       fmtM(it.subtotal),
