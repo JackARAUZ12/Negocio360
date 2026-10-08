@@ -1595,6 +1595,35 @@ const CC_DENOMINACIONES = [
   { valor: 5,    tipo: 'Moneda' },  { valor: 1,   tipo: 'Moneda' },
   { valor: 0.50, tipo: 'Moneda' },  { valor: 0.25,tipo: 'Moneda' },
 ];
+// Denominaciones por moneda: Córdobas (las de siempre) y Dólares.
+const CC_DENOM_POR_MONEDA = {
+  NIO: CC_DENOMINACIONES,
+  USD: [
+    { valor: 100, tipo: 'Billete' }, { valor: 50, tipo: 'Billete' },
+    { valor: 20,  tipo: 'Billete' }, { valor: 10, tipo: 'Billete' },
+    { valor: 5,   tipo: 'Billete' }, { valor: 2,  tipo: 'Billete' },
+    { valor: 1,   tipo: 'Billete' },
+    { valor: 0.25, tipo: 'Moneda' }, { valor: 0.10, tipo: 'Moneda' },
+    { valor: 0.05, tipo: 'Moneda' }, { valor: 0.01, tipo: 'Moneda' },
+  ],
+};
+// Tasa "córdobas por 1 dólar": la de la empresa, o la del selector de
+// moneda de este dispositivo si la empresa no la ha guardado.
+function ccTasa() {
+  const t = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
+  if (t > 0) return t;
+  return (typeof tasaVisualizacionActiva === 'function' ? tasaVisualizacionActiva() : null) || 0;
+}
+// Convierte un monto contado en `moneda` a la moneda OFICIAL del negocio
+// (en la que viven todos los datos). Con otra moneda y sin tasa, no convierte.
+function ccAOficial(monto, moneda, tasa) {
+  const base = monedaBaseNegocio();
+  const t = tasa || ccTasa();
+  if (moneda === base || !t) return monto;
+  if (base === 'NIO' && moneda === 'USD') return monto * t;
+  if (base === 'USD' && moneda === 'NIO') return monto / t;
+  return monto;
+}
 let CC = { sesionHoy: null, modoConteo: null, historial: [] };
 
 /* =====================================================
@@ -2437,33 +2466,57 @@ function abrirModalConteo(modo) {
   document.getElementById('cc-conteo-titulo').textContent = modo === 'apertura' ? 'Contar dinero para abrir Caja Chica' : 'Contar dinero para cerrar Caja Chica';
   document.getElementById('cc-conteo-observaciones').value = '';
   const grid = document.getElementById('cc-denominaciones-grid');
-  grid.innerHTML = CC_DENOMINACIONES.map(d => `
+  const base = monedaBaseNegocio();
+  const otra = base === 'NIO' ? 'USD' : 'NIO';
+  const monedas = ccTasa() > 0 ? [base, otra] : [base];
+  const nombreMoneda = { NIO: 'Córdobas', USD: 'Dólares' };
+  grid.innerHTML = monedas.map(m => `
+    <div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;margin-top:${m===monedas[0]?0:8}px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+      <strong style="font-size:13px">${m === 'USD' ? '💵' : '🪙'} ${nombreMoneda[m]}</strong>
+      <span style="font-size:12px;color:var(--text-muted)">Subtotal: <b id="cc-sub-${m}">${simboloMoneda(m)} 0.00</b></span>
+    </div>` + CC_DENOM_POR_MONEDA[m].map(d => `
     <div>
-      <label style="font-size:11.5px;color:var(--text-muted)">${d.tipo} de ${sym()}${d.valor}</label>
-      <input type="number" min="0" step="1" value="" placeholder="0" class="cc-denom-input" data-valor="${d.valor}"
+      <label style="font-size:11.5px;color:var(--text-muted)">${d.tipo} de ${simboloMoneda(m)}${d.valor}</label>
+      <input type="number" min="0" step="1" value="" placeholder="0" class="cc-denom-input" data-valor="${d.valor}" data-moneda="${m}"
         oninput="actualizarTotalContado()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-app);color:var(--text-primary)"/>
-    </div>`).join('');
+    </div>`).join('')).join('')
+    + (monedas.length === 1 ? `<div style="grid-column:1/-1;font-size:11.5px;color:var(--text-muted)">Para contar también ${nombreMoneda[otra].toLowerCase()}, guardá la tasa de cambio en Caja.</div>` : '')
+    + (monedas.length === 2 ? `<div style="grid-column:1/-1;font-size:11.5px;color:var(--text-muted)">Tasa usada: ${ccTasa()} C$ por US$1. Cada moneda se cuenta por separado y se suman en ${nombreMoneda[base]}.</div>` : '');
   actualizarTotalContado();
   openModal('modal-conteo-billetes');
 }
 
-function actualizarTotalContado() {
-  let total = 0;
+// Suma por moneda y total en la moneda oficial del negocio.
+function ccCalcularConteo() {
+  const porMoneda = { NIO: 0, USD: 0 };
+  const det = {};
   document.querySelectorAll('.cc-denom-input').forEach(inp => {
     const cant = parseFloat(inp.value) || 0;
-    total += cant * parseFloat(inp.dataset.valor);
+    const m = inp.dataset.moneda || monedaBaseNegocio();
+    if (cant > 0) {
+      porMoneda[m] += cant * parseFloat(inp.dataset.valor);
+      det[`${m}_${inp.dataset.valor}`] = cant;
+    }
   });
-  document.getElementById('cc-total-contado').textContent = fmt(round2(total));
+  const tasa = ccTasa();
+  const total = Object.keys(porMoneda).reduce((t, m) => t + ccAOficial(porMoneda[m], m, tasa), 0);
+  return { porMoneda, det, tasa, total: round2(total) };
+}
+
+function actualizarTotalContado() {
+  const r = ccCalcularConteo();
+  ['NIO','USD'].forEach(m => {
+    const el = document.getElementById('cc-sub-' + m);
+    if (el) el.textContent = fmtMoneda(round2(r.porMoneda[m]), m);
+  });
+  document.getElementById('cc-total-contado').textContent = fmt(r.total);
 }
 
 function leerDenominacionesContadas() {
-  const det = {};
-  let total = 0;
-  document.querySelectorAll('.cc-denom-input').forEach(inp => {
-    const cant = parseFloat(inp.value) || 0;
-    if (cant > 0) { det[inp.dataset.valor] = cant; total += cant * parseFloat(inp.dataset.valor); }
-  });
-  return { detalle: det, total: round2(total) };
+  const r = ccCalcularConteo();
+  const detalle = { ...r.det };
+  if (r.tasa > 0 && Object.keys(detalle).some(k => !k.startsWith('' + monedaBaseNegocio() + '_'))) detalle._tasa = r.tasa;
+  return { detalle, total: r.total };
 }
 
 async function confirmarConteoBilletes() {
@@ -2542,10 +2595,16 @@ async function verReporteCC(sesionId) {
     CC.reporteMovimientos = movs || [];
 
     const filaDenom = (obj, titulo) => {
-      const entradas = Object.entries(obj || {}).sort((a,b) => Number(b[0])-Number(a[0]));
+      const tasaGuardada = Number((obj || {})._tasa) || 0;
+      // Claves nuevas "NIO_100"/"USD_20"; las antiguas (solo el valor) se
+      // muestran en la moneda oficial, como siempre.
+      const entradas = Object.entries(obj || {}).filter(([k]) => !k.startsWith('_')).map(([k, cant]) => {
+        const p = k.includes('_') ? k.split('_') : [monedaBaseNegocio(), k];
+        return [p[0], Number(p[1]), cant];
+      }).sort((a,b) => (a[0] === b[0] ? b[1]-a[1] : (a[0] === monedaBaseNegocio() ? -1 : 1)));
       if (!entradas.length) return `<div style="font-size:12px;color:var(--text-muted)">${titulo}: sin desglose</div>`;
       return `<div style="margin-bottom:8px"><strong style="font-size:12.5px">${titulo}</strong>` +
-        entradas.map(([val,cant]) => `<div class="tp-row" style="font-size:12px"><span>${sym()}${val} × ${cant}</span><span>${fmt(Number(val)*Number(cant))}</span></div>`).join('') + `</div>`;
+        entradas.map(([mon,val,cant]) => `<div class="tp-row" style="font-size:12px"><span>${simboloMoneda(mon)}${val} × ${cant}</span><span>${fmtMoneda(val*Number(cant), mon)}</span></div>`).join('') + `</div>`;
     };
 
     const dif = Number(s.diferencia||0);
