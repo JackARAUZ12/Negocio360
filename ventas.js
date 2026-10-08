@@ -581,7 +581,7 @@ async function loadProductosPreview(ventaId) {
     const el = document.getElementById(`prod-preview-${ventaId}`);
     if (!el) return;
     if (!data || !data.length) { el.innerHTML = '<span style="color:var(--text-muted)">—</span>'; return; }
-    const txt = data.map(d => `${d.producto_nombre} ×${Number(d.cantidad).toFixed(0)}`).join(', ');
+    const txt = data.map(d => `${d.producto_nombre} ×${Number(d.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false })}`).join(', ');
     el.textContent = txt;
     el.title = txt;
   } catch { /* silencioso */ }
@@ -851,7 +851,7 @@ async function anularVenta() {
         const { data: prod } = await sb.from('productos')
           .select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', S.userId).maybeSingle();
         if (prod) {
-          const nuevoStock = round2(Number(prod.stock_actual || 0) + Number(d.cantidad));
+          const nuevoStock = Math.round((Number(prod.stock_actual || 0) + Number(d.cantidad)) * 1000) / 1000;
           await sb.from('productos').update({ stock_actual: nuevoStock })
             .eq('id', d.producto_id).eq('auth_user_id', S.userId);
         }
@@ -863,8 +863,8 @@ async function anularVenta() {
             const { data: prodActual } = await sb.from('productos')
               .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
             if (!prodActual) continue;
-            const devolverCantidad = round2(Number(compItem.cantidad) * Number(d.cantidad));
-            const nuevoStock = round2(Number(prodActual.stock_actual || 0) + devolverCantidad);
+            const devolverCantidad = Math.round(Number(compItem.cantidad) * Number(d.cantidad) * 1000) / 1000;
+            const nuevoStock = Math.round((Number(prodActual.stock_actual || 0) + devolverCantidad) * 1000) / 1000;
             await sb.from('productos').update({ stock_actual: nuevoStock })
               .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
           }
@@ -1076,7 +1076,7 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
@@ -1123,6 +1123,7 @@ async function loadProductosCache() {
     } catch (eCombo) { console.warn('No se pudieron cargar los combos para Ventas:', eCombo); }
 
     S.productosCache = [...productos, ...combosCache];
+    try { await window.N360Unidades?.cargarPersonalizadas(sb, S.userId); } catch (_) {}
   } catch(e) { S.productosCache = []; }
   // Con Stock Compartido activo, el stock del grupo tambien se refresca
   // (ej. despues de una venta), para que la busqueda no muestre
@@ -2030,9 +2031,9 @@ function buscarProductosParaVenta(q, tipo) {
       // que sí se puede continuar — nunca se oculta el estado real.
       stockLabel = S.venderSinStockActivo ? 'Sin stock (se puede vender)' : 'Sin stock'; stockCls = 'stock-out';
     } else if (stockNum <= 5) {
-      stockLabel = `Stock: ${stockNum}`; stockCls = 'stock-low';
+      stockLabel = `Stock: ${fmtCant(stockNum)}${abrevUnidad(p.unidad_codigo) ? ' ' + abrevUnidad(p.unidad_codigo) : ''}`; stockCls = 'stock-low';
     } else {
-      stockLabel = `Stock: ${stockNum}`; stockCls = 'stock-ok';
+      stockLabel = `Stock: ${fmtCant(stockNum)}${abrevUnidad(p.unidad_codigo) ? ' ' + abrevUnidad(p.unidad_codigo) : ''}`; stockCls = 'stock-ok';
     }
     // Con Stock Compartido O Vender-sin-stock activos, nunca se
     // deshabilita por falta de stock local.
@@ -2046,7 +2047,7 @@ function buscarProductosParaVenta(q, tipo) {
           const min = Math.min(...precios);
           return `Desde ${fmt(min)}`;
         })()
-      : fmt(p.precio);
+      : fmt(p.precio) + (abrevUnidad(p.unidad_codigo) ? ` / ${abrevUnidad(p.unidad_codigo)}` : '');
     return `
     <div class="prod-result-item" onclick="${disabled ? '' : `agregarAlCarrito('${p.id}','${tipo}')`}"
       style="${disabled ? 'opacity:.45;cursor:not-allowed;' : ''}">
@@ -2975,6 +2976,8 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       presentaciones: (tipo === 'producto' && !prod.esCombo)
         ? (S.presentacionesPorProducto?.[prod.id] || []) : [],
       unidadMedida: prod.unidad_medida || null,
+      unidadCodigo: prod.unidad_codigo || null,
+      permiteFraccion: (prod.permite_fraccion === true || prod.permite_fraccion === false) ? prod.permite_fraccion : null,
       presentacionId: null,
       presentacionNombre: null,
       presentacionFactor: null,
@@ -3631,11 +3634,39 @@ function confirmarGrupoPromoVenta() {
   refrescarCarritoTrasPromo(S.promoContextoActivo);
 }
 
+/* ---- UNIDADES DE MEDIDA (cantidades por libra, kilo, metro...) ---- */
+// Abreviatura a mostrar junto a la cantidad. Nada para "unidad" ni para
+// productos sin unidad definida -- se ven exactamente como siempre.
+function abrevUnidad(codigo) {
+  if (!codigo || codigo === 'unidad') return '';
+  return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
+}
+function fmtCant(n) {
+  return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false });
+}
+function cantidadFraccionable(item) { return item.permiteFraccion === true; }
+function cantidadSoloEntera(item)   { return item.permiteFraccion === false; }
+
+// Escribir un monto ("C$30 de queso") y calcular la cantidad.
+function cambiarPorMonto(productoId, val) {
+  const item = S.carrito.find(c => c.id === productoId);
+  const monto = parseFloat(val);
+  if (!item || !(monto > 0) || !(item.precio > 0)) return;
+  cambiarCantidad(productoId, Math.round((monto / item.precio) * 1000) / 1000);
+}
+
 function cambiarCantidad(productoId, val) {
   const item = S.carrito.find(c => c.id===productoId);
   if (!item) return;
-  const n = parseFloat(val) || 0;
+  let n = parseFloat(val) || 0;
   if (n <= 0) { removeFromCarrito(productoId); return; }
+  n = Math.round(n * 1000) / 1000;   // hasta 3 decimales
+  if (cantidadSoloEntera(item) && !Number.isInteger(n)) {
+    const ab = abrevUnidad(item.unidadCodigo);
+    showToast(`"${item.nombre}" se vende en unidades enteras${ab ? ' (' + ab + ')' : ''}. Escribe un número entero.`, 'error');
+    renderCarrito(item.tipo);
+    return;
+  }
   if (item.tipo==='producto' && n > item.stockMax) {
     showToast(`Stock máximo disponible: ${item.stockMax}`, 'error');
     return;
@@ -3804,8 +3835,17 @@ function renderCarrito(tipo) {
       </td>
       <td>
         <input type="number" class="cart-qty-input" value="${item.cantidad}"
-          min="0.01" step="0.01" max="${item.stockMax!==Infinity ? item.stockMax : ''}"
+          min="${cantidadSoloEntera(item) ? 1 : 0.001}" step="${cantidadSoloEntera(item) ? 1 : 'any'}" max="${item.stockMax!==Infinity ? item.stockMax : ''}"
           onchange="cambiarCantidad('${item.id}',this.value)"/>
+        ${abrevUnidad(item.unidadCodigo) ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(abrevUnidad(item.unidadCodigo))}</div>` : ''}
+        ${cantidadFraccionable(item) ? `
+          <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
+            ${[0.5, 1, 1.5, 2].map(v => `<button type="button" onclick="cambiarCantidad('${item.id}',${v})"
+              style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:${Number(item.cantidad)===v ? 'var(--accent)' : 'var(--bg-hover,#f0f0f5)'};color:${Number(item.cantidad)===v ? '#fff' : 'var(--text-secondary)'};cursor:pointer">${v === 0.5 ? '½' : v === 1.5 ? '1½' : v}</button>`).join('')}
+          </div>
+          <input type="number" min="0" step="any" placeholder="Por monto" title="Escribe cuánto dinero quiere el cliente y se calcula la cantidad"
+            onchange="cambiarPorMonto('${item.id}',this.value); this.value=''"
+            style="margin-top:4px;width:84px;font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-surface,#fff);color:var(--text-primary,#111)"/>` : ''}
       </td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
@@ -6064,6 +6104,8 @@ function agregarAlCarritoVR(prod) {
       codigo_barras: prod.codigo_barras || null,
       tipo:          prod.tipo,
       cantidad:      1,
+      unidadCodigo:  prod.unidad_codigo || null,
+      permiteFraccion: (prod.permite_fraccion === true || prod.permite_fraccion === false) ? prod.permite_fraccion : null,
       precio:        Number(prod.precio)  || 0,
       costo:         Number(prod.costo)   || 0,
       stockDisponible: stockReal, // valor REAL -- se usa también para el descuento final de stock, nunca debe ser Infinity
@@ -6082,6 +6124,12 @@ function cambiarCantidadVR(id, val) {
   if (!item) return;
   let n = parseFloat(val);
   if (isNaN(n) || n <= 0) n = 1;
+  n = Math.round(n * 1000) / 1000;
+  if (item.permiteFraccion === false && !Number.isInteger(n)) {
+    showToast(`"${item.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
+    renderCarritoVentaRapida();
+    return;
+  }
   if (item.tipo === 'producto' && n > item.stockTope) {
     showToast(`⚠️ Stock máximo disponible: ${item.stockDisponible}`, 'error');
     n = item.stockTope;
@@ -6141,8 +6189,8 @@ function renderCarritoVentaRapida() {
         <td style="font-weight:500">${esc(item.nombre)}${item.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${item.esPromocion ? `<div style="font-size:11px;color:var(--success);font-weight:600">🎁 Promoción</div>` : ''}${item.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(item.escalaNombre)}</div>` : ''}${item.origenStockNombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(item.origenStockNombre)}</div>` : ''}${item.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}</td>
         <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">${esc(item.codigo_barras||item.sku||'—')}</td>
         <td>
-          <input type="number" min="1" step="1" value="${item.cantidad}"
-            style="width:56px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
+          <input type="number" min="${item.permiteFraccion === false || item.permiteFraccion == null ? 1 : 0.001}" step="${item.permiteFraccion === true ? 'any' : 1}" value="${item.cantidad}"
+            style="width:${item.permiteFraccion === true ? 72 : 56}px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
             onchange="cambiarCantidadVR('${item.id}', this.value)"/>
         </td>
         <td>
