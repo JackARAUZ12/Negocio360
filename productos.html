@@ -906,6 +906,33 @@
             <input type="number" class="form-input" id="inputPrecio"
                    placeholder="0.00" min="0" step="0.01" oninput="actualizarMargenPreview()" />
           </div>
+          <!-- UNIDAD DE MEDIDA (solo productos) -->
+          <div class="form-group full" id="wrapUnidadVenta" style="padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-app)">
+            <label class="form-label" for="selUnidadVenta">Se vende por</label>
+            <select class="form-input" id="selUnidadVenta" onchange="alCambiarUnidadVenta()"></select>
+            <div id="hintUnidadVenta" style="font-size:12px;color:var(--text-secondary);margin-top:6px"></div>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="chkPermiteFraccion" style="width:16px;height:16px"/>
+              <span>Permitir cantidades fraccionadas <span id="ejemploFraccion" style="color:var(--text-muted)"></span></span>
+            </label>
+            <div id="panelUnidadNueva" style="display:none;margin-top:12px;padding:12px;border:1px dashed var(--border);border-radius:var(--radius-md)">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">Nueva unidad</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <input type="text" class="form-input" id="inputUnidadNuevaNombre" placeholder="Nombre (ej: Rollo)" maxlength="30"/>
+                <input type="text" class="form-input" id="inputUnidadNuevaAbrev" placeholder="Abreviatura (ej: rollo)" maxlength="10"/>
+                <select class="form-input" id="selUnidadNuevaTipo">
+                  <option value="conteo">Por conteo</option><option value="peso">Por peso</option>
+                  <option value="volumen">Por volumen</option><option value="longitud">Por longitud</option>
+                </select>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="chkUnidadNuevaFraccion"/> Se puede fraccionar</label>
+              </div>
+              <div class="form-error" id="errUnidadNueva" style="margin-top:6px"></div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button type="button" class="btn btn-primary btn-sm" onclick="guardarUnidadNueva()">Guardar unidad</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="cancelarUnidadNueva()">Cancelar</button>
+              </div>
+            </div>
+          </div>
           <div class="form-group full" id="margenPreviewWrap" style="display:none">
             <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;color:var(--text-secondary)">
               Margen calculado: <strong id="margenPreview" style="color:var(--text-primary)">—</strong>
@@ -953,7 +980,7 @@
             <div class="form-group">
               <label class="form-label" for="inputStockActual">Stock inicial</label>
               <input type="number" class="form-input" id="inputStockActual"
-                     placeholder="0" min="0" step="0.01" />
+                     placeholder="0" min="0" step="0.001" />
             </div>
             <div class="form-group" id="grupoLoteInicial" style="display:none;grid-column:1/-1;background:var(--bg-app);border-radius:8px;padding:10px 12px">
               <label class="form-label">📦 Lote del stock inicial (opcional)</label>
@@ -967,13 +994,13 @@
             <div class="form-group">
               <label class="form-label" for="inputStockMinimo">Stock mínimo</label>
               <input type="number" class="form-input" id="inputStockMinimo"
-                     placeholder="0" min="0" step="0.01" />
+                     placeholder="0" min="0" step="0.001" />
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
             </div>
             <div class="form-group">
               <label class="form-label" for="inputStockMaximo">Stock máximo (opcional)</label>
               <input type="number" class="form-input" id="inputStockMaximo"
-                     placeholder="Sin límite" min="0" step="0.01" />
+                     placeholder="Sin límite" min="0" step="0.001" />
               <span class="form-hint">Para saber cuánto comprar como máximo</span>
             </div>
             <div class="form-group">
@@ -1036,19 +1063,19 @@
             <div class="form-group">
               <label class="form-label" for="inputStockActualEdit">Stock actual</label>
               <input type="number" class="form-input" id="inputStockActualEdit"
-                     placeholder="0" min="0" step="0.01" />
+                     placeholder="0" min="0" step="0.001" />
               <span class="form-hint">Ajusta el stock si es necesario</span>
             </div>
             <div class="form-group">
               <label class="form-label" for="inputStockMinimoEdit">Stock mínimo</label>
               <input type="number" class="form-input" id="inputStockMinimoEdit"
-                     placeholder="0" min="0" step="0.01" />
+                     placeholder="0" min="0" step="0.001" />
               <span class="form-hint">Alerta cuando llegue a este nivel</span>
             </div>
             <div class="form-group">
               <label class="form-label" for="inputStockMaximoEdit">Stock máximo (opcional)</label>
               <input type="number" class="form-input" id="inputStockMaximoEdit"
-                     placeholder="Sin límite" min="0" step="0.01" />
+                     placeholder="Sin límite" min="0" step="0.001" />
               <span class="form-hint">Para saber cuánto comprar como máximo</span>
             </div>
             <div class="form-group">
@@ -1478,7 +1505,8 @@
     if (menu && wrap && !wrap.contains(ev.target)) menu.classList.remove('open');
   });
 </script>
-<script src="productos.js?v=20261007b"></script>
+<script src="unidades-medida.js?v=20261008a"></script>
+<script src="productos.js?v=20261008a"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

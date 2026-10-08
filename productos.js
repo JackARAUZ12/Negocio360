@@ -344,6 +344,7 @@ async function cargarDatosEmpresa() {
     // módulo solo consulta STATE.manejaPresentaciones -- si está apagado,
     // nada de presentaciones se muestra ni se consulta.
     STATE.manejaPresentaciones = empresa?.maneja_presentaciones === true;
+    if (window.N360Unidades) { try { await window.N360Unidades.cargarPersonalizadas(supabaseClient, STATE.user.id); poblarSelectorUnidad('unidad'); } catch (e) { console.warn(e); } }
     STATE.usaNumeroSerie = empresa?.usa_numero_serie === true;
     STATE.usaModeloProducto = empresa?.usa_modelo_producto === true;
     STATE.ordenColumnasProductos = Array.isArray(empresa?.orden_columnas_productos) ? empresa.orden_columnas_productos : null;
@@ -2854,6 +2855,124 @@ function configurarCamposSegunModo(modo) {
   }
 }
 
+/* ============================================================
+   UNIDAD DE MEDIDA — "Se vende por"
+   ============================================================ */
+function poblarSelectorUnidad(seleccion, textoLegacy, conSinDefinir) {
+  const sel = $('selUnidadVenta');
+  if (!sel || !window.N360Unidades) return;
+  const U = window.N360Unidades;
+  const grupos = Object.keys(U.TIPOS).map(tipo => {
+    const items = U.todas().filter(u => u.tipo === tipo);
+    if (!items.length) return '';
+    return `<optgroup label="${U.TIPOS[tipo]}">` +
+      items.map(u => `<option value="${escHtml(u.codigo)}">${escHtml(u.nombre)} (${escHtml(u.abreviatura)})</option>`).join('') + '</optgroup>';
+  }).join('');
+  const legacy = textoLegacy ? `<option value="__legacy">Texto anterior: ${escHtml(textoLegacy)}</option>` : '';
+  const sinDef = conSinDefinir ? '<option value="__sin">Sin definir (como estaba)</option>' : '';
+  sel.innerHTML = sinDef + legacy + grupos + '<option value="__nueva">➕ Crear otra unidad…</option>';
+  sel.dataset.legacy = textoLegacy || '';
+  sel.value = seleccion || 'unidad';
+  if (sel.value !== (seleccion || 'unidad')) sel.value = 'unidad';
+}
+
+function alCambiarUnidadVenta() {
+  const sel = $('selUnidadVenta');
+  if (!sel) return;
+  if (sel.value === '__nueva') {
+    $('panelUnidadNueva').style.display = '';
+    $('inputUnidadNuevaNombre')?.focus();
+    return;
+  }
+  $('panelUnidadNueva').style.display = 'none';
+  const u = window.N360Unidades?.porCodigo(sel.value);
+  if (u) $('chkPermiteFraccion').checked = !!u.fraccionable;
+  actualizarHintUnidad();
+}
+
+function actualizarHintUnidad() {
+  const sel = $('selUnidadVenta');
+  const hint = $('hintUnidadVenta');
+  const ej = $('ejemploFraccion');
+  if (!sel || !hint) return;
+  const u = window.N360Unidades?.porCodigo(sel.value);
+  if (!u) {
+    hint.textContent = sel.value === '__legacy' ? 'Se mantiene la unidad que ya tenía este producto.'
+      : sel.value === '__sin' ? 'Este producto no tiene unidad definida: sigue funcionando igual. Elige una para usar cantidades por libra, kilo, metro, etc.' : '';
+    if (ej) ej.textContent = '';
+    return;
+  }
+  hint.innerHTML = `El <strong>costo</strong> y el <strong>precio</strong> de este producto son por <strong>${escHtml(u.nombre.toLowerCase())}</strong>. El inventario se cuenta en ${escHtml(u.plural.toLowerCase())}.`;
+  if (ej) ej.textContent = u.fraccionable ? `(ej: 1.5 ${u.abreviatura}, 0.25 ${u.abreviatura})` : '';
+}
+
+function cancelarUnidadNueva() {
+  $('panelUnidadNueva').style.display = 'none';
+  $('errUnidadNueva').textContent = '';
+  const sel = $('selUnidadVenta');
+  if (sel) { sel.value = 'unidad'; alCambiarUnidadVenta(); }
+}
+
+async function guardarUnidadNueva() {
+  const err = $('errUnidadNueva');
+  err.textContent = '';
+  try {
+    const u = await window.N360Unidades.crearPersonalizada(supabaseClient, STATE.user.id, {
+      nombre: $('inputUnidadNuevaNombre').value,
+      abreviatura: $('inputUnidadNuevaAbrev').value,
+      tipo: $('selUnidadNuevaTipo').value,
+      fraccionable: $('chkUnidadNuevaFraccion').checked,
+    });
+    poblarSelectorUnidad(u.codigo, $('selUnidadVenta').dataset.legacy);
+    $('panelUnidadNueva').style.display = 'none';
+    ['inputUnidadNuevaNombre','inputUnidadNuevaAbrev'].forEach(i => $(i).value = '');
+    $('chkUnidadNuevaFraccion').checked = false;
+    alCambiarUnidadVenta();
+  } catch (e) {
+    err.textContent = e.message || 'No se pudo guardar la unidad.';
+  }
+}
+
+// Valores de unidad para guardar el producto. Servicios no llevan unidad.
+function leerUnidadParaGuardar(tipo) {
+  if (tipo !== 'producto') return {};
+  const sel = $('selUnidadVenta');
+  if (!sel || !window.N360Unidades) return {};
+  const v = sel.value;
+  if (v === '__sin') return {};
+  if (v === '__legacy') {
+    // Se conserva el texto anterior sin tocarlo.
+    return { permite_fraccion: $('chkPermiteFraccion')?.checked === true ? true : null };
+  }
+  const u = window.N360Unidades.porCodigo(v);
+  if (!u) return {};
+  return {
+    unidad_codigo: u.codigo,
+    unidad_medida: u.nombre.toLowerCase(),
+    permite_fraccion: $('chkPermiteFraccion')?.checked === true,
+  };
+}
+
+function aplicarUnidadAlFormulario(p) {
+  const U = window.N360Unidades;
+  if (!U) return;
+  let codigo = p?.unidad_codigo || null;
+  let legacy = '';
+  if (!codigo && p?.unidad_medida) {
+    const m = U.porTexto(p.unidad_medida);
+    if (m) codigo = m.codigo; else legacy = p.unidad_medida;
+  }
+  // Producto existente sin unidad: se deja "Sin definir" para no cambiar
+  // su comportamiento (p. ej. que ya venda fracciones) solo por editarlo.
+  const existenteSinUnidad = !!p && !codigo && !legacy;
+  poblarSelectorUnidad(codigo || (legacy ? '__legacy' : (existenteSinUnidad ? '__sin' : 'unidad')), legacy, existenteSinUnidad);
+  const u = U.porCodigo($('selUnidadVenta').value);
+  const chk = $('chkPermiteFraccion');
+  if (chk) chk.checked = (p && p.permite_fraccion != null) ? !!p.permite_fraccion : !!(u && u.fraccionable);
+  $('panelUnidadNueva').style.display = 'none';
+  actualizarHintUnidad();
+}
+
 function setTipoModal(tipo, habilitarToggle = true) {
   const btnProd      = $('toggleProducto');
   const btnServ      = $('toggleServicio');
@@ -2878,6 +2997,8 @@ function setTipoModal(tipo, habilitarToggle = true) {
   if (wrapMP) wrapMP.style.display = tipo === 'producto' ? '' : 'none';
   if (wrapMPEdit) wrapMPEdit.style.display = tipo === 'producto' ? '' : 'none';
   aplicarVisibilidadFarmacia();
+  const wrapUnidad = $('wrapUnidadVenta');
+  if (wrapUnidad) wrapUnidad.style.display = tipo === 'producto' ? '' : 'none';
 
   if (btnProd) btnProd.disabled = !habilitarToggle;
   if (btnServ) btnServ.disabled = !habilitarToggle;
@@ -3190,6 +3311,7 @@ function resetFormulario() {
   STATE.formPresentaciones = [];
   const inputUM = $('inputUnidadMedida');
   if (inputUM) inputUM.value = '';
+  aplicarUnidadAlFormulario(null);
   renderPresentacionesEditor();
   aplicarVisibilidadPresentaciones();
   const inputSerie = $('inputRequiereSerie');
@@ -3264,6 +3386,7 @@ function cargarFormulario(p) {
   // Presentaciones de venta (si el negocio activó la función)
   const inputUMEdit = $('inputUnidadMedida');
   if (inputUMEdit) inputUMEdit.value = p.unidad_medida || '';
+  aplicarUnidadAlFormulario(p);
   STATE.formPresentaciones = [];
   renderPresentacionesEditor();
   aplicarVisibilidadPresentaciones();
@@ -3437,6 +3560,7 @@ async function guardarProducto() {
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
+        ...leerUnidadParaGuardar(tipo),
         requiere_numero_serie: $('inputRequiereSerie')?.checked === true,
         modelo: ($('inputModelo')?.value || '').trim() || null,
         stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
@@ -3495,6 +3619,7 @@ async function guardarProducto() {
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
+        ...leerUnidadParaGuardar(tipo),
         requiere_numero_serie: $('inputRequiereSerieEdit')?.checked === true,
         modelo: ($('inputModeloEdit')?.value || '').trim() || null,
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
