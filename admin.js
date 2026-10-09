@@ -2683,7 +2683,8 @@ async function loadClientesC360() {
 // SECCIÓN 3-D — CLIENTES POR PERÍODO (19-19)
 // ============================================================
 let CP_PERIODOS_CACHE = [];
-let CP_USUARIOS_CACHE = [];
+let CP_USUARIOS_CACHE = [];      // lista ya filtrada segun los interruptores
+let CP_USUARIOS_TODOS = [];      // todas las cuentas reales (activas, suspendidas y canceladas)
 
 // Genera N períodos consecutivos del 19 de un mes al 19 del siguiente,
 // empezando por el período que contiene la fecha de hoy y yendo hacia
@@ -2728,7 +2729,7 @@ async function loadClientesPeriodo() {
   try {
     const { data, error } = await sb.from('usuarios')
       .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, plan, estado_cuenta, created_at')
-      .eq('estado_cuenta', 'activa')
+      .in('estado_cuenta', ['activa', 'suspendida', 'cancelada'])
       .order('created_at', { ascending: false });
     if (error) throw error;
 
@@ -2737,10 +2738,38 @@ async function loadClientesPeriodo() {
     // del panel (Usuarios, listas de pago, etc).
     const idsShadow = await obtenerIdsSucursalesShadow();
     const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
-    CP_USUARIOS_CACHE = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
+    CP_USUARIOS_TODOS = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
     CP_PERIODOS_CACHE = generarPeriodos19_19(12);
+    pintarClientesPeriodo();
+  } catch (e) {
+    console.error('loadClientesPeriodo:', e);
+    toast('Error al cargar clientes por período', e.message, 'error');
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:32px;color:var(--danger)">No se pudo cargar la lista.</td></tr>`;
+  }
+}
+
+function cpCambiarFiltro() {
+  document.getElementById('cp-detalle-card').style.display = 'none';
+  pintarClientesPeriodo();
+}
+
+// Aplica los interruptores (suspendidas / canceladas) y pinta tarjetas y tabla.
+// Sin ninguno marcado queda exactamente igual que antes: solo cuentas activas.
+function pintarClientesPeriodo() {
+  const tbody = document.getElementById('clientes-periodo-tbody');
+  const conSusp = !!document.getElementById('cp-incl-suspendidas')?.checked;
+  const conCanc = !!document.getElementById('cp-incl-canceladas')?.checked;
+  const estados = ['activa'].concat(conSusp ? ['suspendida'] : [], conCanc ? ['cancelada'] : []);
+  const etiqueta = (!conSusp && !conCanc) ? 'activos'
+    : (conSusp && conCanc) ? 'activos, suspendidos y cancelados'
+    : conSusp ? 'activos y suspendidos' : 'activos y cancelados';
+  {
+    CP_USUARIOS_CACHE = CP_USUARIOS_TODOS.filter(u => estados.includes(u.estado_cuenta));
 
     document.getElementById('cp-total-activos').textContent = CP_USUARIOS_CACHE.length;
+    document.getElementById('cp-total-label').textContent = `Total ${etiqueta} (todos los períodos)`;
+    document.getElementById('cp-tabla-titulo').textContent = `Clientes ${etiqueta} por período`;
+    document.getElementById('cp-col-titulo').textContent = `Clientes ${etiqueta} registrados`;
 
     const periodoActual = CP_PERIODOS_CACHE[0];
     const conteoActual = CP_USUARIOS_CACHE.filter(u => {
@@ -2764,11 +2793,6 @@ async function loadClientesPeriodo() {
           </td>
         </tr>`;
     }).join('');
-
-  } catch (e) {
-    console.error('loadClientesPeriodo:', e);
-    toast('Error al cargar clientes por período', e.message, 'error');
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:32px;color:var(--danger)">No se pudo cargar la lista.</td></tr>`;
   }
 }
 
@@ -2780,12 +2804,14 @@ function verDetallePeriodo(idx) {
     return f >= p.inicio && f < p.fin;
   });
 
-  document.getElementById('cp-detalle-titulo').textContent = `Clientes activos — ${p.etiqueta}`;
+  const _lbl = document.getElementById('cp-tabla-titulo').textContent.replace(' por período', '');
+  document.getElementById('cp-detalle-titulo').textContent = `${_lbl} — ${p.etiqueta}`;
   document.getElementById('cp-detalle-tbody').innerHTML = enEsePeriodo.map(u => `
     <tr>
       <td style="font-weight:600">${escHtml(u.nombre_negocio || (u.nombre + ' ' + (u.apellido||'')))}</td>
       <td>${escHtml(u.email)}</td>
       <td>${escHtml(u.plan || '—')}</td>
+      <td>${u.estado_cuenta === 'activa' ? 'Activa' : u.estado_cuenta === 'suspendida' ? '<span style="color:var(--warning,#f59e0b);font-weight:600">Suspendida</span>' : '<span style="color:var(--danger,#ef4444);font-weight:600">Cancelada</span>'}</td>
       <td>${formatDate(u.created_at)}</td>
     </tr>
   `).join('');

@@ -874,13 +874,22 @@
     <section class="page-content" id="page-clientes-periodo">
       <div class="page-header">
         <h1>Clientes por Período</h1>
-        <p>Cuentas activas agrupadas en períodos del 19 al 19 de cada mes, según su fecha de registro. No incluye cuentas suspendidas ni canceladas.</p>
+        <p>Cuentas activas agrupadas en períodos del 19 al 19 de cada mes, según su fecha de registro. Por defecto solo cuenta las activas; usa los interruptores para incluir también las suspendidas y las canceladas.</p>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--border);border-radius:99px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="cp-incl-suspendidas" onchange="cpCambiarFiltro()"> Incluir suspendidas
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--border);border-radius:99px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="cp-incl-canceladas" onchange="cpCambiarFiltro()"> Incluir canceladas
+        </label>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
         <div class="card" style="padding:16px;text-align:center">
           <div style="font-size:24px;font-weight:800" id="cp-total-activos">—</div>
-          <div style="font-size:11.5px;color:var(--text-muted)">Total activos (todos los períodos)</div>
+          <div style="font-size:11.5px;color:var(--text-muted)" id="cp-total-label">Total activos (todos los períodos)</div>
         </div>
         <div class="card" style="padding:16px;text-align:center">
           <div style="font-size:24px;font-weight:800;color:var(--accent)" id="cp-periodo-actual">—</div>
@@ -891,7 +900,7 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <div class="card-title">Clientes activos por período</div>
+            <div class="card-title" id="cp-tabla-titulo">Clientes activos por período</div>
             <div class="card-subtitle">Cada período va del 19 de un mes al 19 del siguiente</div>
           </div>
         </div>
@@ -901,7 +910,7 @@
               <thead>
                 <tr>
                   <th>Período</th>
-                  <th>Clientes activos registrados</th>
+                  <th id="cp-col-titulo">Clientes activos registrados</th>
                   <th></th>
                 </tr>
               </thead>
@@ -929,6 +938,7 @@
                   <th>Negocio</th>
                   <th>Correo</th>
                   <th>Plan</th>
+                  <th>Estado</th>
                   <th>Fecha de registro</th>
                 </tr>
               </thead>
@@ -1611,7 +1621,7 @@
     }
   });
 </script>
-<script src="admin.js?v=20261004a"></script>
+<script src="admin.js?v=20261008a"></script>
 
 <script src="bienvenida-negocio360.js?v=1"></script>
 </body>
