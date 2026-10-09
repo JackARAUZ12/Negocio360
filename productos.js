@@ -1043,11 +1043,29 @@ function agregarItemComboConPrecio(p, precioInfo) {
   });
   renderComboItemsBody();
 }
+// Mientras se escribe NO se vuelve a dibujar la fila ni se corrige el valor (si no,
+// al teclear "0" antes de "0.5" se forzaba 1 y se perdía el decimal): solo se
+// actualiza el subtotal y el total. La corrección final ocurre al salir del campo.
 function actualizarCantidadComboItem(i, valor) {
-  const n = parseFloat(valor);
-  if (!STATE.comboFormItems[i]) return;
-  STATE.comboFormItems[i].cantidad = isNaN(n) || n <= 0 ? 1 : n;
+  const it = STATE.comboFormItems[i];
+  if (!it) return;
+  const n = parseFloat(String(valor).replace(',', '.'));
+  if (!isNaN(n) && n > 0) it.cantidad = n;
+  const sub = $('comboItemSub' + i);
+  if (sub) sub.textContent = fmtMoney(it.costo * it.cantidad);
+  actualizarTotalComboPreview();
+}
+function normalizarCantidadComboItem(i, valor) {
+  const it = STATE.comboFormItems[i];
+  if (!it) return;
+  const n = parseFloat(String(valor).replace(',', '.'));
+  it.cantidad = isNaN(n) || n <= 0 ? 1 : Math.round(n * 1000) / 1000;
   renderComboItemsBody();
+}
+function actualizarTotalComboPreview() {
+  const total = STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0);
+  const previewEl = $('comboCostoTotalPreview');
+  if (previewEl) previewEl.textContent = fmtMoney(total);
 }
 function eliminarComboItem(i) {
   STATE.comboFormItems.splice(i, 1);
@@ -1065,9 +1083,9 @@ function renderComboItemsBody() {
           <div style="font-size:13px;font-weight:500">${escHtml(it.nombre)}</div>
           <div style="font-size:11px;color:var(--text-muted)">Costo: ${fmtMoney(it.costo)} c/u · Precio: ${fmtMoney(it.precio)} c/u${it.escalaNombre ? ` <span style="color:var(--accent)">(${escHtml(it.escalaNombre)})</span>` : ''}</div>
         </div>
-        <input type="number" class="form-input" style="width:70px" min="1" step="1" value="${it.cantidad}"
-               oninput="actualizarCantidadComboItem(${i}, this.value)" />
-        <div style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
+        <input type="number" inputmode="decimal" class="form-input" style="width:80px" min="0.001" step="any" value="${it.cantidad}"
+               oninput="actualizarCantidadComboItem(${i}, this.value)" onchange="normalizarCantidadComboItem(${i}, this.value)" />
+        <div id="comboItemSub${i}" style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
         <button type="button" class="row-action-btn" title="Quitar" onclick="eliminarComboItem(${i})" style="opacity:1;color:var(--danger)">✕</button>
       </div>`).join('');
   }
