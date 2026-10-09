@@ -464,13 +464,40 @@
     b.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;border:1px solid var(--border,#e8e8ef);background:var(--bg-surface,#fff);color:var(--text-primary,#0d0d14);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap';
     b.innerHTML = '🎓 <span class="mg-tut-txt">Tutoriales</span>';
     b.addEventListener('click', () => { window.location.href = 'tutoriales.html?modulo=' + encodeURIComponent(info.key); });
+    // En telefono el encabezado ya va justo de espacio: el acceso a Tutoriales
+    // queda en el menu lateral y no se agrega este boton.
+    if (window.innerWidth <= 768) return;
     ancla.insertAdjacentElement('beforebegin', b);
-    if (window.matchMedia && window.matchMedia('(max-width:768px)').matches) {
-      const t = b.querySelector('.mg-tut-txt'); if (t) t.style.display = 'none'; // en celular solo el icono
-    }
+    // Si por cualquier razon desborda el encabezado, se retira: nunca debe
+    // empujar fuera de pantalla los botones que ya existian.
+    if (header.scrollWidth > header.clientWidth + 1) b.remove();
+  }
+
+  // Encabezado en telefono: en varias paginas (Ventas, Creditos, Proformas...)
+  // el encabezado tiene mas botones de los que caben en una fila y los de la
+  // derecha (moneda, modo claro/oscuro, usuario) quedaban fuera de la pantalla.
+  // Esta regla SOLO aplica en pantallas angostas: el encabezado pasa a dos filas
+  // (los interruptores van abajo), se oculta la fecha y se compactan los botones.
+  function inyectarEstiloEncabezadoMovil() {
+    if (document.getElementById('mg-estilo-header-movil')) return;
+    const st = document.createElement('style');
+    st.id = 'mg-estilo-header-movil';
+    st.textContent = `
+      @media (max-width:768px){
+        #header{height:auto!important;min-height:var(--header-h,64px);flex-wrap:wrap;row-gap:4px;padding-top:6px;padding-bottom:6px}
+        #stock-compartido-wrap,#sc-btn-editar,#vender-sin-stock-wrap{order:30;flex-basis:100%;margin-right:0!important}
+      }
+      @media (max-width:480px){
+        #header{padding-left:10px!important;padding-right:10px!important;gap:6px!important}
+        #header-fecha{display:none!important}
+        #header .plan-badge{padding:6px 8px!important}
+        #header .user-menu{padding:3px 6px 3px 3px!important;gap:4px!important}
+      }`;
+    document.head.appendChild(st);
   }
 
   async function init() {
+    try { inyectarEstiloEncabezadoMovil(); } catch (e) { /* solo estetico */ }
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
     const client = window.supabase.createClient(MG_SUPABASE_URL, MG_SUPABASE_KEY);
     const { data: { session } } = await client.auth.getSession();
