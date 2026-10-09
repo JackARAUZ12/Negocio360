@@ -806,6 +806,8 @@ async function abrirDetalle(ventaId) {
         </div>
       </div>
     `;
+    // Botones de "Corregir venta" y edicion segura (nota / cliente)
+    try { window.N360Correccion?.decorarDetalle(venta); } catch (eCorr) { console.warn('decorarDetalle:', eCorr); }
   } catch(e) {
     body.innerHTML = `<p style="color:var(--danger);padding:20px">Error al cargar detalle: ${e.message}</p>`;
   }
@@ -1696,6 +1698,9 @@ async function confirmarPagoRecurrente() {
    WIZARD — ABRIR / CERRAR
    ============================================================ */
 async function abrirNuevaVenta() {
+  // Si venia de "Corregir venta", ese modo se apaga al abrir una venta normal
+  S.correccion = null;
+  try { window.N360Correccion?.limpiarBanner(); } catch (_) {}
   // Reset wizard
   S.paso          = 1;
   S.clienteOpcion = 'final';
@@ -1767,6 +1772,8 @@ async function abrirNuevaVenta() {
 }
 
 function cerrarModalVenta() {
+  // En modo "Corregir venta" pide confirmacion si la original ya fue anulada
+  if (window.N360Correccion && !window.N360Correccion.permitirCierre()) return;
   closeModal('modal-venta');
 }
 
@@ -5153,6 +5160,14 @@ async function confirmarVenta(conImpresion) {
     S.observaciones = document.getElementById('venta-observaciones')?.value.trim() || '';
     const r = S._resumen;
 
+    // "Corregir venta": primero se anula la original (misma rutina de
+    // siempre) y recien despues se registra esta. Con S.correccion
+    // vacio -- el caso normal -- esto no hace nada.
+    if (S.correccion) {
+      if (!r) throw new Error('Revisa el resumen de la venta antes de confirmar.');
+      await window.N360Correccion.anularOriginal();
+    }
+
     /* ----------------------------------------------------------
        PASO A: Crear cliente rápido si aplica
     ---------------------------------------------------------- */
@@ -5205,7 +5220,7 @@ async function confirmarVenta(conImpresion) {
       metodo_pago_nombre: nombreMetodoParaGuardar,
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
-      observaciones:      S.observaciones || null,
+      observaciones:      ((S.correccion ? `[Corrige a ${S.correccion.numero} — motivo: ${S.correccion.motivo}] ` : '') + (S.observaciones || '')).trim() || null,
       // Canje de puntos: va en el payload BASE para que el reintento sin
       // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
       ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
@@ -5518,6 +5533,11 @@ async function confirmarVenta(conImpresion) {
     /* ----------------------------------------------------------
        ÉXITO
     ---------------------------------------------------------- */
+    if (S.correccion) {
+      const _corr = S.correccion; S.correccion = null;           // ya no hay nada pendiente
+      window.N360Correccion?.limpiarBanner();
+      window.N360Correccion?.marcarReemplazo(_corr, S.numeroVenta);
+    }
     cerrarModalVenta();
     showToast(`✅ Venta ${S.numeroVenta} registrada — ${fmt(r.total)}`, 'success');
     registrarGarantiasAutomaticas(ventaId, S.carrito, S.clienteId, S.clienteNombre);
