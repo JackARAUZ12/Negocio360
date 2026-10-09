@@ -2915,7 +2915,7 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   // el flag activo). Con el flag apagado, loteFEFO queda null y todo
   // el resto del carrito se comporta exactamente igual que siempre.
   let loteFEFO = null;
-  if (tipo === 'producto' && (S?.empresaConfig?.usa_farmacia_fase2 === true || S?.empresaConfig?.usa_modulo_veterinaria === true)) {
+  if (tipo === 'producto' && (S?.empresaConfig?.usa_farmacia_fase2 === true || S?.empresaConfig?.usa_modulo_veterinaria === true || S?.empresaConfig?.usa_modulo_insumos === true)) {
     const { data: lotes } = await sb.from('producto_lotes')
       .select('id, numero_lote, fecha_vencimiento, cantidad_actual')
       .eq('producto_id', productoId).eq('activo', true).gt('cantidad_actual', 0)

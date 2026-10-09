@@ -1453,6 +1453,7 @@ async function finalizarOnboarding() {
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'hotel') modulosAuto.usa_modulo_hotel = true;
     if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'veterinaria') { modulosAuto.usa_modulo_veterinaria = true; modulosAuto.maneja_lotes_vencimiento = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
 
     const modulosOpcionales = {};
@@ -1588,6 +1589,7 @@ const TIPOS_NEGOCIO = [
     { v:'distribuidor', icono:'🚚', nombre:'Distribuidor' },
     { v:'importador', icono:'🌎', nombre:'Importador / Exportador' },
     { v:'farmacia', icono:'💊', nombre:'Farmacia' },
+    { v:'insumos_medicos', icono:'🩺', nombre:'Venta de insumos médicos' },
     { v:'ferreteria', icono:'🔧', nombre:'Ferretería' },
     { v:'supermercado', icono:'🛒', nombre:'Supermercado / Minisuper' },
     { v:'papeleria', icono:'📚', nombre:'Papelería / Librería' },
@@ -1714,8 +1716,33 @@ function renderTiposNegocio() {
   `).join('');
 }
 
+// Rubros que traen modulos opcionales sugeridos (pre-marcados en el Paso 6).
+// Solo se pre-marcan mientras la persona no haya tocado la seleccion a mano; ella
+// siempre puede marcar o desmarcar lo que quiera.
+const MODULOS_SUGERIDOS_POR_RUBRO = {
+  insumos_medicos: ['creditos','proformas','impuestos','cuentas_por_pagar','consulta_inventario','codigos_barras',
+                    'servicio','rutas','delivery','estadisticas','contabilidad','catalogo360'],
+};
+let modulosSugeridosAplicados = false;   // true = lo marcado viene de una sugerencia y nadie lo ha tocado
+
+function aplicarModulosSugeridos(valor) {
+  if (modulosSugeridosAplicados) {            // limpia la sugerencia anterior (si nadie la toco)
+    modulosSecundariosSeleccionados.clear();
+    modulosSugeridosAplicados = false;
+  }
+  const sugeridos = MODULOS_SUGERIDOS_POR_RUBRO[valor];
+  if (sugeridos && modulosSecundariosSeleccionados.size === 0) {
+    sugeridos.forEach(k => modulosSecundariosSeleccionados.add(k));
+    modulosSugeridosAplicados = true;
+  }
+  document.querySelectorAll('.modulo-card[data-key]').forEach(c => {
+    c.classList.toggle('selected', modulosSecundariosSeleccionados.has(c.dataset.key));
+  });
+}
+
 function seleccionarTipoNegocio(valor) {
   tipoNegocioSeleccionado = valor;
+  try { aplicarModulosSugeridos(valor); } catch (e) { console.warn('modulos sugeridos:', e); }
   document.getElementById('tipo_negocio').value = valor;
   document.querySelectorAll('.negocio-card').forEach(c => {
     c.classList.toggle('selected', c.dataset.valor === valor);
@@ -1774,6 +1801,7 @@ function renderModulosSecundarios() {
 }
 
 function toggleModuloSecundario(key) {
+  modulosSugeridosAplicados = false;   // ya lo toco la persona: la sugerencia no se vuelve a limpiar sola
   if (modulosSecundariosSeleccionados.has(key)) modulosSecundariosSeleccionados.delete(key);
   else modulosSecundariosSeleccionados.add(key);
   const card = document.querySelector(`.modulo-card[data-key="${key}"]`);
@@ -1794,6 +1822,7 @@ function renderModuloEspecial() {
   if (tipoNegocioSeleccionado === 'hotel') especial = { icono:'🛏️', nombre:'Módulo de Hotel', desc:'Habitaciones, reservaciones, mapa y housekeeping.' };
   else if (['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) especial = { icono:'🍽️', nombre:'Módulo de Restaurante', desc:'Mesas, comandas y cocina en tiempo real.' };
   else if (tipoNegocioSeleccionado === 'veterinaria') especial = { icono:'🐾', nombre:'Módulo de Veterinaria', desc:'Agenda, mascotas, historia clínica, vacunas y recordatorios, recetas con dosis, hospital, pensión y baño, certificados y control de lotes con vencimientos.' };
+  else if (tipoNegocioSeleccionado === 'insumos_medicos') especial = { icono:'🩺', nombre:'Módulo de Insumos Médicos', desc:'Lotes, vencimientos, salida por vencimiento (el lote que vence primero sale primero) y rotación y margen.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }

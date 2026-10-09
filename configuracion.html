@@ -14,7 +14,7 @@
 
 <!-- Supabase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261004d"></script>
+<script src="modulos-registro.js?v=20261009b"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1465,6 +1465,27 @@
           <div class="cfg-status" id="vet-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="insumos-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🩺</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Insumos Médicos</div>
+              <div class="cfg-card-desc">Para vender insumos y equipos médicos: lotes, vencimientos, salida por vencimiento (sale primero el lote que vence antes) y rotación y margen.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Insumos Médicos</div>
+              <div class="cfg-row-sub" id="insumos-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="insumos-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleInsumosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="insumos-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎁</div>
@@ -2437,6 +2458,47 @@ async function guardarModuloVet(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Insumos Medicos: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloInsumos() {
+  const toggle = document.getElementById('insumos-toggle');
+  const sub = document.getElementById('insumos-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_insumos').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_insumos === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Lotes, Vencimientos y Rotación aparecen en el menú.' : 'Desactivado — el módulo de Insumos Médicos no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloInsumos:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleInsumosClick(evt) {
+  const toggle = document.getElementById('insumos-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloInsumos(toggle.checked);
+}
+async function guardarModuloInsumos(activo) {
+  const toggle = document.getElementById('insumos-toggle');
+  const sub = document.getElementById('insumos-row-sub');
+  const statusEl = document.getElementById('insumos-status');
+  toggle.disabled = true;
+  try {
+    // Al activarlo tambien se enciende el control de lotes y vencimientos de los productos.
+    // Al desactivarlo NO se apaga: puede estar en uso por otro modulo y no se pierde nada.
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_insumos: activo, ...(activo ? { maneja_lotes_vencimiento: true } : {}) }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Lotes, Vencimientos y Rotación aparecen en el menú.' : 'Desactivado — el módulo de Insumos Médicos no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Insumos Médicos activado. Recarga la página para ver el menú.' : 'Módulo de Insumos Médicos desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloInsumos:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Programa de puntos: se activa/desactiva desde aqui. Apagado por
 // defecto -- sin activarlo, el modulo no aparece ni cambia nada.
 async function cargarModuloPuntos() {
@@ -2826,6 +2888,7 @@ async function initConfiguracion() {
       cargarModuloFarmacia();
       cargarModuloPuntos();
       cargarModuloVet();
+      cargarModuloInsumos();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -2852,6 +2915,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20261007a"></script>
-<script src="modulos-guard.js?v=20261009c"></script>
+<script src="modulos-guard.js?v=20261009d"></script>
 </body>
 </html>

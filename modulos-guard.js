@@ -93,6 +93,13 @@
         usa_puntos: data?.usa_puntos === true,
         usa_modulo_veterinaria: data?.usa_modulo_veterinaria === true,
       };
+      // Insumos Medicos: se consulta aparte para que, pase lo que pase con
+      // esta columna, jamas afecte a los flags de los demas modulos.
+      try {
+        const { data: ins } = await client.from('configuracion_empresa')
+          .select('usa_modulo_insumos').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_insumos = ins?.usa_modulo_insumos === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_insumos = false; }
       return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);

@@ -121,10 +121,10 @@
 
     // ---- Farmacia (secundario -- mismo criterio que Hotel/Restaurante) ----
     'lotes.html':        { key: 'farmacia_lotes',        label: 'Farmacia · Lotes',        icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
-                               flagsAlternos: ['usa_modulo_veterinaria'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes' },
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes', usa_modulo_insumos: 'Insumos · Lotes' },
                                desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
     'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
-                               flagsAlternos: ['usa_modulo_veterinaria'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos' },
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos', usa_modulo_insumos: 'Insumos · Vencimientos' },
                                desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
     'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
@@ -141,6 +141,7 @@
     'puntos.html': { key: 'puntos', label: 'Puntos · Programa de puntos', icon: '🎁', obligatorio: false, flagPropio: 'usa_puntos',
                                desc: 'Tus clientes acumulan puntos por sus compras y los canjean por recompensas.' },
     'rotacion.html': { key: 'farmacia_rotacion', label: 'Farmacia · Rotación y Margen', icon: '📊', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
+                               flagsAlternos: ['usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_insumos: 'Insumos · Rotación y Margen' },
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
   };
 
