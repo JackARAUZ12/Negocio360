@@ -117,6 +117,13 @@
         Clientes por Período
       </button>
 
+      <button class="nav-item" data-section="tutoriales">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+        Tutoriales
+      </button>
+
       <button class="nav-item" data-section="anuncios">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -952,6 +959,87 @@
     </section>
 
     <!-- ══════════════════════════════════
+         PÁGINA: TUTORIALES (videos de YouTube por módulo)
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-tutoriales">
+      <div class="page-header">
+        <h1>Tutoriales</h1>
+        <p>Conecta videos de YouTube a cada módulo. Los ven todas las cuentas, solo en los módulos que tengan activos. Puedes poner los videos que quieras por módulo y ordenarlos.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Módulo</div>
+            <div class="card-subtitle">Elige a qué módulo pertenecen los videos que vas a ver o agregar</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <select id="tut-modulo" class="form-control" onchange="tutCambiarModulo()"></select>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="tut-form-titulo">Agregar video</div>
+            <div class="card-subtitle">Pega el enlace de YouTube (watch, youtu.be, shorts o embed). La miniatura se toma sola.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Enlace de YouTube</label>
+            <input type="text" id="tut-url" class="form-control" placeholder="https://www.youtube.com/watch?v=..." oninput="tutPrevisualizar()" />
+            <div id="tut-prev" style="margin-top:8px;font-size:12.5px;color:var(--text-muted, #888)"></div>
+          </div>
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="tut-titulo" class="form-control" maxlength="120" placeholder="Ej: Cómo registrar tu primera venta" />
+          </div>
+          <div class="form-group">
+            <label>Descripción (opcional)</label>
+            <textarea id="tut-desc" class="form-control" rows="3" maxlength="500" placeholder="Qué aprenderá la persona en este video"></textarea>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:150px">
+              <label>Nivel</label>
+              <select id="tut-nivel" class="form-control">
+                <option value="basico">Básico</option>
+                <option value="intermedio">Intermedio</option>
+                <option value="avanzado">Avanzado</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1;min-width:150px">
+              <label>Duración (opcional)</label>
+              <input type="text" id="tut-duracion" class="form-control" maxlength="12" placeholder="Ej: 4:30" />
+            </div>
+            <div class="form-group" style="flex:1;min-width:150px">
+              <label>Visible para los usuarios</label>
+              <select id="tut-visible" class="form-control">
+                <option value="true">Sí, visible</option>
+                <option value="false">No (borrador)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:6px">
+            <button class="btn-icon btn-primary" id="tut-btn-guardar" onclick="tutGuardar()">Guardar video</button>
+            <button class="btn-icon btn-ghost" id="tut-btn-cancelar" onclick="tutLimpiarForm()" style="display:none">Cancelar edición</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="tut-lista-titulo">Videos del módulo</div>
+            <div class="card-subtitle">Usa las flechas para cambiar el orden en que se muestran</div>
+          </div>
+        </div>
+        <div class="card-body" id="tut-lista"><p style="color:var(--text-muted, #888)">Cargando…</p></div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
          PÁGINA: ANUNCIOS DEL SISTEMA
     ══════════════════════════════════ -->
     <section class="page-content" id="page-anuncios">
@@ -1621,7 +1709,7 @@
     }
   });
 </script>
-<script src="admin.js?v=20261008a"></script>
+<script src="admin.js?v=20261009a"></script>
 
 <script src="bienvenida-negocio360.js?v=1"></script>
 </body>

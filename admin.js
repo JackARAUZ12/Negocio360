@@ -179,6 +179,7 @@ function navigate(section) {
   if (section === 'clientes-periodo') loadClientesPeriodo();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
+  if (section === 'tutoriales') loadTutorialesSection();
   if (section === 'encuestas') cargarResultadosEncuesta();
   if (section === 'notificaciones') loadNotificacionesSection();
   if (section === 'chats-grupales') loadChatsGrupales();
@@ -3675,3 +3676,227 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 30000);
 });
+
+
+/* ============================================================
+   TUTORIALES — videos de YouTube por módulo (tabla tutoriales_videos)
+   Lectura: todos los usuarios. Escritura: solo administradores (RLS).
+   ============================================================ */
+const TUTA = { videos: [], editandoId: null, cargado: false };
+
+function tutModulosLista() {
+  const reg = window.NEGOCIO360_MODULOS || {};
+  const vistos = new Set(['general']);
+  const lista = [{ key: 'general', label: '🚀 Primeros pasos (general)' }];
+  Object.values(reg).forEach(m => {
+    if (vistos.has(m.key)) return;
+    vistos.add(m.key);
+    lista.push({ key: m.key, label: `${m.icon || ''} ${m.label}`.trim() });
+  });
+  return lista;
+}
+
+// Saca el ID de 11 caracteres de cualquier formato de enlace de YouTube.
+function tutExtraerYoutubeId(texto) {
+  const t = String(texto || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;
+  try {
+    const u = new URL(t.startsWith('http') ? t : 'https://' + t);
+    const h = u.hostname.replace(/^www\.|^m\./, '');
+    let id = null;
+    if (h === 'youtu.be') id = u.pathname.split('/')[1];
+    else if (h.endsWith('youtube.com') || h.endsWith('youtube-nocookie.com')) {
+      if (u.pathname === '/watch') id = u.searchParams.get('v');
+      else {
+        const m = u.pathname.match(/^\/(embed|shorts|live|v)\/([^/?]+)/);
+        if (m) id = m[2];
+      }
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch (_) { return null; }
+}
+
+async function loadTutorialesSection() {
+  const sel = document.getElementById('tut-modulo');
+  if (!sel) return;
+  if (!sel.options.length) {
+    sel.innerHTML = tutModulosLista().map(m => `<option value="${escHtml(m.key)}">${escHtml(m.label)}</option>`).join('');
+  }
+  await tutCargarVideos();
+}
+
+async function tutCargarVideos() {
+  const cont = document.getElementById('tut-lista');
+  try {
+    const { data, error } = await sb.from('tutoriales_videos').select('*')
+      .order('orden', { ascending: true }).order('created_at', { ascending: true });
+    if (error) throw error;
+    TUTA.videos = data || [];
+    TUTA.cargado = true;
+    tutActualizarContadores();
+    tutRenderLista();
+  } catch (e) {
+    console.error('tutCargarVideos:', e);
+    if (cont) cont.innerHTML = '<p style="color:var(--danger,#e11d48)">No se pudieron cargar los videos. ¿Ya ejecutaste el SQL de Tutoriales en Supabase?</p>';
+  }
+}
+
+function tutActualizarContadores() {
+  const sel = document.getElementById('tut-modulo');
+  if (!sel) return;
+  const nombres = Object.fromEntries(tutModulosLista().map(m => [m.key, m.label]));
+  [...sel.options].forEach(o => {
+    const n = TUTA.videos.filter(v => v.modulo_key === o.value).length;
+    o.textContent = `${nombres[o.value] || o.value}${n ? '  ·  ' + n + (n === 1 ? ' video' : ' videos') : ''}`;
+  });
+}
+
+function tutModuloActual() { return document.getElementById('tut-modulo')?.value || 'general'; }
+
+function tutCambiarModulo() { tutLimpiarForm(); tutRenderLista(); }
+
+function tutRenderLista() {
+  const cont = document.getElementById('tut-lista');
+  if (!cont) return;
+  const mod = tutModuloActual();
+  const lista = TUTA.videos.filter(v => v.modulo_key === mod);
+  const tit = document.getElementById('tut-lista-titulo');
+  const nombre = (tutModulosLista().find(m => m.key === mod) || {}).label || mod;
+  if (tit) tit.textContent = `Videos de ${nombre}`;
+  if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted, #888)">Este módulo todavía no tiene videos. Agrega el primero arriba.</p>'; return; }
+  const niv = { basico: 'Básico', intermedio: 'Intermedio', avanzado: 'Avanzado' };
+  cont.innerHTML = lista.map((v, i) => `
+    <div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border, #e8e8ef);${v.visible ? '' : 'opacity:.55'}">
+      <img src="https://i.ytimg.com/vi/${encodeURIComponent(v.youtube_id)}/mqdefault.jpg" alt="" style="width:108px;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#222;flex-shrink:0" onerror="this.style.visibility='hidden'" />
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px">${escHtml(v.titulo)}</div>
+        <div style="font-size:12px;color:var(--text-muted, #888);margin-top:2px">
+          ${escHtml(niv[v.nivel] || 'Básico')}${v.duracion ? ' · ⏱ ' + escHtml(v.duracion) : ''}${v.visible ? '' : ' · <strong>Borrador (oculto)</strong>'}
+          · <a href="https://www.youtube.com/watch?v=${encodeURIComponent(v.youtube_id)}" target="_blank" rel="noopener">Ver en YouTube</a>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn-icon btn-ghost" title="Subir" ${i === 0 ? 'disabled' : ''} onclick="tutMover('${v.id}', -1)">▲</button>
+        <button class="btn-icon btn-ghost" title="Bajar" ${i === lista.length - 1 ? 'disabled' : ''} onclick="tutMover('${v.id}', 1)">▼</button>
+        <button class="btn-icon btn-ghost" onclick="tutAlternarVisible('${v.id}')">${v.visible ? 'Ocultar' : 'Mostrar'}</button>
+        <button class="btn-icon btn-ghost" onclick="tutEditar('${v.id}')">Editar</button>
+        <button class="btn-icon btn-danger" onclick="tutEliminar('${v.id}')">Eliminar</button>
+      </div>
+    </div>`).join('');
+}
+
+function tutPrevisualizar() {
+  const el = document.getElementById('tut-prev');
+  if (!el) return;
+  const t = document.getElementById('tut-url').value.trim();
+  if (!t) { el.innerHTML = ''; return; }
+  const id = tutExtraerYoutubeId(t);
+  el.innerHTML = id
+    ? `<img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" style="width:160px;border-radius:6px;display:block;margin-bottom:4px" onerror="this.style.display='none'" /> ✓ Video reconocido (${id})`
+    : '<span style="color:var(--danger,#e11d48)">No reconozco ese enlace de YouTube.</span>';
+}
+
+function tutLimpiarForm() {
+  TUTA.editandoId = null;
+  ['tut-url', 'tut-titulo', 'tut-desc', 'tut-duracion'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
+  const n = document.getElementById('tut-nivel'); if (n) n.value = 'basico';
+  const v = document.getElementById('tut-visible'); if (v) v.value = 'true';
+  const p = document.getElementById('tut-prev'); if (p) p.innerHTML = '';
+  const t = document.getElementById('tut-form-titulo'); if (t) t.textContent = 'Agregar video';
+  const c = document.getElementById('tut-btn-cancelar'); if (c) c.style.display = 'none';
+}
+
+function tutEditar(id) {
+  const v = TUTA.videos.find(x => x.id === id);
+  if (!v) return;
+  TUTA.editandoId = id;
+  document.getElementById('tut-url').value = 'https://www.youtube.com/watch?v=' + v.youtube_id;
+  document.getElementById('tut-titulo').value = v.titulo || '';
+  document.getElementById('tut-desc').value = v.descripcion || '';
+  document.getElementById('tut-nivel').value = v.nivel || 'basico';
+  document.getElementById('tut-duracion').value = v.duracion || '';
+  document.getElementById('tut-visible').value = v.visible ? 'true' : 'false';
+  document.getElementById('tut-form-titulo').textContent = 'Editar video';
+  document.getElementById('tut-btn-cancelar').style.display = '';
+  tutPrevisualizar();
+  document.getElementById('tut-url').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function tutGuardar() {
+  const btn = document.getElementById('tut-btn-guardar');
+  const youtube_id = tutExtraerYoutubeId(document.getElementById('tut-url').value);
+  const titulo = document.getElementById('tut-titulo').value.trim();
+  if (!youtube_id) { toast('Enlace no válido', 'Pega un enlace de YouTube válido.', 'warning'); return; }
+  if (!titulo) { toast('Falta el título', 'Escribe un título para el video.', 'warning'); return; }
+  const modulo = tutModuloActual();
+  const campos = {
+    youtube_id, titulo,
+    descripcion: document.getElementById('tut-desc').value.trim() || null,
+    nivel: document.getElementById('tut-nivel').value,
+    duracion: document.getElementById('tut-duracion').value.trim() || null,
+    visible: document.getElementById('tut-visible').value === 'true',
+  };
+  if (btn) btn.disabled = true;
+  try {
+    if (TUTA.editandoId) {
+      const { error } = await sb.from('tutoriales_videos').update({ ...campos, updated_at: new Date().toISOString() }).eq('id', TUTA.editandoId);
+      if (error) throw error;
+      toast('Video actualizado', '', 'success');
+    } else {
+      const delModulo = TUTA.videos.filter(v => v.modulo_key === modulo);
+      const orden = delModulo.length ? Math.max(...delModulo.map(v => v.orden || 0)) + 1 : 1;
+      const { error } = await sb.from('tutoriales_videos').insert({ ...campos, modulo_key: modulo, orden });
+      if (error) throw error;
+      toast('Video agregado', 'Ya lo ven los usuarios que tengan ese módulo.', 'success');
+    }
+    tutLimpiarForm();
+    await tutCargarVideos();
+  } catch (e) {
+    console.error('tutGuardar:', e);
+    toast('No se pudo guardar', e.message || 'Error', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function tutMover(id, dir) {
+  const mod = tutModuloActual();
+  const lista = TUTA.videos.filter(v => v.modulo_key === mod);
+  const i = lista.findIndex(v => v.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= lista.length) return;
+  // Se renumera todo el módulo (1..n) para que el orden sea siempre estable.
+  const nuevo = [...lista];
+  [nuevo[i], nuevo[j]] = [nuevo[j], nuevo[i]];
+  try {
+    for (let k = 0; k < nuevo.length; k++) {
+      if (nuevo[k].orden === k + 1) continue;
+      const { error } = await sb.from('tutoriales_videos').update({ orden: k + 1 }).eq('id', nuevo[k].id);
+      if (error) throw error;
+    }
+    await tutCargarVideos();
+  } catch (e) {
+    console.error('tutMover:', e);
+    toast('No se pudo reordenar', e.message || 'Error', 'error');
+    await tutCargarVideos();
+  }
+}
+
+async function tutAlternarVisible(id) {
+  const v = TUTA.videos.find(x => x.id === id);
+  if (!v) return;
+  const { error } = await sb.from('tutoriales_videos').update({ visible: !v.visible, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('No se pudo cambiar', error.message, 'error'); return; }
+  await tutCargarVideos();
+}
+
+async function tutEliminar(id) {
+  const v = TUTA.videos.find(x => x.id === id);
+  if (!v) return;
+  if (!confirm(`¿Eliminar el video "${v.titulo}"? Dejará de verse para todos los usuarios.`)) return;
+  const { error } = await sb.from('tutoriales_videos').delete().eq('id', id);
+  if (error) { toast('No se pudo eliminar', error.message, 'error'); return; }
+  if (TUTA.editandoId === id) tutLimpiarForm();
+  toast('Video eliminado', '', 'success');
+  await tutCargarVideos();
+}

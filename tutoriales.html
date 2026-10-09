@@ -3,21 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Notificaciones — Negocio360</title>
+  <title>Tutoriales — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js?v=20261004d"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20260915a"></script>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- SheetJS para Excel -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- jsPDF para PDF -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <!-- jsPDF AutoTable -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <!-- Google Fonts -->
@@ -575,6 +567,35 @@
       text-transform:uppercase;letter-spacing:.04em}
     .notif-empty{text-align:center;padding:70px 24px;color:var(--text-muted)}
     .notif-empty-icon{font-size:52px;margin-bottom:14px;opacity:.5}
+
+    /* ---------- TUTORIALES ---------- */
+    .tut-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+    .tut-card{border:1px solid var(--border);background:var(--bg-surface);border-radius:var(--radius-md);padding:16px;cursor:pointer;
+      transition:all var(--transition);display:flex;flex-direction:column;gap:6px}
+    .tut-card:hover{border-color:var(--accent);box-shadow:var(--shadow-md);transform:translateY(-2px)}
+    .tut-card.vacio{opacity:.55}
+    .tut-card-icono{font-size:28px}
+    .tut-card-nombre{font-size:14.5px;font-weight:700;color:var(--text-primary)}
+    .tut-card-cuenta{font-size:12px;color:var(--text-muted)}
+    .tut-modulo-titulo{font-size:18px;font-weight:800;margin-bottom:14px;color:var(--text-primary)}
+    .tut-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr);gap:18px;align-items:start}
+    .tut-player{position:relative;width:100%;aspect-ratio:16/9;background:#0d0d14;border-radius:var(--radius-md);overflow:hidden}
+    .tut-player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+    .tut-player-vacio{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9999b3;font-size:14px;padding:20px;text-align:center}
+    .tut-player-info{margin-top:12px}
+    .tut-player-info h3{font-size:16px;font-weight:700;margin:0 0 4px;color:var(--text-primary)}
+    .tut-player-info p{font-size:13px;color:var(--text-secondary);line-height:1.6;margin:0;white-space:pre-wrap}
+    .tut-lista{display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow-y:auto}
+    .tut-item{display:flex;gap:10px;border:1px solid var(--border);background:var(--bg-surface);border-radius:var(--radius-sm);padding:8px;cursor:pointer;transition:all var(--transition)}
+    .tut-item:hover{border-color:var(--accent)}
+    .tut-item.activo{border-color:var(--accent);background:var(--accent-soft)}
+    .tut-thumb{width:112px;aspect-ratio:16/9;border-radius:6px;object-fit:cover;background:#222;flex-shrink:0}
+    .tut-item-txt{min-width:0;display:flex;flex-direction:column;gap:3px}
+    .tut-item-titulo{font-size:13px;font-weight:700;color:var(--text-primary);line-height:1.35}
+    .tut-item-meta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+    .tut-badge{font-size:10px;font-weight:700;padding:1px 7px;border-radius:100px;background:var(--accent-soft);color:var(--accent)}
+    .tut-vacio-msg{text-align:center;padding:50px 20px;color:var(--text-muted);font-size:14px;border:1px dashed var(--border);border-radius:var(--radius-md)}
+    @media (max-width:860px){.tut-layout{grid-template-columns:1fr}.tut-lista{max-height:none}}
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -588,7 +609,7 @@
     </svg>
   </div>
   <div class="loader-spinner"></div>
-  <p style="font-size:13px;color:var(--text-muted)">Cargando Notificaciones…</p>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Tutoriales…</p>
 </div>
 
 <!-- TOAST -->
@@ -727,7 +748,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span class="nav-label">Estadísticas</span>
       </div>
-      <div class="nav-item active" onclick="navigate('notificaciones.html')">
+      <div class="nav-item" onclick="navigate('notificaciones.html')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="nav-label">Notificaciones</span>
         <span id="nav-notif-count" class="badge badge-danger" style="margin-left:auto;display:none"></span>
@@ -751,7 +772,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Notificaciones</span>
+      <span class="header-title">Tutoriales</span>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -775,40 +796,40 @@
     <!-- PAGE CONTENT -->
     <div id="content">
 
-      <!-- GREETING -->
       <div class="greeting-row fade-in">
         <div class="greeting-text">
-          <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            Notificaciones
-          </h1>
-          <p>Aquí se acumulan los avisos y actualizaciones que el equipo de Negocio360 publica sobre la plataforma.</p>
-        </div>
-        <div class="greeting-actions">
-          <button class="btn-secondary" id="btn-marcar-todas" onclick="NOTIF.marcarTodasLeidas()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-            Marcar todas como leídas
-          </button>
+          <h1>🎓 Tutoriales</h1>
+          <p id="tut-subtitulo">Aprende a usar cada módulo de Negocio360 con videos cortos y claros.</p>
         </div>
       </div>
 
-      <div class="panel-card fade-in">
-        <div class="panel-body">
-          <div class="notif-list" id="notif-list">
-            <div class="section-loading"><div class="mini-spinner"></div><br>Cargando notificaciones…</div>
+      <!-- Vista 1: módulos -->
+      <div id="tut-vista-modulos">
+        <div class="tut-grid" id="tut-grid">
+          <div class="section-loading"><div class="mini-spinner"></div><br>Cargando módulos…</div>
+        </div>
+      </div>
+
+      <!-- Vista 2: videos de un módulo -->
+      <div id="tut-vista-videos" style="display:none">
+        <button class="btn-secondary" onclick="TUT.volver()" style="margin-bottom:14px">← Todos los módulos</button>
+        <div class="tut-modulo-titulo" id="tut-modulo-titulo"></div>
+        <div class="tut-layout">
+          <div class="tut-player-col">
+            <div class="tut-player" id="tut-player">
+              <div class="tut-player-vacio">Elige un video de la lista para verlo aquí.</div>
+            </div>
+            <div class="tut-player-info" id="tut-player-info"></div>
           </div>
+          <div class="tut-lista" id="tut-lista"></div>
         </div>
       </div>
-
-      <p style="font-size:11.5px;color:var(--text-muted);text-align:center;margin-top:6px">
-        Las notificaciones con más de 30 días se eliminan automáticamente para ahorrar espacio.
-      </p>
 
     </div>
   </div>
 </div>
 
-<script src="notificaciones.js?v=20261002a"></script>
+<script src="tutoriales.js?v=20261009a"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
 <script src="modulos-guard.js?v=20261009a"></script>
 </body>

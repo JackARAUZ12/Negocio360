@@ -398,6 +398,48 @@
     else nav.appendChild(item);
   }
 
+  // "Tutoriales": igual que el Chat, el enlace se agrega solo a la lista de
+  // modulos de CUALQUIER pagina que tenga sidebar, sin tocar cada HTML.
+  // Va justo despues del Chat (o de Notificaciones, o al final). No esta en
+  // el registro de modulos a proposito: es una ayuda para todos, no un
+  // modulo que se active/desactive ni se asigne por perfil.
+  function asegurarTutorialesEnSidebar() {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
+    if (document.querySelector('[onclick*="navigate(\'tutoriales.html\')"], a[href="tutoriales.html"], [data-mg-tutoriales]')) return;
+    const usaSidebarItem = !!nav.querySelector('.sidebar-item') && !nav.querySelector('.nav-item');
+    const referencia = nav.querySelector('[data-mg-chat], [onclick*="navigate(\'chat.html\')"], a[href="chat.html"], [onclick*="navigate(\'notificaciones.html\')"], a[href="notificaciones.html"]');
+    const activo = (location.pathname.split('/').pop() || '') === 'tutoriales.html';
+    let item;
+    if (usaSidebarItem) {
+      item = document.createElement('a');
+      item.href = 'tutoriales.html';
+      item.className = 'sidebar-item' + (activo ? ' active' : '');
+      const icono = document.createElement('span');
+      icono.className = 'sidebar-icon';
+      icono.textContent = '🎓';
+      item.appendChild(icono);
+      item.appendChild(document.createTextNode('Tutoriales'));
+    } else {
+      item = document.createElement('div');
+      item.className = 'nav-item' + (activo ? ' active' : '');
+      item.setAttribute('onclick', "navigate('tutoriales.html')");
+      item.setAttribute('data-tooltip', 'Tutoriales');
+      const icono = document.createElement('span');
+      icono.style.cssText = 'font-size:16px;width:18px;flex-shrink:0;text-align:center;display:inline-block';
+      icono.textContent = '🎓';
+      const label = document.createElement('span');
+      label.className = 'nav-label';
+      label.textContent = 'Tutoriales';
+      item.appendChild(icono);
+      item.appendChild(label);
+    }
+    item.setAttribute('data-mg-tutoriales', '1');
+    if (referencia && referencia.parentElement === nav) referencia.insertAdjacentElement('afterend', item);
+    else if (referencia && referencia.closest('.nav-item, .sidebar-item')) referencia.closest('.nav-item, .sidebar-item').insertAdjacentElement('afterend', item);
+    else nav.appendChild(item);
+  }
+
   async function init() {
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
     const client = window.supabase.createClient(MG_SUPABASE_URL, MG_SUPABASE_KEY);
@@ -409,6 +451,7 @@
     ocultarEnSidebar(cfg);
     inyectarModulosSecundariosEnSidebar(cfg);
     asegurarChatEnSidebar();
+    try { asegurarTutorialesEnSidebar(); } catch (e) { console.warn("modulos-guard tutoriales:", e); }
     inyectarBuscadorSidebar();
   }
 
