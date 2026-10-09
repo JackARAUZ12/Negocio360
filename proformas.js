@@ -244,10 +244,58 @@ async function guardarNuevoClienteProf() {
   }
 }
 
+/* =====================================================
+   PROVEEDOR POR LINEA (opcional) -- cada linea puede indicar a que
+   proveedor se le comprara. Modo por proforma: 'no' (no se usa),
+   'interno' (solo lo ve el negocio) o 'visible' (tambien sale en el PDF).
+   Usa el mismo catalogo "proveedores" de Compras.
+===================================================== */
+STATE.proveedoresCat = [];
+STATE.provModo = 'no';
+async function loadProveedoresProf() {
+  try {
+    const { data } = await sbClient.from('proveedores').select('id,nombre,activo')
+      .eq('auth_user_id', STATE.userId).order('nombre');
+    STATE.proveedoresCat = (data || []).filter(p => p.activo !== false);
+  } catch (e) { console.warn('loadProveedoresProf:', e); STATE.proveedoresCat = []; }
+}
+function aplicarModoProveedorProf() {
+  const mostrar = STATE.provModo !== 'no';
+  document.querySelectorAll('.col-prov-prof').forEach(el => { el.style.display = mostrar ? '' : 'none'; });
+  const sel = document.getElementById('np-prov-modo'); if (sel) sel.value = STATE.provModo;
+  const ayuda = document.getElementById('np-prov-ayuda');
+  if (ayuda) ayuda.textContent = STATE.provModo === 'visible'
+    ? 'El proveedor de cada línea saldrá en el PDF de la proforma, debajo del nombre del producto o servicio.'
+    : STATE.provModo === 'interno'
+      ? 'Solo tú ves el proveedor. No aparece en el PDF ni se le muestra al cliente.'
+      : 'No se indica proveedor en esta proforma.';
+}
+function cambiarModoProveedorProf(v) {
+  STATE.provModo = ['interno', 'visible'].includes(v) ? v : 'no';
+  aplicarModoProveedorProf();
+}
+function opcionesProveedorProf(l) {
+  const cat = STATE.proveedoresCat || [];
+  let valorSel = '';
+  if (l.proveedorId && cat.some(p => p.id === l.proveedorId)) valorSel = l.proveedorId;
+  else if (l.proveedorNombre) valorSel = 'txt:' + l.proveedorNombre;   // nombre sin proveedor del catalogo (o ya eliminado)
+  const ops = ['<option value="">— Sin proveedor —</option>']
+    .concat(cat.map(p => `<option value="${esc(p.id)}" ${p.id === valorSel ? 'selected' : ''}>${esc(p.nombre)}</option>`));
+  if (valorSel.startsWith('txt:')) ops.push(`<option value="${esc(valorSel)}" selected>${esc(l.proveedorNombre)}</option>`);
+  return ops.join('');
+}
+function actualizarProveedorLineaProf(idx, valor) {
+  const l = STATE.carrito[idx]; if (!l) return;
+  if (!valor) { l.proveedorId = null; l.proveedorNombre = null; return; }
+  if (valor.startsWith('txt:')) { l.proveedorId = null; l.proveedorNombre = valor.slice(4); return; }
+  const p = (STATE.proveedoresCat || []).find(x => x.id === valor);
+  l.proveedorId = p ? p.id : null; l.proveedorNombre = p ? p.nombre : null;
+}
+
 async function loadProductos() {
   try {
     const { data } = await sbClient.from('productos')
-      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion')
+      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion,proveedor_id,proveedor_nombre')
       .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     const productos = data || [];
 
@@ -626,6 +674,7 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
   }
   else {
     const linea = { id: p.id, nombre: p.nombre, sku: p.sku, tipo: p.tipo, costo: Number(p.costo||0),
+      proveedorId: p.proveedor_id || null, proveedorNombre: p.proveedor_nombre || null,
       cantidad: 1, precio: precioUsar, descuento: 0, esCombo: !!p.esCombo,
       unidadCodigo: p.unidad_codigo || null, permiteFraccion: p.permite_fraccion,
       escalaId: escalaElegida ? escalaElegida.id : null,
@@ -667,13 +716,14 @@ function renderCarritoProf() {
   const tbody = document.getElementById('np-carrito-tbody');
   if (!tbody) return;
   if (!STATE.carrito.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Busca y agrega productos arriba</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-cell">Busca y agrega productos arriba</td></tr>`;
     actualizarResumenProf();
     return;
   }
   tbody.innerHTML = STATE.carrito.map((l, idx) => `
     <tr>
       <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${l.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
+      <td class="col-prov-prof" style="display:none"><select class="carrito-input" style="width:150px" title="A quién se le comprará esta línea" onchange="actualizarProveedorLineaProf(${idx},this.value)">${opcionesProveedorProf(l)}</select></td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="${l.permiteFraccion === false ? 1 : 0.001}" step="${l.permiteFraccion === false ? 1 : 'any'}" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/>${abrevUnidadProf(l.unidadCodigo) ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(abrevUnidadProf(l.unidadCodigo))}</div>` : ''}</td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
@@ -688,6 +738,7 @@ function renderCarritoProf() {
     </tr>`).join('');
   actualizarResumenProf();
   aplicarVisibilidadCostoProf();
+  aplicarModoProveedorProf();
 }
 function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
   const l = STATE.carrito[idx]; if (!l) return;
@@ -863,6 +914,7 @@ function abrirNuevaProforma() {
   STATE.clienteSeleccionado = null;
   STATE.ivaActivo = false; STATE.ivaPorcentaje = 15;
   cargarPreferenciaCostoProf();
+  STATE.provModo = 'no'; aplicarModoProveedorProf();
 
   const sel = document.getElementById('np-cliente-select'); if (sel) sel.value = '';
   toggleNuevoClienteProf(false);
@@ -910,9 +962,11 @@ function abrirEditarProforma(id) {
       tipo: d.tipo_item === 'combo' ? 'producto' : d.tipo_item, esCombo: d.tipo_item === 'combo' || !!d.combo_id,
       costo: Number(d.costo||0), cantidad: Number(d.cantidad), precio: Number(d.precio), descuento: Number(d.descuento||0),
       escalaId: d.escala_id || null, escalaNombre: d.escala_nombre || null,
+      proveedorId: d.proveedor_id || null, proveedorNombre: d.proveedor_nombre || null,
       ...(d.combo_id ? {} : unidadProdProf(d.producto_id)),
     }));
     STATE.carrito.forEach(recalcularLineaProf);
+    STATE.provModo = p.mostrar_proveedor === true ? 'visible' : (STATE.carrito.some(l => l.proveedorId || l.proveedorNombre) ? 'interno' : 'no');
     renderCarritoProf();
   })();
 }
@@ -960,6 +1014,9 @@ async function guardarProforma() {
       total: r.total, costo_total: r.costoTotal, estado, observaciones,
       updated_at: new Date().toISOString(),
     };
+    // Solo se toca esta columna si la proforma usa proveedor (o si lo usaba antes y ahora se apaga),
+    // asi las proformas normales se guardan exactamente igual que siempre.
+    if (STATE.provModo !== 'no' || STATE.proformaActual?.mostrar_proveedor === true) payload.mostrar_proveedor = STATE.provModo === 'visible';
 
     let proformaId = editandoId;
     let numero;
@@ -988,6 +1045,7 @@ async function guardarProforma() {
       escala_id: l.escalaId || null, escala_nombre: l.escalaNombre || null,
       origen_stock_id: l.origenStockId || null, origen_stock_nombre: l.origenStockNombre || null,
       es_regalia: !!l.esRegalia,
+      ...(STATE.provModo !== 'no' ? { proveedor_id: l.proveedorId || null, proveedor_nombre: l.proveedorNombre || null } : {}),
     }));
     let { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
     if (errDet) {
@@ -1142,6 +1200,7 @@ async function duplicarProforma(id) {
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_porcentaje,
       total: p.total, costo_total: p.costo_total, estado: 'borrador',
       observaciones: p.observaciones,
+      ...(p.mostrar_proveedor === true ? { mostrar_proveedor: true } : {}),
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
     if (error) throw error;
@@ -1257,6 +1316,7 @@ async function verDetalleProf(id) {
     const { data: detalles } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', id);
     STATE.detalleActual = detalles || [];
     const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
+    const hayProv = STATE.detalleActual.some(d => d.proveedor_nombre);
 
     let html = `
       <div class="form-row">
@@ -1271,13 +1331,14 @@ async function verDetalleProf(id) {
       </div>
       ${p.estado==='convertida' ? `<p style="margin-top:10px;font-size:12.5px;color:var(--success)">✅ Convertida a venta el ${fmtFecha((p.fecha_conversion||'').slice(0,10))} por ${esc(p.convertido_por||'—')}.</p>` : ''}
       ${p.estado==='pago_parcial' ? `<p style="margin-top:10px;font-size:12.5px;color:var(--warning)">💳 Con pago parcial desde el ${fmtFecha((p.fecha_pago_parcial||'').slice(0,10))} — el cobro del resto se hace desde <a href="creditos.html" target="_blank" style="color:var(--accent);text-decoration:underline">Créditos</a>, ya no desde aquí.</p>` : ''}
+      ${hayProv ? `<p style="margin-top:10px;font-size:12.5px;color:var(--text-secondary)">🏷️ Proveedor por línea: ${p.mostrar_proveedor === true ? '<strong>visible para el cliente</strong> (sale en el PDF)' : '<strong>solo interno</strong> (no sale en el PDF)'}</p>` : ''}
       ${p.observaciones ? `<p style="margin-top:10px;font-size:12.5px;color:var(--text-secondary)"><strong>Notas:</strong> ${esc(p.observaciones)}</p>` : ''}
       <div class="table-wrap" style="margin-top:14px">
-        <table><thead><tr><th>Ítem</th><th class="th-right">Cant.</th><th class="th-right">Precio</th><th class="th-right">Subtotal</th></tr></thead>
+        <table><thead><tr><th>Ítem</th>${hayProv ? '<th>Proveedor</th>' : ''}<th class="th-right">Cant.</th><th class="th-right">Precio</th><th class="th-right">Subtotal</th></tr></thead>
         <tbody>${STATE.detalleActual.map(d => `<tr>
-          <td>${esc(d.producto_nombre)}</td><td class="td-right">${fmtNum(d.cantidad)}${abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo) ? ' ' + esc(abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo)) : ''}</td>
+          <td>${esc(d.producto_nombre)}</td>${hayProv ? `<td>${d.proveedor_nombre ? esc(d.proveedor_nombre) : '—'}</td>` : ''}<td class="td-right">${fmtNum(d.cantidad)}${abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo) ? ' ' + esc(abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo)) : ''}</td>
           <td class="td-right td-money">${fmt(d.precio)}</td><td class="td-right td-money">${fmt(d.subtotal)}</td>
-        </tr>`).join('') || '<tr><td colspan="4" class="empty-cell">Sin ítems</td></tr>'}</tbody></table>
+        </tr>`).join('') || '<tr><td colspan="5" class="empty-cell">Sin ítems</td></tr>'}</tbody></table>
       </div>`;
     body.innerHTML = html;
   } catch (e) {
@@ -2064,7 +2125,7 @@ async function generarPDFProforma(p, items, cliente) {
   encabezadoTabla.push('Cant.', 'Precio unit.', 'Descuento', 'Subtotal');
 
   const filas = (items||[]).map(it => {
-    const fila = [it.producto_nombre || 'Ítem'];
+    const fila = [(it.producto_nombre || 'Ítem') + (p && p.mostrar_proveedor === true && it.proveedor_nombre ? `\nProveedor: ${it.proveedor_nombre}` : '')];
     if (colSku) fila.push(it.producto_sku || it.sku || '—');
     if (colBarras) fila.push(it.codigo_barras || '—');
     fila.push(
@@ -2223,7 +2284,7 @@ async function initProformas() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    await Promise.allSettled([loadMetodosPago(), loadClientes(), loadProductos()]);
+    await Promise.allSettled([loadMetodosPago(), loadClientes(), loadProductos(), loadProveedoresProf()]);
     await loadProformas();
     await loadKPIsProf();
 

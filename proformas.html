@@ -1421,11 +1421,22 @@
         </div>
       </div>
 
+      <div class="form-group" id="np-prov-modo-wrap" style="margin-bottom:10px">
+        <label style="font-size:13.5px;font-weight:500">🏷️ Proveedor por línea</label>
+        <select id="np-prov-modo" onchange="cambiarModoProveedorProf(this.value)">
+          <option value="no">No indicar proveedor</option>
+          <option value="interno">Indicar proveedor — solo para mí</option>
+          <option value="visible">Indicar proveedor — mostrarlo al cliente (PDF)</option>
+        </select>
+        <div id="np-prov-ayuda" style="font-size:12px;color:var(--text-muted);margin-top:4px">No se indica proveedor en esta proforma.</div>
+      </div>
+
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Producto</th>
+              <th class="col-prov-prof" style="display:none">Proveedor</th>
               <th class="th-right">Cantidad</th>
               <th class="th-right">Precio</th>
               <th class="th-right col-costo-prof" style="display:none">Costo</th>
@@ -1435,7 +1446,7 @@
             </tr>
           </thead>
           <tbody id="np-carrito-tbody">
-            <tr><td colspan="6" class="empty-cell">Sin productos agregados</td></tr>
+            <tr><td colspan="8" class="empty-cell">Sin productos agregados</td></tr>
           </tbody>
         </table>
       </div>
@@ -1762,7 +1773,7 @@
 
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="comprobante-carta.js?v=20261008a"></script>
-<script src="proformas.js?v=20261008a"></script>
+<script src="proformas.js?v=20261009b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
