@@ -295,7 +295,7 @@ function actualizarProveedorLineaProf(idx, valor) {
 async function loadProductos() {
   try {
     const { data } = await sbClient.from('productos')
-      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion,proveedor_id,proveedor_nombre')
+      .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion,proveedor_id,proveedor_nombre,contenido_cantidad,contenido_unidad_codigo')
       .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     const productos = data || [];
 
@@ -653,9 +653,17 @@ function abrevUnidadProf(codigo) {
   if (!codigo || codigo === 'unidad') return '';
   return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
 }
+// Línea pedida en otra unidad ("100 m"): texto de cantidad o '' si la línea no es así.
+function cantPedidaProf(it) {
+  const p = Number(it && it.cantidad_pedida);
+  if (!(p > 0) || !it.unidad_pedida) return '';
+  const ab = abrevUnidadProf(it.unidad_pedida);
+  return p.toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false }) + (ab ? ' ' + ab : '');
+}
+
 function unidadProdProf(id) {
   const pr = (STATE.productos || []).find(x => x.id === id);
-  return pr ? { unidadCodigo: pr.unidad_codigo || null, permiteFraccion: pr.permite_fraccion } : { unidadCodigo: null, permiteFraccion: null };
+  return pr ? { unidadCodigo: pr.unidad_codigo || null, permiteFraccion: pr.permite_fraccion, contenidoCantidad: Number(pr.contenido_cantidad) > 0 ? Number(pr.contenido_cantidad) : null, contenidoUnidadCodigo: pr.contenido_unidad_codigo || null } : { unidadCodigo: null, permiteFraccion: null };
 }
 
 function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
@@ -668,7 +676,7 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
 
   const existente = STATE.carrito.find(l => l.id === productoId && (l.escalaId || null) === (escalaElegida?.id || null) && (l.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
-    existente.cantidad++;
+    existente.cantidad++; existente.cantidadPedida = null; existente.unidadPedida = null;
     if (p.tipo === 'producto' && existente.cantidad > stockReal) existente.sinStock = true;
     recalcularLineaProf(existente);
   }
@@ -677,6 +685,7 @@ function agregarAlCarritoConPrecioProf(productoId, escalaElegida) {
       proveedorId: p.proveedor_id || null, proveedorNombre: p.proveedor_nombre || null,
       cantidad: 1, precio: precioUsar, descuento: 0, esCombo: !!p.esCombo,
       unidadCodigo: p.unidad_codigo || null, permiteFraccion: p.permite_fraccion,
+      contenidoCantidad: Number(p.contenido_cantidad) > 0 ? Number(p.contenido_cantidad) : null, contenidoUnidadCodigo: p.contenido_unidad_codigo || null,
       escalaId: escalaElegida ? escalaElegida.id : null,
       escalaNombre: escalaElegida ? escalaElegida.nombre : null,
       sinStock: p.tipo === 'producto' && 1 > stockReal,
@@ -724,7 +733,7 @@ function renderCarritoProf() {
     <tr>
       <td style="font-weight:500">${esc(l.nombre)}${l.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${l.escalaNombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(l.escalaNombre)}</div>` : ''}${l.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${l.precioEditado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${l.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
       <td class="col-prov-prof" style="display:none"><select class="carrito-input" style="width:150px" title="A quién se le comprará esta línea" onchange="actualizarProveedorLineaProf(${idx},this.value)">${opcionesProveedorProf(l)}</select></td>
-      <td><input type="number" class="carrito-input" value="${l.cantidad}" min="${l.permiteFraccion === false ? 1 : 0.001}" step="${l.permiteFraccion === false ? 1 : 'any'}" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/>${abrevUnidadProf(l.unidadCodigo) ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(abrevUnidadProf(l.unidadCodigo))}</div>` : ''}</td>
+      <td><input type="number" class="carrito-input" value="${l.cantidad}" min="${l.permiteFraccion === false ? 1 : 0.001}" step="${l.permiteFraccion === false ? 1 : 'any'}" onchange="actualizarLineaProf(${idx},'cantidad',this.value)" style="width:70px"/>${abrevUnidadProf(l.unidadCodigo) ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(abrevUnidadProf(l.unidadCodigo))}</div>` : ''}${controlesCantidadProfHTML(l, idx)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input type="number" class="carrito-input" value="${l.precio}" min="0" step="0.01" title="Ajustar el precio solo para esta proforma" onchange="actualizarLineaProf(${idx},'precio',this.value,true)" style="width:90px"/>
@@ -740,16 +749,46 @@ function renderCarritoProf() {
   aplicarVisibilidadCostoProf();
   aplicarModoProveedorProf();
 }
-function actualizarLineaProf(idx, campo, valor, esPrecioManual) {
+// Fracción escrita (1/4, 3/4, 1 1/2, 1/2/2…) y "pedir en otra unidad" (100 m de un rollo de 300 m).
+function cantidadPorFraccionProf(idx, texto) {
+  if (!String(texto || '').trim()) return;
+  const n = window.N360Cant ? window.N360Cant.parse(texto) : null;
+  if (n == null) { showToast('No entendí esa cantidad. Prueba con 1/4, 3/4, 1 1/2 o un decimal.', 'error'); return; }
+  actualizarLineaProf(idx, 'cantidad', n);
+}
+function cantidadPorPedidoProf(idx, val) {
+  const l = STATE.carrito[idx];
+  const pedido = parseFloat(String(val).replace(',', '.'));
+  if (!l || !(pedido > 0) || !(l.contenidoCantidad > 0)) return;
+  const n = window.N360Cant ? window.N360Cant.desdePedido(pedido, l.contenidoCantidad) : null;
+  if (n == null) return;
+  l.cantidadPedida = pedido; l.unidadPedida = l.contenidoUnidadCodigo;
+  actualizarLineaProf(idx, 'cantidad', n, false, { pedida: pedido });
+}
+function controlesCantidadProfHTML(l, idx) {
+  if (l.permiteFraccion !== true) return '';
+  const st = 'font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-surface,#fff);color:var(--text-primary,#111)';
+  const ab = abrevUnidadProf(l.contenidoUnidadCodigo);
+  const ped = (l.cantidadPedida > 0 && l.unidadPedida) ? `<div style="font-size:10.5px;color:var(--accent);margin-top:3px">✔ ${fmtNum(l.cantidadPedida)} ${esc(abrevUnidadProf(l.unidadPedida))} = ${window.N360Cant ? window.N360Cant.bonito(l.cantidad) : l.cantidad}</div>` : '';
+  return `<div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
+      ${[0.25, 0.5, 0.75].map(v => `<button type="button" onclick="actualizarLineaProf(${idx},'cantidad',${v})" style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg-hover,#f0f0f5);color:var(--text-secondary);cursor:pointer">${window.N360Cant ? window.N360Cant.bonito(v) : v}</button>`).join('')}
+    </div>
+    <input type="text" placeholder="Fracción: 1/4" title="1/4, 3/4, 1 1/2, 1/2/2…" onchange="cantidadPorFraccionProf(${idx}, this.value); this.value=''" style="margin-top:4px;width:84px;${st}"/>
+    ${l.contenidoCantidad > 0 ? `<input type="number" min="0" step="any" placeholder="Pedir en ${esc(ab || 'unidad menor')}" onchange="cantidadPorPedidoProf(${idx}, this.value); this.value=''" style="margin-top:4px;width:96px;${st}"/>` : ''}
+    ${ped}`;
+}
+
+function actualizarLineaProf(idx, campo, valor, esPrecioManual, opcionesPedida) {
   const l = STATE.carrito[idx]; if (!l) return;
   if (campo === 'cantidad') {
-    let n = Math.round((parseFloat(valor) || 0) * 1000) / 1000;   // hasta 3 decimales
+    let n = Math.round((parseFloat(valor) || 0) * 1000000) / 1000000;   // hasta 6 decimales (el cobro se redondea a centavos)
     if (n > 0 && l.permiteFraccion === false && !Number.isInteger(n)) {
       showToast(`"${l.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
       renderCarritoProf();
       return;
     }
     valor = n;
+    if (!(opcionesPedida && opcionesPedida.pedida > 0)) { l.cantidadPedida = null; l.unidadPedida = null; }
   }
   l[campo] = parseFloat(valor) || 0;
   if (esPrecioManual) l.precioEditado = true;
@@ -963,6 +1002,7 @@ function abrirEditarProforma(id) {
       costo: Number(d.costo||0), cantidad: Number(d.cantidad), precio: Number(d.precio), descuento: Number(d.descuento||0),
       escalaId: d.escala_id || null, escalaNombre: d.escala_nombre || null,
       proveedorId: d.proveedor_id || null, proveedorNombre: d.proveedor_nombre || null,
+      cantidadPedida: Number(d.cantidad_pedida) > 0 ? Number(d.cantidad_pedida) : null, unidadPedida: d.cantidad_pedida ? (d.unidad_pedida || null) : null,
       ...(d.combo_id ? {} : unidadProdProf(d.producto_id)),
     }));
     STATE.carrito.forEach(recalcularLineaProf);
@@ -1045,13 +1085,14 @@ async function guardarProforma() {
       escala_id: l.escalaId || null, escala_nombre: l.escalaNombre || null,
       origen_stock_id: l.origenStockId || null, origen_stock_nombre: l.origenStockNombre || null,
       es_regalia: !!l.esRegalia,
+      ...(l.cantidadPedida > 0 && l.unidadPedida ? { cantidad_pedida: l.cantidadPedida, unidad_pedida: l.unidadPedida } : {}),
       ...(STATE.provModo !== 'no' ? { proveedor_id: l.proveedorId || null, proveedor_nombre: l.proveedorNombre || null } : {}),
     }));
     let { error: errDet } = await sbClient.from('proforma_detalles').insert(detallesPayload);
     if (errDet) {
       // Reintentar sin combo_id por si la migración aún no llegó a este entorno
       ({ error: errDet } = await sbClient.from('proforma_detalles').insert(
-        detallesPayload.map(({ combo_id, ...resto }) => resto)
+        detallesPayload.map(({ combo_id, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
     if (errDet) throw errDet;
@@ -1336,8 +1377,8 @@ async function verDetalleProf(id) {
       <div class="table-wrap" style="margin-top:14px">
         <table><thead><tr><th>Ítem</th>${hayProv ? '<th>Proveedor</th>' : ''}<th class="th-right">Cant.</th><th class="th-right">Precio</th><th class="th-right">Subtotal</th></tr></thead>
         <tbody>${STATE.detalleActual.map(d => `<tr>
-          <td>${esc(d.producto_nombre)}</td>${hayProv ? `<td>${d.proveedor_nombre ? esc(d.proveedor_nombre) : '—'}</td>` : ''}<td class="td-right">${fmtNum(d.cantidad)}${abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo) ? ' ' + esc(abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo)) : ''}</td>
-          <td class="td-right td-money">${fmt(d.precio)}</td><td class="td-right td-money">${fmt(d.subtotal)}</td>
+          <td>${esc(d.producto_nombre)}</td>${hayProv ? `<td>${d.proveedor_nombre ? esc(d.proveedor_nombre) : '—'}</td>` : ''}<td class="td-right">${cantPedidaProf(d) ? esc(cantPedidaProf(d)) : `${fmtNum(d.cantidad)}${abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo) ? ' ' + esc(abrevUnidadProf(unidadProdProf(d.producto_id).unidadCodigo)) : ''}`}</td>
+          <td class="td-right td-money">${fmt(cantPedidaProf(d) ? round2(Number(d.precio) * Number(d.cantidad) / Number(d.cantidad_pedida)) : d.precio)}</td><td class="td-right td-money">${fmt(d.subtotal)}</td>
         </tr>`).join('') || '<tr><td colspan="5" class="empty-cell">Sin ítems</td></tr>'}</tbody></table>
       </div>`;
     body.innerHTML = html;
@@ -1718,6 +1759,7 @@ async function confirmarConvertirAVenta() {
       escala_id: (d.escala_id && idsEscalaValidos.has(d.escala_id)) ? d.escala_id : null,
       escala_nombre: d.escala_nombre,
       es_regalia: !!d.es_regalia,
+      ...(Number(d.cantidad_pedida) > 0 && d.unidad_pedida ? { cantidad_pedida: d.cantidad_pedida, unidad_pedida: d.unidad_pedida } : {}),
       vendido_sin_stock: d.tipo_item === 'producto' && d.producto_id && !d.origen_stock_id
         ? Number(d.cantidad) > (stockPorProducto[d.producto_id] ?? Infinity)
         : false,
@@ -1726,7 +1768,7 @@ async function confirmarConvertirAVenta() {
     if (errDetV) {
       // Reintentar sin combo_id/vendido_sin_stock por si la migración aún no llegó a este entorno
       ({ error: errDetV } = await sbClient.from('venta_detalles').insert(
-        detallesVenta.map(({ combo_id, vendido_sin_stock, ...resto }) => resto)
+        detallesVenta.map(({ combo_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
     if (errDetV) throw errDetV;
@@ -2129,8 +2171,8 @@ async function generarPDFProforma(p, items, cliente) {
     if (colSku) fila.push(it.producto_sku || it.sku || '—');
     if (colBarras) fila.push(it.codigo_barras || '—');
     fila.push(
-      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (abrevUnidadProf(unidadProdProf(it.producto_id).unidadCodigo) ? ' ' + abrevUnidadProf(unidadProdProf(it.producto_id).unidadCodigo) : ''),
-      fmt(it.precio),
+      cantPedidaProf(it) || (Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (abrevUnidadProf(unidadProdProf(it.producto_id).unidadCodigo) ? ' ' + abrevUnidadProf(unidadProdProf(it.producto_id).unidadCodigo) : '')),
+      fmt(cantPedidaProf(it) ? round2(Number(it.precio) * Number(it.cantidad) / Number(it.cantidad_pedida)) : it.precio),
       Number(it.descuento) > 0 ? fmt(it.descuento) : '—',
       fmt(it.subtotal),
     );

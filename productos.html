@@ -926,6 +926,16 @@
               <div id="hintUnidadCompra" style="font-size:12px;color:var(--text-secondary);margin-top:6px"></div>
               <div class="form-error" id="errUnidadCompra"></div>
             </div>
+            <div id="wrapContenido" style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">
+              <label class="form-label">Contenido para vender por partes <span style="font-weight:400;color:var(--text-muted)">(opcional)</span></label>
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Ej: si vendes <strong>rollos</strong> de cable, 1 rollo contiene 300 metros. Así en la venta puedes escribir "100 metros" y se cobra la parte proporcional.</div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px">
+                <span>1 unidad de venta contiene</span>
+                <input type="number" class="form-input" id="inputContenidoCantidad" min="0.001" step="any" placeholder="300" style="width:100px" />
+                <select class="form-input" id="selContenidoUnidad" style="width:auto;min-width:140px"></select>
+              </div>
+              <div class="form-error" id="errContenido"></div>
+            </div>
             <div id="panelUnidadNueva" style="display:none;margin-top:12px;padding:12px;border:1px dashed var(--border);border-radius:var(--radius-md)">
               <div style="font-weight:600;font-size:13px;margin-bottom:8px">Nueva unidad</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1517,7 +1527,7 @@
   });
 </script>
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="productos.js?v=20261009a"></script>
+<script src="productos.js?v=20261009b"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->

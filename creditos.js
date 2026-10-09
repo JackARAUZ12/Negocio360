@@ -267,7 +267,7 @@
   }
 
   async function loadProductosYServicios() {
-    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio')
+    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
       .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
     const todos = data || [];
     CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
@@ -940,7 +940,7 @@
     const stockReal = Number(prod.stock_actual || 0);
     const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null) && (i.origen_stock_id || null) === (esRemoto ? origen.sucursalId : null));
     if (existente) {
-      existente.cantidad += cantidad;
+      existente.cantidad += cantidad; existente.cantidad_pedida = null; existente.unidad_pedida = null;
       if (prod.tipo === 'producto' && existente.cantidad > stockReal) existente.sinStock = true;
     }
     else CS.ncItems.push({
@@ -949,6 +949,9 @@
       escala_id: escalaElegida ? escalaElegida.id : null,
       escala_nombre: escalaElegida ? escalaElegida.nombre : null,
       esCombo: !!prod.esCombo,
+      unidadCodigo: prod.unidad_codigo || null,
+      contenidoCantidad: Number(prod.contenido_cantidad) > 0 ? Number(prod.contenido_cantidad) : null,
+      contenidoUnidadCodigo: prod.contenido_unidad_codigo || null,
       sinStock: prod.tipo === 'producto' && cantidad > stockReal,
       origen_stock_id:     esRemoto ? origen.sucursalId   : null,
       origen_stock_nombre: esRemoto ? origen.nombreCuenta : null,
@@ -1007,7 +1010,7 @@
   }
   window.alternarRegaliaCredito = alternarRegaliaCredito;
 
-  function actualizarCantidadItemCredito(idx, valor) {
+  function actualizarCantidadItemCredito(idx, valor, opciones) {
     const it = CS.ncItems[idx];
     if (!it) return;
     let n = parseFloat(valor);
@@ -1023,11 +1026,46 @@
         }
       }
     }
+    n = Math.round(n * 1000000) / 1000000;
     it.cantidad = n;
+    if (opciones && opciones.pedida > 0 && it.contenidoUnidadCodigo) { it.cantidad_pedida = opciones.pedida; it.unidad_pedida = it.contenidoUnidadCodigo; }
+    else { it.cantidad_pedida = null; it.unidad_pedida = null; }
     renderNCItems();
     recalcularCredito();
   }
   window.actualizarCantidadItemCredito = actualizarCantidadItemCredito;
+
+  // Fracción escrita (1/4, 3/4, 1 1/2, 1/2/2…) y "pedir en otra unidad" (100 m de un rollo de 300 m).
+  function cantidadPorFraccionCredito(idx, texto) {
+    if (!String(texto || '').trim()) return;
+    const n = window.N360Cant ? window.N360Cant.parse(texto) : null;
+    if (n == null) { showToast('No entendí esa cantidad. Prueba con 1/4, 3/4, 1 1/2 o un decimal.', 'error'); return; }
+    actualizarCantidadItemCredito(idx, n);
+  }
+  function cantidadPorPedidoCredito(idx, val) {
+    const it = CS.ncItems[idx];
+    const pedido = parseFloat(String(val).replace(',', '.'));
+    if (!it || !(pedido > 0) || !(it.contenidoCantidad > 0)) return;
+    const n = window.N360Cant ? window.N360Cant.desdePedido(pedido, it.contenidoCantidad) : null;
+    if (n == null) return;
+    actualizarCantidadItemCredito(idx, n, { pedida: pedido });
+  }
+  window.cantidadPorFraccionCredito = cantidadPorFraccionCredito;
+  window.cantidadPorPedidoCredito = cantidadPorPedidoCredito;
+  function abrevUnidadCred(codigo) { return (!codigo || codigo === 'unidad') ? '' : (window.N360Unidades?.porCodigo(codigo)?.abreviatura || ''); }
+  function controlesCantidadCreditoHTML(it, idx) {
+    if (it.esCombo || it.tipo_item !== 'producto') return '';
+    const st = 'font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-app);color:var(--text-primary)';
+    const ab = abrevUnidadCred(it.contenidoUnidadCodigo);
+    const ped = (it.cantidad_pedida > 0 && it.unidad_pedida)
+      ? `<div style="font-size:10.5px;color:var(--accent);margin-top:3px">✔ ${it.cantidad_pedida} ${esc(abrevUnidadCred(it.unidad_pedida))} = ${window.N360Cant ? window.N360Cant.bonito(it.cantidad) : it.cantidad}</div>` : '';
+    return `<div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
+        ${[0.25, 0.5, 0.75].map(v => `<button type="button" onclick="actualizarCantidadItemCredito(${idx}, ${v})" style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg-hover,#f0f0f5);color:var(--text-secondary);cursor:pointer">${window.N360Cant ? window.N360Cant.bonito(v) : v}</button>`).join('')}
+      </div>
+      <input type="text" placeholder="Fracción: 1/4" title="1/4, 3/4, 1 1/2, 1/2/2…" onchange="cantidadPorFraccionCredito(${idx}, this.value); this.value=''" style="margin-top:4px;width:84px;${st}"/>
+      ${it.contenidoCantidad > 0 ? `<input type="number" min="0" step="any" placeholder="Pedir en ${esc(ab || 'unidad menor')}" onchange="cantidadPorPedidoCredito(${idx}, this.value); this.value=''" style="margin-top:4px;width:96px;${st}"/>` : ''}
+      ${ped}`;
+  }
 
   /* ===================================================
      SELECTOR DE ESCALA DE PRECIOS (crédito por venta)
@@ -1084,9 +1122,9 @@
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
         <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
-        <td><input type="number" value="${it.cantidad}" min="0.01" step="0.01"
+        <td><input type="number" value="${it.cantidad}" min="0.001" step="any"
               style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
-              onchange="actualizarCantidadItemCredito(${idx}, this.value)"/></td>
+              onchange="actualizarCantidadItemCredito(${idx}, this.value)"/>${controlesCantidadCreditoHTML(it, idx)}</td>
         <td>
           <div style="display:flex;align-items:center;gap:4px">
             <input type="number" value="${it.precio}" min="0" step="0.01"
@@ -1581,12 +1619,13 @@
           escala_id: (it.escala_id && idsEscalaValidos2.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre || null,
           es_regalia: !!it.esRegalia,
           vendido_sin_stock: !!it.sinStock,
+          cantidad_pedida: it.cantidad_pedida || null, unidad_pedida: it.cantidad_pedida ? (it.unidad_pedida || null) : null,
         }));
         let { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
         if (errDet) {
           // Reintentar sin combo_id/vendido_sin_stock por si la migración aún no llegó a este entorno
           ({ error: errDet } = await _sb.from('venta_detalles').insert(
-            detalles.map(({ combo_id, vendido_sin_stock, ...resto }) => resto)
+            detalles.map(({ combo_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
           ));
         }
         if (errDet) throw errDet;
@@ -3138,6 +3177,7 @@
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('app').style.display = 'flex';
 
+      try { await window.N360Unidades?.cargarPersonalizadas(_sb, CS.userId); } catch (_) {}
       await Promise.all([loadClientes(), loadProductosYServicios(), loadMetodosPago(), loadImpuestos()]);
       await refrescarTodo();
 

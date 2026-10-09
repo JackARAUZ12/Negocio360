@@ -1078,7 +1078,7 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion')
+    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
@@ -2985,6 +2985,8 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       unidadMedida: prod.unidad_medida || null,
       unidadCodigo: prod.unidad_codigo || null,
       permiteFraccion: (prod.permite_fraccion === true || prod.permite_fraccion === false) ? prod.permite_fraccion : null,
+      contenidoCantidad: Number(prod.contenido_cantidad) > 0 ? Number(prod.contenido_cantidad) : null,
+      contenidoUnidadCodigo: prod.contenido_unidad_codigo || null,
       presentacionId: null,
       presentacionNombre: null,
       presentacionFactor: null,
@@ -3029,7 +3031,7 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
       showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
       return;
     }
-    existente.cantidad += 1;
+    existente.cantidad += 1; existente.cantidadPedida = null; existente.unidadPedida = null;
   } else {
     VR.carrito.push({
       id:              prod.id,
@@ -3511,7 +3513,7 @@ function construirItemCarritoDesdeProducto(prod, cantidad) {
 
 function agregarProductoOIncrementar(carrito, prod, cantidadAAgregar) {
   const existente = carrito.find(c => c.id === prod.id && !c.escalaId);
-  if (existente) { existente.cantidad += cantidadAAgregar; recalcItem(existente); }
+  if (existente) { existente.cantidad += cantidadAAgregar; existente.cantidadPedida = null; existente.unidadPedida = null; recalcItem(existente); }
   else carrito.push(construirItemCarritoDesdeProducto(prod, cantidadAAgregar));
 }
 
@@ -3648,11 +3650,29 @@ function abrevUnidad(codigo) {
   if (!codigo || codigo === 'unidad') return '';
   return window.N360Unidades?.porCodigo(codigo)?.abreviatura || '';
 }
+// Línea vendida "por pedido" (ej. 100 m de un rollo de 300 m): lo que pidió el cliente y en qué unidad.
+function pedidaDe(i) {
+  const p = Number(i.cantidadPedida != null ? i.cantidadPedida : i.cantidad_pedida);
+  const u = i.unidadPedida != null ? i.unidadPedida : i.unidad_pedida;
+  return (p > 0 && u) ? { p, u } : null;
+}
 // "1.5 lb" para tickets: sin unidad queda igual que siempre.
+// Si la línea se pidió en otra unidad ("100 m"), se muestra eso, no la fracción.
 function cantTicket(i) {
+  const ped = pedidaDe(i);
+  if (ped) {
+    const abp = abrevUnidad(ped.u);
+    return ped.p.toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false }) + (abp ? ' ' + abp : '');
+  }
   const ab = abrevUnidad(i.unidadCodigo);
   const n = Number(i.cantidad);
   return Number.isFinite(n) ? n.toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false }) + (ab ? ' ' + ab : '') : String(i.cantidad);
+}
+// Precio por la unidad que se muestra (por metro, en el ejemplo del rollo).
+function precioTicket(i) {
+  const ped = pedidaDe(i);
+  if (ped) return round2((Number(i.precio) || 0) * (Number(i.cantidad) || 0) / ped.p);
+  return i.precio;
 }
 function fmtCant(n) {
   return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false });
@@ -3668,12 +3688,55 @@ function cambiarPorMonto(productoId, val) {
   cambiarCantidad(productoId, Math.round((monto / item.precio) * 1000) / 1000);
 }
 
-function cambiarCantidad(productoId, val) {
+// Escribir la cantidad como fracción u operación: 1/4, 3/4, 1 1/2, 1/2/2, "media"…
+// Controles extra de cantidad para productos fraccionables: botones rápidos, fracción escrita,
+// "por monto" y, si el producto trae su contenido, "pedir en otra unidad" (ej. 100 m de un rollo de 300 m).
+function controlesCantidadHTML(item) {
+  const rapidos = [0.25, 0.5, 0.75, 1, 1.5, 2];
+  const bonito = v => (window.N360Cant ? window.N360Cant.bonito(v) : String(v));
+  const estiloIn = 'font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-surface,#fff);color:var(--text-primary,#111)';
+  const abPed = abrevUnidad(item.contenidoUnidadCodigo);
+  const ped = pedidaDe(item);
+  return `
+    <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
+      ${rapidos.map(v => `<button type="button" onclick="cambiarCantidad('${item.id}',${v})"
+        style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:${Number(item.cantidad)===v ? 'var(--accent)' : 'var(--bg-hover,#f0f0f5)'};color:${Number(item.cantidad)===v ? '#fff' : 'var(--text-secondary)'};cursor:pointer">${bonito(v)}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+      <input type="text" inputmode="text" placeholder="Fracción: 1/4" title="Escribe una fracción u operación: 1/4, 3/4, 1 1/2, 1/2/2 (la mitad de la mitad)…"
+        onchange="cambiarPorFraccion('${item.id}',this.value); this.value=''" style="width:84px;${estiloIn}"/>
+      <input type="number" min="0" step="any" placeholder="Por monto" title="Escribe cuánto dinero quiere el cliente y se calcula la cantidad"
+        onchange="cambiarPorMonto('${item.id}',this.value); this.value=''" style="width:76px;${estiloIn}"/>
+      ${item.contenidoCantidad > 0 ? `<input type="number" min="0" step="any" placeholder="Pedir en ${esc(abPed || 'unidad menor')}" title="Cuánto pide el cliente en ${esc(abPed || 'la unidad menor')} (1 unidad = ${fmtCant(item.contenidoCantidad)} ${esc(abPed)})"
+        onchange="cambiarPorPedido('${item.id}',this.value); this.value=''" style="width:96px;${estiloIn}"/>` : ''}
+    </div>
+    ${ped ? `<div style="font-size:10.5px;color:var(--accent);margin-top:3px">✔ ${fmtCant(ped.p)} ${esc(abrevUnidad(ped.u))} = ${bonito(item.cantidad)} ${esc(abrevUnidad(item.unidadCodigo) || 'u')}</div>`
+          : (Number(item.cantidad) % 1 !== 0 ? `<div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">= ${bonito(item.cantidad)}</div>` : '')}`;
+}
+
+function cambiarPorFraccion(productoId, texto) {
+  const item = S.carrito.find(c => c.id === productoId);
+  if (!item || !String(texto || '').trim()) return;
+  const n = window.N360Cant ? window.N360Cant.parse(texto) : null;
+  if (n == null) { showToast('No entendí esa cantidad. Prueba con 1/4, 3/4, 1 1/2 o un decimal.', 'error'); return; }
+  cambiarCantidad(productoId, n);
+}
+// "Pedir en otra unidad": el cliente quiere 100 m de un rollo de 300 m -> 100/300 de rollo.
+function cambiarPorPedido(productoId, val) {
+  const item = S.carrito.find(c => c.id === productoId);
+  const pedido = parseFloat(String(val).replace(',', '.'));
+  if (!item || !(pedido > 0) || !(item.contenidoCantidad > 0)) return;
+  const n = window.N360Cant ? window.N360Cant.desdePedido(pedido, item.contenidoCantidad) : null;
+  if (n == null) return;
+  cambiarCantidad(productoId, n, { pedida: pedido });
+}
+
+function cambiarCantidad(productoId, val, opciones) {
   const item = S.carrito.find(c => c.id===productoId);
   if (!item) return;
   let n = parseFloat(val) || 0;
   if (n <= 0) { removeFromCarrito(productoId); return; }
-  n = Math.round(n * 1000) / 1000;   // hasta 3 decimales
+  n = Math.round(n * 1000000) / 1000000;   // hasta 6 decimales (el cobro se redondea a centavos)
   if (cantidadSoloEntera(item) && !Number.isInteger(n)) {
     const ab = abrevUnidad(item.unidadCodigo);
     showToast(`"${item.nombre}" se vende en unidades enteras${ab ? ' (' + ab + ')' : ''}. Escribe un número entero.`, 'error');
@@ -3690,6 +3753,9 @@ function cambiarCantidad(productoId, val) {
     item.sinStock = true;
   }
   item.cantidad = n;
+  // Lo que pidió el cliente en otra unidad (ej. 100 m de un rollo de 300 m): solo si esta llamada lo trae.
+  if (opciones && opciones.pedida > 0 && item.contenidoUnidadCodigo) { item.cantidadPedida = opciones.pedida; item.unidadPedida = item.contenidoUnidadCodigo; }
+  else { item.cantidadPedida = null; item.unidadPedida = null; }
   recalcItem(item);
   renderCarrito(item.tipo);
 }
@@ -3851,14 +3917,7 @@ function renderCarrito(tipo) {
           min="${cantidadSoloEntera(item) ? 1 : 0.001}" step="${cantidadSoloEntera(item) ? 1 : 'any'}" max="${item.stockMax!==Infinity ? item.stockMax : ''}"
           onchange="cambiarCantidad('${item.id}',this.value)"/>
         ${abrevUnidad(item.unidadCodigo) ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(abrevUnidad(item.unidadCodigo))}</div>` : ''}
-        ${cantidadFraccionable(item) ? `
-          <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
-            ${[0.5, 1, 1.5, 2].map(v => `<button type="button" onclick="cambiarCantidad('${item.id}',${v})"
-              style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:${Number(item.cantidad)===v ? 'var(--accent)' : 'var(--bg-hover,#f0f0f5)'};color:${Number(item.cantidad)===v ? '#fff' : 'var(--text-secondary)'};cursor:pointer">${v === 0.5 ? '½' : v === 1.5 ? '1½' : v}</button>`).join('')}
-          </div>
-          <input type="number" min="0" step="any" placeholder="Por monto" title="Escribe cuánto dinero quiere el cliente y se calcula la cantidad"
-            onchange="cambiarPorMonto('${item.id}',this.value); this.value=''"
-            style="margin-top:4px;width:84px;font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-surface,#fff);color:var(--text-primary,#111)"/>` : ''}
+        ${cantidadFraccionable(item) ? controlesCantidadHTML(item) : ''}
       </td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
@@ -4172,7 +4231,7 @@ function calcularResumen() {
             <td style="font-weight:500">${esc(i.nombre)}</td>
             <td><span class="tipo-item-badge ${i.tipo==='producto'?'badge-prod':'badge-serv'}">${i.tipo}</span></td>
             <td>${cantTicket(i)}</td>
-            <td>${fmt(i.precio)}</td>
+            <td>${fmt(precioTicket(i))}</td>
             <td style="font-weight:700">${fmt(i.subtotal)}</td>
           </tr>`).join('')}
         </tbody>
@@ -4542,10 +4601,10 @@ function dibujarRecibo(doc, venta, items) {
       }
       linea(3.9);
     });
-    const cant = Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidadAbrev ? ' ' + it.unidadAbrev : '');
+    const cant = pedidaDe(it) ? cantTicket(it) : Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidadAbrev ? ' ' + it.unidadAbrev : '');
     doc.setFontSize(7.8);
     doc.setTextColor(0, 0, 0);
-    doc.text(`${cant} x ${fmt(it.precio)}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
+    doc.text(`${cant} x ${fmt(precioTicket(it))}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
     linea(4.6);
   });
 
@@ -5280,13 +5339,15 @@ async function confirmarVenta(conImpresion) {
       presentacion_nombre: item.presentacionNombre || null,
       presentacion_factor: item.presentacionFactor || null,
       lote_id: item.loteId || null,
+      cantidad_pedida: item.cantidadPedida || null,
+      unidad_pedida:   item.cantidadPedida ? (item.unidadPedida || null) : null,
     }));
 
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
       // Reintentar sin columnas escala_*/combo_id/promocion_id/vendido_sin_stock por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
@@ -6129,7 +6190,7 @@ function agregarAlCarritoVR(prod) {
       }
       existente.sinStock = true; // se vendió por encima de lo disponible — queda marcado
     }
-    existente.cantidad += 1;
+    existente.cantidad += 1; existente.cantidadPedida = null; existente.unidadPedida = null;
   } else {
     VR.carrito.push({
       id:            prod.id,
@@ -6140,6 +6201,8 @@ function agregarAlCarritoVR(prod) {
       cantidad:      1,
       unidadCodigo:  prod.unidad_codigo || null,
       permiteFraccion: (prod.permite_fraccion === true || prod.permite_fraccion === false) ? prod.permite_fraccion : null,
+      contenidoCantidad: Number(prod.contenido_cantidad) > 0 ? Number(prod.contenido_cantidad) : null,
+      contenidoUnidadCodigo: prod.contenido_unidad_codigo || null,
       precio:        Number(prod.precio)  || 0,
       costo:         Number(prod.costo)   || 0,
       stockDisponible: stockReal, // valor REAL -- se usa también para el descuento final de stock, nunca debe ser Infinity
@@ -6153,12 +6216,12 @@ function agregarAlCarritoVR(prod) {
   renderCarritoVentaRapida();
 }
 
-function cambiarCantidadVR(id, val) {
+function cambiarCantidadVR(id, val, opciones) {
   const item = VR.carrito.find(i => i.id === id);
   if (!item) return;
   let n = parseFloat(val);
   if (isNaN(n) || n <= 0) n = 1;
-  n = Math.round(n * 1000) / 1000;
+  n = Math.round(n * 1000000) / 1000000;
   if (item.permiteFraccion === false && !Number.isInteger(n)) {
     showToast(`"${item.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
     renderCarritoVentaRapida();
@@ -6176,7 +6239,26 @@ function cambiarCantidadVR(id, val) {
     item.sinStock = true;
   }
   item.cantidad = n;
+  if (opciones && opciones.pedida > 0 && item.contenidoUnidadCodigo) { item.cantidadPedida = opciones.pedida; item.unidadPedida = item.contenidoUnidadCodigo; }
+  else { item.cantidadPedida = null; item.unidadPedida = null; }
   renderCarritoVentaRapida();
+}
+
+// Fracción escrita ("1/4", "3/4", "1 1/2"…) en la venta rápida.
+function cambiarPorFraccionVR(id, texto) {
+  if (!String(texto || '').trim()) return;
+  const n = window.N360Cant ? window.N360Cant.parse(texto) : null;
+  if (n == null) { showToast('No entendí esa cantidad. Prueba con 1/4, 3/4, 1 1/2 o un decimal.', 'error'); return; }
+  cambiarCantidadVR(id, n);
+}
+// "Pedir en otra unidad" en la venta rápida (100 m de un rollo de 300 m).
+function cambiarPorPedidoVR(id, val) {
+  const item = VR.carrito.find(i => i.id === id);
+  const pedido = parseFloat(String(val).replace(',', '.'));
+  if (!item || !(pedido > 0) || !(item.contenidoCantidad > 0)) return;
+  const n = window.N360Cant ? window.N360Cant.desdePedido(pedido, item.contenidoCantidad) : null;
+  if (n == null) return;
+  cambiarCantidadVR(id, n, { pedida: pedido });
 }
 
 function removeFromCarritoVR(id) {
@@ -6226,6 +6308,15 @@ function renderCarritoVentaRapida() {
           <input type="number" min="${item.permiteFraccion === false || item.permiteFraccion == null ? 1 : 0.001}" step="${item.permiteFraccion === true ? 'any' : 1}" value="${item.cantidad}"
             style="width:${item.permiteFraccion === true ? 72 : 56}px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
             onchange="cambiarCantidadVR('${item.id}', this.value)"/>
+          ${item.permiteFraccion === true ? `
+            <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
+              ${[0.25, 0.5, 0.75].map(v => `<button type="button" onclick="cambiarCantidadVR('${item.id}',${v})" style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg-hover,#f0f0f5);color:var(--text-secondary);cursor:pointer">${window.N360Cant ? window.N360Cant.bonito(v) : v}</button>`).join('')}
+            </div>
+            <input type="text" placeholder="Fracción: 1/4" title="1/4, 3/4, 1 1/2, 1/2/2…" onchange="cambiarPorFraccionVR('${item.id}', this.value); this.value=''"
+              style="margin-top:4px;width:84px;font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-app);color:var(--text-primary)"/>
+            ${item.contenidoCantidad > 0 ? `<input type="number" min="0" step="any" placeholder="Pedir en ${esc(abrevUnidad(item.contenidoUnidadCodigo) || 'unidad menor')}" onchange="cambiarPorPedidoVR('${item.id}', this.value); this.value=''"
+              style="margin-top:4px;width:96px;font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-app);color:var(--text-primary)"/>` : ''}
+            ${pedidaDe(item) ? `<div style="font-size:10.5px;color:var(--accent);margin-top:3px">✔ ${fmtCant(pedidaDe(item).p)} ${esc(abrevUnidad(pedidaDe(item).u))} = ${window.N360Cant ? window.N360Cant.bonito(item.cantidad) : item.cantidad}</div>` : ''}` : ''}
         </td>
         <td>
           <input type="number" min="0" step="0.01" value="${item.precio}"
@@ -6559,12 +6650,14 @@ async function confirmarVentaRapida() {
       presentacion_id:      item.presentacionId || null,
       presentacion_nombre:  item.presentacionNombre || null,
       presentacion_factor:  item.presentacionFactor || null,
+      cantidad_pedida: item.cantidadPedida || null,
+      unidad_pedida:   item.cantidadPedida ? (item.unidadPedida || null) : null,
     }));
     let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
     if (errDetalles) {
       // Reintentar sin columnas escala_*/combo_id/promocion_id/vendido_sin_stock por si la migración aún no llegó a este entorno
       ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, ...resto }) => resto)
+        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
     if (errDetalles) throw errDetalles;
@@ -6900,7 +6993,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
     ${detalleHtml}
-    <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(i.precio)}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
+    <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(precioTicket(i))}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
 
   const html = `<!DOCTYPE html>
@@ -7091,7 +7184,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
     ${detalleHtml}
-    <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(i.precio)}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
+    <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(precioTicket(i))}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
 
   const html = `<!DOCTYPE html>

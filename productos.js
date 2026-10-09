@@ -2893,6 +2893,7 @@ function poblarSelectorUnidad(seleccion, textoLegacy, conSinDefinir) {
   sel.value = seleccion || 'unidad';
   if (sel.value !== (seleccion || 'unidad')) sel.value = 'unidad';
   poblarSelectorCompra();
+  poblarSelectorContenido();
 }
 
 // "Se compra en": misma lista de unidades; vacío = igual que la de venta.
@@ -3000,6 +3001,31 @@ async function guardarUnidadNueva() {
   }
 }
 
+function poblarSelectorContenido(seleccion) {
+  const sc = $('selContenidoUnidad');
+  if (!sc || !window.N360Unidades) return;
+  const U = window.N360Unidades;
+  const actual = seleccion !== undefined ? seleccion : sc.value;
+  sc.innerHTML = '<option value="">— Sin contenido —</option>' + Object.keys(U.TIPOS).map(tipo => {
+    const items = U.todas().filter(u => u.tipo === tipo);
+    return items.length ? `<optgroup label="${U.TIPOS[tipo]}">` + items.map(u => `<option value="${escHtml(u.codigo)}">${escHtml(u.nombre)} (${escHtml(u.abreviatura)})</option>`).join('') + '</optgroup>' : '';
+  }).join('');
+  sc.value = actual || '';
+  if (sc.value !== (actual || '')) sc.value = '';
+}
+
+// Contenido por unidad de venta (opcional): permite vender "100 m" de un rollo de 300 m.
+function validarContenido(tipo) {
+  if (tipo !== 'producto') return '';
+  const sc = $('selContenidoUnidad'); const q = $('inputContenidoCantidad');
+  if (!sc || !q) return '';
+  const hayUnidad = !!sc.value; const cant = parseFloat(q.value);
+  if (!hayUnidad && !q.value) return '';
+  if (!hayUnidad) return 'Elige la unidad del contenido (ej. metros).';
+  if (!(cant > 0)) return 'Escribe cuánto contiene (ej. 300).';
+  return '';
+}
+
 // Valores de unidad para guardar el producto. Servicios no llevan unidad.
 function leerUnidadParaGuardar(tipo, previo) {
   if (tipo !== 'producto') return {};
@@ -3030,6 +3056,16 @@ function leerUnidadParaGuardar(tipo, previo) {
     out.unidad_compra_codigo = null;
     out.factor_compra = null;
   }
+  // Contenido por unidad (vender por partes). Solo se tocan estas columnas si el formulario las trae.
+  const scont = $('selContenidoUnidad'); const qcont = parseFloat($('inputContenidoCantidad')?.value);
+  if (scont && scont.value && qcont > 0) {
+    out.contenido_cantidad = qcont;
+    out.contenido_unidad_codigo = scont.value;
+    out.permite_fraccion = true; // vender por partes implica poder fraccionar
+  } else if (previo && (previo.contenido_cantidad != null || previo.contenido_unidad_codigo)) {
+    out.contenido_cantidad = null;
+    out.contenido_unidad_codigo = null;
+  }
   return out;
 }
 
@@ -3053,6 +3089,9 @@ function aplicarUnidadAlFormulario(p) {
   poblarSelectorCompra(p?.unidad_compra_codigo || '');
   if ($('inputFactorCompra')) $('inputFactorCompra').value = p?.factor_compra || '';
   if ($('errUnidadCompra')) $('errUnidadCompra').textContent = '';
+  poblarSelectorContenido(p?.contenido_unidad_codigo || '');
+  if ($('inputContenidoCantidad')) $('inputContenidoCantidad').value = p?.contenido_cantidad || '';
+  if ($('errContenido')) $('errContenido').textContent = '';
   alCambiarUnidadCompra();
 }
 
@@ -3540,6 +3579,11 @@ async function guardarProducto() {
   if (errUC) errUC.textContent = '';
   const msgUC = validarUnidadCompra(tipo);
   if (msgUC) { if (errUC) errUC.textContent = msgUC; return; }
+
+  const errCont = $('errContenido');
+  if (errCont) errCont.textContent = '';
+  const msgCont = validarContenido(tipo);
+  if (msgCont) { if (errCont) errCont.textContent = msgCont; return; }
 
   const errEscalas = $('errEscalas');
   if (errEscalas) errEscalas.textContent = '';
