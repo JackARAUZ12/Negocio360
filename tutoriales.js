@@ -18,6 +18,9 @@ const TUT = {
   modulos: [],         // [{key,label,icon,videos:[...]}] solo los activos
   moduloActual: null,
   videoActual: null,
+  vistos: new Set(),   // ids de videos que esta cuenta ya vio
+  vistosOk: true,      // false si la tabla de vistos no responde (se oculta esa funcion)
+  timerVisto: null,
 };
 
 function esc(s) {
@@ -167,28 +170,78 @@ async function cargarTutoriales() {
     .eq('visible', true).order('orden', { ascending: true }).order('created_at', { ascending: true });
   if (error) throw error;
   TUT.videos = data || [];
+  try {
+    const rv = await sb.from('tutoriales_videos_vistos').select('video_id').eq('auth_user_id', TUT.userId);
+    if (rv.error) throw rv.error;
+    TUT.vistos = new Set((rv.data || []).map(x => x.video_id));
+    TUT.vistosOk = true;
+  } catch (e) { console.warn('tutoriales vistos:', e); TUT.vistos = new Set(); TUT.vistosOk = false; }
   const mods = await modulosVisibles();
   TUT.modulos = mods.map(m => ({ ...m, videos: TUT.videos.filter(v => v.modulo_key === m.key) }));
 }
 
+function conteoVistos(m) { return m.videos.filter(v => TUT.vistos.has(v.id)).length; }
+
 function renderModulos() {
   const grid = document.getElementById('tut-grid');
   if (!TUT.modulos.length) { grid.innerHTML = '<div class="tut-vacio-msg">No hay módulos disponibles.</div>'; return; }
-  const total = TUT.videos.length;
+  const total = TUT.modulos.reduce((n, m) => n + m.videos.length, 0);
+  const vistos = TUT.modulos.reduce((n, m) => n + conteoVistos(m), 0);
   // Primero los módulos con videos; los vacíos al final, atenuados.
   const orden = [...TUT.modulos].sort((a, b) => (b.videos.length > 0) - (a.videos.length > 0));
-  grid.innerHTML = orden.map(m => `
-    <div class="tut-card ${m.videos.length ? '' : 'vacio'}" onclick="TUT.abrirModulo('${esc(m.key)}')">
+  grid.innerHTML = orden.map(m => {
+    const n = m.videos.length, v = conteoVistos(m);
+    const cuenta = !n ? 'Próximamente'
+      : (TUT.vistosOk ? `${v}/${n} vistos` : `${n} ${n === 1 ? 'video' : 'videos'}`);
+    const barra = (n && TUT.vistosOk) ? `<div class="tut-barra"><span style="width:${Math.round(v * 100 / n)}%"></span></div>` : '';
+    return `
+    <div class="tut-card ${n ? '' : 'vacio'}" onclick="TUT.abrirModulo('${esc(m.key)}')">
       <div class="tut-card-icono">${esc(m.icon)}</div>
       <div class="tut-card-nombre">${esc(m.label)}</div>
-      <div class="tut-card-cuenta">${m.videos.length ? m.videos.length + (m.videos.length === 1 ? ' video' : ' videos') : 'Próximamente'}</div>
-    </div>`).join('');
+      <div class="tut-card-cuenta">${cuenta}</div>${barra}
+    </div>`;
+  }).join('');
   document.getElementById('tut-subtitulo').textContent = total
     ? `Aprende a usar cada módulo de Negocio360 con videos cortos y claros. Hay ${total} ${total === 1 ? 'video' : 'videos'} disponibles.`
     : 'Aprende a usar cada módulo de Negocio360 con videos cortos y claros. Los videos se irán publicando pronto.';
+  const pg = document.getElementById('tut-progreso-global');
+  if (pg) pg.textContent = (total && TUT.vistosOk) ? `Llevas ${vistos} de ${total} videos vistos` : '';
 }
 
-TUT.abrirModulo = function (key) {
+/* Buscador: busca en módulos (nombre) y en videos (título / descripción). */
+function sinTildes(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+TUT.buscar = function (texto) {
+  const q = sinTildes(texto).trim();
+  const res = document.getElementById('tut-resultados');
+  const grid = document.getElementById('tut-grid');
+  if (!q) { res.style.display = 'none'; res.innerHTML = ''; grid.style.display = ''; return; }
+  const coinciden = [];
+  TUT.modulos.forEach(m => m.videos.forEach(v => {
+    if (sinTildes(v.titulo).includes(q) || sinTildes(v.descripcion).includes(q) || sinTildes(m.label).includes(q)) coinciden.push({ m, v });
+  }));
+  grid.style.display = 'none';
+  res.style.display = '';
+  res.innerHTML = coinciden.length
+    ? `<div class="tut-resultados-lista">${coinciden.map(({ m, v }) => `
+        <div class="tut-item" onclick="TUT.abrirVideo('${esc(m.key)}','${esc(v.id)}')">
+          <img class="tut-thumb" loading="lazy" src="${ytThumb(v.youtube_id)}" alt="" onerror="this.style.visibility='hidden'" />
+          <div class="tut-item-txt">
+            <div class="tut-res-modulo">${esc(m.icon)} ${esc(m.label)}</div>
+            <div class="tut-item-titulo">${esc(v.titulo)} ${TUT.vistos.has(v.id) ? '<span class="tut-visto">✓</span>' : ''}</div>
+            <div class="tut-item-meta"><span class="tut-badge">${esc(NIVELES[v.nivel] || 'Básico')}</span>${v.duracion ? `<span>⏱ ${esc(v.duracion)}</span>` : ''}</div>
+          </div>
+        </div>`).join('')}</div>`
+    : '<div class="tut-vacio-msg">No encontré tutoriales con esa búsqueda. Prueba con otra palabra.</div>';
+};
+
+TUT.abrirVideo = function (moduloKey, videoId) {
+  const b = document.getElementById('tut-buscar'); if (b) b.value = '';
+  TUT.buscar('');
+  TUT.abrirModulo(moduloKey, videoId);
+};
+
+TUT.abrirModulo = function (key, videoId) {
   const m = TUT.modulos.find(x => x.key === key);
   if (!m) return;
   TUT.moduloActual = m;
@@ -196,7 +249,11 @@ TUT.abrirModulo = function (key) {
   document.getElementById('tut-vista-videos').style.display = '';
   document.getElementById('tut-modulo-titulo').textContent = `${m.icon} ${m.label}`;
   renderLista();
-  if (m.videos.length) TUT.reproducir(m.videos[0].id, false);
+  if (m.videos.length) {
+    const inicial = (videoId && m.videos.some(v => v.id === videoId)) ? videoId
+      : (m.videos.find(v => !TUT.vistos.has(v.id)) || m.videos[0]).id; // el primero que aún no ha visto
+    TUT.reproducir(inicial, !!videoId);
+  }
   else {
     document.getElementById('tut-player').innerHTML = '<div class="tut-player-vacio">Aún no hay videos para este módulo. ¡Muy pronto!</div>';
     document.getElementById('tut-player-info').innerHTML = '';
@@ -205,7 +262,9 @@ TUT.abrirModulo = function (key) {
 };
 
 TUT.volver = function () {
+  clearTimeout(TUT.timerVisto);
   TUT.moduloActual = null; TUT.videoActual = null;
+  renderModulos();
   document.getElementById('tut-player').innerHTML = '<div class="tut-player-vacio">Elige un video de la lista para verlo aquí.</div>'; // corta el video
   document.getElementById('tut-vista-videos').style.display = 'none';
   document.getElementById('tut-vista-modulos').style.display = '';
@@ -219,7 +278,7 @@ function renderLista() {
     <div class="tut-item ${TUT.videoActual === v.id ? 'activo' : ''}" onclick="TUT.reproducir('${esc(v.id)}', true)">
       <img class="tut-thumb" loading="lazy" src="${ytThumb(v.youtube_id)}" alt="" onerror="this.style.visibility='hidden'" />
       <div class="tut-item-txt">
-        <div class="tut-item-titulo">${esc(v.titulo)}</div>
+        <div class="tut-item-titulo">${esc(v.titulo)} ${TUT.vistos.has(v.id) ? '<span class="tut-visto">✓</span>' : ''}</div>
         <div class="tut-item-meta">
           <span class="tut-badge">${esc(NIVELES[v.nivel] || 'Básico')}</span>
           ${v.duracion ? `<span>⏱ ${esc(v.duracion)}</span>` : ''}
@@ -238,6 +297,41 @@ TUT.reproducir = function (id, autoplay) {
   document.getElementById('tut-player-info').innerHTML =
     `<h3>${esc(v.titulo)}</h3>${v.descripcion ? `<p>${esc(v.descripcion)}</p>` : ''}`;
   renderLista();
+  renderAcciones();
+  clearTimeout(TUT.timerVisto);
+  // Se marca como visto solo tras 20 segundos reproduciéndolo.
+  if (TUT.vistosOk && !TUT.vistos.has(id)) TUT.timerVisto = setTimeout(() => TUT.marcarVisto(id, true, true), 20000);
+};
+
+function renderAcciones() {
+  const c = document.getElementById('tut-acciones');
+  if (!c) return;
+  if (!TUT.vistosOk || !TUT.videoActual) { c.innerHTML = ''; return; }
+  const visto = TUT.vistos.has(TUT.videoActual);
+  c.innerHTML = visto
+    ? `<button class="btn-secondary" onclick="TUT.marcarVisto('${esc(TUT.videoActual)}', false)">✓ Visto — quitar marca</button>`
+    : `<button class="btn-secondary" onclick="TUT.marcarVisto('${esc(TUT.videoActual)}', true)">Marcar como visto</button>`;
+}
+
+TUT.marcarVisto = async function (id, visto, silencioso) {
+  if (!TUT.vistosOk) return;
+  try {
+    if (visto) {
+      if (TUT.vistos.has(id)) return;
+      const { error } = await sb.from('tutoriales_videos_vistos').insert({ auth_user_id: TUT.userId, video_id: id });
+      if (error && error.code !== '23505') throw error; // 23505 = ya estaba marcado
+      TUT.vistos.add(id);
+    } else {
+      const { error } = await sb.from('tutoriales_videos_vistos').delete().eq('auth_user_id', TUT.userId).eq('video_id', id);
+      if (error) throw error;
+      TUT.vistos.delete(id);
+    }
+    if (TUT.moduloActual) { renderLista(); renderAcciones(); }
+    renderModulos();
+  } catch (e) {
+    console.warn('marcarVisto:', e);
+    if (!silencioso) showToast('No se pudo guardar la marca de visto.', 'error');
+  }
 };
 
 /* ============================================================

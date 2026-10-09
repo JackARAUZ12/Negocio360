@@ -440,6 +440,36 @@
     else nav.appendChild(item);
   }
 
+  // Boton "Tutoriales" en el encabezado de cada modulo: lleva directo a los
+  // videos de ESE modulo. Solo aparece si el modulo ya tiene al menos un
+  // video visible, asi nadie ve un boton que lleva a una pagina vacia.
+  // Totalmente aislado: si algo falla (sin red, sin tabla), simplemente no
+  // se muestra y la pagina sigue exactamente igual.
+  async function inyectarBotonTutorial(client) {
+    const archivo = currentFile();
+    if (archivo === 'tutoriales.html') return;
+    const info = (window.NEGOCIO360_MODULOS || {})[archivo];
+    if (!info || !info.key || info.key === 'dashboard') return;
+    const header = document.getElementById('header');
+    const ancla = header && header.querySelector('.theme-btn');
+    if (!ancla || document.querySelector('[data-mg-tut-btn]')) return;
+    const { count, error } = await client.from('tutoriales_videos')
+      .select('id', { count: 'exact', head: true }).eq('modulo_key', info.key).eq('visible', true);
+    if (error || !count) return;
+    if (document.querySelector('[data-mg-tut-btn]')) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-mg-tut-btn', '1');
+    b.title = 'Ver tutoriales de este módulo';
+    b.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;border:1px solid var(--border,#e8e8ef);background:var(--bg-surface,#fff);color:var(--text-primary,#0d0d14);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap';
+    b.innerHTML = '🎓 <span class="mg-tut-txt">Tutoriales</span>';
+    b.addEventListener('click', () => { window.location.href = 'tutoriales.html?modulo=' + encodeURIComponent(info.key); });
+    ancla.insertAdjacentElement('beforebegin', b);
+    if (window.matchMedia && window.matchMedia('(max-width:768px)').matches) {
+      const t = b.querySelector('.mg-tut-txt'); if (t) t.style.display = 'none'; // en celular solo el icono
+    }
+  }
+
   async function init() {
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
     const client = window.supabase.createClient(MG_SUPABASE_URL, MG_SUPABASE_KEY);
@@ -452,6 +482,7 @@
     inyectarModulosSecundariosEnSidebar(cfg);
     asegurarChatEnSidebar();
     try { asegurarTutorialesEnSidebar(); } catch (e) { console.warn("modulos-guard tutoriales:", e); }
+    inyectarBotonTutorial(client).catch(e => console.warn("modulos-guard boton tutorial:", e));
     inyectarBuscadorSidebar();
   }
 
