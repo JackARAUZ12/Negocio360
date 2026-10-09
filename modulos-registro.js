@@ -143,6 +143,10 @@
     'rotacion.html': { key: 'farmacia_rotacion', label: 'Farmacia · Rotación y Margen', icon: '📊', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
                                flagsAlternos: ['usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_insumos: 'Insumos · Rotación y Margen' },
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
+
+    // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
+    'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Centro de mando del transporte de carga: flota, viajes, costos y cobros, conectado con Ventas, Créditos, Gastos y Caja.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;

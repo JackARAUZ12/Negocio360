@@ -14,7 +14,7 @@
 
 <!-- Supabase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261009b"></script>
+<script src="modulos-registro.js?v=20261009c"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1486,6 +1486,27 @@
           <div class="cfg-status" id="insumos-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="transporte-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🚛</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Transporte de carga</div>
+              <div class="cfg-card-desc">Para vender transporte y equipos médicos: lotes, vencimientos, salida por vencimiento (sale primero el lote que vence antes) y rotación y margen.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Transporte de carga</div>
+              <div class="cfg-row-sub" id="transporte-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="transporte-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleInsumosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎁</div>
@@ -2499,6 +2520,45 @@ async function guardarModuloInsumos(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Transporte de carga: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloTransporte() {
+  const toggle = document.getElementById('transporte-toggle');
+  const sub = document.getElementById('transporte-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_transporte').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_transporte === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Transporte aparece en el menú.' : 'Desactivado — el módulo de Transporte de carga no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloTransporte:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleTransporteClick(evt) {
+  const toggle = document.getElementById('transporte-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloTransporte(toggle.checked);
+}
+async function guardarModuloTransporte(activo) {
+  const toggle = document.getElementById('transporte-toggle');
+  const sub = document.getElementById('transporte-row-sub');
+  const statusEl = document.getElementById('transporte-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_transporte: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Transporte aparece en el menú.' : 'Desactivado — el módulo de Transporte de carga no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Transporte de carga activado. Recarga la página para ver el menú.' : 'Módulo de Transporte de carga desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloTransporte:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Programa de puntos: se activa/desactiva desde aqui. Apagado por
 // defecto -- sin activarlo, el modulo no aparece ni cambia nada.
 async function cargarModuloPuntos() {
@@ -2889,6 +2949,7 @@ async function initConfiguracion() {
       cargarModuloPuntos();
       cargarModuloVet();
       cargarModuloInsumos();
+      cargarModuloTransporte();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -2915,6 +2976,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20261007a"></script>
-<script src="modulos-guard.js?v=20261009d"></script>
+<script src="modulos-guard.js?v=20261009e"></script>
 </body>
 </html>

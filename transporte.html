@@ -3,21 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Notificaciones — Negocio360</title>
+  <title>Transporte — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js?v=20261009c"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20260915a"></script>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- SheetJS para Excel -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- jsPDF para PDF -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <!-- jsPDF AutoTable -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <!-- Google Fonts -->
@@ -552,29 +544,53 @@
       .kpi-value{font-size:17px}
     }
 
+
     /* =====================================================
-       NOTIFICACIONES — estilos propios del módulo
+       TRANSPORTE — estilos propios del módulo
     ===================================================== */
-    .notif-list{display:flex;flex-direction:column;gap:12px}
-    .notif-item{display:flex;gap:14px;padding:18px 20px;border-radius:var(--radius-lg);
-      border:1px solid var(--border);background:var(--bg-surface);
-      transition:all var(--transition);position:relative}
-    .notif-item.no-leida{border-color:var(--accent);background:var(--accent-soft)}
-    .notif-item:hover{box-shadow:var(--shadow-sm)}
-    .notif-icon{width:42px;height:42px;border-radius:10px;flex-shrink:0;
-      display:flex;align-items:center;justify-content:center;font-size:19px}
-    .notif-body{flex:1;min-width:0}
-    .notif-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
-    .notif-titulo{font-size:14.5px;font-weight:700;color:var(--text-primary)}
-    .notif-fecha{font-size:11.5px;color:var(--text-muted);margin-left:auto;white-space:nowrap}
-    .notif-mensaje{font-size:13px;color:var(--text-secondary);line-height:1.6;white-space:pre-wrap}
-    .notif-anuncio-items{margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--text-secondary);line-height:1.7}
-    .notif-anuncio-items li{margin-bottom:2px}
-    .notif-dot-nueva{width:9px;height:9px;border-radius:50%;background:var(--accent);flex-shrink:0}
-    .notif-tipo-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;
-      text-transform:uppercase;letter-spacing:.04em}
-    .notif-empty{text-align:center;padding:70px 24px;color:var(--text-muted)}
-    .notif-empty-icon{font-size:52px;margin-bottom:14px;opacity:.5}
+    .tp-hero{position:relative;overflow:hidden;border-radius:var(--radius-lg);padding:26px 28px;margin-bottom:22px;
+      background:linear-gradient(135deg,#111827 0%,#1f2a44 55%,var(--accent) 140%);color:#fff;box-shadow:var(--shadow-md)}
+    .tp-hero::after{content:'🚛';position:absolute;right:18px;bottom:-14px;font-size:110px;opacity:.12;pointer-events:none}
+    .tp-hero h1{font-size:23px;font-weight:800;margin-bottom:6px;letter-spacing:-.2px}
+    .tp-hero p{font-size:13.5px;color:rgba(255,255,255,.78);max-width:620px;line-height:1.5}
+    .tp-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+    .tp-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;
+      background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);color:#fff}
+    .tp-sec-title{font-size:13px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--text-muted);margin:6px 0 12px}
+    .tp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px}
+    .tp-kpi-link{cursor:pointer}
+    .tp-grid-accesos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+    .tp-acceso{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-md,12px);
+      background:var(--bg-surface);cursor:pointer;transition:all var(--transition);text-align:left;font-family:inherit;color:inherit;width:100%}
+    .tp-acceso:hover{border-color:var(--accent);box-shadow:var(--shadow-md);transform:translateY(-2px)}
+    .tp-acceso-ico{font-size:22px;line-height:1;flex-shrink:0;width:38px;height:38px;border-radius:10px;background:var(--accent-soft);
+      display:flex;align-items:center;justify-content:center}
+    .tp-acceso b{display:block;font-size:13.5px;color:var(--text-primary);margin-bottom:2px}
+    .tp-acceso span{display:block;font-size:12px;color:var(--text-secondary);line-height:1.4}
+    .tp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+    .tp-field label{display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px}
+    .tp-field select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-surface);
+      color:var(--text-primary);font-family:inherit;font-size:14px}
+    .tp-paises{display:flex;flex-wrap:wrap;gap:8px}
+    .tp-pais{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--border);border-radius:999px;
+      font-size:13px;cursor:pointer;user-select:none;background:var(--bg-surface);color:var(--text-primary);font-family:inherit}
+    .tp-pais.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+    .tp-ruta{display:flex;flex-direction:column;gap:0}
+    .tp-fase{display:flex;gap:14px;padding:13px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+    .tp-fase:last-child{border-bottom:none}
+    .tp-fase-n{flex-shrink:0;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+      font-size:12.5px;font-weight:800;background:var(--bg-hover);color:var(--text-secondary)}
+    .tp-fase.listo .tp-fase-n{background:var(--success);color:#fff}
+    .tp-fase-t{font-size:14px;font-weight:700;color:var(--text-primary)}
+    .tp-fase-d{font-size:12.5px;color:var(--text-secondary);margin-top:2px;line-height:1.45}
+    .tp-estado{margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bg-hover);color:var(--text-muted)}
+    .tp-fase.listo .tp-estado{background:var(--success-soft);color:var(--success)}
+    .tp-fase>div:nth-child(2){flex:1;min-width:0}
+    .tp-ayuda{font-size:12px;color:var(--text-muted);margin-top:10px}
+    @media (max-width:640px){
+      .tp-hero{padding:20px 18px}.tp-hero h1{font-size:20px}.tp-hero::after{font-size:84px}
+      .tp-fase{flex-wrap:wrap}.tp-estado{margin-left:44px;order:3}
+    }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -588,7 +604,7 @@
     </svg>
   </div>
   <div class="loader-spinner"></div>
-  <p style="font-size:13px;color:var(--text-muted)">Cargando Notificaciones…</p>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Transporte…</p>
 </div>
 
 <!-- TOAST -->
@@ -727,7 +743,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span class="nav-label">Estadísticas</span>
       </div>
-      <div class="nav-item active" onclick="navigate('notificaciones.html')">
+      <div class="nav-item" onclick="navigate('notificaciones.html')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="nav-label">Notificaciones</span>
         <span id="nav-notif-count" class="badge badge-danger" style="margin-left:auto;display:none"></span>
@@ -751,7 +767,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Notificaciones</span>
+      <span class="header-title">Transporte</span>
       <div class="header-spacer"></div>
       <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
       <div class="plan-badge">
@@ -775,40 +791,69 @@
     <!-- PAGE CONTENT -->
     <div id="content">
 
-      <!-- GREETING -->
-      <div class="greeting-row fade-in">
-        <div class="greeting-text">
-          <h1>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            Notificaciones
-          </h1>
-          <p>Aquí se acumulan los avisos y actualizaciones que el equipo de Negocio360 publica sobre la plataforma.</p>
-        </div>
-        <div class="greeting-actions">
-          <button class="btn-secondary" id="btn-marcar-todas" onclick="NOTIF.marcarTodasLeidas()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-            Marcar todas como leídas
-          </button>
+      <div class="tp-hero fade-in">
+        <h1>🚛 Transporte de carga</h1>
+        <p>Tu centro de mando para operar flota, viajes, costos y cobros — todo conectado con Ventas, Créditos, Gastos, Caja y el resto del sistema.</p>
+        <div class="tp-chips" id="tp-chips"></div>
+      </div>
+
+      <div class="tp-sec-title">Tu operación hoy · datos de todo el negocio</div>
+      <div class="tp-kpis" id="tp-kpis">
+        <div class="section-loading"><div class="mini-spinner"></div></div>
+      </div>
+
+      <div class="panel-card fade-in">
+        <div class="panel-header"><div class="panel-title">⚙️ Configura tu operación</div></div>
+        <div class="panel-body">
+          <div class="tp-form">
+            <div class="tp-field"><label for="tp-operacion">Tipo de operación</label>
+              <select id="tp-operacion">
+                <option value="ambas">Flota propia y subcontratada</option>
+                <option value="propia">Solo flota propia</option>
+                <option value="subcontratada">Solo subcontratada</option>
+              </select></div>
+            <div class="tp-field"><label for="tp-alcance">Alcance</label>
+              <select id="tp-alcance">
+                <option value="nacional_regional">Nacional y cruces de frontera</option>
+                <option value="nacional">Solo nacional</option>
+                <option value="internacional">Principalmente internacional</option>
+              </select></div>
+          </div>
+          <div class="tp-field" style="margin-top:16px"><label>Países a los que cruzas</label>
+            <div class="tp-paises" id="tp-paises"></div></div>
+          <div style="margin-top:18px"><button class="btn-primary" id="tp-guardar" onclick="TP.guardarConfig()">Guardar configuración</button></div>
+          <div class="tp-ayuda">Esta información adapta las siguientes fases (documentos, tarifas y trámites de frontera).</div>
         </div>
       </div>
 
       <div class="panel-card fade-in">
-        <div class="panel-body">
-          <div class="notif-list" id="notif-list">
-            <div class="section-loading"><div class="mini-spinner"></div><br>Cargando notificaciones…</div>
-          </div>
-        </div>
+        <div class="panel-header"><div class="panel-title">🔗 Conectado con tu sistema</div></div>
+        <div class="panel-body"><div class="tp-grid-accesos" id="tp-accesos"></div></div>
       </div>
 
-      <p style="font-size:11.5px;color:var(--text-muted);text-align:center;margin-top:6px">
-        Las notificaciones con más de 30 días se eliminan automáticamente para ahorrar espacio.
-      </p>
+      <div class="panel-card fade-in">
+        <div class="panel-header"><div class="panel-title">🗺️ Hoja de ruta del módulo</div></div>
+        <div class="panel-body"><div class="tp-ruta">
+        <div class="tp-fase listo"><div class="tp-fase-n">✓</div><div><div class="tp-fase-t">Base y panel principal</div><div class="tp-fase-d">Rubro, interruptor del módulo, panel conectado y configuración de la operación.</div></div><span class="tp-estado">Disponible</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">2</div><div><div class="tp-fase-t">Flota</div><div class="tp-fase-d">Cabezales, remolques y furgones con documentos y vencimientos.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">3</div><div><div class="tp-fase-t">Conductores y ayudantes</div><div class="tp-fase-d">Licencias, documentos, pasaporte y disponibilidad.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">4</div><div><div class="tp-fase-t">Clientes, rutas y tarifas</div><div class="tp-fase-d">Catálogo de rutas, tarifas por viaje, km o peso, y recargos.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">5</div><div><div class="tp-fase-t">Órdenes y despacho</div><div class="tp-fase-d">Orden de transporte, tablero de despacho y asignación de unidad.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">6</div><div><div class="tp-fase-t">Costos del viaje y combustible</div><div class="tp-fase-d">Anticipos, viáticos, peajes, rendimiento y rentabilidad por viaje.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">7</div><div><div class="tp-fase-t">Liquidación de conductores</div><div class="tp-fase-d">Pago por viaje, km o comisión, con anticipos y descuentos.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">8</div><div><div class="tp-fase-t">Subcontratistas</div><div class="tp-fase-d">Transportistas externos, su costo, facturación y cuentas por pagar.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">9</div><div><div class="tp-fase-t">Facturación y cobranza</div><div class="tp-fase-d">Del viaje a venta o crédito (incluye pago a fecha fija).</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">10</div><div><div class="tp-fase-t">Cruces de frontera y documentos</div><div class="tp-fase-d">Carta de porte, manifiesto y trámites aduaneros por frontera.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">11</div><div><div class="tp-fase-t">Mantenimiento y llantas</div><div class="tp-fase-d">Preventivo por km o fecha, órdenes de trabajo y control de llantas.</div></div><span class="tp-estado">Próximamente</span></div>
+        <div class="tp-fase"><div class="tp-fase-n">12</div><div><div class="tp-fase-t">Entrega, incidencias y reportes</div><div class="tp-fase-d">Prueba de entrega, reclamos e indicadores de la operación.</div></div><span class="tp-estado">Próximamente</span></div>
+        </div></div>
+      </div>
 
     </div>
   </div>
 </div>
 
-<script src="notificaciones.js?v=20261002a"></script>
+<script src="transporte.js?v=20261009a"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
 <script src="modulos-guard.js?v=20261009e"></script>
 </body>

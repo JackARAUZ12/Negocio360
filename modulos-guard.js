@@ -100,6 +100,12 @@
           .select('usa_modulo_insumos').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_insumos = ins?.usa_modulo_insumos === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_insumos = false; }
+      // Transporte de carga: consulta aparte, mismo criterio que Insumos.
+      try {
+        const { data: tr } = await client.from('configuracion_empresa')
+          .select('usa_modulo_transporte').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_transporte = tr?.usa_modulo_transporte === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_transporte = false; }
       return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);
