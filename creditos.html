@@ -1518,6 +1518,42 @@
 
       <div class="form-row">
         <div>
+          <label>Modalidad de pago</label>
+          <select id="nc-modalidad" onchange="onModalidadCreditoChange()">
+            <option value="cuotas" selected>En cuotas</option>
+            <option value="fecha_fija">Un solo pago a fecha fija</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="nc-bloque-fecha-fija" style="display:none">
+        <div class="form-row">
+          <div>
+            <label>Pagar en</label>
+            <select id="nc-ff-preset" onchange="onPresetFechaFijaChange()">
+              <option value="7">7 días</option>
+              <option value="8" selected>8 días</option>
+              <option value="10">10 días</option>
+              <option value="15">15 días</option>
+              <option value="20">20 días</option>
+              <option value="30">30 días</option>
+              <option value="m1">1 mes</option>
+              <option value="m2">2 meses</option>
+              <option value="m3">3 meses</option>
+              <option value="m6">6 meses</option>
+              <option value="a1">1 año</option>
+              <option value="otra">Otra fecha…</option>
+            </select>
+          </div>
+          <div>
+            <label>Fecha de pago</label>
+            <input type="date" id="nc-ff-fecha" onchange="onFechaFijaManual()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row" id="nc-bloque-cuotas">
+        <div>
           <label>Frecuencia de pago</label>
           <select id="nc-frecuencia" onchange="recalcularCredito()">
             <option value="diaria">Diaria</option>
@@ -1912,7 +1948,7 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="comprobante-carta.js?v=20261008a"></script>
-<script src="creditos.js?v=20261004a"></script>
+<script src="creditos.js?v=20261009a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>

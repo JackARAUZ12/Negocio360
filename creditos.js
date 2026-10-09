@@ -468,6 +468,42 @@
     return arr;
   }
 
+  // Modalidad "un solo pago a fecha fija": se representa como un crédito de
+  // UNA cuota con la fecha elegida (sin cambios de esquema; todo el resto del
+  // módulo -pagos, agenda, mora, reportes- ya sabe trabajar con 1 cuota).
+  function leerPlanPago() {
+    const fija = document.getElementById('nc-modalidad')?.value === 'fecha_fija';
+    const fecha = document.getElementById('nc-ff-fecha')?.value || '';
+    return { fija, fecha };
+  }
+  function aplicarFechaFija(cuotas, plan) {
+    if (plan.fija && plan.fecha && cuotas.length === 1) cuotas[0].fecha_vencimiento = plan.fecha;
+    return cuotas;
+  }
+  function calcularFechaPreset(valor, base) {
+    const d = new Date((base || todayISO()) + 'T12:00:00');
+    if (/^\d+$/.test(valor)) d.setDate(d.getDate() + parseInt(valor));
+    else if (valor[0] === 'm') d.setMonth(d.getMonth() + parseInt(valor.slice(1)));
+    else if (valor[0] === 'a') d.setFullYear(d.getFullYear() + parseInt(valor.slice(1)));
+    else return null;
+    return ymd(d);
+  }
+  function onPresetFechaFijaChange() {
+    const v = document.getElementById('nc-ff-preset').value;
+    if (v !== 'otra') document.getElementById('nc-ff-fecha').value = calcularFechaPreset(v, document.getElementById('nc-fecha-inicio').value || todayISO());
+    recalcularCredito();
+  }
+  function onFechaFijaManual() { document.getElementById('nc-ff-preset').value = 'otra'; recalcularCredito(); }
+  function onModalidadCreditoChange() {
+    const fija = document.getElementById('nc-modalidad').value === 'fecha_fija';
+    document.getElementById('nc-bloque-fecha-fija').style.display = fija ? '' : 'none';
+    document.getElementById('nc-bloque-cuotas').style.display = fija ? 'none' : '';
+    if (fija) onPresetFechaFijaChange(); else recalcularCredito();
+  }
+  window.onPresetFechaFijaChange = onPresetFechaFijaChange;
+  window.onFechaFijaManual = onFechaFijaManual;
+  window.onModalidadCreditoChange = onModalidadCreditoChange;
+
   function generarAmortizacion({ capitalFinanciado, tipoFinanciamiento, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto }) {
     capitalFinanciado = Number(capitalFinanciado)||0;
     numCuotas = Math.max(1, parseInt(numCuotas)||1);
@@ -1122,13 +1158,15 @@
     const tasa = parseFloat(document.getElementById('nc-tasa-interes').value) || 0;
     const metodo = document.getElementById('nc-metodo-amortizacion').value;
     const frecuencia = document.getElementById('nc-frecuencia').value;
-    const numCuotas = parseInt(document.getElementById('nc-num-cuotas').value) || 1;
+    const plan = leerPlanPago();
+    const numCuotas = plan.fija ? 1 : (parseInt(document.getElementById('nc-num-cuotas').value) || 1);
     const fechaInicio = document.getElementById('nc-fecha-inicio').value || todayISO();
     const impuestosLista = obtenerImpuestosSeleccionados();
 
     const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
       capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto: baseImpuestoActual(),
     });
+    aplicarFechaFija(cuotas, plan);
     CS.ncAmortizacionPreview = cuotas;
     document.getElementById('nc-total-intereses').textContent = fmt(totalIntereses);
     document.getElementById('nc-total-financiado').textContent = fmt(totalFinanciado);
@@ -1341,6 +1379,7 @@
     document.getElementById('nc-prima-valor').value = '';
     document.getElementById('nc-tasa-interes').value = '';
     document.getElementById('nc-num-cuotas').value = 12;
+    if (document.getElementById('nc-modalidad')) { document.getElementById('nc-modalidad').value = 'cuotas'; document.getElementById('nc-bloque-fecha-fija').style.display = 'none'; document.getElementById('nc-bloque-cuotas').style.display = ''; document.getElementById('nc-ff-fecha').value = ''; document.getElementById('nc-ff-preset').value = '8'; }
     document.getElementById('nc-observaciones').value = '';
     document.getElementById('nc-amortizacion-wrap').style.display = 'none';
     setTipoCredito('venta');
@@ -1486,7 +1525,8 @@
     const tasa = parseFloat(document.getElementById('nc-tasa-interes').value) || 0;
     const metodo = document.getElementById('nc-metodo-amortizacion').value;
     const frecuencia = document.getElementById('nc-frecuencia').value;
-    const numCuotas = parseInt(document.getElementById('nc-num-cuotas').value) || 1;
+    const plan = leerPlanPago();
+    const numCuotas = plan.fija ? 1 : (parseInt(document.getElementById('nc-num-cuotas').value) || 1);
     const fechaInicio = document.getElementById('nc-fecha-inicio').value || todayISO();
     const impuestosLista = obtenerImpuestosSeleccionados();
     const observaciones = document.getElementById('nc-observaciones').value.trim() || null;
@@ -1495,6 +1535,8 @@
       capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto: baseImpuestoActual(),
     });
 
+    if (plan.fija && !plan.fecha) { showToast('Elige la fecha de pago', 'error'); CS.creandoCredito = false; return; }
+    aplicarFechaFija(cuotas, plan);
     btn.disabled = true; btn.textContent = 'Creando…';
     try {
       let ventaId = null;
