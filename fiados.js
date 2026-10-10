@@ -526,6 +526,21 @@ async function devolverStockDeVenta(ventaId) {
     await sb.from('productos').update({ stock_actual: Number(p.stock_actual || 0) + Number(d.cantidad || 0) }).eq('id', d.producto_id).eq('auth_user_id', FD.userId);
   }
 }
+// Si la venta (hecha desde Ventas) registró IVA, al eliminar el fiado se revierte con un registro nuevo que resta.
+async function revertirIvaDeVenta(ventaId, etiqueta) {
+  try {
+    const { data: movIva } = await sb.from('movimientos_impuestos').select('monto')
+      .eq('referencia_venta_id', ventaId).eq('auth_user_id', FD.userId).eq('tipo_movimiento', 'IVA_VENTA').gt('monto', 0).maybeSingle();
+    if (!movIva || !(Number(movIva.monto) > 0)) return;
+    const { data: ult } = await sb.from('movimientos_impuestos').select('saldo_resultante').eq('auth_user_id', FD.userId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const ant = ult ? Number(ult.saldo_resultante) : 0, m = r2(Number(movIva.monto));
+    await sb.from('movimientos_impuestos').insert({
+      auth_user_id: FD.userId, tipo_movimiento: 'IVA_VENTA', concepto: `Reverso de IVA por eliminar fiado de ${etiqueta || 'cliente'}`,
+      monto: -m, saldo_anterior: ant, saldo_resultante: r2(ant - m), referencia_venta_id: ventaId, fecha: hoyISO(),
+    });
+  } catch (e) { console.warn('revertirIvaDeVenta:', e); }
+}
 async function revertirVentaFiado(ventaId) {
   try {
     await devolverStockDeVenta(ventaId);
@@ -644,6 +659,7 @@ async function eliminarFiado(id) {
       await devolverStockDeVenta(f.venta_id);
       await sb.from('ventas').update({ estado: 'anulada' }).eq('id', f.venta_id).eq('auth_user_id', FD.userId);
       if (f.cliente_id) await ajustarCompras(f.cliente_id, Number(f.monto_total), -1);
+      await revertirIvaDeVenta(f.venta_id, f.cliente_nombre);
     }
     const { error } = await sb.from('fiados').update({ estado: 'eliminado', eliminado_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('auth_user_id', FD.userId);
     if (error) throw error;

@@ -840,6 +840,22 @@ async function anularVenta() {
       return;
     }
 
+    // Fiados: si esta venta se dejó fiada, la deuda se elimina junto con ella.
+    // Si el cliente ya hizo abonos o pagos, no se anula desde aquí (el dinero ya entró a Caja).
+    if (ventaActual.metodo_pago === 'fiado') {
+      const { data: fiadoVinc } = await sb.from('fiados').select('id, estado').eq('venta_id', id).eq('auth_user_id', S.userId).maybeSingle();
+      if (fiadoVinc && fiadoVinc.estado !== 'eliminado') {
+        const { count: nPagos } = await sb.from('fiado_pagos').select('id', { count: 'exact', head: true }).eq('fiado_id', fiadoVinc.id);
+        if ((nPagos || 0) > 0) {
+          showToast('Este fiado ya tiene abonos o pagos registrados, no se puede anular la venta.', 'error');
+          if (btn) btn.disabled = false;
+          return;
+        }
+        await sb.from('fiados').update({ estado: 'eliminado', eliminado_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', fiadoVinc.id).eq('auth_user_id', S.userId);
+      }
+    }
+
     // Devolver al inventario cada producto/combo vendido en esta
     // factura — antes esto nunca pasaba, la anulación solo cambiaba
     // el estado de la venta sin tocar el stock.
@@ -1875,6 +1891,10 @@ function validarPasoActual() {
       return false;
     }
     if (!validarPagoSeparado()) return false;
+    if (S.metodoPagoId === 'fiado' && S.clienteOpcion === 'final') {
+      showToast('Para fiar necesitas un cliente: vuelve al primer paso y elige o crea uno', 'error');
+      return false;
+    }
   }
   return true;
 }
@@ -4284,7 +4304,26 @@ function renderMetodosPagoModal() {
     <div class="metodo-card ${S.metodoPagoId==='separado' ? 'selected' : ''}" onclick="seleccionarPagoSeparado()">
       <span class="mc-icon">🔀</span>
       <span class="mc-name">Pago separado</span>
-    </div>`;
+    </div>` + (S.empresaConfig?.usa_modulo_fiados === true ? `
+    <div class="metodo-card ${S.metodoPagoId==='fiado' ? 'selected' : ''}" onclick="seleccionarFiado()" title="El cliente se lleva lo comprado y paga después">
+      <span class="mc-icon">📒</span>
+      <span class="mc-name">Fiado</span>
+    </div>` : '');
+}
+
+/* Fiados: la venta se registra, pero el dinero NO entra a Caja hasta que el cliente pague
+   (eso se cobra desde el módulo Fiados). Solo existe si el módulo de Fiados está activo. */
+function seleccionarFiado() {
+  S.metodoPagoId = 'fiado';
+  S.metodoPagoNombre = 'Fiado';
+  S.bancoElegidoId = null; S.bancoElegidoNombre = null;
+  document.getElementById('metodo-pago-id-selected').value = 'fiado';
+  document.getElementById('metodo-pago-nombre-selected').value = 'Fiado';
+  const w1 = document.getElementById('banco-elegir-wrap'); if (w1) w1.style.display = 'none';
+  const w2 = document.getElementById('banco-elegido-wrap'); if (w2) w2.style.display = 'none';
+  const err = document.getElementById('metodo-error'); if (err) err.style.display = 'none';
+  renderMetodosPagoModal();
+  if (S.clienteOpcion === 'final') showToast('Para fiar, vuelve al primer paso y elige o crea un cliente', 'warning');
 }
 
 function seleccionarMetodoPago(id, nombre) {
@@ -5191,12 +5230,13 @@ async function confirmarVenta(conImpresion) {
   // ya valida sus propios bancos por línea (validarPagoSeparado), así
   // que no aplica aquí.
   const esPagoSeparado = S.metodoPagoId === 'separado';
+  const esFiado = S.metodoPagoId === 'fiado';
   const metodoActual = (S.metodoPagoNombre||'').toLowerCase();
   if (!esPagoSeparado && (metodoActual.includes('tarjeta') || metodoActual.includes('transferencia')) && (await cargarBancosDisponibles()).length && !S.bancoElegidoId) {
     showToast('Elige a qué banco entra este pago', 'error');
     return;
   }
-  const bancoElegidoVenta = esPagoSeparado ? null : (S.bancoElegidoId || null);
+  const bancoElegidoVenta = (esPagoSeparado || esFiado) ? null : (S.bancoElegidoId || null);
 
   if (bancoElegidoVenta) {
     const bancoInfo = (await cargarBancosDisponibles()).find(b => b.id === bancoElegidoVenta);
@@ -5275,8 +5315,9 @@ async function confirmarVenta(conImpresion) {
       impuesto:           r.impuestos,
       total:              r.total,
       costo_total:        r.costoTotal,
-      metodo_pago_id:     esPagoSeparado ? null : (S.metodoPagoId || null),
+      metodo_pago_id:     (esPagoSeparado || esFiado) ? null : (S.metodoPagoId || null),
       metodo_pago_nombre: nombreMetodoParaGuardar,
+      ...(esFiado ? { metodo_pago: 'fiado', estado_pago: 'credito', categoria: 'fiado' } : {}),
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
       observaciones:      ((S.correccion ? `[Corrige a ${S.correccion.numero} — motivo: ${S.correccion.motivo}] ` : '') + (S.observaciones || '')).trim() || null,
@@ -5478,7 +5519,8 @@ async function confirmarVenta(conImpresion) {
     const montoIva  = Number(r.impuestos) || 0;
     const montoCaja = Number(r.total) - montoIva;
 
-    try {
+    // Fiado: el dinero todavía no entró, así que no se registra nada en Caja ahora.
+    if (!esFiado) try {
       // Obtener saldo actual de caja
       const { data: ultMov } = await sb.from('movimientos_financieros')
         .select('saldo_resultante')
@@ -5589,6 +5631,24 @@ async function confirmarVenta(conImpresion) {
           }).eq('id', S.clienteId).eq('auth_user_id', S.userId);
         }
       } catch(eCliente) { console.warn('Error actualizando cliente:', eCliente); }
+    }
+
+    /* ----------------------------------------------------------
+       FIADO: anotar la deuda en el módulo de Fiados (enlazada a esta venta)
+    ---------------------------------------------------------- */
+    if (esFiado) {
+      try {
+        const desc = S.carrito.map(i => `${i.cantidad} ${i.nombre}`).join(', ').slice(0, 200);
+        const { error: errFiado } = await sb.from('fiados').insert({
+          auth_user_id: S.userId, cliente_id: S.clienteId || null, cliente_nombre: S.clienteNombre || 'Cliente',
+          tipo: 'productos', descripcion: desc, monto_total: r.total, monto_pagado: 0, saldo: r.total,
+          estado: 'pendiente', fecha: fechaVentaElegida, venta_id: ventaId, creado_por_nombre: obtenerNombrePerfilActivo(),
+        });
+        if (errFiado) throw errFiado;
+      } catch (eFiado) {
+        console.error('No se pudo anotar el fiado:', eFiado);
+        showToast('La venta se guardó, pero no se pudo anotar en Fiados. Anótalo desde el módulo Fiados.', 'error');
+      }
     }
 
     /* ----------------------------------------------------------
