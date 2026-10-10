@@ -147,6 +147,10 @@
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Centro de mando del transporte de carga: flota, viajes, costos y cobros, conectado con Ventas, Créditos, Gastos y Caja.' },
+    'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Tus cabezales, camiones, furgones y plataformas con fotos, documentos con vencimiento y estado.' },
+    'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Conductores y ayudantes con documentos, licencias y disponibilidad.' },
 
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',

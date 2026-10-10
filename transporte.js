@@ -1,5 +1,5 @@
 /* ============================================================
-   TRANSPORTE.JS — NEGOCIO360 (Fase 1: base y panel principal)
+   TRANSPORTE.JS — NEGOCIO360 (Fases 1 a 3: panel, flota y conductores)
    Panel del módulo de Transporte de carga. Lee datos de los demás
    módulos (Ventas, Créditos, Gastos) sin modificarlos y guarda la
    configuración de la operación en configuracion_empresa.metadata.transporte.
@@ -227,6 +227,26 @@ async function cargarKpis() {
   kpis.push(card('🧾', 'var(--accent-soft)', 'Por cobrar', porCobrar == null ? nd : fmt(porCobrar), 'Créditos activos', 'creditos.html'));
   kpis.push(card('⏰', 'var(--warning-soft)', 'Cuotas a vigilar', cuotas == null ? nd : `${cuotas.vencidas} vencidas`, cuotas == null ? 'Créditos' : `${cuotas.proximas} vencen en 7 días`, 'creditos.html'));
   kpis.push(card('💸', 'var(--danger-soft)', 'Gastos del mes', gastos == null ? nd : fmt(gastos), 'Módulo Gastos', 'gastos.html'));
+  // Flota y conductores (Transporte · fases 2 y 3)
+  const flota = await intentar(async () => {
+    const [u, c, d] = await Promise.all([
+      sb.from('transporte_unidades').select('estado').eq('auth_user_id', TP.userId),
+      sb.from('transporte_conductores').select('estado').eq('auth_user_id', TP.userId),
+      sb.from('transporte_documentos').select('vencimiento').eq('auth_user_id', TP.userId).not('vencimiento', 'is', null).lte('vencimiento', ymd(new Date(hoy.getTime() + 30 * 86400000))),
+    ]);
+    if (u.error || c.error || d.error) throw (u.error || c.error || d.error);
+    const un = u.data || [], co = c.data || [], dc = d.data || [];
+    return {
+      unidades: un.length, disponibles: un.filter(x => x.estado === 'disponible').length,
+      conductores: co.length, conductoresDisp: co.filter(x => x.estado === 'disponible').length,
+      vencidos: dc.filter(x => x.vencimiento < hoyISO).length, porVencer: dc.filter(x => x.vencimiento >= hoyISO).length,
+    };
+  });
+  kpis.unshift(card('🧑‍✈️', 'var(--accent-soft)', 'Conductores', flota == null ? nd : String(flota.conductores), flota == null ? 'Conductores' : `${flota.conductoresDisp} disponibles`, 'conductores.html'));
+  kpis.unshift(card('🚛', 'var(--accent-soft)', 'Flota', flota == null ? nd : String(flota.unidades), flota == null ? 'Flota' : `${flota.disponibles} disponibles`, 'flota.html'));
+  if (flota && (flota.vencidos || flota.porVencer)) {
+    kpis.unshift(card(flota.vencidos ? '⛔' : '⚠️', flota.vencidos ? 'var(--danger-soft)' : 'var(--warning-soft)', 'Documentos', flota.vencidos ? `${flota.vencidos} vencidos` : `${flota.porVencer} por vencer`, flota.vencidos && flota.porVencer ? `${flota.porVencer} más por vencer` : 'Revisa Flota y Conductores', 'flota.html'));
+  }
   document.getElementById('tp-kpis').innerHTML = kpis.join('');
 }
 
@@ -234,6 +254,8 @@ async function cargarKpis() {
    ACCESOS A OTROS MÓDULOS (solo los que esta cuenta/perfil tiene)
    ============================================================ */
 const ACCESOS = [
+  { key: 'transporte_flota',       href: 'flota.html',             ico: '🚛', t: 'Flota',              d: 'Cabezales, camiones y furgones con fotos y documentos.' },
+  { key: 'transporte_conductores', href: 'conductores.html',       ico: '🧑‍✈️', t: 'Conductores',        d: 'Conductores y ayudantes, licencias y disponibilidad.' },
   { key: 'ventas',            href: 'ventas.html',            ico: '💰', t: 'Ventas',             d: 'Factura fletes y servicios de transporte.' },
   { key: 'proformas',         href: 'proformas.html',         ico: '📄', t: 'Proformas',          d: 'Cotiza un viaje o una ruta a tu cliente.' },
   { key: 'creditos',          href: 'creditos.html',          ico: '🧾', t: 'Créditos',           d: 'Cobra a cuotas o en una fecha fija.' },
