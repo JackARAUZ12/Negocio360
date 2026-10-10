@@ -106,6 +106,12 @@
           .select('usa_modulo_transporte').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_transporte = tr?.usa_modulo_transporte === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_transporte = false; }
+      // Fiados: consulta aparte, mismo criterio.
+      try {
+        const { data: fi } = await client.from('configuracion_empresa')
+          .select('usa_modulo_fiados').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_fiados = fi?.usa_modulo_fiados === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_fiados = false; }
       return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);

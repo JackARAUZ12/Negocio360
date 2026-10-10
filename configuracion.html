@@ -14,7 +14,7 @@
 
 <!-- Supabase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261009c"></script>
+<script src="modulos-registro.js?v=20261010a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1491,7 +1491,7 @@
             <div class="cfg-card-icon">🚛</div>
             <div>
               <div class="cfg-card-title">Módulo de Transporte de carga</div>
-              <div class="cfg-card-desc">Para vender transporte y equipos médicos: lotes, vencimientos, salida por vencimiento (sale primero el lote que vence antes) y rotación y margen.</div>
+              <div class="cfg-card-desc">Para empresas de transporte de carga: panel de operación conectado con Ventas, Créditos, Gastos y Caja (flota, viajes, costos y cobros en las próximas fases).</div>
             </div>
           </div>
           <div class="cfg-row">
@@ -1501,10 +1501,31 @@
             </div>
             <label class="cfg-switch">
               <input type="checkbox" id="transporte-toggle" disabled />
-              <span class="cfg-switch-track" onclick="onToggleInsumosClick(event)"></span>
+              <span class="cfg-switch-track" onclick="onToggleTransporteClick(event)"></span>
             </label>
           </div>
           <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="fiados-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">📒</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Fiados</div>
+              <div class="cfg-card-desc">El cuaderno de la pulpería: anota quién te debe, cobra pagos o abonos y elimina si te equivocaste. Conectado con Clientes, Inventario, Ventas y Caja.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Fiados</div>
+              <div class="cfg-row-sub" id="fiados-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="fiados-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleFiadosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="fiados-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
@@ -2535,6 +2556,45 @@ async function cargarModuloTransporte() {
     toggle.disabled = false;
   } catch (e) { console.error('cargarModuloTransporte:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
 }
+// Modulo de Fiados: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloFiados() {
+  const toggle = document.getElementById('fiados-toggle');
+  const sub = document.getElementById('fiados-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_fiados').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_fiados === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Fiados aparece en el menú y como opción al cobrar en Ventas.' : 'Desactivado — el módulo de Fiados no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloFiados:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleFiadosClick(evt) {
+  const toggle = document.getElementById('fiados-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloFiados(toggle.checked);
+}
+async function guardarModuloFiados(activo) {
+  const toggle = document.getElementById('fiados-toggle');
+  const sub = document.getElementById('fiados-row-sub');
+  const statusEl = document.getElementById('fiados-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_fiados: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Fiados aparece en el menú y como opción al cobrar en Ventas.' : 'Desactivado — el módulo de Fiados no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Fiados activado. Recarga la página para ver el menú.' : 'Módulo de Fiados desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloFiados:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 function onToggleTransporteClick(evt) {
   const toggle = document.getElementById('transporte-toggle');
   if (toggle.disabled) { evt.preventDefault(); return; }
@@ -2950,6 +3010,7 @@ async function initConfiguracion() {
       cargarModuloVet();
       cargarModuloInsumos();
       cargarModuloTransporte();
+      cargarModuloFiados();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -2976,6 +3037,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20261007a"></script>
-<script src="modulos-guard.js?v=20261009e"></script>
+<script src="modulos-guard.js?v=20261010a"></script>
 </body>
 </html>

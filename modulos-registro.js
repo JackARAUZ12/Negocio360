@@ -147,6 +147,10 @@
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Centro de mando del transporte de carga: flota, viajes, costos y cobros, conectado con Ventas, Créditos, Gastos y Caja.' },
+
+    // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
+    'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
+                       desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
