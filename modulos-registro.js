@@ -152,6 +152,11 @@
     'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Conductores y ayudantes con documentos, licencias y disponibilidad.' },
 
+    'transporte-rutas.html': { key: 'transporte_rutas', label: 'Transporte · Rutas y tarifas', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Tus rutas habituales con distancia, fronteras y tarifas por viaje, km o tonelada.' },
+    'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Órdenes de transporte con tablero de despacho, costos del viaje y rentabilidad.' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },

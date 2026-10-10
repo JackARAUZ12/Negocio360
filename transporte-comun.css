@@ -99,3 +99,32 @@ textarea.tx-in{min-height:70px;resize:vertical}
   .tx-doc{flex-wrap:wrap}.tx-doc-acc{width:100%;justify-content:flex-start}
   .tx-box{padding:16px}
 }
+
+/* ---- Órdenes / Rutas ---- */
+.tx-kan{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.tx-kan-col{background:var(--bg-hover);border-radius:14px;padding:10px;min-width:0}
+.tx-kan-tit{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--text-secondary);margin:2px 4px 10px}
+.tx-kan-tit span{background:var(--bg-surface);border-radius:999px;padding:1px 9px;font-size:11px}
+.tx-kan-vacio{font-size:12px;color:var(--text-muted);text-align:center;padding:14px 4px}
+.tx-ot{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tx-ot:hover{border-color:var(--accent);box-shadow:var(--shadow-md)}
+.tx-ot b{font-size:13px;overflow-wrap:anywhere}.tx-ot small{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
+.tx-ot-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)}
+.tx-ot-monto{font-weight:800;font-size:13px;color:var(--text-primary)}
+.tx-pasos{display:flex;gap:4px;margin:12px 0}
+.tx-paso{flex:1;text-align:center;font-size:11px;font-weight:700;padding:8px 2px;border-radius:8px;background:var(--bg-hover);color:var(--text-muted);min-width:0}
+.tx-paso.hecho{background:var(--success-soft);color:var(--success)}
+.tx-paso.ahora{background:var(--accent);color:#fff}
+.tx-paso.cancel{background:var(--danger-soft);color:var(--danger)}
+.tx-fila{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--bg-surface);cursor:pointer}
+.tx-fila:hover{border-color:var(--accent)}
+.tx-fila-main{flex:1;min-width:0}.tx-fila-main b{display:block;font-size:13px;overflow-wrap:anywhere}.tx-fila-main small{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
+.tx-fila-der{text-align:right;flex:0 0 auto;font-weight:800;font-size:13px}
+.tx-pos{color:var(--success)}.tx-neg{color:var(--danger)}
+.tx-rank{width:100%;border-collapse:collapse;font-size:13px}
+.tx-rank th{text-align:left;font-size:11px;color:var(--text-muted);text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
+.tx-rank td{padding:8px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}.tx-rank td.n,.tx-rank th.n{text-align:right;white-space:nowrap}
+.tx-scroll{overflow-x:auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px}
+.tx-rec{display:flex;gap:8px;margin-bottom:8px}.tx-rec .tx-in{min-width:0}
+@media (max-width:1100px){.tx-kan{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.tx-kan{grid-template-columns:1fr}.tx-paso{font-size:10px}}

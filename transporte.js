@@ -242,6 +242,14 @@ async function cargarKpis() {
       vencidos: dc.filter(x => x.vencimiento < hoyISO).length, porVencer: dc.filter(x => x.vencimiento >= hoyISO).length,
     };
   });
+  // Órdenes de transporte (Transporte · fases 4 a 6)
+  const ords = await intentar(async () => {
+    const { data, error } = await sb.from('transporte_ordenes').select('estado').eq('auth_user_id', TP.userId).in('estado', ['pendiente', 'asignada', 'en_ruta']);
+    if (error) throw error;
+    const l = data || [];
+    return { pend: l.filter(x => x.estado === 'pendiente').length, asig: l.filter(x => x.estado === 'asignada').length, ruta: l.filter(x => x.estado === 'en_ruta').length };
+  });
+  kpis.unshift(card('📋', 'var(--success-soft)', 'Órdenes activas', ords == null ? nd : String(ords.pend + ords.asig + ords.ruta), ords == null ? 'Órdenes' : `${ords.ruta} en ruta · ${ords.pend} por asignar`, 'transporte-ordenes.html'));
   kpis.unshift(card('🧑‍✈️', 'var(--accent-soft)', 'Conductores', flota == null ? nd : String(flota.conductores), flota == null ? 'Conductores' : `${flota.conductoresDisp} disponibles`, 'conductores.html'));
   kpis.unshift(card('🚛', 'var(--accent-soft)', 'Flota', flota == null ? nd : String(flota.unidades), flota == null ? 'Flota' : `${flota.disponibles} disponibles`, 'flota.html'));
   if (flota && (flota.vencidos || flota.porVencer)) {
@@ -254,6 +262,8 @@ async function cargarKpis() {
    ACCESOS A OTROS MÓDULOS (solo los que esta cuenta/perfil tiene)
    ============================================================ */
 const ACCESOS = [
+  { key: 'transporte_ordenes',     href: 'transporte-ordenes.html', ico: '📋', t: 'Órdenes de transporte', d: 'Tablero de despacho, costos y utilidad de cada viaje.' },
+  { key: 'transporte_rutas',       href: 'transporte-rutas.html',  ico: '🗺️', t: 'Rutas y tarifas',    d: 'Tus recorridos y cuánto cobras por cada uno.' },
   { key: 'transporte_flota',       href: 'flota.html',             ico: '🚛', t: 'Flota',              d: 'Cabezales, camiones y furgones con fotos y documentos.' },
   { key: 'transporte_conductores', href: 'conductores.html',       ico: '🧑‍✈️', t: 'Conductores',        d: 'Conductores y ayudantes, licencias y disponibilidad.' },
   { key: 'ventas',            href: 'ventas.html',            ico: '💰', t: 'Ventas',             d: 'Factura fletes y servicios de transporte.' },
