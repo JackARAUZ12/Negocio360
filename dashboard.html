@@ -2773,6 +2773,16 @@ async function initDashboard() {
     } catch (e) { /* si falla, se sigue mostrando el Dashboard normal */ }
 
     document.getElementById('loader').classList.add('hidden');
+    try {
+      if (window.N360Embudo) {
+        const grid = document.querySelector('.kpi-grid');
+        if (grid && !document.getElementById('dash-embudo')) {
+          const box = document.createElement('div'); box.id = 'dash-embudo'; box.style.display = 'none';
+          grid.insertAdjacentElement('afterend', box);
+          N360Embudo.resumen('dash-embudo', { sb: sbClient, userId, fmt: n => fmt(n) });
+        }
+      }
+    } catch (e) { /* el resumen del embudo nunca debe afectar al Dashboard */ }
     document.getElementById('app').style.display = 'flex';
 
     verificarAnuncioSistema(userId);
@@ -2973,6 +2983,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script src="bienvenida-negocio360.js?v=1"></script>
+<script src="embudo-ventas.js?v=20261010a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
 <script src="modulos-guard.js?v=20261009e"></script>

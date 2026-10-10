@@ -1042,6 +1042,12 @@ async function guardarProforma() {
   const r = calcularResumenProf();
   if (r.total <= 0) { errEl.textContent = 'El total debe ser mayor a cero.'; return; }
 
+  // Embudo de ventas: si se marca como rechazada, preguntar el motivo (opcional)
+  let motivoPerdida;
+  if (estado === 'rechazada' && (!document.getElementById('np-id').value || STATE.proformaActual?.estado !== 'rechazada')) {
+    motivoPerdida = await pedirMotivoPerdida();
+  }
+
   setBtnLoading('np-btn-guardar', true);
   try {
     const editandoId = document.getElementById('np-id').value || null;
@@ -1054,6 +1060,8 @@ async function guardarProforma() {
       total: r.total, costo_total: r.costoTotal, estado, observaciones,
       updated_at: new Date().toISOString(),
     };
+    if (motivoPerdida !== undefined) payload.motivo_perdida = motivoPerdida;
+    if (estado === 'enviada' && !STATE.proformaActual?.enviada_at) payload.enviada_at = new Date().toISOString();
     // Solo se toca esta columna si la proforma usa proveedor (o si lo usaba antes y ahora se apaga),
     // asi las proformas normales se guardan exactamente igual que siempre.
     if (STATE.provModo !== 'no' || STATE.proformaActual?.mostrar_proveedor === true) payload.mostrar_proveedor = STATE.provModo === 'visible';
@@ -1061,7 +1069,11 @@ async function guardarProforma() {
     let proformaId = editandoId;
     let numero;
     if (editandoId) {
-      const { error } = await sbClient.from('proformas').update(payload).eq('id', editandoId);
+      let { error } = await sbClient.from('proformas').update(payload).eq('id', editandoId);
+      if (error && ('motivo_perdida' in payload || 'enviada_at' in payload)) {
+        const { motivo_perdida, enviada_at, ...sinNuevas } = payload;
+        ({ error } = await sbClient.from('proformas').update(sinNuevas).eq('id', editandoId));
+      }
       if (error) throw error;
       await sbClient.from('proforma_detalles').delete().eq('proforma_id', editandoId);
       numero = STATE.proformaActual?.numero_proforma;
@@ -2271,11 +2283,62 @@ async function compartirProformaActual() {
   const p = STATE.proformaActual;
   if (!p) return;
   const texto = `Proforma ${p.numero_proforma} — ${p.cliente_nombre||'Cliente'} — Total: ${fmt(p.total)}`;
+  let compartida = false;
   try {
-    if (navigator.share) { await navigator.share({ title: `Proforma ${p.numero_proforma}`, text: texto }); }
-    else { await navigator.clipboard.writeText(texto); showToast('Copiado al portapapeles'); }
+    if (navigator.share) { await navigator.share({ title: `Proforma ${p.numero_proforma}`, text: texto }); compartida = true; }
+    else { await navigator.clipboard.writeText(texto); showToast('Copiado al portapapeles'); compartida = true; }
   } catch (e) { /* el usuario canceló el share, no es error */ }
+  if (compartida) await marcarProformaEnviada(p);
 }
+
+/* Embudo: al compartir una proforma se registra cuándo salió hacia el cliente */
+async function marcarProformaEnviada(p) {
+  try {
+    if (!p || !p.id || p.enviada_at) return;
+    const cambios = { enviada_at: new Date().toISOString() };
+    if (['borrador','pendiente'].includes(p.estado)) cambios.estado = 'enviada';
+    const { error } = await sbClient.from('proformas').update(cambios).eq('id', p.id).eq('auth_user_id', STATE.userId);
+    if (error) return;
+    Object.assign(p, cambios);
+    loadProformas?.();
+  } catch (e) { /* no bloquea el envío */ }
+}
+
+/* Embudo: pregunta (opcional) por qué se perdió la cotización */
+function pedirMotivoPerdida() {
+  return new Promise(resolve => {
+    const M = (window.N360Embudo && N360Embudo.MOTIVOS) || {};
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:100000;padding:16px';
+    ov.innerHTML = `<div style="background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:16px;padding:20px;max-width:380px;width:100%">
+      <h3 style="margin:0 0 6px;font-size:16px">¿Por qué se perdió?</h3>
+      <p style="margin:0 0 12px;font-size:13px;color:var(--text-secondary)">Opcional. Sirve para el embudo de ventas.</p>
+      <select id="mp-sel" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg-surface);color:var(--text-primary);font-family:inherit">
+        <option value="">Prefiero no decirlo</option>${Object.entries(M).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button type="button" id="mp-ok" class="btn btn-primary" style="padding:9px 16px">Continuar</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#mp-ok').onclick = () => { const v = ov.querySelector('#mp-sel').value; ov.remove(); resolve(v || null); };
+  });
+}
+
+/* Embudo: alternar entre la lista y el embudo de ventas */
+function setVistaProf(vista) {
+  const lista = document.getElementById('prof-vista-lista'), emb = document.getElementById('prof-vista-embudo');
+  if (!lista || !emb) return;
+  const esEmbudo = vista === 'embudo';
+  lista.style.display = esEmbudo ? 'none' : '';
+  emb.style.display = esEmbudo ? '' : 'none';
+  document.getElementById('vista-btn-lista')?.classList.toggle('active', !esEmbudo);
+  document.getElementById('vista-btn-embudo')?.classList.toggle('active', esEmbudo);
+  if (esEmbudo && window.N360Embudo) {
+    N360Embudo.montar('prof-vista-embudo', {
+      sb: sbClient, userId: STATE.userId, fmt,
+      onAbrir: id => { setVistaProf('lista'); verDetalleProf(id); },
+    });
+  }
+}
+window.setVistaProf = setVistaProf;
 
 /* =====================================================
    MODAL / TOAST / UI HELPERS (idénticos al resto del sistema)

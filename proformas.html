@@ -1288,7 +1288,13 @@
         </div>
       </div>
 
-      <div class="panel-card fade-in" style="margin-top:20px">
+      <div class="fade-in" style="margin-top:20px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="filter-btn active" id="vista-btn-lista" onclick="setVistaProf('lista')">📋 Lista</button>
+        <button class="filter-btn" id="vista-btn-embudo" onclick="setVistaProf('embudo')">📊 Embudo de ventas</button>
+      </div>
+      <div id="prof-vista-embudo" class="fade-in" style="display:none;margin-top:14px"></div>
+
+      <div class="panel-card fade-in" id="prof-vista-lista" style="margin-top:14px">
         <!-- FILTROS -->
         <div class="filtros-row">
           <button class="filter-btn active" data-filtro="todos"      onclick="setFiltroProf('todos')">Todos</button>
@@ -1774,7 +1780,8 @@
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
 <script src="comprobante-carta.js?v=20261008a"></script>
-<script src="proformas.js?v=20261009c"></script>
+<script src="embudo-ventas.js?v=20261010a"></script>
+<script src="proformas.js?v=20261010a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>

@@ -1299,6 +1299,10 @@ function fmtCant(n) { return Number(n || 0).toLocaleString('es-NI', { maximumFra
 function switchTab(tab) {
   document.querySelectorAll('.main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+  if (tab === 'embudo' && window.N360Embudo && !EST._embudoMontado) {
+    EST._embudoMontado = true;
+    N360Embudo.montar('est-embudo', { sb, userId: EST.userId, fmt });
+  }
   if (window.lucide) lucide.createIcons();
 }
 

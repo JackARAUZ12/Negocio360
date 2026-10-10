@@ -848,6 +848,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           Análisis a futuro
         </div>
+        <div class="main-tab" data-tab="embudo" onclick="EST.switchTab('embudo')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Embudo de ventas
+        </div>
       </div>
 
       <!-- ============ TAB: SALUD FINANCIERA ============ -->
@@ -1039,6 +1043,8 @@
       </div>
 
       <!-- ============ TAB: ANÁLISIS A FUTURO (predicción próximo mes) ============ -->
+      <div class="tab-panel" id="tab-embudo"><div id="est-embudo"></div></div>
+
       <div class="tab-panel" id="tab-prediccion">
         <div class="panel-card fade-in" id="prediccion-sin-datos" style="display:none">
           <div class="panel-body" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
@@ -1111,7 +1117,8 @@
   </div>
 </div>
 
-<script src="estadisticas.js?v=20261004a"></script>
+<script src="embudo-ventas.js?v=20261010a"></script>
+<script src="estadisticas.js?v=20261010a"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
 <script src="modulos-guard.js?v=20261009e"></script>
 </body>
