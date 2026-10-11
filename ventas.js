@@ -5997,12 +5997,15 @@ function refrescarEstadoBT() {
   const bc = document.getElementById('vrc-btn-conectar-bt'), bp = document.getElementById('vrc-btn-probar-bt');
   if (bc) bc.style.display = usar ? '' : 'none';
   if (bp) bp.style.display = usar && escposBTConectado() ? '' : 'none';
+  if (bc) bc.textContent = escposBTConectado() ? 'Cambiar impresora' : 'Conectar impresora Bluetooth';
+  const bd = document.getElementById('vrc-btn-desconectar-bt');
+  if (bd) bd.style.display = usar && escposBTConectado() ? '' : 'none';
   if (!estado || !usar) return;
   if (!escposBTSoportado()) {
     estado.innerHTML = '⚠️ Este navegador no soporta Bluetooth directo — usa Chrome en Android o computadora. Mientras tanto se usará la impresión normal.';
     estado.style.color = 'var(--danger)';
   } else if (escposBTConectado()) {
-    estado.innerHTML = '✅ Impresora Bluetooth conectada';
+    estado.innerHTML = `✅ Conectada: <b>${esc(ESCPOS_BT_DEVICE?.name || 'Impresora Bluetooth')}</b>`;
     estado.style.color = 'var(--success)';
   } else {
     estado.innerHTML = 'Toca "Conectar" y elige tu impresora (hay que hacerlo cada vez que abres la página).';
@@ -6017,6 +6020,11 @@ function iniciarBloqueBT() {
 async function conectarImpresoraBTDesdeUI() {
   const r = await conectarImpresoraBluetooth();
   if (r.ok) showToast('📱 Impresora conectada: ' + r.nombre); else showToast(r.motivo, 'error');
+  refrescarEstadoBT();
+}
+function desconectarBTDesdeUI() {
+  desconectarImpresoraBluetooth();
+  showToast('Impresora Bluetooth desconectada');
   refrescarEstadoBT();
 }
 function columnasTicketBT() {
@@ -7562,6 +7570,7 @@ window.toggleIva       = toggleIva;
 window.toggleUsarBTVR = toggleUsarBTVR;
 window.conectarImpresoraBTDesdeUI = conectarImpresoraBTDesdeUI;
 window.probarImpresoraBT = probarImpresoraBT;
+window.desconectarBTDesdeUI = desconectarBTDesdeUI;
 window.agregarOtroImpuesto = agregarOtroImpuesto;
 window.quitarOtroImpuesto = quitarOtroImpuesto;
 window.cambiarIvaPorcentaje = cambiarIvaPorcentaje;
