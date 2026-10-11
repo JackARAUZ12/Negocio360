@@ -1649,6 +1649,9 @@
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-detalle')">Cerrar</button>
+      <button class="btn-ghost" id="btn-reimprimir-ticket" onclick="reimprimirTicketVenta()">
+        🖨️ Imprimir ticket
+      </button>
       <button class="btn-ghost" id="btn-descargar-recibo" onclick="descargarReciboActual()">
         🧾 Descargar recibo
       </button>
@@ -1942,7 +1945,7 @@
 <script src="escpos-ble.js?v=20261011a"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="ventas.js?v=20261011b"></script>
+<script src="ventas.js?v=20261011c"></script>
 <script src="ventas-correcciones.js?v=20261009a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>

@@ -4880,6 +4880,47 @@ async function descargarReciboActual() {
 }
 window.descargarReciboActual = descargarReciboActual;
 
+/* Botón "🖨️ Imprimir ticket" del detalle — vuelve a imprimir el ticket de
+   CUALQUIER venta pasada por la misma ruta que al vender: Bluetooth (si está
+   activo y conectado) → app de escritorio → USB → impresión normal. */
+async function reimprimirTicketVenta() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  try {
+    // Ventana de impresión normal: se abre YA (dentro del toque) solo si no hay vía directa lista
+    await cargarConfigVentaRapida();
+    const cfg = VR.config || {};
+    const btListo = typeof btActivoLocal === 'function' && btActivoLocal() && !!ESCPOS_BT_DEVICE;
+    const usbListo = !!document.getElementById('vrc-usar-usb')?.checked && escposConectado();
+    const nativaLista = !!(window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa'));
+    if (!btListo && !usbListo && !nativaLista && cfg.ancho_ticket !== 'carta') {
+      S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
+    }
+    const { data: det } = await sb.from('venta_detalles').select('*')
+      .eq('venta_id', venta.id).eq('auth_user_id', S.userId);
+    const items = (det || []).map(d => ({ ...d, nombre: d.producto_nombre || d.nombre || 'Ítem', id: d.producto_id || d.id }));
+    // Impuestos de esa venta (IVA + otros como IR) tal como se cobraron
+    let otros = [];
+    try {
+      const { data: vi } = await sb.from('venta_impuestos').select('impuesto_id,nombre,porcentaje,monto')
+        .eq('venta_id', venta.id).eq('auth_user_id', S.userId);
+      otros = (vi || []).map(o => ({ id: o.impuesto_id, nombre: o.nombre, porcentaje: Number(o.porcentaje) || 0, monto: Number(o.monto) || 0 }));
+    } catch (e) { /* sin detalle: solo IVA */ }
+    const sumaOtros = round2(otros.reduce((a, o) => a + o.monto, 0));
+    const impuestoTotal = Number(venta.impuesto) || 0;
+    const resumen = {
+      subtotal: Number(venta.subtotal) || 0, descuento: Number(venta.descuento) || 0,
+      impuestos: impuestoTotal, ivaMonto: Math.max(0, round2(impuestoTotal - sumaOtros)),
+      ivaPct: Number(venta.iva_porcentaje) || 0, otros, total: Number(venta.total) || 0,
+    };
+    imprimirTicketNuevaVenta(venta, items, resumen);
+  } catch (e) {
+    console.error('reimprimirTicketVenta:', e);
+    showToast('No se pudo imprimir el ticket', 'error');
+  }
+}
+window.reimprimirTicketVenta = reimprimirTicketVenta;
+
 async function descargarComprobanteCartaVenta() {
   const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
   if (!venta) return;
@@ -7437,7 +7478,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   <div class="linea"></div>
   <div class="fila-dato"><span>Subtotal</span><span>${fmt(resumen.subtotal)}</span></div>
   ${resumen.descuento>0 ? `<div class="fila-dato"><span>Descuento</span><span>-${fmt(resumen.descuento)}</span></div>` : ''}
-  ${S.ivaActivo ? `<div class="fila-dato"><span>IVA (${S.ivaPorcentaje}%)</span><span>${fmt(resumen.ivaMonto != null ? resumen.ivaMonto : resumen.impuestos)}</span></div>` : ''}
+  ${(resumen.ivaPct != null ? resumen.ivaPct > 0 : S.ivaActivo) ? `<div class="fila-dato"><span>IVA (${resumen.ivaPct != null ? resumen.ivaPct : S.ivaPorcentaje}%)</span><span>${fmt(resumen.ivaMonto != null ? resumen.ivaMonto : resumen.impuestos)}</span></div>` : ''}
   ${(resumen.otros||[]).map(o => `<div class="fila-dato"><span>${esc(o.nombre)} (${o.porcentaje}%)</span><span>${fmt(o.monto)}</span></div>`).join('')}
   <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
   <div class="linea"></div>
