@@ -49,6 +49,8 @@ async function cargarOrdenes() {
 }
 async function cargarCostos() {
   OT.costos = await TX.paginar(() => sb.from('transporte_costos').select('*').eq('auth_user_id', TX.userId).order('fecha', { ascending: false }));
+  // Pago real a conductores (liquidaciones no anuladas): también es costo del viaje
+  try { OT.liqOrd = await TX.paginar(() => sb.from('transporte_liquidacion_ordenes').select('*').eq('auth_user_id', TX.userId)); } catch (_) { OT.liqOrd = []; }
 }
 async function cargarTodo() {
   const [, , rutas, tarifas, unidades, conductores, docsU, docsC] = await Promise.all([
@@ -71,7 +73,8 @@ async function cargarTodo() {
    ============================================================ */
 const ord = id => OT.ordenes.find(o => o.id === id);
 const costosDe = id => OT.costos.filter(c => c.orden_id === id);
-const totalCostos = id => r2(costosDe(id).reduce((s, c) => s + Number(c.monto || 0), 0));
+const liqDe = id => (OT.liqOrd || []).filter(x => x.orden_id === id);
+const totalCostos = id => r2(costosDe(id).reduce((s, c) => s + Number(c.monto || 0), 0) + liqDe(id).reduce((s, x) => s + Number(x.costo_neto || 0), 0));
 const utilidad = o => r2(Number(o.total || 0) - totalCostos(o.id));
 const margen = (ing, ut) => (ing > 0 ? Math.round((ut / ing) * 1000) / 10 : null);
 const unidadDe = id => OT.unidades.find(u => u.id === id);
@@ -277,15 +280,17 @@ function tabDespacho(o) {
     ${['pendiente', 'asignada'].includes(o.estado) ? `<button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-asignar="${esc(o.id)}">${o.estado === 'pendiente' ? 'Asignar' : 'Reasignar'}</button>` : ''}`;
 }
 function tabCostos(o) {
-  const cs = costosDe(o.id), tot = totalCostos(o.id);
+  const cs = costosDe(o.id), tot = totalCostos(o.id), lq = liqDe(o.id);
   const puede = o.estado !== 'cancelada';
   const porCat = {}; cs.forEach(c => { porCat[c.categoria] = (porCat[c.categoria] || 0) + Number(c.monto); });
   return `${puede ? `<button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-costo-nuevo="${esc(o.id)}">＋ Agregar costo</button>` : ''}
     <div style="margin-top:12px">${cs.length ? cs.map(c => { const k = CAT_COSTO[c.categoria] || CAT_COSTO.otro; return `<div class="tx-doc"><div class="tx-doc-info"><b>${k.ico} ${esc(k.t)} · ${esc(money(c.monto))}</b>
-        <small>${esc(fmtFecha(c.fecha))}${c.descripcion ? ' · ' + esc(c.descripcion) : ''}${c.gasto_id ? ' · 💸 Registrado en Gastos y Caja' : ''}</small></div>
-        <div class="tx-doc-acc">${c.gasto_id ? '' : `<button type="button" class="tx-btn tx-btn-sm" data-ot-costo-editar="${esc(c.id)}">✏️</button>`}<button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-costo-borrar="${esc(c.id)}">🗑</button></div></div>`; }).join('')
+        <small>${esc(fmtFecha(c.fecha))}${c.descripcion ? ' · ' + esc(c.descripcion) : ''}${c.gasto_id ? ' · 💸 Registrado en Gastos y Caja' : ''}${c.liquidacion_id ? ' · 🔒 Descontado en liquidación' : ''}</small></div>
+        <div class="tx-doc-acc">${(c.gasto_id || c.liquidacion_id) ? '' : `<button type="button" class="tx-btn tx-btn-sm" data-ot-costo-editar="${esc(c.id)}">✏️</button>`}<button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-costo-borrar="${esc(c.id)}">🗑</button></div></div>`; }).join('')
       : '<div class="tx-vacio" style="padding:24px 12px"><div class="tx-vacio-i">🧾</div><b>Sin costos todavía</b><p>Anota combustible, peajes, viáticos y todo lo que cuesta este viaje para conocer tu utilidad real.</p></div>'}</div>
-    ${cs.length ? `<div class="tx-sec">Resumen</div>${Object.entries(porCat).map(([k, v]) => `<div class="tx-doc"><div class="tx-doc-info"><b>${(CAT_COSTO[k] || CAT_COSTO.otro).ico} ${esc((CAT_COSTO[k] || CAT_COSTO.otro).t)}</b></div><b>${esc(money(v))}</b></div>`).join('')}
+    ${lq.length ? `<div class="tx-sec">Pago a conductores</div>${lq.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Liquidación · ${esc(money(x.costo_neto))}</b><small>Pago ${esc(money(x.bruto))}${Number(x.anticipo) ? ' − anticipo ' + esc(money(x.anticipo)) + ' (ya está arriba)' : ''} · se administra en Liquidación de conductores</small></div></div>`).join('')}` : ''}
+    ${(cs.length || lq.length) ? `<div class="tx-sec">Resumen</div>${Object.entries(porCat).map(([k, v]) => `<div class="tx-doc"><div class="tx-doc-info"><b>${(CAT_COSTO[k] || CAT_COSTO.otro).ico} ${esc((CAT_COSTO[k] || CAT_COSTO.otro).t)}</b></div><b>${esc(money(v))}</b></div>`).join('')}
+      ${lq.length ? `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Pago a conductores</b></div><b>${esc(money(r2(lq.reduce((s, x) => s + Number(x.costo_neto || 0), 0))))}</b></div>` : ''}
       <div class="tx-doc"><div class="tx-doc-info"><b>Total costos</b></div><b>${esc(money(tot))}</b></div>` : ''}`;
 }
 
@@ -587,6 +592,7 @@ async function guardarCosto() {
 }
 async function borrarCosto(id) {
   const c = OT.costos.find(x => x.id === id); if (!c) return;
+  if (c.liquidacion_id) { TX.toast('Este anticipo ya se descontó en una liquidación. Anula la liquidación primero.', 'error'); return; }
   const txt = c.gasto_id ? 'Se cancelará también el gasto y el dinero vuelve a Caja.' : 'Se quitará de los costos del viaje.';
   if (!await TX.confirmar('¿Eliminar este costo?', txt, 'Eliminar', true)) return;
   try {

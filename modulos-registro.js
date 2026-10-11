@@ -157,6 +157,9 @@
     'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Órdenes de transporte con tablero de despacho, costos del viaje y rentabilidad.' },
 
+    'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Pago a conductores y ayudantes por viaje, km o comisión, con anticipos y descuentos.' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
