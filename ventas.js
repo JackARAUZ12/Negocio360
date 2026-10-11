@@ -62,6 +62,7 @@ const S = {
 
   // IVA / Impuestos
   ivaActivo:      false,
+  retIr: { activo: false, porcentaje: 2 },   // el CLIENTE me retiene IR (no se suma: baja lo que cobro)
   otrosImpuestos: [],   // [{id,nombre,porcentaje}] del catálogo de Impuestos (IR, etc.), se suman al total
   impuestosCat:   [],
   ivaPorcentaje:  15,
@@ -955,6 +956,12 @@ async function anularVenta() {
       console.warn('No se pudo revertir el IVA en Impuestos:', eImp);
     }
 
+    // Retención de IR que el cliente me había hecho en esta venta: ya no aplica.
+    try {
+      await sb.from('retenciones_ir').update({ estado: 'anulada' })
+        .eq('venta_id', id).eq('auth_user_id', S.userId).eq('estado', 'pendiente');
+    } catch (eRetA) { console.warn('No se pudo anular la retención de IR de la venta:', eRetA); }
+
     // Si esta venta vino de convertir una proforma, se devuelve la
     // proforma a como estaba ANTES de convertirse -- así el negocio
     // no tiene que rehacer la proforma desde cero solo porque el
@@ -1742,6 +1749,8 @@ async function abrirNuevaVenta() {
   S.numeroVenta   = '';
   S.ivaActivo     = false;
   S.otrosImpuestos = [];
+  S.retIr = { activo: false, porcentaje: S.retIr?.porcentaje || 2 };
+  S.retIr.activo = false;
   S.ivaPorcentaje = S.empresaConfig?.iva_porcentaje_default ? Number(S.empresaConfig.iva_porcentaje_default) : 15;
   const fechaInput = document.getElementById('nv-fecha-venta'); if (fechaInput) fechaInput.value = todayISO();
 
@@ -4010,18 +4019,28 @@ async function cargarImpuestosCatalogo() {
 }
 
 function renderOtrosImpuestos() {
-  const sel = document.getElementById('otro-imp-select');
-  const chips = document.getElementById('otro-imp-chips');
-  if (!sel || !chips) return;
-  const usados = new Set((S.otrosImpuestos || []).map(o => o.id));
-  sel.innerHTML = '<option value="">+ Agregar impuesto (IR, etc.)…</option>' +
-    (S.impuestosCat || []).filter(i => !usados.has(i.id) && Number(i.valor) > 0)
-      .map(i => `<option value="${i.id}">${esc(i.nombre)} (${Number(i.valor)}%)</option>`).join('') +
-    '';
-  chips.innerHTML = (S.otrosImpuestos || []).map(o =>
-    `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft,#eef2ff);color:var(--accent);border-radius:100px;padding:4px 10px;font-size:12.5px;font-weight:600">${esc(o.nombre)} ${Number(o.porcentaje)}%
-      <button type="button" onclick="quitarOtroImpuesto('${o.id}')" style="border:0;background:none;cursor:pointer;color:inherit;font-size:14px;line-height:1">×</button></span>`).join('');
+  // Sección opcional "El cliente me retiene IR" (retención a favor). Oculta por defecto.
+  const box = document.getElementById('otros-imp-block');
+  if (!box) return;
+  if (!box.dataset.listo) {
+    box.dataset.listo = '1';
+    box.innerHTML = `<details id="ret-ir-details"><summary style="cursor:pointer;font-size:13px;color:var(--text-muted)">¿El cliente te retiene IR? (opcional)</summary>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="ret-ir-chk" onchange="toggleRetIr(this.checked)"/> Aplicar retención IR</label>
+        <input type="number" id="ret-ir-pct" value="${Number(S.retIr.porcentaje)}" min="0" max="100" step="0.01" style="width:80px" onchange="cambiarRetIrPct(this.value)" disabled/> <span>% sobre el valor sin IVA</span>
+      </div>
+      <div class="iva-sub" style="margin-top:6px">No cambia el total de la factura: baja lo que cobras, y queda como retención a favor (crédito de IR) en Impuestos.</div></details>`;
+  }
+  const chk = document.getElementById('ret-ir-chk'); if (chk) chk.checked = !!S.retIr.activo;
+  const pct = document.getElementById('ret-ir-pct'); if (pct) pct.disabled = !S.retIr.activo;
 }
+
+function toggleRetIr(on) { S.retIr.activo = !!on; calcularResumen(); }
+function cambiarRetIrPct(v) {
+  let n = parseFloat(v); if (isNaN(n) || n < 0) n = 0; if (n > 100) n = 100;
+  S.retIr.porcentaje = n; calcularResumen();
+}
+window.toggleRetIr = toggleRetIr; window.cambiarRetIrPct = cambiarRetIrPct;
 
 async function agregarOtroImpuesto(id) {
   if (!id) return;
@@ -4287,11 +4306,15 @@ function calcularResumen() {
   const otrosMonto = round2(otros.reduce((a,o) => a + o.monto, 0));
   const impuestos = round2(ivaMonto + otrosMonto);   // IVA + otros: es lo que se separa de Caja y va a Impuestos
   const total     = round2(subtotal - descuento + impuestos);
+  // Retención de IR que me hace el cliente: NO cambia el total, solo lo que cobro.
+  const retencionIr = S.retIr.activo ? round2(baseImponible * ((Number(S.retIr.porcentaje)||0)/100)) : 0;
+  const retencionPct = retencionIr > 0 ? Number(S.retIr.porcentaje) : 0;
+  const cobrar = round2(total - retencionIr);
   const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle };
+  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle };
 
   // Aviso visual de promociones aplicadas — se inserta junto al
   // resumen si el contenedor existe; si no existe en el HTML, esto
@@ -4334,6 +4357,11 @@ function calcularResumen() {
   setEl2('res-descuento', descuento>0 ? `-${fmt(descuento)}` : fmt(0));
   setEl2('res-impuestos', fmt(impuestos));
   setEl2('res-total',     fmt(total));
+  const rowRet = document.getElementById('res-ret-row');
+  if (rowRet) rowRet.style.display = retencionIr > 0 ? '' : 'none';
+  const rowRet2 = document.getElementById('res-ret-row2'); if (rowRet2) rowRet2.style.display = retencionIr > 0 ? '' : 'none';
+  setEl2('res-ret', '-' + fmt(retencionIr));
+  setEl2('res-cobrar', fmt(cobrar));
   setEl2('res-ganancia',  fmt(ganancia));
   actualizarPuntosEstimados();
 }
@@ -4514,7 +4542,7 @@ function quitarBancoLineaSeparada(idx) {
 function renderResumenPagoSeparado() {
   const el = document.getElementById('pago-separado-resumen');
   if (!el) return;
-  const total = S._resumen?.total || 0;
+  const total = S._resumen?.cobrar ?? S._resumen?.total ?? 0;
   const suma = round2((S.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
   const diferencia = round2(total - suma);
 
@@ -4534,7 +4562,7 @@ function renderResumenPagoSeparado() {
 // pago separado, no aplica (siempre pasa).
 function validarPagoSeparado() {
   if (S.metodoPagoId !== 'separado') return true;
-  const total = S._resumen?.total || 0;
+  const total = S._resumen?.cobrar ?? S._resumen?.total ?? 0;
   const suma = round2((S.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
   if (Math.abs(total - suma) >= 0.01) {
     showToast(`El pago separado no cuadra con el total (${suma < total ? 'faltan' : 'sobran'} ${fmt(Math.abs(total-suma))})`, 'error');
@@ -4586,6 +4614,8 @@ function renderResumenFinal() {
       <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;margin-top:8px">
         <span>TOTAL</span><strong style="color:var(--accent)">${fmt(r.total||0)}</strong>
       </div>
+      ${(r.retencionIr||0)>0 && S.metodoPagoId!=='fiado' ? `<div style="display:flex;justify-content:space-between;margin-top:4px"><span>Retención IR (${r.retencionPct}%)</span><strong style="color:var(--warning)">-${fmt(r.retencionIr)}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-weight:700"><span>Cobrarás</span><strong>${fmt(r.cobrar)}</strong></div>` : ''}
       <div style="display:flex;justify-content:space-between;margin-top:6px">
         <span style="color:var(--success)">Ganancia estimada</span>
         <strong style="color:var(--success)">${fmt(r.ganancia||0)}</strong>
@@ -4913,6 +4943,7 @@ async function reimprimirTicketVenta() {
       subtotal: Number(venta.subtotal) || 0, descuento: Number(venta.descuento) || 0,
       impuestos: impuestoTotal, ivaMonto: Math.max(0, round2(impuestoTotal - sumaOtros)),
       ivaPct: Number(venta.iva_porcentaje) || 0, otros, total: Number(venta.total) || 0,
+      retencionIr: Number(venta.retencion_ir_monto) || 0, retencionPct: Number(venta.retencion_ir_porcentaje) || 0,
     };
     imprimirTicketNuevaVenta(venta, items, resumen);
   } catch (e) {
@@ -5447,6 +5478,7 @@ async function confirmarVenta(conImpresion) {
       ...ventaPayload,
       iva_activo:      S.ivaActivo,
       iva_porcentaje:  S.ivaActivo ? S.ivaPorcentaje : 0,
+      ...((!esFiado && Number(r.retencionIr) > 0) ? { retencion_ir_monto: r.retencionIr, retencion_ir_porcentaje: r.retencionPct } : {}),
     };
 
     let ventaNueva, errVenta;
@@ -5631,7 +5663,9 @@ async function confirmarVenta(conImpresion) {
        se acumula aparte en el módulo de Impuestos, no en caja)
     ---------------------------------------------------------- */
     const montoIva  = Number(r.impuestos) || 0;
-    const montoCaja = Number(r.total) - montoIva;
+    // Retención de IR del cliente: no entra a Caja (la retiene el cliente). En fiado se ignora.
+    const retIrMonto = esFiado ? 0 : (Number(r.retencionIr) || 0);
+    const montoCaja = round2(Number(r.total) - montoIva - retIrMonto);
 
     // Fiado: el dinero todavía no entró, así que no se registra nada en Caja ahora.
     if (!esFiado) try {
@@ -5649,7 +5683,8 @@ async function confirmarVenta(conImpresion) {
         // saldo correctamente entre ellos. La última línea se lleva lo
         // que sobre del reparto proporcional, para que la suma cuadre
         // exacto con montoCaja sin arrastre de redondeo.
-        const ratioCaja = Number(r.total) > 0 ? montoCaja / Number(r.total) : 0;
+        const baseSepCaja = Number(r.cobrar != null ? r.cobrar : r.total);
+        const ratioCaja = baseSepCaja > 0 ? montoCaja / baseSepCaja : 0;
         const lineasConMonto = S.pagoSeparadoLineas.filter(l => l.monto > 0);
         let montoCajaAsignado = 0;
 
@@ -5690,7 +5725,7 @@ async function confirmarVenta(conImpresion) {
           auth_user_id:       S.userId,
           tipo_flujo:         'INGRESO',
           tipo_movimiento:    'VENTA',
-          concepto:           montoIva>0 ? `Venta ${S.numeroVenta} (neto de IVA)` : `Venta ${S.numeroVenta}`,
+          concepto:           (montoIva>0 || retIrMonto>0) ? `Venta ${S.numeroVenta} (neto de ${[montoIva>0?'IVA':'', retIrMonto>0?'retención IR':''].filter(Boolean).join(' y ')})` : `Venta ${S.numeroVenta}`,
           monto:              montoCaja,
           saldo_anterior:     saldoAnt,
           saldo_resultante:   saldoRes,
@@ -5740,6 +5775,18 @@ async function confirmarVenta(conImpresion) {
         })));
         if (eVi) console.warn('No se pudo guardar el detalle de impuestos de la venta:', eVi);
       }
+    }
+
+    // Retención de IR que me hizo el cliente (a favor). Aparte del IVA; no toca Caja ni el total.
+    if (retIrMonto > 0) {
+      try {
+        const { error: eRet } = await sb.from('retenciones_ir').insert({
+          auth_user_id: S.userId, lado: 'a_favor', origen: 'venta', venta_id: ventaId, estado: 'pendiente',
+          contraparte_nombre: S.clienteNombre || 'Cliente', fecha: fechaVentaElegida,
+          base: round2(Math.max(Number(r.subtotal) - Number(r.descuento), 0)), porcentaje: r.retencionPct, monto: retIrMonto,
+        });
+        if (eRet) throw eRet;
+      } catch (eR) { console.warn('No se pudo registrar la retención de IR:', eR); showToast('La venta se guardó, pero no se pudo registrar la retención de IR. Revísala en Impuestos.', 'warning'); }
     }
 
     /* ----------------------------------------------------------
@@ -7303,6 +7350,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   <div class="fila-dato"><span>Subtotal</span><span>${fmt(resumen.subtotal)}</span></div>
   ${resumen.ivaActivo ? `<div class="fila-dato"><span>IVA (${resumen.ivaPct}%)</span><span>${fmt(resumen.impuesto)}</span></div>` : ''}
   <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
+  ${Number(resumen.retencionIr)>0 ? `<div class="fila-dato"><span>Retención IR${resumen.retencionPct?` (${resumen.retencionPct}%)`:''}</span><span>-${fmt(resumen.retencionIr)}</span></div><div class="fila-dato negrita"><span>Total a pagar</span><span>${fmt(resumen.total - resumen.retencionIr)}</span></div>` : ''}
   <div class="linea"></div>
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;

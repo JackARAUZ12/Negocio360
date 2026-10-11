@@ -1861,6 +1861,16 @@
           <span style="color:var(--text-muted);font-size:13px">%</span>
         </div>
 
+        <!-- Retención de IR al proveedor (opcional, colapsada) -->
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;font-size:13px;color:var(--text-muted)">¿Le retienes IR al proveedor? (opcional)</summary>
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px">
+            <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="nc-ret-chk"/> Aplicar retención IR</label>
+            <input type="text" inputmode="decimal" id="nc-ret-pct" value="2" style="width:70px" oninput="saneaDecimalInput(this)"/> <span>% sobre el valor sin IVA</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Solo en compras pagadas de contado (a crédito se aplica al pagar la cuenta). Sale de Caja el neto y la retención queda por pagar a la DGI en Impuestos.</div>
+        </details>
+
         <div class="table-wrap" style="margin-top:12px">
           <table>
             <thead>
@@ -2323,7 +2333,7 @@
 
 <!-- SCRIPT -->
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="compras.js?v=20261011a"></script>
+<script src="compras.js?v=20261012a"></script>
 <script>
   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
   const _nc7Sync = setInterval(() => {

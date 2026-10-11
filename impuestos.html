@@ -602,6 +602,33 @@
         </div>
       </div>
 
+      <!-- RETENCIONES DE IR (solo aparece si el negocio tiene retenciones registradas) -->
+      <div class="panel-card fade-in" id="ret-panel" style="display:none;margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">Retenciones de IR</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:0 20px 14px">
+          <div class="acum-card" style="margin:0">
+            <div class="acum-nombre">Retenido a proveedores — por pagar a la DGI</div>
+            <div class="acum-valor" id="ret-pagar-total">C$0.00</div>
+            <div class="acum-sub">Se declara y paga en los primeros 5 días hábiles del mes siguiente</div>
+            <button class="btn-secondary" id="ret-btn-pagar" onclick="abrirPagoRetenciones()" style="margin-top:8px">Pagar a la DGI</button>
+          </div>
+          <div class="acum-card" style="margin:0">
+            <div class="acum-nombre">Me retuvieron mis clientes — IR a favor</div>
+            <div class="acum-valor" id="ret-favor-total">C$0.00</div>
+            <div class="acum-sub">Crédito contra tu anticipo mensual (1%) y tu IR anual. Guarda las constancias.</div>
+            <button class="btn-secondary" id="ret-btn-acreditar" onclick="acreditarRetencionesFavor()" style="margin-top:8px">Marcar como acreditadas</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Contraparte</th><th>Origen</th><th>Base</th><th>%</th><th>Monto</th><th>Estado</th></tr></thead>
+            <tbody id="ret-tbody"><tr><td colspan="8" class="empty-cell">—</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- MINI KPIs -->
       <div class="mini-kpi-grid">
         <div class="mini-kpi-card fade-in stagger-1">
@@ -781,6 +808,7 @@
   </div>
 </div>
 
+<script src="cajaAPI.js?v=20261007a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script>
@@ -1342,6 +1370,84 @@ window.abrirNuevoImpuesto = abrirNuevoImpuesto;
 window.guardarImpuesto = guardarImpuesto;
 window.toggleEstadoImpuesto = toggleEstadoImpuesto;
 
+
+/* =====================================================
+   RETENCIONES DE IR (a favor / por pagar) — módulo aditivo
+===================================================== */
+async function cargarRetenciones() {
+  const panel = document.getElementById('ret-panel');
+  if (!panel) return;
+  try {
+    const { data, error } = await sb.from('retenciones_ir').select('*')
+      .eq('auth_user_id', S.userId).order('fecha', { ascending:false }).order('created_at', { ascending:false }).limit(500);
+    if (error) throw error;
+    S.retenciones = data || [];
+    const vivas = S.retenciones.filter(r => r.estado !== 'anulada');
+    if (!S.retenciones.length) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    const sum = (lado) => round2(vivas.filter(r => r.lado === lado && r.estado === 'pendiente').reduce((a,r) => a + Number(r.monto), 0));
+    S.retPagar = sum('por_pagar'); S.retFavor = sum('a_favor');
+    document.getElementById('ret-pagar-total').textContent = fmt(S.retPagar);
+    document.getElementById('ret-favor-total').textContent = fmt(S.retFavor);
+    document.getElementById('ret-btn-pagar').disabled = !(S.retPagar > 0);
+    document.getElementById('ret-btn-acreditar').disabled = !(S.retFavor > 0);
+    const origenTxt = { venta:'Venta', compra:'Compra', cxp_pago:'Pago a proveedor', gasto:'Gasto', manual:'Manual' };
+    document.getElementById('ret-tbody').innerHTML = S.retenciones.slice(0, 100).map(r => `<tr>
+      <td>${fmtFecha(r.fecha)}</td><td>${r.lado === 'a_favor' ? 'A favor' : 'Por pagar'}</td><td>${esc(r.contraparte_nombre || '—')}</td>
+      <td>${origenTxt[r.origen] || r.origen}</td><td>${fmt(r.base)}</td><td>${Number(r.porcentaje)}%</td><td><strong>${fmt(r.monto)}</strong></td>
+      <td>${r.estado === 'pendiente' ? 'Pendiente' : r.estado === 'pagada' ? 'Pagada a DGI' : r.estado === 'acreditada' ? 'Acreditada' : 'Anulada'}</td></tr>`).join('');
+  } catch (e) { console.warn('cargarRetenciones:', e); panel.style.display = 'none'; }
+}
+
+async function abrirPagoRetenciones() {
+  if (!(S.retPagar > 0)) return;
+  if (!confirm(`¿Registrar el pago de ${fmt(S.retPagar)} de retenciones de IR a la DGI?\n\nSaldrá de tu Caja y las retenciones pendientes quedarán como pagadas.`)) return;
+  const btn = document.getElementById('ret-btn-pagar'); if (btn) btn.disabled = true;
+  try {
+    const pend = (S.retenciones || []).filter(r => r.lado === 'por_pagar' && r.estado === 'pendiente');
+    const monto = round2(pend.reduce((a,r) => a + Number(r.monto), 0));
+    if (!(monto > 0)) return;
+    const hoy = todayISO();
+    const { data: pago, error: eP } = await sb.from('retenciones_ir_pagos').insert({
+      auth_user_id: S.userId, fecha: hoy, periodo: hoy.slice(0,7), monto, estado: 'activo',
+    }).select('id').single();
+    if (eP) throw eP;
+    let movId = null;
+    if (window.CajaAPI) {
+      const res = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: S.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
+        concepto: `Pago de retenciones de IR a la DGI (${pend.length})`, monto,
+        metodo_pago_nombre: 'Efectivo', referencia_tipo: 'retenciones_ir_pago', referencia_id: pago.id, fecha: hoy,
+      });
+      if (!res.ok) showToast('Pago guardado, pero no se pudo registrar en Caja: ' + res.error, 'warning');
+    }
+    const ids = pend.map(r => r.id);
+    const { error: eU } = await sb.from('retenciones_ir').update({ estado: 'pagada', pago_id: pago.id })
+      .in('id', ids).eq('auth_user_id', S.userId).eq('estado', 'pendiente');
+    if (eU) throw eU;
+    showToast(`✅ Pago de retenciones por ${fmt(monto)} registrado.`, 'success');
+    await cargarRetenciones();
+  } catch (e) {
+    console.error('abrirPagoRetenciones:', e);
+    showToast('No se pudo registrar el pago: ' + (e.message || ''), 'error');
+  } finally { if (btn) btn.disabled = false; }
+}
+
+async function acreditarRetencionesFavor() {
+  if (!(S.retFavor > 0)) return;
+  if (!confirm(`¿Marcar ${fmt(S.retFavor)} de retenciones a favor como acreditadas (aplicadas contra tu anticipo o IR anual)?\n\nEsto no mueve Caja.`)) return;
+  try {
+    const { error } = await sb.from('retenciones_ir').update({ estado: 'acreditada' })
+      .eq('auth_user_id', S.userId).eq('lado', 'a_favor').eq('estado', 'pendiente');
+    if (error) throw error;
+    showToast('Retenciones marcadas como acreditadas.', 'success');
+    await cargarRetenciones();
+  } catch (e) { showToast('No se pudo actualizar: ' + (e.message || ''), 'error'); }
+}
+window.abrirPagoRetenciones = abrirPagoRetenciones;
+window.acreditarRetencionesFavor = acreditarRetencionesFavor;
+window.cargarRetenciones = cargarRetenciones;
+
 /* KEYBOARD */
 document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal('modal-pagar'); });
 
@@ -1378,6 +1484,7 @@ async function initImpuestos() {
 
     await cargarCatalogoImpuestos();
     await cargarImpuestos();
+    await cargarRetenciones();
 
     if (window.Negocio360Tutorial) {
       const pasosImpuestos = [

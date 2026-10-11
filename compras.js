@@ -1131,6 +1131,7 @@ function resetNuevaCompraUI() {
   const ivaPorcEl = document.getElementById('nc-iva-porcentaje');
   if (ivaPorcEl) ivaPorcEl.value = '15';
   toggleIVA(false);
+  const rc = document.getElementById('nc-ret-chk'); if (rc) rc.checked = false;
 
   // Paso 5 — Método pago
   populateMetodosSelect();
@@ -1897,6 +1898,11 @@ async function guardarCompra() {
   const estado        = document.getElementById('nc-estado')?.value || 'completada';
   const observaciones = document.getElementById('nc-observaciones')?.value.trim() || null;
   const fecha         = document.getElementById('nc-fecha')?.value || todayISO();
+  // Retención de IR practicada al proveedor (opcional): solo en compras pagadas de contado.
+  const retChk = document.getElementById('nc-ret-chk')?.checked;
+  const retPct = Math.min(100, Math.max(0, parseFloat(document.getElementById('nc-ret-pct')?.value) || 0));
+  const retMonto = (retChk && estado === 'completada') ? Math.round(Math.max(subtotal - descTotal, 0) * retPct) / 100 : 0;
+  const retNeto = Math.round((total - retMonto) * 100) / 100;
 
   // Obligatorio solo si hay Caja Chica abierta hoy y la compra queda
   // "completada" (afecta Caja de inmediato) — si no hay ninguna
@@ -1919,7 +1925,8 @@ async function guardarCompra() {
       showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de continuar', 'error');
       return;
     }
-    const montoADescontar = esOtraMoneda ? _montoBancoConvertidoCompra : total;
+    if (esOtraMoneda && retMonto > 0) { showToast('La retención de IR no se puede combinar con un banco en otra moneda. Quita la retención o usa otro banco.', 'error'); return; }
+    const montoADescontar = esOtraMoneda ? _montoBancoConvertidoCompra : retNeto;
     const saldoBanco = await saldoActualBanco(_bancoElegidoIdCompra);
     if (montoADescontar > saldoBanco + 0.01) {
       showToast(`Saldo insuficiente en ${bancoInfo?.nombre || 'ese banco'} — tiene ${saldoBanco.toLocaleString('es-NI',{minimumFractionDigits:2})} disponible`, 'error');
@@ -1954,6 +1961,7 @@ async function guardarCompra() {
         estado,
         observaciones,
         usuario_nombre:     STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+        ...(retMonto > 0 ? { retencion_ir_monto: retMonto, retencion_ir_porcentaje: retPct } : {}),
       })
       .select()
       .single();
@@ -2062,7 +2070,7 @@ async function guardarCompra() {
         .maybeSingle();
 
       const saldoAnt = movResult ? Number(movResult.saldo_resultante) : 0;
-      const saldoRes = saldoAnt - total; // Compra = EGRESO
+      const saldoRes = saldoAnt - retNeto; // Compra = EGRESO (neto de la retención de IR, si hay)
 
       const { data: mov, error: errMov } = await sbClient
         .from('movimientos_financieros')
@@ -2070,8 +2078,8 @@ async function guardarCompra() {
           auth_user_id:       STATE.userId,
           tipo_flujo:         'EGRESO',
           tipo_movimiento:    'COMPRA',
-          concepto:           `Compra ${numero}`,
-          monto:              total,
+          concepto:           retMonto > 0 ? `Compra ${numero} (neto de retención IR ${retPct}%)` : `Compra ${numero}`,
+          monto:              retNeto,
           saldo_anterior:     saldoAnt,
           saldo_resultante:   saldoRes,
           metodo_pago_id:     metodoPagoId  || null,
@@ -2095,6 +2103,16 @@ async function guardarCompra() {
           .update({ movimiento_caja_id: mov.id })
           .eq('id', compra.id);
       }
+    }
+
+    // 4.5 Retención de IR practicada: queda por pagar a la DGI (módulo Impuestos)
+    if (retMonto > 0) {
+      const { error: eRet } = await sbClient.from('retenciones_ir').insert({
+        auth_user_id: STATE.userId, lado: 'por_pagar', origen: 'compra', compra_id: compra.id, estado: 'pendiente',
+        contraparte_nombre: STATE.proveedorSeleccionado?.nombre || null, fecha,
+        base: Math.round(Math.max(subtotal - descTotal, 0) * 100) / 100, porcentaje: retPct, monto: retMonto,
+      });
+      if (eRet) { console.warn('Retención IR no registrada:', eRet); showToast('Compra guardada, pero no se registró la retención en Impuestos: ' + eRet.message, 'warning'); }
     }
 
     // 5. Actualizar métricas del proveedor
@@ -2744,6 +2762,12 @@ async function anularCompra() {
       })
       .eq('id', compraToAnular)
       .eq('auth_user_id', STATE.userId);
+
+    // La retención de IR practicada en esta compra ya no aplica (si aún no se pagó a la DGI)
+    try {
+      await sbClient.from('retenciones_ir').update({ estado: 'anulada' })
+        .eq('compra_id', compraToAnular).eq('auth_user_id', STATE.userId).eq('estado', 'pendiente');
+    } catch (eRA) { console.warn('retención no anulada:', eRA); }
 
     closeModal('modal-confirmar-anular');
     closeModal('modal-detalle');

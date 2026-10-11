@@ -1190,14 +1190,8 @@
           </div>
         </div>
 
-        <!-- OTROS IMPUESTOS (IR 2%, etc.) — se suman al total y van a Impuestos y Contabilidad -->
-        <div id="otros-imp-block" style="margin:10px 0 14px">
-          <div class="iva-sub" style="margin-bottom:6px">Otros impuestos (IR 2%, etc.): se suman al total y se acumulan en Impuestos</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-            <select id="otro-imp-select" onchange="agregarOtroImpuesto(this.value); this.value=''" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb);max-width:260px"></select>
-            <span id="otro-imp-chips" style="display:inline-flex;flex-wrap:wrap;gap:6px"></span>
-          </div>
-        </div>
+        <!-- Retención de IR del cliente (opcional, colapsada) -->
+        <div id="otros-imp-block" style="margin:10px 0 14px"></div>
 
         <div style="max-width:380px;margin-left:auto">
           <div class="resumen-row">
@@ -1216,6 +1210,14 @@
           <div class="resumen-row total-row">
             <span class="label" style="font-weight:700;font-size:15px">TOTAL</span>
             <span class="value" id="res-total">—</span>
+          </div>
+          <div class="resumen-row" id="res-ret-row" style="display:none">
+            <span class="label">Retención IR del cliente</span>
+            <span class="value" style="color:var(--warning)" id="res-ret">—</span>
+          </div>
+          <div class="resumen-row" id="res-ret-row2" style="display:none">
+            <span class="label" style="font-weight:700">Cobrarás</span>
+            <span class="value" id="res-cobrar">—</span>
           </div>
           <div class="resumen-row">
             <span class="label" style="color:var(--success)">Ganancia estimada</span>
@@ -1946,7 +1948,7 @@
 <script src="escpos-ble.js?v=20261011b"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="ventas.js?v=20261011f"></script>
+<script src="ventas.js?v=20261012a"></script>
 <script src="ventas-correcciones.js?v=20261009a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>

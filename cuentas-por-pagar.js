@@ -1460,13 +1460,23 @@ async function confirmarPagoCxP() {
     if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
 
     const comprobanteNumero = `PAG-${cuentaFresca.numero}-${Date.now().toString().slice(-5)}`;
-    await sbClient.from('cuentas_por_pagar_pagos').insert({
+    const { data: pagoIns } = await sbClient.from('cuentas_por_pagar_pagos').insert({
       auth_user_id: STATE.userId, cuenta_id: cuentaFresca.id, proveedor_id: cuentaFresca.proveedor_id,
       monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId, observaciones,
       retencion_monto: retCxP.ret, retencion_porcentaje: retCxP.ret > 0 ? retCxP.pct : null,
       saldo_anterior: saldoAnterior, saldo_nuevo: saldoNuevo, comprobante_numero: comprobanteNumero,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
-    });
+    }).select('id').maybeSingle();
+
+    // Retención de IR practicada al proveedor: queda por pagar a la DGI (módulo Impuestos)
+    if (retCxP.ret > 0) {
+      const { error: eRetP } = await sbClient.from('retenciones_ir').insert({
+        auth_user_id: STATE.userId, lado: 'por_pagar', origen: 'cxp_pago', estado: 'pendiente', cxp_pago_id: pagoIns?.id || null,
+        contraparte_nombre: cuentaFresca.proveedor_nombre || null, fecha: todayISO(),
+        base: monto, porcentaje: retCxP.pct, monto: retCxP.ret,
+      });
+      if (eRetP) { console.warn('retención IR no registrada:', eRetP); showToast('Pago guardado, pero no se registró la retención en Impuestos: ' + eRetP.message, 'warning'); }
+    }
 
     showToast('Pago registrado correctamente');
     closeModal('modal-pagar-cxp');

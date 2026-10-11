@@ -1232,6 +1232,8 @@ const TIPOS_TRANSACCION = {
   venta: { label: 'Venta (en efectivo/tarjeta)', ejemplo: 'Debe: Caja — Haber: Ventas' },
   iva_ventas: { label: 'IVA cobrado en ventas (opcional — separa el IVA del total)', ejemplo: 'De la misma venta: Haber: Ventas (neto) — Haber: IVA por Pagar' },
   impuesto_ventas_otros: { label: 'Otros impuestos cobrados en ventas (IR 2%, etc. — solo Cuenta Haber)', ejemplo: 'De la misma venta: Haber: Impuestos por Pagar (2130). Si una venta lleva IR u otro impuesto y esto no está configurado, la venta espera sin asentarse.' },
+  retencion_ir_clientes: { label: 'Retención de IR que me hacen los clientes (solo Cuenta Debe — activo "Retenciones de IR a favor")', ejemplo: 'De la venta con retención: Debe: Caja (neto de la retención) — Debe: Retenciones de IR a favor — Haber: Ventas (+ IVA). Si una venta lleva retención y esto no está configurado, la venta espera sin asentarse.' },
+  pago_retenciones_ir: { label: 'Pago de retenciones de IR a la DGI (Debe: cuenta de retenciones por pagar — Haber: Caja)', ejemplo: 'Cuando pagas lo retenido a proveedores desde Impuestos: Debe: Retenciones por Pagar (2130) — Haber: Caja. Si no lo configuras, ese pago espera sin asentarse.' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
@@ -1662,6 +1664,25 @@ async function generarAsientosAutomaticos() {
             { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 1 },
           ];
         }
+        // Partes que REDUCEN la línea principal (retenciones): a favor en Debe (ventas) o por pagar en Haber (compras/pagos).
+        const debeEx = ((divisionIva && divisionIva.debeExtras) || []).filter(x => x.monto > 0);
+        const haberEx = ((divisionIva && divisionIva.haberExtras) || []).filter(x => x.monto > 0);
+        if (debeEx.length) {
+          const sumD = round2(debeEx.reduce((a, x) => a + x.monto, 0));
+          const principal = lineas.find(l => l.cuenta_id === debeId && l.debe > 0 && l.orden === 0);
+          if (principal && principal.debe - sumD > 0.004) {
+            principal.debe = round2(principal.debe - sumD);
+            debeEx.forEach((x, i) => lineas.push({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: x.cuentaId, debe: x.monto, haber: 0, orden: 4 + i, descripcion: x.desc || 'Retención' }));
+          }
+        }
+        if (haberEx.length) {
+          const sumH = round2(haberEx.reduce((a, x) => a + x.monto, 0));
+          const principalH = lineas.find(l => l.cuenta_id === haberId && l.haber > 0 && (l.orden === 1 || l.orden === 9) && l.debe === 0);
+          if (principalH && principalH.haber - sumH > 0.004) {
+            principalH.haber = round2(principalH.haber - sumH);
+            haberEx.forEach((x, i) => lineas.push({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: x.cuentaId, debe: 0, haber: x.monto, orden: 6 + i, descripcion: x.desc || 'Retención' }));
+          }
+        }
         lineas = [
           ...lineas,
           ...lineasExtra.map((l, i) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: l.cuenta_id, debe: l.debe||0, haber: l.haber||0, orden: 10+i, descripcion: l.descripcion||null })),
@@ -1713,7 +1734,17 @@ async function generarAsientosAutomaticos() {
       const { data: vi } = await sbClient.from('venta_impuestos').select('venta_id, nombre, monto').eq('auth_user_id', STATE.userId);
       (vi || []).forEach(x => { const a = extrasPorVenta.get(x.venta_id) || []; a.push({ nombre: x.nombre, monto: round2(Number(x.monto || 0)) }); extrasPorVenta.set(x.venta_id, a); });
     } catch (e) { /* tabla ausente: sin extras */ }
+    const mapeoRetClientes = mapeo.get('retencion_ir_clientes');
     async function obtenerDivisionIvaVenta(venta) {
+      const base = await obtenerDivisionIvaVentaBase(venta);
+      const retV = round2(Number(venta.retencion_ir_monto || 0));
+      if (retV <= 0) return base;
+      if (base && base.bloquear) return base;
+      if (!mapeoRetClientes || !mapeoRetClientes.cuenta_debe_id) return { bloquear: true };
+      const ex = { debeExtras: [{ monto: retV, cuentaId: mapeoRetClientes.cuenta_debe_id, desc: 'Retención de IR a favor' }] };
+      return base ? { ...base, ...ex } : { montoIva: 0, cuentaIvaId: null, lado: 'haber', ...ex };
+    }
+    async function obtenerDivisionIvaVentaBase(venta) {
       const extrasV = (extrasPorVenta.get(venta.id) || []).filter(x => x.monto > 0);
       const sumaExtras = round2(extrasV.reduce((a, x) => a + x.monto, 0));
       // ventas.impuesto = IVA + otros impuestos; el IVA puro es la diferencia.
@@ -1770,8 +1801,20 @@ async function generarAsientosAutomaticos() {
       if (!mapeoIvaGastos || !mapeoIvaGastos.cuenta_debe_id || iva <= 0) return null;
       return { montoIva: iva, cuentaIvaId: mapeoIvaGastos.cuenta_debe_id, lado: 'debe' };
     };
-    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ', null, null, undefined, async c => divisionIvaCompra(c),
+    // Compra de contado con retención de IR practicada: Caja sale neto y la retención queda en Retenciones por Pagar.
+    const divisionCompraConRet = async c => {
+      const base = divisionIvaCompra(c);
+      const ret = round2(Number(c?.retencion_ir_monto || 0));
+      if (ret <= 0) return base;
+      const mRet = mapeo.get('retencion_ir');
+      if (!mRet || !mRet.cuenta_haber_id) return { bloquear: true };
+      const ex = { haberExtras: [{ monto: ret, cuentaId: mRet.cuenta_haber_id, desc: 'Retención de IR por pagar' }] };
+      return base ? { ...base, ...ex } : { montoIva: 0, cuentaIvaId: null, lado: 'debe', ...ex };
+    };
+    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ', null, null, undefined, divisionCompraConRet,
       { omitirFila: c => !c.movimiento_caja_id && comprasConCxp.has(c.id), cuentaDebe: cuentaDebeServicio });
+    // Pago de retenciones de IR a la DGI (desde Impuestos): Debe Retenciones por Pagar / Haber Caja.
+    await procesarTipo('pago_retenciones_ir', 'retenciones_ir_pagos', 'monto', 'activo', 'estado', 'Pago de retenciones de IR a la DGI');
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
 
     // Cuentas por Pagar (dinero que le debes a un proveedor): la
