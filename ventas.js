@@ -5943,11 +5943,63 @@ function vrToggleIvaConfig() {
    simulación CSS que ya existe. Nunca reemplaza nada; si algo falla
    o no está disponible, el sistema sigue imprimiendo como siempre.
 ===================================================== */
+/* ---------- Impresión directa por Bluetooth (Web Bluetooth) ---------- */
+function btActivoLocal() { try { return localStorage.getItem('n360_bt_activo') === '1'; } catch (e) { return false; } }
+function toggleUsarBTVR() {
+  const usar = !!document.getElementById('vrc-usar-bt')?.checked;
+  try { localStorage.setItem('n360_bt_activo', usar ? '1' : '0'); } catch (e) {}
+  refrescarEstadoBT();
+}
+function refrescarEstadoBT() {
+  const usar = !!document.getElementById('vrc-usar-bt')?.checked;
+  const estado = document.getElementById('vrc-bt-estado');
+  const bc = document.getElementById('vrc-btn-conectar-bt'), bp = document.getElementById('vrc-btn-probar-bt');
+  if (bc) bc.style.display = usar ? '' : 'none';
+  if (bp) bp.style.display = usar && escposBTConectado() ? '' : 'none';
+  if (!estado || !usar) return;
+  if (!escposBTSoportado()) {
+    estado.innerHTML = '⚠️ Este navegador no soporta Bluetooth directo — usa Chrome en Android o computadora. Mientras tanto se usará la impresión normal.';
+    estado.style.color = 'var(--danger)';
+  } else if (escposBTConectado()) {
+    estado.innerHTML = '✅ Impresora Bluetooth conectada';
+    estado.style.color = 'var(--success)';
+  } else {
+    estado.innerHTML = 'Toca "Conectar" y elige tu impresora (hay que hacerlo cada vez que abres la página).';
+    estado.style.color = 'var(--text-muted)';
+  }
+}
+function iniciarBloqueBT() {
+  const cb = document.getElementById('vrc-usar-bt');
+  if (cb) cb.checked = btActivoLocal();
+  refrescarEstadoBT();
+}
+async function conectarImpresoraBTDesdeUI() {
+  const r = await conectarImpresoraBluetooth();
+  if (r.ok) showToast('📱 Impresora conectada: ' + r.nombre); else showToast(r.motivo, 'error');
+  refrescarEstadoBT();
+}
+function columnasTicketBT() {
+  const ancho = (VR.config?.ancho_ticket) || document.querySelector('input[name="vrc-ancho"]:checked')?.value || '58mm';
+  return ancho === '58mm' ? 32 : 48;
+}
+async function probarImpresoraBT() {
+  const r = await imprimirReciboBluetooth({
+    nombreNegocio: S.empresaConfig?.nombre_comercial || 'Negocio360',
+    encabezadoLineas: ['PRUEBA DE IMPRESION', 'Si lees esto, funciona'],
+    items: ['1x Producto de prueba 10.00'], totalTexto: 'TOTAL: 10.00', piePagina: 'Negocio360',
+    columnas: columnasTicketBT(),
+  });
+  showToast(r.ok ? '🖨️ Prueba enviada' : r.motivo, r.ok ? 'success' : 'error');
+}
+
 function onCambiarAnchoTicketVR() {
   const esEpson = document.querySelector('input[name="vrc-ancho"]:checked')?.value === 'epson_tmu220';
   const wrap = document.getElementById('vrc-wrap-usb');
   if (wrap) wrap.style.display = esEpson ? '' : 'none';
   if (esEpson) inicializarImpresionAppEscritorio();
+  const wbt = document.getElementById('vrc-wrap-bt');
+  if (wbt) wbt.style.display = document.querySelector('input[name="vrc-ancho"]:checked')?.value === 'carta' ? 'none' : '';
+  iniciarBloqueBT();
 }
 
 // Si esta página corre dentro de la app de escritorio de Negocio360
@@ -7036,6 +7088,13 @@ async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
     } catch (e) { console.warn('Impresión nativa dio error, probando la siguiente vía:', e); }
   }
 
+  // Bluetooth directo (preferencia guardada en este teléfono/equipo)
+  if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof escposBTConectado === 'function' && (escposBTConectado() || ESCPOS_BT_DEVICE)) {
+    const resultado = await imprimirReciboBluetooth({ ...construirDatosReciboDesdeVenta(cfg, venta, items), columnas: columnasTicketBT() });
+    if (resultado.ok) { cerrarVentanaPreabiertaSiNoHaceFalta(); return; }
+    console.warn('Impresión Bluetooth falló, probando la siguiente vía:', resultado.motivo);
+  }
+
   const usarUSB = document.getElementById('vrc-usar-usb')?.checked && escposConectado();
   if (usarUSB) {
     const resultado = await imprimirReciboESCPOS(construirDatosReciboDesdeVenta(cfg, venta, items));
@@ -7459,6 +7518,9 @@ window.toggleTheme    = toggleTheme;
 window.toggleSidebar  = toggleSidebar;
 window.navigate       = navigate;
 window.toggleIva       = toggleIva;
+window.toggleUsarBTVR = toggleUsarBTVR;
+window.conectarImpresoraBTDesdeUI = conectarImpresoraBTDesdeUI;
+window.probarImpresoraBT = probarImpresoraBT;
 window.agregarOtroImpuesto = agregarOtroImpuesto;
 window.quitarOtroImpuesto = quitarOtroImpuesto;
 window.cambiarIvaPorcentaje = cambiarIvaPorcentaje;

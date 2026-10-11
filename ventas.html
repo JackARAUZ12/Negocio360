@@ -1411,6 +1411,17 @@
             <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Esta forma es la más confiable — usa la impresora tal como está instalada en Windows, sin depender del navegador.</p>
           </div>
         </div>
+        <div class="form-group full-col" id="vrc-wrap-bt" style="padding:10px 12px;background:var(--bg-app);border-radius:8px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:6px">
+            <input type="checkbox" id="vrc-usar-bt" onchange="toggleUsarBTVR()"/>
+            <span>📱 Imprimir directo por Bluetooth (teléfono o computadora, sin apps)</span>
+          </label>
+          <div id="vrc-bt-estado" style="font-size:11.5px;color:var(--text-muted)">Funciona en Chrome (Android o computadora) con impresoras Bluetooth BLE. No funciona en iPhone.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button type="button" class="btn-secondary btn-sm" id="vrc-btn-conectar-bt" style="display:none" onclick="conectarImpresoraBTDesdeUI()">Conectar impresora Bluetooth</button>
+            <button type="button" class="btn-secondary btn-sm" id="vrc-btn-probar-bt" style="display:none" onclick="probarImpresoraBT()">Imprimir prueba</button>
+          </div>
+        </div>
         <div class="form-group full-col">
           <label>Nombre del negocio en el ticket</label>
           <input type="text" class="form-input" id="vrc-nombre" placeholder="Ej: Mi Tienda S.A."/>
@@ -1927,10 +1938,11 @@
 
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js?v=20261008a"></script>
-<script src="escpos-usb.js?v=20260825a"></script>
+<script src="escpos-usb.js?v=20261011a"></script>
+<script src="escpos-ble.js?v=20261011a"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="ventas.js?v=20261011a"></script>
+<script src="ventas.js?v=20261011b"></script>
 <script src="ventas-correcciones.js?v=20261009a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>

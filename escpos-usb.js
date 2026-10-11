@@ -108,7 +108,7 @@ function escposTextoACp437(texto) {
 ===================================================== */
 const ESCPOS_ESC = 0x1B, ESCPOS_GS = 0x1D;
 
-function construirReciboESCPOS({ nombreNegocio, encabezadoLineas = [], items = [], totalTexto, piePagina }) {
+function construirReciboESCPOS({ nombreNegocio, encabezadoLineas = [], items = [], totalTexto, piePagina, columnas = 40 }) {
   let bytes = [];
   bytes.push(ESCPOS_ESC, 0x40);                 // ESC @  — inicializar
   bytes.push(ESCPOS_ESC, 0x74, 0x00);           // ESC t 0 — codepage CP437
@@ -130,9 +130,9 @@ function construirReciboESCPOS({ nombreNegocio, encabezadoLineas = [], items = [
   encabezadoLineas.forEach(linea => bytes.push(...escposTextoACp437(linea + '\n')));
 
   bytes.push(ESCPOS_ESC, 0x61, 0x00);           // ESC a 0 — alineado a la izquierda
-  bytes.push(...escposTextoACp437('-'.repeat(40) + '\n'));
+  bytes.push(...escposTextoACp437('-'.repeat(columnas) + '\n'));
   items.forEach(linea => bytes.push(...escposTextoACp437(linea + '\n')));
-  bytes.push(...escposTextoACp437('-'.repeat(40) + '\n'));
+  bytes.push(...escposTextoACp437('-'.repeat(columnas) + '\n'));
 
   bytes.push(ESCPOS_ESC, 0x45, 0x01);           // ESC E 1 — negrita ON
   bytes.push(...escposTextoACp437(totalTexto + '\n'));
