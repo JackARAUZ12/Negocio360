@@ -1234,6 +1234,8 @@ const TIPOS_TRANSACCION = {
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
+  costo_servicios: { label: 'Costo de servicios contratados (transporte, fletes, mano de obra — solo Cuenta Debe)', ejemplo: 'Debe: Costo de Ventas (5100) — el Haber sale de la compra o cuenta por pagar. Si lo configuras, el costo estimado de los servicios en Ventas deja de asentarse (para no duplicar el costo).' },
+  retencion_ir: { label: 'Retención de IR practicada a proveedores (solo Cuenta Haber)', ejemplo: 'Del pago a proveedor: Debe: Cuentas por Pagar (bruto) — Haber: Caja (neto) — Haber: Retenciones por Pagar (2130)' },
   gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
   iva_gastos: { label: 'IVA pagado en gastos (opcional — separa el IVA del gasto)', ejemplo: 'Del mismo gasto: Debe: Gastos (neto) — Debe: IVA Acreditable' },
   compra: { label: 'Compra (pagada de una vez)', ejemplo: 'Debe: Inventario — Haber: Caja' },
@@ -1600,6 +1602,15 @@ async function generarAsientosAutomaticos() {
         // puede indicar otra cuenta de Haber para ese caso; si no, se usa la del mapeo.
         const haberId = (opts?.cuentaHaber && opts.cuentaHaber(fila)) || m.cuenta_haber_id;
 
+        // Cuenta de Debe distinta para esta fila (ej. servicios contratados): false = falta configurarla,
+        // se omite para NO asentarla mal (no se pierde: se genera cuando se configure).
+        const debeOv = opts?.cuentaDebe ? opts.cuentaDebe(fila) : undefined;
+        if (debeOv === false) { sinConfigurar++; continue; }
+        const debeId = debeOv || m.cuenta_debe_id;
+        // Parte a separar del monto (IVA o retención). { bloquear:true } = hace falta configurar su cuenta.
+        const divisionIva = obtenerDivisionIva ? await obtenerDivisionIva(fila) : null;
+        if (divisionIva && divisionIva.bloquear) { sinConfigurar++; continue; }
+
         // Costo de lo vendido (si está configurado) — se agrega como
         // 2 líneas MÁS dentro del MISMO asiento, no como uno aparte.
         // Sigue cuadrando porque Debe y Haber de esas 2 líneas son
@@ -1623,27 +1634,25 @@ async function generarAsientosAutomaticos() {
         // siempre, y el IVA a su propia cuenta. Si no aplica (nadie
         // configuro el mapeo de IVA, o esta transaccion no tiene IVA),
         // el asiento queda IGUAL que siempre: una sola linea por lado.
-        const divisionIva = obtenerDivisionIva ? await obtenerDivisionIva(fila) : null;
-
         let lineas;
         if (divisionIva && divisionIva.montoIva > 0 && divisionIva.montoIva < monto) {
           const montoNeto = round2(monto - divisionIva.montoIva);
           if (divisionIva.lado === 'haber') {
             lineas = [
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: debeId, debe: monto, haber: 0, orden: 0 },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: montoNeto, orden: 1 },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: 0, haber: divisionIva.montoIva, orden: 2, descripcion: 'IVA' },
             ];
           } else {
             lineas = [
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: montoNeto, haber: 0, orden: 0 },
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: debeId, debe: montoNeto, haber: 0, orden: 0 },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: divisionIva.montoIva, haber: 0, orden: 1, descripcion: 'IVA' },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 2 },
             ];
           }
         } else {
           lineas = [
-            { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: m.cuenta_debe_id, debe: monto, haber: 0, orden: 0 },
+            { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: debeId, debe: monto, haber: 0, orden: 0 },
             { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 1 },
           ];
         }
@@ -1666,10 +1675,15 @@ async function generarAsientosAutomaticos() {
     // sin esto, "Costo de Ventas" siempre daba 0 y la utilidad se
     // veía inflada, como si vender no costara nada.
     const mapeoCosto = mapeo.get('costo_ventas');
+    const mapeoCostoServ = mapeo.get('costo_servicios');
+    const cuentaDebeServicio = f => (f.clase_costo === 'servicio') ? (mapeoCostoServ?.cuenta_debe_id || false) : undefined;
     async function obtenerCostoVentaVendido(venta) {
       if (!mapeoCosto || !mapeoCosto.cuenta_debe_id || !mapeoCosto.cuenta_haber_id) return [];
-      const { data: detalles } = await sbClient.from('venta_detalles').select('cantidad, costo').eq('venta_id', venta.id).eq('auth_user_id', STATE.userId);
-      const costoTotal = round2((detalles||[]).reduce((s,d) => s + (Number(d.cantidad||0) * Number(d.costo||0)), 0));
+      const { data: detalles } = await sbClient.from('venta_detalles').select('cantidad, costo, tipo_item').eq('venta_id', venta.id).eq('auth_user_id', STATE.userId);
+      // Si el negocio configuró "Costo de servicios", el costo de los servicios sale de sus compras/cuentas por pagar
+      // reales: el costo estimado de la venta ya no se asienta (así no se duplica ni toca Inventario).
+      const servicioPorSuCuenta = !!(mapeoCostoServ && mapeoCostoServ.cuenta_debe_id);
+      const costoTotal = round2((detalles||[]).filter(d => !(servicioPorSuCuenta && d.tipo_item === 'servicio')).reduce((s,d) => s + (Number(d.cantidad||0) * Number(d.costo||0)), 0));
       if (costoTotal <= 0) return [];
       return [
         { cuenta_id: mapeoCosto.cuenta_debe_id, debe: costoTotal, haber: 0, descripcion: 'Costo de lo vendido' },
@@ -1694,7 +1708,7 @@ async function generarAsientosAutomaticos() {
     }
 
     await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito').neq('metodo_pago', 'fiado'), obtenerCostoVentaVendido, undefined, obtenerDivisionIvaVenta);
-    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.in('metodo_pago', ['credito', 'fiado']), obtenerCostoVentaVendido);
+    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.in('metodo_pago', ['credito', 'fiado']), obtenerCostoVentaVendido, undefined, obtenerDivisionIvaVenta);
     await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
     // Cobros de Fiados: mismo asiento que un pago de crédito (Debe Caja / Haber Cuentas por Cobrar), usando esa misma configuración.
     await procesarTipo('pago_fiado', 'fiado_pagos', 'monto', null, null, 'Cobro de fiado', null, null, 'created_at', null, { mapeoDe: 'pago_credito' });
@@ -1728,16 +1742,35 @@ async function generarAsientosAutomaticos() {
         desdeIdx += TAM;
       }
     }
-    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ', null, null, undefined, null,
-      { omitirFila: c => !c.movimiento_caja_id && comprasConCxp.has(c.id) });
+    // IVA de compras (opcional): si "IVA pagado en gastos" está configurado, el IVA de la compra va a IVA Acreditable.
+    const divisionIvaCompra = c => {
+      const iva = round2(Number(c?.iva_monto || 0));
+      if (!mapeoIvaGastos || !mapeoIvaGastos.cuenta_debe_id || iva <= 0) return null;
+      return { montoIva: iva, cuentaIvaId: mapeoIvaGastos.cuenta_debe_id, lado: 'debe' };
+    };
+    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ', null, null, undefined, async c => divisionIvaCompra(c),
+      { omitirFila: c => !c.movimiento_caja_id && comprasConCxp.has(c.id), cuentaDebe: cuentaDebeServicio });
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
 
     // Cuentas por Pagar (dinero que le debes a un proveedor): la
     // obligación se registra desde que se genera (fecha_compra),
     // sin importar si ya se pagó o sigue pendiente — el pago en sí,
     // cuando ocurre, es un movimiento aparte.
-    await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', null, null, 'fecha_compra');
-    await procesarTipo('pago_cxp', 'cuentas_por_pagar_pagos', 'monto', null, null, 'Pago a proveedor', null, null, 'created_at');
+    await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', null, null, 'fecha_compra',
+      async cxp => {
+        if (!cxp.compra_id) return null;
+        const { data: cp } = await sbClient.from('compras').select('iva_monto').eq('id', cxp.compra_id).eq('auth_user_id', STATE.userId).maybeSingle();
+        return divisionIvaCompra(cp);
+      }, { cuentaDebe: cuentaDebeServicio });
+    // Pago a proveedor con retención de IR: Debe CxP (bruto) / Haber Caja (neto) / Haber Retenciones por pagar.
+    const mapeoRetIr = mapeo.get('retencion_ir');
+    await procesarTipo('pago_cxp', 'cuentas_por_pagar_pagos', 'monto', null, null, 'Pago a proveedor', null, null, 'created_at',
+      async p => {
+        const ret = round2(Number(p.retencion_monto || 0));
+        if (ret <= 0) return null;
+        if (!mapeoRetIr || !mapeoRetIr.cuenta_haber_id) return { bloquear: true };
+        return { montoIva: ret, cuentaIvaId: mapeoRetIr.cuenta_haber_id, lado: 'haber' };
+      });
 
     // SALDOS DE APERTURA (lo que el negocio ya tenia antes de usar el sistema).
     // Solo se LEE de Caja y Creditos; nada se modifica ahi.
@@ -1828,6 +1861,34 @@ async function actualizarBannerAsientosPendientes() {
   }
 }
 
+/* Generación automática opcional: si el negocio la activó, al entrar se generan solos los asientos
+   pendientes (misma función y mismas reglas que el botón manual; no se duplica nada). */
+async function guardarAutoGenerar(activo) {
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ contabilidad_auto_generar: !!activo }).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    STATE.empresaConfig.contabilidad_auto_generar = !!activo;
+    showToast(activo ? 'Los asientos se generarán solos al entrar' : 'Generación automática desactivada');
+    if (activo) autoGenerarAlEntrar();
+  } catch (e) {
+    const chk = document.getElementById('chk-auto-generar'); if (chk) chk.checked = !activo;
+    showToast('No se pudo guardar la preferencia', 'error');
+  }
+}
+async function autoGenerarAlEntrar() {
+  try {
+    if (STATE.empresaConfig?.contabilidad_auto_generar !== true || STATE.generandoAsientosAutomaticos) return;
+    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion').eq('auth_user_id', STATE.userId).limit(1);
+    if (!mapeoData || !mapeoData.length) return;
+    const { data: desde } = await sbClient.rpc('fecha_mas_antigua_pendiente_contabilizar');
+    if (!desde) return;
+    document.getElementById('ga-desde').value = desde;
+    document.getElementById('ga-hasta').value = todayISO();
+    await generarAsientosAutomaticos();
+    actualizarBannerAsientosPendientes();
+  } catch (e) { console.warn('autoGenerarAlEntrar:', e); }
+}
+
 async function initContabilidad() {
   const savedTheme = localStorage.getItem('n360_theme') || 'light';
   applyTheme(savedTheme);
@@ -1850,6 +1911,8 @@ async function initContabilidad() {
     await cargarCuentas();
     await cargarAsientos();
     actualizarBannerAsientosPendientes(); // no se espera (await) — no bloquea el resto de la carga
+    { const chk = document.getElementById('chk-auto-generar'); if (chk) chk.checked = STATE.empresaConfig?.contabilidad_auto_generar === true; }
+    autoGenerarAlEntrar();
   } catch (err) {
     console.error('initContabilidad:', err);
     document.getElementById('loader').classList.add('hidden');

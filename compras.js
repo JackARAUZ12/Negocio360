@@ -1735,6 +1735,7 @@ function abrirCompraDirecta() {
   document.getElementById('cd-nuevo-proveedor-form').style.display = 'none';
   document.getElementById('cd-prov-nombre').value = '';
   document.getElementById('cd-concepto').value = '';
+  document.getElementById('cd-clase').value = 'inventario';
   document.getElementById('cd-monto').value = '';
   document.getElementById('cd-fecha').value = todayISO();
   document.getElementById('cd-observaciones').value = '';
@@ -1831,6 +1832,7 @@ async function guardarCompraDirecta() {
       fecha, subtotal: monto, descuento_total: 0, iva_porcentaje: 0, iva_monto: 0, total: monto,
       metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
       estado: 'completada', es_directa: true, concepto, observaciones,
+      clase_costo: document.getElementById('cd-clase')?.value === 'servicio' ? 'servicio' : 'inventario',
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
     if (errCompra) throw errCompra;

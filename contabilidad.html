@@ -1229,6 +1229,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             Generar todo automático
           </button>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-secondary);cursor:pointer;flex-basis:100%">
+            <input type="checkbox" id="chk-auto-generar" style="width:auto" onchange="guardarAutoGenerar(this.checked)"/>
+            Generar los asientos pendientes automáticamente cada vez que entre a Contabilidad
+          </label>
         </div>
       </div>
 
@@ -1609,7 +1613,7 @@
   }
 </style>
 
-<script src="contabilidad.js?v=20261011a"></script>
+<script src="contabilidad.js?v=20261011b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>

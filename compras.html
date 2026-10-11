@@ -2091,6 +2091,12 @@
         <input type="text" id="cd-concepto" placeholder="Ej: Reparación del aire acondicionado"/>
       </div>
 
+      <div class="form-group" style="margin-top:12px">
+        <label>¿Qué tipo de costo es?</label>
+        <select id="cd-clase"><option value="inventario">Mercadería / inventario (como siempre)</option><option value="servicio">Servicio contratado (transporte, flete, mano de obra…) — no afecta Inventario</option></select>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Para la contabilidad: un servicio se asienta en la cuenta "Costo de servicios" que configures, no en Inventario.</div>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label>Monto *</label>
@@ -2317,7 +2323,7 @@
 
 <!-- SCRIPT -->
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="compras.js?v=20261008a"></script>
+<script src="compras.js?v=20261011a"></script>
 <script>
   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
   const _nc7Sync = setInterval(() => {

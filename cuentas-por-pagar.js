@@ -619,6 +619,7 @@ function abrirNuevaCuentaDirecta() {
   document.getElementById('ncd-nuevo-proveedor-form').style.display = 'none';
   document.getElementById('ncd-prov-nombre').value = '';
   document.getElementById('ncd-concepto').value = '';
+  document.getElementById('ncd-clase').value = 'inventario';
   document.getElementById('ncd-monto').value = '';
   document.getElementById('ncd-fecha').value = todayISO();
   document.getElementById('ncd-prima-tipo').value = 'ninguna';
@@ -870,6 +871,7 @@ async function guardarCuentaDirecta() {
       auth_user_id: STATE.userId, numero,
       proveedor_id: STATE.proveedorSeleccionadoDirecto.id, proveedor_nombre: STATE.proveedorSeleccionadoDirecto.nombre,
       compra_id: null, tipo_credito: STATE.tipoCreditoDirecto, fecha_compra: fecha,
+      clase_costo: document.getElementById('ncd-clase')?.value === 'servicio' ? 'servicio' : 'inventario',
       fecha_vencimiento: fechaVencimiento, num_cuotas: STATE.tipoCreditoDirecto==='cuotas'?numCuotas:null,
       frecuencia: STATE.tipoCreditoDirecto==='cuotas'?frecuencia:null,
       monto_original: montoOriginal, prima_tipo: primaTipo, prima_valor: primaValor, prima_monto: primaMonto,
@@ -1333,6 +1335,7 @@ function abrirPagarGenerico() {
 }
 function abrirPagarDesdeTabla(id) {
   document.getElementById('pg-error').textContent = '';
+  document.getElementById('pg-ret-chk').checked = false; document.getElementById('pg-ret-pct').value = '2'; onCambioRetencionCxP();
   document.getElementById('pg-observaciones').value = '';
   populateMetodosSelect();
   document.getElementById('pg-wrap-banco').style.display = 'none';
@@ -1364,6 +1367,23 @@ function pagarCuotaIndividual(cuentaId, montoSugerido) {
   abrirPagarDesdeTabla(cuentaId);
   setTimeout(() => { const m = document.getElementById('pg-monto'); if (m) m.value = round2(montoSugerido); }, 0);
 }
+
+/* Retención de IR practicada al proveedor: la deuda baja por el monto COMPLETO,
+   a Caja solo sale el neto, y la retención queda como pasivo por pagar. */
+function calcularRetencionCxP() {
+  const on = document.getElementById('pg-ret-chk')?.checked;
+  const monto = round2(parseFloat(document.getElementById('pg-monto')?.value) || 0);
+  const pct = Math.min(100, Math.max(0, parseFloat(document.getElementById('pg-ret-pct')?.value) || 0));
+  const ret = on ? round2(monto * pct / 100) : 0;
+  return { on, pct, ret, neto: round2(monto - ret), monto };
+}
+function onCambioRetencionCxP() {
+  const c = calcularRetencionCxP();
+  const campos = document.getElementById('pg-ret-campos'); if (campos) campos.style.display = c.on ? '' : 'none';
+  const n = document.getElementById('pg-ret-neto');
+  if (n) n.textContent = c.on ? `${fmt(c.neto)} (retención ${fmt(c.ret)})` : '—';
+}
+document.addEventListener('input', e => { if (e.target && e.target.id === 'pg-monto') onCambioRetencionCxP(); });
 
 async function confirmarPagoCxP() {
   const errEl = document.getElementById('pg-error');
@@ -1430,9 +1450,10 @@ async function confirmarPagoCxP() {
     }
 
     // Egreso en Caja: pagar a un proveedor es SALIDA de dinero
+    const retCxP = calcularRetencionCxP();
     const cajaRes = await window.CajaAPI.registrarMovimiento({
       auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
-      concepto: `Pago a proveedor — ${cuentaFresca.numero}`, monto,
+      concepto: `Pago a proveedor — ${cuentaFresca.numero}${retCxP.ret > 0 ? ' (neto, retención IR ' + retCxP.pct + '%)' : ''}`, monto: retCxP.ret > 0 ? retCxP.neto : monto,
       metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
     });
@@ -1442,6 +1463,7 @@ async function confirmarPagoCxP() {
     await sbClient.from('cuentas_por_pagar_pagos').insert({
       auth_user_id: STATE.userId, cuenta_id: cuentaFresca.id, proveedor_id: cuentaFresca.proveedor_id,
       monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId, observaciones,
+      retencion_monto: retCxP.ret, retencion_porcentaje: retCxP.ret > 0 ? retCxP.pct : null,
       saldo_anterior: saldoAnterior, saldo_nuevo: saldoNuevo, comprobante_numero: comprobanteNumero,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     });
@@ -1451,7 +1473,7 @@ async function confirmarPagoCxP() {
     mostrarComprobanteCxP({
       titulo: 'Pago a proveedor', numero: comprobanteNumero, cuenta: cuentaFresca.numero,
       proveedor: cuentaFresca.proveedor_nombre || '—', fecha: todayISO(),
-      usuario: STATE.currentUser?.nombre || STATE.userEmail, monto, metodo: metodoNombre,
+      usuario: STATE.currentUser?.nombre || STATE.userEmail, monto, metodo: metodoNombre, retencion: retCxP.ret, retencionPct: retCxP.pct,
       saldoAnterior, saldoNuevo, estado: ESTADO_INFO[nuevoEstado]?.label || nuevoEstado,
     });
     await Promise.allSettled([loadKPIsCxP(), loadCuentasCxP()]);
@@ -1641,6 +1663,7 @@ function mostrarComprobanteCxP(c) {
       <div class="tp-row"><span>Usuario:</span><b>${esc(c.usuario)}</b></div>
       <hr/>
       <div class="tp-row"><span>Monto pagado:</span><b>${fmt(c.monto)}</b></div>
+      ${c.retencion > 0 ? `<div class="tp-row"><span>Retención IR (${esc(c.retencionPct)}%):</span><b>− ${fmt(c.retencion)}</b></div><div class="tp-row"><span>Neto entregado:</span><b>${fmt(c.monto - c.retencion)}</b></div>` : ''}
       <div class="tp-row"><span>Método de pago:</span><b>${esc(c.metodo)}</b></div>
       <div class="tp-row"><span>Saldo anterior:</span><b>${fmt(c.saldoAnterior)}</b></div>
       <div class="tp-row"><span>Saldo nuevo:</span><b>${fmt(c.saldoNuevo)}</b></div>

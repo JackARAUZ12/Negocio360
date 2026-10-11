@@ -1563,6 +1563,12 @@
         <input type="text" id="ncd-concepto" placeholder="Ej: Renta del local, agosto 2026"/>
       </div>
 
+      <div class="form-group" style="margin-top:12px">
+        <label>¿Qué tipo de costo es?</label>
+        <select id="ncd-clase"><option value="inventario">Mercadería / inventario (como siempre)</option><option value="servicio">Servicio contratado (transporte, flete, mano de obra…) — no afecta Inventario</option></select>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Para la contabilidad: un servicio se asienta en la cuenta "Costo de servicios" que configures, no en Inventario.</div>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label>Monto total *</label>
@@ -1725,6 +1731,16 @@
         <div><label>Monto a pagar *</label><input type="number" id="pg-monto" min="0.01" step="0.01"/></div>
         <div><label>Método de pago</label><select id="pg-metodo" onchange="onCambiarMetodoPagoCxP('pg')"></select></div>
       </div>
+      <div class="form-group" id="pg-wrap-ret" style="margin-top:4px">
+        <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="pg-ret-chk" style="width:auto" onchange="onCambioRetencionCxP()"/> Aplicar retención de IR a este pago</label>
+        <div id="pg-ret-campos" style="display:none;margin-top:8px">
+          <div class="form-row">
+            <div><label>% de retención</label><input type="number" id="pg-ret-pct" min="0" max="100" step="0.01" value="2" oninput="onCambioRetencionCxP()"/></div>
+            <div><label>Sale de Caja (neto)</label><div class="stat-readonly" id="pg-ret-neto">—</div></div>
+          </div>
+          <div style="font-size:11.5px;color:var(--text-muted)" id="pg-ret-ayuda">Se rebaja la deuda con el monto completo; a Caja solo sale el neto y la retención queda como pasivo por pagar a la DGI.</div>
+        </div>
+      </div>
       <div class="form-group" id="pg-wrap-banco" style="display:none">
         <label>¿De qué banco sale? *</label>
         <select id="pg-banco"></select>
@@ -1825,7 +1841,7 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js?v=20261007a"></script>
-<script src="cuentas-por-pagar.js"></script>
+<script src="cuentas-por-pagar.js?v=20261011a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
