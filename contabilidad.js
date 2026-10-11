@@ -1566,7 +1566,7 @@ async function generarAsientosAutomaticos() {
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
     async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha, obtenerDivisionIva, opts) {
-      const m = mapeo.get(tipo);
+      const m = mapeo.get(opts?.mapeoDe || tipo);
       if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
       campoFecha = campoFecha || 'fecha';
 
@@ -1593,6 +1593,7 @@ async function generarAsientosAutomaticos() {
       for (const fila of (filas||[])) {
         const clave = `${tipo}:${fila.id}`;
         if (yaHechos.has(clave)) { saltados++; continue; }
+        if (opts?.omitirFila && opts.omitirFila(fila)) continue;
         const monto = opts?.obtenerMonto ? round2(Number(await opts.obtenerMonto(fila) || 0)) : round2(Number(fila[campoMonto] || 0));
         if (monto <= 0) continue;
         // Algunos gastos no sacan dinero de Caja (ej. merma de inventario): opts.cuentaHaber
@@ -1692,9 +1693,11 @@ async function generarAsientosAutomaticos() {
       return { montoIva: iva, cuentaIvaId: mapeoIvaVentas.cuenta_haber_id, lado: 'haber' };
     }
 
-    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito'), obtenerCostoVentaVendido, undefined, obtenerDivisionIvaVenta);
-    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.eq('metodo_pago', 'credito'), obtenerCostoVentaVendido);
+    await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito').neq('metodo_pago', 'fiado'), obtenerCostoVentaVendido, undefined, obtenerDivisionIvaVenta);
+    await procesarTipo('credito_otorgado', 'ventas', 'total', 'completada', 'estado', 'Crédito otorgado — venta ', q => q.in('metodo_pago', ['credito', 'fiado']), obtenerCostoVentaVendido);
     await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
+    // Cobros de Fiados: mismo asiento que un pago de crédito (Debe Caja / Haber Cuentas por Cobrar), usando esa misma configuración.
+    await procesarTipo('pago_fiado', 'fiado_pagos', 'monto', null, null, 'Cobro de fiado', null, null, 'created_at', null, { mapeoDe: 'pago_credito' });
     // IVA pagado en el gasto (opcional): si el mapeo iva_gastos esta
     // configurado, se separa de la cuenta de Gastos hacia su propia
     // cuenta de "IVA Acreditable" -- si nadie lo configuro, el
@@ -1712,7 +1715,21 @@ async function generarAsientosAutomaticos() {
     // y Inventario de mas por el monto de la merma.
     const cuentaHaberGasto = g => (/^merma de inventario/i.test(String(g.concepto||'')) && !g.metodo_pago_nombre && mapeoCosto?.cuenta_haber_id) ? mapeoCosto.cuenta_haber_id : null;
     await procesarTipo('gasto', 'gastos', 'monto', 'activo', 'estado', 'Gasto: ', null, null, undefined, obtenerDivisionIvaGasto, { cuentaHaber: cuentaHaberGasto });
-    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ');
+    // Compra a crédito: su asiento ya sale como "Cuenta por pagar" (al generarse) y como
+    // "Pago a proveedor" (al pagar). Generar además el asiento de "Compra" (Debe Inventario /
+    // Haber Caja) la contaba dos veces y sacaba de Caja dinero que nunca salió. Solo se omiten
+    // las compras que tienen cuenta por pagar y NO movieron Caja al registrarse.
+    const comprasConCxp = new Set();
+    { let desdeIdx = 0; const TAM = 1000;
+      while (true) {
+        const { data: pagina } = await sbClient.from('cuentas_por_pagar').select('compra_id').eq('auth_user_id', STATE.userId).not('compra_id', 'is', null).range(desdeIdx, desdeIdx + TAM - 1);
+        (pagina || []).forEach(x => comprasConCxp.add(x.compra_id));
+        if (!pagina || pagina.length < TAM) break;
+        desdeIdx += TAM;
+      }
+    }
+    await procesarTipo('compra', 'compras', 'total', 'completada', 'estado', 'Compra ', null, null, undefined, null,
+      { omitirFila: c => !c.movimiento_caja_id && comprasConCxp.has(c.id) });
     await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
 
     // Cuentas por Pagar (dinero que le debes a un proveedor): la
@@ -1795,7 +1812,7 @@ async function actualizarBannerAsientosPendientes() {
     const soloSiMapeado = tipo => mapeo.get(tipo) ? (porTipo.get(tipo)||0) : 0;
 
     const total = ['venta','credito_otorgado','pago_credito','gasto','compra','pago_salario','cxp_generada','pago_cxp']
-      .reduce((s, tipo) => s + soloSiMapeado(tipo), 0);
+      .reduce((s, tipo) => s + soloSiMapeado(tipo), 0) + (mapeo.get('pago_credito') ? (porTipo.get('pago_fiado')||0) : 0);
 
     if (total > 0) {
       tituloEl.textContent = `${total} movimiento${total===1?'':'s'} sin registrar contablemente`;
