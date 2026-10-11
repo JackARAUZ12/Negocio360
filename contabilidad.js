@@ -151,12 +151,16 @@ function setBtnLoading(id, loading) {
 ===================================================== */
 function cambiarSeccionContable(seccion) {
   STATE.seccionActual = seccion;
-  ['asientos','mayor','balance','resultados','balancegeneral','flujo'].forEach(s => {
+  ['asientos','mayor','balance','resultados','balancegeneral','flujo','impuestos'].forEach(s => {
     document.getElementById(`seccion-${s}`).style.display = s === seccion ? '' : 'none';
     document.getElementById(`tab-btn-${s}`).classList.toggle('active', s === seccion);
   });
   if (seccion === 'mayor') poblarSelectCuentasMayor();
   if (seccion === 'balance') cargarBalanceComprobacion();
+  if (seccion === 'impuestos') {
+    if (!document.getElementById('imp-hasta').value) document.getElementById('imp-hasta').value = todayISO();
+    cargarImpuestosContables();
+  }
   if (seccion === 'resultados' && !document.getElementById('er-desde').value) {
     const hoy = new Date();
     document.getElementById('er-desde').value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
@@ -1234,6 +1238,9 @@ const TIPOS_TRANSACCION = {
   impuesto_ventas_otros: { label: 'Otros impuestos cobrados en ventas (IR 2%, etc. — solo Cuenta Haber)', ejemplo: 'De la misma venta: Haber: Impuestos por Pagar (2130). Si una venta lleva IR u otro impuesto y esto no está configurado, la venta espera sin asentarse.' },
   retencion_ir_clientes: { label: 'Retención de IR que me hacen los clientes (solo Cuenta Debe — activo "Retenciones de IR a favor")', ejemplo: 'De la venta con retención: Debe: Caja (neto de la retención) — Debe: Retenciones de IR a favor — Haber: Ventas (+ IVA). Si una venta lleva retención y esto no está configurado, la venta espera sin asentarse.' },
   pago_retenciones_ir: { label: 'Pago de retenciones de IR a la DGI (Debe: cuenta de retenciones por pagar — Haber: Caja)', ejemplo: 'Cuando pagas lo retenido a proveedores desde Impuestos: Debe: Retenciones por Pagar (2130) — Haber: Caja. Si no lo configuras, ese pago espera sin asentarse.' },
+  pago_impuestos: { label: 'Pago de impuestos a la DGI (IVA y otros, desde Impuestos)', ejemplo: 'Debe: IVA por Pagar (o Impuestos por Pagar) — Haber: Caja. Con IVA acreditable configurado, se liquida: Debe IVA por Pagar — Haber IVA Acreditable — Haber Caja (neto). Aquí pon por defecto Debe: Impuestos por Pagar (2130) y Haber: Caja.' },
+  nomina_deducciones_ley: { label: 'Deducciones de ley en nómina — INSS laboral, IR salarios (solo Cuenta Haber, opcional)', ejemplo: 'Del pago de salario: Debe: Sueldos (bruto) — Haber: Caja (neto) — Haber: Retenciones de nómina por pagar. Solo las deducciones automáticas de ley; adelantos y préstamos quedan como siempre.' },
+  aporte_patronal: { label: 'Aportes patronales — INSS patronal, INATEC (opcional)', ejemplo: 'Debe: Gasto por aportes patronales — Haber: Aportes por pagar (INSS/INATEC). No mueve Caja: es lo que debes enterar a las instituciones.' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
@@ -1815,7 +1822,71 @@ async function generarAsientosAutomaticos() {
       { omitirFila: c => !c.movimiento_caja_id && comprasConCxp.has(c.id), cuentaDebe: cuentaDebeServicio });
     // Pago de retenciones de IR a la DGI (desde Impuestos): Debe Retenciones por Pagar / Haber Caja.
     await procesarTipo('pago_retenciones_ir', 'retenciones_ir_pagos', 'monto', 'activo', 'estado', 'Pago de retenciones de IR a la DGI');
-    await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario');
+    // Pago de impuestos a la DGI (Impuestos › Pagar): sin esto, el IVA por pagar nunca bajaba en Contabilidad.
+    // Con IVA acreditable configurado se hace la liquidación: Debe IVA por pagar / Haber IVA acreditable / Haber Caja (neto).
+    {
+      const mPagoImp = mapeo.get('pago_impuestos');
+      const ctaIvaPagar = mapeo.get('iva_ventas')?.cuenta_haber_id || null;
+      const ctaIvaAcred = mapeo.get('iva_gastos')?.cuenta_debe_id || null;
+      const ctaOtros = mapeo.get('impuesto_ventas_otros')?.cuenta_haber_id || null;
+      const offsetPorPago = new Map();
+      if (mPagoImp && mPagoImp.cuenta_debe_id && mPagoImp.cuenta_haber_id) {
+        let movs = [];
+        { let desdeIdx = 0; const TAM = 1000;
+          while (true) {
+            const { data: pagina } = await sbClient.from('movimientos_impuestos').select('id, tipo_movimiento, monto, impuesto_id, created_at')
+              .eq('auth_user_id', STATE.userId).order('created_at', { ascending: true }).order('id', { ascending: true }).range(desdeIdx, desdeIdx + TAM - 1);
+            movs = movs.concat(pagina || []);
+            if (!pagina || pagina.length < TAM) break;
+            desdeIdx += TAM;
+          } }
+        let V = 0, C = 0, consumido = 0, pagadoBruto = 0;
+        for (const mv of movs) {
+          if (mv.impuesto_id) continue; // solo el IVA
+          const mt = Number(mv.monto) || 0;
+          if (mv.tipo_movimiento === 'IVA_VENTA') V = round2(V + mt);
+          else if (mv.tipo_movimiento === 'IVA_COMPRA') C = round2(C + mt);
+          else if (mv.tipo_movimiento === 'PAGO_IMPUESTO' && mt > 0) {
+            let A = 0;
+            if (ctaIvaPagar && ctaIvaAcred) {
+              A = Math.max(0, round2(Math.min(C, V) - consumido));
+              A = Math.min(A, Math.max(0, round2(V - pagadoBruto - mt)));
+            }
+            consumido = round2(consumido + A); pagadoBruto = round2(pagadoBruto + mt + A);
+            if (A > 0) offsetPorPago.set(mv.id, A);
+          }
+        }
+      }
+      await procesarTipo('pago_impuesto', 'movimientos_impuestos', 'monto', null, null, '', q => q.eq('tipo_movimiento', 'PAGO_IMPUESTO'),
+        async fila => {
+          const A = offsetPorPago.get(fila.id) || 0;
+          return A > 0 ? [
+            { cuenta_id: ctaIvaPagar, debe: A, haber: 0, descripcion: 'Liquidación de IVA: se aplica el IVA acreditable' },
+            { cuenta_id: ctaIvaAcred, debe: 0, haber: A, descripcion: 'IVA acreditable aplicado' },
+          ] : [];
+        }, 'fecha', null, {
+          mapeoDe: 'pago_impuestos',
+          cuentaDebe: fila => (fila.impuesto_id ? (ctaOtros || undefined) : (ctaIvaPagar || undefined)),
+        });
+    }
+
+    // Salarios: con "Deducciones de ley" configurado, el sueldo se registra BRUTO y las deducciones automáticas
+    // (INSS laboral, IR de salarios) quedan por pagar. Sin configurar, todo sigue exactamente igual que antes.
+    {
+      const mDedLey = mapeo.get('nomina_deducciones_ley');
+      const dedLey = fila => {
+        if (!mDedLey || !mDedLey.cuenta_haber_id) return 0;
+        const det = Array.isArray(fila.deducciones_detalle) ? fila.deducciones_detalle : [];
+        return round2(det.filter(d => d && (d.esConcepto === true || /\(autom[aá]tico\)/i.test(String(d.descripcion || '')))).reduce((a, d) => a + (Number(d.monto) || 0), 0));
+      };
+      await procesarTipo('pago_salario', 'empleados_pagos', 'total_pagado', 'pagado', 'estado', 'Pago de salario', null, null, undefined,
+        async fila => {
+          const l = dedLey(fila);
+          return l > 0 ? { montoIva: 0, cuentaIvaId: null, lado: 'haber', extras: [{ monto: l, cuentaId: mDedLey.cuenta_haber_id, desc: 'Deducciones de ley por pagar' }] } : null;
+        }, { obtenerMonto: async fila => round2(Number(fila.total_pagado || 0) + dedLey(fila)) });
+    }
+    // Aportes patronales (INSS patronal, INATEC): gasto del patrono y obligación por pagar. No mueve Caja.
+    await procesarTipo('aporte_patronal', 'empleados_pagos', 'aportes_patronales', 'pagado', 'estado', 'Aportes patronales');
 
     // Cuentas por Pagar (dinero que le debes a un proveedor): la
     // obligación se registra desde que se genera (fecha_compra),
@@ -1909,7 +1980,7 @@ async function actualizarBannerAsientosPendientes() {
     const porTipo = new Map((conteos||[]).map(c => [c.tipo, Number(c.cantidad)||0]));
     const soloSiMapeado = tipo => mapeo.get(tipo) ? (porTipo.get(tipo)||0) : 0;
 
-    const total = ['venta','credito_otorgado','pago_credito','gasto','compra','pago_salario','cxp_generada','pago_cxp']
+    const total = ['venta','credito_otorgado','pago_credito','gasto','compra','pago_salario','cxp_generada','pago_cxp','pago_impuesto','pago_retenciones_ir','aporte_patronal']
       .reduce((s, tipo) => s + soloSiMapeado(tipo), 0) + (mapeo.get('pago_credito') ? (porTipo.get('pago_fiado')||0) : 0);
 
     if (total > 0) {
@@ -2037,3 +2108,115 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }, 100);
 });
+
+
+/* =====================================================
+   IMPUESTOS EN CONTABILIDAD — resumen de saldos por cuenta de impuesto
+   y conciliación contra el módulo Impuestos. SOLO LECTURA.
+===================================================== */
+async function cargarImpuestosContables() {
+  const cont = document.getElementById('imp-cuerpo');
+  if (!cont) return;
+  cont.innerHTML = 'Calculando…';
+  try {
+    const hasta = document.getElementById('imp-hasta')?.value || null;
+    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion, cuenta_debe_id, cuenta_haber_id').eq('auth_user_id', STATE.userId);
+    const mapeo = new Map((mapeoData || []).map(m => [m.tipo_transaccion, m]));
+    const cuentaPor = new Map((STATE.cuentas || []).map(c => [c.id, c]));
+
+    // Cada concepto fiscal, la cuenta donde vive y su naturaleza.
+    const defs = [
+      { tipo: 'iva_ventas', lado: 'cuenta_haber_id', nat: 'acreedora', etiqueta: 'IVA por pagar (cobrado en ventas)' },
+      { tipo: 'iva_gastos', lado: 'cuenta_debe_id', nat: 'deudora', etiqueta: 'IVA acreditable (pagado en compras y gastos)' },
+      { tipo: 'retencion_ir', lado: 'cuenta_haber_id', nat: 'acreedora', etiqueta: 'Retenciones de IR por pagar (practicadas a proveedores)' },
+      { tipo: 'retencion_ir_clientes', lado: 'cuenta_debe_id', nat: 'deudora', etiqueta: 'Retenciones de IR a favor (te retuvieron los clientes)' },
+      { tipo: 'impuesto_ventas_otros', lado: 'cuenta_haber_id', nat: 'acreedora', etiqueta: 'Otros impuestos por pagar' },
+      { tipo: 'nomina_deducciones_ley', lado: 'cuenta_haber_id', nat: 'acreedora', etiqueta: 'INSS / IR de nómina por pagar (retenido a empleados)' },
+      { tipo: 'aporte_patronal', lado: 'cuenta_haber_id', nat: 'acreedora', etiqueta: 'Aportes patronales por pagar (INSS patronal, INATEC)' },
+    ];
+    const porCuenta = new Map();
+    const sinConfigurar = [];
+    for (const d of defs) {
+      const id = mapeo.get(d.tipo)?.[d.lado];
+      if (!id || !cuentaPor.has(id)) { sinConfigurar.push(d); continue; }
+      const g = porCuenta.get(id) || { id, nat: d.nat, etiquetas: [], tipos: [] };
+      g.etiquetas.push(d.etiqueta); g.tipos.push(d.tipo);
+      porCuenta.set(id, g);
+    }
+    const ids = [...porCuenta.keys()];
+    const { data: sumas, error } = ids.length
+      ? await sbClient.rpc('sumar_movimientos_por_cuenta', { p_cuenta_ids: ids, p_fecha_desde: null, p_fecha_hasta: hasta })
+      : { data: [], error: null };
+    if (error) throw error;
+    const mov = new Map((sumas || []).map(x => [x.cuenta_id, { debe: Number(x.total_debe) || 0, haber: Number(x.total_haber) || 0 }]));
+    const saldoDe = id => { const g = porCuenta.get(id); const m = mov.get(id) || { debe: 0, haber: 0 }; return round2(g.nat === 'acreedora' ? m.haber - m.debe : m.debe - m.haber); };
+
+    const filas = [...porCuenta.values()].map(g => {
+      const c = cuentaPor.get(g.id);
+      return `<tr><td>${esc(c.codigo)} · ${esc(c.nombre)}</td><td style="font-size:12.5px;color:var(--text-muted)">${g.etiquetas.map(esc).join(' · ')}</td>
+        <td style="text-align:right;font-weight:700">${fmt(saldoDe(g.id))}</td><td>${g.nat === 'acreedora' ? 'Por pagar (acreedora)' : 'A favor (deudora)'}</td></tr>`;
+    }).join('');
+
+    // IVA neto = por pagar − acreditable (cuando ambos están configurados)
+    const idIvaP = mapeo.get('iva_ventas')?.cuenta_haber_id, idIvaA = mapeo.get('iva_gastos')?.cuenta_debe_id;
+    let bloqueIva = '';
+    let ivaNetoCont = null;
+    if (idIvaP && idIvaA && porCuenta.has(idIvaP) && porCuenta.has(idIvaA)) {
+      ivaNetoCont = round2(saldoDe(idIvaP) - saldoDe(idIvaA));
+      bloqueIva = `<div style="padding:10px 14px;border-radius:8px;background:var(--bg-hover,#f3f4f6);margin:10px 0;font-weight:700">IVA neto: ${ivaNetoCont >= 0 ? 'a pagar' : 'a favor'} ${fmt(Math.abs(ivaNetoCont))}</div>`;
+    }
+
+    // Conciliación con el módulo Impuestos (mismos datos que ve el usuario allá).
+    const concil = [];
+    try {
+      let q = sbClient.from('movimientos_impuestos').select('tipo_movimiento, monto, impuesto_id, fecha, concepto').eq('auth_user_id', STATE.userId);
+      if (hasta) q = q.lte('fecha', hasta);
+      let movs = []; let desdeIdx = 0;
+      while (true) {
+        const { data: pg } = await q.range(desdeIdx, desdeIdx + 999);
+        movs = movs.concat(pg || []);
+        if (!pg || pg.length < 1000) break;
+        desdeIdx += 1000;
+      }
+      const iva = movs.filter(m => !m.impuesto_id);
+      const V = iva.filter(m => m.tipo_movimiento === 'IVA_VENTA').reduce((a, m) => a + Number(m.monto || 0), 0);
+      const C = iva.filter(m => m.tipo_movimiento === 'IVA_COMPRA').reduce((a, m) => a + Number(m.monto || 0), 0);
+      const P = iva.filter(m => m.tipo_movimiento === 'PAGO_IMPUESTO').reduce((a, m) => a + Number(m.monto || 0), 0);
+      const ivaModulo = round2(V - C - P);
+      if (ivaNetoCont !== null) concil.push({ nombre: 'IVA neto por pagar', modulo: ivaModulo, cont: ivaNetoCont });
+      const cuotas = round2(movs.filter(m => m.tipo_movimiento === 'IVA_VENTA' && /cuota de cr[eé]dito/i.test(String(m.concepto || ''))).reduce((a, m) => a + Number(m.monto || 0), 0));
+      if (cuotas > 0) bloqueIva += `<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">ℹ️ El módulo Impuestos incluye ${fmt(cuotas)} de impuestos cobrados en cuotas de créditos financieros. Esos todavía no generan asiento automático, por eso puede haber diferencia.</div>`;
+    } catch (e) { console.warn('conciliación IVA:', e); }
+    try {
+      let q = sbClient.from('retenciones_ir').select('lado, monto, estado, fecha').eq('auth_user_id', STATE.userId).eq('estado', 'pendiente');
+      if (hasta) q = q.lte('fecha', hasta);
+      const { data: rets } = await q.limit(5000);
+      const sumLado = l => round2((rets || []).filter(r => r.lado === l).reduce((a, r) => a + Number(r.monto || 0), 0));
+      const idRP = mapeo.get('retencion_ir')?.cuenta_haber_id, idRF = mapeo.get('retencion_ir_clientes')?.cuenta_debe_id;
+      const compartida = idRP && ['impuesto_ventas_otros', 'nomina_deducciones_ley', 'aporte_patronal'].some(t => mapeo.get(t)?.cuenta_haber_id === idRP);
+      if (idRP && porCuenta.has(idRP) && !compartida) concil.push({ nombre: 'Retenciones de IR por pagar', modulo: sumLado('por_pagar'), cont: saldoDe(idRP) });
+      if (idRF && porCuenta.has(idRF)) concil.push({ nombre: 'Retenciones de IR a favor', modulo: sumLado('a_favor'), cont: saldoDe(idRF) });
+    } catch (e) { console.warn('conciliación retenciones:', e); }
+
+    const filasConc = concil.map(c => {
+      const dif = round2(c.cont - c.modulo);
+      return `<tr><td>${esc(c.nombre)}</td><td style="text-align:right">${fmt(c.modulo)}</td><td style="text-align:right">${fmt(c.cont)}</td>
+        <td style="text-align:right;font-weight:700;color:${Math.abs(dif) < 0.01 ? 'var(--success)' : 'var(--warning)'}">${Math.abs(dif) < 0.01 ? '✅ cuadra' : fmt(dif)}</td></tr>`;
+    }).join('');
+
+    const faltan = sinConfigurar.length ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:12px"><b>Sin cuenta asignada</b> (Contabilización automática › Configurar): ${sinConfigurar.map(d => esc(d.etiqueta)).join(' · ')}. Los movimientos que dependen de ellas esperan sin asentarse hasta que las configures.</div>` : '';
+
+    cont.innerHTML = `
+      ${bloqueIva}
+      ${filas ? `<div class="table-wrap"><table><thead><tr><th>Cuenta</th><th>Qué contiene</th><th style="text-align:right">Saldo${hasta ? ' al ' + esc(hasta) : ''}</th><th>Naturaleza</th></tr></thead><tbody>${filas}</tbody></table></div>`
+        : '<p style="color:var(--text-muted)">Todavía no has asignado cuentas a los impuestos. Hazlo en Contabilización automática › Configurar.</p>'}
+      ${filasConc ? `<h4 style="margin:18px 0 6px">Conciliación con el módulo Impuestos</h4>
+        <div class="table-wrap"><table><thead><tr><th>Concepto</th><th style="text-align:right">Módulo Impuestos</th><th style="text-align:right">Contabilidad</th><th style="text-align:right">Diferencia</th></tr></thead><tbody>${filasConc}</tbody></table></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:6px">Una diferencia suele ser asientos todavía sin generar (presiona "Generar automáticos"), saldos anteriores al uso de Contabilidad, o IVA de compras no separado.</p>` : ''}
+      ${faltan}`;
+  } catch (e) {
+    console.error('cargarImpuestosContables:', e);
+    cont.innerHTML = '<p style="color:var(--danger)">No se pudo calcular el resumen de impuestos.</p>';
+  }
+}
+window.cargarImpuestosContables = cargarImpuestosContables;

@@ -1262,6 +1262,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           Flujo de Efectivo
         </button>
+        <button class="section-tab" id="tab-btn-impuestos" onclick="cambiarSeccionContable('impuestos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          Impuestos
+        </button>
       </div>
 
       <!-- ===== SECCIÓN: ASIENTOS ===== -->
@@ -1357,6 +1361,19 @@
         </div>
         <div id="fe-cuadre-aviso" style="margin:0 16px 10px"></div>
         <div id="fe-cuerpo" style="padding:16px">Elige un período y presiona "Calcular"</div>
+      </div>
+
+      <!-- ===== SECCIÓN: IMPUESTOS ===== -->
+      <div class="panel-card fade-in" id="seccion-impuestos" style="display:none">
+        <div class="panel-header">
+          <div class="panel-title">Impuestos en la contabilidad</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <label style="font-size:12.5px;color:var(--text-muted)">Al</label>
+            <input type="date" id="imp-hasta" style="max-width:150px"/>
+            <button class="btn-secondary btn-sm" onclick="cargarImpuestosContables()">Calcular</button>
+          </div>
+        </div>
+        <div id="imp-cuerpo" style="padding:16px">Presiona "Calcular"</div>
       </div>
     </div><!-- /content -->
   </div><!-- /main -->
@@ -1613,7 +1630,7 @@
   }
 </style>
 
-<script src="contabilidad.js?v=20261012a"></script>
+<script src="contabilidad.js?v=20261012b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261007a"></script>
