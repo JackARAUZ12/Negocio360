@@ -7138,6 +7138,10 @@ async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
   }
 
   // Bluetooth directo (preferencia guardada en este teléfono/equipo)
+  if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof escposBTConectado === 'function' && !escposBTConectado()) {
+    // Última oportunidad silenciosa antes de caer a la impresión normal (máx. unos segundos)
+    try { await Promise.race([reconectarBluetoothAutomatico(), new Promise(r => setTimeout(r, 6000))]); } catch (e) {}
+  }
   if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof escposBTConectado === 'function' && (escposBTConectado() || ESCPOS_BT_DEVICE)) {
     const resultado = await imprimirReciboBluetooth({ ...construirDatosReciboDesdeVenta(cfg, venta, items), columnas: columnasTicketBT() });
     if (resultado.ok) { cerrarVentanaPreabiertaSiNoHaceFalta(); return; }
@@ -7654,6 +7658,12 @@ async function initVentas() {
     // 2. Config empresa
     await loadEmpresaConfig(user.id);
     cargarImpuestosCatalogo().catch(()=>{});
+    // Bluetooth: si el negocio lo tiene activo, intenta reconectar la impresora recordada (sin avisos si no se puede)
+    if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof reconectarBluetoothAutomatico === 'function') {
+      reconectarBluetoothAutomatico().then(r => {
+        if (r && r.ok) { showToast('📱 Impresora reconectada: ' + (r.nombre || 'Bluetooth')); refrescarEstadoBT(); }
+      }).catch(() => {});
+    }
 
     // 3. Perfil usuario
     const profile = await loadUserProfile(user.id);

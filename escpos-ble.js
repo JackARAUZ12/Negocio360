@@ -72,6 +72,7 @@ async function conectarImpresoraBluetooth() {
     }
     ESCPOS_BT_DEVICE = device;
     ESCPOS_BT_CHAR = caracteristica;
+    escposBTGuardarUltimo(device);
     return { ok: true, nombre: device.name || 'Impresora' };
   } catch (e) {
     console.error('conectarImpresoraBluetooth:', e);
@@ -123,4 +124,77 @@ async function imprimirReciboBluetooth(datosRecibo) {
     console.error('imprimirReciboBluetooth:', e);
     return { ok: false, motivo: 'No se pudo armar el recibo.' };
   }
+}
+
+/* =====================================================
+   RECONEXIÓN AUTOMÁTICA (mejor esfuerzo)
+   Chrome puede "recordar" las impresoras que el usuario ya autorizó
+   (navigator.bluetooth.getDevices). Si esta versión de Chrome lo
+   soporta, al abrir Ventas se reconecta sola a la última impresora,
+   sin tocar nada. Si no lo soporta, o la impresora está apagada o
+   lejos, no pasa nada: se queda como antes (botón "Conectar").
+   Solo lee/conecta lo que el usuario ya autorizó; nunca pide
+   permisos nuevos ni abre diálogos.
+===================================================== */
+const ESCPOS_BT_LS_ID = 'n360_bt_ultimo_id';
+
+function escposBTGuardarUltimo(device) {
+  try { localStorage.setItem(ESCPOS_BT_LS_ID, device.id || ''); } catch (e) {}
+}
+
+function escposBTConTimeout(promesa, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    promesa.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+async function escposBTAbrirCanal(device) {
+  const server = await escposBTConTimeout(device.gatt.connect(), 8000);
+  const caracteristica = await escposBTBuscarCaracteristica(server);
+  if (!caracteristica) { try { device.gatt.disconnect(); } catch (e) {} return false; }
+  ESCPOS_BT_DEVICE = device;
+  ESCPOS_BT_CHAR = caracteristica;
+  return true;
+}
+
+let ESCPOS_BT_AUTO_EN_CURSO = null;
+// Devuelve {ok:true,nombre} si quedó conectada; {ok:false,motivo} si no (sin molestar al usuario).
+function reconectarBluetoothAutomatico() {
+  if (escposBTConectado()) return Promise.resolve({ ok: true, nombre: ESCPOS_BT_DEVICE.name });
+  if (ESCPOS_BT_AUTO_EN_CURSO) return ESCPOS_BT_AUTO_EN_CURSO;
+  ESCPOS_BT_AUTO_EN_CURSO = (async () => {
+    try {
+      if (!escposBTSoportado()) return { ok: false, motivo: 'sin Bluetooth' };
+      // Si ya teníamos el dispositivo en memoria (p. ej. se durmió), basta reconectar.
+      if (ESCPOS_BT_DEVICE && await escposBTAbrirCanal(ESCPOS_BT_DEVICE)) return { ok: true, nombre: ESCPOS_BT_DEVICE.name };
+      if (typeof navigator.bluetooth.getDevices !== 'function') return { ok: false, motivo: 'Chrome no recuerda dispositivos' };
+      const lista = await navigator.bluetooth.getDevices();
+      if (!lista || !lista.length) return { ok: false, motivo: 'sin impresoras recordadas' };
+      let ultimoId = ''; try { ultimoId = localStorage.getItem(ESCPOS_BT_LS_ID) || ''; } catch (e) {}
+      const ordenada = [...lista].sort((a, b) => (b.id === ultimoId) - (a.id === ultimoId));
+      for (const dev of ordenada) {
+        try {
+          if (await escposBTAbrirCanal(dev)) return { ok: true, nombre: dev.name };
+        } catch (e) {
+          // Sin conexión directa: se espera a que la impresora "se anuncie" (hasta 10 s)
+          if (typeof dev.watchAdvertisements === 'function') {
+            try {
+              const ctl = new AbortController();
+              await dev.watchAdvertisements({ signal: ctl.signal });
+              await escposBTConTimeout(new Promise(res => dev.addEventListener('advertisementreceived', res, { once: true })), 10000);
+              ctl.abort();
+              if (await escposBTAbrirCanal(dev)) return { ok: true, nombre: dev.name };
+            } catch (e2) { /* siguiente */ }
+          }
+        }
+      }
+      return { ok: false, motivo: 'no se pudo reconectar' };
+    } catch (e) {
+      return { ok: false, motivo: 'no se pudo reconectar' };
+    } finally {
+      ESCPOS_BT_AUTO_EN_CURSO = null;
+    }
+  })();
+  return ESCPOS_BT_AUTO_EN_CURSO;
 }
