@@ -1231,6 +1231,7 @@ function exportarFlujoEfectivo(formato) {
 const TIPOS_TRANSACCION = {
   venta: { label: 'Venta (en efectivo/tarjeta)', ejemplo: 'Debe: Caja — Haber: Ventas' },
   iva_ventas: { label: 'IVA cobrado en ventas (opcional — separa el IVA del total)', ejemplo: 'De la misma venta: Haber: Ventas (neto) — Haber: IVA por Pagar' },
+  impuesto_ventas_otros: { label: 'Otros impuestos cobrados en ventas (IR 2%, etc. — solo Cuenta Haber)', ejemplo: 'De la misma venta: Haber: Impuestos por Pagar (2130). Si una venta lleva IR u otro impuesto y esto no está configurado, la venta espera sin asentarse.' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
@@ -1635,19 +1636,24 @@ async function generarAsientosAutomaticos() {
         // configuro el mapeo de IVA, o esta transaccion no tiene IVA),
         // el asiento queda IGUAL que siempre: una sola linea por lado.
         let lineas;
-        if (divisionIva && divisionIva.montoIva > 0 && divisionIva.montoIva < monto) {
-          const montoNeto = round2(monto - divisionIva.montoIva);
+        // Partes a separar: IVA y/o otros impuestos (IR, etc.), cada una a su cuenta.
+        const partes = [];
+        if (divisionIva && divisionIva.montoIva > 0) partes.push({ monto: divisionIva.montoIva, cuenta: divisionIva.cuentaIvaId, desc: 'IVA' });
+        if (divisionIva && Array.isArray(divisionIva.extras)) divisionIva.extras.forEach(x => { if (x.monto > 0) partes.push({ monto: x.monto, cuenta: x.cuentaId, desc: x.desc || 'Impuesto' }); });
+        const sumaPartes = round2(partes.reduce((a, x) => a + x.monto, 0));
+        if (partes.length && sumaPartes < monto) {
+          const montoNeto = round2(monto - sumaPartes);
           if (divisionIva.lado === 'haber') {
             lineas = [
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: debeId, debe: monto, haber: 0, orden: 0 },
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: montoNeto, orden: 1 },
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: 0, haber: divisionIva.montoIva, orden: 2, descripcion: 'IVA' },
+              ...partes.map((x, i) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: x.cuenta, debe: 0, haber: x.monto, orden: 2 + i, descripcion: x.desc })),
             ];
           } else {
             lineas = [
               { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: debeId, debe: montoNeto, haber: 0, orden: 0 },
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: divisionIva.cuentaIvaId, debe: divisionIva.montoIva, haber: 0, orden: 1, descripcion: 'IVA' },
-              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 2 },
+              ...partes.map((x, i) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: x.cuenta, debe: x.monto, haber: 0, orden: 1 + i, descripcion: x.desc })),
+              { auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id: haberId, debe: 0, haber: monto, orden: 9 },
             ];
           }
         } else {
@@ -1700,11 +1706,27 @@ async function generarAsientosAutomaticos() {
     // cuenta de "IVA por Pagar" -- si nadie lo configuro, esta funcion
     // no hace nada y el asiento sigue igual que siempre.
     const mapeoIvaVentas = mapeo.get('iva_ventas');
+    const mapeoOtrosVentas = mapeo.get('impuesto_ventas_otros');
+    // Otros impuestos de cada venta (IR, etc.) guardados en venta_impuestos.
+    const extrasPorVenta = new Map();
+    try {
+      const { data: vi } = await sbClient.from('venta_impuestos').select('venta_id, nombre, monto').eq('auth_user_id', STATE.userId);
+      (vi || []).forEach(x => { const a = extrasPorVenta.get(x.venta_id) || []; a.push({ nombre: x.nombre, monto: round2(Number(x.monto || 0)) }); extrasPorVenta.set(x.venta_id, a); });
+    } catch (e) { /* tabla ausente: sin extras */ }
     async function obtenerDivisionIvaVenta(venta) {
-      if (!mapeoIvaVentas || !mapeoIvaVentas.cuenta_haber_id) return null;
-      const iva = round2(Number(venta.impuesto || 0));
-      if (iva <= 0) return null;
-      return { montoIva: iva, cuentaIvaId: mapeoIvaVentas.cuenta_haber_id, lado: 'haber' };
+      const extrasV = (extrasPorVenta.get(venta.id) || []).filter(x => x.monto > 0);
+      const sumaExtras = round2(extrasV.reduce((a, x) => a + x.monto, 0));
+      // ventas.impuesto = IVA + otros impuestos; el IVA puro es la diferencia.
+      const ivaPuro = Math.max(0, round2(Number(venta.impuesto || 0) - sumaExtras));
+      if (sumaExtras > 0 && !(mapeoOtrosVentas && mapeoOtrosVentas.cuenta_haber_id)) return { bloquear: true };
+      const ivaOk = mapeoIvaVentas && mapeoIvaVentas.cuenta_haber_id && ivaPuro > 0;
+      if (!ivaOk && sumaExtras <= 0) return null;
+      return {
+        montoIva: ivaOk ? ivaPuro : 0,
+        cuentaIvaId: ivaOk ? mapeoIvaVentas.cuenta_haber_id : null,
+        lado: 'haber',
+        extras: extrasV.map(x => ({ monto: x.monto, cuentaId: mapeoOtrosVentas.cuenta_haber_id, desc: x.nombre })),
+      };
     }
 
     await procesarTipo('venta', 'ventas', 'total', 'completada', 'estado', 'Venta ', q => q.neq('metodo_pago', 'credito').neq('metodo_pago', 'fiado'), obtenerCostoVentaVendido, undefined, obtenerDivisionIvaVenta);

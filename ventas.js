@@ -62,6 +62,8 @@ const S = {
 
   // IVA / Impuestos
   ivaActivo:      false,
+  otrosImpuestos: [],   // [{id,nombre,porcentaje}] del catálogo de Impuestos (IR, etc.), se suman al total
+  impuestosCat:   [],
   ivaPorcentaje:  15,
 
   // Venta activa en detalle/anular
@@ -925,27 +927,27 @@ async function anularVenta() {
     // con un registro nuevo que resta (nunca se borra el original,
     // eso rompería el historial de Impuestos).
     try {
-      const { data: movIva } = await sb.from('movimientos_impuestos')
-        .select('monto').eq('referencia_venta_id', id).eq('auth_user_id', S.userId)
-        .eq('tipo_movimiento', 'IVA_VENTA').gt('monto', 0).maybeSingle();
-
-      if (movIva && Number(movIva.monto) > 0) {
+      const { data: movsImp } = await sb.from('movimientos_impuestos')
+        .select('monto, impuesto_id, impuesto_nombre').eq('referencia_venta_id', id).eq('auth_user_id', S.userId)
+        .eq('tipo_movimiento', 'IVA_VENTA').gt('monto', 0);
+      const ventaInfoImp = S.ventas.find(v => v.id === id);
+      for (const movIva of (movsImp || [])) {
+        if (!(Number(movIva.monto) > 0)) continue;
         const { data: ultImp } = await sb.from('movimientos_impuestos')
           .select('saldo_resultante').eq('auth_user_id', S.userId)
           .order('created_at', { ascending:false }).limit(1).maybeSingle();
         const saldoAntImp = ultImp ? Number(ultImp.saldo_resultante) : 0;
         const montoRevertir = round2(Number(movIva.monto));
         const saldoResImp = round2(saldoAntImp - montoRevertir);
-        const ventaInfoImp = S.ventas.find(v => v.id === id);
-
         await sb.from('movimientos_impuestos').insert({
           auth_user_id:       S.userId,
           tipo_movimiento:    'IVA_VENTA',
-          concepto:           `Reverso de IVA por anulación de venta ${ventaInfoImp?.numero_venta || ''}`.trim(),
+          concepto:           `Reverso de ${movIva.impuesto_nombre || 'IVA'} por anulación de venta ${ventaInfoImp?.numero_venta || ''}`.trim(),
           monto:              -montoRevertir,
           saldo_anterior:     saldoAntImp,
           saldo_resultante:   saldoResImp,
           referencia_venta_id: id,
+          ...(movIva.impuesto_id ? { impuesto_id: movIva.impuesto_id, impuesto_nombre: movIva.impuesto_nombre } : {}),
           fecha:              todayISO(),
         });
       }
@@ -1739,6 +1741,7 @@ async function abrirNuevaVenta() {
   S.observaciones = '';
   S.numeroVenta   = '';
   S.ivaActivo     = false;
+  S.otrosImpuestos = [];
   S.ivaPorcentaje = S.empresaConfig?.iva_porcentaje_default ? Number(S.empresaConfig.iva_porcentaje_default) : 15;
   const fechaInput = document.getElementById('nv-fecha-venta'); if (fechaInput) fechaInput.value = todayISO();
 
@@ -3994,6 +3997,62 @@ function toggleIva() {
   calcularResumen();
 }
 
+/* ---------- Otros impuestos en la venta (IR 2%, etc.) ---------- */
+async function cargarImpuestosCatalogo() {
+  try {
+    const { data } = await sb.from('impuestos').select('id,nombre,categoria,tipo_valor,valor')
+      .eq('auth_user_id', S.userId).eq('estado', true).order('nombre');
+    // Solo porcentuales y que no sean el IVA (el IVA tiene su propio interruptor)
+    S.impuestosCat = (data || []).filter(i => i.categoria !== 'iva' && String(i.nombre||'').trim().toUpperCase() !== 'IVA' && (i.tipo_valor || 'porcentaje') === 'porcentaje');
+  } catch (e) { S.impuestosCat = []; }
+  renderOtrosImpuestos();
+}
+
+function renderOtrosImpuestos() {
+  const sel = document.getElementById('otro-imp-select');
+  const chips = document.getElementById('otro-imp-chips');
+  if (!sel || !chips) return;
+  const usados = new Set((S.otrosImpuestos || []).map(o => o.id));
+  sel.innerHTML = '<option value="">+ Agregar impuesto (IR, etc.)…</option>' +
+    (S.impuestosCat || []).filter(i => !usados.has(i.id) && Number(i.valor) > 0)
+      .map(i => `<option value="${i.id}">${esc(i.nombre)} (${Number(i.valor)}%)</option>`).join('') +
+    '<option value="__nuevo_ir2">➕ Crear IR 2%</option>';
+  chips.innerHTML = (S.otrosImpuestos || []).map(o =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft,#eef2ff);color:var(--accent);border-radius:100px;padding:4px 10px;font-size:12.5px;font-weight:600">${esc(o.nombre)} ${Number(o.porcentaje)}%
+      <button type="button" onclick="quitarOtroImpuesto('${o.id}')" style="border:0;background:none;cursor:pointer;color:inherit;font-size:14px;line-height:1">×</button></span>`).join('');
+}
+
+async function agregarOtroImpuesto(id) {
+  if (!id) return;
+  try {
+    if (id === '__nuevo_ir2') {
+      // Reutiliza un IR 2% ya existente en el catálogo; si no hay, lo crea (una sola vez).
+      let imp = (S.impuestosCat || []).find(i => /^ir(\s|$)/i.test(String(i.nombre||'').trim()) && Number(i.valor) === 2);
+      if (!imp) {
+        const { data, error } = await sb.from('impuestos').insert({
+          auth_user_id: S.userId, nombre: 'IR 2%', categoria: 'otro', tipo_valor: 'porcentaje', valor: 2, estado: true,
+          descripcion: 'Impuesto sobre la Renta 2%',
+        }).select('id,nombre,categoria,tipo_valor,valor').single();
+        if (error) throw error;
+        imp = data; S.impuestosCat.push(imp);
+      }
+      id = imp.id;
+    }
+    const imp = (S.impuestosCat || []).find(i => i.id === id);
+    if (!imp) return;
+    if (!(S.otrosImpuestos || []).some(o => o.id === id)) S.otrosImpuestos.push({ id: imp.id, nombre: imp.nombre, porcentaje: Number(imp.valor) });
+    calcularResumen();
+  } catch (e) {
+    console.error('agregarOtroImpuesto:', e);
+    showToast('No se pudo agregar el impuesto: ' + (e.message || ''), 'error');
+  }
+}
+
+function quitarOtroImpuesto(id) {
+  S.otrosImpuestos = (S.otrosImpuestos || []).filter(o => o.id !== id);
+  calcularResumen();
+}
+
 function cambiarIvaPorcentaje(val) {
   let n = parseFloat(val);
   if (isNaN(n) || n < 0) n = 0;
@@ -4222,13 +4281,16 @@ function calcularResumen() {
   }
   const descuento = round2(descuentoBase + descuentoPuntos);
   const baseImponible = Math.max(subtotal - descuento, 0);
-  const impuestos = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  const ivaMonto = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  const otros = (S.otrosImpuestos || []).map(o => ({ id: o.id, nombre: o.nombre, porcentaje: Number(o.porcentaje)||0, monto: round2(baseImponible * ((Number(o.porcentaje)||0)/100)) })).filter(o => o.monto > 0);
+  const otrosMonto = round2(otros.reduce((a,o) => a + o.monto, 0));
+  const impuestos = round2(ivaMonto + otrosMonto);   // IVA + otros: es lo que se separa de Caja y va a Impuestos
   const total     = round2(subtotal - descuento + impuestos);
   const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, total, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle };
+  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle };
 
   // Aviso visual de promociones aplicadas — se inserta junto al
   // resumen si el contenedor existe; si no existe en el HTML, esto
@@ -4259,7 +4321,13 @@ function calcularResumen() {
   }
 
   const lbl = document.getElementById('res-impuestos-label');
-  if (lbl) lbl.textContent = S.ivaActivo ? `Impuestos (IVA ${S.ivaPorcentaje}%)` : 'Impuestos';
+  if (lbl) {
+    const partesLbl = [];
+    if (S.ivaActivo) partesLbl.push(`IVA ${S.ivaPorcentaje}%`);
+    otros.forEach(o => partesLbl.push(`${o.nombre} ${o.porcentaje}%`));
+    lbl.textContent = partesLbl.length ? `Impuestos (${partesLbl.join(' + ')})` : 'Impuestos';
+  }
+  renderOtrosImpuestos();
 
   setEl2('res-subtotal',  fmt(subtotal));
   setEl2('res-descuento', descuento>0 ? `-${fmt(descuento)}` : fmt(0));
@@ -4509,8 +4577,11 @@ function renderResumenFinal() {
         <span>Descuento</span><strong style="color:var(--warning)">-${fmt(r.descuento)}</strong>
       </div>` : ''}
       ${S.ivaActivo ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span>IVA (${S.ivaPorcentaje}%)</span><strong>${fmt(r.impuestos||0)}</strong>
+        <span>IVA (${S.ivaPorcentaje}%)</span><strong>${fmt(r.ivaMonto != null ? r.ivaMonto : (r.impuestos||0))}</strong>
       </div>` : ''}
+      ${(r.otros||[]).map(o => `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span>${esc(o.nombre)} (${o.porcentaje}%)</span><strong>${fmt(o.monto)}</strong>
+      </div>`).join('')}
       <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;margin-top:8px">
         <span>TOTAL</span><strong style="color:var(--accent)">${fmt(r.total||0)}</strong>
       </div>
@@ -4524,7 +4595,7 @@ function renderResumenFinal() {
 /* ============================================================
    REGISTRAR MOVIMIENTO DE IMPUESTOS (IVA acumulado)
    ============================================================ */
-async function registrarMovimientoImpuesto(userId, montoIva, ventaId, numeroVenta) {
+async function registrarMovimientoImpuesto(userId, montoIva, ventaId, numeroVenta, impuestoId, impuestoNombre) {
   if (!montoIva || montoIva <= 0) return;
   try {
     const { data: ultMov } = await sb.from('movimientos_impuestos')
@@ -4538,11 +4609,12 @@ async function registrarMovimientoImpuesto(userId, montoIva, ventaId, numeroVent
     await sb.from('movimientos_impuestos').insert({
       auth_user_id:     userId,
       tipo_movimiento:  'IVA_VENTA',
-      concepto:         `IVA de venta ${numeroVenta}`,
+      concepto:         impuestoNombre ? `${impuestoNombre} de venta ${numeroVenta}` : `IVA de venta ${numeroVenta}`,
       monto:            montoIva,
       saldo_anterior:   saldoAnt,
       saldo_resultante: saldoRes,
       referencia_venta_id: ventaId,
+      ...(impuestoId ? { impuesto_id: impuestoId, impuesto_nombre: impuestoNombre } : {}),
       fecha:            todayISO(),
     });
   } catch(e) {
@@ -5613,7 +5685,19 @@ async function confirmarVenta(conImpresion) {
        PASO F-2: Registrar el IVA en el módulo de Impuestos
     ---------------------------------------------------------- */
     if (montoIva > 0) {
-      await registrarMovimientoImpuesto(S.userId, montoIva, ventaId, S.numeroVenta);
+      const ivaSolo = round2(Number(r.ivaMonto != null ? r.ivaMonto : montoIva));
+      if (ivaSolo > 0) await registrarMovimientoImpuesto(S.userId, ivaSolo, ventaId, S.numeroVenta);
+      // Otros impuestos (IR, etc.): cada uno en su propia línea, y detalle por venta para Contabilidad
+      const otrosV = r.otros || [];
+      for (const o of otrosV) {
+        await registrarMovimientoImpuesto(S.userId, o.monto, ventaId, S.numeroVenta, o.id, o.nombre);
+      }
+      if (otrosV.length) {
+        const { error: eVi } = await sb.from('venta_impuestos').insert(otrosV.map(o => ({
+          auth_user_id: S.userId, venta_id: ventaId, impuesto_id: o.id, nombre: o.nombre, porcentaje: o.porcentaje, monto: o.monto,
+        })));
+        if (eVi) console.warn('No se pudo guardar el detalle de impuestos de la venta:', eVi);
+      }
     }
 
     /* ----------------------------------------------------------
@@ -7294,7 +7378,8 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   <div class="linea"></div>
   <div class="fila-dato"><span>Subtotal</span><span>${fmt(resumen.subtotal)}</span></div>
   ${resumen.descuento>0 ? `<div class="fila-dato"><span>Descuento</span><span>-${fmt(resumen.descuento)}</span></div>` : ''}
-  ${S.ivaActivo ? `<div class="fila-dato"><span>IVA (${S.ivaPorcentaje}%)</span><span>${fmt(resumen.impuestos)}</span></div>` : ''}
+  ${S.ivaActivo ? `<div class="fila-dato"><span>IVA (${S.ivaPorcentaje}%)</span><span>${fmt(resumen.ivaMonto != null ? resumen.ivaMonto : resumen.impuestos)}</span></div>` : ''}
+  ${(resumen.otros||[]).map(o => `<div class="fila-dato"><span>${esc(o.nombre)} (${o.porcentaje}%)</span><span>${fmt(o.monto)}</span></div>`).join('')}
   <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
   <div class="linea"></div>
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
@@ -7374,6 +7459,8 @@ window.toggleTheme    = toggleTheme;
 window.toggleSidebar  = toggleSidebar;
 window.navigate       = navigate;
 window.toggleIva       = toggleIva;
+window.agregarOtroImpuesto = agregarOtroImpuesto;
+window.quitarOtroImpuesto = quitarOtroImpuesto;
 window.cambiarIvaPorcentaje = cambiarIvaPorcentaje;
 
 /* ============================================================
@@ -7454,6 +7541,7 @@ async function initVentas() {
 
     // 2. Config empresa
     await loadEmpresaConfig(user.id);
+    cargarImpuestosCatalogo().catch(()=>{});
 
     // 3. Perfil usuario
     const profile = await loadUserProfile(user.id);
