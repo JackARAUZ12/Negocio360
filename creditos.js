@@ -360,6 +360,11 @@
   // impuesto personalizado. Solo se crea una vez por negocio, la primera vez que hace falta.
   async function asegurarIvaEnCatalogo() {
     try {
+      // Catálogo base (IVA + IR) lo garantiza la base de datos, sin duplicados.
+      const { error: eBase } = await _sb.rpc('asegurar_impuestos_base');
+      if (!eBase) return;
+    } catch (e) { /* respaldo abajo */ }
+    try {
       const { data: existente } = await _sb.from('impuestos').select('id')
         .eq('auth_user_id', CS.userId).ilike('nombre', 'IVA').limit(1).maybeSingle();
       if (existente) return;
@@ -384,8 +389,7 @@
             <input type="checkbox" class="nc-impuesto-chk" value="${i.id}" data-valor="${i.valor}" data-tipo="${i.tipo_valor}" data-nombre="${esc(i.nombre)}" style="width:auto" onchange="recalcularCredito()" />
             ${esc(i.nombre)} (${i.tipo_valor==='porcentaje' ? i.valor+'%' : fmt(i.valor)})
           </label>`).join('')
-      : '<span style="font-size:12.5px;color:var(--text-muted)">Sin impuestos disponibles.</span>')
-      + `<button type="button" class="btn-secondary btn-sm" onclick="abrirCrearImpuestoRapido()" style="padding:3px 10px;font-size:11.5px">+ Nuevo impuesto</button>`;
+      : '<span style="font-size:12.5px;color:var(--text-muted)">Sin impuestos disponibles.</span>');
   }
 
   // Crear un impuesto sin salir del formulario de crédito — se agrega

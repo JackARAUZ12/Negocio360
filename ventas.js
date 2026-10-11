@@ -3999,6 +3999,7 @@ function toggleIva() {
 
 /* ---------- Otros impuestos en la venta (IR 2%, etc.) ---------- */
 async function cargarImpuestosCatalogo() {
+  try { await sb.rpc('asegurar_impuestos_base'); } catch (e) { /* ya existe o sin acceso */ }
   try {
     const { data } = await sb.from('impuestos').select('id,nombre,categoria,tipo_valor,valor')
       .eq('auth_user_id', S.userId).eq('estado', true).order('nombre');
@@ -4016,7 +4017,7 @@ function renderOtrosImpuestos() {
   sel.innerHTML = '<option value="">+ Agregar impuesto (IR, etc.)…</option>' +
     (S.impuestosCat || []).filter(i => !usados.has(i.id) && Number(i.valor) > 0)
       .map(i => `<option value="${i.id}">${esc(i.nombre)} (${Number(i.valor)}%)</option>`).join('') +
-    '<option value="__nuevo_ir2">➕ Crear IR 2%</option>';
+    '';
   chips.innerHTML = (S.otrosImpuestos || []).map(o =>
     `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft,#eef2ff);color:var(--accent);border-radius:100px;padding:4px 10px;font-size:12.5px;font-weight:600">${esc(o.nombre)} ${Number(o.porcentaje)}%
       <button type="button" onclick="quitarOtroImpuesto('${o.id}')" style="border:0;background:none;cursor:pointer;color:inherit;font-size:14px;line-height:1">×</button></span>`).join('');

@@ -665,7 +665,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             Catálogo de impuestos
           </div>
-          <button class="btn-secondary" id="btn-nuevo-impuesto" onclick="abrirNuevoImpuesto()">
+          <button class="btn-secondary" id="btn-nuevo-impuesto" onclick="abrirNuevoImpuesto()" style="display:none">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo impuesto
           </button>
@@ -1053,7 +1053,13 @@ function renderAcumuladores() {
   }
   const ordenados = iva ? [iva, ...otros] : otros;
 
-  cont.innerHTML = ordenados.map(imp => {
+  cont.innerHTML = ordenados.filter(imp => {
+    // Las tarjetas vacías de impuestos base (IR) o desactivados no estorban: solo aparecen si tienen saldo.
+    if (esImpuestoIva(imp)) return true;
+    const sd = calcularSaldoBucket(imp.id);
+    if (sd > 0) return true;
+    return imp.estado !== false && !imp.es_base;
+  }).map(imp => {
     const esIva      = esImpuestoIva(imp);
     const bucketKey  = esIva ? 'IVA' : imp.id;
     const saldo      = calcularSaldoBucket(bucketKey);
@@ -1151,6 +1157,11 @@ function renderTabla() {
 
 async function asegurarIvaEnCatalogo() {
   try {
+    // Catálogo base (IVA + IR 1/2/10/15%) lo garantiza la base de datos, sin duplicados.
+    const { error: eBase } = await sb.rpc('asegurar_impuestos_base');
+    if (!eBase) return;
+  } catch (e) { /* si falla, se usa el respaldo de abajo */ }
+  try {
     const { data: existente } = await sb.from('impuestos').select('id')
       .eq('auth_user_id', S.userId).ilike('nombre', 'IVA').limit(1).maybeSingle();
     if (existente) return;
@@ -1175,15 +1186,14 @@ async function cargarCatalogoImpuestos() {
     const contadorEl = document.getElementById('catalogo-contador');
     const btnNuevo    = document.getElementById('btn-nuevo-impuesto');
     if (contadorEl) {
-      contadorEl.textContent = `${S.catalogoImpuestos.length}/${LIMITE} impuestos creados` +
-        (S.catalogoImpuestos.length >= LIMITE ? ' — límite alcanzado' : '');
+      contadorEl.textContent = 'Los impuestos vienen cargados por el sistema (IVA e IR). Puedes activar o desactivar los que uses.';
     }
     if (btnNuevo) btnNuevo.disabled = S.catalogoImpuestos.length >= LIMITE;
 
     if (tbody) {
       tbody.innerHTML = S.catalogoImpuestos.length ? S.catalogoImpuestos.map(i => `
         <tr>
-          <td><b>${esc(i.nombre)}</b>${i.origen==='nomina' ? ' <span style="font-size:10.5px;color:var(--accent);font-weight:600">👤 desde Salarios</span>' : ''}</td>
+          <td><b>${esc(i.nombre)}</b>${i.es_base ? ' <span style="font-size:10.5px;color:var(--text-muted);font-weight:600">base</span>' : ''}${i.origen==='nomina' ? ' <span style="font-size:10.5px;color:var(--accent);font-weight:600">👤 desde Salarios</span>' : ''}</td>
           <td>${esc(i.categoria||'—')}</td>
           <td>${i.tipo_valor==='porcentaje' ? Number(i.valor)+'%' : i.tipo_valor==='tabla_progresiva' ? 'Tabla progresiva' : fmt(i.valor)}</td>
           <td><span class="badge-estado ${i.estado?'on':'off'}">${i.estado?'Activo':'Inactivo'}</span></td>
