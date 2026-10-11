@@ -1,0 +1,314 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#0A0E1A;font-family:'Inter Display','Inter',sans-serif}
+#stage{position:absolute;inset:0;overflow:hidden;background:#F4F6FA}
+#views{position:absolute;inset:0;z-index:0}
+#spot,#ring,#label,#cap,#formula,#ripple,#cursor,#chip,#wm,#prog{z-index:5}
+#card{z-index:8}
+#cursor{z-index:9}
+.view{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden}
+.view .full{position:absolute;left:0;width:1920px}
+.view .topimg{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.crop{position:absolute;background-size:1920px 1080px;background-repeat:no-repeat}
+#spot{position:absolute;border-radius:16px;box-shadow:0 0 0 4000px rgba(8,12,28,.55);pointer-events:none;opacity:0}
+#ring{position:absolute;border-radius:18px;border:4px solid #4C8DFF;box-shadow:0 0 0 6px rgba(76,141,255,.25),0 0 40px rgba(76,141,255,.6);opacity:0}
+#label{position:absolute;width:520px;padding:26px 30px;border-radius:22px;background:rgba(14,19,34,.96);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);border:2px solid rgba(76,141,255,.45);opacity:0}
+#label .lt{font-size:34px;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:14px}
+#label .lt i{font-style:normal;font-size:20px;font-weight:800;background:#4C8DFF;color:#fff;border-radius:10px;padding:4px 10px;letter-spacing:0}
+#label .lx{font-size:25px;line-height:1.4;color:#C7CEDD;margin-top:10px;font-weight:500}
+#label .lx b{color:#fff}
+#cap{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);max-width:1400px;padding:22px 38px;border-radius:20px;background:rgba(14,19,34,.94);color:#fff;font-size:34px;font-weight:600;text-align:center;line-height:1.35;box-shadow:0 20px 50px rgba(0,0,0,.4);opacity:0}
+#cap b{color:#7FB2FF}
+#cursor{position:absolute;left:0;top:0;width:40px;height:40px;pointer-events:none;filter:drop-shadow(0 4px 6px rgba(0,0,0,.35));opacity:0}
+#ripple{position:absolute;border-radius:50%;border:4px solid #4C8DFF;opacity:0}
+#chip{position:absolute;left:30px;bottom:30px;padding:12px 22px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-size:24px;font-weight:700;display:flex;gap:12px;align-items:center;opacity:0;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#chip span{color:#7FB2FF}
+#wm{position:absolute;right:30px;top:24px;display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-weight:800;font-size:24px;opacity:0}
+#wm img{width:32px}
+#prog{position:absolute;left:0;right:0;bottom:0;height:10px;background:rgba(14,19,34,.6);opacity:0}
+#prog i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,#4C8DFF,#22E39A)}
+#prog b{position:absolute;top:0;bottom:0;width:3px;background:rgba(255,255,255,.7)}
+#card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(1200px 800px at 30% 20%,rgba(76,141,255,.35),transparent 60%),radial-gradient(900px 700px at 80% 90%,rgba(34,227,154,.18),transparent 60%),rgba(8,11,22,.86);color:#fff;opacity:0}
+#card .num{font-size:180px;font-weight:900;letter-spacing:-8px;line-height:1;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#card .ti{font-size:88px;font-weight:900;letter-spacing:-3px;margin-top:20px}
+#card .su{font-size:36px;color:#AAB4C8;margin-top:18px;font-weight:500}
+#card .list{margin-top:50px;display:grid;grid-template-columns:repeat(3,auto);gap:14px 44px;font-size:28px;color:#C7CEDD;font-weight:600}
+#card .list span{color:#4C8DFF;font-weight:800;margin-right:10px}
+#card img{width:150px;margin-bottom:30px}
+#formula{position:absolute;left:50%;top:36px;transform:translateX(-50%);padding:20px 34px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;font-size:32px;font-weight:700;opacity:0;white-space:nowrap;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+#formula .g{color:#22E39A}#formula .r{color:#FF6B6B}#formula .b{color:#7FB2FF}
+</style></head>
+<body>
+<div id="stage">
+  <div id="views"></div>
+  <div id="spot"></div><div id="ring"></div>
+  <div id="label"><div class="lt" id="lt"></div><div class="lx" id="lx"></div></div>
+  <div id="cap"></div>
+  <div id="formula"></div>
+  <div id="ripple"></div>
+  <svg id="cursor" viewBox="0 0 40 40"><path d="M6 3 L6 31 L13.5 24 L18.5 35.5 L23.5 33.3 L18.5 22 L28.5 22 Z" fill="#fff" stroke="#111" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  <div id="chip"></div>
+  <div id="wm"><img src="../../../../../../../home/user/Negocio360/negocio360-isotipo.png" id="wmimg">Negocio360</div>
+  <div id="prog"><i id="progi"></i></div>
+  <div id="card"></div>
+</div>
+<script>
+const META = {"H":2356,"pts":[[373,709],[467,681],[561,691],[655,656],[750,636],[844,603],[938,567]],"donut":[1229,679],"monSel":[788,560,344,35],"monTasa":[788,596,344,33],"monApply":[1060,672,72,34]};
+const H = META.H, MAXS = H - 1080;
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const FULL = { base: 1, dark: 1 };
+
+// ---------------- build views (one per state)
+const STATES = ['base', 'dark', 'search', 'collapsed', 'tipline', 'tipline3', 'mes', 'donut', 'kpihover', 'help', 'mon1', 'mon2', 'mon3', 'usd'];
+const V = {};
+STATES.forEach(s => {
+  const d = document.createElement('div'); d.className = 'view'; d.style.opacity = 0;
+  if (FULL[s]) {
+    d.innerHTML = `<img class="full" src="shots/${s}_full.jpg" style="height:${H}px">` +
+      `<div class="crop" style="left:0;top:0;width:240px;height:1080px;background-image:url(shots/${s}_top.jpg)"></div>` +
+      `<div class="crop" style="left:240px;top:0;width:1680px;height:64px;background-image:url(shots/${s}_top.jpg);background-position:-240px 0"></div>` +
+      `<div class="crop" style="left:1850px;top:1008px;width:56px;height:58px;background-image:url(shots/${s}_top.jpg);background-position:-1850px -1008px;border-radius:50%"></div>` +
+      `<div class="crop" style="left:12px;top:1018px;width:158px;height:50px;background-image:url(shots/${s}_top.jpg);background-position:-12px -1018px;border-radius:24px"></div>`;
+  } else d.innerHTML = `<img class="topimg" src="shots/${s}_top.jpg">`;
+  $('views').appendChild(d); V[s] = d;
+});
+$('wmimg').src = 'isotipo.png';
+
+// ---------------- timeline builder
+let T = 0;
+const CAM = [{ t: 0, x: 960, y: 540, z: 1, s: 0 }];
+const ST = [{ t: 0, s: 'base' }];
+const SPOTS = [], LABELS = [], CAPS = [], CURK = [{ t: 0, x: 1500, y: 800 }], CLICKS = [], CARDS = [], CHIPS = [], FORMS = [], CHAP = [], CURVIS = [];
+let curCam = { x: 960, y: 540, z: 1, s: 0 }, curPos = { x: 1500, y: 800 };
+function cam(c, dur = 1.0, at = T) { const n = Object.assign({}, curCam, c); CAM.push({ t: at, ...curCam }); CAM.push({ t: at + dur, ...n }); curCam = n; }
+function state(s, at = T) { ST.push({ t: at, s }); }
+function cursor(x, y, dur = .7, at = T) { CURK.push({ t: at, x: curPos.x, y: curPos.y }); CURK.push({ t: at + dur, x, y }); curPos = { x, y }; }
+function click(at) { CLICKS.push(at); }
+function spot(r, a, b) { SPOTS.push({ r, a, b }); }
+function label(title, text, r, a, b, n) { LABELS.push({ title, text, r, a, b, n }); }
+function caption(text, a, b) { CAPS.push({ text, a, b }); }
+// focus on rect r (page coords): camera zoom so the rect fits nicely
+function focusCam(r, zmax = 2.4, dur = 1.0, pad = 1.9, s = curCam.s) {
+  const z = Math.min(zmax, 1920 / (r[2] * pad), 1080 / (r[3] * pad * 1.25)); cam({ x: r[0] + r[2] / 2, y: r[1] - s + r[3] / 2, z: Math.max(1, z), s }, dur);
+}
+function step(o) { // generic step
+  const a = T, d = o.d;
+  if (o.cam) cam(o.cam, o.camDur || 1.0);
+  if (o.focus) focusCam(o.focus, o.zmax || 2.4, o.camDur || 1.0, o.pad || 1.9);
+  if (o.cur) cursor(o.cur[0], o.cur[1] - curCam.s, o.curDur || .8, a + (o.curAt || .2));
+  if (o.click != null) click(a + o.click);
+  if (o.state) state(o.state, a + (o.stateAt || 0));
+  if (o.spot) spot(o.spot, a + (o.spotAt != null ? o.spotAt : .55), a + d - .1);
+  if (o.title) label(o.title, o.text, o.spot || o.focus, a + (o.spotAt != null ? o.spotAt : .55) + .15, a + d - .1, o.n);
+  if (o.capt) caption(o.capt, a + (o.capAt || .3), a + d - .15);
+  if (o.formula) FORMS.push({ html: o.formula, a: a + .4, b: a + d - .1 });
+  T += d;
+}
+let chapN = 0;
+function chapter(title, sub) { chapN++; CARDS.push({ type: 'chap', n: chapN, title, sub, a: T, b: T + 2.4 }); CHAP.push({ t: T, n: chapN, title }); T += 2.4; }
+
+// ================= SCRIPT =================
+CARDS.push({ type: 'intro', a: 0, b: 7.2 }); T = 7.2;
+
+chapter('Vista general', 'Qué es el Dashboard y cómo se recorre');
+step({ d: 5.5, cam: { x: 960, y: 540, z: 1, s: 0 }, capt: 'Este es tu <b>Dashboard</b>: el resumen de todo tu negocio en una sola pantalla.' });
+step({ d: 4.5, cam: { s: MAXS }, camDur: 3.8, capt: 'Desplázate hacia abajo para ver todas las secciones.' });
+step({ d: 3.0, cam: { s: 0 }, camDur: 2.4, capt: 'Vamos a recorrerlas una por una 👇' });
+
+chapter('Menú lateral', 'Todos tus módulos a un clic');
+step({ d: 5.5, focus: [0, 60, 240, 900], zmax: 1.7, pad: 1.4, spot: [4, 128, 232, 900], title: 'Menú lateral', text: 'Aquí están <b>todos los módulos</b>: Ventas, Clientes, Productos, Compras, Gastos, Caja y más.', cur: [120, 215] });
+step({ d: 4.2, spot: [12, 196, 215, 38], title: 'Entrar a un módulo', text: 'Haz <b>un clic</b> en cualquier opción y entras directo.', cur: [90, 215] });
+step({ d: 5.5, focus: [0, 40, 400, 300], zmax: 2.4, spot: [12, 65, 215, 40], cur: [80, 85], click: 1.1, state: 'search', stateAt: 1.4, title: 'Buscador de módulos', text: 'Escribe parte del nombre (ej. <b>«rut»</b>) y lo encuentras al instante.' });
+step({ d: 5.0, state: 'base', stateAt: .1, focus: [240, 0, 520, 300], zmax: 2.2, spot: [262, 12, 40, 40], cur: [282, 32], click: 1.3, title: 'Ocultar el menú', text: 'Con este botón <b>colapsas el menú</b> y ganas espacio de trabajo.' });
+step({ d: 3.2, state: 'collapsed', stateAt: 0, cam: { x: 960, y: 540, z: 1 }, camDur: 1.2, capt: 'Menú colapsado: solo íconos. Vuelve a tocar ☰ para abrirlo.' });
+step({ d: 1.6, cur: [282, 32], curDur: .5, click: .7, state: 'base', stateAt: .95 });
+
+chapter('Barra superior', 'Fecha, plan, moneda, tema y configuración');
+step({ d: 4.6, focus: [1380, 0, 540, 64], zmax: 2.6, pad: 1.3, spot: [1394, 10, 249, 44], cur: [1520, 32], title: 'Fecha de hoy', text: 'Todo el Dashboard se calcula con la <b>fecha de hoy</b>.', n: 1 });
+step({ d: 4.2, spot: [1648, 12, 107, 40], cur: [1700, 32], title: 'Tu plan', text: 'Muestra el <b>plan activo</b> de tu cuenta.', n: 2 });
+step({ d: 4.4, spot: [1759, 10, 45, 44], cur: [1781, 32], title: 'Moneda', text: 'Cambia la <b>moneda</b> en que ves los números. (Lo vemos al final 😉)', n: 3 });
+step({ d: 4.0, spot: [1808, 10, 44, 44], cur: [1830, 32], click: 1.4, state: 'dark', stateAt: 1.65, title: 'Modo oscuro', text: 'Un clic y cambias a <b>modo oscuro</b>.', n: 4 });
+step({ d: 4.6, cam: { x: 960, y: 540, z: 1 }, camDur: 1.4, capt: 'Más cómodo de noche 🌙 — se recuerda en tu dispositivo.' });
+step({ d: 2.0, cur: [1830, 32], curDur: .6, click: .9, state: 'base', stateAt: 1.15 });
+step({ d: 4.4, focus: [1380, 0, 540, 64], zmax: 2.6, pad: 1.3, spot: [1856, 10, 44, 44], cur: [1878, 32], title: 'Configuración', text: 'Datos del negocio, logo, impuestos y <b>módulos que usas</b>.', n: 5 });
+
+chapter('Tarjetas principales', 'Tus números clave, al día');
+step({ d: 5.2, focus: [280, 96, 1600, 330], zmax: 1.3, pad: 1.05, spot: [272, 177, 1616, 247], title: 'Tus números clave', text: 'Se <b>actualizan solos</b> con cada venta, gasto o pago. Toca una tarjeta para abrir su módulo.' });
+const KPI = [
+  [[280, 185, 255, 110], 'Ventas del día', 'Lo vendido <b>hoy</b> (sin IVA) y cuántas ventas llevas.'],
+  [[549, 185, 255, 110], 'Ventas del mes', 'Total vendido desde el <b>día 1 del mes</b>.'],
+  [[818, 185, 255, 110], 'Ganancia del mes', 'Ganancia <b>neta</b>: ventas − costos − gastos. Debajo ves tu <b>margen</b>.'],
+  [[1087, 185, 255, 110], 'Caja disponible', 'El dinero que tienes <b>ahora</b>, según tus movimientos de caja.'],
+  [[1356, 185, 255, 110], 'Clientes totales', 'Cuántos <b>clientes</b> tienes registrados.'],
+  [[1625, 185, 255, 110], 'Productos en stock', 'Unidades en inventario. En <b style="color:#FBBF24">naranja</b>: productos bajo el mínimo.'],
+  [[280, 309, 255, 107], 'Servicios activos', 'Servicios que ofreces: <b>fletes, entregas, instalaciones…</b>'],
+];
+KPI.forEach(([r, ti, tx], i) => step({ d: 5.0, focus: r, zmax: 2.3, pad: 2.6, spot: [r[0] - 6, r[1] - 6, r[2] + 12, r[3] + 12], cur: [r[0] + r[2] * .7, r[1] + r[3] * .55], state: i === 0 ? 'kpihover' : (i === 1 ? 'base' : undefined), stateAt: i === 0 ? .9 : 0, title: ti, text: tx, n: i + 1 }));
+
+chapter('Análisis de ventas', 'Gráficas y productos estrella');
+step({ d: 5.4, focus: [280, 477, 699, 368], zmax: 2.0, pad: 1.25, spot: [274, 471, 711, 380], cur: [700, 760], title: 'Ventas de los últimos 7 días', text: 'Mira si tus ventas <b>suben o bajan</b> día a día.' });
+step({ d: 4.6, cur: META.pts[6], click: null, state: 'tipline', stateAt: 1.0, spot: [274, 471, 711, 380], spotAt: 0, title: 'Pasa el cursor', text: 'Y ves el <b>monto exacto</b> de cada día.' });
+step({ d: 3.6, cur: META.pts[3], state: 'tipline3', stateAt: .8, spot: [274, 471, 711, 380], spotAt: 0, title: 'Pasa el cursor', text: 'Y ves el <b>monto exacto</b> de cada día.' });
+step({ d: 5.2, state: 'base', stateAt: 0, spot: [840, 494, 122, 35], cur: [900, 511], click: 1.2, title: 'Cambia el período', text: '<b>Últimos 7 días → Este mes → Este año</b>.' });
+step({ d: 4.2, state: 'mes', stateAt: 0, capt: 'Así se ven las ventas de <b>todo el mes</b>.' });
+step({ d: 5.6, state: 'donut', stateAt: 1.0, focus: [993, 477, 437, 368], zmax: 2.0, pad: 1.3, spot: [987, 471, 449, 380], cur: META.donut, title: 'Ventas por categoría', text: 'Cuánto vendes en <b>productos</b> vs. <b>servicios</b> este mes.' });
+step({ d: 5.6, state: 'base', stateAt: .2, focus: [1443, 477, 437, 368], zmax: 2.0, pad: 1.3, spot: [1437, 471, 449, 380], cur: [1650, 600], title: 'Productos más vendidos', text: 'Tu <b>top 5 del mes</b>: unidades y monto vendido.' });
+
+chapter('Acciones rápidas', 'Atajos para lo que más haces');
+step({ d: 5.4, cam: { x: 960, y: 540, z: 1, s: 560 }, camDur: 1.6, capt: 'Bajamos a la segunda parte del Dashboard 👇' });
+step({ d: 5.2, focus: [280, 868, 524, 700], zmax: 1.5, pad: 1.12, spot: [274, 862, 536, 700], cur: [420, 990], title: 'Acciones rápidas', text: 'Crea una <b>venta, cliente o producto</b> sin buscar en el menú.' });
+step({ d: 4.4, spot: [295, 920, 494, 134], cur: [420, 990], title: 'Lo más usado', text: '<b>Nueva venta</b> y <b>Nuevo cliente</b>, siempre a mano.' });
+step({ d: 4.6, spot: [295, 1184, 494, 134], cur: [420, 1250], title: 'Y mucho más', text: '<b>Créditos</b>, Cuentas por pagar, Proformas, <b>Rutas</b>, Impuestos…' });
+
+chapter('Recordatorios y alertas', 'Lo que necesita tu atención hoy');
+const AL = [[[839, 916, 482, 64], 'Bajo stock', 'Productos por debajo del mínimo: <b>es hora de reponer</b>.'],
+  [[839, 979, 482, 64], 'Facturas por cobrar', 'Ventas pendientes de pago y el <b>total pendiente</b>.'],
+  [[839, 1043, 482, 64], 'Garantías y activos', 'Avisos de tus <b>activos fijos</b> (ej. garantía por vencer).'],
+  [[839, 1107, 482, 64], 'Cobros pendientes', 'Dinero que <b>está por recibir</b>.'],
+  [[839, 1171, 482, 64], 'IVA pendiente', 'Impuesto acumulado <b>listo para pagar</b> en Impuestos.'],
+  [[839, 1234, 482, 63], 'Respalda tu información', 'Descarga tus datos cuando quieras.']];
+step({ d: 4.8, focus: [818, 868, 524, 440], zmax: 1.9, pad: 1.15, spot: [812, 862, 536, 446], cur: [1080, 900], title: 'Recordatorios y alertas', text: 'El Dashboard te <b>avisa</b> lo que necesita atención.' });
+AL.forEach(([r, ti, tx], i) => step({ d: 3.8, spot: [r[0] - 4, r[1] - 2, r[2] + 8, r[3] + 4], cur: [r[0] + 300, r[1] + 32], title: ti, text: tx, n: i + 1 }));
+
+chapter('Resumen financiero', 'Tu estado de resultados del mes');
+const FR = [[1377, 916, 482, 41], [1377, 957, 482, 41], [1377, 998, 482, 41], [1377, 1043, 482, 47], [1377, 1091, 482, 41], [1377, 1132, 482, 41], [1377, 1173, 482, 41], [1377, 1214, 482, 40]];
+const fsp = (a, b) => [1368, FR[a][1] - 4, 500, FR[b][1] + FR[b][3] - FR[a][1] + 8];
+step({ d: 5.0, focus: [1356, 868, 524, 400], zmax: 2.0, pad: 1.15, spot: [1350, 862, 536, 404], cur: [1600, 900], title: 'Resumen financiero', text: 'Cómo se forma tu <b>ganancia</b> del mes, línea por línea.' });
+step({ d: 4.6, spot: fsp(0, 0), cur: [1600, 936], title: 'Ingresos brutos', text: 'Todo lo vendido en el mes (<b>sin IVA</b>).', formula: '<span class="b">Ingresos</span>' });
+step({ d: 4.6, spot: fsp(0, 2), cur: [1600, 1018], title: 'Ganancia bruta', text: 'Ingresos menos lo que <b>te costó</b> la mercadería vendida.', formula: '<span class="b">Ingresos</span> − Costo de ventas = <span class="g">Ganancia bruta</span>' });
+step({ d: 4.8, spot: fsp(3, 5), cur: [1600, 1110], title: 'Gastos y otros movimientos', text: '<b>Gastos operativos</b> (salarios, combustible…) y movimientos manuales de caja.', formula: '− <span class="r">Gastos</span> + Otros ingresos − <span class="r">Otros egresos</span>' });
+step({ d: 5.0, spot: fsp(6, 7), cur: [1600, 1194], title: 'Ganancia neta y margen', text: 'Lo que <b>realmente ganaste</b> y qué % de cada venta te queda.', formula: '= <span class="g">Ganancia neta</span> · Margen = neta ÷ ingresos' });
+
+chapter('Reportes', 'Diario, mensual, anual y comparativo');
+step({ d: 5.4, cam: { x: 960, y: 540, z: 1, s: MAXS }, camDur: 1.6, spot: [272, 2040, 1616, 230], spotAt: 1.4, cur: [700, 2220], title: 'Reportes', text: 'Abre el reporte <b>diario, mensual, anual</b> o compara períodos.' });
+step({ d: 4.6, focus: [1571, 2092, 309, 170], zmax: 2.2, pad: 1.8, spot: [1565, 2086, 321, 182], cur: [1726, 2227], title: 'Exportar datos', text: 'Descarga tu información para <b>Excel</b> o como respaldo.' });
+
+chapter('Moneda de visualización', 'Mira tus números en córdobas o dólares');
+step({ d: 3.2, cam: { x: 960, y: 540, z: 1, s: 0 }, camDur: 2.0, capt: 'Volvemos arriba ☝️' });
+step({ d: 4.4, focus: [1380, 0, 540, 64], zmax: 2.6, pad: 1.3, spot: [1759, 10, 45, 44], cur: [1781, 32], click: 1.6, state: 'mon1', stateAt: 1.9, title: 'Botón de moneda', text: 'Toca <b>NIO</b> para cambiar la moneda de visualización.' });
+step({ d: 4.6, cam: { x: 960, y: 590, z: 1.7 }, camDur: 1.0, cur: [960, 577], click: 1.6, state: 'mon2', stateAt: 1.9, spot: [778, 548, 364, 60], title: 'Elige la moneda', text: 'Selecciona <b>Dólares (USD)</b>.' });
+step({ d: 4.4, cur: [960, 612], click: 1.0, state: 'mon3', stateAt: 1.5, spot: [778, 588, 364, 50], title: 'Tu tasa de cambio', text: 'Escribe cuántos <b>córdobas</b> vale 1 dólar (ej. 36.62).' });
+step({ d: 3.8, cur: [1096, 689], click: 1.0, state: 'usd', stateAt: 1.4, spot: [1052, 668, 90, 44], title: 'Aplicar', text: 'Y listo.' });
+step({ d: 5.6, cam: { x: 1080, y: 300, z: 1.25 }, camDur: 1.2, spot: [272, 177, 1616, 247], spotAt: 1.0, title: 'Todo en dólares 💵', text: 'Tus datos <b>no cambian</b>: solo cómo se muestran en este dispositivo.' });
+
+chapter('Ayuda', 'Siempre a un clic');
+step({ d: 4.6, state: 'base', stateAt: 0, focus: [1650, 860, 270, 220], zmax: 2.2, pad: 2.0, spot: [1850, 1010, 54, 54], cur: [1877, 1037], click: 1.8, title: '¿Tienes dudas?', text: 'Toca el botón <b>?</b> en cualquier pantalla.' });
+step({ d: 5.6, state: 'help', stateAt: 0, cam: { x: 960, y: 540, z: 1.5 }, camDur: 1.0, capt: 'Se abre el <b>tutorial guiado</b> del módulo donde estás.' });
+step({ d: 1.2, cam: { x: 960, y: 540, z: 1 }, camDur: 1.0 });
+CARDS.push({ type: 'outro', a: T, b: T + 7 }); T += 7;
+const DUR = T;
+window.DUR = DUR;
+
+// chapter progress markers
+CHAP.forEach(c => { const b = document.createElement('b'); b.style.left = (c.t / DUR * 100) + '%'; $('prog').appendChild(b); });
+
+// export events for audio
+window.EVENTS = { DUR, clicks: CLICKS, chapters: CARDS.map(c => c.a), spots: SPOTS.map(s => s.a), states: ST.map(s => s.t) };
+
+// ---------------- evaluation helpers
+function camAt(t) {
+  let a = CAM[0], b = CAM[0];
+  for (let i = 0; i < CAM.length; i++) { if (CAM[i].t <= t) a = CAM[i]; }
+  const ia = CAM.lastIndexOf(a); b = CAM[ia + 1] || a;
+  if (b === a || b.t === a.t) return a;
+  const k = eio(p(t, a.t, b.t));
+  return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)), s: lerp(a.s, b.s, k) };
+}
+function clampCam(c) {
+  const hw = 960 / c.z, hh = 540 / c.z;
+  return { x: cl(c.x, hw, 1920 - hw), y: cl(c.y, hh, 1080 - hh), z: c.z, s: cl(c.s, 0, MAXS) };
+}
+function curAt(t) {
+  let a = CURK[0]; let ia = 0;
+  for (let i = 0; i < CURK.length; i++) if (CURK[i].t <= t) { a = CURK[i]; ia = i; }
+  const b = CURK[ia + 1] || a; if (b.t === a.t) return { x: b.x, y: b.y };
+  const k = eio(p(t, a.t, b.t)); const arc = Math.sin(Math.PI * k) * Math.min(60, Math.hypot(b.x - a.x, b.y - a.y) * .12);
+  return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc };
+}
+const toScreen = (c, x, y) => ({ x: (x - c.x) * c.z + 960, y: (y - c.y) * c.z + 540 });
+
+window.render = function (t) {
+  const c = clampCam(camAt(t));
+  // states crossfade
+  let cur = ST[0], prev = null;
+  for (let i = 0; i < ST.length; i++) if (ST[i].t <= t) { prev = cur; cur = ST[i]; }
+  const k = ease(p(t, cur.t, cur.t + .35));
+  for (const s in V) { V[s].style.opacity = 0; V[s].style.zIndex = 0; }
+  const setV = (s, o, zi) => {
+    const v = V[s]; v.style.opacity = o; v.style.zIndex = zi;
+    v.style.transform = `translate(${960 - c.x * c.z}px,${540 - c.y * c.z}px) scale(${c.z})`;
+    const f = v.querySelector('.full'); if (f) f.style.top = (-c.s) + 'px';
+  };
+  if (prev && prev.s !== cur.s && k < 1) { setV(prev.s, 1, 1); setV(cur.s, k, 2); } else setV(cur.s, 1, 2);
+  // spotlight
+  let sp = null, so = 0;
+  for (const S of SPOTS) if (t >= S.a && t <= S.b + .3) { const o = Math.min(ease(p(t, S.a, S.a + .35)), 1 - ease(p(t, S.b, S.b + .3))); if (o >= so) { sp = S; so = o; } }
+  if (sp) {
+    const r = sp.r, a = toScreen(c, r[0], r[1] - c.s), b = toScreen(c, r[0] + r[2], r[1] + r[3] - c.s);
+    const pad = 6;
+    [$('spot'), $('ring')].forEach(e => { e.style.left = (a.x - pad) + 'px'; e.style.top = (a.y - pad) + 'px'; e.style.width = (b.x - a.x + 2 * pad) + 'px'; e.style.height = (b.y - a.y + 2 * pad) + 'px'; });
+    $('spot').style.opacity = so; $('ring').style.opacity = so * (.75 + .25 * Math.sin(t * 5));
+  } else { $('spot').style.opacity = 0; $('ring').style.opacity = 0; }
+  // label
+  let lb = null, lo = 0;
+  for (const L of LABELS) if (t >= L.a && t <= L.b + .3) { const o = Math.min(ease(p(t, L.a, L.a + .35)), 1 - ease(p(t, L.b, L.b + .25))); if (o >= lo) { lb = L; lo = o; } }
+  const LE = $('label');
+  if (lb) {
+    if (LE.dataset.k !== lb.title + lb.a) { $('lt').innerHTML = (lb.n ? `<i>${lb.n}</i>` : '') + lb.title; $('lx').innerHTML = lb.text; LE.dataset.k = lb.title + lb.a; }
+    const r = lb.r, a = toScreen(c, r[0], r[1] - c.s), b = toScreen(c, r[0] + r[2], r[1] + r[3] - c.s);
+    const W = 520, Hh = LE.offsetHeight || 160, m = 34;
+    let x, y;
+    if (1920 - b.x > W + m + 20) { x = b.x + m; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (a.x > W + m + 20) { x = a.x - m - W; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (1080 - b.y > Hh + m + 20) { x = (a.x + b.x) / 2 - W / 2; y = b.y + m; }
+    else { x = (a.x + b.x) / 2 - W / 2; y = a.y - m - Hh; }
+    x = cl(x, 30, 1920 - W - 30); y = cl(y, 90, 1080 - Hh - 40);
+    LE.style.left = x + 'px'; LE.style.top = y + 'px'; LE.style.opacity = lo; LE.style.transform = `translateY(${(1 - lo) * 20}px)`;
+  } else LE.style.opacity = 0;
+  // caption
+  let cp = null, co = 0;
+  for (const C of CAPS) if (t >= C.a && t <= C.b + .3) { const o = Math.min(ease(p(t, C.a, C.a + .35)), 1 - ease(p(t, C.b, C.b + .25))); if (o >= co) { cp = C; co = o; } }
+  if (cp) { if ($('cap').dataset.k !== cp.text) { $('cap').innerHTML = cp.text; $('cap').dataset.k = cp.text; } $('cap').style.opacity = co; $('cap').style.transform = `translateX(-50%) translateY(${(1 - co) * 20}px)`; } else $('cap').style.opacity = 0;
+  // formula
+  let fm = null, fo = 0;
+  for (const F of FORMS) if (t >= F.a && t <= F.b + .3) { const o = Math.min(ease(p(t, F.a, F.a + .35)), 1 - ease(p(t, F.b, F.b + .25))); if (o >= fo) { fm = F; fo = o; } }
+  if (fm) { if ($('formula').dataset.k !== fm.html) { $('formula').innerHTML = fm.html; $('formula').dataset.k = fm.html; } $('formula').style.opacity = fo; } else $('formula').style.opacity = 0;
+  // cursor
+  const cu = curAt(t), cs = toScreen(c, cu.x, cu.y);
+  let press = 0, rip = null;
+  for (const ck of CLICKS) { if (t >= ck - .12 && t <= ck + .12) press = 1 - Math.abs(t - ck) / .12; if (t >= ck && t < ck + .55) rip = ck; }
+  const inCard = CARDS.some(C => t >= C.a - .2 && t <= C.b + .2);
+  const CU = $('cursor'); CU.style.opacity = inCard ? 0 : (t < 7.4 ? 0 : 1);
+  CU.style.transform = `translate(${cs.x - 6}px,${cs.y - 3}px) scale(${1 - .18 * press})`;
+  if (rip != null) { const k2 = p(t, rip, rip + .55), R = 14 + 46 * ease(k2); const RP = $('ripple'); RP.style.opacity = (1 - k2); RP.style.left = (cs.x - R) + 'px'; RP.style.top = (cs.y - R) + 'px'; RP.style.width = RP.style.height = 2 * R + 'px'; } else $('ripple').style.opacity = 0;
+  // chip + watermark + progress
+  let ch = null; for (const C of CHAP) if (C.t <= t) ch = C;
+  const showUI = !inCard && t > 7.2;
+  if (ch) $('chip').innerHTML = `<img src="isotipo.png" style="width:26px"><span>${String(ch.n).padStart(2, '0')}</span>${ch.title}`;
+  $('chip').style.opacity = showUI && ch ? 1 : 0; $('wm').style.opacity = 0; $('prog').style.opacity = t > 7.2 && t < DUR - 7 ? 1 : 0;
+  $('progi').style.width = (t / DUR * 100) + '%';
+  // cards
+  let cd = null; for (const C of CARDS) if (t >= C.a && t <= C.b) cd = C;
+  const CE = $('card');
+  if (cd) {
+    const o = Math.min(ease(p(t, cd.a, cd.a + .4)), 1 - ease(p(t, cd.b - .4, cd.b)));
+    if (CE.dataset.k !== String(cd.a)) {
+      CE.dataset.k = String(cd.a);
+      if (cd.type === 'chap') CE.innerHTML = `<div class="num">${String(cd.n).padStart(2, '0')}</div><div class="ti">${cd.title}</div><div class="su">${cd.sub}</div>`;
+      else if (cd.type === 'intro') CE.innerHTML = `<img src="isotipo.png"><div class="su" style="margin:0;font-size:32px;letter-spacing:6px;font-weight:700;color:#7FB2FF">TUTORIAL · NEGOCIO360</div><div class="ti" style="font-size:120px;margin-top:16px">Cómo usar tu Dashboard</div><div class="list">${CHAP.map(c => `<div><span>${String(c.n).padStart(2, '0')}</span>${c.title}</div>`).join('')}</div>`;
+      else CE.innerHTML = `<img src="isotipo.png"><div class="ti" style="font-size:100px">¡Listo! Ya dominas tu Dashboard</div><div class="su">Próximo tutorial: <b style="color:#fff">Ventas</b></div><div class="su" style="margin-top:50px;color:#7FB2FF;font-weight:700">negocio360oficial.com</div>`;
+    }
+    CE.style.opacity = o;
+    const inner = CE.children; for (let i = 0; i < inner.length; i++) { const kk = ease(p(t, cd.a + .15 + i * .12, cd.a + .65 + i * .12)); inner[i].style.opacity = kk; inner[i].style.transform = `translateY(${(1 - kk) * 30}px)`; }
+    $('views').style.filter = `blur(${8 * o}px)`;
+  } else { CE.style.opacity = 0; $('views').style.filter = 'none'; }
+};
+render(0);
+</script></body></html>

@@ -1,0 +1,21 @@
+const { chromium } = require('/opt/node-tools/node_modules/playwright');
+const { openDash } = require('./open.js');
+const W = ms => new Promise(r => setTimeout(r, ms));
+(async () => {
+  const b = await chromium.launch();
+  const pg = await openDash(b, { file: 'ventas.html', clean: true, wait: 6000 });
+  await pg.evaluate(() => abrirNuevaVenta()); await W(1200); await pg.evaluate(() => pasoSiguiente()); await W(1200);
+  await pg.evaluate(() => { agregarAlCarrito(2, 'producto'); agregarAlCarrito(1, 'producto'); agregarAlCarrito(9, 'producto'); }); await W(900);
+  await pg.evaluate(() => cambiarCantidad(2, 0.25)); await W(500);
+  await pg.evaluate(() => agregarAlCarrito(5, 'producto')); await W(800); await pg.evaluate(() => { try { confirmarSeleccionEscala(); } catch (e) {} }); await W(600);
+  await pg.evaluate(() => goToPaso(3)); await W(600); await pg.evaluate(() => agregarAlCarrito(200, 'servicio')); await W(600);
+  await pg.evaluate(() => goToPaso(4)); await W(800); await pg.evaluate(() => { try { if (!S.ivaActivo) toggleIva(); } catch (e) {} }); await W(600);
+  await pg.evaluate(() => goToPaso(5)); await W(1000); await pg.evaluate(() => seleccionarPagoSeparado()); await W(1000);
+  const set = (i, v) => pg.evaluate(([i, v]) => { const ins = [...document.querySelectorAll('#pago-separado-wrap input')].filter(e => e.offsetParent); ins[i].value = v; ins[i].dispatchEvent(new Event('input', { bubbles: true })); }, [i, v]);
+  await set(0, '1000'); await set(2, '1'); await W(500);
+  const tot = await pg.evaluate(() => { const m = document.getElementById('pago-separado-wrap').innerText.match(/de NIO ([\d,\.]+)/); return m ? parseFloat(m[1].replace(/,/g, '')) : null; });
+  console.log('total', tot); await set(2, (tot - 1000).toFixed(2)); await W(700);
+  console.log(await pg.evaluate(() => document.getElementById('pago-separado-wrap').innerText.split('\n').filter(Boolean).slice(-2).join(' | ')));
+  await pg.screenshot({ path: __dirname + '/vshots/m5split_top.jpg', type: 'jpeg', quality: 93 });
+  await b.close();
+})();

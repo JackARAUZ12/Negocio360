@@ -1,0 +1,294 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#0A0E1A;font-family:'Inter Display','Inter',sans-serif}
+#stage{position:absolute;inset:0;overflow:hidden;background:#F4F6FA}
+#views{position:absolute;inset:0;z-index:0}
+#spot,#ring,#label,#cap,#formula,#ripple,#cursor,#chip,#wm,#prog{z-index:5}
+#card{z-index:8}
+#cursor{z-index:9}
+.view{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden}
+.view .full{position:absolute;left:0;width:1920px}
+.view .topimg{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.crop{position:absolute;background-size:1920px 1080px;background-repeat:no-repeat}
+#spot{position:absolute;border-radius:16px;box-shadow:0 0 0 4000px rgba(8,12,28,.55);pointer-events:none;opacity:0}
+#ring{position:absolute;border-radius:18px;border:4px solid #4C8DFF;box-shadow:0 0 0 6px rgba(76,141,255,.25),0 0 40px rgba(76,141,255,.6);opacity:0}
+#label{position:absolute;width:520px;padding:26px 30px;border-radius:22px;background:rgba(14,19,34,.96);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);border:2px solid rgba(76,141,255,.45);opacity:0}
+#label .lt{font-size:34px;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:14px}
+#label .lt i{font-style:normal;font-size:20px;font-weight:800;background:#4C8DFF;color:#fff;border-radius:10px;padding:4px 10px;letter-spacing:0}
+#label .lx{font-size:25px;line-height:1.4;color:#C7CEDD;margin-top:10px;font-weight:500}
+#label .lx b{color:#fff}
+#cap{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);max-width:1400px;padding:22px 38px;border-radius:20px;background:rgba(14,19,34,.94);color:#fff;font-size:34px;font-weight:600;text-align:center;line-height:1.35;box-shadow:0 20px 50px rgba(0,0,0,.4);opacity:0}
+#cap b{color:#7FB2FF}
+#cursor{position:absolute;left:0;top:0;width:40px;height:40px;pointer-events:none;filter:drop-shadow(0 4px 6px rgba(0,0,0,.35));opacity:0}
+#ripple{position:absolute;border-radius:50%;border:4px solid #4C8DFF;opacity:0}
+#chip{position:absolute;left:30px;bottom:30px;padding:12px 22px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-size:24px;font-weight:700;display:flex;gap:12px;align-items:center;opacity:0;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#chip span{color:#7FB2FF}
+#wm{position:absolute;right:30px;top:24px;display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-weight:800;font-size:24px;opacity:0}
+#wm img{width:32px}
+#prog{position:absolute;left:0;right:0;bottom:0;height:10px;background:rgba(14,19,34,.6);opacity:0}
+#prog i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,#4C8DFF,#22E39A)}
+#prog b{position:absolute;top:0;bottom:0;width:3px;background:rgba(255,255,255,.7)}
+#card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(1200px 800px at 30% 20%,rgba(76,141,255,.35),transparent 60%),radial-gradient(900px 700px at 80% 90%,rgba(34,227,154,.18),transparent 60%),rgba(8,11,22,.86);color:#fff;opacity:0}
+#banner{position:absolute;left:40px;top:40px;display:flex;align-items:center;gap:18px;padding:16px 28px 16px 18px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.35);opacity:0;z-index:7}
+#banner .bn{font-size:30px;font-weight:900;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#banner .bt{font-size:30px;font-weight:800}
+#card .num{font-size:180px;font-weight:900;letter-spacing:-8px;line-height:1;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#card .ti{font-size:88px;font-weight:900;letter-spacing:-3px;margin-top:20px}
+#card .su{font-size:36px;color:#AAB4C8;margin-top:18px;font-weight:500}
+#card .list{margin-top:50px;display:grid;grid-template-columns:repeat(3,auto);gap:14px 44px;font-size:28px;color:#C7CEDD;font-weight:600}
+#card .list span{color:#4C8DFF;font-weight:800;margin-right:10px}
+#card img{width:150px;margin-bottom:30px}
+#formula{position:absolute;left:50%;top:36px;transform:translateX(-50%);padding:20px 34px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;font-size:32px;font-weight:700;opacity:0;white-space:nowrap;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+#formula .g{color:#22E39A}#formula .r{color:#FF6B6B}#formula .b{color:#7FB2FF}
+</style></head>
+<body>
+<div id="stage">
+  <div id="views"></div>
+  <div id="spot"></div><div id="ring"></div>
+  <div id="label"><div class="lt" id="lt"></div><div class="lx" id="lx"></div></div>
+  <div id="cap"></div>
+  <div id="formula"></div>
+  <div id="ripple"></div>
+  <svg id="cursor" viewBox="0 0 40 40"><path d="M6 3 L6 31 L13.5 24 L18.5 35.5 L23.5 33.3 L18.5 22 L28.5 22 Z" fill="#fff" stroke="#111" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  <div id="chip"></div>
+  <div id="wm"><img src="../../../../../../../home/user/Negocio360/negocio360-isotipo.png" id="wmimg">Negocio360</div>
+  <div id="prog"><i id="progi"></i></div>
+  <div id="banner"><img src="isotipo.png" style="width:34px"><span class="bn" id="bn"></span><span class="bt" id="bt"></span></div>
+  <div id="card"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 241.24;
+
+
+const STATES = ['base','tabServ','tabMP','search','fstock','orden','np0','npBasic','npCost','npEscala','npPres','npInv','npInv2','ns','ns2','det','edit','mov','mov2','combos','combo1','promos','promo1','promo2','plantilla','importar','exportar','mover','config','config2','vencer','vencer90'];
+const V = {};
+STATES.forEach(s => { const d = document.createElement('div'); d.className = 'view'; d.style.opacity = 0; d.innerHTML = `<img class="topimg" src="pshots/${s}_top.jpg">`; $('views').appendChild(d); V[s] = d; });
+const CAM = [{ t: 0, x: 960, y: 540, z: 1 }];
+let curCam = { x: 960, y: 540, z: 1 };
+const ST = [{ t: 0, s: 'base' }], SPOTS = [], LABELS = [], CAPS = [], CLICKS = [], CHAP = [], CARDS = [];
+const CURK = [{ t: 0, x: 1500, y: 800 }]; let curPos = { x: 1500, y: 800 };
+function cam(t, c, dur = 1.0) { const n = Object.assign({}, curCam, c); CAM.push({ t, ...curCam }); CAM.push({ t: t + dur, ...n }); curCam = n; }
+function focus(t, r, zmax = 2, pad = 1.25, dur = 1.0) { const z = Math.max(1, Math.min(zmax, 1920 / (r[2] * pad), 1080 / (r[3] * pad))); cam(t, { x: r[0] + r[2] / 2, y: r[1] + r[3] / 2, z }, dur); }
+function st(t, s) { ST.push({ t, s }); }
+function cur(t, x, y, dur = .7) { CURK.push({ t, x: curPos.x, y: curPos.y }); CURK.push({ t: t + dur, x, y }); curPos = { x, y }; }
+function curTo(t, r, dur = .7) { cur(t, r[0] + r[2] * .55, r[1] + r[3] * .55, dur); }
+function click(t) { CLICKS.push(t); }
+function spot(a, b, r) { SPOTS.push({ a, b, r }); }
+function label(a, b, r, title, text = '', n) { LABELS.push({ a, b, r, title, text, n }); }
+function sl(a, b, r, title, text, n) { if (r[0] >= 600 && r[0] + r[2] <= 1330 && r[3] < 380) focus(a - .35, [600, r[1] + r[3] / 2 - 250, 720, 500], 1.75, 1.0, .55); spot(a, b, r); label(a + .12, b, r, title, text, n); }
+function cap(a, b, text) { CAPS.push({ a, b, text }); }
+function chap(t, n, title) { CHAP.push({ t, n, title }); }
+const g = (r, p = 6) => [r[0] - p, r[1] - p, r[2] + 2 * p, r[3] + 2 * p];
+const R = {
+  stats: [296, 165, 1588, 149], sc: [[300, 169, 380, 141], [700, 169, 380, 141], [1100, 169, 380, 141], [1500, 169, 380, 141]],
+  tabs: [[302, 334, 186, 56], [500, 336, 173, 56], [685, 336, 204, 56]], tabsAll: [296, 328, 600, 68],
+  topArea: [300, 160, 1580, 420], search: [321, 433, 562, 36], scan: [895, 433, 562, 36], filtros: [1470, 435, 389, 32],
+  fAct: [1543, 435, 92, 32], fInact: [1640, 435, 102, 32], fStock: [1747, 435, 112, 32], orden: [1154, 481, 190, 36], table: [300, 592, 1580, 488],
+  hdr: [900, 80, 990, 70], bNuevo: [1727, 96, 153, 37], bNS: [1723, 96, 157, 37],
+  modal: [620, 54, 680, 972],
+  nombre: [645, 278, 630, 36], desc: [645, 355, 630, 80], cat: [645, 470, 308, 36], sku: [967, 470, 308, 36], marca: [645, 541, 308, 36], cb: [645, 612, 630, 36], bScan: [1034, 612, 110, 36], bCel: [1151, 612, 124, 36],
+  costoPrecio: [645, 120, 630, 62], margen: [645, 568, 630, 36], unidad: [645, 194, 630, 70], frac: [652, 300, 300, 34], contenido: [645, 425, 630, 125],
+  tipo: [645, 140, 630, 42], escalas: [645, 195, 630, 246], pres: [645, 144, 630, 355], presBody: [652, 296, 616, 146],
+  stock: [645, 228, 308, 62], lote: [645, 301, 630, 158], minmax: [645, 470, 630, 62], gar: [645, 562, 308, 62], serie: [645, 657, 630, 46], mp: [645, 705, 630, 40],
+  nsTog: [645, 166, 630, 34], nsNombre: [645, 278, 630, 36], nsPrecioCosto: [645, 700, 630, 62],
+  rowIcons: [1645, 640, 180, 42], iEye: [1653, 646, 30, 30], iMov: [1789, 646, 30, 30], det: [620, 197, 680, 687], bEdit: [1181, 831, 94, 36],
+  mov: [620, 234, 680, 612], razones: [[645, 425, 205, 68], [858, 425, 205, 68], [1070, 425, 205, 68], [645, 501, 205, 68], [858, 501, 205, 68], [1070, 501, 205, 68]], razAll: [640, 420, 640, 154],
+  movCant: [645, 578, 630, 62], movCaja: [645, 692, 630, 81],
+  combos: [300, 260, 1580, 391], combo1: [620, 150, 680, 900], comboItems: [645, 504, 630, 168], comboCosto: [645, 682, 630, 36],
+  promos: [300, 747, 1580, 301], promo1: [680, 309, 560, 462], tipos: [[705, 425, 510, 58], [705, 491, 510, 58], [705, 557, 510, 58], [705, 623, 510, 58]], fechas: [705, 722, 510, 130],
+  plant: [1175, 0, 260, 185], importar: [620, 314, 680, 453], exportar: [750, 415, 420, 250], mover: [750, 334, 420, 413],
+  config: [680, 54, 560, 972], cfgOpts: [700, 120, 520, 300], cfgCols: [705, 440, 510, 522],
+  vencer: [620, 385, 680, 311], vBtns: [640, 523, 330, 40], vList: [645, 516, 630, 214], v90box: [620, 340, 680, 420],
+};
+CARDS.push({ type: 'intro', a: 0, b: 6.4 });
+cap(6.7, 13.9, 'Catálogo · Precios y costos · Inventario · Combos y promociones');
+
+chap(14.43, 1, 'La pantalla de Productos');
+focus(14.4, R.stats, 1.2, 1.05);
+sl(14.6, 16.6, R.stats, 'Resumen de tu catálogo', '');
+curTo(16.8, R.sc[0], .5); sl(16.9, 18.0, g(R.sc[0], 4), 'Productos activos', '', 1);
+curTo(17.9, R.sc[1], .4); sl(18.0, 19.2, g(R.sc[1], 4), 'Servicios activos', '', 2);
+curTo(19.2, R.sc[2], .4); sl(19.4, 20.8, g(R.sc[2], 4), 'Valor del inventario', 'Stock × costo.', 3);
+curTo(20.8, R.sc[3], .4); sl(21.0, 23.4, g(R.sc[3], 4), 'Stock bajo', 'Productos que requieren atención.', 4);
+focus(23.6, [296, 320, 900, 90], 2.0, 1.15);
+sl(24.0, 26.6, R.tabsAll, 'Tu catálogo en pestañas', '');
+curTo(26.3, R.tabs[0], .4); sl(26.8, 27.5, g(R.tabs[0], 3), 'Productos', '', 1);
+curTo(27.1, R.tabs[1], .4); click(27.5); st(27.7, 'tabServ'); sl(27.6, 28.35, g(R.tabs[1], 3), 'Servicios', '', 2);
+curTo(28.0, R.tabs[2], .35); click(28.4); st(28.6, 'tabMP'); sl(28.45, 29.6, g(R.tabs[2], 3), 'Materia prima', '', 3);
+
+chap(29.79, 2, 'Buscar y filtrar');
+curTo(29.5, R.tabs[0], .3); click(29.85); st(30.0, 'base'); focus(30.0, [300, 410, 1580, 170], 1.2, 1.04);
+curTo(30.4, R.search); click(31.0); st(31.4, 'search');
+sl(30.6, 34.7, g(R.search), 'Buscador', 'Por nombre, código (SKU) o categoría.');
+st(34.8, 'base'); curTo(34.9, R.scan); sl(35.0, 37.2, g(R.scan), 'Escaneá el código de barras', '');
+sl(37.7, 38.5, g(R.filtros), 'Filtros', '');
+curTo(38.3, R.fAct, .3); sl(38.6, 40.4, g(R.fAct, 4), 'Activos', '', 1);
+curTo(40.3, R.fInact, .3); sl(40.6, 41.5, g(R.fInact, 4), 'Inactivos', '', 2);
+curTo(41.3, R.fStock, .3); click(41.7); st(41.95, 'fstock'); sl(41.65, 43.2, g(R.fStock, 4), 'Stock bajo', '', 3);
+st(43.4, 'base'); curTo(43.4, R.orden); click(44.0); st(44.3, 'orden');
+sl(43.5, 47.2, g(R.orden), 'Ordená la lista', 'Por nombre, precio o fecha.');
+
+chap(47.58, 3, 'Nuevo producto');
+st(47.6, 'base'); focus(47.6, R.hdr, 1.8, 1.15); curTo(47.9, R.bNuevo);
+sl(48.1, 50.5, g(R.bNuevo), 'Nuevo Producto', '');
+click(49.9); st(50.2, 'np0'); focus(50.2, R.modal, 1.12, 1.0);
+st(51.0, 'npBasic');
+sl(51.0, 53.1, [640, 250, 640, 400], 'Información básica', '');
+[[53.28, 'nombre', 'Nombre'], [54.12, 'desc', 'Descripción'], [55.29, 'cat', 'Categoría'], [56.39, 'sku', 'Código interno (SKU)'], [58.96, 'marca', 'Marca o proveedor']].forEach(([a, k, n], i, arr) => { const b = i < arr.length - 1 ? arr[i + 1][0] - .05 : 60.6; curTo(a - .3, R[k], .3); sl(a, b, g(R[k], 5), n, '', i + 1); });
+focus(60.6, [640, 560, 640, 120], 1.8, 1.2);
+curTo(60.8, R.cb, .4); sl(60.8, 62.6, g(R.cb, 5), 'Código de barras', '');
+curTo(62.6, R.bScan, .3); sl(62.75, 64.1, g(R.bScan, 5), 'Con tu lector', '', 1);
+curTo(64.0, R.bCel, .3); sl(64.25, 66.3, g(R.bCel, 5), 'O con la cámara del celular', '', 2);
+
+chap(66.6, 4, 'Costos y precios');
+st(66.6, 'npCost'); focus(66.6, R.modal, 1.12, 1.0);
+sl(66.8, 69.4, g(R.costoPrecio, 5), 'Costo y precio de venta', '');
+curTo(69.4, R.margen); sl(69.7, 74.9, g(R.margen, 5), 'Margen automático', 'Sabés cuánto ganás en cada producto.');
+curTo(75.0, R.unidad); sl(75.2, 80.6, g(R.unidad, 5), '¿Cómo se vende?', 'Por unidad, peso, volumen o longitud.');
+curTo(80.7, R.frac); click(81.6); sl(80.9, 84.5, g(R.frac, 5), 'Cantidades fraccionadas', '');
+curTo(84.6, R.contenido); sl(84.8, 92.6, g(R.contenido, 5), 'Vender por partes', 'Ej.: 1 rollo = 300 m → cobrás solo los metros que pide el cliente.');
+
+chap(92.91, 5, 'Escala de precios y presentaciones');
+st(93.2, 'npEscala');
+curTo(93.0, [961, 140, 314, 42]); click(97.4); sl(93.1, 98.6, g(R.tipo, 5), 'Escala de precios', 'Para precios como detalle y mayorista.');
+sl(98.9, 104.6, g(R.escalas, 5), 'Hasta 5 precios', 'Al vender, el sistema te pregunta cuál usar.');
+st(104.85, 'npPres'); sl(105.0, 108.3, g(R.pres, 5), 'Presentaciones de venta', '');
+sl(108.5, 115.8, g(R.presBody, 5), 'Tableta · Blíster · Caja', 'Cada una descuenta del inventario la cantidad correcta (1 · 10 · 100).');
+
+chap(116.14, 6, 'Inventario');
+st(116.2, 'npInv');
+curTo(116.4, R.stock); sl(116.4, 119.0, g(R.stock, 5), 'Stock inicial', '');
+curTo(119.1, R.lote); sl(119.3, 123.4, g(R.lote, 5), 'Lote y vencimiento', 'Si el producto vence, registrás su lote.');
+curTo(123.6, R.minmax); sl(123.8, 130.3, g(R.minmax, 5), 'Stock mínimo', 'Cuando llegue a ese nivel, el sistema te avisa.');
+st(130.65, 'npInv2');
+curTo(131.0, R.gar); sl(131.4, 133.3, g(R.gar, 5), 'Garantía', '', 1);
+curTo(133.2, R.serie); sl(133.45, 135.3, g(R.serie, 5), 'Número de serie', '', 2);
+curTo(135.2, R.mp); sl(135.4, 139.5, g(R.mp, 5), 'Materia prima', 'Para lo que usás al fabricar otros productos.', 3);
+
+chap(139.87, 7, 'Servicios');
+st(139.9, 'tabServ'); focus(139.9, R.hdr, 1.8, 1.15); curTo(140.2, R.bNS);
+sl(140.4, 142.2, g(R.bNS), 'Nuevo Servicio', ''); click(141.7); st(142.0, 'ns'); focus(142.0, R.modal, 1.12, 1.0);
+curTo(143.0, R.nsNombre); sl(143.35, 144.4, g(R.nsNombre, 5), 'Nombre', '', 1);
+curTo(144.2, R.nsPrecioCosto, .3); sl(144.5, 146.0, g(R.nsPrecioCosto, 5), 'Precio y costo', '', 2);
+st(146.0, 'tabServ'); cam(146.0, { x: 960, y: 540, z: 1 }, 1.0);
+cap(146.4, 151.9, 'Sin inventario · Ideales para <b>entregas, instalaciones, reparaciones</b> y mano de obra');
+
+chap(152.34, 8, 'Editar y ajustar stock');
+st(152.35, 'base'); focus(152.35, [1300, 560, 580, 160], 2.0, 1.15);
+curTo(152.6, R.iEye); sl(152.8, 153.9, g(R.rowIcons, 4), 'Acciones del producto', '');
+click(153.9); st(154.1, 'det'); focus(154.1, R.det, 1.4, 1.05);
+curTo(154.6, R.bEdit, .5); sl(155.0, 156.2, g(R.bEdit, 5), 'Editar', ''); click(155.55); st(155.8, 'edit'); focus(155.8, R.modal, 1.12, 1.0);
+st(156.4, 'base'); focus(156.4, [1300, 560, 580, 160], 2.0, 1.15); curTo(156.6, R.iMov, .5);
+sl(156.8, 158.9, g(R.iMov, 4), 'Movimiento especial', 'Para descontar stock por una causa justificada.');
+click(158.7); st(158.95, 'mov'); focus(158.95, R.mov, 1.55, 1.08);
+sl(159.3, 163.6, R.razAll, 'Robo · Daño · Vencimiento · Conteo físico…', '');
+[[159.6, 0], [160.6, 1], [161.6, 2], [162.8, 4]].forEach(([a, i]) => curTo(a - .2, R.razones[i], .25));
+click(163.7); st(164.0, 'mov2');
+sl(164.1, 167.4, g(R.movCant, 5), 'Queda registrado el motivo', 'Cantidad y nota.');
+sl(167.6, 171.4, g(R.movCaja, 5), 'Gasto automático', 'El costo se registra solo en Gastos.');
+
+chap(171.72, 9, 'Combos');
+st(171.75, 'combos'); focus(171.75, R.combos, 1.15, 1.04);
+sl(172.0, 174.4, R.combos, 'Combos', 'Varios productos bajo un mismo nombre, código y precio.');
+click(174.2); st(174.5, 'combo1'); focus(174.5, R.combo1, 1.2, 1.03);
+sl(174.8, 180.7, g(R.comboItems, 5), 'Productos del combo', 'Al venderlo, se descuenta el stock de cada uno.');
+
+chap(180.99, 10, 'Promociones');
+st(181.0, 'promos'); focus(181.0, R.promos, 1.15, 1.04);
+sl(181.1, 182.3, R.promos, 'Promociones', '');
+click(181.9); st(182.15, 'promo1'); focus(182.15, R.promo1, 1.7, 1.1);
+curTo(182.3, R.tipos[0]); sl(182.4, 185.2, g(R.tipos[0], 4), '2x1 · 3x2', '', 1);
+curTo(185.0, R.tipos[2], .3); sl(185.3, 187.8, g(R.tipos[2], 4), 'Producto de regalo', '', 2);
+curTo(187.6, R.tipos[3], .3); sl(187.9, 189.7, g(R.tipos[3], 4), 'Descuento por cantidad', '', 3);
+st(189.85, 'promo2'); focus(189.85, [690, 260, 540, 620], 1.5, 1.05);
+sl(190.0, 192.0, g(R.fechas, 5), 'Fecha de inicio y fin', '');
+st(192.1, 'promos'); focus(192.1, R.promos, 1.15, 1.04);
+cap(192.3, 195.7, 'Se aplican <b>solas en Ventas</b> cuando el cliente cumple la condición ✨');
+
+chap(196.0, 11, 'Importar, exportar y mover');
+st(196.05, 'base'); focus(196.05, R.hdr, 1.8, 1.15);
+cap(196.3, 197.8, 'Si ya tenés tu inventario en Excel…');
+st(197.9, 'plantilla'); focus(197.9, [900, 0, 900, 260], 1.8, 1.1); sl(198.0, 200.0, g(R.plant, 5), 'Descargá la plantilla', 'Precio fijo o escala de precios.');
+st(200.1, 'importar'); focus(200.1, R.importar, 1.6, 1.1); sl(200.3, 204.0, R.importar, 'Importar Excel', 'Todos tus productos de una sola vez.');
+st(204.28, 'exportar'); focus(204.28, R.exportar, 2.0, 1.3); sl(204.4, 207.8, R.exportar, 'Exportar inventario', 'En PDF o en Excel.');
+st(208.06, 'mover'); focus(208.06, R.mover, 1.8, 1.2); sl(208.2, 213.3, R.mover, 'Mover productos', 'Enviá stock entre sucursales y bodegas.');
+
+chap(213.59, 12, 'Configuración y vencimientos');
+st(213.6, 'config'); focus(213.6, R.config, 1.12, 1.0);
+sl(213.8, 215.3, R.cfgOpts, 'Configuración de inventario', '');
+click(215.6); st(215.85, 'config2'); sl(215.4, 217.4, R.cfgOpts, 'Inventario con fotos', '', 1);
+sl(217.55, 219.8, R.cfgCols, 'Columnas de la tabla', 'Elegí cuáles ver y en qué orden.', 2);
+st(219.96, 'vencer'); focus(219.96, R.v90box, 1.6, 1.08);
+sl(220.1, 221.6, R.vencer, 'Lotes y vencimientos', '');
+sl(221.7, 224.5, R.vBtns, '30 · 60 · 90 días', '');
+click(224.3); st(224.55, 'vencer90');
+sl(224.7, 227.7, g(R.vList, 5), 'Vendelos a tiempo', 'Los que vencen primero, arriba.');
+CARDS.push({ type: 'outro', a: 227.9, b: DUR });
+window.EVENTS = { DUR, clicks: CLICKS, chapters: CHAP.map(c => c.t), spots: SPOTS.map(s => s.a), states: ST.map(s => s.t), cards: CARDS.map(c => c.a) };
+CHAP.forEach(c => { const b = document.createElement('b'); b.style.left = (c.t / DUR * 100) + '%'; $('prog').appendChild(b); });
+
+// ---------------- engine
+CAM.sort((a, b) => a.t - b.t);
+function camAt(t) { let a = CAM[0], ia = 0; for (let i = 0; i < CAM.length; i++) if (CAM[i].t <= t) { a = CAM[i]; ia = i; } const b = CAM[ia + 1] || a; if (b.t === a.t) return b; const k = eio(p(t, a.t, b.t)); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)) }; }
+function clampCam(c) { const hw = 960 / c.z, hh = 540 / c.z; return { x: cl(c.x, hw, 1920 - hw), y: cl(c.y, hh, 1080 - hh), z: c.z }; }
+function curAt(t) { let a = CURK[0], ia = 0; for (let i = 0; i < CURK.length; i++) if (CURK[i].t <= t) { a = CURK[i]; ia = i; } const b = CURK[ia + 1] || a; if (b.t === a.t) return { x: b.x, y: b.y }; const k = eio(p(t, a.t, b.t)); const arc = Math.sin(Math.PI * k) * Math.min(50, Math.hypot(b.x - a.x, b.y - a.y) * .1); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc }; }
+const toS = (c, x, y) => ({ x: (x - c.x) * c.z + 960, y: (y - c.y) * c.z + 540 });
+function pick(list, t, fi = .3, fo = .25) { let best = null, bo = 0; for (const L of list) if (t >= L.a && t <= L.b + fo) { const o = Math.min(ease(p(t, L.a, L.a + fi)), 1 - ease(p(t, L.b, L.b + fo))); if (o >= bo) { best = L; bo = o; } } return [best, bo]; }
+
+window.render = function (t) {
+  const c = clampCam(camAt(t));
+  let curS = ST[0], prev = null; for (const s of ST) if (s.t <= t) { prev = curS; curS = s; }
+  const k = ease(p(t, curS.t, curS.t + .3));
+  for (const s in V) { V[s].style.opacity = 0; V[s].style.zIndex = 0; }
+  const setV = (s, o, z) => { const v = V[s]; v.style.opacity = o; v.style.zIndex = z; v.style.transform = `translate(${960 - c.x * c.z}px,${540 - c.y * c.z}px) scale(${c.z})`; };
+  if (prev && prev.s !== curS.s && k < 1) { setV(prev.s, 1, 1); setV(curS.s, k, 2); } else setV(curS.s, 1, 2);
+  // spotlight
+  const [sp, so] = pick(SPOTS, t, .3, .25);
+  if (sp) { const a = toS(c, sp.r[0], sp.r[1]), b = toS(c, sp.r[0] + sp.r[2], sp.r[1] + sp.r[3]); const pad = 6;
+    [$('spot'), $('ring')].forEach(e => { e.style.left = (a.x - pad) + 'px'; e.style.top = (a.y - pad) + 'px'; e.style.width = (b.x - a.x + 2 * pad) + 'px'; e.style.height = (b.y - a.y + 2 * pad) + 'px'; });
+    $('spot').style.opacity = so * .9; $('ring').style.opacity = so * (.75 + .25 * Math.sin(t * 5)); } else { $('spot').style.opacity = 0; $('ring').style.opacity = 0; }
+  // label
+  const [lb, lo] = pick(LABELS, t, .3, .2); const LE = $('label');
+  if (lb) { const key = lb.title + lb.a; if (LE.dataset.k !== key) { $('lt').innerHTML = (lb.n ? `<i>${lb.n}</i>` : '') + lb.title; $('lx').innerHTML = lb.text; $('lx').style.display = lb.text ? '' : 'none'; LE.dataset.k = key; }
+    const a = toS(c, lb.r[0], lb.r[1]), b = toS(c, lb.r[0] + lb.r[2], lb.r[1] + lb.r[3]); const Wd = LE.offsetWidth || 520, Hh = LE.offsetHeight || 140, m = 30; let x, y;
+    if (1920 - b.x > Wd + m + 30) { x = b.x + m; y = (a.y + b.y) / 2 - Hh / 2; } else if (a.x > Wd + m + 30) { x = a.x - m - Wd; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (1080 - b.y > Hh + m + 60) { x = (a.x + b.x) / 2 - Wd / 2; y = b.y + m; } else { x = (a.x + b.x) / 2 - Wd / 2; y = a.y - m - Hh; }
+    x = cl(x, 30, 1920 - Wd - 30); y = cl(y, 110, 1080 - Hh - 50);
+    LE.style.left = x + 'px'; LE.style.top = y + 'px'; LE.style.opacity = lo; LE.style.transform = `translateY(${(1 - lo) * 18}px)`; } else LE.style.opacity = 0;
+  // caption
+  const [cp, co] = pick(CAPS, t, .35, .3);
+  if (cp) { if ($('cap').dataset.k !== cp.text) { $('cap').innerHTML = cp.text; $('cap').dataset.k = cp.text; } $('cap').style.opacity = co; $('cap').style.transform = `translateX(-50%) translateY(${(1 - co) * 20}px)`; } else $('cap').style.opacity = 0;
+  $('formula').style.opacity = 0;
+  // cursor
+  const cu = curAt(t), cs = toS(c, cu.x, cu.y); let press = 0, rip = null;
+  for (const ck of CLICKS) { if (t >= ck - .12 && t <= ck + .12) press = 1 - Math.abs(t - ck) / .12; if (t >= ck && t < ck + .55) rip = ck; }
+  const inCard = CARDS.some(C => t >= C.a - .2 && t <= C.b + .2);
+  $('cursor').style.opacity = inCard || t < 6.4 ? 0 : 1; $('cursor').style.transform = `translate(${cs.x - 6}px,${cs.y - 3}px) scale(${1 - .18 * press})`;
+  if (rip != null) { const k2 = p(t, rip, rip + .55), Rr = 14 + 46 * ease(k2); const RP = $('ripple'); RP.style.opacity = 1 - k2; RP.style.left = (cs.x - Rr) + 'px'; RP.style.top = (cs.y - Rr) + 'px'; RP.style.width = RP.style.height = 2 * Rr + 'px'; } else $('ripple').style.opacity = 0;
+  // chapter chip + banner + progress
+  let ch = null; for (const C of CHAP) if (C.t <= t) ch = C;
+  if (ch) $('chip').innerHTML = `<img src="isotipo.png" style="width:26px"><span>${String(ch.n).padStart(2, '0')}</span>${ch.title}`;
+  $('chip').style.opacity = !inCard && ch && t > ch.t + 2.6 ? 1 : 0; $('wm').style.opacity = 0;
+  const BN = $('banner');
+  if (ch && t < ch.t + 2.6) { const o = Math.min(ease(p(t, ch.t, ch.t + .35)), 1 - ease(p(t, ch.t + 2.2, ch.t + 2.6))); BN.style.opacity = o; BN.style.transform = `translateX(${(1 - ease(p(t, ch.t, ch.t + .4))) * -60}px)`;
+    $('bn').textContent = String(ch.n).padStart(2, '0'); $('bt').textContent = ch.title; } else BN.style.opacity = 0;
+  $('prog').style.opacity = t > 6.4 && t < 227.9 ? 1 : 0; $('progi').style.width = (t / DUR * 100) + '%';
+  // cards
+  let cd = null; for (const C of CARDS) if (t >= C.a && t <= C.b) cd = C; const CE = $('card');
+  if (cd) { const o = Math.min(ease(p(t, cd.a, cd.a + .45)), cd.type === 'intro' ? 1 - ease(p(t, cd.b - .4, cd.b)) : 1);
+    if (CE.dataset.k !== String(cd.a)) { CE.dataset.k = String(cd.a);
+      if (cd.type === 'intro') CE.innerHTML = `<img src="isotipo.png"><div class="su" style="margin:0;font-size:32px;letter-spacing:6px;font-weight:700;color:#7FB2FF">TUTORIAL · NEGOCIO360</div><div class="ti" style="font-size:130px;margin-top:16px">Productos y Servicios</div><div class="list">${CHAP.map(c => `<div><span>${String(c.n).padStart(2, '0')}</span>${c.title}</div>`).join('')}</div>`;
+      else CE.innerHTML = `<img src="isotipo.png"><div class="ti" style="font-size:96px">¡Listo! Ya dominás tu catálogo</div><div class="su" style="margin-top:30px">Catálogo · Precios · Inventario · Combos · Promociones</div><div class="su" style="margin-top:40px">Próximo tutorial: <b style="color:#fff">Clientes</b></div><div class="su" style="margin-top:40px;color:#7FB2FF;font-weight:700">negocio360oficial.com</div>`; }
+    CE.style.opacity = o; const inner = CE.children; for (let i = 0; i < inner.length; i++) { const kk = ease(p(t, cd.a + .15 + i * .12, cd.a + .65 + i * .12)); inner[i].style.opacity = kk; inner[i].style.transform = `translateY(${(1 - kk) * 30}px)`; }
+    $('views').style.filter = `blur(${8 * o}px)`; } else { CE.style.opacity = 0; $('views').style.filter = 'none'; }
+};
+render(0);
+</script></body></html>

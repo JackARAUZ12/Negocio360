@@ -1,0 +1,234 @@
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 229.25;
+
+const STATES = ['base', 'sinstock', 'm1', 'm1ex', 'm1q', 'm2', 'm2s', 'm2c1', 'm2c3', 'm2frac', 'm2esc', 'm2esc2', 'm3', 'm4', 'm4iva', 'm5', 'm5ef', 'm5split', 'm5bank', 'm5com', 'm6', 'vrcfg', 'vr0', 'vr1', 'vr2', 'det', 'anular', 'recpay', 'recpay2'];
+const V = {};
+STATES.forEach(s => { const d = document.createElement('div'); d.className = 'view'; d.style.opacity = 0; d.innerHTML = `<img class="topimg" src="vshots/${s}_top.jpg">`; $('views').appendChild(d); V[s] = d; });
+
+// ---------------- timeline data
+const CAM = [{ t: 0, x: 960, y: 540, z: 1 }];
+let curCam = { x: 960, y: 540, z: 1 };
+const ST = [{ t: 0, s: 'base' }], SPOTS = [], LABELS = [], CAPS = [], CLICKS = [], CHAP = [], CARDS = [];
+const CURK = [{ t: 0, x: 1500, y: 800 }]; let curPos = { x: 1500, y: 800 };
+function cam(t, c, dur = 1.0) { const n = Object.assign({}, curCam, c); CAM.push({ t, ...curCam }); CAM.push({ t: t + dur, ...n }); curCam = n; }
+function focus(t, r, zmax = 2, pad = 1.25, dur = 1.0) { const z = Math.max(1, Math.min(zmax, 1920 / (r[2] * pad), 1080 / (r[3] * pad))); cam(t, { x: r[0] + r[2] / 2, y: r[1] + r[3] / 2, z }, dur); }
+function st(t, s) { ST.push({ t, s }); }
+function cur(t, x, y, dur = .7) { CURK.push({ t, x: curPos.x, y: curPos.y }); CURK.push({ t: t + dur, x, y }); curPos = { x, y }; }
+function curTo(t, r, dur = .7) { cur(t, r[0] + r[2] * .55, r[1] + r[3] * .55, dur); }
+function click(t) { CLICKS.push(t); }
+function spot(a, b, r) { SPOTS.push({ a, b, r }); }
+function label(a, b, r, title, text = '', n) { LABELS.push({ a, b, r, title, text, n }); }
+function sl(a, b, r, title, text, n) { spot(a, b, r); label(a + .12, b, r, title, text, n); }
+function cap(a, b, text) { CAPS.push({ a, b, text }); }
+function chap(t, n, title) { CHAP.push({ t, n, title }); }
+
+// ---------------- rects (viewport px, measured from the real screens)
+const R = {
+  kpiRow: [298, 168, 1564, 124], kpi: [[308, 176, 298, 107], [620, 176, 298, 107], [931, 176, 298, 107], [1243, 176, 298, 107], [1554, 176, 298, 107]],
+  btnVR: [1574, 93, 130, 34], btnNV: [1714, 92, 138, 35], topBtns: [1380, 60, 520, 110],
+  sinstock: [1210, 12, 167, 34], header: [1050, 0, 870, 140],
+  m1modal: [530, 349, 860, 382], steps: [555, 453, 810, 38], opts: [555, 515, 810, 109], optEx: [555, 515, 263, 109], optCF: [828, 515, 263, 109], optQ: [1102, 515, 263, 109],
+  cliSearch: [555, 600, 810, 120], cqNombre: [555, 575, 810, 50],
+  m2modal: [530, 300, 860, 480], prodSearch: [555, 512, 810, 44], prodDrop: [556, 556, 808, 60],
+  cart: [555, 493, 810, 246], colQty: [738, 528, 115, 210], colPrice: [852, 528, 140, 210], colDesc: [1030, 528, 125, 210], colSub: [1150, 528, 150, 210],
+  frac: [728, 524, 205, 112], fracBtn: [738, 558, 28, 20], esc: [740, 361, 440, 358], escOk: [1080, 670, 90, 36],
+  m3modal: [530, 330, 860, 420], svc: [552, 572, 816, 88],
+  m4modal: [530, 120, 860, 760], m4table: [555, 300, 810, 200], ivaRow: [560, 548, 805, 52], ivaTog: [570, 560, 42, 24],
+  rSub: [978, 623, 392, 36], rDesc: [978, 661, 392, 36], rImp: [978, 699, 392, 40], rTot: [978, 755, 392, 46], rGan: [978, 799, 392, 38],
+  m5modal: [530, 320, 860, 430], fecha: [552, 472, 816, 74], metodos: [552, 550, 816, 132], mEf: [555, 555, 263, 56], mSep: [555, 621, 263, 56], mTar: [1102, 555, 263, 56],
+  split: [552, 464, 816, 306], banks: [552, 600, 816, 64], bBanpro: [555, 604, 263, 56],
+  m6modal: [530, 250, 860, 600], obs: [552, 402, 816, 120], bCerrar: [1224, 791, 145, 43], bCerrarImp: [1041, 795, 183, 36],
+  vrModal: [670, 120, 580, 840], vrScan: [690, 200, 540, 75], vrTable: [690, 300, 540, 245], vrMet: [690, 715, 540, 175], vrCobrar: [1028, 911, 201, 43], vrEf: [695, 764, 170, 56],
+  cIva: [552, 120, 816, 80], cPapel: [552, 240, 816, 200], cDatos: [552, 452, 816, 335], cAuto: [552, 798, 816, 54],
+  hist: [300, 690, 1560, 390], histTable: [309, 813, 1542, 267], filtros: [[329, 765, 50, 30], [387, 765, 75, 30], [470, 765, 51, 30], [529, 765, 50, 30], [587, 765, 111, 30]], eye: [1790, 861, 28, 28],
+  det: [670, 96, 580, 888], dCli: [690, 330, 270, 60], dMet: [960, 290, 270, 60], dProd: [690, 430, 540, 240], dTot: [960, 735, 270, 60], dGan: [1132, 455, 98, 215],
+  dRec: [865, 889, 150, 36], dComp: [1015, 889, 214, 36], dCorr: [967, 925, 146, 42], dAnu: [1114, 925, 115, 42], anu: [740, 316, 440, 447],
+  rec: [300, 320, 1560, 345], recTable: [309, 379, 1542, 276], recCols: [900, 379, 760, 276], recBtn: [1663, 432, 92, 28],
+  recBox: [670, 129, 580, 823], rpComp: [692, 444, 266, 48], rpPar: [962, 444, 266, 48],
+};
+const CTR = r => [r[0] + r[2] / 2, r[1] + r[3] / 2];
+
+// ================= SCRIPT (times from the narration)
+CARDS.push({ type: 'intro', a: 0, b: 6.2 });
+cap(6.6, 13.4, 'Registrá ventas · Cobrá · Imprimí comprobantes · Revisá tu historial');
+cam(6.2, { x: 960, y: 540, z: 1 }, .1);
+
+chap(13.9, 1, 'La pantalla de Ventas');
+focus(13.9, R.kpiRow, 1.25, 1.06);
+sl(14.2, 17.5, R.kpiRow, 'Resumen de ventas', 'Tus números clave, siempre a la vista.');
+[['Ventas del día', 17.6], ['Ventas del mes', 19.1], ['Cantidad de ventas', 20.6], ['Ticket promedio', 22.0], ['Ganancia estimada', 23.4]].forEach(([n, a], i) => {
+  curTo(a - .1, R.kpi[i], .5); sl(a, a + 1.45, [R.kpi[i][0] - 5, R.kpi[i][1] - 5, R.kpi[i][2] + 10, R.kpi[i][3] + 10], n, '', i + 1); });
+sl(25.0, 28.9, R.kpiRow, 'Se actualizan solos', 'Con cada venta que registrás. ✨');
+focus(29.2, R.topBtns, 2.4, 1.3); curTo(29.6, R.btnVR);
+sl(29.9, 31.4, [R.btnVR[0] - 6, R.btnVR[1] - 6, R.btnVR[2] + 12, R.btnVR[3] + 12], 'Venta rápida', 'Para cobrar en segundos (la vemos más adelante).');
+curTo(31.4, R.btnNV, .5);
+sl(31.6, 34.0, [R.btnNV[0] - 6, R.btnNV[1] - 6, R.btnNV[2] + 12, R.btnNV[3] + 12], 'Nueva Venta', 'El registro completo, paso a paso.');
+click(33.7); st(34.0, 'm1');
+
+chap(35.2, 2, 'Paso 1 · Cliente');
+focus(34.3, R.m1modal, 1.9, 1.12);
+sl(35.3, 39.2, R.steps, 'La venta en 6 pasos', 'Cliente → Productos → Servicios → Resumen → Pago → Observaciones');
+sl(39.4, 43.2, R.opts, '¿A quién le vendés?', 'Elegí una de estas tres opciones.');
+curTo(43.0, R.optEx, .5); click(43.6); st(43.9, 'm1ex');
+sl(44.0, 45.8, R.cliSearch, 'Cliente existente', 'Buscalo por nombre en tu lista.', 1);
+st(45.9, 'm1'); curTo(45.9, R.optCF, .5); click(46.5);
+sl(46.0, 48.3, R.optCF, 'Consumidor final', 'Vendé sin registrar datos.', 2);
+curTo(48.3, R.optQ, .4); click(48.7); st(49.0, 'm1q');
+sl(49.1, 51.6, R.cqNombre, 'Cliente rápido', 'Lo creás al instante, solo con su nombre.', 3);
+
+chap(51.9, 3, 'Paso 2 · Productos');
+st(51.95, 'm2'); focus(51.95, R.m2modal, 1.8, 1.08);
+curTo(52.6, R.prodSearch); click(53.4);
+sl(52.4, 54.8, R.prodSearch, 'Buscá el producto', 'Por nombre o por código (SKU).');
+st(54.9, 'm2s'); sl(55.0, 57.4, R.prodDrop, 'Tocá el resultado', 'Y se suma a la venta.');
+curTo(56.6, R.prodDrop, .5); click(57.5); st(57.75, 'm2c1'); st(58.6, 'm2c3');
+focus(58.6, R.cart, 1.9, 1.1);
+curTo(59.6, R.colQty, .5); sl(59.8, 61.0, R.colQty, 'Cantidad', '', 1);
+curTo(60.9, R.colPrice, .4); sl(61.1, 62.2, R.colPrice, 'Precio', '', 2);
+curTo(62.1, R.colDesc, .4); sl(62.3, 63.6, R.colDesc, 'Descuento', '', 3);
+curTo(63.6, R.colSub, .4); sl(63.8, 66.1, R.colSub, 'Subtotal automático', 'Se recalcula al instante.');
+curTo(66.6, R.fracBtn, .6); click(67.4); st(67.6, 'm2frac');
+sl(66.6, 71.9, R.frac, 'Fracciones', '¼, ½, ¾… o escribí «1/4» y el sistema calcula.');
+st(73.2, 'm2esc'); focus(72.9, R.esc, 2.0, 1.15);
+sl(73.4, 76.6, R.esc, 'Varios precios', 'Elegí <b>Detalle</b>, <b>Mayorista</b> o <b>Distribuidor</b>.');
+curTo(75.6, R.escOk, .6); click(76.6); st(76.9, 'm2esc2'); focus(76.9, R.cart, 1.8, 1.1);
+
+chap(78.0, 4, 'Paso 3 · Servicios');
+st(78.2, 'm3'); focus(78.2, R.m3modal, 1.8, 1.08);
+sl(79.0, 84.6, R.svc, 'Servicios', 'Entregas, instalaciones… igual que los productos.');
+
+chap(85.1, 5, 'Paso 4 · Resumen');
+st(85.2, 'm4'); focus(85.2, R.m4modal, 1.4, 1.04);
+sl(85.6, 88.0, R.m4table, 'Revisá todo', 'Antes de cobrar.');
+focus(88.0, [940, 520, 450, 360], 1.9, 1.1);
+sl(88.2, 89.3, R.rSub, 'Subtotal', '', 1); sl(89.3, 90.4, R.rDesc, 'Descuento total', '', 2); sl(90.4, 91.6, R.rTot, 'Total a pagar', '', 3);
+focus(91.7, [540, 520, 840, 320], 1.6, 1.1); curTo(92.0, R.ivaTog); click(93.0); st(93.25, 'm4iva');
+sl(92.2, 96.1, R.ivaRow, 'IVA', 'Activalo y se suma al total.');
+sl(96.2, 98.6, R.rImp, 'Va a Impuestos', 'Se acumula solo en el módulo de Impuestos.');
+sl(98.7, 101.5, R.rGan, 'Ganancia estimada', 'Lo que te deja esta venta.');
+st(101.6, 'm5'); focus(101.6, R.m5modal, 1.7, 1.08);
+sl(101.9, 104.8, R.fecha, 'Fecha de la venta', 'Cambiala solo si registrás una venta atrasada.');
+
+chap(105.1, 6, 'Paso 5 · Pago');
+sl(105.6, 110.5, R.metodos, 'Método de pago', 'Efectivo, transferencia, tarjeta…');
+curTo(106.6, R.mEf); click(107.6); st(107.85, 'm5ef');
+curTo(110.4, R.mSep, .6); click(111.3); st(111.6, 'm5split'); focus(111.6, R.split, 1.7, 1.12);
+sl(111.8, 118.2, R.split, 'Pago separado', 'Indicá cuánto entra por cada método. <b style="color:#22E39A">✓ Cuadra exacto</b>');
+st(118.4, 'm5'); focus(118.4, R.m5modal, 1.7, 1.08); curTo(118.6, R.mTar); click(119.3); st(119.6, 'm5bank');
+sl(119.8, 122.6, R.banks, '¿A qué banco entra?', 'Elegí la cuenta de destino.');
+curTo(122.0, R.bBanpro, .5); click(122.8); st(123.1, 'm5com');
+cap(123.3, 126.6, 'Si el banco te cobra <b>comisión</b>, el sistema la toma en cuenta.');
+
+chap(127.0, 7, 'Paso 6 · Cerrar la venta');
+st(127.1, 'm6'); focus(127.1, R.m6modal, 1.6, 1.06);
+curTo(127.6, R.obs); sl(127.6, 131.8, R.obs, 'Observaciones', 'Una nota para el cliente o tu equipo.');
+curTo(132.3, R.bCerrar); sl(132.5, 134.4, R.bCerrar, 'Cerrar venta', '', 1);
+curTo(134.4, R.bCerrarImp, .5); sl(134.6, 137.6, R.bCerrarImp, 'Cerrar venta e imprimir', 'Y sale el ticket al instante. 🧾', 2);
+click(137.4); st(138.0, 'base'); cam(137.9, { x: 960, y: 540, z: 1 }, 1.0);
+cap(138.6, 143.5, '✓ El inventario se descuenta solo · ✓ Queda en tu historial y en tu caja');
+
+chap(143.9, 8, 'Venta rápida');
+focus(143.9, R.topBtns, 2.4, 1.3); curTo(144.2, R.btnVR);
+sl(144.5, 147.6, [R.btnVR[0] - 6, R.btnVR[1] - 6, R.btnVR[2] + 12, R.btnVR[3] + 12], 'Venta rápida', 'Para atender muchos clientes seguidos.');
+click(147.3); st(147.6, 'vr0'); focus(147.6, R.vrModal, 1.25, 1.03);
+sl(148.1, 150.0, R.vrScan, 'Escaneá', 'Con tu lector de código de barras.');
+st(150.0, 'vr1'); sl(150.1, 153.0, R.vrTable, 'Se agregan solos', 'Cada producto que escaneás.');
+sl(153.1, 155.2, R.vrMet, 'Elegí el método', '', 1); curTo(153.4, R.vrEf); click(154.2); st(154.45, 'vr2');
+curTo(155.0, R.vrCobrar, .5); sl(155.3, 157.0, R.vrCobrar, 'Cobrar y cerrar venta', '', 2);
+st(157.25, 'vrcfg'); focus(157.25, R.cIva, 1.7, 1.15);
+sl(157.5, 159.3, R.cIva, 'IVA', '', 1);
+focus(159.3, R.cPapel, 1.7, 1.25); sl(159.5, 161.6, R.cPapel, 'Tamaño del papel', '58 mm, 80 mm, matriz de punto o carta.', 2);
+focus(161.6, R.cDatos, 1.5, 1.15); sl(161.8, 163.5, R.cDatos, 'Datos del ticket', 'Nombre, RUC, teléfono, dirección y mensaje.', 3);
+focus(163.5, R.cAuto, 1.7, 1.6); sl(163.7, 166.9, R.cAuto, 'Impresión automática', 'Al cerrar cada venta.', 4);
+
+chap(167.2, 9, 'Historial de ventas');
+st(167.3, 'base'); focus(167.3, R.hist, 1.22, 1.03);
+sl(167.6, 169.8, R.histTable, 'Historial de ventas', 'Cada venta con su total, ganancia y estado.');
+[[170.0, 171.3], [171.4, 172.1], [172.15, 172.9], [172.95, 173.4], [173.45, 175.0]].forEach(([a, b], i) => { const r = R.filtros[i]; curTo(a - .25, r, .3); spot(a, b, [r[0] - 5, r[1] - 5, r[2] + 10, r[3] + 10]); });
+label(170.1, 175.0, [329, 760, 370, 40], 'Filtrá por período', 'Hoy · Semana · Mes · Año · Personalizado');
+curTo(174.8, R.eye, .6); click(175.6); st(175.9, 'det'); focus(175.9, R.det, 1.2, 1.03);
+sl(176.0, 177.7, R.det, 'Detalle de la venta', '');
+[[177.8, 'dCli', 'Cliente'], [178.8, 'dProd', 'Productos'], [179.8, 'dMet', 'Método de pago'], [180.9, 'dTot', 'Total'], [181.8, 'dGan', 'Ganancia']].forEach(([a, k, n], i) => sl(a, a + .95, R[k], n, '', i + 1));
+focus(182.5, [760, 860, 500, 120], 2.2, 1.15);
+[[182.7, 'dRec', 'Descargar recibo'], [184.8, 'dComp', 'Comprobante tamaño carta'], [186.85, 'dCorr', 'Corregir venta'], [188.9, 'dAnu', 'Anular venta']].forEach(([a, k, n], i) => { curTo(a - .3, R[k], .3); sl(a, a + (i === 3 ? .8 : 2.0), R[k], n, '', i + 1); });
+click(189.5); st(189.8, 'anular'); focus(189.8, R.anu, 1.7, 1.12);
+sl(190.0, 193.6, R.anu, 'Al anular una venta', 'El stock vuelve <b>automáticamente</b> a tu inventario.');
+
+chap(193.8, 10, 'Clientes con pago recurrente');
+st(193.95, 'base'); focus(193.95, R.rec, 1.22, 1.03);
+sl(194.2, 200.5, R.recTable, 'Pagos recurrentes', 'Mensualidades y cuotas de tus clientes.');
+sl(200.6, 203.2, R.recCols, 'Próxima fecha y cuánto deben', '');
+curTo(202.6, R.recBtn, .6); click(203.4); st(203.7, 'recpay'); focus(203.7, R.recBox, 1.25, 1.04);
+sl(203.9, 205.4, R.rpComp, 'Pago completo', '', 1);
+st(205.45, 'recpay2'); curTo(205.1, R.rpPar, .3); sl(205.5, 206.7, R.rpPar, 'o abono parcial', '', 2);
+
+chap(206.8, 11, 'Vender sin stock');
+st(206.9, 'base'); focus(206.9, R.header, 2.2, 1.12);
+curTo(207.6, R.sinstock); sl(207.7, 216.7, R.sinstock, 'Vender sin stock', 'Activalo solo si el producto aún no tiene existencias cargadas.');
+click(210.4); st(210.7, 'sinstock');
+
+CARDS.push({ type: 'outro', a: 216.9, b: DUR });
+window.EVENTS = { DUR, clicks: CLICKS, chapters: CHAP.map(c => c.t), spots: SPOTS.map(s => s.a), states: ST.map(s => s.t), cards: CARDS.map(c => c.a) };
+CHAP.forEach(c => { const b = document.createElement('b'); b.style.left = (c.t / DUR * 100) + '%'; $('prog').appendChild(b); });
+
+// ---------------- engine
+CAM.sort((a, b) => a.t - b.t);
+function camAt(t) { let a = CAM[0], ia = 0; for (let i = 0; i < CAM.length; i++) if (CAM[i].t <= t) { a = CAM[i]; ia = i; } const b = CAM[ia + 1] || a; if (b.t === a.t) return b; const k = eio(p(t, a.t, b.t)); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)) }; }
+function clampCam(c) { const hw = 960 / c.z, hh = 540 / c.z; return { x: cl(c.x, hw, 1920 - hw), y: cl(c.y, hh, 1080 - hh), z: c.z }; }
+function curAt(t) { let a = CURK[0], ia = 0; for (let i = 0; i < CURK.length; i++) if (CURK[i].t <= t) { a = CURK[i]; ia = i; } const b = CURK[ia + 1] || a; if (b.t === a.t) return { x: b.x, y: b.y }; const k = eio(p(t, a.t, b.t)); const arc = Math.sin(Math.PI * k) * Math.min(50, Math.hypot(b.x - a.x, b.y - a.y) * .1); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc }; }
+const toS = (c, x, y) => ({ x: (x - c.x) * c.z + 960, y: (y - c.y) * c.z + 540 });
+function pick(list, t, fi = .3, fo = .25) { let best = null, bo = 0; for (const L of list) if (t >= L.a && t <= L.b + fo) { const o = Math.min(ease(p(t, L.a, L.a + fi)), 1 - ease(p(t, L.b, L.b + fo))); if (o >= bo) { best = L; bo = o; } } return [best, bo]; }
+
+window.render = function (t) {
+  const c = clampCam(camAt(t));
+  let curS = ST[0], prev = null; for (const s of ST) if (s.t <= t) { prev = curS; curS = s; }
+  const k = ease(p(t, curS.t, curS.t + .3));
+  for (const s in V) { V[s].style.opacity = 0; V[s].style.zIndex = 0; }
+  const setV = (s, o, z) => { const v = V[s]; v.style.opacity = o; v.style.zIndex = z; v.style.transform = `translate(${960 - c.x * c.z}px,${540 - c.y * c.z}px) scale(${c.z})`; };
+  if (prev && prev.s !== curS.s && k < 1) { setV(prev.s, 1, 1); setV(curS.s, k, 2); } else setV(curS.s, 1, 2);
+  // spotlight
+  const [sp, so] = pick(SPOTS, t, .3, .25);
+  if (sp) { const a = toS(c, sp.r[0], sp.r[1]), b = toS(c, sp.r[0] + sp.r[2], sp.r[1] + sp.r[3]); const pad = 6;
+    [$('spot'), $('ring')].forEach(e => { e.style.left = (a.x - pad) + 'px'; e.style.top = (a.y - pad) + 'px'; e.style.width = (b.x - a.x + 2 * pad) + 'px'; e.style.height = (b.y - a.y + 2 * pad) + 'px'; });
+    $('spot').style.opacity = so * .9; $('ring').style.opacity = so * (.75 + .25 * Math.sin(t * 5)); } else { $('spot').style.opacity = 0; $('ring').style.opacity = 0; }
+  // label
+  const [lb, lo] = pick(LABELS, t, .3, .2); const LE = $('label');
+  if (lb) { const key = lb.title + lb.a; if (LE.dataset.k !== key) { $('lt').innerHTML = (lb.n ? `<i>${lb.n}</i>` : '') + lb.title; $('lx').innerHTML = lb.text; $('lx').style.display = lb.text ? '' : 'none'; LE.dataset.k = key; }
+    const a = toS(c, lb.r[0], lb.r[1]), b = toS(c, lb.r[0] + lb.r[2], lb.r[1] + lb.r[3]); const Wd = LE.offsetWidth || 520, Hh = LE.offsetHeight || 140, m = 30; let x, y;
+    if (1920 - b.x > Wd + m + 30) { x = b.x + m; y = (a.y + b.y) / 2 - Hh / 2; } else if (a.x > Wd + m + 30) { x = a.x - m - Wd; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (1080 - b.y > Hh + m + 60) { x = (a.x + b.x) / 2 - Wd / 2; y = b.y + m; } else { x = (a.x + b.x) / 2 - Wd / 2; y = a.y - m - Hh; }
+    x = cl(x, 30, 1920 - Wd - 30); y = cl(y, 110, 1080 - Hh - 50);
+    LE.style.left = x + 'px'; LE.style.top = y + 'px'; LE.style.opacity = lo; LE.style.transform = `translateY(${(1 - lo) * 18}px)`; } else LE.style.opacity = 0;
+  // caption
+  const [cp, co] = pick(CAPS, t, .35, .3);
+  if (cp) { if ($('cap').dataset.k !== cp.text) { $('cap').innerHTML = cp.text; $('cap').dataset.k = cp.text; } $('cap').style.opacity = co; $('cap').style.transform = `translateX(-50%) translateY(${(1 - co) * 20}px)`; } else $('cap').style.opacity = 0;
+  $('formula').style.opacity = 0;
+  // cursor
+  const cu = curAt(t), cs = toS(c, cu.x, cu.y); let press = 0, rip = null;
+  for (const ck of CLICKS) { if (t >= ck - .12 && t <= ck + .12) press = 1 - Math.abs(t - ck) / .12; if (t >= ck && t < ck + .55) rip = ck; }
+  const inCard = CARDS.some(C => t >= C.a - .2 && t <= C.b + .2);
+  $('cursor').style.opacity = inCard || t < 6.4 ? 0 : 1; $('cursor').style.transform = `translate(${cs.x - 6}px,${cs.y - 3}px) scale(${1 - .18 * press})`;
+  if (rip != null) { const k2 = p(t, rip, rip + .55), Rr = 14 + 46 * ease(k2); const RP = $('ripple'); RP.style.opacity = 1 - k2; RP.style.left = (cs.x - Rr) + 'px'; RP.style.top = (cs.y - Rr) + 'px'; RP.style.width = RP.style.height = 2 * Rr + 'px'; } else $('ripple').style.opacity = 0;
+  // chapter chip + banner + progress
+  let ch = null; for (const C of CHAP) if (C.t <= t) ch = C;
+  if (ch) $('chip').innerHTML = `<img src="isotipo.png" style="width:26px"><span>${String(ch.n).padStart(2, '0')}</span>${ch.title}`;
+  $('chip').style.opacity = !inCard && ch && t > ch.t + 2.6 ? 1 : 0; $('wm').style.opacity = 0;
+  const BN = $('banner');
+  if (ch && t < ch.t + 2.6) { const o = Math.min(ease(p(t, ch.t, ch.t + .35)), 1 - ease(p(t, ch.t + 2.2, ch.t + 2.6))); BN.style.opacity = o; BN.style.transform = `translateX(${(1 - ease(p(t, ch.t, ch.t + .4))) * -60}px)`;
+    $('bn').textContent = String(ch.n).padStart(2, '0'); $('bt').textContent = ch.title; } else BN.style.opacity = 0;
+  $('prog').style.opacity = t > 6.2 && t < 216.9 ? 1 : 0; $('progi').style.width = (t / DUR * 100) + '%';
+  // cards
+  let cd = null; for (const C of CARDS) if (t >= C.a && t <= C.b) cd = C; const CE = $('card');
+  if (cd) { const o = Math.min(ease(p(t, cd.a, cd.a + .45)), cd.type === 'intro' ? 1 - ease(p(t, cd.b - .4, cd.b)) : 1);
+    if (CE.dataset.k !== String(cd.a)) { CE.dataset.k = String(cd.a);
+      if (cd.type === 'intro') CE.innerHTML = `<img src="isotipo.png"><div class="su" style="margin:0;font-size:32px;letter-spacing:6px;font-weight:700;color:#7FB2FF">TUTORIAL · NEGOCIO360</div><div class="ti" style="font-size:130px;margin-top:16px">Módulo de Ventas</div><div class="list">${CHAP.map(c => `<div><span>${String(c.n).padStart(2, '0')}</span>${c.title}</div>`).join('')}</div>`;
+      else CE.innerHTML = `<img src="isotipo.png"><div class="ti" style="font-size:96px">¡Listo! Ya sabés vender con Negocio360</div><div class="su" style="margin-top:30px">Registrá · Cobrá · Imprimí · Controlá</div><div class="su" style="margin-top:40px">Próximo tutorial: <b style="color:#fff">Productos</b></div><div class="su" style="margin-top:40px;color:#7FB2FF;font-weight:700">negocio360oficial.com</div>`; }
+    CE.style.opacity = o; const inner = CE.children; for (let i = 0; i < inner.length; i++) { const kk = ease(p(t, cd.a + .15 + i * .12, cd.a + .65 + i * .12)); inner[i].style.opacity = kk; inner[i].style.transform = `translateY(${(1 - kk) * 30}px)`; }
+    $('views').style.filter = `blur(${8 * o}px)`; } else { CE.style.opacity = 0; $('views').style.filter = 'none'; }
+};
+render(0);
