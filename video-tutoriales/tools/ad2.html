@@ -1,0 +1,348 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#060A14;font-family:'Inter Display','Inter',sans-serif;color:#F3F6FF}
+#stage{position:absolute;inset:0;overflow:hidden}
+#bg{position:absolute;inset:-200px}
+#grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:72px 72px}
+.L{position:absolute;inset:0;opacity:0}
+.abs{position:absolute}
+.kw{position:absolute;left:70px;right:70px;text-align:center;font-weight:900;letter-spacing:-3px;line-height:1.02;opacity:0}
+.y{color:#FBBF24}.r{color:#FF5C5C}.b{color:#4C8DFF}.g{color:#22E39A}
+.pill{display:inline-flex;align-items:center;gap:14px;padding:16px 32px;border-radius:999px;font-weight:900;font-size:44px;letter-spacing:1px;background:rgba(10,16,32,.85);border:2px solid rgba(76,141,255,.55);color:#DCE8FF;box-shadow:0 14px 40px rgba(0,0,0,.4)}
+/* generic grey "basic system" window */
+.win{position:absolute;left:150px;top:700px;width:780px;height:640px;border-radius:30px;background:#1A1F2B;border:2px solid #2C3343;box-shadow:0 40px 90px rgba(0,0,0,.6);overflow:hidden;opacity:0}
+.win .tb{height:64px;background:#232937;display:flex;align-items:center;gap:12px;padding:0 24px}
+.win .tb i{width:16px;height:16px;border-radius:50%;background:#3A4254}
+.win .tb span{margin-left:16px;font-size:24px;color:#6B7487;font-weight:700}
+.mods{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:26px}
+.mod{height:110px;border-radius:18px;background:#222837;border:2px dashed #343C4F;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:28px;color:#5F687C;font-weight:700}
+.mod b{font-size:34px;opacity:0}
+/* invoice */
+#inv{position:absolute;left:190px;top:640px;width:700px;border-radius:24px;background:#F3F5F9;color:#1A2030;padding:40px 44px 34px;box-shadow:0 40px 90px rgba(0,0,0,.6);opacity:0}
+#inv h4{font-size:34px;font-weight:900;letter-spacing:-.5px}
+#inv .sub{font-size:22px;color:#7A8396;margin-top:4px}
+.il{display:flex;justify-content:space-between;font-size:32px;font-weight:600;padding:18px 0;border-bottom:2px dashed #D3D9E4;opacity:0}
+.il span:last-child{font-weight:900;color:#B42318}
+#invTot{display:flex;justify-content:space-between;font-size:40px;font-weight:900;padding-top:22px;opacity:0}
+/* support */
+#sup{position:absolute;left:150px;top:640px;width:780px;height:760px;border-radius:30px;background:#141A26;border:2px solid #283044;overflow:hidden;opacity:0;box-shadow:0 40px 90px rgba(0,0,0,.6)}
+#sup .hd{padding:28px 30px;background:#1B2232;display:flex;align-items:center;gap:20px}
+#sup .hd .av{width:70px;height:70px;border-radius:50%;background:#2C3446;display:flex;align-items:center;justify-content:center;font-size:36px}
+#sup .hd b{font-size:32px}#sup .hd small{display:block;font-size:24px;color:#8A93A7;margin-top:4px}
+.me{margin:34px 30px 0 auto;width:560px;padding:24px 28px;border-radius:28px 28px 8px 28px;background:#2563EB;font-size:32px;font-weight:600;opacity:0}
+.me small{display:block;text-align:right;font-size:22px;color:#C6D7FF;margin-top:6px}
+#wait{margin:40px auto 0;width:620px;text-align:center;opacity:0}
+#spin{width:90px;height:90px;margin:0 auto;border-radius:50%;border:9px solid #2B3347;border-top-color:#8A93A7}
+#wait div{font-size:30px;color:#8A93A7;margin-top:22px;font-weight:600}
+#wt{font-size:60px;font-weight:900;color:#FBBF24;margin-top:10px;letter-spacing:2px}
+/* end of day */
+#eod{position:absolute;left:0;right:0;top:300px;text-align:center;opacity:0}
+.qc{position:absolute;left:80px;right:80px;padding:30px 30px;border-radius:30px;background:rgba(18,24,38,.94);border:2px solid rgba(251,191,36,.45);font-size:54px;white-space:nowrap;font-weight:900;letter-spacing:-1.5px;text-align:center;opacity:0;box-shadow:0 30px 70px rgba(0,0,0,.55)}
+.paper{position:absolute;opacity:0;border-radius:6px;box-shadow:0 20px 40px rgba(0,0,0,.5)}
+/* sweep */
+#sweep{position:absolute;top:-200px;bottom:-200px;width:260px;background:linear-gradient(90deg,transparent,rgba(170,200,255,.85),transparent);transform:skewX(-14deg);opacity:0;filter:blur(6px)}
+/* brand */
+#logoBig{position:absolute;left:0;right:0;text-align:center;opacity:0}
+/* phone */
+#phone{position:absolute;left:228px;top:380px;width:624px;height:1352px;border-radius:84px;background:#05070D;border:12px solid #1E2433;box-shadow:0 0 0 3px #313a52,0 70px 160px rgba(0,0,0,.75),0 0 140px rgba(76,141,255,.22);overflow:hidden;opacity:0}
+#scr{position:absolute;inset:0;overflow:hidden;border-radius:72px;background:#F4F6FA}
+.sc{position:absolute;left:0;top:0;width:600px;opacity:0;will-change:transform}
+#isl{position:absolute;left:50%;top:16px;width:170px;height:44px;margin-left:-85px;background:#000;border-radius:24px;z-index:5}
+#ring{position:absolute;border:5px solid #4C8DFF;border-radius:20px;box-shadow:0 0 0 8px rgba(76,141,255,.22),0 0 40px rgba(76,141,255,.7);opacity:0;z-index:4}
+#glass{position:absolute;inset:0;background:linear-gradient(115deg,transparent 42%,rgba(255,255,255,.10) 50%,transparent 58%);z-index:6}
+#tagBox{position:absolute;left:0;right:0;top:220px;text-align:center;opacity:0}
+.xchip{position:absolute;display:flex;align-items:center;gap:16px;padding:22px 30px;border-radius:22px;background:rgba(18,24,38,.95);border:2px solid rgba(255,92,92,.5);font-size:44px;font-weight:900;opacity:0;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.xchip .st{position:absolute;left:18px;right:18px;top:50%;height:7px;margin-top:-3px;background:#FF5C5C;border-radius:4px;width:0;box-shadow:0 0 16px rgba(255,92,92,.8)}
+/* price */
+#price{position:absolute;left:0;right:0;top:640px;text-align:center;opacity:0}
+/* growth */
+#grow{position:absolute;left:120px;top:760px;opacity:0}
+#cta{position:absolute;left:0;right:0;top:860px;text-align:center;opacity:0}
+.cbox{display:inline-flex;align-items:center;gap:20px;padding:28px 34px;border-radius:999px;background:#fff;color:#0B1020;font-size:46px;font-weight:800;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.send{width:84px;height:84px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#4C8DFF);display:flex;align-items:center;justify-content:center}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 58%,rgba(0,0,0,.55));pointer-events:none}
+</style></head>
+<body><div id="stage">
+<div id="bg"></div><div id="grid"></div>
+
+<!-- ===== PROBLEM ===== -->
+<div class="L" id="P">
+  <div class="kw" id="k1" style="top:250px;font-size:92px">¿TU SISTEMA YA NO ES <span class="y">SUFICIENTE</span>?</div>
+  <div class="win" id="win"><div class="tb"><i></i><i></i><i></i><span>Sistema básico</span></div>
+    <div class="mods" id="mods"></div>
+    <div style="margin:4px 26px;height:22px;border-radius:11px;background:#222837;overflow:hidden"><div id="wbar" style="height:100%;width:0;background:#4A5266;border-radius:11px"></div></div>
+  </div>
+  <div class="kw" id="k2" style="top:260px;font-size:110px">¿PAGÁS <span class="r">DEMASIADO</span>?</div>
+  <div id="inv"><h4>Factura de software</h4><div class="sub">Cargos del período</div><div style="height:16px"></div>
+    <div class="il"><span>Licencia</span><span>$ $ $</span></div><div class="il"><span>Módulo adicional</span><span>$ $</span></div>
+    <div class="il"><span>Usuario extra</span><span>$ $</span></div><div class="il"><span>Actualización</span><span>$ $ $</span></div>
+    <div id="invTot"><span>TOTAL</span><span style="color:#B42318">$ $ $ $ $ $</span></div></div>
+  <div class="kw" id="k3" style="top:260px;font-size:100px">¿Y EL <span class="b">SOPORTE</span> TÉCNICO?</div>
+  <div id="sup"><div class="hd"><div class="av">🎧</div><div><b>Soporte técnico</b><small id="supst">Desconectado</small></div></div>
+    <div class="me" id="me1">Hola, tengo un problema urgente 🙏<small>✓</small></div>
+    <div class="me" id="me2">¿Alguien me puede ayudar?<small>✓</small></div>
+    <div id="wait"><div id="spin"></div><div>Tu solicitud está en espera</div><div id="wt">00:00</div></div></div>
+  <div id="eod"><div style="font-size:120px" id="moon">🌙</div><div style="font-size:40px;color:#8A93A7;font-weight:700;letter-spacing:6px;margin-top:10px">FIN DEL DÍA</div></div>
+  <div id="papers"></div>
+  <div class="qc" id="q1" style="top:700px">¿Cuánto <span class="y">vendiste</span>?</div>
+  <div class="qc" id="q2" style="top:890px">¿Qué productos <span class="y">te quedan</span>?</div>
+  <div class="qc" id="q3" style="top:1080px">¿Cómo está <span class="y">tu negocio</span>?</div>
+</div>
+<div class="kw" id="k5" style="top:760px;font-size:132px">ES MOMENTO<br>DE <span class="b">CAMBIAR</span></div>
+<div id="sweep"></div>
+
+<!-- ===== BRAND INTRO ===== -->
+<div id="logoBig" style="top:640px"><img id="lgIso" src="isotipo.png" style="width:280px"><div id="lgWord" style="font-size:150px;font-weight:900;letter-spacing:-6px;margin-top:26px">Negocio<span class="b">360</span></div>
+  <div id="lgSub" style="font-size:40px;color:#AEB8CC;font-weight:600;margin-top:20px;letter-spacing:2px">SISTEMA DE GESTIÓN</div></div>
+
+<!-- ===== PHONE ===== -->
+<div id="phone"><div id="scr">
+  <img class="sc" id="sDash" src="ad2/dash_full.png">
+  <img class="sc" id="sV2" src="ad2/v2cart.png">
+  <img class="sc" id="sV4" src="ad2/v4.png">
+  <img class="sc" id="sProd" src="ad2/prod.png">
+  <img class="sc" id="sProdF" src="ad2/prod_full.png">
+  <img class="sc" id="sProv" src="ad2/prov.png">
+  <img class="sc" id="sComp" src="ad2/compras.png">
+  <img class="sc" id="sCli" src="ad2/clientes.png">
+  <img class="sc" id="sDet" src="ad2/vdet.png">
+  <img class="sc" id="sRep" src="ad2/rep_full.png">
+  <div id="ring"></div>
+</div><div id="isl"></div><div id="glass"></div></div>
+<div id="tagBox"><span class="pill" id="tag"></span></div>
+<div class="xchip" id="x1" style="left:40px;top:640px">📝 Apuntes<div class="st"></div></div>
+<div class="xchip" id="x2" style="left:560px;top:930px">🧮 Cálculos<div class="st"></div></div>
+<div class="xchip" id="x3" style="left:40px;top:1220px">🗂️ Desorden<div class="st"></div></div>
+
+<!-- ===== TAIL ===== -->
+<div class="kw" id="kMejor" style="top:820px;font-size:96px;font-weight:800">Y LO <span class="g">MEJOR</span>…</div>
+<div id="price">
+  <div id="pDesde" style="font-size:64px;font-weight:800;letter-spacing:10px;color:#AEB8CC">DESDE</div>
+  <div id="p10" style="font-size:420px;font-weight:900;letter-spacing:-18px;line-height:.95;background:linear-gradient(180deg,#FFFFFF,#9EC2FF);-webkit-background-clip:text;color:transparent">$10</div>
+  <div id="pMes" style="font-size:96px;font-weight:900;letter-spacing:4px">AL <span class="b">MES</span></div>
+</div>
+<div class="L" id="SB">
+  <svg id="tower" width="400" height="900" viewBox="0 0 400 900" style="position:absolute;left:620px;top:560px">
+    <rect x="20" y="20" width="360" height="880" rx="10" fill="#1A2234" stroke="#2C3650" stroke-width="4"/><g id="wins"></g></svg>
+  <svg id="store" width="560" height="520" viewBox="0 0 560 520" style="position:absolute;left:260px;top:820px">
+    <rect x="40" y="160" width="480" height="340" rx="18" fill="#E9EEF7"/>
+    <path d="M20 160 L60 60 L500 60 L540 160 Z" fill="#2563EB"/>
+    <g fill="#fff"><path d="M60 60 L110 60 L95 160 L40 160 Z"/><path d="M200 60 L250 60 L245 160 L190 160 Z"/><path d="M340 60 L390 60 L395 160 L340 160 Z"/></g>
+    <path d="M20 160 Q60 200 100 160 Q140 200 180 160 Q220 200 260 160 Q300 200 340 160 Q380 200 420 160 Q460 200 500 160 Q520 180 540 160" fill="#1D4ED8"/>
+    <rect x="80" y="240" width="190" height="260" rx="10" fill="#1A2234"/><rect x="310" y="240" width="170" height="140" rx="12" fill="#0F172A"/>
+    <polyline points="325,350 355,330 385,338 415,300 445,288 465,268" fill="none" stroke="#22E39A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="240" cy="370" r="10" fill="#F59E0B"/></svg>
+  <div class="kw" id="kPro" style="top:330px;font-size:118px">PROFESIONAL<span class="g">.</span></div>
+</div>
+<div class="L" id="LIM">
+  <div class="win" id="win2" style="opacity:1"><div class="tb"><i></i><i></i><i></i><span>Sistema básico</span></div><div class="mods" id="mods2"></div></div>
+  <div id="shards"></div>
+  <div class="kw" id="kLim" style="top:300px;font-size:104px"><span class="r" style="position:relative;display:inline-block">LIMITACIONES<i id="limSt" style="position:absolute;left:-10px;top:50%;height:12px;margin-top:-6px;width:0;background:#fff;border-radius:6px;box-shadow:0 0 20px rgba(255,255,255,.7)"></i></span></div>
+</div>
+<div id="grow"><svg width="840" height="560" viewBox="0 0 840 560">
+  <defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22E39A" stop-opacity=".35"/><stop offset="1" stop-color="#22E39A" stop-opacity="0"/></linearGradient></defs>
+  <path id="garea" d="M0 520 L120 470 L240 480 L360 380 L480 330 L600 220 L720 150 L840 40 L840 560 L0 560 Z" fill="url(#gg)" opacity="0"/>
+  <polyline id="gline" points="0,520 120,470 240,480 360,380 480,330 600,220 720,150 840,40" fill="none" stroke="#22E39A" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div class="kw" id="kCrecer" style="left:0;right:0;top:-330px;font-size:150px">CRE<span class="g">CER</span> ↗</div></div>
+<div id="endLogo" class="abs" style="left:0;right:0;top:520px;text-align:center;opacity:0"><img id="eIso" src="isotipo.png" style="width:220px"><div style="font-size:132px;font-weight:900;letter-spacing:-5px;margin-top:20px">Negocio<span class="b">360</span></div></div>
+<div class="abs" id="mas" style="left:0;right:0;top:1000px;text-align:center">
+  <div class="kw" id="m1" style="position:relative;left:0;right:0;font-size:96px;margin-bottom:20px">+ <span class="b">CONTROL</span></div>
+  <div class="kw" id="m2" style="position:relative;left:0;right:0;font-size:96px;margin-bottom:20px">+ <span class="g">ORGANIZACIÓN</span></div>
+  <div class="kw" id="m3" style="position:relative;left:0;right:0;font-size:96px">+ <span class="y">TIEMPO</span></div></div>
+<div id="cta">
+  <div id="cta1" style="font-size:108px;font-weight:900;letter-spacing:-3px">COMENTÁ</div>
+  <div style="margin-top:34px"><span class="cbox" id="cbox"><span style="font-size:48px">💬</span><span id="ctaTx" style="min-width:330px;text-align:left"></span><span class="send"><svg width="40" height="40" viewBox="0 0 24 24" fill="#fff"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></span></span></div>
+  <div style="margin-top:56px;opacity:0" id="cta3"><span class="pill" style="font-size:42px;border-color:rgba(34,227,154,.6);color:#C9F7E6">SOLICITÁ TU DEMOSTRACIÓN GRATUITA</span></div>
+</div>
+<div id="flash"></div><div id="vig"></div>
+</div>
+<script>
+const DUR = 72.4376;
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const back = (x, c = 1.7) => { x = cl(x); return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const rnd = s => { const x = Math.sin(s * 127.1) * 43758.5453; return x - Math.floor(x); };
+const win = (t, a, b, fi = .3, fo = .3) => Math.min(ease(p(t, a, a + fi)), 1 - ease(p(t, b - fo, b)));
+function kw(el, t, a, b, mode = 'up', fi = .3, fo = .25) {
+  const o = win(t, a, b, fi, fo); el.style.opacity = o; const k = ease(p(t, a, a + fi));
+  if (mode === 'up') el.style.transform = `translateY(${(1 - k) * 50}px)`;
+  else if (mode === 'slam') el.style.transform = `scale(${1 + (1 - k) * .6})`;
+  el.style.filter = k < 1 ? `blur(${(1 - k) * 12}px)` : 'none'; return o;
+}
+// build basic-system modules
+const MODS = ['Ventas', 'Inventario', 'Reportes', 'Compras', 'Clientes', 'Usuarios'];
+const mk = id => MODS.forEach((m, i) => { const d = document.createElement('div'); d.className = 'mod'; d.innerHTML = `${m}<b>🔒</b>`; $(id).appendChild(d); });
+mk('mods'); mk('mods2');
+// papers for end-of-day
+const PP = [];
+for (let i = 0; i < 7; i++) { const d = document.createElement('div'); d.className = 'paper';
+  d.style.cssText += `width:${200 + rnd(i) * 80}px;height:${240 + rnd(i + 2) * 60}px;background:${i % 3 ? '#E8E3D3' : '#FDE68A'}`;
+  d.innerHTML = `<div style="padding:22px;font-family:'Comic Sans MS','Noto Sans',cursive;color:#5b4d2a;font-size:24px;line-height:1.5">${['ventas?', '120+85+…', 'arroz ¿?', 'debe 200', 'total = ?', 'pedir…', 'caja ¿?'][i]}<br>— — —<br>— — —</div>`;
+  $('papers').appendChild(d); PP.push({ el: d, x: 80 + (i % 4) * 230 + rnd(i + 5) * 40, y: 1350 + Math.floor(i / 4) * 130 + rnd(i + 9) * 40, r: (rnd(i + 4) - .5) * 30 }); }
+// tower windows
+(function () { let h = ''; for (let r = 0; r < 16; r++) for (let c = 0; c < 5; c++) h += `<rect x="${50 + c * 64}" y="${60 + r * 52}" width="38" height="30" rx="4" fill="#26324C"/>`; $('wins').innerHTML = h; })();
+// shards
+const SH = []; for (let i = 0; i < 18; i++) { const d = document.createElement('div'); d.className = 'abs';
+  d.style.cssText = `width:${40 + rnd(i) * 70}px;height:${30 + rnd(i + 1) * 60}px;background:#2A3142;border:2px solid #3A4357;clip-path:polygon(0 0,100% 20%,80% 100%,10% 80%);opacity:0`;
+  $('shards').appendChild(d); SH.push({ el: d, a: rnd(i + 3) * Math.PI * 2, v: 400 + rnd(i + 4) * 900, x: 200 + rnd(i + 6) * 640, y: 760 + rnd(i + 7) * 520 }); }
+
+// phone screens: [id, a, b, scrollFrom, scrollTo, scrollA, scrollB, ringList]
+const SCR = [
+  ['sDash', 23.9, 29.76, 0, -1050, 24.8, 29.5],
+  ['sV2', 29.76, 30.45, 0, 0], ['sV4', 30.45, 31.14, 0, 0],
+  ['sProd', 31.14, 32.49, 0, 0], ['sProdF', 32.49, 33.62, -720, -900, 32.5, 33.6],
+  ['sProv', 33.62, 34.85, 0, 0], ['sComp', 34.85, 36.6, 0, 0], ['sCli', 36.6, 38.5, 0, 0],
+  ['sDet', 38.5, 40.48, -60, -60], ['sRep', 40.48, 48.3, 0, -760, 42.7, 43.8],
+];
+const RINGS = [
+  [29.95, 30.45, 'sV2', [30, 640, 540, 240]], [30.55, 31.14, 'sV4', [30, 860, 540, 56]],
+  [31.35, 32.49, 'sProd', [305, 401, 281, 142]], [33.8, 34.85, 'sProv', [16, 800, 568, 330]],
+  [35.1, 36.6, 'sComp', [14, 250, 572, 100]], [36.8, 38.5, 'sCli', [14, 206, 572, 228]],
+  [38.65, 39.25, 'sDet', [300, 885 - 60, 150, 40]], [39.25, 40.48, 'sDet', [200, 995 - 60, 365, 46]],
+  [40.8, 42.6, 'sRep', [14, 500, 572, 288]],
+];
+const TAGS = [[24.0, 26.75, '⚙️ SISTEMA DE GESTIÓN'], [26.75, 29.7, '🎯 CONTROL · UN SOLO LUGAR'], [29.76, 31.1, '🧾 VENTAS'], [31.14, 32.45, '📦 INVENTARIO'],
+  [32.49, 33.58, '🏷️ PRODUCTOS'], [33.62, 34.8, '🚚 PROVEEDORES'], [34.85, 36.55, '🛒 COMPRAS'], [36.6, 38.45, '👥 CLIENTES'], [38.5, 40.43, '📄 FACTURAS Y COMPROBANTES'], [40.48, 44.3, '📈 REPORTES']];
+
+window.render = function (t) {
+  // ---- background
+  const prob = t < 19.4, isEnd = t > 48.3;
+  const c1 = prob ? '150,60,40' : '37,99,235';
+  const a1 = prob ? .14 + .03 * Math.sin(t * 2) : .26;
+  const dark = t > 12.1 && t < 19.4 ? .55 : 1;
+  $('bg').style.background = `radial-gradient(900px 900px at ${50 + 20 * Math.sin(t * .3)}% ${30 + 10 * Math.cos(t * .27)}%,rgba(${c1},${a1 * dark}),transparent 62%),radial-gradient(800px 800px at ${30 + 18 * Math.cos(t * .22)}% 90%,rgba(${prob ? '70,80,110' : '34,227,154'},${prob ? .12 : .10}),transparent 60%),#060A14`;
+  $('grid').style.transform = `translateY(${(t * 16) % 72}px)`;
+
+  // ===== PROBLEM 0–19.6
+  const P = $('P'); P.style.opacity = t < 19.42 ? 1 : 1 - ease(p(t, 19.42, 19.8)); P.style.display = t > 20 ? 'none' : '';
+  if (t < 20) {
+    // S1 basic system 0–3.6
+    const w = $('win'), kw0 = p(t, 0, .25);
+    const wOut = ease(p(t, 3.45, 3.8));
+    w.style.opacity = cl(kw0 * 3) * (1 - wOut);
+    const hitWall = t > 1.6 ? Math.sin((t - 1.6) * 40) * 10 * Math.exp(-(t - 1.6) * 5) : 0;
+    w.style.transform = `translateX(${hitWall - wOut * 300}px) scale(${(1.15 - .15 * ease(kw0)) * (1 - .02 * Math.max(0, Math.sin(t * 3)))})`;
+    w.querySelectorAll('.mod b').forEach((b, i) => { const a = .7 + i * .16; b.style.opacity = ease(p(t, a, a + .12)); b.style.transform = `scale(${1 + .6 * (1 - ease(p(t, a, a + .2)))})`; });
+    $('wbar').style.width = (45 * ease(p(t, .3, 1.6))) + '%';
+    kw($('k1'), t, 0.0, 3.55, 'slam', .22);
+    // S2 invoice 3.6–8.2
+    kw($('k2'), t, 4.4, 8.15, 'slam', .25);
+    const inv = $('inv'), ki = p(t, 3.65, 4.1); inv.style.opacity = cl(ki * 2) * (1 - ease(p(t, 7.95, 8.3)));
+    inv.style.transform = `translateX(${(1 - ease(ki)) * 400 + -ease(p(t, 7.95, 8.3)) * 300}px) rotate(${-2 + Math.sin(t) * .6}deg)`;
+    inv.querySelectorAll('.il').forEach((l, i) => { const a = 4.3 + i * .55; l.style.opacity = ease(p(t, a, a + .2)); l.style.transform = `translateX(${(1 - ease(p(t, a, a + .25))) * 40}px)`; });
+    const kt = p(t, 6.6, 6.9); $('invTot').style.opacity = cl(kt * 3); $('invTot').style.transform = `scale(${1 + .15 * (1 - ease(kt))})`;
+    // S3 support 8.26–12.1
+    kw($('k3'), t, 8.3, 12.05, 'slam', .25);
+    const sp = $('sup'), ks = p(t, 8.28, 8.7); sp.style.opacity = cl(ks * 2) * (1 - ease(p(t, 11.85, 12.2)));
+    sp.style.transform = `translateY(${(1 - ease(ks)) * 120}px) scale(${1 - .05 * ease(p(t, 11.85, 12.2))})`;
+    [['me1', 8.75], ['me2', 10.6]].forEach(([id, a]) => { const k = p(t, a, a + .25); $(id).style.opacity = cl(k * 3); $(id).style.transform = `scale(${.7 + .3 * back(k)})`; $(id).style.transformOrigin = '100% 100%'; });
+    $('wait').style.opacity = ease(p(t, 9.4, 9.7)); $('spin').style.transform = `rotate(${t * 300}deg)`;
+    const secs = Math.max(0, (t - 9.4) * 37); $('wt').textContent = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(Math.floor(secs % 60)).padStart(2, '0')}`;
+    // S4 end of day 12.19–19.4
+    const ke = win(t, 12.2, 19.6, .5, .3); $('eod').style.opacity = ke; $('moon').style.transform = `rotate(${Math.sin(t) * 8}deg)`;
+    PP.forEach((q, i) => { const a = 12.4 + i * .12, k = p(t, a, a + .4); q.el.style.opacity = cl(k * 2) * (1 - ease(p(t, 19.42, 19.8)));
+      q.el.style.transform = `translate(${q.x + Math.sin(t * .8 + i) * 6}px,${q.y + (1 - ease(k)) * 300}px) rotate(${q.r}deg)`; });
+    [['q1', 14.9], ['q2', 15.95], ['q3', 17.4]].forEach(([id, a]) => { const k = p(t, a, a + .3), o = cl(k * 3) * (1 - ease(p(t, 19.42, 19.7)));
+      $(id).style.opacity = o; $(id).style.transform = `scale(${.75 + .25 * back(k)})`; });
+    // slow push during the silence
+    P.style.transform = t > 18.9 && t < 19.42 ? `scale(${1 + .04 * ease(p(t, 18.9, 19.42))})` : 'none';
+  }
+  // ES MOMENTO DE CAMBIAR 19.41–21.1
+  kw($('k5'), t, 19.42, 21.15, 'slam', .2, .3);
+  const sw = p(t, 19.42, 20.0); $('sweep').style.opacity = sw > 0 && sw < 1 ? 1 : 0; $('sweep').style.left = (-300 + 1700 * eio(sw)) + 'px';
+  $('flash').style.opacity = .35 * Math.pow(1 - p(t, 19.42, 19.75), 2) * (t >= 19.42 ? 1 : 0) + .25 * Math.pow(1 - p(t, 61.86, 62.2), 2) * (t >= 61.86 ? 1 : 0);
+  // ===== BRAND INTRO 21.16–24.0
+  const lb = $('logoBig');
+  if (t > 21.1 && t < 24.4) {
+    const k = p(t, 21.2, 21.9), out = eio(p(t, 23.6, 24.2));
+    lb.style.opacity = cl(k * 2) * (1 - out);
+    lb.style.transform = `translateY(${-out * 420}px) scale(${1 - .5 * out})`;
+    $('lgIso').style.transform = `rotate(${(1 - ease(k)) * -200}deg) scale(${.3 + .7 * back(k)})`;
+    $('lgWord').style.opacity = ease(p(t, 21.6, 22.0)); $('lgWord').style.transform = `translateY(${(1 - ease(p(t, 21.6, 22.0))) * 40}px)`;
+    $('lgSub').style.opacity = ease(p(t, 22.3, 22.7));
+  } else lb.style.opacity = 0;
+
+  // ===== PHONE 23.9–48.4
+  const ph = $('phone'), pin = ease(p(t, 23.75, 24.4)), pout = eio(p(t, 48.2, 48.75));
+  const on = t > 23.7 && t < 48.8;
+  ph.style.opacity = on ? cl(pin * 1.4) * (1 - pout) : 0;
+  const tilt = -6 * Math.sin(t * .5);
+  ph.style.transform = `perspective(2400px) translateY(${(1 - pin) * 700 - pout * 300}px) rotateY(${tilt}deg) rotateX(3deg) scale(${(.9 + .1 * pin) * (1 - .4 * pout)})`;
+  ph.style.filter = pout > 0 ? `blur(${pout * 10}px)` : 'none';
+  if (on) {
+    SCR.forEach(([id, a, b, s0, s1, sa, sb]) => { const el = $(id); if (t < a - .01 || t > b + .25) { el.style.opacity = 0; return; }
+      const kin = id === 'sDash' ? 1 : ease(p(t, a, a + .22)), kout = ease(p(t, b, b + .22));
+      el.style.opacity = id === 'sRep' ? kin : kin * (1 - kout) + (kout > 0 ? 0 : 0);
+      const y = sa ? lerp(s0, s1, eio(p(t, sa, sb))) : s0;
+      el.style.transform = `translate(${(1 - kin) * 260}px,${y}px) scale(${1 + .02 * Math.sin(t)})`;
+      el.style.zIndex = Math.round(a * 10); });
+    let rg = null; RINGS.forEach(R => { if (t >= R[0] && t < R[1]) rg = R; });
+    const RG = $('ring');
+    if (rg) { const sc = SCR.find(s => s[0] === rg[2]); const yoff = sc[5] ? lerp(sc[3], sc[4], eio(p(t, sc[5], sc[6]))) : 0; const r = rg[3];
+      const k = ease(p(t, rg[0], rg[0] + .2)); RG.style.opacity = k * (.85 + .15 * Math.sin(t * 8)); RG.style.left = (r[0] - 6 * (1 - k)) + 'px'; RG.style.top = (r[1] + (sc[0] === 'sDet' ? 0 : yoff) - 6 * (1 - k)) + 'px';
+      RG.style.width = (r[2] + 12 * (1 - k)) + 'px'; RG.style.height = (r[3] + 12 * (1 - k)) + 'px'; RG.style.zIndex = 999; } else RG.style.opacity = 0;
+    $('glass').style.transform = `translateX(${((t * 240) % 1600) - 800}px)`;
+  }
+  let tg = null; TAGS.forEach(g => { if (t >= g[0] && t < g[1] + .2) tg = g; });
+  const TB = $('tagBox');
+  if (tg && on) { TB.style.opacity = win(t, tg[0], tg[1] + .2, .2, .2) * (1 - pout); TB.style.transform = `translateY(${(1 - ease(p(t, tg[0], tg[0] + .22))) * 26}px)`; if ($('tag').dataset.k !== tg[2]) { $('tag').innerHTML = tg[2]; $('tag').dataset.k = tg[2]; } } else TB.style.opacity = 0;
+  // crossed chips 44.5–48.2
+  [['x1', 44.85], ['x2', 45.75], ['x3', 46.95]].forEach(([id, a]) => { const el = $(id), k = p(t, a, a + .3), o = cl(k * 3) * (1 - ease(p(t, 48.0, 48.4)));
+    el.style.opacity = o; el.style.transform = `scale(${.6 + .4 * back(k)}) rotate(${id === 'x2' ? 3 : -3}deg)`;
+    el.querySelector('.st').style.width = `calc(${100 * ease(p(t, a + .35, a + .6))}% - 36px)`; });
+
+  // ===== TAIL
+  kw($('kMejor'), t, 48.34, 49.15, 'slam', .2, .2);
+  // price 49.14–52.2
+  const pr = $('price'); pr.style.opacity = win(t, 49.15, 52.25, .25, .25);
+  $('pDesde').style.opacity = ease(p(t, 49.2, 49.5));
+  const k10 = p(t, 50.55, 50.9); $('p10').style.opacity = cl(k10 * 3); $('p10').style.transform = `scale(${1.6 - .6 * ease(k10)})`; $('p10').style.filter = k10 < 1 ? `blur(${(1 - ease(k10)) * 14}px)` : 'none';
+  $('pMes').style.opacity = ease(p(t, 51.25, 51.5)); $('pMes').style.transform = `translateY(${(1 - ease(p(t, 51.25, 51.5))) * 40}px)`;
+  // small biz 52.2–56.7
+  $('SB').style.opacity = win(t, 52.22, 56.75, .35, .25);
+  if (t > 52 && t < 57) {
+    const big = p(t, 53.0, 54.2);
+    $('tower').style.opacity = ease(p(t, 52.3, 52.8)) * (1 - .75 * big); $('tower').style.transform = `translateY(${(1 - ease(p(t, 52.3, 52.9))) * 300 + ease(big) * 140}px) scale(${1 - .15 * ease(big)})`; $('tower').style.filter = `grayscale(${big})`;
+    const ks = p(t, 53.6, 54.3); $('store').style.opacity = cl(ks * 2); $('store').style.transform = `translateX(${-140 * (1 - ease(ks))}px) scale(${.6 + .4 * back(ks)})`;
+    $('store').style.filter = `drop-shadow(0 0 ${40 * ease(p(t, 54.4, 55.2))}px rgba(76,141,255,.7))`;
+    kw($('kPro'), t, 55.55, 56.7, 'slam', .25, .2);
+  }
+  // limits 56.8–59.6
+  $('LIM').style.opacity = win(t, 56.82, 59.6, .3, .25);
+  if (t > 56.7 && t < 59.8) {
+    const w2 = $('win2'), br = p(t, 58.2, 58.9);
+    w2.style.opacity = 1 - ease(p(t, 58.25, 58.6)); w2.style.transform = `scale(${1 - .03 * Math.sin(t * 20) * p(t, 57.4, 58.2)}) translateX(${Math.sin(t * 50) * 6 * p(t, 57.6, 58.2)}px)`;
+    w2.querySelectorAll('.mod b').forEach((b, i) => { const a = 56.95 + i * .12; b.style.opacity = ease(p(t, a, a + .1)); });
+    SH.forEach(s => { s.el.style.opacity = t > 58.25 ? 1 - br : 0; const d = s.v * ease(br); s.el.style.transform = `translate(${s.x + Math.cos(s.a) * d}px,${s.y + Math.sin(s.a) * d + 400 * br * br}px) rotate(${br * 400 * (s.a - 3)}deg)`; });
+    kw($('kLim'), t, 57.9, 59.6, 'slam', .2, .2); $('limSt').style.width = (ease(p(t, 58.3, 58.6)) * 104) + '%';
+  }
+  // growth 59.64–61.8
+  const G = $('grow'); G.style.opacity = win(t, 59.64, 61.85, .25, .25);
+  if (t > 59.5 && t < 62) { const L = 1300; $('gline').style.strokeDasharray = L; $('gline').style.strokeDashoffset = L * (1 - eio(p(t, 59.75, 61.2)));
+    $('garea').style.opacity = ease(p(t, 60.6, 61.3)); kw($('kCrecer'), t, 60.75, 61.85, 'slam', .25, .2); }
+  // end logo 61.86–72.44
+  const EL = $('endLogo');
+  if (t > 61.8) { const k = p(t, 61.86, 62.45); const up = eio(p(t, 63.6, 64.2)), up2 = eio(p(t, 68.4, 68.9));
+    EL.style.opacity = cl(k * 2); EL.style.transform = `translateY(${-up * 230 - up2 * 60}px) scale(${1 - .3 * up - .15 * up2})`;
+    $('eIso').style.transform = `rotate(${(1 - ease(k)) * -220}deg) scale(${.3 + .7 * back(k)})`; } else EL.style.opacity = 0;
+  // más ...
+  const mo = 1 - ease(p(t, 68.3, 68.75));
+  [['m1', 63.9], ['m2', 64.95], ['m3', 66.15]].forEach(([id, a]) => { const el = $(id), k = p(t, a, a + .3); el.style.opacity = cl(k * 3) * mo; el.style.transform = `translateX(${(1 - ease(k)) * -120}px)`; el.style.filter = k < 1 ? `blur(${(1 - ease(k)) * 10}px)` : 'none'; });
+  $('mas').style.top = (900) + 'px';
+  // CTA 68.6–72.44
+  const C = $('cta'); C.style.opacity = ease(p(t, 68.6, 68.95)); C.style.transform = `translateY(${(1 - ease(p(t, 68.6, 69.0))) * 60}px)`;
+  $('cta1').style.transform = `scale(${1 + .4 * (1 - ease(p(t, 68.6, 68.9)))})`;
+  const full = 'Quiero verlo', n = Math.floor(cl((t - 69.5) / .75) * full.length);
+  $('ctaTx').innerHTML = full.slice(0, n) + (t > 68.9 && t < 70.4 && Math.floor(t * 3) % 2 ? '|' : '');
+  $('cbox').querySelector('.send').style.transform = `scale(${1 + .1 * Math.max(0, Math.sin((t - 70.3) * 5)) * (t > 70.3 ? 1 : 0)})`;
+  const k3 = p(t, 70.6, 70.95); $('cta3').style.opacity = cl(k3 * 2); $('cta3').style.transform = `scale(${.7 + .3 * back(k3)})`;
+};
+render(0);
+</script></body></html>

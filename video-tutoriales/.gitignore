@@ -1,0 +1,4 @@
+tools/deps/node_modules/
+*shots/
+*.mp4
+*.wav

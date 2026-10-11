@@ -1,0 +1,343 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#060A14;font-family:'Inter Display','Inter',sans-serif;color:#F3F6FF}
+#stage{position:absolute;inset:0;overflow:hidden}
+#bg{position:absolute;inset:-200px}
+#grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:72px 72px}
+.L{position:absolute;inset:0;opacity:0}
+.abs{position:absolute}
+.kw{position:absolute;left:0;right:0;text-align:center;font-weight:900;letter-spacing:-4px;line-height:1;opacity:0}
+.pill{display:inline-flex;align-items:center;gap:14px;padding:16px 30px;border-radius:999px;font-weight:800;font-size:40px;background:rgba(76,141,255,.14);border:2px solid rgba(76,141,255,.5);color:#CFE0FF}
+/* chat */
+.bub{position:absolute;left:110px;width:720px;padding:30px 36px;border-radius:36px 36px 36px 10px;background:#1B2333;border:2px solid rgba(255,255,255,.08);box-shadow:0 30px 70px rgba(0,0,0,.5);opacity:0}
+.bub .h{display:flex;align-items:center;gap:16px;font-size:26px;color:#8D97AD;font-weight:600}
+.bub .h i{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#EF4444);display:flex;align-items:center;justify-content:center;font-style:normal;font-size:30px}
+.bub .tx{font-size:50px;font-weight:700;margin-top:16px;letter-spacing:-1px;line-height:1.15}
+.dots span{display:inline-block;width:16px;height:16px;border-radius:50%;background:#8D97AD;margin-right:10px}
+/* product grid */
+.pc{position:absolute;width:250px;height:170px;border-radius:26px;background:#111827;border:2px solid rgba(255,255,255,.08);padding:22px;opacity:0}
+.pc .n{font-size:27px;font-weight:700;line-height:1.15}
+.pc .q{position:absolute;left:22px;bottom:18px;font-size:44px;font-weight:900;color:#5B657A}
+.pc .ic{position:absolute;right:20px;bottom:18px;font-size:44px}
+#hl{position:absolute;width:266px;height:186px;border-radius:30px;border:5px solid #F59E0B;box-shadow:0 0 40px rgba(245,158,11,.5);opacity:0}
+/* chaos items */
+.ch{position:absolute;opacity:0;will-change:transform}
+.sticky{width:250px;padding:26px 24px;background:#FDE68A;color:#3b2f06;font-family:'Comic Sans MS','Noto Sans',cursive;font-size:32px;line-height:1.25;box-shadow:0 20px 40px rgba(0,0,0,.5);border-radius:6px}
+.file{display:flex;align-items:center;gap:16px;padding:20px 26px;border-radius:20px;background:#E9EEF7;color:#1d2433;font-size:28px;font-weight:700;box-shadow:0 20px 40px rgba(0,0,0,.5)}
+.file b{display:inline-flex;width:58px;height:66px;border-radius:10px;align-items:center;justify-content:center;color:#fff;font-size:20px}
+.mini{padding:20px 26px;border-radius:26px 26px 26px 8px;background:#1B2333;border:2px solid rgba(255,255,255,.08);font-size:30px;font-weight:600;box-shadow:0 20px 40px rgba(0,0,0,.5)}
+/* tiles */
+.tile{position:absolute;width:290px;height:330px;border-radius:34px;background:linear-gradient(180deg,#15203A,#0F172A);border:2px solid rgba(76,141,255,.35);padding:30px 26px;opacity:0;box-shadow:0 30px 70px rgba(0,0,0,.5),0 0 60px rgba(76,141,255,.12)}
+.tile .t{font-size:30px;font-weight:900;letter-spacing:1px;color:#9EC2FF;margin-top:16px}
+.tile .e{font-size:64px}
+.bar{height:16px;border-radius:8px;background:rgba(255,255,255,.08);margin-top:14px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,#4C8DFF,#22E39A)}
+/* phone */
+#phone{position:absolute;left:228px;top:330px;width:624px;height:1352px;border-radius:84px;background:#05070D;border:12px solid #1E2433;box-shadow:0 0 0 3px #313a52,0 70px 160px rgba(0,0,0,.75),0 0 140px rgba(76,141,255,.2);overflow:hidden;opacity:0;transform-origin:50% 50%}
+#scr{position:absolute;inset:0;overflow:hidden;border-radius:72px;background:#F4F6FA}
+.sc{position:absolute;left:0;top:0;width:600px;opacity:0}
+#isl{position:absolute;left:50%;top:16px;width:170px;height:44px;margin-left:-85px;background:#000;border-radius:24px;z-index:5}
+#ring{position:absolute;border:5px solid #4C8DFF;border-radius:22px;box-shadow:0 0 0 8px rgba(76,141,255,.2),0 0 40px rgba(76,141,255,.7);opacity:0;z-index:4}
+#glass{position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.10) 50%,transparent 60%);z-index:6;pointer-events:none}
+.ghost{position:absolute;top:470px;width:430px;height:932px;border-radius:60px;border:10px solid #1E2433;overflow:hidden;opacity:0;box-shadow:0 40px 100px rgba(0,0,0,.6)}
+.ghost img{width:100%;display:block}
+/* store */
+#tower{position:absolute;opacity:0}
+#store{position:absolute;opacity:0}
+/* brand */
+#brandLock{position:absolute;left:0;right:0;text-align:center;opacity:0}
+.cta{display:inline-flex;align-items:center;gap:20px;padding:30px 40px;border-radius:999px;background:#fff;color:#0B1020;font-size:44px;font-weight:800;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.send{width:84px;height:84px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#4C8DFF);display:flex;align-items:center;justify-content:center}
+#flash{position:absolute;inset:0;background:radial-gradient(circle at 50% 46%,rgba(140,180,255,.9),rgba(76,141,255,.0) 60%);opacity:0;pointer-events:none}
+#vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 58%,rgba(0,0,0,.55));pointer-events:none}
+</style></head>
+<body><div id="stage">
+<div id="bg"></div><div id="grid"></div>
+
+<!-- ========== PROBLEM ========== -->
+<div class="L" id="P">
+  <div class="abs" id="bigQ" style="left:0;right:0;top:330px;text-align:center;font-size:900px;font-weight:900;color:rgba(76,141,255,.07);line-height:1">?</div>
+  <div class="bub" id="b1" style="top:430px"><div class="h"><i>🛒</i>Cliente · ahora</div><div class="tx" id="b1t">Hola 👋 ¿cuántos te quedan?</div></div>
+  <div class="bub" id="b2" style="top:430px;left:250px;width:720px"><div class="h"><i style="background:linear-gradient(135deg,#22E39A,#06B6D4)">🙋</i>Cliente · ahora</div><div class="tx">¿Y a cómo está el aceite?</div></div>
+  <div id="pgrid"></div><div id="hl"></div>
+  <div class="kw" id="kTiempo" style="top:1420px;font-size:130px">⏳ <span style="color:#F59E0B">TIEMPO</span></div>
+  <div id="chaos"></div>
+  <div class="ch" id="lupa" style="font-size:150px">🔍</div>
+  <div class="kw" id="kDes" style="top:1380px;font-size:120px;color:#FF6B6B">DESORDEN</div>
+</div>
+
+<!-- ========== IMAGINE ========== -->
+<div class="L" id="I">
+  <div class="kw" id="kImag" style="top:560px;font-size:72px;font-weight:300;letter-spacing:22px;color:#CFE0FF">IMAGINÁ…</div>
+</div>
+<div id="orb" class="abs" style="left:540px;top:900px;width:0;height:0"></div>
+
+<!-- ========== ORGANIZED ========== -->
+<div class="L" id="O">
+  <div class="tile" id="t1"><div class="e">📦</div><div class="t">PRODUCTOS</div><div class="bar"><i style="width:80%"></i></div><div class="bar"><i style="width:55%"></i></div><div class="bar"><i style="width:68%"></i></div></div>
+  <div class="tile" id="t2"><div class="e">🧾</div><div class="t">VENTAS</div><svg width="236" height="120" viewBox="0 0 236 120" style="margin-top:20px"><polyline id="t2line" points="0,100 40,82 80,88 120,60 160,52 200,30 236,12" fill="none" stroke="#22E39A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="tile" id="t3"><div class="e">🏷️</div><div class="t">INVENTARIO</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:20px" id="t3g"></div></div>
+</div>
+
+<!-- ========== PHONE (real screens) ========== -->
+<div id="ghL" class="ghost" style="left:20px"><img src="ad/v4.png"></div>
+<div id="ghR" class="ghost" style="left:630px"><img src="ad/prod.png"></div>
+<div id="phone"><div id="scr">
+  <img class="sc" id="sDash" src="ad/dash_full.png" style="width:600px">
+  <img class="sc" id="sV2" src="ad/v2cart.png">
+  <img class="sc" id="sV4" src="ad/v4.png">
+  <img class="sc" id="sProd" src="ad/prod.png">
+  <img class="sc" id="sRep" src="ad/rep.png">
+  <div id="ring"></div>
+</div><div id="isl"></div><div id="glass"></div></div>
+<div class="kw" id="kSys" style="top:190px;font-size:96px">TODO EN <span style="color:#4C8DFF">UNO</span></div>
+<div class="abs" id="tagBox" style="left:0;right:0;top:200px;text-align:center"><span class="pill" id="tag"></span></div>
+
+<!-- ========== SMALL BUSINESS ========== -->
+<div class="L" id="S">
+  <svg id="tower" width="420" height="980" viewBox="0 0 420 980" style="left:600px;top:420px">
+    <rect x="20" y="40" width="380" height="940" rx="10" fill="#1A2234" stroke="#2C3650" stroke-width="4"/>
+    <g id="wins"></g>
+  </svg>
+  <svg id="store" width="560" height="520" viewBox="0 0 560 520" style="left:260px;top:760px">
+    <rect x="40" y="160" width="480" height="340" rx="18" fill="#E9EEF7"/>
+    <path d="M20 160 L60 60 L500 60 L540 160 Z" fill="#2563EB"/>
+    <g fill="#fff"><path d="M60 60 L110 60 L95 160 L40 160 Z"/><path d="M200 60 L250 60 L245 160 L190 160 Z"/><path d="M340 60 L390 60 L395 160 L340 160 Z"/></g>
+    <path d="M20 160 Q60 200 100 160 Q140 200 180 160 Q220 200 260 160 Q300 200 340 160 Q380 200 420 160 Q460 200 500 160 Q520 180 540 160" fill="#1D4ED8"/>
+    <rect x="80" y="240" width="190" height="260" rx="10" fill="#1A2234"/>
+    <rect x="310" y="240" width="170" height="140" rx="12" fill="#0F172A"/>
+    <polyline points="325,350 355,330 385,338 415,300 445,288 465,268" fill="none" stroke="#22E39A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="240" cy="370" r="10" fill="#F59E0B"/>
+    <rect x="160" y="10" width="240" height="44" rx="22" fill="#0F172A"/>
+    <text x="280" y="41" fill="#fff" font-size="26" font-weight="800" text-anchor="middle" font-family="Inter Display, Inter">TU NEGOCIO</text>
+  </svg>
+  <div class="kw" id="kOrg" style="top:300px;font-size:116px">ORGANIZA<span style="color:#22E39A">CIÓN</span></div>
+</div>
+
+<!-- ========== MEMORY ========== -->
+<div class="L" id="M">
+  <div id="notes"></div>
+  <div class="kw" id="kMem" style="top:820px;font-size:150px">MEMORIA</div>
+  <div class="abs" id="strike" style="left:150px;top:890px;height:16px;width:0;background:#FF4D4D;border-radius:8px;box-shadow:0 0 30px rgba(255,77,77,.7)"></div>
+  <div class="kw" id="kCtrl" style="top:820px;font-size:170px;color:#4C8DFF">CONTROL</div>
+</div>
+
+<!-- ========== BRAND / PRICE / CTA ========== -->
+<div class="L" id="B">
+  <div id="brandLock" style="top:560px">
+    <img id="bIso" src="isotipo.png" style="width:260px">
+    <div id="bWord" style="font-size:150px;font-weight:900;letter-spacing:-6px;margin-top:30px">Negocio<span style="color:#4C8DFF">360</span></div>
+  </div>
+  <div class="abs" id="price" style="left:0;right:0;top:1070px;text-align:center;opacity:0">
+    <div style="font-size:44px;color:#AEB8CC;font-weight:600;letter-spacing:4px">DESDE</div>
+    <div style="font-size:190px;font-weight:900;letter-spacing:-8px;line-height:1"><span style="font-size:80px;letter-spacing:0;vertical-align:top;line-height:2.1;color:#9EC2FF">US$</span>10<span style="font-size:64px;letter-spacing:0;color:#AEB8CC">/mes</span></div>
+  </div>
+  <div class="abs" id="cta" style="left:0;right:0;top:1040px;text-align:center;opacity:0">
+    <div class="cta"><span style="font-size:46px">💬</span><span id="ctaTx" style="min-width:300px;text-align:left"></span><span class="send"><svg width="40" height="40" viewBox="0 0 24 24" fill="#fff"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></span></div>
+    <div style="margin-top:44px"><span class="pill" id="demo" style="opacity:0;background:rgba(34,227,154,.14);border-color:rgba(34,227,154,.55);color:#B8F5DD">✓ Demostración gratuita</span></div>
+  </div>
+</div>
+
+<div id="flash"></div>
+<div id="vig"></div>
+</div>
+<script>
+const DUR = 44.75;
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const back = (x, c = 1.8) => { x = cl(x); return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const rnd = s => { const x = Math.sin(s * 127.1) * 43758.5453; return x - Math.floor(x); };
+const win = (t, a, b, fi = .3, fo = .3) => Math.min(ease(p(t, a, a + fi)), 1 - ease(p(t, b - fo, b)));
+function kw(el, t, a, b, mode = 'up', fi = .35, fo = .3) {
+  const o = win(t, a, b, fi, fo); el.style.opacity = o;
+  const k = ease(p(t, a, a + fi));
+  if (mode === 'up') el.style.transform = `translateY(${(1 - k) * 60}px)`;
+  else if (mode === 'zoom') el.style.transform = `scale(${1 + (1 - k) * .5})`;
+  el.style.filter = k < 1 ? `blur(${(1 - k) * 12}px)` : 'none';
+  return o;
+}
+// ---------- build product grid (problem)
+const PN = [['Aceite Clover 1L', '🫙'], ['Arroz Faisán 1 qq', '🌾'], ['Azúcar fardo', '🍬'], ['Frijol rojo 1 qq', '🫘'], ['Café Presto', '☕'], ['Harina Maseca', '🌽'], ['Jabón Xedex', '🧼'], ['Gaseosa 3L', '🥤'], ['Leche caja 12', '🥛']];
+const PC = PN.map(([n, e], i) => { const d = document.createElement('div'); d.className = 'pc'; d.innerHTML = `<div class="n">${n}</div><div class="q">?</div><div class="ic">${e}</div>`; $('pgrid').appendChild(d);
+  return { el: d, x: 125 + (i % 3) * 290, y: 760 + Math.floor(i / 3) * 210 }; });
+// ---------- chaos items
+const CH = [
+  ['sticky', 'arroz ¿cuánto quedaba?'], ['file', '<b style="background:#16A34A">XLS</b>precios_final_v3.xlsx'], ['mini', '¿Tenés frijoles?'],
+  ['sticky', 'aceite C$78?? preguntar'], ['file', '<b style="background:#DC2626">PDF</b>lista_precios.pdf'], ['mini', '¿Ya llegó el pedido?'],
+  ['sticky', 'Juan debe… ¿200?'], ['file', '<b style="background:#2563EB">IMG</b>foto_cuaderno.jpg'], ['mini', 'Precio del café?'],
+];
+const CI = CH.map(([c, h], i) => { const d = document.createElement('div'); d.className = 'ch ' + c; d.innerHTML = h; $('chaos').appendChild(d);
+  const POS = [[70,420],[560,470],[300,640],[640,760],[60,860],[420,980],[110,1150],[560,1190],[300,1350]];
+  return { el: d, x: POS[i][0], y: POS[i][1], r: (rnd(i + 3) - .5) * 26, vx: (rnd(i + 11) - .5) * 40, vy: (rnd(i + 13) - .5) * 36, z: 1.05 + rnd(i + 5) * .3 }; });
+// ---------- inventory tile cells
+(function () { let h = ''; for (let i = 0; i < 12; i++) h += `<div style="height:44px;border-radius:10px;background:${i % 5 === 3 ? 'rgba(245,158,11,.5)' : 'rgba(76,141,255,.35)'}"></div>`; $('t3g').innerHTML = h; })();
+// ---------- tower windows
+(function () { let h = ''; for (let r = 0; r < 18; r++) for (let c = 0; c < 6; c++) h += `<rect x="${50 + c * 58}" y="${80 + r * 50}" width="36" height="30" rx="4" fill="#26324C"/>`; $('wins').innerHTML = h; })();
+// ---------- memory notes
+const NT = ['¿Quién me debe?', 'pedir arroz', 'precio aceite??', 'cerrar caja…', 'stock leche?', 'llamar proveedor'];
+const NO = NT.map((s, i) => { const d = document.createElement('div'); d.className = 'ch sticky'; d.textContent = s; $('notes').appendChild(d);
+  const a = i / NT.length * Math.PI * 2; return { el: d, a, r: 360 + (i % 2) * 70, rot: (rnd(i) - .5) * 24 }; });
+// ---------- phone screen config (css px inside a 600-wide screen; image is 600 css wide)
+const S = 600 / 600; // screen scale
+const SCR = { sDash: [0, 0], sV2: [0, 0], sV4: [0, 0], sProd: [0, 0], sRep: [0, 0] };
+
+window.render = function (t) {
+  // ---------- background mood
+  const prob = t < 11.7, k5 = p(t, 11.7, 13.2);
+  const hueA = prob ? '120,40,60' : '37,99,235', a1 = prob ? .16 + .04 * Math.sin(t * 3) : .30;
+  $('bg').style.background = `radial-gradient(900px 900px at ${50 + 22 * Math.sin(t * .35)}% ${32 + 10 * Math.cos(t * .3)}%,rgba(${hueA},${a1}),transparent 62%),radial-gradient(800px 800px at ${30 + 20 * Math.cos(t * .25)}% 88%,rgba(${prob ? '60,70,110' : '34,227,154'},${prob ? .14 : .12}),transparent 60%),#060A14`;
+  $('grid').style.transform = `translateY(${(t * 18) % 72}px)`;
+
+  // ================= PROBLEM 0–11.9
+  const P = $('P'); P.style.opacity = 1 - ease(p(t, 11.6, 12.4)); P.style.display = t > 12.6 ? 'none' : '';
+  if (t < 12.6) {
+    $('bigQ').style.opacity = win(t, 0, 2.9, .5, .5); $('bigQ').style.transform = `scale(${1 + t * .03}) rotate(${Math.sin(t * 2) * 3}deg)`;
+    // bubble 1: pops at 0.05, tx typing dots first
+    const b1 = $('b1'); const k1 = p(t, .05, .45); b1.style.opacity = cl(k1 * 3) * (1 - ease(p(t, 7.9, 8.3)));
+    let by = 760, bs = 1.18;
+    { const m = eio(p(t, 2.6, 3.2)); by = lerp(760, 230, m); bs = lerp(1.18, .72, m); }
+    const shake = t < 1.2 ? Math.sin(t * 60) * 6 * (1 - p(t, .3, 1.2)) : 0;
+    b1.style.transform = `translate(${shake - (bs - 1) * 360}px,${by - 430}px) scale(${(.6 + .4 * back(k1)) * bs})`; b1.style.transformOrigin = '0 0';
+    $('b1t').innerHTML = t < .55 ? '<span class="dots"><span></span><span></span><span></span></span>' : 'Hola 👋 ¿cuántos te quedan?';
+    // product grid 2.9–7.8
+    PC.forEach((c, i) => { const a = 2.95 + i * .05, k = p(t, a, a + .35); const out = p(t, 7.85, 8.2);
+      c.el.style.opacity = cl(k * 2) * (1 - out) * (t > 6.2 ? .55 + .45 * (1 - p(t, 6.2, 6.5)) : 1);
+      c.el.style.left = c.x + 'px'; c.el.style.top = c.y + 'px'; c.el.style.transform = `scale(${.7 + .3 * back(k)})`;
+      const visited = t > 3.3 + i * .25; c.el.querySelector('.q').textContent = visited ? (i % 3 === 1 ? '¿?' : '…') : '?'; c.el.querySelector('.q').style.color = visited ? '#F59E0B' : '#5B657A'; });
+    const hi = Math.min(8, Math.floor(Math.max(0, t - 3.3) / .25)), hc = PC[hi];
+    $('hl').style.opacity = t > 3.3 && t < 7.85 ? (t > 6.2 ? .4 : 1) : 0; $('hl').style.left = (hc.x - 8) + 'px'; $('hl').style.top = (hc.y - 8) + 'px';
+    kw($('kTiempo'), t, 4.4, 6.1, 'zoom');
+    // bubble 2 at 6.2
+    const b2 = $('b2'), k2 = p(t, 6.15, 6.5); b2.style.opacity = cl(k2 * 3) * (1 - ease(p(t, 7.9, 8.3)));
+    b2.style.transform = `translateY(${190 + (1 - ease(k2)) * 40}px) scale(${(.6 + .4 * back(k2)) * .8})`; b2.style.transformOrigin = '100% 0';
+    // chaos 7.8–11.9
+    CI.forEach((c, i) => { const a = 7.85 + i * .07, k = p(t, a, a + .4), dt = Math.max(0, t - a);
+      let x = c.x + c.vx * dt + Math.sin(dt * 1.3 + i) * 20, y = c.y + c.vy * dt + Math.cos(dt * 1.1 + i) * 16;
+      // suck into center 11.75–12.5
+      const s = eio(p(t, 11.75, 12.45)); x = lerp(x, 540 - 120, s); y = lerp(y, 880, s);
+      const jit = t > 9.3 && t < 11.6 ? Math.sin(t * 40 + i) * 2.5 : 0;
+      c.el.style.opacity = cl(k * 2) * (1 - p(t, 12.2, 12.5));
+      c.el.style.transform = `translate(${x + jit}px,${y}px) rotate(${c.r + Math.sin(dt + i) * 4 + s * 120}deg) scale(${c.z * (.6 + .4 * back(k)) * (1 - .8 * s)})`;
+      c.el.style.filter = s > 0 ? `blur(${s * 8}px)` : (t < 11.7 ? `saturate(${1 - .4 * p(t, 9, 11)})` : 'none'); });
+    const lk = win(t, 8.3, 11.6, .3, .3); const la = (t - 8.3) * 1.6; $('lupa').style.opacity = lk;
+    $('lupa').style.transform = `translate(${470 + Math.sin(la) * 300}px,${820 + Math.sin(la * 2) * 260}px) rotate(${Math.sin(la) * 15}deg)`;
+    kw($('kDes'), t, 9.7, 11.6, 'zoom');
+    if (t > 9.7 && t < 11.6) $('kDes').style.transform += ` translate(${Math.sin(t * 50) * 3}px,0)`;
+  }
+
+  // ================= IMAGINE 11.8–14.9
+  $('I').style.opacity = win(t, 12.2, 15.0, .5, .4);
+  kw($('kImag'), t, 12.25, 14.9, 'up', .6, .4);
+  $('kImag').style.letterSpacing = (22 + 14 * p(t, 12.25, 14.9)) + 'px';
+  // orb
+  const orbOn = t > 11.9 && t < 15.6; const ok = ease(p(t, 11.95, 12.6)), ob = 1 - ease(p(t, 15.0, 15.5));
+  const R = (60 + 20 * Math.sin(t * 3)) * ok * (1 + 6 * p(t, 14.85, 15.4));
+  $('orb').style.boxShadow = orbOn ? `0 0 ${R}px ${R * .5}px rgba(120,170,255,${.9 * ob}),0 0 ${R * 3}px ${R}px rgba(76,141,255,${.35 * ob})` : 'none';
+  $('flash').style.opacity = .85 * win(t, 14.85, 15.6, .15, .45);
+
+  // ================= ORGANIZED 14.9–18.9
+  $('O').style.opacity = win(t, 14.95, 19.0, .2, .35);
+  if (t > 14.9 && t < 19.1) {
+    const tiles = [['t1', 16.1, 100], ['t2', 16.8, 395], ['t3', 17.4, 690]];
+    tiles.forEach(([id, a, x]) => { const el = $(id), k = p(t, a - .25, a + .25), dock = eio(p(t, 18.25, 18.95));
+      el.style.opacity = cl(k * 2) * (1 - dock);
+      const y = 760 + Math.sin(t * 1.5 + x) * 8;
+      el.style.left = lerp(x, 395, dock) + 'px'; el.style.top = lerp(y, 980, dock) + 'px';
+      el.style.transform = `scale(${(.5 + .5 * back(k)) * (1 - .6 * dock)}) rotateY(${(1 - ease(k)) * 40}deg)`; });
+    $('t1').querySelectorAll('.bar i').forEach((b, i) => b.style.width = (30 + 50 * ease(p(t, 16.2 + i * .1, 16.9 + i * .1)) - i * 8) + '%');
+    const L = 300; $('t2line').style.strokeDasharray = L; $('t2line').style.strokeDashoffset = L * (1 - ease(p(t, 16.8, 17.6)));
+    [...$('t3g').children].forEach((c, i) => c.style.opacity = ease(p(t, 17.4 + i * .04, 17.6 + i * .04)));
+  }
+
+  // ================= PHONE 18.4–28.6
+  const ph = $('phone');
+  const pin = ease(p(t, 18.3, 19.0)), pout = eio(p(t, 28.45, 29.0));
+  const phoneOn = t > 18.3 && t < 29.1;
+  ph.style.opacity = phoneOn ? cl(pin * 1.5) * (1 - pout) : 0;
+  // trio fan at 27.3
+  const fan = eio(p(t, 27.2, 27.8));
+  const ry = -8 * Math.sin(t * .6) * (1 - fan) - 10 * (1 - pin);
+  const sc = lerp(1, .78, fan) * (1 - .25 * pout) * (.85 + .15 * pin);
+  ph.style.transform = `perspective(2400px) translateY(${(1 - pin) * 500 + fan * 80}px) rotateY(${ry}deg) rotateX(${4 * (1 - fan)}deg) scale(${sc})`;
+  // screens
+  const scr = [['sDash', 18.3, 23.15], ['sV2', 23.15, 23.85], ['sV4', 23.85, 24.6], ['sProd', 24.6, 26.3], ['sRep', 26.3, 29.2]];
+  let ring = null;
+  scr.forEach(([id, a, b]) => { const el = $(id); const on = t >= a - .01 && t < b + .3;
+    if (!on) { el.style.opacity = 0; return; }
+    const kin = ease(p(t, a, a + .3)), kout = ease(p(t, b, b + .3));
+    el.style.opacity = id === 'sDash' ? 1 - kout : (kin * (1 - kout));
+    let y = 0, x = (1 - kin) * 600 * (id === 'sDash' ? 0 : 1) - kout * 600 * (id === 'sRep' ? 0 : 1) * 0;
+    if (id === 'sDash') y = -eio(p(t, 19.6, 22.9)) * 1150;
+    el.style.transform = `translate(${x}px,${y}px)`;
+    if (id === 'sV2' && t > 23.3) ring = [30, 640, 540, 240];
+    if (id === 'sV4' && t > 24.0) ring = [30, 860, 540, 56];
+    if (id === 'sProd' && t > 25.0) ring = [305, 401, 281, 142];
+    if (id === 'sRep' && t > 26.7 && t < 27.25) ring = [14, 500, 572, 288];
+  });
+  const RG = $('ring');
+  if (ring && phoneOn) { RG.style.opacity = .85 + .15 * Math.sin(t * 8); RG.style.left = ring[0] + 'px'; RG.style.top = ring[1] + 'px'; RG.style.width = ring[2] + 'px'; RG.style.height = ring[3] + 'px'; } else RG.style.opacity = 0;
+  $('glass').style.transform = `translateX(${((t * 260) % 1600) - 800}px)`;
+  // ghosts (todo en uno)
+  ['ghL', 'ghR'].forEach((id, i) => { const el = $(id); el.style.opacity = fan * (1 - pout);
+    el.style.transform = `perspective(2000px) translateX(${(i ? 1 : -1) * (1 - fan) * -200}px) rotateY(${(i ? -1 : 1) * 18}deg) scale(.82)`; });
+  kw($('kSys'), t, 27.35, 28.7, 'zoom');
+  // logo lockup during dashboard hero (spoken "Negocio360" ~21.7)
+  // tags above phone
+  const tags = [[19.2, 21.55, '📊 DASHBOARD'], [21.55, 23.1, '<b style="color:#fff">Negocio<span style="color:#4C8DFF">360</span></b>'], [23.2, 24.55, '🧾 VENTAS'], [24.6, 26.3, '📦 INVENTARIO'], [26.3, 27.25, '📈 REPORTES']];
+  let tg = null; tags.forEach(g => { if (t >= g[0] && t < g[1] + .25) tg = g; });
+  const TB = $('tagBox');
+  if (tg) { const o = win(t, tg[0], tg[1] + .2, .25, .2); TB.style.opacity = o; TB.style.transform = `translateY(${(1 - ease(p(t, tg[0], tg[0] + .25))) * 30}px)`;
+    if ($('tag').dataset.k !== tg[2]) { $('tag').innerHTML = tg[2]; $('tag').dataset.k = tg[2]; }
+    $('tag').style.fontSize = tg[2].includes('Negocio') ? '64px' : '40px'; } else TB.style.opacity = 0;
+
+  // ================= SMALL BUSINESS 28.8–33.3
+  $('S').style.opacity = win(t, 28.75, 33.4, .4, .35);
+  if (t > 28.6 && t < 33.6) {
+    const big = p(t, 29.9, 31.0);
+    $('tower').style.opacity = ease(p(t, 28.9, 29.5)) * (1 - .75 * big);
+    $('tower').style.transform = `translateY(${(1 - ease(p(t, 28.9, 29.6))) * 300 + ease(big) * 120}px) scale(${1 - .15 * ease(big)})`;
+    $('tower').style.filter = `grayscale(${big})`;
+    const ks = p(t, 30.4, 31.1);
+    $('store').style.opacity = cl(ks * 2);
+    $('store').style.transform = `translateX(${-120 * (1 - ease(ks))}px) scale(${.6 + .4 * back(ks)})`;
+    $('store').style.filter = `drop-shadow(0 0 ${40 * ease(p(t, 31.2, 32))}px rgba(76,141,255,.7))`;
+    kw($('kOrg'), t, 32.2, 33.4, 'zoom', .35, .3);
+  }
+
+  // ================= MEMORY 33.5–37.4
+  $('M').style.opacity = win(t, 33.45, 37.5, .35, .3);
+  if (t > 33.3 && t < 37.6) {
+    const blow = eio(p(t, 36.6, 37.2));
+    NO.forEach((n, i) => { const a = n.a + (t - 33.5) * .35, k = p(t, 33.55 + i * .08, 33.95 + i * .08);
+      const x = 540 + Math.cos(a) * n.r - 125 + blow * Math.cos(a) * 700, y = 900 + Math.sin(a) * n.r * 1.2 - 60 + blow * Math.sin(a) * 900;
+      n.el.style.opacity = cl(k * 2) * (1 - blow); n.el.style.transform = `translate(${x}px,${y}px) rotate(${n.rot + blow * 90}deg) scale(${.6 + .4 * back(k)})`; });
+    const mo = kw($('kMem'), t, 34.6, 37.0, 'zoom', .4, .2);
+    $('strike').style.width = (780 * ease(p(t, 36.3, 36.65))) + 'px'; $('strike').style.opacity = mo;
+    kw($('kCtrl'), t, 36.85, 37.55, 'zoom', .25, .2);
+  }
+
+  // ================= BRAND / PRICE / CTA 37.4–44.75
+  $('B').style.opacity = ease(p(t, 37.4, 37.7));
+  if (t > 37.3) {
+    const kb = p(t, 37.45, 38.1);
+    $('brandLock').style.opacity = cl(kb * 2);
+    const up = eio(p(t, 39.2, 39.7)), up2 = eio(p(t, 41.1, 41.6));
+    $('brandLock').style.transform = `translateY(${-up * 160 - up2 * 120}px) scale(${1 - .15 * up - .1 * up2})`;
+    $('bIso').style.transform = `rotate(${(1 - ease(kb)) * -240}deg) scale(${.4 + .6 * back(kb)})`;
+    $('bWord').style.opacity = ease(p(t, 37.75, 38.15)); $('bWord').style.transform = `translateY(${(1 - ease(p(t, 37.75, 38.15))) * 40}px)`;
+    const pr = $('price'); pr.style.opacity = win(t, 39.4, 41.25, .35, .3); pr.style.transform = `translateY(${(1 - ease(p(t, 39.4, 39.8))) * 60}px) scale(${1 + .03 * Math.sin(p(t, 39.8, 41) * Math.PI)})`;
+    const c = $('cta'); c.style.opacity = ease(p(t, 41.3, 41.6)); c.style.transform = `translateY(${(1 - ease(p(t, 41.3, 41.65))) * 60 - 80}px)`;
+    const full = 'Quiero verlo'; const n = Math.floor(cl((t - 41.55) / .7) * full.length);
+    $('ctaTx').innerHTML = full.slice(0, n) + (t < 42.5 && Math.floor(t * 3) % 2 ? '|' : '');
+    c.querySelector('.send').style.transform = `scale(${1 + .08 * Math.max(0, Math.sin((t - 42.3) * 6)) * (t > 42.3 ? 1 : 0)})`;
+    const dm = $('demo'); const kd = p(t, 43.2, 43.55); dm.style.opacity = cl(kd * 2); dm.style.display = 'inline-flex'; dm.style.transform = `scale(${.6 + .4 * back(kd)})`;
+  }
+};
+render(0);
+</script></body></html>
