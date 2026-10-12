@@ -669,10 +669,15 @@
       if (ivaGasto >= monto) { showToast('El IVA no puede ser mayor o igual al monto del gasto', 'error'); return; }
     }
 
+    // Retención de IR practicada (opcional, solo gasto inmediato): sobre el valor sin IVA.
+    const retOn = tipo === 'inmediato' && !!document.getElementById('gasto-ret-chk')?.checked;
+    const retPct = retOn ? Math.min(100, Math.max(0, parseFloat(document.getElementById('gasto-ret-pct')?.value) || 0)) : 0;
+    const retMonto = retOn ? Math.round(Math.max(monto - ivaGasto, 0) * retPct) / 100 : 0;
+
     try {
       setBtnLoading('btn-save-gasto', true);
       if (tipo==='inmediato') {
-        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto });
+        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct });
       } else {
         const frecuencia = document.getElementById('gasto-frecuencia').value;
         const pagarYa    = document.getElementById('gasto-pagar-ya').checked;
@@ -692,17 +697,26 @@
   /* ===================================================
      GASTO INMEDIATO
   =================================================== */
-  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto }) {
+  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct }) {
     const { data: gastoRow, error: errGasto } = await _sb.from('gastos').insert({
       auth_user_id: GS.userId, tipo:'inmediato', concepto, categoria, monto, fecha,
       metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre, impuesto: ivaGasto || 0,
       observaciones: observaciones||null, empleado: empleado||null, estado:'activo',
+      ...(retMonto > 0 ? { retencion_ir_monto: retMonto, retencion_ir_porcentaje: retPct } : {}),
     }).select().single();
     if (errGasto) throw errGasto;
 
+    if (retMonto > 0) {
+      const { error: eRet } = await _sb.from('retenciones_ir').insert({
+        auth_user_id: GS.userId, lado: 'por_pagar', origen: 'gasto', gasto_id: gastoRow.id, estado: 'pendiente',
+        contraparte_nombre: concepto, fecha, base: Math.round(Math.max(monto - (ivaGasto || 0), 0) * 100) / 100, porcentaje: retPct, monto: retMonto,
+      });
+      if (eRet) { console.warn('Retención IR no registrada:', eRet); showToast('Gasto guardado, pero no se registró la retención en Impuestos: ' + eRet.message, 'warning'); }
+    }
+
     const mov = await _registrarEnCaja({
       auth_user_id: GS.userId, tipo_flujo:'EGRESO', tipo_movimiento:'GASTO',
-      concepto: `${categoria}: ${concepto}`, monto,
+      concepto: retMonto > 0 ? `${categoria}: ${concepto} (neto de retención IR ${retPct}%)` : `${categoria}: ${concepto}`, monto: retMonto > 0 ? Math.round((monto - retMonto) * 100) / 100 : monto,
       metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre, origen_caja: origenCaja || null,
       banco_id: bancoId || null,
       referencia_tipo:'gasto', referencia_id: gastoRow.id, observaciones, fecha,
@@ -965,6 +979,10 @@
       await _sb.from('gastos').update({
         estado:'cancelado', cancelado_en: new Date().toISOString(), cancelado_motivo:'Cancelado manualmente',
       }).eq('id',_gastoToCancelar).eq('auth_user_id',GS.userId);
+      try {
+        await _sb.from('retenciones_ir').update({ estado:'anulada' })
+          .eq('gasto_id',_gastoToCancelar).eq('auth_user_id',GS.userId).eq('estado','pendiente');
+      } catch (eRetC) { console.warn('retención no anulada:', eRetC); }
       closeModal('modal-confirmar-cancelar');
       _gastoToCancelar = null;
       showToast('Gasto cancelado.');

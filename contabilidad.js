@@ -1778,10 +1778,18 @@ async function generarAsientosAutomaticos() {
     // asiento sigue igual que siempre.
     const mapeoIvaGastos = mapeo.get('iva_gastos');
     async function obtenerDivisionIvaGasto(gasto) {
-      if (!mapeoIvaGastos || !mapeoIvaGastos.cuenta_debe_id) return null;
-      const iva = round2(Number(gasto.impuesto || 0));
-      if (iva <= 0) return null;
-      return { montoIva: iva, cuentaIvaId: mapeoIvaGastos.cuenta_debe_id, lado: 'debe' };
+      let base = null;
+      if (mapeoIvaGastos && mapeoIvaGastos.cuenta_debe_id) {
+        const iva = round2(Number(gasto.impuesto || 0));
+        if (iva > 0) base = { montoIva: iva, cuentaIvaId: mapeoIvaGastos.cuenta_debe_id, lado: 'debe' };
+      }
+      // Gasto con retención de IR practicada: Caja sale neto y la retención queda por pagar.
+      const ret = round2(Number(gasto.retencion_ir_monto || 0));
+      if (ret <= 0) return base;
+      const mRet = mapeo.get('retencion_ir');
+      if (!mRet || !mRet.cuenta_haber_id) return { bloquear: true };
+      const ex = { haberExtras: [{ monto: ret, cuentaId: mRet.cuenta_haber_id, desc: 'Retención de IR por pagar' }] };
+      return base ? { ...base, ...ex } : { montoIva: 0, cuentaIvaId: null, lado: 'debe', ...ex };
     }
 
     // Merma de inventario: se registra como gasto pero NO sale dinero de Caja; lo que baja es el

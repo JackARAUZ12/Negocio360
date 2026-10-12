@@ -1738,6 +1738,7 @@ function abrirCompraDirecta() {
   document.getElementById('cd-concepto').value = '';
   document.getElementById('cd-clase').value = 'inventario';
   document.getElementById('cd-monto').value = '';
+  const cdRc = document.getElementById('cd-ret-chk'); if (cdRc) cdRc.checked = false;
   document.getElementById('cd-fecha').value = todayISO();
   document.getElementById('cd-observaciones').value = '';
   document.getElementById('cd-error').textContent = '';
@@ -1818,6 +1819,11 @@ async function guardarCompraDirecta() {
   }
   const observaciones = document.getElementById('cd-observaciones')?.value.trim() || null;
   const proveedor = STATE.proveedorSeleccionadoDirectaCompra;
+  // Retención de IR practicada al proveedor (opcional). Sale de Caja el neto; la retención queda por pagar a la DGI.
+  const cdRetOn = !!document.getElementById('cd-ret-chk')?.checked;
+  const cdRetPct = Math.min(100, Math.max(0, parseFloat(document.getElementById('cd-ret-pct')?.value) || 0));
+  const cdRet = cdRetOn ? Math.round(monto * cdRetPct) / 100 : 0;
+  const cdNeto = Math.round((monto - cdRet) * 100) / 100;
 
   setBtnLoading('cd-btn-guardar', true);
   try {
@@ -1833,6 +1839,7 @@ async function guardarCompraDirecta() {
       fecha, subtotal: monto, descuento_total: 0, iva_porcentaje: 0, iva_monto: 0, total: monto,
       metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
       estado: 'completada', es_directa: true, concepto, observaciones,
+      ...(cdRet > 0 ? { retencion_ir_monto: cdRet, retencion_ir_porcentaje: cdRetPct } : {}),
       clase_costo: document.getElementById('cd-clase')?.value === 'servicio' ? 'servicio' : 'inventario',
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
@@ -1845,11 +1852,11 @@ async function guardarCompraDirecta() {
       .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
     const saldoAnt = movResult ? Number(movResult.saldo_resultante) : 0;
-    const saldoRes = saldoAnt - monto;
+    const saldoRes = saldoAnt - cdNeto;
 
     const { data: mov, error: errMov } = await sbClient.from('movimientos_financieros').insert({
       auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'COMPRA',
-      concepto: `Compra directa ${numero} — ${concepto}`, monto,
+      concepto: `Compra directa ${numero} — ${concepto}${cdRet > 0 ? ` (neto de retención IR ${cdRetPct}%)` : ''}`, monto: cdNeto,
       saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
       metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre, banco_id: bancoPagoId,
       origen_caja: origenCaja || null, referencia_tipo: 'compra', referencia_id: compra.id,
@@ -1857,6 +1864,14 @@ async function guardarCompraDirecta() {
     }).select().single();
     if (errMov) showToast('La compra se guardó, pero no se pudo registrar en Caja: ' + errMov.message, 'error');
     else await sbClient.from('compras').update({ movimiento_caja_id: mov.id }).eq('id', compra.id);
+
+    if (cdRet > 0) {
+      const { error: eRetD } = await sbClient.from('retenciones_ir').insert({
+        auth_user_id: STATE.userId, lado: 'por_pagar', origen: 'compra', compra_id: compra.id, estado: 'pendiente',
+        contraparte_nombre: proveedor?.nombre || null, fecha, base: monto, porcentaje: cdRetPct, monto: cdRet,
+      });
+      if (eRetD) { console.warn('Retención IR no registrada:', eRetD); showToast('Compra guardada, pero no se registró la retención en Impuestos: ' + eRetD.message, 'warning'); }
+    }
 
     // Métricas del proveedor -- igual que en una compra normal
     if (proveedor?.id) {
@@ -2181,6 +2196,8 @@ async function guardarOrdenCompra() {
       fecha,
       subtotal, descuento_total: descTotal, iva_porcentaje: STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
       iva_monto: ivaTotal, total,
+      ...((document.getElementById('nc-ret-chk')?.checked && (parseFloat(document.getElementById('nc-ret-pct')?.value) || 0) > 0)
+        ? { retencion_ir_porcentaje: Math.min(100, Math.max(0, parseFloat(document.getElementById('nc-ret-pct').value) || 0)) } : {}),
       estado: 'pendiente',
       observaciones,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
@@ -2307,6 +2324,12 @@ async function convertirOrdenACompra(ordenId) {
     STATE.pasoActual = 1;
 
     resetNuevaCompraUI();
+    // La retención de IR que se planeó en la orden pasa a la compra (se puede cambiar o quitar antes de confirmar).
+    if (Number(orden.retencion_ir_porcentaje) > 0) {
+      const rcOrd = document.getElementById('nc-ret-chk'), rpOrd = document.getElementById('nc-ret-pct');
+      if (rcOrd) rcOrd.checked = true;
+      if (rpOrd) rpOrd.value = String(Number(orden.retencion_ir_porcentaje));
+    }
     actualizarTextosModoOrden();
     if (typeof llenarSelectProveedores === 'function') llenarSelectProveedores();
     const selProv = document.getElementById('nc-proveedor-select');
@@ -2525,6 +2548,7 @@ async function exportarPDFOrdenCompra(ordenId) {
       ['Subtotal', fmt(orden.subtotal)],
       ...(Number(orden.descuento_total) > 0 ? [['Descuento', '-' + fmt(orden.descuento_total)]] : []),
       ...(Number(orden.iva_monto) > 0 ? [[`Impuesto (${Number(orden.iva_porcentaje)}%)`, fmt(orden.iva_monto)]] : []),
+      ...(Number(orden.retencion_ir_porcentaje) > 0 ? [[`Retención IR (${Number(orden.retencion_ir_porcentaje)}%)`, '-' + fmt(Math.round(Math.max(Number(orden.subtotal) - Number(orden.descuento_total || 0), 0) * Number(orden.retencion_ir_porcentaje)) / 100)]] : []),
     ];
     doc.setFontSize(9.5); doc.setFont(undefined,'normal'); doc.setTextColor(60,60,70);
     totalesFilas.forEach(([label, val], i) => {
