@@ -1366,6 +1366,12 @@
     <div class="modal-body" style="flex:1;overflow-y:auto;padding:20px">
       <input type="hidden" id="np-id"/>
 
+      <!-- MODO DE DESTINATARIO: individual (como siempre) o dirigida a varios -->
+      <div id="np-modo-dest" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="np-modo-dest" value="individual" checked onchange="N360ProfVarios.setModo('individual')"/> Cliente individual</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="np-modo-dest" value="varios" onchange="N360ProfVarios.setModo('varios')"/> Dirigida a varios clientes</label>
+      </div>
+      <div id="np-cliente-individual">
       <!-- CLIENTE -->
       <div class="form-group">
         <label>Cliente</label>
@@ -1378,7 +1384,25 @@
         Registrar cliente nuevo
       </button>
       <div id="np-nuevo-cliente-form" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
-        <div class="form-row">
+        </div>
+      <div id="np-varios-panel" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
+        <label style="font-weight:700">Dirigida a</label>
+        <div style="display:flex;gap:8px;margin:8px 0">
+          <select id="npv-select" style="flex:1"></select>
+          <button class="btn-secondary" type="button" onclick="N360ProfVarios.agregarRegistrado()">Agregar</button>
+        </div>
+        <details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text-secondary)">Agregar alguien sin registrar</summary>
+          <div class="form-row" style="margin-top:8px">
+            <div class="form-group"><label>Nombre *</label><input type="text" id="npv-nombre"/></div>
+            <div class="form-group"><label>Teléfono</label><input type="text" id="npv-telefono"/></div>
+            <div class="form-group"><label>Correo</label><input type="text" id="npv-correo"/></div>
+          </div>
+          <button class="btn-secondary" type="button" onclick="N360ProfVarios.agregarManual()">Agregar a la lista</button>
+        </details>
+        <div id="npv-lista"></div>
+      </div>
+
+      <div class="form-row">
           <div class="form-group"><label>Nombre *</label><input type="text" id="cq-nombre"/></div>
           <div class="form-group"><label>Teléfono</label><input type="text" id="cq-telefono"/></div>
           <div class="form-group"><label>Correo</label><input type="text" id="cq-correo"/></div>
@@ -1537,6 +1561,7 @@
     <div class="modal-footer" style="flex-wrap:wrap">
       <button class="btn-ghost" onclick="closeModal('modal-detalle-proforma')">Cerrar</button>
       <button class="btn-secondary" onclick="compartirProformaActual()">🔗 Compartir</button>
+      <button class="btn-secondary" id="det-prof-btn-pdf-varios" style="display:none" onclick="N360ProfVarios.pdfPorCliente()">📄 PDF por cliente</button>
       <button class="btn-secondary" id="det-prof-btn-pago-parcial" style="border-color:var(--warning);color:var(--warning)" onclick="abrirPagoParcial()">💳 Pago parcial / a crédito</button>
       <button class="btn-primary" id="det-prof-btn-convertir" onclick="abrirConvertirDesdeDetalle()">Convertir a Venta</button>
     </div>
@@ -1782,7 +1807,8 @@
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="caja-segura.js?v=20261012a"></script>
-  <script src="proformas.js?v=20261012a"></script>
+  <script src="proformas.js?v=20261012b"></script>
+  <script src="proformas-varios.js?v=20261012a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>

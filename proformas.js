@@ -1041,6 +1041,8 @@ async function guardarProforma() {
   const observaciones = document.getElementById('np-observaciones')?.value.trim() || null;
   const r = calcularResumenProf();
   if (r.total <= 0) { errEl.textContent = 'El total debe ser mayor a cero.'; return; }
+  const errVarios = window.N360ProfVarios?.validar?.(); // solo si es "dirigida a varios"
+  if (errVarios) { errEl.textContent = errVarios; return; }
 
   // Embudo de ventas: si se marca como rechazada, preguntar el motivo (opcional)
   let motivoPerdida;
@@ -1060,6 +1062,7 @@ async function guardarProforma() {
       total: r.total, costo_total: r.costoTotal, estado, observaciones,
       updated_at: new Date().toISOString(),
     };
+    Object.assign(payload, window.N360ProfVarios?.payloadExtra?.() || {}); // {} si es individual y nunca fue de varios
     if (motivoPerdida !== undefined) payload.motivo_perdida = motivoPerdida;
     if (estado === 'enviada' && !STATE.proformaActual?.enviada_at) payload.enviada_at = new Date().toISOString();
     // Solo se toca esta columna si la proforma usa proveedor (o si lo usaba antes y ahora se apaga),
@@ -1070,8 +1073,8 @@ async function guardarProforma() {
     let numero;
     if (editandoId) {
       let { error } = await sbClient.from('proformas').update(payload).eq('id', editandoId);
-      if (error && ('motivo_perdida' in payload || 'enviada_at' in payload)) {
-        const { motivo_perdida, enviada_at, ...sinNuevas } = payload;
+      if (error && ('motivo_perdida' in payload || 'enviada_at' in payload || 'dirigida_a_varios' in payload)) {
+        const { motivo_perdida, enviada_at, dirigida_a_varios, ...sinNuevas } = payload;
         ({ error } = await sbClient.from('proformas').update(sinNuevas).eq('id', editandoId));
       }
       if (error) throw error;
@@ -1108,6 +1111,8 @@ async function guardarProforma() {
       ));
     }
     if (errDet) throw errDet;
+
+    await window.N360ProfVarios?.guardarDestinatarios?.(proformaId);
 
     closeModal('modal-nueva-proforma');
     showToast(`Proforma ${numero} guardada correctamente`);
@@ -1253,6 +1258,7 @@ async function duplicarProforma(id) {
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_porcentaje,
       total: p.total, costo_total: p.costo_total, estado: 'borrador',
       observaciones: p.observaciones,
+      ...(p.dirigida_a_varios ? { dirigida_a_varios: true } : {}),
       ...(p.mostrar_proveedor === true ? { mostrar_proveedor: true } : {}),
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
@@ -1261,6 +1267,7 @@ async function duplicarProforma(id) {
     const nuevosDetalles = (detalles||[]).map(({ id, proforma_id, ...resto }) => ({ ...resto, auth_user_id: STATE.userId, proforma_id: nueva.id }));
     if (nuevosDetalles.length) await sbClient.from('proforma_detalles').insert(nuevosDetalles);
 
+    await window.N360ProfVarios?.copiarDestinatarios?.(id, nueva.id);
     showToast(`Proforma duplicada como ${numero}`);
     await Promise.allSettled([loadProformas(), loadKPIsProf()]);
   } catch (e) {
@@ -2137,7 +2144,8 @@ async function generarPDFProforma(p, items, cliente) {
   infoNegocio.forEach((linea, i) => doc.text(linea, M, y + i*5));
 
   doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
-  doc.text('Cliente', W - M - 70, y);
+  const _dests = Array.isArray(p._destinatarios) && p._destinatarios.length ? p._destinatarios : null;
+  doc.text(_dests ? 'Dirigida a' : 'Cliente', W - M - 70, y);
   doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
   // Direccion del cliente (facturacion o normal, + ciudad). Los textos largos se parten en varias
   // lineas (la columna mide ~70 mm) con un tope, para que nada se salga de la hoja.
@@ -2147,7 +2155,13 @@ async function generarPDFProforma(p, items, cliente) {
     if (lineas.length > maxLineas) { lineas.length = maxLineas; lineas[maxLineas - 1] = lineas[maxLineas - 1].replace(/.{0,2}$/, '') + '…'; }
     return lineas;
   };
-  const infoCliente = [
+  const infoCliente = _dests ? [
+    ..._dests.slice(0, 6).flatMap(d => [
+      ...envolverCliente(d.nombre, 1),
+      ...((d.telefono || d.correo) ? envolverCliente([d.telefono, d.correo].filter(Boolean).join(' · '), 1) : []),
+    ]),
+    ...(_dests.length > 6 ? [`… y ${_dests.length - 6} más`] : []),
+  ] : [
     ...envolverCliente(p.cliente_nombre || 'Cliente final', 2),
     ...(cliente?.telefono ? [`Tel: ${cliente.telefono}`] : []),
     ...(cliente?.correo ? envolverCliente(cliente.correo, 1) : []),
@@ -2267,6 +2281,7 @@ async function descargarPdfProformaActual() {
     // STATE.detalleActual (podría ser el de OTRA proforma vista antes).
     const { data: itemsFrescos } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
     const items = await enriquecerItemsConCombo(itemsFrescos || []);
+    await window.N360ProfVarios?.cargarDestinatarios?.(p);
     let cliente = null;
     if (p.cliente_id) {
       const { data } = await sbClient.from('clientes').select('telefono,correo,direccion,direccion_factura,ciudad').eq('id', p.cliente_id).maybeSingle();
