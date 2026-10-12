@@ -286,7 +286,7 @@ async function guardarCierre() {
     if ($('mc-banco-wrap').style.display !== 'none') { bancoId = $('mc-banco').value; if (!bancoId) return err('Selecciona de qué banco sale el dinero.'); }
   }
   const btn = $('mc-guardar'); btn.disabled = true;
-  let gastoId = null, movId = null;
+  let gastoId = null, movId = null, cerrada = false;
   try {
     if (caja) {
       const concepto = `Mantenimiento ${o.numero} · ${o.descripcion}`, obs = `Orden de trabajo ${o.numero} · ${nomU(o.unidad_id)}${o.taller ? ' · ' + o.taller : ''}`;
@@ -304,10 +304,13 @@ async function guardarCierre() {
       movId = await ultimoMovimientoId();
       if (movId) await sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', g.id).eq('auth_user_id', TX.userId);
     }
+    const plan = o.plan_id ? MT.planes.find(x => x.id === o.plan_id) : null;
     const { error } = await sb.from('transporte_mant_ordenes').update({
       estado: 'cerrada', mano_obra: r2(mano), repuestos: r2(rep), total, odometro_km: odo, fecha, cerrada_en: new Date().toISOString(), gasto_id: gastoId, movimiento_caja_id: movId,
+      ...(plan ? { plan_prev_set: true, plan_prev_km: plan.ultimo_km ?? null, plan_prev_fecha: plan.ultima_fecha || null } : {}),
     }).eq('id', o.id).eq('auth_user_id', TX.userId).eq('estado', 'abierta');
     if (error) throw error;
+    cerrada = true;
     // Efectos secundarios (no deben impedir el cierre): plan preventivo y kilometraje/estado de la unidad.
     try {
       if (o.plan_id) await sb.from('transporte_mant_planes').update({ ultimo_km: odo ?? u?.odometro_km ?? null, ultima_fecha: fecha }).eq('id', o.plan_id).eq('auth_user_id', TX.userId);
@@ -317,6 +320,7 @@ async function guardarCierre() {
     TX.cerrar('mm-modal-cerrar'); TX.toast(caja ? 'Orden cerrada y pago registrado en Caja' : 'Orden cerrada'); await cargarTodo(); renderTodo();
   } catch (e) {
     console.error(e);
+    if (cerrada) { TX.cerrar('mm-modal-cerrar'); try { await cargarTodo(); renderTodo(); } catch (_) {} TX.toast('La orden se cerró, pero hubo un problema al refrescar la pantalla. Recarga la página.', 'error'); return; }
     try { if (gastoId) await anularGasto(gastoId, 'No se pudo cerrar la orden de trabajo'); } catch (_) {}
     err('No se pudo cerrar la orden. No se registró nada en Caja.');
   } finally { btn.disabled = false; }
@@ -331,11 +335,17 @@ async function cancelarOT(id) {
 }
 async function anularOT(id) {
   const o = ot(id); if (!o) return;
-  const txt = (o.gasto_id ? 'El dinero vuelve a Caja y el gasto se anula. ' : '') + 'El plan preventivo conserva la fecha del servicio: si hace falta, edítalo.';
+  const txt = (o.gasto_id ? 'El dinero vuelve a Caja y el gasto se anula. ' : '') + 'El plan preventivo vuelve a su último servicio anterior.';
   if (!await TX.confirmar('¿Anular esta orden cerrada?', txt, 'Anular', true)) return;
   try {
     if (o.gasto_id) await anularGasto(o.gasto_id, `Orden de trabajo ${o.numero} anulada`);
     const { error } = await sb.from('transporte_mant_ordenes').update({ estado: 'cancelada', gasto_id: null, movimiento_caja_id: null }).eq('id', id).eq('auth_user_id', TX.userId); if (error) throw error;
+    // Revierte el plan solo si esta orden fue el último servicio registrado (no hay otra cerrada posterior del mismo plan).
+    try {
+      const plan = o.plan_id ? MT.planes.find(x => x.id === o.plan_id) : null;
+      const posterior = MT.ots.some(x => x.id !== o.id && x.plan_id === o.plan_id && x.estado === 'cerrada' && (x.cerrada_en || '') > (o.cerrada_en || ''));
+      if (plan && o.plan_prev_set && !posterior) await sb.from('transporte_mant_planes').update({ ultimo_km: o.plan_prev_km ?? null, ultima_fecha: o.plan_prev_fecha || null }).eq('id', plan.id).eq('auth_user_id', TX.userId);
+    } catch (e) { console.warn('revertir plan:', e); }
     TX.toast('Orden anulada'); await cargarTodo(); renderTodo();
   } catch (e) { console.error(e); TX.toast('No se pudo anular la orden.', 'error'); }
 }
