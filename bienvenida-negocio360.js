@@ -272,7 +272,7 @@
           '<div class="nw-rule"></div>' +
           '<div class="nw-say" aria-hidden="true"><p>Controla tu negocio</p><p>Vende más</p><p class="fin">Gana más</p></div>' +
           '<p class="nw-greet" id="nwGreet"></p>' +
-          '<p class="nw-cause">' + lazo + '<span>Octubre Rosa: juntos contra el cáncer de mama</span></p>' +
+          '<p class="nw-cause">' + lazo + '<span>Octubre Rosa: mes de la lucha contra el cáncer de mama</span></p>' +
         '</div>' +
         '<div class="nw-foot"><div class="nw-bar"><div class="nw-bar-fill" id="nwFill"></div></div><span class="nw-pct" id="nwPct">0%</span></div>' +
         '<button type="button" class="nw-skip" id="nwSkip">Saltar</button>' +
@@ -303,7 +303,7 @@
       var s = h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches');
       var f = '';
       try { f = new Date().toLocaleDateString('es-NI', { month: 'long', year: 'numeric' }); } catch (_) {}
-      greet.textContent = f ? s + '. Bienvenido a ' + f + '.' : s + '.';
+      greet.textContent = ROSA ? s + '.' : (f ? s + '. Bienvenido a ' + f + '.' : s + '.');
     }
     function mostrarFrase(i) {
       frases.forEach(function (p, j) {
