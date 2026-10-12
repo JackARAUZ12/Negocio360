@@ -1384,25 +1384,7 @@
         Registrar cliente nuevo
       </button>
       <div id="np-nuevo-cliente-form" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
-        </div>
-      <div id="np-varios-panel" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
-        <label style="font-weight:700">Dirigida a</label>
-        <div style="display:flex;gap:8px;margin:8px 0">
-          <select id="npv-select" style="flex:1"></select>
-          <button class="btn-secondary" type="button" onclick="N360ProfVarios.agregarRegistrado()">Agregar</button>
-        </div>
-        <details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text-secondary)">Agregar alguien sin registrar</summary>
-          <div class="form-row" style="margin-top:8px">
-            <div class="form-group"><label>Nombre *</label><input type="text" id="npv-nombre"/></div>
-            <div class="form-group"><label>Teléfono</label><input type="text" id="npv-telefono"/></div>
-            <div class="form-group"><label>Correo</label><input type="text" id="npv-correo"/></div>
-          </div>
-          <button class="btn-secondary" type="button" onclick="N360ProfVarios.agregarManual()">Agregar a la lista</button>
-        </details>
-        <div id="npv-lista"></div>
-      </div>
-
-      <div class="form-row">
+        <div class="form-row">
           <div class="form-group"><label>Nombre *</label><input type="text" id="cq-nombre"/></div>
           <div class="form-group"><label>Teléfono</label><input type="text" id="cq-telefono"/></div>
           <div class="form-group"><label>Correo</label><input type="text" id="cq-correo"/></div>
@@ -1412,6 +1394,25 @@
           <button class="btn-ghost" type="button" onclick="toggleNuevoClienteProf(false)">Cancelar</button>
           <button class="btn-primary" id="btn-guardar-cliente-prof" type="button" onclick="guardarNuevoClienteProf()">Guardar cliente</button>
         </div>
+      </div>
+      </div><!-- /np-cliente-individual -->
+      <div id="np-varios-panel" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
+        <label style="font-weight:700">Dirigida a</label>
+        <input type="text" id="npv-buscar" placeholder="Buscar cliente por nombre, teléfono o correo…" oninput="N360ProfVarios.filtrar()" style="width:100%;margin:8px 0"/>
+        <div style="display:flex;gap:8px;margin-bottom:6px;font-size:12.5px">
+          <button type="button" class="btn-ghost" onclick="N360ProfVarios.marcarVisibles(true)">Marcar los que se ven</button>
+          <button type="button" class="btn-ghost" onclick="N360ProfVarios.marcarVisibles(false)">Quitar los que se ven</button>
+        </div>
+        <div id="npv-checks" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-surface);margin-bottom:10px"></div>
+        <details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text-secondary)">Agregar alguien sin registrar</summary>
+          <div class="form-row" style="margin-top:8px">
+            <div class="form-group"><label>Nombre *</label><input type="text" id="npv-nombre"/></div>
+            <div class="form-group"><label>Teléfono</label><input type="text" id="npv-telefono"/></div>
+            <div class="form-group"><label>Correo</label><input type="text" id="npv-correo"/></div>
+          </div>
+          <button class="btn-secondary" type="button" onclick="N360ProfVarios.agregarManual()">Agregar a la lista</button>
+        </details>
+        <div id="npv-lista"></div>
       </div>
 
       <div class="form-row">
@@ -1808,7 +1809,7 @@
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="caja-segura.js?v=20261012a"></script>
   <script src="proformas.js?v=20261012b"></script>
-  <script src="proformas-varios.js?v=20261012a"></script>
+  <script src="proformas-varios.js?v=20261012b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>

@@ -17,14 +17,32 @@
   function e(s) { return typeof esc === 'function' ? esc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function toast(m, t) { try { showToast(m, t); } catch (_) { /* nada */ } }
 
-  function llenarSelect() {
-    var sel = $('npv-select'); if (!sel) return;
-    var usados = {}; lista.forEach(function (d) { if (d.cliente_id) usados[d.cliente_id] = 1; });
-    sel.innerHTML = '<option value="">— Elegir cliente registrado —</option>' +
-      (STATE.clientes || []).filter(function (c) { return !usados[c.id]; }).map(function (c) {
-        return '<option value="' + c.id + '">' + e(c.nombre) + (c.telefono ? ' — ' + e(c.telefono) : '') + '</option>';
-      }).join('');
+  function visibles() {
+    var q = (($('npv-buscar') && $('npv-buscar').value) || '').trim().toLowerCase();
+    return (STATE.clientes || []).filter(function (c) {
+      return !q || [c.nombre, c.telefono, c.correo].join(' ').toLowerCase().indexOf(q) >= 0;
+    });
   }
+  function llenarSelect() {
+    var box = $('npv-checks'); if (!box) return;
+    var sel = {}; lista.forEach(function (d) { if (d.cliente_id) sel[d.cliente_id] = 1; });
+    var v = visibles();
+    box.innerHTML = v.length ? v.map(function (c) {
+      return '<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border)">' +
+        '<input type="checkbox" data-cid="' + c.id + '"' + (sel[c.id] ? ' checked' : '') + ' onchange="N360ProfVarios.alternar(this.dataset.cid,this.checked)"/>' +
+        '<span><strong>' + e(c.nombre) + '</strong> <span style="font-size:12px;color:var(--text-secondary)">' + e([c.telefono, c.correo].filter(Boolean).join(' · ')) + '</span></span></label>';
+    }).join('') : '<p style="padding:10px;font-size:12.5px;color:var(--text-secondary)">' + ((STATE.clientes || []).length ? 'Ningún cliente coincide con la búsqueda.' : 'No hay clientes registrados. Agrega personas en "Agregar alguien sin registrar".') + '</p>';
+  }
+  function alternar(id, marcado) {
+    var i = lista.findIndex(function (d) { return d.cliente_id === id; });
+    if (marcado && i < 0) {
+      var c = (STATE.clientes || []).find(function (x) { return x.id === id; }); if (!c) return;
+      lista.push({ cliente_id: c.id, nombre: c.nombre, telefono: c.telefono || '', correo: c.correo || '' });
+    } else if (!marcado && i >= 0) lista.splice(i, 1);
+    renderLista();
+  }
+  function marcarVisibles(m) { visibles().forEach(function (c) { alternar(c.id, m); }); llenarSelect(); }
+  function filtrar() { llenarSelect(); }
   function render() {
     var el = $('npv-lista'); if (!el) return;
     el.innerHTML = lista.length ? lista.map(function (d, i) {
@@ -35,6 +53,7 @@
     }).join('') : '<p style="font-size:12.5px;color:var(--text-secondary);margin-top:6px">Aún no hay clientes en la lista.</p>';
     llenarSelect();
   }
+  function renderLista() { var s = $('npv-lista'); if (!s) return; var sv = $('npv-checks') ? $('npv-checks').scrollTop : 0; render(); if ($('npv-checks')) $('npv-checks').scrollTop = sv; }
 
   function setModo(m) {
     modo = m === 'varios' ? 'varios' : 'individual';
@@ -51,10 +70,7 @@
     }
   }
   function agregarRegistrado() {
-    var id = $('npv-select') && $('npv-select').value; if (!id) return;
-    var c = (STATE.clientes || []).find(function (x) { return x.id === id; }); if (!c) return;
-    lista.push({ cliente_id: c.id, nombre: c.nombre, telefono: c.telefono || '', correo: c.correo || '' });
-    render();
+    var id = $('npv-select') && $('npv-select').value; if (id) alternar(id, true);
   }
   function agregarManual() {
     var n = ($('npv-nombre').value || '').trim();
@@ -159,7 +175,7 @@
   }
 
   window.N360ProfVarios = {
-    setModo: setModo, agregarRegistrado: agregarRegistrado, agregarManual: agregarManual, quitar: quitar,
+    setModo: setModo, alternar: alternar, marcarVisibles: marcarVisibles, filtrar: filtrar, agregarRegistrado: agregarRegistrado, agregarManual: agregarManual, quitar: quitar,
     validar: validar, payloadExtra: payloadExtra, guardarDestinatarios: guardarDestinatarios,
     cargarDestinatarios: cargarDestinatarios, copiarDestinatarios: copiarDestinatarios, pdfPorCliente: pdfPorCliente,
     _estado: function () { return { modo: modo, lista: lista.slice() }; },
