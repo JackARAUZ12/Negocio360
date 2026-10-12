@@ -252,6 +252,27 @@ async function cargarKpis() {
   kpis.unshift(card('📋', 'var(--success-soft)', 'Órdenes activas', ords == null ? nd : String(ords.pend + ords.asig + ords.ruta), ords == null ? 'Órdenes' : `${ords.ruta} en ruta · ${ords.pend} por asignar`, 'transporte-ordenes.html'));
   kpis.unshift(card('🧑‍✈️', 'var(--accent-soft)', 'Conductores', flota == null ? nd : String(flota.conductores), flota == null ? 'Conductores' : `${flota.conductoresDisp} disponibles`, 'conductores.html'));
   kpis.unshift(card('🚛', 'var(--accent-soft)', 'Flota', flota == null ? nd : String(flota.unidades), flota == null ? 'Flota' : `${flota.disponibles} disponibles`, 'flota.html'));
+  // Mantenimiento e incidencias (Transporte · fases 11 y 12): solo avisos, si hay algo que atender
+  const mant = await intentar(async () => {
+    const [pl, un, inc] = await Promise.all([
+      sb.from('transporte_mant_planes').select('unidad_id,cada_km,cada_dias,ultimo_km,ultima_fecha,aviso_km,aviso_dias,activo').eq('auth_user_id', TP.userId),
+      sb.from('transporte_unidades').select('id,odometro_km').eq('auth_user_id', TP.userId),
+      sb.from('transporte_incidencias').select('estado').eq('auth_user_id', TP.userId).neq('estado', 'resuelta'),
+    ]);
+    if (pl.error || un.error || inc.error) throw (pl.error || un.error || inc.error);
+    const odo = {}; (un.data || []).forEach(u => { odo[u.id] = u.odometro_km; });
+    let venc = 0, prox = 0;
+    (pl.data || []).filter(p => p.activo !== false && p.unidad_id in odo).forEach(p => {
+      const km = Number(p.cada_km) > 0 && p.ultimo_km != null && odo[p.unidad_id] != null ? Number(p.ultimo_km) + Number(p.cada_km) - Number(odo[p.unidad_id]) : null;
+      let dias = null;
+      if (Number(p.cada_dias) > 0 && p.ultima_fecha) { const f = new Date(String(p.ultima_fecha).slice(0, 10) + 'T12:00:00'); f.setDate(f.getDate() + Number(p.cada_dias)); dias = Math.round((f - new Date(hoyISO + 'T12:00:00')) / 86400000); }
+      if ((km != null && km <= 0) || (dias != null && dias < 0)) venc++;
+      else if ((km != null && km <= Number(p.aviso_km || 0)) || (dias != null && dias <= Number(p.aviso_dias || 0))) prox++;
+    });
+    return { venc, prox, incs: (inc.data || []).length };
+  });
+  if (mant && mant.incs) kpis.unshift(card('⚠️', 'var(--warning-soft)', 'Incidencias abiertas', String(mant.incs), 'Entregas e incidencias', 'transporte-entregas.html?vista=incidencias'));
+  if (mant && (mant.venc || mant.prox)) kpis.unshift(card(mant.venc ? '🔧' : '🛠️', mant.venc ? 'var(--danger-soft)' : 'var(--warning-soft)', 'Mantenimiento', mant.venc ? `${mant.venc} vencido${mant.venc === 1 ? '' : 's'}` : `${mant.prox} por vencer`, mant.venc && mant.prox ? `${mant.prox} más por vencer` : 'Servicios preventivos', 'transporte-mantenimiento.html'));
   if (flota && (flota.vencidos || flota.porVencer)) {
     kpis.unshift(card(flota.vencidos ? '⛔' : '⚠️', flota.vencidos ? 'var(--danger-soft)' : 'var(--warning-soft)', 'Documentos', flota.vencidos ? `${flota.vencidos} vencidos` : `${flota.porVencer} por vencer`, flota.vencidos && flota.porVencer ? `${flota.porVencer} más por vencer` : 'Revisa Flota y Conductores', 'flota.html'));
   }
@@ -267,6 +288,9 @@ const ACCESOS = [
   { key: 'transporte_subcontratistas', href: 'transporte-subcontratistas.html', ico: '🤝', t: 'Subcontratistas', d: 'Transportistas externos: costo del flete, pago de contado o a crédito.' },
   { key: 'transporte_facturacion', href: 'transporte-facturacion.html', ico: '🧾', t: 'Facturación y cobranza', d: 'Factura los viajes entregados y sigue lo que te deben.' },
   { key: 'transporte_fronteras', href: 'transporte-fronteras.html', ico: '🛂', t: 'Fronteras y documentos', d: 'Cruces, trámites aduaneros, carta de porte y papeles de cada orden.' },
+  { key: 'transporte_mantenimiento', href: 'transporte-mantenimiento.html', ico: '🔧', t: 'Mantenimiento y llantas', d: 'Servicios preventivos, órdenes del taller y control de llantas.' },
+  { key: 'transporte_entregas', href: 'transporte-entregas.html', ico: '📦', t: 'Entregas e incidencias', d: 'Prueba de entrega con firma y seguimiento de incidencias.' },
+  { key: 'transporte_reportes', href: 'transporte-reportes.html', ico: '📈', t: 'Reportes e indicadores', d: 'Viajes, utilidad, cumplimiento, mantenimiento e incidencias.' },
   { key: 'transporte_rutas',       href: 'transporte-rutas.html',  ico: '🗺️', t: 'Rutas y tarifas',    d: 'Tus recorridos y cuánto cobras por cada uno.' },
   { key: 'transporte_flota',       href: 'flota.html',             ico: '🚛', t: 'Flota',              d: 'Cabezales, camiones y furgones con fotos y documentos.' },
   { key: 'transporte_conductores', href: 'conductores.html',       ico: '🧑‍✈️', t: 'Conductores',        d: 'Conductores y ayudantes, licencias y disponibilidad.' },

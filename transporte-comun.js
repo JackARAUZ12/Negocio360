@@ -106,6 +106,16 @@
       { v: 'lista_empaque', t: 'Lista de empaque', ico: '📦' },
       { v: 'poliza_carga', t: 'Póliza de seguro de carga', ico: '🛡️' },
       { v: 'permiso_especial', t: 'Permiso sanitario / especial', ico: '✅' },
+      { v: 'prueba_entrega', t: 'Prueba de entrega / acuse firmado', ico: '✍️' },
+      { v: 'foto_entrega', t: 'Foto de la entrega', ico: '📸' },
+      { v: 'otro', t: 'Otro documento…', ico: '📄' },
+    ],
+    incidencia: [
+      { v: 'foto_evidencia', t: 'Foto de evidencia', ico: '📸' },
+      { v: 'parte_policial', t: 'Parte policial', ico: '👮' },
+      { v: 'informe_seguro', t: 'Informe o reclamo al seguro', ico: '🛡️' },
+      { v: 'reclamo_cliente', t: 'Reclamo del cliente', ico: '📩' },
+      { v: 'cotizacion_reparacion', t: 'Cotización de reparación', ico: '🧾' },
       { v: 'otro', t: 'Otro documento…', ico: '📄' },
     ],
   };

@@ -169,6 +169,15 @@
     'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Cruces de frontera, trámites aduaneros, carta de porte y documentos de cada orden.' },
 
+    'transporte-mantenimiento.html': { key: 'transporte_mantenimiento', label: 'Transporte · Mantenimiento y llantas', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Servicios preventivos por km o fecha, órdenes de trabajo del taller y control de llantas.' },
+
+    'transporte-entregas.html': { key: 'transporte_entregas', label: 'Transporte · Entregas e incidencias', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Prueba de entrega con firma, y registro y seguimiento de incidencias y reclamos de cada viaje.' },
+
+    'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Viajes, ingresos, costos, utilidad, cumplimiento, mantenimiento e incidencias por cliente, ruta, unidad y conductor.' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },

@@ -198,7 +198,7 @@ function renderRentab() {
       <div class="tx-kpi ${ut < 0 ? 'alerta' : ''}"><span>Utilidad</span><b>${esc(money(ut))}</b><small>${margen(ing, ut) == null ? '' : margen(ing, ut) + '% de margen'}</small></div>
       <div class="tx-kpi"><span>Utilidad por viaje</span><b>${esc(money(prom))}</b><small>promedio</small></div></div>
     ${sinCostos ? `<div class="tx-aviso-banda"><div style="font-size:22px">⚠️</div><div><b>${sinCostos} viaje(s) sin costos registrados</b>Su utilidad aparece completa porque no se anotó combustible ni otros gastos. Regístralos en la pestaña “Costos” de cada orden para un cálculo real.</div></div>` : ''}
-    <div class="tx-ayuda">No incluye depreciación, salarios fijos ni mantenimiento general de la flota (eso llegará en fases posteriores).</div>
+    <div class="tx-ayuda">No incluye depreciación ni salarios fijos. El mantenimiento y las llantas se ven en Mantenimiento y en Reportes.</div>
     ${tablaRank('Por ruta', grupo(ent, o => o.ruta_id || ('libre:' + (o.origen || '') + '>' + (o.destino || '')), (o, k) => OT.rutas.find(r => r.id === o.ruta_id)?.nombre || `${o.origen || '?'} → ${o.destino || '?'}`))}
     ${tablaRank('Por cliente', grupo(ent, o => o.cliente_id || ('n:' + nombreCliente(o)), o => nombreCliente(o)))}
     ${tablaRank('Por unidad', grupo(ent, o => o.unidad_id, o => { const u = unidadDe(o.unidad_id); return u ? u.nombre + (u.placa ? ' · ' + u.placa : '') : 'Unidad eliminada'; }))}
@@ -232,6 +232,7 @@ function acciones(o) {
   if (o.subcontratada) a.push(`<a class="tx-btn" href="transporte-subcontratistas.html">🤝 Subcontratada · ver transportista</a>`);
   if (o.estado === 'en_ruta') a.push(b('tx-btn-ok', 'ot-entregar', '✅ Registrar entrega'));
   if (o.estado !== 'cancelada') a.push(`<a class="tx-btn" href="transporte-fronteras.html?orden=${id}">🛂 Fronteras y documentos</a>`);
+  if (['en_ruta', 'entregada'].includes(o.estado)) a.push(`<a class="tx-btn" href="transporte-entregas.html?orden=${id}">📦 Prueba de entrega e incidencias</a>`);
   if (o.estado === 'entregada') a.push(`<a class="tx-btn" href="transporte-facturacion.html">${o.venta_id ? '🧾 Facturada · ver cobranza' : '🧾 Facturar este viaje'}</a>`);
   if (ACTIVAS.includes(o.estado)) a.push(b('tx-btn-borrar', 'ot-cancelar', '✕ Cancelar orden'));
   return a.length ? `<div class="tx-fila-chips" style="margin:6px 0 4px">${a.join('')}</div>` : '';
