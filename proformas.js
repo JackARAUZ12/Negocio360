@@ -2156,7 +2156,8 @@ async function generarPDFProforma(p, items, cliente) {
     return lineas;
   };
   const infoCliente = _dests ? [
-    ..._dests.slice(0, 6).flatMap(d => [
+    ..._dests.slice(0, 6).flatMap((d, k) => [
+      ...(k > 0 ? ['\u0001SEP'] : []),   // línea fina entre un cliente y otro
       ...envolverCliente(d.nombre, 1),
       ...((d.telefono || d.correo) ? envolverCliente([d.telefono, d.correo].filter(Boolean).join(' · '), 1) : []),
     ]),
@@ -2167,7 +2168,14 @@ async function generarPDFProforma(p, items, cliente) {
     ...(cliente?.correo ? envolverCliente(cliente.correo, 1) : []),
     ...(direccionCliente ? envolverCliente(direccionCliente, 3) : []),
   ];
-  infoCliente.forEach((linea, i) => doc.text(linea, W - M - 70, y + 5 + i*5));
+  infoCliente.forEach((linea, i) => {
+    if (linea === '\u0001SEP') {
+      doc.setDrawColor(215,215,225); doc.line(W - M - 70, y + 5 + i*5 - 1.5, W - M, y + 5 + i*5 - 1.5);
+      doc.setDrawColor(230,230,235);
+      return;
+    }
+    doc.text(linea, W - M - 70, y + 5 + i*5);
+  });
 
   y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + 10;
   doc.setDrawColor(230,230,235);

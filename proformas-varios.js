@@ -211,8 +211,11 @@
       var ds = await cargarDestinatarios(p);
       var body = $('detalle-prof-body');
       if (body && STATE.proformaActual === p) {
-        body.insertAdjacentHTML('afterbegin', '<div style="margin-bottom:12px;padding:10px 12px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)"><label>Dirigida a</label>' +
-          (ds.map(function (d) { return '<div style="margin-top:4px"><strong>' + e(d.nombre) + '</strong> <span style="font-size:12px;color:var(--text-secondary)">' + e([d.telefono, d.correo].filter(Boolean).join(' · ')) + '</span></div>'; }).join('') || '—') + '</div>');
+        body.insertAdjacentHTML('afterbegin', '<div style="margin-bottom:12px"><label>Dirigida a (' + ds.length + ' clientes)</label>' +
+          ds.map(function (d, i) { return '<div style="margin-top:6px;padding:10px 12px;background:var(--bg-surface-2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-md)">' +
+            '<div style="font-weight:700">' + (i + 1) + '. ' + e(d.nombre) + '</div>' +
+            '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px">Tel: ' + e(d.telefono || '—') + '</div>' +
+            '<div style="font-size:12.5px;color:var(--text-secondary)">Correo: ' + e(d.correo || '—') + '</div></div>'; }).join('') + '</div>');
         if (b) b.style.display = 'inline-flex';
       }
     }
