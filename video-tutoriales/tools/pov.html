@@ -1,0 +1,249 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#fff;font-family:'Inter','Inter Display',sans-serif}
+#stage{position:absolute;inset:0;overflow:hidden;background:#fff}
+#zoom{position:absolute;inset:0;transform-origin:0 0}
+.app{position:absolute;left:0;top:0;width:1080px;height:1920px;overflow:hidden;opacity:0;background:#fff}
+.app .scr{position:absolute;left:0;top:110px;width:1080px;height:1810px;overflow:hidden}
+.app .scr img{position:absolute;left:0;top:0;width:1080px}
+.app .scr img.wide{width:1125px}
+#sbar{position:absolute;left:0;top:0;width:1080px;height:110px;display:flex;align-items:center;justify-content:space-between;padding:22px 60px 0 80px;font-weight:700;font-size:40px;color:#000;z-index:8}
+#sbar svg{height:34px}
+.tap{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;background:rgba(40,40,40,.28);border:4px solid rgba(255,255,255,.85);box-shadow:0 4px 14px rgba(0,0,0,.18);opacity:0;z-index:9}
+#kb{position:absolute;left:0;right:0;bottom:0;height:700px;background:#D3D6DD;padding:22px 10px 0;z-index:7;transform:translateY(720px)}
+#kb .row{display:flex;justify-content:center;gap:14px;margin-bottom:24px}
+#kb .k{width:88px;height:118px;border-radius:14px;background:#fff;box-shadow:0 3px 0 #8B8F99;display:flex;align-items:center;justify-content:center;font-size:52px;color:#111;font-weight:400}
+#kb .k.w{width:200px;background:#B4B9C3}#kb .k.sp{width:560px;font-size:36px}#kb .k.dn{width:200px;background:#B4B9C3;font-size:34px}
+#kb .k.on{background:#B4B9C3;transform:scale(1.15) translateY(-14px)}
+/* notes */
+#notes{background:#FFFDF6}
+#notes .hd{position:absolute;left:0;right:0;top:470px;height:120px;display:flex;align-items:center;justify-content:space-between;padding:0 50px;color:#D7A500;font-size:46px;font-weight:600}
+#notes .tt{position:absolute;left:60px;top:590px;font-size:84px;font-weight:800;color:#111}
+#notes .dt{position:absolute;left:60px;top:700px;font-size:34px;color:#8A8A8A}
+#notes .ls{position:absolute;left:60px;right:60px;top:780px;font-size:56px;line-height:1.55;color:#1A1A1A;white-space:pre-wrap}
+#notes .ls s{color:#B03030}
+#notes .cur{display:inline-block;width:5px;height:60px;background:#D7A500;vertical-align:middle}
+/* calc */
+#calc{background:#F2F3F5}
+#calc .dsp{position:absolute;right:70px;left:70px;top:420px;text-align:right;font-size:190px;font-weight:300;color:#111;letter-spacing:-.03em}
+#calc .eq{position:absolute;right:70px;top:330px;font-size:60px;color:#888}
+#calc .ks{position:absolute;left:50px;right:50px;bottom:120px;display:grid;grid-template-columns:repeat(4,1fr);gap:34px}
+#calc .ks b{height:200px;border-radius:100px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:84px;font-weight:400;color:#111;box-shadow:0 4px 12px rgba(0,0,0,.06)}
+#calc .ks b.op{background:#FF9F0A;color:#fff}#calc .ks b.fn{background:#D9DBE0}
+#calc .ks b.on{filter:brightness(.82)}
+/* home */
+#home{background:linear-gradient(170deg,#F6E7D7 0%,#E9E4F5 50%,#D9ECF2 100%)}
+#home .grid{position:absolute;left:70px;right:70px;top:240px;display:grid;grid-template-columns:repeat(4,1fr);gap:70px 46px}
+#home .ic{display:flex;flex-direction:column;align-items:center;gap:16px;font-size:30px;color:#222;font-weight:500}
+#home .ic i{width:190px;height:190px;border-radius:46px;display:flex;align-items:center;justify-content:center;font-size:96px;font-style:normal;box-shadow:0 8px 20px rgba(0,0,0,.10)}
+#home .dock{position:absolute;left:50px;right:50px;bottom:60px;height:250px;border-radius:70px;background:rgba(255,255,255,.45);display:flex;align-items:center;justify-content:space-around}
+#home .dock i{width:190px;height:190px;border-radius:46px;display:flex;align-items:center;justify-content:center;font-size:96px;font-style:normal}
+/* chat */
+#chat{background:#EFE7DE}
+#chat .hd{position:absolute;left:0;right:0;top:110px;height:170px;background:#F6F6F6;display:flex;align-items:center;gap:26px;padding:0 40px;border-bottom:2px solid #ddd}
+#chat .hd .av{width:100px;height:100px;border-radius:50%;background:#C9D3E6;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:700;color:#4A5873}
+#chat .hd b{font-size:46px;color:#111}#chat .hd small{display:block;font-size:32px;color:#777;font-weight:400}
+#chat .bub{position:absolute;right:40px;width:820px;background:#D9FDD3;border-radius:34px 8px 34px 34px;padding:30px 34px;font-size:46px;line-height:1.35;color:#111;opacity:0;box-shadow:0 2px 2px rgba(0,0,0,.08)}
+#chat .bub small{display:block;text-align:right;color:#53BDEB;font-size:34px}
+#chat .in{position:absolute;left:30px;right:30px;bottom:50px;display:flex;align-items:flex-end;gap:20px}
+#chat .in .tx{flex:1;background:#fff;border-radius:50px;padding:28px 40px;font-size:42px;line-height:1.35;color:#111}
+#chat .in .sd{width:130px;height:130px;border-radius:50%;background:#1DAA61;display:flex;align-items:center;justify-content:center}
+/* splash */
+#splash{background:#fff}
+#splash .c{position:absolute;left:0;right:0;top:660px;display:flex;flex-direction:column;align-items:center}
+#splash img{width:280px}#splash .n{font-size:110px;font-weight:900;letter-spacing:-.04em;color:#111;margin-top:30px}
+/* device views */
+#dev{background:#E9ECF2}
+#dev img.bg{position:absolute;inset:-60px;width:1200px;height:2040px;object-fit:cover;filter:blur(40px) brightness(1.05);opacity:.7}
+#dev .fr{position:absolute;left:50%;top:50%;border-radius:40px;overflow:hidden;box-shadow:0 40px 90px rgba(20,30,60,.30);background:#fff}
+#dev .fr img{display:block;width:100%}
+/* overlays */
+#cap{position:absolute;left:60px;right:60px;text-align:center;z-index:12;font-family:'Inter Display','Inter',sans-serif;font-weight:900;font-size:86px;line-height:1.08;letter-spacing:-.01em;color:#fff;-webkit-text-stroke:12px #000;paint-order:stroke fill;text-shadow:0 8px 20px rgba(0,0,0,.25)}
+#cap span{display:inline-block;margin:0 .2em}
+#cap span.a{color:#FFE14D;transform:scale(1.08)}
+.tt{position:absolute;left:50%;transform:translateX(-50%);z-index:11;text-align:center;opacity:0;white-space:nowrap}
+.tt div{display:inline;background:#fff;color:#111;font-weight:800;font-size:58px;line-height:1.55;padding:10px 26px;border-radius:18px;box-decoration-break:clone;-webkit-box-decoration-break:clone;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+#sheet{position:absolute;left:0;right:0;bottom:0;height:1250px;background:#fff;border-radius:50px 50px 0 0;z-index:10;transform:translateY(1300px);box-shadow:0 -10px 40px rgba(0,0,0,.18)}
+#sheet .h{text-align:center;font-size:40px;font-weight:700;color:#111;padding:40px 0 30px;border-bottom:2px solid #eee}
+#sheet .cm{display:flex;gap:26px;padding:34px 50px;align-items:flex-start}
+#sheet .cm .av{width:96px;height:96px;border-radius:50%;flex:none}
+#sheet .cm b{font-size:34px;color:#777;font-weight:600}#sheet .cm p{font-size:42px;color:#111;margin-top:6px}
+#sheet .in{position:absolute;left:30px;right:30px;bottom:740px;display:flex;align-items:center;gap:20px;background:#F1F1F2;border-radius:60px;padding:24px 34px;font-size:46px;font-weight:700;color:#111;min-height:110px}
+#sheet .in .ph{color:#999;font-weight:500}
+#sheet .in .sd{margin-left:auto;width:90px;height:90px;border-radius:50%;background:#FE2C55;display:flex;align-items:center;justify-content:center}
+#wipe{position:absolute;inset:0;background:#000;opacity:0;z-index:13}
+</style></head>
+<body>
+<div id="stage">
+<div id="zoom">
+ <div class="app" id="notes"><div class="hd"><span>‹ Notas</span><span>⋯</span></div><div class="tt">Fiados 📒</div><div class="dt">10 de octubre · 9:12 p. m.</div><div class="ls" id="nls"></div></div>
+ <div class="app" id="calc"><div class="eq" id="ceq"></div><div class="dsp" id="cdsp">0</div><div class="ks" id="cks"></div></div>
+ <div class="app" id="home"><div class="grid" id="hgrid"></div><div class="dock"><i style="background:#34C759">📞</i><i style="background:#fff">🧭</i><i style="background:#30D158">💬</i><i style="background:#FF9500">🎵</i></div></div>
+ <div class="app" id="A"><div class="scr" id="Ascr"></div></div>
+ <div class="app" id="chat"><div class="hd"><span style="font-size:60px;color:#1DAA61">‹</span><div class="av">M</div><div><b>María Castillo</b><small>en línea</small></div></div><div class="bub" id="bub" style="top:1180px">Hola María Castillo, te recuerdo que tienes un saldo pendiente de NIO 940.00 en Pulpería La Bendición. ¡Gracias!<small>9:14 p. m. ✓✓</small></div><div class="in"><div class="tx" id="ctx">Hola María Castillo, te recuerdo que tienes un saldo pendiente de NIO 940.00 en Pulpería La Bendición. ¡Gracias!</div><div class="sd"><svg width="56" height="56" viewBox="0 0 24 24" fill="#fff"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></div></div></div>
+ <div class="app" id="dev"><img class="bg" id="devbg"><div class="fr" id="devfr"><img id="devimg"></div></div>
+ <div class="app" id="splash"><div class="c"><img src="pov/iso.png"><div class="n">Negocio360</div></div></div>
+ <div id="sbar"><span id="clk">9:12</span><svg viewBox="0 0 120 34"><g fill="#000"><rect x="0" y="22" width="8" height="10" rx="2"/><rect x="12" y="16" width="8" height="16" rx="2"/><rect x="24" y="9" width="8" height="23" rx="2"/><rect x="36" y="2" width="8" height="30" rx="2"/><path d="M62 12c8-8 22-8 30 0l-4 4c-6-5-16-5-22 0z"/><path d="M69 19c4-4 12-4 16 0l-8 8z"/><rect x="96" y="6" width="22" height="22" rx="5" fill="none" stroke="#000" stroke-width="3"/><rect x="100" y="10" width="13" height="14" rx="2"/></g></svg></div>
+ <div id="kb"></div>
+ <div class="tap" id="tap"></div>
+ <div id="sheet"><div class="h">Comentarios</div>
+   <div class="cm"><div class="av" style="background:#F6C177"></div><div><b>don_chepe_pulpe</b><p>¿Y sirve para fiados? 👀</p></div></div>
+   <div class="cm"><div class="av" style="background:#9AD0EC"></div><div><b>marisol.tienda</b><p>Yo todavía uso cuaderno jaja</p></div></div>
+   <div class="in"><span id="stx"><span class="ph">Agregá un comentario…</span></span><div class="sd"><svg width="44" height="44" viewBox="0 0 24 24" fill="#fff"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></div></div></div>
+</div>
+<div class="tt" id="tt1" style="top:250px"><div>POV: tenés una pulpería<br>y todavía usás cuaderno 📒</div></div>
+<div class="tt" id="tt2" style="top:330px"><div>✅ menos pérdidas</div></div>
+<div class="tt" id="tt3" style="top:450px"><div>✅ más control</div></div>
+<div class="tt" id="tt4" style="top:570px"><div>✅ más tiempo para vos</div></div>
+<div class="tt" id="tt5" style="top:600px"><div style="font-size:84px">desde $10 al mes 💸</div></div>
+<div class="tt" id="tt6" style="top:1250px"><div style="font-size:64px">Tomá el control<br>de tu pulpería</div></div>
+<div id="cap"></div>
+<div id="wipe"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const p = (t, a, b) => cl((t - a) / (b - a));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 68.36, K = 1080 / 430;
+const S = { tap: [], key: [], swipe: [], open: [], send: [], notif: [], ding: [] };
+// ---------- captions (texto del guion, tiempos del audio)
+const SEG = [[0, 3.73, '¿Tenés una pulpería y al final del día no sabés cuánto ganaste?'], [4.02, 5.27, 'Vendés todo el día,'], [5.43, 7.3, 'anotás los fiados en un cuaderno,'], [7.4, 9.36, 'se te acaba el producto sin darte cuenta…'], [9.68, 11.54, 'y la plata nunca te cuadra.'],
+  [11.88, 13.42, 'Con Negocio360'], [13.63, 14.47, 'eso se acaba.'], [14.75, 16.21, 'Vendés en segundos:'], [16.46, 18.78, 'escribís el nombre del producto, lo agregás'], [18.94, 19.46, 'y listo.'],
+  [19.76, 22.45, '¿Te piden media libra de arroz o un cuarto de queso?'], [22.72, 23.99, 'Lo vendés por fracción,'], [24.14, 25.21, 'sin hacer cuentas.'], [25.54, 27.19, 'Los fiados quedan anotados:'], [27.4, 28.62, 'sabés quién te debe,'], [28.82, 30.81, 'cuánto te debe y cuándo te abonó.'], [31.07, 33.03, 'Y con un toque le recordás por WhatsApp.'],
+  [33.36, 36.27, 'Si alguien se pasa de su límite, el sistema te avisa.'], [36.51, 39.92, 'Y antes de que se te acabe un producto, te avisa que tenés stock bajo.'], [40.19, 42.18, 'Al cerrar, ves cuánto vendiste,'], [42.36, 44.65, 'cuánto ganaste y cuánto tenés en caja.'], [44.87, 46.84, 'Sin cuaderno y sin calculadora.'],
+  [47.11, 50.24, 'Lo usás desde tu teléfono, tu tablet o tu computadora.'], [50.51, 52.58, 'Estés en la pulpería o fuera de ella,'], [52.75, 54.66, 'siempre sabés cómo va tu negocio.'], [54.9, 58.27, 'Menos pérdidas, más control y más tiempo para vos.'], [58.52, 60.83, 'Todo esto desde diez dólares al mes.'],
+  [61.11, 62.82, 'Negocio360.'], [63.05, 64.6, 'Tomá el control de tu pulpería.'], [64.86, 65.34, 'Comentá'], [65.48, 68.16, '«QUIERO VERLO» y te damos una demostración gratuita.']];
+const WORDS = []; SEG.forEach(([a, b, tx]) => { const ws = tx.split(' '); const tot = ws.reduce((s, w) => s + w.length + 1, 0); let acc = 0; ws.forEach(w => { WORDS.push({ w, t: a + (b - a) * acc / tot, seg: a }); acc += w.length + 1; }); });
+// chunk words: max 3 words per chunk, break at segment edges
+const CH = []; let cur = null; WORDS.forEach((W, i) => { if (!cur || cur.seg !== W.seg || cur.ws.length >= 3 || /[,.?:…]$/.test(cur.ws[cur.ws.length - 1].w)) { cur = { seg: W.seg, ws: [] }; CH.push(cur); } cur.ws.push(W); });
+CH.forEach((c, i) => { c.a = c.ws[0].t; const n = CH[i + 1]; const segEnd = SEG.find(s => s[0] === c.seg)[1]; c.b = n && n.seg === c.seg ? n.ws[0].t : segEnd + .15; });
+// ---------- timeline helpers
+const TAPS = []; function tap(t, x, y) { TAPS.push({ t, x: x * K, y: y * K + 110 }); S.tap.push(t); }
+function tapS(t, x, y) { TAPS.push({ t, x, y }); S.tap.push(t); } // stage px
+const KB = []; function kb(a, b) { KB.push({ a, b }); }
+const KEYS = []; function typ(a, b, txt) { for (let i = 0; i < txt.length; i++) { const t = a + (b - a) * i / txt.length; KEYS.push({ t, ch: txt[i].toLowerCase() }); S.key.push(t); } }
+// app screen (A) states: [t, img, scrollFrom, scrollTo, scrollA, scrollB, wide]
+const AS = [];
+function st(t, img, o = {}) { AS.push(Object.assign({ t, img }, o)); }
+const ZM = [[0, 1, 540, 960]]; function zm(t, z, x, y, d = .6) { const prev = ZM[ZM.length - 1]; ZM.push([t, prev[1], prev[2], prev[3], 'hold']); ZM.push([t + d, z, x, y]); }
+const APPS = [[0, 'notes']];
+function app(t, id) { APPS.push([t, id]); }
+// ======== SCRIPT
+// 0–9.5 notes
+const NOTES0 = 'Juan — 150\nDoña Carmen — 865\nLuis — 310 <s>280</s> ??\nMaría — ¿cuánto era?\nPedro — …\n';
+const NT = [[6.1, 7.15, 'Ana — 560'], [7.55, 9.2, '\n⚠️ se acabó el aceite']];
+tapS(5.75, 600, 1180); kb(5.85, 9.35); NT.forEach(([a, b, tx]) => typ(a, b, tx.replace('\n', '')));
+// 9.5 calculator
+app(9.5, 'calc'); S.swipe.push(9.45);
+const CK = ['C', '±', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '0', '00', '.', '='];
+const CSEQ = [[9.9, '4'], [10.05, '9'], [10.2, '6'], [10.35, '9'], [10.6, '−'], [10.8, '4'], [10.95, '2'], [11.1, '1'], [11.25, '0'], [11.45, '=']];
+CSEQ.forEach(([t, k]) => { const i = CK.indexOf(k); tapS(t, 50 + (i % 4) * 253.5 + 110, 664 + Math.floor(i / 4) * 234 + 100); });
+// 11.85 home + open app
+app(11.8, 'home'); S.swipe.push(11.75); tapS(12.75, 909, 960); S.open.push(12.85);
+app(12.95, 'A'); st(12.95, 'dash', { wide: 1, s0: 0, s1: 0 }); AS[AS.length - 1].zoomIn = 1; st(13.6, 'dash', { wide: 1, s0: 0, s1: 160, sa: 13.6, sb: 14.6 });
+// 14.75 ventas
+st(14.75, 'v0'); tap(15.15, 270, 209); st(15.35, 'v1'); tap(15.85, 348, 636); st(16.05, 'v2'); tap(16.35, 200, 389); kb(16.4, 18.0);
+'arroz'.split('').forEach((c, i) => st(16.55 + i * .22, 'va' + (i + 1))); typ(16.55, 17.65, 'arroz');
+tap(18.05, 215, 441); st(18.25, 'v3');
+zm(18.6, 1.0, 540, 960);
+tap(20.55, 162, 470); st(20.7, 'v4'); zm(20.7, 1.7, 400, 1300, .5);
+zm(21.25, 1, 540, 960, .4); tap(21.35, 200, 353); kb(21.4, 22.25); 'queso'.split('').forEach((c, i) => st(21.5 + i * .14, 'vq' + (i + 1))); typ(21.5, 22.2, 'queso');
+tap(22.3, 215, 441); st(22.45, 'v5'); tap(22.95, 136, 545); st(23.1, 'v6'); zm(23.15, 1.6, 420, 1350, .5); zm(25.0, 1, 540, 960, .4);
+// 25.5 fiados
+st(25.5, 'f0', { s0: 0, s1: 0 }); zm(26.3, 1.7, 540, 760, .5); zm(27.3, 1, 540, 960, .4); st(27.4, 'f0', { s0: 0, s1: 200, sa: 27.4, sb: 28.2 });
+tap(28.55, 200, 284); st(28.75, 'f1', { s0: 200, s1: 200 }); zm(28.9, 1.8, 820, 821, .5); zm(29.9, 1, 540, 960, .4); st(29.95, 'f1', { s0: 200, s1: 330, sa: 29.95, sb: 30.6 }); zm(30.6, 1.6, 540, 1077, .5); zm(31.05, 1, 540, 960, .35);
+tap(31.55, 128, 270); app(31.8, 'chat'); S.open.push(31.75); tapS(32.55, 985, 1805); S.send.push(32.6);
+// 33.3 nuevo fiado
+app(33.3, 'A'); st(33.3, 'f2'); tap(33.55, 215, 202); kb(33.6, 35.2); 'María Castillo'.split('').forEach((c, i) => st(33.7 + i * .06, 'fc' + (i + 1))); typ(33.7, 34.55, 'maría castillo');
+st(34.62, 'f3'); tap(34.65, 215, 361); '400'.split('').forEach((c, i) => st(34.8 + i * .14, 'fm' + (i + 1))); typ(34.8, 35.15, '400');
+zm(35.3, 1.75, 540, 688, .5); zm(36.3, 1, 540, 960, .3); S.notif.push(35.25);
+// 36.5 productos
+st(36.5, 'p0', { s0: 0, s1: 0 }); st(37.0, 'p0', { s0: 0, s1: 520, sa: 37.0, sb: 38.1 }); tap(38.45, 215, 278); zm(38.6, 1.6, 540, 808, .5); zm(39.95, 1, 540, 960, .3); S.notif.push(38.6);
+// 40.15 dashboard
+st(40.15, 'dash', { wide: 1, s0: 0, s1: 0 }); zm(40.6, 1.75, 300, 600, .5); zm(42.3, 1.75, 300, 870, .5); zm(43.55, 1.75, 820, 870, .5); zm(44.85, 1, 540, 960, .5); st(45.0, 'dash', { wide: 1, s0: 0, s1: 600, sa: 45.0, sb: 46.8 });
+// 47.1 devices
+st(47.11, 'dash', { wide: 1, s0: 600, s1: 600 }); app(48.6, 'dev'); S.swipe.push(48.55);
+// 50.5 back to phone
+app(50.5, 'A'); S.swipe.push(50.45); st(50.5, 'dash', { wide: 1, s0: 0, s1: 980, sa: 50.6, sb: 54.6 });
+// 54.9 benefits
+st(54.9, 'dash', { wide: 1, s0: 1180, s1: 1300, sa: 54.9, sb: 58.3 });
+// price 58.5
+st(58.5, 'dash', { wide: 1, s0: 0, s1: 0 }); S.ding.push(59.6);
+// splash 61.1
+app(61.1, 'splash'); S.open.push(61.05);
+// CTA
+app(64.8, 'A'); st(64.8, 'dash', { wide: 1, s0: 0, s1: 0 }); S.swipe.push(64.85); typ(65.5, 66.25, 'quiero verlo'); tapS(66.4, 985, 1180 - 40); S.send.push(66.45);
+window.EVENTS = { DUR, S };
+// build static UIs
+$('cks').innerHTML = CK.map(k => `<b class="${'÷×−+='.includes(k) ? 'op' : (['C', '±', '%'].includes(k) ? 'fn' : '')}" data-k="${k}">${k}</b>`).join('');
+const HOME = [['#FFD60A', '📒', 'Notas'], ['#fff', '🧮', 'Calculadora'], ['#fff', '📷', 'Cámara'], ['#fff', '🖼️', 'Fotos'], ['#5AC8FA', '🌤️', 'Clima'], ['#fff', '📅', 'Calendario'], ['#FF3B30', '⏰', 'Reloj'], ['#fff', '🗺️', 'Mapas'], ['#34C759', '💵', 'Banco'], ['#fff', '🛒', 'Tienda'], ['#5856D6', '🎙️', 'Notas de voz'], ['N360', '', 'Negocio360']];
+$('hgrid').innerHTML = HOME.map(([bg, e, n]) => bg === 'N360' ? `<div class="ic" id="n360ic"><i style="background:#fff"><img src="pov/iso.png" style="width:130px"></i>${n}</div>` : `<div class="ic"><i style="background:${bg}">${e}</i>${n}</div>`).join('');
+const KR = ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm'];
+$('kb').innerHTML = KR.map((r, i) => `<div class="row">${i === 2 ? '<div class="k w">⇧</div>' : ''}${r.split('').map(c => `<div class="k" data-c="${c}">${c}</div>`).join('')}${i === 2 ? '<div class="k w">⌫</div>' : ''}</div>`).join('') + '<div class="row"><div class="k dn">123</div><div class="k sp" data-c=" ">espacio</div><div class="k dn">intro</div></div>';
+const IMG = {}; function getImg(n, wide) { if (!IMG[n]) { const im = document.createElement('img'); im.src = 'pov/' + n + '.jpg'; if (wide) im.className = 'wide'; im.style.opacity = 0; $('Ascr').appendChild(im); IMG[n] = im; } return IMG[n]; }
+AS.forEach(a => getImg(a.img, a.wide));
+// ================= render
+window.render = function (t) {
+  // active app
+  let ap = APPS[0], pv = null; for (const a of APPS) if (a[0] <= t) { pv = ap; ap = a; }
+  const ids = ['notes', 'calc', 'home', 'A', 'chat', 'dev', 'splash'];
+  const kk = ease(p(t, ap[0], ap[0] + .3));
+  ids.forEach(id => { const e = $(id); e.style.opacity = 0; e.style.transform = ''; e.style.zIndex = 0; });
+  const E = $(ap[1]); E.style.opacity = 1; E.style.zIndex = 2;
+  if (pv && pv[1] !== ap[1] && kk < 1) { const P = $(pv[1]); P.style.opacity = 1; P.style.zIndex = 1;
+    if (ap[1] === 'A' && pv[1] === 'home') { const s = lerp(.18, 1, eio(p(t, ap[0], ap[0] + .35))); E.style.transformOrigin = '909px 935px'; E.style.transform = `scale(${s})`; E.style.borderRadius = (1 - kk) * 120 + 'px'; }
+    else if (ap[1] === 'home') { const s = lerp(1, .9, kk); P.style.transform = `translateY(${-kk * 300}px) scale(${1 - .3 * kk})`; P.style.opacity = 1 - kk; E.style.transform = `scale(${lerp(1.08, 1, kk)})`; }
+    else { P.style.transform = `translateX(${-kk * 1080}px)`; E.style.transform = `translateX(${(1 - kk) * 1080}px)`; } }
+  $('sbar').style.background = ap[1] === 'home' ? 'transparent' : (ap[1] === 'calc' ? '#F2F3F5' : (ap[1] === 'notes' ? '#FFFDF6' : (ap[1] === 'chat' ? '#F6F6F6' : '#fff')));
+  $('clk').textContent = '9:' + String(12 + Math.floor(t / 30)).padStart(2, '0');
+  // notes text
+  { let txt = NOTES0; for (const [a, b, s] of NT) { const n = Math.floor(s.length * p(t, a, b)); txt += s.slice(0, n); }
+    $('nls').innerHTML = txt.replace(/\n/g, '<br>') + `<span class="cur" style="opacity:${t > 5.85 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0}"></span>`;
+    const ny = -lerp(0, 40, eio(p(t, 1.0, 3.0))) - 330 * eio(p(t, 5.8, 6.2)); ['.hd', '.tt', '.dt', '.ls'].forEach(q => $('notes').querySelector(q).style.transform = `translateY(${ny}px)`); }
+  // calc
+  { let disp = '0', eq = ''; let a = '', b = '', op = false; for (const [tt, k] of CSEQ) if (t >= tt) { if (k === '−') op = true; else if (k === '=') { eq = Number(a).toLocaleString('en-US') + ' − ' + Number(b).toLocaleString('en-US'); disp = (Number(a) - Number(b)).toLocaleString('en-US'); } else if (op) b += k; else a += k; }
+    if (!eq) disp = Number((op ? b : a) || 0).toLocaleString('en-US'); $('cdsp').textContent = disp; $('ceq').textContent = eq ? eq + ' =' : ''; $('cdsp').style.color = eq ? '#D92D20' : '#111';
+    $('cks').querySelectorAll('b').forEach(x => { const on = CSEQ.some(([tt, k]) => k === x.dataset.k && t >= tt - .02 && t < tt + .12); x.classList.toggle('on', on); }); }
+  // app screen
+  { let a = AS[0]; for (const s of AS) if (s.t <= t) a = s; for (const n in IMG) IMG[n].style.opacity = 0; const im = getImg(a.img, a.wide); im.style.opacity = 1;
+    const sc = a.s0 != null ? lerp(a.s0, a.s1, a.sa != null ? eio(p(t, a.sa, a.sb)) : 0) : 0; im.style.transform = `translateY(${-sc * K}px)`;
+    if (a.zoomIn) {} }
+  // chat
+  { const sent = t >= 32.6; $('bub').style.opacity = sent ? ease(p(t, 32.6, 32.85)) : 0; $('bub').style.transform = `translateY(${(1 - ease(p(t, 32.6, 32.85))) * 40}px)`; $('ctx').style.opacity = sent ? 0 : 1; }
+  // devices
+  { const tab = t < 49.3; $('devimg').src = tab ? 'pov/tablet.jpg' : 'pov/desktop.jpg'; $('devbg').src = $('devimg').src;
+    const fr = $('devfr'); if (tab) { const w = 860, k2 = ease(p(t, 48.6, 49.0)); fr.style.width = w + 'px'; fr.style.transform = `translate(-50%,-50%) scale(${lerp(.92, 1, k2) * (1 + .02 * p(t, 48.6, 49.3))})`; }
+    else { const w = 1040, k2 = ease(p(t, 49.3, 49.7)); fr.style.width = w + 'px'; fr.style.transform = `translate(-50%,-50%) scale(${lerp(.92, 1, k2) * (1 + .12 * eio(p(t, 49.3, 50.5)))})`; } }
+  // zoom (CapCut style punch-in) — stage coords
+  { let a = ZM[0], ia = 0; for (let i = 0; i < ZM.length; i++) if (ZM[i][0] <= t) { a = ZM[i]; ia = i; } const b = ZM[ia + 1] || a; let z = a[1], x = a[2], y = a[3]; if (b !== a && b[0] > a[0]) { const k = eio(p(t, a[0], b[0])); z = lerp(a[1], b[1], k); x = lerp(a[2], b[2], k); y = lerp(a[3], b[3], k); }
+    let ox = 540 - x * z, oy = 960 - y * z; ox = cl(ox, 1080 - 1080 * z, 0); oy = cl(oy, 1920 - 1920 * z, 0); $('zoom').style.transform = `translate(${ox}px,${oy}px) scale(${z})`; }
+  // keyboard
+  { let on = 0; for (const k of KB) on = Math.max(on, Math.min(ease(p(t, k.a, k.a + .25)), 1 - ease(p(t, k.b, k.b + .25)))); $('kb').style.transform = `translateY(${(1 - on) * 720}px)`;
+    $('kb').querySelectorAll('.k').forEach(x => x.classList.toggle('on', KEYS.some(k => k.ch === x.dataset.c && t >= k.t && t < k.t + .1))); }
+  // tap indicator
+  { const T = $('tap'); let o = 0, s = 1, P = null; for (const q of TAPS) if (t >= q.t - .25 && t < q.t + .3) { P = q; const d = t - q.t; o = d < 0 ? ease(p(t, q.t - .25, q.t - .05)) : 1 - ease(p(t, q.t + .05, q.t + .3)); s = d < 0 ? 1 : lerp(.75, 1.15, p(t, q.t, q.t + .3)); }
+    if (P) { T.style.left = P.x + 'px'; T.style.top = P.y + 'px'; } T.style.opacity = o; T.style.transform = `scale(${s})`; }
+  // comment sheet
+  { const k = ease(p(t, 64.9, 65.3)); $('sheet').style.transform = `translateY(${(1 - k) * 1300}px)`; const kbo = t > 65.3 && t < 66.6 ? 1 : 0;
+    const n = Math.floor('«QUIERO VERLO»'.length * p(t, 65.5, 66.25)); $('stx').innerHTML = t >= 66.45 ? '<span class="ph">Agregá un comentario…</span>' : (n ? '«QUIERO VERLO»'.slice(0, n) : '<span class="ph">Agregá un comentario…</span>');
+    if (t > 64.9) { $('kb').style.transform = `translateY(${(1 - Math.min(ease(p(t, 65.2, 65.45)), 1 - ease(p(t, 66.5, 66.75)))) * 720}px)`; }
+    let cm = $('sheet').querySelector('.mine'); if (!cm) { cm = document.createElement('div'); cm.className = 'cm mine'; cm.innerHTML = '<div class="av" style="background:#B8F2C8"></div><div><b>vos · ahora</b><p style="font-weight:800">«QUIERO VERLO»</p></div>'; $('sheet').insertBefore(cm, $('sheet').children[1]); }
+    cm.style.opacity = t >= 66.45 ? ease(p(t, 66.45, 66.7)) : 0; cm.style.display = t >= 66.45 ? 'flex' : 'none'; }
+  // dimmer for app behind sheet
+  // text boxes
+  const tb = (id, a, b) => { const e = $(id); const k = p(t, a, a + .2); e.style.opacity = (k > 0 ? 1 : 0) * (1 - ease(p(t, b, b + .15))); e.style.transform = `translateX(-50%) scale(${lerp(.92, 1, ease(k))})`; };
+  tb('tt1', 0, 11.6); tb('tt2', 54.9, 58.35); tb('tt3', 56.0, 58.35); tb('tt4', 56.9, 58.35); tb('tt5', 59.4, 60.95); 
+  // captions
+  { const C = $('cap'); let c = null; for (const x of CH) if (t >= x.a && t < x.b) c = x; const kbOn = parseFloat(($('kb').style.transform.match(/translateY\(([-\d.]+)px/) || [0, 720])[1]) < 360 || (t > 64.9 && t < 66.9);
+    C.style.top = (kbOn ? 1095 : 1330) + 'px'; if (t > 64.9) C.style.top = '330px';
+    if (!c) { C.innerHTML = ''; } else { const key = c.a; if (C.dataset.k !== String(key)) { C.innerHTML = c.ws.map(w => `<span>${w.w}</span>`).join(''); C.dataset.k = String(key); }
+      const sp = C.querySelectorAll('span'); c.ws.forEach((w, i) => { const act = t >= w.t && (i === c.ws.length - 1 || t < c.ws[i + 1].t); sp[i].className = act ? 'a' : ''; sp[i].style.opacity = t >= w.t - .02 ? 1 : 0; });
+      const k = ease(p(t, c.a, c.a + .12)); C.style.transform = `scale(${lerp(.85, 1, k)})`; } }
+};
+render(0);
+</script></body></html>

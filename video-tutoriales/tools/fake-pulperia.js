@@ -115,6 +115,7 @@
   const cliente_interacciones = [['mensaje', 'Pedido semanal confirmado', 'Confirmó 10 qq de arroz para el lunes.', 1], ['llamada', 'Consulta de precios mayoristas', 'Pidió lista de precios de aceite y azúcar.', 4], ['visita', 'Visita de ruta', 'Se cobró la factura V-01188.', 9], ['cotizacion', 'Cotización enviada', 'Proforma P-0045 por C$ 18,400.', 15]].map(([tipo, titulo, descripcion, k], i) => ({ id: 'in' + i, auth_user_id: UID, cliente_id: 4, tipo, titulo, descripcion, fecha: ymd0(k) + 'T10:30:00', registrado_por: 'Carlos Torres', created_at: ymd0(k) }));
   const puntos_saldos = [{ auth_user_id: UID, cliente_id: 4, saldo: 340 }];
   const FIA = [['Juan Pérez', 'juan', 420, 3, 1500, [[150, 1]]], ['Doña Carmen López', 'carmen', 865, 9, 800, [[200, 4], [100, 2]]], ['Luis Gutiérrez', 'luis', 310, 1, 1000, []], ['María Castillo', 'maria', 1240, 15, 1200, [[300, 8]]], ['Pedro Rivas', 'pedro', 185, 0, 600, []], ['Ana Mendoza', 'ana', 560, 6, 1000, []]];
+  clientes.splice(20);
   const fiados = [], fiado_pagos = [];
   FIA.forEach(([n, k, tot, d, lim, ab], i) => { const cid = 900 + i; clientes.push({ id: cid, auth_user_id: UID, nombre: n, telefono: '8' + (8123400 + i * 1111), whatsapp: '8' + (8123400 + i * 1111), limite_credito: lim, activo: true, tipo_cliente: 'normal', created_at: '2026-06-01T10:00:00' });
     const pag = ab.reduce((s, x) => s + x[0], 0); const fid = 'f' + i;

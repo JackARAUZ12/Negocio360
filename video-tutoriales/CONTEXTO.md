@@ -25,6 +25,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
   - Reels
   - anuncio "Diego"
   - anuncio "Renata" (sin música, "DESDE $10 AL MES", CTA "COMENTÁ 'QUIERO VERLO'")
+  - **Pulpería en estilo POV** (el usuario se cansó de los estilos animados con stickers y sellos): grabación de pantalla del celular con barra de estado, toques del dedo, teclado, Notas (cuaderno de fiados), calculadora, pantalla de inicio que abre Negocio360, chat de WhatsApp, subtítulos tipo CapCut palabra por palabra y cuadros de texto nativos de TikTok ("POV: …"). Archivos: `pov.html`, `rpov.js`, `sfxpov.py`, capturas con `FAKE=fake-pulperia.js node cappov.js` (viewport 430×720; la barra de estado ocupa los 110 px de arriba).
   - **Rubro Pulpería** (68.36 s, voz Renata, colores de tono medio: naranja/coral para el problema, azul-violeta y verde azulado para la solución; sin música): `pul.html`, `rpul.js`, `sfxpul.py`, capturas con `FAKE=fake-pulperia.js node cappul.js` (Pulpería La Bendición, usuaria Rosa Martínez, fiados con abonos y límites). `mob.js`/`open.js` aceptan `FAKE=<archivo>` para cambiar el mock.
   - anuncio **"3 pasos para mejorar tus ventas"** (39.16 s, **modo claro**, sin música, efectos fuertes): `ad3.html`, `rad3.js`, `sfx3.py`, piezas en `tools/ad3/` (recortes reales del Dashboard, Productos, Reportes y Ventas en móvil, sacados con `capad2.js`).
 - **Tutoriales 16:9**:
