@@ -110,21 +110,24 @@
     // Mismos perfiles (mismos nombres, mismo código) sin importar si
     // esto corre en la Central o en cualquiera de sus sucursales — la
     // función siempre resuelve a los perfiles reales de la Central.
-    const { data, error } = await PG.client.rpc('listar_perfiles_del_grupo');
+    let { data, error } = await PG.client.rpc('listar_perfiles_del_grupo_v2');
+    if (error) ({ data, error } = await PG.client.rpc('listar_perfiles_del_grupo'));
     if (error) { console.error('perfiles-guard cargarPerfiles:', error); return []; }
     let perfiles = data || [];
 
-    // Garantiza que siempre exista el perfil Admin — pero crearlo solo
-    // es posible desde la propia Central (una sucursal no tiene permiso
-    // de escribir en la tabla de perfiles de otra cuenta, a propósito).
+    // Garantiza que siempre exista el perfil Admin (principal) — pero
+    // crearlo solo es posible desde la propia Central (una sucursal no
+    // tiene permiso de escribir en la tabla de perfiles de otra cuenta,
+    // a propósito). La creación pasa por una función segura de la base
+    // de datos: el navegador ya no escribe perfiles de administrador.
     if (!perfiles.some(p => p.tipo === 'admin') && !(await esUnaSucursal())) {
-      const { data: nuevo, error: errIns } = await PG.client
-        .from('perfiles_acceso')
-        .insert([{ auth_user_id: PG.authUserId, nombre: 'Admin', tipo: 'admin', modulos: [], codigo_configurado: false }])
-        .select().single();
-      if (!errIns && nuevo) perfiles = [nuevo, ...perfiles];
+      const { error: errAs } = await PG.client.rpc('admin_asegurar_principal');
+      if (!errAs) {
+        const r2 = await PG.client.rpc('listar_perfiles_del_grupo_v2');
+        if (!r2.error && r2.data) perfiles = r2.data;
+      }
     }
-    perfiles.sort((a, b) => (a.tipo === 'admin' ? -1 : b.tipo === 'admin' ? 1 : 0));
+    perfiles.sort((a, b) => (a.tipo === 'admin' ? -1 : b.tipo === 'admin' ? 1 : 0) || (b.es_principal ? 1 : 0) - (a.es_principal ? 1 : 0));
     return perfiles;
   }
 
@@ -229,7 +232,7 @@
           ${p.tipo === 'admin' ? '👑' : esc((p.nombre || '?').trim().charAt(0).toUpperCase())}
         </div>
         <div class="pg-profile-name">${esc(p.nombre)}</div>
-        ${p.tipo === 'admin' ? '<div class="pg-profile-badge">Admin</div>' : ''}
+        ${p.tipo === 'admin' ? `<div class="pg-profile-badge">Admin${p.es_principal && PG.perfiles.filter(x => x.tipo === 'admin').length > 1 ? ' · Principal' : ''}</div>` : ''}
       </button>
     `).join('');
 
@@ -259,15 +262,39 @@
   }
 
   function requerirAdminYGestionar() {
-    const admin = PG.perfiles.find(p => p.tipo === 'admin');
-    if (!admin) return;
-    renderPin(admin, { onSuccess: () => renderGestionUsuarios(), tituloExtra: 'Se requiere el código de administrador' });
+    pedirCodigoAdmin({ onSuccess: () => renderGestionUsuarios(), tituloExtra: 'Se requiere el código de administrador' });
+  }
+
+  // Pide "el código de administrador": con un solo admin se comporta
+  // exactamente igual que siempre; con varios admins basta el código de
+  // CUALQUIERA de ellos y el sistema detecta cuál es (se verifica en la
+  // base de datos, con bloqueo tras intentos fallidos).
+  function pedirCodigoAdmin({ onSuccess, tituloExtra } = {}) {
+    const admins = PG.perfiles.filter(p => p.tipo === 'admin');
+    if (!admins.length) return;
+    const sinCodigo = admins.find(a => !a.codigo_configurado);
+    if (admins.length === 1 || sinCodigo) { renderPin(sinCodigo || admins[0], { onSuccess, tituloExtra }); return; }
+    renderPin({ tipo: 'admin', id: null, nombre: 'Administrador', codigo_configurado: true },
+      { onSuccess, tituloExtra: tituloExtra || 'Ingresa el código de administrador', cualquierAdmin: true });
+  }
+  function textoErrorCodigoAdmin(r) {
+    if (!r) return 'No se pudo verificar el código. Intenta de nuevo.';
+    if (r.motivo === 'bloqueado') { const m = Math.max(1, Math.ceil((r.bloqueado_seg || 60) / 60)); return `Demasiados intentos fallidos. Espera ${m} minuto${m === 1 ? '' : 's'} e intenta de nuevo.`; }
+    if (r.motivo === 'incorrecto') return r.restantes > 0 && r.restantes <= 3 ? `Código incorrecto (te quedan ${r.restantes} intento${r.restantes === 1 ? '' : 's'})` : 'Código incorrecto';
+    return 'Código incorrecto';
+  }
+  async function verificarCodigoAdmin(pin, perfilId, motivo, cliente) {
+    try {
+      const { data, error } = await (cliente || PG.client).rpc('admin_verificar_codigo', { p_pin: pin, p_perfil_id: perfilId || null, p_motivo: motivo || 'acceso' });
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('verificarCodigoAdmin:', e); return null; }
   }
 
   // ------------------------------------------------------------
   // Vista: PIN (establecer o ingresar)
   // ------------------------------------------------------------
-  function renderPin(perfil, { onSuccess, tituloExtra, forzarNuevo } = {}) {
+  function renderPin(perfil, { onSuccess, tituloExtra, forzarNuevo, cualquierAdmin } = {}) {
     const c = card();
     const necesitaCrearCodigo = !!forzarNuevo || (perfil.tipo === 'admin' && !perfil.codigo_configurado);
     // Configurar un código por primera vez solo se puede hacer desde la
@@ -315,7 +342,7 @@
     document.getElementById('pg-back').addEventListener('click', renderSelector);
     document.getElementById('pg-pin-cancel').addEventListener('click', renderSelector);
     const forgotEl = document.getElementById('pg-forgot');
-    if (forgotEl) forgotEl.addEventListener('click', () => renderOlvideCodigo(perfil, { onSuccess }));
+    if (forgotEl) forgotEl.addEventListener('click', () => renderOlvideCodigo(cualquierAdmin ? (PG.perfiles.find(x => x.tipo === 'admin' && x.es_principal) || PG.perfiles.find(x => x.tipo === 'admin')) : perfil, { onSuccess }));
 
     const input1 = document.getElementById('pg-pin-1');
     const input2 = document.getElementById('pg-pin-2');
@@ -327,9 +354,29 @@
       const pin1 = (input1.value || '').trim();
       if (pin1.length < 4) { errEl.textContent = 'El código debe tener al menos 4 dígitos'; return; }
 
+      const okBtn = document.getElementById('pg-pin-ok');
       if (esNuevo) {
         const pin2 = (input2.value || '').trim();
         if (pin1 !== pin2) { errEl.textContent = 'Los códigos no coinciden'; return; }
+        if (perfil.tipo === 'admin') {
+          // Los códigos de administrador se guardan SOLO en la base de datos (función segura)
+          okBtn.disabled = true;
+          try {
+            const { data: r, error } = await PG.client.rpc('admin_definir_codigo', { p_perfil_id: perfil.id, p_pin: pin1, p_modo: forzarNuevo ? 'recuperacion' : 'inicial' });
+            if (error || !r) throw error || new Error('sin respuesta');
+            if (!r.ok) {
+              errEl.textContent = r.motivo === 'codigo_en_uso' ? 'Ese código ya lo usa otro administrador. Elige uno distinto.'
+                : r.motivo === 'sesion_antigua' ? 'Por seguridad, vuelve a confirmar tu contraseña e intenta de nuevo.'
+                : r.motivo === 'formato' ? 'Usa solo números (de 4 a 6 dígitos).'
+                : 'No se pudo guardar el código. Intenta de nuevo.';
+              okBtn.disabled = false; return;
+            }
+          } catch (e) { console.error('admin_definir_codigo:', e); errEl.textContent = 'No se pudo guardar el código. Intenta de nuevo.'; okBtn.disabled = false; return; }
+          perfil.codigo_configurado = true;
+          PG.adminActual = { id: perfil.id, nombre: perfil.nombre, principal: !!perfil.es_principal };
+          onSuccess && onSuccess(perfil);
+          return;
+        }
         const hash = await hashPin(pin1, perfil.id);
         const { error } = await PG.client.from('perfiles_acceso')
           .update({ codigo_hash: hash, codigo_configurado: true, updated_at: new Date().toISOString() })
@@ -338,6 +385,22 @@
         perfil.codigo_configurado = true;
         perfil.codigo_hash = hash;
         onSuccess && onSuccess(perfil);
+        return;
+      }
+
+      if (perfil.tipo === 'admin') {
+        // Verificación en la base de datos (con bloqueo tras intentos fallidos)
+        okBtn.disabled = true;
+        const r = await verificarCodigoAdmin(pin1, cualquierAdmin ? null : perfil.id, 'acceso');
+        okBtn.disabled = false;
+        if (!r || !r.ok) {
+          errEl.textContent = textoErrorCodigoAdmin(r);
+          input1.value = ''; input1.focus();
+          return;
+        }
+        const quien = PG.perfiles.find(x => x.id === r.perfil_id) || perfil;
+        PG.adminActual = { id: r.perfil_id, nombre: r.nombre, principal: !!r.principal };
+        onSuccess && onSuccess(quien);
         return;
       }
 
@@ -454,9 +517,9 @@
       errEl.textContent = '';
       const val = (pinEl.value || '').trim();
       if (!val) { errEl.textContent = 'Ingresa el código de administrador'; return; }
-      const hash = await hashPin(val, admin.id);
-      if (hash !== admin.codigo_hash) {
-        errEl.textContent = 'Código de administrador incorrecto';
+      const r = await verificarCodigoAdmin(val, null, 'restablecer_codigo');
+      if (!r || !r.ok) {
+        errEl.textContent = r && r.motivo === 'bloqueado' ? textoErrorCodigoAdmin(r) : 'Código de administrador incorrecto';
         pinEl.value = ''; pinEl.focus();
         return;
       }
@@ -499,7 +562,9 @@
       <div class="pg-section-title">Usuarios con acceso restringido</div>
       ${filas}
       <button class="pg-btn pg-btn-primary" id="pg-nuevo-usuario" style="width:100%;margin-top:6px">+ Nuevo usuario</button>
+      ${bloqueAdministradores()}
     `;
+    enlazarBloqueAdministradores(c);
 
     document.getElementById('pg-back').addEventListener('click', renderSelector);
     document.getElementById('pg-nuevo-usuario').addEventListener('click', () => {
@@ -522,6 +587,118 @@
         PG.perfiles = await cargarPerfiles();
         renderGestionUsuarios();
       });
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Administradores adicionales — solo el administrador PRINCIPAL
+  // puede crearlos o quitarlos (y siempre confirmando su código, que
+  // se verifica en la base de datos). Va en una sección plegada para
+  // no estorbar a quien solo usa un administrador.
+  // ------------------------------------------------------------
+  function bloqueAdministradores() {
+    const admins = PG.perfiles.filter(p => p.tipo === 'admin');
+    const soyPrincipal = !!(PG.adminActual && PG.adminActual.principal);
+    const filas = admins.map(a => `
+      <div class="pg-user-row" data-id="${a.id}">
+        <div class="pg-avatar" style="background:#1A1D2E">👑</div>
+        <div class="pg-user-row-info">
+          <div class="pg-user-row-name">${esc(a.nombre)}</div>
+          <div class="pg-user-row-mods">${a.es_principal ? 'Administrador principal' : 'Administrador'}</div>
+        </div>
+        ${soyPrincipal && !a.es_principal ? '<button class="pg-icon-btn pg-icon-danger pg-del-admin" title="Quitar administrador">🗑️</button>' : ''}
+      </div>`).join('');
+    return `
+      <details style="margin-top:14px" id="pg-admins-det">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text-muted,#9CA3AF)">👑 Administradores (${admins.length})</summary>
+        <div style="margin-top:8px">
+          ${filas}
+          ${soyPrincipal
+            ? '<button class="pg-btn pg-btn-ghost" id="pg-nuevo-admin" style="width:100%;margin-top:6px">+ Nuevo administrador</button><div id="pg-admin-eventos" style="margin-top:10px;font-size:11.5px;color:var(--text-muted,#9CA3AF)"></div>'
+            : '<p style="font-size:11.5px;color:var(--text-muted,#9CA3AF);margin:8px 0 0">Solo el administrador principal puede crear o quitar administradores.</p>'}
+        </div>
+      </details>`;
+  }
+  function enlazarBloqueAdministradores(c) {
+    const nuevo = c.querySelector('#pg-nuevo-admin');
+    if (nuevo) nuevo.addEventListener('click', () => {
+      if (PG.perfiles.length >= PG.limitePerfiles) { renderPaywallUsuarios(); return; }
+      renderFormAdmin();
+    });
+    c.querySelectorAll('.pg-del-admin').forEach(btn => btn.addEventListener('click', () => {
+      const a = PG.perfiles.find(x => x.id === btn.closest('.pg-user-row').dataset.id);
+      if (a) renderEliminarAdmin(a);
+    }));
+    const ev = c.querySelector('#pg-admin-eventos');
+    if (ev) {
+      PG.client.from('perfiles_admin_eventos').select('perfil_nombre,accion,detalle,created_at')
+        .eq('auth_user_id', PG.authUserId).order('created_at', { ascending: false }).limit(8)
+        .then(({ data }) => {
+          const nombres = { codigo_ok: 'Código correcto', codigo_incorrecto: 'Código incorrecto', bloqueo: 'Bloqueo por intentos', admin_creado: 'Administrador creado', admin_eliminado: 'Administrador quitado', codigo_definido: 'Código definido' };
+          if (!data || !data.length) return;
+          ev.innerHTML = '<b>Actividad reciente</b>' + data.map(e => `<div>${esc(new Date(e.created_at).toLocaleString('es-NI', { dateStyle: 'short', timeStyle: 'short' }))} · ${esc(nombres[e.accion] || e.accion)}${e.perfil_nombre ? ' · ' + esc(e.perfil_nombre) : ''}${e.detalle ? ' (' + esc(e.detalle) + ')' : ''}</div>`).join('');
+        }).catch(() => {});
+    }
+  }
+  function textoErrorAdmin(r) {
+    if (!r) return 'No se pudo completar. Intenta de nuevo.';
+    const m = { bloqueado: textoErrorCodigoAdmin(r), incorrecto: 'Tu código de administrador principal es incorrecto', formato: 'El código debe tener de 4 a 6 números', nombre: 'Escribe un nombre válido', nombre_repetido: 'Ya existe un usuario con ese nombre', codigo_en_uso: 'Ese código ya lo usa otro administrador. Elige uno distinto.', solo_central: 'Esto solo se puede hacer desde la cuenta principal', es_principal: 'El administrador principal no se puede quitar' };
+    return m[r.motivo] || 'No se pudo completar. Intenta de nuevo.';
+  }
+  function renderFormAdmin() {
+    const c = card();
+    c.innerHTML = `
+      <div class="pg-back-arrow" id="pg-back">← Volver</div>
+      <div class="pg-title">Nuevo administrador</div>
+      <div class="pg-subtitle">Tendrá acceso total y su propio código. Solo tú, como administrador principal, puedes crearlo o quitarlo.</div>
+      <div class="pg-field"><label>Nombre</label><input type="text" id="pg-na-nombre" maxlength="40" autocomplete="off" /></div>
+      <div class="pg-field"><label>Código del nuevo administrador (4 a 6 números)</label>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="pg-na-pin" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-na-pin" /></div>
+      <div class="pg-field"><label>Tu código de administrador principal</label>
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="pg-na-auth" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-na-auth" /></div>
+      <div class="pg-error" id="pg-na-error"></div>
+      <div class="pg-btn-row"><button class="pg-btn pg-btn-ghost" id="pg-na-cancel">Cancelar</button><button class="pg-btn pg-btn-primary" id="pg-na-ok">Crear administrador</button></div>`;
+    document.getElementById('pg-back').addEventListener('click', () => renderGestionUsuarios());
+    document.getElementById('pg-na-cancel').addEventListener('click', () => renderGestionUsuarios());
+    document.getElementById('pg-na-ok').addEventListener('click', async () => {
+      const err = document.getElementById('pg-na-error'); err.textContent = '';
+      const nombre = document.getElementById('pg-na-nombre').value.trim(), pin = document.getElementById('pg-na-pin').value.trim(), auth = document.getElementById('pg-na-auth').value.trim();
+      if (!nombre) { err.textContent = 'Escribe el nombre'; return; }
+      if (!/^[0-9]{4,6}$/.test(pin)) { err.textContent = 'El código debe tener de 4 a 6 números'; return; }
+      if (auth.length < 4) { err.textContent = 'Escribe tu código de administrador principal'; return; }
+      const btn = document.getElementById('pg-na-ok'); btn.disabled = true;
+      try {
+        const { data: r, error } = await PG.client.rpc('admin_crear_admin', { p_nombre: nombre, p_pin: pin, p_pin_principal: auth });
+        if (error) throw error;
+        if (!r || !r.ok) { err.textContent = textoErrorAdmin(r); btn.disabled = false; return; }
+        PG.perfiles = await cargarPerfiles();
+        renderGestionUsuarios(`Administrador "${nombre}" creado correctamente`);
+      } catch (e) { console.error('admin_crear_admin:', e); err.textContent = 'No se pudo crear. Intenta de nuevo.'; btn.disabled = false; }
+    });
+  }
+  function renderEliminarAdmin(a) {
+    const c = card();
+    c.innerHTML = `
+      <div class="pg-back-arrow" id="pg-back">← Volver</div>
+      <div class="pg-title">Quitar administrador</div>
+      <div class="pg-subtitle">"${esc(a.nombre)}" ya no podrá entrar con su código. Confirma con tu código de administrador principal.</div>
+      <div class="pg-field"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="pg-ea-auth" placeholder="Tu código de administrador principal" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" name="pg-ea-auth" /></div>
+      <div class="pg-error" id="pg-ea-error"></div>
+      <div class="pg-btn-row"><button class="pg-btn pg-btn-ghost" id="pg-ea-cancel">Cancelar</button><button class="pg-btn pg-btn-primary" id="pg-ea-ok">Quitar</button></div>`;
+    document.getElementById('pg-back').addEventListener('click', () => renderGestionUsuarios());
+    document.getElementById('pg-ea-cancel').addEventListener('click', () => renderGestionUsuarios());
+    document.getElementById('pg-ea-ok').addEventListener('click', async () => {
+      const err = document.getElementById('pg-ea-error'); err.textContent = '';
+      const auth = document.getElementById('pg-ea-auth').value.trim();
+      if (auth.length < 4) { err.textContent = 'Escribe tu código de administrador principal'; return; }
+      const btn = document.getElementById('pg-ea-ok'); btn.disabled = true;
+      try {
+        const { data: r, error } = await PG.client.rpc('admin_eliminar_admin', { p_perfil_id: a.id, p_pin_principal: auth });
+        if (error) throw error;
+        if (!r || !r.ok) { err.textContent = textoErrorAdmin(r); btn.disabled = false; return; }
+        PG.perfiles = await cargarPerfiles();
+        renderGestionUsuarios(`Administrador "${a.nombre}" quitado`);
+      } catch (e) { console.error('admin_eliminar_admin:', e); err.textContent = 'No se pudo quitar. Intenta de nuevo.'; btn.disabled = false; }
     });
   }
 
@@ -1002,7 +1179,7 @@
         if (!admin) { onDesbloqueado(); return; } // no debería pasar: cargarPerfiles siempre crea uno
 
         showOverlay();
-        renderPin(admin, {
+        pedirCodigoAdmin({
           tituloExtra: 'Ingresa el código de administrador para entrar a Configuración',
           onSuccess: () => {
             try { sessionStorage.setItem(PG_CFG_KEY, JSON.stringify({ authUserId: PG.authUserId })); } catch (_) {}
@@ -1056,7 +1233,7 @@
         if (!admin) { onDesbloqueado(); return; }
 
         showOverlay();
-        renderPin(admin, {
+        pedirCodigoAdmin({
           tituloExtra: 'Ingresa el código de administrador para continuar',
           onSuccess: () => { hideOverlay(); onDesbloqueado(); },
         });
@@ -1179,7 +1356,10 @@
         .select('id, nombre, tipo').eq('auth_user_id', userCentral.id).eq('activo', true);
 
       let perfilValido = null;
-      for (const p of (perfilesCentral || [])) {
+      // Administradores (cualquiera): se verifica en la base de datos
+      const rAdm = await verificarCodigoAdmin(pin, null, 'volver_a_central', clienteCentral);
+      if (rAdm && rAdm.ok) perfilValido = { id: rAdm.perfil_id, nombre: rAdm.nombre, tipo: 'admin' };
+      for (const p of (perfilValido ? [] : (perfilesCentral || []).filter(x => x.tipo !== 'admin'))) {
         const hash = await hashPin(pin, p.id);
         const { data: coincide } = await clienteCentral.from('perfiles_acceso')
           .select('id').eq('id', p.id).eq('codigo_hash', hash).maybeSingle();
