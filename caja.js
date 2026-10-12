@@ -1531,6 +1531,7 @@ async function initCaja() {
 
     STATE.userId    = user.id;
     STATE.userEmail = user.email;
+    setTimeout(() => { try { N360CajaSegura.reintentarPendientes(sbClient, user.id); } catch (_) {} }, 3000);
 
     if (user.email) checkAdminAccess(user.email);
 

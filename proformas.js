@@ -1833,13 +1833,13 @@ async function confirmarConvertirAVenta() {
         .order('created_at', { ascending:false }).limit(1).maybeSingle();
       const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
       const saldoRes = saldoAnt + montoCaja;
-      const { data: movNuevo } = await sbClient.from('movimientos_financieros').insert({
+      const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sbClient, {
         auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
         concepto: montoIva>0 ? `Venta ${ventaPayload.numero_venta} (neto de IVA, desde proforma ${p.numero_proforma})` : `Venta ${ventaPayload.numero_venta} (desde proforma ${p.numero_proforma})`,
         monto: montoCaja, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
         metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
         referencia_tipo: 'venta', referencia_id: ventaId, fecha: todayISO(),
-      }).select('id').single();
+      }, { etiqueta: 'La venta ' + ventaPayload.numero_venta });
       if (movNuevo?.id) await sbClient.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
     } catch (eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
 
@@ -2377,6 +2377,7 @@ async function initProformas() {
     const { data: { user }, error } = await sbClient.auth.getUser();
     if (error || !user) { window.location.href = 'login.html'; return; }
     STATE.userId = user.id; STATE.userEmail = user.email;
+    setTimeout(() => { try { N360CajaSegura.reintentarPendientes(sbClient, user.id); } catch (_) {} }, 3000);
     try { window.N360Unidades?.cargarPersonalizadas(sbClient, user.id); } catch (_) {}
     if (user.email) checkAdminAccess(user.email);
     await cargarEstadoStockCompartido();

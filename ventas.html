@@ -941,6 +941,10 @@
           </div>
           <div class="panel-actions">
             <span style="font-size:12.5px;color:var(--text-muted)" id="ventas-count-label">0 ventas</span>
+            <button class="btn-secondary" id="btn-revisar-caja" style="display:none" onclick="abrirRevisionCaja()" title="Ventas pagadas que no quedaron anotadas en Caja">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              Revisar Caja
+            </button>
             <button class="btn-secondary" onclick="loadVentas()">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
               Actualizar
@@ -1946,13 +1950,38 @@
 </div>
 
 
+<!-- REVISIÓN: ventas pagadas sin movimiento en Caja -->
+<div class="modal-overlay" id="modal-revision-caja" onclick="if(event.target===this)closeModal('modal-revision-caja')">
+  <div class="modal-box modal-md" style="max-width:720px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Ventas pagadas que no están en Caja</div>
+        <div class="modal-subtitle">Son ventas cobradas (no a crédito) cuyo ingreso no quedó anotado en Caja. Revisa cada una antes de registrarla.</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('modal-revision-caja')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:13px;color:var(--text-secondary)">Mostrar los últimos</label>
+        <select id="rc-dias" onchange="cargarRevisionCaja()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);color:var(--text-primary)">
+          <option value="3">3 días</option><option value="15">15 días</option><option value="60">60 días</option><option value="180">180 días</option>
+        </select>
+        <span id="rc-resumen" style="font-size:13px;color:var(--text-muted)"></span>
+      </div>
+      <div id="rc-lista" style="max-height:52vh;overflow:auto"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-revision-caja')">Cerrar</button></div>
+  </div>
+</div>
+
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="escpos-usb.js?v=20261011a"></script>
 <script src="escpos-ble.js?v=20261012a"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="ventas.js?v=20261012c"></script>
+<script src="caja-segura.js?v=20261012a"></script>
+<script src="ventas.js?v=20261012d"></script>
 <script src="ventas-correcciones.js?v=20261009a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>

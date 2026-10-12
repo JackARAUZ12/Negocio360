@@ -1019,47 +1019,24 @@ async function anularVenta() {
     // rompería el historial), se registra un movimiento nuevo que lo
     // compensa, igual de trazable que cualquier otro movimiento.
     const descontarCaja = document.getElementById('chk-anular-descontar-caja')?.checked !== false;
+    let reversoFallo = false;
     if (descontarCaja) {
       try {
-        const { data: movOriginal } = await sb.from('movimientos_financieros')
-          .select('monto, banco_id, metodo_pago_id, metodo_pago_nombre').eq('referencia_tipo','venta').eq('referencia_id', id)
-          .eq('auth_user_id', S.userId).eq('tipo_flujo','INGRESO').maybeSingle();
-
-        if (movOriginal && Number(movOriginal.monto) > 0) {
-          const { data: ultMov } = await sb.from('movimientos_financieros')
-            .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado','completado')
-            .order('created_at',{ ascending:false }).limit(1).maybeSingle();
-          const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-          const montoDevolver = round2(Number(movOriginal.monto));
-          const saldoRes = round2(saldoAnt - montoDevolver);
-
-          const ventaInfo = S.ventas.find(v => v.id === id);
-          await sb.from('movimientos_financieros').insert({
-            auth_user_id:       S.userId,
-            tipo_flujo:         'EGRESO',
-            tipo_movimiento:    'OTRO_EGRESO',
-            concepto:           `Reverso por anulación de venta ${ventaInfo?.numero_venta || ''}`.trim(),
-            monto:              montoDevolver,
-            saldo_anterior:     saldoAnt,
-            saldo_resultante:   saldoRes,
-            metodo_pago_id:     movOriginal.metodo_pago_id || null,
-            metodo_pago_nombre: movOriginal.metodo_pago_nombre || null,
-            banco_id:           movOriginal.banco_id || null,
-            referencia_tipo:    'venta',
-            referencia_id:      id,
-            fecha:              todayISO(),
-            estado:             'completado',
-          });
-        }
+        // Reversa TODAS las líneas de ingreso vigentes de la venta (también pagos separados),
+        // una sola vez, y reintenta/avisa si falla (ver caja-segura.js).
+        const ventaInfo = S.ventas.find(v => v.id === id);
+        const rev = await N360CajaSegura.reversarVentaEnCaja(sb, S.userId, id, ventaInfo?.numero_venta || '', todayISO());
+        if (!rev.ok) reversoFallo = true;
       } catch (eCaja) {
         console.warn('No se pudo registrar el reverso en Caja:', eCaja);
-        showToast('La venta se anuló, pero no se pudo descontar de Caja — revísalo manualmente', 'warning');
+        reversoFallo = true;
       }
+      if (reversoFallo) showToast('La venta se anuló, pero NO se pudo descontar de Caja — quedó pendiente o revísalo en Caja', 'warning');
     }
 
     closeModal('modal-anular');
     closeModal('modal-detalle');
-    const mensajeBase = descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)';
+    const mensajeBase = descontarCaja ? (reversoFallo ? 'Venta anulada y stock devuelto (descuento de Caja pendiente)' : 'Venta anulada, stock devuelto y descontado de Caja') : 'Venta anulada y stock devuelto (sin tocar Caja)';
     const avisoCredito = creditoCancelado ? ' — el crédito asociado se canceló automáticamente' : '';
     showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : '') + avisoCredito, 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
@@ -1620,7 +1597,7 @@ async function confirmarPagoRecurrente() {
       const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
       const saldoRes = saldoAnt + montoCaja;
 
-      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+      const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sb, {
         auth_user_id:       S.userId,
         tipo_flujo:         'INGRESO',
         tipo_movimiento:    'COBRO',
@@ -1635,7 +1612,7 @@ async function confirmarPagoRecurrente() {
         referencia_id:      ventaId,
         observaciones:      observaciones,
         fecha:              todayISO(),
-      }).select('id').single();
+      }, { etiqueta: 'La venta ' + numeroVenta });
 
       if (movNuevo?.id) {
         await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
@@ -5732,7 +5709,7 @@ async function confirmarVenta(conImpresion) {
           const saldoResLinea = round2(saldoCorriente + montoCajaLinea);
           saldoCorriente = saldoResLinea;
 
-          const { data: movLinea } = await sb.from('movimientos_financieros').insert({
+          const { data: movLinea } = await N360CajaSegura.insertarMovimiento(sb, {
             auth_user_id:       S.userId,
             tipo_flujo:         'INGRESO',
             tipo_movimiento:    'VENTA',
@@ -5748,14 +5725,14 @@ async function confirmarVenta(conImpresion) {
             referencia_id:      ventaId,
             observaciones:      S.observaciones || null,
             fecha:              fechaVentaElegida,
-          }).select('id').single();
+          }, { etiqueta: 'La venta ' + S.numeroVenta });
           ultimoMovId = movLinea?.id || ultimoMovId;
         }
       } else {
         const saldoAnt = saldoCorriente;
         const saldoRes = round2(saldoCorriente + montoCaja);
 
-        const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+        const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sb, {
           auth_user_id:       S.userId,
           tipo_flujo:         'INGRESO',
           tipo_movimiento:    'VENTA',
@@ -5771,7 +5748,7 @@ async function confirmarVenta(conImpresion) {
           referencia_id:      ventaId,
           observaciones:      S.observaciones || null,
           fecha:              fechaVentaElegida,
-        }).select('id').single();
+        }, { etiqueta: 'La venta ' + S.numeroVenta });
         ultimoMovId = movNuevo?.id || null;
       }
 
@@ -7156,7 +7133,7 @@ async function confirmarVentaRapida() {
           const saldoResLinea = round2(saldoCorriente + montoCajaLinea);
           saldoCorriente = saldoResLinea;
 
-          const { data: movLinea } = await sb.from('movimientos_financieros').insert({
+          const { data: movLinea } = await N360CajaSegura.insertarMovimiento(sb, {
             auth_user_id:       S.userId,
             tipo_flujo:         'INGRESO',
             tipo_movimiento:    'VENTA',
@@ -7171,13 +7148,13 @@ async function confirmarVentaRapida() {
             referencia_tipo:    'venta',
             referencia_id:      ventaId,
             fecha:              fechaVentaElegidaVR,
-          }).select('id').single();
+          }, { etiqueta: 'La venta ' + VR.numeroVenta });
           ultimoMovId = movLinea?.id || ultimoMovId;
         }
       } else {
         const saldoAnt = saldoCorriente;
         const saldoRes = round2(saldoCorriente + montoCaja);
-        const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+        const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sb, {
           auth_user_id:       S.userId,
           tipo_flujo:         'INGRESO',
           tipo_movimiento:    'VENTA',
@@ -7192,7 +7169,7 @@ async function confirmarVentaRapida() {
           referencia_tipo:    'venta',
           referencia_id:      ventaId,
           fecha:              fechaVentaElegidaVR,
-        }).select('id').single();
+        }, { etiqueta: 'La venta ' + VR.numeroVenta });
         ultimoMovId = movNuevo?.id || null;
       }
 
@@ -7820,6 +7797,8 @@ async function initVentas() {
 
     S.userId    = user.id;
     S.userEmail = user.email;
+    // Caja segura: reintenta, sin molestar, movimientos que quedaron pendientes por una falla anterior
+    setTimeout(async () => { try { await N360CajaSegura.reintentarPendientes(sb, user.id); } catch (_) {} try { iniciarRevisionCaja(); avisarVentasSinCajaRecientes(); } catch (_) {} }, 3000);
 
     if (user.email) checkAdminAccess(user.email);
 
@@ -7962,3 +7941,82 @@ window.addEventListener('DOMContentLoaded', () => {
     if (btn) btn.textContent = monedaParaMostrar(S.empresaConfig?.moneda);
   }, 800);
 });
+
+/* ============================================================
+   REVISIÓN DE CAJA — ventas pagadas sin movimiento en Caja
+   Solo para el administrador. Detectar es de solo lectura; registrar
+   en Caja es una acción manual, una venta a la vez, con confirmación.
+   ============================================================ */
+function _rcEsAdmin() {
+  try { return perfilStockCompartido().key === 'admin'; } catch (_) { return true; }
+}
+function iniciarRevisionCaja() {
+  const b = document.getElementById('btn-revisar-caja');
+  if (b && _rcEsAdmin()) b.style.display = '';
+}
+async function _rcConsultar(dias) {
+  const { data, error } = await sb.rpc('ventas_sin_movimiento_caja', { p_dias: dias });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+// Aviso silencioso: solo si hay casos de los últimos 3 días (fallas recientes)
+async function avisarVentasSinCajaRecientes() {
+  try {
+    if (!_rcEsAdmin()) return;
+    const lista = await _rcConsultar(3);
+    if (lista.length) showToast(`⚠ ${lista.length} venta(s) de los últimos 3 días no quedaron anotadas en Caja. Toca "Revisar Caja" en el historial.`, 'warning');
+  } catch (e) { console.debug('avisarVentasSinCajaRecientes', e); }
+}
+async function abrirRevisionCaja() {
+  openModal('modal-revision-caja');
+  await cargarRevisionCaja();
+}
+async function cargarRevisionCaja() {
+  const cont = document.getElementById('rc-lista');
+  const res = document.getElementById('rc-resumen');
+  const dias = Number(document.getElementById('rc-dias')?.value || 3);
+  if (!cont) return;
+  cont.innerHTML = '<div style="padding:18px;color:var(--text-muted)">Revisando…</div>';
+  try {
+    const lista = await _rcConsultar(dias);
+    S._rcLista = lista;
+    if (!lista.length) {
+      res.textContent = '';
+      cont.innerHTML = '<div style="padding:22px;text-align:center;color:var(--success);font-weight:600">✅ Todas las ventas cobradas de este período están anotadas en Caja.</div>';
+      return;
+    }
+    const total = lista.reduce((t, v) => t + Number(v.total || 0), 0);
+    res.textContent = `${lista.length} venta(s) · ${fmt(total)}`;
+    cont.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:6px">Venta</th><th>Fecha</th><th>Cobró</th><th>Método</th><th style="text-align:right">Total</th><th></th></tr></thead><tbody>' +
+      lista.map(v => {
+        const f = String(v.fecha || v.created_at || '').slice(0, 10);
+        const sep = /separado/i.test(v.metodo_pago_nombre || '');
+        return `<tr style="border-top:1px solid var(--border)"><td style="padding:8px 6px;font-weight:600">${esc(v.numero_venta || '')}</td><td>${esc(f)}</td><td>${esc(v.creado_por_nombre || 'Admin')}</td><td>${esc(v.metodo_pago_nombre || '')}</td><td style="text-align:right">${fmt(v.total)}</td><td style="text-align:right">` +
+          (sep ? '<span style="color:var(--text-muted);font-size:12px">Pago separado: revisar a mano</span>'
+               : `<button class="btn-secondary" style="padding:5px 10px" onclick="registrarVentaEnCaja('${v.id}')">Registrar en Caja</button>`) +
+          '</td></tr>';
+      }).join('') + '</tbody></table>';
+  } catch (e) {
+    cont.innerHTML = `<div style="padding:18px;color:var(--danger)">No se pudo revisar: ${esc(e.message || e)}</div>`;
+  }
+}
+async function registrarVentaEnCaja(ventaId) {
+  const v = (S._rcLista || []).find(x => x.id === ventaId);
+  if (!v) return;
+  const montoCaja = round2(Number(v.total) - Number(v.impuesto || 0) - Number(v.retencion_ir_monto || 0));
+  if (!(montoCaja > 0)) { showToast('El monto para Caja de esta venta no es mayor a cero', 'error'); return; }
+  const f = String(v.fecha || v.created_at || '').slice(0, 10);
+  if (!confirm(`Registrar en Caja el ingreso de la venta ${v.numero_venta} (${fmt(montoCaja)}, ${v.metodo_pago_nombre || 'método sin nombre'}) con fecha ${f}?\n\nEsto agrega un movimiento a Caja y no se puede deshacer desde aquí (se anula desde Caja).`)) return;
+  const res = await N360CajaSegura.insertarMovimiento(sb, {
+    auth_user_id: S.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
+    concepto: `Venta ${v.numero_venta}`, monto: montoCaja,
+    metodo_pago_id: v.metodo_pago_id || null, metodo_pago_nombre: v.metodo_pago_nombre || null,
+    referencia_tipo: 'venta', referencia_id: v.id,
+    observaciones: 'Registrado después desde "Revisar Caja" (la venta se había guardado sin su movimiento)',
+    fecha: f || todayISO(), estado: 'completado',
+  }, { etiqueta: 'La venta ' + v.numero_venta });
+  if (res.error) return;
+  try { await sb.from('ventas').update({ referencia_caja: res.data.id }).eq('id', v.id); } catch (_) {}
+  showToast(`Venta ${v.numero_venta} registrada en Caja`, 'success');
+  await cargarRevisionCaja();
+}
