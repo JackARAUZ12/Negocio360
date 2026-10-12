@@ -51,6 +51,8 @@ async function cargarCostos() {
   OT.costos = await TX.paginar(() => sb.from('transporte_costos').select('*').eq('auth_user_id', TX.userId).order('fecha', { ascending: false }));
   // Pago real a conductores (liquidaciones no anuladas): también es costo del viaje
   try { OT.liqOrd = await TX.paginar(() => sb.from('transporte_liquidacion_ordenes').select('*').eq('auth_user_id', TX.userId)); } catch (_) { OT.liqOrd = []; }
+  // Fletes subcontratados (transportistas externos, no anulados): también son costo del viaje
+  try { OT.subOrd = await TX.paginar(() => sb.from('transporte_subcontrataciones').select('*').eq('auth_user_id', TX.userId).eq('estado', 'activa')); } catch (_) { OT.subOrd = []; }
 }
 async function cargarTodo() {
   const [, , rutas, tarifas, unidades, conductores, docsU, docsC] = await Promise.all([
@@ -74,7 +76,8 @@ async function cargarTodo() {
 const ord = id => OT.ordenes.find(o => o.id === id);
 const costosDe = id => OT.costos.filter(c => c.orden_id === id);
 const liqDe = id => (OT.liqOrd || []).filter(x => x.orden_id === id);
-const totalCostos = id => r2(costosDe(id).reduce((s, c) => s + Number(c.monto || 0), 0) + liqDe(id).reduce((s, x) => s + Number(x.costo_neto || 0), 0));
+const subDe = id => (OT.subOrd || []).filter(x => x.orden_id === id);
+const totalCostos = id => r2(costosDe(id).reduce((s, c) => s + Number(c.monto || 0), 0) + liqDe(id).reduce((s, x) => s + Number(x.costo_neto || 0), 0) + subDe(id).reduce((s, x) => s + Number(x.monto || 0), 0));
 const utilidad = o => r2(Number(o.total || 0) - totalCostos(o.id));
 const margen = (ing, ut) => (ing > 0 ? Math.round((ut / ing) * 1000) / 10 : null);
 const unidadDe = id => OT.unidades.find(u => u.id === id);
@@ -224,7 +227,9 @@ function acciones(o) {
   const id = esc(o.id), b = (cls, a, txt) => `<button type="button" class="tx-btn ${cls}" data-${a}="${id}">${txt}</button>`;
   const a = [];
   if (o.estado === 'pendiente') a.push(b('tx-btn-primary', 'ot-asignar', '🧑‍✈️ Asignar unidad y conductor'));
-  if (o.estado === 'asignada') { a.push(b('tx-btn-primary', 'ot-iniciar', '🚦 Iniciar viaje')); a.push(b('', 'ot-asignar', '↺ Reasignar')); }
+  if (o.estado === 'asignada') { a.push(b('tx-btn-primary', 'ot-iniciar', '🚦 Iniciar viaje')); if (!o.subcontratada) a.push(b('', 'ot-asignar', '↺ Reasignar')); }
+  if (!o.subcontratada && ['pendiente', 'asignada'].includes(o.estado)) a.push(`<a class="tx-btn" href="transporte-subcontratistas.html?orden=${id}">🤝 Subcontratar a un transportista</a>`);
+  if (o.subcontratada) a.push(`<a class="tx-btn" href="transporte-subcontratistas.html">🤝 Subcontratada · ver transportista</a>`);
   if (o.estado === 'en_ruta') a.push(b('tx-btn-ok', 'ot-entregar', '✅ Registrar entrega'));
   if (ACTIVAS.includes(o.estado)) a.push(b('tx-btn-borrar', 'ot-cancelar', '✕ Cancelar orden'));
   return a.length ? `<div class="tx-fila-chips" style="margin:6px 0 4px">${a.join('')}</div>` : '';
@@ -280,7 +285,7 @@ function tabDespacho(o) {
     ${['pendiente', 'asignada'].includes(o.estado) ? `<button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-asignar="${esc(o.id)}">${o.estado === 'pendiente' ? 'Asignar' : 'Reasignar'}</button>` : ''}`;
 }
 function tabCostos(o) {
-  const cs = costosDe(o.id), tot = totalCostos(o.id), lq = liqDe(o.id);
+  const cs = costosDe(o.id), tot = totalCostos(o.id), lq = liqDe(o.id), sc = subDe(o.id);
   const puede = o.estado !== 'cancelada';
   const porCat = {}; cs.forEach(c => { porCat[c.categoria] = (porCat[c.categoria] || 0) + Number(c.monto); });
   return `${puede ? `<button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-costo-nuevo="${esc(o.id)}">＋ Agregar costo</button>` : ''}
@@ -289,8 +294,10 @@ function tabCostos(o) {
         <div class="tx-doc-acc">${(c.gasto_id || c.liquidacion_id) ? '' : `<button type="button" class="tx-btn tx-btn-sm" data-ot-costo-editar="${esc(c.id)}">✏️</button>`}<button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-costo-borrar="${esc(c.id)}">🗑</button></div></div>`; }).join('')
       : '<div class="tx-vacio" style="padding:24px 12px"><div class="tx-vacio-i">🧾</div><b>Sin costos todavía</b><p>Anota combustible, peajes, viáticos y todo lo que cuesta este viaje para conocer tu utilidad real.</p></div>'}</div>
     ${lq.length ? `<div class="tx-sec">Pago a conductores</div>${lq.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Liquidación · ${esc(money(x.costo_neto))}</b><small>Pago ${esc(money(x.bruto))}${Number(x.anticipo) ? ' − anticipo ' + esc(money(x.anticipo)) + ' (ya está arriba)' : ''} · se administra en Liquidación de conductores</small></div></div>`).join('')}` : ''}
-    ${(cs.length || lq.length) ? `<div class="tx-sec">Resumen</div>${Object.entries(porCat).map(([k, v]) => `<div class="tx-doc"><div class="tx-doc-info"><b>${(CAT_COSTO[k] || CAT_COSTO.otro).ico} ${esc((CAT_COSTO[k] || CAT_COSTO.otro).t)}</b></div><b>${esc(money(v))}</b></div>`).join('')}
+    ${sc.length ? `<div class="tx-sec">Transportista externo</div>${sc.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>🤝 ${esc(x.subcontratista_nombre || 'Subcontratista')} · ${esc(money(x.monto))}</b><small>${x.forma_pago === 'contado' ? 'Pagado de contado desde Caja' : 'A crédito en Cuentas por Pagar'} · se administra en Subcontratistas</small></div></div>`).join('')}` : ''}
+    ${(cs.length || lq.length || sc.length) ? `<div class="tx-sec">Resumen</div>${Object.entries(porCat).map(([k, v]) => `<div class="tx-doc"><div class="tx-doc-info"><b>${(CAT_COSTO[k] || CAT_COSTO.otro).ico} ${esc((CAT_COSTO[k] || CAT_COSTO.otro).t)}</b></div><b>${esc(money(v))}</b></div>`).join('')}
       ${lq.length ? `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Pago a conductores</b></div><b>${esc(money(r2(lq.reduce((s, x) => s + Number(x.costo_neto || 0), 0))))}</b></div>` : ''}
+      ${sc.length ? `<div class="tx-doc"><div class="tx-doc-info"><b>🤝 Transportista externo</b></div><b>${esc(money(r2(sc.reduce((s, x) => s + Number(x.monto || 0), 0))))}</b></div>` : ''}
       <div class="tx-doc"><div class="tx-doc-info"><b>Total costos</b></div><b>${esc(money(tot))}</b></div>` : ''}`;
 }
 

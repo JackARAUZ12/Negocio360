@@ -160,6 +160,9 @@
     'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Pago a conductores y ayudantes por viaje, km o comisión, con anticipos y descuentos.' },
 
+    'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Transportistas externos: subcontrata viajes y paga de contado o a crédito (Cuentas por Pagar).' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
