@@ -131,17 +131,22 @@
 .nw-link.on { stroke-dashoffset: 0; opacity: 1; }
 
 .nw-logo { position: absolute; left: 50%; top: 50%; width: 29%; aspect-ratio: 1; margin: -14.5% 0 0 -14.5%; z-index: 3; }
-.nw-logo img { width: 100%; height: 100%; object-fit: contain; display: block;
-  opacity: 0; transform: scale(.55) rotate(-18deg); filter: blur(10px) drop-shadow(0 8px 26px var(--glow));
-  transition: opacity .9s ease, transform 1.1s cubic-bezier(.18,.9,.28,1.2), filter 1.1s ease; }
-#n360-welcome.nw-on .nw-logo img { opacity: 1; transform: scale(1) rotate(0); filter: blur(0) drop-shadow(0 8px 26px var(--glow)); }
+.nw-logo::before { content: ''; position: absolute; inset: -38%; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle, var(--glow) 0%, var(--glow) 14%, transparent 62%); transition: opacity 1.1s ease; }
+#n360-welcome.nw-on .nw-logo::before { opacity: 1; }
+#n360-welcome.nw-lock .nw-logo::before { animation: nw-halo 1.2s ease-out; }
+@keyframes nw-halo { 0% { opacity: 1; transform: scale(1); } 35% { opacity: 1; transform: scale(1.18); } 100% { opacity: 1; transform: scale(1); } }
+.nw-logo img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; background: transparent;
+  opacity: 0; transform: scale(.55) rotate(-18deg);
+  transition: opacity .9s ease, transform 1.1s cubic-bezier(.18,.9,.28,1.2); }
+#n360-welcome.nw-on .nw-logo img { opacity: 1; transform: scale(1) rotate(0); }
 #n360-welcome.nw-lock .nw-logo img { animation: nw-pulse 1.2s ease-out; }
-@keyframes nw-pulse { 0% { filter: drop-shadow(0 8px 26px var(--glow)); } 35% { filter: drop-shadow(0 0 38px var(--a2)) brightness(1.25); } 100% { filter: drop-shadow(0 8px 26px var(--glow)); } }
+@keyframes nw-pulse { 0% { transform: scale(1); } 35% { transform: scale(1.06); } 100% { transform: scale(1); } }
 /* Marcador de inicio del dial: flecha (o lazo en Octubre Rosa) */
 .nw-pin { position: absolute; left: 50%; top: 1.6%; width: 6%; margin-left: -3%; z-index: 4; opacity: 0; transition: opacity .6s ease .5s; }
 #n360-welcome.nw-on .nw-pin { opacity: 1; }
 .nw-pin svg { width: 100%; display: block; }
-.nw-rosa .nw-pin { width: 11%; margin-left: -5.5%; top: -1%; filter: drop-shadow(0 3px 10px rgba(236,72,153,.7)); animation: nw-bob 2.4s ease-in-out infinite; }
+.nw-rosa .nw-pin { width: 11%; margin-left: -5.5%; top: -1%; animation: nw-bob 2.4s ease-in-out infinite; }
 @keyframes nw-bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
 .nw-pin-flecha { display: block; } .nw-pin-lazo { display: none; }
 .nw-rosa .nw-pin-flecha { display: none; } .nw-rosa .nw-pin-lazo { display: block; }
@@ -149,7 +154,7 @@
 /* ---------- Modulos alrededor del dial ---------- */
 .nw-chip { position: absolute; z-index: 4; width: 11.5%; aspect-ratio: 1; margin: -5.75% 0 0 -5.75%;
   display: flex; align-items: center; justify-content: center; border-radius: 50%;
-  background: rgba(255,255,255,.07); border: 1px solid var(--line); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  background: rgba(255,255,255,.07); border: 1px solid var(--line);
   opacity: 0; transform: scale(.4); transition: opacity .45s ease, transform .6s cubic-bezier(.2,.9,.3,1.35), box-shadow .5s ease; }
 .nw-chip.on { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 var(--a2); animation: nw-chip-glow 1.2s ease-out; }
 @keyframes nw-chip-glow { 0% { box-shadow: 0 0 0 0 var(--a2); } 100% { box-shadow: 0 0 0 14px rgba(255,255,255,0); } }
@@ -161,9 +166,9 @@
 /* ---------- Marca ---------- */
 .nw-brand { margin: 22px 0 0; font-size: clamp(34px, 6.4vw, 54px); font-weight: 800; letter-spacing: -.035em; line-height: 1.05; color: #fff;
   display: flex; align-items: baseline; justify-content: center; }
-.nw-l { display: inline-block; opacity: 0; transform: translateY(.55em); filter: blur(6px);
-  transition: opacity .5s ease, transform .6s cubic-bezier(.2,.85,.3,1.1), filter .5s ease; }
-.nw-l.on { opacity: 1; transform: none; filter: none; }
+.nw-l { display: inline-block; opacity: 0; transform: translateY(.55em); 
+  transition: opacity .5s ease, transform .6s cubic-bezier(.2,.85,.3,1.1); }
+.nw-l.on { opacity: 1; transform: none; }
 .nw-num { display: inline-block; min-width: 3ch; text-align: left; font-variant-numeric: tabular-nums; margin-left: .04em;
   background: linear-gradient(180deg, #fff 0%, var(--a1) 55%, var(--a2) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   opacity: 0; transition: opacity .5s ease; }
@@ -198,7 +203,7 @@
 .nw-pct { font-size: 12px; font-weight: 600; color: var(--soft); font-variant-numeric: tabular-nums; min-width: 3.2ch; text-align: right; }
 .nw-skip { position: absolute; top: 20px; right: 20px; z-index: 5; padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.2);
   background: rgba(255,255,255,.07); color: rgba(255,255,255,.82); font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); opacity: 0; transition: opacity .5s ease 1s, background .2s, border-color .2s; }
+  opacity: 0; transition: opacity .5s ease 1s, background .2s, border-color .2s; }
 #n360-welcome.nw-on .nw-skip { opacity: 1; }
 .nw-skip:hover { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.4); color: #fff; }
 .nw-skip:focus-visible { outline: 2px solid var(--a1); outline-offset: 3px; }
@@ -215,6 +220,7 @@
 #n360-welcome.nw-quieto *, #n360-welcome.nw-quieto *::before, #n360-welcome.nw-quieto *::after { animation: none !important; transition: none !important; }
 #n360-welcome.nw-quieto .nw-l, #n360-welcome.nw-quieto .nw-num, #n360-welcome.nw-quieto .nw-chip, #n360-welcome.nw-quieto .nw-greet,
 #n360-welcome.nw-quieto .nw-cause, #n360-welcome.nw-quieto .nw-logo img, #n360-welcome.nw-quieto .nw-skip { opacity: 1; transform: none; filter: none; }
+#n360-welcome.nw-quieto .nw-logo::before { opacity: 1; }
 #n360-welcome.nw-quieto .nw-link { stroke-dashoffset: 0; opacity: 1; }
 #n360-welcome.nw-quieto .nw-sonar, #n360-welcome.nw-quieto .nw-sweep { display: none; }
 `;
