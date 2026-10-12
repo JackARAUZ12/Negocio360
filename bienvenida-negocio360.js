@@ -198,7 +198,7 @@
 @keyframes nw-logo-in    { to { opacity: 1; transform: scale(1) rotate(0deg); } }
 @keyframes nw-logo-float { 0%,100% { translate: 0 0 } 50% { translate: 0 -7px } }
 @keyframes nw-ring-out   { 0% { opacity: .9; transform: scale(.72) } 100% { opacity: 0; transform: scale(1.85) } }
-@keyframes nw-sheen-go   { to { transform: translateX(130%); } }
+@keyframes nw-sheen-go   { 0% { transform: translateX(-130%); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateX(130%); opacity: 0; } }
 @keyframes nw-sweep      { to { transform: translateX(60%); } }
 @keyframes nw-letter     { to { opacity: 1; transform: translateY(0) rotateX(0); } }
 @keyframes nw-rule-open  { to { width: 190px; } }
@@ -227,6 +227,58 @@
   .nw-skip       { top: 15px; right: 15px; }
 }
 
+/* ============================================================
+   TEMPORADA: OCTUBRE ROSA (mes de la lucha contra el cancer de mama)
+   Solo se activa en octubre (clase .nw-rosa, puesta por el script).
+   Fuera de octubre estos elementos ni se ven: el tema normal
+   (azul) queda exactamente igual.
+   ============================================================ */
+.nw-rosa-only { display: none; }
+#n360-welcome.nw-rosa {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(236,72,153,.30) 0%, transparent 70%),
+    radial-gradient(ellipse at 50% 38%, #3d102c 0%, #1d0716 58%, #0b030a 100%);
+}
+.nw-rosa .nw-particles::before, .nw-rosa .nw-particles::after {
+  background-image:
+    radial-gradient(circle, rgba(255,150,205,.6) 1px, transparent 1.6px),
+    radial-gradient(circle, rgba(255,235,245,.35) 1px, transparent 1.6px);
+}
+.nw-rosa .nw-rays { background: linear-gradient(105deg, transparent 38%, rgba(255,150,205,.11) 50%, transparent 62%); }
+.nw-rosa .nw-logo-img { filter: drop-shadow(0 10px 28px rgba(236,72,153,.6)); }
+.nw-rosa .nw-ring { border-color: rgba(255,150,205,.5); }
+.nw-rosa .nw-brand .nw-accent { background: linear-gradient(180deg, #ffb3d9, #ec4899); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.nw-rosa .nw-rule { background: linear-gradient(90deg, transparent, rgba(255,150,205,.9), transparent); }
+.nw-rosa .nw-welcome { color: rgba(255,225,240,.72); }
+.nw-rosa .nw-phrase { background: linear-gradient(92deg, #fff, #ffb3d9); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.nw-rosa .nw-bar-fill { background: linear-gradient(90deg, #db2777, #ff9ccd); box-shadow: 0 0 12px rgba(244,114,182,.8); }
+.nw-rosa .nw-skip { border-color: rgba(255,200,230,.25); }
+
+/* Lazo rosa junto al logo y mensaje de la causa */
+.nw-rosa .nw-ribbon {
+  display: block; position: absolute; right: -14px; bottom: -8px; width: 38px; height: 38px; z-index: 4;
+  opacity: 0; transform: scale(.4) rotate(-20deg);
+  filter: drop-shadow(0 4px 10px rgba(236,72,153,.6));
+  animation: nw-pop .6s cubic-bezier(.2,.9,.3,1.3) 1.35s forwards;
+}
+.nw-rosa .nw-cause {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin: 18px auto 0; max-width: 340px;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase;
+  color: #ffb3d9; line-height: 1.5;
+  opacity: 0; transform: translateY(8px);
+  animation: nw-rise .6s ease-out 1.95s forwards;
+}
+.nw-rosa .nw-cause svg { flex: none; width: 16px; height: 16px; }
+@keyframes nw-pop { to { opacity: 1; transform: scale(1) rotate(0deg); } }
+@media (max-width: 480px) {
+  .nw-rosa .nw-ribbon { width: 32px; height: 32px; right: -12px; }
+  .nw-rosa .nw-cause { font-size: 11px; letter-spacing: 1.2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nw-rosa .nw-ribbon, .nw-rosa .nw-cause { opacity: 1 !important; transform: none !important; }
+}
+
 /* Respeta a quien pidio menos animacion en su dispositivo: se ve
    la pantalla, pero estatica y mucho mas breve. */
 @media (prefers-reduced-motion: reduce) {
@@ -250,6 +302,7 @@
       <span class="nw-ring nw-ring-2"></span>
       <img src="negocio360-isotipo.png" alt="Negocio360" class="nw-logo-img" />
       <span class="nw-sheen"></span>
+      <span class="nw-ribbon nw-rosa-only"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M32 30 C14 14 22 3 32 3 C42 3 50 14 32 30" stroke="#ff4fa3" stroke-width="8"/><path d="M32 30 C27 42 22 51 15 60" stroke="#ff4fa3" stroke-width="9"/><path d="M32 30 C37 42 42 51 49 60" stroke="#ff4fa3" stroke-width="9"/><path d="M32 30 C14 14 22 3 32 3 C42 3 50 14 32 30" stroke="#ffd0e6" stroke-width="2" opacity=".6"/></svg></span>
     </div>
     <h1 class="nw-brand">
       <span class="nw-l">N</span><span class="nw-l">e</span><span class="nw-l">g</span><span class="nw-l">o</span><span class="nw-l">c</span><span class="nw-l">i</span><span class="nw-l">o</span><span class="nw-l nw-accent">3</span><span class="nw-l nw-accent">6</span><span class="nw-l nw-accent">0</span>
@@ -261,11 +314,23 @@
       <span class="nw-phrase nw-p2">Vende más</span>
       <span class="nw-phrase nw-p3">Gana más</span>
     </div>
+    <div class="nw-cause nw-rosa-only"><span>Octubre Rosa · Juntos contra el cáncer de mama</span></div>
   </div>
   <div class="nw-bar"><div class="nw-bar-fill"></div></div>
   <button type="button" class="nw-skip" id="nwSkip">Saltar</button>
 </div>`;
     var el = cont.firstElementChild;
+    // Temporada: Octubre Rosa (octubre = mes 9). Fuera de octubre no cambia nada.
+    try {
+      if (new Date().getMonth() === 9) {
+        el.classList.add('nw-rosa');
+        var logo = el.querySelector('.nw-logo-img');
+        if (logo) {
+          logo.onerror = function () { logo.onerror = null; logo.src = 'negocio360-isotipo.png'; };
+          logo.src = 'negocio360-isotipo-rosa.png';
+        }
+      }
+    } catch (_) { /* si falla, queda el tema normal */ }
     document.body.appendChild(el);
 
     // 5. Control de cierre
