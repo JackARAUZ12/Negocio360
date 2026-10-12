@@ -1370,6 +1370,7 @@
       <div id="np-modo-dest" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="np-modo-dest" value="individual" checked onchange="N360ProfVarios.setModo('individual')"/> Cliente individual</label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="np-modo-dest" value="varios" onchange="N360ProfVarios.setModo('varios')"/> Dirigida a varios clientes</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="np-modo-dest" value="contactos" onchange="N360ProfVarios.setModo('contactos')"/> Contactos de un cliente (empresa)</label>
       </div>
       <div id="np-cliente-individual">
       <!-- CLIENTE -->
@@ -1398,13 +1399,19 @@
       </div><!-- /np-cliente-individual -->
       <div id="np-varios-panel" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:var(--radius-md)">
         <label style="font-weight:700">Dirigida a</label>
+        <div id="npv-empresa-bloque" style="display:none;margin:8px 0">
+          <select id="npv-empresa" onchange="N360ProfVarios.elegirEmpresa(this.value)" style="width:100%"></select>
+          <div id="npv-contactos" style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-surface)"></div>
+        </div>
+        <div id="npv-clientes-bloque">
         <input type="text" id="npv-buscar" placeholder="Buscar cliente por nombre, teléfono o correo…" oninput="N360ProfVarios.filtrar()" style="width:100%;margin:8px 0"/>
         <div style="display:flex;gap:8px;margin-bottom:6px;font-size:12.5px">
           <button type="button" class="btn-ghost" onclick="N360ProfVarios.marcarVisibles(true)">Marcar los que se ven</button>
           <button type="button" class="btn-ghost" onclick="N360ProfVarios.marcarVisibles(false)">Quitar los que se ven</button>
         </div>
         <div id="npv-checks" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-surface);margin-bottom:10px"></div>
-        <details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text-secondary)">Agregar alguien sin registrar</summary>
+        </div>
+        <details id="npv-manual" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text-secondary)">Agregar alguien sin registrar</summary>
           <div class="form-row" style="margin-top:8px">
             <div class="form-group"><label>Nombre *</label><input type="text" id="npv-nombre"/></div>
             <div class="form-group"><label>Teléfono</label><input type="text" id="npv-telefono"/></div>
@@ -1808,8 +1815,8 @@
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="caja-segura.js?v=20261012a"></script>
-  <script src="proformas.js?v=20261012c"></script>
-  <script src="proformas-varios.js?v=20261012c"></script>
+  <script src="proformas.js?v=20261012d"></script>
+  <script src="proformas-varios.js?v=20261012d"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>

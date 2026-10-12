@@ -186,7 +186,7 @@ async function loadMetodosPago() {
 
 async function loadClientes() {
   try {
-    const { data } = await sbClient.from('clientes').select('id,nombre,telefono,correo,total_compras,num_compras')
+    const { data } = await sbClient.from('clientes').select('id,nombre,telefono,correo,total_compras,num_compras,contactos')
       .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
     STATE.clientes = data || [];
     llenarSelectClientes();
@@ -2145,7 +2145,8 @@ async function generarPDFProforma(p, items, cliente) {
 
   doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
   const _dests = Array.isArray(p._destinatarios) && p._destinatarios.length ? p._destinatarios : null;
-  doc.text(_dests ? 'Dirigida a' : 'Cliente', W - M - 70, y);
+  const _empresa = !!(_dests && p._empresa); // contactos de UN cliente: se muestra la empresa y debajo "Dirigida a"
+  doc.text(_dests && !_empresa ? 'Dirigida a' : 'Cliente', W - M - 70, y);
   doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
   // Direccion del cliente (facturacion o normal, + ciudad). Los textos largos se parten en varias
   // lineas (la columna mide ~70 mm) con un tope, para que nada se salga de la hoja.
@@ -2155,18 +2156,20 @@ async function generarPDFProforma(p, items, cliente) {
     if (lineas.length > maxLineas) { lineas.length = maxLineas; lineas[maxLineas - 1] = lineas[maxLineas - 1].replace(/.{0,2}$/, '') + '…'; }
     return lineas;
   };
-  const infoCliente = _dests ? [
+  const _lineasDests = _dests ? [
     ..._dests.slice(0, 6).flatMap((d, k) => [
       ...(k > 0 ? ['\u0001SEP'] : []),   // línea fina entre un cliente y otro
-      ...envolverCliente(d.nombre, 1),
+      ...envolverCliente(d.nombre + (d.cargo ? ` (${String(d.cargo).trim()})` : ''), 1),
       ...((d.telefono || d.correo) ? envolverCliente([d.telefono, d.correo].filter(Boolean).join(' · '), 1) : []),
     ]),
     ...(_dests.length > 6 ? [`… y ${_dests.length - 6} más`] : []),
-  ] : [
+  ] : [];
+  const infoCliente = (_dests && !_empresa) ? _lineasDests : [
     ...envolverCliente(p.cliente_nombre || 'Cliente final', 2),
     ...(cliente?.telefono ? [`Tel: ${cliente.telefono}`] : []),
     ...(cliente?.correo ? envolverCliente(cliente.correo, 1) : []),
     ...(direccionCliente ? envolverCliente(direccionCliente, 3) : []),
+    ...(_empresa ? ['\u0001SEP', 'Dirigida a:', ..._lineasDests] : []),
   ];
   infoCliente.forEach((linea, i) => {
     if (linea === '\u0001SEP') {

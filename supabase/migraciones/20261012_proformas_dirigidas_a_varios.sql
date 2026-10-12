@@ -19,3 +19,4 @@ create policy prof_dest_select on public.proforma_destinatarios for select using
 create policy prof_dest_insert on public.proforma_destinatarios for insert with check (auth.uid() = auth_user_id);
 create policy prof_dest_update on public.proforma_destinatarios for update using (auth.uid() = auth_user_id);
 create policy prof_dest_delete on public.proforma_destinatarios for delete using (auth.uid() = auth_user_id);
+alter table public.proforma_destinatarios add column if not exists cargo text null;
