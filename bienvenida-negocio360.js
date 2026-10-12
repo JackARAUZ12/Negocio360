@@ -13,8 +13,8 @@
      1.1 s  Se activan los 6 modulos del sistema alrededor del dial.
      3.4 s  Se completa la vuelta: el nombre queda "Negocio360".
      3.8 s  "Controla tu negocio" -> "Vende mas" -> "Gana mas".
-     6.3 s  Saludo segun la hora y la fecha de hoy.
-     7.4 s  Cierre en iris circular que revela el sistema.
+     6.3 s  Saludo segun la hora y el mes en curso.
+     7.4 s  Cierre con desvanecimiento suave que revela el sistema.
 
    REGLAS DE APARICION (iguales que siempre):
    - Solo en las pantallas de ENTRADA (dashboard, bodega,
@@ -86,7 +86,7 @@
   --a1: #ffb3d9; --a2: #ec4899; --line: rgba(255,160,210,.38); --beam: rgba(255,120,185,.52);
   --soft: rgba(255,232,243,.7);
 }
-#n360-welcome.nw-exit { clip-path: circle(0% at 50% 50%); opacity: 0; pointer-events: none; }
+#n360-welcome.nw-exit { opacity: 0; pointer-events: none; transition: opacity .8s ease !important; }
 #n360-welcome *, #n360-welcome *::before, #n360-welcome *::after { box-sizing: border-box; }
 
 #n360-welcome canvas.nw-net { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1.4s ease .2s; }
@@ -105,7 +105,7 @@
 
 .nw-main { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center;
   padding: 0 20px; transition: opacity .45s ease, transform .6s cubic-bezier(.5,0,.3,1); }
-#n360-welcome.nw-exit .nw-main { opacity: 0; transform: scale(.94); }
+#n360-welcome.nw-exit .nw-main { transform: scale(1.03); transition: transform .8s ease; }
 
 /* ---------- Dial ---------- */
 .nw-stage { position: relative; width: var(--S); height: var(--S); flex: none; }
@@ -137,12 +137,6 @@
 #n360-welcome.nw-on .nw-logo img { opacity: 1; transform: scale(1) rotate(0); filter: blur(0) drop-shadow(0 8px 26px var(--glow)); }
 #n360-welcome.nw-lock .nw-logo img { animation: nw-pulse 1.2s ease-out; }
 @keyframes nw-pulse { 0% { filter: drop-shadow(0 8px 26px var(--glow)); } 35% { filter: drop-shadow(0 0 38px var(--a2)) brightness(1.25); } 100% { filter: drop-shadow(0 8px 26px var(--glow)); } }
-.nw-logo::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
-  background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.8) 50%, transparent 60%) no-repeat; background-size: 300% 100%; background-position: 100% 0;
-  -webkit-mask: url(__LOGO__) center / contain no-repeat; mask: url(__LOGO__) center / contain no-repeat; }
-#n360-welcome.nw-lock .nw-logo::after { animation: nw-sheen 1.1s ease .15s forwards; }
-@keyframes nw-sheen { 0% { opacity: 1; background-position: 100% 0; } 85% { opacity: 1; } 100% { opacity: 0; background-position: 0% 0; } }
-
 /* Marcador de inicio del dial: flecha (o lazo en Octubre Rosa) */
 .nw-pin { position: absolute; left: 50%; top: 1.6%; width: 6%; margin-left: -3%; z-index: 4; opacity: 0; transition: opacity .6s ease .5s; }
 #n360-welcome.nw-on .nw-pin { opacity: 1; }
@@ -308,8 +302,8 @@
       var h = new Date().getHours();
       var s = h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches');
       var f = '';
-      try { f = new Date().toLocaleDateString('es-NI', { weekday: 'long', day: 'numeric', month: 'long' }); } catch (_) {}
-      greet.textContent = f ? s + '. Hoy es ' + f + '.' : s + '.';
+      try { f = new Date().toLocaleDateString('es-NI', { month: 'long', year: 'numeric' }); } catch (_) {}
+      greet.textContent = f ? s + '. Bienvenido a ' + f + '.' : s + '.';
     }
     function mostrarFrase(i) {
       frases.forEach(function (p, j) {
@@ -379,7 +373,7 @@
       timers.forEach(clearTimeout); cancelAnimationFrame(raf);
       document.removeEventListener('keydown', alTeclado);
       el.classList.add('nw-exit');
-      setTimeout(quitar, rapido ? 700 : 1000);
+      setTimeout(quitar, rapido ? 500 : 900);
     }
     function alTeclado(ev) { if (ev.key === 'Escape') cerrar(true); }
 
