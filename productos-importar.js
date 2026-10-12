@@ -73,6 +73,56 @@ function detectarPlantilla(wb) {
   return Object.keys(IMPORT_PLANTILLAS).find(key => IMPORT_PLANTILLAS[key].firma === firma) || null;
 }
 
+/* Reconocimiento por ENCABEZADOS (respaldo de la firma oculta).
+   La hoja oculta "_plantilla_meta" se pierde cuando el archivo se copia a un
+   libro nuevo o se guarda desde Google Sheets / WPS / celular. Si la hoja trae
+   todas las columnas de una plantilla oficial (sin importar mayúsculas, acentos,
+   espacios, guiones ni el orden), se trata como esa plantilla. */
+function normEncabezadoPlantilla(s) {
+  return normalizarTextoMapeo(s).replace(/[\s_\-\.]/g, '');
+}
+function indicePorEncabezados(encabezados) {
+  const mapa = {};
+  encabezados.forEach((h, i) => { const k = normEncabezadoPlantilla(h); if (k && !(k in mapa)) mapa[k] = i; });
+  return mapa;
+}
+function detectarPlantillaPorEncabezados(encabezados) {
+  const mapa = indicePorEncabezados(encabezados);
+  for (const key of ['ESCALA', 'FIJO']) {
+    const cols = IMPORT_PLANTILLAS[key].columnas;
+    if (cols.every(c => normEncabezadoPlantilla(c) in mapa)) {
+      return { tipo: key, idx: Object.fromEntries(cols.map(c => [c, mapa[normEncabezadoPlantilla(c)]])) };
+    }
+  }
+  return null;
+}
+// Archivo con columnas de escalas (Escala1Nombre/Escala1Precio…) pero incompleto respecto a la plantilla.
+function detectarEscalasParcial(encabezados) {
+  const mapa = indicePorEncabezados(encabezados);
+  const hayPar = [1, 2, 3, 4, 5].some(n => ('escala' + n + 'nombre') in mapa && ('escala' + n + 'precio') in mapa);
+  if (!hayPar || !('nombre' in mapa)) return null;
+  const idx = {}; const aviso = [];
+  IMPORT_PLANTILLAS.ESCALA.columnas.forEach(c => { const k = normEncabezadoPlantilla(c); if (k in mapa) idx[c] = mapa[k]; });
+  if (!('TipoRegistro' in idx)) aviso.push('no tiene la columna TipoRegistro: se tomaron todas las filas como PRODUCTO');
+  if (!('Costo' in idx)) aviso.push('no tiene la columna Costo: se asumió costo 0');
+  return { tipo: 'ESCALA', idx, aviso };
+}
+function filasDesdeHoja(filasArray, columnas, idx, defectos) {
+  const filas = [];
+  for (let r = 1; r < filasArray.length; r++) {
+    const arr = filasArray[r];
+    const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
+    if (vacio) continue;
+    const obj = { _filaExcel: r + 1 };
+    columnas.forEach(col => {
+      const i = idx[col];
+      obj[col] = (i !== undefined && arr[i] !== undefined) ? arr[i] : ((defectos && defectos[col] !== undefined) ? defectos[col] : '');
+    });
+    filas.push(obj);
+  }
+  return filas;
+}
+
 function leerArchivoExcel(file) {
   return new Promise((resolve, reject) => {
     if (!window.XLSX) { reject(new Error('No se pudo cargar el lector de Excel. Recarga la página e intenta de nuevo.')); return; }
@@ -88,28 +138,54 @@ function leerArchivoExcel(file) {
         if (tipoPlantilla) {
           const plantilla = IMPORT_PLANTILLAS[tipoPlantilla];
           const sheet = wb.Sheets['Productos'];
-          if (!sheet) {
-            reject(new Error('El archivo no contiene la hoja "Productos" de la plantilla "' + plantilla.nombre + '".'));
+          if (sheet) {
+            const filasArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+            const encabezado = (filasArray[0] || []).map(h => String(h).trim());
+            const encabezadoOk = plantilla.columnas.every((col, i) => encabezado[i] === col);
+            if (encabezadoOk) {
+              const filas = [];
+              for (let r = 1; r < filasArray.length; r++) {
+                const arr = filasArray[r];
+                const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
+                if (vacio) continue;
+                const obj = { _filaExcel: r + 1 };
+                plantilla.columnas.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
+                filas.push(obj);
+              }
+              resolve({ tipoPlantilla, filas });
+              return;
+            }
+          }
+          // Con firma pero la hoja/columnas cambiaron: se intenta reconocer por encabezados (abajo).
+        }
+
+        // Respaldo: reconocer la plantilla oficial por sus ENCABEZADOS (la firma oculta se pierde con
+        // facilidad al copiar a otro libro o guardar desde otras apps). Hoja "Productos" primero.
+        {
+          const hojas = wb.SheetNames.filter(n => n !== '_plantilla_meta')
+            .sort((a, b) => (b === 'Productos') - (a === 'Productos'));
+          for (const nombreHoja of hojas) {
+            const sh = wb.Sheets[nombreHoja];
+            if (!sh) continue;
+            const filasArray = XLSX.utils.sheet_to_json(sh, { header: 1, defval: '', raw: true });
+            const enc = (filasArray[0] || []).map(h => String(h).trim());
+            const det = detectarPlantillaPorEncabezados(enc);
+            if (det) {
+              const cols = IMPORT_PLANTILLAS[det.tipo].columnas;
+              resolve({ tipoPlantilla: det.tipo, filas: filasDesdeHoja(filasArray, cols, det.idx), reconocidaPorEncabezados: true });
+              return;
+            }
+            const par = detectarEscalasParcial(enc);
+            if (par) {
+              const cols = IMPORT_PLANTILLAS.ESCALA.columnas;
+              resolve({ tipoPlantilla: 'ESCALA', filas: filasDesdeHoja(filasArray, cols, par.idx, { TipoRegistro: 'PRODUCTO', Costo: 0 }), reconocidaPorEncabezados: true, aviso: par.aviso });
+              return;
+            }
+          }
+          if (tipoPlantilla) {
+            reject(new Error('Las columnas del archivo no coinciden con la plantilla "' + IMPORT_PLANTILLAS[tipoPlantilla].nombre + '". Descarga la plantilla actual e intenta de nuevo sin modificar los encabezados.'));
             return;
           }
-          const filasArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
-          const encabezado = (filasArray[0] || []).map(h => String(h).trim());
-          const encabezadoOk = plantilla.columnas.every((col, i) => encabezado[i] === col);
-          if (!encabezadoOk) {
-            reject(new Error('Las columnas del archivo no coinciden con la plantilla "' + plantilla.nombre + '". Descarga la plantilla actual e intenta de nuevo sin modificar los encabezados.'));
-            return;
-          }
-          const filas = [];
-          for (let r = 1; r < filasArray.length; r++) {
-            const arr = filasArray[r];
-            const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
-            if (vacio) continue;
-            const obj = { _filaExcel: r + 1 };
-            plantilla.columnas.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
-            filas.push(obj);
-          }
-          resolve({ tipoPlantilla, filas });
-          return;
         }
 
         // No es una plantilla oficial de Negocio360 — en vez de
@@ -698,6 +774,7 @@ function renderPasoPreview(preview, tipoPlantilla) {
   document.getElementById('importarBody').innerHTML = `
     <div style="margin-bottom:14px;padding:10px 14px;background:var(--success-soft, #DCFCE7);border-radius:var(--radius-md);color:var(--success);font-size:13px;font-weight:600">
       ✅ El archivo es válido (plantilla "${escHtml(nombrePlantilla)}"). Revisa el resumen antes de confirmar.
+      ${IMPORT_STATE.reconocidaPorEncabezados ? `<div style="font-weight:400;font-size:12px;margin-top:4px">Reconocimos tu plantilla de "${escHtml(nombrePlantilla)}" por sus columnas${IMPORT_STATE.avisoArchivo && IMPORT_STATE.avisoArchivo.length ? ' (' + escHtml(IMPORT_STATE.avisoArchivo.join('; ')) + ')' : ''}.</div>` : ''}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${tarjeta('Registros totales', preview.total, 'var(--accent)')}
@@ -754,6 +831,8 @@ async function onArchivoImportSeleccionado(ev) {
     if (resultado.tipoPlantilla) {
       // Plantilla oficial de Negocio360 — camino de siempre, sin cambios.
       IMPORT_STATE.tipoPlantilla = resultado.tipoPlantilla;
+      IMPORT_STATE.reconocidaPorEncabezados = !!resultado.reconocidaPorEncabezados;
+      IMPORT_STATE.avisoArchivo = resultado.aviso || null;
       if (!resultado.filas.length) {
         renderPasoErrores([{ fila: '—', campo: 'Archivo', motivo: 'No se encontraron filas con datos para importar' }]);
         return;
@@ -763,6 +842,7 @@ async function onArchivoImportSeleccionado(ev) {
     }
 
     // No es plantilla oficial — se intenta el mapeo inteligente.
+    IMPORT_STATE.reconocidaPorEncabezados = false; IMPORT_STATE.avisoArchivo = null;
     IMPORT_STATE.encabezadosCrudos = resultado.encabezadosCrudos;
     IMPORT_STATE.filasCrudas = resultado.filasCrudas;
     const firma = firmaEncabezados(resultado.encabezadosCrudos);
