@@ -5,7 +5,9 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
 
 ## Reglas del dueño (respetar siempre)
 - **Anuncios en modo claro (o mixto), no oscuros.** El usuario lo pidió explícitamente: fondo claro, texto oscuro, acentos azul/violeta/verde; una sola escena de marca con degradado azul.
-- **Negocio360 no tiene "fiados"**: siempre decir **créditos**.
+- **Fiados y créditos son módulos distintos.** Existe el módulo **Fiados** (`fiados.html`): anotar quién debe, abonos, "Recordar por WhatsApp" y aviso de límite. Para **pulperías** se dice **fiados**. **Créditos** (`creditos.html`) es ventas a crédito y préstamos, para negocios más grandes.
+- **Las pulperías no usan lector de código de barras**: no mencionarlo en videos de pulpería.
+- **Videos por rubro** (pulpería, farmacia, etc.): gancho → problema → solución → beneficios → teléfono/tablet/computadora → precio → CTA «QUIERO VERLO».
 - **No inventar funciones ni números.** Usar solo pantallas reales del sistema, con datos demo.
 - El usuario habla español de Nicaragua (voseo): "conocés", "tenés", "tocá".
 - **Tutoriales**: 16:9 1920×1080, con la voz de ElevenLabs que manda el usuario sin modificarla, música lo-fi que baja sola cuando habla (ducking) y efectos. Él pide "solo el video final".
