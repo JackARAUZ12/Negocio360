@@ -231,6 +231,7 @@ function acciones(o) {
   if (!o.subcontratada && ['pendiente', 'asignada'].includes(o.estado)) a.push(`<a class="tx-btn" href="transporte-subcontratistas.html?orden=${id}">🤝 Subcontratar a un transportista</a>`);
   if (o.subcontratada) a.push(`<a class="tx-btn" href="transporte-subcontratistas.html">🤝 Subcontratada · ver transportista</a>`);
   if (o.estado === 'en_ruta') a.push(b('tx-btn-ok', 'ot-entregar', '✅ Registrar entrega'));
+  if (o.estado === 'entregada') a.push(`<a class="tx-btn" href="transporte-facturacion.html">${o.venta_id ? '🧾 Facturada · ver cobranza' : '🧾 Facturar este viaje'}</a>`);
   if (ACTIVAS.includes(o.estado)) a.push(b('tx-btn-borrar', 'ot-cancelar', '✕ Cancelar orden'));
   return a.length ? `<div class="tx-fila-chips" style="margin:6px 0 4px">${a.join('')}</div>` : '';
 }

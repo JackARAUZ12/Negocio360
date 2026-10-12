@@ -1735,6 +1735,7 @@ async function abrirNuevaVenta() {
   S.carrito       = [];
   S.canje         = null;
   S._vetConsultaId = null;
+  S._txOrdenId = null;
   S._vetEstanciaId = null;
   S._recompensas  = undefined;
   S._saldoPuntos  = undefined;
@@ -2909,6 +2910,31 @@ async function aplicarCobroVeterinaria() {
   S._vetEstanciaId = d.estanciaId || null;       // hospital / pension / bano
   showToast(`Cuenta de ${d.mascota || 'la mascota'} cargada en la venta.`);
   if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
+}
+
+// Cobro de un viaje de Transporte (solo si el modulo esta activo): abre la venta con el
+// cliente y el flete de la orden ya cargados. Al confirmar, la orden queda ligada a la venta.
+async function aplicarCobroTransporte() {
+  if (S.empresaConfig?.usa_modulo_transporte !== true) return;
+  const raw = sessionStorage.getItem('n360_tx_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_tx_cobro');           // una sola vez
+  let d;
+  try { d = JSON.parse(raw); }
+  catch (e) { console.error('aplicarCobroTransporte, dato corrupto:', e); return; }
+  await abrirNuevaVenta();
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else showToast('Elige al cliente del viaje manualmente.', 'warning');
+  const prod = (S.productosCache || []).find(p => p.id === d.productoId);
+  if (!prod) { showToast('No se encontró el servicio "Flete de transporte". Agrégalo manualmente.', 'warning'); return; }
+  await agregarAlCarritoConPrecio(prod.id, 'servicio', null);
+  const it = S.carrito.find(x => x.id === prod.id);
+  if (it) {
+    it.precio = Number(d.monto) || 0; it.cantidad = 1; if (d.concepto) it.nombre = d.concepto;
+    recalcItem(it); renderCarrito('servicio'); calcularResumen();
+  }
+  S._txOrdenId = d.ordenId || null;
+  showToast(`Flete de la orden ${d.numero || ''} cargado en la venta.`);
 }
 
 // Vincular receta con la venta (Farmacia fase 2) -- gateado igual
@@ -5574,6 +5600,14 @@ async function confirmarVenta(conImpresion) {
       }
     } catch (eVet) { console.warn('Vincular consulta veterinaria:', eVet); }
 
+    // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
+    try {
+      if (S._txOrdenId) {
+        await sb.from('transporte_ordenes').update({ venta_id: ventaId, facturada_en: new Date().toISOString() }).eq('id', S._txOrdenId).eq('auth_user_id', S.userId);
+        S._txOrdenId = null;
+      }
+    } catch (eTx) { console.warn('Vincular orden de transporte:', eTx); }
+
     // Números de serie recolectados (si la función está activa y el
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
     await registrarNumerosDeSerie(ventaId, S.clienteId || null, fechaVentaElegida);
@@ -7740,6 +7774,7 @@ async function initVentas() {
     // armar el carrito con los medicamentos de esa receta.
     await aplicarRecetaPendienteDeVender();
     await aplicarCobroVeterinaria();
+    await aplicarCobroTransporte();
 
     // 6. Cargar KPIs y tabla
     await Promise.allSettled([

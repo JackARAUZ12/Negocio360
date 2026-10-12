@@ -163,6 +163,9 @@
     'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Transportistas externos: subcontrata viajes y paga de contado o a crédito (Cuentas por Pagar).' },
 
+    'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Convierte los viajes entregados en venta (contado o crédito) y da seguimiento al cobro.' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },

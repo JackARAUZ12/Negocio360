@@ -265,6 +265,7 @@ const ACCESOS = [
   { key: 'transporte_ordenes',     href: 'transporte-ordenes.html', ico: '📋', t: 'Órdenes de transporte', d: 'Tablero de despacho, costos y utilidad de cada viaje.' },
   { key: 'transporte_liquidaciones', href: 'transporte-liquidaciones.html', ico: '💵', t: 'Liquidación de conductores', d: 'Paga a tus conductores por viaje, km o comisión, con anticipos.' },
   { key: 'transporte_subcontratistas', href: 'transporte-subcontratistas.html', ico: '🤝', t: 'Subcontratistas', d: 'Transportistas externos: costo del flete, pago de contado o a crédito.' },
+  { key: 'transporte_facturacion', href: 'transporte-facturacion.html', ico: '🧾', t: 'Facturación y cobranza', d: 'Factura los viajes entregados y sigue lo que te deben.' },
   { key: 'transporte_rutas',       href: 'transporte-rutas.html',  ico: '🗺️', t: 'Rutas y tarifas',    d: 'Tus recorridos y cuánto cobras por cada uno.' },
   { key: 'transporte_flota',       href: 'flota.html',             ico: '🚛', t: 'Flota',              d: 'Cabezales, camiones y furgones con fotos y documentos.' },
   { key: 'transporte_conductores', href: 'conductores.html',       ico: '🧑‍✈️', t: 'Conductores',        d: 'Conductores y ayudantes, licencias y disponibilidad.' },
