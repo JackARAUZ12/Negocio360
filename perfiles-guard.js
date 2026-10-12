@@ -670,6 +670,7 @@
       try {
         const { data: r, error } = await PG.client.rpc('admin_crear_admin', { p_nombre: nombre, p_pin: pin, p_pin_principal: auth });
         if (error) throw error;
+        if (r && r.motivo === 'limite') { renderPaywallUsuarios(); return; }
         if (!r || !r.ok) { err.textContent = textoErrorAdmin(r); btn.disabled = false; return; }
         PG.perfiles = await cargarPerfiles();
         renderGestionUsuarios(`Administrador "${nombre}" creado correctamente`);
