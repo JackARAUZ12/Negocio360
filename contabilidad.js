@@ -1234,20 +1234,20 @@ function exportarFlujoEfectivo(formato) {
 ===================================================== */
 const TIPOS_TRANSACCION = {
   venta: { label: 'Venta (en efectivo/tarjeta)', ejemplo: 'Debe: Caja — Haber: Ventas' },
-  iva_ventas: { label: 'IVA cobrado en ventas (opcional — separa el IVA del total)', ejemplo: 'De la misma venta: Haber: Ventas (neto) — Haber: IVA por Pagar' },
-  impuesto_ventas_otros: { label: 'Otros impuestos cobrados en ventas (IR 2%, etc. — solo Cuenta Haber)', ejemplo: 'De la misma venta: Haber: Impuestos por Pagar (2130). Si una venta lleva IR u otro impuesto y esto no está configurado, la venta espera sin asentarse.' },
-  retencion_ir_clientes: { label: 'Retención de IR que me hacen los clientes (solo Cuenta Debe — activo "Retenciones de IR a favor")', ejemplo: 'De la venta con retención: Debe: Caja (neto de la retención) — Debe: Retenciones de IR a favor — Haber: Ventas (+ IVA). Si una venta lleva retención y esto no está configurado, la venta espera sin asentarse.' },
-  pago_retenciones_ir: { label: 'Pago de retenciones de IR a la DGI (Debe: cuenta de retenciones por pagar — Haber: Caja)', ejemplo: 'Cuando pagas lo retenido a proveedores desde Impuestos: Debe: Retenciones por Pagar (2130) — Haber: Caja. Si no lo configuras, ese pago espera sin asentarse.' },
-  pago_impuestos: { label: 'Pago de impuestos a la DGI (IVA y otros, desde Impuestos)', ejemplo: 'Debe: IVA por Pagar (o Impuestos por Pagar) — Haber: Caja. Con IVA acreditable configurado, se liquida: Debe IVA por Pagar — Haber IVA Acreditable — Haber Caja (neto). Aquí pon por defecto Debe: Impuestos por Pagar (2130) y Haber: Caja.' },
-  nomina_deducciones_ley: { label: 'Deducciones de ley en nómina — INSS laboral, IR salarios (solo Cuenta Haber, opcional)', ejemplo: 'Del pago de salario: Debe: Sueldos (bruto) — Haber: Caja (neto) — Haber: Retenciones de nómina por pagar. Solo las deducciones automáticas de ley; adelantos y préstamos quedan como siempre.' },
-  aporte_patronal: { label: 'Aportes patronales — INSS patronal, INATEC (opcional)', ejemplo: 'Debe: Gasto por aportes patronales — Haber: Aportes por pagar (INSS/INATEC). No mueve Caja: es lo que debes enterar a las instituciones.' },
+  iva_ventas: { label: 'IVA que cobras a tus clientes', ejemplo: 'De la misma venta: Haber: Ventas (neto) — Haber: IVA por Pagar' },
+  impuesto_ventas_otros: { label: 'Otros impuestos cobrados en ventas (solo Cuenta Haber)', ejemplo: 'De la misma venta: Haber: Impuestos por Pagar (2130). Si una venta lleva IR u otro impuesto y esto no está configurado, la venta espera sin asentarse.' },
+  retencion_ir_clientes: { label: 'IR que te retienen tus clientes (solo Cuenta Debe)', ejemplo: 'De la venta con retención: Debe: Caja (neto de la retención) — Debe: Retenciones de IR a favor — Haber: Ventas (+ IVA). Si una venta lleva retención y esto no está configurado, la venta espera sin asentarse.' },
+  pago_retenciones_ir: { label: 'Pago de retenciones de IR a la DGI', ejemplo: 'Cuando pagas lo retenido a proveedores desde Impuestos: Debe: Retenciones por Pagar (2130) — Haber: Caja. Si no lo configuras, ese pago espera sin asentarse.' },
+  pago_impuestos: { label: 'Pago de impuestos a la DGI (IVA y otros)', ejemplo: 'Debe: IVA por Pagar (o Impuestos por Pagar) — Haber: Caja. Con IVA acreditable configurado, se liquida: Debe IVA por Pagar — Haber IVA Acreditable — Haber Caja (neto). Aquí pon por defecto Debe: Impuestos por Pagar (2130) y Haber: Caja.' },
+  nomina_deducciones_ley: { label: 'INSS e IR retenidos a empleados (solo Cuenta Haber)', ejemplo: 'Del pago de salario: Debe: Sueldos (bruto) — Haber: Caja (neto) — Haber: Retenciones de nómina por pagar. Solo las deducciones automáticas de ley; adelantos y préstamos quedan como siempre.' },
+  aporte_patronal: { label: 'Aportes patronales (INSS patronal, INATEC)', ejemplo: 'Debe: Gasto por aportes patronales — Haber: Aportes por pagar (INSS/INATEC). No mueve Caja: es lo que debes enterar a las instituciones.' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
   costo_servicios: { label: 'Costo de servicios contratados (transporte, fletes, mano de obra — solo Cuenta Debe)', ejemplo: 'Debe: Costo de Ventas (5100) — el Haber sale de la compra o cuenta por pagar. Si lo configuras, el costo estimado de los servicios en Ventas deja de asentarse (para no duplicar el costo).' },
-  retencion_ir: { label: 'Retención de IR practicada a proveedores (solo Cuenta Haber)', ejemplo: 'Del pago a proveedor: Debe: Cuentas por Pagar (bruto) — Haber: Caja (neto) — Haber: Retenciones por Pagar (2130)' },
+  retencion_ir: { label: 'IR que tú retienes a proveedores (solo Cuenta Haber)', ejemplo: 'Del pago a proveedor: Debe: Cuentas por Pagar (bruto) — Haber: Caja (neto) — Haber: Retenciones por Pagar (2130)' },
   gasto: { label: 'Gasto', ejemplo: 'Debe: Gastos — Haber: Caja' },
-  iva_gastos: { label: 'IVA pagado en gastos (opcional — separa el IVA del gasto)', ejemplo: 'Del mismo gasto: Debe: Gastos (neto) — Debe: IVA Acreditable' },
+  iva_gastos: { label: 'IVA que pagas en compras y gastos (solo Cuenta Debe)', ejemplo: 'Del mismo gasto: Debe: Gastos (neto) — Debe: IVA Acreditable' },
   compra: { label: 'Compra (pagada de una vez)', ejemplo: 'Debe: Inventario — Haber: Caja' },
   cxp_generada: { label: 'Cuenta por pagar (compra a crédito con proveedor)', ejemplo: 'Debe: Inventario — Haber: Cuentas por Pagar' },
   pago_cxp: { label: 'Pago a proveedor (de una cuenta por pagar)', ejemplo: 'Debe: Cuentas por Pagar — Haber: Caja' },
@@ -1290,8 +1290,9 @@ async function abrirMapeoCuentas() {
 function renderMapeoFilas() {
   const opciones = STATE.cuentas.filter(c => c.permite_movimientos)
     .map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
-  document.getElementById('mapeo-filas').innerHTML = Object.entries(TIPOS_TRANSACCION).map(([tipo, info]) => {
-    const existente = STATE_MAPEO.find(m => m.tipo_transaccion === tipo) || {};
+  // Los tipos de impuestos/nómina van plegados en "Avanzado": se configuran con el Asistente de impuestos.
+  const TIPOS_IMPUESTOS = ['iva_ventas','impuesto_ventas_otros','retencion_ir_clientes','pago_retenciones_ir','pago_impuestos','nomina_deducciones_ley','aporte_patronal','retencion_ir','iva_gastos'];
+  const filaMapeo = ([tipo, info]) => {
     return `
     <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="font-weight:600;font-size:13px;margin-bottom:2px">${info.label}</div>
@@ -1305,7 +1306,16 @@ function renderMapeoFilas() {
         </div>
       </div>
     </div>`;
-  }).join('');
+  };
+  const todas = Object.entries(TIPOS_TRANSACCION);
+  document.getElementById('mapeo-filas').innerHTML =
+    todas.filter(([t]) => !TIPOS_IMPUESTOS.includes(t)).map(filaMapeo).join('') +
+    `<details style="margin-top:6px"><summary style="cursor:pointer;font-weight:600;font-size:13px;margin-bottom:10px">Impuestos y nómina — avanzado</summary>
+      <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 12px;border-radius:8px;background:var(--bg-hover,#f3f4f6);margin:8px 0 12px">
+        <span style="font-size:12.5px">Lo más fácil es dejar que el asistente lo configure por ti.</span>
+        <button class="btn-primary btn-sm" type="button" onclick="closeModal('modal-mapeo-cuentas'); abrirAsistenteImpuestos();">🧭 Abrir asistente de impuestos</button>
+      </div>
+      ${todas.filter(([t]) => TIPOS_IMPUESTOS.includes(t)).map(filaMapeo).join('')}</details>`;
   Object.keys(TIPOS_TRANSACCION).forEach(tipo => {
     const existente = STATE_MAPEO.find(m => m.tipo_transaccion === tipo);
     if (existente) {
@@ -2214,7 +2224,9 @@ async function cargarImpuestosContables() {
 
     const faltan = sinConfigurar.length ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:12px"><b>Sin cuenta asignada</b> (Contabilización automática › Configurar): ${sinConfigurar.map(d => esc(d.etiqueta)).join(' · ')}. Los movimientos que dependen de ellas esperan sin asentarse hasta que las configures.</div>` : '';
 
+    const bannerAsist = (typeof window.bannerImpuestosContables === 'function') ? window.bannerImpuestosContables(sinConfigurar) : '';
     cont.innerHTML = `
+      ${bannerAsist}
       ${bloqueIva}
       ${filas ? `<div class="table-wrap"><table><thead><tr><th>Cuenta</th><th>Qué contiene</th><th style="text-align:right">Saldo${hasta ? ' al ' + esc(hasta) : ''}</th><th>Naturaleza</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : '<p style="color:var(--text-muted)">Todavía no has asignado cuentas a los impuestos. Hazlo en Contabilización automática › Configurar.</p>'}

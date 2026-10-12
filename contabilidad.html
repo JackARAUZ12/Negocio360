@@ -1198,6 +1198,9 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
             Catálogo de cuentas
           </button>
+          <button class="btn-secondary" onclick="abrirAsistenteImpuestos()">
+            🧭 Asistente de impuestos
+          </button>
           <button class="btn-secondary" onclick="abrirMapeoCuentas()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Contabilización automática
@@ -1502,6 +1505,28 @@
 <!-- =====================================================
      MODAL: VER ASIENTO
 =================================================== -->
+<!-- MODAL: ASISTENTE DE IMPUESTOS (crea/conecta cuentas; nunca borra ni cambia lo ya configurado) -->
+<div class="modal-overlay" id="modal-asistente-impuestos" onclick="if(event.target===this)closeModal('modal-asistente-impuestos')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">🧭 Asistente de impuestos</span>
+      <button class="modal-close" onclick="closeModal('modal-asistente-impuestos')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="ai-cuerpo"></div>
+      <p id="ai-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-asistente-impuestos')">Cerrar</button>
+      <button class="btn-ghost" id="ai-btn-atras" style="display:none" onclick="volverAsistenteImpuestos()">← Cambiar respuestas</button>
+      <button class="btn-primary" id="ai-btn-revisar" onclick="revisarAsistenteImpuestos()">Revisar qué se hará</button>
+      <button class="btn-primary" id="ai-btn-aplicar" style="display:none" onclick="aplicarAsistenteImpuestos()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
 <!-- =====================================================
      MODAL: CONTABILIZACIÓN AUTOMÁTICA — configurar mapeo y generar.
      IMPORTANTE: esto solo LEE de Ventas/Gastos/Compras/Salarios para
@@ -1630,7 +1655,8 @@
   }
 </style>
 
-<script src="contabilidad.js?v=20261012c"></script>
+<script src="contabilidad.js?v=20261012d"></script>
+<script src="contabilidad-asistente-impuestos.js?v=20261012a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>
