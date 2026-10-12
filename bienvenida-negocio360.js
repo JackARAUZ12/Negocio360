@@ -61,7 +61,7 @@
 
     /* ---------------- Tiempos (ms) ---------------- */
     var T = {
-      logo: 150, cuentaIni: 800, cuentaFin: 3500, letras: 450, modulos: 1100, modPaso: 260,
+      logo: 150, causa: 1500, cuentaIni: 800, cuentaFin: 3500, letras: 450, modulos: 1100, modPaso: 260,
       fraseA: 3900, fraseB: 4750, fraseC: 5600, saludo: 6450, salir: 7600, quitar: 8550, seguridad: 10000
     };
 
@@ -190,10 +190,11 @@
 .nw-greet { margin: 6px 0 0; min-height: 22px; font-size: 15px; font-weight: 500; color: var(--soft); opacity: 0; transform: translateY(8px);
   transition: opacity .7s ease, transform .7s ease; }
 .nw-greet.on { opacity: 1; transform: none; }
-.nw-cause { display: none; align-items: center; justify-content: center; gap: 8px; margin: 10px 0 0; font-size: 13.5px; font-weight: 600; color: var(--a1);
+.nw-cause { display: none; align-items: center; justify-content: center; gap: 8px; margin: 10px 0 0; font-size: 15px; font-weight: 700; color: var(--a1);
   opacity: 0; transform: translateY(8px); transition: opacity .7s ease .25s, transform .7s ease .25s; }
 .nw-rosa .nw-cause { display: flex; }
 .nw-cause.on { opacity: 1; transform: none; }
+.nw-cause span { text-wrap: balance; }
 .nw-cause svg { width: 18px; height: 18px; flex: none; }
 
 /* ---------- Progreso y control ---------- */
@@ -419,7 +420,8 @@
     agenda(T.fraseA, function () { mostrarFrase(0); });
     agenda(T.fraseB, function () { mostrarFrase(1); });
     agenda(T.fraseC, function () { mostrarFrase(2); });
-    agenda(T.saludo, function () { greet.classList.add('on'); cause.classList.add('on'); });
+    agenda(T.causa, function () { cause.classList.add('on'); });
+    agenda(T.saludo, function () { greet.classList.add('on'); });
     agenda(T.salir, function () { cerrar(false); });
   } catch (e) {
     try { var w = document.getElementById('n360-welcome'); if (w && w.parentNode) w.parentNode.removeChild(w); } catch (_) {}
