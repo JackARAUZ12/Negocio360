@@ -7,6 +7,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
 - **Anuncios en modo claro (o mixto), no oscuros.** El usuario lo pidió explícitamente: fondo claro, texto oscuro, acentos azul/violeta/verde; una sola escena de marca con degradado azul.
 - **Fiados y créditos son módulos distintos.** Existe el módulo **Fiados** (`fiados.html`): anotar quién debe, abonos, "Recordar por WhatsApp" y aviso de límite. Para **pulperías** se dice **fiados**. **Créditos** (`creditos.html`) es ventas a crédito y préstamos, para negocios más grandes.
 - **Las pulperías no usan lector de código de barras**: no mencionarlo en videos de pulpería.
+- **Colores para videos por rubro**: el usuario pidió "ni tan oscuro ni tan claro": fondos de tono medio con degradados vivos, tarjetas blancas y texto blanco.
 - **Videos por rubro** (pulpería, farmacia, etc.): gancho → problema → solución → beneficios → teléfono/tablet/computadora → precio → CTA «QUIERO VERLO».
 - **No inventar funciones ni números.** Usar solo pantallas reales del sistema, con datos demo.
 - El usuario habla español de Nicaragua (voseo): "conocés", "tenés", "tocá".
@@ -24,6 +25,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
   - Reels
   - anuncio "Diego"
   - anuncio "Renata" (sin música, "DESDE $10 AL MES", CTA "COMENTÁ 'QUIERO VERLO'")
+  - **Rubro Pulpería** (68.36 s, voz Renata, colores de tono medio: naranja/coral para el problema, azul-violeta y verde azulado para la solución; sin música): `pul.html`, `rpul.js`, `sfxpul.py`, capturas con `FAKE=fake-pulperia.js node cappul.js` (Pulpería La Bendición, usuaria Rosa Martínez, fiados con abonos y límites). `mob.js`/`open.js` aceptan `FAKE=<archivo>` para cambiar el mock.
   - anuncio **"3 pasos para mejorar tus ventas"** (39.16 s, **modo claro**, sin música, efectos fuertes): `ad3.html`, `rad3.js`, `sfx3.py`, piezas en `tools/ad3/` (recortes reales del Dashboard, Productos, Reportes y Ventas en móvil, sacados con `capad2.js`).
 - **Tutoriales 16:9**:
   - Dashboard (sin voz)

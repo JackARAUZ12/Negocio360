@@ -6,7 +6,7 @@ async function openDash(browser, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: opts.dpr || 2, locale: 'es-NI', timezoneId: 'America/Managua' });
   await ctx.route('**/*', async route => {
     const u = route.request().url();
-    if (u.includes('supabase-js')) return route.fulfill({ body: fs.readFileSync(T + '/fake-supabase.js'), contentType: 'application/javascript' });
+    if (u.includes('supabase-js')) return route.fulfill({ body: fs.readFileSync(T + '/' + (process.env.FAKE || 'fake-supabase.js')), contentType: 'application/javascript' });
     if (u.includes('chart.js') || u.includes('chart.umd')) return route.fulfill({ body: fs.readFileSync(deps + '/chart.js/dist/chart.umd.js'), contentType: 'application/javascript' });
     if (u.includes('lucide')) return route.fulfill({ body: fs.readFileSync(deps + '/lucide/dist/umd/lucide.js'), contentType: 'application/javascript' });
     if (u.includes('fonts.googleapis.com/css')) return route.fulfill({ body: fs.readFileSync(T + '/fonts.css'), contentType: 'text/css' });
