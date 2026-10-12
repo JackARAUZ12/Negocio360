@@ -312,9 +312,19 @@
     // estructura y clases correctas en ambos casos.
     const usaPatronSidebarItem = !!nav.querySelector('.sidebar-item') && !nav.querySelector('.nav-item');
 
+    // Un perfil restringido (multiusuario) solo ve los módulos que el administrador le asignó:
+    // los módulos especializados que la cuenta tiene activos NO se agregan al menú si no son suyos.
+    let permitidosPerfil = null;
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const pf = raw ? JSON.parse(raw) : null;
+      if (pf && pf.tipo !== 'admin') permitidosPerfil = new Set(pf.modulos || []);
+    } catch (_) { permitidosPerfil = null; }
+
     const porFlag = {};
     Object.values(TODOS_MODULOS_OPCIONALES).forEach(m => {
       if (!m.flagPropio) return;
+      if (permitidosPerfil && !permitidosPerfil.has(m.key)) return;
       const flagActivo = [m.flagPropio, ...(m.flagsAlternos || [])].find(f => cfg._flagsPropios && cfg._flagsPropios[f] === true);
       if (!flagActivo) return;
       const yaExiste = document.querySelector(`[onclick*="navigate('${m.archivo}')"], a[href="${m.archivo}"]`);

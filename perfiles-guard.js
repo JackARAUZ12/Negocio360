@@ -906,7 +906,7 @@
     if (perfil.tipo === 'admin') return;
     const file = currentFile();
     const mod  = MODULOS[file];
-    if (mod && !(perfil.modulos || []).includes(mod.key)) {
+    if (mod && mod.key !== 'chat' && !(perfil.modulos || []).includes(mod.key)) {
       location.href = primerModuloPermitido(perfil);
     }
   }
@@ -914,23 +914,40 @@
   function aplicarRestricciones(perfil) {
     inyectarBotonCambiarUsuario(perfil);
     forzarNombrePerfilEnUI(perfil);
-    if (perfil.tipo === 'admin') return;
+    if (perfil.tipo === 'admin') { vigilarRestricciones(perfil); return; }
 
+    ocultarNoPermitidos(perfil);
+    vigilarRestricciones(perfil);
+  }
+
+  // Oculta todo enlace/acceso a un módulo que el perfil NO tiene asignado:
+  // menú lateral, accesos rápidos del dashboard y los módulos especializados
+  // (Transporte, Hotel, etc.) que otros scripts agregan después. Un perfil
+  // restringido solo ve lo que el administrador le asignó (más Chat y Tutoriales).
+  function ocultarNoPermitidos(perfil) {
+    if (!perfil || perfil.tipo === 'admin') return;
+    if (!document.getElementById('pg-css-ocultos')) {
+      const st = document.createElement('style'); st.id = 'pg-css-ocultos';
+      st.textContent = '.mg-oculto-modulo{display:none!important}';
+      document.head.appendChild(st);
+    }
     const permitidos = new Set(perfil.modulos || []);
-    // Cubre ambos patrones de sidebar usados en el proyecto:
-    //  <div onclick="navigate('ventas.html')">  y  <a href="ventas.html">
-    const nodos = document.querySelectorAll('[onclick*="navigate("], a[href$=".html"], a[href*=".html?"]');
+    permitidos.add('chat'); // el Chat con Negocio360 (y Tutoriales) lo ven todos los usuarios
+    // Cubre los patrones de sidebar/accesos del proyecto:
+    //  <div onclick="navigate('ventas.html')">, <a href="ventas.html"> y onclick con location
+    const nodos = document.querySelectorAll('[onclick*="navigate("], [onclick*=".html"], a[href$=".html"], a[href*=".html?"]');
     nodos.forEach(el => {
       let href = el.getAttribute('href');
       if (!href) {
-        const m = (el.getAttribute('onclick') || '').match(/navigate\(['"]([^'"?]+)/);
+        const m = (el.getAttribute('onclick') || '').match(/(?:navigate\(|location(?:\.href)?\s*=\s*|open\()\s*['"]([^'"?#]+\.html)/);
         href = m ? m[1] : null;
       }
       if (!href) return;
       const file = href.split('?')[0].split('/').pop();
       const mod  = MODULOS[file];
-      if (!mod) return; // páginas no controladas (login, etc.) se dejan intactas
-      if (!permitidos.has(mod.key)) {
+      const soloAdmin = (window.NEGOCIO360_MODULOS || {})[file]?.soloAdmin === true;
+      if (!mod && !soloAdmin) return; // páginas no controladas (login, etc.) se dejan intactas
+      if (soloAdmin || !permitidos.has(mod.key)) { // Configuración y Auditoría son solo del administrador
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
         item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar
@@ -942,11 +959,25 @@
       let n = title.nextElementSibling;
       let algunoVisible = false;
       while (n && !n.classList.contains('nav-section-title') && !n.classList.contains('sidebar-section-label')) {
-        if (n.style.display !== 'none') algunoVisible = true;
+        if (n.style.display !== 'none' && !n.classList.contains('mg-oculto-modulo')) algunoVisible = true;
         n = n.nextElementSibling;
       }
       title.style.display = algunoVisible ? '' : 'none';
     });
+  }
+
+  // Los módulos especializados y accesos rápidos se agregan a la página
+  // DESPUÉS de cargar (cuando llega la configuración de la cuenta). Se vuelve
+  // a aplicar la restricción cada vez que aparecen elementos nuevos.
+  function vigilarRestricciones(perfil) {
+    if (PG._vigia) { try { PG._vigia.disconnect(); } catch (_) {} PG._vigia = null; }
+    if (!perfil || perfil.tipo === 'admin' || !window.MutationObserver || !document.body) return;
+    let pendiente = false;
+    PG._vigia = new MutationObserver(() => {
+      if (pendiente) return; pendiente = true;
+      setTimeout(() => { pendiente = false; try { ocultarNoPermitidos(perfil); } catch (_) {} }, 60);
+    });
+    PG._vigia.observe(document.body, { childList: true, subtree: true });
   }
 
   // ------------------------------------------------------------
