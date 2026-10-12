@@ -1,0 +1,257 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#0B1530;--muted:#5B6785;--blue:#2F6BFF;--vio:#7C5CFF;--grn:#10B981;--amb:#F59E0B;--red:#EF4444}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#F6F8FC;font-family:'Inter Display','Inter',sans-serif;color:var(--ink)}
+#stage{position:absolute;inset:0;overflow:hidden;background:#F6F8FC}
+#cam{position:absolute;inset:0;transform-origin:540px 960px}
+.blob{position:absolute;width:1100px;height:1100px;border-radius:50%;filter:blur(40px)}
+#dots{position:absolute;inset:-60px;background-image:radial-gradient(rgba(11,21,48,.10) 2px,transparent 2.5px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 45%,#000 30%,transparent 85%)}
+.abs{position:absolute}
+.line{position:absolute;left:60px;right:60px;display:flex;justify-content:center;flex-wrap:wrap;gap:0 .26em;font-weight:900;letter-spacing:-.035em;line-height:1.02;text-align:center}
+.w{display:inline-block;opacity:0;will-change:transform}
+.gr{background:linear-gradient(95deg,#2F6BFF 0%,#7C5CFF 55%,#10B981 100%);-webkit-background-clip:text;color:transparent;padding:0 .04em}
+.gg{background:linear-gradient(95deg,#059669,#10B981 50%,#2F6BFF);-webkit-background-clip:text;color:transparent;padding:0 .04em}
+.go{background:linear-gradient(95deg,#F59E0B,#F97316);-webkit-background-clip:text;color:transparent;padding:0 .04em}
+.mu{color:var(--muted)}
+.wh{color:#fff}
+.card{position:absolute;border-radius:40px;overflow:hidden;background:#fff;box-shadow:0 50px 100px -20px rgba(30,50,110,.28),0 18px 40px -10px rgba(30,50,110,.18);border:3px solid #fff;opacity:0}
+.card img{display:block;width:100%}
+.hl{position:absolute;border-radius:22px;border:5px solid var(--blue);box-shadow:0 0 0 10px rgba(47,107,255,.15),0 0 40px rgba(47,107,255,.45);opacity:0}
+.badge{position:absolute;left:50%;top:190px;width:150px;height:150px;margin-left:-75px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:96px;font-weight:900;color:#fff;background:linear-gradient(135deg,#2F6BFF,#7C5CFF);box-shadow:0 24px 50px rgba(47,107,255,.45);opacity:0}
+.badge .rg{position:absolute;inset:-14px;border-radius:50%;border:5px solid rgba(47,107,255,.45)}
+.blab{position:absolute;left:0;right:0;top:360px;text-align:center;font-size:40px;font-weight:800;letter-spacing:.18em;color:var(--blue);opacity:0}
+.pill{position:absolute;left:50%;display:inline-flex;align-items:center;gap:18px;padding:22px 38px;border-radius:999px;background:#fff;font-size:42px;font-weight:800;white-space:nowrap;box-shadow:0 24px 50px -10px rgba(30,50,110,.25);opacity:0}
+.pill i{font-style:normal;font-size:46px}
+.phone{position:absolute;width:470px;height:1019px;border-radius:72px;background:#0E1424;padding:16px;box-shadow:0 60px 110px -20px rgba(20,40,100,.45);opacity:0}
+.phone .sc{width:100%;height:100%;border-radius:58px;overflow:hidden;background:#fff;position:relative}
+.phone .sc img{width:100%;display:block}
+.phone .nt{position:absolute;left:50%;top:14px;width:130px;height:34px;margin-left:-65px;border-radius:20px;background:#0E1424}
+.flab{position:absolute;left:0;right:0;text-align:center;font-size:64px;font-weight:900;letter-spacing:-.03em;opacity:0}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;z-index:20;pointer-events:none}
+#brand{position:absolute;inset:0;opacity:0;background:radial-gradient(900px 900px at 30% 25%,#5B8CFF 0%,transparent 60%),radial-gradient(900px 900px at 80% 85%,#22D3A6 0%,transparent 55%),linear-gradient(150deg,#2F6BFF 0%,#6D4CFF 60%,#4F46E5 100%)}
+#rays{position:absolute;left:50%;top:50%;width:2600px;height:2600px;margin:-1300px;background:repeating-conic-gradient(rgba(255,255,255,.10) 0 6deg,transparent 6deg 18deg);border-radius:50%;-webkit-mask-image:radial-gradient(circle,#000 10%,transparent 60%)}
+#wm{position:absolute;left:50px;top:70px;display:flex;align-items:center;gap:14px;padding:14px 26px 14px 16px;border-radius:999px;background:rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(30,50,110,.12);font-weight:900;font-size:34px;letter-spacing:-.02em;z-index:10}
+#wm img{width:46px}
+#prog{position:absolute;left:50px;right:50px;top:30px;height:8px;border-radius:8px;background:rgba(11,21,48,.08);overflow:hidden;z-index:10}
+#prog i{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:linear-gradient(90deg,#2F6BFF,#7C5CFF,#10B981)}
+#logo{position:absolute;left:50%;top:0;display:flex;flex-direction:column;align-items:center;opacity:0}
+#logo .ic{width:230px;height:230px;border-radius:64px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 40px 80px -10px rgba(47,107,255,.40)}
+#logo .ic img{width:160px}
+#logo .nm{font-size:120px;font-weight:900;letter-spacing:-.045em;margin-top:34px;white-space:nowrap}
+#price{position:absolute;left:0;right:0;top:760px;text-align:center;opacity:0}
+#price .num{font-size:420px;font-weight:900;letter-spacing:-.06em;line-height:.9;background:linear-gradient(160deg,#2F6BFF,#7C5CFF 55%,#10B981);-webkit-background-clip:text;color:transparent;display:inline-block}
+#price .cur{font-size:200px;vertical-align:top;line-height:1.3}
+#price .per{font-size:96px;font-weight:900;letter-spacing:.06em;color:var(--ink);margin-top:10px}
+#burst{position:absolute;left:540px;top:980px;width:1400px;height:1400px;margin:-700px;border-radius:50%;background:repeating-conic-gradient(rgba(245,158,11,.16) 0 7deg,transparent 7deg 20deg);-webkit-mask-image:radial-gradient(circle,#000 15%,transparent 62%);opacity:0}
+.cf{position:absolute;width:22px;height:34px;border-radius:5px;opacity:0}
+#cbox{position:absolute;left:90px;right:90px;top:760px;border-radius:44px;background:#fff;box-shadow:0 50px 100px -20px rgba(30,50,110,.30);padding:40px 40px 44px;opacity:0}
+#cbox .hd{display:flex;align-items:center;gap:22px}
+#cbox .av{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#2F6BFF,#10B981);display:flex;align-items:center;justify-content:center}
+#cbox .av img{width:62px;filter:brightness(0) invert(1)}
+#cbox .hd b{font-size:40px}#cbox .hd small{display:block;font-size:30px;color:var(--muted);font-weight:600;margin-top:4px}
+#cin{margin-top:34px;display:flex;align-items:center;gap:18px;border-radius:999px;background:#F1F4FA;padding:16px 16px 16px 40px;border:3px solid #E3E8F2}
+#ctx{flex:1;font-size:58px;font-weight:900;letter-spacing:-.01em;height:76px;line-height:76px;white-space:nowrap;overflow:hidden}
+#ctx .car{display:inline-block;width:5px;height:58px;background:var(--blue);vertical-align:middle;margin-left:4px}
+#csend{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#FF2D6F,#FF5C3A);display:flex;align-items:center;justify-content:center}
+#csend svg{width:46px;height:46px}
+.heart{position:absolute;font-size:70px;opacity:0}
+#stamp{position:absolute;left:640px;top:1585px;padding:18px 34px;border-radius:22px;border:7px solid var(--grn);color:var(--grn);font-size:64px;font-weight:900;letter-spacing:.08em;transform:rotate(-10deg);background:rgba(255,255,255,.9);opacity:0}
+.chip{position:absolute;display:flex;align-items:center;gap:14px;padding:20px 30px;border-radius:26px;background:#fff;font-size:36px;font-weight:800;box-shadow:0 20px 44px -10px rgba(30,50,110,.25);opacity:0;white-space:nowrap}
+.chip i{font-style:normal;font-size:40px}
+#mark{position:absolute;height:110px;border-radius:18px;background:linear-gradient(90deg,rgba(250,204,21,.55),rgba(251,191,36,.55));transform-origin:0 50%;opacity:0}
+#streak{position:absolute;left:-400px;top:0;width:300px;height:1920px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);transform:skewX(-14deg);opacity:0;z-index:19}
+</style></head>
+<body>
+<div id="stage">
+ <div id="cam">
+  <div id="bgw"><div class="blob" id="b1"></div><div class="blob" id="b2"></div><div class="blob" id="b3"></div><div id="dots"></div></div>
+  <div id="brand"><div id="rays"></div></div>
+  <div id="burst"></div>
+  <div id="layers"></div>
+ </div>
+ <div id="prog"><i id="progi"></i></div>
+ <div id="wm"><img src="ad3/iso.png">Negocio360</div>
+ <div id="streak"></div>
+ <div id="flash"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const p = (t, a, b) => cl((t - a) / (b - a));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const back = x => { x = cl(x); const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 39.16;
+const L = $('layers');
+const mk = (cls, html, css = '') => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; d.style.cssText = css; L.appendChild(d); return d; };
+// envelope: in at a (dur fi), out at b (dur fo)
+const env = (t, a, b, fi = .35, fo = .3) => Math.min(ease(p(t, a, a + fi)), 1 - ease(p(t, b, b + fo)));
+const LINES = [], CARDS = [], HLS = [], PILLS = [], BADGES = [], CHIPS = [];
+const SFX = { pops: [], whoosh: [], impact: [], tick: [], swish: [], rise: [], keys: [], cash: [], confirm: [], stamp: [], sparkle: [], blip: [] };
+// a line of words; words get times spread over [a0,a1] by length unless given
+function line(y, size, a0, a1, out, words, opts = {}) {
+  const el = mk('line', '', `top:${y}px;font-size:${size}px`); const ws = words.map(w => Array.isArray(w) ? w : [w, '']);
+  const tot = ws.reduce((s, w) => s + w[0].length + 1, 0); let acc = 0;
+  const W = ws.map(([tx, cls, tt]) => { const t = tt != null ? tt : a0 + (a1 - a0) * acc / tot; acc += tx.length + 1; const s = document.createElement('span'); s.className = 'w ' + cls; s.textContent = tx; el.appendChild(s); if (!opts.quiet) SFX.pops.push(t); return { s, t }; });
+  LINES.push({ el, W, out, big: size >= 110, opts }); return el;
+}
+function card(src, x, y, w, a, b, o = {}) { const el = mk('card', `<img src="${src}">`, `left:${x}px;top:${y}px;width:${w}px`); CARDS.push({ el, a, b, o }); SFX.whoosh.push(a); return el; }
+function hl(c, r, a, b, color) { const el = document.createElement('div'); el.className = 'hl'; el.style.cssText = `left:${r[0]}%;top:${r[1]}%;width:${r[2]}%;height:${r[3]}%` + (color ? `;border-color:${color};box-shadow:0 0 0 10px ${color}26,0 0 40px ${color}88` : ''); c.appendChild(el); HLS.push({ el, a, b }); SFX.tick.push(a); }
+function pill(html, y, a, b, o = {}) { const el = mk('pill', html, `top:${y}px`); PILLS.push({ el, a, b, o }); SFX.swish.push(a); return el; }
+function badge(n, label, a, b) { const el = mk('badge', `<div class="rg"></div>${n}`); const lb = mk('blab', label); BADGES.push({ el, lb, a, b }); SFX.impact.push(a); }
+function chip(html, x, y, a, b, o = {}) { const el = mk('chip', html, `left:${x}px;top:${y}px`); CHIPS.push({ el, a, b, o }); return el; }
+const FLASH = [], SHAKE = [], ZOOM = [];
+
+// ===== S1 hook (0 – 2.6)
+line(330, 74, 0.02, 0.6, 2.45, [['De', 'mu'], ['esta', 'mu'], ['manera', 'mu']]);
+line(430, 150, 0.95, 0.96, 2.45, [['mejorarás', 'gr']]);
+line(590, 150, 1.55, 1.8, 2.45, [['tus'], ['ventas', '']]);
+const c1 = card('ad3/chart.png', 120, 830, 840, 1.0, 2.5, { from: 'up', reveal: [1.25, 2.3] });
+FLASH.push(0.0); SHAKE.push(0.95); SFX.impact.push(0.95);
+chip('<i>📈</i>Tendencia al alza', 560, 1440, 1.8, 2.45, { s: 1 });
+// ===== S2 (2.68 – 8.05)
+badge(1, 'PRIMERO', 2.68, 7.9); FLASH.push(2.62);
+line(420, 84, 3.44, 4.3, 7.9, [['Identificá'], ['cuáles'], ['son']]);
+line(515, 84, 4.45, 4.8, 7.9, [['tus'], ['productos']]);
+line(610, 128, 5.3, 5.6, 7.9, [['más', 'gr'], ['vendidos', 'gr']]); SHAKE.push(5.3);
+const c2 = card('ad3/top.png', 110, 790, 860, 3.7, 7.9, { from: 'right' });
+[[4.75, 'A'], [5.05, 'B'], [5.35, 'C'], [5.65, 'D'], [5.95, 'E']].forEach(([a], i) => hl(c2, [2.5, 29.5 + i * 13.6, 95, 12.4], a, a + .45));
+hl(c2, [2.5, 29.5, 95, 12.4], 6.35, 7.9, '#F59E0B');
+chip('<i>🔥</i>Tu producto estrella', 540, 725, 6.4, 7.9, { s: 1 });
+pill('<i>⭐</i>Dales mayor atención', 1500, 6.28, 7.9);
+// ===== S3 (8.14 – 13.0)
+badge(2, 'SEGUNDO', 8.14, 12.95); FLASH.push(8.08);
+line(430, 90, 9.04, 9.9, 12.95, [['Mantené'], ['tu'], ['inventario']]);
+line(540, 128, 10.2, 10.25, 12.95, [['actualizado', 'gg']]); SHAKE.push(10.2);
+const c3 = card('ad3/stock2.png', 140, 740, 800, 9.3, 12.95, { from: 'left' });
+hl(c3, [2, 51, 96, 47], 11.0, 12.95, '#EF4444');
+card('ad3/alert1.png', 90, 1345, 900, 11.25, 12.95, { from: 'up' });
+pill('<i>💰</i>Para no perder oportunidades de venta', 1530, 11.3, 12.95);
+// ===== S4 (13.1 – 17.35)
+badge(3, 'TERCERO', 13.1, 17.3); FLASH.push(13.04);
+line(430, 90, 13.9, 14.3, 17.3, [['Analizá'], ['tus']]);
+line(530, 128, 14.55, 14.6, 17.3, [['resultados', 'gr']]); SHAKE.push(14.55);
+card('ad3/rep.png', 90, 790, 900, 14.0, 17.3, { from: 'up', rot: -2 });
+card('ad3/fin.png', 380, 1150, 620, 15.2, 17.3, { from: 'right', rot: 3 });
+pill('<i>🎯</i>Para tomar mejores decisiones', 660, 15.4, 17.3);
+// ===== S5 question (17.55 – 20.75)
+FLASH.push(17.5);
+line(520, 100, 17.55, 18.2, 20.6, [['¿Querés'], ['llevar']]);
+line(635, 100, 18.3, 18.75, 20.6, [['el'], ['control']]);
+line(750, 100, 18.8, 19.3, 20.6, [['de'], ['tu'], ['negocio']]);
+line(865, 100, 19.35, 19.65, 20.6, [['de'], ['una'], ['manera']]);
+line(990, 150, 19.75, 19.95, 20.6, [['más', 'gr'], ['fácil?', 'gr']]); SHAKE.push(19.75);
+const MARK = { a: 19.85, b: 20.6, x: 215, y: 1020, w: 650 };
+[['📦', 'Inventario', 110, 330, -6], ['🧾', 'Facturas', 640, 300, 5], ['📒', 'Cuaderno', 80, 1180, 4], ['🧮', 'Cuentas a mano', 560, 1230, -5], ['📊', 'Excel', 300, 1430, 3]].forEach(([i, n, x, y, r], k) => chip(`<i>${i}</i>${n}`, x, y, 17.7 + k * .18, 20.55, { float: 1, rot: r, fly: 1 }));
+// ===== S6 brand + features (20.87 – 28.6)
+FLASH.push(20.82); SFX.rise.push(20.1);
+line(300, 70, 20.87, 20.9, 22.55, [['Con', 'mu']]);
+const LOGO = { el: $('logo') || mk('', '', ''), a: 21.0, b: 22.6 };
+LOGO.el.id = 'logo'; LOGO.el.innerHTML = '<div class="ic"><img src="ad3/iso.png"></div><div class="nm">Negocio<span class="gr">360</span></div>';
+SFX.impact.push(21.05); SHAKE.push(21.05); SFX.sparkle.push(21.2);
+const PH = [['ad3/ph_v4.png', 'Gestioná tus ', 'ventas', 22.68], ['ad3/ph_prod.png', 'Controlá tu ', 'inventario', 24.25], ['ad3/ph_rep.png', 'Consultá tus ', 'reportes', 25.64]].map(([src, l1, l2, a]) => {
+  const ph = mk('phone', `<div class="sc"><img src="${src}"></div><div class="nt"></div>`); const lb = mk('flab', `${l1}<span class="gr">${l2}</span>`, 'top:300px'); SFX.whoosh.push(a); SFX.pops.push(a + .2); return { ph, lb, a }; });
+line(250, 84, 26.55, 27.4, 28.6, [['desde'], ['un', 'gr'], ['solo', 'gr'], ['sistema', 'gr']]); SFX.impact.push(27.0);
+// ===== S7 price (28.84 – 31.6)
+FLASH.push(28.78);
+line(420, 84, 28.84, 29.75, 31.6, [['Todo'], ['esto'], ['por'], ['tan'], ['solo']]);
+const PRICE = { a: 30.0, b: 31.6, per: 30.85 }; SFX.cash.push(30.05); SFX.impact.push(30.05); SHAKE.push(30.05); SFX.pops.push(30.85);
+const CF = []; for (let i = 0; i < 46; i++) { const el = mk('cf', ''); el.style.background = ['#2F6BFF', '#7C5CFF', '#10B981', '#F59E0B', '#EF4444', '#22D3EE'][i % 6]; CF.push({ el, a: 30.05, ang: (i / 46) * Math.PI * 2 + Math.sin(i * 7) * .3, v: 900 + (i * 137 % 700), r: i * 47 % 360 }); }
+// ===== S8 brand screen (31.77 – 35.55)
+const BR = { a: 31.7, b: 35.6 }; SFX.impact.push(31.77); SFX.whoosh.push(31.7);
+const LOGO2 = mk('', '<div class="ic"><img src="ad3/iso.png"></div><div class="nm wh">Negocio360</div>'); LOGO2.id = 'logo2'; LOGO2.style.cssText = 'position:absolute;left:50%;top:0;display:flex;flex-direction:column;align-items:center;opacity:0';
+LOGO2.querySelector('.ic').style.cssText = 'width:230px;height:230px;border-radius:64px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 40px 80px -10px rgba(0,0,0,.25)'; LOGO2.querySelector('img').style.width = '160px'; LOGO2.querySelector('.nm').style.cssText = 'font-size:130px;font-weight:900;letter-spacing:-.045em;margin-top:34px;white-space:nowrap;color:#fff';
+line(1180, 96, 33.8, 34.6, 35.55, [['Tomá', 'wh'], ['el', 'wh'], ['control', 'wh']]);
+line(1290, 96, 34.7, 35.1, 35.55, [['de', 'wh'], ['tu', 'wh'], ['negocio.', 'wh']]); SFX.sparkle.push(33.8);
+// ===== S9 CTA (35.76 – end)
+FLASH.push(35.66);
+line(420, 110, 35.76, 35.8, 99, [['Comentá', '']]);
+const CB = { el: $('cbox') || null, a: 35.9, ty0: 36.05, ty1: 36.85, send: 37.0 };
+CB.el = mk('', `<div class="hd"><div class="av"><img src="ad3/iso.png"></div><div><b>Tu comentario</b><small>Respondé en este video</small></div></div><div id="cin"><div id="ctx"></div><div id="csend"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></div></div>`); CB.el.id = 'cbox';
+const TXT = '«QUIERO VERLO»'; for (let i = 0; i < TXT.length; i++) SFX.keys.push(CB.ty0 + (CB.ty1 - CB.ty0) * i / TXT.length); SFX.confirm.push(37.0);
+const HE = []; for (let i = 0; i < 9; i++) { const el = mk('heart', ['❤️', '💙', '💚'][i % 3]); HE.push({ el, a: 37.0 + i * .07, x: 860 + (i % 3 - 1) * 40, dx: Math.sin(i * 2.3) * 120 }); }
+line(1240, 74, 37.1, 37.55, 99, [['y'], ['solicitá'], ['tu']]);
+line(1335, 100, 37.65, 37.7, 99, [['demostración', 'gr']]);
+line(1450, 100, 38.1, 38.12, 99, [['gratuita', 'gr']]);
+const STAMP = mk('', 'GRATIS'); STAMP.id = 'stamp'; const STA = 38.35; SFX.stamp.push(STA);
+
+window.EVENTS = { DUR, SFX, FLASH, SHAKE };
+// ================= render
+const b1 = $('b1'), b2 = $('b2'), b3 = $('b3');
+window.render = function (t) {
+  // background blobs
+  const hue = t < 13.1 ? 0 : t < 17.5 ? 1 : 0;
+  b1.style.cssText = `left:${-300 + 80 * Math.sin(t * .35)}px;top:${-260 + 60 * Math.cos(t * .3)}px;background:radial-gradient(circle,rgba(47,107,255,.22),transparent 65%)`;
+  b2.style.cssText = `left:${420 + 90 * Math.cos(t * .28)}px;top:${700 + 80 * Math.sin(t * .33)}px;background:radial-gradient(circle,rgba(16,185,129,.18),transparent 65%)`;
+  b3.style.cssText = `left:${-200 + 70 * Math.sin(t * .22 + 1)}px;top:${1250 + 60 * Math.cos(t * .4)}px;background:radial-gradient(circle,rgba(124,92,255,.18),transparent 65%)`;
+  // camera: shake + slow push
+  let sx = 0, sy = 0, sz = 1 + .012 * Math.sin(t * .6);
+  for (const s of SHAKE) if (t >= s && t < s + .35) { const k = 1 - (t - s) / .35; sx += Math.sin(t * 90) * 14 * k; sy += Math.cos(t * 77) * 10 * k; sz += .035 * k; }
+  $('cam').style.transform = `translate(${sx}px,${sy}px) scale(${sz})`;
+  // flash + streak
+  let fo = 0; for (const f of FLASH) if (t >= f && t < f + .4) fo = Math.max(fo, .85 * (1 - ease(p(t, f, f + .4)))); $('flash').style.opacity = fo;
+  let st = null; for (const f of FLASH) if (t >= f && t < f + .45) st = f; const SK = $('streak');
+  if (st != null) { SK.style.opacity = 1; SK.style.left = lerp(-400, 1400, eio(p(t, st, st + .45))) + 'px'; } else SK.style.opacity = 0;
+  // lines
+  for (const Ln of LINES) { const outk = ease(p(t, Ln.out, Ln.out + .25));
+    for (const { s, t: wt } of Ln.W) { const k = p(t, wt, wt + .32); const o = ease(k) * (1 - outk); const sc = Ln.big ? lerp(1.6, 1, back(k)) : lerp(.6, 1, back(k));
+      s.style.opacity = o; s.style.transform = `translateY(${(1 - ease(k)) * 40 - outk * 30}px) scale(${sc * (1 - .1 * outk)})`; s.style.filter = k < 1 ? `blur(${(1 - ease(k)) * 10}px)` : 'none'; } }
+  // cards
+  for (const C of CARDS) { const k = p(t, C.a, C.a + .55), ko = p(t, C.b, C.b + .3); const o = ease(k) * (1 - ease(ko)); const e = back(k);
+    let dx = 0, dy = 0; if (C.o.from === 'right') dx = (1 - e) * 700; else if (C.o.from === 'left') dx = -(1 - e) * 700; else dy = (1 - e) * 500;
+    const fl = Math.sin((t - C.a) * 1.4) * 6; const rot = (C.o.rot || 0) + (1 - e) * (C.o.from === 'left' ? -10 : 10);
+    C.el.style.opacity = o; C.el.style.transform = `translate(${dx}px,${dy + fl - ease(ko) * 60}px) rotate(${rot}deg) scale(${lerp(.92, 1, e)})`;
+    if (C.o.reveal) { const r = eio(p(t, C.o.reveal[0], C.o.reveal[1])); C.el.querySelector('img').style.clipPath = `inset(0 ${(1 - r) * 88}% 0 0)`; } }
+  for (const H of HLS) { const o = env(t, H.a, H.b, .15, .2); H.el.style.opacity = o; H.el.style.transform = `scale(${lerp(1.08, 1, ease(p(t, H.a, H.a + .25)))})`; }
+  for (const P of PILLS) { const k = p(t, P.a, P.a + .4); const o = ease(k) * (1 - ease(p(t, P.b, P.b + .25))); P.el.style.opacity = o; P.el.style.transform = `translateX(-50%) translateY(${(1 - ease(k)) * 60}px) scale(${lerp(.7, 1, back(k))})`; }
+  for (const B of BADGES) { const k = p(t, B.a, B.a + .45); const o = ease(k) * (1 - ease(p(t, B.b, B.b + .25))); B.el.style.opacity = o; B.el.style.transform = `scale(${lerp(.2, 1, back(k))}) rotate(${(1 - ease(k)) * -120}deg)`;
+    B.el.querySelector('.rg').style.transform = `scale(${1 + .35 * ((t - B.a) % 1.2)})`; B.el.querySelector('.rg').style.opacity = 1 - ((t - B.a) % 1.2) / 1.2;
+    const kl = p(t, B.a + .15, B.a + .5); B.lb.style.opacity = ease(kl) * (1 - ease(p(t, B.b, B.b + .25))); B.lb.style.letterSpacing = lerp(.5, .18, ease(kl)) + 'em'; }
+  for (const C of CHIPS) { const k = p(t, C.a, C.a + .4); let o = ease(k) * (1 - ease(p(t, C.b, C.b + .25))); let tx = 0, ty = (1 - ease(k)) * 40, rot = C.o.rot || 0;
+    if (C.o.float) { ty += Math.sin(t * 2 + C.a * 5) * 12; }
+    if (C.o.fly && t > 20.3) { const f = eio(p(t, 20.3, 20.7)); tx = (parseFloat(C.el.style.left) < 540 ? -1 : 1) * f * 800; rot += f * 30; }
+    C.el.style.opacity = o; C.el.style.transform = `translate(${tx}px,${ty}px) rotate(${rot}deg) scale(${lerp(.6, 1, back(k))})`; }
+  // marker
+  const M = $('mark') || (() => { const d = document.createElement('div'); d.id = 'mark'; $('layers').prepend(d); return d; })();
+  const mk2 = eio(p(t, MARK.a, MARK.a + .35)); M.style.cssText = `left:${MARK.x}px;top:${MARK.y}px;width:${MARK.w}px;opacity:${t > MARK.a && t < MARK.b + .25 ? 1 - ease(p(t, MARK.b, MARK.b + .25)) : 0};transform:scaleX(${mk2}) rotate(-1.5deg)`;
+  // logo (S6)
+  const LG = LOGO.el; { const k = p(t, LOGO.a, LOGO.a + .6); const toTop = eio(p(t, 22.45, 22.9)); const o = ease(k) * (1 - ease(p(t, 28.5, 28.8)));
+    LG.style.opacity = t < LOGO.a ? 0 : o; const y = lerp(620, 90, toTop), s = lerp(lerp(.3, 1, back(k)), .42, toTop);
+    LG.style.transform = `translate(-50%,${y}px) scale(${s}) rotate(${(1 - ease(k)) * -25}deg)`; LG.style.transformOrigin = '50% 0';
+    if (t > 22.9) LG.style.opacity = o * (t > 26.4 ? 1 - ease(p(t, 26.4, 26.6)) : 1); }
+  // phones
+  PH.forEach((P, i) => { const k = p(t, P.a, P.a + .55); const nxt = PH[i + 1]; const fin = eio(p(t, 26.6, 27.3));
+    let x = 540, sc = 1, rot = 0, o = ease(k), z = 1;
+    x += (1 - back(k)) * 900; rot = (1 - ease(k)) * 14;
+    if (nxt && t > nxt.a) { const d = eio(p(t, nxt.a, nxt.a + .5)); x -= d * 1000; rot -= d * 10; }
+    if (fin > 0) { const tx = [250, 830, 540][i], tr = [-9, 9, 0][i], ts = [.74, .74, .9][i]; x = lerp(x, tx, fin); rot = lerp(rot, tr, fin); sc = lerp(sc, ts, fin); o = Math.max(o, fin); }
+    o *= 1 - ease(p(t, 28.5, 28.8)); P.ph.style.opacity = t < P.a && fin === 0 ? 0 : o; P.ph.style.zIndex = i === 2 ? 3 : 2;
+    P.ph.style.transform = `translate(${x - 235}px,${lerp(560, 600, fin) + Math.sin(t * 1.5 + i) * 8}px) rotate(${rot}deg) scale(${sc})`;
+    const lk = p(t, P.a + .1, P.a + .45); const lo = ease(lk) * (nxt ? 1 - ease(p(t, nxt.a - .1, nxt.a + .15)) : 1 - ease(p(t, 26.4, 26.6)));
+    P.lb.style.opacity = lo; P.lb.style.transform = `translateY(${(1 - ease(lk)) * 40}px) scale(${lerp(.8, 1, back(lk))})`; });
+  // price
+  { const k = p(t, PRICE.a, PRICE.a + .5); const o = ease(k) * (1 - ease(p(t, PRICE.b, PRICE.b + .25))); const P = $('price') || (() => { const d = document.createElement('div'); d.id = 'price'; d.innerHTML = '<div class="num"><span class="cur">$</span><span id="pn">0</span></div><div class="per" id="pper">AL MES</div>'; L.appendChild(d); return d; })();
+    P.style.opacity = o; P.querySelector('.num').style.transform = `scale(${lerp(2.2, 1, back(k)) * (1 + .02 * Math.sin(t * 6))})`;
+    $('pn').textContent = Math.round(10 * ease(p(t, PRICE.a, PRICE.a + .45)));
+    const kp = p(t, PRICE.per, PRICE.per + .35); $('pper').style.opacity = ease(kp); $('pper').style.transform = `translateY(${(1 - ease(kp)) * 40}px)`;
+    const bu = $('burst'); bu.style.opacity = o * .9; bu.style.transform = `rotate(${t * 18}deg) scale(${lerp(.4, 1, ease(k))})`;
+    for (const c of CF) { const d = t - c.a; if (d < 0 || d > 1.6) { c.el.style.opacity = 0; continue; } const x = 540 + Math.cos(c.ang) * c.v * d, y = 980 + Math.sin(c.ang) * c.v * d + 900 * d * d; c.el.style.opacity = 1 - d / 1.6; c.el.style.transform = `translate(${x}px,${y}px) rotate(${c.r + d * 600}deg)`; } }
+  // brand screen
+  { const k = eio(p(t, BR.a, BR.a + .45)), ko = eio(p(t, BR.b, BR.b + .4)); const R = $('brand'); R.style.opacity = t > BR.a && t < BR.b + .4 ? 1 : 0;
+    const rad = t < BR.b ? k * 1500 : 1500 * (1 - ko); R.style.clipPath = `circle(${rad}px at 540px 960px)`; $('rays').style.transform = `rotate(${t * 10}deg)`;
+    const kk = p(t, 31.85, 32.45); LOGO2.style.opacity = ease(kk) * (1 - ease(p(t, BR.b - .1, BR.b + .2))); LOGO2.style.transform = `translate(-50%,${lerp(560, 520, ease(kk))}px) scale(${lerp(.4, 1, back(kk))})`;
+    $('wm').style.opacity = t > BR.a + .2 && t < BR.b + .2 ? 0 : 1; }
+  // comment box
+  { const k = p(t, CB.a, CB.a + .5); CB.el.style.opacity = ease(k); CB.el.style.transform = `translateY(${(1 - back(k)) * 300}px) scale(${lerp(.85, 1, ease(k))})`;
+    const n = Math.floor(TXT.length * p(t, CB.ty0, CB.ty1)); $('ctx').innerHTML = `<span class="${n ? '' : 'mu'}">${n ? TXT.slice(0, n) : ''}</span><i class="car" style="opacity:${t < CB.send && Math.floor(t * 3) % 2 === 0 ? 1 : 0}"></i>`;
+    const pr = t >= CB.send && t < CB.send + .25 ? 1 - Math.abs(t - CB.send - .12) / .12 : 0; $('csend').style.transform = `scale(${1 - .18 * cl(pr)})`;
+    $('cin').style.borderColor = t > CB.ty0 && t < CB.send ? '#2F6BFF' : '#E3E8F2';
+    for (const h of HE) { const d = t - h.a; if (d < 0 || d > 1.5) { h.el.style.opacity = 0; continue; } h.el.style.opacity = 1 - d / 1.5; h.el.style.transform = `translate(${h.x + h.dx * d + Math.sin(d * 6) * 20}px,${930 - 520 * d}px) scale(${lerp(.4, 1.1, ease(d * 3))})`; }
+    const ks = p(t, STA, STA + .3); STAMP.style.opacity = ks > 0 ? 1 : 0; STAMP.style.transform = `rotate(-10deg) scale(${lerp(2.6, 1, ease(ks))})`; }
+  $('progi').style.width = (t / DUR * 100) + '%';
+};
+render(0);
+</script></body></html>

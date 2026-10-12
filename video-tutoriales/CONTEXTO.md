@@ -4,6 +4,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
 **Primer paso en el chat nuevo:** "Leé `video-tutoriales/CONTEXTO.md` de la rama `claude/laughing-faraday-s3hexs` y seguimos".
 
 ## Reglas del dueño (respetar siempre)
+- **Anuncios en modo claro (o mixto), no oscuros.** El usuario lo pidió explícitamente: fondo claro, texto oscuro, acentos azul/violeta/verde; una sola escena de marca con degradado azul.
 - **Negocio360 no tiene "fiados"**: siempre decir **créditos**.
 - **No inventar funciones ni números.** Usar solo pantallas reales del sistema, con datos demo.
 - El usuario habla español de Nicaragua (voseo): "conocés", "tenés", "tocá".
@@ -21,6 +22,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
   - Reels
   - anuncio "Diego"
   - anuncio "Renata" (sin música, "DESDE $10 AL MES", CTA "COMENTÁ 'QUIERO VERLO'")
+  - anuncio **"3 pasos para mejorar tus ventas"** (39.16 s, **modo claro**, sin música, efectos fuertes): `ad3.html`, `rad3.js`, `sfx3.py`, piezas en `tools/ad3/` (recortes reales del Dashboard, Productos, Reportes y Ventas en móvil, sacados con `capad2.js`).
 - **Tutoriales 16:9**:
   - Dashboard (sin voz)
   - **Ventas**
