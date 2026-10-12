@@ -458,10 +458,16 @@ function getCicloAPagar(u, today) {
   if (!candidate) return null;
 
   if (u.fecha_ultimo_pago) {
+    // El "próximo pago" es el PRIMER ciclo que sigue sin cubrir: el que va
+    // justo después del último ciclo pagado. Antes se partía siempre del
+    // ciclo de hoy, así que un cliente que no paga desde agosto aparecía
+    // con octubre y se saltaba septiembre (y agosto) sin cobrar.
     const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
-    while (cicloIndexOf(u, pago) >= cicloIndexOf(u, candidate)) {
-      candidate = getNextCycleAfter(u, candidate);
-    }
+    const reg = new Date(u.created_at);
+    const cicloPagado = u.ciclo_facturacion === 'anual'
+      ? calcDueDateForYear(reg, pago.getFullYear())
+      : calcDueDateForMonth(reg, pago.getFullYear(), pago.getMonth());
+    candidate = getNextCycleAfter(u, cicloPagado);
   }
   return candidate;
 }
@@ -503,7 +509,7 @@ function getPaymentInfo(u, today) {
   // día del registro (esa fecha se repite cada ciclo en adelante). Antes se
   // ignoraba por completo el primer mes asumiendo "se pagó al registrarse",
   // pero el negocio cobra desde el inicio, así que ese descuento se quita.
-  const dueDate = getCurrentCycleDueDate(u, t);
+  let dueDate = getCurrentCycleDueDate(u, t);
   if (!dueDate) return null;
 
   // ¿Ya se marcó como pagado (o adelantado) el ciclo que corresponde a
@@ -516,6 +522,12 @@ function getPaymentInfo(u, today) {
       return null; // este ciclo (o uno posterior) ya está cubierto
     }
   }
+
+  // Si el cliente lleva más de un ciclo sin pagar, el vencimiento que cuenta
+  // es el del primer ciclo pendiente (no el de este mes), para que los días
+  // de atraso sean reales.
+  const primerPendiente = u.fecha_ultimo_pago ? getCicloAPagar(u, t) : null;
+  if (primerPendiente && primerPendiente < dueDate) dueDate = primerPendiente;
 
   const diffDays = Math.round((t - dueDate) / 86400000);
 
