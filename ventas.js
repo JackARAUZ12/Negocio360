@@ -6072,11 +6072,86 @@ function toggleUsarBTVR() {
   const usar = !!document.getElementById('vrc-usar-bt')?.checked;
   try { localStorage.setItem('n360_bt_activo', usar ? '1' : '0'); } catch (e) {}
   refrescarEstadoBT();
+  iniciarPildoraBT();
+}
+function btPreguntarLocal() { try { return localStorage.getItem('n360_bt_preguntar') === '1'; } catch (e) { return false; } }
+function toggleBTPreguntar() {
+  const v = !!document.getElementById('vrc-bt-preguntar')?.checked;
+  try { localStorage.setItem('n360_bt_preguntar', v ? '1' : '0'); } catch (e) {}
+}
+
+/* Indicador pequeño del estado de la impresora Bluetooth (solo si el Bluetooth está activo en este equipo).
+   Toque: reintenta conectar; si hace falta, abre la lista de impresoras. */
+function iniciarPildoraBT() {
+  let el = document.getElementById('n360-bt-pildora');
+  if (!btActivoLocal() || typeof escposBTEstado !== 'function') { if (el) el.style.display = 'none'; return; }
+  if (!el) {
+    el = document.createElement('button');
+    el.id = 'n360-bt-pildora'; el.type = 'button';
+    el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:900;border:1px solid var(--border,#ddd);background:var(--bg-card,#fff);color:var(--text,#111);border-radius:999px;padding:6px 12px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.15);cursor:pointer';
+    el.onclick = async () => {
+      if (escposBTEstado() === 'conectada') { showToast('🖨️ Impresora conectada'); return; }
+      el.textContent = '🟡 Conectando…';
+      let r = null; try { r = await reconectarBluetoothAutomatico(); } catch (e) {}
+      if (!r || !r.ok) r = await conectarImpresoraBluetooth();
+      showToast(r.ok ? '📱 Impresora conectada: ' + (r.nombre || '') : r.motivo, r.ok ? 'success' : 'error');
+      refrescarEstadoBT(); pintarPildoraBT();
+    };
+    document.body.appendChild(el);
+    window.addEventListener('n360-bt-estado', () => { pintarPildoraBT(); try { refrescarEstadoBT(); } catch (e) {} });
+  }
+  el.style.display = '';
+  pintarPildoraBT();
+}
+function pintarPildoraBT() {
+  const el = document.getElementById('n360-bt-pildora');
+  if (!el || typeof escposBTEstado !== 'function') return;
+  const e = escposBTEstado();
+  el.textContent = e === 'conectada' ? '🟢 Impresora lista' : e === 'reconectando' ? '🟡 Reconectando…' : '🔴 Impresora desconectada — toca';
+}
+
+/* Aviso rápido al imprimir cuando la impresora Bluetooth no está conectada.
+   Devuelve 'listo' (quedó conectada) o 'normal' (imprimir como siempre).
+   Los botones son un toque real del usuario, así que el navegador permite elegir impresora aquí. */
+function preguntarImpresoraBT(motivo) {
+  return new Promise(resolve => {
+    const fondo = document.createElement('div');
+    fondo.id = 'n360-bt-pregunta';
+    fondo.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+    fondo.innerHTML = `
+      <div style="background:var(--bg-card,#fff);color:var(--text,#111);border-radius:14px;padding:20px;max-width:380px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+        <div style="font-size:30px;text-align:center">🖨️</div>
+        <p style="font-weight:700;font-size:15px;text-align:center;margin:6px 0">${motivo === 'fallo' ? 'No se pudo imprimir' : 'Impresora Bluetooth sin conexión'}</p>
+        <p style="font-size:12.5px;color:var(--text-muted,#666);text-align:center;margin-bottom:14px">Enciende la impresora y conéctala para imprimir el ticket. La venta ya quedó guardada.</p>
+        <p id="n360-bt-pregunta-msg" style="font-size:12.5px;color:var(--danger,#dc2626);text-align:center;min-height:16px;margin-bottom:8px"></p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" class="btn-primary" id="n360-bt-p-conectar">🔌 Conectar impresora</button>
+          <button type="button" class="btn-secondary" id="n360-bt-p-reintentar">🔄 Reintentar</button>
+          <button type="button" class="btn-ghost" id="n360-bt-p-normal">Imprimir normal</button>
+        </div>
+      </div>`;
+    document.body.appendChild(fondo);
+    const msg = t => { const m = fondo.querySelector('#n360-bt-pregunta-msg'); if (m) m.textContent = t || ''; };
+    const cerrar = v => { fondo.remove(); try { refrescarEstadoBT(); pintarPildoraBT(); } catch (e) {} resolve(v); };
+    fondo.querySelector('#n360-bt-p-normal').onclick = () => cerrar('normal');
+    fondo.querySelector('#n360-bt-p-conectar').onclick = async () => {
+      msg('Elige tu impresora en la lista…');
+      const r = await conectarImpresoraBluetooth();
+      if (r.ok) cerrar('listo'); else msg(r.motivo);
+    };
+    fondo.querySelector('#n360-bt-p-reintentar').onclick = async () => {
+      msg('Reconectando…');
+      let r = null; try { r = await reconectarBluetoothAutomatico(); } catch (e) {}
+      if (r && r.ok) cerrar('listo'); else msg('No se pudo reconectar. Revisa que esté encendida y cerca, o usa "Conectar impresora".');
+    };
+  });
 }
 function refrescarEstadoBT() {
   const usar = !!document.getElementById('vrc-usar-bt')?.checked;
   const estado = document.getElementById('vrc-bt-estado');
   const bc = document.getElementById('vrc-btn-conectar-bt'), bp = document.getElementById('vrc-btn-probar-bt');
+  const wp = document.getElementById('vrc-wrap-bt-preguntar');
+  if (wp) wp.style.display = usar ? 'flex' : 'none';
   if (bc) bc.style.display = usar ? '' : 'none';
   if (bp) bp.style.display = usar && escposBTConectado() ? '' : 'none';
   if (bc) bc.textContent = escposBTConectado() ? 'Cambiar impresora' : 'Conectar impresora Bluetooth';
@@ -6097,6 +6172,8 @@ function refrescarEstadoBT() {
 function iniciarBloqueBT() {
   const cb = document.getElementById('vrc-usar-bt');
   if (cb) cb.checked = btActivoLocal();
+  const cp = document.getElementById('vrc-bt-preguntar');
+  if (cp) cp.checked = btPreguntarLocal();
   refrescarEstadoBT();
 }
 async function conectarImpresoraBTDesdeUI() {
@@ -7220,14 +7297,24 @@ async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
   }
 
   // Bluetooth directo (preferencia guardada en este teléfono/equipo)
-  if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof escposBTConectado === 'function' && !escposBTConectado()) {
-    // Última oportunidad silenciosa antes de caer a la impresión normal (máx. unos segundos)
-    try { await Promise.race([reconectarBluetoothAutomatico(), new Promise(r => setTimeout(r, 6000))]); } catch (e) {}
-  }
-  if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof escposBTConectado === 'function' && (escposBTConectado() || ESCPOS_BT_DEVICE)) {
-    const resultado = await imprimirReciboBluetooth({ ...construirDatosReciboDesdeVenta(cfg, venta, items), columnas: columnasTicketBT() });
-    if (resultado.ok) { cerrarVentanaPreabiertaSiNoHaceFalta(); return; }
-    console.warn('Impresión Bluetooth falló, probando la siguiente vía:', resultado.motivo);
+  if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof escposBTConectado === 'function') {
+    if (!escposBTConectado()) {
+      // Última oportunidad silenciosa antes de preguntar o caer a la impresión normal (máx. unos segundos)
+      try { await Promise.race([reconectarBluetoothAutomatico(), new Promise(r => setTimeout(r, 6000))]); } catch (e) {}
+    }
+    const preguntar = typeof btPreguntarLocal === 'function' && btPreguntarLocal();
+    let saltarBT = false;
+    // Con la opción "preguntar" activa y sin conexión: aviso rápido para conectar en un toque.
+    if (preguntar && !escposBTConectado()) {
+      if (await preguntarImpresoraBT('sin_conexion') === 'normal') saltarBT = true;
+    }
+    for (let intento = 0; !saltarBT && intento < 3 && (escposBTConectado() || ESCPOS_BT_DEVICE); intento++) {
+      const resultado = await imprimirReciboBluetooth({ ...construirDatosReciboDesdeVenta(cfg, venta, items), columnas: columnasTicketBT() });
+      if (resultado.ok) { cerrarVentanaPreabiertaSiNoHaceFalta(); return; }
+      console.warn('Impresión Bluetooth falló, probando la siguiente vía:', resultado.motivo);
+      if (!preguntar) break;
+      if (await preguntarImpresoraBT('fallo') === 'normal') break;
+    }
   }
 
   const usarUSB = document.getElementById('vrc-usar-usb')?.checked && escposConectado();
@@ -7742,6 +7829,7 @@ async function initVentas() {
     await loadEmpresaConfig(user.id);
     cargarImpuestosCatalogo().catch(()=>{});
     // Bluetooth: si el negocio lo tiene activo, intenta reconectar la impresora recordada (sin avisos si no se puede)
+    try { iniciarPildoraBT(); } catch (e) {}
     if (typeof btActivoLocal === 'function' && btActivoLocal() && typeof reconectarBluetoothAutomatico === 'function') {
       reconectarBluetoothAutomatico().then(r => {
         if (r && r.ok) { showToast('📱 Impresora reconectada: ' + (r.nombre || 'Bluetooth')); refrescarEstadoBT(); }

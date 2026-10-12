@@ -1424,6 +1424,10 @@
             <button type="button" class="btn-secondary btn-sm" id="vrc-btn-probar-bt" style="display:none" onclick="probarImpresoraBT()">Imprimir prueba</button>
             <button type="button" class="btn-ghost btn-sm" id="vrc-btn-desconectar-bt" style="display:none" onclick="desconectarBTDesdeUI()">Desconectar</button>
           </div>
+          <label id="vrc-wrap-bt-preguntar" style="display:none;align-items:flex-start;gap:8px;cursor:pointer;font-size:12.5px;margin-top:10px">
+            <input type="checkbox" id="vrc-bt-preguntar" onchange="toggleBTPreguntar()" style="margin-top:2px"/>
+            <span>Preguntar por la impresora antes de imprimir si no está conectada <span style="color:var(--text-muted)">(al cerrar la venta aparece un aviso para conectarla en un toque, reintentar o imprimir normal)</span></span>
+          </label>
         </div>
         <div class="form-group full-col">
           <label>Nombre del negocio en el ticket</label>
@@ -1945,10 +1949,10 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="escpos-usb.js?v=20261011a"></script>
-<script src="escpos-ble.js?v=20261011b"></script>
+<script src="escpos-ble.js?v=20261012a"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="ventas.js?v=20261012b"></script>
+<script src="ventas.js?v=20261012c"></script>
 <script src="ventas-correcciones.js?v=20261009a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>

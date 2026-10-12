@@ -18,6 +18,10 @@
 
 let ESCPOS_BT_DEVICE = null;
 let ESCPOS_BT_CHAR = null;
+let ESCPOS_BT_MANUAL = false;   // true = el usuario la desconectó a propósito
+let ESCPOS_BT_OCUPADO = false;  // true mientras se envía un ticket
+let ESCPOS_BT_RECONECTANDO = false;
+let ESCPOS_BT_KA = null;        // temporizador de mantener-viva
 
 // Servicios típicos de impresoras térmicas BLE (el navegador exige declararlos).
 const ESCPOS_BT_SERVICIOS = [
@@ -72,7 +76,9 @@ async function conectarImpresoraBluetooth() {
     }
     ESCPOS_BT_DEVICE = device;
     ESCPOS_BT_CHAR = caracteristica;
+    ESCPOS_BT_MANUAL = false;
     escposBTGuardarUltimo(device);
+    escposBTVigilar(device);
     return { ok: true, nombre: device.name || 'Impresora' };
   } catch (e) {
     console.error('conectarImpresoraBluetooth:', e);
@@ -84,36 +90,58 @@ async function conectarImpresoraBluetooth() {
 }
 
 function desconectarImpresoraBluetooth() {
+  ESCPOS_BT_MANUAL = true;       // desconexión a propósito: no reconectar sola
+  escposBTDetenerKeepAlive();
   try { if (ESCPOS_BT_DEVICE?.gatt?.connected) ESCPOS_BT_DEVICE.gatt.disconnect(); } catch (e) {}
   ESCPOS_BT_DEVICE = null;
   ESCPOS_BT_CHAR = null;
+  escposBTAvisar();
 }
 
 // Si la conexión se durmió, reintenta una vez sin pedir permiso de nuevo.
 async function escposBTReconectar() {
   if (!ESCPOS_BT_DEVICE) return false;
   if (escposBTConectado()) return true;
-  try {
-    const server = await ESCPOS_BT_DEVICE.gatt.connect();
-    ESCPOS_BT_CHAR = await escposBTBuscarCaracteristica(server);
-    return !!ESCPOS_BT_CHAR;
-  } catch (e) { return false; }
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      if (await escposBTAbrirCanal(ESCPOS_BT_DEVICE)) return true;
+    } catch (e) { /* reintenta */ }
+    await new Promise(r => setTimeout(r, 700));
+  }
+  return false;
 }
 
 async function enviarBytesImpresoraBT(bytes) {
   if (!(await escposBTReconectar())) return { ok: false, motivo: 'La impresora Bluetooth no está conectada.' };
+  ESCPOS_BT_OCUPADO = true;
   try {
-    const TAM = 100; // trozos chicos: los BLE aceptan pocos bytes por escritura
-    for (let i = 0; i < bytes.length; i += TAM) {
-      const trozo = bytes.slice(i, i + TAM);
-      if (ESCPOS_BT_CHAR.properties.writeWithoutResponse) await ESCPOS_BT_CHAR.writeValueWithoutResponse(trozo);
-      else await ESCPOS_BT_CHAR.writeValue(trozo);
-      await new Promise(r => setTimeout(r, 25));
+    // Si falla ANTES de que salga el primer trozo, se reconecta y se reenvía una vez
+    // (seguro: no se imprimió nada). Si falla a la mitad no se reenvía, para no duplicar el ticket.
+    for (let vuelta = 0; vuelta < 2; vuelta++) {
+      let enviados = 0;
+      try {
+        const TAM = 100; // trozos chicos: los BLE aceptan pocos bytes por escritura
+        for (let i = 0; i < bytes.length; i += TAM) {
+          const trozo = bytes.slice(i, i + TAM);
+          if (ESCPOS_BT_CHAR.properties.writeWithoutResponse) await ESCPOS_BT_CHAR.writeValueWithoutResponse(trozo);
+          else await ESCPOS_BT_CHAR.writeValue(trozo);
+          enviados++;
+          await new Promise(r => setTimeout(r, 25));
+        }
+        return { ok: true };
+      } catch (e) {
+        console.error('enviarBytesImpresoraBT:', e);
+        if (enviados > 0 || vuelta === 1) throw e;
+        try { ESCPOS_BT_DEVICE?.gatt?.disconnect(); } catch (e2) {}
+        if (!(await escposBTReconectar())) throw e;
+      }
     }
     return { ok: true };
   } catch (e) {
-    console.error('enviarBytesImpresoraBT:', e);
     return { ok: false, motivo: 'Error al enviar los datos a la impresora Bluetooth.' };
+  } finally {
+    ESCPOS_BT_OCUPADO = false;
+    if (!escposBTConectado() && !ESCPOS_BT_MANUAL && ESCPOS_BT_DEVICE) escposBTReconectarConEspera();
   }
 }
 
@@ -155,6 +183,8 @@ async function escposBTAbrirCanal(device) {
   if (!caracteristica) { try { device.gatt.disconnect(); } catch (e) {} return false; }
   ESCPOS_BT_DEVICE = device;
   ESCPOS_BT_CHAR = caracteristica;
+  ESCPOS_BT_MANUAL = false;
+  escposBTVigilar(device);
   return true;
 }
 
@@ -197,4 +227,66 @@ function reconectarBluetoothAutomatico() {
     }
   })();
   return ESCPOS_BT_AUTO_EN_CURSO;
+}
+
+
+/* =====================================================
+   MANTENER VIVA + RECONEXIÓN AUTOMÁTICA
+   Muchas impresoras BLE se duermen o sueltan la conexión tras unos
+   segundos sin recibir datos. Aquí:
+   - se envía cada ~12 s un comando vacío e inofensivo (ESC @) mientras
+     la impresora esté conectada y libre, para que no se duerma;
+   - si aun así se cae, se reintenta sola en silencio (1, 3, 6, 12 s)
+     sin pedir permisos (solo si no fue una desconexión a propósito).
+   Es solo para quien ya activó el Bluetooth y conectó una impresora.
+===================================================== */
+function escposBTEstado() {
+  if (escposBTConectado()) return 'conectada';
+  if (ESCPOS_BT_RECONECTANDO) return 'reconectando';
+  return 'desconectada';
+}
+function escposBTAvisar() {
+  try { window.dispatchEvent(new CustomEvent('n360-bt-estado', { detail: escposBTEstado() })); } catch (e) {}
+}
+function escposBTDetenerKeepAlive() {
+  if (ESCPOS_BT_KA) { clearInterval(ESCPOS_BT_KA); ESCPOS_BT_KA = null; }
+}
+function escposBTIniciarKeepAlive() {
+  escposBTDetenerKeepAlive();
+  ESCPOS_BT_KA = setInterval(async () => {
+    if (ESCPOS_BT_OCUPADO || !escposBTConectado()) return;
+    try {
+      const nop = new Uint8Array([0x1B, 0x40]); // ESC @ = inicializar (no imprime nada)
+      if (ESCPOS_BT_CHAR.properties.writeWithoutResponse) await ESCPOS_BT_CHAR.writeValueWithoutResponse(nop);
+      else await ESCPOS_BT_CHAR.writeValue(nop);
+    } catch (e) { /* si falla, el evento de desconexión se encarga */ }
+  }, 12000);
+}
+async function escposBTReconectarConEspera() {
+  if (ESCPOS_BT_RECONECTANDO || ESCPOS_BT_MANUAL || !ESCPOS_BT_DEVICE) return;
+  ESCPOS_BT_RECONECTANDO = true; escposBTAvisar();
+  try {
+    for (const espera of [1000, 3000, 6000, 12000]) {
+      await new Promise(r => setTimeout(r, espera));
+      if (ESCPOS_BT_MANUAL || !ESCPOS_BT_DEVICE) return;
+      if (escposBTConectado()) return;
+      try { if (await escposBTAbrirCanal(ESCPOS_BT_DEVICE)) return; } catch (e) { /* siguiente intento */ }
+    }
+  } finally {
+    ESCPOS_BT_RECONECTANDO = false; escposBTAvisar();
+  }
+}
+function escposBTVigilar(device) {
+  try {
+    if (!device._n360Vigilado) {
+      device._n360Vigilado = true;
+      device.addEventListener('gattserverdisconnected', () => {
+        escposBTDetenerKeepAlive();
+        escposBTAvisar();
+        if (!ESCPOS_BT_MANUAL && ESCPOS_BT_DEVICE === device && !ESCPOS_BT_OCUPADO) escposBTReconectarConEspera();
+      });
+    }
+  } catch (e) { /* sin eventos: queda el reintento al imprimir */ }
+  escposBTIniciarKeepAlive();
+  escposBTAvisar();
 }
