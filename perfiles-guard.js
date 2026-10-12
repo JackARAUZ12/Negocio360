@@ -837,6 +837,7 @@
           const { data: creado, error: errIns } = await PG.client.rpc('crear_perfil_grupo', {
             p_nombre: nombre, p_tipo: 'restringido', p_modulos: modulosSel,
           });
+          if (errIns && /limite_perfiles/.test(errIns.message || '')) { renderPaywallUsuarios(); return; }
           if (errIns) throw errIns;
           const nuevo = Array.isArray(creado) ? creado[0] : creado;
           if (!nuevo) throw new Error('No se pudo crear el usuario.');

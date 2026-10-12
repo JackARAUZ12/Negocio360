@@ -97,6 +97,17 @@
       { v: 'contrato', t: 'Contrato', ico: '📝' },
       { v: 'otro', t: 'Otro documento…', ico: '📄' },
     ],
+    orden: [
+      { v: 'carta_porte', t: 'Carta de porte', ico: '📜' },
+      { v: 'manifiesto', t: 'Manifiesto de carga', ico: '📋' },
+      { v: 'dua', t: 'Declaración aduanera (DUA)', ico: '🛂' },
+      { v: 'factura_comercial', t: 'Factura comercial', ico: '🧾' },
+      { v: 'certificado_origen', t: 'Certificado de origen', ico: '🏷️' },
+      { v: 'lista_empaque', t: 'Lista de empaque', ico: '📦' },
+      { v: 'poliza_carga', t: 'Póliza de seguro de carga', ico: '🛡️' },
+      { v: 'permiso_especial', t: 'Permiso sanitario / especial', ico: '✅' },
+      { v: 'otro', t: 'Otro documento…', ico: '📄' },
+    ],
   };
   TX.etiquetaDoc = (entidadTipo, tipo) => {
     const f = (TX.TIPOS_DOC[entidadTipo] || []).find(x => x.v === tipo);

@@ -166,6 +166,9 @@
     'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Convierte los viajes entregados en venta (contado o crédito) y da seguimiento al cobro.' },
 
+    'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Cruces de frontera, trámites aduaneros, carta de porte y documentos de cada orden.' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
