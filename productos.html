@@ -980,6 +980,24 @@
           <span class="form-error" id="errEscalas"></span>
         </div>
 
+        <!-- TIPO DE COSTO: fijo (actual) o escala (varios costos, p. ej. por proveedor) -->
+        <div class="form-group full" style="margin:4px 0 16px">
+          <label class="form-label">Tipo de costo</label>
+          <div class="type-toggle">
+            <button type="button" class="type-toggle-btn active" id="toggleCostoFijo" onclick="setTipoCosto('fijo')">Costo fijo</button>
+            <button type="button" class="type-toggle-btn" id="toggleCostoEscala" onclick="setTipoCosto('escala')">Escala de costos</button>
+          </div>
+          <input type="hidden" id="inputTipoCosto" value="fijo" />
+        </div>
+
+        <div class="form-group full" id="wrapEscalaCostos" style="display:none;margin-bottom:16px">
+          <label class="form-label">Costos de la escala</label>
+          <div id="escalasCostoEditorBody"></div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="agregarFilaEscalaCosto()" style="margin-top:8px">+ Agregar costo</button>
+          <div style="color:var(--text-muted);font-size:12px;margin-top:6px">El primer costo de la lista es el costo base del producto (el que usan los reportes y la ganancia). Al comprar podrás elegir cuál aplicar.</div>
+          <span class="form-error" id="errEscalasCosto"></span>
+        </div>
+
         <!-- PRESENTACIONES DE VENTA (solo si el negocio lo activó en Configuración) -->
         <div class="form-group full" id="wrapPresentaciones" style="display:none;margin-bottom:16px;padding:14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-table-alt)">
           <label class="form-label">Presentaciones de venta</label>
@@ -1529,7 +1547,7 @@
   });
 </script>
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="productos.js?v=20261009b"></script>
+<script src="productos.js?v=20261013a"></script>
 <script src="productos-importar.js?v=20261012a"></script>
 <script src="productos-traslados.js?v=20261012a"></script>
 

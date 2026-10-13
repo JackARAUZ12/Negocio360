@@ -57,7 +57,9 @@ const STATE = {
   filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
   proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
   escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
-  formEscalas:  [],       // filas en edición dentro del modal de producto (antes de guardar)
+  formEscalas:  [],
+  escalasCostoPorProducto: {}, // { producto_id: [{id,nombre,costo,orden}] } — solo productos tipo_costo='escala'
+  formEscalasCosto: [],   // filas de la escala de costos en edición       // filas en edición dentro del modal de producto (antes de guardar)
   busqueda:     '',
   comboBusqueda: '',
   comboOrden:    'reciente',
@@ -503,6 +505,78 @@ async function cargarEscalas() {
   } catch (e) {
     console.error('cargarEscalas:', e);
     // Falla silenciosa: no debe bloquear la carga normal de productos.
+  }
+}
+
+// ============================================================
+// ESCALA DE COSTOS (feature opcional por producto, igual que la de precios)
+// Un producto sigue con costo fijo por defecto. Con tipo_costo = 'escala' se
+// guardan varios costos con nombre (p. ej. por proveedor). El PRIMERO se copia
+// a productos.costo, así reportes, ganancia e inventario siguen leyendo el
+// mismo campo de siempre.
+// ============================================================
+async function cargarEscalasCosto() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('costos_escala').select('id,producto_id,nombre,costo,orden')
+      .eq('auth_user_id', STATE.user.id).order('orden');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(e => { (map[e.producto_id] = map[e.producto_id] || []).push(e); });
+    STATE.escalasCostoPorProducto = map;
+  } catch (e) { console.error('cargarEscalasCosto:', e); }
+}
+function setTipoCosto(tipo) {
+  if ($('inputTipoCosto')) $('inputTipoCosto').value = tipo;
+  $('toggleCostoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('toggleCostoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrap = $('wrapEscalaCostos'); if (wrap) wrap.style.display = tipo === 'escala' ? '' : 'none';
+  const inp = $('inputCosto');
+  if (inp) inp.readOnly = tipo === 'escala';
+  if (tipo === 'escala' && !STATE.formEscalasCosto.length) {
+    const actual = parseFloat($('inputCosto')?.value);
+    if (!isNaN(actual) && actual > 0) { STATE.formEscalasCosto.push({ nombre: 'Costo base', costo: actual }); renderEscalasCostoEditor(); }
+    else agregarFilaEscalaCosto();
+  }
+  if (tipo === 'escala') sincronizarCostoBaseDesdeEscala();
+}
+function sincronizarCostoBaseDesdeEscala() {
+  const inp = $('inputCosto'); if (!inp) return;
+  const f = STATE.formEscalasCosto[0];
+  const v = f ? parseFloat(f.costo) : NaN;
+  inp.value = isNaN(v) ? '' : v;
+  if (typeof actualizarMargenPreview === 'function') actualizarMargenPreview();
+}
+function renderEscalasCostoEditor() {
+  const cont = $('escalasCostoEditorBody'); if (!cont) return;
+  cont.innerHTML = STATE.formEscalasCosto.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Proveedor A"
+             value="${escHtml(fila.nombre || '')}" oninput="actualizarFilaEscalaCosto(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.costo ?? ''}" oninput="actualizarFilaEscalaCosto(${i}, 'costo', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar costo"
+              onclick="eliminarFilaEscalaCosto(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>`).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún costo.</p>';
+}
+function agregarFilaEscalaCosto() { STATE.formEscalasCosto.push({ nombre: '', costo: '' }); renderEscalasCostoEditor(); }
+function actualizarFilaEscalaCosto(i, campo, valor) {
+  if (!STATE.formEscalasCosto[i]) return;
+  STATE.formEscalasCosto[i][campo] = valor;
+  if (i === 0 && campo === 'costo') sincronizarCostoBaseDesdeEscala();
+}
+function eliminarFilaEscalaCosto(i) { STATE.formEscalasCosto.splice(i, 1); renderEscalasCostoEditor(); sincronizarCostoBaseDesdeEscala(); }
+async function sincronizarEscalasCosto(productoId, filas) {
+  const limpias = (filas || []).filter(f => (f.nombre || '').trim()).map((f, i) => ({
+    auth_user_id: STATE.user.id, producto_id: productoId, nombre: f.nombre.trim(),
+    costo: isNaN(parseFloat(f.costo)) ? 0 : parseFloat(f.costo), orden: i,
+  }));
+  const { error: errDel } = await supabaseClient.from('costos_escala').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('costos_escala').insert(limpias);
+    if (errIns) throw errIns;
   }
 }
 
@@ -3430,6 +3504,9 @@ function resetFormulario() {
   STATE.formEscalas = [];
   setTipoPrecio('fijo');
   renderEscalasEditor();
+  STATE.formEscalasCosto = [];
+  setTipoCosto('fijo');
+  renderEscalasCostoEditor();
   STATE.formPresentaciones = [];
   const inputUM = $('inputUnidadMedida');
   if (inputUM) inputUM.value = '';
@@ -3504,6 +3581,9 @@ function cargarFormulario(p) {
   STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
   setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
   renderEscalasEditor();
+  STATE.formEscalasCosto = (STATE.escalasCostoPorProducto[p.id] || []).map(e => ({ nombre: e.nombre, costo: e.costo }));
+  setTipoCosto(p.tipo_costo === 'escala' ? 'escala' : 'fijo');
+  renderEscalasCostoEditor();
 
   // Presentaciones de venta (si el negocio activó la función)
   const inputUMEdit = $('inputUnidadMedida');
@@ -3568,7 +3648,9 @@ async function guardarProducto() {
   const codBarras   = ($('inputCodBarras')?.value || '').trim();
   const costoRaw    = $('inputCosto')?.value;
   const precioRaw   = $('inputPrecio')?.value;
-  const costo       = costoRaw  !== '' ? parseFloat(costoRaw)  : 0;
+  const tipoCosto   = $('inputTipoCosto')?.value === 'escala' ? 'escala' : 'fijo';
+  const costoEscalaBase = tipoCosto === 'escala' ? parseFloat((STATE.formEscalasCosto[0] || {}).costo) : NaN;
+  const costo       = tipoCosto === 'escala' ? (isNaN(costoEscalaBase) ? 0 : costoEscalaBase) : (costoRaw !== '' ? parseFloat(costoRaw) : 0);
   const precio      = precioRaw !== '' ? parseFloat(precioRaw) : 0;
   const tipoPrecio  = $('inputTipoPrecio')?.value === 'escala' ? 'escala' : 'fijo';
   const activoVal   = $('inputActivo')?.value;
@@ -3585,6 +3667,23 @@ async function guardarProducto() {
   const msgCont = validarContenido(tipo);
   if (msgCont) { if (errCont) errCont.textContent = msgCont; return; }
 
+  const errEscalasCosto = $('errEscalasCosto');
+  if (errEscalasCosto) errEscalasCosto.textContent = '';
+  if (tipoCosto === 'escala') {
+    if (!STATE.formEscalasCosto.some(f => (f.nombre || '').trim())) {
+      if (errEscalasCosto) errEscalasCosto.textContent = 'Agrega al menos un costo en la escala';
+      return;
+    }
+    const filaIncompletaC = STATE.formEscalasCosto.findIndex(f => {
+      const tn = !!(f.nombre || '').trim();
+      const tc = f.costo !== '' && f.costo !== null && f.costo !== undefined && !isNaN(parseFloat(f.costo));
+      return tn !== tc;
+    });
+    if (filaIncompletaC !== -1) {
+      if (errEscalasCosto) errEscalasCosto.textContent = `Falta completar la fila #${filaIncompletaC + 1} de la escala de costos (nombre o costo) — complétala o bórrala antes de guardar`;
+      return;
+    }
+  }
   const errEscalas = $('errEscalas');
   if (errEscalas) errEscalas.textContent = '';
   if (tipoPrecio === 'escala') {
@@ -3691,6 +3790,7 @@ async function guardarProducto() {
         costo:         isNaN(costo)       ? 0 : costo,
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
+        tipo_costo:    tipoCosto,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
         ...leerUnidadParaGuardar(tipo, STATE.modalMode === 'editar' ? STATE.editTarget : null),
         requiere_numero_serie: $('inputRequiereSerie')?.checked === true,
@@ -3750,6 +3850,7 @@ async function guardarProducto() {
         costo:         isNaN(costo)  ? 0 : costo,
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
+        tipo_costo:    tipoCosto,
         unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
         ...leerUnidadParaGuardar(tipo, STATE.modalMode === 'editar' ? STATE.editTarget : null),
         requiere_numero_serie: $('inputRequiereSerieEdit')?.checked === true,
@@ -3852,6 +3953,18 @@ async function guardarProducto() {
       }
     }
 
+    // Escala de costos: mismo criterio — el producto ya quedó guardado, solo se avisa si falla.
+    if (productoIdGuardado) {
+      try {
+        if (tipoCosto === 'escala' || (STATE.escalasCostoPorProducto[productoIdGuardado] || []).length) {
+          await sincronizarEscalasCosto(productoIdGuardado, tipoCosto === 'escala' ? STATE.formEscalasCosto : []);
+        }
+      } catch (eEC) {
+        console.error('sincronizarEscalasCosto:', eEC);
+        showToast('warning', 'Producto guardado', 'No se pudieron guardar los costos de la escala, intenta editarlo de nuevo.');
+      }
+    }
+
     cerrarModalProducto();
     const detalleMensaje = tipoPrecio === 'escala'
       ? `${nombre} · ${STATE.formEscalas.filter(f => (f.nombre||'').trim()).length} precio(s) de escala guardados`
@@ -3873,6 +3986,7 @@ async function guardarProducto() {
     // de escalas todavía viejo (por eso aparecía "Sin precios configurados"
     // hasta editar y volver a guardar).
     await cargarEscalas();
+    await cargarEscalasCosto();
     await cargarProductos();
 
   } catch (e) {
@@ -4984,6 +5098,7 @@ async function init() {
   // tabla de inmediato usando STATE.escalasPorProducto, así que si se
   // cargara después, la tabla se pintaría con el mapa todavía vacío.
   await cargarEscalas();
+  await cargarEscalasCosto();
 
   // 3) Luego los productos, que ya usarán MONEDA_SIMBOLO y escalas correctas
   await cargarProductos();

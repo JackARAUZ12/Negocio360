@@ -245,9 +245,15 @@ async function onCambiarMetodoPagoCxP(prefijo) {
 async function loadProductosDisponibles() {
   try {
     const { data } = await sbClient.from('productos')
-      .select('id, nombre, sku, categoria, stock_actual, costo, activo')
+      .select('id, nombre, sku, categoria, stock_actual, costo, activo, tipo_costo')
       .eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true).order('nombre');
     STATE.productos = data || [];
+    STATE.escalasCosto = {};
+    try {
+      const { data: ec } = await sbClient.from('costos_escala').select('id, producto_id, nombre, costo, orden')
+        .eq('auth_user_id', STATE.userId).order('orden');
+      (ec || []).forEach(e => { (STATE.escalasCosto[e.producto_id] = STATE.escalasCosto[e.producto_id] || []).push(e); });
+    } catch (_) {}
   } catch (e) { console.warn('loadProductosDisponibles:', e); }
 }
 
@@ -429,13 +435,31 @@ function renderCarritoCxP() {
     <tr>
       <td style="font-weight:500">${esc(l.producto.nombre)}</td>
       <td><input type="number" class="carrito-input" value="${l.cantidad}" min="0.01" step="0.01" onchange="actualizarLineaCarritoCxP(${idx},'cantidad',this.value)" style="width:70px"/></td>
-      <td><input type="number" class="carrito-input" value="${l.precioUnitario}" min="0" step="0.01" onchange="actualizarLineaCarritoCxP(${idx},'precioUnitario',this.value)" style="width:90px"/></td>
+      <td>${selectorEscalaCostoCxP(l, idx)}<input type="number" class="carrito-input" value="${l.precioUnitario}" min="0" step="0.01" onchange="actualizarLineaCarritoCxP(${idx},'precioUnitario',this.value)" style="width:90px"/></td>
       <td><input type="number" class="carrito-input" value="${l.descuento}" min="0" step="0.01" onchange="actualizarLineaCarritoCxP(${idx},'descuento',this.value)" style="width:80px"/></td>
       <td class="td-right" style="font-size:12px;color:var(--text-muted)">${l.ivaPorc>0?l.ivaPorc+'%':'—'}</td>
       <td class="td-right td-money">${fmt(l.subtotal)}</td>
       <td><button class="btn-icon btn-icon-danger" onclick="eliminarLineaCarritoCxP(${idx})" title="Eliminar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
     </tr>`).join('');
   actualizarResumenCxP();
+}
+// Escala de costos (opcional por producto): atajo para llenar el costo; sigue editable a mano.
+function selectorEscalaCostoCxP(linea, idx) {
+  const p = linea.producto;
+  const escalas = (p && p.tipo_costo === 'escala' && STATE.escalasCosto && STATE.escalasCosto[p.id]) || [];
+  if (!escalas.length) return '';
+  const actual = escalas.find(e => Math.abs(Number(e.costo) - Number(linea.precioUnitario)) < 0.0001);
+  return `<select onchange="elegirCostoEscalaCxP(${idx}, this.value)" title="Escala de costos" style="width:100%;margin-bottom:4px;font-size:11.5px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface,#fff);color:inherit">
+    ${escalas.map(e => `<option value="${e.id}" ${actual && actual.id === e.id ? 'selected' : ''}>${esc(e.nombre)} — ${fmt(e.costo)}</option>`).join('')}
+    ${actual ? '' : '<option value="" selected>Otro costo (escrito a mano)</option>'}
+  </select>`;
+}
+function elegirCostoEscalaCxP(idx, escalaId) {
+  const l = STATE.carrito[idx]; if (!l || !escalaId) return;
+  const e = ((STATE.escalasCosto || {})[l.producto.id] || []).find(x => x.id === escalaId); if (!e) return;
+  l.precioUnitario = Number(e.costo);
+  recalcularLineaCxP(l);
+  renderCarritoCxP();
 }
 function actualizarLineaCarritoCxP(idx, campo, valor) {
   const l = STATE.carrito[idx]; if (!l) return;
@@ -1059,7 +1083,8 @@ async function guardarNuevaCuentaCxP() {
       const costoAntes = Number(l.producto.costo||0);
       const cantidadComprada = Number(l.cantidad);
       const stockDespues = stockAntes + cantidadComprada;
-      const nuevoCosto = stockDespues > 0
+      const nuevoCosto = l.producto.tipo_costo === 'escala' ? costoAntes // escala de costos: el costo base lo define la escala del producto
+        : stockDespues > 0
         ? round2((stockAntes*costoAntes + cantidadComprada*l.precioUnitario) / stockDespues)
         : l.precioUnitario;
 

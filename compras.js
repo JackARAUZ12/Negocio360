@@ -353,6 +353,13 @@ async function loadProductosDisponibles() {
       .eq('activo', true)
       .order('nombre');
     STATE.productos = data || [];
+    // Escala de costos (opcional por producto): si falla, todo sigue con costo fijo.
+    STATE.escalasCosto = {};
+    try {
+      const { data: ec } = await sbClient.from('costos_escala').select('id, producto_id, nombre, costo, orden')
+        .eq('auth_user_id', STATE.userId).order('orden');
+      (ec || []).forEach(e => { (STATE.escalasCosto[e.producto_id] = STATE.escalasCosto[e.producto_id] || []).push(e); });
+    } catch (_) {}
     try { await window.N360Unidades?.cargarPersonalizadas(sbClient, STATE.userId); } catch (_) {}
   } catch(e) { console.warn('loadProductosDisponibles:', e); }
 }
@@ -1341,6 +1348,31 @@ function cambiarUnidadLineaCompra(idx, modo) {
   actualizarResumen();
 }
 
+// Escala de costos: si el producto tiene varios costos guardados, se elige cuál aplica
+// a esta línea. Es solo un atajo para llenar el costo (que sigue editable a mano).
+function escalasCostoDe(producto) {
+  if (!producto || producto.tipo_costo !== 'escala') return [];
+  return (STATE.escalasCosto && STATE.escalasCosto[producto.id]) || [];
+}
+function selectorEscalaCostoCompra(linea, idx) {
+  const escalas = escalasCostoDe(linea.producto);
+  if (!escalas.length) return '';
+  const f = factorLinea(linea);
+  const actual = escalas.find(e => Math.abs(Math.round(Number(e.costo) * f * 10000) / 10000 - Number(linea.costoUnitario)) < 0.0001);
+  return `<select onchange="elegirCostoEscalaCompra(${idx}, this.value)" title="Escala de costos" style="width:100%;margin-bottom:4px;font-size:11.5px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface,#fff);color:inherit">
+    ${escalas.map(e => `<option value="${e.id}" ${actual && actual.id === e.id ? 'selected' : ''}>${escHtml(e.nombre)} — ${fmt(e.costo)}</option>`).join('')}
+    ${actual ? '' : '<option value="" selected>Otro costo (escrito a mano)</option>'}
+  </select>`;
+}
+function elegirCostoEscalaCompra(idx, escalaId) {
+  const linea = STATE.carrito[idx]; if (!linea || !escalaId) return;
+  const e = escalasCostoDe(linea.producto).find(x => x.id === escalaId); if (!e) return;
+  linea.costoUnitario = Math.round(Number(e.costo) * factorLinea(linea) * 10000) / 10000;
+  recalcularLinea(linea);
+  renderCarrito();
+  actualizarResumen();
+}
+
 function agregarProductoAlCarrito(productoId) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
@@ -1424,6 +1456,7 @@ function renderCarrito() {
         ${factorLinea(linea) > 1 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Entran ${fmtNum(linea.cantidad * factorLinea(linea))} ${escHtml(abrevU(linea.producto.unidad_codigo) || 'u')} al inventario</div>` : ''}
       </td>
       <td>
+        ${selectorEscalaCostoCompra(linea, idx)}
         <div style="display:flex;align-items:center;gap:4px">
           <input type="text" inputmode="decimal" class="carrito-input" value="${linea.costoUnitario}"
             min="0"
@@ -2042,7 +2075,7 @@ async function guardarCompra() {
       // nuevo = (stock_antes × costo_actual + cantidad × costo_compra) / stock_después
       // Si no había stock (o era negativo), el costo pasa a ser el de esta compra.
       let cpCostoAntes = null, cpCostoNuevo = null;
-      if (STATE.empresaConfig?.costo_promedio_activo === true && !linea.esRegalia && Number(costoInv) > 0) {
+      if (STATE.empresaConfig?.costo_promedio_activo === true && linea.producto.tipo_costo !== 'escala' && !linea.esRegalia && Number(costoInv) > 0) {
         try {
           const { data: pc } = await sbClient.from('productos').select('costo').eq('id', linea.producto.id).eq('auth_user_id', STATE.userId).maybeSingle();
           if (pc) {
