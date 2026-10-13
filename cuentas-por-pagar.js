@@ -343,13 +343,18 @@ function buscarProductoCxP() {
       <span class="sri-costo">${fmt(p.costo)}</span>
     </div>`).join('');
 }
-function agregarProductoAlCarritoCxP(productoId) {
+function agregarProductoAlCarritoCxP(productoId, escalaElegida) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
+  const _escalasP = (p.tipo_costo === 'escala' && STATE.escalasCosto && STATE.escalasCosto[p.id]) || [];
+  if (!escalaElegida && _escalasP.length && !STATE.carrito.find(l => l.producto.id === productoId)) {
+    abrirSelectorEscalaCostoCxP(productoId);
+    return;
+  }
   const existente = STATE.carrito.find(l => l.producto.id === productoId);
   if (existente) { existente.cantidad++; recalcularLineaCxP(existente); }
   else {
-    const linea = { producto: p, cantidad: 1, precioUnitario: Number(p.costo||0), descuento: 0, ivaPorc: STATE.ivaActivo?STATE.ivaPorcentaje:0 };
+    const linea = { producto: p, cantidad: 1, precioUnitario: Number(escalaElegida ? escalaElegida.costo : (p.costo||0)), descuento: 0, ivaPorc: STATE.ivaActivo?STATE.ivaPorcentaje:0 };
     recalcularLineaCxP(linea);
     STATE.carrito.push(linea);
   }
@@ -454,6 +459,34 @@ function selectorEscalaCostoCxP(linea, idx) {
     ${actual ? '' : '<option value="" selected>Otro costo (escrito a mano)</option>'}
   </select>`;
 }
+let _escalaCostoPendienteCxP = null;
+function abrirSelectorEscalaCostoCxP(productoId) {
+  const prod = STATE.productos.find(p => p.id === productoId);
+  const escalas = (prod && prod.tipo_costo === 'escala' && STATE.escalasCosto && STATE.escalasCosto[prod.id]) || [];
+  if (!prod || !escalas.length) return;
+  _escalaCostoPendienteCxP = productoId;
+  document.getElementById('esc-costo-title').textContent = prod.nombre;
+  document.getElementById('esc-costo-lista').innerHTML = escalas.map((e, i) => `
+    <label class="esc-costo-opcion">
+      <input type="radio" name="esc-costo-radio" value="${e.id}" ${i === 0 ? 'checked' : ''} />
+      <span class="esc-costo-nombre">${esc(e.nombre)}</span>
+      <span class="esc-costo-valor">${fmt(e.costo)}</span>
+    </label>`).join('');
+  openModal('modal-escala-costo');
+}
+function confirmarSeleccionEscalaCosto() {
+  const id = _escalaCostoPendienteCxP; if (!id) return;
+  const radio = document.querySelector('input[name="esc-costo-radio"]:checked');
+  if (!radio) return;
+  const prod = STATE.productos.find(p => p.id === id);
+  const e = (((STATE.escalasCosto || {})[id]) || []).find(x => x.id === radio.value);
+  if (!prod || !e) return;
+  closeModal('modal-escala-costo');
+  _escalaCostoPendienteCxP = null;
+  agregarProductoAlCarritoCxP(id, e);
+}
+function cerrarSelectorEscalaCosto() { closeModal('modal-escala-costo'); _escalaCostoPendienteCxP = null; }
+
 function elegirCostoEscalaCxP(idx, escalaId) {
   const l = STATE.carrito[idx]; if (!l || !escalaId) return;
   const e = ((STATE.escalasCosto || {})[l.producto.id] || []).find(x => x.id === escalaId); if (!e) return;

@@ -1364,6 +1364,34 @@ function selectorEscalaCostoCompra(linea, idx) {
     ${actual ? '' : '<option value="" selected>Otro costo (escrito a mano)</option>'}
   </select>`;
 }
+let _escalaCostoPendiente = null;
+function abrirSelectorEscalaCosto(productoId) {
+  const prod = STATE.productos.find(p => p.id === productoId);
+  const escalas = prod ? escalasCostoDe(prod) : [];
+  if (!prod || !escalas.length) return;
+  _escalaCostoPendiente = productoId;
+  document.getElementById('esc-costo-title').textContent = prod.nombre;
+  document.getElementById('esc-costo-lista').innerHTML = escalas.map((e, i) => `
+    <label class="esc-costo-opcion">
+      <input type="radio" name="esc-costo-radio" value="${e.id}" ${i === 0 ? 'checked' : ''} />
+      <span class="esc-costo-nombre">${escHtml(e.nombre)}</span>
+      <span class="esc-costo-valor">${fmt(e.costo)}</span>
+    </label>`).join('');
+  openModal('modal-escala-costo');
+}
+function confirmarSeleccionEscalaCosto() {
+  const id = _escalaCostoPendiente; if (!id) return;
+  const radio = document.querySelector('input[name="esc-costo-radio"]:checked');
+  if (!radio) { showToast('Selecciona un costo', 'error'); return; }
+  const prod = STATE.productos.find(p => p.id === id);
+  const e = prod && escalasCostoDe(prod).find(x => x.id === radio.value);
+  if (!e) return;
+  closeModal('modal-escala-costo');
+  _escalaCostoPendiente = null;
+  agregarProductoAlCarrito(id, e);
+}
+function cerrarSelectorEscalaCosto() { closeModal('modal-escala-costo'); _escalaCostoPendiente = null; }
+
 function elegirCostoEscalaCompra(idx, escalaId) {
   const linea = STATE.carrito[idx]; if (!linea || !escalaId) return;
   const e = escalasCostoDe(linea.producto).find(x => x.id === escalaId); if (!e) return;
@@ -1373,9 +1401,16 @@ function elegirCostoEscalaCompra(idx, escalaId) {
   actualizarResumen();
 }
 
-function agregarProductoAlCarrito(productoId) {
+function agregarProductoAlCarrito(productoId, escalaElegida) {
   const p = STATE.productos.find(x => x.id === productoId);
   if (!p) return;
+
+  // Escala de costos: igual que la escala de precios en Ventas, al elegir un producto NUEVO
+  // en el carrito se abre una ventana para elegir con qué costo se compra.
+  if (!escalaElegida && escalasCostoDe(p).length && !STATE.carrito.find(l => l.producto.id === productoId)) {
+    abrirSelectorEscalaCosto(productoId);
+    return;
+  }
 
   // Si ya está en el carrito, aumentar cantidad
   const existente = STATE.carrito.find(l => l.producto.id === productoId);
@@ -1388,8 +1423,8 @@ function agregarProductoAlCarrito(productoId) {
       cantidad:       1,
       factorActivo:   productoTieneUnidadCompra(p) ? Number(p.factor_compra) : 1,
       costoUnitario:  productoTieneUnidadCompra(p)
-        ? Math.round(Number(p.costo || 0) * Number(p.factor_compra) * 10000) / 10000
-        : Number(p.costo || 0),
+        ? Math.round(Number(escalaElegida ? escalaElegida.costo : (p.costo || 0)) * Number(p.factor_compra) * 10000) / 10000
+        : Number(escalaElegida ? escalaElegida.costo : (p.costo || 0)),
       descuento:      0,
       ivaPorc:        STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
       numeroLote:     '',

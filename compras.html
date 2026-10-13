@@ -2343,7 +2343,7 @@
 <!-- SCRIPT -->
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="aviso-efectivo.js?v=20261013a"></script>
-<script src="compras.js?v=20261013d"></script>
+<script src="compras.js?v=20261013e"></script>
 <script>
   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
   const _nc7Sync = setInterval(() => {
@@ -2422,5 +2422,32 @@
   </div>
 </div>
 
+<style>
+/* SELECTOR DE ESCALA DE COSTOS (igual que el de escala de precios en Ventas) */
+.esc-costo-opcion{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md,10px);margin-bottom:8px;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.esc-costo-opcion:hover{border-color:var(--accent)}
+.esc-costo-opcion input[type="radio"]{accent-color:var(--accent);width:16px;height:16px}
+.esc-costo-opcion:has(input:checked){border-color:var(--accent);background:var(--accent-soft, rgba(90,90,244,.06))}
+.esc-costo-nombre{flex:1;font-size:13.5px;font-weight:600}
+.esc-costo-valor{font-family:var(--font-mono,monospace);font-weight:700;color:var(--accent)}
+</style>
+<div class="modal-overlay" id="modal-escala-costo" style="z-index:3000" onclick="if(event.target===this)cerrarSelectorEscalaCosto()">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">Seleccionar costo</span>
+        <div class="modal-subtitle" id="esc-costo-title">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorEscalaCosto()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="esc-costo-lista" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorEscalaCosto()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionEscalaCosto()">Aceptar</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
