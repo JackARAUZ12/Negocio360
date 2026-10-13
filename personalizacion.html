@@ -650,6 +650,7 @@ textarea { resize:vertical; min-height:88px }
     <div class="logo">Negocio<span style="opacity:.45">360</span></div>
     <div class="header-right">
       <div class="header-badge">Configuración inicial</div>
+      <button type="button" class="header-badge" id="btnSalirPersonalizacion" onclick="salirDePersonalizacion()" style="cursor:pointer;font:inherit" title="Cerrar sesión y volver al inicio de sesión">Cerrar sesión</button>
       <!-- Botón toggle de tema -->
       <div class="theme-toggle" id="themeToggleBtn" title="Cambiar tema" onclick="toggleGlobalTheme()">🌙</div>
     </div>
@@ -1180,6 +1181,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.location.href = 'dashboard.html';
     return;
   }
+
+  // 4b-bis. Sucursales y bodegas NACEN ya configuradas (no pasan por este asistente). Si por algún motivo su
+  // configuración quedó sin guardar (la Central no puede escribir en la cuenta de otro usuario), la cuenta
+  // quedaba atrapada aquí. Se completa sola, SOLO si esta cuenta figura realmente como sucursal/bodega,
+  // y solo escribiendo en su propia fila (lo único que permite la seguridad de la base).
+  try {
+    const { data: filaSuc } = await db.from('sucursales')
+      .select('id, nombre, tipo').eq('auth_user_id_sucursal', currentUser.id).eq('es_central', false).maybeSingle();
+    if (filaSuc) {
+      const { error: e1 } = await db.from('configuracion_empresa').upsert({
+        auth_user_id: currentUser.id, nombre_comercial: filaSuc.nombre, onboarding_completado: true, onboarding_step: 5,
+      }, { onConflict: 'auth_user_id' });
+      const { error: e2 } = await db.from('usuarios').update({ onboarding_completado: true }).eq('auth_user_id', currentUser.id);
+      if (!e1 && !e2) { window.location.href = filaSuc.tipo === 'bodega' ? 'bodega.html' : 'dashboard.html'; return; }
+      console.warn('No se pudo completar la configuración de la sucursal:', e1 || e2);
+    }
+  } catch (eSuc) { console.warn('Revisión de sucursal omitida:', eSuc); }
 
   // 4c. Si hay progreso previo, restaurar paso
   if (existing?.onboarding_step && existing.onboarding_step > 1) {
@@ -1965,6 +1983,13 @@ function hideSaving() {
    17. TOAST DE NOTIFICACIONES
    ════════════════════════════════════════════════════════════ */
 let toastTimer = null;
+
+/* Salida de emergencia: cerrar sesión desde el asistente (antes no había forma de salir). */
+async function salirDePersonalizacion() {
+  try { await db.auth.signOut(); } catch (e) { console.warn('signOut:', e); }
+  try { sessionStorage.removeItem('n360_perfil_activo'); sessionStorage.removeItem('n360_config'); } catch (_) {}
+  window.location.href = 'login.html';
+}
 
 function showToast(msg, type = 'success') {
   const t    = document.getElementById('toast');
