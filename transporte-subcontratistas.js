@@ -23,6 +23,7 @@ async function cargarTodo() {
     TX.paginar(() => sb.from('transporte_ordenes').select('*').eq('auth_user_id', TX.userId).order('created_at', { ascending: false })),
   ]);
   SC.subs = subs; SC.viajes = viajes; SC.ordenes = ordenes;
+  SC.comp = await TX.cargarComprobantes();
   try { const { data } = await sb.from('metodos_pago').select('*').eq('auth_user_id', TX.userId).eq('activo', true).order('orden'); SC.metodos = data || []; } catch (_) { SC.metodos = []; }
   try { const { data } = await sb.from('bancos').select('id,nombre').eq('auth_user_id', TX.userId).eq('activo', true).order('nombre'); SC.bancos = data || []; } catch (_) { SC.bancos = []; }
   const ids = SC.viajes.map(v => v.cuenta_pagar_id).filter(Boolean);
@@ -67,7 +68,7 @@ function renderVista() {
       return `<div class="tx-doc" ${anul ? 'style="opacity:.55"' : ''}><div class="tx-doc-info"><b>🚚 ${esc(o?.numero || 'Orden')} · ${esc(v.subcontratista_nombre || subDe(v.subcontratista_id)?.nombre || '—')} · ${esc(money(v.monto))}${anul ? ' (anulada)' : ''}</b>
         <small>${esc(o ? `${o.origen || '—'} → ${o.destino || '—'}` : '')} · ${esc(TX.fmtFecha(v.fecha))} · ${esc(pago)}${Number(v.retencion_ir_monto) > 0 ? ' · retención IR ' + esc(money(v.retencion_ir_monto)) : ''}</small>
         ${[unidadTxt(v.placa, v.tipo_unidad, 'Cabezal'), unidadTxt(v.placa_furgon, v.tipo_furgon, 'Furgón'), v.conductor_nombre && 'Conductor: ' + v.conductor_nombre].filter(Boolean).length ? `<small>🚛 ${[unidadTxt(v.placa, v.tipo_unidad, 'Cabezal'), unidadTxt(v.placa_furgon, v.tipo_furgon, 'Furgón'), v.conductor_nombre && 'Conductor: ' + v.conductor_nombre].filter(Boolean).map(esc).join(' · ')}</small>` : ''}
-        ${o ? `<small>Flete cobrado ${esc(money(o.total))} → margen ${esc(money(r2(Number(o.total || 0) - Number(v.monto))))}</small>` : ''}</div>
+        ${o ? `<small>Flete cobrado ${esc(money(o.total))} → margen ${esc(money(r2(Number(o.total || 0) - Number(v.monto))))}</small>` : ''}${TX.htmlComprobantes('subcontratacion', v.id, SC.comp)}</div>
         <div class="tx-fila-chips">${o ? `<a class="tx-btn tx-btn-sm" href="transporte-ordenes.html?orden=${esc(o.id)}">Ver orden</a>` : ''}${anul ? '' : `<button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-sc-anular="${esc(v.id)}">Anular</button>`}</div></div>`;
     }).join('') : '<div class="tx-vacio">Todavía no has subcontratado ningún viaje.</div>');
 }
@@ -271,6 +272,7 @@ async function anularViaje(id) {
 
 /* ---------------- Eventos ---------------- */
 function enlazar() {
+  TX.alCambiarComprobantes = async () => { SC.comp = await TX.cargarComprobantes(); renderVista(); };
   $('ss-guardar').addEventListener('click', guardarSub);
   $('sv-guardar').addEventListener('click', guardarViaje);
   $('sv-sub').addEventListener('change', cambiaSub);

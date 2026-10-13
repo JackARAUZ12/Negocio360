@@ -53,6 +53,7 @@ async function cargarCostos() {
   try { OT.liqOrd = await TX.paginar(() => sb.from('transporte_liquidacion_ordenes').select('*').eq('auth_user_id', TX.userId)); } catch (_) { OT.liqOrd = []; }
   // Fletes subcontratados (transportistas externos, no anulados): también son costo del viaje
   try { OT.subOrd = await TX.paginar(() => sb.from('transporte_subcontrataciones').select('*').eq('auth_user_id', TX.userId).eq('estado', 'activa')); } catch (_) { OT.subOrd = []; }
+  OT.comp = await TX.cargarComprobantes();
 }
 async function cargarTodo() {
   const [, , rutas, tarifas, unidades, conductores, docsU, docsC] = await Promise.all([
@@ -293,11 +294,11 @@ function tabCostos(o) {
   const porCat = {}; cs.forEach(c => { porCat[c.categoria] = (porCat[c.categoria] || 0) + Number(c.monto); });
   return `${puede ? `<button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-costo-nuevo="${esc(o.id)}">＋ Agregar costo</button>` : ''}
     <div style="margin-top:12px">${cs.length ? cs.map(c => { const k = CAT_COSTO[c.categoria] || CAT_COSTO.otro; return `<div class="tx-doc"><div class="tx-doc-info"><b>${k.ico} ${esc(k.t)} · ${esc(money(c.monto))}</b>
-        <small>${esc(fmtFecha(c.fecha))}${c.descripcion ? ' · ' + esc(c.descripcion) : ''}${c.gasto_id ? ' · 💸 Registrado en Gastos y Caja' : ''}${c.liquidacion_id ? ' · 🔒 Descontado en liquidación' : ''}</small></div>
+        <small>${esc(fmtFecha(c.fecha))}${c.descripcion ? ' · ' + esc(c.descripcion) : ''}${c.gasto_id ? ' · 💸 Registrado en Gastos y Caja' : ''}${c.liquidacion_id ? ' · 🔒 Descontado en liquidación' : ''}</small>${TX.htmlComprobantes('costo', c.id, OT.comp)}</div>
         <div class="tx-doc-acc">${(c.gasto_id || c.liquidacion_id) ? '' : `<button type="button" class="tx-btn tx-btn-sm" data-ot-costo-editar="${esc(c.id)}">✏️</button>`}<button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-costo-borrar="${esc(c.id)}">🗑</button></div></div>`; }).join('')
       : '<div class="tx-vacio" style="padding:24px 12px"><div class="tx-vacio-i">🧾</div><b>Sin costos todavía</b><p>Anota combustible, peajes, viáticos y todo lo que cuesta este viaje para conocer tu utilidad real.</p></div>'}</div>
-    ${lq.length ? `<div class="tx-sec">Pago a conductores</div>${lq.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Liquidación · ${esc(money(x.costo_neto))}</b><small>Pago ${esc(money(x.bruto))}${Number(x.anticipo) ? ' − anticipo ' + esc(money(x.anticipo)) + ' (ya está arriba)' : ''} · se administra en Liquidación de conductores</small></div></div>`).join('')}` : ''}
-    ${sc.length ? `<div class="tx-sec">Transportista externo</div>${sc.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>🤝 ${esc(x.subcontratista_nombre || 'Subcontratista')} · ${esc(money(x.monto))}</b><small>${x.forma_pago === 'contado' ? 'Pagado de contado desde Caja' : 'A crédito en Cuentas por Pagar'} · se administra en Subcontratistas</small></div></div>`).join('')}` : ''}
+    ${lq.length ? `<div class="tx-sec">Pago a conductores</div>${lq.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Liquidación · ${esc(money(x.costo_neto))}</b><small>Pago ${esc(money(x.bruto))}${Number(x.anticipo) ? ' − anticipo ' + esc(money(x.anticipo)) + ' (ya está arriba)' : ''} · se administra en Liquidación de conductores</small>${x.liquidacion_id ? TX.htmlComprobantes('liquidacion', x.liquidacion_id, OT.comp) : ''}</div></div>`).join('')}` : ''}
+    ${sc.length ? `<div class="tx-sec">Transportista externo</div>${sc.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>🤝 ${esc(x.subcontratista_nombre || 'Subcontratista')} · ${esc(money(x.monto))}</b><small>${x.forma_pago === 'contado' ? 'Pagado de contado desde Caja' : 'A crédito en Cuentas por Pagar'} · se administra en Subcontratistas</small>${TX.htmlComprobantes('subcontratacion', x.id, OT.comp)}</div></div>`).join('')}` : ''}
     ${(cs.length || lq.length || sc.length) ? `<div class="tx-sec">Resumen</div>${Object.entries(porCat).map(([k, v]) => `<div class="tx-doc"><div class="tx-doc-info"><b>${(CAT_COSTO[k] || CAT_COSTO.otro).ico} ${esc((CAT_COSTO[k] || CAT_COSTO.otro).t)}</b></div><b>${esc(money(v))}</b></div>`).join('')}
       ${lq.length ? `<div class="tx-doc"><div class="tx-doc-info"><b>👤 Pago a conductores</b></div><b>${esc(money(r2(lq.reduce((s, x) => s + Number(x.costo_neto || 0), 0))))}</b></div>` : ''}
       ${sc.length ? `<div class="tx-doc"><div class="tx-doc-info"><b>🤝 Transportista externo</b></div><b>${esc(money(r2(sc.reduce((s, x) => s + Number(x.monto || 0), 0))))}</b></div>` : ''}
@@ -608,6 +609,7 @@ async function borrarCosto(id) {
   try {
     if (c.gasto_id) await anularGasto(c.gasto_id, 'Costo de viaje eliminado');
     const { error } = await sb.from('transporte_costos').delete().eq('id', id).eq('auth_user_id', TX.userId); if (error) throw error;
+    await TX.borrarComprobantesDe('costo', id);
     TX.toast('Costo eliminado'); await cargarCostos(); renderTodo();
   } catch (e) { console.error(e); TX.toast('No se pudo eliminar el costo', 'error'); }
 }
@@ -616,6 +618,7 @@ async function borrarCosto(id) {
    EVENTOS
    ============================================================ */
 function enlazar() {
+  TX.alCambiarComprobantes = async () => { OT.comp = await TX.cargarComprobantes(); renderTodo(); };
   $('ot-buscar').addEventListener('input', e => { OT.filtro.q = e.target.value; renderVista(); });
   $('ot-f-estado').addEventListener('change', e => { OT.filtro.estado = e.target.value; renderVista(); });
   $('ot-f-periodo').addEventListener('change', e => { OT.filtro.periodo = e.target.value; renderKpis(); renderVista(); });

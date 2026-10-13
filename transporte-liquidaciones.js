@@ -32,6 +32,7 @@ async function cargarTodo() {
     TX.paginar(() => sb.from('transporte_liquidacion_ordenes').select('*').eq('auth_user_id', TX.userId)),
   ]);
   LQ.personas = personas; LQ.ordenes = ordenes; LQ.costos = costos; LQ.rutas = rutas; LQ.liqs = liqs; LQ.liqOrd = liqOrd;
+  LQ.comp = await TX.cargarComprobantes();
   try { const { data } = await sb.from('metodos_pago').select('*').eq('auth_user_id', TX.userId).eq('activo', true).order('orden'); LQ.metodos = data || []; } catch (_) { LQ.metodos = []; }
   try { const { data } = await sb.from('bancos').select('id,nombre').eq('auth_user_id', TX.userId).eq('activo', true).order('nombre'); LQ.bancos = data || []; } catch (_) { LQ.bancos = []; }
   try { const { data } = await sb.from('empleados').select('id,nombre,cargo').eq('auth_user_id', TX.userId); LQ.empleados = data || []; } catch (_) { LQ.empleados = []; }
@@ -395,6 +396,7 @@ function renderDetalle() {
     ${l.notas ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:8px">📝 ${esc(l.notas)}</div>` : ''}
     ${l.estado === 'anulada' ? `<div style="font-size:13px;color:var(--danger);margin-top:8px">Anulada: ${esc(l.anulada_motivo || '')}</div>` : ''}
     </div>
+    <div class="tx-sec">Comprobante de pago (foto o PDF)</div>${TX.htmlComprobantes('liquidacion', l.id, LQ.comp)}
     <div class="tx-pie" style="justify-content:space-between">
       ${l.estado === 'pagada' ? `<button type="button" class="tx-btn tx-btn-borrar" data-lq-anular="${esc(l.id)}">⛔ Anular liquidación</button>` : '<span></span>'}
       <button type="button" class="tx-btn" data-lq-imprimir="${esc(l.id)}">🖨️ Imprimir</button></div>`;
@@ -432,6 +434,7 @@ function imprimirLiquidacion() {
 
 /* ---------------- Eventos ---------------- */
 function enlazar() {
+  TX.alCambiarComprobantes = async () => { LQ.comp = await TX.cargarComprobantes(); if (LQ.detalleId) renderDetalle(); };
   $('lp-modalidad').addEventListener('change', cambiaModalidad);
   $('lp-guardar').addEventListener('click', guardarPago);
   document.addEventListener('click', e => {

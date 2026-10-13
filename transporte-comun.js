@@ -110,6 +110,23 @@
       { v: 'foto_entrega', t: 'Foto de la entrega', ico: '📸' },
       { v: 'otro', t: 'Otro documento…', ico: '📄' },
     ],
+    costo: [
+      { v: 'comprobante_pago', t: 'Comprobante de pago / recibo', ico: '🧾' },
+      { v: 'factura', t: 'Factura', ico: '📄' },
+      { v: 'foto_recibo', t: 'Foto del recibo', ico: '📸' },
+      { v: 'otro', t: 'Otro documento…', ico: '📄' },
+    ],
+    liquidacion: [
+      { v: 'comprobante_pago', t: 'Comprobante de pago al conductor', ico: '🧾' },
+      { v: 'recibo_firmado', t: 'Recibo firmado por el conductor', ico: '✍️' },
+      { v: 'otro', t: 'Otro documento…', ico: '📄' },
+    ],
+    subcontratacion: [
+      { v: 'comprobante_pago', t: 'Comprobante de pago al transportista', ico: '🧾' },
+      { v: 'factura_transportista', t: 'Factura del transportista', ico: '📄' },
+      { v: 'recibo_firmado', t: 'Recibo firmado', ico: '✍️' },
+      { v: 'otro', t: 'Otro documento…', ico: '📄' },
+    ],
     incidencia: [
       { v: 'foto_evidencia', t: 'Foto de evidencia', ico: '📸' },
       { v: 'parte_policial', t: 'Parte policial', ico: '👮' },
@@ -362,6 +379,41 @@
             <button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-tx-doc-borrar="${esc(d.id)}">Quitar</button></div></div>`;
       }).join('') : `<div class="tx-vacio" style="padding:24px"><div class="tx-vacio-i">🗂️</div><b>Aún no hay documentos</b><p>Agrega los papeles con su fecha de vencimiento y el sistema te avisa a tiempo.</p></div>`);
   };
+
+  /* ============================================================
+     COMPROBANTES DE PAGO — anticipos/costos del viaje, liquidaciones de conductores y
+     pagos a transportistas externos. Usan el mismo sistema de documentos (foto o PDF).
+     ============================================================ */
+  TX._comp = {};
+  TX.cargarComprobantes = async function () {
+    const mapa = {}; TX._comp = {};
+    try {
+      const docs = await paginar(() => sb.from('transporte_documentos').select('*').eq('auth_user_id', TX.userId)
+        .in('entidad_tipo', ['costo', 'liquidacion', 'subcontratacion']).order('created_at'));
+      docs.forEach(d => { TX._comp[d.id] = d; (mapa[d.entidad_tipo + ':' + d.entidad_id] = mapa[d.entidad_tipo + ':' + d.entidad_id] || []).push(d); });
+    } catch (e) { console.warn('comprobantes:', e); }
+    return mapa;
+  };
+  TX.htmlComprobantes = function (tipo, id, mapa) {
+    const docs = (mapa && mapa[tipo + ':' + id]) || [];
+    return `<div class="tx-fila-chips" style="margin-top:6px;gap:6px;flex-wrap:wrap">`
+      + docs.map(d => { const et = TX.etiquetaDoc(tipo, d.tipo); return `<span class="tx-chip verde" style="display:inline-flex;gap:6px;align-items:center">${et.ico} ${d.archivo_url ? `<a href="${esc(d.archivo_url)}" target="_blank" rel="noopener" style="color:inherit">${esc(et.t)}${d.numero ? ' · ' + esc(d.numero) : ''}</a>` : esc(et.t)}<button type="button" data-tx-comp-quitar="${esc(d.id)}" title="Quitar" style="background:none;border:none;cursor:pointer;color:inherit;padding:0">✕</button></span>`; }).join('')
+      + `<button type="button" class="tx-btn tx-btn-sm" data-tx-comp-nuevo="${esc(tipo + ':' + id)}">📎 ${docs.length ? 'Otro comprobante' : 'Comprobante'}</button></div>`;
+  };
+  /** Borra los comprobantes (y sus archivos) de un registro que se elimina. */
+  TX.borrarComprobantesDe = async function (tipo, id) {
+    try {
+      const { data } = await sb.from('transporte_documentos').select('*').eq('auth_user_id', TX.userId).eq('entidad_tipo', tipo).eq('entidad_id', id);
+      for (const d of (data || [])) { if (d.archivo_url) await TX.borrarArchivo(d.archivo_path || d.archivo_url); }
+      if ((data || []).length) await sb.from('transporte_documentos').delete().eq('auth_user_id', TX.userId).eq('entidad_tipo', tipo).eq('entidad_id', id);
+    } catch (e) { console.warn('borrarComprobantesDe:', e); }
+  };
+  document.addEventListener('click', e => {
+    const n = e.target.closest('[data-tx-comp-nuevo]');
+    if (n) { const [t, ...r] = n.dataset.txCompNuevo.split(':'); TX.abrirDoc(t, r.join(':'), null, () => TX.alCambiarComprobantes && TX.alCambiarComprobantes()); return; }
+    const q = e.target.closest('[data-tx-comp-quitar]');
+    if (q) { const d = TX._comp[q.dataset.txCompQuitar]; if (d) TX.quitarDoc(d, () => TX.alCambiarComprobantes && TX.alCambiarComprobantes()); }
+  });
 
   let _docCtx = null;
   TX.abrirDoc = function (entidadTipo, entidadId, doc, alGuardar) {
