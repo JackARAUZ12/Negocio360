@@ -1255,6 +1255,8 @@ const TIPOS_TRANSACCION = {
   capital_inicial: { label: 'Dinero inicial de caja / aportes de capital (apertura)', ejemplo: 'Debe: Caja General — Haber: Capital (Aporte de Socios)' },
   credito_existente: { label: 'Créditos de clientes que ya existían antes de usar el sistema (apertura)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Capital' },
   inventario_inicial: { label: 'Inventario que ya existía antes de usar el sistema (apertura)', ejemplo: 'Debe: Inventario — Haber: Capital' },
+  faltante_caja: { label: 'Faltante de caja al cerrar Caja Chica', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Caja General. Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
+  sobrante_caja: { label: 'Sobrante de caja al cerrar Caja Chica', ejemplo: 'Debe: Caja General — Haber: Otros Ingresos (4200). Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
 };
 let STATE_MAPEO = [];
 
@@ -1541,7 +1543,38 @@ async function conciliarInventarioInicial() {
   }
 }
 
+/* Candado ENTRE ventanas/pestañas: el candado de STATE solo protege dentro de una misma pantalla.
+   Como Contabilidad ahora también puede generar en segundo plano (otra pantalla oculta), este candado
+   en localStorage evita que dos pantallas generen a la vez los mismos asientos (duplicados). */
+const ID_VENTANA_CONTA = Math.random().toString(36).slice(2);
+// Pantalla oculta (iframe) que abre modulos-guard.js en otros módulos para generar asientos sin que el usuario salga de lo que hace.
+const EN_FONDO_CONTA = (() => { try { return new URLSearchParams(location.search).get('bg') === '1' && window.self !== window.top; } catch (_) { return false; } })();
+const FECHA_INICIO_AUTO_CAJA = '2026-10-13'; // faltantes/sobrantes: lo automático solo toma cierres desde esta fecha; los anteriores, solo si se piden a mano
+function claveCandadoConta() { return 'n360_conta_gen_lock_' + (STATE.userId || ''); }
+function tomarCandadoConta() {
+  try {
+    const k = claveCandadoConta();
+    const raw = localStorage.getItem(k);
+    if (raw) {
+      const [t, id] = raw.split('|');
+      if (id !== ID_VENTANA_CONTA && Date.now() - Number(t) < 5 * 60 * 1000) return false;
+    }
+    localStorage.setItem(k, Date.now() + '|' + ID_VENTANA_CONTA);
+    return (localStorage.getItem(k) || '').split('|')[1] === ID_VENTANA_CONTA;
+  } catch (_) { return true; } // sin localStorage: se sigue con el candado normal de la pantalla
+}
+function soltarCandadoConta() {
+  try { const k = claveCandadoConta(); if ((localStorage.getItem(k) || '').split('|')[1] === ID_VENTANA_CONTA) localStorage.removeItem(k); } catch (_) {}
+}
 async function generarAsientosAutomaticos() {
+  if (!tomarCandadoConta()) {
+    const e = document.getElementById('ga-error');
+    if (e) e.textContent = 'Ya se están generando asientos en otra ventana. Espera un momento y vuelve a intentar.';
+    return;
+  }
+  try { await generarAsientosAutomaticosInterno(); } finally { soltarCandadoConta(); }
+}
+async function generarAsientosAutomaticosInterno() {
   // BUG REAL CORREGIDO: el mismo movimiento se convertia en asiento
   // hasta 14 veces -- el chequeo de "ya se genero antes" vivia solo
   // en un Set armado UNA vez al entrar aqui; si el proceso tardaba
@@ -1906,6 +1939,23 @@ async function generarAsientosAutomaticos() {
     // Aportes patronales (INSS patronal, INATEC): gasto del patrono y obligación por pagar. No mueve Caja.
     await procesarTipo('aporte_patronal', 'empleados_pagos', 'aportes_patronales', 'pagado', 'estado', 'Aportes patronales');
 
+    // Faltantes y sobrantes al cerrar Caja Chica (solo si el negocio configuró su cuenta): la diferencia ya queda
+    // guardada en el cierre; aquí solo se LEE y se asienta en Contabilidad. No toca el saldo del módulo Caja.
+    // En modo automático solo entran cierres desde FECHA_INICIO_AUTO_CAJA (los anteriores, solo al generar a mano).
+    {
+      const omitirCierreViejo = fila => STATE.generacionAutomatica === true && String(fila.cerrada_en || fila.fecha).slice(0, 10) < FECHA_INICIO_AUTO_CAJA;
+      if (mapeo.get('faltante_caja')) {
+        await procesarTipo('faltante_caja', 'caja_chica_sesiones', 'diferencia', 'cerrada', 'estado', 'Faltante de caja — cierre de Caja Chica',
+          q => q.lt('diferencia', 0), null, 'fecha', null,
+          { omitirFila: omitirCierreViejo, obtenerMonto: async f => Math.abs(Number(f.diferencia || 0)) });
+      }
+      if (mapeo.get('sobrante_caja')) {
+        await procesarTipo('sobrante_caja', 'caja_chica_sesiones', 'diferencia', 'cerrada', 'estado', 'Sobrante de caja — cierre de Caja Chica',
+          q => q.gt('diferencia', 0), null, 'fecha', null,
+          { omitirFila: omitirCierreViejo, obtenerMonto: async f => Math.abs(Number(f.diferencia || 0)) });
+      }
+    }
+
     // Cuentas por Pagar (dinero que le debes a un proveedor): la
     // obligación se registra desde que se genera (fecha_compra),
     // sin importar si ya se pagó o sigue pendiente — el pago en sí,
@@ -1948,7 +1998,8 @@ async function generarAsientosAutomaticos() {
     if (saltados) resumen += ` ${saltados} ya existían (no se duplicaron).`;
     if (sinConfigurar) resumen += ` ⚠️ ${sinConfigurar} tipo(s) de movimiento sin configurar en "Contabilización automática".`;
     document.getElementById('ga-resultado').innerHTML = resumen;
-    showToast(`${creados} asiento(s) generado(s)`);
+    STATE.ultimosCreados = creados;
+    if (!EN_FONDO_CONTA) showToast(`${creados} asiento(s) generado(s)`);
     await cargarAsientos();
     actualizarBannerAsientosPendientes();
   } catch (e) {
@@ -2032,13 +2083,28 @@ async function guardarAutoGenerar(activo) {
 async function autoGenerarAlEntrar() {
   try {
     if (STATE.empresaConfig?.contabilidad_auto_generar !== true || STATE.generandoAsientosAutomaticos) return;
-    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion').eq('auth_user_id', STATE.userId).limit(1);
+    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion').eq('auth_user_id', STATE.userId);
     if (!mapeoData || !mapeoData.length) return;
-    const { data: desde } = await sbClient.rpc('fecha_mas_antigua_pendiente_contabilizar');
+    let { data: desde } = await sbClient.rpc('fecha_mas_antigua_pendiente_contabilizar');
+    // Faltantes/sobrantes de Caja Chica: ese contador de pendientes no los conoce, así que se revisan aparte.
+    const tiposCaja = mapeoData.map(m => m.tipo_transaccion).filter(t => t === 'faltante_caja' || t === 'sobrante_caja');
+    if (tiposCaja.length) {
+      const { data: ses } = await sbClient.from('caja_chica_sesiones').select('id, fecha, diferencia, cerrada_en')
+        .eq('auth_user_id', STATE.userId).eq('estado', 'cerrada').neq('diferencia', 0).gte('fecha', FECHA_INICIO_AUTO_CAJA).order('fecha').limit(500);
+      const candidatas = (ses || []).filter(x => Number(x.diferencia) < 0 ? tiposCaja.includes('faltante_caja') : tiposCaja.includes('sobrante_caja'));
+      if (candidatas.length) {
+        const { data: hechos } = await sbClient.from('asientos_contables').select('referencia_id')
+          .eq('auth_user_id', STATE.userId).eq('origen', 'automatico').in('referencia_tipo', ['faltante_caja', 'sobrante_caja']).in('referencia_id', candidatas.map(x => x.id));
+        const yaIds = new Set((hechos || []).map(h => h.referencia_id));
+        const sinAsiento = candidatas.find(x => !yaIds.has(x.id));
+        if (sinAsiento) { const f = String(sinAsiento.fecha).slice(0, 10); if (!desde || f < String(desde).slice(0, 10)) desde = f; }
+      }
+    }
     if (!desde) return;
-    document.getElementById('ga-desde').value = desde;
+    document.getElementById('ga-desde').value = String(desde).slice(0, 10);
     document.getElementById('ga-hasta').value = todayISO();
-    await generarAsientosAutomaticos();
+    STATE.generacionAutomatica = true;
+    try { await generarAsientosAutomaticos(); } finally { STATE.generacionAutomatica = false; }
     actualizarBannerAsientosPendientes();
   } catch (e) { console.warn('autoGenerarAlEntrar:', e); }
 }
@@ -2056,6 +2122,12 @@ async function initContabilidad() {
     if (user.email) checkAdminAccess(user.email);
 
     await loadEmpresaConfig(user.id);
+    if (EN_FONDO_CONTA) {
+      // Pantalla oculta: solo genera lo pendiente (si el negocio lo activó) y avisa a la pantalla de arriba.
+      try { await autoGenerarAlEntrar(); } catch (_) {}
+      try { window.parent.postMessage({ n360: 'conta-fondo-listo', creados: STATE.ultimosCreados || 0 }, location.origin); } catch (_) {}
+      return;
+    }
     const profile = await loadUserProfile(user.id);
     if (profile) renderUserInfo(profile, user.email);
 

@@ -576,6 +576,63 @@
     document.head.appendChild(st);
   }
 
+  /* ===== Contabilidad automática en segundo plano =====
+     Si el negocio activó "generar asientos automáticamente" (casilla en Contabilidad), mientras trabaja en otros
+     módulos se abre —oculta— la misma pantalla de Contabilidad que genera los asientos pendientes. Es la misma
+     función y las mismas reglas que el botón manual (no se duplica nada; hay candado entre ventanas).
+     Solo corre con el perfil administrador o sin perfiles, con la pestaña a la vista y cada ~10 minutos. */
+  function iniciarContabilidadEnFondo(client, userId) {
+    const archivo = (location.pathname.split('/').pop() || '').toLowerCase();
+    if (archivo === 'contabilidad.html' || window.self !== window.top) return;
+    const kUlt = 'n360_conta_bg_ult_' + userId, kFlag = 'n360_conta_bg_flag_' + userId;
+    const INTERVALO = 10 * 60 * 1000;
+
+    async function activoParaEstaCuenta() {
+      try {
+        const c = JSON.parse(sessionStorage.getItem(kFlag) || 'null');
+        if (c && Date.now() - c.t < 5 * 60 * 1000) return c.v === true;
+      } catch (_) {}
+      const { data } = await client.from('configuracion_empresa').select('contabilidad_auto_generar').eq('auth_user_id', userId).maybeSingle();
+      const v = data?.contabilidad_auto_generar === true;
+      try { sessionStorage.setItem(kFlag, JSON.stringify({ t: Date.now(), v })); } catch (_) {}
+      return v;
+    }
+    function perfilPermitido() {
+      try {
+        const raw = sessionStorage.getItem('n360_perfil_activo');
+        if (!raw) return true;
+        const p = JSON.parse(raw);
+        return !p || p.tipo === 'admin';
+      } catch (_) { return false; }
+    }
+    function lanzar() {
+      let ultimo = 0; try { ultimo = Number(localStorage.getItem(kUlt) || 0); } catch (_) {}
+      if (Date.now() - ultimo < INTERVALO - 30000) return;
+      try { localStorage.setItem(kUlt, String(Date.now())); } catch (_) {}
+      const f = document.createElement('iframe');
+      f.src = 'contabilidad.html?bg=1';
+      f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+      f.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none;left:-9999px;top:0';
+      const quitar = () => { try { window.removeEventListener('message', alMensaje); f.remove(); } catch (_) {} };
+      function alMensaje(ev) {
+        if (ev.origin !== location.origin || !ev.data || ev.data.n360 !== 'conta-fondo-listo') return;
+        quitar();
+        try { window.dispatchEvent(new CustomEvent('n360:contabilidad-actualizada', { detail: { creados: ev.data.creados || 0 } })); } catch (_) {}
+      }
+      window.addEventListener('message', alMensaje);
+      document.body.appendChild(f);
+      setTimeout(quitar, 3 * 60 * 1000); // por si algo no responde, nunca queda colgada
+    }
+    async function ciclo() {
+      try {
+        if (document.hidden || !perfilPermitido() || !(await activoParaEstaCuenta())) return;
+        lanzar();
+      } catch (e) { console.warn('contabilidad en fondo:', e); }
+    }
+    setTimeout(ciclo, 60 * 1000);
+    setInterval(ciclo, INTERVALO);
+  }
+
   async function init() {
     try { inyectarEstiloEncabezadoMovil(); } catch (e) { /* solo estetico */ }
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
@@ -592,6 +649,7 @@
     try { asegurarTutorialesEnSidebar(); } catch (e) { console.warn("modulos-guard tutoriales:", e); }
     inyectarBotonTutorial(client).catch(e => console.warn("modulos-guard boton tutorial:", e));
     inyectarBuscadorSidebar();
+    try { iniciarContabilidadEnFondo(client, session.user.id); } catch (e) { console.warn('modulos-guard conta fondo:', e); }
   }
 
   if (document.readyState === 'loading') {
