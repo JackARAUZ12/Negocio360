@@ -674,6 +674,14 @@
     const retPct = retOn ? Math.min(100, Math.max(0, parseFloat(document.getElementById('gasto-ret-pct')?.value) || 0)) : 0;
     const retMonto = retOn ? Math.round(Math.max(monto - ivaGasto, 0) * retPct) / 100 : 0;
 
+    // Aviso (no bloqueante): pago en efectivo mayor al efectivo disponible.
+    const _pagaYa = tipo==='inmediato' || !!document.getElementById('gasto-pagar-ya')?.checked;
+    if (_pagaYa && !bancoId && /efectivo/i.test(metodoNombre) && window.AvisoEfectivo) {
+      const _neto = retMonto > 0 ? Math.round((monto - retMonto) * 100) / 100 : monto;
+      const _seguir = await window.AvisoEfectivo.verificar({ sb: _sb, userId: GS.userId, monto: _neto, origenCaja });
+      if (!_seguir) return;
+    }
+
     try {
       setBtnLoading('btn-save-gasto', true);
       if (tipo==='inmediato') {

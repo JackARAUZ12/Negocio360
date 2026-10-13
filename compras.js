@@ -1825,6 +1825,11 @@ async function guardarCompraDirecta() {
   const cdRet = cdRetOn ? Math.round(monto * cdRetPct) / 100 : 0;
   const cdNeto = Math.round((monto - cdRet) * 100) / 100;
 
+  if (!bancoPagoId && /efectivo/i.test(metodoPagoNombre) && window.AvisoEfectivo) {
+    const seguir = await window.AvisoEfectivo.verificar({ sb: sbClient, userId: STATE.userId, monto: cdNeto, origenCaja });
+    if (!seguir) return;
+  }
+
   setBtnLoading('cd-btn-guardar', true);
   try {
     const { data: numData } = await sbClient.rpc('siguiente_numero_compra', { p_user_id: STATE.userId });
@@ -1947,6 +1952,12 @@ async function guardarCompra() {
       showToast(`Saldo insuficiente en ${bancoInfo?.nombre || 'ese banco'} — tiene ${saldoBanco.toLocaleString('es-NI',{minimumFractionDigits:2})} disponible`, 'error');
       return;
     }
+  }
+
+  // Aviso (no bloqueante): pago en efectivo mayor al efectivo disponible.
+  if (estado === 'completada' && !_bancoElegidoIdCompra && /efectivo/i.test(metodoPagoNombre) && window.AvisoEfectivo) {
+    const seguir = await window.AvisoEfectivo.verificar({ sb: sbClient, userId: STATE.userId, monto: retNeto, origenCaja });
+    if (!seguir) return;
   }
 
   setBtnLoading('nc-btn-save', true);
