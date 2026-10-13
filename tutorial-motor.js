@@ -61,6 +61,17 @@
   // demos del sistema una y otra vez. Nunca se marca como "visto"
   // para esta cuenta especifica.
   const TM_CUENTA_SIEMPRE_DEMO = '64b4804b-7b2b-44d8-a365-bc04ec5950ec'; // Juan Perez (cuenta de prueba)
+  // Demos por rubro (selector del login): se comportan igual que la demo original.
+  const TM_CUENTAS_DEMO = [
+    TM_CUENTA_SIEMPRE_DEMO,
+    '04c0a5d7-1bc2-4359-8c10-1e5b3010b3da', // restaurante
+    '0aad4d1d-d18b-4430-9e8d-a42d4e453716', // hotel
+    '788123cf-d5a0-4aba-b60b-45703a8993a3', // transporte
+    '5e169dea-ac7a-499c-9c25-db7d4d30c024', // farmacia
+    '649a26bc-7481-447c-b5e0-9d3d73bc2a38', // veterinaria
+    '32ed20a4-92dd-4f53-92d9-8f963c3dce7d', // boutique
+  ];
+  const esCuentaDemo = id => TM_CUENTAS_DEMO.includes(id);
 
   let inyectado = false;
   let pasoActual = 0;
@@ -179,7 +190,7 @@
     try {
       const { data: { user } } = await tmSb.auth.getUser();
       if (!user) return;
-      if (user.id === TM_CUENTA_SIEMPRE_DEMO) return; // nunca se marca como visto para la cuenta de demo
+      if (esCuentaDemo(user.id)) return; // nunca se marca como visto para la cuenta de demo
       await tmSb.from('tutoriales_vistos')
         .upsert({ auth_user_id: user.id, modulo_key: moduloKey, visto_en: new Date().toISOString() },
                 { onConflict: 'auth_user_id,modulo_key' });
@@ -190,7 +201,7 @@
     try {
       const { data: { user } } = await tmSb.auth.getUser();
       if (!user) return true; // sin sesion, no interrumpir con un tutorial
-      if (user.id === TM_CUENTA_SIEMPRE_DEMO) return false; // esta cuenta SIEMPRE lo ve, en cada sesion
+      if (esCuentaDemo(user.id)) return false; // esta cuenta SIEMPRE lo ve, en cada sesion
       const { data } = await tmSb.from('tutoriales_vistos')
         .select('modulo_key').eq('auth_user_id', user.id).eq('modulo_key', moduloKey).maybeSingle();
       return !!data;
@@ -247,7 +258,7 @@
     try {
       if (!tmSb) return;
       const { data: { user } } = await tmSb.auth.getUser();
-      if (!user || user.id !== TM_CUENTA_SIEMPRE_DEMO) return;
+      if (!user || !esCuentaDemo(user.id)) return;
       if (document.getElementById('tm-btn-adquirir')) return;
 
       const style = document.createElement('style');

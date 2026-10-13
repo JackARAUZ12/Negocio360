@@ -1,0 +1,16 @@
+-- ============================================================
+-- Cuentas de DEMOSTRACIÓN por rubro (ya aplicado en producción).
+-- Documentación de lo ejecutado: se crearon 6 cuentas demo
+-- (restaurante, hotel, transporte, farmacia, veterinaria, boutique),
+-- registradas en public.cuentas_prueba (tipo 'demo_publica') para que
+-- aparezcan en el submódulo "Pruebas" y NO como clientes.
+-- Cada una: auth.users + auth.identities (el trigger on_auth_user_created
+-- crea usuarios y metodos_pago), configuracion_empresa con el módulo
+-- especializado de su rubro, multiusuario_activo = false, y datos de
+-- ejemplo de catálogo (productos, clientes, y lo propio del rubro:
+-- mesas, habitaciones, flota/conductores/rutas, mascotas, lotes).
+-- NO se cargaron ventas ni movimientos de caja (nada contable).
+-- Correos: demo-<rubro>@negocio360oficial.com
+-- Las credenciales de las demos están en el selector de rubro de login.html
+-- (mismo criterio que la demo original: cuentas públicas de prueba).
+-- ============================================================

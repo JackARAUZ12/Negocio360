@@ -402,6 +402,48 @@
       .demo-hint { font-size: 11.5px; }
     }
 
+
+    /* ─── SELECTOR DE RUBRO PARA LA DEMO ─────────────────────── */
+    .demo-modal {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,.55);
+      display: none; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .demo-modal.open { display: flex; }
+    .demo-modal-box {
+      background: var(--bg-card); color: var(--text-primary);
+      border: 1px solid var(--border); border-radius: 18px;
+      width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto;
+      padding: 22px 20px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+    .demo-modal-box h3 { margin: 0 0 4px; font-family: 'Sora', sans-serif; font-size: 19px; }
+    .demo-modal-box > p { margin: 0 0 16px; font-size: 13px; color: var(--text-secondary); }
+    .demo-rubros { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .demo-rubro {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 14px 8px; text-align: center; cursor: pointer;
+      background: var(--bg-input); color: var(--text-primary);
+      border: 1.5px solid var(--border); border-radius: 14px;
+      font-family: inherit; font-size: 13.5px; font-weight: 700;
+      min-height: 96px; transition: all .15s ease;
+    }
+    .demo-rubro:hover, .demo-rubro:focus-visible { border-color: var(--success); background: var(--demo-bg); outline: none; transform: translateY(-2px); }
+    .demo-rubro:disabled { opacity: .55; cursor: default; transform: none; }
+    .demo-rubro .ico { font-size: 28px; line-height: 1; }
+    .demo-rubro small { font-weight: 500; font-size: 11px; color: var(--text-secondary); line-height: 1.25; }
+    .demo-rubro.cargando { border-color: var(--success); background: var(--demo-bg); }
+    .demo-modal-pie { display: flex; justify-content: flex-end; margin-top: 16px; }
+    .demo-cancelar {
+      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+      border-radius: 10px; padding: 9px 16px; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .demo-cancelar:hover { border-color: var(--text-secondary); }
+    @media (max-width: 420px) {
+      .demo-rubros { grid-template-columns: repeat(2, 1fr); }
+      .demo-modal-box { padding: 18px 14px 14px; }
+    }
+
     /* spinner */
     .spinner {
       width: 16px;
@@ -625,7 +667,7 @@
             <span class="demo-chip">Gratis · sin registro</span>
           </span>
         </button>
-        <p class="demo-hint">Entra con datos de ejemplo y explora todo el sistema</p>
+        <p class="demo-hint">Elige tu rubro y explora el sistema con datos de ejemplo</p>
 
         <!-- Register redirect -->
         <button class="btn btn-secondary" id="registerBtn" type="button">
@@ -642,7 +684,18 @@
 
   </div><!-- /wrapper -->
 
-  <script>
+    <!-- Selector de rubro de la demostración: cada rubro entra a su propia
+       cuenta de demostración ya configurada con sus módulos especializados. -->
+  <div class="demo-modal" id="demoModal" role="dialog" aria-modal="true" aria-labelledby="demoModalTitulo">
+    <div class="demo-modal-box">
+      <h3 id="demoModalTitulo">¿Cuál es tu negocio?</h3>
+      <p>Elige tu rubro y entrarás a una demostración con datos de ejemplo y los módulos de ese tipo de negocio.</p>
+      <div class="demo-rubros" id="demoRubros"></div>
+      <div class="demo-modal-pie"><button type="button" class="demo-cancelar" id="demoCancelar">Cancelar</button></div>
+    </div>
+  </div>
+
+<script>
   // ─── SUPABASE INIT ──────────────────────────────────────────────
   const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
@@ -890,40 +943,68 @@
   // Reutiliza exactamente el mismo signInWithPassword y la misma
   // redirección que el login normal — la única diferencia es que las
   // credenciales ya vienen fijas, el cliente no escribe nada.
-  async function handleDemoLogin() {
+  // Cuentas de demostración, una por rubro. Todas son cuentas de prueba
+  // (aparecen en el submódulo "Pruebas" del panel admin, no como clientes).
+  const DEMOS_POR_RUBRO = [
+    { slug: 'ferreteria',  icono: '🔨', nombre: 'Ferretería',   desc: 'Materiales y herramientas', email: 'carlossreyess1984@gmail.com',            pass: 'Prueba1@' },
+    { slug: 'restaurante', icono: '🍽️', nombre: 'Restaurante',  desc: 'Mesas, comandas y cocina',  email: 'demo-restaurante@negocio360oficial.com', pass: 'DemoRestaurante#2026' },
+    { slug: 'hotel',       icono: '🛏️', nombre: 'Hotel',        desc: 'Habitaciones y reservas',   email: 'demo-hotel@negocio360oficial.com',       pass: 'DemoHotel#2026' },
+    { slug: 'transporte',  icono: '🚛', nombre: 'Transporte',   desc: 'Flota, viajes y cobros',    email: 'demo-transporte@negocio360oficial.com',  pass: 'DemoTransporte#2026' },
+    { slug: 'farmacia',    icono: '💊', nombre: 'Farmacia',     desc: 'Lotes y vencimientos',      email: 'demo-farmacia@negocio360oficial.com',    pass: 'DemoFarmacia#2026' },
+    { slug: 'veterinaria', icono: '🐾', nombre: 'Veterinaria',  desc: 'Mascotas y consultas',      email: 'demo-veterinaria@negocio360oficial.com', pass: 'DemoVeterinaria#2026' },
+    { slug: 'boutique',    icono: '👗', nombre: 'Boutique',     desc: 'Ropa y accesorios',         email: 'demo-boutique@negocio360oficial.com',    pass: 'DemoBoutique#2026' },
+  ];
+
+  const demoModal = document.getElementById('demoModal');
+  function abrirSelectorDemo() {
     clearAlert();
-    const demoBtn = document.getElementById('demoBtn');
-    demoBtn.disabled = true;
-    demoBtn.classList.add('loading');
+    document.getElementById('demoRubros').innerHTML = DEMOS_POR_RUBRO.map(d =>
+      `<button type="button" class="demo-rubro" data-slug="${d.slug}"><span class="ico">${d.icono}</span>${d.nombre}<small>${d.desc}</small></button>`
+    ).join('');
+    demoModal.classList.add('open');
+    const primero = demoModal.querySelector('.demo-rubro'); if (primero) primero.focus();
+  }
+  function cerrarSelectorDemo() { demoModal.classList.remove('open'); }
+
+  async function handleDemoLogin(slug) {
+    const demo = DEMOS_POR_RUBRO.find(d => d.slug === slug);
+    if (!demo) return;
+    clearAlert();
+    const botones = demoModal.querySelectorAll('.demo-rubro');
+    botones.forEach(b => { b.disabled = true; if (b.dataset.slug === slug) b.classList.add('cargando'); });
+    const reactivar = () => botones.forEach(b => { b.disabled = false; b.classList.remove('cargando'); });
 
     try {
-      const { data, error } = await sb.auth.signInWithPassword({
-        email: 'carlossreyess1984@gmail.com', password: 'Prueba1@',
-      });
+      const { data, error } = await sb.auth.signInWithPassword({ email: demo.email, password: demo.pass });
 
       if (error) {
+        cerrarSelectorDemo(); reactivar();
         showError('No se pudo entrar a la cuenta de demostración. Intenta de nuevo en un momento.');
-        demoBtn.disabled = false;
-        demoBtn.classList.remove('loading');
         return;
       }
       if (!data?.user) {
+        cerrarSelectorDemo(); reactivar();
         showError('Ocurrió un error inesperado. Intenta de nuevo.');
-        demoBtn.disabled = false;
-        demoBtn.classList.remove('loading');
         return;
       }
 
-      showSuccess('¡Entrando a la cuenta de demostración!');
+      showSuccess('¡Entrando a la demostración de ' + demo.nombre + '!');
+      cerrarSelectorDemo();
       await redirectByOnboarding(data.user.id);
     } catch (e) {
       console.error('Demo login error:', e);
+      cerrarSelectorDemo(); reactivar();
       showError(translateAuthError(e?.message));
-      demoBtn.disabled = false;
-      demoBtn.classList.remove('loading');
     }
   }
-  document.getElementById('demoBtn').addEventListener('click', handleDemoLogin);
+  // El botón ahora abre el selector de rubro (antes entraba directo a una sola cuenta).
+  document.getElementById('demoBtn').addEventListener('click', abrirSelectorDemo);
+  document.getElementById('demoRubros').addEventListener('click', e => {
+    const b = e.target.closest('.demo-rubro'); if (b && !b.disabled) handleDemoLogin(b.dataset.slug);
+  });
+  document.getElementById('demoCancelar').addEventListener('click', cerrarSelectorDemo);
+  demoModal.addEventListener('click', e => { if (e.target === demoModal) cerrarSelectorDemo(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && demoModal.classList.contains('open')) cerrarSelectorDemo(); });
 
   // ─── REGISTER REDIRECT ──────────────────────────────────────────
   document.getElementById('registerBtn').addEventListener('click', () => {
