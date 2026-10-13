@@ -2,7 +2,8 @@
    TRANSPORTE-LIQUIDACIONES.JS — NEGOCIO360 (Transporte · Fase 7)
    Liquidación de conductores y ayudantes: pago por viaje, km o
    porcentaje del flete, con anticipos y descuentos.
-   - El pago neto sale de Caja como un Gasto (Contabilidad lo asienta).
+   - El pago neto sale de Caja: si el conductor está vinculado a un empleado queda como pago de salario
+     en Salarios (Contabilidad lo asienta desde ahí); si no, como un Gasto "Salarios".
    - Los anticipos ya dados en los viajes (Costos) se descuentan aquí.
    - Cada orden liquidada suma su costo real a la rentabilidad.
    ============================================================ */
@@ -33,7 +34,10 @@ async function cargarTodo() {
   LQ.personas = personas; LQ.ordenes = ordenes; LQ.costos = costos; LQ.rutas = rutas; LQ.liqs = liqs; LQ.liqOrd = liqOrd;
   try { const { data } = await sb.from('metodos_pago').select('*').eq('auth_user_id', TX.userId).eq('activo', true).order('orden'); LQ.metodos = data || []; } catch (_) { LQ.metodos = []; }
   try { const { data } = await sb.from('bancos').select('id,nombre').eq('auth_user_id', TX.userId).eq('activo', true).order('nombre'); LQ.bancos = data || []; } catch (_) { LQ.bancos = []; }
+  try { const { data } = await sb.from('empleados').select('id,nombre,cargo').eq('auth_user_id', TX.userId); LQ.empleados = data || []; } catch (_) { LQ.empleados = []; }
 }
+// Empleado de Salarios al que está vinculado este conductor/ayudante (null si no tiene ficha o ya no existe)
+const empleadoDe = p => (p && p.empleado_id && (LQ.empleados || []).find(e => e.id === p.empleado_id)) || null;
 
 /* ---------------- Cálculos ---------------- */
 const persona = id => LQ.personas.find(p => p.id === id);
@@ -232,7 +236,7 @@ function pintarResumen() {
     ${T.descuentos ? `<div class="tx-doc"><div class="tx-doc-info"><b>− Otros descuentos</b></div><b>${esc(money(T.descuentos))}</b></div>` : ''}
     <div class="tx-doc" style="background:var(--accent-soft)"><div class="tx-doc-info"><b>A pagar ahora</b></div><b style="font-size:16px">${esc(money(T.neto))}</b></div>`;
   $('lq-caja-box').innerHTML = LQ.metodos.length && window.CajaAPI && T.neto > 0
-    ? `<div class="tx-campo"><label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-primary)"><input type="checkbox" id="lq-caja" style="width:auto" ${L.caja ? 'checked' : ''}/> Pagar ahora desde Caja (se registra en Gastos y Contabilidad)</label></div>
+    ? `<div class="tx-campo"><label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-primary)"><input type="checkbox" id="lq-caja" style="width:auto" ${L.caja ? 'checked' : ''}/> Pagar ahora desde Caja (${empleadoDe(L.p) ? 'se registra como pago de salario en Salarios y en Contabilidad' : 'se registra en Gastos y Contabilidad'})</label></div>
       <div class="tx-campo" id="lq-metodo-wrap" style="${L.caja ? '' : 'display:none'}"><label for="lq-metodo">Método de pago</label><select class="tx-in" id="lq-metodo">${LQ.metodos.map(m => `<option value="${esc(m.id)}" ${m.id === L.metodoId ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></div>
       <div class="tx-campo" id="lq-banco-wrap" style="${pideBanco ? '' : 'display:none'}"><label for="lq-banco">Banco de donde sale</label><select class="tx-in" id="lq-banco"><option value="">Selecciona un banco…</option>${LQ.bancos.map(b => `<option value="${esc(b.id)}" ${b.id === L.bancoId ? 'selected' : ''}>${esc(b.nombre)}</option>`).join('')}</select></div>`
     : (T.neto > 0 ? '<div class="tx-ayuda">Sin métodos de pago configurados: la liquidación se guarda sin mover Caja.</div>' : '<div class="tx-ayuda">El neto es 0: solo se cierra la cuenta (los anticipos cubren el pago), sin mover Caja.</div>');
@@ -258,6 +262,13 @@ async function anularGasto(gastoId, motivo) {
   await sb.from('gastos').update({ estado: 'cancelado', cancelado_en: new Date().toISOString(), cancelado_motivo: motivo }).eq('id', gastoId).eq('auth_user_id', TX.userId);
 }
 
+// Revierte un pago de salario creado por una liquidación: anula su movimiento de Caja y borra ese pago (es propio de la liquidación).
+async function anularPagoSalario(pagoId, motivo) {
+  await sb.from('movimientos_financieros').update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivo })
+    .eq('referencia_tipo', 'salario').eq('referencia_id', pagoId).eq('auth_user_id', TX.userId).eq('estado', 'completado');
+  await sb.from('empleados_pagos').delete().eq('id', pagoId).eq('auth_user_id', TX.userId);
+}
+
 async function confirmarLiquidacion() {
   const L = LQ.liq, p = L.p, T = totalesLiq();
   const err = m => { const e = $('lq-error'); if (e) e.textContent = m; };
@@ -273,7 +284,7 @@ async function confirmarLiquidacion() {
   }
   const fecha = $('lq-fecha').value || TX.hoyISO();
   const btn = $('lq-confirmar'); btn.disabled = true;
-  let liqId = null, gastoId = null;
+  let liqId = null, gastoId = null, pagoId = null;
   try {
     const numero = siguienteNumero();
     const detalle = {
@@ -289,7 +300,29 @@ async function confirmarLiquidacion() {
     if (e1) throw e1;
     liqId = liq.id;
 
-    if (cajaOn) {
+    if (cajaOn && empleadoDe(p)) {
+      // Conductor vinculado a un empleado: se paga como salario (queda en Salarios, Reportes y Contabilidad). No se crea Gasto aparte.
+      const emp = empleadoDe(p);
+      const obs = `Liquidación ${numero}: ${T.sel.length} viaje(s) de transporte`;
+      const detB = (detalle.bonos || []).map(b => ({ descripcion: b.concepto, monto: b.monto }));
+      const detD = (detalle.descuentos || []).map(b => ({ descripcion: b.concepto, monto: b.monto }));
+      const { data: pago, error: ep } = await sb.from('empleados_pagos').insert({
+        auth_user_id: TX.userId, empleado_id: emp.id, fecha, salario_base: T.bruto, bonificaciones: T.bonos, bonificaciones_detalle: detB,
+        deducciones: T.descuentos, deducciones_detalle: detD, adelantos_descontados: T.anticipos, total_pagado: T.neto,
+        metodo_pago_id: metodo.id, metodo_pago_nombre: metodo.nombre, observaciones: obs, estado: 'pagado', comprobante_numero: numero,
+        usuario_nombre: TX.perfilNombre || 'Usuario',
+      }).select().single();
+      if (ep) throw ep;
+      pagoId = pago.id;
+      const mov = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: TX.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO', concepto: `Pago de salario a ${emp.nombre} (${numero})`, monto: T.neto,
+        metodo_pago_id: metodo.id, metodo_pago_nombre: metodo.nombre, banco_id: bancoId || null,
+        referencia_tipo: 'salario', referencia_id: pago.id, observaciones: obs, fecha,
+      });
+      if (!mov.ok) { throw new Error('Caja: ' + mov.error); }
+      const movId = await ultimoMovimientoId();
+      await sb.from('transporte_liquidaciones').update({ empleado_pago_id: pagoId, movimiento_caja_id: movId }).eq('id', liqId).eq('auth_user_id', TX.userId);
+    } else if (cajaOn) {
       const concepto = `Liquidación ${numero} · ${p.nombre}`;
       const obs = `Pago a ${p.rol === 'ayudante' ? 'ayudante' : 'conductor'} ${p.nombre}: ${T.sel.length} viaje(s)`;
       const { data: g, error: eg } = await sb.from('gastos').insert({
@@ -329,6 +362,7 @@ async function confirmarLiquidacion() {
     console.error(e);
     try {
       if (gastoId) await anularGasto(gastoId, 'No se pudo completar la liquidación');
+      if (pagoId) await anularPagoSalario(pagoId, 'No se pudo completar la liquidación');
       if (liqId) await sb.from('transporte_liquidaciones').delete().eq('id', liqId).eq('auth_user_id', TX.userId);
     } catch (_) {}
     err('No se pudo guardar la liquidación. No se registró nada en Caja.');
@@ -357,7 +391,7 @@ function renderDetalle() {
     ${(d.bonos || []).map(b => `<div class="tx-doc"><div class="tx-doc-info"><b>+ ${esc(b.concepto)}</b></div><b>${esc(money(b.monto))}</b></div>`).join('')}
     ${(d.anticipos || []).map(a => `<div class="tx-doc"><div class="tx-doc-info"><b>− Anticipo ${esc(fmtF(a.fecha))}</b></div><b>${esc(money(a.monto))}</b></div>`).join('')}
     ${(d.descuentos || []).map(b => `<div class="tx-doc"><div class="tx-doc-info"><b>− ${esc(b.concepto)}</b></div><b>${esc(money(b.monto))}</b></div>`).join('')}
-    <div class="tx-doc" style="background:var(--accent-soft)"><div class="tx-doc-info"><b>Neto pagado</b><small>${l.gasto_id ? '💸 Salió de Caja y está en Gastos' : 'Sin movimiento de Caja'}${l.metodo_pago_nombre ? ' · ' + esc(l.metodo_pago_nombre) : ''}</small></div><b style="font-size:16px">${esc(money(l.neto))}</b></div>
+    <div class="tx-doc" style="background:var(--accent-soft)"><div class="tx-doc-info"><b>Neto pagado</b><small>${l.empleado_pago_id ? '💸 Salió de Caja y está en Salarios' : l.gasto_id ? '💸 Salió de Caja y está en Gastos' : 'Sin movimiento de Caja'}${l.metodo_pago_nombre ? ' · ' + esc(l.metodo_pago_nombre) : ''}</small></div><b style="font-size:16px">${esc(money(l.neto))}</b></div>
     ${l.notas ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:8px">📝 ${esc(l.notas)}</div>` : ''}
     ${l.estado === 'anulada' ? `<div style="font-size:13px;color:var(--danger);margin-top:8px">Anulada: ${esc(l.anulada_motivo || '')}</div>` : ''}
     </div>
@@ -368,10 +402,11 @@ function renderDetalle() {
 
 async function anularLiquidacion(id) {
   const l = LQ.liqs.find(x => x.id === id); if (!l || l.estado !== 'pagada') return;
-  if (!await TX.confirmar('¿Anular la liquidación?', `Se devuelve ${money(l.neto)} a Caja${l.gasto_id ? ' y se cancela su gasto' : ''}, y los viajes y anticipos quedan otra vez por liquidar.`, 'Anular', true)) return;
+  if (!await TX.confirmar('¿Anular la liquidación?', `Se devuelve ${money(l.neto)} a Caja${l.empleado_pago_id ? ' y se quita el pago de Salarios' : l.gasto_id ? ' y se cancela su gasto' : ''}, y los viajes y anticipos quedan otra vez por liquidar.`, 'Anular', true)) return;
   try {
     const motivo = 'Liquidación anulada';
     if (l.gasto_id) await anularGasto(l.gasto_id, motivo);
+    if (l.empleado_pago_id) await anularPagoSalario(l.empleado_pago_id, motivo);
     await sb.from('transporte_liquidacion_ordenes').delete().eq('liquidacion_id', id).eq('auth_user_id', TX.userId);
     await sb.from('transporte_costos').update({ liquidacion_id: null }).eq('liquidacion_id', id).eq('auth_user_id', TX.userId);
     const { error } = await sb.from('transporte_liquidaciones').update({ estado: 'anulada', anulada_en: new Date().toISOString(), anulada_motivo: motivo }).eq('id', id).eq('auth_user_id', TX.userId);
