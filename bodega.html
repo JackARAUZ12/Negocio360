@@ -332,6 +332,8 @@
           <span class="results-count" id="resultadosCount">0 resultados</span>
           <button class="btn btn-secondary btn-sm" onclick="abrirModalExportarInventario()" title="Exportar inventario">📤 Exportar inventario</button>
           <button class="btn btn-secondary btn-sm" onclick="abrirModalMoverProducto()" title="Enviar stock a otra sucursal o bodega">🚚 Mover productos</button>
+          <button class="btn btn-secondary btn-sm" onclick="abrirTrasladoLote()" title="Trasladar muchos productos a la vez (todos, por categoría o una selección)">🚚 Trasladar varios</button>
+          <button class="btn btn-secondary btn-sm" onclick="abrirHistorialTraslados()" title="Ver, consultar o anular traslados">📜 Traslados</button>
           <button class="btn btn-secondary btn-sm" onclick="cargarProductos()" title="Actualizar">🔄 Actualizar</button>
         </div>
       </div>
@@ -962,7 +964,8 @@
 </script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="bodega.js?v=20261008a"></script>
+<script src="bodega.js?v=20261013a"></script>
+<script src="productos-traslados.js?v=20261012a"></script>
 <script src="productos-importar.js"></script>
 
 <!-- Preview margen en modal (helper inline) -->
