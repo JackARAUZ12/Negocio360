@@ -1019,6 +1019,11 @@
     if (!it) return;
     let n = parseFloat(valor);
     if (isNaN(n) || n <= 0) n = 1;
+    if (permiteFraccionItemCredito(it) === false && !Number.isInteger(n)) {
+      showToast(`"${it.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
+      renderNCItems();
+      return;
+    }
     if (!it.esCombo) {
       const prod = CS.productos.find(p => p.id === it.producto_id);
       if (prod && prod.tipo === 'producto' && n > Number(prod.stock_actual||0)) {
@@ -1056,9 +1061,21 @@
   }
   window.cantidadPorFraccionCredito = cantidadPorFraccionCredito;
   window.cantidadPorPedidoCredito = cantidadPorPedidoCredito;
+  // ¿Se puede fraccionar este producto? Misma regla que Ventas y Proformas:
+  //   true  = vendible por partes (se muestran ¼ ½ ¾, fracción escrita, etc.)
+  //   false = solo unidades enteras (se rechaza 0.5, 1/4…)
+  //   null  = sin definir (productos antiguos): no se muestran atajos de fracción,
+  //           pero se sigue aceptando escribir decimales, como siempre.
+  function permiteFraccionItemCredito(it) {
+    if (!it || it.esCombo) return null;
+    const prod = (CS.productos || []).find(p => p.id === it.producto_id);
+    if (!prod) return null;
+    return (prod.permite_fraccion === true || prod.permite_fraccion === false) ? prod.permite_fraccion : null;
+  }
   function abrevUnidadCred(codigo) { return (!codigo || codigo === 'unidad') ? '' : (window.N360Unidades?.porCodigo(codigo)?.abreviatura || ''); }
   function controlesCantidadCreditoHTML(it, idx) {
     if (it.esCombo || it.tipo_item !== 'producto') return '';
+    if (permiteFraccionItemCredito(it) !== true) return ''; // solo productos que se venden por partes
     const st = 'font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-app);color:var(--text-primary)';
     const ab = abrevUnidadCred(it.contenidoUnidadCodigo);
     const ped = (it.cantidad_pedida > 0 && it.unidad_pedida)
@@ -1126,7 +1143,7 @@
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
         <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
-        <td><input type="number" value="${it.cantidad}" min="0.001" step="any"
+        <td><input type="number" value="${it.cantidad}" min="${permiteFraccionItemCredito(it) === false ? 1 : 0.001}" step="${permiteFraccionItemCredito(it) === false ? 1 : 'any'}"
               style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
               onchange="actualizarCantidadItemCredito(${idx}, this.value)"/>${controlesCantidadCreditoHTML(it, idx)}</td>
         <td>

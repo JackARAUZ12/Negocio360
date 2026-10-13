@@ -406,7 +406,12 @@ function cambiarCantidadItem(i, texto) {
   let v = NaN;
   if (window.N360Cant) { const r = N360Cant.parse(texto); v = r && typeof r === 'object' ? r.valor : r; }
   else v = Number(String(texto).replace(',', '.'));
-  if (isFinite(v) && v > 0) it.cantidad = v;
+  if (isFinite(v) && v > 0) {
+    // Producto marcado "solo unidades enteras" en Productos: no se acepta media, un cuarto, etc.
+    if (it.permite_fraccion === false && Math.abs(v - Math.round(v)) > 1e-9) {
+      showToast(`"${it.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
+    } else it.cantidad = v;
+  }
   const sub = document.querySelectorAll('#nf-items .fd-item-sub')[i]; if (sub) sub.textContent = fmt(r2(it.precio * it.cantidad));
   document.getElementById('nf-total-prod').textContent = fmt(montoNuevo());
   actualizarAvisoCliente();
