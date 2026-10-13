@@ -1,6 +1,6 @@
 const { chromium } = require('/opt/node-tools/node_modules/playwright');
 const path = require('path'), fs = require('fs');
-const T = __dirname, REPO = '/home/user/Negocio360', deps = T + '/deps/node_modules';
+const T = __dirname, REPO = process.env.REPO || '/home/user/Negocio360', deps = T + '/deps/node_modules';
 async function openPage(browser, file, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: +(process.env.MW||430), height: +(process.env.MH||932) }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: 'es-NI', timezoneId: 'America/Managua' });
   await ctx.clock.install({ time: new Date('2026-10-10T10:24:00-06:00') });

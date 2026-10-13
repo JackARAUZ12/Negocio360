@@ -1,6 +1,6 @@
 // Abre el dashboard real con datos simulados. Exporta openDash(browser) -> page
 const path = require('path'), fs = require('fs');
-const T = __dirname, REPO = '/home/user/Negocio360';
+const T = __dirname, REPO = process.env.REPO || '/home/user/Negocio360';
 const deps = T + '/deps/node_modules';
 async function openDash(browser, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: opts.dpr || 2, locale: 'es-NI', timezoneId: 'America/Managua' });

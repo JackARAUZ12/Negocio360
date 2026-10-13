@@ -1,0 +1,46 @@
+const { chromium } = require('/opt/node-tools/node_modules/playwright');
+const { openPage } = require('./mob.js');
+const { openDash } = require('./open.js');
+const fs = require('fs'); const O = __dirname + '/trx/'; const meta = {};
+const W = ms => new Promise(r => setTimeout(r, ms));
+const R = (pg, s) => pg.evaluate(s => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }, s);
+async function shot(pg, n, sels = {}) { await W(300); await pg.screenshot({ path: O + n + '.jpg', type: 'jpeg', quality: 92 }); const m = {}; for (const [k, s] of Object.entries(sels)) m[k] = await R(pg, s); meta[n] = m; console.log('shot', n, JSON.stringify(m)); }
+const scroll = (pg, sel, off = 70) => pg.evaluate(([s, o]) => { const e = document.querySelector(s); if (e) { e.scrollIntoView({ block: 'start' }); window.scrollBy(0, -o); } }, [sel, off]);
+(async () => {
+  const b = await chromium.launch(); let pg;
+  pg = await openPage(b, 'transporte.html', { wait: 5500 }); await shot(pg, 'm_panel', { kpis: '#tp-kpis' }); await scroll(pg, '#tp-kpis', 20); await shot(pg, 'm_panel2', { kpis: '#tp-kpis' }); await pg.context().close();
+  pg = await openPage(b, 'flota.html', { wait: 5500 }); await shot(pg, 'm_flota', { kpis: '#fl-kpis', avisos: '#fl-avisos' }); await scroll(pg, '#fl-lista', 10); await shot(pg, 'm_flota2', { grid: '#fl-lista' });
+  await pg.evaluate(() => { window.scrollTo(0, 0); document.querySelector('[data-fl-abrir="u2"]').click(); }); await W(700);
+  await pg.evaluate(() => document.querySelector('[data-fl-tab="docs"]').click()); await W(500); await shot(pg, 'm_flota_docs', { box: '#fl-modal-detalle .tx-box' }); await pg.context().close();
+  pg = await openPage(b, 'conductores.html', { wait: 5500 }); await shot(pg, 'm_cond', { kpis: '#cd-kpis', avisos: '#cd-avisos' }); await scroll(pg, '#cd-lista', 10); await shot(pg, 'm_cond2', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-rutas.html', { wait: 5500 }); await scroll(pg, '#rt-lista', 10); await shot(pg, 'm_rutas', {});
+  await pg.evaluate(() => document.querySelector('[data-rt-abrir="r2"]').click()); await W(600); await shot(pg, 'm_ruta_det', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-ordenes.html', { wait: 5500 }); await shot(pg, 'm_ord', { kpis: '#ot-kpis' });
+  await pg.evaluate(() => document.querySelector('[data-ot-abrir="o5"]').click()); await W(700); await shot(pg, 'm_ord_det', {});
+  await pg.evaluate(() => document.querySelector('[data-ot-tab="costos"]').click()); await W(500); await shot(pg, 'm_ord_cost', {});
+  await pg.evaluate(() => { TXcerrar('ot-modal-detalle'); OT.vista = 'rentab'; renderVista(); }); await W(500); await scroll(pg, '#ot-vista', 10); await shot(pg, 'm_rentab', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-fronteras.html', { wait: 5500 }); await scroll(pg, '#fr-vista', 10); await shot(pg, 'm_front', {});
+  const pp = pg.context().waitForEvent('page'); await pg.evaluate(() => document.querySelector('[data-fr-orden="o5"]') ? 0 : (FR.vista = 'docs', FR.ordenSel = 'o5', renderVista())); await W(300);
+  await pg.evaluate(() => { FR.vista = 'docs'; FR.ordenSel = 'o5'; renderVista(); }); await W(400); await shot(pg, 'm_front_docs', {});
+  await pg.evaluate(() => document.querySelector('[data-fr-carta="o5"]').click()); const cp = await pp; await cp.setViewportSize({ width: 430, height: 932 }); await W(800); await cp.screenshot({ path: O + 'm_carta.jpg', type: 'jpeg', quality: 92 }); console.log('carta'); await pg.context().close();
+  pg = await openPage(b, 'transporte-entregas.html', { wait: 5500 }); await shot(pg, 'm_ent', {});
+  await pg.evaluate(() => { EN.ordenSel = 'o8'; renderTodo(); }); await W(600); await scroll(pg, '#en-vista img[alt="Firma"]', 260); await shot(pg, 'm_firma', { firma: '#en-vista img[alt="Firma"]' });
+  await pg.evaluate(() => { EN.vista = 'incidencias'; EN.ordenSel = null; renderTodo(); }); await W(500); await scroll(pg, '#en-vista', 10); await shot(pg, 'm_inc', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-mantenimiento.html', { wait: 5500 }); await shot(pg, 'm_mant', { kpis: '#mm-kpis' }); await scroll(pg, '#mm-vista', 10); await shot(pg, 'm_mant2', {});
+  await pg.evaluate(() => { MT.vista = 'llantas'; renderVista(); }); await W(500); await scroll(pg, '#mm-vista', 10); await shot(pg, 'm_llantas', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-liquidaciones.html', { wait: 5500 }); await shot(pg, 'm_liq', {});
+  await pg.evaluate(() => document.querySelector('[data-lq-liquidar]').click()); await W(700); await shot(pg, 'm_liq_modal', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-facturacion.html', { wait: 5500 }); await shot(pg, 'm_fact', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-subcontratistas.html', { wait: 5500 }); await pg.evaluate(() => { SC.vista = 'lista'; renderVista(); }); await W(400); await shot(pg, 'm_sub', {}); await pg.context().close();
+  pg = await openPage(b, 'transporte-reportes.html', { wait: 5500 }); await shot(pg, 'm_rep', { kpis: '#rp-kpis' }); await scroll(pg, '#rp-vista', 10); await shot(pg, 'm_rep2', {}); await pg.context().close();
+  pg = await openPage(b, 'configuracion.html', { wait: 6000 });
+  await pg.evaluate(() => { const d = document.querySelector('#transporte-card .cfg-card-desc'); if (d) d.textContent = 'Para empresas de transporte de carga: flota, conductores, rutas, órdenes, costos, fronteras, mantenimiento y cobros, conectado con Ventas, Créditos, Gastos y Caja.'; });
+  await scroll(pg, '#transporte-card', 150); await pg.evaluate(() => { const t = document.getElementById('transporte-toggle'); t.checked = false; document.getElementById('transporte-row-sub').textContent = 'Desactivado — el módulo de Transporte de carga no aparece en ningún lado.'; });
+  await shot(pg, 'm_cfg_off', { card: '#transporte-card', sw: '#transporte-card .cfg-switch-track' });
+  await pg.evaluate(() => { const t = document.getElementById('transporte-toggle'); t.checked = true; document.getElementById('transporte-row-sub').textContent = 'Activado — el panel de Transporte aparece en el menú.'; const s = document.getElementById('transporte-status'); s.textContent = 'Módulo de Transporte de carga activado. Recarga la página para ver el menú.'; s.className = 'cfg-status ok'; s.style.display = 'block'; });
+  await shot(pg, 'm_cfg_on', { card: '#transporte-card', sw: '#transporte-card .cfg-switch-track' }); await pg.context().close();
+  // desktop kanban
+  pg = await openDash(b, { file: 'transporte-ordenes.html', clean: true, dpr: 1.5, wait: 5500 }); await pg.screenshot({ path: O + 'd_kanban.jpg', type: 'jpeg', quality: 92 }); meta.d_kanban = { kan: await R(pg, '.tx-kan') }; console.log('kanban', JSON.stringify(meta.d_kanban)); await pg.context().close();
+  pg = await openDash(b, { file: 'transporte-reportes.html', clean: true, dpr: 1.5, wait: 5500 }); await pg.screenshot({ path: O + 'd_rep.jpg', type: 'jpeg', quality: 92 }); await pg.context().close();
+  fs.writeFileSync(O + 'meta.json', JSON.stringify(meta)); await b.close();
+})();

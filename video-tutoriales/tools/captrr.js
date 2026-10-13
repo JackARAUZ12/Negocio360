@@ -1,0 +1,23 @@
+const { chromium } = require('/opt/node-tools/node_modules/playwright');
+const { openPage } = require('./mob.js');
+const fs = require('fs'); const O = __dirname + '/trx/'; const meta = JSON.parse(fs.readFileSync(O + 'meta.json'));
+const W = ms => new Promise(r => setTimeout(r, ms));
+const U = (pg, sel, from = 0, n = 99) => pg.evaluate(([s, a, n]) => { const els = [...document.querySelectorAll(s)].filter(e => e.getClientRects().length).slice(a, a + n); if (!els.length) return null; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; els.forEach(e => { const r = e.getBoundingClientRect(); x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y + scrollY); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom + scrollY); }); return [x0, y0, x1 - x0, y1 - y0].map(Math.round); }, [sel, from, n]);
+const L = {};
+(async () => {
+  const b = await chromium.launch(); let pg; const op = f => openPage(b, f, { wait: 5500 });
+  pg = await op('transporte.html'); L.panel = await U(pg, '#tp-kpis > *', 0, 4); await pg.context().close();
+  pg = await op('flota.html'); await pg.evaluate(() => { document.querySelector('[data-fl-abrir="u2"]').click(); }); await W(700); await pg.evaluate(() => document.querySelector('[data-fl-tab="docs"]').click()); await W(500); L.flotaDocs = await U(pg, '#fl-detalle-cuerpo .tx-panel.on .tx-doc'); await pg.context().close();
+  pg = await op('conductores.html'); L.cond = await U(pg, '#cd-lista .tx-card', 0, 2); await pg.context().close();
+  pg = await op('transporte-rutas.html'); L.rutas = await U(pg, '#rt-lista .tx-card', 0, 2); await pg.evaluate(() => document.querySelector('[data-rt-abrir="r2"]').click()); await W(600); L.tarifa = await U(pg, '#rt-detalle-cuerpo .tx-doc'); L.rutaDatos = await U(pg, '#rt-detalle-cuerpo .tx-datos'); await pg.context().close();
+  pg = await op('transporte-ordenes.html'); await pg.evaluate(() => document.querySelector('[data-ot-abrir="o5"]').click()); await W(700); L.ordKpis = await U(pg, '#ot-detalle-cuerpo .tx-kpis'); L.ordPasos = await U(pg, '#ot-detalle-cuerpo .tx-pasos');
+  await pg.evaluate(() => document.querySelector('[data-ot-tab="costos"]').click()); await W(500); L.ordCost = await U(pg, '#ot-detalle-cuerpo .tx-panel .tx-doc', 0, 5); await pg.context().close();
+  pg = await op('transporte-fronteras.html'); L.cruces = await U(pg, '#fr-vista .tx-doc', 0, 2); await pg.context().close();
+  pg = await op('transporte-mantenimiento.html'); L.mantAviso = await U(pg, '#mm-vista .tx-aviso-banda'); L.mantPlan = await U(pg, '#mm-vista .tx-doc', 0, 2); L.mantKpis = await U(pg, '#mm-kpis > *', 0, 2);
+  await pg.evaluate(() => { MT.vista = 'llantas'; renderVista(); }); await W(500); L.llanta = await U(pg, '#mm-vista .tx-doc', 0, 2); await pg.context().close();
+  pg = await op('transporte-liquidaciones.html'); await pg.evaluate(() => document.querySelector('[data-lq-liquidar]').click()); await W(700); L.liqRes = await U(pg, '#lq-resumen'); L.liqViajes = await U(pg, '#lq-liq-cuerpo .tx-doc', 0, 2); await pg.context().close();
+  pg = await op('transporte-facturacion.html'); L.fact = await U(pg, '#fc-vista .tx-doc', 0, 2); L.factKpis = await U(pg, '#fc-kpis > *', 0, 2); await pg.context().close();
+  pg = await op('transporte-reportes.html'); L.rep = await U(pg, '#rp-kpis > *', 2, 4); await pg.context().close();
+  pg = await op('transporte-entregas.html'); await pg.evaluate(() => { EN.vista = 'incidencias'; renderTodo(); }); await W(500); L.inc = await U(pg, '#en-vista .tx-doc', 0, 2); await pg.context().close();
+  meta.L = L; console.log(JSON.stringify(L, null, 0)); fs.writeFileSync(O + 'meta.json', JSON.stringify(meta)); await b.close();
+})();
