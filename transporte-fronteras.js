@@ -30,11 +30,12 @@ async function cargarTodo() {
     TX.paginar(() => sb.from('transporte_cruces').select('*').eq('auth_user_id', TX.userId).order('created_at', { ascending: false })),
     TX.paginar(() => sb.from('transporte_ordenes').select('*').eq('auth_user_id', TX.userId).order('created_at', { ascending: false })),
     TX.paginar(() => sb.from('transporte_rutas').select('*').eq('auth_user_id', TX.userId)),
-    TX.paginar(() => sb.from('transporte_unidades').select('id,nombre,placa').eq('auth_user_id', TX.userId)),
-    TX.paginar(() => sb.from('transporte_conductores').select('id,nombre').eq('auth_user_id', TX.userId)),
+    TX.paginar(() => sb.from('transporte_unidades').select('id,nombre,placa,tipo').eq('auth_user_id', TX.userId)),
+    TX.paginar(() => sb.from('transporte_conductores').select('id,nombre,cedula,licencia_tipo').eq('auth_user_id', TX.userId)),
     TX.cargarDocs('orden'),
   ]);
   FR.cruces = cruces; FR.ordenes = ordenes; FR.rutas = rutas; FR.unidades = unidades; FR.conductores = conductores; FR.docs = TX.agruparDocs(docs);
+  try { const { data } = await sb.from('transporte_subcontrataciones').select('*').eq('auth_user_id', TX.userId).eq('estado', 'activa').order('created_at', { ascending: false }); FR.subs = data || []; } catch (_) { FR.subs = []; }
   try { const { data } = await sb.from('metodos_pago').select('*').eq('auth_user_id', TX.userId).eq('activo', true).order('orden'); FR.metodos = data || []; } catch (_) { FR.metodos = []; }
   try { const { data } = await sb.from('bancos').select('id,nombre').eq('auth_user_id', TX.userId).eq('activo', true).order('nombre'); FR.bancos = data || []; } catch (_) { FR.bancos = []; }
 }
@@ -246,21 +247,30 @@ function cartaPorte(id) {
   const r = rutaDe(o), neg = TX.empresaConfig?.nombre_comercial || 'Mi empresa';
   const fecha = TX.fmtFecha(o.salida_real || o.fecha_programada || o.created_at);
   const fila = (a, b) => `<tr><th>${esc(a)}</th><td>${esc(b == null || b === '' ? '—' : b)}</td></tr>`;
+  // Transporte: flota propia o transportista externo (con sus dos placas: cabezal y furgón/remolque).
+  const sv = o.subcontratada ? (FR.subs || []).find(x => x.orden_id === o.id) : null;
+  const tipoT = k => (k && TX.TIPOS_UNIDAD[k]) ? TX.TIPOS_UNIDAD[k].t : '';
+  const unid = (x, tipo, placa) => x ? [tipoT(x.tipo), x.nombre, x.placa].filter(Boolean).join(' · ') : [tipoT(tipo), placa].filter(Boolean).join(' · ');
+  const filasTransporte = sv
+    ? fila('Transportista', sv.subcontratista_nombre || 'Transportista externo') + fila('Cabezal (tipo · placa)', unid(null, sv.tipo_unidad, sv.placa)) + fila('Furgón / remolque (tipo · placa)', unid(null, sv.tipo_furgon, sv.placa_furgon)) + fila('Conductor', sv.conductor_nombre)
+    : fila('Cabezal / unidad (tipo · placa)', u ? unid(u) : (o.subcontratada ? 'Transportista externo' : '')) + fila('Furgón / remolque (tipo · placa)', rem ? unid(rem) : '') + fila('Conductor', cd ? [cd.nombre, cd.cedula && 'Céd. ' + cd.cedula, cd.licencia_tipo && 'Lic. ' + cd.licencia_tipo].filter(Boolean).join(' · ') : '');
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Carta de porte ${esc(o.numero)}</title>
     <style>body{font-family:Arial,sans-serif;margin:28px;color:#111}h1{font-size:20px;margin:0}h2{font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #111;padding-bottom:3px}
     table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;width:32%;padding:5px 8px;background:#f3f3f3;border:1px solid #ccc}td{padding:5px 8px;border:1px solid #ccc}
     .top{display:flex;justify-content:space-between;align-items:flex-start}.firmas{display:flex;gap:30px;margin-top:60px}.firmas div{flex:1;border-top:1px solid #111;text-align:center;font-size:12px;padding-top:4px}
-    @media print{button{display:none}}</style></head><body>
+    [contenteditable]:hover{background:#fff8d6;outline:1px dashed #b8a000}[contenteditable]:focus{background:#fff3b0;outline:2px solid #b8a000}.aviso{background:#eef6ff;border:1px solid #9cc4ee;border-radius:6px;padding:8px 12px;font-size:12.5px;margin-bottom:14px}@media print{button,.aviso{display:none}[contenteditable]:hover,[contenteditable]:focus{background:none;outline:none}}</style></head><body>
+    <div class="aviso">✏️ Toca cualquier dato para corregirlo antes de imprimir. Los cambios son solo para esta impresión: no modifican la orden.</div>
     <div class="top"><div><h1>CARTA DE PORTE</h1><div style="font-size:13px;margin-top:4px">${esc(neg)}</div></div><div style="text-align:right;font-size:13px"><b>N.º CP-${esc(o.numero)}</b><br>Fecha: ${esc(fecha)}</div></div>
     <h2>Remitente / cliente</h2><table>${fila('Cliente', o.cliente_nombre)}${fila('Origen', o.origen)}${fila('Destino', o.destino)}${fila('Países', r ? [r.pais_origen, r.pais_destino].filter(Boolean).join(' → ') : '')}${fila('Fronteras', r?.cruza_frontera ? r.fronteras : 'No cruza frontera')}</table>
     <h2>Mercancía</h2><table>${fila('Descripción de la carga', o.carga_descripcion)}${fila('Peso (ton)', o.peso_ton)}${fila('Volumen (m³)', o.volumen_m3)}${fila('Bultos', o.bultos)}</table>
-    <h2>Transporte</h2><table>${fila('Unidad (placa)', u ? `${u.nombre}${u.placa ? ' · ' + u.placa : ''}` : (o.subcontratada ? 'Transportista externo' : ''))}${fila('Remolque', rem ? `${rem.nombre}${rem.placa ? ' · ' + rem.placa : ''}` : '')}${fila('Conductor', cd?.nombre)}</table>
+    <h2>Transporte</h2><table>${filasTransporte}</table>
     ${o.notas ? `<h2>Observaciones</h2><table>${fila('Notas', o.notas)}</table>` : ''}
     <div class="firmas"><div>Remitente</div><div>Transportista / conductor</div><div>Receptor</div></div>
     <p style="margin-top:24px"><button onclick="window.print()">🖨️ Imprimir</button></p></body></html>`;
   const w = window.open('', '_blank');
   if (!w) { TX.toast('Tu navegador bloqueó la ventana. Permite ventanas emergentes para imprimir.', 'error'); return; }
   w.document.write(html); w.document.close();
+  try { w.document.querySelectorAll('td,.top h1,.top b').forEach(el => el.setAttribute('contenteditable', 'true')); } catch (_) {}
 }
 
 /* ---------------- Eventos ---------------- */

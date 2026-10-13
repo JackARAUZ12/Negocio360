@@ -54,7 +54,7 @@ function renderVista() {
       (SC.subs.length ? SC.subs.map(s => {
         const n = SC.viajes.filter(v => v.subcontratista_id === s.id && v.estado === 'activa');
         return `<div class="tx-doc"><div class="tx-doc-info"><b>🤝 ${esc(s.nombre)}${s.activo ? '' : ' (inactivo)'}</b>
-          <small>${[s.ruc && 'RUC ' + s.ruc, s.telefono, s.placa_habitual && 'Placa ' + s.placa_habitual, Number(s.dias_credito) > 0 ? s.dias_credito + ' días de crédito' : 'Contado', Number(s.retencion_ir_pct) > 0 ? 'Ret. IR ' + s.retencion_ir_pct + '%' : ''].filter(Boolean).map(esc).join(' · ')}</small>
+          <small>${[s.ruc && 'RUC ' + s.ruc, s.telefono, s.placa_habitual && 'Cabezal ' + s.placa_habitual, s.placa_furgon && 'Furgón ' + s.placa_furgon, Number(s.dias_credito) > 0 ? s.dias_credito + ' días de crédito' : 'Contado', Number(s.retencion_ir_pct) > 0 ? 'Ret. IR ' + s.retencion_ir_pct + '%' : ''].filter(Boolean).map(esc).join(' · ')}</small>
           <small>${n.length} viaje(s) · ${esc(money(r2(n.reduce((t, v) => t + Number(v.monto || 0), 0))))}</small></div>
           <div class="tx-fila-chips"><button type="button" class="tx-btn tx-btn-sm" data-sc-edit-sub="${esc(s.id)}">✏️ Editar</button></div></div>`;
       }).join('') : '<div class="tx-vacio">Aún no tienes transportistas externos. Crea el primero para poder subcontratar viajes.</div>');
@@ -66,17 +66,22 @@ function renderVista() {
       const pago = v.forma_pago === 'contado' ? `Contado${v.metodo_pago_nombre ? ' · ' + v.metodo_pago_nombre : ''}` : (c ? `Crédito ${c.numero} · ${c.estado === 'pagado' ? 'pagado' : 'saldo ' + money(c.saldo_pendiente)}${v.fecha_vencimiento ? ' · vence ' + TX.fmtFecha(v.fecha_vencimiento) : ''}` : 'Crédito');
       return `<div class="tx-doc" ${anul ? 'style="opacity:.55"' : ''}><div class="tx-doc-info"><b>🚚 ${esc(o?.numero || 'Orden')} · ${esc(v.subcontratista_nombre || subDe(v.subcontratista_id)?.nombre || '—')} · ${esc(money(v.monto))}${anul ? ' (anulada)' : ''}</b>
         <small>${esc(o ? `${o.origen || '—'} → ${o.destino || '—'}` : '')} · ${esc(TX.fmtFecha(v.fecha))} · ${esc(pago)}${Number(v.retencion_ir_monto) > 0 ? ' · retención IR ' + esc(money(v.retencion_ir_monto)) : ''}</small>
+        ${[unidadTxt(v.placa, v.tipo_unidad, 'Cabezal'), unidadTxt(v.placa_furgon, v.tipo_furgon, 'Furgón'), v.conductor_nombre && 'Conductor: ' + v.conductor_nombre].filter(Boolean).length ? `<small>🚛 ${[unidadTxt(v.placa, v.tipo_unidad, 'Cabezal'), unidadTxt(v.placa_furgon, v.tipo_furgon, 'Furgón'), v.conductor_nombre && 'Conductor: ' + v.conductor_nombre].filter(Boolean).map(esc).join(' · ')}</small>` : ''}
         ${o ? `<small>Flete cobrado ${esc(money(o.total))} → margen ${esc(money(r2(Number(o.total || 0) - Number(v.monto))))}</small>` : ''}</div>
         <div class="tx-fila-chips">${o ? `<a class="tx-btn tx-btn-sm" href="transporte-ordenes.html?orden=${esc(o.id)}">Ver orden</a>` : ''}${anul ? '' : `<button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-sc-anular="${esc(v.id)}">Anular</button>`}</div></div>`;
     }).join('') : '<div class="tx-vacio">Todavía no has subcontratado ningún viaje.</div>');
 }
+/* Tipos de unidad para el cabezal (motriz) y el furgón / remolque (arrastre). Se muestran como texto en listas y documentos. */
+const tiposOpc = rol => '<option value="">— Sin indicar —</option>' + Object.entries(TX.TIPOS_UNIDAD).filter(([, v]) => v.rol === rol).map(([k, v]) => `<option value="${k}">${v.ico} ${esc(v.t)}</option>`).join('');
+const tipoTxt = k => (k && TX.TIPOS_UNIDAD[k]) ? TX.TIPOS_UNIDAD[k].t : '';
+const unidadTxt = (placa, tipo, etiqueta) => (placa || tipo) ? `${etiqueta}: ${[tipoTxt(tipo), placa].filter(Boolean).join(' · ')}` : '';
 function renderTodo() { renderKpis(); renderVista(); }
 
 /* ---------------- Transportistas ---------------- */
 function abrirSub(id) {
   const s = id ? subDe(id) : null; SC.editId = id || null;
   $('ss-titulo').textContent = s ? 'Editar transportista' : 'Nuevo transportista';
-  $('ss-nombre').value = s?.nombre || ''; $('ss-ruc').value = s?.ruc || ''; $('ss-tel').value = s?.telefono || ''; $('ss-placa').value = s?.placa_habitual || '';
+  $('ss-nombre').value = s?.nombre || ''; $('ss-ruc').value = s?.ruc || ''; $('ss-tel').value = s?.telefono || ''; $('ss-placa').value = s?.placa_habitual || ''; $('ss-tipo').innerHTML = tiposOpc('motriz'); $('ss-tipo-furgon').innerHTML = tiposOpc('arrastre'); $('ss-tipo').value = s?.tipo_unidad || ''; $('ss-tipo-furgon').value = s?.tipo_furgon || ''; $('ss-placa-furgon').value = s?.placa_furgon || '';
   $('ss-dias').value = s?.dias_credito ?? 0; $('ss-ret').value = s?.retencion_ir_pct ?? 0; $('ss-notas').value = s?.notas || ''; $('ss-error').textContent = '';
   TX.abrir('sc-modal-sub');
 }
@@ -85,7 +90,7 @@ async function guardarSub() {
   const nombre = $('ss-nombre').value.trim(); if (!nombre) return err('Escribe el nombre del transportista.');
   const dias = Math.max(0, Math.round(num($('ss-dias').value) || 0)), ret = num($('ss-ret').value) || 0;
   if (ret < 0 || ret > 100) return err('La retención debe estar entre 0 y 100%.');
-  const p = { nombre, ruc: $('ss-ruc').value.trim() || null, telefono: $('ss-tel').value.trim() || null, placa_habitual: $('ss-placa').value.trim() || null, dias_credito: dias, retencion_ir_pct: ret, notas: $('ss-notas').value.trim() || null };
+  const p = { nombre, ruc: $('ss-ruc').value.trim() || null, telefono: $('ss-tel').value.trim() || null, placa_habitual: $('ss-placa').value.trim() || null, placa_furgon: $('ss-placa-furgon').value.trim() || null, tipo_unidad: $('ss-tipo').value || null, tipo_furgon: $('ss-tipo-furgon').value || null, dias_credito: dias, retencion_ir_pct: ret, notas: $('ss-notas').value.trim() || null };
   const btn = $('ss-guardar'); btn.disabled = true;
   try {
     if (SC.editId) { const { error } = await sb.from('transporte_subcontratistas').update(p).eq('id', SC.editId).eq('auth_user_id', TX.userId); if (error) throw error; }
@@ -105,14 +110,14 @@ function abrirViaje(ordenId) {
   if (ordenId && ords.some(o => o.id === ordenId)) $('sv-orden').value = ordenId;
   $('sv-sub').innerHTML = SC.subs.filter(s => s.activo).map(s => `<option value="${esc(s.id)}">${esc(s.nombre)}</option>`).join('');
   $('sv-metodo').innerHTML = SC.metodos.map(m => `<option value="${esc(m.id)}">${esc(m.nombre)}</option>`).join('');
-  $('sv-monto').value = ''; $('sv-fecha').value = TX.hoyISO(); $('sv-placa').value = ''; $('sv-notas').value = ''; $('sv-error').textContent = '';
+  $('sv-monto').value = ''; $('sv-fecha').value = TX.hoyISO(); $('sv-placa').value = ''; $('sv-placa-furgon').value = ''; $('sv-conductor').value = ''; $('sv-tipo').innerHTML = tiposOpc('motriz'); $('sv-tipo-furgon').innerHTML = tiposOpc('arrastre'); $('sv-notas').value = ''; $('sv-error').textContent = '';
   cambiaSub(); cambiaForma(); TX.abrir('sc-modal-viaje');
 }
 function cambiaSub() {
   const s = subDe($('sv-sub').value), o = ordDe($('sv-orden').value);
   if (s) {
     $('sv-forma').value = Number(s.dias_credito) > 0 ? 'credito' : (SC.metodos.length && window.CajaAPI ? 'contado' : 'credito');
-    $('sv-ret').value = s.retencion_ir_pct || 0; $('sv-placa').value = s.placa_habitual || '';
+    $('sv-ret').value = s.retencion_ir_pct || 0; $('sv-placa').value = s.placa_habitual || ''; $('sv-placa-furgon').value = s.placa_furgon || ''; $('sv-tipo').value = s.tipo_unidad || ''; $('sv-tipo-furgon').value = s.tipo_furgon || '';
     cambiaForma();
   }
   $('sv-ref').textContent = o ? `Flete que cobras en esta orden: ${money(o.total)}` : '';
@@ -213,7 +218,7 @@ async function guardarViaje() {
     }
     const { data: sv, error: e2 } = await sb.from('transporte_subcontrataciones').insert({
       auth_user_id: TX.userId, orden_id: o.id, subcontratista_id: s.id, subcontratista_nombre: s.nombre, fecha, monto, forma_pago: contado ? 'contado' : 'credito',
-      fecha_vencimiento: contado ? null : $('sv-venc').value, retencion_ir_porcentaje: pct, retencion_ir_monto: ret, placa: $('sv-placa').value.trim() || null,
+      fecha_vencimiento: contado ? null : $('sv-venc').value, retencion_ir_porcentaje: pct, retencion_ir_monto: ret, placa: $('sv-placa').value.trim() || null, placa_furgon: $('sv-placa-furgon').value.trim() || null, tipo_unidad: $('sv-tipo').value || null, tipo_furgon: $('sv-tipo-furgon').value || null, conductor_nombre: $('sv-conductor').value.trim() || null,
       notas: $('sv-notas').value.trim() || null, metodo_pago_nombre: contado ? metodo.nombre : null, gasto_id: gastoId, movimiento_caja_id: movId, cuenta_pagar_id: cxpId, estado: 'activa',
     }).select().single();
     if (e2) throw e2;

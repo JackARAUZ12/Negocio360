@@ -812,7 +812,10 @@
   <div class="tx-campo"><label for="ss-nombre">Nombre o empresa *</label><input class="tx-in" id="ss-nombre"/></div>
   <div class="tx-campo"><label for="ss-ruc">RUC / Cédula</label><input class="tx-in" id="ss-ruc"/></div>
   <div class="tx-campo"><label for="ss-tel">Teléfono</label><input class="tx-in" id="ss-tel"/></div>
-  <div class="tx-campo"><label for="ss-placa">Placa habitual</label><input class="tx-in" id="ss-placa"/></div>
+  <div class="tx-campo"><label for="ss-placa">Placa del cabezal (habitual)</label><input class="tx-in" id="ss-placa"/></div>
+  <div class="tx-campo"><label for="ss-tipo">Tipo de unidad (cabezal)</label><select class="tx-in" id="ss-tipo"></select></div>
+  <div class="tx-campo"><label for="ss-placa-furgon">Placa del furgón / remolque (habitual)</label><input class="tx-in" id="ss-placa-furgon"/></div>
+  <div class="tx-campo"><label for="ss-tipo-furgon">Tipo de furgón / remolque</label><select class="tx-in" id="ss-tipo-furgon"></select></div>
   <div class="tx-campo"><label for="ss-dias">Días de crédito (0 = contado)</label><input class="tx-in" id="ss-dias" inputmode="numeric" value="0"/></div>
   <div class="tx-campo"><label for="ss-ret">Retención de IR habitual (%)</label><input class="tx-in" id="ss-ret" inputmode="decimal" value="0"/><div class="tx-ayuda">0 si no le retienes. El porcentaje se puede cambiar en cada viaje.</div></div>
   <div class="tx-campo"><label for="ss-notas">Notas</label><input class="tx-in" id="ss-notas"/></div>
@@ -833,7 +836,11 @@
     <div class="tx-campo" id="sv-banco-wrap" style="display:none"><label for="sv-banco">Banco</label><select class="tx-in" id="sv-banco"></select></div>
   </div>
   <div class="tx-campo" id="sv-ret-wrap"><label for="sv-ret">Retención de IR (%) <small>— opcional</small></label><input class="tx-in" id="sv-ret" inputmode="decimal" value="0"/><div class="tx-ayuda" id="sv-ret-ayuda"></div></div>
-  <div class="tx-campo"><label for="sv-placa">Placa / conductor del transportista</label><input class="tx-in" id="sv-placa"/></div>
+  <div class="tx-campo"><label for="sv-placa">Placa del cabezal</label><input class="tx-in" id="sv-placa"/></div>
+  <div class="tx-campo"><label for="sv-tipo">Tipo de unidad (cabezal)</label><select class="tx-in" id="sv-tipo"></select></div>
+  <div class="tx-campo"><label for="sv-placa-furgon">Placa del furgón / remolque</label><input class="tx-in" id="sv-placa-furgon"/></div>
+  <div class="tx-campo"><label for="sv-tipo-furgon">Tipo de furgón / remolque</label><select class="tx-in" id="sv-tipo-furgon"></select></div>
+  <div class="tx-campo"><label for="sv-conductor">Conductor del transportista</label><input class="tx-in" id="sv-conductor" placeholder="Nombre del conductor"/></div>
   <div class="tx-campo"><label for="sv-notas">Notas</label><input class="tx-in" id="sv-notas"/></div>
   <div class="tx-err" id="sv-error"></div>
   <div class="tx-pie"><button type="button" class="tx-btn" onclick="TXcerrar('sc-modal-viaje')">Cancelar</button><button type="button" class="tx-btn tx-btn-primary" id="sv-guardar">Subcontratar</button></div>
@@ -842,7 +849,7 @@
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="cajaAPI.js?v=20261007a"></script>
 <script src="transporte-comun.js?v=20261012b"></script>
-<script src="transporte-subcontratistas.js?v=20261012a"></script>
+<script src="transporte-subcontratistas.js?v=20261013b"></script>
 <script src="perfiles-guard.js?v=20261012d"></script>
 <script src="modulos-guard.js?v=20261013b"></script>
 </body>

@@ -98,7 +98,7 @@ function renderLista() {
       <div class="tx-card-body"><b>${esc(c.nombre)}</b>
         <div class="tx-fila-chips"><span class="tx-chip">${rol.ico} ${esc(rol.t)}</span><span class="tx-chip ${c.vinculo === 'empleado' ? 'azul' : ''}">${esc(VINCULOS[c.vinculo])}</span></div>
         ${c.rol === 'conductor' ? `<div class="tx-fila-chips"><span class="tx-chip ${le ? le.clase : 'gris'}">🪪 ${lic ? esc(le.texto) : 'Sin licencia registrada'}</span></div>` : ''}
-        <small>${unidad ? '🚛 ' + esc(unidad.nombre) + (unidad.placa ? ' · ' + esc(unidad.placa) : '') : (c.telefono ? '📞 ' + esc(c.telefono) : '&nbsp;')}</small>
+        <small>${unidad ? '🚛 ' + esc(unidad.nombre) + (unidad.placa ? ' · ' + esc(unidad.placa) : '') + (c.remolque_asignado_id && CD.unidades.find(u => u.id === c.remolque_asignado_id)?.placa ? ' + 📦 ' + esc(CD.unidades.find(u => u.id === c.remolque_asignado_id).placa) : '') : (c.telefono ? '📞 ' + esc(c.telefono) : '&nbsp;')}</small>
         ${salud.clave === 'vencido' || salud.clave === 'por_vencer' ? `<span class="tx-chip ${salud.clase}">${esc(salud.texto)}</span>` : ''}
       </div></div>`;
   }).join('')}</div>`;
@@ -146,6 +146,7 @@ function htmlResumen(c) {
     <div class="tx-sec">Conexiones</div>
     <div class="tx-datos">
       <div class="tx-dato"><span>Unidad asignada</span><b>${unidad ? '🚛 ' + esc(unidad.nombre) + (unidad.placa ? ' · ' + esc(unidad.placa) : '') : 'Ninguna'}</b><a class="tx-btn tx-btn-sm" style="margin-top:6px" href="flota.html">Ir a Flota</a></div>
+      <div class="tx-dato"><span>Furgón / remolque asignado</span><b>${(() => { const r = c.remolque_asignado_id ? CD.unidades.find(u => u.id === c.remolque_asignado_id) : null; return r ? '📦 ' + esc(r.nombre) + (r.placa ? ' · ' + esc(r.placa) : '') : 'Ninguno'; })()}</b></div>
       <div class="tx-dato"><span>Ficha de empleado</span><b>${emp ? '🧑‍💼 ' + esc(emp.nombre) + (emp.cargo ? ' · ' + esc(emp.cargo) : '') : (c.vinculo === 'empleado' ? 'No vinculado' : 'Subcontratado')}</b>${c.vinculo === 'empleado' ? '<a class="tx-btn tx-btn-sm" style="margin-top:6px" href="salarios.html">Ir a Salarios</a>' : ''}</div>
     </div>
     <div class="tx-pie" style="justify-content:space-between"><button type="button" class="tx-btn tx-btn-borrar" data-cd-borrar="${esc(c.id)}">🗑 Eliminar</button></div>`;
@@ -184,6 +185,8 @@ async function abrirForm(id) {
   set('fc-empleado', c?.empleado_id || '');
   document.getElementById('fc-unidad').innerHTML = '<option value="">Sin asignar</option>' + CD.unidades.filter(u => u.estado !== 'inactiva').map(u => `<option value="${esc(u.id)}">${esc(u.nombre)}${u.placa ? ' · ' + esc(u.placa) : ''}</option>`).join('');
   set('fc-unidad', c?.unidad_asignada_id || '');
+  document.getElementById('fc-remolque').innerHTML = '<option value="">Sin asignar</option>' + CD.unidades.filter(u => u.estado !== 'inactiva' && u.rol === 'arrastre').map(u => `<option value="${esc(u.id)}">${esc(u.nombre)}${u.placa ? ' · ' + esc(u.placa) : ''}</option>`).join('');
+  set('fc-remolque', c?.remolque_asignado_id || '');
   CD.fotoForm = c?.foto_url ? { url: c.foto_url, nuevo: false } : null;
   renderFotoForm(); actualizarForm();
   document.getElementById('fc-error').textContent = '';
@@ -236,6 +239,7 @@ async function guardarForm() {
       contacto_emergencia_nombre: document.getElementById('fc-em-nombre').value.trim() || null, contacto_emergencia_telefono: document.getElementById('fc-em-tel').value.trim() || null,
       licencia_tipo: rol === 'conductor' ? (document.getElementById('fc-lic-tipo').value.trim() || null) : null,
       unidad_asignada_id: document.getElementById('fc-unidad').value || null,
+      remolque_asignado_id: document.getElementById('fc-remolque').value || null,
       notas: document.getElementById('fc-notas').value.trim() || null, foto_url, updated_at: new Date().toISOString(),
     };
     let error, id = CD.editando?.id;

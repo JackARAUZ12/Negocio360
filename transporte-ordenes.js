@@ -634,6 +634,11 @@ function enlazar() {
   $('od-unidad').addEventListener('change', () => {
     const c = OT.conductores.find(x => x.unidad_asignada_id === $('od-unidad').value && x.estado === 'disponible' && x.rol === 'conductor');
     if (c && !$('od-conductor').value) $('od-conductor').value = c.id;
+    if (c && c.remolque_asignado_id && !$('od-remolque').value) $('od-remolque').value = c.remolque_asignado_id;
+  });
+  $('od-conductor').addEventListener('change', () => {
+    const c = OT.conductores.find(x => x.id === $('od-conductor').value);
+    if (c && c.remolque_asignado_id && !$('od-remolque').value && OT.unidades.some(u => u.id === c.remolque_asignado_id)) $('od-remolque').value = c.remolque_asignado_id;
   });
   $('os-guardar').addEventListener('click', guardarSalida);
   $('oe-guardar').addEventListener('click', guardarEntrega);
