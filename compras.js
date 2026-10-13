@@ -2071,23 +2071,6 @@ async function guardarCompra() {
         } catch (eLog) { console.warn('No se pudo registrar en log_stock_fallido:', eLog); }
       }
 
-      // Costo promedio ponderado (opcional: solo si el negocio lo activó en Configuración).
-      // nuevo = (stock_antes × costo_actual + cantidad × costo_compra) / stock_después
-      // Si no había stock (o era negativo), el costo pasa a ser el de esta compra.
-      let cpCostoAntes = null, cpCostoNuevo = null;
-      if (STATE.empresaConfig?.costo_promedio_activo === true && linea.producto.tipo_costo !== 'escala' && !linea.esRegalia && Number(costoInv) > 0) {
-        try {
-          const { data: pc } = await sbClient.from('productos').select('costo').eq('id', linea.producto.id).eq('auth_user_id', STATE.userId).maybeSingle();
-          if (pc) {
-            cpCostoAntes = Number(pc.costo || 0);
-            const base = Math.max(stockAntes, 0);
-            cpCostoNuevo = stockDespues > 0
-              ? round2((base * cpCostoAntes + Number(cantInv) * Number(costoInv)) / (base + Number(cantInv)))
-              : round2(Number(costoInv));
-          }
-        } catch (eCp) { console.warn('Costo promedio no calculado:', eCp); cpCostoAntes = cpCostoNuevo = null; }
-      }
-
       // a. Detalle
       const { error: errDet } = await sbClient.from('detalle_compras').insert({
         auth_user_id:   STATE.userId,
@@ -2109,14 +2092,8 @@ async function guardarCompra() {
         stock_antes:    stockAntes,
         stock_despues:  stockDespues,
         es_regalia:     !!linea.esRegalia,
-        ...(cpCostoNuevo !== null ? { costo_antes: cpCostoAntes, costo_despues: cpCostoNuevo } : {}),
       });
       if (errDet) throw errDet;
-      if (cpCostoNuevo !== null) {
-        const { error: eCosto } = await sbClient.from('productos').update({ costo: cpCostoNuevo, updated_at: new Date().toISOString() })
-          .eq('id', linea.producto.id).eq('auth_user_id', STATE.userId);
-        if (eCosto) console.warn('No se pudo actualizar el costo promedio (la compra y el stock ya quedaron bien):', eCosto);
-      }
 
       // c. Registrar el lote (si el negocio activó Lotes y Vencimientos,
       // y se indicó una fecha de vencimiento para este producto). Esto
@@ -2819,16 +2796,14 @@ async function anularCompra() {
     for (const linea of (lineas || [])) {
       const { data: prod } = await sbClient
         .from('productos')
-        .select('stock_actual, costo')
+        .select('stock_actual')
         .eq('id', linea.producto_id)
         .maybeSingle();
 
       if (prod) {
         const stockRevertido = Math.max(0, Number(prod.stock_actual) - Number(linea.cantidad));
-        // Si esta compra cambió el costo promedio y nadie lo cambió después, se devuelve el costo anterior.
-        const devolverCosto = linea.costo_antes != null && linea.costo_despues != null && Math.abs(Number(prod.costo) - Number(linea.costo_despues)) < 0.005;
         await sbClient.from('productos')
-          .update({ stock_actual: stockRevertido, ...(devolverCosto ? { costo: Number(linea.costo_antes) } : {}), updated_at: new Date().toISOString() })
+          .update({ stock_actual: stockRevertido, updated_at: new Date().toISOString() })
           .eq('id', linea.producto_id)
           .eq('auth_user_id', STATE.userId);
       }

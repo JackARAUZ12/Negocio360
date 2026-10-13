@@ -1193,30 +1193,6 @@
           <div class="cfg-status" id="lv-status"></div>
         </div>
 
-        <!-- COSTO PROMEDIO PONDERADO -->
-        <div class="cfg-card fade-in stagger-1">
-          <div class="cfg-card-header">
-            <div class="cfg-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            </div>
-            <div>
-              <div class="cfg-card-title">Costo promedio del inventario</div>
-              <div class="cfg-card-desc">Al registrar una compra de contado, el costo del producto se recalcula como promedio ponderado entre lo que ya tenías y lo que compras. Solo afecta compras nuevas; no cambia el costo de compras anteriores.</div>
-            </div>
-          </div>
-          <div class="cfg-row">
-            <div>
-              <div class="cfg-row-label">Calcular costo promedio ponderado</div>
-              <div class="cfg-row-sub" id="cp-row-sub">Cargando estado actual…</div>
-            </div>
-            <label class="cfg-switch">
-              <input type="checkbox" id="cp-toggle" disabled />
-              <span class="cfg-switch-track" onclick="onToggleCostoPromedioClick(event)"></span>
-            </label>
-          </div>
-          <div class="cfg-status" id="cp-status"></div>
-        </div>
-
         <!-- CIERRES DE CAJA AUTOMÁTICOS -->
         <div class="cfg-card fade-in stagger-1">
           <div class="cfg-card-header">
@@ -1966,43 +1942,6 @@ async function guardarLotesVencimiento(activo) {
   }
 }
 
-
-/* =====================================================
-   COSTO PROMEDIO PONDERADO — opcional, apagado por defecto
-   (configuracion_empresa.costo_promedio_activo).
-===================================================== */
-const CP_TXT_ON  = 'Activado — cada compra nueva recalcula el costo del producto (promedio ponderado).';
-const CP_TXT_OFF = 'Desactivado — el costo del producto solo cambia cuando tú lo editas.';
-async function cargarCostoPromedio() {
-  const toggle = document.getElementById('cp-toggle'), sub = document.getElementById('cp-row-sub');
-  if (!toggle) return;
-  try {
-    const { data, error } = await sbClient.from('configuracion_empresa').select('costo_promedio_activo').eq('auth_user_id', currentAuthUserId).maybeSingle();
-    if (error) throw error;
-    const activo = data?.costo_promedio_activo === true;
-    toggle.checked = activo; sub.textContent = activo ? CP_TXT_ON : CP_TXT_OFF; toggle.disabled = false;
-  } catch (e) { console.error('cargarCostoPromedio:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
-}
-function onToggleCostoPromedioClick(evt) {
-  const toggle = document.getElementById('cp-toggle');
-  if (toggle.disabled) { evt.preventDefault(); return; }
-  toggle.checked = !toggle.checked;
-  guardarCostoPromedio(toggle.checked);
-}
-async function guardarCostoPromedio(activo) {
-  const toggle = document.getElementById('cp-toggle'), sub = document.getElementById('cp-row-sub'), statusEl = document.getElementById('cp-status');
-  toggle.disabled = true;
-  try {
-    const { error } = await sbClient.from('configuracion_empresa').update({ costo_promedio_activo: activo }).eq('auth_user_id', currentAuthUserId);
-    if (error) throw error;
-    sub.textContent = activo ? CP_TXT_ON : CP_TXT_OFF;
-    setStatus(statusEl, activo ? 'Costo promedio activado.' : 'Costo promedio desactivado.', true);
-  } catch (e) {
-    console.error('guardarCostoPromedio:', e);
-    toggle.checked = !activo;
-    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
-  } finally { toggle.disabled = false; }
-}
 
 /* =====================================================
    CIERRES DE CAJA AUTOMÁTICOS — opcionales, apagados por
@@ -3061,7 +3000,6 @@ async function initConfiguracion() {
       cargarSkuDoc();
       cargarModulosOpcionales();
       cargarLotesVencimiento();
-      cargarCostoPromedio();
       cargarPresentaciones();
       cargarNumeroSerie();
       cargarModeloProducto();
