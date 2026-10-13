@@ -386,6 +386,57 @@
     });
   }
 
+
+  // Calculadora costo-precio: herramienta aislada que SIEMPRE esta disponible
+  // (no depende de ningun interruptor propio). Se coloca justo debajo de
+  // Fiados cuando la cuenta lo tiene activo, o en una seccion "Más" al final
+  // del menu. Respeta "Editar módulos" y los perfiles restringidos.
+  function inyectarCalculadoraEnSidebar(cfg) {
+    const ARCHIVO = 'calculadora-precio.html';
+    const mod = MODULOS_POR_ARCHIVO[ARCHIVO];
+    if (!mod) return;
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
+    if (document.querySelector(`[onclick*="navigate('${ARCHIVO}')"], a[href="${ARCHIVO}"]`)) return;
+    if (!estaActivo(cfg, mod.key, null, null)) return;
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const pf = raw ? JSON.parse(raw) : null;
+      if (pf && pf.tipo !== 'admin' && !new Set(pf.modulos || []).has(mod.key)) return;
+    } catch (_) { /* sin perfil restringido */ }
+
+    const usaPatronSidebarItem = !!nav.querySelector('.sidebar-item') && !nav.querySelector('.nav-item');
+    const activo = currentFile() === ARCHIVO;
+    let item;
+    if (usaPatronSidebarItem) {
+      item = document.createElement('a');
+      item.href = ARCHIVO;
+      item.className = 'sidebar-item' + (activo ? ' active' : '');
+      const ic = document.createElement('span'); ic.className = 'sidebar-icon'; ic.textContent = mod.icon;
+      item.appendChild(ic); item.appendChild(document.createTextNode(mod.label));
+    } else {
+      item = document.createElement('div');
+      item.className = 'nav-item' + (activo ? ' active' : '');
+      item.setAttribute('onclick', `navigate('${ARCHIVO}')`);
+      item.setAttribute('data-tooltip', mod.label);
+      const ic = document.createElement('span');
+      ic.style.cssText = 'font-size:16px;width:18px;flex-shrink:0;text-align:center;display:inline-block';
+      ic.textContent = mod.icon;
+      const lb = document.createElement('span'); lb.className = 'nav-label'; lb.textContent = mod.label;
+      item.appendChild(ic); item.appendChild(lb);
+    }
+
+    const fiados = nav.querySelector(`[onclick*="navigate('fiados.html')"], a[href="fiados.html"]`);
+    const fiadosItem = fiados && (fiados.closest('.nav-item, .sidebar-item') || fiados);
+    if (fiadosItem && fiadosItem.parentElement === nav) { fiadosItem.insertAdjacentElement('afterend', item); return; }
+
+    const titulo = document.createElement('div');
+    titulo.className = usaPatronSidebarItem ? 'sidebar-section-label' : 'nav-section-title';
+    titulo.textContent = usaPatronSidebarItem ? 'Más' : 'MÁS';
+    nav.appendChild(titulo);
+    nav.appendChild(item);
+  }
+
   // El Chat con Negocio360 es OBLIGATORIO (por ahi se envian los comprobantes a los
   // clientes) y debe verse en TODAS las paginas. Su enlace esta escrito a mano en el
   // menu de cada pagina y algunas (Ventas, Productos, Caja, Clientes, Compras, Gastos,
@@ -536,6 +587,7 @@
     if (protegerPaginaActual(cfg)) return;
     ocultarEnSidebar(cfg);
     inyectarModulosSecundariosEnSidebar(cfg);
+    try { inyectarCalculadoraEnSidebar(cfg); } catch (e) { console.warn('modulos-guard calculadora:', e); }
     asegurarChatEnSidebar();
     try { asegurarTutorialesEnSidebar(); } catch (e) { console.warn("modulos-guard tutoriales:", e); }
     inyectarBotonTutorial(client).catch(e => console.warn("modulos-guard boton tutorial:", e));

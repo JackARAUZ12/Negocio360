@@ -181,6 +181,10 @@
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
+
+    // ---- Calculadora costo-precio (herramienta aislada: no guarda ni cambia datos) ----
+    'calculadora-precio.html': { key: 'calculadora_precio', label: 'Calculadora costo-precio', icon: '🧮', obligatorio: false,
+                       desc: 'Escribe el costo de un producto y te sugiere a qué precio venderlo para ganar y ser competitivo. Solo calcula: no guarda nada.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
