@@ -1,0 +1,84 @@
+// ================= FEATURES (hotel)
+const FEATS = [[9, 6], [15, 6], [21, 6], [27, 6], [33, 5], [38, 5], [43, 5]];
+function featH(i, eyebrow, lines, sub, ph, lenses, extra) {
+  const [a, d] = FEATS[i - 1], b = a + d;
+  TEXTS.push(textBlock(a, b, String(i).padStart(2, '0'), eyebrow, lines, sub));
+  if (ph) { ph.a = a; ph.b = b; PHONES.push(ph); }
+  (lenses || []).forEach(l => LENSES.push(l));
+  (extra || []).forEach(e => ITEMS.push(e));
+  S.whoosh.push(a - .05);
+}
+let P;
+// 1 Habitaciones 9-15
+P = phone(PX, PY, [[9, 'm_hab', 0, 0], [9.3, 'm_hab', 0, 600, 11.6, 12.6], [13.0, 'm_hab_det', 0, 0]]);
+featH(1, 'HABITACIONES', ['Cada habitación,', '<em>en tiempo real</em>'], 'Disponible, ocupada, en limpieza o en mantenimiento. Con su tarifa por noche.', P,
+  [lens('m_hab', [24, 238, 382, 313], 0, 440, 1180, 580, 9.9, 11.5, 'Estado de tu hotel hoy'), lens('m_hab_det', [10, 205, 410, 232], 0, 410, 1330, 610, 13.3, 15, 'Suite · NIO 5,200 / noche')]);
+// 2 Reservaciones 15-21
+P = phone(PX, PY, [[15, 'm_res_cruce', 0, 0], [18, 'm_res_ok', 0, 0]]);
+phl(P, [45, 360, 340, 50], 15.8, 17.8); phl(P, [45, 362, 340, 34], 18.3, 21);
+featH(2, 'RESERVACIONES', ['Reservas', '<em>sin cruces de fecha</em>'], 'El sistema te avisa si la habitación ya está ocupada en esas fechas.', P,
+  [lens('m_res_cruce', [40, 360, 350, 52], 0, 400, 1330, 620, 16.0, 17.8, 'Choque de fechas detectado'), lens('m_res_ok', [40, 362, 350, 30], 0, 400, 1380, 620, 18.4, 21, 'Habitación libre')]);
+S.tick.push(16.0, 18.4);
+// 3 WhatsApp + Check-in 21-27
+P = phone(PX, PY, [[21, 'm_res', 0, 0, 21.2, 22.2], [22.2, 'm_res', 0, 520]]);
+const WA = mk('', `<div class="hdw"><i>💬</i><div><b>Gabriela Rocha</b><small>WhatsApp</small></div></div><div class="bub">Hola Gabriela Rocha, tu reservación en Hotel Mirador del Lago está confirmada:
+
+🏨 Habitación 101
+📅 Entrada: 11 oct 2026
+📅 Salida: 13 oct 2026
+💵 Tarifa: NIO 1,800.00 / noche
+
+¡Te esperamos!<small>✓✓</small></div>`, ''); WA.id = 'wa';
+ITEMS.push({ el: WA, a: 22.6, b: 25.2, k: 'paper' }); S.pop.push(22.6);
+featH(3, 'CONFIRMACIÓN Y CHECK-IN', ['Confirmá al instante,', '<em>check-in en un toque</em>'], 'Al hacer check-in, la habitación pasa sola a “Ocupada”.', P,
+  [lens('m_res', [24, 624, 406, 170], 0, 420, 1420, 600, 25.3, 27, 'Check-in · Estadía')]);
+// 4 Mapa 27-33 (monitor)
+const MON = mk('mon', `<div class="scr" style="width:980px"><div class="vp" style="height:568px"><div id="kanbg"></div></div></div><div class="nk"></div><div class="bs"></div>`, 'left:50px;top:800px');
+ITEMS.push({ el: MON, a: 27, b: 33, k: 'mon' });
+featH(4, 'MAPA DE HABITACIONES', ['Toda la ocupación', '<em>de un vistazo</em>'], '14 días por habitación: quién llega, quién se va y qué está libre.', null, []);
+// 5 Estadía y check-out 33-38
+P = phone(PX, PY, [[33, 'm_est', 0, 0]]);
+phl(P, [16, 160, 398, 140], 33.6, 35.0); phl(P, [190, 750, 200, 44], 36.3, 38);
+featH(5, 'ESTADÍA Y CHECK-OUT', ['Cargos de la estadía', 'y <em>check-out</em>'], 'Minibar, restaurante, lavandería… y el cobro entra directo a Caja.', P,
+  [lens('m_est', [16, 160, 398, 140], 0, 420, 1250, 600, 34.2, 38, 'Cuenta del huésped')]);
+// 6 Housekeeping 38-43
+P = phone(PX, PY, [[38, 'm_hk', 0, 0]]);
+featH(6, 'HOUSEKEEPING', ['Limpieza con', '<em>alerta por tiempo</em>'], 'Si una habitación lleva demasiado sin limpiar, se marca en rojo.', P,
+  [lens('m_hk', [24, 324, 382, 140], 0, 430, 1230, 590, 38.8, 43, 'Hace 4 horas sin limpiar')]);
+// 7 Huéspedes 43-48
+P = phone(PX, PY, [[43, 'm_hu', 0, 0]]);
+featH(7, 'HUÉSPEDES', ['Conocé a tus', '<em>huéspedes recurrentes</em>'], 'Estadías, última visita y cuánto ha generado cada uno.', P,
+  [lens('m_hu', [24, 493, 406, 220], 0, 430, 1250, 590, 43.8, 48, 'Historial por huésped')]);
+// ================= ACTIVATION 48 → 55
+const ACT = { a: 48, b: 55 };
+const actHd = mk('hd', `<span class="ln"><span>¿Cómo lo</span></span><span class="ln"><span><em>activo?</em></span></span>`, 'top:250px');
+const steps = mk('steps', [['1', 'Abrí <strong style="color:#B08A3E">Configuración</strong>'], ['2', 'Buscá <strong style="color:#B08A3E">Módulo de Hotel</strong>'], ['3', 'Tocá <strong style="color:#B08A3E">Activar</strong> y listo']].map(([n, t]) => `<div class="step"><b>${n}</b><span>${t}</span></div>`).join(''), 'top:500px');
+const PA = phone(PX, 760, [[ACT.a, 'm_cfg_off', 0, 0], [51.15, 'm_cfg_on', 0, 0]]);
+PA.a = ACT.a + .2; PA.b = ACT.b; PHONES.push(PA);
+const cfgOff = -300; const SW = [347, 214, 46, 26];
+phl(PA, [12, 36, 406, 240], 49.6, 54.5);
+const OKC = mk('lens', '<div style="display:flex;align-items:center;gap:26px;padding:34px 38px"><div style="width:96px;height:96px;border-radius:50%;background:#12B886;color:#fff;font-size:56px;display:flex;align-items:center;justify-content:center;flex:none">✓</div><div><div style="font-size:40px;font-weight:800;color:#13233F;letter-spacing:-.02em">Módulo de Hotel activado</div><div style="font-size:30px;color:#6B6457;margin-top:6px;font-weight:500">Los 5 módulos aparecen en tu menú.</div></div></div>', 'left:70px;top:1560px;width:940px');
+LENSES.push({ el: OKC, a: 52.0, b: 55 }); S.pop.push(52.0);
+S.whoosh.push(47.95); S.click.push(51.1); S.chime.push(51.2);
+// ================= INTRO 0 → 6
+const DARK = { a: 0, b: 6.0 };
+const IN1 = mk('big', '<div style="font-size:84px;color:#fff;line-height:1.08">¿Tenés un</div><div style="font-size:140px;line-height:1.05;background:linear-gradient(95deg,#F2DFA8,#D4AF63 50%,#B08A3E);-webkit-background-clip:text;color:transparent">hotel?</div>', 'top:640px;z-index:6');
+const CYC = ['Reservas', 'Check-in', 'Limpieza', 'Huéspedes', 'Cobros']; const cyc = mk('', '', ''); cyc.id = 'cyc';
+const LG = mk('', '<div class="ic"><img src="htx/iso.png"></div><div class="nm">Negocio360</div><div style="margin-top:44px" class="chipd"><i></i>Nuevo: Módulo de Hotel</div>', ''); LG.id = 'logo';
+const KEY = mk('', '<div class="stripe"></div><div class="chip"></div><div class="lg"><img src="htx/iso.png">Negocio360</div><div class="num">202</div><div class="shine"></div>', ''); KEY.id = 'key';
+const OV = { a: 6, b: 9 };
+const ovHd = mk('hd', `<span class="ln"><span>Todo lo que trae el</span></span><span class="ln"><span><em>Módulo de Hotel</em></span></span>`, 'top:300px;text-align:center;left:40px;right:40px');
+const ovSb = mk('sb', '5 módulos conectados con Caja, Clientes e Impuestos.', 'top:520px;text-align:center');
+const TL = [['🛏️', 'Habitaciones'], ['📅', 'Reservaciones'], ['🗺️', 'Mapa'], ['🧹', 'Housekeeping'], ['🧳', 'Huéspedes'], ['💳', 'Check-in / Check-out']];
+const tiles = mk('tiles', TL.map(([i, n]) => `<div class="tile"><div class="ic">${i}</div><b>${n}</b></div>`).join(''), 'top:680px');
+S.impact.push(6.0); S.rise.push(4.2); TL.forEach((_, i) => S.pop.push(6.5 + i * .125));
+CYC.forEach((_, i) => S.tick.push(2.1 + i * .5)); S.pop.push(2.3, 4.4);
+// ================= OUTRO 55 → 60
+const OUT = { a: 55, b: 60 };
+const LG2 = mk('', '<div class="ic"><img src="htx/iso.png"></div><div class="nm">Negocio360</div>', 'position:absolute;left:50%;display:flex;flex-direction:column;align-items:center;opacity:0;z-index:6'); LG2.id = 'logo2';
+const O1 = mk('big', '<div style="font-size:64px;color:#fff;line-height:1.15">Módulo de</div><div style="font-size:120px;line-height:1.05;background:linear-gradient(95deg,#F2DFA8,#D4AF63 50%,#B08A3E);-webkit-background-clip:text;color:transparent">Hotel</div>', 'top:1020px;z-index:6');
+const O2 = mk('big', '<span class="chipd"><i></i>Pedí tu demostración</span><div style="font-size:40px;color:rgba(255,255,255,.75);margin-top:34px;font-weight:600;letter-spacing:0">negocio360oficial.com</div>', 'top:1330px;z-index:6');
+S.impact.push(55.0); S.sweep.push(54.75);
+$('segs').innerHTML = Array.from({ length: 7 }, () => '<i><b></b></i>').join('');
+const WIPES = [5.75, 8.75, 47.75, 54.75];
+window.EVENTS = { DUR, S, WIPES };

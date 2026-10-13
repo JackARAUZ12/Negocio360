@@ -1,0 +1,33 @@
+const { chromium } = require('/opt/node-tools/node_modules/playwright');
+const { openPage } = require('./mob.js');
+const { openDash } = require('./open.js');
+const fs = require('fs'); const O = __dirname + '/htx/'; const meta = {};
+const W = ms => new Promise(r => setTimeout(r, ms));
+const U = (pg, sel, from = 0, n = 99) => pg.evaluate(([s, a, n]) => { const els = [...document.querySelectorAll(s)].filter(e => e.getClientRects().length).slice(a, a + n); if (!els.length) return null; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; els.forEach(e => { const r = e.getBoundingClientRect(); x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y + scrollY); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom + scrollY); }); return [x0, y0, x1 - x0, y1 - y0].map(Math.round); }, [sel, from, n]);
+async function shot(pg, n, sels = {}, full) { await W(300); await pg.screenshot({ path: O + n + '.jpg', type: 'jpeg', quality: 90, fullPage: !!full }); const m = { h: await pg.evaluate(() => document.documentElement.scrollHeight) }; for (const [k, s] of Object.entries(sels)) m[k] = await U(pg, ...(Array.isArray(s) ? s : [s])); meta[n] = m; console.log(n, JSON.stringify(m)); }
+(async () => {
+  const b = await chromium.launch(); let pg; const op = f => openPage(b, f, { wait: 5500 });
+  pg = await op('hotel-habitaciones.html'); await shot(pg, 'm_hab', { kpis: ['.kpi-card, [class*=kpi]', 0, 5], grid: '#hab-grid-cont', card1: ['.hab-card', 1, 1] }, true);
+  await pg.evaluate(() => verDetalleHabitacion('h202')); await W(700); await shot(pg, 'm_hab_det', {}); await pg.context().close();
+  pg = await op('hotel-reservaciones.html'); await shot(pg, 'm_res', { tabla: '#res-tbody', fila1: ['#res-tbody tr', 0, 1] }, true);
+  await pg.evaluate(() => { abrirModalReservacion(); }); await W(700);
+  await pg.evaluate(() => { const v = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('change', { bubbles: true })); e.dispatchEvent(new Event('input', { bubbles: true })); }; const d = k => { const t = new Date(); t.setDate(t.getDate() + k); return t.toISOString().slice(0, 10); };
+    v('res-habitacion', 'h202'); v('res-entrada', d(0)); v('res-salida', d(2)); onCambiarDatosReservacion(); }); await W(400);
+  await shot(pg, 'm_res_cruce', { aviso: '#res-disponibilidad' });
+  await pg.evaluate(() => { const v = (id, x) => { const e = document.getElementById(id); e.value = x; }; const d = k => { const t = new Date(); t.setDate(t.getDate() + k); return t.toISOString().slice(0, 10); }; v('res-habitacion', 'h204'); v('res-entrada', d(0)); v('res-salida', d(2)); document.getElementById('res-tarifa').value = ''; onCambiarDatosReservacion(); }); await W(400);
+  await shot(pg, 'm_res_ok', { aviso: '#res-disponibilidad' });
+  await pg.evaluate(() => { closeModal('modal-reservacion'); }); await W(300);
+  await pg.evaluate(() => abrirModalEstadia('r1')); await W(1200); await shot(pg, 'm_est', { total: '#est-total', btn: '#est-btn-checkout' }); await pg.context().close();
+  pg = await op('hotel-mapa.html'); await shot(pg, 'm_mapa', { tabla: '#mapa-tabla' }, true); await pg.context().close();
+  pg = await op('hotel-housekeeping.html'); await shot(pg, 'm_hk', { lim: '#hk-grid-limpieza', mant: '#hk-grid-mantenimiento' }, true); await pg.context().close();
+  pg = await op('hotel-huespedes.html'); await shot(pg, 'm_hu', { tabla: '#hu-tbody' }, true); await pg.context().close();
+  pg = await openPage(b, 'configuracion.html', { wait: 6000 });
+  await pg.evaluate(() => { const c = document.getElementById('hotel-card'); c.querySelector('.cfg-card-title').innerHTML = 'Módulo de Hotel'; c.querySelector('.cfg-card-desc').textContent = 'Gestión hotelera completa: habitaciones, reservaciones, mapa de ocupación, check-in/check-out, housekeeping y huéspedes, conectado con Caja.'; document.getElementById('hotel-toggle').checked = false; document.getElementById('hotel-row-sub').textContent = 'Desactivado — el módulo de hotel no aparece en ningún lado.'; c.scrollIntoView(); });
+  await W(400); await pg.screenshot({ path: O + 'm_cfg_off.jpg', type: 'jpeg', quality: 90 });
+  await pg.evaluate(() => { document.getElementById('hotel-toggle').checked = true; document.getElementById('hotel-row-sub').textContent = 'Activado — el menú de Hotel aparece en el sidebar.'; });
+  await W(300); await pg.screenshot({ path: O + 'm_cfg_on.jpg', type: 'jpeg', quality: 90 });
+  meta.cfg = { card: await pg.evaluate(() => { const r = document.getElementById('hotel-card').getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }), sw: await pg.evaluate(() => { const r = document.querySelector('#hotel-card .cfg-switch-track').getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }) };
+  console.log('cfg', JSON.stringify(meta.cfg)); await pg.context().close();
+  pg = await openDash(b, { file: 'hotel-mapa.html', clean: true, dpr: 1.5, wait: 5500 }); await pg.screenshot({ path: O + 'd_mapa.jpg', type: 'jpeg', quality: 92 }); meta.d_mapa = { tabla: await U(pg, '#mapa-tabla') }; console.log('dmapa', JSON.stringify(meta.d_mapa)); await pg.context().close();
+  fs.writeFileSync(O + 'meta.json', JSON.stringify(meta)); await b.close();
+})();
