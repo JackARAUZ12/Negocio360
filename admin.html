@@ -109,6 +109,13 @@
         Clientes Catálogo360
       </button>
 
+      <button class="nav-item" data-section="pruebas">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 3h6M10 3v6.5L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9.5V3"/>
+        </svg>
+        Pruebas
+      </button>
+
       <button class="nav-item" data-section="clientes-periodo">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -813,6 +820,55 @@
               <tbody id="codes-catalogo360-tbody">
                 <!-- Renderizado por JS -->
               </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-pruebas">
+      <div class="page-header">
+        <h1>Pruebas</h1>
+        <p>Cuentas de prueba y de demostración. No cuentan como clientes: no aparecen en Usuarios ni en las estadísticas.</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="pruebas-total">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Cuentas de prueba</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent)" id="pruebas-demos">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Demos públicas</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="pruebas-internas">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Internas</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Cuentas de prueba</div>
+            <div class="card-subtitle">Demos del botón de acceso y cuentas internas del equipo</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Negocio</th>
+                  <th>Correo</th>
+                  <th>Tipo</th>
+                  <th>Rubro</th>
+                  <th>Plan</th>
+                  <th>Última conexión</th>
+                </tr>
+              </thead>
+              <tbody id="pruebas-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -1709,7 +1765,7 @@
     }
   });
 </script>
-<script src="admin.js?v=20261012a"></script>
+<script src="admin.js?v=20261013a"></script>
 
 <script src="bienvenida-negocio360.js?v=9"></script>
 </body>

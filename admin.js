@@ -62,7 +62,15 @@ async function obtenerIdsClientesC360Independientes() {
   try {
     const { data, error } = await sb.from('catalogo_suscripciones').select('auth_user_id').eq('es_independiente', true);
     if (error) throw error;
-    _idsClientesC360IndependientesCache = new Set((data || []).map(r => r.auth_user_id));
+    const ids = new Set((data || []).map(r => r.auth_user_id));
+    // Las CUENTAS DE PRUEBA (submódulo "Pruebas") tampoco son clientes: se
+    // excluyen de Usuarios, estadísticas y Clientes por período por este mismo
+    // camino. Si la consulta falla, simplemente no se excluye nada extra.
+    try {
+      const { data: pr } = await sb.from('cuentas_prueba').select('auth_user_id');
+      (pr || []).forEach(r => ids.add(r.auth_user_id));
+    } catch (_) { /* tabla aún no disponible */ }
+    _idsClientesC360IndependientesCache = ids;
     return _idsClientesC360IndependientesCache;
   } catch (e) {
     console.warn('obtenerIdsClientesC360Independientes:', e);
@@ -177,6 +185,7 @@ function navigate(section) {
   if (section === 'codes-catalogo360') loadCodesC360();
   if (section === 'clientes-catalogo360') loadClientesC360();
   if (section === 'clientes-periodo') loadClientesPeriodo();
+  if (section === 'pruebas')   loadPruebas();
   if (section === 'soporte')   loadConversaciones();
   if (section === 'anuncios')  loadAnunciosSection();
   if (section === 'tutoriales') loadTutorialesSection();
@@ -2637,6 +2646,58 @@ async function createCodeC360() {
 // ============================================================
 // SECCIÓN 3-C — CLIENTES CATÁLOGO360
 // ============================================================
+
+// ============================================================
+// SUBMÓDULO "PRUEBAS" — cuentas de prueba / demostración
+// Lista las cuentas registradas en cuentas_prueba (no aparecen en
+// Usuarios ni en las estadísticas). Solo lectura.
+// ============================================================
+async function loadPruebas() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+  const tbody = document.getElementById('pruebas-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:48px;color:var(--text-muted)"><div class="loader-spinner" style="margin:0 auto 12px"></div>Cargando cuentas de prueba...</td></tr>`;
+  try {
+    const { data: filas, error } = await sb.from('cuentas_prueba').select('*').order('orden', { ascending: true });
+    if (error) throw error;
+    const lista = filas || [];
+    const ids = lista.map(f => f.auth_user_id);
+    let porId = new Map();
+    if (ids.length) {
+      const { data: us } = await sb.from('usuarios')
+        .select('auth_user_id, nombre, apellido, nombre_negocio, email, plan, estado_cuenta, ultima_conexion').in('auth_user_id', ids);
+      porId = new Map((us || []).map(u => [u.auth_user_id, u]));
+    }
+    const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setT('pruebas-total', lista.length);
+    setT('pruebas-demos', lista.filter(f => f.tipo === 'demo_publica').length);
+    setT('pruebas-internas', lista.filter(f => f.tipo !== 'demo_publica').length);
+    if (!lista.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>No hay cuentas de prueba registradas</p><span>Las cuentas de demostración aparecerán aquí</span></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = lista.map(f => {
+      const u = porId.get(f.auth_user_id) || {};
+      const nombre = [u.nombre, u.apellido].filter(Boolean).join(' ');
+      const tipo = f.tipo === 'demo_publica' ? '🎬 Demo pública' : '🔒 Interna';
+      return `<tr>
+        <td style="font-weight:600">${escHtml(f.etiqueta)}${f.nota ? `<div style="font-size:11px;color:var(--text-muted);font-weight:400">${escHtml(f.nota)}</div>` : ''}</td>
+        <td>${escHtml(u.nombre_negocio || '—')}${nombre ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(nombre)}</div>` : ''}</td>
+        <td>${escHtml(u.email || '—')}</td>
+        <td>${tipo}</td>
+        <td>${escHtml(f.rubro || '—')}</td>
+        <td>${escHtml(u.plan || '—')}</td>
+        <td>${u.ultima_conexion ? formatDate(u.ultima_conexion) : '—'}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('loadPruebas:', e);
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No se pudieron cargar las cuentas de prueba.</td></tr>`;
+    toast('Error al cargar pruebas', e.message, 'error');
+  }
+}
+
 async function loadClientesC360() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
