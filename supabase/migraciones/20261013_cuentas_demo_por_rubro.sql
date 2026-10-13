@@ -14,3 +14,15 @@
 -- Las credenciales de las demos están en el selector de rubro de login.html
 -- (mismo criterio que la demo original: cuentas públicas de prueba).
 -- ============================================================
+
+-- ------------------------------------------------------------
+-- Catálogo360 apagado en TODAS las cuentas demo (ya aplicado):
+--  * catalogo360_desbloqueado = false (sin acceso)
+--  * catalogo360_regalo_mostrado = true (no sale el regalo de bienvenida)
+--  * metadata.modulosOpcionales.catalogo360 = false (se oculta del menú y
+--    de los accesos rápidos, y abrir catalogo360.html redirige al dashboard)
+--  * se quitaron sus filas en catalogo_suscripciones (los catálogos ya
+--    creados no se borraron)
+-- ------------------------------------------------------------
+-- with demos as (select auth_user_id from public.cuentas_prueba where tipo='demo_publica')
+-- update public.configuracion_empresa set catalogo360_desbloqueado=false, catalogo360_regalo_mostrado=true, ...
