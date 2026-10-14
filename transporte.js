@@ -125,7 +125,12 @@ function sym() {
   if (typeof monedaParaMostrar === 'function') { try { return monedaParaMostrar(m); } catch (_) {} }
   return m === 'USD' ? '$' : 'C$';
 }
-function fmt(n) { return sym() + ' ' + Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmt(n) {
+  // Convierte también el número (no solo la etiqueta) si hay moneda de visualización activa.
+  let v = Number(n || 0);
+  if (typeof convertirParaMostrar === 'function') { try { v = convertirParaMostrar(v, TP.empresaConfig?.moneda); } catch (_) {} }
+  return sym() + ' ' + v.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
 /* ============================================================

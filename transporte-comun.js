@@ -205,8 +205,14 @@
   TX.fmtMoneda = n => {
     const m = TX.empresaConfig?.moneda;
     let s = m === 'USD' ? '$' : 'C$';
-    if (typeof monedaParaMostrar === 'function') { try { s = monedaParaMostrar(m); } catch (_) {} }
-    return s + ' ' + Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let v = Number(n || 0);
+    // Moneda de visualización: antes solo cambiaba la etiqueta y dejaba
+    // el número sin convertir. Ahora convierte etiqueta Y número, igual
+    // que el resto de módulos. Solo afecta lo que se ve, nunca lo guardado.
+    if (typeof monedaParaMostrar === 'function' && typeof convertirParaMostrar === 'function') {
+      try { const sv = monedaParaMostrar(m); const vv = convertirParaMostrar(v, m); s = sv; v = vv; } catch (_) {}
+    }
+    return s + ' ' + v.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   async function cargarEmpresa(userId) {
