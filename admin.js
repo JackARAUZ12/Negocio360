@@ -939,6 +939,10 @@ function renderUsersTable(users) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             Ver
           </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="verComoCliente('${u.auth_user_id}')" title="Abrir la cuenta de este cliente en otra pestaña, solo para mirar (no se puede modificar nada)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Entrar (solo lectura)
+          </button>
           <button class="btn-icon btn-ghost btn-sm" onclick="mensajearCliente('${u.auth_user_id}')" title="Enviarle un mensaje por el chat de soporte">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             Mensaje
@@ -979,6 +983,35 @@ function renderUsersTable(users) {
       </td>
     </tr>
   `).join('');
+}
+
+// ── VER COMO CLIENTE (solo lectura) ───────────────────────
+// Abre la cuenta del cliente en otra pestaña, sin poder modificar nada.
+// La función admin-ver-como verifica que seas administrador y deja constancia.
+async function verComoCliente(authUserId) {
+  const u = (allUsers || []).find(x => x.auth_user_id === authUserId) || {};
+  const nombre = u.nombre_negocio || u.email || 'este cliente';
+  if (!confirm('Vas a abrir la cuenta de "' + nombre + '" en otra pestaña, en modo SOLO LECTURA.\n\nPodrás ver todo pero no se guardará ningún cambio. Queda registrado en la bitácora.\n\n¿Continuar?')) return;
+  // Se abre la pestaña de inmediato (si no, el navegador la bloquea) y luego se le da la dirección.
+  const w = window.open('about:blank', '_blank');
+  if (!w) { toast('Pestaña bloqueada', 'Permite las ventanas emergentes de este sitio e intenta de nuevo', 'error'); return; }
+  try { w.document.write('<p style="font-family:system-ui;padding:24px">Abriendo la cuenta…</p>'); } catch (e) {}
+  try {
+    const { data, error } = await sb.functions.invoke('admin-ver-como', { body: { auth_user_id: authUserId } });
+    if (error || !data || !data.ok) {
+      let msg = (data && data.error) || (error && error.message) || 'No se pudo abrir la cuenta';
+      try { if (error && error.context && error.context.json) { const j = await error.context.json(); if (j && j.error) msg = j.error; } } catch (e) {}
+      try { w.close(); } catch (e) {}
+      toast('No se pudo abrir', msg, 'error');
+      return;
+    }
+    w.location.href = 'ver-como.html#th=' + encodeURIComponent(data.token_hash)
+      + '&n=' + encodeURIComponent(data.negocio || nombre)
+      + '&e=' + encodeURIComponent(data.email || '');
+  } catch (e) {
+    try { w.close(); } catch (e2) {}
+    toast('No se pudo abrir', e.message || 'Error inesperado', 'error');
+  }
 }
 
 // Filtrar tabla usuarios

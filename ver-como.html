@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Abriendo cuenta (solo lectura) — Negocio360</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="ver-como.js?v=20261013a"></script>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f4f0;color:#111;font-family:system-ui,-apple-system,sans-serif}
+    .caja{max-width:420px;padding:28px;text-align:center}
+    h1{font-size:18px;margin:0 0 8px}
+    p{font-size:14px;color:#555;margin:0 0 14px;line-height:1.45}
+    a{color:#2563eb}
+  </style>
+</head>
+<body>
+  <div class="caja">
+    <h1 id="titulo">Abriendo la cuenta…</h1>
+    <p id="detalle">Se abre en modo solo lectura: puedes ver todo, pero no se guarda ningún cambio.</p>
+    <p id="salida" style="display:none"><a href="admin.html">Volver al panel de administrador</a></p>
+  </div>
+<script>
+(async function () {
+  var URL_SB = 'https://zvlincmqmmoclqhykejv.supabase.co';
+  var KEY_SB = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+  function falla(msg) {
+    document.getElementById('titulo').textContent = 'No se pudo abrir la cuenta';
+    document.getElementById('detalle').textContent = msg;
+    document.getElementById('salida').style.display = 'block';
+  }
+  var h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  var th = h.get('th'), negocio = h.get('n') || '', email = h.get('e') || '';
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (!th) return falla('El enlace no es válido. Vuelve al panel y presiona el botón otra vez.');
+  if (!window.N360VerComo || !window.N360VerComo.activar({ negocio: negocio, email: email })) {
+    return falla('Este navegador no permite abrir la vista de forma segura. Prueba con Chrome o Edge.');
+  }
+  try {
+    var sb = window.supabase.createClient(URL_SB, KEY_SB);
+    var r = await sb.auth.verifyOtp({ token_hash: th, type: 'magiclink' });
+    if (r.error) r = await sb.auth.verifyOtp({ token_hash: th, type: 'email' });
+    if (r.error || !r.data || !r.data.session) {
+      try { sessionStorage.clear(); } catch (e) {}
+      return falla('El acceso venció o ya se usó. Vuelve al panel y presiona el botón otra vez.');
+    }
+    location.replace('dashboard.html');
+  } catch (e) {
+    try { sessionStorage.clear(); } catch (e2) {}
+    falla('Ocurrió un error al abrir la cuenta. Intenta de nuevo.');
+  }
+})();
+</script>
+</body>
+</html>
