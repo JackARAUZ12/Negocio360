@@ -22,6 +22,8 @@
     try { if (window.TX && TX.empresaConfig && TX.empresaConfig.moneda) return TX.empresaConfig.moneda; } catch (_) {}
     try { if (window.TP && TP.empresaConfig && TP.empresaConfig.moneda) return TP.empresaConfig.moneda; } catch (_) {}
     try { if (typeof STATE !== 'undefined' && STATE && STATE.empresaConfig && STATE.empresaConfig.moneda) return STATE.empresaConfig.moneda; } catch (_) {}
+    try { if (window.FD && FD.empresaConfig && FD.empresaConfig.moneda) return FD.empresaConfig.moneda; } catch (_) {}
+    try { if (typeof EST !== 'undefined' && EST && EST.empresaConfig && EST.empresaConfig.moneda) return EST.empresaConfig.moneda; } catch (_) {}
     // Productos / Bodega guardan la moneda en MONEDA_CODIGO; el reporte general en R.moneda.
     try { if (typeof R !== 'undefined' && R && (R.moneda === 'NIO' || R.moneda === 'USD')) return R.moneda; } catch (_) {}
     try { if (typeof MONEDA_CODIGO !== 'undefined' && window.__n360MonedaCodigoListo && MONEDA_CODIGO) return MONEDA_CODIGO; } catch (_) {}

@@ -43,13 +43,21 @@ const EST = {
   data: {}, // cache cruda de la última carga
 };
 
-function sym() { return EST.moneda || 'C$'; }
+// Moneda de visualización: solo cambia lo que se VE. Sin conversión activa,
+// todo se muestra exactamente igual que antes.
+function monedaOficialEst() { return EST.empresaConfig?.moneda || 'NIO'; }
+function hayMonedaVis() { try { return typeof monedaVisualizacionActiva === 'function' && !!monedaVisualizacionActiva() && !!tasaVisualizacionActiva(); } catch (_) { return false; } }
+function cvEst(n) {
+  if (n === null || n === undefined || !hayMonedaVis()) return n;
+  return convertirParaMostrar(n, monedaOficialEst());
+}
+function sym() { return hayMonedaVis() ? monedaParaMostrar(monedaOficialEst()) : (EST.moneda || 'C$'); }
 function fmt(n) {
-  const v = parseFloat(n || 0);
+  const v = cvEst(parseFloat(n || 0));
   return `${sym()} ${v.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function fmtShort(n) {
-  const v = parseFloat(n || 0), s = sym();
+  const v = cvEst(parseFloat(n || 0)), s = sym();
   const abs = Math.abs(v);
   if (abs >= 1_000_000) return `${s}${(v/1_000_000).toFixed(1)}M`;
   if (abs >= 1_000)     return `${s}${(v/1_000).toFixed(1)}k`;
@@ -550,8 +558,8 @@ function renderChartIngresosEgresos() {
     data: {
       labels,
       datasets: [
-        { label: 'Ingresos', data: ingresos, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', fill: true, tension: 0.35 },
-        { label: 'Egresos', data: egresos, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', fill: true, tension: 0.35 },
+        { label: 'Ingresos', data: ingresos.map(cvEst), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', fill: true, tension: 0.35 },
+        { label: 'Egresos', data: egresos.map(cvEst), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', fill: true, tension: 0.35 },
       ],
     },
     options: {
@@ -605,8 +613,8 @@ function renderChartRitmoAcumulado() {
     data: {
       labels,
       datasets: [
-        { label: 'Este mes (acumulado)', data: acumActual, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.08)', fill: true, tension: 0.3, spanGaps: false },
-        { label: 'Mes anterior (acumulado)', data: acumAnterior, borderColor: '#9ca3af', borderDash: [5,4], backgroundColor: 'transparent', fill: false, tension: 0.3 },
+        { label: 'Este mes (acumulado)', data: acumActual.map(cvEst), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.08)', fill: true, tension: 0.3, spanGaps: false },
+        { label: 'Mes anterior (acumulado)', data: acumAnterior.map(cvEst), borderColor: '#9ca3af', borderDash: [5,4], backgroundColor: 'transparent', fill: false, tension: 0.3 },
       ],
     },
     options: {
@@ -1169,8 +1177,8 @@ function renderChartPrediccion() {
     data: {
       labels,
       datasets: [
-        { label: 'Ingresos', data: ingresos, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', tension: 0.3, segment: { borderDash: segmentoProyectado } },
-        { label: 'Gastos', data: egresos, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', tension: 0.3, segment: { borderDash: segmentoProyectado } },
+        { label: 'Ingresos', data: ingresos.map(cvEst), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', tension: 0.3, segment: { borderDash: segmentoProyectado } },
+        { label: 'Gastos', data: egresos.map(cvEst), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', tension: 0.3, segment: { borderDash: segmentoProyectado } },
       ],
     },
     options: {

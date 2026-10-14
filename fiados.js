@@ -29,7 +29,14 @@ function sym() {
   if (typeof monedaParaMostrar === 'function') { try { return monedaParaMostrar(m); } catch (_) {} }
   return m === 'USD' ? '$' : 'C$';
 }
-function fmt(n) { return sym() + ' ' + Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmt(n) {
+  // Antes solo cambiaba la etiqueta (USD) sin convertir el número. Ahora
+  // convierte también el número, igual que el resto de módulos. Solo afecta
+  // lo que se ve; los saldos guardados no cambian.
+  let v = Number(n || 0);
+  if (typeof convertirParaMostrar === 'function') { try { v = convertirParaMostrar(v, FD.empresaConfig?.moneda); } catch (_) {} }
+  return sym() + ' ' + v.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function fmtFecha(iso) {
   if (!iso) return '';
   const [y, m, d] = String(iso).slice(0, 10).split('-');
