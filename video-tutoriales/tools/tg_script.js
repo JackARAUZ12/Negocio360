@@ -1,0 +1,192 @@
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 222.04;
+
+const STATES = ['base','f_inmediatos','f_programados','f_pagados','f_catlist','search','m0','m_tipo','m_cat','m_newcat','m_conc','m_monto','m_met','m_banco','m_origen','m_origen_dd','m_iva','m_ret','m_sal','m_full','saved','p_m','p_frec','prog','rp','ep','det','eg','can','cancelado'];
+const _X = ['base','f_hoy','f_semana','f_ano','f_custom','search','nc0','p1','p1sel','p1new','p2','p2res','p3a','p3b','p3reg','p3iva','p3lote','p4','p5','p5b','p5c','p6','p6gen','p7','saved','pn1','cd','ord','ordConv','prov','provEdit','anular'];
+const SRC = {};
+const V = {};
+STATES.forEach(s => { const d = document.createElement('div'); d.className = 'view'; d.style.opacity = 0; d.innerHTML = `<img class="topimg" src="${SRC[s] || 'gshots/' + s + '_top.jpg'}">`; $('views').appendChild(d); V[s] = d; });
+const CAM = [{ t: 0, x: 960, y: 540, z: 1 }];
+let curCam = { x: 960, y: 540, z: 1 };
+const ST = [{ t: 0, s: 'base' }], SPOTS = [], LABELS = [], CAPS = [], CLICKS = [], CHAP = [], CARDS = [];
+const CURK = [{ t: 0, x: 1500, y: 800 }]; let curPos = { x: 1500, y: 800 };
+function cam(t, c, dur = 1.0) { const n = Object.assign({}, curCam, c); CAM.push({ t, ...curCam }); CAM.push({ t: t + dur, ...n }); curCam = n; }
+function focus(t, r, zmax = 2, pad = 1.25, dur = 1.0) { const z = Math.max(1, Math.min(zmax, 1920 / (r[2] * pad), 1080 / (r[3] * pad))); cam(t, { x: r[0] + r[2] / 2, y: r[1] + r[3] / 2, z }, dur); }
+function st(t, s) { ST.push({ t, s }); }
+function cur(t, x, y, dur = .7) { CURK.push({ t, x: curPos.x, y: curPos.y }); CURK.push({ t: t + dur, x, y }); curPos = { x, y }; }
+function curTo(t, r, dur = .7) { cur(t, r[0] + r[2] * .55, r[1] + r[3] * .55, dur); }
+function click(t) { CLICKS.push(t); }
+function spot(a, b, r) { SPOTS.push({ a, b, r }); }
+function label(a, b, r, title, text = '', n) { LABELS.push({ a, b, r, title, text, n }); }
+function sl(a, b, r, title, text, n) { if (r[0] >= 600 && r[0] + r[2] <= 1330 && r[3] < 380) focus(a - .35, [600, r[1] + r[3] / 2 - 250, 720, 500], 1.75, 1.0, .55); spot(a, b, r); label(a + .12, b, r, title, text, n); }
+function cap(a, b, text) { CAPS.push({ a, b, text }); }
+function chap(t, n, title) { CHAP.push({ t, n, title }); }
+const g = (r, p = 6) => [r[0] - p, r[1] - p, r[2] + 2 * p, r[3] + 2 * p];
+
+
+const M = JSON.parse(`{"kpis":[[268,176,256,83],[542,176,256,83],[815,176,256,83],[1089,176,256,83],[1363,176,256,83],[1636,176,256,83]],"filtros":[[289,436,63,30],[360,436,94,30],[462,436,108,30],[578,436,79,30]],"ths":[[269,483,167,37],[436,483,341,37],[777,483,197,37],[974,483,172,37],[1146,483,201,37],[1347,483,159,37],[1506,483,199,37],[1705,483,186,37]],"base":{"kpiRow":[268,176,1624,83],"tabs":[268,287,355,42],"tabProg":[433,292,185,32],"panel":[268,353,1624,1409],"cat":[665,437,162,28],"search":[1656,434,214,33],"bNueva":[1761,92,131,32],"table":[269,483,1622,1223],"row0":[269,520,1622,51],"eye0":[1719,532,28,28],"edit0":[1751,532,28,28],"can0":[1783,532,28,28]},"f_inmediatos":{},"f_programados":{},"f_pagados":{},"f_catlist":{"dd":[665,469,162,542]},"f_cat":{"cat":[665,437,162,28]},"search":{"search":[1656,434,214,33]},"m0":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_tipo":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[695,317,259,76]},"m_cat":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[966,317,177,492]},"m_newcat":{"box":[760,414,400,253],"inp":[785,525,350,37],"btn":[989,612,146,32]},"m_conc":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_monto":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_met":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[966,467,259,108]},"m_banco":{"box":[670,127,580,826],"tipo":[695,239,259,37],"cat":[966,239,177,37],"bNew":[1149,239,76,37],"conc":[695,314,530,37],"monto":[695,388,259,37],"metodo":[966,388,259,37],"iva":[695,442,13,13],"ivaW":null,"ret":[695,472,530,20],"banco":[695,504,530,61],"origen":[695,578,530,81],"fecha":[695,697,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,900,142,32]},"m_origen":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_origen_dd":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[695,606,530,76]},"m_iva":{"box":[670,117,580,847],"tipo":[695,228,259,37],"cat":[966,228,177,37],"bNew":[1149,228,76,37],"conc":[695,303,530,37],"monto":[695,378,259,37],"metodo":[966,378,259,37],"iva":[695,432,13,13],"ivaW":[695,462,530,82],"ret":[695,557,530,20],"banco":null,"origen":[695,589,530,81],"fecha":[695,708,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,911,142,32]},"m_ret":{"box":[670,74,580,932],"tipo":[695,186,259,37],"cat":[966,186,177,37],"bNew":[1149,186,76,37],"conc":[695,261,530,37],"monto":[695,335,259,37],"metodo":[966,335,259,37],"iva":[695,389,13,13],"ivaW":[695,419,530,82],"ret":[695,515,530,105],"banco":null,"origen":[695,631,530,81],"fecha":[695,750,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,953,142,32]},"m_full":{"box":[670,117,580,847],"tipo":[695,228,259,37],"cat":[966,228,177,37],"bNew":[1149,228,76,37],"conc":[695,303,530,37],"monto":[695,378,259,37],"metodo":[966,378,259,37],"iva":[695,432,13,13],"ivaW":[695,462,530,82],"ret":[695,557,530,20],"banco":null,"origen":[695,589,530,81],"fecha":[695,708,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,911,142,32]},"m_sal":{"box":[670,127,580,826],"tipo":[695,239,259,37],"cat":[966,239,177,37],"bNew":[1149,239,76,37],"conc":[695,388,530,37],"monto":[695,463,259,37],"metodo":[966,463,259,37],"iva":[695,517,13,13],"ivaW":null,"ret":[695,547,530,20],"banco":null,"origen":[695,578,530,81],"fecha":[695,697,530,39],"frec":null,"pagar":null,"emp":[695,290,530,61],"save":[1083,900,142,32]},"saved":{"row0":[269,520,1622,51],"toast":[1645,1012,251,44]},"p_m":{"box":[670,79,580,921],"tipo":[695,191,259,37],"cat":[966,191,177,37],"bNew":[1149,191,76,37],"conc":[695,266,530,37],"monto":[695,341,259,37],"metodo":[966,341,259,37],"iva":[695,395,13,13],"ivaW":null,"ret":[695,424,530,20],"banco":null,"origen":[695,456,530,81],"fecha":[695,650,530,39],"frec":[695,551,530,61],"pagar":[695,703,530,81],"emp":null,"save":[1083,948,142,32]},"p_frec":{"box":[670,79,580,921],"tipo":[695,191,259,37],"cat":[966,191,177,37],"bNew":[1149,191,76,37],"conc":[695,266,530,37],"monto":[695,341,259,37],"metodo":[966,341,259,37],"iva":[695,395,13,13],"ivaW":null,"ret":[695,424,530,20],"banco":null,"origen":[695,456,530,81],"fecha":[695,650,530,39],"frec":[695,551,530,61],"pagar":[695,703,530,81],"emp":null,"save":[1083,948,142,32],"dd":[695,616,530,204]},"prows":[[269,456,1622,51],[269,507,1622,62],[269,569,1622,62],[269,631,1622,51],[269,682,1622,51],[269,733,1622,51],[269,784,1622,51],[269,835,1622,51]],"pvenc":[[1179,456,237,51],[1179,507,237,62],[1179,569,237,62],[1179,631,237,51],[1179,682,237,51],[1179,733,237,51],[1179,784,237,51],[1179,835,237,51]],"prog":{"tab":[433,292,185,32],"table":[269,419,1622,466],"bNew":[1688,372,183,32],"reg":[1577,586,109,27],"edit":[1690,468,28,28],"pause":[1722,468,28,28],"paused":[269,733,1622,51],"react":[1577,744,28,28]},"rp":{"box":[760,210,400,660],"btn":[1005,817,130,32]},"ep":{"box":[670,282,580,517],"monto":[695,468,259,37],"frec":[966,468,259,37]},"det":{"box":[670,264,580,553]},"eg":{"box":[760,267,400,546],"cat":[785,447,268,37],"conc":[785,522,350,37],"obs":null},"can":{"box":[760,420,400,241],"btn":[1031,607,104,32]},"cancelado":{"row0":[269,520,1622,61],"badge":[1355,540,74,23]}}`);
+const R = { kpiRow: M.base.kpiRow, kpis: M.kpis, filtros: M.filtros, ths: M.ths, pvenc: M.pvenc, hdr: [1210, 80, 690, 60] };
+const NC = [960, 540, 1];
+const fm = (t, r, z = 1.6) => focus(t, r, z, 1.06, .8);
+const u = (a, b) => { const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]); return [x, y, Math.max(a[0] + a[2], b[0] + b[2]) - x, Math.max(a[1] + a[3], b[1] + b[3]) - y]; };
+CARDS.push({ type: 'intro', a: 0, b: 6.1 });
+cap(6.42, 13.3, 'Todo el dinero que sale de tu negocio · <b>Luz · Internet · Alquiler · Salarios</b>');
+
+chap(14.03, 1, 'Indicadores');
+focus(14.03, R.kpiRow, 1.25, 1.04);
+sl(15.39, 17.4, R.kpiRow, 'Seis indicadores', '');
+[['Gastos del día', 17.6, 18.72, ''], ['Gastos del mes', 18.82, 19.48, ''], ['Gastos del año', 19.56, 20.5, ''], ['Gastos pendientes', 20.64, 22.2, 'Programados ya vencidos.'], ['Recurrentes activos', 22.32, 24.7, ''], ['Salarios pendientes', 24.8, 26.5, '']].forEach(([n, a, b, tx], i) => { curTo(a - .3, R.kpis[i], .3); sl(a, b, g(R.kpis[i], 4), n, tx, i + 1); });
+sl(26.72, 30.8, R.kpiRow, 'De un vistazo', 'Cuánto gastás y qué te toca pagar.');
+
+chap(31.55, 2, 'Historial y filtros');
+cam(31.55, { x: 960, y: 650, z: 1.1 }, .9);
+sl(33.55, 36.0, [269, 483, 1622, 590], 'Gastos registrados', '');
+[['Fecha', 36.17, 36.98], ['Concepto', 37.07, 37.82], ['Categoría', 37.89, 38.78], ['Tipo', 38.87, 39.4], ['Monto', 39.46, 40.05], ['Estado', 40.1, 40.9]].forEach(([n, a, b], i) => { const c = R.ths[i]; curTo(a - .25, [c[0], 505, c[2], 20], .25); sl(a, b, [c[0], 483, c[2], 590], n, ''); });
+focus(41.0, [269, 410, 820, 90], 1.8, 1.1);
+[[41.9, 42.95, 1, 'f_inmediatos', 'Inmediatos'], [43.05, 43.9, 2, 'f_programados', 'Programados'], [44.0, 45.0, 3, 'f_pagados', 'Pagados']].forEach(([a, b, i, s, n]) => { curTo(a - .25, R.filtros[i], .25); click(a + .05); st(a + .25, s); sl(a, b, g(R.filtros[i], 4), n, ''); });
+st(45.1, 'base'); curTo(45.0, M.base.cat, .3); click(45.25); st(45.45, 'f_catlist'); focus(45.2, [600, 420, 400, 600], 1.6, 1.1); sl(45.2, 46.4, u(M.base.cat, M.f_catlist.dd), 'Por categoría', '');
+st(46.5, 'base'); focus(46.5, [1300, 400, 600, 110], 2.0, 1.1); curTo(46.6, M.base.search, .4); click(47.0); st(47.2, 'search'); sl(46.6, 48.3, g(M.base.search, 5), 'Buscá por concepto', '');
+
+chap(48.62, 3, 'Nuevo gasto inmediato');
+st(48.7, 'base'); focus(48.7, R.hdr, 2.2, 1.1); curTo(49.5, M.base.bNueva, .8); sl(50.52, 53.0, g(M.base.bNueva, 5), 'Nuevo gasto', ''); click(52.6);
+const B0 = M.m0.box;
+st(52.9, 'm0'); fm(52.9, B0, 1.35);
+curTo(53.6, M.m0.tipo, .4); click(53.9); st(54.1, 'm_tipo'); sl(53.8, 58.9, u(M.m0.tipo, M.m_tipo.dd), 'Tipo de gasto', 'Inmediato: lo pagás hoy, una sola vez.', 1);
+st(59.2, 'm0'); curTo(59.2, M.m0.cat, .3); click(59.5); st(59.7, 'm_cat'); sl(59.42, 67.2, u(M.m0.cat, M.m_cat.dd), 'Categoría', 'Publicidad · Electricidad · Agua · Alquiler · Combustible · Mantenimiento…', 2);
+st(67.3, 'm0'); curTo(67.6, M.m0.bNew, .4); sl(67.42, 69.8, g(M.m0.bNew, 5), '+ Nueva', 'Tu propia categoría.'); click(69.5);
+st(69.8, 'm_newcat'); fm(69.8, M.m_newcat.box, 1.8); sl(70.01, 72.0, g(M.m_newcat.inp, 5), 'Creala en segundos', '');
+
+chap(72.27, 4, 'Concepto, monto y pago');
+st(72.3, 'm0'); fm(72.3, B0, 1.35);
+curTo(75.0, M.m0.conc, .4); click(75.3); st(75.6, 'm_conc'); sl(75.31, 79.1, g(M.m0.conc, 5), 'Concepto', 'Ej.: Recibo de luz de octubre', 1);
+curTo(79.1, M.m0.monto, .3); st(79.5, 'm_monto'); sl(79.35, 80.0, g(M.m0.monto, 5), 'Monto', '', 2);
+curTo(79.9, M.m0.metodo, .3); click(80.2); st(80.4, 'm_met'); sl(80.08, 81.65, u(M.m0.metodo, M.m_met.dd), 'Método de pago', '', 3);
+st(81.9, 'm_banco'); fm(81.9, M.m_banco.box, 1.3); sl(81.9, 86.6, g(M.m_banco.banco, 4), '¿De qué banco sale?', 'Si pagás con transferencia o tarjeta.');
+
+chap(87.42, 5, 'Caja Chica o Caja General');
+st(87.5, 'm_origen'); fm(87.5, B0, 1.35);
+curTo(89.6, M.m0.origen, .4); sl(89.77, 94.0, g(M.m0.origen, 4), '¿De dónde sale el dinero?', 'Si tenés la Caja Chica abierta.');
+sl(94.11, 96.7, g(M.m0.origen, 4), '🏦 Caja Chica', 'El efectivo del cajón.');
+click(96.6); st(96.85, 'm_origen_dd'); sl(96.87, 99.7, u(M.m0.origen, M.m_origen_dd.dd), '🏛️ Caja General', 'Tu cuenta principal.');
+st(99.8, 'm_origen'); sl(99.94, 101.9, g(M.m0.origen, 4), 'Tu caja siempre cuadra ✅', '');
+
+chap(102.59, 6, 'IVA y retención');
+curTo(103.6, M.m0.iva, .5); click(104.4); st(104.6, 'm_iva'); fm(104.6, M.m_iva.box, 1.25);
+sl(104.24, 108.3, u(M.m_iva.iva, M.m_iva.ivaW), 'Este gasto incluye IVA', 'Indicá cuánto es.', 1);
+sl(108.6, 111.3, g(M.m_iva.ivaW, 4), 'IVA aparte', 'Se registra en Contabilidad.');
+curTo(111.5, M.m_iva.ret, .4); click(111.9); st(112.1, 'm_ret'); fm(112.1, M.m_ret.box, 1.15);
+sl(111.67, 115.4, g(M.m_ret.ret, 4), 'Retención IR', 'Opcional · % sobre el valor sin IVA', 2);
+sl(115.61, 121.3, g(M.m_ret.ret, 4), 'De Caja sale el neto', 'La retención queda por pagar a la DGI en <b>Impuestos</b>.');
+
+chap(121.88, 7, 'Salarios');
+st(122.0, 'm_sal'); fm(122.0, M.m_sal.box, 1.3);
+curTo(122.9, M.m_sal.cat, .4); sl(123.16, 125.3, g(M.m_sal.cat, 5), 'Categoría Salarios', '');
+curTo(125.3, M.m_sal.emp, .4); sl(125.44, 130.4, g(M.m_sal.emp, 4), 'Nombre del empleado', 'Sabés exactamente a quién le pagaste.');
+
+chap(131.03, 8, 'Guardar');
+st(131.1, 'm_full'); fm(131.1, M.m_full.box, 1.25);
+curTo(131.4, M.m_full.save, .7); sl(132.15, 133.85, g(M.m_full.save, 5), 'Guardar gasto', ''); click(133.4);
+st(133.75, 'saved'); cam(133.75, { x: 960, y: 540, z: 1 }, .7);
+sl(134.13, 135.65, M.saved.row0, 'Queda en el historial', '');
+sl(135.79, 138.9, R.kpiRow, 'Sale de tu caja', 'Y se refleja en tus reportes.');
+
+chap(139.38, 9, 'Gastos programados');
+const BP = M.p_m.box;
+st(139.5, 'p_m'); fm(139.5, BP, 1.15);
+curTo(143.2, M.p_m.tipo, .4); sl(143.5, 146.4, g(M.p_m.tipo, 5), 'Gasto programado', 'Para los gastos que se repiten.', 1);
+curTo(146.2, M.p_m.frec, .3); click(146.5); st(146.7, 'p_frec'); sl(146.5, 151.8, u(M.p_m.frec, M.p_frec.dd), 'Frecuencia', 'Semanal · Quincenal · Mensual · Trimestral · Semestral · Anual', 2);
+st(151.9, 'p_m'); curTo(152.0, M.p_m.fecha, .3); sl(152.25, 154.0, g(M.p_m.fecha, 5), 'Fecha del primer pago', '', 3);
+curTo(154.0, M.p_m.pagar, .3); sl(154.09, 158.4, g(M.p_m.pagar, 4), '¿Lo pagás ya?', 'Registralo ahora o dejá solo la programación.', 4);
+
+chap(159.08, 10, 'Pestaña Gastos programados');
+st(159.2, 'base'); cam(159.2, { x: 960, y: 540, z: 1 }, .6); curTo(159.6, M.prog.tab, .7); click(160.9); st(161.1, 'prog');
+sl(161.39, 163.4, M.prog.table, 'Pagos recurrentes', '');
+focus(163.4, [1060, 440, 760, 460], 1.9, 1.05);
+sl(163.52, 167.0, [1179, 456, 237, 430], 'Próximo vencimiento', '');
+const VB = i => [1185, R.pvenc[i][1] + R.pvenc[i][3] / 2 - 15, 160, 30];
+sl(167.36, 170.3, g(VB(4), 4), 'Vence en pocos días', ''); sl(170.42, 171.38, g(VB(3), 4), 'Vence mañana', ''); sl(171.45, 172.2, g(VB(2), 4), 'Vence hoy', ''); sl(172.27, 173.5, u(g(VB(0), 4), g(VB(1), 4)), 'Vencido', '');
+curTo(173.2, M.prog.reg, .4); sl(173.61, 175.0, g(M.prog.reg, 5), 'Registrar pago', ''); click(174.6);
+st(174.9, 'rp'); fm(174.9, M.rp.box, 1.5); sl(175.0, 178.4, M.rp.box, 'Pagado en un toque', 'La próxima fecha se calcula sola.');
+
+chap(178.59, 11, 'Automático, pausar y editar');
+st(178.7, 'prog'); cam(178.7, { x: 960, y: 640, z: 1.12 }, .7);
+cap(181.28, 188.2, '🔄 Si un pago se vence, se genera <b>solo</b> la próxima vez que entrás a Gastos');
+focus(188.3, [1400, 440, 500, 420], 1.9, 1.05);
+curTo(188.6, M.prog.pause, .4); sl(188.39, 190.7, g(M.prog.pause, 6), 'Pausar', '');
+sl(190.77, 193.3, M.prog.paused, 'Pausado', 'Reactivalo cuando quieras.');
+curTo(193.0, M.prog.edit, .3); click(193.6); st(193.85, 'ep'); fm(193.85, M.ep.box, 1.45); sl(193.9, 195.5, u(M.ep.monto, M.ep.frec), 'Editá monto y frecuencia', '');
+
+chap(195.64, 12, 'Ver, editar y cancelar');
+st(195.8, 'base'); focus(195.8, [1450, 480, 440, 120], 2.0, 1.1);
+curTo(197.0, M.base.eye0, .5); sl(198.02, 199.25, g(M.base.eye0, 6), 'Ver detalle', ''); click(198.9);
+st(199.2, 'det'); fm(199.2, M.det.box, 1.5);
+st(200.1, 'eg'); fm(200.1, M.eg.box, 1.5); sl(200.14, 203.6, u(M.eg.cat, M.eg.conc), 'Corregí los datos', 'Categoría · concepto · observaciones');
+st(203.7, 'can'); fm(203.7, M.can.box, 1.9); curTo(203.8, M.can.btn, .4); sl(203.75, 205.6, g(M.can.btn, 5), 'Cancelar gasto', ''); click(205.3);
+st(205.7, 'cancelado'); focus(205.7, [269, 460, 1622, 160], 1.15, 1.04);
+sl(205.78, 208.6, g(M.cancelado.badge, 6), 'Marcado como cancelado', 'Queda en el historial.');
+sl(208.74, 210.75, M.cancelado.row0, 'Caja se anula', 'El movimiento se revierte solo.');
+CARDS.push({ type: 'outro', a: 210.95, b: DUR });
+window.EVENTS = { DUR, clicks: CLICKS, chapters: CHAP.map(c => c.t), spots: SPOTS.map(s => s.a), states: ST.map(s => s.t), cards: CARDS.map(c => c.a) };
+CHAP.forEach(c => { const b = document.createElement('b'); b.style.left = (c.t / DUR * 100) + '%'; $('prog').appendChild(b); });
+
+// ---------------- engine
+CAM.sort((a, b) => a.t - b.t);
+function camAt(t) { let a = CAM[0], ia = 0; for (let i = 0; i < CAM.length; i++) if (CAM[i].t <= t) { a = CAM[i]; ia = i; } const b = CAM[ia + 1] || a; if (b.t === a.t) return b; const k = eio(p(t, a.t, b.t)); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)) }; }
+function clampCam(c) { const hw = 960 / c.z, hh = 540 / c.z; return { x: cl(c.x, hw, 1920 - hw), y: cl(c.y, hh, 1080 - hh), z: c.z }; }
+function curAt(t) { let a = CURK[0], ia = 0; for (let i = 0; i < CURK.length; i++) if (CURK[i].t <= t) { a = CURK[i]; ia = i; } const b = CURK[ia + 1] || a; if (b.t === a.t) return { x: b.x, y: b.y }; const k = eio(p(t, a.t, b.t)); const arc = Math.sin(Math.PI * k) * Math.min(50, Math.hypot(b.x - a.x, b.y - a.y) * .1); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc }; }
+const toS = (c, x, y) => ({ x: (x - c.x) * c.z + 960, y: (y - c.y) * c.z + 540 });
+function pick(list, t, fi = .3, fo = .25) { let best = null, bo = 0; for (const L of list) if (t >= L.a && t <= L.b + fo) { const o = Math.min(ease(p(t, L.a, L.a + fi)), 1 - ease(p(t, L.b, L.b + fo))); if (o >= bo) { best = L; bo = o; } } return [best, bo]; }
+
+window.render = function (t) {
+  const c = clampCam(camAt(t));
+  let curS = ST[0], prev = null; for (const s of ST) if (s.t <= t) { prev = curS; curS = s; }
+  const k = ease(p(t, curS.t, curS.t + .3));
+  for (const s in V) { V[s].style.opacity = 0; V[s].style.zIndex = 0; }
+  const setV = (s, o, z) => { const v = V[s]; v.style.opacity = o; v.style.zIndex = z; v.style.transform = `translate(${960 - c.x * c.z}px,${540 - c.y * c.z}px) scale(${c.z})`; };
+  if (prev && prev.s !== curS.s && k < 1) { setV(prev.s, 1, 1); setV(curS.s, k, 2); } else setV(curS.s, 1, 2);
+  // spotlight
+  const [sp, so] = pick(SPOTS, t, .3, .25);
+  if (sp) { const a = toS(c, sp.r[0], sp.r[1]), b = toS(c, sp.r[0] + sp.r[2], sp.r[1] + sp.r[3]); const pad = 6;
+    [$('spot'), $('ring')].forEach(e => { e.style.left = (a.x - pad) + 'px'; e.style.top = (a.y - pad) + 'px'; e.style.width = (b.x - a.x + 2 * pad) + 'px'; e.style.height = (b.y - a.y + 2 * pad) + 'px'; });
+    $('spot').style.opacity = so * .9; $('ring').style.opacity = so * (.75 + .25 * Math.sin(t * 5)); } else { $('spot').style.opacity = 0; $('ring').style.opacity = 0; }
+  // label
+  const [lb, lo] = pick(LABELS, t, .3, .2); const LE = $('label');
+  if (lb) { const key = lb.title + lb.a; if (LE.dataset.k !== key) { $('lt').innerHTML = (lb.n ? `<i>${lb.n}</i>` : '') + lb.title; $('lx').innerHTML = lb.text; $('lx').style.display = lb.text ? '' : 'none'; LE.dataset.k = key; }
+    const a = toS(c, lb.r[0], lb.r[1]), b = toS(c, lb.r[0] + lb.r[2], lb.r[1] + lb.r[3]); const Wd = LE.offsetWidth || 520, Hh = LE.offsetHeight || 140, m = 30; let x, y;
+    if (1920 - b.x > Wd + m + 30) { x = b.x + m; y = (a.y + b.y) / 2 - Hh / 2; } else if (a.x > Wd + m + 30) { x = a.x - m - Wd; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (1080 - b.y > Hh + m + 60) { x = (a.x + b.x) / 2 - Wd / 2; y = b.y + m; } else { x = (a.x + b.x) / 2 - Wd / 2; y = a.y - m - Hh; }
+    x = cl(x, 30, 1920 - Wd - 30); y = cl(y, 110, 1080 - Hh - 50);
+    LE.style.left = x + 'px'; LE.style.top = y + 'px'; LE.style.opacity = lo; LE.style.transform = `translateY(${(1 - lo) * 18}px)`; } else LE.style.opacity = 0;
+  // caption
+  const [cp, co] = pick(CAPS, t, .35, .3);
+  if (cp) { if ($('cap').dataset.k !== cp.text) { $('cap').innerHTML = cp.text; $('cap').dataset.k = cp.text; } $('cap').style.opacity = co; $('cap').style.transform = `translateX(-50%) translateY(${(1 - co) * 20}px)`; } else $('cap').style.opacity = 0;
+  $('formula').style.opacity = 0;
+  // cursor
+  const cu = curAt(t), cs = toS(c, cu.x, cu.y); let press = 0, rip = null;
+  for (const ck of CLICKS) { if (t >= ck - .12 && t <= ck + .12) press = 1 - Math.abs(t - ck) / .12; if (t >= ck && t < ck + .55) rip = ck; }
+  const inCard = CARDS.some(C => t >= C.a - .2 && t <= C.b + .2);
+  $('cursor').style.opacity = inCard || t < 3.6 ? 0 : 1; $('cursor').style.transform = `translate(${cs.x - 6}px,${cs.y - 3}px) scale(${1 - .18 * press})`;
+  if (rip != null) { const k2 = p(t, rip, rip + .55), Rr = 14 + 46 * ease(k2); const RP = $('ripple'); RP.style.opacity = 1 - k2; RP.style.left = (cs.x - Rr) + 'px'; RP.style.top = (cs.y - Rr) + 'px'; RP.style.width = RP.style.height = 2 * Rr + 'px'; } else $('ripple').style.opacity = 0;
+  // chapter chip + banner + progress
+  let ch = null; for (const C of CHAP) if (C.t <= t) ch = C;
+  if (ch) $('chip').innerHTML = `<img src="isotipo.png" style="width:26px"><span>${String(ch.n).padStart(2, '0')}</span>${ch.title}`;
+  $('chip').style.opacity = !inCard && ch && t > ch.t + 2.6 ? 1 : 0; $('wm').style.opacity = 0;
+  const BN = $('banner');
+  if (ch && t < ch.t + 2.6) { const o = Math.min(ease(p(t, ch.t, ch.t + .35)), 1 - ease(p(t, ch.t + 2.2, ch.t + 2.6))); BN.style.opacity = o; BN.style.transform = `translateX(${(1 - ease(p(t, ch.t, ch.t + .4))) * -60}px)`;
+    $('bn').textContent = String(ch.n).padStart(2, '0'); $('bt').textContent = ch.title; } else BN.style.opacity = 0;
+  $('prog').style.opacity = t > 3.5 && t < 210.9 ? 1 : 0; $('progi').style.width = (t / DUR * 100) + '%';
+  // cards
+  let cd = null; for (const C of CARDS) if (t >= C.a && t <= C.b) cd = C; const CE = $('card');
+  if (cd) { const o = Math.min(ease(p(t, cd.a, cd.a + .45)), cd.type === 'intro' ? 1 - ease(p(t, cd.b - .4, cd.b)) : 1);
+    if (CE.dataset.k !== String(cd.a)) { CE.dataset.k = String(cd.a);
+      if (cd.type === 'intro') CE.innerHTML = `<img src="isotipo.png"><div class="su" style="margin:0;font-size:32px;letter-spacing:6px;font-weight:700;color:#7FB2FF">TUTORIAL · NEGOCIO360</div><div class="ti" style="font-size:130px;margin-top:16px">Gastos</div><div class="list">${CHAP.map(c => `<div><span>${String(c.n).padStart(2, '0')}</span>${c.title}</div>`).join('')}</div>`;
+      else CE.innerHTML = `<img src="isotipo.png"><div class="ti" style="font-size:96px">¡Listo! Ya sabés controlar tus gastos</div><div class="su" style="margin-top:30px">Registrá · Programá · Controlá cada córdoba</div><div class="su" style="margin-top:40px">Próximo tutorial: <b style="color:#fff">Caja</b></div><div class="su" style="margin-top:40px;color:#7FB2FF;font-weight:700">negocio360oficial.com</div>`; }
+    CE.style.opacity = o; const inner = CE.children; for (let i = 0; i < inner.length; i++) { const kk = ease(p(t, cd.a + .15 + i * .12, cd.a + .65 + i * .12)); inner[i].style.opacity = kk; inner[i].style.transform = `translateY(${(1 - kk) * 30}px)`; }
+    $('views').style.filter = `blur(${8 * o}px)`; } else { CE.style.opacity = 0; $('views').style.filter = 'none'; }
+};
+render(0);

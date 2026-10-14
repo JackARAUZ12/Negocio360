@@ -36,9 +36,19 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
   - **Productos/Servicios**
   - **Clientes** (190.43 s, 10 capítulos, cierra con "Próximo tutorial: Compras")
   - **Compras** (172.51 s, 10 capítulos, cierra con "Próximo tutorial: Gastos"). Archivos: `capco.js`, `tco_script.js`, `rtco.js`, `tco_sfx.py`, `tco_music.py`.
+  - **Gastos** (222.04 s, 12 capítulos, cierra con "Próximo tutorial: Caja").
 
-## Siguiente: tutorial de GASTOS
-Falta escribir el guion de Gastos (`gastos.html` / `gastos.js`), entregárselo al usuario y esperar el audio. Para las capturas, crear `capg.js` copiando `capco.js`.
+## Gastos (ya entregado, 222.04 s, voz Diego, 12 capítulos)
+Indicadores → Historial y filtros → Nuevo gasto inmediato → Concepto, monto y pago → Caja Chica o Caja General → IVA y retención → Salarios → Guardar → Gastos programados → Pestaña Gastos programados (Vencido / Vence hoy / Vence mañana / Vence en N días) → Automático, pausar y editar → Ver, editar y cancelar. Cierra con "Próximo tutorial: Caja".
+- Archivos: `fake-gastos.js` (mock con `gastos`, `gastos_programados`, `historial_gastos`; soporta `ilike`), `capg.js` (capturas en `gshots/`), `tg_script.js` → `tg.html`, `rtg.js`, `tg_sfx.py`, `tg_music.py` (`DUR=222.04 DROP=0 BPM=80`).
+- Capturas: `REPO=<copia de main> FAKE=fake-gastos.js node capg.js`.
+- Los `<select>` nativos no salen en capturas: `capg.js` dibuja una lista (`openList`) con las opciones reales del select.
+- Diego lee en voz alta los títulos de sección del guion: se usan como capítulos.
+- En la app, los programados vencidos se generan solos al abrir Gastos (`verificarYEjecutarGastosVencidos`); con el mock las escrituras no hacen nada, por eso los badges "Vencido" se ven.
+- Texto desactualizado en la app: el modal de cancelar gasto dice "Si necesitas revertir el movimiento en Caja, hazlo manualmente", pero el código ya anula el movimiento. En la captura se ocultó esa frase.
+
+## Siguiente: tutorial de CAJA
+Escribir el guion de Caja (`caja.html`), entregarlo y esperar el audio.
 
 ## Compras (ya entregado): secciones del guion
 
