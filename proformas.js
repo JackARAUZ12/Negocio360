@@ -1414,8 +1414,38 @@ function abrirConvertirAVenta(id) {
   if (!p) return;
   STATE.proformaActual = p;
   document.getElementById('cv-error').textContent = '';
-  loadMetodosPago();
+  const wB = document.getElementById('cv-wrap-banco'); if (wB) wB.style.display = 'none';
+  loadMetodosPago().then(() => onCambiarMetodoConvertir());
   openModal('modal-convertir-venta');
+}
+
+/* Si el método es transferencia/tarjeta, ofrece elegir el banco (opcional).
+   Solo bancos de la misma moneda del negocio, para no mezclar monedas. */
+async function onCambiarMetodoConvertir() {
+  try {
+    const sel = document.getElementById('cv-metodo-pago');
+    const wrap = document.getElementById('cv-wrap-banco');
+    const bSel = document.getElementById('cv-banco');
+    const aviso = document.getElementById('cv-aviso-banco');
+    if (!sel || !wrap || !bSel) return;
+    const nombre = (sel.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+    if (!(nombre.includes('tarjeta') || nombre.includes('transferencia'))) { wrap.style.display = 'none'; bSel.value = ''; return; }
+    if (!STATE._bancosConv) {
+      const { data } = await sbClient.from('bancos').select('id,nombre,moneda,activo')
+        .eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
+      const monedaNeg = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO'; // igual que Ventas
+      STATE._bancosConv = (data || []).filter(b => (b.moneda || 'NIO') === monedaNeg);
+    }
+    if (!STATE._bancosConv.length) { wrap.style.display = 'none'; return; }
+    const previo = bSel.value;
+    if (!bSel.options.length || bSel.dataset.metodo !== nombre) {
+      bSel.innerHTML = '<option value="">Sin banco</option>' + STATE._bancosConv.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+      bSel.dataset.metodo = nombre;
+      if (previo) bSel.value = previo;
+    }
+    wrap.style.display = '';
+    if (aviso) aviso.style.display = bSel.value ? 'none' : '';
+  } catch (e) { console.warn('onCambiarMetodoConvertir:', e); }
 }
 /* =====================================================
    PAGO PARCIAL / A CRÉDITO — abre Créditos incrustado, con el
@@ -1716,6 +1746,10 @@ async function confirmarConvertirAVenta() {
     const metodoSel = document.getElementById('cv-metodo-pago');
     const metodoId = metodoSel?.value || null;
     const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+    // Banco elegido (opcional): solo si el selector está visible y tiene valor.
+    const wrapBancoConv = document.getElementById('cv-wrap-banco');
+    const bancoConvId = (wrapBancoConv && wrapBancoConv.style.display !== 'none')
+      ? (document.getElementById('cv-banco')?.value || null) : null;
 
     // ---- B: número de venta ----
     const { data: numeroVenta } = await sbClient.rpc('generar_numero_venta', { p_user_id: STATE.userId });
@@ -1733,7 +1767,16 @@ async function confirmarConvertirAVenta() {
       creado_por_nombre: obtenerNombrePerfilActivo(),
     };
     const { data: ventaNueva, error: errVenta } = await sbClient.from('ventas').insert(ventaPayload).select('id').single();
-    if (errVenta) throw errVenta;
+    if (errVenta) {
+      // Candado de la base de datos: ya existe una venta activa de esta proforma.
+      if (errVenta.code === '23505' || /proforma/i.test(errVenta.message || '') && /duplic|unique/i.test(errVenta.message || '')) {
+        errEl.textContent = 'Esta proforma ya tiene una venta activa — no se creó otra. Revisa Ventas.';
+        closeModal('modal-convertir-venta');
+        await loadProformas();
+        return;
+      }
+      throw errVenta;
+    }
     const ventaId = ventaNueva.id;
 
     // ---- D: detalles de venta ----
@@ -1845,6 +1888,7 @@ async function confirmarConvertirAVenta() {
         concepto: montoIva>0 ? `Venta ${ventaPayload.numero_venta} (neto de IVA, desde proforma ${p.numero_proforma})` : `Venta ${ventaPayload.numero_venta} (desde proforma ${p.numero_proforma})`,
         monto: montoCaja, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
         metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+        ...(bancoConvId ? { banco_id: bancoConvId } : {}),
         referencia_tipo: 'venta', referencia_id: ventaId, fecha: todayISO(),
       }, { etiqueta: 'La venta ' + ventaPayload.numero_venta });
       if (movNuevo?.id) await sbClient.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);

@@ -1589,7 +1589,12 @@
       <p style="font-size:13.5px;margin-bottom:12px">Esto crea una venta real con exactamente los mismos productos, cantidades, descuentos e impuestos de esta proforma — descuenta inventario y registra Caja, igual que una venta manual.</p>
       <div class="form-group">
         <label>Método de pago</label>
-        <select id="cv-metodo-pago"></select>
+        <select id="cv-metodo-pago" onchange="onCambiarMetodoConvertir()"></select>
+      </div>
+      <div class="form-group" id="cv-wrap-banco" style="display:none">
+        <label>Banco donde entra el dinero</label>
+        <select id="cv-banco" onchange="onCambiarMetodoConvertir()"></select>
+        <p id="cv-aviso-banco" style="display:none;font-size:12px;color:#b45309;margin-top:6px">⚠ Si no eliges banco, este dinero no aparecerá en ningún banco y no se podrá conciliar. Puedes convertir igual.</p>
       </div>
       <p id="cv-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
     </div>
@@ -1815,7 +1820,7 @@
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="caja-segura.js?v=20261012a"></script>
-  <script src="proformas.js?v=20261012d"></script>
+  <script src="proformas.js?v=20261013a"></script>
   <script src="proformas-varios.js?v=20261012d"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>

@@ -1573,6 +1573,34 @@ async function generarAsientosAutomaticos() {
     return;
   }
   try { await generarAsientosAutomaticosInterno(); } finally { soltarCandadoConta(); }
+  try { await anularAsientosDeOrigenAnulado(); } catch (e) { console.warn('anularAsientosDeOrigenAnulado:', e); }
+}
+
+/* Si una venta, gasto o compra se anula DESPUÉS de esta fecha, su asiento automático también se anula
+   (antes quedaba vigente y seguía sumando ingresos/gastos que ya no existen).
+   Solo toca anulaciones nuevas: lo anulado antes no se modifica (se revisa aparte con el cliente).
+   Nunca borra: el asiento queda en estado "anulado" con su motivo, igual que al anularlo a mano. */
+const FECHA_INICIO_ANULA_ASIENTOS = '2026-10-14T00:00:00Z';
+async function anularAsientosDeOrigenAnulado() {
+  const fuentes = [
+    { tabla: 'ventas',  filtro: q => q.eq('estado', 'anulada').gte('updated_at', FECHA_INICIO_ANULA_ASIENTOS),   tipos: ['venta', 'credito_otorgado'], motivo: 'Venta anulada' },
+    { tabla: 'gastos',  filtro: q => q.eq('estado', 'cancelado').gte('cancelado_en', FECHA_INICIO_ANULA_ASIENTOS), tipos: ['gasto'],                     motivo: 'Gasto cancelado' },
+    { tabla: 'compras', filtro: q => q.eq('estado', 'anulada').gte('anulada_en', FECHA_INICIO_ANULA_ASIENTOS),     tipos: ['compra'],                    motivo: 'Compra anulada' },
+  ];
+  let total = 0;
+  for (const f of fuentes) {
+    const { data: docs, error } = await f.filtro(sbClient.from(f.tabla).select('id').eq('auth_user_id', STATE.userId)).limit(500);
+    if (error || !docs || !docs.length) continue;
+    const ids = docs.map(d => d.id);
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data: hechos } = await sbClient.from('asientos_contables')
+        .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: f.motivo + ' (anulado automáticamente)' })
+        .eq('auth_user_id', STATE.userId).eq('origen', 'automatico').eq('estado', 'registrado')
+        .in('referencia_tipo', f.tipos).in('referencia_id', ids.slice(i, i + 100)).select('id');
+      total += (hechos || []).length;
+    }
+  }
+  return total;
 }
 async function generarAsientosAutomaticosInterno() {
   // BUG REAL CORREGIDO: el mismo movimiento se convertia en asiento

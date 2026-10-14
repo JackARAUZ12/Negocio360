@@ -5355,6 +5355,18 @@ async function confirmarVenta(conImpresion) {
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
 
+  // Aviso (no bloquea): productos con costo 0 o vendidos por debajo del costo
+  // hacen que la ganancia de los reportes salga mal.
+  try {
+    const sospechosos = S.carrito.filter(it => it && !it.esRegalia && !it.esCombo && !it.esPromocion && it.tipo === 'producto'
+      && (!(Number(it.costo) > 0) || (Number(it.precio) < Number(it.costo))));
+    if (sospechosos.length) {
+      const sinCosto = sospechosos.filter(it => !(Number(it.costo) > 0)).length;
+      const bajoCosto = sospechosos.length - sinCosto;
+      showToast('⚠ ' + [sinCosto ? sinCosto + ' producto(s) sin costo' : '', bajoCosto ? bajoCosto + ' vendido(s) por debajo del costo' : ''].filter(Boolean).join(' y ') + '. La venta se guarda, pero la ganancia saldrá incorrecta: corrige el costo en Inventario.', 'warning');
+    }
+  } catch (eAv) { /* solo aviso */ }
+
   // Mismo bug real corregido que en Venta Rápida: si se va a imprimir,
   // la ventana se abre AHORA MISMO (sincrono, en el instante del
   // clic) -- antes de guardar la venta -- para que el navegador nunca
@@ -6907,6 +6919,13 @@ async function confirmarVentaRapida() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
   if (!validarPagoSeparadoVR()) return;
+
+  // Aviso (no bloquea): costo 0 o venta por debajo del costo -> ganancia incorrecta.
+  try {
+    const sosp = VR.carrito.filter(it => it && !it.esRegalia && !it.esCombo && !it.esPromocion && (it.tipo || 'producto') === 'producto'
+      && (!(Number(it.costo) > 0) || (Number(it.precio) < Number(it.costo))));
+    if (sosp.length) showToast('⚠ ' + sosp.length + ' producto(s) sin costo o vendidos por debajo del costo. La venta se guarda, pero la ganancia saldrá incorrecta: corrige el costo en Inventario.', 'warning');
+  } catch (eAv) { /* solo aviso */ }
 
   // BUG REAL CORREGIDO: el navegador bloqueaba la ventana de impresion
   // ("hay que activar los pop ups") porque window.open() se llamaba

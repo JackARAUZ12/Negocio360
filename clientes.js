@@ -1005,6 +1005,18 @@ async function guardarCliente() {
           return;
         }
       }
+      // Aviso (no bloqueo): ya hay un cliente activo con el mismo nombre.
+      // Evita crear al mismo cliente varias veces por descuido.
+      try {
+        const { data: mismoNombre } = await sb.from('clientes').select('id,nombre')
+          .eq('auth_user_id', CS.userId).eq('activo', true)
+          .ilike('nombre', nombre.replace(/[\\%_]/g, '\\$&')).limit(1);
+        if (mismoNombre && mismoNombre.length &&
+            !confirm(`Ya existe un cliente llamado "${mismoNombre[0].nombre}".\n\n¿Quieres crear otro con el mismo nombre de todos modos?`)) {
+          if (btn) btn.disabled = false;
+          return;
+        }
+      } catch (eNom) { console.warn('Chequeo de nombre repetido:', eNom); }
       const { data: nuevoCliente, error } = await sb.from('clientes').insert(payload).select('id').single();
       if (error) throw error;
       clienteId = nuevoCliente.id;
