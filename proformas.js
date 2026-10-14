@@ -2308,19 +2308,43 @@ async function generarPDFProforma(p, items, cliente) {
     doc.text('Observaciones', M, finalY);
     finalY += 6;
     doc.setFontSize(9.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
-    doc.splitTextToSize(p.observaciones, W - M*2).forEach(ln => { doc.text(ln, M, finalY); finalY += 5; });
+    const altoHojaObs = doc.internal.pageSize.getHeight();
+    doc.splitTextToSize(p.observaciones, W - M*2).forEach(ln => {
+      // Observaciones largas: continúan en otra página en vez de salirse de la hoja
+      if (finalY > altoHojaObs - 14) { doc.addPage(); finalY = 20; doc.setFontSize(9.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110); }
+      doc.text(ln, M, finalY); finalY += 5;
+    });
     finalY += 4;
   }
 
-  // ---- Pie de página ----
+  // ---- Pie de página (condiciones fijas) ----
+  // Si caben debajo del contenido, van al pie como siempre. Si no caben
+  // (observaciones largas), se escriben a continuación del contenido
+  // y pasan a otra página cuando hace falta, para que nunca se encimen.
   const alturaPagina = doc.internal.pageSize.getHeight();
   let yPie = alturaPagina - 16;
   const mensajePie = cfg.mensaje_pie;
   if (mensajePie) {
     doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
     const lineasPie = doc.splitTextToSize(mensajePie, W - M*2);
-    yPie -= (lineasPie.length - 1) * 4.5;
-    lineasPie.forEach(ln => { doc.text(ln, M, yPie); yPie += 4.5; });
+    const inicioAlPie = yPie - (lineasPie.length - 1) * 4.5;
+    if (inicioAlPie - 4 >= finalY) {
+      yPie = inicioAlPie;
+      lineasPie.forEach(ln => { doc.text(ln, M, yPie); yPie += 4.5; });
+    } else {
+      yPie = finalY + 2;
+      // Las condiciones se mantienen juntas: si no caben enteras aquí pero
+      // sí en una hoja nueva, pasan completas a la siguiente página.
+      const altoBloque = lineasPie.length * 4.5 + 5;
+      if (yPie + altoBloque > alturaPagina - 6 && 20 + altoBloque <= alturaPagina - 6) {
+        doc.addPage(); yPie = 20; doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+      }
+      lineasPie.forEach(ln => {
+        if (yPie > alturaPagina - 14) { doc.addPage(); yPie = 20; doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110); }
+        doc.text(ln, M, yPie); yPie += 4.5;
+      });
+      if (yPie + 5 > alturaPagina - 6) { doc.addPage(); yPie = 15; }
+    }
     yPie += 5;
   }
   doc.setFontSize(8.5); doc.setTextColor(150,150,170);

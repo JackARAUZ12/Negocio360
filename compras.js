@@ -2646,15 +2646,22 @@ async function exportarPDFOrdenCompra(ordenId) {
       yTot += 14;
       doc.setFontSize(8.5); doc.setFont(undefined,'italic'); doc.setTextColor(110,110,110);
       const obsLineas = doc.splitTextToSize(`Nota: ${orden.observaciones}`, W - M*2);
-      obsLineas.forEach((ln, i) => doc.text(ln, M, yTot + i*4.5));
-      yTot += obsLineas.length * 4.5;
+      const altoHojaOC = doc.internal.pageSize.getHeight();
+      obsLineas.forEach(ln => {
+        if (yTot > altoHojaOC - 12) { doc.addPage(); yTot = 20; doc.setFontSize(8.5); doc.setFont(undefined,'italic'); doc.setTextColor(110,110,110); }
+        doc.text(ln, M, yTot); yTot += 4.5;
+      });
     }
 
     if (cfg.mensaje_pie) {
       yTot += 10;
       doc.setFontSize(8.5); doc.setFont(undefined,'normal'); doc.setTextColor(90,90,110);
       const lineasPie = doc.splitTextToSize(cfg.mensaje_pie, W - M*2);
-      lineasPie.forEach((ln, i) => doc.text(ln, M, yTot + i*4.5));
+      const altoHojaPie = doc.internal.pageSize.getHeight();
+      lineasPie.forEach(ln => {
+        if (yTot > altoHojaPie - 12) { doc.addPage(); yTot = 20; doc.setFontSize(8.5); doc.setFont(undefined,'normal'); doc.setTextColor(90,90,110); }
+        doc.text(ln, M, yTot); yTot += 4.5;
+      });
     }
 
     doc.save(`Orden_Compra_${orden.numero}.pdf`);
