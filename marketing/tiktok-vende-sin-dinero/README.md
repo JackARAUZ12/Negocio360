@@ -1,6 +1,11 @@
 # TikTok — “Tu negocio vende, pero tú sigues sin dinero”
 
-Montaje vertical 1080×1920, 30 fps, para Negocio360. El montaje ya está hecho: voz, subtítulos sincronizados palabra por palabra, titulares, música, efectos, transiciones y cierre con el logotipo original. Faltan **solo las tomas reales**. Cada toma que falta aparece como un recuadro “INSERTAR …” en `salida/negocio360_tiktok.mp4`.
+Montaje vertical 1080×1920, 30 fps, para Negocio360.
+
+**Versión actual: 100 % generada, sin grabaciones.** El video `salida/negocio360_tiktok.mp4` ya está terminado y listo para subir:
+- Las escenas del presentador y el B-roll son animaciones generadas por código (`generado.py`): fondo animado, bolsa de dinero, billetera vacía, billetes que se van, cajas, libreta de fiados, facturas, signos de pregunta y alerta.
+- La interfaz es real. Son capturas del código de este repositorio (Ventas, Gastos, Caja, Créditos, menú de módulos y Dashboard), sacadas con `capturar_ui.mjs` en una cuenta sin datos, por eso todo aparece en 0 y no hay cifras inventadas. Están en `assets/ui/`.
+- Si después grabas tomas reales y las pones en `clips/`, se usan en lugar de lo generado. El montaje incluye voz, subtítulos sincronizados palabra por palabra, titulares, música, efectos, transiciones y cierre con el logotipo original. Faltan **solo las tomas reales**. Cada toma que falta aparece como un recuadro “INSERTAR …” en `salida/negocio360_tiktok.mp4`.
 
 ## Duración
 La locución recibida dura 41,1 s. Solo se acortaron los silencios largos entre frases, a 0,30 s como máximo, y se conservó la pausa antes de “vender mucho no significa ganar mucho”. **No se cambió la velocidad ni el tono de la voz**, así que el video dura **39,9 s**. Para bajar de 30 s habría que grabar una locución más ágil o acortar el guion.

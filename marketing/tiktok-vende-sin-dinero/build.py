@@ -7,10 +7,11 @@ Cada toma se busca en clips/ (mp4/mov/jpg/png). Si falta, se dibuja un marcador
 "INSERTAR ..." en su lugar, de modo que el montaje, los tiempos, subtitulos, musica
 y efectos ya quedan listos y solo hay que soltar los archivos y volver a renderizar.
 """
-import json, os, subprocess, sys, glob
+import json, math, os, subprocess, sys, glob
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import audio
+import generado
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 os.chdir(AQUI)
@@ -60,7 +61,8 @@ ESCENAS = [
     ("ui_gastos", w(71), w(72), dict(tipo="UI", desc="Gastos")),
     ("ui_caja", w(72), w(73), dict(tipo="UI", desc="Caja")),
     ("ui_cuentas_pendientes", w(73), w(76), dict(tipo="UI", desc="Cuentas pendientes (creditos / fiados / por pagar)")),
-    ("ui_general", w(76), T_LOGO, dict(tipo="UI", desc="Recorrido general: panel y modulos")),
+    ("ui_menu", w(76), w(81), dict(tipo="UI", desc="Menu de modulos")),
+    ("ui_dashboard", w(81), T_LOGO, dict(tipo="UI", desc="Dashboard", scroll=1300)),
     ("__logo__", T_LOGO, DUR, dict(tipo="LOGO")),
 ]
 
@@ -342,7 +344,11 @@ def cuadro_escena(esc, t):
         return cuadro_logo(t)
     src = fuente(slot)
     dur = t1 - t0
-    if src is None:
+    if src is None and tipo == "UI" and slot in UI_CAPTURAS:
+        img = cuadro_ui(UI_CAPTURAS[slot], t - t0, dur, op.get("scroll", 0))
+    elif src is None and tipo in ("A", "B"):
+        img = generado.escena(slot, t, t0, t1, w)
+    elif src is None:
         img = marcador(slot, tipo, op.get("desc", ""))
     else:
         t_src = t if slot == "presentador" else (t - t0) + op.get("in", 0.0)
@@ -360,11 +366,30 @@ def cuadro_escena(esc, t):
     if "zoom" in op:
         z0, z1 = op["zoom"]
         img = con_zoom(img, z0 + (z1 - z0) * (t - t0) / max(dur, .1))
-    if tipo in ("A", "B"):
+    if tipo in ("A", "B") and src is not None:
         img = vineta(img)
     if op.get("oscurecer"):
         img = Image.blend(img, Image.new("RGB", (W, H), (0, 0, 0)), op["oscurecer"])
     return img
+
+
+# Capturas reales de la interfaz (assets/ui, generadas con capturar_ui.mjs desde el codigo de
+# este repositorio, cuenta sin datos: no hay cifras inventadas). Se usan si no hay grabacion.
+UI_CAPTURAS = {"ui_ventas": "ventas.png", "ui_gastos": "gastos.png", "ui_caja": "caja.png",
+               "ui_cuentas_pendientes": "creditos.png", "ui_menu": "menu.png", "ui_dashboard": "dashboard.png",
+               "ui_general": "dashboard.png"}
+_ui = {}
+def cuadro_ui(nombre, rel, dur, scroll):
+    if nombre not in _ui:
+        im = Image.open(os.path.join("assets", "ui", nombre)).convert("RGB")
+        _ui[nombre] = im if im.height >= H else im.resize((W, H), Image.LANCZOS)
+    im = _ui[nombre]
+    z = 1.0 + 0.07 * ease_out(rel / max(dur, .1))          # acercamiento suave
+    y = min(im.height - H, scroll) * (0.5 - 0.5 * math.cos(math.pi * min(1, rel / max(dur, .1))))
+    cw, ch = W / z, H / z
+    x0 = (W - cw) / 2
+    y0 = max(0, y) + (H - ch) * 0.15
+    return im.resize((W, H), Image.BICUBIC, box=(x0, y0, x0 + cw, y0 + ch))
 
 
 def _llenar(im):
@@ -416,6 +441,7 @@ TITULAR = lambda: caja_titular([[("¿VENDES,", (0, 0, 0)), ("PERO", (0, 0, 0))],
                                 [("NO", (0, 0, 0)), ("TIENES", (0, 0, 0)), ("DINERO?", (220, 20, 20))]])
 
 SUB_Y = 1230
+MODO_IA = buscar_clip("presentador") is None   # sin presentador grabado -> escenas generadas
 
 
 def capa_subtitulos(base, t):
@@ -428,8 +454,14 @@ def capa_subtitulos(base, t):
         if t0 <= t < t1:
             def hacer(txt=txt, col=col):
                 return texto_rico([(p, col.get(p, BLANCO), 1.1 if p in col else 1.0) for p in txt.split(" ")],
-                                  80, 930, stroke=9)
-            pegar(base, cache(("sub", i), hacer), W / 2, SUB_Y, escala=pop_escala(t, t0, .12, .88))
+                                  88 if MODO_IA else 80, 940, stroke=9)
+            im = cache(("sub", i), hacer)
+            if escena_en(t)[3].get("tipo") == "UI":   # sobre la interfaz: banda oscura para leer bien
+                bb = im.getbbox()
+                caja = Image.new("RGBA", (bb[2] - bb[0] + 60, bb[3] - bb[1] + 40), (0, 0, 0, 0))
+                ImageDraw.Draw(caja).rounded_rectangle((0, 0, caja.width, caja.height), 28, fill=(10, 14, 30, 200))
+                pegar(base, caja, W / 2 - im.width / 2 + (bb[0] + bb[2]) / 2, SUB_Y - im.height / 2 + (bb[1] + bb[3]) / 2)
+            pegar(base, im, W / 2, SUB_Y, escala=pop_escala(t, t0, .12, .88))
             return
 
 
@@ -442,10 +474,18 @@ def capa_graficos(base, t):
         filas = [("VENDER MUCHO", BLANCO, 40), ("NO SIGNIFICA", ROJO, 42), ("GANAR MUCHO", BLANCO, 44)]
         for k, (txt, c, i) in enumerate(filas):
             if t >= w(i):
-                im = cache(("enf", k), lambda txt=txt, c=c: texto_rico([(txt, c, 1.0)], 128, 1000, stroke=12))
+                im = cache(("enf", k), lambda txt=txt, c=c: texto_rico([(txt, c, 1.0)], 112, 980, stroke=11))
                 pegar(base, im, W / 2, 770 + k * 165, escala=pop_escala(t, w(i), .14, .7))
     # Contraste de conceptos: tres tarjetas separadas (no se suman ni se igualan)
-    if w(50) <= t < T_UI:
+    if MODO_IA and w(50) <= t < w(62):
+        tarjetas = [("VENTAS", AZUL, 50, "💵"), ("GASTOS", (215, 38, 38), 53, "🧾"), ("DINERO DISPONIBLE", (22, 150, 70), 57, "💰")]
+        for k, (txt, c, i, ico) in enumerate(tarjetas):
+            if t >= w(i):
+                e = pop_escala(t, w(i), .16, .6)
+                pegar(base, cache(("tjia", k), lambda txt=txt, c=c: chip(txt, c, 82, (44, 22))), W / 2 + 50, 620 + k * 200, escala=e)
+                ic = generado.con_sombra(ico, 120)
+                pegar(base, ic, W / 2 - cache(("tjia", k), lambda: None).width / 2 - 20, 620 + k * 200, escala=e)
+    elif w(50) <= t < T_UI and not MODO_IA:
         tarjetas = [("VENTAS", AZUL, 50), ("GASTOS", (215, 38, 38), 53), ("DINERO DISPONIBLE", (22, 150, 70), 57)]
         for k, (txt, c, i) in enumerate(tarjetas):
             if t >= w(i):
