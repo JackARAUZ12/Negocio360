@@ -37,6 +37,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
   - **Clientes** (190.43 s, 10 capítulos, cierra con "Próximo tutorial: Compras")
   - **Compras** (172.51 s, 10 capítulos, cierra con "Próximo tutorial: Gastos"). Archivos: `capco.js`, `tco_script.js`, `rtco.js`, `tco_sfx.py`, `tco_music.py`.
   - **Gastos** (222.04 s, 12 capítulos, cierra con "Próximo tutorial: Caja").
+  - **Caja** (319.16 s, 14 capítulos, diagrama animado de conexiones).
 
 ## Gastos (ya entregado, 222.04 s, voz Diego, 12 capítulos)
 Indicadores → Historial y filtros → Nuevo gasto inmediato → Concepto, monto y pago → Caja Chica o Caja General → IVA y retención → Salarios → Guardar → Gastos programados → Pestaña Gastos programados (Vencido / Vence hoy / Vence mañana / Vence en N días) → Automático, pausar y editar → Ver, editar y cancelar. Cierra con "Próximo tutorial: Caja".
@@ -47,8 +48,15 @@ Indicadores → Historial y filtros → Nuevo gasto inmediato → Concepto, mont
 - En la app, los programados vencidos se generan solos al abrir Gastos (`verificarYEjecutarGastosVencidos`); con el mock las escrituras no hacen nada, por eso los badges "Vencido" se ven.
 - Texto desactualizado en la app: el modal de cancelar gasto dice "Si necesitas revertir el movimiento en Caja, hazlo manualmente", pero el código ya anula el movimiento. En la captura se ocultó esa frase.
 
-## Siguiente: tutorial de CAJA
-Escribir el guion de Caja (`caja.html`), entregarlo y esperar el audio.
+## Caja (ya entregado, 319.16 s, voz Diego, 14 capítulos)
+La idea principal (Caja General = total, Bancos = por cuenta, Caja Chica = efectivo del cajón) → Primera vez → Indicadores → Movimientos → Movimiento manual → Caja Chica (conteo de billetes NIO/USD) → Durante el día → Cerrar Caja Chica (cuadró/sobró/faltó, reporte, historial) → Bancos → Comisión del POS → Conciliación → Transferencias → Cierres diarios (y automáticos en Configuración) → Las conexiones (diagrama animado "hub" dentro del video, tipo de tarjeta `hub`).
+- Archivos: `fake-caja.js` (movimientos con saldo encadenado, bancos BANPRO/LAFISE/BAC USD, sesiones de Caja Chica, cierres, transferencias t1/t2), `capk.js` (capturas en `cshots/`, incluye `cfg_top.jpg` de Configuración y reutiliza `gshots/m_origen_dd` como `g_origen`), `tk_script.js` → `tk.html`, `rtk.js`, `tk_sfx.py`, `tk_music.py`.
+- Los estados de Caja Chica (sin abrir / abierta / cerrada) se pintan asignando `CC.sesionHoy` y llamando `renderEstadoCajaChica()`. `STATE.bancos` se llena con `loadBancos()` antes de abrir "Nuevo movimiento" para que aparezca el selector de banco.
+- El modal de conteo es más alto que la pantalla: para ver el total se hace scroll del contenedor interno.
+- Textos desactualizados encontrados en Caja (no se tocaron): cerrar Caja Chica dice que bloquea movimientos (no bloquea); Transferencias habla de "efectivo" pero solo ofrece Caja Chica y bancos; "Sin banco asignado… puedes asignarlo después" no tiene botón; el detalle del cierre mensual solo muestra el último día; códigos crudos (TRANSFERENCIA, PAGO_CREDITO, CREDITO_OTORGADO) en la columna Tipo.
+
+## Siguiente tutorial
+Por orden del menú: Cuentas por Pagar. Preguntar al usuario.
 
 ## Compras (ya entregado): secciones del guion
 

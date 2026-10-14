@@ -1,0 +1,296 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#0A0E1A;font-family:'Inter Display','Inter',sans-serif}
+#stage{position:absolute;inset:0;overflow:hidden;background:#F4F6FA}
+#views{position:absolute;inset:0;z-index:0}
+#spot,#ring,#label,#cap,#formula,#ripple,#cursor,#chip,#wm,#prog{z-index:5}
+#card{z-index:8}
+#cursor{z-index:9}
+.view{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden}
+.view .full{position:absolute;left:0;width:1920px}
+.view .topimg{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.crop{position:absolute;background-size:1920px 1080px;background-repeat:no-repeat}
+#spot{position:absolute;border-radius:16px;box-shadow:0 0 0 4000px rgba(8,12,28,.55);pointer-events:none;opacity:0}
+#ring{position:absolute;border-radius:18px;border:4px solid #4C8DFF;box-shadow:0 0 0 6px rgba(76,141,255,.25),0 0 40px rgba(76,141,255,.6);opacity:0}
+#label{position:absolute;width:520px;padding:26px 30px;border-radius:22px;background:rgba(14,19,34,.96);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);border:2px solid rgba(76,141,255,.45);opacity:0}
+#label .lt{font-size:34px;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:14px}
+#label .lt i{font-style:normal;font-size:20px;font-weight:800;background:#4C8DFF;color:#fff;border-radius:10px;padding:4px 10px;letter-spacing:0}
+#label .lx{font-size:25px;line-height:1.4;color:#C7CEDD;margin-top:10px;font-weight:500}
+#label .lx b{color:#fff}
+#cap{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);max-width:1400px;padding:22px 38px;border-radius:20px;background:rgba(14,19,34,.94);color:#fff;font-size:34px;font-weight:600;text-align:center;line-height:1.35;box-shadow:0 20px 50px rgba(0,0,0,.4);opacity:0}
+#cap b{color:#7FB2FF}
+#cursor{position:absolute;left:0;top:0;width:40px;height:40px;pointer-events:none;filter:drop-shadow(0 4px 6px rgba(0,0,0,.35));opacity:0}
+#ripple{position:absolute;border-radius:50%;border:4px solid #4C8DFF;opacity:0}
+#chip{position:absolute;left:30px;bottom:30px;padding:12px 22px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-size:24px;font-weight:700;display:flex;gap:12px;align-items:center;opacity:0;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#chip span{color:#7FB2FF}
+#wm{position:absolute;right:30px;top:24px;display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-weight:800;font-size:24px;opacity:0}
+#wm img{width:32px}
+#prog{position:absolute;left:0;right:0;bottom:0;height:10px;background:rgba(14,19,34,.6);opacity:0}
+#prog i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,#4C8DFF,#22E39A)}
+#prog b{position:absolute;top:0;bottom:0;width:3px;background:rgba(255,255,255,.7)}
+#card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(1200px 800px at 30% 20%,rgba(76,141,255,.35),transparent 60%),radial-gradient(900px 700px at 80% 90%,rgba(34,227,154,.18),transparent 60%),rgba(8,11,22,.86);color:#fff;opacity:0}
+#banner{position:absolute;left:40px;top:40px;display:flex;align-items:center;gap:18px;padding:16px 28px 16px 18px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.35);opacity:0;z-index:7}
+#banner .bn{font-size:30px;font-weight:900;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#banner .bt{font-size:30px;font-weight:800}
+#card .num{font-size:180px;font-weight:900;letter-spacing:-8px;line-height:1;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#card .ti{font-size:88px;font-weight:900;letter-spacing:-3px;margin-top:20px}
+#card .su{font-size:36px;color:#AAB4C8;margin-top:18px;font-weight:500}
+#card .list{margin-top:50px;display:grid;grid-template-columns:repeat(3,auto);gap:14px 44px;font-size:28px;color:#C7CEDD;font-weight:600}
+#card .list span{color:#4C8DFF;font-weight:800;margin-right:10px}
+#card img{width:150px;margin-bottom:30px}
+#formula{position:absolute;left:50%;top:36px;transform:translateX(-50%);padding:20px 34px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;font-size:32px;font-weight:700;opacity:0;white-space:nowrap;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+#formula .g{color:#22E39A}#formula .r{color:#FF6B6B}#formula .b{color:#7FB2FF}
+</style></head>
+<body>
+<div id="stage">
+  <div id="views"></div>
+  <div id="spot"></div><div id="ring"></div>
+  <div id="label"><div class="lt" id="lt"></div><div class="lx" id="lx"></div></div>
+  <div id="cap"></div>
+  <div id="formula"></div>
+  <div id="ripple"></div>
+  <svg id="cursor" viewBox="0 0 40 40"><path d="M6 3 L6 31 L13.5 24 L18.5 35.5 L23.5 33.3 L18.5 22 L28.5 22 Z" fill="#fff" stroke="#111" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  <div id="chip"></div>
+  <div id="wm"><img src="../../../../../../../home/user/Negocio360/negocio360-isotipo.png" id="wmimg">Negocio360</div>
+  <div id="prog"><i id="progi"></i></div>
+  <div id="banner"><img src="isotipo.png" style="width:34px"><span class="bn" id="bn"></span><span class="bt" id="bt"></span></div>
+  <div id="card"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 319.16;
+
+const STATES = ['base','f_hoy','f_semana','f_año','f_custom','search','capini','mm0','mm_flujo','mm_tipo','mm_fill','mm_banco','anular','cc_sin','cc_cont1','cc_cont1b','cc_open','g_origen','cc_cierre','cc_cerrada','cc_rep','bancos','nb','conc0','conc1','conc2','conc3','trans','tr_m','cierres','cz_det','cfg'];
+const _X = ['base','f_hoy','f_semana','f_ano','f_custom','search','nc0','p1','p1sel','p1new','p2','p2res','p3a','p3b','p3reg','p3iva','p3lote','p4','p5','p5b','p5c','p6','p6gen','p7','saved','pn1','cd','ord','ordConv','prov','provEdit','anular'];
+const SRC = {};
+const V = {};
+STATES.forEach(s => { const d = document.createElement('div'); d.className = 'view'; d.style.opacity = 0; d.innerHTML = `<img class="topimg" src="${SRC[s] || 'cshots/' + s + '_top.jpg'}">`; $('views').appendChild(d); V[s] = d; });
+const CAM = [{ t: 0, x: 960, y: 540, z: 1 }];
+let curCam = { x: 960, y: 540, z: 1 };
+const ST = [{ t: 0, s: 'base' }], SPOTS = [], LABELS = [], CAPS = [], CLICKS = [], CHAP = [], CARDS = [];
+const CURK = [{ t: 0, x: 1500, y: 800 }]; let curPos = { x: 1500, y: 800 };
+function cam(t, c, dur = 1.0) { const n = Object.assign({}, curCam, c); CAM.push({ t, ...curCam }); CAM.push({ t: t + dur, ...n }); curCam = n; }
+function focus(t, r, zmax = 2, pad = 1.25, dur = 1.0) { const z = Math.max(1, Math.min(zmax, 1920 / (r[2] * pad), 1080 / (r[3] * pad))); cam(t, { x: r[0] + r[2] / 2, y: r[1] + r[3] / 2, z }, dur); }
+function st(t, s) { ST.push({ t, s }); }
+function cur(t, x, y, dur = .7) { CURK.push({ t, x: curPos.x, y: curPos.y }); CURK.push({ t: t + dur, x, y }); curPos = { x, y }; }
+function curTo(t, r, dur = .7) { cur(t, r[0] + r[2] * .55, r[1] + r[3] * .55, dur); }
+function click(t) { CLICKS.push(t); }
+function spot(a, b, r) { SPOTS.push({ a, b, r }); }
+function label(a, b, r, title, text = '', n) { LABELS.push({ a, b, r, title, text, n }); }
+function sl(a, b, r, title, text, n) { if (r[0] >= 600 && r[0] + r[2] <= 1330 && r[3] < 380) focus(a - .35, [600, r[1] + r[3] / 2 - 250, 720, 500], 1.75, 1.0, .55); spot(a, b, r); label(a + .12, b, r, title, text, n); }
+function cap(a, b, text) { CAPS.push({ a, b, text }); }
+function chap(t, n, title) { CHAP.push({ t, n, title }); }
+const g = (r, p = 6) => [r[0] - p, r[1] - p, r[2] + 2 * p, r[3] + 2 * p];
+
+
+const M = JSON.parse(`{"kpis":[[268,176,393,104],[679,176,393,104],[1089,176,393,104],[1500,176,393,104],[268,299,393,104],[679,299,393,104]],"filtros":[[289,579,50,30],[347,579,75,30],[430,579,51,30],[489,579,50,30],[547,579,111,30]],"ths":[[269,627,153,37],[422,627,203,37],[626,627,332,37],[958,627,162,37],[1120,627,196,37],[1316,627,196,37],[1512,627,208,37],[1720,627,171,37]],"refs":[[640,697,62,17],[640,759,72,17],[640,821,62,17],[640,883,59,17],[640,945,62,17],[640,1007,62,17],[640,1069,62,17],[640,1255,66,17],[640,1368,70,17],[640,1430,62,17],[640,1492,62,17],[640,1605,127,17],[640,1667,62,17],[640,1729,62,17],[640,1791,62,17],[640,1853,62,17],[640,2039,62,17],[640,2101,62,17],[640,2163,62,17],[640,2225,62,17],[640,2287,62,17],[640,2349,62,17],[640,2411,72,17],[640,2473,62,17]],"rows":[[269,664,1622,62],[269,726,1622,62],[269,788,1622,62],[269,850,1622,62],[269,912,1622,62],[269,974,1622,62],[269,1036,1622,62],[269,1098,1622,62],[269,1160,1622,62],[269,1222,1622,62],[269,1284,1622,51],[269,1335,1622,62],[269,1397,1622,62],[269,1459,1622,62],[269,1521,1622,51],[269,1572,1622,62],[269,1634,1622,62],[269,1696,1622,62],[269,1758,1622,62],[269,1820,1622,62],[269,1882,1622,62],[269,1944,1622,62],[269,2006,1622,62],[269,2068,1622,62],[269,2130,1622,62],[269,2192,1622,62],[269,2254,1622,62],[269,2316,1622,62],[269,2378,1622,62],[269,2440,1622,62]],"base":{"kpiRow":[268,176,1624,227],"tabs":[268,431,829,42],"bNuevo":[1722,92,170,32],"table":[269,627,1622,1875],"search":[1616,578,254,33],"tabCC":[723,436,119,32],"tabB":[846,436,99,32],"tabT":[949,436,143,32],"tabC":[577,436,142,32],"anul0":[1734,681,28,28]},"f_hoy":{"custom":null},"f_semana":{"custom":null},"f_año":{"custom":null},"f_custom":{"custom":[666,578,303,32]},"search":{},"capini":{"box":[770,345,380,390],"inp":[795,590,330,43]},"mm0":{"box":[680,244,560,592],"flujo":[705,356,249,37],"tipo":[966,356,249,37],"conc":[705,431,510,37],"monto":[705,505,249,37],"metodo":[966,505,249,37],"banco":null,"fecha":[705,580,510,39],"obs":[705,657,510,72]},"mm_flujo":{"box":[680,244,560,592],"flujo":[705,356,249,37],"tipo":[966,356,249,37],"conc":[705,431,510,37],"monto":[705,505,249,37],"metodo":[966,505,249,37],"banco":null,"fecha":[705,580,510,39],"obs":[705,657,510,72],"dd":[705,397,249,76]},"mm_tipo":{"box":[680,244,560,592],"flujo":[705,356,249,37],"tipo":[966,356,249,37],"conc":[705,431,510,37],"monto":[705,505,249,37],"metodo":[966,505,249,37],"banco":null,"fecha":[705,580,510,39],"obs":[705,657,510,72],"dd":[966,397,249,204]},"mm_fill":{"box":[680,244,560,592],"flujo":[705,356,249,37],"tipo":[966,356,249,37],"conc":[705,431,510,37],"monto":[705,505,249,37],"metodo":[966,505,249,37],"banco":null,"fecha":[705,580,510,39],"obs":[705,657,510,72]},"mm_banco":{"box":[680,207,560,667],"flujo":[705,319,249,37],"tipo":[966,319,249,37],"conc":[705,393,510,37],"monto":[705,468,249,37],"metodo":[966,468,249,37],"banco":[705,519,510,61],"fecha":[705,618,510,39],"obs":[705,694,510,72]},"anular":{"box":[770,420,380,241]},"cc_open":{"card":[268,534,1624,119],"vivo":[269,602,1622,50],"bCerrar":[1750,545,141,32],"hist":[269,762,1622,357],"histT":[268,669,1624,451]},"ccHistCols":[[269,725,233,37],[502,725,261,37],[763,725,257,37],[1020,725,254,37],[1275,725,258,37],[1533,725,233,37],[1766,725,125,37]],"ccHistRows":[[269,762,1622,51],[269,813,1622,51],[269,864,1622,51],[269,915,1622,51],[269,966,1622,51],[269,1017,1622,51],[269,1068,1622,51]],"cc_sin":{"card":[268,534,1624,223],"bNuevo":[1089,688,227,34],"bAyer":[843,688,236,34]},"cc_cont0":{"box":[720,54,480,972],"grid":[745,192,430,919],"total":[1083,1141,92,30]},"cc_cont1":{"box":[720,54,480,972],"grid":[745,192,430,919],"total":[1043,1141,132,30],"usd":[1129,640,46,15],"nio":[1101,194,74,15]},"ccDenom":[[745,248,210,35],[965,248,210,35],[745,316,210,35],[965,316,210,35],[745,383,210,35],[965,383,210,35],[745,450,210,35],[965,450,210,35],[745,517,210,35],[965,517,210,35],[745,585,210,35],[745,694,210,35],[965,694,210,35],[745,762,210,35],[965,762,210,35],[745,829,210,35],[965,829,210,35],[745,896,210,35],[965,896,210,35],[745,963,210,35],[965,963,210,35],[745,1031,210,35]],"cc_cont1b":{"box":[720,54,480,972],"total":[1043,995,132,30],"usd":[1129,494,46,15]},"cc_cierre":{"box":[720,54,480,972],"total":[1036,995,139,30],"titulo":[745,-68,280,24]},"cc_cerrada":{"card":[268,534,1624,201],"hist":[269,844,1622,357]},"cc_rep":{"box":[650,134,620,811],"body":[651,202,618,673],"btns":[651,876,618,69]},"bcards":[[285,655,521,124],[820,655,521,124],[1354,655,521,124]],"bancos":{"grid":[269,639,1622,156],"tasa":[268,534,1624,39],"bNuevo":[1745,592,126,32],"conc":null},"nb":{"box":[720,190,480,700],"nombre":[745,302,430,37],"cuenta":[745,377,430,37],"moneda":[745,451,430,37],"aviso":[745,492,430,35],"saldo":[745,565,430,37],"com":[745,678,430,37]},"conc0":{"box":[680,135,560,810],"saldo":[705,296,249,37],"dif":[705,369,249,21],"tbody":[705,483,720,255]},"conc1":{"box":[680,135,560,810],"saldo":[705,296,249,37],"calc":[966,296,249,21],"dif":[705,369,249,21],"tbody":[705,483,720,255]},"conc2":{"box":[680,54,560,972],"form":[705,669,510,192],"dif":[705,288,249,21]},"conc3":{"box":[680,135,560,810],"dif":[705,369,249,21],"btn":[1065,892,150,32]},"trans":{"table":[269,637,1622,114],"bNueva":[1703,553,168,32],"rev":[1672,648,97,34]},"tr_m":{"box":[770,302,380,477],"o":[795,413,330,37],"d":[795,488,330,37],"monto":[795,563,330,37]},"czCols":[[269,565,443,37],[712,565,235,37],[947,565,237,37],[1184,565,240,37],[1424,565,238,37],[1662,565,229,37]],"cierres":{"table":[269,602,1622,463],"bHoy":[1588,517,135,32],"bMes":[1731,516,140,34],"link":[1676,616,52,23]},"cz_det":{"box":[620,212,680,657],"pdf":[1142,815,133,32],"res":[645,300,630,63]},"cfg":[700,404,760,272]}`);
+const GM = JSON.parse(`{"kpis":[[268,176,256,83],[542,176,256,83],[815,176,256,83],[1089,176,256,83],[1363,176,256,83],[1636,176,256,83]],"filtros":[[289,436,63,30],[360,436,94,30],[462,436,108,30],[578,436,79,30]],"ths":[[269,483,167,37],[436,483,341,37],[777,483,197,37],[974,483,172,37],[1146,483,201,37],[1347,483,159,37],[1506,483,199,37],[1705,483,186,37]],"base":{"kpiRow":[268,176,1624,83],"tabs":[268,287,355,42],"tabProg":[433,292,185,32],"panel":[268,353,1624,1409],"cat":[665,437,162,28],"search":[1656,434,214,33],"bNueva":[1761,92,131,32],"table":[269,483,1622,1223],"row0":[269,520,1622,51],"eye0":[1719,532,28,28],"edit0":[1751,532,28,28],"can0":[1783,532,28,28]},"f_inmediatos":{},"f_programados":{},"f_pagados":{},"f_catlist":{"dd":[665,469,162,542]},"f_cat":{"cat":[665,437,162,28]},"search":{"search":[1656,434,214,33]},"m0":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_tipo":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[695,317,259,76]},"m_cat":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[966,317,177,492]},"m_newcat":{"box":[760,414,400,253],"inp":[785,525,350,37],"btn":[989,612,146,32]},"m_conc":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_monto":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_met":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[966,467,259,108]},"m_banco":{"box":[670,127,580,826],"tipo":[695,239,259,37],"cat":[966,239,177,37],"bNew":[1149,239,76,37],"conc":[695,314,530,37],"monto":[695,388,259,37],"metodo":[966,388,259,37],"iva":[695,442,13,13],"ivaW":null,"ret":[695,472,530,20],"banco":[695,504,530,61],"origen":[695,578,530,81],"fecha":[695,697,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,900,142,32]},"m_origen":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32]},"m_origen_dd":{"box":[670,164,580,751],"tipo":[695,276,259,37],"cat":[966,276,177,37],"bNew":[1149,276,76,37],"conc":[695,351,530,37],"monto":[695,426,259,37],"metodo":[966,426,259,37],"iva":[695,480,13,13],"ivaW":null,"ret":[695,509,530,20],"banco":null,"origen":[695,541,530,81],"fecha":[695,660,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,863,142,32],"dd":[695,606,530,76]},"m_iva":{"box":[670,117,580,847],"tipo":[695,228,259,37],"cat":[966,228,177,37],"bNew":[1149,228,76,37],"conc":[695,303,530,37],"monto":[695,378,259,37],"metodo":[966,378,259,37],"iva":[695,432,13,13],"ivaW":[695,462,530,82],"ret":[695,557,530,20],"banco":null,"origen":[695,589,530,81],"fecha":[695,708,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,911,142,32]},"m_ret":{"box":[670,74,580,932],"tipo":[695,186,259,37],"cat":[966,186,177,37],"bNew":[1149,186,76,37],"conc":[695,261,530,37],"monto":[695,335,259,37],"metodo":[966,335,259,37],"iva":[695,389,13,13],"ivaW":[695,419,530,82],"ret":[695,515,530,105],"banco":null,"origen":[695,631,530,81],"fecha":[695,750,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,953,142,32]},"m_full":{"box":[670,117,580,847],"tipo":[695,228,259,37],"cat":[966,228,177,37],"bNew":[1149,228,76,37],"conc":[695,303,530,37],"monto":[695,378,259,37],"metodo":[966,378,259,37],"iva":[695,432,13,13],"ivaW":[695,462,530,82],"ret":[695,557,530,20],"banco":null,"origen":[695,589,530,81],"fecha":[695,708,530,39],"frec":null,"pagar":null,"emp":null,"save":[1083,911,142,32]},"m_sal":{"box":[670,127,580,826],"tipo":[695,239,259,37],"cat":[966,239,177,37],"bNew":[1149,239,76,37],"conc":[695,388,530,37],"monto":[695,463,259,37],"metodo":[966,463,259,37],"iva":[695,517,13,13],"ivaW":null,"ret":[695,547,530,20],"banco":null,"origen":[695,578,530,81],"fecha":[695,697,530,39],"frec":null,"pagar":null,"emp":[695,290,530,61],"save":[1083,900,142,32]},"saved":{"row0":[269,520,1622,51],"toast":[1645,1012,251,44]},"p_m":{"box":[670,79,580,921],"tipo":[695,191,259,37],"cat":[966,191,177,37],"bNew":[1149,191,76,37],"conc":[695,266,530,37],"monto":[695,341,259,37],"metodo":[966,341,259,37],"iva":[695,395,13,13],"ivaW":null,"ret":[695,424,530,20],"banco":null,"origen":[695,456,530,81],"fecha":[695,650,530,39],"frec":[695,551,530,61],"pagar":[695,703,530,81],"emp":null,"save":[1083,948,142,32]},"p_frec":{"box":[670,79,580,921],"tipo":[695,191,259,37],"cat":[966,191,177,37],"bNew":[1149,191,76,37],"conc":[695,266,530,37],"monto":[695,341,259,37],"metodo":[966,341,259,37],"iva":[695,395,13,13],"ivaW":null,"ret":[695,424,530,20],"banco":null,"origen":[695,456,530,81],"fecha":[695,650,530,39],"frec":[695,551,530,61],"pagar":[695,703,530,81],"emp":null,"save":[1083,948,142,32],"dd":[695,616,530,204]},"prows":[[269,456,1622,51],[269,507,1622,62],[269,569,1622,62],[269,631,1622,51],[269,682,1622,51],[269,733,1622,51],[269,784,1622,51],[269,835,1622,51]],"pvenc":[[1179,456,237,51],[1179,507,237,62],[1179,569,237,62],[1179,631,237,51],[1179,682,237,51],[1179,733,237,51],[1179,784,237,51],[1179,835,237,51]],"prog":{"tab":[433,292,185,32],"table":[269,419,1622,466],"bNew":[1688,372,183,32],"reg":[1577,586,109,27],"edit":[1690,468,28,28],"pause":[1722,468,28,28],"paused":[269,733,1622,51],"react":[1577,744,28,28]},"rp":{"box":[760,210,400,660],"btn":[1005,817,130,32]},"ep":{"box":[670,282,580,517],"monto":[695,468,259,37],"frec":[966,468,259,37]},"det":{"box":[670,264,580,553]},"eg":{"box":[760,267,400,546],"cat":[785,447,268,37],"conc":[785,522,350,37],"obs":null},"can":{"box":[760,420,400,241],"btn":[1031,607,104,32]},"cancelado":{"row0":[269,520,1622,61],"badge":[1355,540,74,23]}}`);
+const fm = (t, r, z = 1.6) => focus(t, r, z, 1.06, .8);
+const u = (a, b) => { const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]); return [x, y, Math.max(a[0] + a[2], b[0] + b[2]) - x, Math.max(a[1] + a[3], b[1] + b[3]) - y]; };
+const K = M.kpis, HDR = [1210, 80, 690, 60];
+CARDS.push({ type: 'intro', a: 0, b: 8.3 });
+cap(8.79, 17.1, 'Ventas · Compras · Gastos · Salarios · Cobros — <b>todo pasa por Caja</b>');
+cap(17.52, 20.3, 'Si entendés Caja, <b>entendés tu negocio</b>');
+
+chap(20.75, 1, 'La idea principal');
+focus(22.4, [268, 170, 820, 120], 1.7, 1.1);
+sl(24.78, 32.2, g(K[0], 4), '🏛️ Caja General', 'El total: efectivo + tarjeta + bancos.', 1);
+st(32.6, 'bancos'); cam(32.6, { x: 1080, y: 720, z: 1.15 }, .8); sl(32.85, 37.3, M.bancos.grid, '🏦 Bancos', 'La misma plata, separada por cuenta.', 2);
+st(37.6, 'cc_open'); sl(37.87, 43.3, M.cc_open.card, '👛 Caja Chica', 'El efectivo físico del cajón.', 3);
+
+chap(43.95, 2, 'Primera vez');
+st(44.6, 'capini'); fm(44.6, M.capini.box, 1.9);
+sl(46.66, 49.9, g(M.capini.inp, 5), 'Caja inicial', '¿Con cuánto arranca tu negocio?');
+sl(50.09, 56.6, M.capini.box, 'Punto de partida', 'De todos tus movimientos.');
+
+chap(57.23, 3, 'Indicadores');
+st(57.4, 'base'); focus(57.4, M.base.kpiRow, 1.15, 1.04);
+sl(58.67, 60.8, M.base.kpiRow, 'Seis indicadores', '');
+[['Caja disponible', 60.96, 63.4, 'Tu saldo actual.'], ['Ingresos del mes', 63.79, 64.85, ''], ['Egresos del mes', 64.9, 65.95, ''], ['Movimientos del mes', 66.16, 67.7, ''], ['Otros ingresos', 67.98, 69.2, ''], ['Otros egresos', 69.25, 70.5, '']].forEach(([n, a, b, tx], i) => { curTo(a - .3, K[i], .3); sl(a, b, g(K[i], 4), n, tx, i + 1); });
+sl(70.62, 72.8, u(K[4], K[5]), 'Movimientos manuales', 'Los que registrás a mano.');
+
+chap(73.47, 4, 'Movimientos');
+cam(73.6, { x: 1080, y: 760, z: 1.12 }, .9);
+const TB = [269, 627, 1622, 453];
+sl(74.94, 78.3, TB, 'Historial de tu dinero', '');
+[['Fecha', 78.68, 79.3], ['Tipo', 79.42, 79.9], ['Concepto', 79.95, 80.5], ['Método', 80.56, 81.5], ['Entrada', 81.64, 82.2], ['Salida', 82.25, 82.95], ['Saldo', 83.15, 85.3, 'Después de cada movimiento.']].forEach(([n, a, b, tx], i) => { const c = M.ths[i]; curTo(a - .25, [c[0], 640, c[2], 20], .25); sl(a, b, [c[0], 627, c[2], 453], n, tx || ''); });
+const REFS = u(M.refs[0], M.refs[6]);
+focus(85.8, [500, 640, 700, 440], 1.6, 1.05); sl(85.94, 91.6, g(REFS, 8), 'De dónde viene', 'Venta · Compra · Gasto · Cobro');
+focus(91.9, [269, 560, 820, 90], 1.8, 1.1);
+[[92.2, 93.55, 0, 'f_hoy', 'Hoy'], [93.65, 94.4, 1, 'f_semana', 'Semana'], [94.48, 95.15, 2, 'base', 'Mes'], [95.23, 95.7, 3, 'f_año', 'Año'], [95.79, 97.2, 4, 'f_custom', 'Personalizado']].forEach(([a, b, i, s, n]) => { curTo(a - .25, M.filtros[i], .25); click(a + .05); st(a + .25, s); sl(a, b, g(M.filtros[i], 4), n, ''); });
+st(97.3, 'base'); focus(97.3, [1400, 540, 500, 110], 2.0, 1.1); curTo(97.3, M.base.search, .3); click(97.6); st(97.8, 'search'); sl(97.33, 98.9, g(M.base.search, 5), 'Buscá por concepto', '');
+
+chap(99.47, 5, 'Movimiento manual');
+st(99.6, 'base'); focus(99.6, HDR, 2.2, 1.1); curTo(101.2, M.base.bNuevo, .8); sl(101.21, 105.0, g(M.base.bNuevo, 5), 'Nuevo movimiento', 'Lo que no viene de otro módulo.'); click(104.7);
+st(105.0, 'mm0'); fm(105.0, M.mm0.box, 1.5);
+curTo(106.3, M.mm0.flujo, .3); click(106.5); st(106.7, 'mm_flujo'); sl(106.56, 108.8, u(M.mm0.flujo, M.mm_flujo.dd), 'Ingreso o egreso', '', 1);
+curTo(108.7, M.mm0.tipo, .3); click(108.9); st(109.1, 'mm_tipo'); sl(108.94, 109.9, u(M.mm0.tipo, M.mm_tipo.dd), 'Categoría', '', 2);
+st(110.0, 'mm_fill'); sl(109.95, 113.0, u(M.mm0.conc, M.mm0.metodo), 'Concepto · monto · método', '', 3);
+st(113.3, 'mm_banco'); fm(113.3, M.mm_banco.box, 1.45); sl(113.44, 119.0, g(M.mm_banco.banco, 4), '¿A qué banco entra o de cuál sale?', 'Si es tarjeta o transferencia.');
+st(119.2, 'anular'); fm(119.2, M.anular.box, 1.9); sl(119.27, 123.3, M.anular.box, 'Anular', 'El saldo se corrige.');
+
+chap(123.87, 6, 'Caja Chica');
+st(124.0, 'cc_sin'); cam(124.0, { x: 1080, y: 650, z: 1.12 }, .8);
+sl(125.74, 130.8, M.cc_sin.card, 'El ritual de todos los días', 'Contar el dinero del cajón.');
+curTo(131.0, M.cc_sin.bNuevo, .6); sl(131.34, 134.6, g(M.cc_sin.bNuevo, 5), 'Contar y abrir con monto nuevo', ''); click(134.2);
+st(134.6, 'cc_cont1'); fm(134.6, M.cc_cont1.box, 1.1);
+sl(134.74, 138.25, [745, 180, 430, 400], 'Billetes y monedas', 'De cada denominación.');
+sl(138.34, 140.5, [745, 590, 430, 420], 'También en dólares', 'Con tu tasa de cambio.');
+st(140.6, 'cc_cont1b'); sl(140.71, 142.6, g(M.cc_cont1b.total, 6), 'Total contado', 'Se calcula solo.');
+st(142.7, 'cc_sin'); cam(142.7, { x: 1080, y: 650, z: 1.12 }, .7); curTo(142.9, M.cc_sin.bAyer, .5); sl(142.75, 146.8, g(M.cc_sin.bAyer, 5), 'O abrí con el monto anterior', 'El del último cierre.');
+
+chap(147.27, 7, 'Durante el día');
+st(147.4, 'cc_open'); focus(147.4, [268, 520, 1624, 150], 1.15, 1.04);
+sl(148.73, 154.1, M.cc_open.vivo, 'En vivo', 'Ingresos y egresos en efectivo de hoy.');
+sl(154.32, 156.4, M.cc_open.vivo, 'Debería haber', 'Lo que tiene que haber en el cajón.');
+st(156.6, 'g_origen'); fm(156.6, GM.m0.box, 1.35);
+sl(156.76, 164.3, u(GM.m0.origen, GM.m_origen_dd.dd), '¿Caja Chica o Caja General?', 'En Gastos y Compras. El cajón siempre cuadra.');
+
+chap(164.95, 8, 'Cerrar Caja Chica');
+st(165.1, 'cc_open'); focus(165.1, [1400, 520, 500, 120], 2.0, 1.1); curTo(166.6, M.cc_open.bCerrar, .6); sl(166.72, 169.4, g(M.cc_open.bCerrar, 5), 'Cerrar Caja Chica', ''); click(169.0);
+st(169.4, 'cc_cierre'); fm(169.4, M.cc_cierre.box, 1.1); sl(169.58, 171.25, [745, 60, 430, 500], 'Volvé a contar', '');
+sl(171.36, 174.3, g(M.cc_cierre.total, 6), 'Lo contado vs. lo que debería haber', '');
+st(174.4, 'cc_cerrada'); cam(174.4, { x: 1080, y: 700, z: 1.12 }, .7);
+sl(174.59, 176.25, M.cc_cerrada.card, 'Cuadró perfecto ✅', '');
+const DIFC = M.ccHistCols[5]; sl(176.35, 178.4, [DIFC[0], 844 + 51, DIFC[2], 160], 'Sobró o faltó', 'Queda registrado.');
+st(178.6, 'cc_rep'); fm(178.6, M.cc_rep.box, 1.3); sl(178.68, 180.4, M.cc_rep.body, 'Reporte del cierre', '');
+sl(180.46, 183.4, M.cc_rep.btns, 'Imprimí el ticket · Exportá PDF', '');
+st(183.5, 'cc_cerrada'); cam(183.5, { x: 1080, y: 760, z: 1.12 }, .7); sl(183.63, 186.8, M.cc_cerrada.hist, 'Historial de cierres', 'Con su diferencia.');
+
+chap(187.12, 9, 'Bancos');
+st(187.3, 'bancos'); cam(187.3, { x: 1080, y: 700, z: 1.12 }, .7);
+curTo(188.6, M.bancos.bNuevo, .6); sl(188.19, 191.0, g(M.bancos.bNuevo, 5), 'Registrá tus cuentas', ''); click(190.6);
+st(190.9, 'nb'); fm(190.9, M.nb.box, 1.4);
+[['Nombre del banco', 191.18, 192.3, 'nombre'], ['Número de cuenta', 192.38, 193.55, 'cuenta'], ['Moneda', 193.63, 196.0, 'moneda', 'Córdobas o dólares'], ['Saldo inicial', 196.17, 197.5, 'saldo']].forEach(([n, a, b, k, tx], i) => { curTo(a - .25, M.nb[k], .25); sl(a, b, g(k === 'moneda' ? u(M.nb.moneda, M.nb.aviso) : M.nb[k], 4), n, tx || '', i + 1); });
+st(197.6, 'bancos'); cam(197.6, { x: 1080, y: 700, z: 1.12 }, .7);
+sl(197.71, 202.1, M.bancos.grid, 'El saldo de cada banco', 'Todo lo que entró por tarjeta o transferencia.');
+sl(202.4, 207.0, M.bancos.tasa, '💱 Tasa de cambio', 'Para tus cuentas en dólares. Convierte solo.');
+
+chap(207.23, 10, 'Comisión del POS');
+st(207.4, 'nb'); fm(207.4, M.nb.box, 1.4); curTo(208.5, M.nb.com, .4);
+sl(208.72, 216.2, g(M.nb.com, 5), 'Comisión del POS', 'Se descuenta sola en cada venta con tarjeta.');
+
+chap(216.56, 11, 'Conciliación');
+st(216.7, 'bancos'); focus(216.7, [270, 620, 820, 200], 1.8, 1.1);
+const BC = M.bcards[0]; const BTNC = [BC[0] + 10, BC[1] + BC[3] - 40, 340, 32];
+curTo(217.5, BTNC, .5); sl(217.79, 219.3, g(BTNC, 4), '🧾 Conciliar', ''); click(219.0);
+st(219.3, 'conc0'); fm(219.3, M.conc0.box, 1.3);
+sl(219.44, 222.7, g(M.conc0.saldo, 5), 'Saldo según tu banco', 'Del estado de cuenta real.');
+st(222.9, 'conc1'); sl(222.97, 225.2, M.conc1.tbody, 'Marcá los movimientos', 'Los que aparecen en el banco.');
+st(225.3, 'conc2'); fm(225.3, M.conc2.box, 1.1); sl(225.37, 228.1, g(M.conc2.form, 4), 'Agregá ajustes', 'Comisiones o intereses.');
+st(228.2, 'conc3'); fm(228.2, M.conc3.box, 1.3); sl(228.25, 230.05, g(M.conc3.dif, 6), 'Diferencia: cero', '');
+sl(230.13, 234.2, g(M.conc3.btn, 5), 'Cerrar conciliación', 'Tus números son reales ✅');
+
+chap(234.44, 12, 'Transferencias');
+st(234.6, 'trans'); focus(234.6, [269, 540, 1622, 230], 1.15, 1.04);
+sl(235.71, 239.4, M.trans.table, 'Entre tus propias cuentas', '');
+curTo(239.0, [1703, 553, 168, 32], .4); click(239.4); st(239.6, 'tr_m'); fm(239.6, M.tr_m.box, 1.6);
+sl(239.58, 243.0, u(M.tr_m.o, M.tr_m.d), 'Caja Chica → Banco', 'Depositá el efectivo del día.');
+sl(243.13, 245.2, u(M.tr_m.o, M.tr_m.d), 'O de un banco a otro', '');
+st(245.3, 'trans'); focus(245.3, [269, 540, 1622, 230], 1.15, 1.04); sl(245.44, 248.85, M.trans.table, 'Salida y entrada', 'Al mismo tiempo.');
+curTo(248.6, M.trans.rev, .4); sl(248.99, 251.3, g(M.trans.rev, 5), '↩️ Revertir', '');
+
+chap(251.52, 13, 'Cierres diarios');
+st(251.7, 'cierres'); cam(251.7, { x: 1080, y: 700, z: 1.12 }, .7);
+sl(252.99, 256.7, g(u([1588, 517, 135, 32], [1731, 516, 140, 34]), 5), 'Cierre de hoy · Cierre del mes', '');
+[['Saldo inicial', 256.91, 257.95, 1], ['Ingresos', 258.05, 258.75, 2], ['Egresos', 258.8, 259.5, 3], ['Saldo final', 259.58, 260.6, 4]].forEach(([n, a, b, i]) => { const c = M.czCols[i]; sl(a, b, [c[0], 565, c[2], 500], n, ''); });
+st(260.75, 'cz_det'); fm(260.75, M.cz_det.box, 1.4); sl(260.83, 262.6, M.cz_det.res, 'Detalle de cada cierre', '');
+sl(262.65, 264.3, g(M.cz_det.pdf, 5), '📄 Exportar PDF', '');
+st(264.4, 'cfg'); focus(264.4, M.cfg, 1.6, 1.08); sl(264.51, 268.3, M.cfg, 'Cierres automáticos', 'En Configuración.');
+
+chap(268.56, 14, 'Las conexiones');
+CARDS.push({ type: 'hub', a: 268.56, b: 308.25 });
+CARDS.push({ type: 'outro', a: 308.51, b: DUR });
+const HUB = [
+  ['ventas', '🛒 Ventas al contado', 'in', 275.08], ['compras', '📦 Compras', 'out', 278.03], ['gastos', '💸 Gastos', 'out', 278.9],
+  ['fiados', '📒 Cobros de fiados', 'in', 280.99], ['creditos', '💳 Cobros de créditos', 'in', 281.9], ['prov', '🤝 Pagos a proveedores', 'out', 283.68], ['sal', '👥 Salarios', 'out', 284.9],
+  ['anul', '↩️ Anulaciones: se revierten solas', 'mid', 286.75], ['aviso', '⚠️ ¿No alcanza el efectivo? Transferí desde un banco', 'mid', 294.19],
+  ['dash', '📊 Dashboard', 'low', 300.44], ['rep', '📈 Reportes', 'low', 302.62], ['cont', '🧮 Contabilidad · Flujo de efectivo', 'low', 303.6]];
+const HEAD = [[268.56, 'Las conexiones'], [272.13, 'No registrás nada dos veces'], [292.19, 'Todo conectado'], [306.44, 'Todo en tiempo real ⚡']];
+function hubHTML() {
+  const chip = (c) => `<div class="hc hc-${c[2]}" id="hc-${c[0]}">${c[1]}<em>${c[2] === 'in' ? '+ entra' : c[2] === 'out' ? '− sale' : ''}</em></div>`;
+  return `<div id="hubh" style="font-size:64px;font-weight:800;letter-spacing:-1px;margin-bottom:40px"></div>
+  <div style="display:flex;align-items:center;gap:60px">
+    <div style="display:flex;flex-direction:column;gap:22px;align-items:flex-end">${HUB.filter(c => c[2] === 'in').map(chip).join('')}</div>
+    <div id="hubc" style="width:270px;height:270px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 35% 30%,#5B8CFF,#2B3FD6);box-shadow:0 0 0 14px rgba(91,140,255,.18),0 0 80px rgba(91,140,255,.55)"><img src="isotipo.png" style="width:70px;filter:brightness(10)"><div style="font-size:52px;font-weight:800;margin-top:6px">Caja</div></div>
+    <div style="display:flex;flex-direction:column;gap:22px;align-items:flex-start">${HUB.filter(c => c[2] === 'out').map(chip).join('')}</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;margin-top:40px">${HUB.filter(c => c[2] === 'mid').map(chip).join('')}</div>
+  <div style="display:flex;gap:22px;margin-top:26px">${HUB.filter(c => c[2] === 'low').map(chip).join('')}</div>
+  <style>.hc{font-size:30px;font-weight:700;padding:16px 26px;border-radius:18px;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.18);display:flex;gap:16px;align-items:center;white-space:nowrap}
+  .hc em{font-style:normal;font-size:22px;font-weight:800;padding:4px 10px;border-radius:9px}.hc-in em{background:#16C784;color:#04261a}.hc-out em{background:#FF5D73;color:#3a0610}
+  .hc-in{border-color:rgba(22,199,132,.6)}.hc-out{border-color:rgba(255,93,115,.6)}.hc-mid{border-color:rgba(255,196,77,.6)}.hc-low{border-color:rgba(127,178,255,.6)}</style>`;
+}
+function hubFrame(t) {
+  let h = ''; for (const [a, tx] of HEAD) if (t >= a) h = tx; const he = $('hubh'); if (he && he.textContent !== h) he.textContent = h;
+  for (const c of HUB) { const e = $('hc-' + c[0]); if (!e) continue; const k = ease(p(t, c[3], c[3] + .45)); const pulse = t > c[3] && t < c[3] + 1.2 ? 1 + .06 * Math.sin(p(t, c[3], c[3] + 1.2) * Math.PI) : 1; e.style.opacity = .12 + .88 * k; e.style.transform = `scale(${(.92 + .08 * k) * pulse})`; e.style.background = t > c[3] && t < c[3] + 1.6 ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.08)'; }
+  const hc = $('hubc'); if (hc) hc.style.transform = `scale(${1 + .03 * Math.sin(t * 3)})`;
+}
+window.EVENTS = { DUR, clicks: CLICKS, chapters: CHAP.map(c => c.t), spots: SPOTS.map(s => s.a), states: ST.map(s => s.t), cards: CARDS.map(c => c.a) };
+CHAP.forEach(c => { const b = document.createElement('b'); b.style.left = (c.t / DUR * 100) + '%'; $('prog').appendChild(b); });
+
+// ---------------- engine
+CAM.sort((a, b) => a.t - b.t);
+function camAt(t) { let a = CAM[0], ia = 0; for (let i = 0; i < CAM.length; i++) if (CAM[i].t <= t) { a = CAM[i]; ia = i; } const b = CAM[ia + 1] || a; if (b.t === a.t) return b; const k = eio(p(t, a.t, b.t)); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)) }; }
+function clampCam(c) { const hw = 960 / c.z, hh = 540 / c.z; return { x: cl(c.x, hw, 1920 - hw), y: cl(c.y, hh, 1080 - hh), z: c.z }; }
+function curAt(t) { let a = CURK[0], ia = 0; for (let i = 0; i < CURK.length; i++) if (CURK[i].t <= t) { a = CURK[i]; ia = i; } const b = CURK[ia + 1] || a; if (b.t === a.t) return { x: b.x, y: b.y }; const k = eio(p(t, a.t, b.t)); const arc = Math.sin(Math.PI * k) * Math.min(50, Math.hypot(b.x - a.x, b.y - a.y) * .1); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc }; }
+const toS = (c, x, y) => ({ x: (x - c.x) * c.z + 960, y: (y - c.y) * c.z + 540 });
+function pick(list, t, fi = .3, fo = .25) { let best = null, bo = 0; for (const L of list) if (t >= L.a && t <= L.b + fo) { const o = Math.min(ease(p(t, L.a, L.a + fi)), 1 - ease(p(t, L.b, L.b + fo))); if (o >= bo) { best = L; bo = o; } } return [best, bo]; }
+
+window.render = function (t) {
+  const c = clampCam(camAt(t));
+  let curS = ST[0], prev = null; for (const s of ST) if (s.t <= t) { prev = curS; curS = s; }
+  const k = ease(p(t, curS.t, curS.t + .3));
+  for (const s in V) { V[s].style.opacity = 0; V[s].style.zIndex = 0; }
+  const setV = (s, o, z) => { const v = V[s]; v.style.opacity = o; v.style.zIndex = z; v.style.transform = `translate(${960 - c.x * c.z}px,${540 - c.y * c.z}px) scale(${c.z})`; };
+  if (prev && prev.s !== curS.s && k < 1) { setV(prev.s, 1, 1); setV(curS.s, k, 2); } else setV(curS.s, 1, 2);
+  // spotlight
+  const [sp, so] = pick(SPOTS, t, .3, .25);
+  if (sp) { const a = toS(c, sp.r[0], sp.r[1]), b = toS(c, sp.r[0] + sp.r[2], sp.r[1] + sp.r[3]); const pad = 6;
+    [$('spot'), $('ring')].forEach(e => { e.style.left = (a.x - pad) + 'px'; e.style.top = (a.y - pad) + 'px'; e.style.width = (b.x - a.x + 2 * pad) + 'px'; e.style.height = (b.y - a.y + 2 * pad) + 'px'; });
+    $('spot').style.opacity = so * .9; $('ring').style.opacity = so * (.75 + .25 * Math.sin(t * 5)); } else { $('spot').style.opacity = 0; $('ring').style.opacity = 0; }
+  // label
+  const [lb, lo] = pick(LABELS, t, .3, .2); const LE = $('label');
+  if (lb) { const key = lb.title + lb.a; if (LE.dataset.k !== key) { $('lt').innerHTML = (lb.n ? `<i>${lb.n}</i>` : '') + lb.title; $('lx').innerHTML = lb.text; $('lx').style.display = lb.text ? '' : 'none'; LE.dataset.k = key; }
+    const a = toS(c, lb.r[0], lb.r[1]), b = toS(c, lb.r[0] + lb.r[2], lb.r[1] + lb.r[3]); const Wd = LE.offsetWidth || 520, Hh = LE.offsetHeight || 140, m = 30; let x, y;
+    if (1920 - b.x > Wd + m + 30) { x = b.x + m; y = (a.y + b.y) / 2 - Hh / 2; } else if (a.x > Wd + m + 30) { x = a.x - m - Wd; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (1080 - b.y > Hh + m + 60) { x = (a.x + b.x) / 2 - Wd / 2; y = b.y + m; } else { x = (a.x + b.x) / 2 - Wd / 2; y = a.y - m - Hh; }
+    x = cl(x, 30, 1920 - Wd - 30); y = cl(y, 110, 1080 - Hh - 50);
+    LE.style.left = x + 'px'; LE.style.top = y + 'px'; LE.style.opacity = lo; LE.style.transform = `translateY(${(1 - lo) * 18}px)`; } else LE.style.opacity = 0;
+  // caption
+  const [cp, co] = pick(CAPS, t, .35, .3);
+  if (cp) { if ($('cap').dataset.k !== cp.text) { $('cap').innerHTML = cp.text; $('cap').dataset.k = cp.text; } $('cap').style.opacity = co; $('cap').style.transform = `translateX(-50%) translateY(${(1 - co) * 20}px)`; } else $('cap').style.opacity = 0;
+  $('formula').style.opacity = 0;
+  // cursor
+  const cu = curAt(t), cs = toS(c, cu.x, cu.y); let press = 0, rip = null;
+  for (const ck of CLICKS) { if (t >= ck - .12 && t <= ck + .12) press = 1 - Math.abs(t - ck) / .12; if (t >= ck && t < ck + .55) rip = ck; }
+  const inCard = CARDS.some(C => t >= C.a - .2 && t <= C.b + .2);
+  $('cursor').style.opacity = inCard || t < 3.6 ? 0 : 1; $('cursor').style.transform = `translate(${cs.x - 6}px,${cs.y - 3}px) scale(${1 - .18 * press})`;
+  if (rip != null) { const k2 = p(t, rip, rip + .55), Rr = 14 + 46 * ease(k2); const RP = $('ripple'); RP.style.opacity = 1 - k2; RP.style.left = (cs.x - Rr) + 'px'; RP.style.top = (cs.y - Rr) + 'px'; RP.style.width = RP.style.height = 2 * Rr + 'px'; } else $('ripple').style.opacity = 0;
+  // chapter chip + banner + progress
+  let ch = null; for (const C of CHAP) if (C.t <= t) ch = C;
+  if (ch) $('chip').innerHTML = `<img src="isotipo.png" style="width:26px"><span>${String(ch.n).padStart(2, '0')}</span>${ch.title}`;
+  $('chip').style.opacity = !inCard && ch && t > ch.t + 2.6 ? 1 : 0; $('wm').style.opacity = 0;
+  const BN = $('banner');
+  if (ch && t < ch.t + 2.6) { const o = Math.min(ease(p(t, ch.t, ch.t + .35)), 1 - ease(p(t, ch.t + 2.2, ch.t + 2.6))); BN.style.opacity = o; BN.style.transform = `translateX(${(1 - ease(p(t, ch.t, ch.t + .4))) * -60}px)`;
+    $('bn').textContent = String(ch.n).padStart(2, '0'); $('bt').textContent = ch.title; } else BN.style.opacity = 0;
+  $('prog').style.opacity = t > 3.5 && t < 268.4 ? 1 : 0; $('progi').style.width = (t / DUR * 100) + '%';
+  // cards
+  let cd = null; for (const C of CARDS) if (t >= C.a && t <= C.b) cd = C; const CE = $('card');
+  if (cd) { const o = Math.min(ease(p(t, cd.a, cd.a + .45)), cd.type !== 'outro' ? 1 - ease(p(t, cd.b - .4, cd.b)) : 1);
+    if (CE.dataset.k !== String(cd.a)) { CE.dataset.k = String(cd.a);
+      if (cd.type === 'hub') CE.innerHTML = hubHTML();
+      else if (cd.type === 'intro') CE.innerHTML = `<img src="isotipo.png"><div class="su" style="margin:0;font-size:32px;letter-spacing:6px;font-weight:700;color:#7FB2FF">TUTORIAL · NEGOCIO360</div><div class="ti" style="font-size:130px;margin-top:16px">Caja</div><div class="list">${CHAP.map(c => `<div><span>${String(c.n).padStart(2, '0')}</span>${c.title}</div>`).join('')}</div>`;
+      else CE.innerHTML = `<img src="isotipo.png"><div class="ti" style="font-size:96px">Caja: el centro de tu negocio</div><div class="su" style="margin-top:30px">Cuánto tenés · Dónde está · A dónde fue</div><div class="su" style="margin-top:40px">Nos vemos en el próximo tutorial</div><div class="su" style="margin-top:40px;color:#7FB2FF;font-weight:700">negocio360oficial.com</div>`; }
+    CE.style.opacity = o; if (cd.type === 'hub') hubFrame(t); const inner = cd.type === 'hub' ? [] : CE.children; for (let i = 0; i < inner.length; i++) { const kk = ease(p(t, cd.a + .15 + i * .12, cd.a + .65 + i * .12)); inner[i].style.opacity = kk; inner[i].style.transform = `translateY(${(1 - kk) * 30}px)`; }
+    $('views').style.filter = `blur(${8 * o}px)`; } else { CE.style.opacity = 0; $('views').style.filter = 'none'; }
+};
+render(0);
+</script></body></html>
