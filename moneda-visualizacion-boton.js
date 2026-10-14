@@ -22,6 +22,9 @@
     try { if (window.TX && TX.empresaConfig && TX.empresaConfig.moneda) return TX.empresaConfig.moneda; } catch (_) {}
     try { if (window.TP && TP.empresaConfig && TP.empresaConfig.moneda) return TP.empresaConfig.moneda; } catch (_) {}
     try { if (typeof STATE !== 'undefined' && STATE && STATE.empresaConfig && STATE.empresaConfig.moneda) return STATE.empresaConfig.moneda; } catch (_) {}
+    // Productos / Bodega guardan la moneda en MONEDA_CODIGO; el reporte general en R.moneda.
+    try { if (typeof R !== 'undefined' && R && (R.moneda === 'NIO' || R.moneda === 'USD')) return R.moneda; } catch (_) {}
+    try { if (typeof MONEDA_CODIGO !== 'undefined' && window.__n360MonedaCodigoListo && MONEDA_CODIGO) return MONEDA_CODIGO; } catch (_) {}
     return null;
   }
   function oficialOParDefecto() { return monedaOficial() || 'NIO'; }
@@ -100,7 +103,9 @@
   }
 
   function crearBoton() {
-    if ($('btn-moneda-vis-texto') || $('mvb-boton')) return true; // ya existe
+    // Ya existe un botón propio (Caja, Ventas... usan #btn-moneda-vis-texto;
+    // Productos y Bodega usan el indicador #monedaIndicador): no se duplica.
+    if ($('btn-moneda-vis-texto') || $('monedaIndicador') || $('mvb-boton')) return true;
     const tema = document.querySelector('.theme-btn[onclick*="toggleTheme"]');
     if (!tema || !tema.parentNode) return false;
     const b = document.createElement('button');

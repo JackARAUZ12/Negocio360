@@ -130,7 +130,9 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
-function fmt(n) { return 'C$' + Number(n||0).toLocaleString('es-NI', { minimumFractionDigits: 2 }); }
+// (Antes había aquí una segunda función fmt que anulaba a la de arriba:
+//  siempre mostraba "C$" y nunca convertía. Se quitó para que se use la
+//  de arriba, que respeta la moneda del negocio y la de visualización.)
 
 /* =====================================================
    ROTACION Y MARGEN -- que se vende mas, que se vende

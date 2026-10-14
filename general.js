@@ -165,7 +165,8 @@ function fmt(n) {
 }
 
 function fmtShort(n) {
-  const v = parseFloat(n||0), s = sym();
+  // Convierte con la moneda de visualización (solo lo que se ve).
+  const v = convertirParaMostrar(parseFloat(n||0), R.moneda), s = sym();
   if (v >= 1_000_000) return `${s}${(v/1_000_000).toFixed(1)}M`;
   if (v >= 1_000)     return `${s}${(v/1_000).toFixed(1)}k`;
   return `${s}${v.toLocaleString('es-NI', { minimumFractionDigits:0, maximumFractionDigits:0 })}`;
@@ -450,7 +451,7 @@ function createLineChart(canvasId, labels, datasets, key) {
         legend: { display: datasets.length > 1, labels: { color: d.ticks, font:{ family:d.font, size:11 } } },
         tooltip: { backgroundColor:'#1e1e30', titleColor:'#f0f0fa', bodyColor:'#9090b0',
           padding:12, cornerRadius:8,
-          callbacks: { label: ctx => `${ctx.dataset.label}: ${sym()} ${ctx.parsed.y.toLocaleString('es-NI',{minimumFractionDigits:2})}` }
+          callbacks: { label: ctx => `${ctx.dataset.label}: ${sym()} ${convertirParaMostrar(ctx.parsed.y, R.moneda).toLocaleString('es-NI',{minimumFractionDigits:2})}` }
         },
       },
       scales: {
@@ -476,7 +477,7 @@ function createBarChart(canvasId, labels, datasets, key, stacked=false) {
         legend: { display: datasets.length > 1, labels:{ color:d.ticks, font:{family:d.font,size:11} } },
         tooltip: { backgroundColor:'#1e1e30', titleColor:'#f0f0fa', bodyColor:'#9090b0',
           padding:12, cornerRadius:8,
-          callbacks: { label: ctx => `${ctx.dataset.label}: ${sym()} ${ctx.parsed.y.toLocaleString('es-NI',{minimumFractionDigits:2})}` }
+          callbacks: { label: ctx => `${ctx.dataset.label}: ${sym()} ${convertirParaMostrar(ctx.parsed.y, R.moneda).toLocaleString('es-NI',{minimumFractionDigits:2})}` }
         },
       },
       scales: {
@@ -505,7 +506,7 @@ function createDoughnutChart(canvasId, labels, data, key) {
         legend: { display:false },
         tooltip: { backgroundColor:'#1e1e30', titleColor:'#f0f0fa', bodyColor:'#9090b0',
           padding:10, cornerRadius:8,
-          callbacks: { label: ctx => `${ctx.label}: ${sym()} ${ctx.parsed.toLocaleString('es-NI',{minimumFractionDigits:2})}` }
+          callbacks: { label: ctx => `${ctx.label}: ${sym()} ${convertirParaMostrar(ctx.parsed, R.moneda).toLocaleString('es-NI',{minimumFractionDigits:2})}` }
         },
       },
     },

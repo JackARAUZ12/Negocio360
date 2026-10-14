@@ -98,6 +98,15 @@ function fmtMoney(val) {
   if (val === null || val === undefined || val === '') return '—';
   const n = parseFloat(val);
   if (isNaN(n)) return '—';
+  // Moneda de visualización (igual que en Productos): solo cambia lo que se ve.
+  if (typeof convertirParaMostrar === 'function' && typeof monedaParaMostrar === 'function') {
+    const codigoAMostrar = monedaParaMostrar(MONEDA_CODIGO);
+    const simboloAMostrar = CURRENCY_SYMBOLS[codigoAMostrar] || MONEDA_SIMBOLO;
+    return simboloAMostrar + convertirParaMostrar(n, MONEDA_CODIGO).toLocaleString('es-NI', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
   return MONEDA_SIMBOLO + n.toLocaleString('es-NI', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -294,8 +303,20 @@ async function cargarDatosEmpresa() {
     MONEDA_SIMBOLO = CURRENCY_SYMBOLS[monedaCodigo] || monedaCodigo;
 
     // Actualizar indicador de moneda en header
+    window.__n360MonedaCodigoListo = true;
     const monedaEl = $('monedaIndicador');
-    if (monedaEl) monedaEl.textContent = `${MONEDA_SIMBOLO} (${MONEDA_CODIGO})`;
+    if (monedaEl) {
+      // Muestra la moneda en que se están VIENDO los montos, y al hacer
+      // clic abre la ventana de moneda de visualización (igual que Productos).
+      const codVis = (typeof monedaParaMostrar === 'function') ? monedaParaMostrar(MONEDA_CODIGO) : MONEDA_CODIGO;
+      monedaEl.textContent = `${CURRENCY_SYMBOLS[codVis] || MONEDA_SIMBOLO} (${codVis})`;
+      if (window.N360MonedaVisBoton && !monedaEl.dataset.mvb) {
+        monedaEl.dataset.mvb = '1';
+        monedaEl.style.cursor = 'pointer';
+        monedaEl.title = 'Moneda oficial: haz clic para cambiar cómo se muestra (no cambia tus datos)';
+        monedaEl.addEventListener('click', () => window.N360MonedaVisBoton.abrir());
+      }
+    }
 
     console.log('[Moneda]', {
       monedaCodigo,
@@ -1213,7 +1234,7 @@ async function exportarInventarioPDF() {
     doc.text(`Generado: ${new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'})}`, W-12, 13, {align:'right'});
     doc.text(`${filas.length} ítem${filas.length===1?'':'s'}`, W-12, 19, {align:'right'});
 
-    const cm = MONEDA_SIMBOLO;
+    const cm = (typeof monedaParaMostrar === 'function' && CURRENCY_SYMBOLS[monedaParaMostrar(MONEDA_CODIGO)]) || MONEDA_SIMBOLO;
     const head = [['Producto','Tipo','SKU','Categoría','Stock',`Costo (${cm})`,`Precio fijo (${cm})`,'Escala 1','Escala 2','Escala 3','Escala 4','Escala 5','Estado']];
     const body = filas.map(f => [
       f.producto, f.tipo, f.sku, f.categoria, f.stock,
