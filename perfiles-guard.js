@@ -1174,6 +1174,7 @@
       try {
         if (typeof onDesbloqueado !== 'function') return;
         if (!window.supabase) { onDesbloqueado(); return; }
+        if (window.N360VerComo && window.N360VerComo.activo) { onDesbloqueado(); return; } // Ver como cliente: sin código
         if (!PG.client) PG.client = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY);
 
         const { data: { session } } = await PG.client.auth.getSession();
@@ -1243,6 +1244,7 @@
       try {
         if (typeof onDesbloqueado !== 'function') return;
         if (!window.supabase) { onDesbloqueado(); return; }
+        if (window.N360VerComo && window.N360VerComo.activo) { onDesbloqueado(); return; } // Ver como cliente: sin código
         if (!PG.client) PG.client = window.supabase.createClient(PG_SUPABASE_URL, PG_SUPABASE_KEY);
 
         const { data: { session } } = await PG.client.auth.getSession();
@@ -1489,6 +1491,13 @@
       .eq('auth_user_id', PG.authUserId)
       .maybeSingle();
     if (cfgUsuario && cfgUsuario.multiusuario_activo === false) return;
+
+    // Modo "Ver como cliente" (solo lectura, desde el panel de administrador):
+    // se entra directo, sin selector de usuario ni PIN y sin restricciones de
+    // perfil, para que el administrador vea todo. No cambia nada del cliente:
+    // su configuración de multiusuario queda igual y esta omisión solo ocurre
+    // en esa pestaña.
+    if (window.N360VerComo && window.N360VerComo.activo) return;
 
     PG.perfiles = await cargarPerfiles();
 
