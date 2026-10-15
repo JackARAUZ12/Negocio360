@@ -1050,7 +1050,45 @@ async function cargarBalanceGeneral() {
         <tr style="font-weight:700;background:var(--accent-soft);color:var(--accent)"><td>Utilidad Acumulada</td><td style="text-align:right">${fmt(utilidadAcumulada)}</td></tr>
         <tr style="font-weight:800;font-size:15px;border-top:2px solid var(--border)"><td>Total Pasivo + Capital</td><td style="text-align:right">${fmt(totalPasivoCapital)}</td></tr>
       </table>
-    </div>`;
+    </div>
+    <div id="bg-cuadre-grupo"></div>`;
+  cargarCuadreGrupo(activo);
+}
+
+/* Cuadre del grupo (solo lectura): mercadería de la central y de cada
+   bodega/sucursal al costo, contra el saldo de la cuenta de Inventario.
+   Solo aparece si esta cuenta es la central de un grupo. */
+async function cargarCuadreGrupo(activo) {
+  const cont = document.getElementById('bg-cuadre-grupo');
+  if (!cont || !window.N360ContaGrupo) return;
+  cont.innerHTML = '';
+  try {
+    const lugares = await N360ContaGrupo.inventarioPorLugar(sbClient, STATE.userId, STATE.empresaConfig?.nombre_comercial || 'Central');
+    if (lugares.length < 2) return; // no es central de un grupo: no se muestra nada
+    const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion, cuenta_debe_id, cuenta_haber_id').eq('auth_user_id', STATE.userId);
+    const mp = new Map((mapeoData || []).map(m => [m.tipo_transaccion, m]));
+    const idsInv = new Set([mp.get('costo_ventas')?.cuenta_haber_id, mp.get('compra')?.cuenta_debe_id, mp.get('inventario_inicial')?.cuenta_debe_id].filter(Boolean));
+    const filasInv = (activo?.filas || []).filter(f => idsInv.has(f.cuenta.id));
+    const contable = round2(filasInv.reduce((t, f) => t + f.saldo, 0));
+    const real = round2(lugares.reduce((t, l) => t + l.valor, 0));
+    const dif = round2(real - contable);
+    const ok = Math.abs(dif) < 1;
+    const tipoTxt = t => t === 'central' ? 'Central' : t === 'bodega' ? 'Bodega' : 'Sucursal';
+    cont.innerHTML = `
+      <div style="margin-top:22px;border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="font-weight:700;font-size:14.5px;margin-bottom:4px">🏬 Inventario del grupo (central, bodegas y sucursales)</div>
+        <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">La contabilidad de esta cuenta es el libro de todo el grupo. Mercadería de HOY (existencias × costo) de cada lugar, contra la cuenta de Inventario. Los traslados entre lugares no cambian el total.</div>
+        <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+          ${lugares.map(l => `<tr><td>${esc(l.nombre)} <span style="color:var(--text-muted);font-size:12px">· ${tipoTxt(l.tipo)} · ${l.conExistencia} producto(s) con existencia</span></td><td style="text-align:right">${fmt(l.valor)}</td></tr>`).join('')}
+          <tr style="font-weight:700;border-top:1px solid var(--border)"><td>Mercadería total del grupo</td><td style="text-align:right">${fmt(real)}</td></tr>
+          <tr><td>Inventario en contabilidad ${filasInv.length ? '(' + filasInv.map(f => esc(f.cuenta.codigo)).join(', ') + ')' : '(cuenta no configurada)'}</td><td style="text-align:right">${fmt(contable)}</td></tr>
+          <tr style="font-weight:700;color:${ok ? 'var(--success)' : 'var(--danger)'}"><td>Diferencia</td><td style="text-align:right">${fmt(dif)}</td></tr>
+        </table>
+        <div style="font-size:12.5px;margin-top:8px;color:${ok ? 'var(--success)' : 'var(--text-secondary)'}">${ok
+          ? '✅ El inventario contable cuadra con la mercadería de todo el grupo.'
+          : 'Para cuadrarlo: presiona "Generar asientos" (incluye bodegas y sucursales) y luego "Conciliar inventario inicial", que registra como apertura la mercadería que ya existía, incluida la de las bodegas.'}</div>
+      </div>`;
+  } catch (e) { console.warn('cargarCuadreGrupo:', e); }
 }
 
 function exportarBalanceGeneral(formato) {
@@ -1255,6 +1293,8 @@ const TIPOS_TRANSACCION = {
   capital_inicial: { label: 'Dinero inicial de caja / aportes de capital (apertura)', ejemplo: 'Debe: Caja General — Haber: Capital (Aporte de Socios)' },
   credito_existente: { label: 'Créditos de clientes que ya existían antes de usar el sistema (apertura)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Capital' },
   inventario_inicial: { label: 'Inventario que ya existía antes de usar el sistema (apertura)', ejemplo: 'Debe: Inventario — Haber: Capital' },
+  ajuste_inventario_entrada: { label: 'Ajuste de existencia que SUBE (conteo, devolución, corrección…)', ejemplo: 'Debe: Inventario — Haber: Otros Ingresos (4200). Solo los cambios de existencia hechos desde la ficha del producto CON motivo; si el motivo es "Inventario inicial", va contra Capital usando la línea de arriba. Incluye bodegas y sucursales del grupo.' },
+  ajuste_inventario_salida: { label: 'Ajuste de existencia que BAJA (conteo, daño, vencimiento, robo…)', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Inventario. Solo los cambios de existencia hechos desde la ficha del producto CON motivo (las bajas de "Movimientos especiales" ya se registran como gasto de merma). Incluye bodegas y sucursales del grupo.' },
   faltante_caja: { label: 'Faltante de caja al cerrar Caja Chica', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Caja General. Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
   sobrante_caja: { label: 'Sobrante de caja al cerrar Caja Chica', ejemplo: 'Debe: Caja General — Haber: Otros Ingresos (4200). Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
 };
@@ -1495,7 +1535,18 @@ async function conciliarInventarioInicial() {
         i += TAM;
       }
     }
-    const valorReal = round2(prods.filter(p => p.tipo === 'producto').reduce((t, p) => t + Number(p.stock_actual||0) * Number(p.costo||0), 0));
+    let valorReal = round2(prods.filter(p => p.tipo === 'producto').reduce((t, p) => t + Number(p.stock_actual||0) * Number(p.costo||0), 0));
+    // Contabilidad del grupo: si esta cuenta es la central, el inventario real incluye la
+    // mercadería de sus bodegas y sucursales (en un solo libro, todo es inventario del negocio).
+    let detalleGrupo = '';
+    if (window.N360ContaGrupo) {
+      const lugares = await N360ContaGrupo.inventarioPorLugar(sbClient, STATE.userId, STATE.empresaConfig?.nombre_comercial || 'Central');
+      if (lugares.length > 1) {
+        const otros = lugares.slice(1);
+        valorReal = round2(valorReal + otros.reduce((t, l) => t + l.valor, 0));
+        detalleGrupo = '\n\nIncluye la mercadería de todo el grupo:\n' + lugares.map(l => `• ${l.nombre}: ${fmt(l.valor)}`).join('\n');
+      }
+    }
 
     let saldoContable = 0;
     { let i = 0; const TAM = 1000;
@@ -1514,7 +1565,7 @@ async function conciliarInventarioInicial() {
       resEl.innerHTML = `✅ Nada que conciliar: el inventario real (${fmt(valorReal)}) ya no supera el saldo contable (${fmt(saldoContable)}).`;
       return;
     }
-    if (!confirm(`Valor real del inventario: ${fmt(valorReal)}\nSaldo contable de Inventario: ${fmt(saldoContable)}\n\nSe registrará UN asiento de apertura por ${fmt(diferencia)}\n(Debe: Inventario — Haber: cuenta de Capital elegida).\n¿Continuar?`)) { resEl.innerHTML = ''; return; }
+    if (!confirm(`Valor real del inventario: ${fmt(valorReal)}${detalleGrupo}\nSaldo contable de Inventario: ${fmt(saldoContable)}\n\nSe registrará UN asiento de apertura por ${fmt(diferencia)}\n(Debe: Inventario — Haber: cuenta de Capital elegida).\n¿Continuar?`)) { resEl.innerHTML = ''; return; }
 
     const { data: primero } = await sbClient.from('asientos_contables').select('fecha').eq('auth_user_id', STATE.userId).neq('estado', 'anulado').order('fecha', { ascending: true }).limit(1).maybeSingle();
     const fecha = primero?.fecha || todayISO();
@@ -1588,8 +1639,15 @@ async function anularAsientosDeOrigenAnulado() {
     { tabla: 'compras', filtro: q => q.eq('estado', 'anulada').gte('anulada_en', FECHA_INICIO_ANULA_ASIENTOS),     tipos: ['compra'],                    motivo: 'Compra anulada' },
   ];
   let total = 0;
+  // Contabilidad del grupo: los documentos de bodegas/sucursales también tienen su asiento en
+  // ESTOS libros; si se anulan allá, su asiento aquí se anula igual. Solo se LEE al miembro.
+  const lugares = [{ uid: STATE.userId, lector: sbClient }];
+  if (window.N360ContaGrupo) {
+    (await N360ContaGrupo.miembros(sbClient)).forEach(mg => lugares.push({ uid: mg.auth_user_id, lector: N360ContaGrupo.lector(sbClient, mg.auth_user_id) }));
+  }
+  for (const L of lugares)
   for (const f of fuentes) {
-    const { data: docs, error } = await f.filtro(sbClient.from(f.tabla).select('id').eq('auth_user_id', STATE.userId)).limit(500);
+    const { data: docs, error } = await f.filtro(L.lector.from(f.tabla).select('id').eq('auth_user_id', L.uid)).limit(500);
     if (error || !docs || !docs.length) continue;
     const ids = docs.map(d => d.id);
     for (let i = 0; i < ids.length; i += 100) {
@@ -1648,9 +1706,34 @@ async function generarAsientosAutomaticosInterno() {
 
     let creados = 0, saltados = 0, sinConfigurar = 0;
 
+    // CONTABILIDAD DEL GRUPO ("un solo libro en la central"): primero se
+    // procesa la propia cuenta, EXACTAMENTE igual que siempre; después, si
+    // esta cuenta es la central de un grupo, cada bodega/sucursal. Sus
+    // asientos se escriben en ESTOS libros (los de la central), con el
+    // nombre del lugar al inicio del concepto. Solo cambian las LECTURAS:
+    // cada fuente lee sus propios documentos; las escrituras son las de siempre.
+    // Los traslados entre lugares del grupo no generan asiento: en un solo
+    // libro, la mercadería solo cambia de lugar.
+    const fuentesConta = [{ uid: STATE.userId, lector: sbClient, etiqueta: '', todoElHistorial: false }];
+    if (window.N360ContaGrupo) {
+      const miembrosGrupo = await N360ContaGrupo.miembros(sbClient);
+      miembrosGrupo.forEach(mg => fuentesConta.push({
+        uid: mg.auth_user_id, lector: N360ContaGrupo.lector(sbClient, mg.auth_user_id),
+        etiqueta: `[${mg.nombre}] `,
+        // Los documentos de bodegas/sucursales se revisan completos (sin el rango de fechas):
+        // la "fecha pendiente más antigua" que sugiere el sistema solo conoce los de la central.
+        // Lo ya registrado se salta igual (no se duplica).
+        todoElHistorial: true,
+      }));
+    }
+    for (const F of fuentesConta) {
+    if (F !== fuentesConta[0]) document.getElementById('ga-resultado').innerHTML = `Leyendo ${esc(F.etiqueta.replace(/[\[\]]/g, '').trim())}…`;
+
     async function procesarTipo(tipo, tabla, campoMonto, filtroEstado, campoEstado, conceptoPrefijo, filtroExtra, obtenerLineasExtra, campoFecha, obtenerDivisionIva, opts) {
       const m = mapeo.get(opts?.mapeoDe || tipo);
-      if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { sinConfigurar++; return; }
+      // "Sin configurar" es un aviso de configuración: se cuenta una sola vez (en la central),
+      // no una vez por cada bodega/sucursal del grupo.
+      if (!m || !m.cuenta_debe_id || !m.cuenta_haber_id) { if (F === fuentesConta[0]) sinConfigurar++; return; }
       campoFecha = campoFecha || 'fecha';
 
       // SOLO LECTURA — nunca se hace ningún update/insert/delete sobre
@@ -1660,11 +1743,11 @@ async function generarAsientosAutomaticosInterno() {
       let filas = [];
       { let desdeIdx = 0; const TAM = 1000;
         while (true) {
-          let query = sbClient.from(tabla).select('*').eq('auth_user_id', STATE.userId);
+          let query = F.lector.from(tabla).select('*').eq('auth_user_id', F.uid);
           if (campoEstado) query = query.eq(campoEstado, filtroEstado); // algunas tablas (ej. pagos ya hechos) no tienen "estado" — todas sus filas ya son reales
           // Los saldos de apertura (opts.sinRango) son pocos y se revisan siempre completos:
           // la fecha 'pendiente mas antigua' que sugiere el modal no los conoce.
-          if (!opts?.sinRango) query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
+          if (!opts?.sinRango && !F.todoElHistorial) query = query.gte(campoFecha, desde).lte(campoFecha, `${hasta} 23:59:59`);
           if (filtroExtra) query = filtroExtra(query);
           const { data: pagina } = await query.range(desdeIdx, desdeIdx + TAM - 1);
           filas = filas.concat(pagina || []);
@@ -1702,7 +1785,7 @@ async function generarAsientosAutomaticosInterno() {
         const fechaAsiento = String(fila[campoFecha]).slice(0, 10); // por si es timestamp completo (ej. created_at)
         const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
           auth_user_id: STATE.userId, numero, fecha: fechaAsiento,
-          concepto: `${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || fila.numero_credito || ''}`.trim(),
+          concepto: `${F.etiqueta}${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || fila.numero_credito || ''}`.trim(),
           estado: 'borrador', origen: 'automatico', referencia_tipo: tipo, referencia_id: fila.id,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
         }).select().single();
@@ -1784,7 +1867,7 @@ async function generarAsientosAutomaticosInterno() {
     const cuentaDebeServicio = f => (f.clase_costo === 'servicio') ? (mapeoCostoServ?.cuenta_debe_id || false) : undefined;
     async function obtenerCostoVentaVendido(venta) {
       if (!mapeoCosto || !mapeoCosto.cuenta_debe_id || !mapeoCosto.cuenta_haber_id) return [];
-      const { data: detalles } = await sbClient.from('venta_detalles').select('cantidad, costo, tipo_item').eq('venta_id', venta.id).eq('auth_user_id', STATE.userId);
+      const { data: detalles } = await F.lector.from('venta_detalles').select('cantidad, costo, tipo_item').eq('venta_id', venta.id).eq('auth_user_id', F.uid);
       // Si el negocio configuró "Costo de servicios", el costo de los servicios sale de sus compras/cuentas por pagar
       // reales: el costo estimado de la venta ya no se asienta (así no se duplica ni toca Inventario).
       const servicioPorSuCuenta = !!(mapeoCostoServ && mapeoCostoServ.cuenta_debe_id);
@@ -1809,7 +1892,7 @@ async function generarAsientosAutomaticosInterno() {
     // Otros impuestos de cada venta (IR, etc.) guardados en venta_impuestos.
     const extrasPorVenta = new Map();
     try {
-      const { data: vi } = await sbClient.from('venta_impuestos').select('venta_id, nombre, monto').eq('auth_user_id', STATE.userId);
+      const { data: vi } = await F.lector.from('venta_impuestos').select('venta_id, nombre, monto').eq('auth_user_id', F.uid);
       (vi || []).forEach(x => { const a = extrasPorVenta.get(x.venta_id) || []; a.push({ nombre: x.nombre, monto: round2(Number(x.monto || 0)) }); extrasPorVenta.set(x.venta_id, a); });
     } catch (e) { /* tabla ausente: sin extras */ }
     const mapeoRetClientes = mapeo.get('retencion_ir_clientes');
@@ -1875,7 +1958,7 @@ async function generarAsientosAutomaticosInterno() {
     const comprasConCxp = new Set();
     { let desdeIdx = 0; const TAM = 1000;
       while (true) {
-        const { data: pagina } = await sbClient.from('cuentas_por_pagar').select('compra_id').eq('auth_user_id', STATE.userId).not('compra_id', 'is', null).range(desdeIdx, desdeIdx + TAM - 1);
+        const { data: pagina } = await F.lector.from('cuentas_por_pagar').select('compra_id').eq('auth_user_id', F.uid).not('compra_id', 'is', null).range(desdeIdx, desdeIdx + TAM - 1);
         (pagina || []).forEach(x => comprasConCxp.add(x.compra_id));
         if (!pagina || pagina.length < TAM) break;
         desdeIdx += TAM;
@@ -1913,8 +1996,8 @@ async function generarAsientosAutomaticosInterno() {
         let movs = [];
         { let desdeIdx = 0; const TAM = 1000;
           while (true) {
-            const { data: pagina } = await sbClient.from('movimientos_impuestos').select('id, tipo_movimiento, monto, impuesto_id, created_at')
-              .eq('auth_user_id', STATE.userId).order('created_at', { ascending: true }).order('id', { ascending: true }).range(desdeIdx, desdeIdx + TAM - 1);
+            const { data: pagina } = await F.lector.from('movimientos_impuestos').select('id, tipo_movimiento, monto, impuesto_id, created_at')
+              .eq('auth_user_id', F.uid).order('created_at', { ascending: true }).order('id', { ascending: true }).range(desdeIdx, desdeIdx + TAM - 1);
             movs = movs.concat(pagina || []);
             if (!pagina || pagina.length < TAM) break;
             desdeIdx += TAM;
@@ -1991,7 +2074,7 @@ async function generarAsientosAutomaticosInterno() {
     await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', null, null, 'fecha_compra',
       async cxp => {
         if (!cxp.compra_id) return null;
-        const { data: cp } = await sbClient.from('compras').select('iva_monto').eq('id', cxp.compra_id).eq('auth_user_id', STATE.userId).maybeSingle();
+        const { data: cp } = await F.lector.from('compras').select('iva_monto').eq('id', cxp.compra_id).eq('auth_user_id', F.uid).maybeSingle();
         return divisionIvaCompra(cp);
       }, { cuentaDebe: cuentaDebeServicio });
     // Pago a proveedor con retención de IR: Debe CxP (bruto) / Haber Caja (neto) / Haber Retenciones por pagar.
@@ -2003,6 +2086,32 @@ async function generarAsientosAutomaticosInterno() {
         if (!mapeoRetIr || !mapeoRetIr.cuenta_haber_id) return { bloquear: true };
         return { montoIva: ret, cuentaIvaId: mapeoRetIr.cuenta_haber_id, lado: 'haber' };
       });
+
+    // AJUSTES DE EXISTENCIA hechos desde la ficha del producto CON motivo (desde el 14-oct-2026
+    // se pide motivo y se guarda su costo). Los viejos sin motivo ('edicion_producto') no se
+    // tocan: muchos fueron la carga inicial y los cubre la conciliación de inventario inicial.
+    // Las bajas de "Movimientos especiales" (tipo 'merma') ya entran como gasto de merma.
+    // Los traslados entre lugares del grupo no son ajustes y no generan asiento.
+    // Solo actúan si el negocio configuró su cuenta (si no, no se cuentan como pendientes).
+    {
+      const filtroAjuste = q => q.eq('tipo', 'ajuste_manual').neq('razon', 'edicion_producto').not('costo_total', 'is', null);
+      const montoAjuste = async f => Math.abs(Number(f.costo_total || 0));
+      if (mapeo.get('inventario_inicial')) {
+        await procesarTipo('ajuste_inventario_inicial', 'movimientos_inventario', 'costo_total', null, null, 'Inventario inicial (cargado desde el producto)',
+          q => filtroAjuste(q).eq('razon', 'inventario_inicial').gt('cantidad', 0), null, 'created_at', null,
+          { mapeoDe: 'inventario_inicial', obtenerMonto: montoAjuste });
+      }
+      if (mapeo.get('ajuste_inventario_entrada')) {
+        await procesarTipo('ajuste_inventario_entrada', 'movimientos_inventario', 'costo_total', null, null, 'Ajuste de existencia (sube)',
+          q => filtroAjuste(q).neq('razon', 'inventario_inicial').gt('cantidad', 0), null, 'created_at', null,
+          { obtenerMonto: montoAjuste });
+      }
+      if (mapeo.get('ajuste_inventario_salida')) {
+        await procesarTipo('ajuste_inventario_salida', 'movimientos_inventario', 'costo_total', null, null, 'Ajuste de existencia (baja)',
+          q => filtroAjuste(q).lt('cantidad', 0), null, 'created_at', null,
+          { obtenerMonto: montoAjuste });
+      }
+    }
 
     // SALDOS DE APERTURA (lo que el negocio ya tenia antes de usar el sistema).
     // Solo se LEE de Caja y Creditos; nada se modifica ahi.
@@ -2016,13 +2125,15 @@ async function generarAsientosAutomaticosInterno() {
       q => q.eq('es_existente', true).neq('estado', 'anulado'), null, 'created_at', null, {
         sinRango: true,
         obtenerMonto: async (cr) => {
-          const { data: pagos } = await sbClient.from('creditos_pagos').select('monto')
-            .eq('credito_id', cr.id).eq('auth_user_id', STATE.userId).eq('estado', 'completado');
+          const { data: pagos } = await F.lector.from('creditos_pagos').select('monto')
+            .eq('credito_id', cr.id).eq('auth_user_id', F.uid).eq('estado', 'completado');
           return Number(cr.saldo_pendiente || 0) + (pagos || []).reduce((t, p) => t + Number(p.monto || 0), 0);
         },
       });
+    } // fin del recorrido por la central y su grupo
 
     let resumen = `✅ ${creados} asiento(s) nuevo(s) generado(s) y registrado(s).`;
+    if (fuentesConta.length > 1) resumen += ` Incluye ${fuentesConta.length - 1} bodega(s)/sucursal(es) del grupo.`;
     if (saltados) resumen += ` ${saltados} ya existían (no se duplicaron).`;
     if (sinConfigurar) resumen += ` ⚠️ ${sinConfigurar} tipo(s) de movimiento sin configurar en "Contabilización automática".`;
     document.getElementById('ga-resultado').innerHTML = resumen;
