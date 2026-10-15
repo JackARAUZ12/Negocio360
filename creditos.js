@@ -746,20 +746,69 @@
      Si está desactivado, ninguna de estas funciones se dispara y el
      módulo funciona exactamente como antes.
   =================================================== */
+  // Mismo perfil que usa Ventas para la configuración propia de cada usuario.
+  function perfilStockCompartido() {
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const perfil = raw ? JSON.parse(raw) : null;
+      if (!perfil || perfil.tipo === 'admin' || !perfil.id) return { key: 'admin', nombre: perfil?.nombre || 'Admin' };
+      return { key: String(perfil.id), nombre: perfil.nombre || 'este usuario' };
+    } catch (_) { return { key: 'admin', nombre: 'Admin' }; }
+  }
+
   async function cargarEstadoStockCompartido() {
     try {
-      const { data: activo, error } = await _sb.rpc('obtener_stock_compartido');
-      if (error) throw error;
-      CS.stockCompartidoActivo = !!activo;
+      // Igual que Ventas: primero la configuración del grupo (activo + alcance)...
+      let activo = false;
+      CS.stockCompartidoAlcance = 'todas'; CS.stockCompartidoSucursalIds = [];
+      try {
+        const { data: cfg, error: errCfg } = await _sb.rpc('obtener_stock_compartido_config');
+        if (errCfg) throw errCfg;
+        const fila = Array.isArray(cfg) ? cfg[0] : cfg;
+        activo = !!fila?.activo;
+        CS.stockCompartidoAlcance = fila?.alcance || 'todas';
+        CS.stockCompartidoSucursalIds = Array.isArray(fila?.sucursal_ids) && fila.sucursal_ids.length
+          ? fila.sucursal_ids.filter(Boolean) : (fila?.sucursal_id ? [fila.sucursal_id] : []);
+      } catch (eCfg) {
+        const { data: activoViejo, error } = await _sb.rpc('obtener_stock_compartido');
+        if (error) throw error;
+        activo = !!activoViejo;
+      }
+      // ...y si este usuario configuró la suya (en Ventas), esa manda. Antes Créditos
+      // no la leía: en Ventas aparecía "¿de dónde sale?" y en Créditos no.
+      try {
+        const { data: propia, error: errPropia } = await _sb.from('stock_compartido_usuario')
+          .select('activo, alcance, sucursal_ids')
+          .eq('auth_user_id', CS.userId).eq('perfil_key', perfilStockCompartido().key).maybeSingle();
+        if (errPropia) throw errPropia;
+        if (propia) {
+          activo = !!propia.activo;
+          CS.stockCompartidoAlcance = propia.alcance || 'todas';
+          CS.stockCompartidoSucursalIds = (propia.sucursal_ids || []).filter(Boolean);
+        }
+      } catch (ePropia) { console.warn('cargarEstadoStockCompartido (creditos), configuración propia:', ePropia); }
+      CS.stockCompartidoActivo = activo;
 
       const { data: miFila } = await _sb.from('sucursales')
         .select('id').eq('auth_user_id_sucursal', CS.userId).maybeSingle();
       CS.miSucursalId = miFila?.id || null;
 
+      // Mismo permiso que Ventas para tocar el interruptor.
+      let puedeConfigurar = true;
+      try {
+        const { data: cfgAdmin } = await _sb.from('configuracion_empresa')
+          .select('permitir_usuarios_config_stock_compartido').eq('auth_user_id', CS.userId).maybeSingle();
+        puedeConfigurar = perfilStockCompartido().key === 'admin' || cfgAdmin?.permitir_usuarios_config_stock_compartido !== false;
+      } catch (_) {}
+      CS.puedeConfigurarStockCompartido = puedeConfigurar;
+
       const wrap = document.getElementById('stock-compartido-wrap');
       const chk  = document.getElementById('chk-stock-compartido');
       if (wrap && CS.miSucursalId) wrap.style.display = 'flex';
-      if (chk) chk.checked = CS.stockCompartidoActivo;
+      if (chk) { chk.checked = CS.stockCompartidoActivo; chk.disabled = !puedeConfigurar; }
+      if (wrap) wrap.title = CS.stockCompartidoAlcance && CS.stockCompartidoAlcance !== 'todas'
+        ? 'Stock Compartido con alcance limitado (se cambia desde Ventas)'
+        : 'Al dar un crédito, elige de cuál sucursal o bodega de tu grupo se descuenta el stock';
 
       if (CS.stockCompartidoActivo) await cargarProductosGrupoCredito();
     } catch (e) {
@@ -782,12 +831,25 @@
   }
 
   async function toggleStockCompartido(activo) {
+    if (CS.puedeConfigurarStockCompartido === false) {
+      const chk = document.getElementById('chk-stock-compartido'); if (chk) chk.checked = CS.stockCompartidoActivo;
+      showToast('Solo el administrador puede configurar Stock Compartido', 'error');
+      return;
+    }
     try {
-      const { error } = await _sb.rpc('establecer_stock_compartido', { p_activo: activo });
+      // Igual que Ventas: se guarda la configuración PROPIA de este usuario
+      // (conservando su alcance), así Ventas y Créditos siempre coinciden.
+      const yo = perfilStockCompartido();
+      const alcance = CS.stockCompartidoAlcance || 'todas';
+      const { error } = await _sb.from('stock_compartido_usuario').upsert({
+        auth_user_id: CS.userId, perfil_key: yo.key, perfil_nombre: yo.nombre,
+        activo, alcance, sucursal_ids: alcance === 'especifica' ? (CS.stockCompartidoSucursalIds || []) : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'auth_user_id,perfil_key' });
       if (error) throw error;
       CS.stockCompartidoActivo = activo;
       if (activo) await cargarProductosGrupoCredito();
-      showToast(activo ? 'Stock Compartido activado para todo el grupo' : 'Stock Compartido desactivado', 'success');
+      showToast(activo ? `Stock Compartido activado para ${yo.nombre}` : `Stock Compartido desactivado para ${yo.nombre}`, 'success');
     } catch (e) {
       console.error('toggleStockCompartido (creditos):', e);
       showToast('No se pudo cambiar Stock Compartido', 'error');
@@ -818,8 +880,31 @@
     try {
       const { data, error } = await _sb.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
       if (error) throw error;
-      const opciones = data || [];
+      let opciones = data || [];
       if (!opciones.length) { callbackContinuar(null); return; }
+
+      // Alcance (igual que Ventas): si se eligieron sucursales/bodegas específicas,
+      // solo se ofrecen esas; si una sola tiene stock, se usa directo.
+      const elegidas = new Set(CS.stockCompartidoSucursalIds || []);
+      if (CS.stockCompartidoAlcance === 'especifica' && elegidas.size) {
+        const conStock = opciones.filter(o => elegidas.has(o.sucursal_id) && Number(o.stock_actual) > 0);
+        if (conStock.length === 1) {
+          const u = conStock[0];
+          callbackContinuar({ sucursalId: u.sucursal_id, stockDisponible: Number(u.stock_actual), nombreCuenta: u.nombre_cuenta, esLocal: u.sucursal_id === CS.miSucursalId });
+          return;
+        }
+        if (!conStock.length) {
+          showToast(`Sin stock de "${nombreProducto}" en ${elegidas.size > 1 ? 'las cuentas elegidas' : 'la cuenta elegida'} para Stock Compartido`, 'error');
+          callbackContinuar(null);
+          return;
+        }
+        opciones = conStock;
+      }
+      if (CS.stockCompartidoAlcance === 'bodegas' || CS.stockCompartidoAlcance === 'sucursales') {
+        const tipoPermitido = CS.stockCompartidoAlcance === 'bodegas' ? 'bodega' : 'sucursal';
+        opciones = opciones.filter(o => o.es_central || o.tipo_cuenta === tipoPermitido);
+        if (!opciones.length) { callbackContinuar(null); return; }
+      }
 
       CS.stockOrigenPendiente = { callback: callbackContinuar };
       document.getElementById('stock-origen-title').textContent = nombreProducto;
@@ -1148,7 +1233,7 @@
     if (!CS.ncItems.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin ítems agregados</td></tr>'; return; }
     tbody.innerHTML = CS.ncItems.map((it, idx) => `
       <tr>
-        <td>${esc(it.nombre)}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
+        <td>${esc(it.nombre)}${it.origen_stock_nombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(it.origen_stock_nombre)}</div>` : ''}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
         <td><input type="number" value="${it.cantidad}" min="${permiteFraccionItemCredito(it) === false ? 1 : 0.001}" step="${permiteFraccionItemCredito(it) === false ? 1 : 'any'}"
               style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
               onchange="actualizarCantidadItemCredito(${idx}, this.value)"/>${controlesCantidadCreditoHTML(it, idx)}</td>
