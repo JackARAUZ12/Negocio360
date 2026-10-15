@@ -702,7 +702,7 @@ function renderMovimientos() {
       <td class="td-monto td-salida">${!isIngreso ? fmt(m.monto) : '—'}</td>
       <td class="td-monto td-saldo">${fmt(m.saldo_resultante)}</td>
       <td class="td-actions">
-        ${m.estado === 'anulado' ? '<span class="anulado-label">Anulado</span>' : m.transferencia_id ? '<span class="anulado-label" style="cursor:help" title="Una transferencia se revierte desde la pestaña Transferencias">🔁 Transferencia</span>' : `
+        ${m.estado === 'anulado' ? '<span class="anulado-label">Anulado</span>' : m.transferencia_id ? '<span class="anulado-label" style="cursor:help" title="Una transferencia se revierte desde la pestaña Transferencias">🔁 Transferencia</span>' : moduloQueAnula(m) ? `<span class="anulado-label" style="cursor:help" title="Este movimiento pertenece a un documento de ${moduloQueAnula(m)}. Para que todo quede cuadrado, anula el documento desde ${moduloQueAnula(m)}: ahí se anula también este movimiento.">🔒 ${moduloQueAnula(m)}</span>` : `
           <button class="btn-icon btn-icon-danger" onclick="confirmarAnular('${m.id}')" title="Anular">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -911,7 +911,27 @@ async function saveMovimiento() {
 ===================================================== */
 let movToAnular = null;
 
+// Movimientos que pertenecen a un documento con su propio "Anular"
+// (Ventas, Gastos, Compras, pagos de Créditos) no se anulan sueltos
+// desde Caja: así se anulaba el dinero y el documento seguía activo
+// (venta que suma en reportes y descuenta inventario, pero sin su
+// dinero en caja). Esos módulos ya anulan su movimiento de caja al
+// anular el documento. Los demás tipos (pagos a proveedor, salarios,
+// fiados, producción, movimientos manuales) siguen anulándose aquí,
+// porque Caja es su única forma de anularlos.
+const CAJA_ANULA_DESDE_MODULO = { venta: 'Ventas', gasto: 'Gastos', compra: 'Compras', credito: 'Créditos' };
+function moduloQueAnula(m) {
+  if (!m || !m.referencia_id) return null;
+  return CAJA_ANULA_DESDE_MODULO[m.referencia_tipo] || null;
+}
+
 function confirmarAnular(id) {
+  const m = (STATE.movimientos || []).find(x => x.id === id);
+  const modulo = moduloQueAnula(m);
+  if (modulo) {
+    showToast(`Este movimiento se anula desde ${modulo}, anulando el documento.`, 'error');
+    return;
+  }
   movToAnular = id;
   openModal('modal-confirmar');
 }

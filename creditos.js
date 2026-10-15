@@ -1649,7 +1649,15 @@
             detalles.map(({ combo_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
           ));
         }
-        if (errDet) throw errDet;
+        if (errDet) {
+          // La venta se creó pero sus productos no: se anula (nunca se borra)
+          // antes de tocar inventario o crear el crédito.
+          try {
+            await _sb.from('ventas').update({ estado: 'anulada', observaciones: 'Anulada automáticamente: no se pudieron guardar sus productos (falla de conexión). Se puede volver a registrar.' })
+              .eq('id', ventaId).eq('auth_user_id', CS.userId);
+          } catch (eAn) { console.warn('anular venta incompleta:', eAn); }
+          throw errDet;
+        }
 
         // Descontar stock solo de productos normales (no servicios, no combos)
         for (const it of CS.ncItems) {

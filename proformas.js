@@ -1711,6 +1711,20 @@ function imprimirComprobanteProforma() {
   w.document.close();
 }
 
+// Si una venta se crea pero sus productos no se pudieron guardar, la venta
+// queda vacía y activa (suma en reportes sin productos). En ese punto aún
+// no se ha tocado caja ni inventario, así que se ANULA (nunca se borra)
+// con una nota, y el usuario puede volver a intentarlo.
+async function anularVentaIncompleta(cliente, userId, ventaId) {
+  if (!ventaId) return;
+  try {
+    await cliente.from('ventas').update({
+      estado: 'anulada',
+      observaciones: 'Anulada automáticamente: no se pudieron guardar sus productos (falla de conexión). Se puede volver a registrar.',
+    }).eq('id', ventaId).eq('auth_user_id', userId);
+  } catch (e) { console.warn('anularVentaIncompleta:', e); }
+}
+
 async function confirmarConvertirAVenta() {
   // BUG REAL CORREGIDO: convertir la misma proforma dos veces (doble
   // clic, o dos pestañas abiertas) creaba DOS ventas distintas
@@ -1833,7 +1847,7 @@ async function confirmarConvertirAVenta() {
         detallesVenta.map(({ combo_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
-    if (errDetV) throw errDetV;
+    if (errDetV) { await anularVentaIncompleta(sbClient, STATE.userId, ventaNueva?.id); throw errDetV; }
 
     // ---- E: descontar stock (productos normales) ----
     for (const d of detalles.filter(x => x.tipo_item === 'producto' && x.producto_id)) {

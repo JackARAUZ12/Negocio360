@@ -1496,6 +1496,20 @@ function actualizarResumenPagoRecurrente() {
    CONFIRMAR PAGO — crea la venta (viaja a Caja, Reportes,
    Dashboard e Impuestos, igual que confirmarVenta())
 ------------------------------------------------------------ */
+// Si una venta se crea pero sus productos no se pudieron guardar, la venta
+// queda vacía y activa (suma en reportes sin productos). En ese punto aún
+// no se ha tocado caja ni inventario, así que se ANULA (nunca se borra)
+// con una nota, y el usuario puede volver a intentarlo.
+async function anularVentaIncompleta(cliente, userId, ventaId) {
+  if (!ventaId) return;
+  try {
+    await cliente.from('ventas').update({
+      estado: 'anulada',
+      observaciones: 'Anulada automáticamente: no se pudieron guardar sus productos (falla de conexión). Se puede volver a registrar.',
+    }).eq('id', ventaId).eq('auth_user_id', userId);
+  } catch (e) { console.warn('anularVentaIncompleta:', e); }
+}
+
 async function confirmarPagoRecurrente() {
   const c = S.pagoRecurrenteActivo;
   if (!c) return;
@@ -1571,7 +1585,7 @@ async function confirmarPagoRecurrente() {
     /* ----------------------------------------------------------
        PASO C: Detalle de venta (un ítem tipo servicio)
     ---------------------------------------------------------- */
-    await sb.from('venta_detalles').insert({
+    const { error: errDetRec } = await sb.from('venta_detalles').insert({
       auth_user_id:    S.userId,
       venta_id:        ventaId,
       producto_nombre: concepto,
@@ -1583,6 +1597,9 @@ async function confirmarPagoRecurrente() {
       subtotal:        montoBase,
       ganancia:        montoBase,
     });
+    // Antes no se revisaba: si fallaba, quedaba una venta vacía y
+    // aun así se registraba el cobro en Caja.
+    if (errDetRec) { await anularVentaIncompleta(sb, S.userId, ventaId); throw errDetRec; }
 
     /* ----------------------------------------------------------
        PASO D: Caja — igual que una venta normal: entra el monto
@@ -5552,7 +5569,7 @@ async function confirmarVenta(conImpresion) {
         detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
-    if (errDetalles) throw errDetalles;
+    if (errDetalles) { await anularVentaIncompleta(sb, S.userId, ventaNueva?.id); throw errDetalles; }
 
     // Descontar el lote especifico usado (FEFO, Farmacia fase 2) --
     // aislado: si algo fallara aqui, la venta YA se confirmo
@@ -7060,7 +7077,7 @@ async function confirmarVentaRapida() {
         detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
       ));
     }
-    if (errDetalles) throw errDetalles;
+    if (errDetalles) { await anularVentaIncompleta(sb, S.userId, ventaNueva?.id); throw errDetalles; }
 
     // Números de serie recolectados (si la función está activa y el
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.

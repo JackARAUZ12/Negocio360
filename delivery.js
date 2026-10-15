@@ -665,7 +665,15 @@ async function crearVentaDesdeDelivery(numeroPedido) {
     escala_id: i.escala_id || null, escala_nombre: i.escala_nombre || null,
   }));
   const { error: errDet } = await sb.from('venta_detalles').insert(detallesPayload);
-  if (errDet) throw errDet;
+  if (errDet) {
+    // La venta se creó pero sus productos no: se anula (nunca se borra)
+    // antes de descontar inventario o registrar el cobro.
+    try {
+      await sb.from('ventas').update({ estado: 'anulada', observaciones: 'Anulada automáticamente: no se pudieron guardar sus productos (falla de conexión). Se puede volver a registrar.' })
+        .eq('id', venta.id).eq('auth_user_id', STATE.userId);
+    } catch (eAn) { console.warn('anular venta incompleta:', eAn); }
+    throw errDet;
+  }
 
   // Descontar stock (solo productos, no servicios) — mismo espiritu
   // que ya usa Ventas/Venta Rapida.

@@ -3838,6 +3838,19 @@ async function guardarProducto() {
       // de caja automáticamente — ese flujo no cambia.
       const stockAntes = parseFloat(STATE.editTarget.stock_actual ?? 0);
 
+      // Si cambia la existencia, se pregunta el motivo ANTES de guardar.
+      // Cancelar = no se guarda nada (ni el producto ni el stock).
+      let motivoAjuste = null;
+      const stockNuevoPrevisto = isNaN(stockActual) ? 0 : stockActual;
+      if (tipo === 'producto' && stockNuevoPrevisto !== stockAntes && window.N360AjusteExistencia) {
+        motivoAjuste = await window.N360AjusteExistencia.pedirMotivo({ nombre, antes: stockAntes, despues: stockNuevoPrevisto });
+        if (!motivoAjuste) {
+          const errAjuste = document.getElementById('errNombre');
+          if (errAjuste) errAjuste.textContent = 'No se guardó: falta indicar por qué cambia la existencia.';
+          return;
+        }
+      }
+
       const updatePayload = {
         tipo,
         nombre,
@@ -3900,11 +3913,13 @@ async function guardarProducto() {
             auth_user_id:   STATE.user.id,
             producto_id:    STATE.editTarget.id,
             tipo:           'ajuste_manual',
-            razon:          'edicion_producto',
+            razon:          motivoAjuste ? motivoAjuste.razon : 'edicion_producto',
             cantidad:       updatePayload.stock_actual - stockAntes,
             stock_antes:    stockAntes,
             stock_despues:  updatePayload.stock_actual,
-            nota:           'Editado directamente desde el formulario de producto',
+            nota:           window.N360AjusteExistencia ? window.N360AjusteExistencia.notaMovimiento(motivoAjuste) : 'Editado directamente desde el formulario de producto',
+            costo_unitario: isNaN(costo) ? null : costo,
+            costo_total:    isNaN(costo) ? null : Math.round(Math.abs(updatePayload.stock_actual - stockAntes) * costo * 100) / 100,
             descuenta_caja: false,
           }]);
         } catch (_) {
