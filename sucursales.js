@@ -461,10 +461,23 @@ async function entrarASucursal(sucursalId) {
       }
     }
 
-    const { error } = await sbClient.auth.signInWithPassword({
+    const { data: datosLogin, error } = await sbClient.auth.signInWithPassword({
       email: credencial.email_interno, password: credencial.password_interno,
     });
     if (error) throw error;
+    // Copia de respaldo del pase de Central que sobrevive si se cierra la
+    // pestaña o el navegador (sessionStorage se pierde). Solo se usa si en
+    // esta pestaña ya no existe el respaldo normal, y solo para ESTA sucursal.
+    try {
+      const rawBk = sessionStorage.getItem('n360_central_session_backup');
+      if (STATE.esCentral && rawBk && datosLogin?.user?.id) {
+        const bk = JSON.parse(rawBk);
+        localStorage.setItem('n360_central_session_backup_ls', JSON.stringify({
+          access_token: bk.access_token, refresh_token: bk.refresh_token,
+          nombre_negocio: bk.nombre_negocio, sucursal_auth_id: datosLogin.user.id, guardado: Date.now(),
+        }));
+      }
+    } catch (_) { /* si el navegador no deja guardar, queda el respaldo de la pestaña como siempre */ }
     // Sobrevive a la navegación (a diferencia de n360_perfil_activo, que
     // se invalida solo al cambiar de cuenta) — modulos-guard.js lo lee
     // en la sucursal para restringir el menú a lo permitido.

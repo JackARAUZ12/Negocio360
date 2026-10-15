@@ -1365,9 +1365,21 @@
   // de entrar a la sucursal — sin volver a escribir correo ni contraseña.
   // Devuelve true/false para que la tarjeta de arriba muestre el error.
   async function volverACentralConCodigo(pin) {
-    const raw = sessionStorage.getItem('n360_central_session_backup');
+    // Respaldo normal (esta pestaña) y, si ya no existe, la copia que sobrevive
+    // al cierre de la pestaña/navegador -- solo si fue guardada para ESTA
+    // sucursal y hace menos de 30 días.
+    let raw = sessionStorage.getItem('n360_central_session_backup');
     if (!raw) {
-      alert('No se encontró tu sesión guardada de Central en esta pestaña. Inicia sesión de nuevo con tu correo.');
+      try {
+        const ls = JSON.parse(localStorage.getItem('n360_central_session_backup_ls') || 'null');
+        if (ls && ls.sucursal_auth_id === PG.authUserId && (Date.now() - (ls.guardado || 0)) < 30 * 86400000) {
+          raw = JSON.stringify({ access_token: ls.access_token, refresh_token: ls.refresh_token, nombre_negocio: ls.nombre_negocio });
+        }
+      } catch (_) { raw = null; }
+    }
+    if (!raw) {
+      alert('No se encontró el acceso guardado de tu cuenta principal (se pierde si cierras la pestaña o el navegador). Te llevaremos a iniciar sesión con tu correo y contraseña de la cuenta principal; desde ahí entras de nuevo a la bodega con Sucursales.');
+      try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
       await PG.client.auth.signOut();
       window.location.href = 'login.html';
       return true; // ya se está navegando fuera, no hace falta mostrar error
@@ -1411,11 +1423,23 @@
       if (errFinal) throw errFinal;
 
       sessionStorage.removeItem('n360_central_session_backup');
+      try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
       sessionStorage.removeItem('n360_sucursal_modulos');
       window.location.href = 'dashboard.html';
       return true;
     } catch (e) {
       console.error('volverACentralConCodigo:', e);
+      // Si el acceso guardado ya no sirve (venció o se usó en otro lado), se
+      // descarta para no quedar atrapado, y se explica qué hacer.
+      const vencido = /refresh|token|session|jwt/i.test(String(e && (e.message || e.code) || ''));
+      if (vencido) {
+        sessionStorage.removeItem('n360_central_session_backup');
+        try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
+        alert('El acceso guardado de tu cuenta principal venció. Inicia sesión con tu correo y contraseña de la cuenta principal y entra de nuevo a la bodega desde Sucursales.');
+        try { await PG.client.auth.signOut(); } catch (_) {}
+        window.location.href = 'login.html';
+        return true;
+      }
       alert('No se pudo volver a Central: ' + (e.message || 'intenta de nuevo'));
       return true; // ya se mostró el error arriba, no repetir "código incorrecto"
     }
