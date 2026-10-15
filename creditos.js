@@ -262,8 +262,14 @@
       .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
     CS.clientes = data || [];
     const opts = '<option value="">Selecciona un cliente…</option>' +
-      CS.clientes.map(c => `<option value="${c.id}">${esc(c.nombre)} ${esc(c.apellido||'')}</option>`).join('');
-    ['nc-cliente','ce-cliente','rp-cliente'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = opts; });
+      CS.clientes.map(c => `<option value="${c.id}" data-buscar="${esc(c.telefono||'')}">${esc(c.nombre)} ${esc(c.apellido||'')}</option>`).join('');
+    ['nc-cliente','ce-cliente','rp-cliente'].forEach(id => {
+      const el = document.getElementById(id); if (!el) return;
+      el.innerHTML = opts;
+      // Buscador: se escribe el nombre (o teléfono) y la lista se va filtrando.
+      // El <select> sigue guardando el valor, así que nada más cambia.
+      if (window.N360SelectBuscable) N360SelectBuscable.mejorar(el, { placeholder: 'Escribe el nombre o teléfono del cliente…' });
+    });
   }
 
   async function loadProductosYServicios() {
