@@ -968,10 +968,90 @@
 
   function confirmarCancelarGasto(id) { _gastoToCancelar = id; openModal('modal-confirmar-cancelar'); }
 
+  /* ---------------------------------------------------------------
+     MERMA CANCELADA = PRODUCTO DE VUELTA AL INVENTARIO
+     Un gasto "Merma de inventario" nace de una baja de producto
+     (Productos > Movimiento especial), que ya descontó el stock.
+     Antes, cancelar ese gasto devolvía el dinero pero dejaba el stock
+     descontado para siempre. Ahora, al cancelarlo, se busca la baja
+     que lo originó y se devuelve la misma cantidad al producto.
+     - La baja se identifica por cliente + tipo merma + mismo monto +
+       creada en el mismo instante que el gasto (el gasto no guarda un
+       enlace directo; así también funciona con mermas ya existentes).
+     - Nunca se devuelve dos veces la misma baja.
+     - Si no se encuentra la baja, el gasto se cancela igual y se avisa
+       para que el stock se ajuste a mano.
+     Devuelve { estado: 'no_aplica'|'devuelto'|'no_encontrada'|'error', ... }
+  --------------------------------------------------------------- */
+  async function devolverStockDeMerma(gastoId) {
+    try {
+      const { data: g } = await _sb.from('gastos')
+        .select('concepto,monto,created_at,estado')
+        .eq('id', gastoId).eq('auth_user_id', GS.userId).maybeSingle();
+      if (!g || g.estado === 'cancelado' || !/^merma de inventario/i.test(String(g.concepto || ''))) {
+        return { estado: 'no_aplica' };
+      }
+      const t = new Date(g.created_at).getTime();
+      const desde = new Date(t - 60000).toISOString();
+      const hasta = new Date(t + 60000).toISOString();
+      const { data: movs, error: eM } = await _sb.from('movimientos_inventario')
+        .select('id,producto_id,cantidad,costo_total,created_at')
+        .eq('auth_user_id', GS.userId).eq('tipo', 'merma').eq('descuenta_caja', true)
+        .gte('created_at', desde).lte('created_at', hasta);
+      if (eM) return { estado: 'no_encontrada' };
+      const candidatos = (movs || [])
+        .filter(m => Math.abs(Number(m.costo_total || 0) - Number(g.monto || 0)) < 0.01 && Number(m.cantidad) < 0)
+        .sort((a, b) => Math.abs(new Date(a.created_at) - t) - Math.abs(new Date(b.created_at) - t));
+      if (!candidatos.length) return { estado: 'no_encontrada' };
+
+      // Se descarta toda baja que ya fue devuelta antes (para no devolver dos veces).
+      let mov = null;
+      for (const c of candidatos) {
+        const { data: ya } = await _sb.from('movimientos_inventario').select('id')
+          .eq('auth_user_id', GS.userId).eq('razon', 'merma_cancelada')
+          .like('nota', '%' + c.id + '%').limit(1);
+        if (!ya || !ya.length) { mov = c; break; }
+      }
+      if (!mov) return { estado: 'no_aplica' };
+
+      const cant = Math.abs(Number(mov.cantidad));
+      const { data: nuevo, error: eS } = await _sb.rpc('incrementar_stock_producto', {
+        p_producto_id: mov.producto_id, p_auth_user_id: GS.userId, p_cantidad: cant,
+      });
+      if (eS) return { estado: 'error' };
+      const stockDespues = Array.isArray(nuevo) ? Number(nuevo[0]?.stock_actual) : Number(nuevo?.stock_actual);
+
+      const { data: prod } = await _sb.from('productos').select('nombre')
+        .eq('id', mov.producto_id).eq('auth_user_id', GS.userId).maybeSingle();
+      try {
+        await _sb.from('movimientos_inventario').insert([{
+          auth_user_id: GS.userId, producto_id: mov.producto_id,
+          tipo: 'ajuste_manual', razon: 'merma_cancelada', cantidad: cant,
+          stock_antes: isFinite(stockDespues) ? stockDespues - cant : null,
+          stock_despues: isFinite(stockDespues) ? stockDespues : null,
+          nota: 'Se canceló el gasto de merma; el producto volvió al inventario. Baja original: ' + mov.id,
+          descuenta_caja: false,
+        }]);
+      } catch (_) { /* el stock ya volvió; el registro es solo historial */ }
+      return { estado: 'devuelto', cantidad: cant, nombre: prod?.nombre || 'el producto' };
+    } catch (e) {
+      console.warn('devolverStockDeMerma:', e);
+      return { estado: 'error' };
+    }
+  }
+
   async function cancelarGasto() {
     if (!_gastoToCancelar) return;
     try {
       setBtnLoading('btn-confirmar-cancelar', true);
+
+      // Si es una merma, primero se devuelve el producto al inventario.
+      // Si eso falla, NO se cancela (así el gasto y el stock nunca quedan descuadrados).
+      const rMerma = await devolverStockDeMerma(_gastoToCancelar);
+      if (rMerma.estado === 'error') {
+        showToast('No se pudo devolver el producto al inventario. Intenta de nuevo.', 'error');
+        return;
+      }
 
       // BUG REAL CORREGIDO: cancelar un gasto solo cambiaba el estado
       // del gasto, pero NUNCA anulaba el movimiento de Caja que ya se
@@ -993,7 +1073,13 @@
       } catch (eRetC) { console.warn('retención no anulada:', eRetC); }
       closeModal('modal-confirmar-cancelar');
       _gastoToCancelar = null;
-      showToast('Gasto cancelado.');
+      if (rMerma.estado === 'devuelto') {
+        showToast('Gasto cancelado. Volvieron ' + rMerma.cantidad + ' u. de ' + rMerma.nombre + ' al inventario.');
+      } else if (rMerma.estado === 'no_encontrada') {
+        showToast('Gasto cancelado. No se encontró la baja de inventario: ajusta el stock del producto a mano.');
+      } else {
+        showToast('Gasto cancelado.');
+      }
       await refrescarTodo();
     } catch(e) { showToast('Error al cancelar','error'); }
     finally { setBtnLoading('btn-confirmar-cancelar', false); }
