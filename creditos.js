@@ -696,6 +696,53 @@
       (p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto)
     ).slice(0, 10);
 
+    // Alcance restringido (específicas, solo bodegas o solo sucursales): igual que
+    // Ventas, se muestran SOLO los productos con existencia en las cuentas
+    // permitidas, sumando lo de cada una y diciendo de dónde sale.
+    const alcanceRestringido = CS.stockCompartidoActivo && CS.stockCompartidoAlcance && CS.stockCompartidoAlcance !== 'todas';
+    if (alcanceRestringido) {
+      const porNombre = new Map();
+      CS.productosCacheGrupo.forEach(p => {
+        const clave = (p.nombre||'').trim().toLowerCase();
+        if (p.tipo !== 'producto' || !clave || p.es_materia_prima || p.activo === false) return;
+        const stock = Number(p.stock_actual || 0);
+        if (!(stock > 0)) return;
+        if (!(clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto))) return;
+        const cuenta = CS.cuentasGrupo?.[p.auth_user_id]?.nombre || '';
+        const g = porNombre.get(clave);
+        if (g) { g.stockTotal += stock; if (cuenta && !g.cuentas.includes(cuenta)) g.cuentas.push(cuenta); }
+        else porNombre.set(clave, { ...p, stockTotal: stock, cuentas: cuenta ? [cuenta] : [] });
+      });
+      // Servicios y combos de esta cuenta se siguen ofreciendo (no tienen stock que elegir).
+      const sinStock = CS.productos.filter(p => p.tipo !== 'producto' &&
+        ((p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto))).slice(0, 5);
+      const grupo = [...porNombre.values()].slice(0, 10);
+      if (!grupo.length && !sinStock.length) {
+        cont.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(texto)}" en las cuentas elegidas para Stock Compartido</div>`;
+        return;
+      }
+      cont.innerHTML = grupo.map(p => {
+        const local = CS.productos.find(x => x.tipo === 'producto' && (x.nombre||'').trim().toLowerCase() === (p.nombre||'').trim().toLowerCase());
+        const onclick = local ? `agregarItemCredito('${local.id}')` : `agregarProductoSoloEnGrupoCredito('${esc(p.nombre).replace(/'/g,"\\'")}')`;
+        return `
+      <div class="search-result-item" onclick="${onclick}">
+        <div class="sri-info">
+          <span class="sri-nombre">${esc(p.nombre)}${p.tipo_precio === 'escala' ? ' <span style="font-size:10px;color:var(--accent)">📊 escala</span>' : ''}</span>
+          <span class="sri-meta">Disponible: ${Number(p.stockTotal).toLocaleString('es-NI', { maximumFractionDigits: 2 })}${p.cuentas.length ? ' · 📦 ' + p.cuentas.map(esc).join(' · ') : ''}</span>
+        </div>
+        <span class="sri-costo">${p.tipo_precio === 'escala' ? 'Elegir precio' : fmt((local || p).precio)}</span>
+      </div>`;
+      }).join('') + sinStock.map(p => `
+      <div class="search-result-item" onclick="agregarItemCredito('${p.id}')">
+        <div class="sri-info">
+          <span class="sri-nombre">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}</span>
+          <span class="sri-meta">${p.esCombo ? 'Combo' : 'Servicio'}${p.sku ? ' · SKU: ' + esc(p.sku) : ''}</span>
+        </div>
+        <span class="sri-costo">${p.tipo_precio === 'escala' ? 'Elegir precio' : fmt(p.precio)}</span>
+      </div>`).join('');
+      return;
+    }
+
     let resultadosGrupo = [];
     if (CS.stockCompartidoActivo) {
       const nombresLocales = new Set(CS.productos.map(p => (p.nombre||'').trim().toLowerCase()));
@@ -806,6 +853,7 @@
       const chk  = document.getElementById('chk-stock-compartido');
       if (wrap && CS.miSucursalId) wrap.style.display = 'flex';
       if (chk) { chk.checked = CS.stockCompartidoActivo; chk.disabled = !puedeConfigurar; }
+      actualizarBotonEditarSCCredito();
       if (wrap) wrap.title = CS.stockCompartidoAlcance && CS.stockCompartidoAlcance !== 'todas'
         ? 'Stock Compartido con alcance limitado (se cambia desde Ventas)'
         : 'Al dar un crédito, elige de cuál sucursal o bodega de tu grupo se descuenta el stock';
@@ -823,7 +871,31 @@
       const sbGrupo = crearClienteGrupo(_sb);
       const { data, error } = await sbGrupo.from('productos').select('*');
       if (error) throw error;
-      CS.productosCacheGrupo = data || [];
+      let productos = data || [];
+      // Igual que Ventas: nombre de cada cuenta del grupo (para decir de dónde
+      // sale el stock) y filtro por el alcance elegido.
+      CS.cuentasGrupo = {};
+      try {
+        const { data: sucs } = await _sb.from('sucursales').select('id, nombre, auth_user_id_sucursal, auth_user_id_central, tipo, es_central');
+        (sucs || []).forEach(x => {
+          const uid = x.auth_user_id_sucursal || x.auth_user_id_central;
+          if (uid) CS.cuentasGrupo[uid] = { sucursalId: x.id, nombre: x.nombre, tipo: x.tipo, esCentral: !!x.es_central };
+        });
+        const alcance = CS.stockCompartidoAlcance || 'todas';
+        if (alcance !== 'todas' && sucs && sucs.length) {
+          const central = sucs[0].auth_user_id_central;
+          let permitidos;
+          if (alcance === 'especifica') {
+            const elegidas = new Set(CS.stockCompartidoSucursalIds || []);
+            permitidos = new Set(sucs.filter(x => elegidas.has(x.id)).map(x => x.auth_user_id_sucursal || x.auth_user_id_central).filter(Boolean));
+          } else {
+            const tipo = alcance === 'bodegas' ? 'bodega' : 'sucursal';
+            permitidos = new Set([central, ...sucs.filter(x => x.tipo === tipo).map(x => x.auth_user_id_sucursal)].filter(Boolean));
+          }
+          productos = productos.filter(p => permitidos.has(p.auth_user_id));
+        }
+      } catch (eSucs) { console.warn('cargarProductosGrupoCredito, alcance:', eSucs); }
+      CS.productosCacheGrupo = productos;
     } catch (e) {
       console.warn('cargarProductosGrupoCredito:', e);
       CS.productosCacheGrupo = [];
@@ -836,6 +908,8 @@
       showToast('Solo el administrador puede configurar Stock Compartido', 'error');
       return;
     }
+    // Al ENCENDER, igual que Ventas: primero se pregunta de dónde descontar.
+    if (activo) { abrirModalStockCompartidoCredito(); return; }
     try {
       // Igual que Ventas: se guarda la configuración PROPIA de este usuario
       // (conservando su alcance), así Ventas y Créditos siempre coinciden.
@@ -848,6 +922,7 @@
       }, { onConflict: 'auth_user_id,perfil_key' });
       if (error) throw error;
       CS.stockCompartidoActivo = activo;
+      actualizarBotonEditarSCCredito();
       if (activo) await cargarProductosGrupoCredito();
       showToast(activo ? `Stock Compartido activado para ${yo.nombre}` : `Stock Compartido desactivado para ${yo.nombre}`, 'success');
     } catch (e) {
@@ -858,6 +933,118 @@
     }
   }
   window.toggleStockCompartido = toggleStockCompartido;
+
+  function actualizarBotonEditarSCCredito() {
+    const btn = document.getElementById('sc-btn-editar');
+    if (btn) btn.style.display = (CS.stockCompartidoActivo && CS.miSucursalId && CS.puedeConfigurarStockCompartido !== false) ? 'inline-flex' : 'none';
+  }
+
+  function asegurarModalSCCredito() {
+    if (document.getElementById('modal-sc-credito')) return;
+    const opc = 'display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:13px';
+    const div = document.createElement('div');
+    div.id = 'modal-sc-credito';
+    div.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px';
+    div.innerHTML = `
+      <div style="background:var(--bg-surface,#fff);color:var(--text-primary,#111);border-radius:14px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;font-size:15px">📦 Stock Compartido</span>
+          <button type="button" onclick="cancelarStockCompartidoCredito()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary)">✕</button>
+        </div>
+        <div style="padding:16px 18px">
+          <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 4px">¿De dónde se descuenta el stock al dar un crédito?</p>
+          <p id="scc-para-quien" style="font-size:11.5px;color:var(--text-muted);margin:0 0 12px"></p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="todas" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Todas</strong> — sucursales y bodegas del grupo</span></label>
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="bodegas" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Solo bodegas</strong></span></label>
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="sucursales" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Solo sucursales</strong></span></label>
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="especifica" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Específicas</strong> — elige una o varias</span></label>
+          </div>
+          <div id="scc-wrap-especifica" style="display:none;margin-top:10px">
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Sucursales y bodegas</div>
+            <div id="scc-lista" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+          </div>
+          <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0">Es la misma configuración que en Ventas: si la cambias aquí, también cambia allá.</p>
+          <p id="scc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:8px 0 0"></p>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)">
+          <button type="button" class="btn-ghost" onclick="cancelarStockCompartidoCredito()">Cancelar</button>
+          <button type="button" class="btn-primary" id="scc-btn-guardar" onclick="confirmarStockCompartidoCredito()">Guardar</button>
+        </div>
+      </div>`;
+    div.addEventListener('click', e => { if (e.target === div) cancelarStockCompartidoCredito(); });
+    document.body.appendChild(div);
+  }
+
+  async function abrirModalStockCompartidoCredito() {
+    if (CS.puedeConfigurarStockCompartido === false) { showToast('Solo el administrador puede configurar Stock Compartido', 'error'); return; }
+    asegurarModalSCCredito();
+    document.getElementById('scc-error').textContent = '';
+    document.getElementById('scc-para-quien').textContent = `Solo para ${perfilStockCompartido().nombre} — cada usuario configura la suya.`;
+    const actual = CS.stockCompartidoActivo ? (CS.stockCompartidoAlcance || 'todas') : 'todas';
+    const radio = document.querySelector(`input[name="scc-alcance"][value="${actual}"]`) || document.querySelector('input[name="scc-alcance"][value="todas"]');
+    radio.checked = true;
+    onCambiarAlcanceSCCredito();
+    const cont = document.getElementById('scc-lista');
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted)">Cargando…</div>';
+    document.getElementById('modal-sc-credito').style.display = 'flex';
+    try {
+      const { data } = await _sb.from('sucursales').select('id, nombre, tipo, es_central').eq('activa', true).order('nombre');
+      const marcadas = new Set(CS.stockCompartidoSucursalIds || []);
+      cont.innerHTML = (data || []).length ? data.map(x => `
+        <label style="display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:13px">
+          <input type="checkbox" value="${x.id}" ${marcadas.has(x.id) ? 'checked' : ''}/>
+          <span>${x.tipo === 'bodega' ? '📦' : (x.es_central ? '🏠' : '🏬')} <strong>${esc(x.nombre)}</strong> <span style="color:var(--text-muted);font-size:11.5px">${x.tipo === 'bodega' ? 'Bodega' : (x.es_central ? 'Central' : 'Sucursal')}</span></span>
+        </label>`).join('') : '<div style="font-size:12.5px;color:var(--text-muted)">No hay sucursales/bodegas creadas</div>';
+    } catch (e) {
+      console.warn('abrirModalStockCompartidoCredito:', e);
+      cont.innerHTML = '<div style="font-size:12.5px;color:var(--danger,#dc2626)">No se pudo cargar la lista</div>';
+    }
+  }
+  window.abrirModalStockCompartidoCredito = abrirModalStockCompartidoCredito;
+
+  function onCambiarAlcanceSCCredito() {
+    const v = document.querySelector('input[name="scc-alcance"]:checked')?.value;
+    const w = document.getElementById('scc-wrap-especifica'); if (w) w.style.display = v === 'especifica' ? '' : 'none';
+  }
+  window.onCambiarAlcanceSCCredito = onCambiarAlcanceSCCredito;
+
+  function cancelarStockCompartidoCredito() {
+    const m = document.getElementById('modal-sc-credito'); if (m) m.style.display = 'none';
+    const chk = document.getElementById('chk-stock-compartido'); if (chk) chk.checked = CS.stockCompartidoActivo;
+  }
+  window.cancelarStockCompartidoCredito = cancelarStockCompartidoCredito;
+
+  async function confirmarStockCompartidoCredito() {
+    const errEl = document.getElementById('scc-error'); errEl.textContent = '';
+    const alcance = document.querySelector('input[name="scc-alcance"]:checked')?.value || 'todas';
+    let ids = [];
+    if (alcance === 'especifica') {
+      ids = [...document.querySelectorAll('#scc-lista input[type="checkbox"]:checked')].map(c => c.value);
+      if (!ids.length) { errEl.textContent = 'Elige al menos una sucursal o bodega.'; return; }
+    }
+    const btn = document.getElementById('scc-btn-guardar'); btn.disabled = true;
+    try {
+      const yo = perfilStockCompartido();
+      const { error } = await _sb.from('stock_compartido_usuario').upsert({
+        auth_user_id: CS.userId, perfil_key: yo.key, perfil_nombre: yo.nombre,
+        activo: true, alcance, sucursal_ids: alcance === 'especifica' ? ids : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'auth_user_id,perfil_key' });
+      if (error) throw error;
+      CS.stockCompartidoActivo = true; CS.stockCompartidoAlcance = alcance; CS.stockCompartidoSucursalIds = ids;
+      const chk = document.getElementById('chk-stock-compartido'); if (chk) chk.checked = true;
+      actualizarBotonEditarSCCredito();
+      await cargarProductosGrupoCredito();
+      document.getElementById('modal-sc-credito').style.display = 'none';
+      const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: ids.length > 1 ? `${ids.length} cuentas específicas` : 'una cuenta específica' };
+      showToast(`Stock Compartido de ${yo.nombre} — ${etiquetas[alcance]}`, 'success');
+    } catch (e) {
+      console.error('confirmarStockCompartidoCredito:', e);
+      errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    } finally { btn.disabled = false; }
+  }
+  window.confirmarStockCompartidoCredito = confirmarStockCompartidoCredito;
 
   async function toggleVenderSinStock(activo) {
     try {
