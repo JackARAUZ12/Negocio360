@@ -2851,6 +2851,29 @@ async function anularCompra() {
     const compra = STATE.compras.find(c => c.id === compraToAnular);
     if (!compra) throw new Error('Compra no encontrada');
 
+    // 0. CANDADO (16-oct-2026): si esta compra a crédito ya tiene pagos al
+    // proveedor, NO se anula (antes se anulaba y la deuda pagada quedaba
+    // suelta). Se revisa ANTES de tocar inventario o Caja. Si no tiene
+    // pagos, la base anula sola su cuenta por pagar y su asiento al
+    // marcar la compra como anulada (supabase/migraciones/20261016_compras_anular_cxp.sql).
+    {
+      const { data: cxps, error: eCxp } = await sbClient.from('cuentas_por_pagar')
+        .select('id, numero, monto_pagado').eq('compra_id', compraToAnular).eq('auth_user_id', STATE.userId);
+      if (eCxp) throw new Error('No se pudo revisar la cuenta por pagar de esta compra. Intenta de nuevo.');
+      const ids = (cxps || []).map(x => x.id);
+      let pagado = (cxps || []).reduce((s, x) => s + Number(x.monto_pagado || 0), 0);
+      if (ids.length && pagado <= 0) {
+        const { count, error: ePag } = await sbClient.from('cuentas_por_pagar_pagos')
+          .select('id', { count: 'exact', head: true }).in('cuenta_id', ids);
+        if (ePag) throw new Error('No se pudo revisar la cuenta por pagar de esta compra. Intenta de nuevo.');
+        if ((count || 0) > 0) pagado = 1;
+      }
+      if (pagado > 0) {
+        const num = (cxps || []).map(x => x.numero).filter(Boolean).join(', ');
+        throw new Error(`esta compra ya tiene pagos al proveedor en Cuentas por pagar${num ? ' (' + num + ')' : ''}. No se anuló nada.`);
+      }
+    }
+
     // 1. Obtener líneas de detalle para revertir stock
     const { data: lineas } = await sbClient
       .from('detalle_compras')
@@ -2907,7 +2930,7 @@ async function anularCompra() {
     closeModal('modal-confirmar-anular');
     closeModal('modal-detalle');
     compraToAnular = null;
-    showToast('Compra anulada. Stock revertido.');
+    showToast('Compra anulada. Stock revertido y, si era a crédito, su cuenta por pagar también quedó anulada.');
 
     await Promise.allSettled([loadKPIs(), loadCompras(), loadProveedores()]);
   } catch(e) {

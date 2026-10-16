@@ -1206,6 +1206,7 @@ async function registrarImpuestoCompra(montoImpuesto, compra, numeroCxP) {
 // Recalcula (en memoria) el estado de una cuenta a partir de su saldo y
 // fechas — el estado NUNCA se edita a mano, siempre se deriva.
 function calcularEstadoCuenta(cuenta, proximaFecha) {
+  if (cuenta.estado === 'anulado') return 'anulado';   // su compra se anuló: no es deuda ni está pagada
   if (Number(cuenta.saldo_pendiente) <= 0.01) return 'pagado';
   const ref = proximaFecha || cuenta.fecha_vencimiento;
   if (ref && ref < todayISO()) return 'vencido';
@@ -1275,6 +1276,7 @@ const ESTADO_INFO = {
   pendiente: { label: 'Pendiente', badge: 'badge-pendiente' },
   vencido:   { label: 'Vencido',   badge: 'badge-vencido' },
   pagado:    { label: 'Pagado',    badge: 'badge-pagado' },
+  anulado:   { label: 'Anulada',   badge: 'badge-cancelado' },
 };
 const TIPO_CREDITO_INFO = {
   fecha_fija: { label: 'A fecha fija', badge: 'badge-fecha_fija' },
@@ -1296,7 +1298,7 @@ function renderTablaCxP() {
     tbody.innerHTML = pagina.map(c => {
       const ei = ESTADO_INFO[c.estado] || ESTADO_INFO.pendiente;
       const ti = TIPO_CREDITO_INFO[c.tipo_credito] || TIPO_CREDITO_INFO.fecha_fija;
-      const sinPagos = Number(c.monto_pagado||0) <= 0;
+      const sinPagos = Number(c.monto_pagado||0) <= 0 && c.estado !== 'anulado';
       return `
       <tr class="${c.estado==='vencido'?'cxp-row-vencida':''}">
         <td style="font-weight:500">${esc(c.proveedor_nombre||'—')}</td>
@@ -1310,7 +1312,7 @@ function renderTablaCxP() {
         <td><span class="status-badge ${ei.badge}">${ei.label}</span></td>
         <td class="td-actions">
           <button class="btn-icon" title="Ver" onclick="verDetalleCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
-          ${c.estado!=='pagado' ? `<button class="btn-icon" title="Pagar" onclick="abrirPagarDesdeTabla('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>` : ''}
+          ${(c.estado!=='pagado' && c.estado!=='anulado') ? `<button class="btn-icon" title="Pagar" onclick="abrirPagarDesdeTabla('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>` : ''}
           ${sinPagos ? `<button class="btn-icon" title="Editar" onclick="abrirEditarCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
           <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
         </td>
@@ -1341,7 +1343,7 @@ async function loadKPIsCxP() {
     const hoy = todayISO();
     const enUnaSemana = sumarFrecuenciaCxP(hoy, 'semanal', 1);
 
-    const pendientesYVencidas = cuentas.filter(c => c.estado !== 'pagado');
+    const pendientesYVencidas = cuentas.filter(c => c.estado !== 'pagado' && c.estado !== 'anulado');
     const totalPendiente = pendientesYVencidas.reduce((s,c)=>s+Number(c.saldo_pendiente||0),0);
     const totalVencido = cuentas.filter(c=>c.estado==='vencido').reduce((s,c)=>s+Number(c.saldo_pendiente||0),0);
     const venceHoy = pendientesYVencidas.filter(c => (c._proximaFecha||c.fecha_vencimiento) === hoy).length;
@@ -1372,7 +1374,7 @@ async function loadKPIsCxP() {
 function poblarSelectCuentasPagables(preseleccionar) {
   const sel = document.getElementById('pg-cuenta-select');
   if (!sel) return;
-  const pagables = STATE.cuentas.filter(c => c.estado !== 'pagado');
+  const pagables = STATE.cuentas.filter(c => c.estado !== 'pagado' && c.estado !== 'anulado');
   sel.innerHTML = `<option value="">Selecciona una cuenta…</option>` + pagables.map(c =>
     `<option value="${c.id}">${esc(c.proveedor_nombre||'—')} — ${esc(c.numero)} — Pendiente: ${fmt(c.saldo_pendiente)}</option>`
   ).join('');
@@ -1466,6 +1468,11 @@ async function confirmarPagoCxP() {
     // Releer la cuenta fresca (evita pisar cambios de otra pestaña)
     const { data: cuentaFresca, error: errC } = await sbClient.from('cuentas_por_pagar').select('*').eq('id', cuenta.id).single();
     if (errC) throw errC;
+    if (cuentaFresca.estado === 'anulado') {
+      errEl.textContent = 'Esta cuenta está anulada (su compra se anuló): no se le pueden registrar pagos.';
+      setBtnLoading('btn-confirmar-pago-cxp', false);
+      return;
+    }
 
     if (monto > Number(cuentaFresca.saldo_pendiente) + 0.01) {
       errEl.textContent = `El monto excede el saldo pendiente (${fmt(cuentaFresca.saldo_pendiente)}).`;
@@ -1562,7 +1569,7 @@ async function verDetalleCxP(id) {
   STATE.cuentaActual = cuenta;
   document.getElementById('det-cxp-title').textContent = `Cuenta ${cuenta.numero} — ${cuenta.proveedor_nombre||'—'}`;
   const btnPagar = document.getElementById('det-cxp-btn-pagar');
-  btnPagar.style.display = cuenta.estado === 'pagado' ? 'none' : 'inline-flex';
+  btnPagar.style.display = (cuenta.estado === 'pagado' || cuenta.estado === 'anulado') ? 'none' : 'inline-flex';
   const body = document.getElementById('detalle-cxp-body');
   body.innerHTML = 'Cargando…';
   openModal('modal-detalle-cxp');
@@ -1639,6 +1646,7 @@ function abrirEditarCxP(id) {
   const cuenta = STATE.cuentas.find(c => c.id === id);
   if (!cuenta) return;
   if (Number(cuenta.monto_pagado) > 0) { showToast('No se puede editar: ya tiene pagos registrados', 'error'); return; }
+  if (cuenta.estado === 'anulado') { showToast('Esta cuenta está anulada (su compra se anuló).', 'error'); return; }
   STATE.cuentaActual = cuenta;
   const wrap = document.getElementById('ed-venc-wrap');
   wrap.style.display = cuenta.tipo_credito === 'fecha_fija' ? 'block' : 'none';
@@ -1677,6 +1685,7 @@ function confirmarEliminarCxP(id) {
   const cuenta = STATE.cuentas.find(c => c.id === id);
   if (!cuenta) return;
   if (Number(cuenta.monto_pagado) > 0) { showToast('No se puede eliminar: ya tiene pagos registrados', 'error'); return; }
+  if (cuenta.estado === 'anulado') { showToast('Esta cuenta ya está anulada (su compra se anuló).', 'error'); return; }
   STATE.cuentaActual = cuenta;
   openModal('modal-confirmar-eliminar-cxp');
 }

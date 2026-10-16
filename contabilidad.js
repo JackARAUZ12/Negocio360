@@ -1702,6 +1702,7 @@ async function anularAsientosDeOrigenAnulado() {
     { tabla: 'ventas',  filtro: q => q.eq('estado', 'anulada').gte('updated_at', FECHA_INICIO_ANULA_ASIENTOS),   tipos: ['venta', 'credito_otorgado'], motivo: 'Venta anulada' },
     { tabla: 'gastos',  filtro: q => q.eq('estado', 'cancelado').gte('cancelado_en', FECHA_INICIO_ANULA_ASIENTOS), tipos: ['gasto'],                     motivo: 'Gasto cancelado' },
     { tabla: 'compras', filtro: q => q.eq('estado', 'anulada').gte('anulada_en', FECHA_INICIO_ANULA_ASIENTOS),     tipos: ['compra'],                    motivo: 'Compra anulada' },
+    { tabla: 'cuentas_por_pagar', filtro: q => q.eq('estado', 'anulado'),                                            tipos: ['cxp_generada'],              motivo: 'Cuenta por pagar anulada (su compra se anuló)' },
   ];
   let total = 0;
   // Contabilidad del grupo: los documentos de bodegas/sucursales también tienen su asiento en
@@ -2196,7 +2197,7 @@ async function generarAsientosAutomaticosInterno() {
     // obligación se registra desde que se genera (fecha_compra),
     // sin importar si ya se pagó o sigue pendiente — el pago en sí,
     // cuando ocurre, es un movimiento aparte.
-    await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', null, null, 'fecha_compra',
+    await procesarTipo('cxp_generada', 'cuentas_por_pagar', 'monto_total', null, null, 'Cuenta por pagar — ', q => q.neq('estado', 'anulado'), null, 'fecha_compra',
       async cxp => {
         if (!cxp.compra_id) return null;
         const { data: cp } = await F.lector.from('compras').select('iva_monto').eq('id', cxp.compra_id).eq('auth_user_id', F.uid).maybeSingle();
