@@ -186,7 +186,7 @@ async function loadMetodosPago() {
 
 async function loadClientes() {
   try {
-    const { data } = await sbClient.from('clientes').select('id,nombre,telefono,correo,total_compras,num_compras,contactos')
+    const { data } = await sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
       .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
     STATE.clientes = data || [];
     llenarSelectClientes();
@@ -212,7 +212,22 @@ function toggleNuevoClienteProf(mostrar) {
     STATE.clienteSeleccionado = null;
     ['cq-nombre','cq-telefono','cq-correo'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
     const err = document.getElementById('cq-error'); if (err) err.textContent = '';
+    // Mientras se escribe el nombre, se muestran los clientes que ya existen con ese nombre.
+    if (window.N360ClienteRepetido) {
+      if (!STATE._crHint) STATE._crHint = window.N360ClienteRepetido.conectar(document.getElementById('cq-nombre'),
+        { lista: () => STATE.clientes || [], alUsar: usarClienteExistenteProf });
+      if (STATE._crHint) STATE._crHint.refrescar();
+    }
   }
+}
+// "Usar este" (o Aceptar en la pregunta): se elige el cliente que ya existe en vez de crear otro.
+function usarClienteExistenteProf(c) {
+  if (!c) return;
+  if (!STATE.clientes.find(x => x.id === c.id)) { STATE.clientes.push(c); llenarSelectClientes(); }
+  STATE.clienteSeleccionado = STATE.clientes.find(x => x.id === c.id) || c;
+  const sel = document.getElementById('np-cliente-select'); if (sel) sel.value = c.id;
+  toggleNuevoClienteProf(false);
+  showToast(`Se usará el cliente existente "${c.nombre}"`);
 }
 // Crea el cliente YA (no hasta guardar la proforma) — así aparece de
 // inmediato en el módulo Clientes, tal como lo pediste.
@@ -221,6 +236,13 @@ async function guardarNuevoClienteProf() {
   errEl.textContent = '';
   const nombre = document.getElementById('cq-nombre')?.value.trim();
   if (!nombre) { errEl.textContent = 'El nombre del cliente es requerido.'; return; }
+  // Si ya existe un cliente con ese mismo nombre (en pantalla o en la base), se pregunta antes de crear otro.
+  const CR = window.N360ClienteRepetido;
+  if (CR) {
+    let ex = CR.buscar(STATE.clientes, nombre).exactos;
+    if (!ex.length) ex = await CR.exactosEnBase(sbClient, STATE.userId, nombre);
+    if (ex.length && CR.preguntar(ex[0]) === 'usar') { usarClienteExistenteProf(ex[0]); return; }
+  }
   const payload = {
     auth_user_id: STATE.userId, nombre,
     telefono: document.getElementById('cq-telefono')?.value.trim() || null,

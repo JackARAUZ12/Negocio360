@@ -1137,7 +1137,7 @@ async function loadProductosCache() {
 
 async function loadClientesCache() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre,telefono,correo')
+    const { data } = await sb.from('clientes').select('id,nombre,apellido,telefono,correo')
       .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
@@ -1723,6 +1723,7 @@ async function abrirNuevaVenta() {
   // Reset wizard
   S.paso          = 1;
   S.clienteOpcion = 'final';
+  S._cqCrearIgual = null; // "crear otro con el mismo nombre" confirmado (ver cliente-repetido.js)
   S.clienteId     = null;
   S.clienteNombre = 'Consumidor Final';
   S.clienteObjeto = null;
@@ -1875,6 +1876,15 @@ function validarPasoActual() {
     if (S.clienteOpcion==='nuevo') {
       const nombre = document.getElementById('cq-nombre')?.value.trim();
       if (!nombre) { showToast('El nombre del cliente es requerido', 'error'); return false; }
+      // Si ya existe un cliente con ese mismo nombre, se pregunta antes de crear otro.
+      const CR = window.N360ClienteRepetido;
+      if (CR && S._cqCrearIgual !== CR.norm(nombre)) {
+        const ex = CR.buscar(S.clientesCache, nombre).exactos;
+        if (ex.length) {
+          if (CR.preguntar(ex[0]) === 'usar') { usarClienteExistenteDesdeRapido(ex[0]); return true; }
+          S._cqCrearIgual = CR.norm(nombre);
+        }
+      }
     }
     // Guardar datos del cliente rápido
     if (S.clienteOpcion==='nuevo') {
@@ -1922,6 +1932,12 @@ function selectClienteOpcion(opcion) {
 
   if (bBuscar) bBuscar.style.display = opcion==='existente' ? '' : 'none';
   if (bRapido) bRapido.style.display = opcion==='nuevo'     ? '' : 'none';
+  // Cliente rápido: mientras se escribe, se muestran los clientes que ya existen con ese nombre.
+  if (opcion==='nuevo' && window.N360ClienteRepetido) {
+    const inp = document.getElementById('cq-nombre');
+    if (!S._crHint) S._crHint = window.N360ClienteRepetido.conectar(inp, { lista: () => S.clientesCache || [], alUsar: usarClienteExistenteDesdeRapido });
+    if (S._crHint) S._crHint.refrescar();
+  }
 
   if (opcion==='final') {
     S.clienteId     = null;
@@ -1955,6 +1971,15 @@ function buscarClientes(q) {
       </div>
     </div>`).join('');
   results.classList.add('open');
+}
+
+// "Usar este" (o Aceptar en la pregunta): en vez de crear una ficha nueva, se elige el cliente que ya existe.
+function usarClienteExistenteDesdeRapido(c) {
+  if (!c) return;
+  if (!S.clientesCache.find(x => x.id === c.id)) S.clientesCache.push(c);
+  selectClienteOpcion('existente');
+  seleccionarCliente(c.id);
+  showToast(`Se usará el cliente existente "${c.nombre}"`, 'success');
 }
 
 function seleccionarCliente(id) {
@@ -5452,11 +5477,23 @@ async function confirmarVenta(conImpresion) {
       const telefono = document.getElementById('cq-telefono')?.value.trim();
       const correo   = document.getElementById('cq-correo')?.value.trim();
       if (nombre) {
-        const { data: nc, error: ce } = await sb.from('clientes').insert({
-          auth_user_id: S.userId,
-          nombre, telefono:telefono||null, correo:correo||null,
-        }).select('id,nombre').single();
-        if (!ce && nc) { S.clienteId = nc.id; S.clienteNombre = nc.nombre; }
+        // Última revisión directa en la base: si ya existe un cliente con ese
+        // mismo nombre (y no se confirmó crear otro), se usa el existente.
+        const CR = window.N360ClienteRepetido;
+        let existente = null;
+        if (CR && S._cqCrearIgual !== CR.norm(nombre)) {
+          const ex = await CR.exactosEnBase(sb, S.userId, nombre);
+          if (ex.length) existente = ex[0];
+        }
+        if (existente) {
+          S.clienteId = existente.id; S.clienteNombre = existente.nombre;
+        } else {
+          const { data: nc, error: ce } = await sb.from('clientes').insert({
+            auth_user_id: S.userId,
+            nombre, telefono:telefono||null, correo:correo||null,
+          }).select('id,nombre').single();
+          if (!ce && nc) { S.clienteId = nc.id; S.clienteNombre = nc.nombre; }
+        }
       }
     }
 
