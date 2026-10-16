@@ -15,7 +15,7 @@
 <!-- Supabase CDN -->
 <script src="ver-como.js?v=20261013a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261013a"></script>
+<script src="modulos-registro.js?v=20261015a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1553,6 +1553,27 @@
           <div class="cfg-status" id="fiados-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="cotizaciones-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🗒️</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Cotizaciones</div>
+              <div class="cfg-card-desc">Cotizaciones para tus clientes con productos y precios, en PDF o por WhatsApp. Independiente de Proformas: no crea ventas ni créditos, no toca Caja ni inventario.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Cotizaciones</div>
+              <div class="cfg-row-sub" id="cotizaciones-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cotizaciones-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCotizacionesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="cotizaciones-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎁</div>
@@ -2633,6 +2654,45 @@ async function cargarModuloFiados() {
     toggle.disabled = false;
   } catch (e) { console.error('cargarModuloFiados:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
 }
+// Modulo de Cotizaciones: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloCotizaciones() {
+  const toggle = document.getElementById('cotizaciones-toggle');
+  const sub = document.getElementById('cotizaciones-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_cotizaciones').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_cotizaciones === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Cotizaciones aparece en el menú.' : 'Desactivado — el módulo de Cotizaciones no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloCotizaciones:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleCotizacionesClick(evt) {
+  const toggle = document.getElementById('cotizaciones-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloCotizaciones(toggle.checked);
+}
+async function guardarModuloCotizaciones(activo) {
+  const toggle = document.getElementById('cotizaciones-toggle');
+  const sub = document.getElementById('cotizaciones-row-sub');
+  const statusEl = document.getElementById('cotizaciones-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_cotizaciones: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Cotizaciones aparece en el menú.' : 'Desactivado — el módulo de Cotizaciones no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Cotizaciones activado. Recarga la página para ver el menú.' : 'Módulo de Cotizaciones desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloCotizaciones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 function onToggleFiadosClick(evt) {
   const toggle = document.getElementById('fiados-toggle');
   if (toggle.disabled) { evt.preventDefault(); return; }
@@ -3074,6 +3134,7 @@ async function initConfiguracion() {
       cargarModuloInsumos();
       cargarModuloTransporte();
       cargarModuloFiados();
+      cargarModuloCotizaciones();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -3100,6 +3161,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20261015a"></script>
-<script src="modulos-guard.js?v=20261013b"></script>
+<script src="modulos-guard.js?v=20261015a"></script>
 </body>
 </html>

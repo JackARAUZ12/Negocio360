@@ -112,6 +112,12 @@
           .select('usa_modulo_fiados').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_fiados = fi?.usa_modulo_fiados === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_fiados = false; }
+      // Cotizaciones: consulta aparte, mismo criterio.
+      try {
+        const { data: co } = await client.from('configuracion_empresa')
+          .select('usa_modulo_cotizaciones').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_cotizaciones = co?.usa_modulo_cotizaciones === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_cotizaciones = false; }
       return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);

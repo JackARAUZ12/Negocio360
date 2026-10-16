@@ -182,6 +182,10 @@
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
 
+    // ---- Cotizaciones (secundario: apagado por defecto, interruptor propio en Configuración) ----
+    'cotizaciones.html': { key: 'cotizaciones', label: 'Cotizaciones', icon: '🗒️', obligatorio: false, flagPropio: 'usa_modulo_cotizaciones',
+                       desc: 'Cotizaciones con productos y precios para tus clientes (PDF o WhatsApp). No crean ventas ni créditos, no tocan Caja ni inventario.' },
+
     // ---- Calculadora costo-precio (herramienta aislada: no guarda ni cambia datos) ----
     'calculadora-precio.html': { key: 'calculadora_precio', label: 'Calculadora costo-precio', icon: '🧮', obligatorio: false,
                        desc: 'Escribe el costo de un producto y te sugiere a qué precio venderlo para ganar y ser competitivo. Solo calcula: no guarda nada.' },
