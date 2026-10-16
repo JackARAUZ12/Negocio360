@@ -56,8 +56,20 @@ La idea principal (Caja General = total, Bancos = por cuenta, Caja Chica = efect
 - El modal de conteo es más alto que la pantalla: para ver el total se hace scroll del contenedor interno.
 - Textos desactualizados encontrados en Caja (no se tocaron): cerrar Caja Chica dice que bloquea movimientos (no bloquea); Transferencias habla de "efectivo" pero solo ofrece Caja Chica y bancos; "Sin banco asignado… puedes asignarlo después" no tiene botón; el detalle del cierre mensual solo muestra el último día; códigos crudos (TRANSFERENCIA, PAGO_CREDITO, CREDITO_OTORGADO) en la columna Tipo.
 
-## Siguiente tutorial
-Por orden del menú: Cuentas por Pagar. Preguntar al usuario.
+## Siguiente tutorial: CUENTAS POR PAGAR (con voz Piper)
+- El usuario decidió hacer los próximos tutoriales con **voz Piper es_MX "claude"** (open source, Apache-2.0) en vez de ElevenLabs.
+- **No se espera audio del usuario.** Claude escribe el guion, se lo muestra al usuario para aprobarlo, genera la voz y arma el video.
+- El guion se escribe en voseo nicaragüense ("tenés", "tocá"). Piper lo lee bien, incluso "Negocio360" y "córdoba".
+- Voz:
+  - Descargar el modelo (79 MB): `curl -sSL https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-es_MX-claude-high.tar.bz2 | tar xj`
+  - Instalar `pip install sherpa-onnx soundfile` si falta.
+  - Generar: `PIPER_DIR=<carpeta del modelo> python3 tools/tts_piper.py guion.txt voz`
+    - Salida: `voz.mp3` (normalizado) y `voz_tiempos.json`, con el inicio y el fin de cada frase y cuáles son títulos de capítulo.
+    - **Ya no hace falta transcribir con whisper.**
+  - `SPEED=1.05` acelera un poco la lectura.
+- `guion.txt`: una frase por línea, títulos de capítulo con `#` y línea vacía para una pausa larga.
+- Para el resto (mock, capturas, `*_script.js`, render, música lo-fi con ducking, efectos) se sigue la misma receta de Gastos y Caja (`capg.js`/`capk.js`, `tg_script.js`/`tk_script.js`).
+- Los tiempos de `sl()`, `chap()`, `st()` y `cap()` se sacan de `voz_tiempos.json`.
 
 ## Compras (ya entregado): secciones del guion
 
