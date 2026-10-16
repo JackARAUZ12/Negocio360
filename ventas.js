@@ -517,7 +517,9 @@ async function cargarCreditoDeVentas(ventas) {
       sb.from('creditos').select('id, venta_id, numero_credito, saldo_pendiente, estado').eq('auth_user_id', S.userId).in('venta_id', ids),
       sb.from('fiados').select('id, venta_id, saldo, estado').eq('auth_user_id', S.userId).in('venta_id', ids),
     ]);
-    (creds || []).forEach(k => { S.creditoPorVenta[k.venta_id] = { tipo: 'credito', id: k.id, numero: k.numero_credito, saldo: Number(k.saldo_pendiente) || 0, estado: k.estado }; });
+    // Número de la proforma de origen (PR-…), solo para mostrar
+    const prMap = window.N360ProformaCredito ? await N360ProformaCredito.mapa(sb, S.userId, creds || []) : new Map();
+    (creds || []).forEach(k => { S.creditoPorVenta[k.venta_id] = { tipo: 'credito', id: k.id, numero: k.numero_credito, proforma: prMap.get(k.id) || null, saldo: Number(k.saldo_pendiente) || 0, estado: k.estado }; });
     (fiads || []).forEach(f => { if (!S.creditoPorVenta[f.venta_id]) S.creditoPorVenta[f.venta_id] = { tipo: 'fiado', id: f.id, numero: 'Fiado', saldo: Number(f.saldo) || 0, estado: f.estado }; });
   } catch (e) { console.warn('cargarCreditoDeVentas:', e); }
 }
@@ -554,6 +556,7 @@ function metodoPagoVenta(v) {
   if (!esVentaACredito(v)) return esc(v.metodo_pago_nombre || '—');
   const c = S.creditoPorVenta[v.id];
   if (c && c.tipo === 'fiado') return 'Fiado';
+  if (c && c.proforma) return `Crédito ${esc(c.proforma)}<div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono)">${esc(c.numero || '')}</div>`;
   return c && c.numero ? `Crédito ${esc(c.numero)}` : 'Crédito';
 }
 
@@ -564,7 +567,7 @@ async function pintarCreditoDeVenta(venta) {
   const valor = box.querySelector('.detalle-value');
   try {
     const { data: cred } = await sb.from('creditos')
-      .select('id, numero_credito, total_financiado, monto_original, saldo_pendiente, estado, num_cuotas, frecuencia')
+      .select('id, venta_id, numero_credito, total_financiado, monto_original, saldo_pendiente, estado, num_cuotas, frecuencia')
       .eq('auth_user_id', S.userId).eq('venta_id', venta.id).maybeSingle();
     if (!cred) {
       const { data: fiado } = await sb.from('fiados').select('monto_total, monto_pagado, saldo, estado')
@@ -585,9 +588,10 @@ async function pintarCreditoDeVenta(venta) {
     const cuotasPagadas = (cuotas || []).filter(c => c.estado === 'pagada').length;
     const saldo = Number(cred.saldo_pendiente || 0);
     const total = Number(cred.total_financiado || cred.monto_original || 0);
+    const prCred = window.N360ProformaCredito ? (await N360ProformaCredito.mapa(sb, S.userId, [cred])).get(cred.id) : null;
     valor.innerHTML = `
       <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px">
-        <span style="font-family:var(--font-mono);font-weight:700">${esc(cred.numero_credito || '')}</span>
+        <span style="font-family:var(--font-mono);font-weight:700">${prCred ? `${esc(prCred)} <span style="font-weight:400;color:var(--text-muted);font-size:11.5px">crédito ${esc(cred.numero_credito || '')}</span>` : esc(cred.numero_credito || '')}</span>
         <span>Total <b>${fmt(total)}</b></span>
         <span>Abonado <b style="color:var(--success)">${fmt(abonado)}</b>${nAbonos ? ` (${nAbonos} abono${nAbonos !== 1 ? 's' : ''})` : ''}</span>
         <span>Debe <b style="color:${saldo > 0.004 ? 'var(--warning)' : 'var(--success)'}">${fmt(saldo)}</b></span>

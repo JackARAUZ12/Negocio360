@@ -1860,6 +1860,8 @@ async function fetchCreditosReporte() {
 
   const lista = creditos || [];
   if (!lista.length) return [];
+  // Proforma de origen de cada crédito (PR-…), solo para mostrar
+  const prMap = window.N360ProformaCredito ? await N360ProformaCredito.mapa(sb, R.userId, lista) : new Map();
 
   const ids = lista.map(c => c.id);
   const { data: cuotas } = await sb.from('creditos_cuotas')
@@ -1889,6 +1891,7 @@ async function fetchCreditosReporte() {
     return {
       id: c.id,
       numero_credito: c.numero_credito,
+      numero_proforma: prMap.get(c.id) || null,
       cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}`.trim() : '—',
       tipo: c.tipo,
       fecha_inicio: c.fecha_inicio,
@@ -1919,6 +1922,7 @@ async function fetchCreditosHistorialPagos() {
 
   const creditoMap = new Map(lista.map(c => [c.id, c]));
   const ids = lista.map(c => c.id);
+  const prMapH = window.N360ProformaCredito ? await N360ProformaCredito.mapa(sb, R.userId, lista) : new Map();
 
   // Productos financiados — se leen de la venta que originó cada
   // crédito (creditos NUNCA guarda productos directamente). Los
@@ -1958,6 +1962,7 @@ async function fetchCreditosHistorialPagos() {
       telefono:       cliente?.telefono || '—',
       email:          cliente?.correo || '—',
       numero_credito: credito.numero_credito || '—',
+      numero_proforma: prMapH.get(credito.id) || null,
       cuota:          `${cu.numero}/${credito.num_cuotas||'?'}`,
       fecha_venc:     cu.fecha_vencimiento,
       monto_cuota:    Number(cu.monto_total||0),
@@ -2116,7 +2121,7 @@ function renderHistorialPagosCreditos() {
     const info = estadoCuotaInfo(f.estado);
     return `
     <tr>
-      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(f.numero_credito)}</span></td>
+      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(f.numero_proforma || f.numero_credito)}</span>${f.numero_proforma ? `<div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono)">crédito ${esc(f.numero_credito)}</div>` : ''}</td>
       <td class="td-mono">${esc(f.cuota)}</td>
       <td>${fmtFecha(f.fecha_venc)}</td>
       <td class="td-mono">${fmt(f.monto_cuota)}</td>
@@ -2172,7 +2177,7 @@ async function loadCreditosTab() {
         .sort((a,b) => (b.fecha_inicio||'').localeCompare(a.fecha_inicio||''))
         .map(f => `
         <tr>
-          <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(f.numero_credito)}</span></td>
+          <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(f.numero_proforma || f.numero_credito)}</span>${f.numero_proforma ? `<div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono)">crédito ${esc(f.numero_credito)}</div>` : ''}</td>
           <td>${esc(f.cliente)}</td>
           <td><span class="badge ${f.tipo==='venta'?'badge-success':'badge-accent'}">${f.tipo==='venta'?'Por venta':'Financiero'}</span></td>
           <td class="td-mono">${fmt(f.montoProducto)}</td>

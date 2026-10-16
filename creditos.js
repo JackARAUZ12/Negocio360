@@ -1800,8 +1800,9 @@
       .eq('auth_user_id', CS.userId).eq('cliente_id', clienteId)
       .not('estado', 'in', '("cancelado")').order('created_at', { ascending:false });
     const abiertos = data || [];
+    const prMapRp = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, abiertos) : new Map();
     sel.innerHTML = abiertos.length
-      ? abiertos.map(c => `<option value="${c.id}">${esc(c.numero_credito)} — ${fmt(c.saldo_pendiente)} pendiente</option>`).join('')
+      ? abiertos.map(c => `<option value="${c.id}">${esc(window.N360ProformaCredito ? N360ProformaCredito.texto(c.numero_credito, prMapRp.get(c.id)) : c.numero_credito)} — ${fmt(c.saldo_pendiente)} pendiente</option>`).join('')
       : '<option value="">Este cliente no tiene créditos activos</option>';
   }
   window.cargarCreditosDelCliente = cargarCreditosDelCliente;
@@ -2357,7 +2358,7 @@
         productosComprobante = await enriquecerItemsConCombo(detalles || []);
       }
       mostrarComprobante({
-        titulo: 'Pago de crédito', numero: comprobanteNumero, credito: credito.numero_credito,
+        titulo: 'Pago de crédito', numero: comprobanteNumero, credito: await textoCredito(credito),
         clienteId: cliente?.id || null,
         cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
         usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombre,
@@ -2566,6 +2567,8 @@
     doc.text('PAGARÉ', W/2, y, { align:'center' }); y += 8;
     doc.setFontSize(10); doc.setFont(undefined,'normal');
     doc.text(`N.º ${credito.numero_credito}`, W/2, y, { align:'center' }); y += 12;
+    const prPagare = (window.N360ProformaCredito && N360ProformaCredito._cache[credito.id]) || null; // ya se cargó al abrir el detalle
+    if (prPagare) { y -= 6; doc.setFontSize(9); doc.text(`Proforma ${prPagare}`, W/2, y, { align:'center' }); doc.setFontSize(10); y += 6; }
 
     const parrafo1 = `Yo, ${nombreCliente}${cliente?.direccion ? ', con domicilio en ' + cliente.direccion : ''}${cliente?.telefono ? ', teléfono ' + cliente.telefono : ''}, por medio del presente documento me comprometo a pagar incondicionalmente a la orden de ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, la cantidad de ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})} (${numeroALetrasSimple(Number(credito.total_financiado||0))}), correspondiente a la compra/financiamiento detallado a continuación.`;
     const lineas1 = doc.splitTextToSize(parrafo1, W - M*2);
@@ -2686,7 +2689,7 @@
       })));
       const doc = await generarComprobanteCartaPDF('credito', {
         userId: CS.userId,
-        numero: credito.numero_credito,
+        numero: await textoCredito(credito),
         fecha: fmtDate(credito.fecha_inicio || credito.created_at),
         cliente_nombre: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : 'Cliente',
         cliente_telefono: cliente?.telefono || '',
@@ -2805,7 +2808,8 @@
       else { avisoAnular.style.display = 'none'; }
     }
 
-    document.getElementById('det-credito-title').textContent = `Crédito ${credito.numero_credito}`;
+    const prDet = await prDe(credito);
+    document.getElementById('det-credito-title').textContent = prDet ? `${prDet} · crédito ${credito.numero_credito}` : `Crédito ${credito.numero_credito}`;
     document.getElementById('detalle-credito-body').innerHTML = `
       <div class="form-row" style="margin-bottom:14px">
         <div><label>Cliente</label><div class="stat-readonly">${esc(cliente ? cliente.nombre+' '+(cliente.apellido||'') : '—')}</div></div>
@@ -2910,7 +2914,7 @@
     if (credito.estado === 'cancelado') { showToast('Este crédito ya está anulado', 'error'); return; }
 
     document.getElementById('ac-resumen').textContent =
-      `Crédito ${credito.numero_credito} — saldo actual ${fmt(credito.saldo_pendiente)}`;
+      `Crédito ${window.N360ProformaCredito ? N360ProformaCredito.texto(credito.numero_credito, N360ProformaCredito._cache[credito.id]) : credito.numero_credito} — saldo actual ${fmt(credito.saldo_pendiente)}`;
     document.getElementById('ac-aviso-productos').style.display = credito.venta_id ? '' : 'none';
     document.getElementById('ac-motivo').value = '';
     document.getElementById('ac-error').textContent = '';
@@ -3149,7 +3153,7 @@
         productosComprobante = await enriquecerItemsConCombo(detalles || []);
       }
       mostrarComprobante({
-        titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito?.numero_credito || '—',
+        titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito ? await textoCredito(credito) : '—',
         clienteId: cliente?.id || null,
         cliente: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '—', fecha: p.fecha,
         usuario: CS.currentUser?.nombre || CS.userEmail, monto: p.monto, metodo: p.metodo_pago_nombre || '—',
@@ -3321,6 +3325,16 @@
     } catch (e) { console.warn('marcarCuotasVencidas:', e); }
   }
 
+  // Número de la proforma de la que nació un crédito (solo para mostrar; el número CR no cambia).
+  async function prDe(credito) {
+    if (!credito || !window.N360ProformaCredito) return null;
+    try { return (await N360ProformaCredito.mapa(_sb, CS.userId, [credito])).get(credito.id) || null; } catch (_) { return null; }
+  }
+  async function textoCredito(credito) {
+    const pr = await prDe(credito);
+    return window.N360ProformaCredito ? N360ProformaCredito.texto(credito?.numero_credito, pr) : (credito?.numero_credito || '');
+  }
+
   async function loadCreditos() {
     let q = _sb.from('creditos').select('*', { count:'exact' }).eq('auth_user_id', CS.userId);
     if (CS.creditosFiltro === 'venta') q = q.eq('tipo','venta');
@@ -3338,9 +3352,12 @@
         .select('id').eq('auth_user_id', CS.userId)
         .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`);
       const idsClientes = (clientesCoinciden||[]).map(c=>c.id);
-      const filtroOr = idsClientes.length
+      let filtroOr = idsClientes.length
         ? `numero_credito.ilike.%${CS.creditosSearch}%,cliente_id.in.(${idsClientes.join(',')})`
         : `numero_credito.ilike.%${CS.creditosSearch}%`;
+      // También por el número de la proforma de la que nació el crédito (PR-…)
+      const idsPorProforma = window.N360ProformaCredito ? await N360ProformaCredito.buscarCreditos(_sb, CS.userId, CS.creditosSearch) : [];
+      if (idsPorProforma.length) filtroOr += `,id.in.(${idsPorProforma.join(',')})`;
       q = q.or(filtroOr);
     }
 
@@ -3362,6 +3379,7 @@
       _sb.from('creditos_cuotas').select('credito_id,fecha_vencimiento,monto_total,numero').neq('estado','pagada').in('credito_id', creditoIds).order('numero'),
     ]);
     const clienteMap = new Map((clientesData||[]).map(c=>[c.id,c]));
+    const prMap = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, CS.creditos) : new Map();
     const proxMap = new Map();
     (proxCuotas||[]).forEach(c => { if (!proxMap.has(c.credito_id)) proxMap.set(c.credito_id, c); });
 
@@ -3369,7 +3387,7 @@
       const cli = clienteMap.get(c.cliente_id);
       const prox = proxMap.get(c.id);
       return `<tr>
-        <td><span class="td-num" style="font-family:var(--font-mono);font-weight:700">${esc(c.numero_credito)}</span></td>
+        <td class="td-num">${window.N360ProformaCredito ? N360ProformaCredito.etiquetaHTML(c.numero_credito, prMap.get(c.id), esc) : `<span style="font-family:var(--font-mono);font-weight:700">${esc(c.numero_credito)}</span>`}</td>
         <td>${esc(cli ? cli.nombre+' '+(cli.apellido||'') : '—')}</td>
         <td>${badgeTipo(c.tipo)}</td>
         <td>${fmt(c.capital_financiado)}</td>
@@ -3410,8 +3428,9 @@
   window.buscarCreditos = buscarCreditos;
 
   async function loadPagosRecientes() {
-    const { data } = await _sb.from('creditos_pagos').select('*, creditos(numero_credito)').eq('auth_user_id', CS.userId).order('created_at', { ascending:false }).limit(30);
+    const { data } = await _sb.from('creditos_pagos').select('*, creditos(id,numero_credito,venta_id)').eq('auth_user_id', CS.userId).order('created_at', { ascending:false }).limit(30);
     const pagos = data || [];
+    const prMapPag = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, pagos.map(p => p.creditos).filter(Boolean)) : new Map();
     const clienteIds = [...new Set(pagos.map(p=>p.cliente_id))];
     const { data: clientesData } = await _sb.from('clientes').select('id,nombre,apellido').in('id', clienteIds.length?clienteIds:['00000000-0000-0000-0000-000000000000']);
     const clienteMap = new Map((clientesData||[]).map(c=>[c.id,c]));
@@ -3421,7 +3440,7 @@
       return `<tr>
         <td>${fmtDate(p.fecha)}</td>
         <td>${esc(cli ? cli.nombre+' '+(cli.apellido||'') : '—')}</td>
-        <td>${esc(p.creditos?.numero_credito||'—')}</td>
+        <td>${p.creditos && window.N360ProformaCredito ? N360ProformaCredito.etiquetaHTML(p.creditos.numero_credito, prMapPag.get(p.creditos.id), esc) : esc(p.creditos?.numero_credito||'—')}</td>
         <td>${fmt(p.monto)}</td>
         <td>${esc(p.metodo_pago_nombre||'—')}</td>
         <td>${fmt(p.saldo_nuevo)}</td>
