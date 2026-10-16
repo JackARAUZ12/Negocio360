@@ -1,0 +1,236 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="fonts.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#F3F5FF;font-family:'Plus Jakarta Sans',sans-serif;color:#0E1433}
+#bg{position:absolute;inset:0;background:radial-gradient(900px 700px at 15% 8%,rgba(91,91,240,.16),transparent 60%),radial-gradient(800px 800px at 95% 70%,rgba(22,199,132,.13),transparent 60%),radial-gradient(700px 600px at 20% 100%,rgba(127,90,240,.12),transparent 60%),#F3F5FF}
+#grid{position:absolute;inset:-100px;background-image:linear-gradient(rgba(60,70,160,.06) 2px,transparent 2px),linear-gradient(90deg,rgba(60,70,160,.06) 2px,transparent 2px);background-size:90px 90px}
+#dark{position:absolute;inset:0;z-index:20;background:radial-gradient(900px 900px at 50% 35%,#2B37B8 0%,#141B5C 45%,#080C26 100%);opacity:0}
+#dark .glow{position:absolute;width:900px;height:900px;border-radius:50%;left:90px;top:300px;background:radial-gradient(circle,rgba(110,130,255,.45),transparent 65%)}
+.L{position:absolute;z-index:21}
+.eb{position:absolute;left:80px;top:190px;z-index:10;font-size:30px;font-weight:800;letter-spacing:6px;color:#5B5BF0;display:flex;align-items:center;gap:16px}
+.eb i{font-style:normal;background:#5B5BF0;color:#fff;border-radius:12px;padding:6px 14px;letter-spacing:1px}
+.hd{position:absolute;left:80px;right:60px;top:250px;z-index:10;font-size:84px;font-weight:800;letter-spacing:-2.5px;line-height:1.04}
+.hd .ln{display:block;overflow:hidden;padding-bottom:6px}.hd .ln>span{display:inline-block}
+.hd em{font-style:normal;background:linear-gradient(95deg,#5B5BF0,#8B5CF6 55%,#16B37A);-webkit-background-clip:text;color:transparent}
+.sb{position:absolute;left:80px;right:90px;top:470px;z-index:10;font-size:36px;line-height:1.35;color:#4A5275;font-weight:500}
+.phone{position:absolute;z-index:8;width:672px;height:1420px;border-radius:92px;background:#0E1433;padding:16px;box-shadow:0 60px 120px rgba(20,30,90,.35),0 0 0 3px #2A3160 inset}
+.phone .scr{position:relative;width:640px;height:1388px;border-radius:78px;overflow:hidden;background:#fff}
+.phone .scr img{position:absolute;left:0;top:0;width:640px}
+.phone .isl{position:absolute;left:50%;top:30px;width:190px;height:54px;border-radius:30px;background:#0E1433;transform:translateX(-50%);z-index:5}
+.phl{position:absolute;z-index:4;border:5px solid #5B5BF0;border-radius:18px;box-shadow:0 0 0 9999px rgba(14,20,51,.28),0 0 30px rgba(91,91,240,.6);opacity:0}
+.mon{position:absolute;z-index:8;left:40px;width:1000px}
+.mon .scr{position:relative;width:1000px;height:600px;border-radius:26px;background:#0E1433;padding:14px;box-shadow:0 50px 100px rgba(20,30,90,.35)}
+.mon .vp{position:relative;width:972px;height:572px;border-radius:14px;overflow:hidden;background:#fff}
+.mon .bgi{position:absolute;inset:0;background-repeat:no-repeat}
+.mon .nk{width:150px;height:110px;margin:0 auto;background:linear-gradient(#C9CEE6,#AEB4D4)}
+.mon .bs{width:380px;height:22px;margin:0 auto;border-radius:12px;background:#AEB4D4}
+.lens{position:absolute;z-index:12;background:#fff;border-radius:30px;box-shadow:0 40px 90px rgba(20,30,90,.33),0 0 0 3px rgba(91,91,240,.35);overflow:hidden}
+.lens .im{position:relative;overflow:hidden}
+.lens .im img{position:absolute}
+.lens .cap{padding:18px 28px 22px;font-size:32px;font-weight:800;color:#0E1433;display:flex;align-items:center;gap:14px}
+.lens .cap i{width:16px;height:16px;border-radius:50%;background:#16C784;box-shadow:0 0 0 6px rgba(22,199,132,.2)}
+.chip{position:absolute;z-index:13;padding:16px 26px;border-radius:20px;background:#fff;font-size:32px;font-weight:800;box-shadow:0 20px 50px rgba(20,30,90,.22);white-space:nowrap}
+#finger{position:absolute;z-index:30;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.55);border:5px solid #fff;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;pointer-events:none}
+#ripple{position:absolute;z-index:29;border-radius:50%;border:6px solid #5B5BF0;opacity:0}
+#wipe{position:absolute;z-index:40;top:-200px;width:1500px;height:2400px;background:linear-gradient(90deg,transparent,#5B5BF0 25%,#8B5CF6 55%,#16C784 80%,transparent);transform:skewX(-14deg);opacity:0}
+#segs{position:absolute;z-index:15;left:80px;right:80px;top:90px;display:flex;gap:12px;opacity:0}
+#segs i{flex:1;height:8px;border-radius:4px;background:rgba(91,91,240,.18);overflow:hidden}#segs b{display:block;height:100%;width:0;background:#5B5BF0}
+#wm{position:absolute;z-index:15;right:70px;top:1810px;display:flex;align-items:center;gap:12px;font-size:30px;font-weight:800;color:#0E1433;opacity:0}
+#wm img{width:44px}
+.bub{position:absolute;z-index:22;padding:26px 36px;border-radius:34px;background:#fff;color:#0E1433;font-size:42px;font-weight:800;box-shadow:0 24px 60px rgba(0,0,0,.35);white-space:nowrap}
+.bub:after{content:'';position:absolute;bottom:-16px;left:60px;border:18px solid transparent;border-top-color:#fff;border-bottom:0}
+.bub.r:after{left:auto;right:60px}
+.pill{display:inline-flex;align-items:center;gap:14px;padding:14px 30px;border-radius:999px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);color:#fff;font-size:34px;font-weight:800}
+.pill i{width:16px;height:16px;border-radius:50%;background:#2EE59D;box-shadow:0 0 0 6px rgba(46,229,157,.25)}
+#typed{position:absolute;z-index:6;background:#fff;display:flex;align-items:center;font-size:30px;color:#0E1433;padding-left:22px;opacity:0}
+#typed b{display:inline-block;width:3px;height:36px;background:#5B5BF0;margin-left:3px}
+#seen{position:absolute;z-index:14;padding:18px 30px;border-radius:22px;background:#16C784;color:#fff;font-size:38px;font-weight:800;box-shadow:0 20px 50px rgba(22,199,132,.45);opacity:0}
+#play{position:absolute;z-index:9;width:130px;height:130px;border-radius:50%;background:rgba(14,20,51,.75);display:flex;align-items:center;justify-content:center;opacity:0}
+#play:after{content:'';border-left:46px solid #fff;border-top:28px solid transparent;border-bottom:28px solid transparent;margin-left:12px}
+</style></head><body>
+<div id="bg"><div id="grid"></div></div>
+<div id="dark"><div class="glow"></div></div>
+<div id="segs"></div>
+<div id="wm"><img src="tut/iso.png">Negocio360</div>
+<div id="stage"></div>
+<div id="finger"></div><div id="ripple"></div>
+<div id="wipe"></div>
+<script>
+const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const p = (t, a, b) => cl((t - a) / (b - a));
+const ease = x => 1 - Math.pow(1 - cl(x), 3), ex = x => 1 - Math.pow(2, -10 * cl(x)), eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 48;
+const M = window.META;
+const ST = $('stage');
+function mk(cls, html, css) { const d = document.createElement('div'); if (cls) d.className = cls; d.innerHTML = html; if (css) d.style.cssText += css; ST.appendChild(d); return d; }
+const S = { whoosh: [], pop: [], tick: [], click: [], chime: [], impact: [], rise: [], sweep: [] };
+// ---------- components
+const K = 640 / 430; // css px (mobile) -> phone screen px
+const PHONES = [], LENSES = [], TEXTS = [], ITEMS = [], HLS = [];
+function phone(x, y, shots, a, b) { // shots: [t, img, scrollCss, scrollTo?, sa?, sb?]
+  const el = mk('phone', '<div class="scr"><div class="isl"></div></div>', `left:${x}px;top:${y}px`);
+  const scr = el.querySelector('.scr');
+  const sh = shots.map(([t, src, s0, s1, sa, sb]) => { const im = document.createElement('img'); im.src = 'tut/' + src + '.jpg'; scr.appendChild(im); return { t, img: im, s0, s1: s1 == null ? s0 : s1, sa, sb }; });
+  const P = { el, scr, x, y, shots: sh, a, b }; PHONES.push(P); return P;
+}
+function phl(P, r, a, b, scroll = 0) { const h = document.createElement('div'); h.className = 'phl'; h.style.cssText = `left:${r[0] * K - 8}px;top:${(r[1] - scroll) * K - 8}px;width:${r[2] * K + 16}px;height:${r[3] * K + 16}px`; P.scr.appendChild(h); HLS.push({ el: h, a, b }); }
+function lens(src, r, scale, x, y, a, b, cap, iw) { // r in css px of capture; scale: lens px per css px
+  const w = r[2] * scale, h = r[3] * scale;
+  const el = mk('lens', `<div class="im" style="width:${w}px;height:${h}px"><img src="tut/${src}.jpg" style="width:${iw * scale}px;left:${-r[0] * scale}px;top:${-r[1] * scale}px"></div>${cap ? `<div class="cap"><i></i>${cap}</div>` : ''}`, `left:${x}px;top:${y}px;width:${w}px`);
+  LENSES.push({ el, a, b }); return el;
+}
+function textBlock(a, b, n, eb, lines, sb) {
+  const e = mk('eb', `<i>${n}</i>${eb}`); const h = mk('hd', lines.map(l => `<span class="ln"><span>${l}</span></span>`).join('')); const s = mk('sb', sb);
+  TEXTS.push({ a, b, eb: e, hd: h, sb: s }); S.whoosh.push(a - .05);
+}
+const FEATS = [[8, 5], [13, 5.5], [18.5, 6.5], [25, 5.5], [30.5, 5.5], [36, 5.75]];
+// ---------- HOOK 0-4 (dark)
+const H1 = mk('L', '<div style="font-size:92px;font-weight:800;color:#fff;letter-spacing:-2.5px;line-height:1.05;text-align:center">¿Tenés dudas<br>usando <span style="background:linear-gradient(95deg,#9DB4FF,#C4A8FF);-webkit-background-clip:text;color:transparent">Negocio360?</span></div>', 'left:0;right:0;top:330px');
+const QS = [['¿Cómo hago una venta?', 120, 760, ''], ['¿Cómo registro un gasto?', 300, 960, 'r'], ['¿Cómo cierro la Caja Chica?', 90, 1160, ''], ['¿Cómo concilio mi banco?', 280, 1360, 'r']];
+const BUBS = QS.map(([q, x, y, c], i) => { const e = mk('bub ' + c, q, `left:${x}px;top:${y}px`); return { el: e, t: 1.0 + i * .6 }; });
+BUBS.forEach(B => S.pop.push(B.t));
+// ---------- REVEAL 4-8 (dark)
+const RV = mk('L', `<div style="display:flex;flex-direction:column;align-items:center;text-align:center">
+  <div id="cap" style="width:300px;height:300px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#7C8CFF,#4144D8);display:flex;align-items:center;justify-content:center;font-size:150px;box-shadow:0 0 0 22px rgba(124,140,255,.18),0 0 120px rgba(124,140,255,.7)">🎓</div>
+  <div class="pill" style="margin-top:70px"><i></i>YA DISPONIBLE</div>
+  <div style="font-size:150px;font-weight:800;letter-spacing:-5px;margin-top:30px;background:linear-gradient(95deg,#fff,#C9D3FF 60%,#9FF5D2);-webkit-background-clip:text;color:transparent">Tutoriales</div>
+  <div style="font-size:44px;font-weight:700;color:rgba(255,255,255,.82);margin-top:10px">dentro de Negocio360</div></div>`, 'left:0;right:0;top:470px');
+S.impact.push(4.0); S.rise.push(2.2); S.pop.push(5.0);
+// ---------- F1 menú 8-13
+textBlock(8, 13, '01', 'EN TU MENÚ', ['Ya está', 'en tu <em>menú</em>'], 'Entrá a 🎓 Tutoriales desde el celular o la computadora.');
+const P1 = phone(204, 620, [[8, 'm_menu', 0]], 8, 13);
+phl(P1, M.m_menu.item, 9.4, 13);
+lens('m_menu', [M.m_menu.item[0] - 6, M.m_menu.item[1] - 10, M.m_menu.item[2] + 30, M.m_menu.item[3] + 20], 2.6, 380, 1500, 10.9, 13, null, 430);
+const TAP1 = { x: 204 + 16 + (M.m_menu.item[0] + 60) * K, y: 620 + 16 + (M.m_menu.item[1] + 21) * K, t: 10.7 };
+S.click.push(10.7); S.pop.push(10.9);
+// ---------- F2 grid 13-18.5
+textBlock(13, 18.5, '02', 'TODOS TUS MÓDULOS', ['Un video para', '<em>cada módulo</em>'], 'Ventas, Productos, Clientes, Compras, Gastos, Caja… y vienen más.');
+const P2 = phone(110, 620, [[13, 'm_grid', 150, 150], [13.6, 'm_grid', 150, 760, 13.8, 17.6]], 13, 18.5);
+const CHS = [['🛒 Ventas', 14.0], ['📦 Productos', 14.35], ['👥 Clientes', 14.7], ['🧾 Compras', 15.05], ['💸 Gastos', 15.4], ['🏦 Caja', 15.75]];
+const CHIPS = CHS.map(([n, t], i) => { const e = mk('chip', n, `left:${i % 2 ? 700 : 640}px;top:${780 + i * 150}px`); S.pop.push(t); return { el: e, t, b: 18.5 }; });
+// ---------- F3 player 18.5-25 (monitor)
+textBlock(18.5, 25, '03', 'CORTOS Y CLAROS', ['Aprendé', '<em>paso a paso</em>'], 'Con voz y con las pantallas reales del sistema.');
+const MON = mk('mon', '<div class="scr"><div class="vp"><div class="bgi" id="mbg"></div><img id="clip" style="position:absolute;opacity:0"></div></div><div class="nk"></div><div class="bs"></div>', 'top:700px');
+ITEMS.push({ el: MON, a: 18.5, b: 25, k: 'mon' }); const PLAY = $('play') || mk('', '', ''); PLAY.id = 'play';
+lens('d_video', [M.d_video.lista[0] - 6, M.d_video.lista[1] - 6, M.d_video.lista[2] + 12, M.d_video.lista[3] + 12], 1.55, 110, 1520, 22.0, 25, 'Nivel y duración de cada video', 1920);
+S.pop.push(19.6, 22.0); S.click.push(19.9);
+// ---------- F4 buscar 25-30.5
+textBlock(25, 30.5, '04', 'BUSCADOR', ['Buscá lo que', '<em>necesitás</em>'], 'Escribí y encontrá el tutorial al instante.');
+const P4 = phone(204, 620, [[25, 'm_grid', 0], [27.4, 'm_search', 0]], 25, 30.5);
+const TY = mk('', '', ''); TY.id = 'typed'; P4.scr.appendChild(TY);
+const SR = M.m_grid.search; TY.style.cssText += `left:${SR[0] * K}px;top:${SR[1] * K}px;width:${SR[2] * K}px;height:${SR[3] * K}px;border-radius:${14 * K}px`;
+phl(P4, M.m_search.res, 27.7, 30.5);
+lens('m_search', [M.m_search.res[0] - 4, M.m_search.res[1] + 86, M.m_search.res[2] + 8, 92], 2.2, 90, 1560, 28.0, 30.5, 'Resultado al instante', 430);
+[25.9, 26.25, 26.6, 26.95].forEach(t => S.tick.push(t)); S.pop.push(28.0);
+// ---------- F5 progreso 30.5-36
+textBlock(30.5, 36, '05', 'TU PROGRESO', ['Llevá tu', '<em>progreso</em>'], 'Marcá lo que ya viste y seguí donde te quedaste.');
+const P5 = phone(204, 620, [[30.5, 'm_grid', 0], [32.9, 'm_video', 0]], 30.5, 36);
+phl(P5, M.m_grid.prog, 31.0, 32.8); phl(P5, M.m_grid.cards[0], 31.4, 32.8);
+lens('m_grid', [M.m_grid.prog[0] - 14, M.m_grid.prog[1] - 10, M.m_grid.prog[2] + 28, M.m_grid.prog[3] + 20], 3.0, 300, 1480, 31.2, 32.8, null, 430);
+phl(P5, M.m_video.acc, 33.3, 36);
+const TAP5 = { x: 204 + 16 + (M.m_video.acc[0] + 70) * K, y: 620 + 16 + (M.m_video.acc[1] + 17) * K, t: 34.2 };
+const SEEN = $('seen') || mk('', '✓ Visto', ''); SEEN.id = 'seen'; SEEN.textContent = '✓ Visto';
+SEEN.style.left = '640px'; SEEN.style.top = (620 + 16 + (M.m_video.acc[1] - 10) * K) + 'px';
+S.pop.push(31.2); S.click.push(34.2); S.chime.push(34.35);
+// ---------- F6 desde cada módulo 36-41.75 (monitor)
+textBlock(36, 41.75, '06', 'DESDE CADA MÓDULO', ['Un toque y', '<em>directo al video</em>'], 'En cada módulo tenés el botón 🎓 Tutoriales arriba.');
+const MON2 = mk('mon', '<div class="scr"><div class="vp"><div class="bgi" id="mbg2"></div><div id="mhl" style="position:absolute;border:5px solid #5B5BF0;border-radius:14px;box-shadow:0 0 0 9999px rgba(14,20,51,.25);opacity:0"></div></div></div><div class="nk"></div><div class="bs"></div>', 'top:700px');
+ITEMS.push({ el: MON2, a: 36, b: 41.75, k: 'mon2' });
+lens('d_caja', [M.d_caja.btn[0] - 230, M.d_caja.btn[1] - 8, 420, M.d_caja.btn[3] + 16], 1.9, 141, 1500, 37.4, 39.1, 'Botón 🎓 Tutoriales', 1920);
+S.click.push(39.0); S.whoosh.push(39.2); S.pop.push(37.4);
+// ---------- OUTRO 41.75-48 (dark)
+const OUTA = 42;
+const OU = mk('L', `<div style="display:flex;flex-direction:column;align-items:center;text-align:center">
+  <div style="width:170px;height:170px;border-radius:44px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 90px rgba(124,140,255,.7)"><img src="tut/iso.png" style="width:120px"></div>
+  <div style="font-size:60px;font-weight:800;color:#fff;margin-top:36px">Negocio360</div>
+  <div style="font-size:132px;font-weight:800;letter-spacing:-4px;margin-top:40px;line-height:1;background:linear-gradient(95deg,#fff,#C9D3FF 60%,#9FF5D2);-webkit-background-clip:text;color:transparent">🎓 Tutoriales</div>
+  <div style="font-size:46px;font-weight:700;color:rgba(255,255,255,.85);margin-top:26px">Ya disponibles en tu cuenta</div>
+  <div class="pill" style="margin-top:70px"><i></i>Menú → 🎓 Tutoriales</div>
+  <div style="font-size:38px;color:rgba(255,255,255,.7);margin-top:60px;font-weight:600">negocio360oficial.com</div></div>`, 'left:0;right:0;top:470px');
+S.impact.push(OUTA); S.sweep.push(41.75); S.rise.push(40.0);
+$('segs').innerHTML = FEATS.map(() => '<i><b></b></i>').join('');
+const WIPES = [3.85, 7.75, 41.75];
+window.EVENTS = { DUR, S, WIPES };
+// ---------- RENDER
+const CLIPN = 105;
+window.render = function (t) {
+  $('grid').style.transform = `translate(${(t * 18) % 90}px,${(t * 10) % 90}px)`;
+  const dark = t < 7.9 || t >= 41.9; $('dark').style.opacity = dark ? 1 : 0;
+  $('dark').querySelector('.glow').style.transform = `scale(${1 + .08 * Math.sin(t * 2)})`;
+  // hook
+  { const k = p(t, .2, .8), ko = p(t, 3.55, 3.85); H1.style.opacity = ease(k) * (1 - ko); H1.style.transform = `translateY(${(1 - ex(k)) * 70}px)`; H1.style.filter = `blur(${(1 - ease(k)) * 12}px)`;
+    BUBS.forEach((B, i) => { const kk = p(t, B.t, B.t + .3); B.el.style.opacity = ease(kk) * (1 - ko); B.el.style.transform = `scale(${lerp(.4, 1, ex(kk)) + (kk < 1 ? Math.sin(kk * Math.PI) * .06 : 0)}) translateY(${Math.sin(t * 2 + i) * 6}px)`; B.el.style.display = t < 4 ? '' : 'none'; }); }
+  // reveal
+  { const vis = t >= 3.9 && t < 8.1; RV.style.display = vis ? '' : 'none';
+    if (vis) { const ko = p(t, 7.55, 7.8); const ch = RV.firstElementChild.children;
+      [[4.05, 0], [4.9, 1], [5.2, 2], [5.6, 3]].forEach(([a, i]) => { const kk = p(t, a, a + .45); ch[i].style.opacity = ease(kk) * (1 - ko); ch[i].style.transform = `translateY(${(1 - ex(kk)) * 60}px) scale(${i === 0 ? lerp(.3, 1, ex(kk)) * (1 + .03 * Math.sin(t * 3)) : 1})`; ch[i].style.filter = i === 2 ? `blur(${(1 - ease(kk)) * 14}px)` : ''; }); } }
+  // texts
+  for (const X of TEXTS) { const vis = t >= X.a - .05 && t < X.b + .05; [X.eb, X.hd, X.sb].forEach(e => e.style.display = vis ? '' : 'none'); if (!vis) continue;
+    const ko = p(t, X.b - .22, X.b);
+    const ke = p(t, X.a, X.a + .35); X.eb.style.opacity = ease(ke) * (1 - ko); X.eb.style.transform = `translateX(${(1 - ex(ke)) * -40}px)`;
+    X.hd.querySelectorAll('.ln > span').forEach((s, i) => { const kk = p(t, X.a + .08 + i * .1, X.a + .55 + i * .1); s.style.transform = `translateY(${(1 - ex(kk)) * 110 - ease(ko) * 110}%)`; });
+    const ks = p(t, X.a + .35, X.a + .75); X.sb.style.opacity = ease(ks) * (1 - ko); X.sb.style.transform = `translateY(${(1 - ex(ks)) * 24}px)`; }
+  // phones
+  for (const P of PHONES) { const vis = t >= P.a - .05 && t < P.b + .05; P.el.style.display = vis ? '' : 'none'; if (!vis) continue;
+    const k = p(t, P.a, P.a + .6), ko = p(t, P.b - .25, P.b);
+    P.el.style.opacity = ease(k) * (1 - ko);
+    P.el.style.transform = `perspective(2200px) translate(${(1 - ex(k)) * 380 - ease(ko) * 300}px,${(1 - ex(k)) * 60 + Math.sin(t * 1.3) * 6}px) rotateY(${lerp(-24, -7, ex(k)) + ko * -10}deg) rotateX(${lerp(8, 3, ex(k))}deg) rotateZ(${lerp(4, 1, ex(k))}deg)`;
+    let si = 0; P.shots.forEach((s, i) => { if (t >= s.t) si = i; });
+    P.shots.forEach((s, i) => { const on = i === si; const same = i > 0 && P.shots[i - 1].img.getAttribute('src') === s.img.getAttribute('src');
+      s.img.style.opacity = on ? (i === 0 || same ? 1 : ease(p(t, s.t, s.t + .3))) : (i === si - 1 && P.shots[si].img.getAttribute('src') !== s.img.getAttribute('src') ? 1 : 0); s.img.style.zIndex = on ? 2 : 1;
+      const sc = s.sa != null ? lerp(s.s0, s.s1, eio(p(t, s.sa, s.sb))) : s.s0; s.img.style.transform = `translateY(${-sc * K}px)`; }); }
+  for (const H of HLS) { const o = Math.min(ease(p(t, H.a, H.a + .2)), 1 - ease(p(t, H.b - .2, H.b))); H.el.style.opacity = o; H.el.style.transform = `scale(${lerp(1.08, 1, ex(p(t, H.a, H.a + .3)))})`; }
+  // lenses
+  for (const Z of LENSES) { const vis = t >= Z.a - .05 && t < Z.b + .05; Z.el.style.display = vis ? '' : 'none'; if (!vis) continue;
+    const k = p(t, Z.a, Z.a + .45), ko = p(t, Z.b - .25, Z.b); Z.el.style.opacity = ease(k) * (1 - ease(ko));
+    Z.el.style.transform = `perspective(1800px) translateY(${(1 - ex(k)) * 90 + Math.sin(t * 1.7) * 5}px) rotateX(${(1 - ex(k)) * 14}deg) scale(${lerp(.86, 1, ex(k))})`; }
+  // chips
+  for (const C of CHIPS) { const vis = t >= C.t - .05 && t < C.b; C.el.style.display = vis ? '' : 'none'; if (!vis) continue; const k = p(t, C.t, C.t + .35), ko = p(t, C.b - .25, C.b);
+    C.el.style.opacity = ease(k) * (1 - ko); C.el.style.transform = `translateX(${(1 - ex(k)) * 200}px) scale(${lerp(.7, 1, ex(k))}) translateY(${Math.sin(t * 2 + C.t) * 5}px)`; }
+  // typed search
+  { const vis = t >= 25.6 && t < 27.4; TY.style.opacity = vis ? 1 : 0; const n = [25.9, 26.25, 26.6, 26.95].filter(x => t >= x).length; TY.innerHTML = 'caja'.slice(0, n) + `<b style="opacity:${Math.sin(t * 12) > 0 ? 1 : 0}"></b>`; }
+  // monitors
+  for (const I of ITEMS) { const vis = t >= I.a - .05 && t < I.b + .05; I.el.style.display = vis ? '' : 'none'; if (!vis) continue;
+    const k = p(t, I.a, I.a + .6), ko = p(t, I.b - .25, I.b);
+    I.el.style.opacity = ease(k) * (1 - ko); I.el.style.transform = `perspective(2400px) translateY(${(1 - ex(k)) * 200}px) rotateX(${lerp(18, 4, ex(k))}deg) scale(${lerp(.9, 1, ex(k))})`;
+    if (I.k === 'mon') { // d_video: zoom into player, clip plays inside
+      const pl = M.d_video.player; const z0 = 972 / 1920, z1 = 972 / (pl[2] + 60); const kz = eio(p(t, I.a + .8, I.a + 1.8)); const z = lerp(z0, z1, kz);
+      const fx = lerp(0, pl[0] - 30, kz), fy = lerp(0, pl[1] - (572 / z1 - pl[3]) / 2, kz);
+      const bg = $('mbg'); bg.style.backgroundImage = 'url(tut/d_video.jpg)'; bg.style.backgroundSize = `${1920 * z}px auto`; bg.style.backgroundPosition = `${-fx * z}px ${-fy * z}px`;
+      const cp = $('clip'); const fi = Math.min(CLIPN, Math.max(1, Math.floor((t - 19.9) * 15) + 1)); cp.src = `tut/clip/f${String(fi).padStart(3, '0')}.jpg`;
+      cp.style.left = ((pl[0] - fx) * z) + 'px'; cp.style.top = ((pl[1] - fy) * z) + 'px'; cp.style.width = (pl[2] * z) + 'px'; cp.style.height = (pl[3] * z) + 'px'; cp.style.opacity = t >= 19.9 ? 1 : 0;
+      const PL = $('play'); PL.style.opacity = t > 19.2 && t < 20.1 ? Math.min(ease(p(t, 19.2, 19.5)), 1 - ease(p(t, 19.9, 20.1))) : 0;
+      PL.style.left = (40 + 14 + (pl[0] - fx + pl[2] / 2) * z - 65) + 'px'; PL.style.top = (700 + 14 + (pl[1] - fy + pl[3] / 2) * z - 65) + 'px'; PL.style.transform = `scale(${t > 19.8 && t < 20 ? .85 : 1})`; }
+    if (I.k === 'mon2') {
+      const btn = M.d_caja.btn; const before = t < 39.25; const img = before ? 'd_caja' : 'd_video';
+      const kz = eio(p(t, I.a + .9, I.a + 2.0)); const z1 = 972 / 760; const z = before ? lerp(972 / 1920, z1, kz) : 972 / 1920;
+      const fx = before ? lerp(0, 1920 - 760, kz) : 0, fy = before ? lerp(0, 0, kz) : 0;
+      const bg = $('mbg2'); bg.style.backgroundImage = `url(tut/${img}.jpg)`; bg.style.backgroundSize = `${1920 * z}px auto`; bg.style.backgroundPosition = `${-fx * z}px ${-fy * z}px`;
+      const H = $('mhl'); const ho = before ? Math.min(ease(p(t, 37.6, 37.9)), 1) : 0; H.style.opacity = ho;
+      H.style.left = ((btn[0] - fx) * z - 8) + 'px'; H.style.top = ((btn[1] - fy) * z - 8) + 'px'; H.style.width = (btn[2] * z + 16) + 'px'; H.style.height = (btn[3] * z + 16) + 'px';
+      I.tap = { x: 40 + 14 + (btn[0] - fx + btn[2] / 2) * z, y: 700 + 14 + (btn[1] - fy + btn[3] / 2) * z }; } }
+  // seen sticker
+  { const k = p(t, 34.35, 34.7), ko = p(t, 35.75, 36); SEEN.style.opacity = ease(k) * (1 - ko); SEEN.style.transform = `scale(${lerp(.3, 1, ex(k)) + Math.sin(cl(k) * Math.PI) * .12}) rotate(-6deg)`; }
+  // finger taps
+  { const F = $('finger'), R = $('ripple'); let tap = null;
+    const T2 = ITEMS[1].tap ? { ...ITEMS[1].tap, t: 39.0 } : null;
+    for (const T of [TAP1, TAP5, T2, { x: 0, y: 0, t: -9 }]) if (T && t > T.t - .7 && t < T.t + .5) tap = T;
+    if (tap) { const kk = eio(p(t, tap.t - .7, tap.t - .1)); F.style.opacity = Math.min(1, p(t, tap.t - .7, tap.t - .5)) * (1 - p(t, tap.t + .3, tap.t + .5));
+      F.style.left = (lerp(tap.x + 240, tap.x, kk) - 55) + 'px'; F.style.top = (lerp(tap.y + 300, tap.y, kk) - 55) + 'px'; F.style.transform = `scale(${t > tap.t - .06 && t < tap.t + .14 ? .8 : 1})`;
+      const rk = p(t, tap.t, tap.t + .5); const rr = 20 + 90 * ease(rk); R.style.opacity = t >= tap.t ? 1 - rk : 0; R.style.left = (tap.x - rr) + 'px'; R.style.top = (tap.y - rr) + 'px'; R.style.width = R.style.height = 2 * rr + 'px'; }
+    else { F.style.opacity = 0; R.style.opacity = 0; } }
+  // outro
+  { const vis = t >= OUTA - .3; OU.style.display = vis ? '' : 'none';
+    if (vis) { const ch = OU.firstElementChild.children; [OUTA, OUTA + .25, OUTA + .55, OUTA + 1.0, OUTA + 1.5, OUTA + 1.9].forEach((a, i) => { const kk = p(t, a, a + .5); ch[i].style.opacity = ease(kk); ch[i].style.transform = `translateY(${(1 - ex(kk)) * 50}px) scale(${i === 0 ? lerp(.5, 1, ex(kk)) : 1})`; ch[i].style.filter = i === 2 ? `blur(${(1 - ease(kk)) * 12}px)` : ''; }); } }
+  // wipe
+  { const Wp = $('wipe'); let o = 0, x = -1800; for (const w of WIPES) if (t >= w && t < w + .55) { const k = eio(p(t, w, w + .55)); x = lerp(-1700, 1500, k); o = 1; } Wp.style.opacity = o; Wp.style.left = x + 'px'; }
+  // chrome
+  const light = t >= 8 && t < 41.8; $('wm').style.opacity = light ? 1 : 0; $('segs').style.opacity = light ? 1 : 0;
+  $('segs').querySelectorAll('b').forEach((b, i) => { b.style.width = (p(t, FEATS[i][0], FEATS[i][0] + FEATS[i][1]) * 100) + '%'; });
+};
+</script>
+<script>render(0);</script>
+</body></html>
