@@ -1991,6 +1991,66 @@ async function generarAsientosAutomaticosInterno() {
     await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
     // Cobros de Fiados: mismo asiento que un pago de crédito (Debe Caja / Haber Cuentas por Cobrar), usando esa misma configuración.
     await procesarTipo('pago_fiado', 'fiado_pagos', 'monto', null, null, 'Cobro de fiado', null, null, 'created_at', null, { mapeoDe: 'pago_credito' });
+
+    // DEVOLUCIONES DE VENTA (DEV-…): el asiento contrario a la venta, solo por lo devuelto.
+    //   Debe Ventas (y IVA por pagar, si está configurado) = valor devuelto
+    //   Haber Caja = dinero devuelto al cliente · Haber Cuentas por Cobrar = lo rebajado de su deuda
+    //   Debe Inventario / Haber Costo de ventas = costo de lo que volvió en buen estado (lo dañado queda como costo)
+    // Usa las mismas cuentas que ya están configuradas para Venta, Crédito otorgado, Costo de ventas e IVA.
+    {
+      const mV = mapeo.get('venta'), mCr = mapeo.get('credito_otorgado'), mCo = mapeo.get('costo_ventas'), mIv = mapeo.get('iva_ventas');
+      const ctaVentas = mV?.cuenta_haber_id || mCr?.cuenta_haber_id || null;
+      const ctaCaja = mV?.cuenta_debe_id || null, ctaCxC = mCr?.cuenta_debe_id || null;
+      let devs = [];
+      try {
+        let desdeIdx = 0; const TAM = 1000;
+        while (true) {
+          let q = F.lector.from('devoluciones_venta').select('*').eq('auth_user_id', F.uid);
+          if (!F.todoElHistorial) q = q.gte('fecha', desde).lte('fecha', hasta);
+          const { data: pagina, error: eDev } = await q.order('fecha').range(desdeIdx, desdeIdx + TAM - 1);
+          if (eDev) break;   // tabla aún no disponible: no hay devoluciones que asentar
+          devs = devs.concat(pagina || []);
+          if (!pagina || pagina.length < TAM) break;
+          desdeIdx += TAM;
+        }
+      } catch (_) { devs = []; }
+      const numVenta = new Map();
+      const idsV = [...new Set(devs.map(d => d.venta_id))];
+      for (let i = 0; i < idsV.length; i += 200) {
+        const { data: vs } = await F.lector.from('ventas').select('id, numero_venta').in('id', idsV.slice(i, i + 200));
+        (vs || []).forEach(v => numVenta.set(v.id, v.numero_venta));
+      }
+      for (const dev of devs) {
+        if (yaHechos.has(`devolucion_venta:${dev.id}`)) { saltados++; continue; }
+        const total = round2(Number(dev.total || 0));
+        const dinero = round2(Number(dev.monto_dinero || 0)), deuda = round2(Number(dev.monto_credito || 0));
+        if (total <= 0 && !(Number(dev.costo_reingresado) > 0)) continue;
+        if (!ctaVentas || (dinero > 0 && !ctaCaja) || (deuda > 0 && !ctaCxC)) { if (F === fuentesConta[0]) sinConfigurar++; continue; }
+        const iva = (mIv && mIv.cuenta_haber_id) ? Math.min(round2(Number(dev.impuesto || 0)), total) : 0;
+        const costoRe = (mCo && mCo.cuenta_debe_id && mCo.cuenta_haber_id) ? round2(Number(dev.costo_reingresado || 0)) : 0;
+        const numero = (await sbClient.rpc('generar_numero_asiento', { p_user_id: STATE.userId })).data;
+        const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
+          auth_user_id: STATE.userId, numero, fecha: String(dev.fecha).slice(0, 10),
+          concepto: `${F.etiqueta}Devolución ${dev.numero} de venta ${numVenta.get(dev.venta_id) || ''}`.trim(),
+          estado: 'borrador', origen: 'automatico', referencia_tipo: 'devolucion_venta', referencia_id: dev.id,
+          usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+        }).select().single();
+        if (errA || !asiento) continue;
+        const L = (cuenta_id, debe, haber, orden, descripcion) => ({ auth_user_id: STATE.userId, asiento_id: asiento.id, cuenta_id, debe: round2(debe), haber: round2(haber), orden, descripcion });
+        const lineas = [];
+        if (round2(total - iva) > 0) lineas.push(L(ctaVentas, total - iva, 0, 0, 'Devolución de venta'));
+        if (iva > 0) lineas.push(L(mIv.cuenta_haber_id, iva, 0, 1, 'IVA de lo devuelto'));
+        if (dinero > 0) lineas.push(L(ctaCaja, 0, dinero, 2, 'Dinero devuelto al cliente'));
+        if (deuda > 0) lineas.push(L(ctaCxC, 0, deuda, 3, 'Rebajado de lo que debía el cliente'));
+        if (costoRe > 0) {
+          lineas.push(L(mCo.cuenta_haber_id, costoRe, 0, 10, 'Mercadería devuelta al inventario'));
+          lineas.push(L(mCo.cuenta_debe_id, 0, costoRe, 11, 'Costo de lo vendido (devolución)'));
+        }
+        await sbClient.from('asientos_detalle').insert(lineas);
+        const { error: errReg } = await sbClient.rpc('registrar_asiento_contable', { p_asiento_id: asiento.id });
+        if (!errReg) creados++;
+      }
+    }
     // IVA pagado en el gasto (opcional): si el mapeo iva_gastos esta
     // configurado, se separa de la cuenta de Gastos hacia su propia
     // cuenta de "IVA Acreditable" -- si nadie lo configuro, el
@@ -2255,9 +2315,22 @@ async function actualizarBannerAsientosPendientes() {
 
     const total = ['venta','credito_otorgado','pago_credito','gasto','compra','pago_salario','cxp_generada','pago_cxp','pago_impuesto','pago_retenciones_ir','aporte_patronal']
       .reduce((s, tipo) => s + soloSiMapeado(tipo), 0) + (mapeo.get('pago_credito') ? (porTipo.get('pago_fiado')||0) : 0);
+    // Devoluciones de venta aún sin asiento (se cuentan aparte: son un documento nuevo)
+    let pendDev = 0;
+    if (mapeo.get('venta') || mapeo.get('credito_otorgado')) {
+      try {
+        const { count: nDev } = await sbClient.from('devoluciones_venta').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId);
+        if (nDev) {
+          const { count: nAs } = await sbClient.from('asientos_contables').select('id', { count: 'exact', head: true })
+            .eq('auth_user_id', STATE.userId).eq('origen', 'automatico').eq('referencia_tipo', 'devolucion_venta');
+          pendDev = Math.max(0, (nDev || 0) - (nAs || 0));
+        }
+      } catch (_) { pendDev = 0; }
+    }
 
-    if (total > 0) {
-      tituloEl.textContent = `${total} movimiento${total===1?'':'s'} sin registrar contablemente`;
+    const totalConDev = total + pendDev;
+    if (totalConDev > 0) {
+      tituloEl.textContent = `${totalConDev} movimiento${totalConDev===1?'':'s'} sin registrar contablemente`;
       descEl.textContent = 'Ventas, gastos, compras, créditos, cuentas por pagar y salarios — todo en un clic.';
     } else {
       tituloEl.textContent = '✅ Tu contabilidad está al día';

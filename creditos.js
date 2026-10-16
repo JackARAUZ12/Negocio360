@@ -1576,6 +1576,18 @@
   }
   window.abrirEditarProductosCredito = abrirEditarProductosCredito;
 
+
+  // Devoluciones (Ventas): una venta con devoluciones ya no se anula ni se cambia desde aquí.
+  // Devuelve un mensaje si no se puede seguir, o null. Se revisa ANTES de tocar inventario o Caja.
+  async function bloqueoDevolucionesVenta(cli, ventaId) {
+    if (!ventaId) return null;
+    try {
+      const r = await cli.from('devoluciones_venta').select('id', { count: 'exact', head: true }).eq('venta_id', ventaId);
+      if (r.error) return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.';
+      return (r.count || 0) > 0 ? 'La venta de esto tiene devoluciones registradas (Ventas › Devolución): ya no se puede anular ni cambiar desde aquí.' : null;
+    } catch (_) { return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.'; }
+  }
+
   async function confirmarEditarProductosCredito() {
     const creditoId = EDITANDO_PRODUCTOS_CREDITO_ID;
     if (!CS.ncItems.length) { showToast('Agrega al menos un producto o servicio', 'error'); return; }
@@ -1586,6 +1598,7 @@
       const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
       if (!credito) throw new Error('Crédito no encontrado');
       if (Number(credito.saldo_pendiente) <= 0) throw new Error('Este crédito ya está totalmente pagado');
+      { const bloqDev = await bloqueoDevolucionesVenta(_sb, credito.venta_id); if (bloqDev) throw new Error(bloqDev); }
 
       const { data: detallesViejos } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id);
 
@@ -2950,6 +2963,7 @@
       const { data: pagosFrescos } = await _sb.from('creditos_pagos').select('id')
         .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).eq('estado','completado');
       if ((pagosFrescos || []).length > 0) throw new Error('Este crédito ya tiene pagos registrados. Anula cada pago primero.');
+      { const bloqDev = await bloqueoDevolucionesVenta(_sb, creditoFresco.venta_id); if (bloqDev) throw new Error(bloqDev); }
 
       // Si tiene una venta real vinculada (tipo 'venta' con
       // productos), devolver el stock de cada producto/combo -- mismo

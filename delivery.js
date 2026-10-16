@@ -1073,6 +1073,17 @@ function abrirReportarRobo(pedidoId) {
   openModal('modal-reportar-robo');
 }
 
+// Devoluciones (Ventas): una venta con devoluciones ya no se anula ni se cambia desde aquí.
+// Devuelve un mensaje si no se puede seguir, o null. Se revisa ANTES de tocar inventario o Caja.
+async function bloqueoDevolucionesVenta(cli, ventaId) {
+  if (!ventaId) return null;
+  try {
+    const r = await cli.from('devoluciones_venta').select('id', { count: 'exact', head: true }).eq('venta_id', ventaId);
+    if (r.error) return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.';
+    return (r.count || 0) > 0 ? 'La venta de esto tiene devoluciones registradas (Ventas › Devolución): ya no se puede anular ni cambiar desde aquí.' : null;
+  } catch (_) { return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.'; }
+}
+
 async function reportarRobo() {
   const errEl = document.getElementById('rr-error');
   errEl.textContent = '';
@@ -1087,6 +1098,8 @@ async function reportarRobo() {
     // stock NUNCA se devuelve aquí -- es la unica diferencia real
     // frente a una anulación normal.
     if (p.venta_id) {
+      const bloqDev = await bloqueoDevolucionesVenta(sb, p.venta_id);
+      if (bloqDev) { errEl.textContent = bloqDev; return; }
       await sb.from('ventas').update({
         estado: 'anulada', observaciones: `Anulada por robo/pérdida en Delivery ${p.numero}. ${obs}`,
       }).eq('id', p.venta_id).eq('auth_user_id', STATE.userId);

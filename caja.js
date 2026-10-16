@@ -919,7 +919,7 @@ let movToAnular = null;
 // anular el documento. Los demás tipos (pagos a proveedor, salarios,
 // fiados, producción, movimientos manuales) siguen anulándose aquí,
 // porque Caja es su única forma de anularlos.
-const CAJA_ANULA_DESDE_MODULO = { venta: 'Ventas', gasto: 'Gastos', compra: 'Compras', credito: 'Créditos' };
+const CAJA_ANULA_DESDE_MODULO = { venta: 'Ventas', gasto: 'Gastos', compra: 'Compras', credito: 'Créditos', devolucion_venta: 'Ventas (devolución)' };
 function moduloQueAnula(m) {
   if (!m || !m.referencia_id) return null;
   return CAJA_ANULA_DESDE_MODULO[m.referencia_tipo] || null;

@@ -529,6 +529,17 @@ async function ajustarCompras(clienteId, monto, signo) {
   } catch (e) { console.warn('ajustarCompras:', e); }
 }
 
+// Devoluciones (Ventas): una venta con devoluciones ya no se anula ni se cambia desde aquí.
+// Devuelve un mensaje si no se puede seguir, o null. Se revisa ANTES de tocar inventario o Caja.
+async function bloqueoDevolucionesVenta(cli, ventaId) {
+  if (!ventaId) return null;
+  try {
+    const r = await cli.from('devoluciones_venta').select('id', { count: 'exact', head: true }).eq('venta_id', ventaId);
+    if (r.error) return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.';
+    return (r.count || 0) > 0 ? 'La venta de esto tiene devoluciones registradas (Ventas › Devolución): ya no se puede anular ni cambiar desde aquí.' : null;
+  } catch (_) { return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.'; }
+}
+
 async function devolverStockDeVenta(ventaId) {
   const { data: dets } = await sb.from('venta_detalles').select('producto_id,cantidad,tipo_item').eq('venta_id', ventaId);
   for (const d of (dets || [])) {
@@ -662,6 +673,10 @@ async function eliminarFiado(id) {
   if ((FD.pagos[id] || []).length) {
     showToast('Este fiado ya tiene abonos o pagos registrados, por eso no se puede eliminar.', 'error');
     return;
+  }
+  if (f.venta_id) {
+    const bloqDev = await bloqueoDevolucionesVenta(sb, f.venta_id);
+    if (bloqDev) { showToast(bloqDev, 'error'); return; }
   }
   const extra = f.tipo === 'productos' ? ' Los productos vuelven al inventario.' : '';
   const ok = await confirmar('¿Eliminar este fiado?', `Se eliminará el fiado de ${fmt(f.monto_total)} de ${f.cliente_nombre}.${extra}`, 'Sí, eliminar', true);

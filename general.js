@@ -561,13 +561,16 @@ async function fetchVentas() {
     .eq('estado', 'completada')
     .gte('fecha', from).lte('fecha', to)
     .order('fecha', { ascending:false });
-  R.cache.ventas = data || [];
+  // Devoluciones (DEV-…) del período: van como filas en negativo, así todos los totales quedan NETOS.
+  const devs = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, R.userId, from, to) : [];
+  R.cache.ventas = (data || []).concat(devs).sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
   return R.cache.ventas;
 }
 
 async function fetchVentasDetalles() {
   if (!R.cache.ventas.length) return [];
-  const ventaIds = R.cache.ventas.map(v => v.id);
+  const ventaIds = R.cache.ventas.filter(v => !v.es_devolucion).map(v => v.id);
+  if (!ventaIds.length) return [];
   const { data } = await sb.from('venta_detalles')
     .select('venta_id,producto_id,producto_nombre,tipo_item,cantidad,precio,costo,subtotal,ganancia')
     .eq('auth_user_id', R.userId)
@@ -587,7 +590,7 @@ function calcVentasResumen(ventas) {
   const total    = ventas.reduce((s,v) => s + (Number(v.total) - Number(v.impuesto||0)), 0);
   const costo    = ventas.reduce((s,v) => s+Number(v.costo_total),0);
   const ganancia = total - costo;
-  const count    = ventas.length;
+  const count    = ventas.filter(v => !v.es_devolucion).length; // las devoluciones no son transacciones de venta
   const ticket   = count>0 ? total/count : 0;
   // "Venta mayor" usa el total real cobrado al cliente (con IVA incluido),
   // igual que la columna "Total" del historial de Ventas — es el monto
@@ -875,6 +878,9 @@ async function fetchDatosMensuales() {
 
   const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const ventas   = new Array(12).fill(0);
+  // Devoluciones del año: restan en el mes en que ocurrieron
+  const devsAnio = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, R.userId, start, end) : [];
+  if (resV && resV.data) resV.data = resV.data.concat(devsAnio);
   const compras  = new Array(12).fill(0);
   const gastos   = new Array(12).fill(0);
   const ganancias= new Array(12).fill(0);

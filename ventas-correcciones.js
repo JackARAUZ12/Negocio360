@@ -43,6 +43,10 @@
     const razones = [];
     if (!v) return { ok: false, razones: ['No se encontró la venta.'], detalles: [] };
     if (v.estado !== 'completada') razones.push('Solo se pueden corregir ventas completadas.');
+    if (window.N360DevolucionesVenta) {
+      const bloqDev = await N360DevolucionesVenta.bloqueoPorDevoluciones(sb, v.id);
+      if (bloqDev) razones.push(bloqDev);
+    }
 
     const { data: detalles, error: errDet } = await sb.from('venta_detalles').select('*')
       .eq('venta_id', v.id).eq('auth_user_id', S.userId);
@@ -309,6 +313,10 @@
     const r = [];
     if (v.estado !== 'completada') r.push('La venta no está completada.');
     if (v.canje_recompensa_id) r.push('Tiene un canje de puntos.');
+    if (window.N360DevolucionesVenta) {
+      const bloqDev = await N360DevolucionesVenta.bloqueoPorDevoluciones(sb, v.id);
+      if (bloqDev) r.push(bloqDev);
+    }
     if (await contar('creditos', 'venta_id', v.id)) r.push('Tiene un crédito asociado.');
     if (await contar('puntos_movimientos', 'venta_id', v.id)) r.push('Ya generó puntos para su cliente.');
     if (await contar('garantias_clientes', 'venta_id', v.id)) r.push('Tiene garantías a nombre del cliente.');

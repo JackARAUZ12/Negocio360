@@ -2059,6 +2059,12 @@ function obtenerRestriccionPerfilDashboard() {
 function fmtMonedaDash(v, sym) {
   return sym + convertirParaMostrar(v, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2});
 }
+function devolucionesDash(deltaEl, devs, sym) {
+  if (!deltaEl || !devs || !devs.length) return;
+  const tot = devs.reduce((s, r) => s - ((Number(r.total) || 0) - (Number(r.impuesto) || 0)), 0);
+  if (tot <= 0.004) return;
+  deltaEl.insertAdjacentHTML('beforeend', `<br><span style="font-size:11.5px;color:var(--danger)" title="Devoluciones del período (ya restadas del total)">↩️ Devoluciones −${fmtMonedaDash(tot, sym)}</span>`);
+}
 function desgloseCobroDash(deltaEl, filas, sym) {
   if (!deltaEl || !filas || !filas.length) return;
   let contado = 0, credito = 0;
@@ -2082,7 +2088,10 @@ async function loadKPIs(userId) {
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', today).lte('fecha', today + 'T23:59:59');
     if (restriccionKpiDash) qDia = qDia.eq('creado_por_nombre', restriccionKpiDash);
-    const { data } = await qDia;
+    const { data: ventasDia } = await qDia;
+    // Devoluciones del día: restan (ventas netas); no cuentan como ventas
+    const devDia = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sbClient, userId, today, today, { creadoPor: restriccionKpiDash || null }) : [];
+    const data = ventasDia ? ventasDia.concat(devDia) : null;
     if (data) {
       // FIX: usar ingreso NETO (total - impuesto), el IVA no es ingreso propio,
       // es dinero recaudado para el fisco y ya se contabiliza aparte en Impuestos.
@@ -2091,8 +2100,9 @@ async function loadKPIs(userId) {
         `<span class="currency-symbol">${sym}</span>${convertirParaMostrar(total, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
       const delta = document.getElementById('kpi-ventas-dia-delta');
       delta.className = 'kpi-delta ' + (total > 0 ? 'positive' : 'neutral');
-      delta.textContent = total > 0 ? `${data.length} venta${data.length !== 1 ? 's' : ''} hoy` : 'Sin ventas hoy';
+      delta.textContent = ventasDia.length ? `${ventasDia.length} venta${ventasDia.length !== 1 ? 's' : ''} hoy` : 'Sin ventas hoy';
       desgloseCobroDash(delta, data, sym);
+      devolucionesDash(delta, devDia, sym);
     }
   } catch(e) { console.warn('kpi-dia:', e); }
 
@@ -2102,7 +2112,9 @@ async function loadKPIs(userId) {
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
     if (restriccionKpiDash) qMesDash = qMesDash.eq('creado_por_nombre', restriccionKpiDash);
-    const { data } = await qMesDash;
+    const { data: ventasMesD } = await qMesDash;
+    const devMes = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sbClient, userId, monthStart, today, { creadoPor: restriccionKpiDash || null }) : [];
+    const data = ventasMesD ? ventasMesD.concat(devMes) : null;
     if (data) {
       // FIX: ingreso NETO (sin IVA), igual que en "Ventas del día"
       const total = data.reduce((s, r) => s + ((r.total || 0) - (r.impuesto || 0)), 0);
@@ -2110,8 +2122,9 @@ async function loadKPIs(userId) {
         `<span class="currency-symbol">${sym}</span>${convertirParaMostrar(total, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
       const delta = document.getElementById('kpi-ventas-mes-delta');
       delta.className = 'kpi-delta ' + (total > 0 ? 'positive' : 'neutral');
-      delta.textContent = total > 0 ? `${data.length} ventas este mes` : 'Sin ventas este mes';
+      delta.textContent = ventasMesD.length ? `${ventasMesD.length} ventas este mes` : 'Sin ventas este mes';
       desgloseCobroDash(delta, data, sym);
+      devolucionesDash(delta, devMes, sym);
       // Abonos de créditos cobrados este mes: también entran a Caja (solo para el dueño/admin)
       if (!restriccionKpiDash) {
         try {
@@ -2133,7 +2146,10 @@ async function loadKPIs(userId) {
       .eq('auth_user_id', userId).eq('estado','completada')
       .gte('fecha', monthStart);
     if (restriccionKpiDash) qGanDash = qGanDash.eq('creado_por_nombre', restriccionKpiDash);
-    const { data } = await qGanDash;
+    const { data: ventasGan } = await qGanDash;
+    // Devoluciones del mes: restan ingresos y devuelven al inventario el costo de lo que volvió
+    const devGan = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sbClient, userId, monthStart, today, { creadoPor: restriccionKpiDash || null }) : [];
+    const data = ventasGan ? ventasGan.concat(devGan) : null;
     if (data) {
       // FIX: ingresos = total NETO de IVA (total - impuesto), no el total cobrado
       // al cliente. El IVA se recauda para el fisco, no es ingreso del negocio.
@@ -2384,6 +2400,12 @@ async function loadVentasPorDia(userId, days = 7) {
   const labels = [];
   const values = [];
   const restriccionChart = obtenerRestriccionPerfilDashboard();
+  // Devoluciones de esos días (restan del día en que ocurrieron)
+  let devChart = [];
+  try {
+    const ini = new Date(); ini.setDate(ini.getDate() - (days - 1));
+    devChart = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sbClient, userId, ymd(ini), todayISO(), { creadoPor: restriccionChart || null }) : [];
+  } catch (_) { devChart = []; }
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
@@ -2395,7 +2417,8 @@ async function loadVentasPorDia(userId, days = 7) {
         .gte('fecha', iso).lt('fecha', iso + 'T24:00:00');
       if (restriccionChart) qChart = qChart.eq('creado_por_nombre', restriccionChart);
       const { data } = await qChart;
-      values.push(data ? data.reduce((s, r) => s + (r.total || 0), 0) : 0);
+      const devDiaChart = devChart.filter(r => String(r.fecha).slice(0, 10) === iso).reduce((s, r) => s + (Number(r.total) || 0), 0);
+      values.push((data ? data.reduce((s, r) => s + (r.total || 0), 0) : 0) + devDiaChart);
     } catch { values.push(0); }
   }
   renderLineChart(labels, values);
@@ -3014,6 +3037,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>
+<script src="devoluciones-venta.js?v=20261016a"></script>
 <script src="modulos-guard.js?v=20261015a"></script>
 
 <!-- =====================================================

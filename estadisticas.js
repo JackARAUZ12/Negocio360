@@ -312,9 +312,13 @@ async function cargarTodo() {
   const categoriaPorProducto = {};
   (productos.data || []).forEach(p => { if (p.categoria) categoriaPorProducto[p.id] = p.categoria; });
 
+  // Devoluciones (DEV-…): restan en el período en que ocurrieron (ventas netas).
+  const devAct = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, uid, from, to) : [];
+  const devAnt = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, uid, anterior.from, anterior.to) : [];
+
   EST.data = {
-    ventas: ventas.data || [],
-    ventasAnt: ventasAnt.data || [],
+    ventas: (ventas.data || []).concat(devAct),
+    ventasAnt: (ventasAnt.data || []).concat(devAnt),
     ventaDetalles,
     compras: compras.data || [],
     gastos: gastos.data || [],
@@ -638,7 +642,7 @@ function renderMejorPeorDiaSemana() {
     const dt = parseFechaSegura(v.fecha); if (!dt) return;
     const dow = dt.getDay();
     totalPorDia[dow] += parseFloat(v.total||0) - parseFloat(v.impuesto||0);
-    cantPorDia[dow]++;
+    if (!v.es_devolucion) cantPorDia[dow]++;
   });
   if (!d.ventas.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay ventas suficientes en este período para calcularlo.</p>';
@@ -672,7 +676,9 @@ function renderMetodosPago() {
   if (!el) return;
   const d = EST.data;
   const porMetodo = {};
+  let devueltoPeriodo = 0;
   d.ventas.forEach(v => {
+    if (v.es_devolucion) { devueltoPeriodo -= parseFloat(v.total || 0); return; }   // se muestran aparte
     const metodo = v.metodo_pago_nombre || 'Sin especificar';
     porMetodo[metodo] = (porMetodo[metodo] || 0) + (parseFloat(v.total||0));
   });
@@ -697,7 +703,9 @@ function renderMetodosPago() {
       <span id="est-abonos-periodo" title="Abonos que los clientes pagaron a sus créditos en este período"></span>
     </div>` : '';
   if (credito > 0.004) cargarAbonosPeriodoEst();
-  el.innerHTML = resumenCobro + entradas.map(([metodo, monto], i) => {
+  const lineaDev = devueltoPeriodo > 0.004
+    ? `<div id="est-devoluciones-periodo" style="font-size:12.5px;margin-bottom:10px;color:var(--danger)">↩️ Devoluciones del período: <strong>−${fmt(devueltoPeriodo)}</strong> <span style="color:var(--text-muted)">(ya restadas de los totales)</span></div>` : '';
+  el.innerHTML = resumenCobro + lineaDev + entradas.map(([metodo, monto], i) => {
     const pct = totalGeneral ? (monto/totalGeneral*100) : 0;
     return `
     <div style="margin-bottom:10px">
@@ -753,7 +761,8 @@ function renderRentabilidad() {
 
   const gananciaNeta  = gananciaBruta - gastosOp + otrosIngresos - otrosEgresos;
   const margenGlobal  = ingresos > 0 ? (gananciaNeta / ingresos) * 100 : 0;
-  const ticketPromedio = d.ventas.length ? ingresos / d.ventas.length : 0;
+  const nVentasReales = d.ventas.filter(v => !v.es_devolucion).length;   // las devoluciones no son "ventas"
+  const ticketPromedio = nVentasReales ? ingresos / nVentasReales : 0;
 
   document.getElementById('kpis-rentabilidad').innerHTML = `
     ${kpiCard('💰', 'var(--success-soft)', 'var(--success)', 'Ganancia neta del período', fmt(gananciaNeta))}
@@ -1130,7 +1139,8 @@ async function cargarYRenderPrediccion() {
         sb.from('compras').select('total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to),
         sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', m.from).lte('fecha', m.to),
       ]);
-      const ingresos = (ventasM.data || []).reduce((s, v) => s + parseFloat(v.total || 0) - parseFloat(v.impuesto || 0), 0);
+      const devM = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, uid, m.from, m.to) : [];
+      const ingresos = (ventasM.data || []).concat(devM).reduce((s, v) => s + parseFloat(v.total || 0) - parseFloat(v.impuesto || 0), 0);
       const compras  = (comprasM.data || []).reduce((s, c) => s + parseFloat(c.total || 0), 0);
       const gastos   = (gastosM.data || []).reduce((s, g) => s + parseFloat(g.monto || 0), 0);
       const egresos  = compras + gastos;

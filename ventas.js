@@ -385,12 +385,16 @@ async function loadKPIs() {
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
     if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
-    const { data: dia } = await qDia;
+    const { data: diaVentas } = await qDia;
+    // Devoluciones del día: restan (ventas netas). No cuentan como "ventas".
+    const devDia = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, S.userId, today, today, { creadoPor: restriccionKpi || null }) : [];
+    const dia = (diaVentas || []).concat(devDia);
 
     const totalDia = (dia||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
-    setKPI('kpi-dia', fmt(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
-      dia?.length > 0 ? `${dia.length} venta${dia.length!==1?'s':''} hoy` : 'Sin ventas hoy', 'sym-dia');
+    setKPI('kpi-dia', fmt(totalDia), diaVentas?.length > 0 ? 'positive' : 'neutral',
+      diaVentas?.length > 0 ? `${diaVentas.length} venta${diaVentas.length!==1?'s':''} hoy` : 'Sin ventas hoy', 'sym-dia');
     mostrarDesgloseCobro('kpi-dia-d', dia);
+    mostrarDevolucionesKpi('kpi-dia-d', devDia);
 
     // Ventas del mes
     // FIX: mismo criterio — ingreso NETO de IVA
@@ -398,16 +402,19 @@ async function loadKPIs() {
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
     if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
-    const { data: mes } = await qMes;
+    const { data: mesVentas } = await qMes;
+    const devMes = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, S.userId, mesStart, today, { creadoPor: restriccionKpi || null }) : [];
+    const mes = (mesVentas || []).concat(devMes);
 
     const totalMes = (mes||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     const ganMes   = (mes||[]).reduce((s,r) => s+Number(r.ganancia),0);
-    const cnt      = mes?.length || 0;
+    const cnt      = mesVentas?.length || 0;
     const ticket   = cnt > 0 ? totalMes/cnt : 0;
 
     setKPI('kpi-mes',     fmt(totalMes), totalMes>0?'positive':'neutral',
       cnt>0?`${cnt} venta${cnt!==1?'s':''} este mes`:'Sin ventas este mes', 'sym-mes');
     mostrarDesgloseCobro('kpi-mes-d', mes);
+    mostrarDevolucionesKpi('kpi-mes-d', devMes);
     setKPI('kpi-count',   cnt.toString(), cnt>0?'positive':'neutral', 'este mes');
     setKPI('kpi-ticket',  fmt(ticket), ticket>0?'positive':'neutral', 'promedio por venta', 'sym-ticket');
     setKPI('kpi-ganancia',fmt(ganMes), ganMes>0?'positive':'neutral', 'este mes', 'sym-gan');
@@ -429,6 +436,15 @@ function mostrarDesgloseCobro(idDelta, filas) {
   const base = dd.textContent;
   dd.innerHTML = `${esc(base)}<br><span style="font-size:11.5px;color:var(--success)" title="Ventas de contado: el dinero entró a Caja">💵 Cobrado ${fmt(contado)}</span>`
     + ` <span style="font-size:11.5px;color:var(--warning)" title="Ventas a crédito: el dinero entra a Caja cuando el cliente abona">· 🧾 A crédito ${fmt(credito)}</span>`;
+}
+
+// Debajo del total: cuánto se devolvió en el período (ya está restado del total).
+function mostrarDevolucionesKpi(idDelta, devs) {
+  const dd = document.getElementById(idDelta);
+  if (!dd || !devs || !devs.length) return;
+  const tot = devs.reduce((s, r) => s - (Number(r.total) - Number(r.impuesto || 0)), 0);
+  if (tot <= 0.004) return;
+  dd.insertAdjacentHTML('beforeend', `<br><span style="font-size:11.5px;color:var(--danger)" title="Devoluciones del período (ya restadas del total)">↩️ Devoluciones −${fmt(tot)}</span>`);
 }
 
 function setKPI(id, value, cls, delta, symId) {
@@ -491,6 +507,8 @@ async function loadVentas() {
     S.ventas = data || [];
     S.ventasTotal = count || 0;
     await cargarCreditoDeVentas(S.ventas);
+    // Devoluciones de cada venta (para la etiqueta "Devuelta")
+    S.devolucionesPorVenta = window.N360DevolucionesVenta ? await N360DevolucionesVenta.porVentas(sb, S.userId, S.ventas.map(v => v.id)) : {};
 
     renderTablaVentas();
     renderPaginacion();
@@ -539,6 +557,13 @@ function esVentaACredito(v) { return v && (v.estado_pago === 'credito' || v.meto
 
 // Etiqueta de la columna Estado: dice si de verdad se cobró.
 function etiquetaPagoVenta(v) {
+  const base = etiquetaPagoVentaBase(v);
+  const dv = v && v.estado === 'completada' ? (S.devolucionesPorVenta || {})[v.id] : null;
+  if (!dv || !(dv.total > 0)) return base;
+  const todo = dv.total >= Number(v.total || 0) - 0.005;
+  return base + ` <span class="estado-badge" style="background:var(--danger-soft);color:var(--danger);white-space:nowrap" title="${esc(dv.numeros.join(', '))}">↩️ ${todo ? 'Devuelta' : 'Devuelta ' + fmt(dv.total)}</span>`;
+}
+function etiquetaPagoVentaBase(v) {
   if (v.estado === 'anulada') return `<span class="estado-badge estado-anulada">Anulada</span>`;
   if (v.estado === 'devuelta') return `<span class="estado-badge estado-devuelta">Devuelta</span>`;
   if (!esVentaACredito(v)) return `<span class="estado-badge estado-completada" title="Venta de contado: el dinero entró a Caja">Pagada</span>`;
@@ -964,6 +989,8 @@ async function abrirDetalle(ventaId) {
     // Botones de "Corregir venta" y edicion segura (nota / cliente)
     try { window.N360Correccion?.decorarDetalle(venta); } catch (eCorr) { console.warn('decorarDetalle:', eCorr); }
     if (esVentaACredito(venta)) pintarCreditoDeVenta(venta);
+    // Devoluciones: botón "↩️ Devolución", las ya hechas y sus candados
+    try { window.N360Devolucion?.decorarDetalle(venta); } catch (eDev) { console.warn('devoluciones:', eDev); }
   } catch(e) {
     body.innerHTML = `<p style="color:var(--danger);padding:20px">Error al cargar detalle: ${e.message}</p>`;
   }
@@ -994,6 +1021,13 @@ async function anularVenta() {
       showToast('Esta venta ya estaba anulada', 'warning');
       closeModal('modal-anular'); closeModal('modal-detalle');
       return;
+    }
+
+    // Devoluciones: una venta con devoluciones no se anula (se revisa ANTES de tocar inventario o Caja;
+    // la base de datos además lo rechaza).
+    if (window.N360DevolucionesVenta) {
+      const bloqDev = await N360DevolucionesVenta.bloqueoPorDevoluciones(sb, id);
+      if (bloqDev) { showToast(bloqDev, 'error'); if (btn) btn.disabled = false; return; }
     }
 
     // Crédito con abonos: no se anula desde aquí. Antes, la deuda salía de los
