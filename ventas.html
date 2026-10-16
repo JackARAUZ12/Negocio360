@@ -180,6 +180,26 @@
     .kpi-value{font-size:20px;font-weight:800;color:var(--text-primary);line-height:1.1;
       margin-bottom:5px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
     .kpi-delta{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:3px}
+    /* Desglose debajo de las tarjetas de ventas (cobrado / a crédito / abonos / devoluciones):
+       una fila por concepto, ordenada y que se adapta al ancho de la tarjeta. */
+    .kpi-desglose { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; }
+    .kpi-desglose .kd-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 8px; row-gap: 0;
+      padding: 4px 8px; border-radius: 8px; background: var(--bg-app, rgba(127,127,127,.08)); font-size: 11.5px; line-height: 1.35; min-width: 0; }
+    .kpi-desglose .kd-row span { color: var(--text-secondary); font-weight: 600; min-width: 0; }
+    .kpi-desglose .kd-row b { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* Tarjeta angosta: concepto arriba y monto abajo (ordenado). Tarjeta ancha: en una sola línea. */
+    .kpi-desglose { container-type: inline-size; }
+    .kpi-desglose .kd-row { flex-direction: column; align-items: flex-start; }
+    /* En teléfono, la tarjeta que trae desglose ocupa todo el ancho para que se lea completo */
+    @media (max-width: 520px) { .kpi-card:has(.kpi-desglose) { grid-column: 1 / -1; } }
+    @container (min-width: 210px) {
+      .kpi-desglose .kd-row { flex-direction: row; align-items: baseline; flex-wrap: nowrap; }
+      .kpi-desglose .kd-row b { margin-left: auto; }
+    }
+    .kpi-desglose .kd-ok b { color: var(--success); }
+    .kpi-desglose .kd-cred b { color: var(--warning); }
+    .kpi-desglose .kd-abono b { color: var(--accent); }
+    .kpi-desglose .kd-dev b { color: var(--danger); }
     .kpi-delta.positive{color:var(--success)}
     .kpi-delta.negative{color:var(--danger)}
     .kpi-delta.neutral{color:var(--text-muted)}
@@ -1992,7 +2012,7 @@
 <script src="caja-segura.js?v=20261012a"></script>
 <script src="cliente-repetido.js?v=20261015a"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
-<script src="ventas.js?v=20261016a"></script>
+<script src="ventas.js?v=20261016b"></script>
 <script src="select-buscable.js?v=20261015b"></script>
 <script src="ventas-correcciones.js?v=20261016a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>

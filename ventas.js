@@ -424,8 +424,25 @@ async function loadKPIs() {
 
 // Debajo del total: cuánto se COBRÓ (entró a Caja) y cuánto quedó A CRÉDITO.
 // Mismo criterio que el total de la tarjeta (neto de impuestos); no cambia ningún cálculo.
+// Caja de desglose debajo de la tarjeta (una sola por tarjeta; se rehace en cada carga)
+function cajaDesglose(deltaEl, reiniciar) {
+  if (!deltaEl) return null;
+  let box = deltaEl.nextElementSibling;
+  if (box && box.classList.contains('kpi-desglose')) { if (reiniciar) box.remove(); else return box; }
+  if (reiniciar) return null;
+  box = document.createElement('div');
+  box.className = 'kpi-desglose';
+  deltaEl.insertAdjacentElement('afterend', box);
+  return box;
+}
+function filaDesglose(deltaEl, clase, etiqueta, monto, titulo) {
+  const box = cajaDesglose(deltaEl);
+  if (!box) return;
+  box.insertAdjacentHTML('beforeend', `<div class="kd-row ${clase}" title="${titulo}"><span>${etiqueta}</span><b>${monto}</b></div>`);
+}
 function mostrarDesgloseCobro(idDelta, filas) {
   const dd = document.getElementById(idDelta);
+  cajaDesglose(dd, true);   // se rehace en cada carga
   if (!dd || !filas || !filas.length) return;
   let contado = 0, credito = 0;
   filas.forEach(r => {
@@ -433,9 +450,8 @@ function mostrarDesgloseCobro(idDelta, filas) {
     if (esVentaACredito(r)) credito += neto; else contado += neto;
   });
   if (credito <= 0.004) return; // sin ventas a crédito: se deja el texto de siempre
-  const base = dd.textContent;
-  dd.innerHTML = `${esc(base)}<br><span style="font-size:11.5px;color:var(--success)" title="Ventas de contado: el dinero entró a Caja">💵 Cobrado ${fmt(contado)}</span>`
-    + ` <span style="font-size:11.5px;color:var(--warning)" title="Ventas a crédito: el dinero entra a Caja cuando el cliente abona">· 🧾 A crédito ${fmt(credito)}</span>`;
+  filaDesglose(dd, 'kd-ok', '💵 Cobrado', fmt(contado), 'Ventas de contado: el dinero entró a Caja');
+  filaDesglose(dd, 'kd-cred', '🧾 A crédito', fmt(credito), 'Ventas a crédito: el dinero entra a Caja cuando el cliente abona');
 }
 
 // Debajo del total: cuánto se devolvió en el período (ya está restado del total).
@@ -444,7 +460,7 @@ function mostrarDevolucionesKpi(idDelta, devs) {
   if (!dd || !devs || !devs.length) return;
   const tot = devs.reduce((s, r) => s - (Number(r.total) - Number(r.impuesto || 0)), 0);
   if (tot <= 0.004) return;
-  dd.insertAdjacentHTML('beforeend', `<br><span style="font-size:11.5px;color:var(--danger)" title="Devoluciones del período (ya restadas del total)">↩️ Devoluciones −${fmt(tot)}</span>`);
+  filaDesglose(dd, 'kd-dev', '↩️ Devoluciones', '−' + fmt(tot), 'Devoluciones del período (ya restadas del total)');
 }
 
 function setKPI(id, value, cls, delta, symId) {

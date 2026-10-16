@@ -399,6 +399,26 @@
       align-items: center;
       gap: 3px;
     }
+    /* Desglose debajo de las tarjetas de ventas (cobrado / a crédito / abonos / devoluciones):
+       una fila por concepto, ordenada y que se adapta al ancho de la tarjeta. */
+    .kpi-desglose { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; }
+    .kpi-desglose .kd-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 8px; row-gap: 0;
+      padding: 4px 8px; border-radius: 8px; background: var(--bg-app, rgba(127,127,127,.08)); font-size: 11.5px; line-height: 1.35; min-width: 0; }
+    .kpi-desglose .kd-row span { color: var(--text-secondary); font-weight: 600; min-width: 0; }
+    .kpi-desglose .kd-row b { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* Tarjeta angosta: concepto arriba y monto abajo (ordenado). Tarjeta ancha: en una sola línea. */
+    .kpi-desglose { container-type: inline-size; }
+    .kpi-desglose .kd-row { flex-direction: column; align-items: flex-start; }
+    /* En teléfono, la tarjeta que trae desglose ocupa todo el ancho para que se lea completo */
+    @media (max-width: 520px) { .kpi-card:has(.kpi-desglose) { grid-column: 1 / -1; } }
+    @container (min-width: 210px) {
+      .kpi-desglose .kd-row { flex-direction: row; align-items: baseline; flex-wrap: nowrap; }
+      .kpi-desglose .kd-row b { margin-left: auto; }
+    }
+    .kpi-desglose .kd-ok b { color: var(--success); }
+    .kpi-desglose .kd-cred b { color: var(--warning); }
+    .kpi-desglose .kd-abono b { color: var(--accent); }
+    .kpi-desglose .kd-dev b { color: var(--danger); }
     .kpi-delta.positive { color: var(--success); }
     .kpi-delta.negative { color: var(--danger); }
     .kpi-delta.neutral  { color: var(--text-muted); }
@@ -2059,13 +2079,30 @@ function obtenerRestriccionPerfilDashboard() {
 function fmtMonedaDash(v, sym) {
   return sym + convertirParaMostrar(v, empresaConfig?.moneda).toLocaleString('es-NI', {minimumFractionDigits:2,maximumFractionDigits:2});
 }
+// Caja de desglose debajo de la tarjeta (una sola por tarjeta; se rehace en cada carga)
+function cajaDesglose(deltaEl, reiniciar) {
+  if (!deltaEl) return null;
+  let box = deltaEl.nextElementSibling;
+  if (box && box.classList.contains('kpi-desglose')) { if (reiniciar) box.remove(); else return box; }
+  if (reiniciar) return null;
+  box = document.createElement('div');
+  box.className = 'kpi-desglose';
+  deltaEl.insertAdjacentElement('afterend', box);
+  return box;
+}
+function filaDesglose(deltaEl, clase, etiqueta, monto, titulo) {
+  const box = cajaDesglose(deltaEl);
+  if (!box) return;
+  box.insertAdjacentHTML('beforeend', `<div class="kd-row ${clase}" title="${titulo}"><span>${etiqueta}</span><b>${monto}</b></div>`);
+}
 function devolucionesDash(deltaEl, devs, sym) {
   if (!deltaEl || !devs || !devs.length) return;
   const tot = devs.reduce((s, r) => s - ((Number(r.total) || 0) - (Number(r.impuesto) || 0)), 0);
   if (tot <= 0.004) return;
-  deltaEl.insertAdjacentHTML('beforeend', `<br><span style="font-size:11.5px;color:var(--danger)" title="Devoluciones del período (ya restadas del total)">↩️ Devoluciones −${fmtMonedaDash(tot, sym)}</span>`);
+  filaDesglose(deltaEl, 'kd-dev', '↩️ Devoluciones', '−' + fmtMonedaDash(tot, sym), 'Devoluciones del período (ya restadas del total)');
 }
 function desgloseCobroDash(deltaEl, filas, sym) {
+  cajaDesglose(deltaEl, true);   // se rehace en cada carga
   if (!deltaEl || !filas || !filas.length) return;
   let contado = 0, credito = 0;
   filas.forEach(r => {
@@ -2073,7 +2110,8 @@ function desgloseCobroDash(deltaEl, filas, sym) {
     if (r.estado_pago === 'credito' || r.metodo_pago === 'credito' || r.metodo_pago === 'fiado') credito += neto; else contado += neto;
   });
   if (credito <= 0.004) return;
-  deltaEl.insertAdjacentHTML('beforeend', `<br><span style="font-size:11.5px;color:var(--success)" title="Ventas de contado: el dinero entró a Caja">💵 Cobrado ${fmtMonedaDash(contado, sym)}</span> <span style="font-size:11.5px;color:var(--warning)" title="Ventas a crédito: el dinero entra a Caja cuando el cliente abona">· 🧾 A crédito ${fmtMonedaDash(credito, sym)}</span>`);
+  filaDesglose(deltaEl, 'kd-ok', '💵 Cobrado', fmtMonedaDash(contado, sym), 'Ventas de contado: el dinero entró a Caja');
+  filaDesglose(deltaEl, 'kd-cred', '🧾 A crédito', fmtMonedaDash(credito, sym), 'Ventas a crédito: el dinero entra a Caja cuando el cliente abona');
 }
 
 async function loadKPIs(userId) {
@@ -2131,7 +2169,7 @@ async function loadKPIs(userId) {
           const { data: abonos } = await sbClient.from('creditos_pagos').select('monto, estado')
             .eq('auth_user_id', userId).gte('fecha', monthStart);
           const totAb = (abonos || []).filter(a => a.estado !== 'anulado').reduce((s2, a) => s2 + Number(a.monto || 0), 0);
-          if (totAb > 0.004) delta.insertAdjacentHTML('beforeend', `<br><span style="font-size:11.5px;color:var(--accent)" title="Abonos que los clientes pagaron este mes a sus créditos (entraron a Caja)">💳 Abonos de créditos cobrados ${fmtMonedaDash(totAb, sym)}</span>`);
+          if (totAb > 0.004) filaDesglose(delta, 'kd-abono', '💳 Abonos cobrados', fmtMonedaDash(totAb, sym), 'Abonos que los clientes pagaron este mes a sus créditos (entraron a Caja)');
         } catch (eAb) { console.warn('abonos mes:', eAb); }
       }
       dashData.ventasMes = data;
