@@ -974,6 +974,14 @@
             <input type="text" id="ventas-search" placeholder="Buscar cliente, número…" oninput="buscarVentas()"/>
           </div>
         </div>
+        <!-- Forma de pago: solo filtra lo que se lista -->
+        <div class="filtros-row" style="padding-top:0">
+          <span style="font-size:12px;color:var(--text-muted)">Forma de pago:</span>
+          <button class="filter-btn filter-pago-btn active" data-fp="todas"     onclick="setFiltroPago('todas')">Todas</button>
+          <button class="filter-btn filter-pago-btn" data-fp="contado"   onclick="setFiltroPago('contado')" title="Ventas cobradas al momento: el dinero entró a Caja">💵 Contado</button>
+          <button class="filter-btn filter-pago-btn" data-fp="credito"   onclick="setFiltroPago('credito')" title="Ventas a crédito: el dinero entra cuando el cliente abona">🧾 A crédito</button>
+          <button class="filter-btn filter-pago-btn" data-fp="pendiente" onclick="setFiltroPago('pendiente')" title="Ventas a crédito o fiado que todavía deben algo">⏳ Con saldo pendiente</button>
+        </div>
 
         <!-- TABLA -->
         <div class="table-wrap">
@@ -1983,7 +1991,7 @@
 <script src="cantidad-inteligente.js?v=20261009a"></script>
 <script src="caja-segura.js?v=20261012a"></script>
 <script src="cliente-repetido.js?v=20261015a"></script>
-<script src="ventas.js?v=20261015b"></script>
+<script src="ventas.js?v=20261015c"></script>
 <script src="ventas-correcciones.js?v=20261009a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>

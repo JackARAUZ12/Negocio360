@@ -683,7 +683,21 @@ function renderMetodosPago() {
   }
   const totalGeneral = entradas.reduce((s,[,v]) => s+v, 0);
   const colores = ['#6366f1','#22c55e','#f59e0b','#ec4899','#06b6d4','#8b5cf6'];
-  el.innerHTML = entradas.map(([metodo, monto], i) => {
+  // Separación contado / crédito: una venta a crédito NO es dinero cobrado;
+  // entra a Caja con cada abono. Solo es un desglose visual del mismo total.
+  let contado = 0, credito = 0;
+  d.ventas.forEach(v => {
+    const t = parseFloat(v.total || 0);
+    if (v.estado_pago === 'credito' || v.metodo_pago === 'credito' || v.metodo_pago === 'fiado') credito += t; else contado += t;
+  });
+  const resumenCobro = credito > 0.004 ? `
+    <div id="est-cobro-resumen" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;margin-bottom:12px;padding:8px 10px;background:var(--bg-app);border-radius:8px">
+      <span title="Ventas de contado: el dinero entró a Caja">💵 Cobrado de contado <strong>${fmt(contado)}</strong></span>
+      <span title="Ventas a crédito: el dinero entra a Caja cuando el cliente abona">🧾 Vendido a crédito <strong>${fmt(credito)}</strong></span>
+      <span id="est-abonos-periodo" title="Abonos que los clientes pagaron a sus créditos en este período"></span>
+    </div>` : '';
+  if (credito > 0.004) cargarAbonosPeriodoEst();
+  el.innerHTML = resumenCobro + entradas.map(([metodo, monto], i) => {
     const pct = totalGeneral ? (monto/totalGeneral*100) : 0;
     return `
     <div style="margin-bottom:10px">
@@ -696,6 +710,18 @@ function renderMetodosPago() {
       </div>
     </div>`;
   }).join('');
+}
+
+// Abonos de créditos cobrados dentro del período (entraron a Caja). Solo lectura.
+async function cargarAbonosPeriodoEst() {
+  try {
+    const { from, to } = rangoPeriodo();
+    const { data } = await sb.from('creditos_pagos').select('monto, estado')
+      .eq('auth_user_id', EST.userId).gte('fecha', from).lte('fecha', to);
+    const tot = (data || []).filter(a => a.estado !== 'anulado').reduce((s, a) => s + parseFloat(a.monto || 0), 0);
+    const el = document.getElementById('est-abonos-periodo');
+    if (el && tot > 0.004) el.innerHTML = `💳 Abonos de créditos cobrados <strong>${fmt(tot)}</strong>`;
+  } catch (e) { console.warn('abonos período:', e); }
 }
 
 /* ============================================================

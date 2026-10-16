@@ -42,6 +42,8 @@ const S = {
   page:          1,
   perPage:       15,
   filtro:        'mes',
+  filtroPago:    'todas',   // todas | contado | credito | pendiente (solo cambia qué se LISTA)
+  creditoPorVenta: {},      // venta_id -> { numero, saldo, estado, tipo:'credito'|'fiado', id }
   busqueda:      '',
   dateFrom:      '',
   dateTo:        '',
@@ -379,7 +381,7 @@ async function loadKPIs() {
     // FIX: se pide también "impuesto" para poder mostrar el ingreso NETO
     // (sin IVA). El IVA no es ingreso del negocio, es dinero recaudado
     // para el fisco y ya se contabiliza aparte en el módulo de Impuestos.
-    let qDia = sb.from('ventas').select('total,ganancia,impuesto')
+    let qDia = sb.from('ventas').select('total,ganancia,impuesto,estado_pago,metodo_pago')
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
     if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
@@ -388,10 +390,11 @@ async function loadKPIs() {
     const totalDia = (dia||[]).reduce((s,r) => s + (Number(r.total) - Number(r.impuesto||0)), 0);
     setKPI('kpi-dia', fmt(totalDia), dia?.length > 0 ? 'positive' : 'neutral',
       dia?.length > 0 ? `${dia.length} venta${dia.length!==1?'s':''} hoy` : 'Sin ventas hoy', 'sym-dia');
+    mostrarDesgloseCobro('kpi-dia-d', dia);
 
     // Ventas del mes
     // FIX: mismo criterio — ingreso NETO de IVA
-    let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto')
+    let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto,estado_pago,metodo_pago')
       .eq('auth_user_id', S.userId).eq('estado','completada')
       .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
     if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
@@ -404,11 +407,28 @@ async function loadKPIs() {
 
     setKPI('kpi-mes',     fmt(totalMes), totalMes>0?'positive':'neutral',
       cnt>0?`${cnt} venta${cnt!==1?'s':''} este mes`:'Sin ventas este mes', 'sym-mes');
+    mostrarDesgloseCobro('kpi-mes-d', mes);
     setKPI('kpi-count',   cnt.toString(), cnt>0?'positive':'neutral', 'este mes');
     setKPI('kpi-ticket',  fmt(ticket), ticket>0?'positive':'neutral', 'promedio por venta', 'sym-ticket');
     setKPI('kpi-ganancia',fmt(ganMes), ganMes>0?'positive':'neutral', 'este mes', 'sym-gan');
 
   } catch(e) { console.warn('loadKPIs:', e); }
+}
+
+// Debajo del total: cuánto se COBRÓ (entró a Caja) y cuánto quedó A CRÉDITO.
+// Mismo criterio que el total de la tarjeta (neto de impuestos); no cambia ningún cálculo.
+function mostrarDesgloseCobro(idDelta, filas) {
+  const dd = document.getElementById(idDelta);
+  if (!dd || !filas || !filas.length) return;
+  let contado = 0, credito = 0;
+  filas.forEach(r => {
+    const neto = Number(r.total) - Number(r.impuesto || 0);
+    if (esVentaACredito(r)) credito += neto; else contado += neto;
+  });
+  if (credito <= 0.004) return; // sin ventas a crédito: se deja el texto de siempre
+  const base = dd.textContent;
+  dd.innerHTML = `${esc(base)}<br><span style="font-size:11.5px;color:var(--success)" title="Ventas de contado: el dinero entró a Caja">💵 Cobrado ${fmt(contado)}</span>`
+    + ` <span style="font-size:11.5px;color:var(--warning)" title="Ventas a crédito: el dinero entra a Caja cuando el cliente abona">· 🧾 A crédito ${fmt(credito)}</span>`;
 }
 
 function setKPI(id, value, cls, delta, symId) {
@@ -451,12 +471,26 @@ async function loadVentas() {
       q = q.or(`numero_venta.ilike.%${S.busqueda}%,cliente_nombre.ilike.%${S.busqueda}%`);
     }
 
+    // Filtro por forma de pago (solo cambia qué se lista; ningún dato cambia)
+    if (S.filtroPago === 'contado') q = q.neq('estado_pago', 'credito');
+    else if (S.filtroPago === 'credito') q = q.eq('estado_pago', 'credito');
+    else if (S.filtroPago === 'pendiente') {
+      const idsPend = await idsVentasConSaldoPendiente();
+      if (!idsPend.length) {
+        S.ventas = []; S.ventasTotal = 0;
+        renderTablaVentas(); renderPaginacion(); updateVentasCountLabel();
+        return;
+      }
+      q = q.in('id', idsPend).eq('estado', 'completada');
+    }
+
     const fromR = (S.page-1)*S.perPage;
     q = q.range(fromR, fromR+S.perPage-1);
 
     const { data, count } = await q;
     S.ventas = data || [];
     S.ventasTotal = count || 0;
+    await cargarCreditoDeVentas(S.ventas);
 
     renderTablaVentas();
     renderPaginacion();
@@ -465,6 +499,115 @@ async function loadVentas() {
     console.error('loadVentas:', e);
     if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="empty-cell">Error al cargar ventas.</td></tr>`;
   }
+}
+
+/* ============================================================
+   VENTAS A CRÉDITO: QUE SE VEA CLARO QUE NO ENTRÓ DINERO
+   ------------------------------------------------------------
+   Una venta a crédito sigue siendo una venta (sale del inventario y
+   cuenta en contabilidad, impuestos y estadísticas): NO se cambia ningún
+   dato. Solo se MUESTRA distinto: "Pagada" (contado) vs "A crédito ·
+   debe C$X" vs "Crédito pagado", y el método dice "Crédito CR-…".
+   ============================================================ */
+async function cargarCreditoDeVentas(ventas) {
+  const ids = (ventas || []).filter(v => v.estado_pago === 'credito' || v.metodo_pago === 'credito' || v.metodo_pago === 'fiado').map(v => v.id);
+  if (!ids.length) return;
+  try {
+    const [{ data: creds }, { data: fiads }] = await Promise.all([
+      sb.from('creditos').select('id, venta_id, numero_credito, saldo_pendiente, estado').eq('auth_user_id', S.userId).in('venta_id', ids),
+      sb.from('fiados').select('id, venta_id, saldo, estado').eq('auth_user_id', S.userId).in('venta_id', ids),
+    ]);
+    (creds || []).forEach(k => { S.creditoPorVenta[k.venta_id] = { tipo: 'credito', id: k.id, numero: k.numero_credito, saldo: Number(k.saldo_pendiente) || 0, estado: k.estado }; });
+    (fiads || []).forEach(f => { if (!S.creditoPorVenta[f.venta_id]) S.creditoPorVenta[f.venta_id] = { tipo: 'fiado', id: f.id, numero: 'Fiado', saldo: Number(f.saldo) || 0, estado: f.estado }; });
+  } catch (e) { console.warn('cargarCreditoDeVentas:', e); }
+}
+
+// Ventas con algo por cobrar (créditos y fiados con saldo), para el filtro "Con saldo pendiente".
+async function idsVentasConSaldoPendiente() {
+  try {
+    const [{ data: creds }, { data: fiads }] = await Promise.all([
+      sb.from('creditos').select('venta_id').eq('auth_user_id', S.userId).gt('saldo_pendiente', 0).neq('estado', 'cancelado').not('venta_id', 'is', null).limit(2000),
+      sb.from('fiados').select('venta_id').eq('auth_user_id', S.userId).gt('saldo', 0).neq('estado', 'eliminado').not('venta_id', 'is', null).limit(2000),
+    ]);
+    return [...new Set([...(creds || []), ...(fiads || [])].map(x => x.venta_id).filter(Boolean))];
+  } catch (e) { console.warn('idsVentasConSaldoPendiente:', e); return []; }
+}
+
+function esVentaACredito(v) { return v && (v.estado_pago === 'credito' || v.metodo_pago === 'credito' || v.metodo_pago === 'fiado'); }
+
+// Etiqueta de la columna Estado: dice si de verdad se cobró.
+function etiquetaPagoVenta(v) {
+  if (v.estado === 'anulada') return `<span class="estado-badge estado-anulada">Anulada</span>`;
+  if (v.estado === 'devuelta') return `<span class="estado-badge estado-devuelta">Devuelta</span>`;
+  if (!esVentaACredito(v)) return `<span class="estado-badge estado-completada" title="Venta de contado: el dinero entró a Caja">Pagada</span>`;
+  const c = S.creditoPorVenta[v.id];
+  const nombre = c && c.tipo === 'fiado' ? 'Fiado' : 'A crédito';
+  if (c && c.saldo > 0.004) {
+    return `<span class="estado-badge" style="background:var(--warning-soft);color:var(--warning);white-space:nowrap" title="Venta a crédito: el dinero entra a Caja cuando el cliente abona">${nombre} · debe ${fmt(c.saldo)}</span>`;
+  }
+  if (c) return `<span class="estado-badge estado-completada" style="white-space:nowrap" title="Venta a crédito ya pagada por completo">${c.tipo === 'fiado' ? 'Fiado pagado' : 'Crédito pagado'}</span>`;
+  return `<span class="estado-badge" style="background:var(--warning-soft);color:var(--warning)" title="Venta a crédito">${nombre}</span>`;
+}
+
+// Columna Método: en las de crédito dice "Crédito CR-…" en vez de "—".
+function metodoPagoVenta(v) {
+  if (!esVentaACredito(v)) return esc(v.metodo_pago_nombre || '—');
+  const c = S.creditoPorVenta[v.id];
+  if (c && c.tipo === 'fiado') return 'Fiado';
+  return c && c.numero ? `Crédito ${esc(c.numero)}` : 'Crédito';
+}
+
+// Detalle de una venta a crédito: cuánto se ha abonado, cuánto debe y sus cuotas (solo lectura).
+async function pintarCreditoDeVenta(venta) {
+  const box = document.getElementById('det-credito-box');
+  if (!box) return;
+  const valor = box.querySelector('.detalle-value');
+  try {
+    const { data: cred } = await sb.from('creditos')
+      .select('id, numero_credito, total_financiado, monto_original, saldo_pendiente, estado, num_cuotas, frecuencia')
+      .eq('auth_user_id', S.userId).eq('venta_id', venta.id).maybeSingle();
+    if (!cred) {
+      const { data: fiado } = await sb.from('fiados').select('monto_total, monto_pagado, saldo, estado')
+        .eq('auth_user_id', S.userId).eq('venta_id', venta.id).maybeSingle();
+      valor.innerHTML = fiado
+        ? `Fiado · total ${fmt(fiado.monto_total)} · abonado <b style="color:var(--success)">${fmt(fiado.monto_pagado)}</b> · debe <b style="color:${Number(fiado.saldo) > 0 ? 'var(--warning)' : 'var(--success)'}">${fmt(fiado.saldo)}</b>
+           <a class="btn-secondary btn-sm" style="margin-left:8px" href="fiados.html">Ver en Fiados</a>`
+        : 'No se encontró el crédito de esta venta.';
+      return;
+    }
+    const [{ data: pagos }, { data: cuotas }] = await Promise.all([
+      sb.from('creditos_pagos').select('monto, estado').eq('credito_id', cred.id).eq('auth_user_id', S.userId),
+      sb.from('creditos_cuotas').select('estado').eq('credito_id', cred.id).eq('auth_user_id', S.userId),
+    ]);
+    const abonado = (pagos || []).filter(p => p.estado !== 'anulado').reduce((s, p) => s + Number(p.monto || 0), 0);
+    const nAbonos = (pagos || []).filter(p => p.estado !== 'anulado').length;
+    const totalCuotas = (cuotas || []).filter(c => c.estado !== 'anulada').length;
+    const cuotasPagadas = (cuotas || []).filter(c => c.estado === 'pagada').length;
+    const saldo = Number(cred.saldo_pendiente || 0);
+    const total = Number(cred.total_financiado || cred.monto_original || 0);
+    valor.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px">
+        <span style="font-family:var(--font-mono);font-weight:700">${esc(cred.numero_credito || '')}</span>
+        <span>Total <b>${fmt(total)}</b></span>
+        <span>Abonado <b style="color:var(--success)">${fmt(abonado)}</b>${nAbonos ? ` (${nAbonos} abono${nAbonos !== 1 ? 's' : ''})` : ''}</span>
+        <span>Debe <b style="color:${saldo > 0.004 ? 'var(--warning)' : 'var(--success)'}">${fmt(saldo)}</b></span>
+        ${totalCuotas ? `<span>Cuotas ${cuotasPagadas}/${totalCuotas}</span>` : ''}
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">El dinero de esta venta entra a Caja con cada abono, no al venderla.</div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn-secondary btn-sm" href="creditos.html?ver=${encodeURIComponent(cred.id)}">Ver crédito</a>
+        ${saldo > 0.004 && venta.estado === 'completada' ? `<a class="btn-primary btn-sm" href="creditos.html?abrir_pago=${encodeURIComponent(cred.id)}">Registrar abono</a>` : ''}
+      </div>`;
+  } catch (e) {
+    console.warn('pintarCreditoDeVenta:', e);
+    valor.textContent = 'No se pudo cargar el crédito.';
+  }
+}
+
+function setFiltroPago(f) {
+  S.filtroPago = f; S.page = 1;
+  document.querySelectorAll('.filter-pago-btn').forEach(b => b.classList.toggle('active', b.dataset.fp === f));
+  loadVentas();
 }
 
 function renderTablaVentas() {
@@ -490,7 +633,7 @@ function renderTablaVentas() {
       <td>
         <div class="td-cliente">${esc(v.cliente_nombre||'Consumidor Final')}</div>
       </td>
-      <td class="td-metodo">${esc(v.metodo_pago_nombre||'—')}</td>
+      <td class="td-metodo">${metodoPagoVenta(v)}</td>
       <td class="td-productos" id="prod-preview-${v.id}">
         <span style="color:var(--text-muted);font-size:12px">Cargando…</span>
       </td>
@@ -499,7 +642,7 @@ function renderTablaVentas() {
       </td>
       <td class="td-total">${fmt(v.total)}</td>
       <td class="td-ganancia">${fmt(v.ganancia)}</td>
-      <td><span class="estado-badge ${estadoCls}">${v.estado}</span></td>
+      <td>${etiquetaPagoVenta(v)}</td>
       <td class="td-actions">
         <button class="btn-icon-sm" title="Ver detalle" onclick="abrirDetalle('${v.id}')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -617,7 +760,7 @@ function paginaSiguiente() {
 
 function setFiltro(f) {
   S.filtro = f; S.page = 1;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.f===f));
+  document.querySelectorAll('.filter-btn[data-f]').forEach(b => b.classList.toggle('active', b.dataset.f===f));
   const cd = document.getElementById('custom-dates');
   if (cd) cd.style.display = f==='custom' ? 'flex' : 'none';
   loadVentas();
@@ -718,7 +861,7 @@ async function abrirDetalle(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Estado</div>
-          <div class="detalle-value"><span class="estado-badge ${estadoCls}">${venta.estado}</span></div>
+          <div class="detalle-value">${etiquetaPagoVenta(venta)}</div>
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Fecha</div>
@@ -729,8 +872,13 @@ async function abrirDetalle(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Método de pago</div>
-          <div class="detalle-value">${esc(venta.metodo_pago_nombre||'—')}</div>
+          <div class="detalle-value">${metodoPagoVenta(venta)}</div>
         </div>
+        ${esVentaACredito(venta) ? `
+        <div class="detalle-item full" id="det-credito-box">
+          <div class="detalle-label">Crédito de esta venta</div>
+          <div class="detalle-value" style="color:var(--text-muted);font-size:12.5px">Cargando…</div>
+        </div>` : ''}
         ${Number(venta.comision_monto) > 0 ? `
         <div class="detalle-item">
           <div class="detalle-label">Comisión del banco (${venta.comision_porcentaje}%)</div>
@@ -811,6 +959,7 @@ async function abrirDetalle(ventaId) {
     `;
     // Botones de "Corregir venta" y edicion segura (nota / cliente)
     try { window.N360Correccion?.decorarDetalle(venta); } catch (eCorr) { console.warn('decorarDetalle:', eCorr); }
+    if (esVentaACredito(venta)) pintarCreditoDeVenta(venta);
   } catch(e) {
     body.innerHTML = `<p style="color:var(--danger);padding:20px">Error al cargar detalle: ${e.message}</p>`;
   }

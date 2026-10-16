@@ -3495,6 +3495,9 @@
       // crédito puntual, directamente en la misma pantalla de siempre.
       const abrirPagoId = params.get('abrir_pago');
       if (abrirPagoId) abrirRegistrarPago(abrirPagoId);
+      // Deep link desde el detalle de una venta a crédito ("Ver crédito").
+      const verCreditoId = params.get('ver');
+      if (verCreditoId && !abrirPagoId) { try { await abrirDetalleCredito(verCreditoId); } catch (eVer) { console.warn('ver crédito:', eVer); } }
 
       // Deep link desde Proformas ("Pago parcial / a crédito") — abre
       // Nuevo Crédito ya con el cliente y los productos de la proforma
