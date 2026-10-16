@@ -86,8 +86,11 @@
       'background:var(--bg-surface,#fff);border-radius:8px;font-size:12.5px;color:var(--text-primary,#111)';
     input.insertAdjacentElement('afterend', caja);
     var t = null;
+    // opts.valor(): de dónde sale el nombre a buscar (por defecto, este campo).
+    // opts.escuchar: otros campos que también lo cambian (ej. "Apellidos").
+    var leer = typeof opts.valor === 'function' ? opts.valor : function () { return input.value; };
     function pintar() {
-      var r = buscar(opts.lista ? opts.lista() : [], input.value, 5);
+      var r = buscar(opts.lista ? opts.lista() : [], leer(), 5);
       var todos = r.exactos.concat(r.parecidos);
       if (!todos.length) { caja.style.display = 'none'; caja.innerHTML = ''; return; }
       caja.innerHTML = '<div style="font-weight:700;margin-bottom:6px;color:var(--warning,#b45309)">' +
@@ -100,7 +103,9 @@
         }).join('');
       caja.style.display = '';
     }
-    input.addEventListener('input', function () { clearTimeout(t); t = setTimeout(pintar, 180); });
+    function alEscribir() { clearTimeout(t); t = setTimeout(pintar, 180); }
+    input.addEventListener('input', alEscribir);
+    (opts.escuchar || []).forEach(function (el) { if (el) el.addEventListener('input', alEscribir); });
     caja.addEventListener('click', function (e) {
       var b = e.target.closest('[data-cr]');
       if (!b) return;

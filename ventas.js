@@ -1974,6 +1974,8 @@ async function abrirNuevaVenta() {
   // Limpiar campos
   const qi = document.getElementById('cliente-search-input');  if(qi) qi.value='';
   const ci = document.getElementById('cq-nombre');             if(ci) ci.value='';
+  const ca = document.getElementById('cq-apellidos');          if(ca) ca.value='';
+  const cr = document.getElementById('cq-ruc');                if(cr) cr.value='';
   const ct = document.getElementById('cq-telefono');           if(ct) ct.value='';
   const cc = document.getElementById('cq-correo');             if(cc) cc.value='';
   const ob = document.getElementById('venta-observaciones');   if(ob) ob.value='';
@@ -2089,14 +2091,24 @@ function pasoAnterior() {
   if (S.paso > 1) goToPaso(S.paso-1);
 }
 
+// Cliente rápido: "Nombres" y "Apellidos" van en celdas separadas, pero se
+// guardan juntos en clientes.nombre ("María José López Pérez"), igual que
+// siempre: así Clientes, Créditos, Reportes, recibos, etc. siguen mostrando
+// el nombre completo sin cambiar nada.
+function nombreClienteRapido() {
+  const n = document.getElementById('cq-nombre')?.value || '';
+  const a = document.getElementById('cq-apellidos')?.value || '';
+  return (n + ' ' + a).replace(/\s+/g, ' ').trim();
+}
+
 function validarPasoActual() {
   if (S.paso===1) {
     if (S.clienteOpcion==='existente' && !S.clienteId) {
       showToast('Selecciona un cliente de la lista', 'error'); return false;
     }
     if (S.clienteOpcion==='nuevo') {
-      const nombre = document.getElementById('cq-nombre')?.value.trim();
-      if (!nombre) { showToast('El nombre del cliente es requerido', 'error'); return false; }
+      if (!document.getElementById('cq-nombre')?.value.trim()) { showToast('El nombre del cliente es requerido', 'error'); return false; }
+      const nombre = nombreClienteRapido();
       // Si ya existe un cliente con ese mismo nombre, se pregunta antes de crear otro.
       const CR = window.N360ClienteRepetido;
       if (CR && S._cqCrearIgual !== CR.norm(nombre)) {
@@ -2109,7 +2121,7 @@ function validarPasoActual() {
     }
     // Guardar datos del cliente rápido
     if (S.clienteOpcion==='nuevo') {
-      S.clienteNombre = document.getElementById('cq-nombre')?.value.trim() || '';
+      S.clienteNombre = nombreClienteRapido();
     }
   }
   if (S.paso===2) {
@@ -2156,7 +2168,8 @@ function selectClienteOpcion(opcion) {
   // Cliente rápido: mientras se escribe, se muestran los clientes que ya existen con ese nombre.
   if (opcion==='nuevo' && window.N360ClienteRepetido) {
     const inp = document.getElementById('cq-nombre');
-    if (!S._crHint) S._crHint = window.N360ClienteRepetido.conectar(inp, { lista: () => S.clientesCache || [], alUsar: usarClienteExistenteDesdeRapido });
+    if (!S._crHint) S._crHint = window.N360ClienteRepetido.conectar(inp, { lista: () => S.clientesCache || [], alUsar: usarClienteExistenteDesdeRapido,
+      valor: nombreClienteRapido, escuchar: [document.getElementById('cq-apellidos')] });
     if (S._crHint) S._crHint.refrescar();
   }
 
@@ -5719,9 +5732,10 @@ async function _confirmarVentaInterno(conImpresion) {
        PASO A: Crear cliente rápido si aplica
     ---------------------------------------------------------- */
     if (S.clienteOpcion==='nuevo') {
-      const nombre   = document.getElementById('cq-nombre')?.value.trim();
+      const nombre   = nombreClienteRapido();
       const telefono = document.getElementById('cq-telefono')?.value.trim();
       const correo   = document.getElementById('cq-correo')?.value.trim();
+      const ruc      = document.getElementById('cq-ruc')?.value.trim();
       if (nombre) {
         // Última revisión directa en la base: si ya existe un cliente con ese
         // mismo nombre (y no se confirmó crear otro), se usa el existente.
@@ -5736,7 +5750,7 @@ async function _confirmarVentaInterno(conImpresion) {
         } else {
           const { data: nc, error: ce } = await sb.from('clientes').insert({
             auth_user_id: S.userId,
-            nombre, telefono:telefono||null, correo:correo||null,
+            nombre, telefono:telefono||null, correo:correo||null, ruc:ruc||null,
           }).select('id,nombre').single();
           if (!ce && nc) { S.clienteId = nc.id; S.clienteNombre = nc.nombre; }
         }
