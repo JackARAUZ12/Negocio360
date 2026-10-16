@@ -349,6 +349,7 @@ function abrirForm(id) {
   const o = id ? ord(id) : null; OT.editando = o; OT.cantManual = !!o;
   $('ot-form-titulo').textContent = o ? `Editar ${o.numero}` : 'Nueva orden de transporte';
   $('of-cliente').innerHTML = '<option value="">— Escribir un nombre —</option>' + OT.clientes.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('');
+  if (window.N360SelectBuscable) N360SelectBuscable.mejorar($('of-cliente'), { placeholder: 'Busca el cliente… (opcional)', incluirVacio: true, copiarClase: true, anchoCompleto: true });
   $('of-ruta').innerHTML = '<option value="">Ruta libre (sin ruta guardada)</option>' + OT.rutas.filter(r => r.activa || r.id === o?.ruta_id).map(r => `<option value="${esc(r.id)}">${esc(r.nombre)}</option>`).join('');
   const v = (i, x) => { $(i).value = x == null ? '' : x; };
   $('of-cliente').value = o?.cliente_id || ''; v('of-cli-nombre', o?.cliente_nombre); $('of-ruta').value = o?.ruta_id || '';

@@ -116,6 +116,8 @@ async function cargarClientesAgenda() {
     const sel = document.getElementById('ne-cliente');
     if (sel) sel.innerHTML = '<option value="">— Sin vincular —</option>' +
       STATE.clientes.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+    // Buscador: escribir y filtrar en vez de una lista larga (el <select> sigue guardando el valor).
+    if (sel && window.N360SelectBuscable) N360SelectBuscable.mejorar(sel, { placeholder: 'Escribe el nombre del cliente… (opcional)', incluirVacio: true, anchoCompleto: true });
   } catch (e) { STATE.clientes = []; }
 }
 

@@ -30,6 +30,8 @@
     if (!sel || sel.dataset.buscable === '1') return;
     sel.dataset.buscable = '1';
     opciones = opciones || {};
+    // Listas de selects que ya no existen (ej. un modal que se volvió a pintar): se quitan.
+    Array.prototype.forEach.call(document.querySelectorAll('.sb-lista'), function (l) { if (l._sbSel && !l._sbSel.isConnected) l.remove(); });
 
     var envoltura = document.createElement('div');
     envoltura.className = 'sb-envoltura';
@@ -41,9 +43,13 @@
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-expanded', 'false');
     input.placeholder = opciones.placeholder || 'Escribe para buscar…';
+    // Opcionales (no cambian a quien no los pide): misma clase/estilo que el <select>, ancho completo.
+    if (opciones.copiarClase && sel.className) input.className += ' ' + sel.className;
+    if (opciones.anchoCompleto) { input.style.width = '100%'; input.style.boxSizing = 'border-box'; }
     var lista = document.createElement('div');
     lista.className = 'sb-lista';
     lista.setAttribute('role', 'listbox');
+    lista._sbSel = sel;
     lista.style.cssText = 'display:none;position:fixed;z-index:100000;max-height:280px;overflow-y:auto;' +
       'background:var(--bg-surface,#fff);color:var(--text-primary,#111);border:1px solid var(--border,#e5e7eb);' +
       'border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:4px';
@@ -60,7 +66,8 @@
     var activo = -1;
 
     function leerOpciones() {
-      items = Array.prototype.filter.call(sel.options, function (o) { return o.value !== ''; }).map(function (o) {
+      // incluirVacio: la opción vacía (ej. "Consumidor Final", "Tarifa general") también se puede elegir de la lista.
+      items = Array.prototype.filter.call(sel.options, function (o) { return o.value !== '' || opciones.incluirVacio; }).map(function (o) {
         return { value: o.value, texto: o.textContent.replace(/\s+/g, ' ').trim(), buscar: norm(o.textContent + ' ' + (o.dataset.buscar || '')) };
       });
     }

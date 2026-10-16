@@ -170,6 +170,7 @@ function abrirTarifa(rutaId, tarifaId) {
   RT.tarifaEdit = { rutaId, t };
   $('rtf-titulo').textContent = t ? 'Editar tarifa' : 'Nueva tarifa';
   $('rtf-cliente').innerHTML = '<option value="">Tarifa general (cualquier cliente)</option>' + RT.clientes.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('');
+  if (window.N360SelectBuscable) N360SelectBuscable.mejorar($('rtf-cliente'), { placeholder: 'Busca el cliente… (vacío = tarifa general)', incluirVacio: true, copiarClase: true, anchoCompleto: true });
   $('rtf-cliente').value = t?.cliente_id || ''; $('rtf-tipo').value = t?.tipo_cobro || 'viaje';
   $('rtf-precio').value = t ? t.precio : ''; $('rtf-notas').value = t?.notas || ''; $('rtf-error').textContent = '';
   TX.abrir('rt-modal-tarifa');

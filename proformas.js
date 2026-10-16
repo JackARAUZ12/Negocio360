@@ -196,7 +196,11 @@ function llenarSelectClientes() {
   const opciones = `<option value="">— Cliente final (sin registrar) —</option>` +
     STATE.clientes.map(c => `<option value="${c.id}">${esc(c.nombre)}${c.telefono?' — '+esc(c.telefono):''}</option>`).join('');
   const sel = document.getElementById('np-cliente-select');
-  if (sel) sel.innerHTML = opciones;
+  if (sel) {
+    sel.innerHTML = opciones;
+    // Buscador: se escribe el nombre (o teléfono) y la lista se va filtrando. El <select> sigue guardando el valor.
+    if (window.N360SelectBuscable) N360SelectBuscable.mejorar(sel, { placeholder: 'Escribe el nombre o teléfono… (vacío = cliente final)', incluirVacio: true, anchoCompleto: true });
+  }
 }
 function onSelectClienteProf() {
   const id = document.getElementById('np-cliente-select')?.value;

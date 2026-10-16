@@ -356,6 +356,8 @@
         notify('Cliente actualizado.');
         await loadVentas(); abrirDetalle(venta.id);
       });
+    // Buscador: escribir y filtrar en vez de una lista larga (el <select> sigue guardando el valor).
+    if (window.N360SelectBuscable && $('mc-cliente')) N360SelectBuscable.mejorar($('mc-cliente'), { placeholder: 'Escribe el nombre del cliente… (vacío = Consumidor Final)', incluirVacio: true, anchoCompleto: true });
   }
 
   /* ============================================================
