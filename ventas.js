@@ -843,6 +843,24 @@ async function anularVenta() {
       return;
     }
 
+    // Crédito con abonos: no se anula desde aquí. Antes, la deuda salía de los
+    // libros pero los abonos (y su dinero en Caja) se quedaban (caso real:
+    // V-000830 y V-001066). Se revisa ANTES de devolver inventario o tocar
+    // nada; la base de datos además lo rechaza (trg_ventas_no_anular_credito_con_abonos).
+    {
+      const { data: credsVenta } = await sb.from('creditos').select('id, numero_credito')
+        .eq('venta_id', id).eq('auth_user_id', S.userId);
+      for (const cv of (credsVenta || [])) {
+        const { count: nAbonos } = await sb.from('creditos_pagos').select('id', { count: 'exact', head: true })
+          .eq('credito_id', cv.id).or('estado.is.null,estado.neq.anulado');
+        if ((nAbonos || 0) > 0) {
+          showToast(`Esta venta a crédito ya tiene ${nAbonos} abono(s) en el crédito ${cv.numero_credito || ''}. Primero anula esos abonos en Créditos (así el dinero sale de Caja) y después anula la venta.`, 'error');
+          if (btn) btn.disabled = false;
+          return;
+        }
+      }
+    }
+
     // Fiados: si esta venta se dejó fiada, la deuda se elimina junto con ella.
     // Si el cliente ya hizo abonos o pagos, no se anula desde aquí (el dinero ya entró a Caja).
     if (ventaActual.metodo_pago === 'fiado') {

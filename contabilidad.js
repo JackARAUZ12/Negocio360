@@ -1300,6 +1300,59 @@ const TIPOS_TRANSACCION = {
 };
 let STATE_MAPEO = [];
 
+/* Qué TIPO de cuenta tiene sentido en cada lado de cada regla.
+   Problema real (All Plastic): "Pago de crédito recibido" tenía en el Haber la
+   cuenta Ventas, así que cada abono se contaba como una venta nueva (C$390K de
+   ventas de más) y Cuentas por Cobrar nunca bajaba. Ahora una regla así no se
+   puede guardar, y si ya existe se avisa al abrir la configuración. */
+const REGLAS_TIPO_CUENTA = {
+  venta:              { debe: ['activo'],                 haber: ['ingreso'],          porque: 'entra dinero (Activo) y se registra una venta (Ingreso)' },
+  credito_otorgado:   { debe: ['activo'],                 haber: ['ingreso'],          porque: 'el cliente te queda debiendo (Cuentas por Cobrar, Activo) y se registra una venta (Ingreso)' },
+  pago_credito:       { debe: ['activo'],                 haber: ['activo'],           porque: 'entra dinero y BAJA lo que el cliente debe (Cuentas por Cobrar). Si el Haber fuera Ventas, cada abono se contaría como otra venta' },
+  costo_ventas:       { debe: ['costo', 'gasto'],         haber: ['activo'],           porque: 'sale mercadería del Inventario (Activo) hacia Costo de Ventas' },
+  gasto:              { debe: ['gasto', 'costo'],         haber: ['activo', 'pasivo'], porque: 'se registra un gasto y sale dinero (o queda por pagar)' },
+  compra:             { debe: ['activo', 'costo', 'gasto'], haber: ['activo'],         porque: 'entra mercadería y sale dinero de Caja/Bancos (Activo)' },
+  cxp_generada:       { debe: ['activo', 'costo', 'gasto'], haber: ['pasivo'],         porque: 'entra mercadería y queda una deuda con el proveedor (Pasivo)' },
+  pago_cxp:           { debe: ['pasivo'],                 haber: ['activo'],           porque: 'baja la deuda con el proveedor (Pasivo) y sale dinero (Activo)' },
+  pago_salario:       { debe: ['gasto', 'costo', 'pasivo'], haber: ['activo'],         porque: 'se registra el sueldo y sale dinero (Activo)' },
+  capital_inicial:    { debe: ['activo'],                 haber: ['capital', 'pasivo'], porque: 'entra dinero y lo aporta el dueño (Capital)' },
+  credito_existente:  { debe: ['activo'],                 haber: ['capital'],          porque: 'son deudas de clientes que ya existían: Cuentas por Cobrar contra Capital (no contra Inventario)' },
+  inventario_inicial: { debe: ['activo'],                 haber: ['capital'],          porque: 'mercadería que ya existía: Inventario contra Capital' },
+};
+const NOMBRE_TIPO_CUENTA = { activo: 'Activo', pasivo: 'Pasivo', capital: 'Capital', ingreso: 'Ingresos', costo: 'Costos', gasto: 'Gastos' };
+
+// Devuelve la lista de problemas (texto) de un juego de reglas { tipo: {debe, haber} }.
+function validarReglasMapeo(reglas) {
+  const cuenta = id => STATE.cuentas.find(c => c.id === id);
+  const lista = arr => arr.map(t => NOMBRE_TIPO_CUENTA[t] || t).join(' o ');
+  const errores = [];
+  for (const [tipo, r] of Object.entries(reglas)) {
+    if (!r || !r.debe || !r.haber) continue;
+    const etiqueta = TIPOS_TRANSACCION[tipo]?.label || tipo;
+    if (r.debe === r.haber) { errores.push(`"${etiqueta}": el Debe y el Haber no pueden ser la misma cuenta.`); continue; }
+    const regla = REGLAS_TIPO_CUENTA[tipo];
+    if (!regla) continue;
+    const cd = cuenta(r.debe), ch = cuenta(r.haber);
+    if (cd && cd.tipo && !regla.debe.includes(cd.tipo))
+      errores.push(`"${etiqueta}": el Debe es "${cd.codigo} ${cd.nombre}" (${NOMBRE_TIPO_CUENTA[cd.tipo] || cd.tipo}), pero debe ser una cuenta de ${lista(regla.debe)}: ${regla.porque}.`);
+    if (ch && ch.tipo && !regla.haber.includes(ch.tipo))
+      errores.push(`"${etiqueta}": el Haber es "${ch.codigo} ${ch.nombre}" (${NOMBRE_TIPO_CUENTA[ch.tipo] || ch.tipo}), pero debe ser una cuenta de ${lista(regla.haber)}: ${regla.porque}.`);
+  }
+  // El abono de un crédito debe bajar la MISMA cuenta que subió al otorgarlo.
+  const co = reglas.credito_otorgado, pc = reglas.pago_credito;
+  if (co && pc && co.debe && pc.haber && co.debe !== pc.haber) {
+    const a = cuenta(co.debe), b = cuenta(pc.haber);
+    errores.push(`"Pago de crédito recibido": el Haber debe ser la misma cuenta que el Debe de "Crédito otorgado" (${a ? a.codigo + ' ' + a.nombre : 'Cuentas por Cobrar'}); ahora es "${b ? b.codigo + ' ' + b.nombre : '?'}".`);
+  }
+  return errores;
+}
+function mostrarProblemasMapeo(errores, bloquea) {
+  const errEl = document.getElementById('mapeo-error');
+  if (!errEl) return;
+  if (!errores.length) { errEl.textContent = ''; return; }
+  errEl.innerHTML = `<div style="text-align:left;line-height:1.45"><b>${bloquea ? 'No se guardó. Corrige estas reglas:' : '⚠️ Revisa estas reglas (están contando mal en tus libros):'}</b><ul style="margin:6px 0 0 18px;padding:0">${errores.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`;
+}
+
 async function abrirMapeoCuentas() {
   if (!STATE.cuentas.length) await cargarCuentas();
   // BUG REAL CORREGIDO: si el usuario todavia no tiene ninguna cuenta
@@ -1327,6 +1380,10 @@ async function abrirMapeoCuentas() {
   } catch (e) { STATE_MAPEO = []; }
   renderMapeoFilas();
   document.getElementById('mapeo-error').textContent = '';
+  // Si alguna regla guardada ya está mal, se avisa de una vez (sin bloquear nada).
+  const actuales = {};
+  STATE_MAPEO.forEach(m => { actuales[m.tipo_transaccion] = { debe: m.cuenta_debe_id, haber: m.cuenta_haber_id }; });
+  mostrarProblemasMapeo(validarReglasMapeo(actuales), false);
   openModal('modal-mapeo-cuentas');
 }
 function renderMapeoFilas() {
@@ -1369,6 +1426,14 @@ function renderMapeoFilas() {
 async function guardarMapeoCuentas() {
   const errEl = document.getElementById('mapeo-error');
   errEl.textContent = '';
+  // Primero se revisa que cada regla use el tipo de cuenta correcto; si no, no se guarda nada.
+  const reglas = {};
+  for (const tipo of Object.keys(TIPOS_TRANSACCION)) {
+    const d = document.getElementById(`mapeo-debe-${tipo}`), h = document.getElementById(`mapeo-haber-${tipo}`);
+    if (d && h) reglas[tipo] = { debe: d.value || null, haber: h.value || null };
+  }
+  const problemas = validarReglasMapeo(reglas);
+  if (problemas.length) { mostrarProblemasMapeo(problemas, true); errEl.scrollIntoView?.({ block: 'nearest' }); return; }
   setBtnLoading('btn-guardar-mapeo', true);
   try {
     for (const tipo of Object.keys(TIPOS_TRANSACCION)) {
