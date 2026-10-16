@@ -395,7 +395,9 @@ const INTENCIONES_IA = [
     palabras: ['proforma'],
     async responder(texto, userId) {
       const { data } = await sbClient.from('proformas').select('total, estado')
-        .eq('auth_user_id', userId).in('estado', ['pendiente','enviada','aprobada','pago_parcial']);
+        .eq('auth_user_id', userId).in('estado', ['pendiente','enviada','aprobada']);
+      // 'pago_parcial' NO va aquí: esas proformas ya se pasaron a crédito
+      // (tienen su venta y su crédito), no están "sin convertir".
       if (!(data||[]).length) return 'No tienes proformas pendientes ahora mismo. 👍';
       const total = (data||[]).reduce((s,p)=>s+Number(p.total||0),0);
       return `Tienes ${(data||[]).length} proforma${(data||[]).length===1?'':'s'} pendiente${(data||[]).length===1?'':'s'} (sin convertir a venta), por un total de ${fmtC(total)}.`;

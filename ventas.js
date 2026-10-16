@@ -3530,8 +3530,22 @@ function continuarVentaConSeries() {
   if (accion) accion();
 }
 
+// CANDADO DOBLE CLIC (16-oct-2026): un doble clic en "Confirmar venta"
+// llegaba a guardar la venta DOS veces con el mismo número. Ahora, mientras
+// una venta se está revisando o guardando, los clics de más no hacen nada.
+// (La base de datos además rechaza una segunda venta completada con el
+// mismo número: ver supabase/migraciones/20261016_ventas_numero_unico.sql)
+function _ventaRepetidaMsg(e) {
+  // La base responde 23505 cuando esa venta ya quedó guardada
+  return (e && e.code === '23505') ? (e.message || 'Esta venta ya está guardada. Revisa la lista de Ventas.') : null;
+}
+
 async function iniciarConfirmarVenta(conImpresion) {
-  const slots = await calcularSlotsSerieRequeridos(S.carrito || []);
+  if (S._guardandoVenta || S._iniciandoVenta) return;
+  S._iniciandoVenta = true;
+  let slots;
+  try { slots = await calcularSlotsSerieRequeridos(S.carrito || []); }
+  finally { S._iniciandoVenta = false; }
   if (!slots.length) { confirmarVenta(conImpresion); return; }
   S._seriesSlotsPendientes = slots;
   S._accionVentaPendiente = () => confirmarVenta(conImpresion);
@@ -3540,7 +3554,11 @@ async function iniciarConfirmarVenta(conImpresion) {
 }
 
 async function iniciarConfirmarVentaRapida() {
-  const slots = await calcularSlotsSerieRequeridos(VR.carrito || []);
+  if (VR.procesando || VR._enCurso || VR._iniciando) return;
+  VR._iniciando = true;
+  let slots;
+  try { slots = await calcularSlotsSerieRequeridos(VR.carrito || []); }
+  finally { VR._iniciando = false; }
   if (!slots.length) { confirmarVentaRapida(); return; }
   S._seriesSlotsPendientes = slots;
   S._accionVentaPendiente = () => confirmarVentaRapida();
@@ -5614,6 +5632,13 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
 }
 
 async function confirmarVenta(conImpresion) {
+  if (S._guardandoVenta) return;          // ya se está guardando esta venta
+  S._guardandoVenta = true;
+  try { return await _confirmarVentaInterno(conImpresion); }
+  finally { S._guardandoVenta = false; }
+}
+
+async function _confirmarVentaInterno(conImpresion) {
   conImpresion = !!conImpresion;
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
@@ -6176,7 +6201,9 @@ async function confirmarVenta(conImpresion) {
 
   } catch(e) {
     console.error('confirmarVenta:', e);
-    showToast('Error al registrar la venta: ' + (e.message||'intenta de nuevo'), 'error');
+    const _rep = _ventaRepetidaMsg(e);
+    showToast(_rep || ('Error al registrar la venta: ' + (e.message||'intenta de nuevo')), 'error');
+    if (_rep) { try { loadVentas(); } catch (_) {} }
     // La venta no se completó -- nunca se llega a imprimir, así que la
     // ventana que se abrió de antemano se cierra sola.
     if (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed) S._ventanaTicketPreabierta.close();
@@ -7191,6 +7218,13 @@ function confirmarCerrarVentaRapida() {
 /* ---------- Guardar la venta (mismo patrón que confirmarVenta) ---------- */
 
 async function confirmarVentaRapida() {
+  if (VR.procesando || VR._enCurso) return;   // ya se está guardando esta venta
+  VR._enCurso = true;
+  try { return await _confirmarVentaRapidaInterno(); }
+  finally { VR._enCurso = false; }
+}
+
+async function _confirmarVentaRapidaInterno() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
   if (!validarPagoSeparadoVR()) return;
@@ -7509,7 +7543,9 @@ async function confirmarVentaRapida() {
 
   } catch(e) {
     console.error('confirmarVentaRapida:', e);
-    showToast('Error al registrar la venta: ' + (e.message||'intenta de nuevo'), 'error');
+    const _repVR = _ventaRepetidaMsg(e);
+    showToast(_repVR || ('Error al registrar la venta: ' + (e.message||'intenta de nuevo')), 'error');
+    if (_repVR) { try { loadVentas(); } catch (_) {} }
     // La venta no se completó -- nunca se llega a imprimir, así que la
     // ventana que se abrió de antemano se cierra sola, en vez de
     // quedarse en blanco para siempre confundiendo al usuario.
