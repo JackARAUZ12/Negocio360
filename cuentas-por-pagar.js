@@ -1815,7 +1815,7 @@ async function eliminarCuentaCxP() {
     await Promise.allSettled([loadKPIsCxP(), loadCuentasCxP(), loadProductosDisponibles()]);
   } catch (e) {
     console.error('eliminarCuentaCxP:', e);
-    showToast('Error al eliminar: ' + (e.message||''), 'error');
+    showToast(/^No se/.test(e.message||'') ? e.message : 'No se pudo anular: ' + (e.message||''), 'error');
   } finally {
     setBtnLoading('btn-confirmar-eliminar-cxp', false);
   }
