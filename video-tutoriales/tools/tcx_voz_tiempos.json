@@ -1,0 +1,446 @@
+[
+ {
+  "a": 0.3,
+  "b": 1.3,
+  "texto": "Cuentas por Pagar",
+  "capitulo": true
+ },
+ {
+  "a": 1.9,
+  "b": 7.74,
+  "texto": "Hola. En este tutorial vas a conocer todo el módulo de Cuentas por Pagar de Negocio360.",
+  "capitulo": false
+ },
+ {
+  "a": 8.09,
+  "b": 16.38,
+  "texto": "Aquí llevás lo que le debés a tus proveedores: las compras que hiciste al crédito, las deudas que no son mercadería y cada pago que les vas haciendo.",
+  "capitulo": false
+ },
+ {
+  "a": 16.73,
+  "b": 21.02,
+  "texto": "Lo encontrás en el menú de la izquierda y en los accesos rápidos del Dashboard.",
+  "capitulo": false
+ },
+ {
+  "a": 22.17,
+  "b": 23.12,
+  "texto": "Los indicadores",
+  "capitulo": true
+ },
+ {
+  "a": 23.72,
+  "b": 25.34,
+  "texto": "Arriba tenés seis tarjetas.",
+  "capitulo": false
+ },
+ {
+  "a": 25.69,
+  "b": 30.81,
+  "texto": "Total pendiente es todo lo que todavía debés, y Total vencido, lo que ya pasó de su fecha.",
+  "capitulo": false
+ },
+ {
+  "a": 31.16,
+  "b": 35.49,
+  "texto": "Vence hoy y Vence esta semana te dicen cuántas cuentas tenés que pagar pronto.",
+  "capitulo": false
+ },
+ {
+  "a": 35.84,
+  "b": 40.88,
+  "texto": "También ves cuánto le pagaste a tus proveedores este mes y cuántas cuentas siguen pendientes.",
+  "capitulo": false
+ },
+ {
+  "a": 42.03,
+  "b": 43.1,
+  "texto": "La lista de cuentas",
+  "capitulo": true
+ },
+ {
+  "a": 43.7,
+  "b": 50.85,
+  "texto": "Abajo está cada cuenta con su número, el número de su compra, el total, lo pagado, lo pendiente y el próximo vencimiento.",
+  "capitulo": false
+ },
+ {
+  "a": 51.2,
+  "b": 56.65,
+  "texto": "El estado se calcula solo: Pendiente, Vencido o Pagado. Las vencidas se marcan en rojo.",
+  "capitulo": false
+ },
+ {
+  "a": 57.0,
+  "b": 62.63,
+  "texto": "Podés filtrar por estado o por tipo de crédito, y buscar por proveedor, número de compra o factura.",
+  "capitulo": false
+ },
+ {
+  "a": 63.78,
+  "b": 65.33,
+  "texto": "Nueva compra al crédito",
+  "capitulo": true
+ },
+ {
+  "a": 65.93,
+  "b": 69.25,
+  "texto": "Para registrar una compra al crédito, tocá Nueva compra.",
+  "capitulo": false
+ },
+ {
+  "a": 69.6,
+  "b": 72.71,
+  "texto": "Elegí el proveedor, o registrá uno nuevo ahí mismo.",
+  "capitulo": false
+ },
+ {
+  "a": 73.06,
+  "b": 75.96,
+  "texto": "Poné la fecha de la compra y el número de factura.",
+  "capitulo": false
+ },
+ {
+  "a": 76.31,
+  "b": 80.98,
+  "texto": "Buscá los productos por nombre, código o categoría, y agregalos al carrito.",
+  "capitulo": false
+ },
+ {
+  "a": 81.33,
+  "b": 85.34,
+  "texto": "En cada línea ajustás la cantidad, el precio de compra y el descuento.",
+  "capitulo": false
+ },
+ {
+  "a": 85.69,
+  "b": 93.06,
+  "texto": "Si el producto todavía no existe, tocá Producto nuevo: lo creás con su costo y su precio de venta, y entra directo al carrito.",
+  "capitulo": false
+ },
+ {
+  "a": 93.41,
+  "b": 98.58,
+  "texto": "Si la factura trae IVA, marcá Aplicar impuesto. Viene con el quince por ciento.",
+  "capitulo": false
+ },
+ {
+  "a": 98.93,
+  "b": 102.68,
+  "texto": "Abajo ves el subtotal, el descuento, los impuestos y el total.",
+  "capitulo": false
+ },
+ {
+  "a": 103.83,
+  "b": 105.35,
+  "texto": "A fecha fija o en cuotas",
+  "capitulo": true
+ },
+ {
+  "a": 105.95,
+  "b": 108.0,
+  "texto": "Después elegís cómo le vas a pagar.",
+  "capitulo": false
+ },
+ {
+  "a": 108.35,
+  "b": 112.27,
+  "texto": "A fecha fija es un solo vencimiento: solo ponés la fecha.",
+  "capitulo": false
+ },
+ {
+  "a": 112.62,
+  "b": 117.93,
+  "texto": "En cuotas, ponés cuántas, la fecha de la primera y si son mensuales, quincenales o semanales.",
+  "capitulo": false
+ },
+ {
+  "a": 118.28,
+  "b": 122.17,
+  "texto": "Y al instante ves de cuánto sale cada cuota y cuándo vence la última.",
+  "capitulo": false
+ },
+ {
+  "a": 123.32,
+  "b": 124.4,
+  "texto": "Guardar la compra",
+  "capitulo": true
+ },
+ {
+  "a": 125.0,
+  "b": 127.27,
+  "texto": "Al guardar pasan varias cosas a la vez.",
+  "capitulo": false
+ },
+ {
+  "a": 127.62,
+  "b": 131.24,
+  "texto": "El stock de los productos sube y su costo promedio se actualiza.",
+  "capitulo": false
+ },
+ {
+  "a": 131.59,
+  "b": 134.91,
+  "texto": "La compra aparece en el historial de Compras como Pendiente.",
+  "capitulo": false
+ },
+ {
+  "a": 135.26,
+  "b": 138.38,
+  "texto": "Si lleva IVA, ese IVA queda anotado en Impuestos.",
+  "capitulo": false
+ },
+ {
+  "a": 138.73,
+  "b": 144.06,
+  "texto": "Y lo más importante: no sale ni un córdoba de tu Caja. El dinero sale hasta que pagás.",
+  "capitulo": false
+ },
+ {
+  "a": 145.21,
+  "b": 146.02,
+  "texto": "Cuenta directa",
+  "capitulo": true
+ },
+ {
+  "a": 146.62,
+  "b": 153.31,
+  "texto": "¿Le debés a un proveedor algo que no es mercadería? Por ejemplo, la renta del local o la reparación del camión.",
+  "capitulo": false
+ },
+ {
+  "a": 153.66,
+  "b": 158.11,
+  "texto": "Para eso está Cuenta directa. No agrega productos ni mueve tu inventario.",
+  "capitulo": false
+ },
+ {
+  "a": 158.46,
+  "b": 161.42,
+  "texto": "Escribí de qué es la cuenta, el monto y la fecha.",
+  "capitulo": false
+ },
+ {
+  "a": 161.77,
+  "b": 171.16,
+  "texto": "Si diste una prima, ponela como monto fijo o como porcentaje. Esa parte sale al guardar, y elegís si sale de Caja Chica, de Caja General o del banco.",
+  "capitulo": false
+ },
+ {
+  "a": 171.51,
+  "b": 174.24,
+  "texto": "El resto lo pagás en una sola fecha o en cuotas.",
+  "capitulo": false
+ },
+ {
+  "a": 174.59,
+  "b": 179.56,
+  "texto": "Si la deuda tiene interés, ponés la tasa y elegís cuota fija o interés simple.",
+  "capitulo": false
+ },
+ {
+  "a": 179.91,
+  "b": 186.54,
+  "texto": "Podés decir cuántas cuotas querés, o cuánto podés pagar en cada cuota, y el sistema calcula cuántas hacen falta.",
+  "capitulo": false
+ },
+ {
+  "a": 186.89,
+  "b": 192.23,
+  "texto": "Y te arma la tabla con el vencimiento, el capital, el interés y el saldo de cada cuota.",
+  "capitulo": false
+ },
+ {
+  "a": 193.38,
+  "b": 194.48,
+  "texto": "Registrar un pago",
+  "capitulo": true
+ },
+ {
+  "a": 195.08,
+  "b": 200.92,
+  "texto": "Cuando le pagués al proveedor, tocá el botón de pagar en la cuenta, o Registrar pago arriba y elegí la cuenta.",
+  "capitulo": false
+ },
+ {
+  "a": 201.27,
+  "b": 207.74,
+  "texto": "Ves el total, lo pagado y lo pendiente. Podés pagar todo o solo una parte, pero nunca más de lo que debés.",
+  "capitulo": false
+ },
+ {
+  "a": 208.09,
+  "b": 209.61,
+  "texto": "Elegí el método de pago.",
+  "capitulo": false
+ },
+ {
+  "a": 209.96,
+  "b": 213.6,
+  "texto": "Si es tarjeta o transferencia, elegís de qué banco sale.",
+  "capitulo": false
+ },
+ {
+  "a": 213.95,
+  "b": 223.43,
+  "texto": "Si es efectivo y tenés la Caja Chica abierta, elegís si sale de Caja Chica o de Caja General. Y si no te alcanza el efectivo, el sistema te avisa.",
+  "capitulo": false
+ },
+ {
+  "a": 223.78,
+  "b": 228.15,
+  "texto": "Si la cuenta es en cuotas, el pago se aplica primero a la cuota más vieja.",
+  "capitulo": false
+ },
+ {
+  "a": 228.5,
+  "b": 235.71,
+  "texto": "Al confirmar, la salida queda en Caja y te sale un comprobante con el saldo anterior y el nuevo, listo para imprimir.",
+  "capitulo": false
+ },
+ {
+  "a": 236.86,
+  "b": 238.0,
+  "texto": "Retención de IR",
+  "capitulo": true
+ },
+ {
+  "a": 238.6,
+  "b": 244.34,
+  "texto": "Si le retenés IR al proveedor, marcá Aplicar retención de IR. Viene con el dos por ciento.",
+  "capitulo": false
+ },
+ {
+  "a": 244.69,
+  "b": 248.32,
+  "texto": "La deuda baja por el monto completo, pero solo sale el neto.",
+  "capitulo": false
+ },
+ {
+  "a": 248.67,
+  "b": 252.14,
+  "texto": "Y la retención queda en Impuestos, lista para pagarla a la DGI.",
+  "capitulo": false
+ },
+ {
+  "a": 253.29,
+  "b": 254.5,
+  "texto": "El detalle de la cuenta",
+  "capitulo": true
+ },
+ {
+  "a": 255.1,
+  "b": 260.72,
+  "texto": "Con el ojito abrís el detalle: el proveedor, las fechas, el total, lo pagado y el saldo.",
+  "capitulo": false
+ },
+ {
+  "a": 261.07,
+  "b": 266.29,
+  "texto": "Si es en cuotas, ves cada cuota con su estado: Pendiente, Pago parcial, Vencida o Pagada.",
+  "capitulo": false
+ },
+ {
+  "a": 266.64,
+  "b": 269.29,
+  "texto": "Desde ahí podés pagar una cuota en específico.",
+  "capitulo": false
+ },
+ {
+  "a": 269.64,
+  "b": 274.78,
+  "texto": "Y abajo está el historial de pagos, con la fecha, el monto, el método y quién lo registró.",
+  "capitulo": false
+ },
+ {
+  "a": 275.93,
+  "b": 276.99,
+  "texto": "Editar y anular",
+  "capitulo": true
+ },
+ {
+  "a": 277.59,
+  "b": 284.27,
+  "texto": "Mientras una cuenta no tenga pagos, podés editar sus observaciones y, si es a fecha fija, su vencimiento.",
+  "capitulo": false
+ },
+ {
+  "a": 284.62,
+  "b": 288.57,
+  "texto": "También la podés anular. No se borra: queda en la lista como Anulada.",
+  "capitulo": false
+ },
+ {
+  "a": 288.92,
+  "b": 294.57,
+  "texto": "Su compra se anula, el inventario regresa y se reversan su IVA y su asiento contable.",
+  "capitulo": false
+ },
+ {
+  "a": 294.92,
+  "b": 300.5,
+  "texto": "Si ya vendiste parte de esa mercadería, el sistema no te deja anularla y te explica por qué.",
+  "capitulo": false
+ },
+ {
+  "a": 301.65,
+  "b": 302.58,
+  "texto": "Las conexiones",
+  "capitulo": true
+ },
+ {
+  "a": 303.18,
+  "b": 308.26,
+  "texto": "En resumen: con Cuentas por Pagar el producto entra a tu inventario sin tocar tu Caja.",
+  "capitulo": false
+ },
+ {
+  "a": 308.61,
+  "b": 312.91,
+  "texto": "Cada pago sale de Caja Chica, de Caja General o del banco que elegiste.",
+  "capitulo": false
+ },
+ {
+  "a": 313.26,
+  "b": 318.71,
+  "texto": "El IVA y las retenciones van a Impuestos, y Contabilidad registra la deuda y cada pago.",
+  "capitulo": false
+ },
+ {
+  "a": 319.06,
+  "b": 322.64,
+  "texto": "Cuando terminás de pagar, la compra queda Completada en Compras.",
+  "capitulo": false
+ },
+ {
+  "a": 322.99,
+  "b": 328.22,
+  "texto": "Si anulás en Compras una compra al crédito que no tiene pagos, su cuenta también se anula.",
+  "capitulo": false
+ },
+ {
+  "a": 328.57,
+  "b": 330.83,
+  "texto": "En la Agenda ves las cuotas por vencer.",
+  "capitulo": false
+ },
+ {
+  "a": 331.18,
+  "b": 336.43,
+  "texto": "Y en el Dashboard, los pagos a proveedores no cuentan como gasto: solo saldan una deuda.",
+  "capitulo": false
+ },
+ {
+  "a": 337.58,
+  "b": 340.64,
+  "texto": "Así de fácil tenés tus deudas con proveedores al día.",
+  "capitulo": false
+ },
+ {
+  "a": 340.99,
+  "b": 343.04,
+  "texto": "Próximo tutorial: Salarios.",
+  "capitulo": false
+ }
+]

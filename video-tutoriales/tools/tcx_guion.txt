@@ -1,0 +1,86 @@
+# Cuentas por Pagar
+Hola. En este tutorial vas a conocer todo el módulo de Cuentas por Pagar de Negocio360.
+Aquí llevás lo que le debés a tus proveedores: las compras que hiciste al crédito, las deudas que no son mercadería y cada pago que les vas haciendo.
+Lo encontrás en el menú de la izquierda y en los accesos rápidos del Dashboard.
+
+# Los indicadores
+Arriba tenés seis tarjetas.
+Total pendiente es todo lo que todavía debés, y Total vencido, lo que ya pasó de su fecha.
+Vence hoy y Vence esta semana te dicen cuántas cuentas tenés que pagar pronto.
+También ves cuánto le pagaste a tus proveedores este mes y cuántas cuentas siguen pendientes.
+
+# La lista de cuentas
+Abajo está cada cuenta con su número, el número de su compra, el total, lo pagado, lo pendiente y el próximo vencimiento.
+El estado se calcula solo: Pendiente, Vencido o Pagado. Las vencidas se marcan en rojo.
+Podés filtrar por estado o por tipo de crédito, y buscar por proveedor, número de compra o factura.
+
+# Nueva compra al crédito
+Para registrar una compra al crédito, tocá Nueva compra.
+Elegí el proveedor, o registrá uno nuevo ahí mismo.
+Poné la fecha de la compra y el número de factura.
+Buscá los productos por nombre, código o categoría, y agregalos al carrito.
+En cada línea ajustás la cantidad, el precio de compra y el descuento.
+Si el producto todavía no existe, tocá Producto nuevo: lo creás con su costo y su precio de venta, y entra directo al carrito.
+Si la factura trae IVA, marcá Aplicar impuesto. Viene con el quince por ciento.
+Abajo ves el subtotal, el descuento, los impuestos y el total.
+
+# A fecha fija o en cuotas
+Después elegís cómo le vas a pagar.
+A fecha fija es un solo vencimiento: solo ponés la fecha.
+En cuotas, ponés cuántas, la fecha de la primera y si son mensuales, quincenales o semanales.
+Y al instante ves de cuánto sale cada cuota y cuándo vence la última.
+
+# Guardar la compra
+Al guardar pasan varias cosas a la vez.
+El stock de los productos sube y su costo promedio se actualiza.
+La compra aparece en el historial de Compras como Pendiente.
+Si lleva IVA, ese IVA queda anotado en Impuestos.
+Y lo más importante: no sale ni un córdoba de tu Caja. El dinero sale hasta que pagás.
+
+# Cuenta directa
+¿Le debés a un proveedor algo que no es mercadería? Por ejemplo, la renta del local o la reparación del camión.
+Para eso está Cuenta directa. No agrega productos ni mueve tu inventario.
+Escribí de qué es la cuenta, el monto y la fecha.
+Si diste una prima, ponela como monto fijo o como porcentaje. Esa parte sale al guardar, y elegís si sale de Caja Chica, de Caja General o del banco.
+El resto lo pagás en una sola fecha o en cuotas.
+Si la deuda tiene interés, ponés la tasa y elegís cuota fija o interés simple.
+Podés decir cuántas cuotas querés, o cuánto podés pagar en cada cuota, y el sistema calcula cuántas hacen falta.
+Y te arma la tabla con el vencimiento, el capital, el interés y el saldo de cada cuota.
+
+# Registrar un pago
+Cuando le pagués al proveedor, tocá el botón de pagar en la cuenta, o Registrar pago arriba y elegí la cuenta.
+Ves el total, lo pagado y lo pendiente. Podés pagar todo o solo una parte, pero nunca más de lo que debés.
+Elegí el método de pago.
+Si es tarjeta o transferencia, elegís de qué banco sale.
+Si es efectivo y tenés la Caja Chica abierta, elegís si sale de Caja Chica o de Caja General. Y si no te alcanza el efectivo, el sistema te avisa.
+Si la cuenta es en cuotas, el pago se aplica primero a la cuota más vieja.
+Al confirmar, la salida queda en Caja y te sale un comprobante con el saldo anterior y el nuevo, listo para imprimir.
+
+# Retención de IR
+Si le retenés IR al proveedor, marcá Aplicar retención de IR. Viene con el dos por ciento.
+La deuda baja por el monto completo, pero solo sale el neto.
+Y la retención queda en Impuestos, lista para pagarla a la DGI.
+
+# El detalle de la cuenta
+Con el ojito abrís el detalle: el proveedor, las fechas, el total, lo pagado y el saldo.
+Si es en cuotas, ves cada cuota con su estado: Pendiente, Pago parcial, Vencida o Pagada.
+Desde ahí podés pagar una cuota en específico.
+Y abajo está el historial de pagos, con la fecha, el monto, el método y quién lo registró.
+
+# Editar y anular
+Mientras una cuenta no tenga pagos, podés editar sus observaciones y, si es a fecha fija, su vencimiento.
+También la podés anular. No se borra: queda en la lista como Anulada.
+Su compra se anula, el inventario regresa y se reversan su IVA y su asiento contable.
+Si ya vendiste parte de esa mercadería, el sistema no te deja anularla y te explica por qué.
+
+# Las conexiones
+En resumen: con Cuentas por Pagar el producto entra a tu inventario sin tocar tu Caja.
+Cada pago sale de Caja Chica, de Caja General o del banco que elegiste.
+El IVA y las retenciones van a Impuestos, y Contabilidad registra la deuda y cada pago.
+Cuando terminás de pagar, la compra queda Completada en Compras.
+Si anulás en Compras una compra al crédito que no tiene pagos, su cuenta también se anula.
+En la Agenda ves las cuotas por vencer.
+Y en el Dashboard, los pagos a proveedores no cuentan como gasto: solo saldan una deuda.
+
+Así de fácil tenés tus deudas con proveedores al día.
+Próximo tutorial: Salarios.

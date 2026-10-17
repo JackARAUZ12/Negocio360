@@ -199,7 +199,7 @@
     ['cxp31', 'CXP-000031', 'C-000149', 'Lácteos Centroamericanos', '2026-09-25', 'cuotas', 18120, 6040, null, [['2026-09-25', 6040, 6040], ['2026-10-25', 6040, 0], ['2026-11-25', 6040, 0]], [['p9', 60, 302]], null, 'LC-5512'],
     ['cxp30', 'CXP-000030', 'C-000147', 'Distribuidora La Fe', '2026-09-26', 'fecha_fija', 13440, 0, '2026-10-10', null, [['p1', 240, 56]], null, 'F-00932'],
     ['cxp29', 'CXP-000029', null, 'Taller Hermanos López', '2026-10-01', 'cuotas', 30000, 6000, null, [['2026-10-15', 6000, 0], ['2026-11-15', 6000, 0], ['2026-12-15', 6000, 0], ['2027-01-15', 6000, 0]], null, 'Reparación del camión Hino — prima de C$ 6,000'],
-    ['cxp28', 'CXP-000028', 'C-000143', 'Café Soluble S.A.', '2026-09-01', 'cuotas', 24960, 6240, null, [['2026-09-15', 6240, 6240], ['2026-09-30', 6240, 0], ['2026-10-15', 6240, 0], ['2026-10-30', 6240, 0]], [['p5', 240, 104]], null, 'CS-1180'],
+    ['cxp28', 'CXP-000028', 'C-000143', 'Café Soluble S.A.', '2026-09-01', 'cuotas', 24960, 8240, null, [['2026-09-15', 6240, 6240], ['2026-09-30', 6240, 0], ['2026-10-15', 6240, 2000], ['2026-10-30', 6240, 0]], [['p5', 240, 104]], null, 'CS-1180'],
     ['cxp27', 'CXP-000027', 'C-000141', 'Productos de Limpieza Xedex', '2026-09-05', 'fecha_fija', 7840, 2000, '2026-10-05', null, [['p7', 160, 49]], null, 'X-7744'],
     ['cxp26', 'CXP-000026', 'C-000138', 'Molinos de Nicaragua', '2026-09-02', 'fecha_fija', 19080, 19080, '2026-10-02', null, [['p2', 10, 1908]], null, 'FAC-20544'],
     ['cxp25', 'CXP-000025', 'C-000135', 'Lácteos Centroamericanos', '2026-08-20', 'cuotas', 12080, 12080, null, [['2026-09-05', 6040, 6040], ['2026-10-05', 6040, 6040]], [['p9', 40, 302]], null, 'LC-5390'],
@@ -216,9 +216,9 @@
     cuentas_por_pagar.push({ id, auth_user_id: UID, numero, proveedor_id: pv.id, proveedor_nombre: pvn, compra_id: compraId, tipo_credito: tipo, fecha_compra: fc, fecha_vencimiento: last,
       num_cuotas: cuotas ? cuotas.length : null, frecuencia: cuotas ? (id === 'cxp28' ? 'quincenal' : 'mensual') : null, monto_total: total, monto_pagado: pagado, saldo_pendiente: total - pagado,
       estado: pagado >= total ? 'pagado' : 'pendiente', observaciones: cNum ? null : fac, clase_costo: cNum ? 'inventario' : 'servicio', usuario_nombre: 'Carlos', created_at: fc + 'T09:0' + (9 - i) + ':00' });
-    (cuotas || []).forEach(([f, m, pg], j) => cuentas_por_pagar_cuotas.push({ id: id + '-q' + (j + 1), auth_user_id: UID, cuenta_id: id, numero: j + 1, fecha_vencimiento: f, monto_total: m, monto_pagado: pg, saldo: m - pg, estado: pg >= m ? 'pagada' : 'pendiente' }));
+    (cuotas || []).forEach(([f, m, pg], j) => cuentas_por_pagar_cuotas.push({ id: id + '-q' + (j + 1), auth_user_id: UID, cuenta_id: id, numero: j + 1, fecha_vencimiento: f, monto_total: m, monto_pagado: pg, saldo: m - pg, estado: pg >= m ? 'pagada' : pg > 0 ? 'parcial' : 'pendiente' }));
   });
-  [['cxp31', '2026-09-25T10:15:00', 6040, 'Transferencia', 'Cuota 1'], ['cxp29', '2026-10-01T11:00:00', 6000, 'Efectivo', 'Prima / pago inicial'], ['cxp28', '2026-09-15T09:40:00', 6240, 'Transferencia', null],
+  [['cxp31', '2026-09-25T10:15:00', 6040, 'Transferencia', 'Cuota 1'], ['cxp29', '2026-10-01T11:00:00', 6000, 'Efectivo', 'Prima / pago inicial'], ['cxp28', '2026-09-15T09:40:00', 6240, 'Transferencia', null], ['cxp28', '2026-10-03T11:30:00', 2000, 'Efectivo', 'Abono'],
    ['cxp27', '2026-10-03T16:20:00', 2000, 'Efectivo', 'Abono'], ['cxp26', '2026-10-02T10:05:00', 19080, 'Transferencia', null], ['cxp25', '2026-09-05T09:30:00', 6040, 'Transferencia', null], ['cxp25', '2026-10-05T09:30:00', 6040, 'Transferencia', null],
    ['cxp24', '2026-09-26T15:00:00', 8400, 'Efectivo', null]].forEach(([cid, ca, m, met, obs], i) => { const c = cuentas_por_pagar.find(x => x.id === cid);
     cuentas_por_pagar_pagos.push({ id: 'pg' + i, auth_user_id: UID, cuenta_id: cid, proveedor_id: c.proveedor_id, monto: m, metodo_pago_nombre: met, observaciones: obs, usuario_nombre: 'Carlos Torres', created_at: ca + '-06:00' }); });
@@ -292,6 +292,9 @@
   // Imitación de la función de la base anular_cuenta_por_pagar (solo para el demo)
   function anularCxPDemo(id) {
     const c = DB.cuentas_por_pagar.find(x => x.id === id); if (!c) return { data: null, error: { message: 'La cuenta no existe' } };
+    const lin = DB.detalle_compras.filter(l => l.compra_id === c.compra_id);
+    if (lin.some(l => { const p = DB.productos.find(x => x.id === l.producto_id); return p && p.stock_actual < l.cantidad; }))
+      return { data: null, error: { message: 'No se puede anular: parte de lo comprado ya se vendió o salió del inventario (existencia actual menor a lo comprado)' } };
     if (c.compra_id) { DB.detalle_compras.filter(l => l.compra_id === c.compra_id).forEach(l => { const p = DB.productos.find(x => x.id === l.producto_id); if (p) p.stock_actual -= l.cantidad; });
       const cp = DB.compras.find(x => x.id === c.compra_id); if (cp) cp.estado = 'anulada'; }
     Object.assign(c, { estado: 'anulado', saldo_pendiente: 0 }); DB.cuentas_por_pagar_cuotas.filter(q => q.cuenta_id === id).forEach(q => q.saldo = 0);

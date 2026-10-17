@@ -39,6 +39,7 @@ Este documento resume todo lo hecho en el chat anterior para que un nuevo chat d
   - **Compras** (172.51 s, 10 capítulos, cierra con "Próximo tutorial: Gastos"). Archivos: `capco.js`, `tco_script.js`, `rtco.js`, `tco_sfx.py`, `tco_music.py`.
   - **Gastos** (222.04 s, 12 capítulos, cierra con "Próximo tutorial: Caja").
   - **Caja** (319.16 s, 14 capítulos, diagrama animado de conexiones).
+  - **Cuentas por Pagar** (343.38 s, voz Piper, 11 capítulos, cierra con "Próximo tutorial: Salarios").
 
 ## Gastos (ya entregado, 222.04 s, voz Diego, 12 capítulos)
 Indicadores → Historial y filtros → Nuevo gasto inmediato → Concepto, monto y pago → Caja Chica o Caja General → IVA y retención → Salarios → Guardar → Gastos programados → Pestaña Gastos programados (Vencido / Vence hoy / Vence mañana / Vence en N días) → Automático, pausar y editar → Ver, editar y cancelar. Cierra con "Próximo tutorial: Caja".
@@ -56,7 +57,14 @@ La idea principal (Caja General = total, Bancos = por cuenta, Caja Chica = efect
 - El modal de conteo es más alto que la pantalla: para ver el total se hace scroll del contenedor interno.
 - Textos desactualizados encontrados en Caja (no se tocaron): cerrar Caja Chica dice que bloquea movimientos (no bloquea); Transferencias habla de "efectivo" pero solo ofrece Caja Chica y bancos; "Sin banco asignado… puedes asignarlo después" no tiene botón; el detalle del cierre mensual solo muestra el último día; códigos crudos (TRANSFERENCIA, PAGO_CREDITO, CREDITO_OTORGADO) en la columna Tipo.
 
-## Siguiente tutorial: CUENTAS POR PAGAR (con voz Piper)
+## Cuentas por Pagar (ya entregado, 343.38 s, voz Piper, 11 capítulos)
+Los indicadores → La lista de cuentas → Nueva compra al crédito → A fecha fija o en cuotas → Guardar la compra → Cuenta directa → Registrar un pago (banco / Caja Chica o General / aviso de efectivo) → Retención de IR → El detalle de la cuenta → Editar y anular → Las conexiones (hub). Cierra con "Próximo tutorial: Salarios".
+- Archivos: `tcx_guion.txt` (guion para Piper, `SPEED=1.05`), `tcx_voz_tiempos.json`, `fake-cxp.js` (mock que SÍ guarda lo que se escribe, imita `anular_cuenta_por_pagar`, cuentas con cuotas/pagos, productos con id de texto), `capcx.js` (capturas en `xshots/`), `tcx_body.js` + `python3 build_tcx.py` → `tcx.html` (quita el zoom automático de `sl()`: la cámara encuadra la ventana entera), `rtcx.js`, `tcx_sfx.py`, `tcx_music.py` (`DUR=343.38 DROP=0 BPM=80`).
+- Capturas: `REPO=<copia con los arreglos de Cuentas por Pagar> FAKE=fake-cxp.js node capcx.js`. El video muestra los arreglos de la rama `claude/relaxed-johnson-0gxrvb` (pago con Caja Chica/General o banco, detalle más ancho, buscador por compra/factura).
+- Arreglos hechos en el sistema (rama `claude/relaxed-johnson-0gxrvb`, sobre el anular seguro que otra sesión ya subió a `main`): origen del pago, primera cuota de Cuenta directa, N° de compra y factura en la tabla/buscador, textos, retención que se arrastraba, detalle más ancho, aviso de anular sin texto repetido.
+- Pendientes sin tocar: anular no devuelve el costo promedio; Impuestos no resta el IVA de compras del "IVA por pagar".
+
+## Voz Piper (para los próximos tutoriales)
 - El usuario decidió hacer los próximos tutoriales con **voz Piper es_MX "claude"** (open source, Apache-2.0) en vez de ElevenLabs.
 - **No se espera audio del usuario.** Claude escribe el guion, se lo muestra al usuario para aprobarlo, genera la voz y arma el video.
 - El guion se escribe en voseo nicaragüense ("tenés", "tocá"). Piper lo lee bien, incluso "Negocio360" y "córdoba".

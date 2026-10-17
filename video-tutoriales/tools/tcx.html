@@ -1,0 +1,313 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#0A0E1A;font-family:'Inter Display','Inter',sans-serif}
+#stage{position:absolute;inset:0;overflow:hidden;background:#F4F6FA}
+#views{position:absolute;inset:0;z-index:0}
+#spot,#ring,#label,#cap,#formula,#ripple,#cursor,#chip,#wm,#prog{z-index:5}
+#card{z-index:8}
+#cursor{z-index:9}
+.view{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden}
+.view .full{position:absolute;left:0;width:1920px}
+.view .topimg{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.crop{position:absolute;background-size:1920px 1080px;background-repeat:no-repeat}
+#spot{position:absolute;border-radius:16px;box-shadow:0 0 0 4000px rgba(8,12,28,.55);pointer-events:none;opacity:0}
+#ring{position:absolute;border-radius:18px;border:4px solid #4C8DFF;box-shadow:0 0 0 6px rgba(76,141,255,.25),0 0 40px rgba(76,141,255,.6);opacity:0}
+#label{position:absolute;width:520px;padding:26px 30px;border-radius:22px;background:rgba(14,19,34,.96);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);border:2px solid rgba(76,141,255,.45);opacity:0}
+#label .lt{font-size:34px;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:14px}
+#label .lt i{font-style:normal;font-size:20px;font-weight:800;background:#4C8DFF;color:#fff;border-radius:10px;padding:4px 10px;letter-spacing:0}
+#label .lx{font-size:25px;line-height:1.4;color:#C7CEDD;margin-top:10px;font-weight:500}
+#label .lx b{color:#fff}
+#cap{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);max-width:1400px;padding:22px 38px;border-radius:20px;background:rgba(14,19,34,.94);color:#fff;font-size:34px;font-weight:600;text-align:center;line-height:1.35;box-shadow:0 20px 50px rgba(0,0,0,.4);opacity:0}
+#cap b{color:#7FB2FF}
+#cursor{position:absolute;left:0;top:0;width:40px;height:40px;pointer-events:none;filter:drop-shadow(0 4px 6px rgba(0,0,0,.35));opacity:0}
+#ripple{position:absolute;border-radius:50%;border:4px solid #4C8DFF;opacity:0}
+#chip{position:absolute;left:30px;bottom:30px;padding:12px 22px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-size:24px;font-weight:700;display:flex;gap:12px;align-items:center;opacity:0;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#chip span{color:#7FB2FF}
+#wm{position:absolute;right:30px;top:24px;display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:14px;background:rgba(14,19,34,.88);color:#fff;font-weight:800;font-size:24px;opacity:0}
+#wm img{width:32px}
+#prog{position:absolute;left:0;right:0;bottom:0;height:10px;background:rgba(14,19,34,.6);opacity:0}
+#prog i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,#4C8DFF,#22E39A)}
+#prog b{position:absolute;top:0;bottom:0;width:3px;background:rgba(255,255,255,.7)}
+#card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(1200px 800px at 30% 20%,rgba(76,141,255,.35),transparent 60%),radial-gradient(900px 700px at 80% 90%,rgba(34,227,154,.18),transparent 60%),rgba(8,11,22,.86);color:#fff;opacity:0}
+#banner{position:absolute;left:40px;top:40px;display:flex;align-items:center;gap:18px;padding:16px 28px 16px 18px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.35);opacity:0;z-index:7}
+#banner .bn{font-size:30px;font-weight:900;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#banner .bt{font-size:30px;font-weight:800}
+#card .num{font-size:180px;font-weight:900;letter-spacing:-8px;line-height:1;background:linear-gradient(135deg,#4C8DFF,#22E39A);-webkit-background-clip:text;color:transparent}
+#card .ti{font-size:88px;font-weight:900;letter-spacing:-3px;margin-top:20px}
+#card .su{font-size:36px;color:#AAB4C8;margin-top:18px;font-weight:500}
+#card .list{margin-top:50px;display:grid;grid-template-columns:repeat(3,auto);gap:14px 44px;font-size:28px;color:#C7CEDD;font-weight:600}
+#card .list span{color:#4C8DFF;font-weight:800;margin-right:10px}
+#card img{width:150px;margin-bottom:30px}
+#formula{position:absolute;left:50%;top:36px;transform:translateX(-50%);padding:20px 34px;border-radius:18px;background:rgba(14,19,34,.95);color:#fff;font-size:32px;font-weight:700;opacity:0;white-space:nowrap;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+#formula .g{color:#22E39A}#formula .r{color:#FF6B6B}#formula .b{color:#7FB2FF}
+</style></head>
+<body>
+<div id="stage">
+  <div id="views"></div>
+  <div id="spot"></div><div id="ring"></div>
+  <div id="label"><div class="lt" id="lt"></div><div class="lx" id="lx"></div></div>
+  <div id="cap"></div>
+  <div id="formula"></div>
+  <div id="ripple"></div>
+  <svg id="cursor" viewBox="0 0 40 40"><path d="M6 3 L6 31 L13.5 24 L18.5 35.5 L23.5 33.3 L18.5 22 L28.5 22 Z" fill="#fff" stroke="#111" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  <div id="chip"></div>
+  <div id="wm"><img src="../../../../../../../home/user/Negocio360/negocio360-isotipo.png" id="wmimg">Negocio360</div>
+  <div id="prog"><i id="progi"></i></div>
+  <div id="banner"><img src="isotipo.png" style="width:34px"><span class="bn" id="bn"></span><span class="bt" id="bt"></span></div>
+  <div id="card"></div>
+</div>
+<script>const $ = id => document.getElementById(id);
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - cl(x), 3);
+const eio = x => { x = cl(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const p = (t, a, b) => cl((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const DUR = 343.38;
+
+const STATES = ["anulada", "anular", "anular_err", "base", "cd0", "cd_amort", "cd_int", "cd_manual", "cd_metdd", "cd_origen", "cd_prima", "cd_primadd", "cd_tipo", "comp", "compras", "dash", "det", "det2", "edit", "f_cuotas", "f_vencido", "nc0", "nc_cart", "nc_cuotas", "nc_ff", "nc_fill", "nc_freq", "nc_iva", "nc_newprov", "nc_pn", "nc_pn2", "nc_prov", "nc_res", "nc_search", "pg0", "pg_aviso", "pg_banco", "pg_gen", "pg_metdd", "pg_origen", "pg_parcial", "pg_ret", "saved", "search"];
+const SRC = {};
+const V = {};
+STATES.forEach(s => { const d = document.createElement('div'); d.className = 'view'; d.style.opacity = 0; d.innerHTML = `<img class="topimg" src="${SRC[s] || 'xshots/' + s + '_top.jpg'}">`; $('views').appendChild(d); V[s] = d; });
+const CAM = [{ t: 0, x: 960, y: 540, z: 1 }];
+let curCam = { x: 960, y: 540, z: 1 };
+const ST = [{ t: 0, s: 'base' }], SPOTS = [], LABELS = [], CAPS = [], CLICKS = [], CHAP = [], CARDS = [];
+const CURK = [{ t: 0, x: 1500, y: 800 }]; let curPos = { x: 1500, y: 800 };
+function cam(t, c, dur = 1.0) { const n = Object.assign({}, curCam, c); CAM.push({ t, ...curCam }); CAM.push({ t: t + dur, ...n }); curCam = n; }
+function focus(t, r, zmax = 2, pad = 1.25, dur = 1.0) { const z = Math.max(1, Math.min(zmax, 1920 / (r[2] * pad), 1080 / (r[3] * pad))); cam(t, { x: r[0] + r[2] / 2, y: r[1] + r[3] / 2, z }, dur); }
+function st(t, s) { ST.push({ t, s }); }
+function cur(t, x, y, dur = .7) { CURK.push({ t, x: curPos.x, y: curPos.y }); CURK.push({ t: t + dur, x, y }); curPos = { x, y }; }
+function curTo(t, r, dur = .7) { cur(t, r[0] + r[2] * .55, r[1] + r[3] * .55, dur); }
+function click(t) { CLICKS.push(t); }
+function spot(a, b, r) { SPOTS.push({ a, b, r }); }
+function label(a, b, r, title, text = '', n) { LABELS.push({ a, b, r, title, text, n }); }
+function sl(a, b, r, title, text, n) { spot(a, b, r); label(a + .12, b, r, title, text, n); }
+function cap(a, b, text) { CAPS.push({ a, b, text }); }
+function chap(t, n, title) { CHAP.push({ t, n, title }); }
+const g = (r, p = 6) => [r[0] - p, r[1] - p, r[2] + 2 * p, r[3] + 2 * p];
+
+
+const M = {"kpis": [[268, 176, 256, 83], [542, 176, 256, 83], [815, 176, 256, 83], [1089, 176, 256, 83], [1363, 176, 256, 83], [1636, 176, 256, 83]], "filtros": [[289, 305, 63, 30], [360, 305, 94, 30], [462, 305, 78, 30], [548, 305, 82, 30], [638, 305, 139, 30], [785, 305, 133, 30]], "ths": [[269, 352, 257, 37], [526, 352, 162, 37], [688, 352, 130, 37], [819, 352, 162, 37], [980, 352, 158, 37], [1138, 352, 158, 37], [1296, 352, 158, 37], [1454, 352, 138, 37], [1592, 352, 120, 37], [1712, 352, 179, 37]], "rows": [[269, 389, 1622, 61], [269, 450, 1622, 51], [269, 501, 1622, 61], [269, 562, 1622, 61], [269, 623, 1622, 61], [269, 683, 1622, 61], [269, 744, 1622, 61], [269, 805, 1622, 61], [269, 866, 1622, 60]], "estados": [[1606, 408, 71, 23], [1606, 464, 71, 23], [1606, 520, 71, 23], [1606, 581, 71, 23], [1606, 642, 60, 23], [1606, 702, 57, 23], [1606, 763, 60, 23], [1606, 824, 57, 23], [1606, 885, 57, 23]], "r0btns": [[1726, 406, 28, 28], [1757, 406, 28, 28], [1787, 406, 28, 28], [1817, 406, 28, 28]], "r2btns": [[1726, 517, 28, 28], [1757, 517, 28, 28], [1787, 517, 28, 28], [1817, 517, 28, 28]], "base": {"kpiRow": [268, 176, 1624, 83], "search": [1631, 302, 240, 35], "bPagar": [1475, 94, 127, 28], "bDirecta": [1611, 94, 128, 28], "bNueva": [1749, 92, 143, 32], "table": [269, 352, 1622, 574], "nav": [12, 440, 215, 38], "filtrosRow": [269, 288, 1622, 64], "title": [268, 92, 551, 56]}, "f_vencido": {"table": [269, 352, 1622, 158]}, "f_cuotas": {"table": [269, 352, 1622, 270]}, "search": {"search": [1631, 302, 240, 35], "row0": [269, 389, 1622, 60]}, "nc0": {"box": [510, 43, 900, 994], "prov": [531, 155, 858, 37], "bNewProv": [531, 234, 858, 34], "fecha": [531, 308, 423, 39], "factura": [966, 308, 423, 37], "psearch": [556, 409, 214, 33], "bPN": [1260, 451, 129, 27], "iva": [531, 488, 858, 46], "cart": [531, 585, 858, 84]}, "nc_prov": {"box": [510, 43, 900, 994], "prov": [531, 155, 858, 37], "bNewProv": [531, 234, 858, 34], "fecha": [531, 308, 423, 39], "factura": [966, 308, 423, 37], "psearch": [556, 409, 214, 33], "bPN": [1260, 451, 129, 27], "iva": [531, 488, 858, 46], "cart": [531, 585, 858, 84], "dd": [531, 196, 858, 236]}, "nc_newprov": {"box": [510, 43, 900, 994], "prov": [531, 155, 858, 37], "bNewProv": [531, 234, 858, 34], "fecha": [531, 658, 423, 39], "factura": [966, 658, 423, 37], "psearch": [556, 759, 214, 33], "bPN": [1260, 801, 129, 27], "iva": [531, 838, 858, 46], "cart": [531, 935, 858, 84], "form": [531, 280, 858, 338]}, "nc_fill": {"box": [510, 43, 900, 994], "prov": [531, 155, 858, 37], "bNewProv": [531, 234, 858, 34], "fecha": [531, 308, 423, 39], "factura": [966, 308, 423, 37], "psearch": [556, 409, 214, 33], "bPN": [1260, 451, 129, 27], "iva": [531, 488, 858, 46], "cart": [531, 585, 858, 84]}, "nc_search": {"box": [510, 43, 900, 994], "prov": [531, 155, 858, 37], "bNewProv": [531, 234, 858, 34], "fecha": [531, 308, 423, 39], "factura": [966, 308, 423, 37], "psearch": [556, 409, 214, 33], "bPN": [1260, 509, 129, 27], "iva": [531, 546, 858, 46], "cart": [531, 644, 858, 84], "res": [531, 443, 858, 59]}, "cartIn": [[694, 407, 70, 28], [807, 407, 90, 28], [959, 407, 80, 28]], "nc_cart": {"box": [510, 43, 900, 994], "prov": [531, -85, 858, 37], "bNewProv": [531, -6, 858, 34], "fecha": [531, 68, 423, 39], "factura": [966, 68, 423, 37], "psearch": [556, 169, 214, 33], "bPN": [1260, 211, 129, 27], "iva": [531, 248, 858, 46], "cart": [531, 345, 858, 102], "line0": [531, 345, 858, 51], "table": [531, 308, 858, 139]}, "nc_pn": {"box": [510, 43, 900, 994], "prov": [531, -85, 858, 37], "bNewProv": [531, -6, 858, 34], "fecha": [531, 68, 423, 39], "factura": [966, 68, 423, 37], "psearch": [556, 169, 214, 33], "bPN": [1260, 211, 129, 27], "iva": [531, 576, 858, 46], "cart": [531, 673, 858, 102], "form": [531, 244, 858, 318], "bCrear": [1189, 515, 185, 32]}, "nc_pn2": {"box": [510, 43, 900, 994], "prov": [531, -85, 858, 37], "bNewProv": [531, -6, 858, 34], "fecha": [531, 68, 423, 39], "factura": [966, 68, 423, 37], "psearch": [556, 169, 214, 33], "bPN": [1260, 211, 129, 27], "iva": [531, 248, 858, 46], "cart": [531, 345, 858, 153], "line2": [531, 447, 858, 51], "toast": [1556, 992, 340, 65]}, "nc_iva": {"box": [510, 43, 900, 994], "prov": [531, -191, 858, 37], "bNewProv": [531, -112, 858, 34], "fecha": [531, -38, 423, 39], "factura": [966, -38, 423, 37], "psearch": [556, 63, 214, 33], "bPN": [1260, 105, 129, 27], "iva": [531, 142, 858, 73], "cart": [531, 266, 858, 153], "pct": [785, 165, 111, 37], "resumen": [531, 432, 858, 182], "imp": [548, 514, 824, 33]}, "nc_res": {"box": [510, 43, 900, 994], "resumen": [531, 432, 858, 182], "bloque": [531, 632, 858, 186], "ff": [531, 669, 423, 68], "cu": [966, 669, 423, 68]}, "nc_ff": {"box": [510, 43, 900, 994], "bloque": [531, 632, 858, 186], "ff": [531, 669, 423, 68], "cu": [966, 669, 423, 68], "fv": [531, 755, 858, 63], "bGuardar": [1162, 984, 223, 32]}, "nc_cuotas": {"box": [510, 43, 900, 994], "bloque": [531, 507, 858, 312], "cu": [966, 544, 423, 68], "num": [531, 654, 423, 37], "f1": [966, 654, 423, 39], "freq": [531, 743, 423, 37], "prev": [531, 800, 858, 19], "bGuardar": [1162, 984, 223, 32]}, "nc_freq": {"box": [510, 43, 900, 994], "bloque": [531, 507, 858, 312], "cu": [966, 544, 423, 68], "num": [531, 654, 423, 37], "f1": [966, 654, 423, 39], "freq": [531, 743, 423, 37], "prev": [531, 800, 858, 19], "bGuardar": [1162, 984, 223, 32], "dd": [531, 784, 423, 108]}, "saved": {"toast": [1556, 992, 340, 65], "row0": [269, 389, 1622, 61], "kpiRow": [268, 176, 1624, 83]}, "cd0": {"box": [670, 54, 580, 972], "nota": [691, 142, 538, 76], "prov": [691, 258, 538, 37], "concepto": [691, 411, 538, 37], "clase": [691, 486, 538, 37], "monto": [691, 599, 263, 37], "fecha": [966, 599, 263, 39], "prima": [691, 686, 263, 37], "primaV": [966, 686, 263, 37]}, "cd_primadd": {"box": [670, 54, 580, 972], "nota": [691, 80, 538, 76], "prov": [691, 196, 538, 37], "concepto": [691, 349, 538, 37], "clase": [691, 424, 538, 37], "monto": [691, 537, 263, 37], "fecha": [966, 537, 263, 39], "prima": [691, 624, 263, 37], "primaV": [966, 624, 263, 37], "dd": [691, 665, 263, 108]}, "cd_prima": {"box": [670, 54, 580, 972], "primaRow": [691, 401, 538, 61], "metodo": [691, 499, 538, 37], "origen": [691, 550, 538, 61], "resumen": [691, 625, 538, 36], "tipo": [691, 675, 538, 58]}, "cd_origen": {"box": [670, 54, 580, 972], "primaRow": [691, 401, 538, 61], "metodo": [691, 499, 538, 37], "origen": [691, 550, 538, 61], "resumen": [691, 625, 538, 36], "tipo": [691, 675, 538, 58], "dd": [691, 615, 538, 76]}, "cd_tipo": {"box": [670, 54, 580, 972], "tipo": [691, 446, 538, 58], "interes": [691, 518, 538, 58]}, "cd_int": {"box": [670, 54, 580, 972], "interes": [691, 204, 538, 58], "detalle": [691, 276, 538, 75], "metodo": [966, 299, 263, 37], "modo": [691, 350, 538, 58], "num": [691, 422, 538, 61], "tabla": [691, 606, 538, 207], "tot": [691, 582, 538, 19]}, "cd_metdd": {"box": [670, 54, 580, 972], "interes": [691, 204, 538, 58], "detalle": [691, 276, 538, 75], "metodo": [966, 299, 263, 37], "modo": [691, 350, 538, 58], "num": [691, 422, 538, 61], "tabla": [691, 606, 538, 207], "tot": [691, 582, 538, 19], "dd": [966, 340, 263, 76]}, "cd_amort": {"box": [670, 54, 580, 972], "interes": [691, 204, 538, 58], "detalle": [691, 276, 538, 75], "metodo": [966, 299, 263, 37], "modo": [691, 350, 538, 58], "num": [691, 422, 538, 61], "tabla": [691, 606, 538, 207], "tot": [691, 582, 538, 19]}, "cd_manual": {"box": [670, 54, 580, 972], "interes": [691, 182, 538, 58], "detalle": [691, 254, 538, 75], "metodo": [966, 277, 263, 37], "modo": [691, 328, 538, 58], "num": null, "tabla": [691, 606, 538, 207], "tot": [691, 582, 538, 19], "fijo": [691, 400, 538, 83], "calc": [691, 465, 538, 18]}, "pg_gen": {"box": [670, 272, 580, 536], "sel": [695, 360, 530, 61], "resumen": null, "monto": [695, 444, 259, 37], "metodo": [966, 444, 259, 37], "origen": [695, 518, 530, 81], "banco": null, "ret": [695, 485, 530, 19], "retC": null, "bOk": [1101, 755, 124, 32], "dd": [695, 425, 530, 236]}, "pg0": {"box": [670, 164, 580, 752], "sel": [695, 252, 530, 61], "resumen": [695, 313, 530, 216], "monto": [695, 552, 259, 37], "metodo": [966, 552, 259, 37], "origen": [695, 626, 530, 81], "banco": null, "ret": [695, 593, 530, 19], "retC": null, "bOk": [1101, 863, 124, 32]}, "pg_parcial": {"box": [670, 164, 580, 752], "sel": [695, 252, 530, 61], "resumen": [695, 313, 530, 216], "monto": [695, 552, 259, 37], "metodo": [966, 552, 259, 37], "origen": [695, 626, 530, 81], "banco": null, "ret": [695, 593, 530, 19], "retC": null, "bOk": [1101, 863, 124, 32]}, "pg_metdd": {"box": [670, 164, 580, 752], "sel": [695, 252, 530, 61], "resumen": [695, 313, 530, 216], "monto": [695, 552, 259, 37], "metodo": [966, 552, 259, 37], "origen": [695, 626, 530, 81], "banco": null, "ret": [695, 593, 530, 19], "retC": null, "bOk": [1101, 863, 124, 32], "dd": [966, 593, 260, 108]}, "pg_banco": {"box": [670, 174, 580, 732], "sel": [695, 262, 530, 61], "resumen": [695, 323, 530, 216], "monto": [695, 563, 259, 37], "metodo": [966, 563, 259, 37], "origen": null, "banco": [695, 636, 530, 61], "ret": [695, 604, 530, 19], "retC": null, "bOk": [1101, 853, 124, 32], "dd": [695, 701, 530, 140]}, "pg_origen": {"box": [670, 164, 580, 752], "sel": [695, 252, 530, 61], "resumen": [695, 313, 530, 216], "monto": [695, 552, 259, 37], "metodo": [966, 552, 259, 37], "origen": [695, 626, 530, 81], "banco": null, "ret": [695, 593, 530, 19], "retC": null, "bOk": [1101, 863, 124, 32], "dd": [695, 691, 530, 76]}, "pg_aviso": {"box": [740, 358, 440, 364]}, "pg_ret": {"box": [670, 111, 580, 859], "sel": [695, 199, 530, 61], "resumen": [695, 260, 530, 216], "monto": [695, 499, 259, 37], "metodo": [966, 499, 259, 37], "origen": null, "banco": [695, 700, 530, 61], "ret": [695, 540, 530, 146], "retC": [695, 567, 530, 119], "bOk": [1101, 916, 124, 32]}, "comp": {"box": [760, 285, 400, 511], "body": [761, 353, 398, 375], "saldos": [785, 631, 113, 20], "bPrint": [1051, 743, 84, 32], "ret": [785, 571, 135, 20]}, "detCuotas": [[535, 629, 850, 46], [535, 675, 850, 51], [535, 726, 850, 51], [535, 777, 850, 51], [535, 917, 850, 43], [535, 960, 850, 42]], "det": {"box": [510, 54, 900, 972], "head": [535, 142, 850, 373], "cuotas": [535, 592, 850, 235], "payQ": [1332, 686, 28, 28], "bPagar": [1261, 1037, 124, 32]}, "detEstados": [], "det2": {"box": [510, 54, 900, 972], "hist": [535, 779, 850, 21], "histT": [535, 816, 850, 122], "cuotas": [535, 528, 850, 235]}, "edit": {"box": [760, 330, 400, 419], "venc": [785, 418, 350, 63], "obs": [785, 519, 350, 72]}, "anular": {"box": [760, 388, 400, 304], "bOk": [1017, 639, 118, 32]}, "anulada": {"row0": [269, 389, 1622, 61], "badge": [1606, 408, 60, 23], "toast": [1688, 1012, 208, 44]}, "anular_err": {"toast": [1556, 971, 340, 85], "box": [760, 388, 400, 304]}, "dash": {"card": [547, 479, 236, 122]}, "compras": {"cell": [323, 701, 74, 22]}};
+const fm = (t, r, z = 1.6) => focus(t, r, z, 1.06, .8);
+const u = (a, b) => { const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]); return [x, y, Math.max(a[0] + a[2], b[0] + b[2]) - x, Math.max(a[1] + a[3], b[1] + b[3]) - y]; };
+const B = M.base, K = M.kpis, HDR = [1180, 80, 720, 60];
+const row = i => M.rows[i], col = i => M.ths[i];
+const TBL = [269, 352, 1622, 574];
+const colR = i => [col(i)[0], 352, col(i)[2], 574];
+
+CARDS.push({ type: 'intro', a: 0, b: 8.0 });
+cap(8.09, 16.38, 'Compras al crédito · Deudas que no son mercadería · <b>Cada pago</b>');
+st(16.6, 'base'); cam(16.6, { x: 700, y: 520, z: 1.25 }, .8);
+curTo(16.8, B.nav, .6); sl(16.9, 18.9, g(B.nav, 4), 'En el menú', 'Cuentas por Pagar');
+st(19.0, 'dash'); cam(19.0, { x: 900, y: 560, z: 1.3 }, .7); curTo(19.2, M.dash.card, .6); sl(19.2, 21.3, g(M.dash.card, 6), 'Accesos rápidos del Dashboard', '');
+
+chap(22.17, 1, 'Los indicadores');
+st(22.3, 'base'); focus(22.3, B.kpiRow, 1.15, 1.04);
+sl(23.72, 25.4, B.kpiRow, 'Seis indicadores', '');
+[['Total pendiente', 25.69, 28.2, 'Todo lo que todavía debés.'], ['Total vencido', 28.3, 30.9, 'Ya pasó de su fecha.'], ['Vence hoy', 31.16, 33.3, ''], ['Vence esta semana', 33.4, 35.6, ''], ['Pagado este mes', 35.84, 38.5, 'A tus proveedores.'], ['Cuentas pendientes', 38.6, 41.0, '']]
+  .forEach(([n, a, b, tx], i) => { curTo(a - .3, K[i], .3); sl(a, b, g(K[i], 4), n, tx, i + 1); });
+
+chap(42.03, 2, 'La lista de cuentas');
+cam(42.2, { x: 1080, y: 640, z: 1.12 }, .9);
+sl(43.7, 45.0, TBL, 'Cada cuenta por pagar', '');
+sl(45.05, 47.0, colR(1), 'N° de cuenta y de compra', 'CXP-… · Compra C-…');
+[['Total', 47.05, 47.95, 4], ['Pagado', 48.0, 48.75, 5], ['Pendiente', 48.8, 49.6, 6], ['Próximo vencimiento', 49.65, 51.0, 7]].forEach(([n, a, b, i]) => sl(a, b, colR(i), n, ''));
+sl(51.2, 54.4, colR(8), 'El estado se calcula solo', 'Pendiente · Vencido · Pagado');
+sl(54.5, 56.8, u(row(4), row(6)), 'Las vencidas, en rojo', '');
+focus(56.9, [269, 280, 1622, 90], 1.15, 1.05);
+curTo(57.0, M.filtros[3], .3); click(57.4); st(57.6, 'f_vencido'); sl(57.0, 59.0, g(M.filtros[3], 4), 'Por estado', 'Pendientes · Pagadas · Vencidas');
+curTo(59.0, M.filtros[5], .3); click(59.3); st(59.5, 'f_cuotas'); sl(59.1, 60.5, g(u(M.filtros[4], M.filtros[5]), 4), 'Por tipo de crédito', '');
+curTo(60.4, B.search, .3); click(60.7); st(60.9, 'search'); sl(60.6, 62.8, g(B.search, 5), 'Buscá', 'Proveedor · N° de compra · factura');
+
+chap(63.78, 3, 'Nueva compra al crédito');
+st(63.9, 'base'); focus(63.9, HDR, 2.0, 1.1); curTo(65.6, B.bNueva, .7);
+sl(65.93, 68.7, g(B.bNueva, 5), 'Nueva compra', 'Al crédito.'); click(68.5);
+st(68.8, 'nc0'); fm(68.8, M.nc0.box, 1.1);
+const N0 = M.nc0;
+curTo(69.4, N0.prov, .3); click(69.6); st(69.8, 'nc_prov'); sl(69.6, 71.2, u(N0.prov, M.nc_prov.dd), 'Elegí el proveedor', '', 1);
+curTo(71.0, N0.bNewProv, .3); click(71.2); st(71.4, 'nc_newprov'); sl(71.3, 72.9, M.nc_newprov.form, 'O registrá uno nuevo', 'Ahí mismo.');
+st(73.0, 'nc_fill'); curTo(73.2, N0.factura, .4); sl(73.06, 76.0, g(u(N0.fecha, N0.factura), 5), 'Fecha y N° de factura', '', 2);
+curTo(76.1, N0.psearch, .3); st(76.4, 'nc_search'); sl(76.31, 79.0, [531, 403, 858, 104], 'Buscá productos', 'Por nombre, código o categoría.', 3);
+st(79.2, 'nc_cart'); click(78.9); sl(79.2, 81.2, M.nc_cart.table, 'Al carrito', '');
+const CI = M.cartIn; curTo(81.2, CI[0], .3); sl(81.33, 85.4, g(u(CI[0], CI[CI.length - 1]), 6), 'Cantidad · precio de compra · descuento', 'En cada línea.', 4);
+st(85.8, 'nc_pn'); curTo(85.7, M.nc_pn.bPN, .4); click(86.1); sl(85.69, 89.5, g(M.nc_pn.bPN, 5), 'Producto nuevo', 'Si todavía no existe.');
+sl(89.6, 91.5, M.nc_pn.form, 'Con su costo y su precio de venta', '');
+curTo(90.9, M.nc_pn.bCrear, .4); click(91.4); st(91.6, 'nc_pn2'); sl(91.6, 93.2, g(M.nc_pn2.line2, 4), 'Directo al carrito ✅', '');
+st(93.5, 'nc_iva'); curTo(93.4, [M.nc_iva.iva[0], M.nc_iva.iva[1], 30, 30], .4); click(93.9); sl(93.41, 98.6, g(M.nc_iva.iva, 4), 'Aplicar impuesto', '15 % de IVA por defecto.', 5);
+st(99.0, 'nc_res'); sl(98.93, 102.8, M.nc_res.resumen, 'Subtotal · descuento · impuestos · total', '');
+
+chap(103.83, 4, 'A fecha fija o en cuotas');
+const NR = M.nc_res;
+sl(105.95, 108.1, g(u(NR.ff, NR.cu), 5), '¿Cómo le vas a pagar?', '');
+st(108.4, 'nc_ff'); curTo(108.4, M.nc_ff.fv, .4); sl(108.35, 112.3, g(u(M.nc_ff.ff, M.nc_ff.fv), 5), 'A fecha fija', 'Un solo vencimiento.', 1);
+curTo(112.4, NR.cu, .3); click(112.6); st(112.8, 'nc_cuotas'); const NCU = M.nc_cuotas;
+sl(112.62, 115.4, g(u(NCU.num, NCU.f1), 5), 'En cuotas', 'Cuántas y la fecha de la primera.', 2);
+curTo(115.2, NCU.freq, .3); click(115.4); st(115.6, 'nc_freq'); sl(115.5, 118.0, u(NCU.freq, M.nc_freq.dd), 'Mensual · quincenal · semanal', '');
+st(118.2, 'nc_cuotas'); sl(118.28, 122.3, g(NCU.prev, 8), 'De cuánto sale cada cuota', 'Y cuándo vence la última.');
+
+chap(123.32, 5, 'Guardar la compra');
+curTo(124.4, NCU.bGuardar, .6); sl(125.0, 127.0, g(NCU.bGuardar, 5), 'Guardar compra', ''); click(126.9);
+st(127.2, 'saved'); cam(127.2, { x: 1080, y: 560, z: 1.12 }, .7);
+sl(127.62, 131.3, M.saved.row0, 'Nueva cuenta por pagar', 'El stock sube y el costo promedio se actualiza.');
+st(131.5, 'compras'); cam(131.5, { x: 1080, y: 700, z: 1.12 }, .7);
+sl(131.59, 135.0, [280, M.compras.cell[1] - 16, 1600, 52], 'En Compras: Pendiente', 'Método: Crédito.');
+st(135.2, 'saved'); cam(135.2, { x: 960, y: 540, z: 1 }, .7);
+cap(135.26, 138.4, '🧮 El IVA queda anotado en <b>Impuestos</b>');
+cap(138.73, 144.1, '💰 De tu Caja sale <b>C$ 0</b> — el dinero sale hasta que pagás');
+
+chap(145.21, 6, 'Cuenta directa');
+st(145.3, 'base'); focus(145.3, HDR, 2.0, 1.1);
+cap(146.62, 153.3, '¿La renta del local? ¿La reparación del camión? <b>No es mercadería</b>');
+curTo(152.6, B.bDirecta, .7); sl(153.66, 155.6, g(B.bDirecta, 5), 'Cuenta directa', ''); click(155.4);
+st(155.7, 'cd0'); fm(155.7, M.cd0.box, 1.1); const C0 = M.cd0;
+sl(155.8, 158.2, C0.nota, 'No toca tu inventario', '');
+sl(158.46, 161.5, g(u(C0.concepto, C0.fecha), 5), '¿De qué es? · monto · fecha', '', 1);
+st(161.8, 'cd_primadd'); const CPD = M.cd_primadd; curTo(161.7, CPD.prima, .3); click(161.9); sl(161.77, 165.3, u(CPD.prima, CPD.dd), 'Prima', 'Monto fijo o porcentaje.', 2);
+st(165.4, 'cd_prima'); const CP = M.cd_prima; sl(165.4, 167.8, g(CP.resumen, 5), 'Sale al guardar', '');
+curTo(167.6, CP.origen, .3); click(167.8); st(168.0, 'cd_origen'); sl(167.9, 171.3, u(CP.origen, M.cd_origen.dd), '¿De dónde sale?', 'Caja Chica · Caja General · banco', 3);
+st(171.5, 'cd_tipo'); curTo(171.5, M.cd_tipo.tipo, .4); sl(171.51, 174.3, g(M.cd_tipo.tipo, 4), 'Una sola fecha o en cuotas', '', 4);
+st(174.6, 'cd_int'); const CI2 = M.cd_int; sl(174.59, 176.9, g(CI2.interes, 4), '¿Tiene interés?', '', 5);
+st(177.0, 'cd_metdd'); click(176.9); sl(177.0, 179.7, u(CI2.detalle, M.cd_metdd.dd), 'Tasa de interés', 'Cuota fija o interés simple.');
+st(179.9, 'cd_amort'); sl(179.91, 183.0, g(u(CI2.modo, CI2.num), 4), 'Por número de cuotas', '', 6);
+st(183.1, 'cd_manual'); curTo(183.0, M.cd_manual.fijo, .4); sl(183.1, 186.6, g(M.cd_manual.fijo, 4), 'O por monto fijo por cuota', 'Calcula cuántas hacen falta.');
+st(186.8, 'cd_amort'); sl(186.89, 192.3, g(u(CI2.tot, CI2.tabla), 4), 'Tabla de cuotas', 'Vencimiento · capital · interés · saldo');
+
+chap(193.38, 7, 'Registrar un pago');
+st(193.5, 'base'); cam(193.5, { x: 1500, y: 420, z: 1.6 }, .8);
+const PAYB = M.r2btns[1]; curTo(194.9, PAYB, .5); sl(195.08, 197.8, g(PAYB, 8), 'Pagar esta cuenta', '');
+cam(197.8, { x: 1500, y: 240, z: 1.6 }, .6); curTo(197.9, B.bPagar, .5); sl(197.95, 199.3, g(B.bPagar, 5), 'O Registrar pago', ''); click(199.1);
+st(199.3, 'pg_gen'); fm(199.3, M.pg_gen.box, 1.35); sl(199.4, 201.0, u(M.pg_gen.sel, M.pg_gen.dd), 'Elegí la cuenta', '');
+const P0 = M.pg0;
+st(201.3, 'pg0'); fm(201.3, P0.box, 1.3); sl(201.27, 203.9, P0.resumen, 'Total · pagado · pendiente', '');
+st(204.0, 'pg_parcial'); curTo(203.8, P0.monto, .3); sl(204.0, 207.8, g(P0.monto, 5), 'Todo o solo una parte', 'Nunca más de lo que debés.');
+curTo(207.9, P0.metodo, .3); click(208.1); st(208.3, 'pg_metdd'); sl(208.09, 209.8, u(P0.metodo, M.pg_metdd.dd), 'Método de pago', '');
+st(210.0, 'pg_banco'); sl(209.96, 213.7, u(M.pg_banco.banco, M.pg_banco.dd), 'Tarjeta o transferencia', '¿De qué banco sale?');
+st(214.0, 'pg_origen'); sl(213.95, 219.0, u(P0.origen, M.pg_origen.dd), 'Efectivo con Caja Chica abierta', 'Caja Chica o Caja General');
+curTo(218.8, P0.bOk, .4); click(219.1); st(219.3, 'pg_aviso'); fm(219.3, M.pg_aviso.box, 1.6); sl(219.4, 223.5, M.pg_aviso.box, '⚠️ ¿No alcanza el efectivo?', 'Te avisa y te ofrece transferir desde un banco.');
+st(223.8, 'det'); fm(223.8, M.det.box, 1.05); const DQ = M.detCuotas;
+sl(223.9, 228.2, g(u(DQ[1], DQ[2]), 3), 'Primero la cuota más vieja', 'El pago se aplica en orden.');
+st(228.6, 'comp'); fm(228.6, M.comp.box, 1.5); const CB = M.comp;
+sl(228.5, 231.5, CB.body, 'Sale de Caja y te da un comprobante', '');
+sl(231.6, 233.8, [CB.saldos[0], CB.saldos[1] - 4, 350, 48], 'Saldo anterior y nuevo', '');
+curTo(233.6, CB.bPrint, .4); sl(233.9, 235.8, g(CB.bPrint, 5), 'Imprimir', '');
+
+chap(236.86, 8, 'Retención de IR');
+st(237.0, 'pg_ret'); fm(237.0, M.pg_ret.box, 1.2); const PR = M.pg_ret;
+curTo(238.3, [PR.ret[0], PR.ret[1], 24, 22], .4); sl(238.6, 241.5, g([PR.ret[0], PR.ret[1], PR.ret[2], 22], 6), 'Aplicar retención de IR', '');
+sl(241.6, 244.4, g([PR.retC[0], PR.retC[1], 259, 62], 4), '2 % por defecto', '');
+sl(244.69, 248.4, g([PR.retC[0] + 271, PR.retC[1], 259, 62], 4), 'La deuda baja completa', 'Solo sale el neto.');
+st(248.6, 'comp'); fm(248.6, CB.box, 1.5); sl(248.67, 252.2, [CB.ret[0], CB.ret[1] - 4, 350, 48], 'La retención va a Impuestos', 'Lista para pagarla a la DGI.');
+
+chap(253.29, 9, 'El detalle de la cuenta');
+st(253.4, 'base'); cam(253.4, { x: 1500, y: 700, z: 1.5 }, .8);
+const EYE = [1728, row(6)[1] + 18, 24, 24]; curTo(254.3, EYE, .5); click(254.9);
+st(255.2, 'det'); fm(255.2, M.det.box, 1.05);
+sl(255.6, 260.8, M.det.head, 'Todo de un vistazo', 'Proveedor · fechas · total · pagado · saldo');
+st(261.0, 'det2'); const D2 = M.det2; sl(261.07, 266.3, [1195, D2.cuotas[1] + 38, 150, 197], 'Estado de cada cuota', 'Pendiente · Pago parcial · Vencida · Pagada');
+st(266.5, 'det'); curTo(266.4, M.det.payQ, .4); sl(266.64, 269.3, g(M.det.payQ, 8), 'Pagar una cuota en específico', '');
+st(269.6, 'det2'); sl(269.64, 274.8, g(u(D2.hist, D2.histT), 4), 'Historial de pagos', 'Fecha · monto · método · quién lo registró');
+
+chap(275.93, 10, 'Editar y anular');
+st(276.1, 'base'); cam(276.1, { x: 1500, y: 420, z: 1.6 }, .8);
+const R0 = M.r0btns; curTo(277.2, R0[2], .4); sl(277.59, 279.4, g(R0[2], 7), 'Editar', 'Solo sin pagos.'); click(279.2);
+st(279.5, 'edit'); fm(279.5, M.edit.box, 1.6); sl(279.6, 284.3, g(u(M.edit.venc, M.edit.obs), 5), 'Vencimiento y observaciones', 'El vencimiento, si es a fecha fija.');
+st(284.5, 'base'); cam(284.5, { x: 1500, y: 420, z: 1.6 }, .6); curTo(284.6, R0[3], .4); sl(284.62, 286.0, g(R0[3], 7), 'Anular', ''); click(285.9);
+st(286.2, 'anular'); fm(286.2, M.anular.box, 1.6); sl(286.3, 287.6, M.anular.box, 'No se borra', '');
+st(287.7, 'anulada'); cam(287.7, { x: 1500, y: 420, z: 1.5 }, .6); sl(287.75, 288.8, g(M.anulada.badge, 6), 'Queda como Anulada', '');
+st(288.9, 'anular'); fm(288.9, M.anular.box, 1.6); sl(288.92, 294.6, M.anular.box, 'Compra anulada · inventario de vuelta', 'Se reversan su IVA y su asiento contable.');
+st(294.8, 'anular_err'); cam(294.8, { x: 1500, y: 800, z: 1.4 }, .7); sl(294.92, 300.6, g(M.anular_err.toast, 5), '¿Ya vendiste parte?', 'No te deja anular y te explica por qué.');
+
+chap(301.65, 11, 'Las conexiones');
+CARDS.push({ type: 'hub', a: 301.65, b: 337.3 });
+CARDS.push({ type: 'outro', a: 337.58, b: DUR });
+const HUB = [
+  ['inv', '📦 Inventario: entra el producto', 'in', 304.6], ['caja0', '💰 Caja: C$ 0 al comprar', 'in', 306.6],
+  ['cc', '👛 Caja Chica', 'out', 309.3], ['cg', '🏛️ Caja General', 'out', 310.4], ['bk', '🏦 Bancos', 'out', 311.6],
+  ['imp', '🧮 Impuestos: IVA y retenciones', 'mid', 313.3], ['cont', '📒 Contabilidad: la deuda y cada pago', 'mid', 316.0],
+  ['comp', '🛒 Compras: queda Completada', 'low', 319.1], ['anu', '↩️ Anular en Compras → anula la cuenta', 'low', 323.0],
+  ['ag', '📅 Agenda: cuotas por vencer', 'low2', 328.6], ['dash', '📊 Dashboard: pagar no es un gasto', 'low2', 331.2]];
+const HEAD = [[301.65, 'Las conexiones'], [303.18, 'Comprás hoy, pagás después'], [313.26, 'Todo conectado'], [331.18, 'Todo en tiempo real ⚡']];
+function hubHTML() {
+  const chip = (c) => `<div class="hc hc-${c[2]}" id="hc-${c[0]}">${c[1]}${c[2] === 'in' ? '<em>al comprar</em>' : c[2] === 'out' ? '<em>al pagar</em>' : ''}</div>`;
+  const grp = k => HUB.filter(c => c[2] === k).map(chip).join('');
+  return `<div id="hubh" style="font-size:64px;font-weight:800;letter-spacing:-1px;margin-bottom:36px"></div>
+  <div style="display:flex;align-items:center;gap:56px">
+    <div style="display:flex;flex-direction:column;gap:22px;align-items:flex-end">${grp('in')}</div>
+    <div id="hubc" style="width:290px;height:290px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 35% 30%,#5B8CFF,#2B3FD6);box-shadow:0 0 0 14px rgba(91,140,255,.18),0 0 80px rgba(91,140,255,.55)"><img src="isotipo.png" style="width:64px;filter:brightness(10)"><div style="font-size:40px;font-weight:800;margin-top:6px;line-height:1.05">Cuentas<br>por Pagar</div></div>
+    <div style="display:flex;flex-direction:column;gap:22px;align-items:flex-start">${grp('out')}</div>
+  </div>
+  <div style="display:flex;gap:22px;margin-top:38px">${grp('mid')}</div>
+  <div style="display:flex;gap:22px;margin-top:20px">${grp('low')}</div>
+  <div style="display:flex;gap:22px;margin-top:20px">${grp('low2')}</div>
+  <style>.hc{font-size:29px;font-weight:700;padding:15px 24px;border-radius:18px;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.18);display:flex;gap:16px;align-items:center;white-space:nowrap}
+  .hc em{font-style:normal;font-size:21px;font-weight:800;padding:4px 10px;border-radius:9px}.hc-in em{background:#16C784;color:#04261a}.hc-out em{background:#FF5D73;color:#3a0610}
+  .hc-in{border-color:rgba(22,199,132,.6)}.hc-out{border-color:rgba(255,93,115,.6)}.hc-mid{border-color:rgba(255,196,77,.6)}.hc-low,.hc-low2{border-color:rgba(127,178,255,.6)}</style>`;
+}
+function hubFrame(t) {
+  let h = ''; for (const [a, tx] of HEAD) if (t >= a) h = tx; const he = $('hubh'); if (he && he.textContent !== h) he.textContent = h;
+  for (const c of HUB) { const e = $('hc-' + c[0]); if (!e) continue; const k = ease(p(t, c[3], c[3] + .45)); const pulse = t > c[3] && t < c[3] + 1.2 ? 1 + .06 * Math.sin(p(t, c[3], c[3] + 1.2) * Math.PI) : 1; e.style.opacity = .12 + .88 * k; e.style.transform = `scale(${(.92 + .08 * k) * pulse})`; e.style.background = t > c[3] && t < c[3] + 1.6 ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.08)'; }
+  const hc = $('hubc'); if (hc) hc.style.transform = `scale(${1 + .03 * Math.sin(t * 3)})`;
+}
+
+window.EVENTS = { DUR, clicks: CLICKS, chapters: CHAP.map(c => c.t), spots: SPOTS.map(s => s.a), states: ST.map(s => s.t), cards: CARDS.map(c => c.a) };
+CHAP.forEach(c => { const b = document.createElement('b'); b.style.left = (c.t / DUR * 100) + '%'; $('prog').appendChild(b); });
+
+// ---------------- engine
+CAM.sort((a, b) => a.t - b.t);
+function camAt(t) { let a = CAM[0], ia = 0; for (let i = 0; i < CAM.length; i++) if (CAM[i].t <= t) { a = CAM[i]; ia = i; } const b = CAM[ia + 1] || a; if (b.t === a.t) return b; const k = eio(p(t, a.t, b.t)); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)) }; }
+function clampCam(c) { const hw = 960 / c.z, hh = 540 / c.z; return { x: cl(c.x, hw, 1920 - hw), y: cl(c.y, hh, 1080 - hh), z: c.z }; }
+function curAt(t) { let a = CURK[0], ia = 0; for (let i = 0; i < CURK.length; i++) if (CURK[i].t <= t) { a = CURK[i]; ia = i; } const b = CURK[ia + 1] || a; if (b.t === a.t) return { x: b.x, y: b.y }; const k = eio(p(t, a.t, b.t)); const arc = Math.sin(Math.PI * k) * Math.min(50, Math.hypot(b.x - a.x, b.y - a.y) * .1); return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc }; }
+const toS = (c, x, y) => ({ x: (x - c.x) * c.z + 960, y: (y - c.y) * c.z + 540 });
+function pick(list, t, fi = .3, fo = .25) { let best = null, bo = 0; for (const L of list) if (t >= L.a && t <= L.b + fo) { const o = Math.min(ease(p(t, L.a, L.a + fi)), 1 - ease(p(t, L.b, L.b + fo))); if (o >= bo) { best = L; bo = o; } } return [best, bo]; }
+
+window.render = function (t) {
+  const c = clampCam(camAt(t));
+  let curS = ST[0], prev = null; for (const s of ST) if (s.t <= t) { prev = curS; curS = s; }
+  const k = ease(p(t, curS.t, curS.t + .3));
+  for (const s in V) { V[s].style.opacity = 0; V[s].style.zIndex = 0; }
+  const setV = (s, o, z) => { const v = V[s]; v.style.opacity = o; v.style.zIndex = z; v.style.transform = `translate(${960 - c.x * c.z}px,${540 - c.y * c.z}px) scale(${c.z})`; };
+  if (prev && prev.s !== curS.s && k < 1) { setV(prev.s, 1, 1); setV(curS.s, k, 2); } else setV(curS.s, 1, 2);
+  // spotlight
+  const [sp, so] = pick(SPOTS, t, .3, .25);
+  if (sp) { const a = toS(c, sp.r[0], sp.r[1]), b = toS(c, sp.r[0] + sp.r[2], sp.r[1] + sp.r[3]); const pad = 6;
+    [$('spot'), $('ring')].forEach(e => { e.style.left = (a.x - pad) + 'px'; e.style.top = (a.y - pad) + 'px'; e.style.width = (b.x - a.x + 2 * pad) + 'px'; e.style.height = (b.y - a.y + 2 * pad) + 'px'; });
+    $('spot').style.opacity = so * .9; $('ring').style.opacity = so * (.75 + .25 * Math.sin(t * 5)); } else { $('spot').style.opacity = 0; $('ring').style.opacity = 0; }
+  // label
+  const [lb, lo] = pick(LABELS, t, .3, .2); const LE = $('label');
+  if (lb) { const key = lb.title + lb.a; if (LE.dataset.k !== key) { $('lt').innerHTML = (lb.n ? `<i>${lb.n}</i>` : '') + lb.title; $('lx').innerHTML = lb.text; $('lx').style.display = lb.text ? '' : 'none'; LE.dataset.k = key; }
+    const a = toS(c, lb.r[0], lb.r[1]), b = toS(c, lb.r[0] + lb.r[2], lb.r[1] + lb.r[3]); const Wd = LE.offsetWidth || 520, Hh = LE.offsetHeight || 140, m = 30; let x, y;
+    if (1920 - b.x > Wd + m + 30) { x = b.x + m; y = (a.y + b.y) / 2 - Hh / 2; } else if (a.x > Wd + m + 30) { x = a.x - m - Wd; y = (a.y + b.y) / 2 - Hh / 2; }
+    else if (1080 - b.y > Hh + m + 60) { x = (a.x + b.x) / 2 - Wd / 2; y = b.y + m; } else { x = (a.x + b.x) / 2 - Wd / 2; y = a.y - m - Hh; }
+    x = cl(x, 30, 1920 - Wd - 30); y = cl(y, 110, 1080 - Hh - 50);
+    LE.style.left = x + 'px'; LE.style.top = y + 'px'; LE.style.opacity = lo; LE.style.transform = `translateY(${(1 - lo) * 18}px)`; } else LE.style.opacity = 0;
+  // caption
+  const [cp, co] = pick(CAPS, t, .35, .3);
+  if (cp) { if ($('cap').dataset.k !== cp.text) { $('cap').innerHTML = cp.text; $('cap').dataset.k = cp.text; } $('cap').style.opacity = co; $('cap').style.transform = `translateX(-50%) translateY(${(1 - co) * 20}px)`; } else $('cap').style.opacity = 0;
+  $('formula').style.opacity = 0;
+  // cursor
+  const cu = curAt(t), cs = toS(c, cu.x, cu.y); let press = 0, rip = null;
+  for (const ck of CLICKS) { if (t >= ck - .12 && t <= ck + .12) press = 1 - Math.abs(t - ck) / .12; if (t >= ck && t < ck + .55) rip = ck; }
+  const inCard = CARDS.some(C => t >= C.a - .2 && t <= C.b + .2);
+  $('cursor').style.opacity = inCard || t < 3.6 ? 0 : 1; $('cursor').style.transform = `translate(${cs.x - 6}px,${cs.y - 3}px) scale(${1 - .18 * press})`;
+  if (rip != null) { const k2 = p(t, rip, rip + .55), Rr = 14 + 46 * ease(k2); const RP = $('ripple'); RP.style.opacity = 1 - k2; RP.style.left = (cs.x - Rr) + 'px'; RP.style.top = (cs.y - Rr) + 'px'; RP.style.width = RP.style.height = 2 * Rr + 'px'; } else $('ripple').style.opacity = 0;
+  // chapter chip + banner + progress
+  let ch = null; for (const C of CHAP) if (C.t <= t) ch = C;
+  if (ch) $('chip').innerHTML = `<img src="isotipo.png" style="width:26px"><span>${String(ch.n).padStart(2, '0')}</span>${ch.title}`;
+  $('chip').style.opacity = !inCard && ch && t > ch.t + 2.6 ? 1 : 0; $('wm').style.opacity = 0;
+  const BN = $('banner');
+  if (ch && t < ch.t + 2.6) { const o = Math.min(ease(p(t, ch.t, ch.t + .35)), 1 - ease(p(t, ch.t + 2.2, ch.t + 2.6))); BN.style.opacity = o; BN.style.transform = `translateX(${(1 - ease(p(t, ch.t, ch.t + .4))) * -60}px)`;
+    $('bn').textContent = String(ch.n).padStart(2, '0'); $('bt').textContent = ch.title; } else BN.style.opacity = 0;
+  $('prog').style.opacity = t > 3.5 && t < 301.4 ? 1 : 0; $('progi').style.width = (t / DUR * 100) + '%';
+  // cards
+  let cd = null; for (const C of CARDS) if (t >= C.a && t <= C.b) cd = C; const CE = $('card');
+  if (cd) { const o = Math.min(ease(p(t, cd.a, cd.a + .45)), cd.type !== 'outro' ? 1 - ease(p(t, cd.b - .4, cd.b)) : 1);
+    if (CE.dataset.k !== String(cd.a)) { CE.dataset.k = String(cd.a);
+      if (cd.type === 'hub') CE.innerHTML = hubHTML();
+      else if (cd.type === 'intro') CE.innerHTML = `<img src="isotipo.png"><div class="su" style="margin:0;font-size:32px;letter-spacing:6px;font-weight:700;color:#7FB2FF">TUTORIAL · NEGOCIO360</div><div class="ti" style="font-size:120px;margin-top:16px">Cuentas por Pagar</div><div class="list">${CHAP.map(c => `<div><span>${String(c.n).padStart(2, '0')}</span>${c.title}</div>`).join('')}</div>`;
+      else CE.innerHTML = `<img src="isotipo.png"><div class="ti" style="font-size:96px">Tus deudas con proveedores, al día</div><div class="su" style="margin-top:30px">Comprá al crédito · Pagá a tiempo · Todo conectado</div><div class="su" style="margin-top:40px;font-size:44px;color:#fff;font-weight:800">Próximo tutorial: Salarios</div><div class="su" style="margin-top:40px;color:#7FB2FF;font-weight:700">negocio360oficial.com</div>`; }
+    CE.style.opacity = o; if (cd.type === 'hub') hubFrame(t); const inner = cd.type === 'hub' ? [] : CE.children; for (let i = 0; i < inner.length; i++) { const kk = ease(p(t, cd.a + .15 + i * .12, cd.a + .65 + i * .12)); inner[i].style.opacity = kk; inner[i].style.transform = `translateY(${(1 - kk) * 30}px)`; }
+    $('views').style.filter = `blur(${8 * o}px)`; } else { CE.style.opacity = 0; $('views').style.filter = 'none'; }
+};
+render(0);
+</script></body></html>
