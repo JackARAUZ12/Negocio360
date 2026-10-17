@@ -960,8 +960,20 @@ async function guardarCuentaDirecta() {
         metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre, banco_id: bancoPrimaId,
         referencia_tipo: 'cuenta_por_pagar', referencia_id: cuenta.id, observaciones: 'Prima / pago inicial',
       });
-      if (!cajaRes.ok) showToast('La cuenta se guardó, pero la prima no se pudo registrar en Caja: ' + cajaRes.error, 'error');
-      else {
+      if (!cajaRes.ok) {
+        // La prima no salió de Caja: la cuenta NO puede quedar como si ya se hubiera pagado.
+        // Se deja la deuda completa (sin prima pagada) y se avisa.
+        await sbClient.from('cuentas_por_pagar').update({
+          monto_pagado: 0, saldo_pendiente: montoTotalConIntereses, prima_monto: 0, prima_tipo: 'ninguna', prima_valor: 0,
+          observaciones: (concepto + (observaciones ? ' — '+observaciones : '')) + ' [La prima de ' + fmt(primaMonto) + ' no pudo salir de Caja y no se registró]',
+        }).eq('id', cuenta.id);
+        if (STATE.tipoCreditoDirecto === 'cuotas') {
+          // las cuotas se generaron sobre el capital financiado (sin la prima); se avisa para rehacerla
+          showToast('La cuenta se creó pero la prima NO salió de Caja. Anula esta cuenta y vuelve a crearla: ' + cajaRes.error, 'error');
+        } else {
+          showToast('La cuenta se creó sin prima porque no pudo salir de Caja: ' + cajaRes.error, 'error');
+        }
+      } else {
         await sbClient.from('cuentas_por_pagar_pagos').insert({
           auth_user_id: STATE.userId, cuenta_id: cuenta.id, proveedor_id: STATE.proveedorSeleccionadoDirecto.id,
           monto: primaMonto, metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre, banco_id: bancoPrimaId,
@@ -1463,6 +1475,8 @@ async function confirmarPagoCxP() {
   }
   const observaciones = document.getElementById('pg-observaciones')?.value.trim() || null;
 
+  if (STATE._pagandoCxP) return;   // candado contra doble clic
+  STATE._pagandoCxP = true;
   setBtnLoading('btn-confirmar-pago-cxp', true);
   try {
     // Releer la cuenta fresca (evita pisar cambios de otra pestaña)
@@ -1480,7 +1494,43 @@ async function confirmarPagoCxP() {
       return;
     }
 
-    // Si es en cuotas: distribuye el pago entre las cuotas pendientes, de la más antigua a la más nueva
+    const saldoAnterior = Number(cuentaFresca.saldo_pendiente);
+    const saldoNuevo = round2(Math.max(0, saldoAnterior - monto));
+    const montoPagadoNuevo = round2(Number(cuentaFresca.monto_pagado) + monto);
+    const nuevoEstado = calcularEstadoCuenta({ ...cuentaFresca, saldo_pendiente: saldoNuevo }, null);
+
+    // 1) "Reserva" el pago sobre la deuda SOLO si nadie la cambió mientras tanto
+    //    (evita que dos pagos al mismo tiempo se pisen y dejen el saldo mal).
+    const { data: reservada, error: errRes } = await sbClient.from('cuentas_por_pagar').update({
+      monto_pagado: montoPagadoNuevo, saldo_pendiente: saldoNuevo, estado: nuevoEstado, updated_at: new Date().toISOString(),
+    }).eq('id', cuentaFresca.id).eq('saldo_pendiente', cuentaFresca.saldo_pendiente).eq('monto_pagado', cuentaFresca.monto_pagado).select('id');
+    if (errRes) throw errRes;
+    if (!reservada || !reservada.length) {
+      errEl.textContent = 'Esta cuenta cambió mientras registrabas el pago (otra pestaña u otro usuario). No se hizo ningún cambio: cierra esta ventana, revisa el saldo y vuelve a intentar.';
+      return;
+    }
+
+    // 2) Egreso en Caja: pagar a un proveedor es SALIDA de dinero. Si falla, se DESHACE
+    //    la reserva: la deuda no puede bajar sin que el dinero haya salido.
+    const retCxP = calcularRetencionCxP();
+    let cajaRes;
+    try {
+      cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
+        concepto: `Pago a proveedor — ${cuentaFresca.numero}${retCxP.ret > 0 ? ' (neto, retención IR ' + retCxP.pct + '%)' : ''}`, monto: retCxP.ret > 0 ? retCxP.neto : monto,
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
+      });
+    } catch (eCaja) { cajaRes = { ok: false, error: eCaja?.message || String(eCaja) }; }
+    if (!cajaRes || !cajaRes.ok) {
+      await sbClient.from('cuentas_por_pagar').update({
+        monto_pagado: cuentaFresca.monto_pagado, saldo_pendiente: cuentaFresca.saldo_pendiente, estado: cuentaFresca.estado, updated_at: new Date().toISOString(),
+      }).eq('id', cuentaFresca.id).eq('saldo_pendiente', saldoNuevo);
+      errEl.textContent = 'No se pudo sacar el dinero de Caja, así que el pago NO se registró y la deuda sigue igual: ' + (cajaRes?.error || 'error desconocido');
+      return;
+    }
+
+    // 3) Ya salió el dinero: ahora sí se aplica a las cuotas y a la compra.
     if (cuentaFresca.tipo_credito === 'cuotas') {
       const { data: cuotasPendientes } = await sbClient.from('cuentas_por_pagar_cuotas').select('*')
         .eq('cuenta_id', cuentaFresca.id).neq('estado','pagada').order('numero');
@@ -1499,39 +1549,20 @@ async function confirmarPagoCxP() {
         restante = round2(restante - aplicar);
       }
     }
-
-    const saldoAnterior = Number(cuentaFresca.saldo_pendiente);
-    const saldoNuevo = round2(Math.max(0, saldoAnterior - monto));
-    const montoPagadoNuevo = round2(Number(cuentaFresca.monto_pagado) + monto);
-    const nuevoEstado = calcularEstadoCuenta({ ...cuentaFresca, saldo_pendiente: saldoNuevo }, null);
-
-    await sbClient.from('cuentas_por_pagar').update({
-      monto_pagado: montoPagadoNuevo, saldo_pendiente: saldoNuevo, estado: nuevoEstado, updated_at: new Date().toISOString(),
-    }).eq('id', cuentaFresca.id);
-
     // Si queda totalmente pagada, refleja "completada" en el historial de Compras
     if (nuevoEstado === 'pagado' && cuentaFresca.compra_id) {
       await sbClient.from('compras').update({ estado: 'completada' }).eq('id', cuentaFresca.compra_id);
     }
 
-    // Egreso en Caja: pagar a un proveedor es SALIDA de dinero
-    const retCxP = calcularRetencionCxP();
-    const cajaRes = await window.CajaAPI.registrarMovimiento({
-      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
-      concepto: `Pago a proveedor — ${cuentaFresca.numero}${retCxP.ret > 0 ? ' (neto, retención IR ' + retCxP.pct + '%)' : ''}`, monto: retCxP.ret > 0 ? retCxP.neto : monto,
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
-      referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
-    });
-    if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
-
     const comprobanteNumero = `PAG-${cuentaFresca.numero}-${Date.now().toString().slice(-5)}`;
-    const { data: pagoIns } = await sbClient.from('cuentas_por_pagar_pagos').insert({
+    const { data: pagoIns, error: errPagoIns } = await sbClient.from('cuentas_por_pagar_pagos').insert({
       auth_user_id: STATE.userId, cuenta_id: cuentaFresca.id, proveedor_id: cuentaFresca.proveedor_id,
       monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId, observaciones,
       retencion_monto: retCxP.ret, retencion_porcentaje: retCxP.ret > 0 ? retCxP.pct : null,
       saldo_anterior: saldoAnterior, saldo_nuevo: saldoNuevo, comprobante_numero: comprobanteNumero,
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select('id').maybeSingle();
+    if (errPagoIns) { console.warn('pago no quedó en el historial:', errPagoIns); showToast('El dinero salió y la deuda bajó, pero el pago no quedó en el historial: avisa a soporte (' + errPagoIns.message + ')', 'error'); }
 
     // Retención de IR practicada al proveedor: queda por pagar a la DGI (módulo Impuestos)
     if (retCxP.ret > 0) {
@@ -1556,6 +1587,7 @@ async function confirmarPagoCxP() {
     console.error('confirmarPagoCxP:', e);
     errEl.textContent = 'Error al registrar el pago: ' + (e.message||'');
   } finally {
+    STATE._pagandoCxP = false;
     setBtnLoading('btn-confirmar-pago-cxp', false);
   }
 }
@@ -1696,23 +1728,13 @@ async function eliminarCuentaCxP() {
   try {
     if (Number(cuenta.monto_pagado) > 0) throw new Error('Esta cuenta ya tiene pagos registrados');
 
-    if (cuenta.compra_id) {
-      const { data: lineas } = await sbClient.from('detalle_compras').select('*').eq('compra_id', cuenta.compra_id);
-      for (const l of (lineas||[])) {
-        const { data: prod } = await sbClient.from('productos').select('stock_actual').eq('id', l.producto_id).maybeSingle();
-        if (prod) {
-          const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - Number(l.cantidad||0));
-          await sbClient.from('productos').update({ stock_actual: nuevoStock }).eq('id', l.producto_id);
-        }
-      }
-      await sbClient.from('detalle_compras').delete().eq('compra_id', cuenta.compra_id);
-      await sbClient.from('compras').delete().eq('id', cuenta.compra_id);
-    }
+    // Todo en una sola operación segura en la base (o se hace completo o no se hace):
+    // anula la cuenta, su asiento contable y su IVA, y devuelve el inventario solo
+    // si todavía hay existencia suficiente. Ya no se borra nada.
+    const { error: errAnul } = await sbClient.rpc('anular_cuenta_por_pagar', { p_cuenta_id: cuenta.id });
+    if (errAnul) throw errAnul;
 
-    // Las cuotas se eliminan solas (ON DELETE CASCADE)
-    await sbClient.from('cuentas_por_pagar').delete().eq('id', cuenta.id);
-
-    showToast('Cuenta por pagar eliminada');
+    showToast('Cuenta por pagar anulada');
     closeModal('modal-confirmar-eliminar-cxp');
     await Promise.allSettled([loadKPIsCxP(), loadCuentasCxP(), loadProductosDisponibles()]);
   } catch (e) {

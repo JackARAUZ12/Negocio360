@@ -1780,16 +1780,16 @@
 <div class="modal-overlay" id="modal-confirmar-eliminar-cxp" onclick="if(event.target===this)closeModal('modal-confirmar-eliminar-cxp')">
   <div class="modal-box modal-sm">
     <div class="modal-header">
-      <h3>Eliminar cuenta por pagar</h3>
+      <h3>Anular cuenta por pagar</h3>
       <button class="modal-close" onclick="closeModal('modal-confirmar-eliminar-cxp')">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:13.5px">Esto eliminará la compra, revertirá el stock de los productos y borrará la cuenta por pagar. Esta acción no se puede deshacer.</p>
-      <p style="font-size:12.5px;color:var(--text-muted);margin-top:8px">Solo se puede eliminar si no tiene pagos registrados.</p>
+      <p style="font-size:13.5px">Esto anulará la cuenta por pagar y su compra, devolverá el inventario (solo si todavía hay existencia suficiente), y anulará su asiento contable y su IVA. Queda en el historial como anulada. Esta acción no se puede deshacer.</p>
+      <p style="font-size:12.5px;color:var(--text-muted);margin-top:8px">Solo se puede anular si no tiene pagos registrados.</p>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-confirmar-eliminar-cxp')">Cancelar</button>
-      <button class="btn-primary" style="background:var(--danger)" id="btn-confirmar-eliminar-cxp" onclick="eliminarCuentaCxP()">Eliminar definitivamente</button>
+      <button class="btn-primary" style="background:var(--danger)" id="btn-confirmar-eliminar-cxp" onclick="eliminarCuentaCxP()">Anular cuenta</button>
     </div>
   </div>
 </div>
@@ -1842,7 +1842,7 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js?v=20261007a"></script>
-<script src="cuentas-por-pagar.js?v=20261016a"></script>
+<script src="cuentas-por-pagar.js?v=20261017a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>
