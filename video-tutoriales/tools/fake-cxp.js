@@ -267,7 +267,7 @@
         switch (op) { case 'eq': return x === v || (x != null && v != null && String(x) === String(v)); case 'neq': return x !== v; case 'in': return v.includes(x); case 'lt': return x < v; case 'gt': return x > v; case 'gte': return x >= v; case 'lte': return x <= v; default: return true; } }));
       if (this.write === 'update') hit.forEach(r => Object.assign(r, this.payload));
       else DB[this.t] = tbl.filter(r => !hit.includes(r));
-      return { data: null, error: null };
+      return { data: this.write === 'update' ? hit.map(r => ({ ...r })) : null, error: null };
     }
     if (this.t === 'tutoriales_vistos') return { data: this._one ? { modulo_key: 'visto' } : [{ modulo_key: 'visto' }], error: null };
     let rows = (DB[this.t] || []).filter(r => this.f.every(([op, c, v]) => {
@@ -289,9 +289,17 @@
   };
   const user = { id: UID, email: 'demo@negocio360oficial.com' };
   const session = { user, access_token: 'demo', expires_at: 9999999999 };
+  // Imitación de la función de la base anular_cuenta_por_pagar (solo para el demo)
+  function anularCxPDemo(id) {
+    const c = DB.cuentas_por_pagar.find(x => x.id === id); if (!c) return { data: null, error: { message: 'La cuenta no existe' } };
+    if (c.compra_id) { DB.detalle_compras.filter(l => l.compra_id === c.compra_id).forEach(l => { const p = DB.productos.find(x => x.id === l.producto_id); if (p) p.stock_actual -= l.cantidad; });
+      const cp = DB.compras.find(x => x.id === c.compra_id); if (cp) cp.estado = 'anulada'; }
+    Object.assign(c, { estado: 'anulado', saldo_pendiente: 0 }); DB.cuentas_por_pagar_cuotas.filter(q => q.cuenta_id === id).forEach(q => q.saldo = 0);
+    return { data: { ok: true, numero: c.numero }, error: null };
+  }
   const client = {
     from: t => new Q(t),
-    rpc: name => Promise.resolve({ data: name === 'listar_perfiles_del_grupo' ? [{ id: 'p1', nombre: 'Admin', tipo: 'admin', modulos: [], codigo_configurado: false }] : name === 'generar_numero_cxp' ? 'CXP-000033' : name === 'siguiente_numero_compra' ? 'C-000152' : null, error: null }),
+    rpc: (name, args) => name === 'anular_cuenta_por_pagar' ? Promise.resolve(anularCxPDemo(args.p_cuenta_id)) : Promise.resolve({ data: name === 'listar_perfiles_del_grupo' ? [{ id: 'p1', nombre: 'Admin', tipo: 'admin', modulos: [], codigo_configurado: false }] : name === 'generar_numero_cxp' ? 'CXP-000033' : name === 'siguiente_numero_compra' ? 'C-000152' : null, error: null }),
     _db: DB,
     auth: {
       getUser: async () => ({ data: { user }, error: null }),
