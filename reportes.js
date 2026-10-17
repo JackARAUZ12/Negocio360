@@ -779,7 +779,7 @@ async function fetchSalariosPagados() {
   try {
     const { data } = await sb.from('empleados_pagos')
       .select('total_pagado, fecha')
-      .eq('auth_user_id', R.userId)
+      .eq('auth_user_id', R.userId).neq('estado', 'anulado')
       .gte('fecha', from).lte('fecha', to);
     return (data || []).reduce((s,p) => s+Number(p.total_pagado||0), 0);
   } catch (e) {
@@ -803,7 +803,7 @@ async function fetchSalarios() {
     const [{ data: pagosEmp }, { data: empleados }, { data: pagosFrl }, { data: freelancersLista }] = await Promise.all([
       sb.from('empleados_pagos')
         .select('id, fecha, total_pagado, metodo_pago_nombre, empleado_id')
-        .eq('auth_user_id', R.userId).gte('fecha', from).lte('fecha', to),
+        .eq('auth_user_id', R.userId).neq('estado', 'anulado').gte('fecha', from).lte('fecha', to),
       sb.from('empleados').select('id, nombre').eq('auth_user_id', R.userId),
       sb.from('freelancers_pagos')
         .select('id, fecha_pago, monto_pagado, metodo_pago_nombre, periodo_inicio, periodo_fin, freelancer_id')

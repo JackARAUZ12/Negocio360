@@ -711,7 +711,7 @@ async function fetchSalariosPagados() {
   try {
     const { data } = await sb.from('empleados_pagos')
       .select('total_pagado, fecha')
-      .eq('auth_user_id', R.userId)
+      .eq('auth_user_id', R.userId).neq('estado', 'anulado')
       .gte('fecha', from).lte('fecha', to);
     return (data || []).reduce((s,p) => s+Number(p.total_pagado||0), 0);
   } catch (e) {

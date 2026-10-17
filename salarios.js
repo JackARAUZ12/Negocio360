@@ -677,7 +677,7 @@ async function loadKPIsSal() {
 
     const inicioMes = hoy.slice(0,7)+'-01';
     const { data: pagosMes } = await sbClient.from('empleados_pagos').select('total_pagado')
-      .eq('auth_user_id', STATE.userId).gte('fecha', inicioMes);
+      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', inicioMes);
     const totalMes = (pagosMes||[]).reduce((s,p)=>s+Number(p.total_pagado||0),0);
 
     const { data: adelantosPend } = await sbClient.from('empleados_adelantos').select('monto')
@@ -727,7 +727,7 @@ async function verHistorialEmpleado(id) {
       <div class="table-wrap"><table><thead><tr>
         <th>Fecha</th><th class="th-right">Base</th><th class="th-right">Bonos</th><th class="th-right">Deducciones</th><th class="th-right">Adelantos</th><th class="th-right">Total</th><th>Método</th><th>Estado</th><th></th>
       </tr></thead><tbody>
-      ${(pagos||[]).map(p => `<tr>
+      ${(pagos||[]).map(p => `<tr${p.estado==='anulado' ? ' class="mov-anulado" title="Este pago se anuló en Caja: no cuenta en los totales"' : ''}>
         <td>${fmtDate(p.fecha)}</td>
         <td class="td-right td-money">${fmt(p.salario_base)}</td>
         <td class="td-right td-money">${fmt(p.bonificaciones)}</td>
@@ -735,7 +735,7 @@ async function verHistorialEmpleado(id) {
         <td class="td-right td-money">${fmt(p.adelantos_descontados)}</td>
         <td class="td-right td-money" style="font-weight:700">${fmt(p.total_pagado)}</td>
         <td>${esc(p.metodo_pago_nombre||'—')}</td>
-        <td><span class="status-badge badge-${p.estado==='pagado'?'pagado':'pendiente'}">${p.estado==='pagado'?'Pagado':'Pendiente'}</span></td>
+        <td>${p.estado==='anulado' ? '<span class="status-badge badge-cancelado">Anulado</span>' : `<span class="status-badge badge-${p.estado==='pagado'?'pagado':'pendiente'}">${p.estado==='pagado'?'Pagado':'Pendiente'}</span>`}</td>
         <td>${p.estado==='pagado' ? `<button class="btn-icon" title="Descargar boleta de pago" onclick='generarBoletaPago(${JSON.stringify(p).replace(/'/g,"&apos;")})'>📄</button>` : ''}</td>
       </tr>`).join('') || '<tr><td colspan="9" class="empty-cell">Sin pagos registrados todavía</td></tr>'}
       </tbody></table></div>
@@ -2226,7 +2226,7 @@ async function abrirExportarPlanilla(planillaId) {
     const { data: planilla } = await sbClient.from('nomina_planillas').select('*').eq('id', planillaId).eq('auth_user_id', STATE.userId).maybeSingle();
     if (!planilla) { showToast('Planilla no encontrada', 'error'); return; }
     const { data: pagos } = await sbClient.from('empleados_pagos')
-      .select('*, empleados(nombre, cedula, cargo)').eq('planilla_id', planillaId).eq('auth_user_id', STATE.userId).order('created_at');
+      .select('*, empleados(nombre, cedula, cargo)').eq('planilla_id', planillaId).eq('auth_user_id', STATE.userId).neq('estado', 'anulado').order('created_at');
     STATE.planillaExportando = { planilla, pagos: pagos || [] };
     document.getElementById('ep-formato').value = 'NI';
     openModal('modal-exportar-planilla');
@@ -2634,7 +2634,7 @@ async function cargarReportesNomina() {
     const desde = new Date(); desde.setMonth(desde.getMonth() - 6);
     const desdeISO = ymd(desde);
     const { data: pagos } = await sbClient.from('empleados_pagos').select('fecha, total_pagado, empleado_id')
-      .eq('auth_user_id', STATE.userId).gte('fecha', desdeISO);
+      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', desdeISO);
     const lista = pagos || [];
     if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay pagos en los últimos 6 meses.</p>'; return; }
 
