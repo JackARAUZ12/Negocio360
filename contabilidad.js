@@ -1443,14 +1443,23 @@ async function guardarMapeoCuentas() {
   if (problemas.length) { mostrarProblemasMapeo(problemas, true); errEl.scrollIntoView?.({ block: 'nearest' }); return; }
   setBtnLoading('btn-guardar-mapeo', true);
   try {
+    // BUG REAL CORREGIDO: si la base rechazaba una regla, el error se ignoraba y
+    // aun así decía "Configuración guardada" (13 reglas nunca se guardaban).
+    const noGuardadas = [];
     for (const tipo of Object.keys(TIPOS_TRANSACCION)) {
       const debe = document.getElementById(`mapeo-debe-${tipo}`).value || null;
       const haber = document.getElementById(`mapeo-haber-${tipo}`).value || null;
       if (!debe && !haber) continue; // no configurado, se deja como está
-      await sbClient.from('contabilidad_mapeo_cuentas').upsert({
+      const { error } = await sbClient.from('contabilidad_mapeo_cuentas').upsert({
         auth_user_id: STATE.userId, tipo_transaccion: tipo, cuenta_debe_id: debe, cuenta_haber_id: haber,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'auth_user_id,tipo_transaccion' });
+      if (error) noGuardadas.push(TIPOS_TRANSACCION[tipo]?.label || tipo);
+    }
+    if (noGuardadas.length) {
+      errEl.innerHTML = `<div style="text-align:left;line-height:1.45"><b>Estas reglas NO se guardaron (las demás sí):</b><ul style="margin:6px 0 0 18px;padding:0">${noGuardadas.map(t => `<li>${esc(t)}</li>`).join('')}</ul>Avisa a soporte.</div>`;
+      errEl.scrollIntoView?.({ block: 'nearest' });
+      return;
     }
     showToast('Configuración guardada');
     closeModal('modal-mapeo-cuentas');
