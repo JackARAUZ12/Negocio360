@@ -13,8 +13,8 @@
                                      "Cuentas por Pagar". Caja solo se
                                      toca al registrar un pago, vía
                                      window.CajaAPI, igual que Créditos)
-     Por ahora este módulo solo se abre desde el Dashboard (no tiene
-     ítem propio en el sidebar todavía).
+     Se abre desde su ítem del menú lateral y desde los accesos
+     rápidos del Dashboard.
 ===================================================== */
 
 'use strict';
@@ -221,22 +221,62 @@ async function cargarBancosDisponiblesCxP() {
   return _bancosCacheCxP;
 }
 
+// ¿Hay una sesión de Caja Chica abierta hoy? Mismo criterio que Gastos y
+// Compras: si la hay, un pago que no sale de un banco tiene que decir si
+// sale del cajón (Caja Chica) o de la Caja General. Si no hay ninguna
+// abierta, el pago sale como siempre, sin preguntar.
+async function hayCajaChicaAbiertaHoyCxP() {
+  try {
+    const { data } = await sbClient.from('caja_chica_sesiones')
+      .select('id').eq('auth_user_id', STATE.userId).eq('fecha', todayISO()).eq('estado', 'abierta').maybeSingle();
+    return !!data;
+  } catch (e) { return false; }
+}
+
+// Decide de dónde sale el dinero según el método:
+//  - Tarjeta / Transferencia (y hay bancos creados) → se elige el banco.
+//  - Efectivo u otro → Caja Chica o Caja General (la pregunta solo
+//    aparece si hay una Caja Chica abierta hoy; viene marcada Caja Chica).
 async function onCambiarMetodoPagoCxP(prefijo) {
   const sel = document.getElementById(`${prefijo}-metodo`) || document.getElementById(`${prefijo}-metodo-prima`);
   const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
   const wrap = document.getElementById(`${prefijo}-wrap-banco`);
   const bancoSel = document.getElementById(`${prefijo}-banco`);
+  const wrapOrigen = document.getElementById(`${prefijo}-wrap-origen`);
+  const origenSel = document.getElementById(`${prefijo}-origen-caja`);
   if (!wrap || !bancoSel) return;
   const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+  const bancos = necesitaBanco ? await cargarBancosDisponiblesCxP() : [];
 
-  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+  if (necesitaBanco && bancos.length) {
+    bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+      bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+    wrap.style.display = '';
+    if (wrapOrigen) wrapOrigen.style.display = 'none';
+    return;
+  }
 
-  const bancos = await cargarBancosDisponiblesCxP();
-  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+  wrap.style.display = 'none'; bancoSel.value = '';
+  if (!wrapOrigen || !origenSel) return;
+  const abierta = await hayCajaChicaAbiertaHoyCxP();
+  wrapOrigen.style.display = abierta ? '' : 'none';
+  if (abierta) origenSel.value = 'chica';
+}
 
-  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
-    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
-  wrap.style.display = '';
+// Lee banco y origen de Caja de un formulario ("pg" o "ncd"). Devuelve
+// { error } si falta algo obligatorio.
+function leerDestinoDineroCxP(prefijo, queSale) {
+  let bancoId = null, origenCaja = null;
+  if (document.getElementById(`${prefijo}-wrap-banco`).style.display !== 'none') {
+    bancoId = document.getElementById(`${prefijo}-banco`).value || null;
+    if (!bancoId) return { error: `Indica de qué banco sale ${queSale}.` };
+  }
+  const wrapOrigen = document.getElementById(`${prefijo}-wrap-origen`);
+  if (!bancoId && wrapOrigen && wrapOrigen.style.display !== 'none') {
+    origenCaja = document.getElementById(`${prefijo}-origen-caja`).value || null;
+    if (!origenCaja) return { error: `Indica de dónde sale ${queSale} (Caja Chica o Caja General).` };
+  }
+  return { bancoId, origenCaja };
 }
 
 /* =====================================================
@@ -597,6 +637,7 @@ function calcularPrimaDirecta(monto, tipo, valor) {
   return 0;
 }
 
+// La cuota 1 vence en fechaInicio ("Fecha primera cuota"); las demás, un período después cada una.
 function generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio }) {
   capitalFinanciado = Number(capitalFinanciado)||0;
   numCuotas = Math.max(1, parseInt(numCuotas)||1);
@@ -611,7 +652,7 @@ function generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo, fr
       const esUltima = i === numCuotas;
       const cap = esUltima ? round2(saldo) : capitalCuota;
       saldo = round2(saldo - cap);
-      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i), capital: cap, interes: 0, monto_total: cap, saldo });
+      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i - 1), capital: cap, interes: 0, monto_total: cap, saldo });
     }
   } else if (metodo === 'frances') {
     const r = tasaInteres / 100;
@@ -624,7 +665,7 @@ function generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo, fr
       if (esUltima) cap = round2(saldo);
       saldo = round2(saldo - cap);
       totalIntereses = round2(totalIntereses + interes);
-      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i), capital: cap, interes, monto_total: round2(cap+interes), saldo });
+      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i - 1), capital: cap, interes, monto_total: round2(cap+interes), saldo });
     }
   } else {
     // "simple": interes total = capital*tasa (un solo cargo), prorrateado en partes iguales
@@ -637,7 +678,7 @@ function generarAmortizacionDirecta({ capitalFinanciado, tasaInteres, metodo, fr
       const cap = esUltima ? round2(saldo) : capitalCuota;
       const interes = esUltima ? round2(totalIntereses - interesCuota*(numCuotas-1)) : interesCuota;
       saldo = round2(saldo - cap);
-      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i), capital: cap, interes, monto_total: round2(cap+interes), saldo });
+      cuotas.push({ numero: i, fecha_vencimiento: sumarFrecuenciaCxP(fechaInicio, frecuencia, i - 1), capital: cap, interes, monto_total: round2(cap+interes), saldo });
     }
   }
   return { cuotas, totalIntereses, totalFinanciado: round2(capitalFinanciado + totalIntereses) };
@@ -685,6 +726,8 @@ function abrirNuevaCuentaDirecta() {
   document.getElementById('ncd-wrap-metodo-prima').style.display = 'none';
   document.getElementById('ncd-wrap-banco').style.display = 'none';
   document.getElementById('ncd-banco').value = '';
+  document.getElementById('ncd-wrap-origen').style.display = 'none';
+  populateMetodosSelect();
   document.getElementById('ncd-tasa-interes').value = 0;
   document.getElementById('ncd-metodo-amortizacion').value = 'frances';
   document.getElementById('ncd-fecha-vencimiento').value = '';
@@ -753,6 +796,9 @@ function setTipoCreditoDirecto(tipo) {
   btnCuotas.style.background  = tipo === 'cuotas' ? 'var(--accent-soft)' : '';
   document.getElementById('ncd-wrap-fecha-fija').style.display = tipo === 'fecha_fija' ? 'block' : 'none';
   document.getElementById('ncd-wrap-cuotas').style.display     = tipo === 'cuotas'     ? 'block' : 'none';
+  // El interés solo se elige dentro de "En cuotas": con una sola fecha no puede quedar
+  // una tasa escondida de antes que suba la deuda sin que se vea.
+  if (tipo === 'fecha_fija' && STATE.tieneInteresDirecto) { setTieneInteresDirecto(false); return; }
   onCambioMontoODatosDirecto();
 }
 
@@ -796,7 +842,10 @@ function onCambioMontoODatosDirecto() {
   const primaValor = Number(primaValorInput.value) || 0;
   const primaMonto = calcularPrimaDirecta(monto, primaTipo, primaValor);
 
-  document.getElementById('ncd-wrap-metodo-prima').style.display = primaMonto > 0 ? 'block' : 'none';
+  const wrapMetodoPrima = document.getElementById('ncd-wrap-metodo-prima');
+  const primaVisibleAntes = wrapMetodoPrima.style.display !== 'none';
+  wrapMetodoPrima.style.display = primaMonto > 0 ? 'block' : 'none';
+  if (primaMonto > 0 && !primaVisibleAntes) onCambiarMetodoPagoCxP('ncd');
   const resumenPrima = document.getElementById('ncd-prima-resumen');
   if (resumenPrima) resumenPrima.textContent = primaMonto > 0 ? `Se pagan ${fmt(primaMonto)} de inmediato (sale de Caja al guardar) — el resto (${fmt(round2(monto-primaMonto))}) queda como deuda.` : '';
 
@@ -818,11 +867,11 @@ function onCambioMontoODatosDirecto() {
     const montoFijo = Number(document.getElementById('ncd-monto-fijo')?.value) || 0;
     numCuotas = calcularCuotasNecesarias(capitalFinanciado, tasaInteres, metodo, montoFijo);
     if (numCuotas === null) {
-      if (calcCuotasEl) calcCuotasEl.innerHTML = `<span style="color:var(--danger)">Ese monto no alcanza ni para cubrir el interés — sube el monto mensual.</span>`;
+      if (calcCuotasEl) calcCuotasEl.innerHTML = `<span style="color:var(--danger)">Ese monto no alcanza ni para cubrir el interés — sube el monto de cada cuota.</span>`;
       wrapTabla.style.display = 'none'; resumenIntereses.style.display = 'none';
       return;
     }
-    if (calcCuotasEl) calcCuotasEl.textContent = montoFijo > 0 ? `Con ${fmt(montoFijo)} al mes, hacen falta ${numCuotas} cuota${numCuotas===1?'':'s'}.` : '';
+    if (calcCuotasEl) calcCuotasEl.textContent = montoFijo > 0 ? `Con ${fmt(montoFijo)} por cuota, hacen falta ${numCuotas} cuota${numCuotas===1?'':'s'}.` : '';
   } else {
     numCuotas = parseInt(document.getElementById('ncd-num-cuotas')?.value) || 0;
   }
@@ -864,18 +913,21 @@ async function guardarCuentaDirecta() {
   const primaTipo = document.getElementById('ncd-prima-tipo')?.value || 'ninguna';
   const primaValor = Number(document.getElementById('ncd-prima-valor')?.value) || 0;
   const primaMonto = calcularPrimaDirecta(montoOriginal, primaTipo, primaValor);
-  let metodoPrimaId = null, metodoPrimaNombre = null, bancoPrimaId = null;
+  let metodoPrimaId = null, metodoPrimaNombre = null, bancoPrimaId = null, origenPrima = null;
   if (primaMonto > 0) {
     const selMetodo = document.getElementById('ncd-metodo-prima');
     metodoPrimaId = selMetodo?.value || null;
     metodoPrimaNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
-    if (document.getElementById('ncd-wrap-banco').style.display !== 'none') {
-      bancoPrimaId = document.getElementById('ncd-banco').value || null;
-      if (!bancoPrimaId) { errEl.textContent = 'Indica de qué banco salió la prima.'; return; }
-    }
+    const destino = leerDestinoDineroCxP('ncd', 'la prima');
+    if (destino.error) { errEl.textContent = destino.error; return; }
+    bancoPrimaId = destino.bancoId; origenPrima = destino.origenCaja;
   }
   const capitalFinanciado = round2(montoOriginal - primaMonto);
   if (capitalFinanciado < 0) { errEl.textContent = 'La prima no puede ser mayor que el monto total.'; return; }
+  if (primaMonto > 0 && !bancoPrimaId && /efectivo/i.test(metodoPrimaNombre) && window.AvisoEfectivo) {
+    const seguir = await window.AvisoEfectivo.verificar({ sb: sbClient, userId: STATE.userId, monto: primaMonto, origenCaja: origenPrima });
+    if (!seguir) return;
+  }
 
   // ---- Tipo de credito / interes / cuotas ----
   const tasaInteres = STATE.tieneInteresDirecto ? (Number(document.getElementById('ncd-tasa-interes')?.value) || 0) : 0;
@@ -896,7 +948,7 @@ async function guardarCuentaDirecta() {
 
     if (STATE.modoCalculoDirecto === 'manual') {
       const montoFijo = Number(document.getElementById('ncd-monto-fijo')?.value) || 0;
-      if (!montoFijo || montoFijo <= 0) { errEl.textContent = 'Escribe cuánto puedes pagar fijo cada mes.'; return; }
+      if (!montoFijo || montoFijo <= 0) { errEl.textContent = 'Escribe cuánto puedes pagar fijo en cada cuota.'; return; }
       numCuotas = calcularCuotasNecesarias(capitalFinanciado, tasaInteres, metodoAmortizacion, montoFijo);
       if (numCuotas === null) { errEl.textContent = 'Ese monto fijo no alcanza ni para cubrir el interés — sube el monto.'; return; }
     } else {
@@ -957,7 +1009,7 @@ async function guardarCuentaDirecta() {
       const cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
         concepto: `Prima — ${cuenta.numero} (${concepto})`, monto: primaMonto,
-        metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre, banco_id: bancoPrimaId,
+        metodo_pago_id: metodoPrimaId, metodo_pago_nombre: metodoPrimaNombre, banco_id: bancoPrimaId, origen_caja: origenPrima,
         referencia_tipo: 'cuenta_por_pagar', referencia_id: cuenta.id, observaciones: 'Prima / pago inicial',
       });
       if (!cajaRes.ok) {
@@ -1244,6 +1296,15 @@ async function loadCuentasCxP() {
       });
     }
 
+    // N° de compra y observaciones (ahí va la factura) de las cuentas que vienen de una compra
+    const idsCompras = [...new Set(lista.map(c => c.compra_id).filter(Boolean))];
+    if (idsCompras.length) {
+      const { data: comprasInfo } = await sbClient.from('compras').select('id, numero, observaciones')
+        .eq('auth_user_id', STATE.userId).in('id', idsCompras);
+      const porId = new Map((comprasInfo || []).map(cp => [cp.id, cp]));
+      lista.forEach(c => { const cp = porId.get(c.compra_id); if (cp) { c._compraNumero = cp.numero || ''; c._compraObs = cp.observaciones || ''; } });
+    }
+
     // Recalcula y sincroniza estados vencidos (igual que marcarCuotasVencidas de Créditos)
     const actualizaciones = [];
     lista.forEach(c => {
@@ -1280,6 +1341,8 @@ function cuentasFiltradas() {
     if (!q) return true;
     return (c.proveedor_nombre||'').toLowerCase().includes(q) ||
            (c.numero||'').toLowerCase().includes(q) ||
+           (c._compraNumero||'').toLowerCase().includes(q) ||
+           (c._compraObs||'').toLowerCase().includes(q) ||
            (c.observaciones||'').toLowerCase().includes(q);
   });
 }
@@ -1314,7 +1377,7 @@ function renderTablaCxP() {
       return `
       <tr class="${c.estado==='vencido'?'cxp-row-vencida':''}">
         <td style="font-weight:500">${esc(c.proveedor_nombre||'—')}</td>
-        <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(c.numero)}</span></td>
+        <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(c.numero)}</span>${c._compraNumero ? `<div style="font-size:11.5px;color:var(--text-muted)">Compra ${esc(c._compraNumero)}</div>` : ''}</td>
         <td>${fmtDate(c.fecha_compra)}</td>
         <td><span class="status-badge ${ti.badge}">${ti.label}</span></td>
         <td class="td-right td-money">${fmt(c.monto_total)}</td>
@@ -1326,7 +1389,7 @@ function renderTablaCxP() {
           <button class="btn-icon" title="Ver" onclick="verDetalleCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
           ${(c.estado!=='pagado' && c.estado!=='anulado') ? `<button class="btn-icon" title="Pagar" onclick="abrirPagarDesdeTabla('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>` : ''}
           ${sinPagos ? `<button class="btn-icon" title="Editar" onclick="abrirEditarCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
-          <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
+          <button class="btn-icon btn-icon-danger" title="Anular" onclick="confirmarEliminarCxP('${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -1398,9 +1461,12 @@ function abrirPagarGenerico() {
   document.getElementById('pg-select-cuenta-row').style.display = '';
   document.getElementById('pg-monto').value = '';
   document.getElementById('pg-observaciones').value = '';
+  document.getElementById('pg-ret-chk').checked = false; document.getElementById('pg-ret-pct').value = '2'; onCambioRetencionCxP();
   populateMetodosSelect();
   document.getElementById('pg-wrap-banco').style.display = 'none';
   document.getElementById('pg-banco').value = '';
+  document.getElementById('pg-wrap-origen').style.display = 'none';
+  onCambiarMetodoPagoCxP('pg');
   poblarSelectCuentasPagables(null);
   STATE.cuentaActual = null;
   openModal('modal-pagar-cxp');
@@ -1409,9 +1475,12 @@ function abrirPagarDesdeTabla(id) {
   document.getElementById('pg-error').textContent = '';
   document.getElementById('pg-ret-chk').checked = false; document.getElementById('pg-ret-pct').value = '2'; onCambioRetencionCxP();
   document.getElementById('pg-observaciones').value = '';
+  document.getElementById('pg-monto').value = '';
   populateMetodosSelect();
   document.getElementById('pg-wrap-banco').style.display = 'none';
   document.getElementById('pg-banco').value = '';
+  document.getElementById('pg-wrap-origen').style.display = 'none';
+  onCambiarMetodoPagoCxP('pg');
   poblarSelectCuentasPagables(id);
   onSelectCuentaPagarCxP();
   openModal('modal-pagar-cxp');
@@ -1428,8 +1497,8 @@ function onSelectCuentaPagarCxP() {
   document.getElementById('pg-pagado').textContent = fmt(cuenta.monto_pagado);
   document.getElementById('pg-pendiente').textContent = fmt(cuenta.saldo_pendiente);
   document.getElementById('pg-vencimiento').textContent = fmtDate(cuenta._proximaFecha || cuenta.fecha_vencimiento);
-  const montoEl = document.getElementById('pg-monto');
-  if (!montoEl.value) montoEl.value = round2(cuenta.saldo_pendiente);
+  document.getElementById('pg-monto').value = round2(cuenta.saldo_pendiente);
+  onCambioRetencionCxP();
 }
 // Atajo: pagar exactamente una cuota (siempre se paga en orden, oldest-first;
 // si la cuota elegida no es la más antigua pendiente, el pago igual se
@@ -1468,12 +1537,17 @@ async function confirmarPagoCxP() {
   const metodoSel = document.getElementById('pg-metodo');
   const metodoId = metodoSel?.value || null;
   const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
-  let bancoId = null;
-  if (document.getElementById('pg-wrap-banco').style.display !== 'none') {
-    bancoId = document.getElementById('pg-banco').value || null;
-    if (!bancoId) { errEl.textContent = 'Indica de qué banco sale este pago.'; return; }
-  }
+  const destino = leerDestinoDineroCxP('pg', 'este pago');
+  if (destino.error) { errEl.textContent = destino.error; return; }
+  const { bancoId, origenCaja } = destino;
   const observaciones = document.getElementById('pg-observaciones')?.value.trim() || null;
+
+  // Aviso (no bloqueante): pago en efectivo mayor al efectivo disponible (igual que Gastos y Compras).
+  if (!STATE._pagandoCxP && !bancoId && /efectivo/i.test(metodoNombre) && window.AvisoEfectivo) {
+    const retAviso = calcularRetencionCxP();
+    const seguir = await window.AvisoEfectivo.verificar({ sb: sbClient, userId: STATE.userId, monto: retAviso.ret > 0 ? retAviso.neto : monto, origenCaja });
+    if (!seguir) return;
+  }
 
   if (STATE._pagandoCxP) return;   // candado contra doble clic
   STATE._pagandoCxP = true;
@@ -1518,7 +1592,7 @@ async function confirmarPagoCxP() {
       cajaRes = await window.CajaAPI.registrarMovimiento({
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
         concepto: `Pago a proveedor — ${cuentaFresca.numero}${retCxP.ret > 0 ? ' (neto, retención IR ' + retCxP.pct + '%)' : ''}`, monto: retCxP.ret > 0 ? retCxP.neto : monto,
-        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId, origen_caja: origenCaja,
         referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
       });
     } catch (eCaja) { cajaRes = { ok: false, error: eCaja?.message || String(eCaja) }; }
@@ -1620,7 +1694,8 @@ async function verDetalleCxP(id) {
     let html = `
       <div class="form-row">
         <div><label>Proveedor</label><div class="stat-readonly">${esc(cuenta.proveedor_nombre||'—')}</div></div>
-        <div><label>N° compra</label><div class="stat-readonly">${esc(cuenta.numero)}</div></div>
+        <div><label>N° cuenta</label><div class="stat-readonly">${esc(cuenta.numero)}</div></div>
+        ${cuenta._compraNumero ? `<div><label>N° compra</label><div class="stat-readonly">${esc(cuenta._compraNumero)}</div></div>` : ''}
         <div><label>Tipo de crédito</label><div class="stat-readonly"><span class="status-badge ${ti.badge}">${ti.label}</span></div></div>
         <div><label>Estado</label><div class="stat-readonly"><span class="status-badge ${ei.badge}">${ei.label}</span></div></div>
         <div><label>Fecha de compra</label><div class="stat-readonly">${fmtDate(cuenta.fecha_compra)}</div></div>
@@ -1630,6 +1705,7 @@ async function verDetalleCxP(id) {
         <div><label>Saldo pendiente</label><div class="stat-readonly" style="font-weight:800;color:var(--accent)">${fmt(cuenta.saldo_pendiente)}</div></div>
       </div>
       ${cuenta.observaciones ? `<p style="margin-top:10px;font-size:12.5px;color:var(--text-secondary)"><strong>Observaciones:</strong> ${esc(cuenta.observaciones)}</p>` : ''}
+      ${(cuenta._compraObs && cuenta._compraObs !== cuenta.observaciones) ? `<p style="margin-top:6px;font-size:12.5px;color:var(--text-secondary)"><strong>De la compra:</strong> ${esc(cuenta._compraObs)}</p>` : ''}
     `;
 
     if (cuenta.tipo_credito === 'cuotas') {
@@ -1716,7 +1792,7 @@ async function guardarEdicionCxP() {
 function confirmarEliminarCxP(id) {
   const cuenta = STATE.cuentas.find(c => c.id === id);
   if (!cuenta) return;
-  if (Number(cuenta.monto_pagado) > 0) { showToast('No se puede eliminar: ya tiene pagos registrados', 'error'); return; }
+  if (Number(cuenta.monto_pagado) > 0) { showToast('No se puede anular: ya tiene pagos registrados', 'error'); return; }
   if (cuenta.estado === 'anulado') { showToast('Esta cuenta ya está anulada (su compra se anuló).', 'error'); return; }
   STATE.cuentaActual = cuenta;
   openModal('modal-confirmar-eliminar-cxp');

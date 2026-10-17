@@ -1286,7 +1286,7 @@
 
           <div class="search-wrap" style="margin-left:auto">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="cxp-search" placeholder="Buscar proveedor, N° de compra o factura…" oninput="buscarCxP()" />
+            <input type="text" id="cxp-search" placeholder="Buscar proveedor, N° de cuenta, compra o factura…" oninput="buscarCxP()" />
           </div>
         </div>
 
@@ -1296,7 +1296,7 @@
             <thead>
               <tr>
                 <th>Proveedor</th>
-                <th>N° compra</th>
+                <th>N° cuenta</th>
                 <th>Fecha</th>
                 <th>Tipo de crédito</th>
                 <th class="th-right">Total</th>
@@ -1534,7 +1534,7 @@
 
     <div class="modal-body" style="flex:1;overflow-y:auto;padding:20px">
       <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;padding:10px 12px;background:var(--bg-surface-2);border-radius:var(--radius-md)">
-        Para un gasto o deuda con un proveedor que <b>no</b> es compra de mercancía — como renta, un servicio, o mantenimiento. No afecta tu inventario en absoluto.
+        Para un gasto o deuda con un proveedor que <b>no</b> es compra de productos — como renta, un servicio o mantenimiento. No agrega productos ni cambia el stock de tu inventario.
       </p>
 
       <!-- PROVEEDOR -->
@@ -1566,8 +1566,8 @@
 
       <div class="form-group" style="margin-top:12px">
         <label>¿Qué tipo de costo es?</label>
-        <select id="ncd-clase"><option value="inventario">Mercadería / inventario (como siempre)</option><option value="servicio">Servicio contratado (transporte, flete, mano de obra…) — no afecta Inventario</option></select>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Para la contabilidad: un servicio se asienta en la cuenta "Costo de servicios" que configures, no en Inventario.</div>
+        <select id="ncd-clase"><option value="inventario">Costo general o mercadería (en contabilidad va a Inventario, como siempre)</option><option value="servicio">Servicio contratado (transporte, flete, mano de obra…) — en contabilidad no va a Inventario</option></select>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Solo cambia la cuenta contable: un servicio se asienta en "Costo de servicios" (si la configuraste), no en Inventario. Tu stock no cambia en ningún caso.</div>
       </div>
 
       <div class="form-row">
@@ -1601,6 +1601,13 @@
         <div class="form-group" id="ncd-wrap-banco" style="display:none">
           <label>¿De qué banco salió? *</label>
           <select id="ncd-banco"></select>
+        </div>
+        <div class="form-group" id="ncd-wrap-origen" style="display:none">
+          <label>¿De dónde sale la prima? *</label>
+          <select id="ncd-origen-caja">
+            <option value="chica">🏦 Caja Chica (el efectivo del cajón, abierto hoy)</option>
+            <option value="general">🏛️ Caja General (no toca el cajón físico)</option>
+          </select>
         </div>
         <div id="ncd-prima-resumen" style="font-size:12px;color:var(--text-secondary)"></div>
       </div>
@@ -1651,7 +1658,7 @@
           <label>¿Cómo prefieres calcularlo?</label>
           <div style="display:flex;gap:10px">
             <button type="button" class="btn-secondary" id="ncd-modo-auto" style="flex:1;justify-content:center;font-size:12.5px" onclick="setModoCalculoDirecto('auto')">Por número de cuotas</button>
-            <button type="button" class="btn-secondary" id="ncd-modo-manual" style="flex:1;justify-content:center;font-size:12.5px" onclick="setModoCalculoDirecto('manual')">Por monto fijo mensual</button>
+            <button type="button" class="btn-secondary" id="ncd-modo-manual" style="flex:1;justify-content:center;font-size:12.5px" onclick="setModoCalculoDirecto('manual')">Por monto fijo por cuota</button>
           </div>
         </div>
 
@@ -1660,7 +1667,7 @@
           <input type="number" id="ncd-num-cuotas" min="1" step="1" value="2" oninput="onCambioMontoODatosDirecto()"/>
         </div>
         <div id="ncd-wrap-monto-fijo" class="form-group" style="display:none">
-          <label>¿Cuánto puedes pagar fijo cada mes? *</label>
+          <label>¿Cuánto puedes pagar fijo en cada cuota? *</label>
           <input type="number" id="ncd-monto-fijo" min="0.01" step="0.01" placeholder="0.00" oninput="onCambioMontoODatosDirecto()"/>
           <div id="ncd-num-cuotas-calculado" style="font-size:12px;color:var(--text-secondary);margin-top:4px"></div>
         </div>
@@ -1737,14 +1744,22 @@
         <div id="pg-ret-campos" style="display:none;margin-top:8px">
           <div class="form-row">
             <div><label>% de retención</label><input type="number" id="pg-ret-pct" min="0" max="100" step="0.01" value="2" oninput="onCambioRetencionCxP()"/></div>
-            <div><label>Sale de Caja (neto)</label><div class="stat-readonly" id="pg-ret-neto">—</div></div>
+            <div><label>Sale (neto)</label><div class="stat-readonly" id="pg-ret-neto">—</div></div>
           </div>
-          <div style="font-size:11.5px;color:var(--text-muted)" id="pg-ret-ayuda">Se rebaja la deuda con el monto completo; a Caja solo sale el neto y la retención queda como pasivo por pagar a la DGI.</div>
+          <div style="font-size:11.5px;color:var(--text-muted)" id="pg-ret-ayuda">Se rebaja la deuda con el monto completo; de Caja o del banco solo sale el neto y la retención queda como pasivo por pagar a la DGI.</div>
         </div>
       </div>
       <div class="form-group" id="pg-wrap-banco" style="display:none">
         <label>¿De qué banco sale? *</label>
         <select id="pg-banco"></select>
+      </div>
+      <div class="form-group" id="pg-wrap-origen" style="display:none">
+        <label>¿De dónde sale este dinero? *</label>
+        <select id="pg-origen-caja">
+          <option value="chica">🏦 Caja Chica (el efectivo del cajón, abierto hoy)</option>
+          <option value="general">🏛️ Caja General (no toca el cajón físico)</option>
+        </select>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Tienes una sesión de Caja Chica abierta hoy — hay que indicar de dónde sale este pago.</div>
       </div>
       <label>Observaciones</label>
       <textarea id="pg-observaciones" placeholder="Opcional"></textarea>
@@ -1812,7 +1827,7 @@
         <label>Observaciones</label>
         <textarea id="ed-observaciones" rows="3"></textarea>
       </div>
-      <p style="font-size:11.5px;color:var(--text-muted)">Solo se puede editar mientras la cuenta no tenga pagos registrados. Para cambios en productos o montos, elimina y vuelve a crear la compra.</p>
+      <p style="font-size:11.5px;color:var(--text-muted)">Solo se puede editar mientras la cuenta no tenga pagos registrados. Para cambios en productos o montos, anúlala y vuelve a crear la compra.</p>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-editar-cxp')">Cancelar</button>
@@ -1842,7 +1857,8 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js?v=20261007a"></script>
-<script src="cuentas-por-pagar.js?v=20261017a"></script>
+<script src="aviso-efectivo.js?v=20261013a"></script>
+<script src="cuentas-por-pagar.js?v=20261017b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>
