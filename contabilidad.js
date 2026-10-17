@@ -1281,6 +1281,7 @@ const TIPOS_TRANSACCION = {
   aporte_patronal: { label: 'Aportes patronales (INSS patronal, INATEC)', ejemplo: 'Debe: Gasto por aportes patronales — Haber: Aportes por pagar (INSS/INATEC). No mueve Caja: es lo que debes enterar a las instituciones.' },
   credito_otorgado: { label: 'Crédito otorgado (venta a crédito)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ventas' },
   pago_credito: { label: 'Pago de crédito recibido', ejemplo: 'Debe: Caja — Haber: Cuentas por Cobrar' },
+  descuento_credito: { label: 'Descuento o rebaja a un crédito de cliente', ejemplo: 'Debe: Descuentos sobre ventas (u Otros Gastos) — Haber: Cuentas por Cobrar. Es la rebaja que se registra en Créditos al renegociar un saldo menor con motivo; no mueve Caja.' },
   costo_ventas: { label: 'Costo de lo vendido (automático en cada venta)', ejemplo: 'Debe: Costo de Ventas — Haber: Inventario' },
   costo_servicios: { label: 'Costo de servicios contratados (transporte, fletes, mano de obra — solo Cuenta Debe)', ejemplo: 'Debe: Costo de Ventas (5100) — el Haber sale de la compra o cuenta por pagar. Si lo configuras, el costo estimado de los servicios en Ventas deja de asentarse (para no duplicar el costo).' },
   retencion_ir: { label: 'IR que tú retienes a proveedores (solo Cuenta Haber)', ejemplo: 'Del pago a proveedor: Debe: Cuentas por Pagar (bruto) — Haber: Caja (neto) — Haber: Retenciones por Pagar (2130)' },
@@ -1308,6 +1309,7 @@ let STATE_MAPEO = [];
 const REGLAS_TIPO_CUENTA = {
   venta:              { debe: ['activo'],                 haber: ['ingreso'],          porque: 'entra dinero (Activo) y se registra una venta (Ingreso)' },
   credito_otorgado:   { debe: ['activo'],                 haber: ['ingreso'],          porque: 'el cliente te queda debiendo (Cuentas por Cobrar, Activo) y se registra una venta (Ingreso)' },
+  descuento_credito:  { debe: ['gasto', 'ingreso', 'costo'], haber: ['activo'],        porque: 'la rebaja es un gasto o un descuento sobre ventas, y BAJA lo que el cliente debe (Cuentas por Cobrar)' },
   pago_credito:       { debe: ['activo'],                 haber: ['activo'],           porque: 'entra dinero y BAJA lo que el cliente debe (Cuentas por Cobrar). Si el Haber fuera Ventas, cada abono se contaría como otra venta' },
   costo_ventas:       { debe: ['costo', 'gasto'],         haber: ['activo'],           porque: 'sale mercadería del Inventario (Activo) hacia Costo de Ventas' },
   gasto:              { debe: ['gasto', 'costo'],         haber: ['activo', 'pasivo'], porque: 'se registra un gasto y sale dinero (o queda por pagar)' },
@@ -1343,6 +1345,11 @@ function validarReglasMapeo(reglas) {
   if (co && pc && co.debe && pc.haber && co.debe !== pc.haber) {
     const a = cuenta(co.debe), b = cuenta(pc.haber);
     errores.push(`"Pago de crédito recibido": el Haber debe ser la misma cuenta que el Debe de "Crédito otorgado" (${a ? a.codigo + ' ' + a.nombre : 'Cuentas por Cobrar'}); ahora es "${b ? b.codigo + ' ' + b.nombre : '?'}".`);
+  }
+  const dc = reglas.descuento_credito;
+  if (co && dc && co.debe && dc.haber && co.debe !== dc.haber) {
+    const a = cuenta(co.debe), b = cuenta(dc.haber);
+    errores.push(`"Descuento o rebaja a un crédito": el Haber debe ser la misma cuenta que el Debe de "Crédito otorgado" (${a ? a.codigo + ' ' + a.nombre : 'Cuentas por Cobrar'}); ahora es "${b ? b.codigo + ' ' + b.nombre : '?'}".`);
   }
   return errores;
 }
@@ -1851,7 +1858,7 @@ async function generarAsientosAutomaticosInterno() {
         const fechaAsiento = String(fila[campoFecha]).slice(0, 10); // por si es timestamp completo (ej. created_at)
         const { data: asiento, error: errA } = await sbClient.from('asientos_contables').insert({
           auth_user_id: STATE.userId, numero, fecha: fechaAsiento,
-          concepto: `${F.etiqueta}${conceptoPrefijo}${fila.concepto || fila.numero_venta || fila.numero || fila.numero_credito || ''}`.trim(),
+          concepto: `${F.etiqueta}${conceptoPrefijo}${(opts?.concepto && opts.concepto(fila)) || fila.concepto || fila.numero_venta || fila.numero || fila.numero_credito || ''}`.trim(),
           estado: 'borrador', origen: 'automatico', referencia_tipo: tipo, referencia_id: fila.id,
           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
         }).select().single();
@@ -1992,6 +1999,24 @@ async function generarAsientosAutomaticosInterno() {
     await procesarTipo('pago_credito', 'creditos_pagos', 'monto', 'completado', 'estado', 'Pago de crédito recibido');
     // Cobros de Fiados: mismo asiento que un pago de crédito (Debe Caja / Haber Cuentas por Cobrar), usando esa misma configuración.
     await procesarTipo('pago_fiado', 'fiado_pagos', 'monto', null, null, 'Cobro de fiado', null, null, 'created_at', null, { mapeoDe: 'pago_credito' });
+    // Descuentos/rebajas a créditos de clientes (Créditos › Renegociar a un saldo menor con motivo).
+    // Quedan en el historial del crédito; aquí se asientan: Debe Descuentos/Gastos — Haber Cuentas por Cobrar.
+    // Si hay descuentos y la regla no está configurada, se avisa como cualquier otro tipo sin configurar.
+    {
+      const filtroDesc = q => q.eq('tipo_evento', 'editado').not('data->>descuento', 'is', null);
+      let hayDescuentos = !!mapeo.get('descuento_credito');
+      if (!hayDescuentos) {
+        const { count } = await F.lector.from('creditos_historial').select('id', { count: 'exact', head: true })
+          .eq('auth_user_id', F.uid).eq('tipo_evento', 'editado').not('data->>descuento', 'is', null);
+        hayDescuentos = (count || 0) > 0;
+      }
+      if (hayDescuentos) {
+        await procesarTipo('descuento_credito', 'creditos_historial', 'data', null, null, 'Descuento concedido — ',
+          filtroDesc, null, 'created_at', null,
+          { obtenerMonto: async f => Number(f.data?.descuento || 0),
+            concepto: f => `${f.data?.numeroCredito || 'crédito'}${f.data?.motivoDescuento ? ' (' + String(f.data.motivoDescuento).slice(0, 80) + ')' : ''}` });
+      }
+    }
 
     // DEVOLUCIONES DE VENTA (DEV-…): el asiento contrario a la venta, solo por lo devuelto.
     //   Debe Ventas (y IVA por pagar, si está configurado) = valor devuelto

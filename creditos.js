@@ -3341,6 +3341,7 @@
         saldo_pendiente: totalRestanteNuevo, updated_at: new Date().toISOString(),
       };
       if (descuento) {
+        // El descuento también se asienta en Contabilidad ("Generar asientos" → Descuento o rebaja a un crédito).
         const nota = `[Descuento de ${fmt(descuento.monto)} el ${todayISO()}: ${descuento.motivo}]`;
         camposCredito.observaciones = credito.observaciones ? `${credito.observaciones} ${nota}` : nota;
       }
@@ -3348,7 +3349,7 @@
 
       await registrarHistorial(credito.id, 'editado', `Saldo restante renegociado: ${fmt(nuevoSaldo)} en ${numCuotas} cuota(s) nueva(s) — ${pagadasAhora.length} cuota(s) previa(s) sin tocar`
         + (descuento ? ` — DESCUENTO de ${fmt(descuento.monto)}. Motivo: ${descuento.motivo}` : ''),
-        { nuevoSaldo, numCuotas, nuevoTotalFinanciado, ...(descuento ? { descuento: descuento.monto, motivoDescuento: descuento.motivo } : {}) });
+        { nuevoSaldo, numCuotas, nuevoTotalFinanciado, ...(descuento ? { descuento: descuento.monto, motivoDescuento: descuento.motivo, numeroCredito: credito.numero_credito } : {}) });
 
       showToast('Crédito actualizado — cuotas pendientes recalculadas');
       closeModal('modal-editar-credito');
