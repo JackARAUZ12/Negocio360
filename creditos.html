@@ -1303,7 +1303,7 @@
 
             <div class="search-wrap" style="margin-left:auto">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="creditos-search" placeholder="Buscar cliente o número…" oninput="buscarCreditos()" />
+              <input type="text" id="creditos-search" placeholder="Buscar cliente, número u observación…" oninput="buscarCreditos()" />
             </div>
           </div>
 
@@ -1319,12 +1319,13 @@
                   <th>Saldo pendiente</th>
                   <th>Cuotas</th>
                   <th>Próx. cuota</th>
+                  <th>Observaciones</th>
                   <th>Estado</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody id="creditos-tbody">
-                <tr><td colspan="9" class="empty-cell">Cargando créditos…</td></tr>
+                <tr><td colspan="10" class="empty-cell">Cargando créditos…</td></tr>
               </tbody>
             </table>
           </div>
@@ -1953,7 +1954,7 @@
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="select-buscable.js?v=20261015b"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
-<script src="creditos.js?v=20261016a"></script>
+<script src="creditos.js?v=20261016b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>

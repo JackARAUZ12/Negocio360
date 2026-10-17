@@ -3366,9 +3366,13 @@
         .select('id').eq('auth_user_id', CS.userId)
         .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`);
       const idsClientes = (clientesCoinciden||[]).map(c=>c.id);
+      // También busca en Observaciones (ahí se anota, por ejemplo, el número
+      // de factura manual). Las comas y paréntesis romperían el filtro, así
+      // que se cambian por "_" (comodín de un carácter): sigue encontrando.
+      const termino = CS.creditosSearch.replace(/[,()]/g, '_');
       let filtroOr = idsClientes.length
-        ? `numero_credito.ilike.%${CS.creditosSearch}%,cliente_id.in.(${idsClientes.join(',')})`
-        : `numero_credito.ilike.%${CS.creditosSearch}%`;
+        ? `numero_credito.ilike.%${CS.creditosSearch}%,observaciones.ilike.%${termino}%,cliente_id.in.(${idsClientes.join(',')})`
+        : `numero_credito.ilike.%${CS.creditosSearch}%,observaciones.ilike.%${termino}%`;
       // También por el número de la proforma de la que nació el crédito (PR-…)
       const idsPorProforma = window.N360ProformaCredito ? await N360ProformaCredito.buscarCreditos(_sb, CS.userId, CS.creditosSearch) : [];
       if (idsPorProforma.length) filtroOr += `,id.in.(${idsPorProforma.join(',')})`;
@@ -3384,7 +3388,7 @@
 
   async function renderCreditosTable() {
     const tbody = document.getElementById('creditos-tbody');
-    if (!CS.creditos.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty-cell">No hay créditos registrados</td></tr>'; return; }
+    if (!CS.creditos.length) { tbody.innerHTML = '<tr><td colspan="10" class="empty-cell">No hay créditos registrados</td></tr>'; return; }
 
     const clienteIds = [...new Set(CS.creditos.map(c=>c.cliente_id))];
     const creditoIds = CS.creditos.map(c=>c.id);
@@ -3408,6 +3412,7 @@
         <td>${fmt(c.saldo_pendiente)}</td>
         <td>${c.num_cuotas}</td>
         <td>${prox ? fmtDate(prox.fecha_vencimiento) : '—'}</td>
+        <td title="${esc(c.observaciones || '')}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--text-secondary)">${c.observaciones ? esc(c.observaciones) : '—'}</td>
         <td>${badgeEstado(c.estado)}</td>
         <td>
           <button class="btn-ghost" style="padding:4px 8px" onclick="abrirDetalleCredito('${c.id}')">Ver</button>
