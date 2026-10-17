@@ -3204,6 +3204,9 @@
       ? `${pagadas.length} cuota(s) ya pagada(s) por ${fmt(pagadas.reduce((s,c)=>s+Number(c.monto_pagado||0),0))} — no se van a tocar.`
       : 'Este crédito todavía no tiene ninguna cuota pagada.';
     document.getElementById('ec-capital').value = credito.saldo_pendiente;
+    document.querySelectorAll('input[name="ec-baja-tipo"]').forEach(r => { r.checked = false; });
+    { const mt = document.getElementById('ec-baja-motivo'); if (mt) mt.value = ''; }
+    actualizarAvisoBajaCredito();
     document.getElementById('ec-num-cuotas').value = pendientes.length || 1;
     document.getElementById('ec-frecuencia').value = credito.frecuencia;
     document.getElementById('ec-fecha-inicio').value = pendientes[0]?.fecha_vencimiento || todayISO();
@@ -3219,6 +3222,34 @@
   }
   window.abrirEditarCredito = abrirEditarCredito;
 
+  // BUG REAL CORREGIDO (All Plastic Mayorista: CR-000016 bajó C$28,000 y
+  // CR-000090 C$4,570 "renegociando", sin abono ni dinero en Caja ni motivo).
+  // Ahora, si el nuevo saldo es MENOR que lo que se debe hoy, hay que decir
+  // por qué: si el cliente pagó, se registra como pago (entra a Caja); si es
+  // un descuento, el motivo es obligatorio y queda en el historial.
+  function bajaRenegociacion() {
+    if (!CREDITO_EDITANDO) return 0;
+    const nuevo = round2(parseFloat(document.getElementById('ec-capital')?.value) || 0);
+    const actual = round2(Number(CREDITO_EDITANDO.credito.saldo_pendiente) || 0);
+    return nuevo > 0 && nuevo < actual - 0.009 ? round2(actual - nuevo) : 0;
+  }
+  function actualizarAvisoBajaCredito() {
+    const box = document.getElementById('ec-baja');
+    if (!box) return;
+    const baja = bajaRenegociacion();
+    box.style.display = baja > 0 ? '' : 'none';
+    if (baja > 0) {
+      document.getElementById('ec-baja-texto').textContent =
+        `El nuevo saldo es ${fmt(baja)} menor que lo que debe hoy (${fmt(CREDITO_EDITANDO.credito.saldo_pendiente)}). ¿Por qué baja la deuda?`;
+    }
+    const tipo = document.querySelector('input[name="ec-baja-tipo"]:checked')?.value || '';
+    const mt = document.getElementById('ec-baja-motivo');
+    if (mt) mt.style.display = (baja > 0 && tipo === 'descuento') ? '' : 'none';
+    const btn = document.getElementById('btn-guardar-editar-credito');
+    if (btn) btn.textContent = (baja > 0 && tipo === 'pago') ? 'Ir a registrar el pago' : 'Recalcular y guardar';
+  }
+  window.actualizarAvisoBajaCredito = actualizarAvisoBajaCredito;
+
   async function guardarEdicionCredito() {
     if (!CREDITO_EDITANDO) return;
     const { credito, totalPagadas } = CREDITO_EDITANDO;
@@ -3229,6 +3260,35 @@
     const fechaInicio = document.getElementById('ec-fecha-inicio').value || todayISO();
     const tasa = credito.tipo_financiamiento === 'con_interes' ? (parseFloat(document.getElementById('ec-tasa').value) || 0) : 0;
     if (nuevoSaldo <= 0) { showToast('El nuevo saldo debe ser mayor a cero', 'error'); return; }
+
+    // ¿Baja la deuda? Entonces debe ser un pago (va a Caja) o un descuento con motivo.
+    const baja = bajaRenegociacion();
+    let descuento = null;
+    if (baja > 0) {
+      const tipoBaja = document.querySelector('input[name="ec-baja-tipo"]:checked')?.value || '';
+      if (!tipoBaja) {
+        actualizarAvisoBajaCredito();
+        showToast('La deuda baja ' + fmt(baja) + ': indica si el cliente pagó o si es un descuento', 'error');
+        return;
+      }
+      if (tipoBaja === 'pago') {
+        // No se renegocia: se registra el pago por la diferencia (así entra a Caja).
+        closeModal('modal-editar-credito');
+        CREDITO_EDITANDO = null;
+        await abrirRegistrarPago(credito.id);
+        const m = document.getElementById('rp-monto');
+        if (m) m.value = baja;
+        showToast('Registra aquí el pago de ' + fmt(baja) + ' para que entre a Caja. Si después quieres cambiar el plazo, vuelve a "Renegociar".');
+        return;
+      }
+      const motivo = (document.getElementById('ec-baja-motivo')?.value || '').trim();
+      if (motivo.length < 5) {
+        showToast('Escribe el motivo del descuento (es obligatorio)', 'error');
+        document.getElementById('ec-baja-motivo')?.focus();
+        return;
+      }
+      descuento = { monto: baja, motivo };
+    }
 
     setBtnLoading('btn-guardar-editar-credito', true);
     try {
@@ -3274,14 +3334,21 @@
       const totalYaComprometido = pagadasAhora.reduce((s,c) => s + Number(c.monto_total||0), 0);
       const nuevoTotalFinanciado = round2(totalYaComprometido + totalRestanteNuevo);
 
-      await _sb.from('creditos').update({
+      const camposCredito = {
         tasa_interes: credito.tipo_financiamiento==='con_interes' ? tasa : credito.tasa_interes,
         frecuencia, num_cuotas: pagadasAhora.length + cuotasNuevas.length,
         total_financiado: nuevoTotalFinanciado, valor_cuota_aprox: valorCuotaAprox,
         saldo_pendiente: totalRestanteNuevo, updated_at: new Date().toISOString(),
-      }).eq('id', credito.id).eq('auth_user_id', CS.userId);
+      };
+      if (descuento) {
+        const nota = `[Descuento de ${fmt(descuento.monto)} el ${todayISO()}: ${descuento.motivo}]`;
+        camposCredito.observaciones = credito.observaciones ? `${credito.observaciones} ${nota}` : nota;
+      }
+      await _sb.from('creditos').update(camposCredito).eq('id', credito.id).eq('auth_user_id', CS.userId);
 
-      await registrarHistorial(credito.id, 'editado', `Saldo restante renegociado: ${fmt(nuevoSaldo)} en ${numCuotas} cuota(s) nueva(s) — ${pagadasAhora.length} cuota(s) previa(s) sin tocar`, { nuevoSaldo, numCuotas, nuevoTotalFinanciado });
+      await registrarHistorial(credito.id, 'editado', `Saldo restante renegociado: ${fmt(nuevoSaldo)} en ${numCuotas} cuota(s) nueva(s) — ${pagadasAhora.length} cuota(s) previa(s) sin tocar`
+        + (descuento ? ` — DESCUENTO de ${fmt(descuento.monto)}. Motivo: ${descuento.motivo}` : ''),
+        { nuevoSaldo, numCuotas, nuevoTotalFinanciado, ...(descuento ? { descuento: descuento.monto, motivoDescuento: descuento.motivo } : {}) });
 
       showToast('Crédito actualizado — cuotas pendientes recalculadas');
       closeModal('modal-editar-credito');

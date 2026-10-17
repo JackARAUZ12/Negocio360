@@ -1776,7 +1776,20 @@
       </p>
       <div class="form-group">
         <label>Nuevo saldo a pagar (lo que falta)</label>
-        <input type="number" class="form-input" id="ec-capital" min="0.01" step="0.01"/>
+        <input type="number" class="form-input" id="ec-capital" min="0.01" step="0.01" oninput="actualizarAvisoBajaCredito()"/>
+      </div>
+      <!-- Si la deuda BAJA, hay que decir por qué (antes se podía bajar sin registrar pago ni motivo) -->
+      <div id="ec-baja" style="display:none;margin:-4px 0 14px;padding:12px;border:1px solid var(--warning, #d97706);border-radius:8px;background:var(--bg-app)">
+        <div id="ec-baja-texto" style="font-size:12.5px;font-weight:600;margin-bottom:8px"></div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:6px;cursor:pointer">
+          <input type="radio" name="ec-baja-tipo" value="pago" onchange="actualizarAvisoBajaCredito()"/>
+          <span>El cliente <b>pagó</b> esa diferencia <span style="color:var(--text-muted)">(se abre "Registrar pago" para que el dinero entre a Caja)</span></span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer">
+          <input type="radio" name="ec-baja-tipo" value="descuento" onchange="actualizarAvisoBajaCredito()"/>
+          <span>Es un <b>descuento o rebaja</b> acordada con el cliente</span>
+        </label>
+        <textarea id="ec-baja-motivo" class="form-input" rows="2" style="display:none;margin-top:8px" placeholder="Motivo del descuento (obligatorio). Ej.: se le rebajó por producto dañado, autorizado por…"></textarea>
       </div>
       <div class="form-row" id="ec-fila-interes" style="display:none">
         <div>
@@ -1954,7 +1967,7 @@
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="select-buscable.js?v=20261015b"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
-<script src="creditos.js?v=20261016b"></script>
+<script src="creditos.js?v=20261017a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>
