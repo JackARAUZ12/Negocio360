@@ -78,7 +78,10 @@ function _cc_hexARgb(hex) {
  * @param {object} datos - { numero, fecha, cliente_nombre, cliente_telefono, cliente_direccion,
  *                            subtotal, descuento, impuesto, iva_porcentaje, total, metodo_pago,
  *                            observaciones, userId, empresaNombre, empresaDireccion,
- *                            empresaTelefono, empresaRuc, moneda_simbolo }
+ *                            empresaTelefono, empresaRuc, moneda_simbolo,
+ *                            destacado? { titulo, valor, nota } — recuadro resaltado
+ *                            antes de las observaciones (opcional; solo lo usa
+ *                            el Comprobante de crédito para la fecha de pago) }
  * @param {Array}  items  - [{ nombre, cantidad, precio, descuento, subtotal }]
  */
 /* ----------------------------------------------------------
@@ -315,6 +318,27 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
 
   finalY += 6;
   doc.setTextColor(20,20,30);
+
+  // Recuadro resaltado opcional (p. ej. "FECHA LÍMITE DE PAGO"). Si quien
+  // llama no manda datos.destacado, no se dibuja nada: todo queda igual.
+  if (datos.destacado && datos.destacado.valor) {
+    const alto = datos.destacado.nota ? 24 : 19;
+    if (finalY + alto > doc.internal.pageSize.getHeight() - 20) { doc.addPage(); finalY = 20; }
+    doc.setFillColor(Math.round(rC + (255 - rC) * 0.88), Math.round(gC + (255 - gC) * 0.88), Math.round(bC + (255 - bC) * 0.88));
+    doc.setDrawColor(rC, gC, bC); doc.setLineWidth(0.6);
+    doc.roundedRect(M, finalY, W - M*2, alto, 2.5, 2.5, 'FD');
+    doc.setLineWidth(0.2);
+    doc.setTextColor(rC, gC, bC); doc.setFontSize(9.5); doc.setFont(undefined, 'bold');
+    doc.text(String(datos.destacado.titulo || ''), W/2, finalY + 6.5, { align: 'center' });
+    doc.setTextColor(20,20,30); doc.setFontSize(15);
+    doc.text(String(datos.destacado.valor), W/2, finalY + 14, { align: 'center' });
+    if (datos.destacado.nota) {
+      doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(90,90,110);
+      doc.text(String(datos.destacado.nota), W/2, finalY + 20, { align: 'center' });
+    }
+    doc.setFont(undefined, 'normal'); doc.setTextColor(20,20,30);
+    finalY += alto + 8;
+  }
 
   if (datos.observaciones) {
     doc.setFontSize(10); doc.setFont(undefined, 'bold');
