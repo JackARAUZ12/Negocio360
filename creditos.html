@@ -854,6 +854,7 @@
       .section-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 12px; }
       .greeting-text h1 { font-size: 18px; }
       .greeting-row { flex-direction: column; align-items: stretch; }
+      .greeting-actions { flex-wrap: wrap; }
       .greeting-actions .btn-primary { width: 100%; justify-content: center; }
       #header { gap: 8px; padding: 0 12px; }
       .plan-badge { display: none; }
@@ -1187,6 +1188,10 @@
           <p>Administra créditos por venta, préstamos financieros, cuotas y pagos.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-ghost" onclick="abrirConfigCredito()" title="Configuración de crédito">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Configuración de crédito
+          </button>
           <button class="btn-ghost" onclick="abrirCreditoExistente()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Registrar crédito existente
@@ -1892,6 +1897,46 @@
 </div>
 
 <!-- =====================================================
+     MODAL: CONFIGURACIÓN DE CRÉDITO
+     Opciones propias del módulo de Créditos, guardadas por negocio en
+     configuracion_empresa. Solo el perfil Admin puede cambiarlas.
+=================================================== -->
+<div class="modal-overlay" id="modal-config-credito" onclick="if(event.target===this)closeModal('modal-config-credito')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h3>Configuración de crédito</h3>
+        <div style="font-size:12.5px;color:var(--text-muted)">Opciones del módulo de Créditos para este negocio</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-config-credito')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer">
+        <span class="n360-switch" style="flex-shrink:0;margin-top:2px">
+          <input type="checkbox" id="cfc-fecha-limite" />
+          <span class="n360-switch-slider"></span>
+        </span>
+        <span>
+          <span style="display:block;font-size:13.5px;font-weight:600">Mostrar "Fecha límite de pago" en el comprobante de pago</span>
+          <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.45">
+            Solo aplica a créditos con modalidad <b>"Un solo pago a fecha fija"</b>. Los créditos en cuotas siguen mostrando "Próxima cuota", como siempre.
+            Sale en el ticket (58, 76 y 80&nbsp;mm, Epson) y en el comprobante carta, mientras el crédito tenga saldo pendiente.
+          </span>
+        </span>
+      </label>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:14px;padding:10px 12px;background:var(--accent-soft);border-radius:8px;line-height:1.45">
+        💡 Los créditos a fecha fija creados antes de esta opción se pueden marcar desde su detalle con el interruptor <b>"Este crédito es a fecha fija"</b>.
+      </div>
+      <div id="cfc-aviso-admin" style="display:none;font-size:12px;color:var(--danger);margin-top:12px">🔒 Solo el perfil Admin puede cambiar esta configuración.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-config-credito')">Cancelar</button>
+      <button class="btn-primary" id="cfc-btn-guardar" onclick="guardarConfigCredito()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
      MODAL: CONFIGURAR TICKET DE IMPRESIÓN
      Misma configuración que usa Ventas (una sola por negocio) —
      tabla configuracion_venta_rapida, compartida entre todos los
@@ -1967,7 +2012,7 @@
 <script src="comprobante-carta.js?v=20261008a"></script>
 <script src="select-buscable.js?v=20261015b"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
-<script src="creditos.js?v=20261017b"></script>
+<script src="creditos.js?v=20261019a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>

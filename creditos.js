@@ -101,6 +101,22 @@
     if (!isoDate) return '—';
     return new Date(isoDate + 'T12:00:00').toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
   }
+  // dd/mm/aaaa — para la "Fecha límite de pago" del comprobante (sin
+  // abreviaturas de mes, que no dejen duda al cliente).
+  function fmtDateNum(isoDate) {
+    if (!isoDate) return '—';
+    const [a, m, d] = String(isoDate).slice(0, 10).split('-');
+    return `${d}/${m}/${a}`;
+  }
+  // Admin = sin perfil activo (dueño) o perfil tipo admin — mismo criterio
+  // que perfilStockCompartido().
+  function esPerfilAdmin() {
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const perfil = raw ? JSON.parse(raw) : null;
+      return !perfil || perfil.tipo === 'admin';
+    } catch (_) { return true; }
+  }
   // Mismo dato que ya usa auditoria-guard.js -- que perfil de
   // personal hizo la venta que genera este credito.
   function obtenerNombrePerfilActivo() {
@@ -2030,7 +2046,7 @@
 
       // 3) Crear el crédito
       const numeroCredito = await generarNumeroCredito();
-      const { data: credito, error: errCredito } = await _sb.from('creditos').insert({
+      const creditoPayload = {
         auth_user_id: CS.userId, numero_credito: numeroCredito, tipo, cliente_id: clienteId,
         venta_id: ventaId, producto_financiero_id: productoFinancieroId,
         monto_original: montoOriginal, prima_tipo: primaTipo, prima_valor: primaValor, prima_monto: primaMonto,
@@ -2039,7 +2055,14 @@
         metodo_amortizacion: metodo, frecuencia, num_cuotas: numCuotas, fecha_inicio: fechaInicio,
         total_intereses: totalIntereses, total_financiado: totalFinanciado, valor_cuota_aprox: valorCuotaAprox,
         saldo_pendiente: totalFinanciado, estado: 'en_proceso', observaciones,
-      }).select().single();
+        modalidad_pago: plan.fija ? 'fecha_fija' : 'cuotas',
+      };
+      let { data: credito, error: errCredito } = await _sb.from('creditos').insert(creditoPayload).select().single();
+      if (errCredito && /modalidad_pago/.test(errCredito.message || '')) {
+        // Por si la migración 20261019 aún no llegó a este entorno: se guarda como antes.
+        const { modalidad_pago, ...sinModalidad } = creditoPayload;
+        ({ data: credito, error: errCredito } = await _sb.from('creditos').insert(sinModalidad).select().single());
+      }
       if (errCredito) throw errCredito;
 
       // 3) Crear cuotas
@@ -2376,6 +2399,7 @@
         cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
         usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombre,
         saldoAnterior, saldoNuevo, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
+        fechaLimite: fechaLimiteComprobante(credito, proximaCuota, saldoNuevo),
         estado: LABEL_ESTADO[nuevoEstadoCredito] || nuevoEstadoCredito,
         productos: productosComprobante,
       });
@@ -2442,8 +2466,84 @@
   window.guardarConfigTicket = guardarConfigTicket;
 
   /* ===================================================
+     CONFIGURACIÓN DE CRÉDITO — opciones propias del módulo, guardadas
+     por negocio en configuracion_empresa. Solo el perfil Admin las cambia.
+  =================================================== */
+  function abrirConfigCredito() {
+    const admin = esPerfilAdmin();
+    const chk = document.getElementById('cfc-fecha-limite');
+    chk.checked = !!CS.empresaConfig?.creditos_mostrar_fecha_limite;
+    chk.disabled = !admin;
+    document.getElementById('cfc-btn-guardar').style.display = admin ? '' : 'none';
+    document.getElementById('cfc-aviso-admin').style.display = admin ? 'none' : '';
+    openModal('modal-config-credito');
+  }
+  window.abrirConfigCredito = abrirConfigCredito;
+
+  async function guardarConfigCredito() {
+    if (!esPerfilAdmin()) { showToast('Solo el perfil Admin puede cambiar esta configuración', 'error'); return; }
+    const activo = document.getElementById('cfc-fecha-limite').checked;
+    const btn = document.getElementById('cfc-btn-guardar');
+    btn.disabled = true;
+    try {
+      const { error } = await _sb.from('configuracion_empresa')
+        .update({ creditos_mostrar_fecha_limite: activo }).eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      if (CS.empresaConfig) CS.empresaConfig.creditos_mostrar_fecha_limite = activo;
+      closeModal('modal-config-credito');
+      showToast(activo ? 'La fecha límite de pago saldrá en los comprobantes de créditos a fecha fija' : 'Fecha límite de pago desactivada', 'success');
+    } catch (e) {
+      console.error('guardarConfigCredito:', e);
+      showToast('No se pudo guardar la configuración', 'error');
+    } finally { btn.disabled = false; }
+  }
+  window.guardarConfigCredito = guardarConfigCredito;
+
+  // Interruptor del detalle: marcar a mano un crédito de 1 cuota como
+  // "a fecha fija" (para los creados antes de que se guardara la modalidad).
+  async function toggleModalidadFechaFija(creditoId, activo, chk) {
+    try {
+      const { error } = await _sb.from('creditos')
+        .update({ modalidad_pago: activo ? 'fecha_fija' : 'cuotas', updated_at: new Date().toISOString() })
+        .eq('id', creditoId).eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      const enLista = CS.creditos.find(c => c.id === creditoId);
+      if (enLista) enLista.modalidad_pago = activo ? 'fecha_fija' : 'cuotas';
+      if (window._creditoDetalleData?.credito?.id === creditoId) window._creditoDetalleData.credito.modalidad_pago = activo ? 'fecha_fija' : 'cuotas';
+      await registrarHistorial(creditoId, 'editado', activo ? 'Marcado como "Un solo pago a fecha fija"' : 'Desmarcado como "Un solo pago a fecha fija"', { modalidad_pago: activo ? 'fecha_fija' : 'cuotas' });
+      showToast(activo ? 'Crédito marcado como a fecha fija' : 'Crédito marcado como en cuotas', 'success');
+    } catch (e) {
+      console.error('toggleModalidadFechaFija:', e);
+      showToast('No se pudo cambiar la modalidad', 'error');
+      if (chk) chk.checked = !activo;
+    }
+  }
+  window.toggleModalidadFechaFija = toggleModalidadFechaFija;
+
+  /* ===================================================
      COMPROBANTE / TICKET
   =================================================== */
+  // "Fecha límite de pago" (Configuración de crédito): solo si la casilla
+  // está encendida, el crédito es "Un solo pago a fecha fija" y aún queda
+  // saldo. Si no, null — y el comprobante sale exactamente como siempre.
+  function fechaLimiteComprobante(credito, proximaCuota, saldoNuevo) {
+    if (!CS.empresaConfig?.creditos_mostrar_fecha_limite) return null;
+    if (!credito || credito.modalidad_pago !== 'fecha_fija') return null;
+    if (!(Number(saldoNuevo) > 0) || !proximaCuota?.fecha_vencimiento) return null;
+    return proximaCuota.fecha_vencimiento;
+  }
+  // Texto de la fecha límite; "(VENCIDA)" si ya pasó a la fecha del comprobante.
+  function textoFechaLimite(c) {
+    if (!c?.fechaLimite) return '';
+    const vencida = String(c.fechaLimite).slice(0, 10) < String(c.fecha || todayISO()).slice(0, 10);
+    return `${fmtDateNum(c.fechaLimite)}${vencida ? ' (VENCIDA)' : ''}`;
+  }
+  // Observaciones del comprobante carta (PDF), con la fecha límite si aplica.
+  function observacionesCartaPago(c) {
+    const base = `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`;
+    return c.fechaLimite ? `${base} — FECHA LÍMITE DE PAGO: ${textoFechaLimite(c)}` : base;
+  }
+
   function mostrarComprobante(c) {
     CS.ultimoComprobante = c;
 
@@ -2456,7 +2556,7 @@
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
             cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
-            metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
+            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
             empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -2499,7 +2599,9 @@
         <div class="tp-row"><span>Saldo anterior:</span><b>${fmt(c.saldoAnterior)}</b></div>
         <div class="tp-row"><span>Saldo nuevo:</span><b>${fmt(c.saldoNuevo)}</b></div>
         <hr/>
-        <div class="tp-row"><span>Próxima cuota:</span><b>${esc(c.proximaCuota)}</b></div>
+        ${c.fechaLimite
+          ? `<div class="tp-row" style="font-weight:800"><span>FECHA LÍMITE DE PAGO:</span><b>${esc(textoFechaLimite(c))}</b></div>`
+          : `<div class="tp-row"><span>Próxima cuota:</span><b>${esc(c.proximaCuota)}</b></div>`}
         <div class="tp-row"><span>Estado del crédito:</span><b>${esc(c.estado)}</b></div>
         ${CS.configTicket?.mensaje_pie_ticket ? `<hr/><div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(CS.configTicket.mensaje_pie_ticket)}</div>` : ''}
       </div>`;
@@ -2522,7 +2624,7 @@
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
             cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
-            metodo_pago: c.metodo, observaciones: `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`,
+            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
             empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -2834,6 +2936,16 @@
           ${fmtDate(credito.fecha_inicio)}
           <button class="btn-icon" style="width:20px;height:20px;display:inline-flex;vertical-align:middle" title="Editar fecha" onclick="editarFechaCredito('${credito.id}')">✏️</button>
         </div></div>
+        ${(cuotas||[]).length === 1 && credito.estado !== 'cancelado' ? `
+        <div><label>Modalidad de pago</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;margin-top:6px" title="Marca si este crédito es de un solo pago a fecha fija (para la Fecha límite de pago del comprobante)">
+            <span class="n360-switch">
+              <input type="checkbox" ${credito.modalidad_pago === 'fecha_fija' ? 'checked' : ''} onchange="toggleModalidadFechaFija('${credito.id}', this.checked, this)" />
+              <span class="n360-switch-slider"></span>
+            </span>
+            <span>Este crédito es a fecha fija</span>
+          </label>
+        </div>` : ''}
       </div>
       <div class="form-row" style="margin-bottom:14px">
         <div><label>Capital financiado</label><div class="stat-readonly">${fmt(credito.capital_financiado)}</div></div>
@@ -3173,6 +3285,7 @@
         usuario: CS.currentUser?.nombre || CS.userEmail, monto: p.monto, metodo: p.metodo_pago_nombre || '—',
         saldoAnterior: p.saldo_anterior, saldoNuevo: p.saldo_nuevo,
         proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
+        fechaLimite: fechaLimiteComprobante(credito, proximaCuota, p.saldo_nuevo),
         estado: credito ? (LABEL_ESTADO[credito.estado] || credito.estado) : '—',
         productos: productosComprobante,
       });
@@ -3340,6 +3453,8 @@
         total_financiado: nuevoTotalFinanciado, valor_cuota_aprox: valorCuotaAprox,
         saldo_pendiente: totalRestanteNuevo, updated_at: new Date().toISOString(),
       };
+      // Un crédito a fecha fija renegociado en varias cuotas deja de ser "un solo pago".
+      if (credito.modalidad_pago === 'fecha_fija' && cuotasNuevas.length > 1) camposCredito.modalidad_pago = 'cuotas';
       if (descuento) {
         // El descuento también se asienta en Contabilidad ("Generar asientos" → Descuento o rebaja a un crédito).
         const nota = `[Descuento de ${fmt(descuento.monto)} el ${todayISO()}: ${descuento.motivo}]`;
