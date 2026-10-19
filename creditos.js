@@ -2946,7 +2946,6 @@
         ${fila('Emitido:', emitido)}
         ${fila('Cliente:', esc(nombreCliente))}
         ${d.cliente?.telefono ? fila('Teléfono:', esc(d.cliente.telefono)) : ''}
-        ${fila('Atendido por:', esc(obtenerNombrePerfilActivo()))}
         <hr/>
         <div class="tp-row" style="font-weight:700"><span>Descripción</span><span>Subtotal</span></div>
         ${filasItems}
