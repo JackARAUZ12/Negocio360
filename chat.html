@@ -370,6 +370,16 @@ function toggleTheme(){
 }
 
 /* ---------- HELPERS ---------- */
+// Adjuntos del chat: solo se aceptan archivos del bucket "chat-archivos" de
+// este proyecto. Cualquier otra cosa (javascript:, otro sitio, comillas que
+// intenten inyectar atributos) se muestra como "Adjunto no válido".
+const ADJ_INVALIDO = '<div style="font-size:12px;opacity:.7">⚠️ Adjunto no válido</div>';
+function urlAdjuntoChatSegura(url) {
+  const base = SUPABASE_URL + '/storage/v1/object/public/chat-archivos/';
+  if (typeof url !== 'string' || !url.startsWith(base)) return null;
+  if (/[\s"'<>\\`]/.test(url.slice(base.length))) return null;
+  return escHtml(url);
+}
 function escHtml(str){
   if (str===null || str===undefined) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
@@ -398,17 +408,20 @@ function renderMessage(m){
   row.className = 'msg-row ' + m.remitente;
 
   let inner = '';
+  // Solo se muestran adjuntos del almacenamiento propio del chat (nunca un
+  // enlace arbitrario: podría traer código y ejecutarse al abrir el chat).
+  const urlAdj = urlAdjuntoChatSegura(m.archivo_url);
   if (m.tipo === 'texto') {
     inner = `<div>${escHtml(m.contenido).replace(/\n/g,'<br>')}</div>`;
   } else if (m.tipo === 'imagen') {
-    inner = `<img src="${m.archivo_url}" alt="imagen" onclick="window.open('${m.archivo_url}','_blank')">`;
+    inner = urlAdj ? `<a href="${urlAdj}" target="_blank" rel="noopener noreferrer"><img src="${urlAdj}" alt="imagen"></a>` : ADJ_INVALIDO;
   } else if (m.tipo === 'documento') {
-    inner = `<a class="doc-link" href="${m.archivo_url}" target="_blank" rel="noopener">
+    inner = !urlAdj ? ADJ_INVALIDO : `<a class="doc-link" href="${urlAdj}" target="_blank" rel="noopener noreferrer">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       ${escHtml(m.archivo_nombre || 'Documento')}
     </a>`;
   } else if (m.tipo === 'audio') {
-    inner = `<audio controls src="${m.archivo_url}"></audio>`;
+    inner = urlAdj ? `<audio controls src="${urlAdj}"></audio>` : ADJ_INVALIDO;
   }
 
   row.innerHTML = `<div><div class="msg-bubble">${inner}</div><div class="msg-time">${fmtTime(m.created_at)}</div></div>`;

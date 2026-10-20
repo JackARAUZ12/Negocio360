@@ -139,8 +139,8 @@ function toast(title, msg = '', type = 'success') {
   el.innerHTML = `
     <div class="toast-icon ${type}">${icons[type] || icons.info}</div>
     <div class="toast-body">
-      <div class="toast-title">${title}</div>
-      ${msg ? `<div class="toast-msg">${msg}</div>` : ''}
+      <div class="toast-title">${escHtml(title)}</div>
+      ${msg ? `<div class="toast-msg">${escHtml(msg)}</div>` : ''}
     </div>
   `;
   container.appendChild(el);
@@ -972,13 +972,13 @@ function renderUsersTable(users) {
               </div>`
             : ''}
           ${u.estado_cuenta !== 'activa'
-            ? `<button class="btn-icon btn-success btn-sm" onclick="openConfirmAction('activar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Activar</button>`
+            ? `<button class="btn-icon btn-success btn-sm" data-nombre="${escHtml(u.nombre || u.email)}" onclick="openConfirmAction('activar', '${u.id}', this.dataset.nombre)">Activar</button>`
             : ''}
           ${u.estado_cuenta !== 'suspendida'
-            ? `<button class="btn-icon btn-warning btn-sm" onclick="openConfirmAction('suspender', '${u.id}', '${escHtml(u.nombre || u.email)}')">Suspender</button>`
+            ? `<button class="btn-icon btn-warning btn-sm" data-nombre="${escHtml(u.nombre || u.email)}" onclick="openConfirmAction('suspender', '${u.id}', this.dataset.nombre)">Suspender</button>`
             : ''}
           ${u.estado_cuenta !== 'cancelada'
-            ? `<button class="btn-icon btn-danger btn-sm" onclick="openConfirmAction('cancelar', '${u.id}', '${escHtml(u.nombre || u.email)}')">Cancelar</button>`
+            ? `<button class="btn-icon btn-danger btn-sm" data-nombre="${escHtml(u.nombre || u.email)}" onclick="openConfirmAction('cancelar', '${u.id}', this.dataset.nombre)">Cancelar</button>`
             : ''}
         </div>
       </td>
@@ -1626,7 +1626,9 @@ async function executeMarkAsPaid(userId, cicloAPagar) {
 }
 
 // Confirmar acción sobre usuario (activar / suspender / cancelar)
-function openConfirmAction(accion, userId, nombre) {
+function openConfirmAction(accion, userId, nombreSinEscapar) {
+  // El nombre lo escribe el cliente: siempre se escapa antes de mostrarlo.
+  const nombre = escHtml(nombreSinEscapar || '');
   const msgs = {
     activar:   { title: '¿Activar esta cuenta?',   sub: `Se activará la cuenta de <strong>${nombre}</strong>.`,   icon: '✓', cls: 'success', btn: 'btn-success', label: 'Sí, activar'    },
     suspender: { title: '¿Suspender esta cuenta?', sub: `Se suspenderá la cuenta de <strong>${nombre}</strong>.`, icon: '⚠', cls: 'warn',    btn: 'btn-warning', label: 'Sí, suspender' },
@@ -2352,7 +2354,7 @@ function confirmDeleteCode(id, codigo) {
   document.getElementById('confirm-icon').className = 'confirm-icon danger';
   document.getElementById('confirm-icon').textContent = '✕';
   document.getElementById('confirm-title').textContent = '¿Eliminar este código?';
-  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${codigo}</strong>. Esta acción no se puede deshacer.`;
+  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${escHtml(codigo)}</strong>. Esta acción no se puede deshacer.`;
 
   const btn = document.getElementById('btn-confirm-action');
   btn.className = 'btn-icon btn-danger';
@@ -2576,7 +2578,7 @@ function confirmDeleteCodeC360(id, codigo) {
   document.getElementById('confirm-icon').className = 'confirm-icon danger';
   document.getElementById('confirm-icon').textContent = '✕';
   document.getElementById('confirm-title').textContent = '¿Eliminar este código?';
-  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${codigo}</strong>. Esta acción no se puede deshacer. Los clientes que ya lo hayan canjeado NO pierden su acceso.`;
+  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${escHtml(codigo)}</strong>. Esta acción no se puede deshacer. Los clientes que ya lo hayan canjeado NO pierden su acceso.`;
 
   const btn = document.getElementById('btn-confirm-action');
   btn.className = 'btn-icon btn-danger';
@@ -3074,6 +3076,16 @@ function setSoporteInputState(activa) {
   if (btnFinalizar) btnFinalizar.style.display = activa ? 'flex' : 'none';
 }
 
+// Adjuntos del chat: solo se aceptan archivos del bucket "chat-archivos" de
+// este proyecto. Cualquier otra cosa (javascript:, otro sitio, comillas que
+// intenten inyectar atributos) se muestra como "Adjunto no válido".
+const ADJ_INVALIDO = '<div style="font-size:12px;opacity:.7">⚠️ Adjunto no válido</div>';
+function urlAdjuntoChatSegura(url) {
+  const base = SUPABASE_URL + '/storage/v1/object/public/chat-archivos/';
+  if (typeof url !== 'string' || !url.startsWith(base)) return null;
+  if (/[\s"'<>\\`]/.test(url.slice(base.length))) return null;
+  return escHtml(url);
+}
 function renderSoporteMessage(m) {
   if (soporteSeenIds.has(m.id)) return;
   soporteSeenIds.add(m.id);
@@ -3082,17 +3094,20 @@ function renderSoporteMessage(m) {
   row.className = 'chat-msg-row ' + m.remitente;
 
   let inner = '';
+  // Solo se muestran adjuntos del almacenamiento propio del chat (nunca un
+  // enlace arbitrario: podría traer código y ejecutarse al abrir el chat).
+  const urlAdj = urlAdjuntoChatSegura(m.archivo_url);
   if (m.tipo === 'texto') {
     inner = `<div>${escHtml(m.contenido).replace(/\n/g, '<br>')}</div>`;
   } else if (m.tipo === 'imagen') {
-    inner = `<img src="${m.archivo_url}" alt="imagen" onclick="window.open('${m.archivo_url}','_blank')">`;
+    inner = urlAdj ? `<a href="${urlAdj}" target="_blank" rel="noopener noreferrer"><img src="${urlAdj}" alt="imagen"></a>` : ADJ_INVALIDO;
   } else if (m.tipo === 'documento') {
-    inner = `<a class="doc-link" href="${m.archivo_url}" target="_blank" rel="noopener">
+    inner = !urlAdj ? ADJ_INVALIDO : `<a class="doc-link" href="${urlAdj}" target="_blank" rel="noopener noreferrer">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       ${escHtml(m.archivo_nombre || 'Documento')}
     </a>`;
   } else if (m.tipo === 'audio') {
-    inner = `<audio controls src="${m.archivo_url}"></audio>`;
+    inner = urlAdj ? `<audio controls src="${urlAdj}"></audio>` : ADJ_INVALIDO;
   }
 
   row.innerHTML = `<div><div class="chat-msg-bubble">${inner}</div><div class="chat-msg-time">${formatTime(m.created_at)}</div></div>`;
