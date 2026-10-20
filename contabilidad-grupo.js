@@ -44,17 +44,26 @@
     this._f = []; this._orden = []; this._desde = null; this._hasta = null; this._lim = null; this._modo = 'lista';
   }
   Consulta.prototype.select = function () { return this; };
-  Consulta.prototype.eq = function (c, v) { this._f.push(function (r) { return r[c] === v || (r[c] != null && v != null && String(r[c]) === String(v)); }); return this; };
-  Consulta.prototype.neq = function (c, v) { this._f.push(function (r) { return !(r[c] === v || (r[c] != null && v != null && String(r[c]) === String(v))); }); return this; };
-  Consulta.prototype.gt = function (c, v) { this._f.push(function (r) { return r[c] != null && cmp(r[c], v) > 0; }); return this; };
-  Consulta.prototype.gte = function (c, v) { this._f.push(function (r) { return r[c] != null && cmp(r[c], v) >= 0; }); return this; };
-  Consulta.prototype.lt = function (c, v) { this._f.push(function (r) { return r[c] != null && cmp(r[c], v) < 0; }); return this; };
-  Consulta.prototype.lte = function (c, v) { this._f.push(function (r) { return r[c] != null && cmp(r[c], v) <= 0; }); return this; };
-  Consulta.prototype.in = function (c, arr) { var s = (arr || []).map(String); this._f.push(function (r) { return r[c] != null && s.indexOf(String(r[c])) >= 0; }); return this; };
-  Consulta.prototype.is = function (c, v) { this._f.push(function (r) { return v === null ? r[c] == null : r[c] === v; }); return this; };
+  // Valor de una columna; entiende también un campo dentro de un JSON ('data->>descuento'),
+  // igual que la base de datos (como texto).
+  function val(r, c) {
+    var i = String(c).indexOf('->>');
+    if (i < 0) return r[c];
+    var o = r[c.slice(0, i)], k = c.slice(i + 3);
+    if (o == null || typeof o !== 'object' || o[k] == null) return null;
+    return typeof o[k] === 'object' ? JSON.stringify(o[k]) : String(o[k]);
+  }
+  Consulta.prototype.eq = function (c, v) { this._f.push(function (r) { return val(r, c) === v || (val(r, c) != null && v != null && String(val(r, c)) === String(v)); }); return this; };
+  Consulta.prototype.neq = function (c, v) { this._f.push(function (r) { return !(val(r, c) === v || (val(r, c) != null && v != null && String(val(r, c)) === String(v))); }); return this; };
+  Consulta.prototype.gt = function (c, v) { this._f.push(function (r) { return val(r, c) != null && cmp(val(r, c), v) > 0; }); return this; };
+  Consulta.prototype.gte = function (c, v) { this._f.push(function (r) { return val(r, c) != null && cmp(val(r, c), v) >= 0; }); return this; };
+  Consulta.prototype.lt = function (c, v) { this._f.push(function (r) { return val(r, c) != null && cmp(val(r, c), v) < 0; }); return this; };
+  Consulta.prototype.lte = function (c, v) { this._f.push(function (r) { return val(r, c) != null && cmp(val(r, c), v) <= 0; }); return this; };
+  Consulta.prototype.in = function (c, arr) { var s = (arr || []).map(String); this._f.push(function (r) { return val(r, c) != null && s.indexOf(String(val(r, c))) >= 0; }); return this; };
+  Consulta.prototype.is = function (c, v) { this._f.push(function (r) { return v === null ? val(r, c) == null : val(r, c) === v; }); return this; };
   Consulta.prototype.not = function (c, op, v) {
-    if (op === 'is' && v === null) this._f.push(function (r) { return r[c] != null; });
-    else if (op === 'eq') this._f.push(function (r) { return String(r[c]) !== String(v); });
+    if (op === 'is' && v === null) this._f.push(function (r) { return val(r, c) != null; });
+    else if (op === 'eq') this._f.push(function (r) { return String(val(r, c)) !== String(v); });
     else throw new Error('Contabilidad del grupo: filtro no soportado not(' + op + ')');
     return this;
   };

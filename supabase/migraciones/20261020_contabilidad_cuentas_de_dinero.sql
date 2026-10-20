@@ -130,24 +130,26 @@ begin
        and s.auth_user_id_sucursal is not null and s.auth_user_id_sucursal <> v_uid;
 
   -- Movimientos de Caja vigentes y a qué cuenta va cada uno (mismas reglas que el módulo Caja).
+  -- (Sin UPDATE: las llamadas desde la app pasan por "safeupdate", que rechaza UPDATE sin WHERE.)
   create temp table _cd_mf on commit drop as
-    select m.id, m.auth_user_id, m.tipo_flujo, round(m.monto::numeric, 2) as monto, m.referencia_tipo, m.referencia_id,
-           m.tipo_movimiento, m.fecha, m.created_at, m.concepto, m.banco_id, m.origen_caja,
-           lower(coalesce(nullif(m.metodo_pago_nombre, ''), 'Efectivo')) as metodo, null::uuid as dest
-      from movimientos_financieros m
-     where m.auth_user_id in (select uid from _cd_lugar) and m.estado = 'completado' and m.monto > 0;
-  update _cd_mf set dest = case
-    when banco_id is not null and (metodo like '%tarjeta%' or metodo like '%transferencia%' or tipo_movimiento = 'TRANSFERENCIA')
-      then (select b.cuenta_id from _cd_banco b where b.banco_id = _cd_mf.banco_id)
-    when tipo_flujo = 'INGRESO' and (case when tipo_movimiento in ('TRANSFERENCIA', 'CAPITAL_AGREGADO') then coalesce(origen_caja, '') = 'chica'
-                                          else metodo like '%efectivo%' end)
-      then v_ef
-    when tipo_flujo = 'EGRESO' and (case when tipo_movimiento = 'TRANSFERENCIA' then coalesce(origen_caja, '') = 'chica'
-                                         when origen_caja = 'general' then false
-                                         when origen_caja = 'chica' then true
-                                         else metodo like '%efectivo%' end)
-      then v_ef
-    else null end;
+    select x.*, case
+      when x.banco_id is not null and (x.metodo like '%tarjeta%' or x.metodo like '%transferencia%' or x.tipo_movimiento = 'TRANSFERENCIA')
+        then bb.cuenta_id
+      when x.tipo_flujo = 'INGRESO' and (case when x.tipo_movimiento in ('TRANSFERENCIA', 'CAPITAL_AGREGADO') then coalesce(x.origen_caja, '') = 'chica'
+                                              else x.metodo like '%efectivo%' end)
+        then v_ef
+      when x.tipo_flujo = 'EGRESO' and (case when x.tipo_movimiento = 'TRANSFERENCIA' then coalesce(x.origen_caja, '') = 'chica'
+                                             when x.origen_caja = 'general' then false
+                                             when x.origen_caja = 'chica' then true
+                                             else x.metodo like '%efectivo%' end)
+        then v_ef
+      else null end as dest
+    from (select m.id, m.auth_user_id, m.tipo_flujo, round(m.monto::numeric, 2) as monto, m.referencia_tipo, m.referencia_id,
+                 m.tipo_movimiento, m.fecha, m.created_at, m.concepto, m.banco_id, m.origen_caja,
+                 lower(coalesce(nullif(m.metodo_pago_nombre, ''), 'Efectivo')) as metodo
+            from movimientos_financieros m
+           where m.auth_user_id in (select uid from _cd_lugar) and m.estado = 'completado' and m.monto > 0) x
+    left join _cd_banco bb on bb.banco_id = x.banco_id;
   create index on _cd_mf (referencia_id);
   create index on _cd_mf (id);
 
