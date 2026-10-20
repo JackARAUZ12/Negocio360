@@ -166,7 +166,8 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
 
   const palabraBase = (cfg.titulo_comprobante || '').trim() || 'Comprobante';
   const TITULOS = { venta: `${palabraBase} de Venta`, credito: `${palabraBase} de Crédito` };
-  const titulo = TITULOS[tipo] || palabraBase;
+  // datos.titulo (opcional) reemplaza el título, p. ej. "Factura de Crédito"
+  const titulo = (datos && datos.titulo) || TITULOS[tipo] || palabraBase;
   const moneda = datos.moneda_simbolo || 'C$';
   const fmtM = (n) => `${moneda} ${Number(n||0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}`;
 

@@ -2845,7 +2845,7 @@
   };
 
   /* ===================================================
-     COMPROBANTE DE CRÉDITO — como el recibo de una venta, pero sin
+     FACTURA DE CRÉDITO — como el recibo de una venta, pero sin
      cobrar nada: lo financiado, lo pagado, el saldo y cuándo toca
      pagar (fecha límite si es a fecha fija; próxima cuota y cuotas
      pendientes si es en cuotas). SOLO LEE datos: no registra pagos,
@@ -2877,7 +2877,14 @@
     const saldo = round2(Math.max(0, Number(credito.saldo_pendiente || 0)));
     const impuestos = round2(lista.reduce((s, q) => s + Number(q.impuesto || 0), 0));
     const esFechaFija = credito.modalidad_pago === 'fecha_fija';
+    // Fecha / Plazo / Vence de la factura: vence = fecha fija o la última
+    // cuota del crédito; plazo = días entre la fecha del crédito y el vencimiento.
+    const fechaCredito = String(credito.fecha_inicio || credito.created_at || '').slice(0, 10);
+    const ultima = lista.length ? lista[lista.length - 1] : null;
+    const vence = esFechaFija ? await fechaDeCreditoFechaFija(credito, pendientes[0]) : (ultima?.fecha_vencimiento || null);
+    const plazoDias = (fechaCredito && vence) ? Math.round((new Date(String(vence).slice(0, 10) + 'T12:00:00') - new Date(fechaCredito + 'T12:00:00')) / 86400000) : null;
     return {
+      fechaCredito, vence, plazoDias,
       credito, cliente, items, pendientes, esFechaFija, totalCuotas: lista.length,
       numeroTexto: await textoCredito(credito),
       montoOriginal: round2(credito.monto_original || credito.capital_financiado),
@@ -2899,8 +2906,9 @@
     const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
     const c = d.credito;
     const nombreCliente = d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : '—';
-    const ahora = new Date();
-    const emitido = `${fmtDateNum(todayISO())} ${ahora.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}`;
+    // Hora de la factura: la de registro, si es del mismo día que la fecha del crédito
+    const creado = c.created_at ? new Date(c.created_at) : null;
+    const hora = creado && !isNaN(creado) && String(c.created_at).slice(0, 10) === d.fechaCredito ? ' ' + creado.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '';
     const fila = (a, b, extra = '') => `<div class="tp-row"${extra}><span>${a}</span><b>${b}</b></div>`;
     const filasItems = d.items.map(i => {
       const [nombreReal, ...detalle] = String(i.nombre || i.producto_nombre || 'Ítem').split('\n');
@@ -2915,11 +2923,7 @@
       const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
       plan = `
         ${fila('Modalidad:', 'Un solo pago a fecha fija')}
-        <div style="text-align:center;border:1.5px solid #000;border-radius:4px;padding:6px 4px;margin-top:8px">
-          <div style="font-weight:800;letter-spacing:.3px">FECHA LÍMITE DE PAGO</div>
-          <div style="font-weight:800;font-size:1.35em;margin-top:2px">${esc(fmtDateNum(d.fechaLimite))}</div>
-          ${d.saldo <= 0 ? '<div style="font-weight:700;margin-top:2px">CRÉDITO PAGADO</div>' : vencida ? '<div style="font-weight:700;margin-top:2px">(VENCIDA)</div>' : ''}
-        </div>`;
+        ${d.saldo <= 0 ? fila('Estado:', 'Crédito pagado') : vencida ? fila('Estado:', 'Vencida') : ''}`;
     } else {
       const frec = LABEL_FREC[c.frecuencia] || c.frecuencia || '';
       plan = `
@@ -2938,12 +2942,12 @@
         ${cfg.telefono_ticket ? `<div style="text-align:center;font-size:11px">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
         ${cfg.direccion_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.direccion_ticket)}</div>` : ''}
         <hr/>
-        <div style="text-align:center;font-weight:800">COMPROBANTE DE CRÉDITO</div>
-        <div style="text-align:center;font-size:10.5px">Documento informativo · no es recibo de pago</div>
+        <div style="text-align:center;font-weight:800">FACTURA DE CRÉDITO</div>
         <hr/>
         ${fila('N° crédito:', esc(d.numeroTexto))}
-        ${fila('Fecha del crédito:', fmtDateNum(c.fecha_inicio || String(c.created_at || '').slice(0, 10)))}
-        ${fila('Emitido:', emitido)}
+        ${fila('Fecha:', fmtDateNum(d.fechaCredito) + hora)}
+        ${d.plazoDias != null ? fila('Plazo:', `${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}`) : ''}
+        ${d.vence ? fila('Vence:', fmtDateNum(d.vence)) : ''}
         ${fila('Cliente:', esc(nombreCliente))}
         ${d.cliente?.telefono ? fila('Teléfono:', esc(d.cliente.telefono)) : ''}
         <hr/>
@@ -2963,20 +2967,21 @@
         ${d.saldo > 0 ? `<div style="margin-top:22px;text-align:center"><div style="border-top:1px solid #000;margin:0 12%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
         <hr/>
         ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
-        <div style="text-align:center;font-size:10px;margin-top:4px">Este comprobante no registra pagos ni movimientos de caja.</div>
+        <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>
       </div>`;
   }
 
   async function pdfComprobanteCredito(d) {
     const c = d.credito;
     const lineas = [
+      `Fecha: ${fmtDateNum(d.fechaCredito)}${d.plazoDias != null ? `  ·  Plazo: ${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}` : ''}${d.vence ? `  ·  Vence: ${fmtDateNum(d.vence)}` : ''}`,
       `Total a pagar: ${fmt(d.totalFinanciado)}  ·  Pagado a la fecha: ${fmt(d.pagado)}  ·  SALDO PENDIENTE: ${fmt(d.saldo)}`,
     ];
     if (d.prima > 0) lineas.push(`Prima / anticipo: ${fmt(d.prima)}  ·  Monto financiado: ${fmt(d.capital)}`);
     if (d.esFechaFija) {
       const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
       lineas.push(`Modalidad: Un solo pago a fecha fija`);
-      lineas.push(`FECHA LÍMITE DE PAGO: ${fmtDateNum(d.fechaLimite)}${d.saldo <= 0 ? ' (CRÉDITO PAGADO)' : vencida ? ' (VENCIDA)' : ''}`);
+      if (d.saldo <= 0) lineas.push('Estado: Crédito pagado'); else if (vencida) lineas.push('Estado: Vencida');
     } else {
       const frec = LABEL_FREC[c.frecuencia] || c.frecuencia || '';
       lineas.push(`Modalidad: ${d.totalCuotas} cuota${d.totalCuotas === 1 ? '' : 's'}${frec ? ' · ' + frec : ''}`);
@@ -2986,7 +2991,7 @@
         d.pendientes.forEach(q => lineas.push(`   #${q.numero} — vence ${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''} — ${fmt(pendienteDeCuota(q))}`));
       }
     }
-    lineas.push('Documento informativo: no es recibo de pago ni registra movimientos de caja.');
+    lineas.push('Esta factura no registra pagos ni movimientos de caja.');
     const doc = await generarComprobanteCartaPDF('credito', {
       userId: CS.userId, numero: d.numeroTexto,
       fecha: fmtDate(c.fecha_inicio || String(c.created_at || '').slice(0, 10)),
@@ -2997,10 +3002,7 @@
       // en las observaciones, no como descuento).
       subtotal: d.capital, descuento: 0,
       impuesto: round2(d.totalFinanciado - d.capital), total: d.totalFinanciado,
-      metodo_pago: 'Crédito', observaciones: lineas.join('\n'),
-      destacado: d.esFechaFija && d.fechaLimite
-        ? { titulo: 'FECHA LÍMITE DE PAGO', valor: fmtDateNum(d.fechaLimite), nota: d.saldo <= 0 ? 'CRÉDITO PAGADO' : (d.fechaLimite < todayISO() ? 'VENCIDA' : `Saldo pendiente: ${fmt(d.saldo)}`) }
-        : (!d.esFechaFija && d.proxima ? { titulo: 'PRÓXIMA CUOTA', valor: `${fmtDateNum(d.proxima.fecha_vencimiento)}  ·  ${fmt(pendienteDeCuota(d.proxima))}`, nota: `Saldo pendiente: ${fmt(d.saldo)}` } : null),
+      metodo_pago: 'Crédito', observaciones: lineas.join('\n'), titulo: 'Factura de Crédito',
       empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
       empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
       empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -3009,7 +3011,7 @@
       subtotal: i.subtotal != null ? i.subtotal : round2(Number(i.cantidad) * Number(i.precio)),
       sku: i.producto_sku || null, producto_id: i.producto_id || null,
     })));
-    doc.save(`Comprobante_credito_${c.numero_credito}.pdf`);
+    doc.save(`Factura_credito_${c.numero_credito}.pdf`);
   }
 
   async function generarComprobanteCredito(creditoId) {
@@ -3018,7 +3020,7 @@
       const d = await datosComprobanteCredito(creditoId);
       if (CS.configTicket?.ancho_ticket === 'carta') {
         await pdfComprobanteCredito(d);
-        showToast('Comprobante de crédito generado');
+        showToast('Factura de crédito generada');
         return;
       }
       CS.ultimoComprobante = { tipoDoc: 'credito', datos: d };
@@ -3026,7 +3028,7 @@
       openModal('modal-comprobante');
     } catch (e) {
       console.error('generarComprobanteCredito:', e);
-      showToast('No se pudo generar el comprobante de crédito', 'error');
+      showToast('No se pudo generar la factura de crédito', 'error');
     }
   }
   window.generarComprobanteCredito = generarComprobanteCredito;
@@ -3155,7 +3157,7 @@
         <div><label>Saldo pendiente</label><div class="stat-readonly">${fmt(credito.saldo_pendiente)}</div></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="btn-primary btn-sm" onclick="generarComprobanteCredito('${credito.id}')" title="Lo financiado, lo pagado, el saldo y la fecha de pago — no registra ningún pago">🧾 Comprobante de crédito</button>
+        <button class="btn-primary btn-sm" onclick="generarComprobanteCredito('${credito.id}')" title="Lo financiado, lo pagado, el saldo, el plazo y el vencimiento — no registra ningún pago">🧾 Factura de crédito</button>
         <button class="btn-secondary btn-sm" onclick='generarPagareCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(cuotas||[]).replace(/'/g,"&apos;")})'>📄 Generar pagaré</button>
         <button class="btn-secondary btn-sm" onclick='descargarComprobanteCartaCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(productosFinanciados||[]).replace(/'/g,"&apos;")})'>📄 Comprobante tamaño carta</button>
         ${credito.tipo === 'venta' && credito.venta_id && Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarProductosCredito('${credito.id}')">🛒 Editar productos</button>` : ''}
