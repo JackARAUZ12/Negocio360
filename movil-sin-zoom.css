@@ -5,11 +5,22 @@
    usan 16 px y así no hay zoom automático. El zoom con los dedos
    sigue funcionando. En computadora no cambia nada.
    Solo tamaño de letra: no toca datos ni lógica.
+
+   También en pantallas táctiles: se desactiva "jalar hacia abajo
+   para recargar" del navegador, que recargaba la página al subir
+   (y se perdía lo que se estaba escribiendo). El desplazamiento
+   normal sigue igual. Para actualizar está el botón ↻ del
+   encabezado (movil-recargar.js).
    ============================================================ */
 @media (hover: none) and (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="hidden"]),
   select,
   textarea {
     font-size: 16px !important;
+  }
+
+  html,
+  body {
+    overscroll-behavior-y: none;
   }
 }
