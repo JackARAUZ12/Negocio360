@@ -1719,8 +1719,8 @@
           <div class="cfg-status" id="logout-status"></div>
         </div>
 
-        <!-- ELIMINAR CUENTA -->
-        <div class="cfg-card danger fade-in stagger-4">
+        <!-- ELIMINAR CUENTA (oculta hasta confirmar que NO es una cuenta de demostración) -->
+        <div class="cfg-card danger fade-in stagger-4" id="card-eliminar-cuenta" style="display:none">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -3093,6 +3093,25 @@ async function ejecutarCerrarSesion() {
 }
 
 /* =====================================================
+   CUENTA DE DEMOSTRACIÓN — no se puede eliminar ni activar el
+   multiusuario (el servidor también lo bloquea).
+===================================================== */
+async function aplicarModoDemo() {
+  const card = document.getElementById('card-eliminar-cuenta');
+  let esDemo = false;
+  try {
+    const { data, error } = await sbClient.rpc('soy_cuenta_demo');
+    if (!error) esDemo = data === true;
+  } catch (_) {}
+  if (!esDemo) { if (card) card.style.display = ''; return; }
+  if (card) card.remove();
+  const toggle = document.getElementById('mu-toggle');
+  const sub = document.getElementById('mu-row-sub');
+  if (toggle) toggle.disabled = true;
+  if (sub) sub.textContent = 'No disponible en la cuenta de demostración.';
+}
+
+/* =====================================================
    ELIMINAR CUENTA — doble confirmación + RPC segura
 ===================================================== */
 function confirmarEliminarCuenta() {
@@ -3179,7 +3198,7 @@ async function initConfiguracion() {
     const mostrarApp = () => {
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('app').style.display = 'flex';
-      cargarMultiusuario();
+      cargarMultiusuario().then(aplicarModoDemo);
       cargarSkuDoc();
       cargarModulosOpcionales();
       cargarLotesVencimiento();
