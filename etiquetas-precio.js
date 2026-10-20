@@ -43,7 +43,7 @@
 
   const ST = {
     productos: [], lineas: [], formato: 'hoja',
-    prefs: { formato: 'hoja', papel: 'carta', tamHoja: '40x30', tamRollo: '40x30', tamTicket: '58x40', ivaDefecto: 'incluido',
+    prefs: { formato: 'hoja', papel: 'carta', tamHoja: '40x30', tamRollo: '40x30', tamTicket: '58x40', ivaDefecto: 'incluido', estilo: 'super', color: null,
       negocio: true, codigo: false, sku: false, fecha: false, corte: true },
   };
   try { Object.assign(ST.prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch (_) {}
@@ -193,7 +193,10 @@
   }
 
   // ── Dibujo de una etiqueta (mm) ───────────────────────────
-  const cacheBarras = {};
+  // Un solo código de diseño con dos "pintores": jsPDF (el PDF que se
+  // imprime) y Canvas (la vista previa). Así lo que se ve es lo que sale.
+  const PT = 0.3528;                                   // 1 punto tipográfico = 0.3528 mm
+  const cacheBarras = {}, cacheImg = {};
   function barras(codigo) {
     if (!codigo || typeof JsBarcode !== 'function') return null;
     if (cacheBarras[codigo] !== undefined) return cacheBarras[codigo];
@@ -204,74 +207,249 @@
     } catch (_) { cacheBarras[codigo] = null; }
     return cacheBarras[codigo];
   }
-  function ajustarTexto(doc, texto, maxW, tamMax, tamMin) {
-    let t = tamMax;
-    doc.setFontSize(t);
-    while (t > tamMin && doc.getTextWidth(texto) > maxW) { t -= 0.5; doc.setFontSize(t); }
-    return t;
+  function pintorPDF(doc) {
+    const fuente = o => { doc.setFont(o.font === 'serif' ? 'times' : 'helvetica', o.bold && o.italic ? 'bolditalic' : o.bold ? 'bold' : o.italic ? 'italic' : 'normal'); doc.setFontSize(o.size); };
+    return {
+      rect(x, y, w, h, o = {}) {
+        if (o.fill) doc.setFillColor(...o.fill);
+        if (o.stroke) { doc.setDrawColor(...o.stroke); doc.setLineWidth(o.lw || 0.2); }
+        if (o.dash) doc.setLineDashPattern(o.dash, 0);
+        const st = o.fill && o.stroke ? 'FD' : o.fill ? 'F' : 'S';
+        if (o.r) doc.roundedRect(x, y, w, h, o.r, o.r, st); else doc.rect(x, y, w, h, st);
+        if (o.dash) doc.setLineDashPattern([], 0);
+      },
+      line(x1, y1, x2, y2, o = {}) { doc.setDrawColor(...(o.stroke || [0, 0, 0])); doc.setLineWidth(o.lw || 0.2); doc.line(x1, y1, x2, y2); },
+      width(s, o) { fuente(o); return doc.getTextWidth(String(s)); },
+      text(s, x, y, o) { fuente(o); doc.setTextColor(...(o.color || [20, 20, 20])); doc.text(String(s), x, y, { align: o.align || 'left', baseline: 'top' }); },
+      image(url, x, y, w, h) { doc.addImage(url, 'PNG', x, y, w, h); },
+    };
   }
-  function dibujarEtiqueta(doc, l, x, y, w, h, opt) {
-    const pad = Math.max(1.2, Math.min(w, h) * 0.06);
+  function pintorCanvas(ctx, k) {
+    const css = c => `rgb(${(c || [20, 20, 20]).join(',')})`;
+    const fam = o => `${o.italic ? 'italic ' : ''}${o.bold ? 700 : 400} ${o.size * PT * k}px ${o.font === 'serif' ? '"Times New Roman", Times, serif' : 'Helvetica, Arial, sans-serif'}`;
+    const ruta = (x, y, w, h, r) => {
+      ctx.beginPath();
+      if (!r) { ctx.rect(x, y, w, h); return; }
+      r = Math.min(r, w / 2, h / 2);
+      ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    };
+    return {
+      rect(x, y, w, h, o = {}) {
+        ctx.save(); ruta(x * k, y * k, w * k, h * k, (o.r || 0) * k);
+        if (o.fill) { ctx.fillStyle = css(o.fill); ctx.fill(); }
+        if (o.stroke) { ctx.strokeStyle = css(o.stroke); ctx.lineWidth = (o.lw || 0.2) * k; if (o.dash) ctx.setLineDash(o.dash.map(v => v * k)); ctx.stroke(); }
+        ctx.restore();
+      },
+      line(x1, y1, x2, y2, o = {}) { ctx.save(); ctx.strokeStyle = css(o.stroke || [0, 0, 0]); ctx.lineWidth = (o.lw || 0.2) * k; ctx.beginPath(); ctx.moveTo(x1 * k, y1 * k); ctx.lineTo(x2 * k, y2 * k); ctx.stroke(); ctx.restore(); },
+      width(s, o) { ctx.font = fam(o); return ctx.measureText(String(s)).width / k; },
+      text(s, x, y, o) { ctx.font = fam(o); ctx.fillStyle = css(o.color); ctx.textBaseline = 'top'; ctx.textAlign = o.align || 'left'; ctx.fillText(String(s), x * k, y * k); },
+      image(url, x, y, w, h) {
+        let img = cacheImg[url];
+        if (!img) { img = cacheImg[url] = new Image(); img.onload = () => programarMuestra(); img.src = url; }
+        if (img.complete && img.naturalWidth) ctx.drawImage(img, x * k, y * k, w * k, h * k);
+      },
+    };
+  }
+
+  // Colores
+  const hexARgb = h => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h || '')); if (!m) return null; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const mezclar = (c, f) => c.map(v => Math.round(v + (255 - v) * f));               // aclarar hacia blanco
+  const oscuro = c => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) < 150;
+  const NEGRO = [22, 22, 26], GRIS = [110, 112, 120], GRIS_L = [200, 202, 208], BLANCO = [255, 255, 255], AMARILLO = [255, 214, 10];
+
+  // Texto que cabe: baja el tamaño hasta que entra en el ancho
+  function ajustar(P, s, maxW, o, min = 4.5) { const q = { ...o }; while (q.size > min && P.width(s, q) > maxW) q.size -= 0.25; return q; }
+  // Nombre en hasta 2 líneas dentro de (w × maxH)
+  function envolver(P, texto, maxW, o) {
+    const palabras = String(texto || '').trim().split(/\s+/).filter(Boolean), lineas = [];
+    let actual = '';
+    for (const pal of palabras) {
+      const prueba = actual ? actual + ' ' + pal : pal;
+      if (!actual || P.width(prueba, o) <= maxW) actual = prueba; else { lineas.push(actual); actual = pal; }
+    }
+    if (actual) lineas.push(actual);
+    return lineas;
+  }
+  function bloqueNombre(P, texto, x, y, w, maxH, o0, align) {
+    const o = { ...o0 };
+    let lineas;
+    for (;;) {
+      lineas = envolver(P, texto, w, o);
+      const alto = Math.min(lineas.length, 2) * o.size * PT * 1.12;
+      if ((lineas.length <= 2 && alto <= maxH && lineas.every(l => P.width(l, o) <= w)) || o.size <= 5) break;
+      o.size -= 0.25;
+    }
+    if (lineas.length > 2) { lineas = lineas.slice(0, 2); let u = lineas[1]; while (u.length > 1 && P.width(u + '…', o) > w) u = u.slice(0, -1); lineas[1] = u + '…'; }
+    lineas = lineas.map(l => { let u = l; while (u.length > 1 && P.width(u, o) > w) u = u.slice(0, -1); return u; });
+    const xx = align === 'left' ? x : x + w / 2;
+    lineas.forEach((l, i) => P.text(l, xx, y + i * o.size * PT * 1.12, { ...o, align: align === 'left' ? 'left' : 'center' }));
+    return lineas.length * o.size * PT * 1.12;
+  }
+  // Precio estilo góndola: símbolo y centavos pequeños arriba, entero grande
+  function dibujarPrecio(P, n, x, y, w, maxH, o) {
+    const s = Number(n || 0).toFixed(2), [ent, dec] = s.split('.');
+    const partes = { sim: simbolo(), ent: Number(ent).toLocaleString('en-US'), dec };
+    let size = maxH / (PT * 0.9);
+    const medir = sz => {
+      const chico = { size: sz * 0.42, bold: true, font: o.font }, grande = { size: sz, bold: true, font: o.font };
+      const wS = P.width(partes.sim, chico), wE = P.width(partes.ent, grande), wD = P.width(partes.dec, chico), esp = sz * PT * 0.06;
+      return { chico, grande, wS, wE, wD, esp, total: wS + esp + wE + esp + wD };
+    };
+    let m = medir(size);
+    while (m.total > w && size > 6) { size -= 0.25; m = medir(size); }
+    let cx = o.align === 'left' ? x : x + (w - m.total) / 2;
+    const alto = size * PT * 0.9, sube = size * PT * 0.1;
+    P.text(partes.sim, cx, y + sube, { ...m.chico, color: o.color }); cx += m.wS + m.esp;
+    P.text(partes.ent, cx, y, { ...m.grande, color: o.color }); cx += m.wE + m.esp;
+    P.text(partes.dec, cx, y + sube, { ...m.chico, color: o.color });
+    if (o.subrayarCentavos) P.line(cx, y + sube + m.chico.size * PT * 0.95, cx + m.wD, y + sube + m.chico.size * PT * 0.95, { stroke: o.color, lw: Math.max(0.15, size * 0.006) });
+    return { alto, ancho: m.total, x0: o.align === 'left' ? x : x + (w - m.total) / 2 };
+  }
+  // Precio anterior tachado
+  function dibujarAntes(P, l, x, y, w, size, align, color) {
+    const t = 'Antes ' + fmtPrecio(l.antes), o = ajustar(P, t, w, { size, font: 'sans', color: color || GRIS });
+    const an = P.width(t, o), x0 = align === 'left' ? x : x + (w - an) / 2;
+    P.text(t, x0, y, { ...o, align: 'left' });
+    P.line(x0, y + o.size * PT * 0.48, x0 + an, y + o.size * PT * 0.48, { stroke: color || GRIS, lw: 0.2 });
+    return o.size * PT * 1.05;
+  }
+  // Pie: código de barras y/o SKU · fecha. Devuelve el alto usado desde abajo.
+  function dibujarPie(P, l, x, fondo, w, h, opt, color) {        // h = alto de referencia para tamaños
+    let usado = 0;
+    const pie = [opt.sku && l.sku ? 'SKU ' + l.sku : '', opt.fecha ? opt.fechaTxt : ''].filter(Boolean).join('   ·   ');
+    if (pie) {
+      const o = ajustar(P, pie, w, { size: Math.max(4.5, Math.min(6.5, h * 0.065 / PT)), color: color || GRIS });
+      P.text(pie, x + w / 2, fondo - o.size * PT, { ...o, align: 'center' });
+      usado += o.size * PT + h * 0.015;
+    }
+    const bc = opt.codigo && l.codigo ? barras(l.codigo) : null;
+    if (bc) {
+      const bh = Math.min(h * 0.17, 9), bw = Math.min(w * 0.92, bh * bc.r * 1.5);
+      P.image(bc.url, x + (w - bw) / 2, fondo - usado - bh, bw, bh);
+      usado += bh + h * 0.025;
+    }
+    return usado;
+  }
+  const hayAntes = l => l.antes != null && Number(l.antes) > Number(l.precio);
+  const textoIva = l => IVA[l.iva] || '';
+
+  // ── Los 5 diseños ─────────────────────────────────────────
+  const ESTILOS = {
+    super: { t: 'Supermercado', d: 'Franja de color, precio con centavos arriba' },
+    oferta: { t: 'Oferta', d: 'Para promociones y descuentos' },
+    moderno: { t: 'Moderno', d: 'Barra lateral de color' },
+    elegante: { t: 'Elegante', d: 'Doble marco y letra con serifa' },
+    clasico: { t: 'Clásico', d: 'Blanco y negro, ahorra tinta' },
+  };
+  function dibujarEtiqueta(P, l, x, y, w, h, opt) {
+    const C = opt.color, base = Math.min(w, h), pad = Math.max(1.2, base * 0.06);
+    const estilo = ESTILOS[opt.estilo] ? opt.estilo : 'super';
+    const iva = textoIva(l), unidad = l.unidad || '';
+
+    if (estilo === 'super' || estilo === 'oferta') {
+      const m = base * 0.025, of = estilo === 'oferta';
+      const txtBanda = oscuro(C) ? BLANCO : NEGRO;
+      const hb = h * (of ? 0.18 : 0.16);
+      P.rect(x + m, y + m, w - 2 * m, h - 2 * m, { stroke: of ? C : GRIS_L, lw: of ? 0.5 : 0.25, r: base * 0.05, fill: of ? mezclar(AMARILLO, 0.82) : null });
+      P.rect(x + m, y + m, w - 2 * m, hb, { fill: C, r: base * 0.05 });
+      P.rect(x + m, y + m + hb * 0.5, w - 2 * m, hb * 0.5, { fill: C });            // esquinas de abajo rectas
+      const pct = hayAntes(l) ? Math.round(100 * (Number(l.antes) - Number(l.precio)) / Number(l.antes)) : 0;
+      const titulo = of ? (hayAntes(l) ? `¡OFERTA!${pct >= 1 ? '  -' + pct + '%' : ''}` : 'PRECIO ESPECIAL') : (opt.negocio && opt.negocioTxt ? opt.negocioTxt.toUpperCase() : 'PRECIO');
+      const ob = ajustar(P, titulo, w - 2 * pad, { size: hb * 0.64 / PT, bold: true, italic: of, color: txtBanda });
+      P.text(titulo, x + w / 2, y + m + (hb - ob.size * PT * 0.8) / 2, { ...ob, align: 'center' });
+      let top = y + m + hb + h * 0.03;
+      let fondo = y + h - m - pad * 0.5;
+      fondo -= dibujarPie(P, l, x + pad, fondo, w - 2 * pad, h * 0.8, opt);           // pie más compacto en este diseño
+      // Fila inferior: IVA en pastilla (+ unidad)
+      const hFila = h * 0.085;
+      if (iva || unidad) {
+        const filaY = fondo - hFila;
+        if (iva) {
+          const oi = ajustar(P, iva, (w - 2 * pad) * 0.6, { size: hFila * 0.66 / PT, bold: true, color: of ? NEGRO : C });
+          const wi = P.width(iva, oi) + hFila * 0.9;
+          const xi = unidad ? x + pad : x + (w - wi) / 2;
+          P.rect(xi, filaY, wi, hFila, { stroke: of ? NEGRO : C, lw: 0.25, r: hFila / 2, fill: of ? BLANCO : mezclar(C, 0.9) });
+          P.text(iva, xi + wi / 2, filaY + (hFila - oi.size * PT * 0.78) / 2, { ...oi, align: 'center' });
+        }
+        if (unidad) {
+          const ou = ajustar(P, unidad, (w - 2 * pad) * (iva ? 0.36 : 1), { size: hFila * 0.64 / PT, bold: true, color: GRIS });
+          P.text(unidad, iva ? x + w - pad : x + w / 2, filaY + (hFila - ou.size * PT * 0.78) / 2, { ...ou, align: iva ? 'right' : 'center' });
+        }
+        fondo = filaY - h * 0.04;      // aire para la coma y los descendentes del precio
+      }
+      // Presupuesto: el precio tiene garantizado su alto mínimo; el nombre usa lo que sobra
+      const hAntes = hayAntes(l) ? Math.min(7.5, h * 0.055 / PT) * PT * 1.05 : 0;
+      const precioMin = h * 0.22;
+      const libreNombre = Math.max(h * 0.08, fondo - top - hAntes - precioMin);
+      top += bloqueNombre(P, l.nombre, x + pad, top, w - 2 * pad, Math.min(libreNombre, h * 0.2), { size: Math.min(10.5, h * 0.08 / PT), bold: true, color: NEGRO }, 'center') + h * 0.012;
+      if (hayAntes(l)) top += dibujarAntes(P, l, x + pad, top, w - 2 * pad, Math.min(7.5, h * 0.055 / PT), 'center');
+      const altoP = Math.max(2, Math.min(fondo - top, h * 0.32));
+      dibujarPrecio(P, l.precio, x + pad, top + (fondo - top - altoP) / 2, w - 2 * pad, altoP, { color: of ? C : NEGRO, align: 'center', subrayarCentavos: !of });
+      return;
+    }
+
+    if (estilo === 'moderno') {
+      const m = base * 0.025, barra = Math.max(1.2, w * 0.045);
+      P.rect(x + m, y + m, w - 2 * m, h - 2 * m, { stroke: GRIS_L, lw: 0.25, r: base * 0.06 });
+      P.rect(x + m, y + m, barra, h - 2 * m, { fill: C, r: base * 0.06 });
+      P.rect(x + m + barra * 0.5, y + m, barra * 0.5, h - 2 * m, { fill: C });
+      const ix = x + m + barra + pad * 0.8, iw = x + w - m - pad * 0.8 - ix;
+      let top = y + m + pad * 0.7, fondo = y + h - m - pad * 0.6;
+      fondo -= dibujarPie(P, l, ix, fondo, iw, h, opt);
+      if (opt.negocio && opt.negocioTxt) {
+        const on = ajustar(P, opt.negocioTxt.toUpperCase(), iw, { size: Math.min(6.5, h * 0.065 / PT), bold: true, color: C });
+        P.text(opt.negocioTxt.toUpperCase(), ix, top, { ...on, align: 'left' }); top += on.size * PT * 1.25;
+      }
+      top += bloqueNombre(P, l.nombre, ix, top, iw, (fondo - top) * 0.38, { size: Math.min(11, h * 0.085 / PT), bold: true, color: NEGRO }, 'left') + h * 0.02;
+      if (hayAntes(l)) top += dibujarAntes(P, l, ix, top, iw, Math.min(7.5, h * 0.06 / PT), 'left');
+      const ley = [unidad, iva].filter(Boolean).join(' · ');
+      let hLey = 0;
+      if (ley) { const ol = ajustar(P, ley, iw, { size: Math.min(7, h * 0.065 / PT), color: GRIS }); hLey = ol.size * PT * 1.2; P.text(ley, ix, fondo - hLey, { ...ol, align: 'left' }); }
+      const altoP = Math.max(2, Math.min(fondo - hLey - top - h * 0.02, h * 0.3));
+      dibujarPrecio(P, l.precio, ix, top + (fondo - hLey - top - altoP) / 2, iw, altoP, { color: C, align: 'left' });
+      return;
+    }
+
+    if (estilo === 'elegante') {
+      const m = base * 0.03, m2 = m + base * 0.03;
+      P.rect(x + m, y + m, w - 2 * m, h - 2 * m, { stroke: C, lw: 0.45 });
+      P.rect(x + m2, y + m2, w - 2 * m2, h - 2 * m2, { stroke: C, lw: 0.15 });
+      const ix = x + m2 + pad * 0.6, iw = w - 2 * (m2 + pad * 0.6);
+      let top = y + m2 + pad * 0.6, fondo = y + h - m2 - pad * 0.5;
+      fondo -= dibujarPie(P, l, ix, fondo, iw, h, opt);
+      if (opt.negocio && opt.negocioTxt) {
+        const t = opt.negocioTxt.toUpperCase(), on = ajustar(P, t, iw * 0.8, { size: Math.min(6.5, h * 0.06 / PT), font: 'serif', color: C });
+        P.text(t, x + w / 2, top, { ...on, align: 'center' }); top += on.size * PT * 1.15;
+        const an = Math.min(iw * 0.35, P.width(t, on));
+        P.line(x + w / 2 - an / 2, top, x + w / 2 + an / 2, top, { stroke: C, lw: 0.15 }); top += h * 0.03;
+      }
+      top += bloqueNombre(P, l.nombre, ix, top, iw, (fondo - top) * 0.36, { size: Math.min(11.5, h * 0.09 / PT), bold: true, font: 'serif', color: NEGRO }, 'center') + h * 0.015;
+      if (hayAntes(l)) top += dibujarAntes(P, l, ix, top, iw, Math.min(7.5, h * 0.06 / PT), 'center');
+      const ley = [unidad, iva].filter(Boolean).join(' · ');
+      let hLey = 0;
+      if (ley) { const ol = ajustar(P, ley, iw, { size: Math.min(7, h * 0.065 / PT), italic: true, font: 'serif', color: GRIS }); hLey = ol.size * PT * 1.2; P.text(ley, x + w / 2, fondo - hLey, { ...ol, align: 'center' }); }
+      const altoP = Math.max(2, Math.min(fondo - hLey - top - h * 0.015, h * 0.3));
+      dibujarPrecio(P, l.precio, ix, top + (fondo - hLey - top - altoP) / 2, iw, altoP, { color: NEGRO, align: 'center', font: 'serif' });
+      return;
+    }
+
+    // Clásico (blanco y negro)
     const ix = x + pad, iw = w - 2 * pad;
     let top = y + pad, fondo = y + h - pad;
-    const pt = mm => mm / 0.3528;                       // mm de alto -> puntos de fuente
-    doc.setTextColor(20, 20, 20);
-    // Pie: código de barras / SKU / fecha
-    const bc = opt.codigo && l.codigo ? barras(l.codigo) : null;
-    const pieTxt = [opt.sku && l.sku ? 'SKU ' + l.sku : '', opt.fecha ? opt.fechaTxt : ''].filter(Boolean).join('   ');
-    if (pieTxt) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(Math.max(5, Math.min(7, pt(h * 0.07))));
-      doc.text(pieTxt, x + w / 2, fondo, { align: 'center', baseline: 'bottom' });
-      fondo -= h * 0.09;
-    }
-    if (bc) {
-      const bh = Math.min(h * 0.2, 9), bw = Math.min(iw, bh * bc.r * 1.6);
-      doc.addImage(bc.url, 'PNG', x + (w - bw) / 2, fondo - bh, bw, bh);
-      fondo -= bh + h * 0.03;
-    }
-    // Cabecera: negocio
+    fondo -= dibujarPie(P, l, ix, fondo, iw, h, opt, NEGRO);
     if (opt.negocio && opt.negocioTxt) {
-      doc.setFont('helvetica', 'normal');
-      const fs = ajustarTexto(doc, opt.negocioTxt, iw, Math.min(7, pt(h * 0.08)), 4.5);
-      doc.text(opt.negocioTxt, x + w / 2, top, { align: 'center', baseline: 'top' });
-      top += fs * 0.3528 + h * 0.03;
+      const on = ajustar(P, opt.negocioTxt, iw, { size: Math.min(7, h * 0.07 / PT), color: NEGRO });
+      P.text(opt.negocioTxt, x + w / 2, top, { ...on, align: 'center' }); top += on.size * PT * 1.2;
     }
-    // Nombre (hasta 2 líneas)
-    const espacio = fondo - top;
-    doc.setFont('helvetica', 'bold');
-    let fsN = Math.min(11, pt(espacio * 0.2), pt(h * 0.085)), lineas;   // tope por alto: todas parejas
-    doc.setFontSize(fsN);
-    lineas = doc.splitTextToSize(l.nombre || '', iw);
-    while (fsN > 5 && lineas.length > 2) { fsN -= 0.5; doc.setFontSize(fsN); lineas = doc.splitTextToSize(l.nombre || '', iw); }
-    if (lineas.length > 2) { lineas = lineas.slice(0, 2); lineas[1] = lineas[1].replace(/.{0,2}$/, '…'); }
-    doc.text(lineas, x + w / 2, top, { align: 'center', baseline: 'top', lineHeightFactor: 1.1 });
-    top += lineas.length * fsN * 0.3528 * 1.1 + espacio * 0.04;
-    // Leyenda IVA y unidad (abajo del precio)
-    const leyenda = [l.unidad, IVA[l.iva]].filter(Boolean).join(' · ');
-    let fsL = 0;
-    if (leyenda) { doc.setFont('helvetica', 'normal'); fsL = ajustarTexto(doc, leyenda, iw, Math.min(8, pt((fondo - top) * 0.17), pt(h * 0.06)), 4.5); }
-    const altoLey = leyenda ? fsL * 0.3528 + 0.8 : 0;
-    // Precio anterior tachado
-    let zonaTop = top;
-    if (l.antes != null && Number(l.antes) > Number(l.precio)) {
-      doc.setFont('helvetica', 'normal');
-      const tA = 'Antes ' + fmtPrecio(l.antes);
-      const fsA = ajustarTexto(doc, tA, iw, Math.min(8, pt((fondo - top) * 0.16)), 4.5);
-      doc.setTextColor(110, 110, 110);
-      doc.text(tA, x + w / 2, zonaTop, { align: 'center', baseline: 'top' });
-      const anchoA = doc.getTextWidth(tA), yA = zonaTop + fsA * 0.3528 * 0.45;
-      doc.setDrawColor(110, 110, 110); doc.setLineWidth(0.2); doc.line(x + w / 2 - anchoA / 2, yA, x + w / 2 + anchoA / 2, yA);
-      doc.setTextColor(20, 20, 20);
-      zonaTop += fsA * 0.3528 + 0.6;
-    }
-    // Precio grande: ocupa lo que queda
-    const altoPrecio = Math.max(2, fondo - zonaTop - altoLey);
-    doc.setFont('helvetica', 'bold');
-    const tP = fmtPrecio(l.precio);
-    const fsP = ajustarTexto(doc, tP, iw, Math.min(pt(altoPrecio * 0.92), pt(h * 0.2)), 6);
-    const yP = zonaTop + (altoPrecio - fsP * 0.3528) / 2;
-    doc.text(tP, x + w / 2, yP, { align: 'center', baseline: 'top' });
-    if (leyenda) { doc.setFont('helvetica', 'normal'); doc.setFontSize(fsL); doc.text(leyenda, x + w / 2, fondo - altoLey + 0.4, { align: 'center', baseline: 'top' }); }
+    top += bloqueNombre(P, l.nombre, ix, top, iw, (fondo - top) * 0.36, { size: Math.min(11, h * 0.085 / PT), bold: true, color: NEGRO }, 'center') + h * 0.015;
+    if (hayAntes(l)) top += dibujarAntes(P, l, ix, top, iw, Math.min(7.5, h * 0.06 / PT), 'center', NEGRO);
+    const ley = [unidad, iva].filter(Boolean).join(' · ');
+    let hLey = 0;
+    if (ley) { const ol = ajustar(P, ley, iw, { size: Math.min(7, h * 0.065 / PT), color: NEGRO }); hLey = ol.size * PT * 1.2; P.text(ley, x + w / 2, fondo - hLey, { ...ol, align: 'center' }); }
+    const altoP = Math.max(2, Math.min(fondo - hLey - top - h * 0.015, h * 0.3));
+    P.line(x + w / 2 - iw * 0.3, top - h * 0.005, x + w / 2 + iw * 0.3, top - h * 0.005, { stroke: GRIS_L, lw: 0.15 });
+    dibujarPrecio(P, l.precio, ix, top + (fondo - hLey - top - altoP) / 2, iw, altoP, { color: NEGRO, align: 'center' });
   }
 
   function etiquetasExpandidas() {
@@ -280,7 +458,8 @@
     return out;
   }
   function opciones() {
-    return { negocio: ST.prefs.negocio, codigo: ST.prefs.codigo, sku: ST.prefs.sku, fecha: ST.prefs.fecha,
+    return { negocio: ST.prefs.negocio, codigo: ST.prefs.codigo, sku: ST.prefs.sku, fecha: ST.prefs.fecha, estilo: ST.prefs.estilo,
+      color: ST.prefs.estilo === 'clasico' ? NEGRO : colorActual(),
       negocioTxt: TX.empresaConfig?.nombre_comercial || '', fechaTxt: new Date().toLocaleDateString('es-NI') };
   }
   function validar() {
@@ -295,26 +474,28 @@
   function generarPDF() {
     const { jsPDF } = window.jspdf;
     const lista = etiquetasExpandidas(), opt = opciones();
-    let doc;
+    let doc, P;
     if (ST.formato === 'hoja') {
       const d = distribucion(), porHoja = d.cols * d.rows;
       doc = new jsPDF({ unit: 'mm', format: [d.pagina.w, d.pagina.h], orientation: 'portrait' });
+      P = pintorPDF(doc);
       let pos = Math.min(porHoja, Math.max(1, parseInt($('ep-inicio').value, 10) || 1)) - 1, pagina = 0;
       for (const l of lista) {
         if (pos >= porHoja) { doc.addPage([d.pagina.w, d.pagina.h], 'portrait'); pos = 0; pagina++; }
         const c = pos % d.cols, f = Math.floor(pos / d.cols);
         const x = d.x0 + c * (d.t.w + d.gapX), y = d.y0 + f * (d.t.h + d.gapY);
-        if (ST.prefs.corte && !d.t.fijo) { doc.setDrawColor(190, 190, 190); doc.setLineWidth(0.15); doc.setLineDashPattern([1, 1], 0); doc.rect(x, y, d.t.w, d.t.h); doc.setLineDashPattern([], 0); }
-        dibujarEtiqueta(doc, l, x, y, d.t.w, d.t.h, opt);
+        if (ST.prefs.corte && !d.t.fijo) P.rect(x, y, d.t.w, d.t.h, { stroke: [195, 195, 195], lw: 0.12, dash: [1, 1] });
+        dibujarEtiqueta(P, l, x, y, d.t.w, d.t.h, opt);
         pos++;
       }
     } else {
       const t = tamActual(), util = t.util || t.w;
       const orient = t.w > t.h ? 'landscape' : 'portrait';
       doc = new jsPDF({ unit: 'mm', format: [t.w, t.h], orientation: orient });
+      P = pintorPDF(doc);
       lista.forEach((l, i) => {
         if (i > 0) doc.addPage([t.w, t.h], orient);
-        dibujarEtiqueta(doc, l, (t.w - util) / 2, 0, util, t.h, opt);
+        dibujarEtiqueta(P, l, (t.w - util) / 2, 0, util, t.h, opt);
       });
     }
     return doc;
@@ -335,20 +516,53 @@
     } catch (e) { if (ventana) ventana.close(); TX.toast('No se pudo generar la vista: ' + (e.message || e), 'error'); }
   }
 
-  // Muestra HTML de una etiqueta (misma información que el PDF)
+  // Vista previa: el MISMO dibujo del PDF, pintado en un canvas
+  const MUESTRA = { nombre: 'Arroz Faisán 1 lb', precio: 32.5, antes: 40, unidad: 'c/u', sku: 'ARZ-01', codigo: '7501234567890', iva: 'incluido' };
+  function pintarEnCanvas(canvas, l, wmm, hmm, opt, maxPx) {
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const escala = Math.min(maxPx.w / wmm, maxPx.h / hmm);
+    canvas.style.width = Math.round(wmm * escala) + 'px'; canvas.style.height = Math.round(hmm * escala) + 'px';
+    canvas.width = Math.round(wmm * escala * dpr); canvas.height = Math.round(hmm * escala * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    dibujarEtiqueta(pintorCanvas(ctx, escala * dpr), l, 0, 0, wmm, hmm, opt);
+  }
+  let rafMuestra = 0;
+  function programarMuestra() { cancelAnimationFrame(rafMuestra); rafMuestra = requestAnimationFrame(pintarMuestra); }
   function pintarMuestra() {
-    const l = ST.lineas.find(x => Number(x.copias) > 0 && String(x.nombre).trim()) || { nombre: 'Arroz Faisán 1 lb', precio: 32.5, antes: null, unidad: 'c/u', sku: 'ARZ-01', codigo: '7501234567890', iva: ST.prefs.ivaDefecto };
-    const t = tamActual(), util = t.util || t.w, escala = Math.min(4.2, 230 / util, 170 / t.h);
-    const opt = opciones(), ley = [l.unidad, IVA[l.iva]].filter(Boolean).join(' · ');
-    $('ep-muestra').innerHTML = `<div class="ep-etq" style="width:${util * escala}px;height:${t.h * escala}px;font-size:${escala * 2.2}px">
-      ${opt.negocio && opt.negocioTxt ? `<div class="ep-etq-neg">${esc(opt.negocioTxt)}</div>` : ''}
-      <div class="ep-etq-nom">${esc(l.nombre)}</div>
-      ${l.antes != null && Number(l.antes) > Number(l.precio) ? `<div class="ep-etq-antes">Antes ${esc(fmtPrecio(l.antes))}</div>` : ''}
-      <div class="ep-etq-pre">${esc(fmtPrecio(l.precio))}</div>
-      ${ley ? `<div class="ep-etq-ley">${esc(ley)}</div>` : ''}
-      ${opt.codigo && l.codigo ? `<div class="ep-etq-bc">${barras(l.codigo) ? `<img src="${barras(l.codigo).url}" alt="" />` : ''}</div>` : ''}
-      ${(opt.sku && l.sku) || opt.fecha ? `<div class="ep-etq-pie">${esc([opt.sku && l.sku ? 'SKU ' + l.sku : '', opt.fecha ? opt.fechaTxt : ''].filter(Boolean).join('   '))}</div>` : ''}
-    </div>`;
+    const real = ST.lineas.find(x => Number(x.copias) > 0 && String(x.nombre).trim());
+    const l = real || { ...MUESTRA, iva: ST.prefs.ivaDefecto };
+    const t = tamActual(), util = t.util || t.w;
+    let c = $('ep-muestra-c');
+    if (!c) { $('ep-muestra').innerHTML = '<canvas id="ep-muestra-c" class="ep-muestra-c" aria-label="Vista previa de la etiqueta"></canvas>'; c = $('ep-muestra-c'); }
+    pintarEnCanvas(c, l, util, t.h, opciones(), { w: Math.min(320, ($('ep-muestra').clientWidth || 300) - 4), h: 230 });
+    // miniaturas de los diseños
+    document.querySelectorAll('[data-ep-estilo] canvas').forEach(cv => {
+      const opt = { ...opciones(), estilo: cv.dataset.est, color: cv.dataset.est === 'clasico' ? NEGRO : colorActual() };
+      pintarEnCanvas(cv, l, 40, 30, opt, { w: 132, h: 99 });
+    });
+  }
+
+  // Diseño y color
+  const PALETA = [['#d62828', 'Rojo'], ['#1d4ed8', 'Azul'], ['#15803d', 'Verde'], ['#ea580c', 'Naranja'], ['#7c3aed', 'Morado'], ['#111827', 'Negro']];
+  function colorActual() {
+    const c = hexARgb(ST.prefs.color) || hexARgb(TX.empresaConfig?.color_principal) || [214, 40, 40];
+    return c;
+  }
+  function pintarDiseno() {
+    $('ep-estilos').innerHTML = Object.entries(ESTILOS).map(([k, v]) => `
+      <button type="button" class="ep-estilo${ST.prefs.estilo === k ? ' on' : ''}" data-ep-estilo="${k}" role="radio" aria-checked="${ST.prefs.estilo === k}">
+        <canvas data-est="${k}" aria-hidden="true"></canvas><b>${esc(v.t)}</b><span>${esc(v.d)}</span>
+      </button>`).join('');
+    const negocio = TX.empresaConfig?.color_principal && hexARgb(TX.empresaConfig.color_principal) ? TX.empresaConfig.color_principal : null;
+    const actual = (ST.prefs.color || negocio || '#d62828').toLowerCase();
+    $('ep-colores').innerHTML = '<span>Color:</span>' +
+      (negocio ? `<button type="button" class="ep-color${!ST.prefs.color ? ' on' : ''}" data-ep-color="" style="--c:${esc(negocio)}" title="Color de tu negocio" aria-label="Color de tu negocio"><i></i><small>Mi negocio</small></button>` : '') +
+      PALETA.map(([hex, n]) => `<button type="button" class="ep-color${ST.prefs.color && ST.prefs.color.toLowerCase() === hex ? ' on' : ''}" data-ep-color="${hex}" style="--c:${hex}" title="${n}" aria-label="${n}"><i></i></button>`).join('') +
+      `<label class="ep-color ep-color-libre" title="Otro color"><input type="color" id="ep-color-libre" value="${esc(actual)}" aria-label="Otro color" /></label>`;
+    const sinColor = ST.prefs.estilo === 'clasico';
+    $('ep-colores').classList.toggle('ep-desactivado', sinColor);
+    programarMuestra();
   }
 
   // ── Eventos ───────────────────────────────────────────────
@@ -369,6 +583,9 @@
       refrescar(); TX.toast('Copias igualadas al stock de cada producto.');
     });
     $('ep-pdf').addEventListener('click', descargarPDF);
+    document.addEventListener('input', e => { if (e.target.id === 'ep-color-libre') { ST.prefs.color = e.target.value; guardarPrefs(); programarMuestra(); } });
+    document.addEventListener('change', e => { if (e.target.id === 'ep-color-libre') pintarDiseno(); });
+    window.addEventListener('resize', programarMuestra);
     $('ep-ver').addEventListener('click', verPDF);
     $('ep-tamano').addEventListener('change', e => {
       if (ST.formato === 'rollo') ST.prefs.tamRollo = e.target.value; else if (ST.formato === 'ticket') ST.prefs.tamTicket = e.target.value; else ST.prefs.tamHoja = e.target.value;
@@ -388,7 +605,9 @@
       refrescar(true);
     });
     document.addEventListener('click', e => {
-      const b = e.target.closest('[data-ep-add],[data-ep-quitar],[data-ep-iva],[data-ep-iva-todas],[data-ep-formato]'); if (!b) return;
+      const b = e.target.closest('[data-ep-add],[data-ep-quitar],[data-ep-iva],[data-ep-iva-todas],[data-ep-formato],[data-ep-estilo],[data-ep-color]'); if (!b) return;
+      if (b.dataset.epEstilo) { ST.prefs.estilo = b.dataset.epEstilo; guardarPrefs(); pintarDiseno(); return; }
+      if (b.dataset.epColor !== undefined) { ST.prefs.color = b.dataset.epColor || null; guardarPrefs(); pintarDiseno(); return; }
       if (b.dataset.epAdd) agregarProducto(b.dataset.epAdd);
       else if (b.dataset.epQuitar) { ST.lineas = ST.lineas.filter(x => x.key !== Number(b.dataset.epQuitar)); refrescar(); }
       else if (b.dataset.epIva) {
@@ -410,6 +629,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     eventos(); pintarFormato(); refrescar();
     TX.init(async () => {
+      pintarDiseno();
       try { await cargarProductos(); }
       catch (e) { console.error('cargarProductos:', e); $('ep-resultados').innerHTML = '<div class="ep-vacio">No se pudieron cargar tus productos. Puedes crear etiquetas manuales.</div>'; }
       refrescar();
