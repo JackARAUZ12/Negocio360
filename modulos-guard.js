@@ -106,6 +106,12 @@
           .select('usa_modulo_transporte').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_transporte = tr?.usa_modulo_transporte === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_transporte = false; }
+      // Diseño: consulta aparte, mismo criterio.
+      try {
+        const { data: di } = await client.from('configuracion_empresa')
+          .select('usa_modulo_diseno').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_diseno = di?.usa_modulo_diseno === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_diseno = false; }
       // Fiados: consulta aparte, mismo criterio.
       try {
         const { data: fi } = await client.from('configuracion_empresa')

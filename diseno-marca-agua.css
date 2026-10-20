@@ -1,0 +1,64 @@
+/* ============================================================
+   DISENO-MARCA-AGUA.CSS — Módulo especial de Diseño · Marca de agua
+   Usa las variables de color del sistema (claro / oscuro).
+   ============================================================ */
+.dm-grid { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.dm-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; min-width: 0; }
+.dm-panel h2 { font-size: 15px; font-weight: 800; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.dm-panel h2 small { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.dm-panel h2:not(:first-child) { margin-top: 18px; }
+.dm-num { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-grid; place-items: center; font-size: 12px; flex-shrink: 0; }
+.dm-fila-marca { display: flex; gap: 8px; margin-bottom: 12px; }
+.dm-fila-marca .tx-in { flex: 1; min-width: 0; }
+.dm-seg { display: flex; background: var(--bg-hover); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+.dm-seg button { flex: 1; border: 0; background: none; padding: 8px; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 700; color: var(--text-secondary); cursor: pointer; min-height: 38px; }
+.dm-seg button.on { background: var(--bg-surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+.dm-color { padding: 4px; height: 42px; cursor: pointer; }
+.dm-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; }
+.dm-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); cursor: pointer; min-height: 32px; }
+.dm-check input { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+.dm-rango { display: grid; grid-template-columns: 110px minmax(0, 1fr) 48px; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dm-rango label { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.dm-rango input { width: 100%; accent-color: var(--accent); min-height: 28px; }
+.dm-rango output { font-size: 12px; font-weight: 700; text-align: right; color: var(--text-primary); }
+.dm-pos { display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; }
+.dm-pos button { width: 44px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface-2); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.dm-pos button i { width: 10px; height: 10px; border-radius: 3px; background: var(--text-muted); }
+.dm-pos button[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.dm-pos button[aria-checked="true"] i { background: var(--accent); }
+.dm-pos.dm-desactivado { opacity: .4; pointer-events: none; }
+.dm-logo-box { display: flex; gap: 12px; align-items: center; }
+.dm-logo-prev { width: 84px; height: 84px; flex-shrink: 0; border-radius: 12px; border: 1px dashed var(--border);
+  background: repeating-conic-gradient(var(--bg-hover) 0 25%, var(--bg-surface) 0 50%) 0 0 / 14px 14px; display: grid; place-items: center; overflow: hidden; }
+.dm-logo-prev img { max-width: 90%; max-height: 90%; object-fit: contain; }
+.dm-logo-prev span { font-size: 11px; color: var(--text-muted); }
+.dm-acciones { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+.dm-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 22px 14px; border: 2px dashed var(--border); border-radius: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+.dm-drop:hover, .dm-drop.sobre { border-color: var(--accent); background: var(--accent-soft); }
+.dm-drop-i { font-size: 30px; }
+.dm-drop b { font-size: 14px; color: var(--text-primary); }
+.dm-drop span { font-size: 12px; color: var(--text-muted); }
+.dm-preview-wrap { margin-top: 14px; background: var(--bg-hover); border-radius: 12px; padding: 10px; text-align: center; }
+.dm-preview-wrap canvas { max-width: 100%; max-height: 420px; height: auto; border-radius: 8px; display: block; margin: 0 auto; }
+.dm-preview-nota { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; overflow-wrap: anywhere; }
+.dm-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
+.dm-thumb { position: relative; border: 2px solid transparent; border-radius: 10px; background: var(--bg-surface-2); padding: 4px; cursor: pointer; min-width: 0; }
+.dm-thumb.on { border-color: var(--accent); }
+.dm-thumb.err { border-color: var(--danger); }
+.dm-thumb img, .dm-thumb-c { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 7px; display: grid; place-items: center; background: var(--bg-hover); color: var(--text-muted); }
+.dm-thumb-n, .dm-thumb-s { display: block; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); margin-top: 3px; }
+.dm-thumb-s { color: var(--text-muted); margin-top: 0; }
+.dm-thumb-x { position: absolute; top: 2px; right: 2px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
+.dm-progreso { margin-top: 12px; }
+.dm-barra { height: 8px; border-radius: 99px; background: var(--bg-hover); overflow: hidden; }
+.dm-barra i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.dm-progreso span { display: block; font-size: 12.5px; color: var(--text-secondary); margin-top: 6px; }
+@media (max-width: 900px) {
+  .dm-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .dm-panel { padding: 14px; }
+  .dm-rango { grid-template-columns: 92px minmax(0, 1fr) 42px; gap: 8px; }
+  .dm-acciones .tx-btn { flex: 1 1 100%; }
+  .dm-thumbs { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+}

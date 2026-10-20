@@ -178,6 +178,10 @@
     'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Viajes, ingresos, costos, utilidad, cumplimiento, mantenimiento e incidencias por cliente, ruta, unidad y conductor.' },
 
+    // ---- Diseño (secundario: herramientas para diseñadores; interruptor propio) ----
+    'diseno-marca-agua.html': { key: 'diseno_marca_agua', label: 'Diseño · Marca de agua', icon: '💧', obligatorio: false, flagPropio: 'usa_modulo_diseno',
+                       desc: 'Pon tu logo o tu texto como marca de agua a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' },
+
     // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
     'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
                        desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },

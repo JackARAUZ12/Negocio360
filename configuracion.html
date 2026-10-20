@@ -16,7 +16,7 @@
 <!-- Supabase CDN -->
 <script src="ver-como.js?v=20261013a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261015a"></script>
+<script src="modulos-registro.js?v=20261021a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1533,6 +1533,27 @@
           <div class="cfg-status" id="transporte-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="diseno-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🎨</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Diseño</div>
+              <div class="cfg-card-desc">Herramientas para diseñadores gráficos, imprentas y fotógrafos. Incluye Marca de agua: pon tu logo o texto a tus fotos y descárgalas (las fotos no se guardan en el sistema).</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Diseño</div>
+              <div class="cfg-row-sub" id="diseno-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="diseno-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleDisenoClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="diseno-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="fiados-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">📒</div>
@@ -2640,6 +2661,44 @@ async function cargarModuloTransporte() {
     toggle.disabled = false;
   } catch (e) { console.error('cargarModuloTransporte:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
 }
+// Modulo de Diseño: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloDiseno() {
+  const toggle = document.getElementById('diseno-toggle');
+  const sub = document.getElementById('diseno-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_diseno').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_diseno === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Diseño aparece en el menú.' : 'Desactivado — el módulo de Diseño no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloDiseno:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleDisenoClick(evt) {
+  const toggle = document.getElementById('diseno-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloDiseno(toggle.checked);
+}
+async function guardarModuloDiseno(activo) {
+  const toggle = document.getElementById('diseno-toggle');
+  const sub = document.getElementById('diseno-row-sub');
+  const statusEl = document.getElementById('diseno-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_diseno: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Diseño aparece en el menú.' : 'Desactivado — el módulo de Diseño no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Diseño activado. Recarga la página para ver el menú.' : 'Módulo de Diseño desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloDiseno:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
 // Modulo de Fiados: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloFiados() {
   const toggle = document.getElementById('fiados-toggle');
@@ -3134,6 +3193,7 @@ async function initConfiguracion() {
       cargarModuloVet();
       cargarModuloInsumos();
       cargarModuloTransporte();
+      cargarModuloDiseno();
       cargarModuloFiados();
       cargarModuloCotizaciones();
       cargarIva();
@@ -3162,6 +3222,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20261015a"></script>
-<script src="modulos-guard.js?v=20261015a"></script>
+<script src="modulos-guard.js?v=20261021a"></script>
 </body>
 </html>
