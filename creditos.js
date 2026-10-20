@@ -1235,7 +1235,9 @@
     const esRemoto = !!(origen && !origen.esLocal);
 
     const precioUsar = escalaElegida ? Number(escalaElegida.precio||0) : Number(prod.precio||0);
-    const stockReal = Number(prod.stock_actual || 0);
+    // Si el stock sale de OTRA cuenta del grupo (Stock Compartido), lo disponible
+    // es lo de esa cuenta, no lo de esta (igual que en Ventas).
+    const stockReal = esRemoto ? Number(origen.stockDisponible || 0) : Number(prod.stock_actual || 0);
     const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null) && (i.origen_stock_id || null) === (esRemoto ? origen.sucursalId : null));
     if (existente) {
       existente.cantidad += cantidad; existente.cantidad_pedida = null; existente.unidad_pedida = null;
@@ -1251,6 +1253,7 @@
       contenidoCantidad: Number(prod.contenido_cantidad) > 0 ? Number(prod.contenido_cantidad) : null,
       contenidoUnidadCodigo: prod.contenido_unidad_codigo || null,
       sinStock: prod.tipo === 'producto' && cantidad > stockReal,
+      stock_disponible: prod.tipo === 'producto' ? stockReal : null,
       origen_stock_id:     esRemoto ? origen.sucursalId   : null,
       origen_stock_nombre: esRemoto ? origen.nombreCuenta : null,
     });
@@ -1320,10 +1323,11 @@
     }
     if (!it.esCombo) {
       const prod = CS.productos.find(p => p.id === it.producto_id);
-      if (prod && prod.tipo === 'producto' && n > Number(prod.stock_actual||0)) {
+      const disponible = it.stock_disponible != null ? Number(it.stock_disponible) : Number(prod?.stock_actual||0);
+      if (prod && prod.tipo === 'producto' && n > disponible) {
         if (!CS.venderSinStockActivo) {
-          showToast(`Stock insuficiente (disponible: ${prod.stock_actual||0})`, 'error');
-          n = Number(prod.stock_actual||0) || 1;
+          showToast(`Stock insuficiente (disponible: ${disponible})`, 'error');
+          n = disponible || 1;
         } else {
           it.sinStock = true; // se vendió por encima de lo disponible — queda marcado
         }
