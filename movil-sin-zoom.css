@@ -1,0 +1,15 @@
+/* ============================================================
+   MOVIL-SIN-ZOOM.CSS — NEGOCIO360
+   El iPhone (Safari) acerca la pantalla al tocar una casilla cuya
+   letra mide menos de 16 px. En pantallas táctiles las casillas
+   usan 16 px y así no hay zoom automático. El zoom con los dedos
+   sigue funcionando. En computadora no cambia nada.
+   Solo tamaño de letra: no toca datos ni lógica.
+   ============================================================ */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="hidden"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
