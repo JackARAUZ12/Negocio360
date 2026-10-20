@@ -965,7 +965,22 @@
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
     }
     .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
-  </style>
+  
+    /* Cuentas de dinero */
+    .cd-paso { border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; }
+    .cd-paso select { width:100%; }
+    .cd-paso-titulo { font-weight:700; font-size:13.5px; margin-bottom:2px; }
+    .cd-ayuda { font-size:11.5px; color:var(--text-muted); margin-bottom:8px; line-height:1.45; }
+    .cd-previa, .cd-cuadre { border:1.5px solid var(--accent); background:var(--accent-soft); border-radius:10px; padding:12px; font-size:13px; }
+    .cd-cuadre { margin:12px 0; }
+    .cd-cuadre td { padding:3px 0; }
+    .cd-fila { display:flex; justify-content:space-between; gap:12px; font-size:12.5px; padding:3px 0; border-bottom:1px solid var(--border); }
+    .cd-banco-fila { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
+    .cd-banco-fila select { width:100%; min-width:0; }
+    .cd-banco-cabecera { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; padding-top:0; }
+    .cd-chip { font-size:10.5px; padding:1px 6px; border-radius:6px; background:var(--accent-soft); color:var(--accent); margin-left:4px; }
+    @media (max-width: 560px) { .cd-banco-fila { grid-template-columns:1fr; gap:4px; } .cd-banco-cabecera { display:none; } }
+</style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -1206,6 +1221,9 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Contabilización automática
           </button>
+          <button class="btn-secondary" onclick="N360Dinero.abrir()" title="Ubica el dinero en Caja Chica y en cada banco">
+            💰 Cuentas de dinero
+          </button>
           <button class="btn-secondary" onclick="abrirNuevoAsiento()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Registrar manual
@@ -1294,6 +1312,7 @@
             <option value="">Elige una cuenta…</option>
           </select>
         </div>
+        <div id="mayor-cuadre-dinero" style="padding:0 16px"></div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
@@ -1556,6 +1575,38 @@
   </div>
 </div>
 
+<!-- =====================================================
+     MODAL: CUENTAS DE DINERO — ubicar el dinero de Caja General en
+     Caja Chica (efectivo) y en cada banco. Nunca edita ni borra
+     asientos: agrega uno por día "Ubicación del dinero" (ver
+     contabilidad-dinero.js y contabilidad_ubicar_dinero en la base).
+=================================================== -->
+<div class="modal-overlay" id="modal-cuentas-dinero" onclick="if(event.target===this)closeModal('modal-cuentas-dinero')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">💰 Cuentas de dinero — Caja Chica y Bancos</span>
+      <button class="modal-close" onclick="closeModal('modal-cuentas-dinero')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px">
+        Hoy todo el dinero de tus asientos llega a Caja General. Aquí eliges a qué cuenta va el <b>efectivo</b> (Caja Chica) y lo de cada <b>banco</b>, con las mismas reglas del módulo Caja.
+        El sistema <b>no edita ni borra</b> ningún asiento: agrega uno por día llamado "Ubicación del dinero" (Debe = Haber) y el total de tu dinero no cambia. Puedes desactivarlo cuando quieras.
+      </p>
+      <div id="cd-cuerpo"></div>
+      <div id="cd-previa" style="margin-top:12px"></div>
+      <p id="cd-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap">
+      <button class="btn-ghost" id="btn-cd-desactivar" style="display:none;color:var(--danger);margin-right:auto" onclick="N360Dinero.desactivar()">Desactivar</button>
+      <button class="btn-ghost" onclick="closeModal('modal-cuentas-dinero')">Cerrar</button>
+      <button class="btn-secondary" id="btn-cd-guardar" onclick="N360Dinero.guardar()">Guardar y ver vista previa</button>
+      <button class="btn-primary" id="btn-cd-aplicar" style="display:none" onclick="N360Dinero.aplicar()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================================================
      MODAL: REINICIAR CONTABILIDAD -- borra TODOS los asientos y
      empieza de cero. Nunca toca Ventas/Gastos/Compras/Salarios ni
@@ -1657,7 +1708,8 @@
 </style>
 
 <script src="contabilidad-grupo.js?v=20261014e"></script>
-<script src="contabilidad.js?v=20261017b"></script>
+<script src="contabilidad.js?v=20261020a"></script>
+<script src="contabilidad-dinero.js?v=20261020a"></script>
 <script src="contabilidad-asistente-impuestos.js?v=20261012a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>

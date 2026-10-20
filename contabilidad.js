@@ -718,12 +718,18 @@ function poblarSelectCuentasMayor() {
   sel.innerHTML = '<option value="">Elige una cuenta…</option>' +
     STATE.cuentas.filter(c => c.permite_movimientos).map(c => `<option value="${c.id}">${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('');
   if (actual) sel.value = actual;
+  // Cuentas de dinero (contabilidad-dinero.js): opción "Todo el dinero" y cuadre, solo si está configurado.
+  if (window.N360Dinero) {
+    N360Dinero.opcionesMayor(sel).then(() => { if (actual) sel.value = actual; });
+    N360Dinero.renderCuadre();
+  }
 }
 async function cargarLibroMayor() {
   const cuentaId = document.getElementById('mayor-cuenta-select').value;
   const tbody = document.getElementById('mayor-tbody');
   if (!cuentaId) { tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Elige una cuenta para ver su movimiento</td></tr>'; return; }
   tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Cargando…</td></tr>';
+  if (cuentaId === '__dinero__' && window.N360Dinero) { await N360Dinero.cargarMayorConsolidado(tbody); return; }
 
   const cuenta = STATE.cuentas.find(c => c.id === cuentaId);
 
@@ -1706,6 +1712,15 @@ async function generarAsientosAutomaticos() {
   }
   try { await generarAsientosAutomaticosInterno(); } finally { soltarCandadoConta(); }
   try { await anularAsientosDeOrigenAnulado(); } catch (e) { console.warn('anularAsientosDeOrigenAnulado:', e); }
+  // Cuentas de dinero: si el negocio lo configuró, el dinero se vuelve a ubicar en Caja Chica y Bancos
+  // (la base de datos lo hace en una sola transacción; si no está configurado, no hace nada).
+  if (window.N360Dinero) {
+    const u = await N360Dinero.ubicarTrasGenerar();
+    const res = document.getElementById('ga-resultado');
+    if (u && u.configurado && res && ((u.dias_crear || 0) + (u.dias_reemplazar || 0) + (u.dias_anular || 0)) > 0) {
+      res.insertAdjacentHTML('beforeend', `<div style="font-size:12.5px;margin-top:6px">💰 Dinero ubicado en Caja Chica y Bancos: ${(u.dias_crear || 0) + (u.dias_reemplazar || 0)} día(s) actualizados.</div>`);
+    }
+  }
 }
 
 /* Si una venta, gasto o compra se anula DESPUÉS de esta fecha, su asiento automático también se anula
