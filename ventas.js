@@ -3187,6 +3187,19 @@ async function aplicarCobroTransporte() {
     recalcItem(it); renderCarrito('servicio'); calcularResumen();
   }
   S._txOrdenId = d.ordenId || null;
+  // Desde Transporte › Facturación: datos del viaje en Observaciones y el
+  // asistente avanza solo hasta "Método de pago" (cada paso se valida igual
+  // que si el usuario tocara "Siguiente"; si alguno falta, se detiene ahí).
+  if (d.auto) {
+    const ob = document.getElementById('venta-observaciones');
+    if (ob && !ob.value.trim() && d.observaciones) ob.value = String(d.observaciones).slice(0, 1000);
+    // Sin cliente del viaje se queda en el paso 1 para elegirlo (no avanza como Consumidor Final)
+    for (let i = 0; S.clienteId && i < 6 && S.paso < 5; i++) {
+      const antes = S.paso;
+      pasoSiguiente();
+      if (S.paso === antes) break;
+    }
+  }
   showToast(`Flete de la orden ${d.numero || ''} cargado en la venta.`);
 }
 
@@ -5656,6 +5669,21 @@ async function _confirmarVentaInterno(conImpresion) {
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
 
+  // Viaje de Transporte: candado para no facturar dos veces la misma orden
+  // (otra pestaña o la misma orden abierta dos veces). Si no hay orden, no hace nada.
+  if (S._txOrdenId) {
+    try {
+      const { data: ord } = await sb.from('transporte_ordenes').select('venta_id').eq('id', S._txOrdenId).eq('auth_user_id', S.userId).maybeSingle();
+      if (ord?.venta_id) {
+        const { data: vPrev } = await sb.from('ventas').select('numero_venta, estado').eq('id', ord.venta_id).eq('auth_user_id', S.userId).maybeSingle();
+        if (vPrev && vPrev.estado !== 'anulada') {
+          showToast(`Este viaje ya se facturó en la venta ${vPrev.numero_venta || ''}. No se registró otra venta.`, 'error');
+          return;
+        }
+      }
+    } catch (eTxChk) { console.warn('Revisar orden de transporte:', eTxChk); }
+  }
+
   // Aviso (no bloquea): productos con costo 0 o vendidos por debajo del costo
   // hacen que la ganancia de los reportes salga mal.
   try {
@@ -5906,7 +5934,10 @@ async function _confirmarVentaInterno(conImpresion) {
     // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
     try {
       if (S._txOrdenId) {
-        await sb.from('transporte_ordenes').update({ venta_id: ventaId, facturada_en: new Date().toISOString() }).eq('id', S._txOrdenId).eq('auth_user_id', S.userId);
+        S._txVinculo = { ordenId: S._txOrdenId, ok: false };
+        const { error: eLink } = await sb.from('transporte_ordenes').update({ venta_id: ventaId, facturada_en: new Date().toISOString() }).eq('id', S._txOrdenId).eq('auth_user_id', S.userId);
+        if (eLink) console.warn('Vincular orden de transporte:', eLink);
+        else S._txVinculo.ok = true;
         S._txOrdenId = null;
       }
     } catch (eTx) { console.warn('Vincular orden de transporte:', eTx); }
@@ -6178,7 +6209,8 @@ async function _confirmarVentaInterno(conImpresion) {
     // avisa al padre que la venta sí se registró — igual que con los
     // pagos de Créditos, Rutas nunca calcula nada, solo reacciona.
     if (window.self !== window.top) {
-      try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto: r.total, nota: `Venta ${S.numeroVenta}` }, '*'); } catch(e) {}
+      try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto: r.total, nota: `Venta ${S.numeroVenta}`, ventaId, txOrdenId: S._txVinculo?.ordenId || null, txVinculada: !!S._txVinculo?.ok }, '*'); } catch(e) {}
+      S._txVinculo = null;
     }
 
 
@@ -8212,7 +8244,8 @@ async function initVentas() {
       }, 400);
     }
 
-    if (window.Negocio360Tutorial) {
+    // Incrustada (Rutas, Transporte) no se muestra el tutorial: estorbaria la venta
+    if (window.Negocio360Tutorial && window.self === window.top) {
       const pasosVentas = [
         { icono: '💰', titulo: 'Bienvenido a Ventas', texto: 'Aquí registras cada venta de tu negocio -- productos, servicios, o ambos en la misma venta.' },
         { icono: '🛒', titulo: 'Arma el carrito', texto: 'Busca el producto o servicio, dale clic para agregarlo, y ajusta la cantidad si hace falta.' },
