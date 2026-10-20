@@ -193,6 +193,10 @@
     // ---- Calculadora costo-precio (herramienta aislada: no guarda ni cambia datos) ----
     'calculadora-precio.html': { key: 'calculadora_precio', label: 'Calculadora costo-precio', icon: '🧮', obligatorio: false,
                        desc: 'Escribe el costo de un producto y te sugiere a qué precio venderlo para ganar y ser competitivo. Solo calcula: no guarda nada.' },
+
+    // ---- Etiquetas de precio (herramienta aislada: solo LEE Productos/Servicios, no guarda ni cambia datos) ----
+    'etiquetas-precio.html': { key: 'etiquetas_precio', label: 'Etiquetas de precio', icon: '🏷️', obligatorio: false,
+                       desc: 'Crea etiquetas de precio para tus productos (o escritas a mano) y descárgalas en PDF para imprimir en hoja, rollo de etiquetas o impresora de tickets. Solo lee: no cambia precios ni inventario.' },
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;

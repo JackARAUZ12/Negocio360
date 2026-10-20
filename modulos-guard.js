@@ -403,8 +403,8 @@
   // (no depende de ningun interruptor propio). Se coloca justo debajo de
   // Fiados cuando la cuenta lo tiene activo, o en una seccion "Más" al final
   // del menu. Respeta "Editar módulos" y los perfiles restringidos.
-  function inyectarCalculadoraEnSidebar(cfg) {
-    const ARCHIVO = 'calculadora-precio.html';
+  // Etiquetas de precio: misma regla que la Calculadora y va justo debajo de ella.
+  function inyectarCalculadoraEnSidebar(cfg, ARCHIVO = 'calculadora-precio.html', despuesDe = 'fiados.html') {
     const mod = MODULOS_POR_ARCHIVO[ARCHIVO];
     if (!mod) return;
     const nav = document.querySelector('.sidebar-nav');
@@ -438,9 +438,11 @@
       item.appendChild(ic); item.appendChild(lb);
     }
 
-    const fiados = nav.querySelector(`[onclick*="navigate('fiados.html')"], a[href="fiados.html"]`);
-    const fiadosItem = fiados && (fiados.closest('.nav-item, .sidebar-item') || fiados);
-    if (fiadosItem && fiadosItem.parentElement === nav) { fiadosItem.insertAdjacentElement('afterend', item); return; }
+    for (const ref of [despuesDe, 'fiados.html']) {
+      const ancla = nav.querySelector(`[onclick*="navigate('${ref}')"], a[href="${ref}"]`);
+      const anclaItem = ancla && (ancla.closest('.nav-item, .sidebar-item') || ancla);
+      if (anclaItem && anclaItem.parentElement === nav) { anclaItem.insertAdjacentElement('afterend', item); return; }
+    }
 
     const titulo = document.createElement('div');
     titulo.className = usaPatronSidebarItem ? 'sidebar-section-label' : 'nav-section-title';
@@ -657,6 +659,7 @@
     ocultarEnSidebar(cfg);
     inyectarModulosSecundariosEnSidebar(cfg);
     try { inyectarCalculadoraEnSidebar(cfg); } catch (e) { console.warn('modulos-guard calculadora:', e); }
+    try { inyectarCalculadoraEnSidebar(cfg, 'etiquetas-precio.html', 'calculadora-precio.html'); } catch (e) { console.warn('modulos-guard etiquetas:', e); }
     asegurarChatEnSidebar();
     try { asegurarTutorialesEnSidebar(); } catch (e) { console.warn("modulos-guard tutoriales:", e); }
     inyectarBotonTutorial(client).catch(e => console.warn("modulos-guard boton tutorial:", e));
