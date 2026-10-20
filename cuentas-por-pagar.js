@@ -215,7 +215,7 @@ let _bancosCacheCxP = null;
 async function cargarBancosDisponiblesCxP() {
   if (_bancosCacheCxP) return _bancosCacheCxP;
   try {
-    const { data } = await sbClient.from('bancos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await sbClient.from('bancos').select('id, nombre, moneda').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
     _bancosCacheCxP = data || [];
   } catch (e) { _bancosCacheCxP = []; }
   return _bancosCacheCxP;
@@ -1392,7 +1392,15 @@ function poblarSelectCuentasPagables(preseleccionar) {
   ).join('');
   if (preseleccionar) sel.value = preseleccionar;
 }
+// 💱 Ingresar el monto en la otra moneda (córdobas/dólares). Solo ayuda a
+// escribir: lo que se guarda sigue siendo el monto en la moneda de la cuenta.
+function prepararMonedaAlternaCxP() {
+  if (!window.N360MonedaAlterna) return;
+  N360MonedaAlterna.adjuntar('pg-monto', () => ({ moneda: STATE.empresaConfig?.moneda, tasa: STATE.empresaConfig?.tasa_cambio_usd }));
+  N360MonedaAlterna.reset('pg-monto');
+}
 function abrirPagarGenerico() {
+  prepararMonedaAlternaCxP();
   document.getElementById('pg-error').textContent = '';
   document.getElementById('pg-resumen').style.display = 'none';
   document.getElementById('pg-select-cuenta-row').style.display = '';
@@ -1406,6 +1414,7 @@ function abrirPagarGenerico() {
   openModal('modal-pagar-cxp');
 }
 function abrirPagarDesdeTabla(id) {
+  prepararMonedaAlternaCxP();
   document.getElementById('pg-error').textContent = '';
   document.getElementById('pg-ret-chk').checked = false; document.getElementById('pg-ret-pct').value = '2'; onCambioRetencionCxP();
   document.getElementById('pg-observaciones').value = '';
@@ -1473,7 +1482,16 @@ async function confirmarPagoCxP() {
     bancoId = document.getElementById('pg-banco').value || null;
     if (!bancoId) { errEl.textContent = 'Indica de qué banco sale este pago.'; return; }
   }
-  const observaciones = document.getElementById('pg-observaciones')?.value.trim() || null;
+  const otraMonedaCxP = window.N360MonedaAlterna ? N360MonedaAlterna.estado('pg-monto') : null;
+  const notaOtraCxP = window.N360MonedaAlterna ? N360MonedaAlterna.nota('pg-monto') : '';
+  const observaciones = [document.getElementById('pg-observaciones')?.value.trim(), notaOtraCxP].filter(Boolean).join(' · ') || null;
+  // Si sale de un banco en esa misma moneda, el banco descuenta el monto exacto
+  // (sin retención; con retención sale el neto y lo convierte CajaAPI).
+  let montoMonedaBancoCxP = null;
+  if (bancoId && otraMonedaCxP && !(calcularRetencionCxP().ret > 0)) {
+    const bInfo = (await cargarBancosDisponiblesCxP()).find(b => b.id === bancoId);
+    if (bInfo && (bInfo.moneda || 'NIO') === otraMonedaCxP.moneda) montoMonedaBancoCxP = otraMonedaCxP.monto;
+  }
 
   if (STATE._pagandoCxP) return;   // candado contra doble clic
   STATE._pagandoCxP = true;
@@ -1519,6 +1537,7 @@ async function confirmarPagoCxP() {
         auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO',
         concepto: `Pago a proveedor — ${cuentaFresca.numero}${retCxP.ret > 0 ? ' (neto, retención IR ' + retCxP.pct + '%)' : ''}`, monto: retCxP.ret > 0 ? retCxP.neto : monto,
         metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        monto_moneda_banco: montoMonedaBancoCxP,
         referencia_tipo: 'cuenta_por_pagar', referencia_id: cuentaFresca.id, observaciones,
       });
     } catch (eCaja) { cajaRes = { ok: false, error: eCaja?.message || String(eCaja) }; }

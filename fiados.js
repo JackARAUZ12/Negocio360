@@ -590,6 +590,10 @@ function abrirCobro(modo, ids) {
   const campo = document.getElementById('co-monto');
   campo.value = modo === 'abono' ? '' : String(saldo);
   campo.readOnly = modo !== 'abono';
+  if (window.N360MonedaAlterna) {
+    N360MonedaAlterna.adjuntar(campo, () => ({ moneda: FD.empresaConfig?.moneda, tasa: FD.empresaConfig?.tasa_cambio_usd }));
+    N360MonedaAlterna.reset(campo);
+  }
   document.getElementById('co-monto-wrap').style.display = modo === 'abono' ? '' : 'none';
   document.getElementById('co-metodo').innerHTML = opcionesMetodos();
   document.getElementById('co-banco-wrap').style.display = 'none';
@@ -620,6 +624,14 @@ async function confirmarCobro() {
   const metodoId = sel.value || null;
   const metodoNombre = sel.options[sel.selectedIndex]?.textContent || 'Efectivo';
   const bancoId = document.getElementById('co-banco-wrap').style.display === 'none' ? null : (document.getElementById('co-banco').value || null);
+  // 💱 Si el abono se escribió en la otra moneda: queda la nota y, si entra a un
+  // banco de esa misma moneda, el banco recibe el monto exacto (repartido entre
+  // los fiados en proporción; el último se lleva el resto para que sume exacto).
+  const otra = c.modo === 'abono' && window.N360MonedaAlterna ? N360MonedaAlterna.estado('co-monto') : null;
+  const notaOtra = otra ? N360MonedaAlterna.nota('co-monto') : '';
+  const bancoSel = bancoId ? (FD.bancos || []).find(b => b.id === bancoId) : null;
+  const exactoBanco = otra && bancoSel && (bancoSel.moneda || 'NIO') === otra.moneda ? otra.monto : null;
+  let exactoUsado = 0;
   const btn = document.getElementById('co-confirmar'); btn.disabled = true;
   try {
     // Reparte el monto entre los fiados (del más antiguo al más nuevo)
@@ -631,7 +643,13 @@ async function confirmarCobro() {
       const aplicar = r2(Math.min(restante, Number(f.saldo)));
       const saldoNuevo = r2(Number(f.saldo) - aplicar);
       const pagado = saldoNuevo <= 0.004;
-      const cajaRes = await registrarCaja(f, aplicar, metodoId, metodoNombre, bancoId);
+      let mb = null;
+      if (exactoBanco != null) {
+        const ultimo = r2(restante - aplicar) <= 0.004;
+        mb = ultimo ? r2(exactoBanco - exactoUsado) : r2(aplicar * exactoBanco / monto);
+        exactoUsado = r2(exactoUsado + mb);
+      }
+      const cajaRes = await registrarCaja(f, aplicar, metodoId, metodoNombre, bancoId, mb, notaOtra);
       const { error: eP } = await sb.from('fiado_pagos').insert({
         auth_user_id: FD.userId, fiado_id: f.id, monto: aplicar, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
         saldo_anterior: Number(f.saldo), saldo_nuevo: pagado ? 0 : saldoNuevo,
@@ -655,13 +673,14 @@ async function confirmarCobro() {
   } finally { btn.disabled = false; FD.cobro = null; }
 }
 
-async function registrarCaja(f, monto, metodoId, metodoNombre, bancoId) {
+async function registrarCaja(f, monto, metodoId, metodoNombre, bancoId, montoMonedaBanco, nota) {
   if (!window.CajaAPI || typeof CajaAPI.registrarMovimiento !== 'function') return { ok: false, error: 'CajaAPI no disponible' };
   return CajaAPI.registrarMovimiento({
     auth_user_id: FD.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'COBRO',
     concepto: `Fiado cobrado — ${f.cliente_nombre}`, monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
     banco_id: bancoId, referencia_tipo: 'fiado', referencia_id: f.id,
-    observaciones: f.descripcion || null,
+    monto_moneda_banco: montoMonedaBanco != null ? montoMonedaBanco : null,
+    observaciones: [f.descripcion, nota].filter(Boolean).join(' · ') || null,
   });
 }
 

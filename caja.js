@@ -753,6 +753,11 @@ function tipoMovLabel(tipo) {
 ===================================================== */
 function openNuevoMovimiento() {
   document.getElementById('mov-form').reset();
+  // 💱 Ingresar el monto en la otra moneda (solo ayuda a escribir el monto).
+  if (window.N360MonedaAlterna) {
+    N360MonedaAlterna.adjuntar('mov-monto', () => ({ moneda: STATE.empresaConfig?.moneda, tasa: STATE.empresaConfig?.tasa_cambio_usd }));
+    N360MonedaAlterna.reset('mov-monto');
+  }
   document.getElementById('mov-id').value = '';
   document.getElementById('mov-fecha').value = todayISO();
   toggleTipoMovimiento();
@@ -789,6 +794,9 @@ function calcularMontoBancoMov(bancoId, monto) {
   if ((b.moneda || 'NIO') === base) return { banco: b, convertido: null, sinTasa: false };
   const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
   if (!tasa) return { banco: b, convertido: null, sinTasa: true };
+  // Si el monto se escribió con 💱 en la moneda de este banco, el banco usa ese monto exacto.
+  const ma = window.N360MonedaAlterna ? N360MonedaAlterna.estado('mov-monto') : null;
+  if (ma && ma.moneda === (b.moneda || 'NIO') && Math.abs(ma.base - monto) < 0.005) return { banco: b, convertido: ma.monto, sinTasa: false };
   return { banco: b, convertido: round2(base === 'NIO' ? monto / tasa : monto * tasa), sinTasa: false };
 }
 
@@ -836,7 +844,8 @@ async function saveMovimiento() {
   const concepto     = document.getElementById('mov-concepto').value.trim();
   const monto        = parseFloat(document.getElementById('mov-monto').value);
   const metodoPagoId = document.getElementById('mov-metodo').value;
-  const observaciones= document.getElementById('mov-obs').value.trim();
+  const notaOtra     = window.N360MonedaAlterna ? N360MonedaAlterna.nota('mov-monto', document.getElementById('mov-flujo')?.value === 'EGRESO' ? 'Salió en' : 'Entró en') : '';
+  const observaciones= [document.getElementById('mov-obs').value.trim(), notaOtra].filter(Boolean).join(' · ');
   const fecha        = document.getElementById('mov-fecha').value || todayISO();
 
   if (!concepto)        { showToast('El concepto es requerido', 'error'); return; }

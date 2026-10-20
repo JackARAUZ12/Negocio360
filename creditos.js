@@ -1807,6 +1807,7 @@
     ocultar('rp-resumen');
     vaciar('rp-monto');
     vaciar('rp-observaciones');
+    if (window.N360MonedaAlterna) N360MonedaAlterna.reset('rp-monto');
     _bancoElegidoIdCred = null;
     ocultar('rp-banco-elegir-wrap');
     ocultar('rp-banco-elegido-wrap');
@@ -1853,6 +1854,8 @@
     const prox = (cuotas||[])[0];
     document.getElementById('rp-proxima-cuota').textContent = prox ? `${fmtDate(prox.fecha_vencimiento)} · ${fmt(prox.monto_total - prox.monto_pagado)}` : '—';
     document.getElementById('rp-monto').value = prox ? round2(prox.monto_total - prox.monto_pagado) : '';
+    if (window.N360MonedaAlterna) N360MonedaAlterna.reset('rp-monto');
+    refrescarTextoBancoCred();
   }
   window.cargarResumenCredito = cargarResumenCredito;
 
@@ -2220,8 +2223,17 @@
       </div>`).join('');
     const elWrap = elById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = '';
   };
-  window.elegirBancoCred = function(bancoId, bancoNombre, monedaBanco) {
+  // Texto "se registrará como ..." siempre con el monto actual: si el monto
+  // cambia después de elegir el banco, el texto se actualiza (antes se
+  // quedaba con el monto viejo).
+  let _bancoElegidoInfoCred = null;
+  function refrescarTextoBancoCred() {
+    if (!_bancoElegidoIdCred || !_bancoElegidoInfoCred) return;
+    window.elegirBancoCred(_bancoElegidoIdCred, _bancoElegidoInfoCred.nombre, _bancoElegidoInfoCred.moneda, true);
+  }
+  window.elegirBancoCred = function(bancoId, bancoNombre, monedaBanco, soloTexto) {
     _bancoElegidoIdCred = bancoId;
+    _bancoElegidoInfoCred = { nombre: bancoNombre, moneda: monedaBanco || 'NIO' };
     const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
 
     const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
@@ -2235,7 +2247,9 @@
         if (elNombre) elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
         _montoBancoConvertidoCred = null;
       } else {
-        const montoConvertido = Math.round((monedaBase === 'NIO' ? montoPago / tasa : montoPago * tasa) * 100) / 100;
+        const ma = window.N360MonedaAlterna ? N360MonedaAlterna.estado('rp-monto') : null;
+        const montoConvertido = (ma && ma.moneda === (monedaBanco||'NIO')) ? ma.monto
+          : Math.round((monedaBase === 'NIO' ? montoPago / tasa : montoPago * tasa) * 100) / 100;
         _montoBancoConvertidoCred = montoConvertido;
         if (elNombre) elNombre.innerHTML = `${esc(bancoNombre)} — se registrará como ${monedaBanco==='USD'?'$':'C$'} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
       }
@@ -2244,10 +2258,11 @@
       if (elNombre) elNombre.textContent = bancoNombre;
     }
 
+    if (soloTexto) return;
     const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'flex';
   };
   window.cancelarSeleccionBancoCred = function() {
-    _bancoElegidoIdCred = null;
+    _bancoElegidoIdCred = null; _bancoElegidoInfoCred = null;
     const elMetodo = document.getElementById('rp-metodo'); if (elMetodo) elMetodo.value = '';
     const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
     const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'none';
@@ -2266,7 +2281,11 @@
     const metodoSel = document.getElementById('rp-metodo');
     const metodoId = metodoSel.value || null;
     const metodoNombre = metodoSel.selectedOptions[0]?.dataset.nombre || metodoSel.selectedOptions[0]?.textContent || 'Efectivo';
-    const observaciones = document.getElementById('rp-observaciones').value.trim() || null;
+    // Si se escribió en la otra moneda (💱), queda constancia en las observaciones.
+    const pagoOtraMoneda = window.N360MonedaAlterna ? N360MonedaAlterna.estado('rp-monto') : null;
+    const notaOtraMoneda = window.N360MonedaAlterna ? N360MonedaAlterna.nota('rp-monto') : '';
+    const obsEscrita = document.getElementById('rp-observaciones').value.trim();
+    const observaciones = [obsEscrita, notaOtraMoneda].filter(Boolean).join(' · ') || null;
 
     if (!creditoId) { showToast('Selecciona un crédito', 'error'); CS.registrandoPago = false; return; }
     if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.registrandoPago = false; return; }
@@ -2282,6 +2301,15 @@
       return;
     }
     const bancoElegidoPago = _bancoElegidoIdCred || null;
+    // Monto en la moneda del banco: se calcula con el monto FINAL (antes se
+    // tomaba el calculado al elegir el banco, y si después se cambiaba el
+    // monto el banco quedaba descuadrado). Si se cobró en la moneda de ese
+    // banco con 💱, se usa el monto exacto recibido; si no, CajaAPI lo
+    // convierte con la tasa (null = misma moneda o lo calcula CajaAPI).
+    let montoMonedaBancoPago = null;
+    if (bancoElegidoPago && pagoOtraMoneda && _bancoElegidoInfoCred && _bancoElegidoInfoCred.moneda === pagoOtraMoneda.moneda) {
+      montoMonedaBancoPago = pagoOtraMoneda.monto;
+    }
 
     // Si el banco elegido es en otra moneda y no hay tasa de cambio
     // configurada, no se deja continuar — mejor pedirla ahora que
@@ -2357,7 +2385,7 @@
         auth_user_id: CS.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'PAGO_CREDITO',
         concepto: `Pago crédito ${credito.numero_credito}`, monto, metodo_pago_id: metodoId,
         metodo_pago_nombre: metodoNombre, banco_id: bancoElegidoPago,
-        monto_moneda_banco: bancoElegidoPago ? _montoBancoConvertidoCred : null,
+        monto_moneda_banco: bancoElegidoPago ? montoMonedaBancoPago : null,
         referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
       });
       if (!cajaRes.ok) console.warn('No se pudo registrar en caja:', cajaRes.error);
@@ -3891,6 +3919,13 @@
   /* ===================================================
      INIT
   =================================================== */
+  function adjuntarMonedaAlternaCred() {
+    if (!window.N360MonedaAlterna) return;
+    N360MonedaAlterna.adjuntar('rp-monto', () => ({ moneda: CS.empresaConfig?.moneda, tasa: CS.empresaConfig?.tasa_cambio_usd }));
+    const m = document.getElementById('rp-monto');
+    if (m) m.addEventListener('input', refrescarTextoBancoCred);
+  }
+
   async function initCreditos() {
     applyTheme(localStorage.getItem('n360_theme') || 'light');
     const fechaEl = document.getElementById('header-fecha');
@@ -3903,6 +3938,7 @@
       await cargarEstadoStockCompartido();
       await cargarConfigTicket();
       await loadEmpresaConfig(user.id);
+      adjuntarMonedaAlternaCred();
       const profile = await loadUserProfile(user.id);
       if (profile) renderUserInfo(profile, user.email);
       document.getElementById('loader').classList.add('hidden');

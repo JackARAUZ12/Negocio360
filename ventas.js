@@ -4780,6 +4780,38 @@ function cancelarPagoSeparado() {
   renderMetodosPagoModal();
 }
 
+/* 💱 Pago dividido: cada línea puede escribirse en la otra moneda
+   (córdobas si la cuenta es en dólares, y al revés). Solo ayuda a escribir:
+   la línea guarda su monto en la moneda de la cuenta, igual que siempre. */
+function _psConfigMoneda() { return { moneda: S.empresaConfig?.moneda, tasa: S.empresaConfig?.tasa_cambio_usd }; }
+// Monto en la moneda del banco de la línea, siempre con el monto ACTUAL de la
+// línea (antes se quedaba el calculado al elegir el banco). Si la línea se
+// escribió con 💱 en la moneda de ese banco, el banco recibe el monto exacto.
+function _psMontoBanco(linea) {
+  if (!linea.bancoId) return null;
+  const base = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const mb = linea.bancoMoneda || 'NIO';
+  if (mb === base) return null;
+  if (linea.otra && linea.otra.moneda === mb && Math.abs(linea.otra.base - linea.monto) < 0.005) return linea.otra.monto;
+  const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+  return tasa ? round2(base === 'NIO' ? linea.monto / tasa : linea.monto * tasa) : null;
+}
+function _psNota(linea) {
+  const o = linea.otra; if (!o || !(Math.abs(o.base - linea.monto) < 0.005)) return '';
+  const f = n => Number(n).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${linea.metodoNombre}: pagó ${o.moneda === 'USD' ? 'USD' : 'C$'} ${f(o.monto)} (tasa C$ ${f(o.tasa)})`;
+}
+function _psAdjuntarMoneda(prefijo, lineas, alCambiar) {
+  if (!window.N360MonedaAlterna) return;
+  lineas.forEach((linea, i) => {
+    const input = document.getElementById(`${prefijo}ps-monto-${i}`);
+    const cont = document.getElementById(`${prefijo}ps-ma-${i}`);
+    if (!input || !cont) return;
+    N360MonedaAlterna.adjuntar(input, _psConfigMoneda, { compacto: true, contenedor: cont });
+    if (linea.otra && linea.otra.monto > 0) N360MonedaAlterna.restaurar(input, linea.otra.monto);
+  });
+}
+
 async function renderLineasPagoSeparado() {
   const cont = document.getElementById('pago-separado-lineas');
   if (!cont || !S.pagoSeparadoLineas) return;
@@ -4798,9 +4830,10 @@ async function renderLineasPagoSeparado() {
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:18px">${icon}</span>
         <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
-        <input type="number" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
+        <input type="number" id="ps-monto-${i}" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparado(${i}, this.value)"/>
       </div>
+      <div id="ps-ma-${i}" style="padding:0 0 4px 28px"></div>
       <div id="pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
         ${linea.bancoId
           ? `<span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: ${esc(linea.bancoNombre)}</span> <button type="button" class="btn-icon" style="width:20px;height:20px;display:inline-flex" onclick="quitarBancoLineaSeparada(${i})">✕</button>`
@@ -4809,6 +4842,7 @@ async function renderLineasPagoSeparado() {
     `;
   }).join('');
 
+  _psAdjuntarMoneda('', S.pagoSeparadoLineas);
   renderResumenPagoSeparado();
 }
 
@@ -4816,6 +4850,8 @@ function actualizarMontoPagoSeparado(idx, valor) {
   const linea = S.pagoSeparadoLineas[idx];
   const n = parseFloat(valor);
   linea.monto = isNaN(n) ? 0 : Math.max(0, n);
+  linea.otra = window.N360MonedaAlterna ? N360MonedaAlterna.estado('ps-monto-' + idx) : null;
+  if (linea.bancoId) linea.montoBancoConvertido = _psMontoBanco(linea);
 
   // Nunca se reconstruye nada mientras se escribe -- solo se
   // muestra/oculta el bloque de banco con CSS directo (instantáneo,
@@ -4831,21 +4867,15 @@ function actualizarMontoPagoSeparado(idx, valor) {
 
 function elegirBancoLineaSeparada(idx, bancoId, bancoNombre, monedaBanco) {
   const linea = S.pagoSeparadoLineas[idx];
-  linea.bancoId = bancoId; linea.bancoNombre = bancoNombre;
-
-  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
-  if ((monedaBanco||'NIO') !== monedaBase) {
-    const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
-    linea.montoBancoConvertido = tasa ? round2(monedaBase==='NIO' ? linea.monto/tasa : linea.monto*tasa) : null;
-  } else {
-    linea.montoBancoConvertido = null;
-  }
+  linea.bancoId = bancoId; linea.bancoNombre = bancoNombre; linea.bancoMoneda = monedaBanco || 'NIO';
+  linea.montoBancoConvertido = _psMontoBanco(linea);
   renderLineasPagoSeparado();
 }
 function quitarBancoLineaSeparada(idx) {
   S.pagoSeparadoLineas[idx].bancoId = null;
   S.pagoSeparadoLineas[idx].bancoNombre = null;
   S.pagoSeparadoLineas[idx].montoBancoConvertido = null;
+  S.pagoSeparadoLineas[idx].bancoMoneda = null;
   renderLineasPagoSeparado();
 }
 
@@ -6077,10 +6107,10 @@ async function _confirmarVentaInterno(conImpresion) {
             metodo_pago_id:     linea.metodoId,
             metodo_pago_nombre: linea.metodoNombre,
             banco_id:           linea.bancoId || null,
-            monto_moneda_banco: linea.bancoId ? (linea.montoBancoConvertido ?? null) : null,
+            monto_moneda_banco: linea.bancoId ? _psMontoBanco(linea) : null,
             referencia_tipo:    'venta',
             referencia_id:      ventaId,
-            observaciones:      S.observaciones || null,
+            observaciones:      [S.observaciones, _psNota(linea)].filter(Boolean).join(' · ') || null,
             fecha:              fechaVentaElegida,
           }, { etiqueta: 'La venta ' + S.numeroVenta });
           ultimoMovId = movLinea?.id || ultimoMovId;
@@ -7164,9 +7194,10 @@ async function renderLineasPagoSeparadoVR() {
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:18px">${icon}</span>
         <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
-        <input type="number" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
+        <input type="number" id="vr-ps-monto-${i}" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparadoVR(${i}, this.value)"/>
       </div>
+      <div id="vr-ps-ma-${i}" style="padding:0 0 4px 28px"></div>
       <div id="vr-pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
         ${linea.bancoId
           ? `<span style="font-size:12px;color:var(--success);font-weight:600">🏦 Entra a: ${esc(linea.bancoNombre)}</span> <button type="button" class="btn-icon" style="width:20px;height:20px;display:inline-flex" onclick="quitarBancoLineaSeparadaVR(${i})">✕</button>`
@@ -7175,6 +7206,7 @@ async function renderLineasPagoSeparadoVR() {
     `;
   }).join('');
 
+  _psAdjuntarMoneda('vr-', VR.pagoSeparadoLineas);
   renderResumenPagoSeparadoVR();
 }
 
@@ -7182,6 +7214,8 @@ function actualizarMontoPagoSeparadoVR(idx, valor) {
   const linea = VR.pagoSeparadoLineas[idx];
   const n = parseFloat(valor);
   linea.monto = isNaN(n) ? 0 : Math.max(0, n);
+  linea.otra = window.N360MonedaAlterna ? N360MonedaAlterna.estado('vr-ps-monto-' + idx) : null;
+  if (linea.bancoId) linea.montoBancoConvertido = _psMontoBanco(linea);
 
   const necesitaBanco = /tarjeta|transferencia/.test(linea.metodoNombre.toLowerCase());
   const wrap = document.getElementById(`vr-pago-separado-banco-wrap-${idx}`);
@@ -7194,21 +7228,15 @@ function actualizarMontoPagoSeparadoVR(idx, valor) {
 
 function elegirBancoLineaSeparadaVR(idx, bancoId, bancoNombre, monedaBanco) {
   const linea = VR.pagoSeparadoLineas[idx];
-  linea.bancoId = bancoId; linea.bancoNombre = bancoNombre;
-
-  const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
-  if ((monedaBanco||'NIO') !== monedaBase) {
-    const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
-    linea.montoBancoConvertido = tasa ? round2(monedaBase==='NIO' ? linea.monto/tasa : linea.monto*tasa) : null;
-  } else {
-    linea.montoBancoConvertido = null;
-  }
+  linea.bancoId = bancoId; linea.bancoNombre = bancoNombre; linea.bancoMoneda = monedaBanco || 'NIO';
+  linea.montoBancoConvertido = _psMontoBanco(linea);
   renderLineasPagoSeparadoVR();
 }
 function quitarBancoLineaSeparadaVR(idx) {
   VR.pagoSeparadoLineas[idx].bancoId = null;
   VR.pagoSeparadoLineas[idx].bancoNombre = null;
   VR.pagoSeparadoLineas[idx].montoBancoConvertido = null;
+  VR.pagoSeparadoLineas[idx].bancoMoneda = null;
   renderLineasPagoSeparadoVR();
 }
 
@@ -7518,9 +7546,10 @@ async function _confirmarVentaRapidaInterno() {
             metodo_pago_id:     linea.metodoId,
             metodo_pago_nombre: linea.metodoNombre,
             banco_id:           linea.bancoId || null,
-            monto_moneda_banco: linea.bancoId ? (linea.montoBancoConvertido ?? null) : null,
+            monto_moneda_banco: linea.bancoId ? _psMontoBanco(linea) : null,
             referencia_tipo:    'venta',
             referencia_id:      ventaId,
+            observaciones:      _psNota(linea) || null,
             fecha:              fechaVentaElegidaVR,
           }, { etiqueta: 'La venta ' + VR.numeroVenta });
           ultimoMovId = movLinea?.id || ultimoMovId;
