@@ -121,6 +121,7 @@ function ocultarErrorCodigo() {
 }
 function traducirError(msg) {
   if (/already registered|already exists/i.test(msg)) return 'Ya existe una cuenta con ese correo. Intenta iniciar sesión.';
+  if (/Database error|N360_CODIGO/i.test(msg)) return 'Tu código de acceso ya no es válido (pudo haberse usado o vencido). No se creó ninguna cuenta.';
   if (/password/i.test(msg)) return 'La contraseña debe tener al menos 6 caracteres.';
   if (/email/i.test(msg)) return 'Ese correo no es válido.';
   return 'No se pudo crear la cuenta. Intenta de nuevo.';
@@ -172,7 +173,9 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
   try {
     const { data, error } = await sb.auth.signUp({
       email, password,
-      options: { data: { nombre_negocio: negocio, whatsapp, plan: 'catalogo360' } }
+      // El código viaja dentro del alta: el servidor lo valida y lo consume
+      // (sin código válido la cuenta no se crea).
+      options: { data: { nombre_negocio: negocio, whatsapp, codigo_c360: CODIGO_VALIDADO } }
     });
     if (error) throw error;
     if (!data?.user) throw new Error('No se pudo crear la cuenta.');

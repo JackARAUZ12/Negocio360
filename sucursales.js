@@ -353,6 +353,11 @@ async function crearSucursal() {
     const emailInterno = `${esBodega?'bodega':'sucursal'}-${idInterno}@negocio360.internal`;
     const passwordInterna = generarPasswordInterna();
 
+    // El servidor solo deja crear cuentas con código de acceso; las cuentas
+    // internas necesitan antes una autorización de un solo uso del dueño.
+    const { data: aut, error: errAut } = await sbClient.rpc('autorizar_cuenta_interna', { p_email: emailInterno });
+    if (errAut || !aut?.ok) throw new Error(aut?.mensaje || errAut?.message || 'No se pudo autorizar la cuenta interna.');
+
     // Se crea con el signUp NORMAL de Supabase (mismo mecanismo que
     // usa register.html) — nunca insertando directo en auth.users.
     // Se usa el cliente AUXILIAR para no afectar la sesión del dueño.

@@ -215,6 +215,11 @@ async function crearNegocioVinculado() {
     const emailInterno = `negocio-${idInterno}@negocio360.internal`;
     const passwordInterna = generarPasswordInterna();
 
+    // El servidor solo deja crear cuentas con código de acceso; las cuentas
+    // internas necesitan antes una autorización de un solo uso del dueño.
+    const { data: aut, error: errAut } = await sb.rpc('autorizar_cuenta_interna', { p_email: emailInterno });
+    if (errAut || !aut?.ok) throw new Error(aut?.mensaje || errAut?.message || 'No se pudo autorizar el negocio nuevo.');
+
     const { data: signUpData, error: errSignUp } = await sbAux.auth.signUp({
       email: emailInterno, password: passwordInterna,
     });
