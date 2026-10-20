@@ -676,6 +676,9 @@ function renderTablaClientes() {
         <button class="btn-icon-sm" title="Ver perfil" onclick="abrirPerfil('${c.id}')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
+        <a class="btn-icon-sm" title="Historial del cliente: créditos, pagos y compras" aria-label="Historial del cliente" href="cliente-historial.html?id=${encodeURIComponent(c.id)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="5" width="3" height="12"/></svg>
+        </a>
         <button class="btn-icon-sm" title="Editar" onclick="abrirEditar('${c.id}')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
@@ -1222,6 +1225,8 @@ async function abrirPerfil(clienteId) {
   document.getElementById('perfil-estado-badge').innerHTML = estadoBadgeHtml(estadoAuto);
   document.getElementById('perfil-avatar').textContent  = ini;
   document.getElementById('perfil-avatar').style.background = color;
+  const btnHist = document.getElementById('perfil-btn-historial');
+  if (btnHist) btnHist.href = 'cliente-historial.html?id=' + encodeURIComponent(cl.id);
 
   // Info general
   setPerfilField('perfil-telefono', cl.telefono);
