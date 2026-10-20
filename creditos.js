@@ -2922,12 +2922,9 @@
     if (d.esFechaFija) {
       const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
       plan = `
-        ${fila('Modalidad:', 'Un solo pago a fecha fija')}
         ${d.saldo <= 0 ? fila('Estado:', 'Crédito pagado') : vencida ? fila('Estado:', 'Vencida') : ''}`;
     } else {
-      const frec = LABEL_FREC[c.frecuencia] || c.frecuencia || '';
       plan = `
-        ${fila('Modalidad:', `${d.totalCuotas} cuota${d.totalCuotas === 1 ? '' : 's'}${frec ? ' · ' + esc(frec) : ''}`)}
         ${d.proxima ? fila('Próxima cuota:', `${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}`, ' style="font-weight:800"') : fila('Próxima cuota:', 'Sin cuotas pendientes')}
         ${d.pendientes.length > 1 ? `
           <div style="font-size:11px;margin-top:6px;font-weight:700">Cuotas pendientes:</div>
@@ -2980,11 +2977,8 @@
     if (d.prima > 0) lineas.push(`Prima / anticipo: ${fmt(d.prima)}  ·  Monto financiado: ${fmt(d.capital)}`);
     if (d.esFechaFija) {
       const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
-      lineas.push(`Modalidad: Un solo pago a fecha fija`);
       if (d.saldo <= 0) lineas.push('Estado: Crédito pagado'); else if (vencida) lineas.push('Estado: Vencida');
     } else {
-      const frec = LABEL_FREC[c.frecuencia] || c.frecuencia || '';
-      lineas.push(`Modalidad: ${d.totalCuotas} cuota${d.totalCuotas === 1 ? '' : 's'}${frec ? ' · ' + frec : ''}`);
       lineas.push(d.proxima ? `PRÓXIMA CUOTA: ${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}` : 'Sin cuotas pendientes');
       if (d.pendientes.length > 1) {
         lineas.push('Cuotas pendientes:');
