@@ -935,99 +935,58 @@
        LÓGICA DE CÓDIGO DE ACCESO
        ================================================================
 
-       Se almacena en localStorage:
-         codigo_validado = {
-           codigo_id:            <uuid del registro en codigos_acceso>,
-           codigo:               <string del código>,
-           timestamp_validacion: <ISO string>
-         }
-
-       Al cargar la página, si existe ese objeto, se revalida contra
-       Supabase antes de avanzar al paso 2.  Un simple "true" ya no
-       es suficiente.
+       Paso 1: el código se valida en el servidor (validar_codigo_acceso)
+       y se guarda solo en esta pestaña (sessionStorage):
+         codigo_validado = { codigo, timestamp_validacion }
+       Paso 2: el código viaja dentro del alta y el servidor lo consume
+       en el mismo instante en que crea la cuenta (no desde el navegador).
     ================================================================ */
 
-    /* ----------------------------------------------------------------
-       validarCodigoAcceso(codigo)
-       Consulta Supabase. Devuelve el objeto del código si es válido,
-       o null si no lo es.
+    // Motivo del último rechazo (para mostrar un mensaje claro)
+    let ultimoMotivoCodigo = null;
 
-       FIX: se agrega "plan" al select. Sin este campo, el plan
-       configurado en el código (prueba/premium) nunca llegaba al
-       registro del usuario, y por eso todas las cuentas terminaban
-       con el plan por defecto de la base de datos en vez del plan
-       real del código usado.
-    ---------------------------------------------------------------- */
+    // La validación ocurre en el servidor (validar_codigo_acceso), con límite
+    // de intentos. El navegador ya no puede leer la tabla de códigos.
     async function validarCodigoAcceso(codigo) {
-      const { data, error } = await supabase
-        .from('codigos_acceso')
-        .select('id, codigo, activo, usos_maximos, usos_actuales, plan')
-        .eq('codigo', codigo.trim().toUpperCase())
-        .single();
-
-      if (error || !data)          return null;
-      if (!data.activo)            return null;
-      if (data.usos_actuales >= data.usos_maximos) return null;
-
-      return data; // objeto completo — lo necesitamos para incrementar luego
+      ultimoMotivoCodigo = null;
+      const limpio = String(codigo || '').trim().toUpperCase();
+      const { data, error } = await supabase.rpc('validar_codigo_acceso', { p_codigo: limpio });
+      if (error) throw error;
+      if (!data || !data.ok) { ultimoMotivoCodigo = data || { motivo: 'invalido' }; return null; }
+      return { codigo: limpio, plan: data.plan };
     }
 
-    /* ----------------------------------------------------------------
-       revalidarCodigoGuardado()
-       Revalida el código almacenado en localStorage contra Supabase.
-       Devuelve el objeto actualizado si sigue válido, o null si no.
-    ---------------------------------------------------------------- */
+    function mensajeCodigo(m) {
+      const motivo = m?.motivo;
+      if (motivo === 'bloqueado') return `Demasiados intentos. Espera ${Math.ceil((m.segundos || 900) / 60)} minuto(s) e intenta de nuevo.`;
+      if (motivo === 'utilizado') return 'Este código ya fue utilizado. Solicita uno nuevo.';
+      if (motivo === 'expirado')  return 'Este código ya expiró. Solicita uno nuevo.';
+      if (motivo === 'revocado')  return 'Este código fue desactivado. Solicita uno nuevo.';
+      return 'Código inválido o expirado. Verifica e intenta nuevamente.';
+    }
+
+    // El código validado se guarda solo durante esta pestaña (no queda en el equipo)
+    function leerCodigoGuardado() {
+      try { localStorage.removeItem('codigo_validado'); } catch (_) {}
+      try { return JSON.parse(sessionStorage.getItem('codigo_validado') || 'null'); } catch { return null; }
+    }
+
     async function revalidarCodigoGuardado() {
-      const raw = localStorage.getItem('codigo_validado');
-      if (!raw) return null;
-
-      let guardado;
-      try { guardado = JSON.parse(raw); } catch { return null; }
-
+      const guardado = leerCodigoGuardado();
       if (!guardado?.codigo) return null;
-
-      // Revalidar contra Supabase en tiempo real
       return await validarCodigoAcceso(guardado.codigo);
     }
 
     /* ----------------------------------------------------------------
-       consumirCodigo(codigoId)
-       Llama a la función RPC consume_codigo_acceso que incrementa
-       usos_actuales de forma atómica y desactiva el código si se
-       agotaron los usos.  Ver register_rls.sql para la definición.
-    ---------------------------------------------------------------- */
-    async function consumirCodigo(codigoId) {
-      const { error } = await supabase.rpc('consume_codigo_acceso', {
-        p_codigo_id: codigoId
-      });
-      if (error) {
-        console.error('[Negocio360] Error al consumir código:', error);
-        // No bloqueamos el registro por esto, pero lo registramos
-      }
-    }
-
-    /* ----------------------------------------------------------------
        registrarUsuario(payload, codigoData)
-       1. Crea el usuario en Supabase Auth.
-       2. Consume el código (incremento atómico + desactivación si agotado).
-
-       FIX: ahora se manda "plan: codigoData.plan" dentro de
-       options.data del signUp. Esto hace que el plan del código
-       (prueba/premium) viaje como metadata del usuario nuevo, para
-       que el trigger/función en Supabase que crea la fila en
-       "usuarios" pueda leerlo (via raw_user_meta_data->>'plan') y
-       asignar el plan correcto en vez de un valor por defecto fijo.
-
-       IMPORTANTE: este cambio, por sí solo, es "aditivo": no rompe
-       nada del flujo actual. Pero para que el plan realmente quede
-       bien guardado en la tabla "usuarios", la función/trigger que
-       crea esa fila en Supabase (fuera de estos archivos) también
-       debe leer ese metadata. Ver instrucciones en el chat.
+       El código viaja dentro del alta (codigo_acceso). El servidor lo
+       valida y lo consume en el mismo instante en que crea la cuenta
+       (trigger handle_new_user): si ya no sirve, la cuenta NO se crea.
+       El plan sale del código, no de lo que mande el navegador.
     ---------------------------------------------------------------- */
     async function registrarUsuario(payload, codigoData) {
       const { nombre, apellido, negocio, email, whatsapp, password } = payload;
 
-      // 1. Crear cuenta en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -1037,7 +996,8 @@
             apellido,
             nombre_negocio: negocio,
             whatsapp,
-            plan: codigoData.plan || 'premium'
+            plan: codigoData.plan || 'premium',
+            codigo_acceso: codigoData.codigo
           }
         }
       });
@@ -1049,9 +1009,6 @@
 
       const userId = authData.user?.id;
       if (!userId) throw new Error('No se pudo obtener el ID de usuario.');
-
-      // 2. Consumir el código (atómico, sin condición de carrera)
-      await consumirCodigo(codigoData.id);
 
       return authData;
     }
@@ -1218,7 +1175,10 @@
         mostrarPaso2();
       } else {
         // Si había algo guardado pero ya no es válido, limpiarlo
-        localStorage.removeItem('codigo_validado');
+        sessionStorage.removeItem('codigo_validado');
+        // Enlace compartido por un vendedor: register.html?codigo=FL-XXXXX-XXXXX
+        const desdeEnlace = new URLSearchParams(location.search).get('codigo');
+        if (desdeEnlace && /^[A-Za-z0-9-]{4,40}$/.test(desdeEnlace)) elements.codigoInput.value = desdeEnlace.toUpperCase();
       }
     })();
 
@@ -1241,15 +1201,14 @@
 
         if (codigoData) {
           // Guardar objeto completo (NO un simple "true")
-          localStorage.setItem('codigo_validado', JSON.stringify({
-            codigo_id:            codigoData.id,
+          sessionStorage.setItem('codigo_validado', JSON.stringify({
             codigo:               codigoData.codigo,
             timestamp_validacion: new Date().toISOString()
           }));
           mostrarPaso2();
         } else {
           setError(elements.codigoInput, elements.errCodigo, true);
-          elements.errCodigoText.textContent = 'Código inválido o expirado. Verifica e intenta nuevamente.';
+          elements.errCodigoText.textContent = mensajeCodigo(ultimoMotivoCodigo);
         }
       } catch (err) {
         console.error('[Negocio360] Error validando código:', err);
@@ -1264,6 +1223,16 @@
     elements.codigoInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') elements.btnContinuar.click();
     });
+
+    function volverAlPaso1(msg) {
+      sessionStorage.removeItem('codigo_validado');
+      showToast(msg, 'error');
+      elements.panelRegistro.classList.remove('active');
+      elements.stepsIndicator.style.display = 'none';
+      elements.cardTitle.textContent = 'Código de acceso';
+      elements.cardSubtitle.textContent = 'Para crear una cuenta en Negocio360 necesitas un código de acceso proporcionado por nuestro equipo.';
+      elements.panelCodigo.classList.add('active');
+    }
 
     function mostrarPaso2() {
       // Ocultar paso 1
@@ -1293,24 +1262,13 @@
       // Recuperar datos del código guardado
       let codigoData = null;
       try {
-        const raw = localStorage.getItem('codigo_validado');
-        if (raw) {
-          const guardado = JSON.parse(raw);
-          // Revalidar en tiempo real antes de registrar
-          codigoData = await validarCodigoAcceso(guardado.codigo);
-        }
+        // Revalidar en tiempo real antes de registrar
+        codigoData = await revalidarCodigoGuardado();
       } catch { /* silencioso */ }
 
       if (!codigoData) {
         // El código fue invalidado por el admin mientras el usuario llenaba el formulario
-        localStorage.removeItem('codigo_validado');
-        showToast('Tu código de acceso ya no es válido. Por favor solicita uno nuevo.', 'error');
-        // Volver al paso 1
-        elements.panelRegistro.classList.remove('active');
-        elements.stepsIndicator.style.display = 'none';
-        elements.cardTitle.textContent = 'Código de acceso';
-        elements.cardSubtitle.textContent = 'Para crear una cuenta en Negocio360 necesitas un código de acceso proporcionado por nuestro equipo.';
-        elements.panelCodigo.classList.add('active');
+        volverAlPaso1(ultimoMotivoCodigo ? mensajeCodigo(ultimoMotivoCodigo) : 'Tu código de acceso ya no es válido. Por favor solicita uno nuevo.');
         return;
       }
 
@@ -1331,7 +1289,7 @@
         await registrarUsuario(payload, codigoData);
 
         // Limpiar datos de código tras registro exitoso
-        localStorage.removeItem('codigo_validado');
+        sessionStorage.removeItem('codigo_validado');
 
         // Redirección directa (sin modal, sin alerta)
         window.location.href = 'personalizacion.html';
@@ -1341,6 +1299,12 @@
 
         let msg = 'Ocurrió un error. Por favor intenta nuevamente.';
 
+        // El servidor rechazó el código al crear la cuenta (ya usado en otro
+        // registro simultáneo, expirado o revocado): la cuenta NO se creó.
+        if (err.message?.includes('Database error saving new user') || err.message?.includes('N360_CODIGO')) {
+          volverAlPaso1('Tu código de acceso ya no es válido (pudo usarse en otro registro). Solicita uno nuevo. No se creó ninguna cuenta.');
+          return;
+        }
         if (err.message?.includes('already registered') || err.message?.includes('User already registered')) {
           msg = 'Este correo ya tiene una cuenta registrada. ¿Deseas iniciar sesión?';
         } else if (err.message?.includes('Password should be')) {

@@ -193,6 +193,7 @@ function navigate(section) {
   if (section === 'notificaciones') loadNotificacionesSection();
   if (section === 'chats-grupales') loadChatsGrupales();
   if (section === 'auditoria-global') loadAuditoriaGlobal();
+  if (section === 'freelancers') window.AdminFL?.cargar();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────

@@ -801,6 +801,12 @@
       // rota a un formulario que no puede completar. Se cierra esa
       // sesión inválida y se muestra el login normal, listo para
       // iniciar sesión de nuevo con una cuenta real.
+      // Excepción: las cuentas de vendedores (freelancers) de Negocio360 no
+      // tienen negocio propio; van a su panel.
+      try {
+        const { data: estadoFl } = await sb.rpc('freelancer_estado');
+        if (estadoFl) { window.location.href = 'freelancer.html'; return; }
+      } catch (_) { /* sin cambio: se sigue con el flujo normal */ }
       await sb.auth.signOut();
       hideOverlay();
       return;

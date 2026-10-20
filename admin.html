@@ -22,6 +22,7 @@
 
   <!-- Estilos -->
   <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="admin-freelancers.css?v=20261021b" />
 </head>
 <body>
 
@@ -90,6 +91,14 @@
           <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
         </svg>
         Códigos de Acceso
+      </button>
+
+      <button class="nav-item" data-section="freelancers">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <polyline points="16 11 18 13 22 9"/>
+        </svg>
+        Freelancers
       </button>
 
       <button class="nav-item" data-section="codes-catalogo360">
@@ -779,6 +788,98 @@
             </table>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ══════════ FREELANCERS (vendedores de Negocio360) ══════════ -->
+    <section class="page-content" id="page-freelancers">
+      <div class="page-header fl-header">
+        <div>
+          <h1>Freelancers</h1>
+          <p>Vendedores externos: sus permisos, códigos, clientes captados, pagos confirmados, comisiones y todo lo que hacen.</p>
+        </div>
+        <button class="btn-icon btn-primary" id="fl-btn-nuevo" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nuevo freelancer
+        </button>
+      </div>
+
+      <div class="card section-gap">
+        <div class="card-header fl-periodo">
+          <div>
+            <div class="card-title">Rendimiento</div>
+            <div class="card-subtitle" id="fl-periodo-txt">Este mes</div>
+          </div>
+          <div class="fl-periodo-ctrl">
+            <div class="filter-tabs" id="fl-periodos">
+              <button class="filter-btn" data-fl-periodo="dia" type="button">Hoy</button>
+              <button class="filter-btn" data-fl-periodo="semana" type="button">7 días</button>
+              <button class="filter-btn active" data-fl-periodo="mes" type="button">Este mes</button>
+              <button class="filter-btn" data-fl-periodo="rango" type="button">Rango</button>
+            </div>
+            <div class="fl-rango" id="fl-rango" style="display:none">
+              <input type="date" class="form-control" id="fl-desde" aria-label="Desde" />
+              <input type="date" class="form-control" id="fl-hasta" aria-label="Hasta" />
+              <button class="btn-icon btn-ghost btn-sm" id="fl-rango-aplicar" type="button">Aplicar</button>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="stats-grid fl-kpis" id="fl-kpis"><div class="fl-cargando">Cargando…</div></div>
+          <div class="fl-nota">Los <b>pagos</b> son solo los ciclos que un administrador marcó como pagados en <b>Usuarios</b> (confirmados). Las cotizaciones o pruebas nunca cuentan como ingreso.</div>
+          <div class="table-responsive" id="fl-ranking"></div>
+        </div>
+      </div>
+
+      <div class="card section-gap">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Listado de freelancers</div>
+            <div class="card-subtitle">Busca, filtra y abre la ficha de cada uno</div>
+          </div>
+          <button class="btn-icon btn-ghost btn-sm" id="fl-btn-csv" type="button">Exportar CSV</button>
+        </div>
+        <div class="table-toolbar fl-toolbar">
+          <div class="search-box">
+            <input type="search" class="search-input" id="fl-buscar" placeholder="Nombre, correo, identificación…" aria-label="Buscar freelancer" />
+          </div>
+          <div class="filter-tabs" id="fl-estados">
+            <button class="filter-btn active" data-fl-estado="" type="button">Todos</button>
+            <button class="filter-btn" data-fl-estado="activo" type="button">Activos</button>
+            <button class="filter-btn" data-fl-estado="pendiente" type="button">Pendientes</button>
+            <button class="filter-btn" data-fl-estado="suspendido" type="button">Suspendidos</button>
+            <button class="filter-btn" data-fl-estado="desactivado" type="button">Desactivados</button>
+          </div>
+          <div class="fl-rango">
+            <label class="fl-mini">Incorporados desde</label>
+            <input type="date" class="form-control" id="fl-inc-desde" aria-label="Incorporados desde" />
+            <input type="date" class="form-control" id="fl-inc-hasta" aria-label="Incorporados hasta" />
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table fl-tabla">
+              <thead>
+                <tr>
+                  <th>Freelancer</th><th>Estado</th><th>Incorporación</th><th>Último acceso</th>
+                  <th>Códigos</th><th>Clientes</th><th>Pagos confirmados</th><th>Comisiones</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="fl-tbody"><tr><td colspan="9" class="fl-cargando">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card section-gap">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Seguridad</div>
+            <div class="card-subtitle">Intentos rechazados y acciones no autorizadas (últimos 100)</div>
+          </div>
+          <button class="btn-icon btn-ghost btn-sm" id="fl-btn-seguridad" type="button">Actualizar</button>
+        </div>
+        <div class="card-body no-pad"><div class="table-responsive" id="fl-seguridad"></div></div>
       </div>
     </section>
 
@@ -1566,6 +1667,70 @@
 <!-- ══════════════════════════════════════════
      MODAL: CREAR CÓDIGO
 ══════════════════════════════════════════ -->
+<!-- Freelancers: crear -->
+<div class="modal-overlay" id="fl-modal-nuevo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo freelancer</span>
+      <button class="modal-close" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="fl-nuevo-form">
+      <div class="form-group"><label for="fl-n-nombre">Nombre completo *</label><input class="form-control" id="fl-n-nombre" maxlength="80" /></div>
+      <div class="form-group"><label for="fl-n-email">Correo *</label><input class="form-control" id="fl-n-email" type="email" maxlength="120" placeholder="Con este correo creará o usará su cuenta" /></div>
+      <div class="form-row">
+        <div class="form-group"><label for="fl-n-tel">Teléfono</label><input class="form-control" id="fl-n-tel" maxlength="30" /></div>
+        <div class="form-group"><label for="fl-n-ident">Identificación</label><input class="form-control" id="fl-n-ident" maxlength="40" /></div>
+      </div>
+      <label class="fl-check"><input type="checkbox" id="fl-n-generar" /> Puede generar códigos de acceso</label>
+      <div class="fl-mini">Los demás permisos (planes, límites, comisión) se ajustan en su ficha. Por defecto: solo plan Prueba, 1 uso por código, 20 códigos al mes, vencen en 30 días.</div>
+    </div>
+    <div class="modal-body" id="fl-nuevo-ok" style="display:none"></div>
+    <div class="modal-footer" id="fl-nuevo-footer">
+      <button class="btn-icon btn-ghost" type="button" data-fl-cerrar="fl-modal-nuevo">Cancelar</button>
+      <button class="btn-icon btn-primary" type="button" id="fl-n-guardar">Crear e invitar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Freelancers: ficha -->
+<div class="modal-overlay" id="fl-modal-ficha">
+  <div class="modal fl-modal-ancho">
+    <div class="modal-header">
+      <span class="modal-title" id="fl-ficha-titulo">Freelancer</span>
+      <button class="modal-close" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="fl-tabs" id="fl-ficha-tabs" role="tablist">
+      <button type="button" class="fl-tab on" data-fl-tab="resumen">Resumen</button>
+      <button type="button" class="fl-tab" data-fl-tab="permisos">Permisos</button>
+      <button type="button" class="fl-tab" data-fl-tab="codigos">Códigos</button>
+      <button type="button" class="fl-tab" data-fl-tab="clientes">Clientes</button>
+      <button type="button" class="fl-tab" data-fl-tab="actividad">Actividad</button>
+      <button type="button" class="fl-tab" data-fl-tab="rendimiento">Rendimiento</button>
+      <button type="button" class="fl-tab" data-fl-tab="comisiones">Comisiones</button>
+    </div>
+    <div class="modal-body fl-ficha-body" id="fl-ficha-body"><div class="fl-cargando">Cargando…</div></div>
+  </div>
+</div>
+
+<!-- Freelancers: confirmar con motivo -->
+<div class="modal-overlay" id="fl-modal-motivo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="fl-motivo-titulo">Confirmar</span>
+      <button class="modal-close" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p class="fl-motivo-texto" id="fl-motivo-texto"></p>
+      <div class="form-group" id="fl-motivo-extra"></div>
+      <div class="form-group"><label for="fl-motivo-input" id="fl-motivo-label">Motivo</label><textarea class="form-control" id="fl-motivo-input" rows="3" maxlength="500"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" type="button" data-fl-cerrar="fl-modal-motivo">Cancelar</button>
+      <button class="btn-icon btn-danger" type="button" id="fl-motivo-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-create-code">
   <div class="modal">
     <div class="modal-header">
@@ -1766,7 +1931,8 @@
     }
   });
 </script>
-<script src="admin.js?v=20261013b"></script>
+<script src="admin.js?v=20261021a"></script>
+<script src="admin-freelancers.js?v=20261021a"></script>
 
 <script src="bienvenida-negocio360.js?v=9"></script>
 </body>
