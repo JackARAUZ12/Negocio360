@@ -1459,11 +1459,13 @@
 
   async function iniciarEmpresaVinculada() {
     try {
-      if (window.N360VerComo && window.N360VerComo.activo) return;
+      // En "Ver como cliente" (solo lectura, soporte) el botón se muestra para
+      // que se vea igual que lo ve el cliente, pero no cambia de negocio.
+      PG.empresaSoloLectura = !!(window.N360VerComo && window.N360VerComo.activo);
       const { data, error } = await PG.client.rpc('empresa_mis_negocios');
       if (error || !Array.isArray(data) || !data.length) return;
       PG.empresaNegocios = data;
-      vigilarCambioDeCuentaEnOtraPestana();
+      if (!PG.empresaSoloLectura) vigilarCambioDeCuentaEnOtraPestana();
       ponerBotonesEmpresa(data, 0);
     } catch (_) { /* si falla, simplemente no aparece el botón */ }
   }
@@ -1491,6 +1493,17 @@
 
   function confirmarCambioNegocio(n) {
     showOverlay();
+    if (PG.empresaSoloLectura) {
+      card().innerHTML = `
+        <div class="pg-pin-wrap">
+          <div class="pg-pin-avatar" style="background:#1A1D2E">👁️</div>
+          <div class="pg-title" style="margin-bottom:2px">Modo solo lectura</div>
+          <div class="pg-subtitle" style="margin-bottom:4px">Así ve el botón el cliente. En solo lectura no se cambia de negocio: abre ${esc(n.nombre_negocio)} desde el panel de administrador.</div>
+          <div class="pg-btn-row"><button class="pg-btn pg-btn-primary" id="pg-emp-cancel">Entendido</button></div>
+        </div>`;
+      document.getElementById('pg-emp-cancel').addEventListener('click', hideOverlay);
+      return;
+    }
     card().innerHTML = `
       <div class="pg-pin-wrap">
         <div class="pg-pin-avatar" style="background:#1A1D2E">🔁</div>

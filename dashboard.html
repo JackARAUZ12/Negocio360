@@ -11,7 +11,7 @@
   <title>Dashboard — Negocio360</title>
 
   <!-- Supabase CDN -->
-  <script src="ver-como.js?v=20261013a"></script>
+  <script src="ver-como.js?v=20261021a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js?v=20261021b"></script>
   <script src="auditoria-guard.js"></script>
@@ -2485,23 +2485,12 @@ async function loadVentasCategorias(userId) {
     // pago recurrente crea una fila en venta_detalles con tipo_item
     // 'servicio' (ver ventas.js, registro de pago recurrente).
     const restriccionCat = obtenerRestriccionPerfilDashboard();
-    let qVentasMesCat = sbClient
-      .from('ventas')
-      .select('id')
-      .eq('auth_user_id', userId)
-      .eq('estado', 'completada')
-      .gte('fecha', monthStart)
-      .lte('fecha', today);
-    if (restriccionCat) qVentasMesCat = qVentasMesCat.eq('creado_por_nombre', restriccionCat);
-    const { data: ventasMes, error: errV } = await qVentasMesCat;
+    const { data: ventasMes, error: errV } = await traerIdsVentasDelMes(userId, monthStart, today, restriccionCat);
     if (errV || !ventasMes || ventasMes.length === 0) { renderDonutChart({}); return; }
 
     const ventaIds = ventasMes.map(v => v.id);
     const map = {};
-    const { data, error } = await sbClient.from('venta_detalles')
-      .select('producto_nombre, subtotal, tipo_item')
-      .eq('auth_user_id', userId)
-      .in('venta_id', ventaIds);
+    const { data, error } = await traerDetallesDeVentas(userId, ventaIds, 'producto_nombre, subtotal, tipo_item', false);
 
     if (!error && data && data.length > 0) {
       data.forEach(r => {
@@ -2511,6 +2500,45 @@ async function loadVentasCategorias(userId) {
     }
     renderDonutChart(map);
   } catch(e) { console.warn('categorias:', e); }
+}
+
+async function traerIdsVentasDelMes(userId, monthStart, today, restriccion) {
+  // Página a página: el servidor entrega máximo 1000 filas por consulta.
+  const todas = [];
+  for (let desde = 0; ; desde += 1000) {
+    let q = sbClient.from('ventas').select('id')
+      .eq('auth_user_id', userId).eq('estado', 'completada')
+      .gte('fecha', monthStart).lte('fecha', today);
+    if (restriccion) q = q.eq('creado_por_nombre', restriccion);
+    const { data, error } = await q.order('id').range(desde, desde + 999);
+    if (error) return { data: null, error };
+    todas.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return { data: todas, error: null };
+}
+
+/* Trae TODAS las líneas de las ventas indicadas. Antes se pedían todas
+   las ventas del mes en una sola consulta: con muchas ventas (ej. 900+)
+   la dirección de la consulta era demasiado larga y el servidor la
+   rechazaba (error 400), y además el servidor nunca entrega más de 1000
+   filas por consulta. Ahora se piden por grupos de 100 ventas y cada
+   grupo página a página. Solo LEE; el resultado es el mismo de siempre. */
+async function traerDetallesDeVentas(userId, ventaIds, columnas, soloProductos) {
+  const todas = [];
+  for (let i = 0; i < ventaIds.length; i += 100) {
+    const grupo = ventaIds.slice(i, i + 100);
+    for (let desde = 0; ; desde += 1000) {
+      let q = sbClient.from('venta_detalles').select(columnas)
+        .eq('auth_user_id', userId).in('venta_id', grupo);
+      if (soloProductos) q = q.eq('tipo_item', 'producto');
+      const { data, error } = await q.order('id').range(desde, desde + 999);
+      if (error) return { data: null, error };
+      todas.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+  }
+  return { data: todas, error: null };
 }
 
 /* =====================================================
@@ -2527,15 +2555,7 @@ async function loadTopProductos(userId) {
 
     // Step 1: Get IDs of completed ventas this month
     const restriccionTop = obtenerRestriccionPerfilDashboard();
-    let qVentasMesTop = sbClient
-      .from('ventas')
-      .select('id')
-      .eq('auth_user_id', userId)
-      .eq('estado', 'completada')
-      .gte('fecha', monthStart)
-      .lte('fecha', today);
-    if (restriccionTop) qVentasMesTop = qVentasMesTop.eq('creado_por_nombre', restriccionTop);
-    const { data: ventasMes, error: errV } = await qVentasMesTop;
+    const { data: ventasMes, error: errV } = await traerIdsVentasDelMes(userId, monthStart, today, restriccionTop);
 
     if (errV || !ventasMes || ventasMes.length === 0) {
       if (list) list.innerHTML = `
@@ -2549,12 +2569,7 @@ async function loadTopProductos(userId) {
     const ventaIds = ventasMes.map(v => v.id);
 
     // Step 2: Query venta_detalles for those IDs (only productos, not services)
-    const { data: detalles, error: errD } = await sbClient
-      .from('venta_detalles')
-      .select('producto_nombre, cantidad, subtotal, tipo_item')
-      .eq('auth_user_id', userId)
-      .eq('tipo_item', 'producto')
-      .in('venta_id', ventaIds);
+    const { data: detalles, error: errD } = await traerDetallesDeVentas(userId, ventaIds, 'producto_nombre, cantidad, subtotal, tipo_item', true);
 
     if (errD || !detalles || detalles.length === 0) {
       if (list) list.innerHTML = `
@@ -3076,7 +3091,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script src="bienvenida-negocio360.js?v=9"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021a"></script>
+<script src="perfiles-guard.js?v=20261021b"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
 <script src="modulos-guard.js?v=20261021b"></script>
 
