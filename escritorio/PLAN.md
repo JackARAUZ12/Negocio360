@@ -51,7 +51,7 @@ directa ESC/POS a Windows (RAW vía WinSpool, EPSON TM-U220) y mejoras.
 |---|---|
 | Programa | Electron + electron-builder (instalador NSIS), una sola instancia abierta |
 | Pantallas | Las mismas páginas del sistema web, **empaquetadas dentro** del programa (abren sin internet) |
-| Base local | SQLite (better-sqlite3) en la carpeta de datos del usuario, modo WAL + `synchronous=FULL`, cifrada si es viable |
+| Base local | SQLite **integrado en Electron** (`node:sqlite`, Electron 44.6.0 / Node 24.21) en la carpeta de datos del usuario, modo WAL + `synchronous=FULL`, cifrada si es viable. (Decidido en Fase 0 en lugar de better-sqlite3: no necesita compilar nada nativo, así el instalador de Windows se puede fabricar desde Linux.) |
 | Bandeja de salida | Cada operación sin conexión se guarda **completa en una sola transacción local** con un UUID (clave de idempotencia) antes de imprimir el ticket |
 | Sincronizador | En el proceso principal de Electron (sigue aunque se cambie de pantalla), reintentos con espera creciente, un solo envío a la vez |
 | Servidor | Función nueva `offline_registrar_venta(payload jsonb)`: registra venta, detalle, stock, caja, impuestos y pago dividido **completo o nada**, idempotente por UUID |

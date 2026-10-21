@@ -1,0 +1,36 @@
+{
+  "name": "negocio360-escritorio",
+  "productName": "Negocio360",
+  "version": "2.0.0-piloto.1",
+  "description": "Negocio360 — programa de escritorio para Windows con modo sin conexión (versión piloto)",
+  "main": "src/main/main.js",
+  "author": "Negocio360",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "pruebas": "node --test \"pruebas/unitarias/**/*.test.js\"",
+    "humo": "xvfb-run -a node pruebas/electron/humo.js",
+    "librerias": "node herramientas/inventario-librerias.js",
+    "instalar-electron": "bash herramientas/instalar-electron.sh"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.10"
+  },
+  "devDependencies": {
+    "electron": "44.6.0",
+    "electron-builder": "26.15.3",
+    "playwright": "1.56.1",
+    "@supabase/supabase-js": "2.117.2",
+    "lucide": "1.52.0",
+    "jspdf": "2.5.1",
+    "jspdf-autotable": "3.7.1",
+    "xlsx": "0.18.5",
+    "chart.js": "4.4.0",
+    "jsbarcode": "3.11.6",
+    "html2canvas": "1.4.1",
+    "leaflet": "1.9.4",
+    "@zxing/browser": "0.1.5",
+    "@fontsource/plus-jakarta-sans": "5.2.8",
+    "@fontsource/jetbrains-mono": "5.2.8"
+  }
+}

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Negocio360</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-app-region: drag;
+  }
+  #fondo {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, #0b0e1a 0%, #10142a 55%, #0b0e1a 100%);
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.08);
+    opacity: 1;
+    transition: opacity 0.5s ease;
+  }
+  #fondo.saliendo { opacity: 0; }
+
+  .logo-wrap {
+    width: 108px; height: 108px;
+    opacity: 0;
+    transform: scale(0.6) rotate(-25deg);
+    animation: entrada 0.9s cubic-bezier(.2,.9,.25,1) forwards;
+  }
+  .logo-wrap img { width: 100%; height: 100%; filter: drop-shadow(0 6px 24px rgba(43,92,255,0.45)); }
+
+  @keyframes entrada {
+    to { opacity: 1; transform: scale(1) rotate(0deg); }
+  }
+
+  .nombre {
+    margin-top: 22px;
+    font-size: 22px; font-weight: 700; letter-spacing: 0.5px;
+    color: #f2f4ff;
+    opacity: 0;
+    animation: subir 0.7s ease-out 0.5s forwards;
+  }
+  .lema {
+    margin-top: 6px;
+    font-size: 11.5px; color: #7b83a8;
+    opacity: 0;
+    animation: subir 0.7s ease-out 0.7s forwards;
+  }
+  @keyframes subir {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .barra-wrap {
+    margin-top: 30px;
+    width: 160px; height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    opacity: 0;
+    animation: aparecerBarra 0.5s ease-out 0.9s forwards;
+    position: relative;
+  }
+  @keyframes aparecerBarra {
+    to { opacity: 1; }
+  }
+
+  .barra {
+    height: 100%; width: 36%;
+    background: linear-gradient(90deg, #1b3fd6, #4d7bff, #1b3fd6);
+    border-radius: 3px;
+    position: absolute; left: 0; top: 0;
+    animation: cargando 0.55s ease-in-out 2 1.0s, completar 0.35s ease-out forwards 2.1s;
+  }
+  @keyframes cargando {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(280%); }
+  }
+  @keyframes completar {
+    from { width: 36%; transform: none; }
+    to   { width: 100%; transform: none; background: linear-gradient(90deg, #2ecc71, #4d7bff); }
+  }
+
+  .estado {
+    margin-top: 10px;
+    font-size: 10.5px; color: #5a5f7a;
+    opacity: 0;
+    animation: subir 0.4s ease-out 1.0s forwards;
+  }
+</style>
+</head>
+<body>
+  <div id="fondo">
+    <div class="logo-wrap"><img src="assets/logo.png" alt="Negocio360"></div>
+    <div class="nombre">Negocio360</div>
+    <div class="lema">Controla tu negocio. Vende más. Gana más.</div>
+    <div class="barra-wrap"><div class="barra"></div></div>
+    <div class="estado" id="estado-texto">Iniciando…</div>
+  </div>
+
+  <audio id="sonido-inicio" src="assets/inicio.wav" preload="auto"></audio>
+
+  <script>
+    // El sonido se dispara apenas carga la ventana — es un archivo
+    // muy corto (menos de un segundo), pensado para acompañar la
+    // aparición del logo, no para durar toda la animación.
+    document.getElementById('sonido-inicio').play().catch(() => {
+      // Si el navegador bloquea el autoplay por alguna razón, no pasa
+      // nada — la animación visual sigue funcionando igual.
+    });
+
+    // El texto cambia a "Listo" justo cuando la barra termina de
+    // llenarse, para que la animación se sienta completa, no cortada.
+    setTimeout(() => {
+      document.getElementById('estado-texto').textContent = 'Listo ✓';
+    }, 2450);
+  </script>
+</body>
+</html>
