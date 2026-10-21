@@ -284,11 +284,23 @@ la regla del proyecto es no cambiar `main`.
    ventas se guardan a la vez.
 8. Venta rápida: `montoCaja` sin `round2` (con IVA puede llevar más de 2
    decimales; el trigger de saldo lo acepta tal cual).
+9. **La comisión bancaria nunca se guarda en Gastos** (confirmado en la base
+   real y en la Fase 2): la web inserta el gasto con `tipo: 'operativo'`, que
+   la restricción `gastos_tipo_check` rechaza (solo acepta `inmediato` o
+   `programado`); el error se ignora. Sí queda el egreso en Caja y los campos
+   de comisión en la venta. En producción hay 4 comisiones en Caja y 0 en
+   Gastos.
+
+**Confirmados en la Fase 2** (comparando la web real contra la base real): el
+punto 3 (una venta de 4 unidades de un producto con lote dejó el lote en
+12 de 20 en vez de 16) y el punto 9. La bitácora de auditoría de la web anota
+también las operaciones que fallan (p. ej. el gasto de comisión).
 
 Para que las ventas sin conexión cuadren **centavo por centavo** con las de la
-web, la Fase 2 replica las filas tal cual (textos, redondeos, fechas), y solo
-cambia lo que es necesario para no perder ni duplicar: transacción única,
-idempotencia por UUID, descuentos de stock atómicos y la regla de "vendido
-sin stock" del plan (stock negativo marcado + alerta, nunca rechazar una
-venta cobrada). Los puntos 3–8 se replican igual que hoy salvo que se
-indique lo contrario en la Fase 2.
+web, la Fase 2 guarda las MISMAS filas (las arma el propio código de
+`ventas.js`) y solo cambia lo necesario para no perder ni duplicar:
+transacción única, idempotencia por UUID, descuentos de stock atómicos, la
+regla de "vendido sin stock" del plan (stock negativo marcado + alerta, nunca
+rechazar una venta cobrada), saldo de Impuestos con candado y lotes
+descontados una sola vez (punto 3). El punto 9 se replica igual que la web
+real (sin gasto). Ver `docs/PAQUETE-VENTA.md`.

@@ -10,7 +10,9 @@ Guía del proyecto: [`PLAN.md`](PLAN.md). Avance: [`PROGRESO.md`](PROGRESO.md).
 | `recursos/` | Pantalla de bienvenida, "Acerca de", ícono y `imprimir-raw.ps1` (WinSpool) |
 | `herramientas/` | `empaquetar-web.js` (copia las páginas y cambia las librerías de internet por las locales), `librerias.json` (versiones fijas), `inventario-librerias.js`, `instalar-electron.sh` |
 | `electron-builder.yml` | Fabricación del instalador de Windows (NSIS) |
-| `docs/` | `INVENTARIO-VENTA.md`: qué escribe hoy una venta en la base (referencia de la Fase 2) |
+| `docs/` | `INVENTARIO-VENTA.md` (qué escribe hoy una venta) y `PAQUETE-VENTA.md` (contrato de la venta sin conexión) |
+| `src/compartido/` | Código que usan el programa y las pruebas: `registro-a-payload.js` |
+| `pruebas/referencia-web/` | Ventas reales de `ventas.js` con Supabase simulado + generador de la prueba SQL centavo por centavo (`npm run referencia`) |
 | `pruebas/unitarias/` | `npm run pruebas` |
 | `pruebas/e2e/` | Programa real con Playwright (`npm run e2e`) |
 | `pruebas/electron/` | Prueba de humo de Electron + SQLite (`npm run humo`) |

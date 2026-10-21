@@ -4,7 +4,7 @@
 |---|---|---|---|
 | 0 — Preparación | ✅ Terminada | 2026-10-21 | Estructura, inventario de la venta, interruptor y dispositivos en la base, versiones fijas |
 | 1 — Programa v2 en línea | ✅ Terminada | 2026-10-21 | Páginas empaquetadas, impresión RAW segura, una instancia, 🟢🟠🔴, actualizador preparado, instalador de Windows fabricado desde Linux |
-| 2 — Venta completa en el servidor | Pendiente | | |
+| 2 — Venta completa en el servidor | ✅ Terminada | 2026-10-21 | `offline_registrar_venta` todo-o-nada e idempotente; 8 ventas reales de la web comparadas centavo por centavo |
 | 3 — Modo sin conexión de ventas | Pendiente | | |
 | 4 — Pruebas de fuego | Pendiente | | |
 | 5 — Piloto listo | Pendiente | | |
@@ -191,7 +191,89 @@ instalador de Windows desde Linux.
 Fase 2 — función del servidor `offline_registrar_venta` (todo o nada,
 idempotente), comparada centavo por centavo con el flujo actual.
 
+## Fase 2 — Venta completa en el servidor (2026-10-21)
+
+### Hecho
+- **Migración** `supabase/migraciones/20261021_offline_fase2_registrar_venta.sql`
+  (aplicada como `offline_fase2_registrar_venta`, solo agrega):
+  - `offline_ventas_recibidas` (control e idempotencia por UUID) y
+    `offline_alertas` (avisos para revisar), con RLS y solo lectura.
+  - `offline_registrar_venta(payload)`: registra la venta COMPLETA en una sola
+    transacción (venta, detalle, stock, lotes, Caja con saldo encadenado por el
+    trigger existente, pago dividido, comisión bancaria, IVA y otros
+    impuestos con su saldo, retención IR, cliente, garantías y bitácora de
+    auditoría). Todo o nada. Si la misma venta llega dos veces, devuelve el
+    primer resultado sin duplicar.
+  - `offline_marcar_alerta_revisada(id)`; ayudantes internos sin permiso
+    para nadie (`_offline_insertar` con lista blanca de columnas, `_offline_ref`
+    que solo acepta referencias de la propia cuenta).
+- **Cómo se garantiza que es igual a la web**: el paquete lo arma el código
+  REAL de `ventas.js` (con un Supabase "grabador"), convertido por
+  `src/compartido/registro-a-payload.js` — la misma pieza que usará el
+  programa en la Fase 3. Contrato en `docs/PAQUETE-VENTA.md`.
+- **Arnés de comparación** (`pruebas/referencia-web/`): abre la pantalla real
+  de Ventas en Chromium con un Supabase simulado fiel (las lecturas ven lo
+  escrito, orden y relaciones), ejecuta 8 ventas con los mismos botones del
+  cajero y genera la prueba SQL (`npm run referencia`).
+- Reglas del plan aplicadas en el servidor: número del bloque del equipo si
+  está libre, si no uno nuevo (y se corrige en conceptos, observaciones y
+  bitácora); provisional → número definitivo; dos equipos con la última
+  unidad → stock negativo marcado "vendido sin stock" + alerta, nunca se
+  rechaza; precio cambiado → se respeta lo cobrado + alerta; producto
+  desactivado → se acepta + alerta; reloj del equipo con más de 10 min de
+  diferencia → alerta y hora corregida; fecha y hora reales de la venta;
+  crédito/fiado rechazados (no van sin conexión); equipo desactivado o no
+  registrado rechazado.
+
+### Pruebas (todas en transacciones que se revierten, con cuentas FALSAS)
+- **Centavo por centavo contra la web real — 8 escenarios**: Nueva venta en
+  efectivo con cliente, IVA y descuento; tarjeta con banco, comisión y
+  garantía; pago dividido con IVA; combo + promoción + servicio; IVA + otro
+  impuesto + retención IR; farmacia con lote y presentación (Caja x12);
+  Venta rápida con IVA; Venta rápida con pago dividido. Se compararon venta,
+  detalle, movimientos de Caja y saldos, saldo final de Caja, Impuestos y
+  saldos, detalle de impuestos, retenciones, garantías, gastos, stock de
+  todos los productos, lotes, cliente, bitácora y alertas de stock.
+  **Resultado: 7 idénticos; el de farmacia solo difiere en el lote, porque la
+  web lo descuenta DOS veces (20 − 4 − 4 = 12) y la función nueva una (16).**
+- **Robustez y seguridad — 24 comprobaciones OK**: venta normal; la misma
+  venta reenviada no se duplica (ni descuenta stock dos veces); mismo UUID
+  con otro contenido rechazado; número repetido reemplazado y corregido en
+  los textos; número provisional reemplazado; stock negativo con marca y
+  alerta; precio cambiado + producto desactivado con alertas y total
+  respetado; reloj atrasado 40 min con alerta y hora corregida; producto,
+  cliente y banco de OTRA cuenta no se tocan ni se vinculan; **todo o nada**
+  (si una parte falla no queda ni la venta ni el stock descontado); fiado,
+  cantidad negativa, UUID malo y paquete sin detalle rechazados; equipo
+  desconocido o desactivado rechazado; cada cuenta ve solo lo suyo; otra
+  cuenta sin interruptor bloqueada; cuenta demo bloqueada; sin sesión
+  bloqueado; ayudantes internos sin permiso para nadie.
+- Unitarias: **34/34** (se agregaron las del convertidor: las 8 capturas sin
+  nada prohibido y con Caja = total neto; lo no permitido sin conexión se
+  detecta: cliente nuevo, fiado, stock compartido, números de serie,
+  transporte, tablas desconocidas; stock/lotes/cliente no viajan).
+- Revisor de seguridad de Supabase: solo el aviso esperado de funciones
+  `security definer` para usuarios con sesión; nada para `anon`.
+
+### Hallazgos para el dueño (no se tocan en `main`)
+- **Doble descuento de lotes** en Nueva venta (cuentas con farmacia y lotes,
+  como la tuya): confirmado con la base real.
+- **La comisión bancaria nunca se guarda en Gastos** (la web usa un tipo de
+  gasto que la base no acepta): confirmado; en producción hay 4 comisiones en
+  Caja y 0 en Gastos.
+
+### Anulación
+Las filas que deja la venta sin conexión son idénticas a las de la web, así que
+una venta ya subida se anula con el botón de siempre y produce lo mismo. Anular
+una venta que todavía no subió (solo en el equipo) es parte de la Fase 3.
+
+### Sigue
+Fase 3 — modo sin conexión de ventas en el programa: catálogo local, bandeja
+de salida en SQLite, sincronizador, numeración por bloques, alertas y
+pantalla "Sincronización".
+
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
 - 2026-10-21: Fase 0 terminada (ver arriba).
 - 2026-10-21: Fase 1 terminada (ver arriba).
+- 2026-10-21: Fase 2 terminada (ver arriba).
