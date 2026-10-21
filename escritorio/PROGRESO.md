@@ -3,7 +3,7 @@
 | Fase | Estado | Fecha | Notas |
 |---|---|---|---|
 | 0 — Preparación | ✅ Terminada | 2026-10-21 | Estructura, inventario de la venta, interruptor y dispositivos en la base, versiones fijas |
-| 1 — Programa v2 en línea | Pendiente | | |
+| 1 — Programa v2 en línea | ✅ Terminada | 2026-10-21 | Páginas empaquetadas, impresión RAW segura, una instancia, 🟢🟠🔴, actualizador preparado, instalador de Windows fabricado desde Linux |
 | 2 — Venta completa en el servidor | Pendiente | | |
 | 3 — Modo sin conexión de ventas | Pendiente | | |
 | 4 — Pruebas de fuego | Pendiente | | |
@@ -90,6 +90,108 @@ Fase 1 — programa v2 en línea: Electron con las páginas empaquetadas
 🟢🟠🔴, actualización automática preparada, y prueba de fabricar el
 instalador de Windows desde Linux.
 
+## Fase 1 — Programa v2 en línea (2026-10-21)
+
+### Hecho
+- **Programa Electron 44.6.0** (`src/main/`, `src/preload/`): abre las MISMAS
+  páginas del sistema web, empaquetadas dentro del programa en
+  `app://negocio360/…` (abren sin internet). Pantalla de bienvenida de la
+  1.0.1, menú simple sin herramientas de desarrollador, **una sola
+  instancia** (abrirlo otra vez trae al frente la ventana abierta).
+- **Empaquetador** (`herramientas/empaquetar-web.js`): copia las 114 páginas
+  y cambia en la copia cada librería de internet por la local con versión
+  fija, y las fuentes de Google de las pantallas del sistema (Plus Jakarta
+  Sans, JetBrains Mono, Sora, DM Sans, Inter) por copias locales. Ajustes
+  puntuales solo dentro del programa, con verificación (si el texto original
+  cambia, el empaquetado falla en vez de aplicarse a ciegas):
+  - "Olvidé mi contraseña": el enlace del correo apunta al sitio web.
+  - 27 enlaces "para compartir" en 22 archivos (catálogos, invitaciones de
+    freelancers) apuntan a `https://negocio360oficial.com` en vez de la
+    dirección interna del programa. Las comprobaciones de seguridad
+    (`ev.origin !== location.origin`) no se tocan.
+  - Los archivos originales del repositorio nunca se modifican.
+- **Impresión directa** (`window.negocio360Print`, misma interfaz que la
+  1.0.1, así `ventas.js` no cambia): RAW a Windows por WinSpool
+  (`recursos/imprimir-raw.ps1`, ahora con la versión Unicode de la API, así
+  sirven nombres de impresora con acentos). **Corregido el riesgo de
+  seguridad de la 1.0.1**: el nombre de la impresora se valida contra la
+  lista real de Windows y viaja como variable de entorno (dato), nunca dentro
+  del código; archivos temporales con nombre aleatorio que siempre se
+  borran; un ticket a la vez; mensajes claros (impresora no encontrada,
+  apagada, tardó demasiado). La lista de impresoras se lee con la función de
+  Electron (sin PowerShell).
+- **Indicador 🟢🟠🔴** en la esquina inferior izquierda de cada pantalla
+  (En línea / Conexión inestable / Sin conexión). El vigilante corre en el
+  proceso principal (sigue aunque se cambie de pantalla): revisa el servidor
+  cada 15 s (cada 5 s si no hay conexión); 1 falla = 🟠, 2 seguidas = 🔴.
+  **Sin internet**: aviso "Requiere conexión" sobre la pantalla con botón
+  Reintentar; se quita solo al volver la conexión. Ya está preparado para la
+  Fase 3: una página puede marcarse como "funciona sin conexión" y las ventas
+  pendientes ponen el indicador en 🟠.
+- **Seguridad de ventanas**: las páginas no tienen acceso a Node ni a
+  archivos; enlaces de internet (WhatsApp, mapas, sitio) se abren en el
+  navegador de Windows; se permiten las ventanas en blanco que usa el sistema
+  para imprimir tickets (sin puente ni indicador); bloqueado `file://`,
+  `javascript:`, `data:`; permisos solo cámara (lector de códigos) y
+  portapapeles; mensajes al programa solo desde páginas del sistema; el
+  programa instalado no acepta modos de depuración (fusibles de Electron).
+- **Actualización automática preparada** (`electron-updater`, proveedor
+  genérico en `https://negocio360oficial.com/escritorio/actualizaciones/`,
+  canal `piloto`). Esa carpeta NO existe y no se crea sin autorización del
+  dueño; mientras tanto el programa no encuentra nada y sigue igual. Nunca
+  instala con ventas sin subir (gancho listo para la Fase 3).
+- **Instalador de Windows fabricado desde Linux** (`npm run instalador-win`,
+  NSIS, con wine 64+32 bits): `Negocio360-Escritorio-Piloto-2.0.0-piloto.1.exe`.
+  Se comprobó que el programa de Windows arranca bajo wine y que la segunda
+  apertura se cierra sola (una instancia). No va firmado digitalmente.
+
+### Pruebas
+- Unitarias: **30/30** (rutas que no salen de la carpeta de páginas,
+  reglas de ventanas y navegación, permisos, impresión: bytes exactos,
+  nombre malicioso nunca ejecutado, impresora inexistente rechazada sin
+  ejecutar nada, límites de tamaño, errores de Windows traducidos, orden de
+  tickets; vigilante de conexión 🟢/🟠/🔴 y pendientes; empaquetador:
+  librerías, fuentes, parches que fallan si cambia el original, enlaces para
+  compartir; actualizador que no instala con pendientes).
+- Programa real con Playwright (`npm run e2e`): **9/9** — login empaquetado
+  sin pedir nada a los CDN; cada librería fijada carga y funciona (supabase,
+  lucide, jsPDF + autotable generando un PDF, xlsx, chart.js, JsBarcode,
+  html2canvas, leaflet, zxing) y las fuentes locales se aplican; las páginas
+  no ven Node; no se puede leer fuera de la carpeta de páginas; impresión de
+  un ticket real armado con `escpos-usb.js` (con Ñ, ½ y ¡) llega byte por
+  byte a la impresora simulada; impresora inventada rechazada; indicador
+  🟢 → 🔴 con "Requiere conexión" → 🟢 con Reintentar; enlaces externos al
+  navegador; ventana de ticket sin puente; una sola instancia.
+- Revisión visual (capturas) del login y del aviso sin conexión.
+
+### Auto-revisión
+- Riesgos cubiertos: lectura de archivos fuera de la carpeta (`..`, `%2e`,
+  `%00`, `\`), ejecución de comandos por el nombre de impresora, ventanas a
+  sitios externos dentro del programa, permisos del navegador.
+- Igual que la 1.0.1: las páginas incrustadas en un marco (p. ej. la venta
+  abierta dentro de Rutas o Proformas) no tienen impresión directa; se
+  imprime con la vía normal. Se revisará en la Fase 3 si hace falta.
+- La sesión del programa es independiente de la del navegador: se inicia
+  sesión una vez en el programa.
+
+### Pendiente / limitaciones de este entorno
+- **Desde aquí no hay conexión a Supabase por internet** (el proxy del
+  entorno la bloquea; solo hay acceso por la herramienta SQL). Por eso
+  "con internet funciona igual que la web" se probó con un servidor
+  simulado; la prueba real de iniciar sesión y vender con internet queda para
+  el piloto en Windows (Fase 5, guía de prueba).
+- Bajo wine la ventana no se dibuja ni deja conectarse por dentro: la prueba
+  visual del programa de Windows también queda para la computadora real.
+- **Tamaño del instalador: 108,6 MB** (Electron 44 es más grande que la 30 de
+  la 1.0.1; ya se quitaron idiomas no usados y se usa compresión máxima).
+  GitHub no acepta archivos de más de 100 MB en el repositorio: se resolverá
+  en la Fase 5 (entrega).
+
+### Sigue
+Fase 2 — función del servidor `offline_registrar_venta` (todo o nada,
+idempotente), comparada centavo por centavo con el flujo actual.
+
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
 - 2026-10-21: Fase 0 terminada (ver arriba).
+- 2026-10-21: Fase 1 terminada (ver arriba).

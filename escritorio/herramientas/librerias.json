@@ -1,23 +1,149 @@
 {
   "_nota": "Librerías externas que hoy cargan las páginas desde internet (CDN). En el programa de escritorio cada una se sirve desde una copia local con la versión EXACTA indicada (fijada también en package.json), para que las pantallas abran sin internet y nunca cambien solas. 'patron' es una expresión regular sobre la URL original; 'archivo' es la ruta dentro de node_modules.",
   "librerias": [
-    { "nombre": "supabase-js", "version": "2.117.2", "patron": "^https://cdn\\.jsdelivr\\.net/npm/@supabase/supabase-js@2(/dist/umd/supabase(\\.min)?\\.js)?$", "archivo": "@supabase/supabase-js/dist/umd/supabase.js", "destino": "vendor/supabase.js", "nota": "La web pide @2 (la última 2.x del momento). Se fija la 2.117.2." },
-    { "nombre": "lucide", "version": "1.52.0", "patron": "^https://unpkg\\.com/lucide@latest/dist/umd/lucide(\\.min)?\\.js$", "archivo": "lucide/dist/umd/lucide.min.js", "destino": "vendor/lucide.js", "nota": "La web pide @latest. Se fija la 1.52.0." },
-    { "nombre": "jspdf", "version": "2.5.1", "patron": "^https://cdn\\.jsdelivr\\.net/npm/jspdf@2\\.5\\.1/dist/jspdf\\.umd\\.min\\.js$", "archivo": "jspdf/dist/jspdf.umd.min.js", "destino": "vendor/jspdf.umd.min.js" },
-    { "nombre": "jspdf-autotable", "version": "3.7.1", "patron": "^https://cdn\\.jsdelivr\\.net/npm/jspdf-autotable@3\\.7\\.1/dist/jspdf\\.plugin\\.autotable\\.min\\.js$", "archivo": "jspdf-autotable/dist/jspdf.plugin.autotable.min.js", "destino": "vendor/jspdf.plugin.autotable.min.js" },
-    { "nombre": "xlsx", "version": "0.18.5", "patron": "^https://cdn\\.jsdelivr\\.net/npm/xlsx@0\\.18\\.5/dist/xlsx\\.full\\.min\\.js$", "archivo": "xlsx/dist/xlsx.full.min.js", "destino": "vendor/xlsx.full.min.js" },
-    { "nombre": "chart.js", "version": "4.4.0", "patron": "^https://cdn\\.jsdelivr\\.net/npm/chart\\.js@4\\.4\\.0/dist/chart\\.umd(\\.min)?\\.js$", "archivo": "chart.js/dist/chart.umd.js", "destino": "vendor/chart.umd.js", "nota": "La 4.4.0 trae chart.umd.js ya minificado; el CDN lo sirve también como .min.js." },
-    { "nombre": "jsbarcode", "version": "3.11.6", "patron": "^https://cdn\\.jsdelivr\\.net/npm/jsbarcode@3\\.11\\.6/dist/JsBarcode\\.all\\.min\\.js$", "archivo": "jsbarcode/dist/JsBarcode.all.min.js", "destino": "vendor/JsBarcode.all.min.js" },
-    { "nombre": "html2canvas", "version": "1.4.1", "patron": "^https://cdn\\.jsdelivr\\.net/npm/html2canvas@1\\.4\\.1/dist/html2canvas\\.min\\.js$", "archivo": "html2canvas/dist/html2canvas.min.js", "destino": "vendor/html2canvas.min.js" },
-    { "nombre": "leaflet", "version": "1.9.4", "patron": "^https://unpkg\\.com/leaflet@1\\.9\\.4/dist/leaflet\\.js$", "archivo": "leaflet/dist/leaflet.js", "destino": "vendor/leaflet/leaflet.js" },
-    { "nombre": "leaflet-css", "version": "1.9.4", "patron": "^https://unpkg\\.com/leaflet@1\\.9\\.4/dist/leaflet\\.css$", "archivo": "leaflet/dist/leaflet.css", "destino": "vendor/leaflet/leaflet.css", "nota": "Las imágenes del mapa (teselas) siguen necesitando internet." },
-    { "nombre": "zxing-browser", "version": "0.1.5", "patron": "^https://(unpkg\\.com|cdn\\.jsdelivr\\.net/npm)/@zxing/browser@0\\.1\\.5(/umd/zxing-browser(\\.min)?\\.js)?$", "archivo": "@zxing/browser/umd/zxing-browser.min.js", "destino": "vendor/zxing-browser.min.js" }
+    {
+      "nombre": "supabase-js",
+      "version": "2.117.2",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/@supabase/supabase-js@2(/dist/umd/supabase(\\.min)?\\.js)?$",
+      "archivo": "@supabase/supabase-js/dist/umd/supabase.js",
+      "destino": "vendor/supabase.js",
+      "nota": "La web pide @2 (la última 2.x del momento). Se fija la 2.117.2."
+    },
+    {
+      "nombre": "lucide",
+      "version": "1.52.0",
+      "patron": "^https://unpkg\\.com/lucide@latest/dist/umd/lucide(\\.min)?\\.js$",
+      "archivo": "lucide/dist/umd/lucide.min.js",
+      "destino": "vendor/lucide.js",
+      "nota": "La web pide @latest. Se fija la 1.52.0."
+    },
+    {
+      "nombre": "jspdf",
+      "version": "2.5.1",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/jspdf@2\\.5\\.1/dist/jspdf\\.umd\\.min\\.js$",
+      "archivo": "jspdf/dist/jspdf.umd.min.js",
+      "destino": "vendor/jspdf.umd.min.js"
+    },
+    {
+      "nombre": "jspdf-autotable",
+      "version": "3.7.1",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/jspdf-autotable@3\\.7\\.1/dist/jspdf\\.plugin\\.autotable\\.min\\.js$",
+      "archivo": "jspdf-autotable/dist/jspdf.plugin.autotable.min.js",
+      "destino": "vendor/jspdf.plugin.autotable.min.js"
+    },
+    {
+      "nombre": "xlsx",
+      "version": "0.18.5",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/xlsx@0\\.18\\.5/dist/xlsx\\.full\\.min\\.js$",
+      "archivo": "xlsx/dist/xlsx.full.min.js",
+      "destino": "vendor/xlsx.full.min.js"
+    },
+    {
+      "nombre": "chart.js",
+      "version": "4.4.0",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/chart\\.js@4\\.4\\.0/dist/chart\\.umd(\\.min)?\\.js$",
+      "archivo": "chart.js/dist/chart.umd.js",
+      "destino": "vendor/chart.umd.js",
+      "nota": "La 4.4.0 trae chart.umd.js ya minificado; el CDN lo sirve también como .min.js."
+    },
+    {
+      "nombre": "jsbarcode",
+      "version": "3.11.6",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/jsbarcode@3\\.11\\.6/dist/JsBarcode\\.all\\.min\\.js$",
+      "archivo": "jsbarcode/dist/JsBarcode.all.min.js",
+      "destino": "vendor/JsBarcode.all.min.js"
+    },
+    {
+      "nombre": "html2canvas",
+      "version": "1.4.1",
+      "patron": "^https://cdn\\.jsdelivr\\.net/npm/html2canvas@1\\.4\\.1/dist/html2canvas\\.min\\.js$",
+      "archivo": "html2canvas/dist/html2canvas.min.js",
+      "destino": "vendor/html2canvas.min.js"
+    },
+    {
+      "nombre": "leaflet",
+      "version": "1.9.4",
+      "patron": "^https://unpkg\\.com/leaflet@1\\.9\\.4/dist/leaflet\\.js$",
+      "archivo": "leaflet/dist/leaflet.js",
+      "destino": "vendor/leaflet/leaflet.js"
+    },
+    {
+      "nombre": "leaflet-css",
+      "version": "1.9.4",
+      "patron": "^https://unpkg\\.com/leaflet@1\\.9\\.4/dist/leaflet\\.css$",
+      "archivo": "leaflet/dist/leaflet.css",
+      "destino": "vendor/leaflet/leaflet.css",
+      "nota": "Las imágenes del mapa (teselas) siguen necesitando internet."
+    },
+    {
+      "nombre": "zxing-browser",
+      "version": "0.1.5",
+      "patron": "^https://(unpkg\\.com|cdn\\.jsdelivr\\.net/npm)/@zxing/browser@0\\.1\\.5(/umd/zxing-browser(\\.min)?\\.js)?$",
+      "archivo": "@zxing/browser/umd/zxing-browser.min.js",
+      "destino": "vendor/zxing-browser.min.js"
+    }
   ],
   "fuentes": {
-    "_nota": "Google Fonts. Las dos familias del sistema se empaquetan; las de las plantillas de Catálogo360 (que solo sirven con internet) se dejan en línea: si no cargan, el navegador usa una fuente de reemplazo y nada se rompe.",
+    "_nota": "Google Fonts. Se empaquetan las familias de las pantallas del sistema (incluido el login); las de las plantillas de Catálogo360 (que solo sirven con internet) se dejan en línea: si no cargan, el navegador usa una fuente de reemplazo y nada se rompe.",
     "empaquetadas": [
-      { "familia": "Plus Jakarta Sans", "paquete": "@fontsource/plus-jakarta-sans", "version": "5.2.8", "pesos": [300, 400, 500, 600, 700, 800] },
-      { "familia": "JetBrains Mono", "paquete": "@fontsource/jetbrains-mono", "version": "5.2.8", "pesos": [400, 500] }
+      {
+        "familia": "Plus Jakarta Sans",
+        "paquete": "@fontsource/plus-jakarta-sans",
+        "version": "5.2.8",
+        "pesos": [
+          300,
+          400,
+          500,
+          600,
+          700,
+          800
+        ]
+      },
+      {
+        "familia": "JetBrains Mono",
+        "paquete": "@fontsource/jetbrains-mono",
+        "version": "5.2.8",
+        "pesos": [
+          400,
+          500
+        ]
+      },
+      {
+        "familia": "Sora",
+        "paquete": "@fontsource/sora",
+        "version": "5.3.0",
+        "pesos": [
+          300,
+          400,
+          500,
+          600,
+          700,
+          800
+        ]
+      },
+      {
+        "familia": "DM Sans",
+        "paquete": "@fontsource/dm-sans",
+        "version": "5.3.0",
+        "pesos": [
+          300,
+          400,
+          500,
+          600
+        ]
+      },
+      {
+        "familia": "Inter",
+        "paquete": "@fontsource/inter",
+        "version": "5.3.0",
+        "pesos": [
+          400,
+          500,
+          600,
+          700,
+          800
+        ]
+      }
     ],
     "patron": "^https://fonts\\.(googleapis|gstatic)\\.com"
   },

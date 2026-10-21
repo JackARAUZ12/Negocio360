@@ -25,8 +25,10 @@ function clasificarUrl(url, manifiesto = MANIFIESTO) {
 // Solo lo que la página CARGA: <script src="..."> y <link ... href="...">.
 function urlsCargadas(html) {
   const urls = [];
-  const reScript = /<script\b[^>]*\bsrc\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-  const reLink = /<link\b[^>]*\bhref\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+  // El atributo debe ir precedido de un espacio (no cuenta `s.src='...'` dentro
+  // de un onerror, que solo se usa si falla la carga normal).
+  const reScript = /<script\b[^>]*?\ssrc\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+  const reLink = /<link\b[^>]*?\shref\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
   let m;
   while ((m = reScript.exec(html))) urls.push(m[1]);
   while ((m = reLink.exec(html))) urls.push(m[1]);

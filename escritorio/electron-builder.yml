@@ -1,0 +1,59 @@
+# Fabricación del instalador de Windows (versión PILOTO).
+appId: com.negocio360.escritorio
+productName: Negocio360
+copyright: © 2026 Negocio360
+directories:
+  output: dist
+  buildResources: recursos
+files:
+  - src/**
+  - package.json
+  - "!**/*.map"
+extraResources:
+  - from: build/web
+    to: web
+  - from: recursos
+    to: .
+    filter:
+      - splash.html
+      - acerca.html
+      - imprimir-raw.ps1
+      - icono.png
+      - assets/**
+asar: true
+compression: maximum
+# Solo los idiomas que se usan (reduce el tamaño del instalador).
+electronLanguages: [es, es-419, en-US]
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: recursos/icono.png
+  artifactName: Negocio360-Escritorio-Piloto-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Negocio360
+  uninstallDisplayName: Negocio360 (piloto sin conexión)
+  deleteAppDataOnUninstall: false
+linux:
+  target: dir
+# Actualizaciones: carpeta del sitio que SOLO se crea al publicar con
+# autorización del dueño. Mientras no exista, no pasa nada.
+publish:
+  provider: generic
+  url: https://negocio360oficial.com/escritorio/actualizaciones/
+  channel: piloto
+# Endurecimiento: el programa instalado no acepta modos de depuración ni
+# cargar código fuera de su paquete.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
