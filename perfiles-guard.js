@@ -1498,10 +1498,19 @@
         <div class="pg-pin-wrap">
           <div class="pg-pin-avatar" style="background:#1A1D2E">👁️</div>
           <div class="pg-title" style="margin-bottom:2px">Modo solo lectura</div>
-          <div class="pg-subtitle" style="margin-bottom:4px">Así ve el botón el cliente. En solo lectura no se cambia de negocio: abre ${esc(n.nombre_negocio)} desde el panel de administrador.</div>
-          <div class="pg-btn-row"><button class="pg-btn pg-btn-primary" id="pg-emp-cancel">Entendido</button></div>
+          <div class="pg-subtitle" style="margin-bottom:4px">Se abre ${esc(n.nombre_negocio)} también en solo lectura, en esta misma pestaña. No se guarda nada en ningún negocio.</div>
+          <div class="pg-btn-row">
+            <button class="pg-btn pg-btn-ghost" id="pg-emp-cancel">Cancelar</button>
+            <button class="pg-btn pg-btn-primary" id="pg-emp-ok">Ir ahora</button>
+          </div>
         </div>`;
       document.getElementById('pg-emp-cancel').addEventListener('click', hideOverlay);
+      document.getElementById('pg-emp-ok').addEventListener('click', () => {
+        // Se termina la vista actual (solo vive en esta pestaña) y la página
+        // ver-como-cambiar.html abre el otro negocio con el pase de administrador.
+        try { sessionStorage.clear(); } catch (_) {}
+        location.href = 'ver-como-cambiar.html#u=' + encodeURIComponent(n.auth_user_id) + '&n=' + encodeURIComponent(n.nombre_negocio);
+      });
       return;
     }
     card().innerHTML = `
