@@ -48,6 +48,7 @@
       return { data: null, error: null };
     }
     // select
+    (window.__N360_LECTURAS = window.__N360_LECTURAS || []).push({ tabla: q.tabla, cols: q.cols || '*', filtros: copia(q.filtros), orden: q.orden || null });
     let filas = filtrar(copia((fx.tablas && fx.tablas[q.tabla]) || []), q.filtros);
     // Relación anidada "productos(...)" (p. ej. combo_items con el stock y costo del producto)
     if (q.cols && /productos\(/.test(q.cols) && fx.tablas && fx.tablas.productos) {
@@ -94,6 +95,7 @@
   function rpc(nombre, args) {
     const fx = F();
     registro.push({ op: 'rpc', nombre, args: copia(args || {}) });
+    (window.__N360_LECTURAS = window.__N360_LECTURAS || []).push({ rpc: nombre });
     const r = fx.rpc && fx.rpc[nombre];
     const data = typeof r === 'function' ? r(args) : (r === undefined ? null : r);
     let proxy = null;
