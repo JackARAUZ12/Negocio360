@@ -3,7 +3,8 @@
    En celulares se desactivó "jalar hacia abajo para recargar"
    (ver movil-sin-zoom.css), porque al subir la página se recargaba
    sin querer. Este botón ↻ del encabezado es la forma de actualizar
-   la página cuando la persona SÍ lo quiere.
+   la página cuando la persona SÍ lo quiere. También incluye un
+   desbloqueo de seguridad del desplazamiento (ver más abajo).
    Solo aparece en pantallas táctiles: en computadora no existe.
    No toca datos ni lógica de ningún módulo.
    ============================================================ */
@@ -99,6 +100,54 @@
     if (cabe()) return;
     btn.classList.remove('compacto');
     btn.classList.add('sin-espacio');
+  }
+
+  /* ----------------------------------------------------------
+     DESBLOQUEO DE SEGURIDAD DEL DESPLAZAMIENTO (solo celulares)
+     Tutoriales, modales y el selector de usuario bloquean el
+     desplazamiento de la página mientras están abiertos. Si por
+     cualquier motivo el bloqueo quedara "pegado" sin nada abierto, la
+     página quedaría congelada. Al tocar la pantalla se revisa: si está
+     bloqueada y NO hay ninguna ventana encima, se devuelve el
+     desplazamiento. Si hay algo abierto, no se toca nada.
+     ---------------------------------------------------------- */
+  function hayVentanaEncima() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const els = document.body ? document.body.querySelectorAll('*') : [];
+    for (const el of els) {
+      const cs = getComputedStyle(el);
+      if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' ||
+          cs.pointerEvents === 'none' || Number(cs.opacity) < 0.05) continue;
+      // Solo cuenta lo que realmente se ve (un menú lateral cerrado está
+      // fuera de la pantalla y no es una ventana abierta).
+      const r = el.getBoundingClientRect();
+      const ancho = Math.min(r.right, vw) - Math.max(r.left, 0);
+      const alto = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+      if (ancho >= vw * 0.6 && alto >= vh * 0.5) return true;
+    }
+    return false;
+  }
+  function desbloquearSiQuedoPegado() {
+    const html = document.documentElement, body = document.body;
+    if (!body) return;
+    const bloqueado = html.style.overflow === 'hidden' || body.style.overflow === 'hidden' ||
+                      html.style.overflowY === 'hidden' || body.style.overflowY === 'hidden';
+    if (!bloqueado || hayVentanaEncima()) return;
+    ['overflow', 'overflowY'].forEach(k => {
+      if (html.style[k] === 'hidden') html.style[k] = '';
+      if (body.style[k] === 'hidden') body.style[k] = '';
+    });
+  }
+  if (window.matchMedia(TACTIL).matches) {
+    let ultimo = 0;
+    document.addEventListener('touchstart', () => {
+      const ahora = Date.now();
+      if (ahora - ultimo < 800) return;
+      ultimo = ahora;
+      try { desbloquearSiQuedoPegado(); } catch (_) {}
+    }, { passive: true, capture: true });
+    // Al volver a la página con "Atrás" (el navegador la restaura tal cual).
+    window.addEventListener('pageshow', () => setTimeout(() => { try { desbloquearSiQuedoPegado(); } catch (_) {} }, 300));
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', insertar);

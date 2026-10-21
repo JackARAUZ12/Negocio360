@@ -19,8 +19,11 @@
     font-size: 16px !important;
   }
 
-  html,
-  body {
-    overscroll-behavior-y: none;
+  /* Solo en la raíz (html), con "contain": es la forma estándar que
+     recomienda Chrome para quitar "jalar para recargar" y la más
+     compatible con los navegadores de Android (Chrome, Samsung
+     Internet). Antes iba también en body con "none". */
+  html {
+    overscroll-behavior-y: contain;
   }
 }
