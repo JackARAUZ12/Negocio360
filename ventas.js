@@ -1091,33 +1091,16 @@ async function anularVenta() {
       .eq('venta_id', id).eq('auth_user_id', S.userId);
     if (errDet) throw errDet;
 
+    // Se suma sobre la existencia REAL del momento (servidor), en una sola
+    // operación: o se devuelve todo o nada. Los servicios no tienen stock.
+    const devolver = [];
     for (const d of (detalles || [])) {
-      if (d.tipo_item === 'producto' && d.producto_id) {
-        const { data: prod } = await sb.from('productos')
-          .select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', S.userId).maybeSingle();
-        if (prod) {
-          const nuevoStock = Math.round((Number(prod.stock_actual || 0) + Number(d.cantidad)) * 1000) / 1000;
-          await sb.from('productos').update({ stock_actual: nuevoStock })
-            .eq('id', d.producto_id).eq('auth_user_id', S.userId);
-        }
-      } else if (d.tipo_item === 'combo' && d.combo_id) {
-        try {
-          const { data: itemsCombo } = await sb.from('combo_items')
-            .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', S.userId);
-          for (const compItem of (itemsCombo || [])) {
-            const { data: prodActual } = await sb.from('productos')
-              .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
-            if (!prodActual) continue;
-            const devolverCantidad = Math.round(Number(compItem.cantidad) * Number(d.cantidad) * 1000) / 1000;
-            const nuevoStock = Math.round((Number(prodActual.stock_actual || 0) + devolverCantidad) * 1000) / 1000;
-            await sb.from('productos').update({ stock_actual: nuevoStock })
-              .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
-          }
-        } catch (eCombo) {
-          console.warn('No se pudo devolver el stock de los componentes del combo:', d.producto_nombre, eCombo);
-        }
-      }
-      // Los servicios no tienen stock que devolver — se omiten.
+      if (d.tipo_item === 'producto' && d.producto_id) devolver.push({ producto_id: d.producto_id, delta: Number(d.cantidad) });
+      else if (d.combo_id) devolver.push({ combo_id: d.combo_id, delta: Number(d.cantidad) });
+    }
+    if (devolver.length) {
+      const { error: errDev } = await sb.rpc('ajustar_stock_relativo', { p_items: devolver });
+      if (errDev) throw errDev;
     }
 
     const { error } = await sb.from('ventas')
@@ -3564,6 +3547,45 @@ function continuarVentaConSeries() {
 // una venta se está revisando o guardando, los clics de más no hacen nada.
 // (La base de datos además rechaza una segunda venta completada con el
 // mismo número: ver supabase/migraciones/20261016_ventas_numero_unico.sql)
+// ── Registro atómico de la venta (servidor) ──────────────────────────
+// Qué inventario descuenta una venta. El servidor lo resta sobre la
+// existencia REAL del momento (nunca con lo que la página cargó al abrirse).
+function construirStockDeVenta(carrito) {
+  const out = [];
+  for (const item of (carrito || [])) {
+    if (item.esCombo) { out.push({ tipo: 'combo', combo_id: item.id, cantidad: Number(item.cantidad) }); continue; }
+    if (item.esPromocion) {
+      for (const comp of (item.componentesPromo || [])) out.push({ tipo: 'componente', producto_id: comp.producto_id, cantidad: Number(comp.cantidad) });
+      continue;
+    }
+    if (item.tipo !== 'producto') continue;
+    if (item.origenStockId) { out.push({ tipo: 'remoto', sucursal_id: item.origenStockId, nombre: item.nombre, cantidad: unidadesInventario(item) }); continue; }
+    out.push({ tipo: 'producto', producto_id: item.id, cantidad: unidadesInventario(item) });
+  }
+  return out;
+}
+// Guarda venta + productos + inventario + Caja (+ cliente y fiado) en UNA
+// operación del servidor (todo o nada). Si se corta la conexión reintenta:
+// el servidor reconoce la misma venta y no la duplica.
+async function registrarVentaAtomica(venta, detalles, stock, caja, clienteTotal, fiado) {
+  const args = { p_venta: venta, p_detalles: detalles, p_stock: stock, p_caja: caja, p_cliente_total: clienteTotal, p_fiado: fiado };
+  let ultimo = null;
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise(res => setTimeout(res, i === 1 ? 800 : 1800));
+    try {
+      const { data, error } = await sb.rpc('venta_registrar_atomica', args);
+      if (!error && data && data.venta_id) return { data, error: null };
+      ultimo = error || new Error('Sin respuesta del servidor');
+      // Errores de datos (no de conexión): no tiene sentido reintentar.
+      if (error && error.code && !/^(08|57|53|40)/.test(error.code)) break;
+    } catch (e) { ultimo = e; }
+  }
+  if (ultimo && !ultimo.code && /fetch|network|conex/i.test(String(ultimo.message || ultimo))) {
+    ultimo = new Error('Sin conexión: no se pudo confirmar la venta. Revisa la lista de Ventas antes de repetirla (si aparece, ya quedó guardada completa).');
+  }
+  return { data: null, error: ultimo };
+}
+
 function _ventaRepetidaMsg(e) {
   // La base responde 23505 cuando esa venta ya quedó guardada
   return (e && e.code === '23505') ? (e.message || 'Esta venta ya está guardada. Revisa la lista de Ventas.') : null;
@@ -5871,25 +5893,15 @@ async function _confirmarVentaInterno(conImpresion) {
       ...((!esFiado && Number(r.retencionIr) > 0) ? { retencion_ir_monto: r.retencionIr, retencion_ir_porcentaje: r.retencionPct } : {}),
     };
 
-    let ventaNueva, errVenta;
-    ({ data: ventaNueva, error: errVenta } = await sb
-      .from('ventas').insert(ventaPayloadConIva).select('id').single());
-
-    if (errVenta) {
-      // Reintentar sin columnas iva_* por si no existen en el esquema
-      ({ data: ventaNueva, error: errVenta } = await sb
-        .from('ventas').insert(ventaPayload).select('id').single());
-    }
-    if (errVenta) throw errVenta;
-
-    const ventaId = ventaNueva.id;
+    let ventaId = null;
 
     /* ----------------------------------------------------------
-       PASO D: Insertar detalles de venta
+       PASO D: Productos de la venta (se guardan JUNTO con la venta,
+       en una sola operación del servidor — ver PASO C+D+E+F abajo)
     ---------------------------------------------------------- */
     const detallesPayload = S.carrito.map(item => ({
       auth_user_id:   S.userId,
-      venta_id:       ventaId,
+      venta_id:       null,
       // Un combo o una promoción vendida como línea propia no existen
       // como fila en "productos" — se guarda su id en combo_id o
       // promocion_id en vez de producto_id. tipo_item solo acepta
@@ -5920,14 +5932,83 @@ async function _confirmarVentaInterno(conImpresion) {
       unidad_pedida:   item.cantidadPedida ? (item.unidadPedida || null) : null,
     }));
 
-    let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
-    if (errDetalles) {
-      // Reintentar sin columnas escala_*/combo_id/promocion_id/vendido_sin_stock por si la migración aún no llegó a este entorno
-      ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
-      ));
+    /* ----------------------------------------------------------
+       PASO E (preparación): qué inventario se descuenta. El servidor
+       lo resta sobre la existencia REAL del momento (antes se usaba la
+       que la página cargó al abrirse y una venta podía pisar a otra).
+    ---------------------------------------------------------- */
+    const stockPayload = construirStockDeVenta(S.carrito);
+
+    /* ----------------------------------------------------------
+       PASO F (preparación): movimiento(s) de Caja
+       (El monto que entra a caja es el TOTAL menos el IVA — el IVA
+       se acumula aparte en el módulo de Impuestos, no en caja)
+    ---------------------------------------------------------- */
+    const montoIva  = Number(r.impuestos) || 0;
+    // Retención de IR del cliente: no entra a Caja (la retiene el cliente). En fiado se ignora.
+    const retIrMonto = esFiado ? 0 : (Number(r.retencionIr) || 0);
+    const montoCaja = round2(Number(r.total) - montoIva - retIrMonto);
+    const cajaPayload = [];
+    // Fiado: el dinero todavía no entró, así que no se registra nada en Caja ahora.
+    if (!esFiado) {
+      if (esPagoSeparado) {
+        // Un movimiento de caja POR CADA método usado. La última línea se
+        // lleva lo que sobre del reparto proporcional, para que la suma
+        // cuadre exacto con montoCaja sin arrastre de redondeo.
+        const baseSepCaja = Number(r.cobrar != null ? r.cobrar : r.total);
+        const ratioCaja = baseSepCaja > 0 ? montoCaja / baseSepCaja : 0;
+        const lineasConMonto = S.pagoSeparadoLineas.filter(l => l.monto > 0);
+        let montoCajaAsignado = 0;
+        for (let i = 0; i < lineasConMonto.length; i++) {
+          const linea = lineasConMonto[i];
+          const esUltima = i === lineasConMonto.length - 1;
+          const montoCajaLinea = esUltima ? round2(montoCaja - montoCajaAsignado) : round2(linea.monto * ratioCaja);
+          montoCajaAsignado = round2(montoCajaAsignado + montoCajaLinea);
+          cajaPayload.push({
+            concepto:           `Venta ${S.numeroVenta} — ${linea.metodoNombre} (pago separado)`,
+            monto:              montoCajaLinea,
+            metodo_pago_id:     linea.metodoId,
+            metodo_pago_nombre: linea.metodoNombre,
+            banco_id:           linea.bancoId || null,
+            monto_moneda_banco: linea.bancoId ? _psMontoBanco(linea) : null,
+            observaciones:      [S.observaciones, _psNota(linea)].filter(Boolean).join(' · ') || null,
+            fecha:              fechaVentaElegida,
+          });
+        }
+      } else {
+        cajaPayload.push({
+          concepto:           (montoIva>0 || retIrMonto>0) ? `Venta ${S.numeroVenta} (neto de ${[montoIva>0?'IVA':'', retIrMonto>0?'retención IR':''].filter(Boolean).join(' y ')})` : `Venta ${S.numeroVenta}`,
+          monto:              montoCaja,
+          metodo_pago_id:     S.metodoPagoId || null,
+          metodo_pago_nombre: S.metodoPagoNombre,
+          banco_id:           bancoElegidoVenta,
+          monto_moneda_banco: bancoElegidoVenta ? (S._montoBancoConvertido ?? null) : null,
+          observaciones:      S.observaciones || null,
+          fecha:              fechaVentaElegida,
+        });
+      }
     }
-    if (errDetalles) { await anularVentaIncompleta(sb, S.userId, ventaNueva?.id); throw errDetalles; }
+
+    // FIADO: la deuda se anota en el módulo de Fiados, enlazada a esta venta.
+    const fiadoPayload = esFiado ? {
+      cliente_id: S.clienteId || null, cliente_nombre: S.clienteNombre || 'Cliente',
+      tipo: 'productos', descripcion: S.carrito.map(i => `${i.cantidad} ${i.nombre}`).join(', ').slice(0, 200),
+      monto_total: r.total, monto_pagado: 0, saldo: r.total,
+      estado: 'pendiente', fecha: fechaVentaElegida, creado_por_nombre: obtenerNombrePerfilActivo(),
+    } : null;
+
+    /* ----------------------------------------------------------
+       PASO C+D+E+F+G: venta, productos, inventario, Caja, historial del
+       cliente y fiado en UNA sola operación del servidor: o se guarda
+       todo o no se guarda nada (antes, si la página se cerraba o se caía
+       el internet a la mitad, la venta quedaba a medias).
+    ---------------------------------------------------------- */
+    const reg = await registrarVentaAtomica(ventaPayloadConIva, detallesPayload, stockPayload, cajaPayload, S.clienteId ? r.total : null, fiadoPayload);
+    if (reg.error) throw reg.error;
+    ventaId = reg.data.venta_id;
+    detallesPayload.forEach(d => { d.venta_id = ventaId; });
+    const ultimoMovId = (reg.data.caja_ids || []).slice(-1)[0] || null;
+    (reg.data.avisos || []).forEach(a => console.warn('Venta:', a));
 
     // Descontar el lote especifico usado (FEFO, Farmacia fase 2) --
     // aislado: si algo fallara aqui, la venta YA se confirmo
@@ -5941,6 +6022,16 @@ async function _confirmarVentaInterno(conImpresion) {
         }
       }
     } catch (eLote) { console.warn('Descuento de lote FEFO:', eLote); }
+
+    // Si el negocio maneja lotes y vencimientos, se descuenta
+    // automáticamente del lote que vence primero (FEFO) — capa aparte,
+    // nunca afecta el stock_actual (que ya descontó el servidor).
+    if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
+      for (const item of S.carrito.filter(i => i.tipo === 'producto' && !i.esCombo && !i.esPromocion && !i.origenStockId)) {
+        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
+          .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
+      }
+    }
 
     // Vincular la receta elegida (Farmacia fase 2) -- aislado: si
     // algo fallara aqui, la venta YA se confirmo, no se revierte nada.
@@ -5979,174 +6070,9 @@ async function _confirmarVentaInterno(conImpresion) {
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
     await registrarNumerosDeSerie(ventaId, S.clienteId || null, fechaVentaElegida);
 
-    /* ----------------------------------------------------------
-       PASO E: Actualizar stock de PRODUCTOS (no servicios) y, para
-       los combos vendidos, el stock de CADA producto que los compone
-       (cantidad del componente × cantidad de combos vendidos).
-    ---------------------------------------------------------- */
-    const productosVendidos = S.carrito.filter(i => i.tipo==='producto' && !i.esCombo);
-    for (const item of productosVendidos) {
-      if (item.origenStockId) {
-        // Stock Compartido: esta línea se descuenta de OTRA sucursal/
-        // bodega del grupo, no de esta cuenta — la venta en sí queda
-        // igual, registrada aquí, solo cambia de dónde sale el stock.
-        try {
-          const { error: errRemoto } = await sb.rpc('descontar_stock_remoto', {
-            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: unidadesInventario(item),
-          });
-          if (errRemoto) console.warn('Error descontando stock remoto:', item.nombre, errRemoto);
-        } catch (eRemoto) { console.warn('Error descontando stock remoto:', item.nombre, eRemoto); }
-        continue; // nunca se toca el stock local de este ítem
-      }
-      const prod = S.productosCache.find(p => p.id===item.id);
-      if (!prod) continue;
-      const nuevoStock = parseFloat(prod.stock_actual||0) - unidadesInventario(item);
-      const { error: errStock } = await sb.from('productos')
-        .update({ stock_actual: Math.max(0, nuevoStock) })
-        .eq('id', item.id).eq('auth_user_id', S.userId);
-      if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
-      // Actualizar caché local
-      prod.stock_actual = Math.max(0, nuevoStock);
-
-      // Si el negocio maneja lotes y vencimientos, se descuenta
-      // automáticamente del lote que vence primero (FEFO) — es una
-      // capa aparte, nunca afecta el stock_actual de arriba, que ya
-      // se actualizó igual que siempre. Si el producto no tiene
-      // lotes registrados, esto simplemente no hace nada.
-      if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
-        sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
-          .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
-      }
-    }
-
-    const combosVendidos = S.carrito.filter(i => i.esCombo);
-    for (const combo of combosVendidos) {
+    // Comisión bancaria (si el método de pago tiene una configurada) -- aislado.
+    if (ultimoMovId && !reg.data.ya_existia) {
       try {
-        const { data: itemsCombo } = await sb.from('combo_items')
-          .select('producto_id, cantidad').eq('combo_id', combo.id).eq('auth_user_id', S.userId);
-        for (const compItem of (itemsCombo || [])) {
-          const { data: prodActual } = await sb.from('productos')
-            .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
-          if (!prodActual) continue;
-          const descuentoTotal = Number(compItem.cantidad) * combo.cantidad;
-          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
-          await sb.from('productos').update({ stock_actual: nuevoStock })
-            .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
-        }
-      } catch (eCombo) {
-        console.warn('No se pudo descontar el stock de los componentes del combo:', combo.nombre, eCombo);
-      }
-    }
-
-    // Promociones vendidas como línea única — el carrito ya trae
-    // guardado cuáles productos reales y en qué cantidad componen esa
-    // promoción (componentesPromo), así que no hace falta volver a
-    // consultar nada: se descuenta directo.
-    const promocionesVendidas = S.carrito.filter(i => i.esPromocion);
-    for (const promo of promocionesVendidas) {
-      try {
-        for (const comp of (promo.componentesPromo || [])) {
-          const { data: prodActual } = await sb.from('productos')
-            .select('stock_actual, tipo').eq('id', comp.producto_id).eq('auth_user_id', S.userId).maybeSingle();
-          if (!prodActual || prodActual.tipo !== 'producto') continue;
-          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - Number(comp.cantidad));
-          await sb.from('productos').update({ stock_actual: nuevoStock })
-            .eq('id', comp.producto_id).eq('auth_user_id', S.userId);
-        }
-      } catch (ePromo) {
-        console.warn('No se pudo descontar el stock de los componentes de la promoción:', promo.nombre, ePromo);
-      }
-    }
-
-    /* ----------------------------------------------------------
-       PASO F: Registrar movimiento en Caja
-       (El monto que entra a caja es el TOTAL menos el IVA — el IVA
-       se acumula aparte en el módulo de Impuestos, no en caja)
-    ---------------------------------------------------------- */
-    const montoIva  = Number(r.impuestos) || 0;
-    // Retención de IR del cliente: no entra a Caja (la retiene el cliente). En fiado se ignora.
-    const retIrMonto = esFiado ? 0 : (Number(r.retencionIr) || 0);
-    const montoCaja = round2(Number(r.total) - montoIva - retIrMonto);
-
-    // Fiado: el dinero todavía no entró, así que no se registra nada en Caja ahora.
-    if (!esFiado) try {
-      // Obtener saldo actual de caja
-      const { data: ultMov } = await sb.from('movimientos_financieros')
-        .select('saldo_resultante')
-        .eq('auth_user_id', S.userId).eq('estado','completado')
-        .order('created_at',{ ascending:false }).limit(1).maybeSingle();
-
-      let saldoCorriente = ultMov ? Number(ultMov.saldo_resultante) : 0;
-      let ultimoMovId = null;
-
-      if (esPagoSeparado) {
-        // Un movimiento de caja POR CADA método usado, encadenando el
-        // saldo correctamente entre ellos. La última línea se lleva lo
-        // que sobre del reparto proporcional, para que la suma cuadre
-        // exacto con montoCaja sin arrastre de redondeo.
-        const baseSepCaja = Number(r.cobrar != null ? r.cobrar : r.total);
-        const ratioCaja = baseSepCaja > 0 ? montoCaja / baseSepCaja : 0;
-        const lineasConMonto = S.pagoSeparadoLineas.filter(l => l.monto > 0);
-        let montoCajaAsignado = 0;
-
-        for (let i = 0; i < lineasConMonto.length; i++) {
-          const linea = lineasConMonto[i];
-          const esUltima = i === lineasConMonto.length - 1;
-          const montoCajaLinea = esUltima ? round2(montoCaja - montoCajaAsignado) : round2(linea.monto * ratioCaja);
-          montoCajaAsignado = round2(montoCajaAsignado + montoCajaLinea);
-
-          const saldoAntLinea = saldoCorriente;
-          const saldoResLinea = round2(saldoCorriente + montoCajaLinea);
-          saldoCorriente = saldoResLinea;
-
-          const { data: movLinea } = await N360CajaSegura.insertarMovimiento(sb, {
-            auth_user_id:       S.userId,
-            tipo_flujo:         'INGRESO',
-            tipo_movimiento:    'VENTA',
-            concepto:           `Venta ${S.numeroVenta} — ${linea.metodoNombre} (pago separado)`,
-            monto:              montoCajaLinea,
-            saldo_anterior:     saldoAntLinea,
-            saldo_resultante:   saldoResLinea,
-            metodo_pago_id:     linea.metodoId,
-            metodo_pago_nombre: linea.metodoNombre,
-            banco_id:           linea.bancoId || null,
-            monto_moneda_banco: linea.bancoId ? _psMontoBanco(linea) : null,
-            referencia_tipo:    'venta',
-            referencia_id:      ventaId,
-            observaciones:      [S.observaciones, _psNota(linea)].filter(Boolean).join(' · ') || null,
-            fecha:              fechaVentaElegida,
-          }, { etiqueta: 'La venta ' + S.numeroVenta });
-          ultimoMovId = movLinea?.id || ultimoMovId;
-        }
-      } else {
-        const saldoAnt = saldoCorriente;
-        const saldoRes = round2(saldoCorriente + montoCaja);
-
-        const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sb, {
-          auth_user_id:       S.userId,
-          tipo_flujo:         'INGRESO',
-          tipo_movimiento:    'VENTA',
-          concepto:           (montoIva>0 || retIrMonto>0) ? `Venta ${S.numeroVenta} (neto de ${[montoIva>0?'IVA':'', retIrMonto>0?'retención IR':''].filter(Boolean).join(' y ')})` : `Venta ${S.numeroVenta}`,
-          monto:              montoCaja,
-          saldo_anterior:     saldoAnt,
-          saldo_resultante:   saldoRes,
-          metodo_pago_id:     S.metodoPagoId || null,
-          metodo_pago_nombre: S.metodoPagoNombre,
-          banco_id:           bancoElegidoVenta,
-          monto_moneda_banco: bancoElegidoVenta ? (S._montoBancoConvertido ?? null) : null,
-          referencia_tipo:    'venta',
-          referencia_id:      ventaId,
-          observaciones:      S.observaciones || null,
-          fecha:              fechaVentaElegida,
-        }, { etiqueta: 'La venta ' + S.numeroVenta });
-        ultimoMovId = movNuevo?.id || null;
-      }
-
-      // Guardar referencia en la venta
-      if (ultimoMovId) {
-        await sb.from('ventas').update({ referencia_caja: ultimoMovId }).eq('id', ventaId);
-
-        // Comisión bancaria (si el método de pago tiene una configurada)
         await registrarComisionBancaria({
           metodoPagoId: S.metodoPagoId, metodoNombre: S.metodoPagoNombre,
           totalVenta: Number(r.total) || 0, numeroVenta: S.numeroVenta,
@@ -6154,15 +6080,13 @@ async function _confirmarVentaInterno(conImpresion) {
           bancoId: S.bancoElegidoId || null, bancoNombre: S.bancoElegidoNombre || null,
           comisionMonto: S._comisionBancoMonto || 0, comisionPct: S._comisionBancoPct,
         });
-      }
-    } catch(eCaja) {
-      console.warn('No se pudo registrar en caja (caja.js lo manejará):', eCaja);
+      } catch (eCom) { console.warn('Comisión bancaria:', eCom); }
     }
 
     /* ----------------------------------------------------------
        PASO F-2: Registrar el IVA en el módulo de Impuestos
     ---------------------------------------------------------- */
-    if (montoIva > 0) {
+    if (montoIva > 0 && !reg.data.ya_existia) {
       const ivaSolo = round2(Number(r.ivaMonto != null ? r.ivaMonto : montoIva));
       if (ivaSolo > 0) await registrarMovimientoImpuesto(S.userId, ivaSolo, ventaId, S.numeroVenta);
       // Otros impuestos (IR, etc.): cada uno en su propia línea, y detalle por venta para Contabilidad
@@ -6179,7 +6103,7 @@ async function _confirmarVentaInterno(conImpresion) {
     }
 
     // Retención de IR que me hizo el cliente (a favor). Aparte del IVA; no toca Caja ni el total.
-    if (retIrMonto > 0) {
+    if (retIrMonto > 0 && !reg.data.ya_existia) {
       try {
         const { error: eRet } = await sb.from('retenciones_ir').insert({
           auth_user_id: S.userId, lado: 'a_favor', origen: 'venta', venta_id: ventaId, estado: 'pendiente',
@@ -6189,42 +6113,6 @@ async function _confirmarVentaInterno(conImpresion) {
         if (eRet) throw eRet;
       } catch (eR) { console.warn('No se pudo registrar la retención de IR:', eR); showToast('La venta se guardó, pero no se pudo registrar la retención de IR. Revísala en Impuestos.', 'warning'); }
     }
-
-    /* ----------------------------------------------------------
-       PASO G: Actualizar cliente (historial de compras)
-    ---------------------------------------------------------- */
-    if (S.clienteId) {
-      try {
-        // Incrementar total y número de compras del cliente
-        const { data: cliente } = await sb.from('clientes')
-          .select('total_compras,num_compras').eq('id',S.clienteId).maybeSingle();
-        if (cliente) {
-          await sb.from('clientes').update({
-            total_compras: (Number(cliente.total_compras)||0) + r.total,
-            num_compras:   (Number(cliente.num_compras)||0)   + 1,
-          }).eq('id', S.clienteId).eq('auth_user_id', S.userId);
-        }
-      } catch(eCliente) { console.warn('Error actualizando cliente:', eCliente); }
-    }
-
-    /* ----------------------------------------------------------
-       FIADO: anotar la deuda en el módulo de Fiados (enlazada a esta venta)
-    ---------------------------------------------------------- */
-    if (esFiado) {
-      try {
-        const desc = S.carrito.map(i => `${i.cantidad} ${i.nombre}`).join(', ').slice(0, 200);
-        const { error: errFiado } = await sb.from('fiados').insert({
-          auth_user_id: S.userId, cliente_id: S.clienteId || null, cliente_nombre: S.clienteNombre || 'Cliente',
-          tipo: 'productos', descripcion: desc, monto_total: r.total, monto_pagado: 0, saldo: r.total,
-          estado: 'pendiente', fecha: fechaVentaElegida, venta_id: ventaId, creado_por_nombre: obtenerNombrePerfilActivo(),
-        });
-        if (errFiado) throw errFiado;
-      } catch (eFiado) {
-        console.error('No se pudo anotar el fiado:', eFiado);
-        showToast('La venta se guardó, pero no se pudo anotar en Fiados. Anótalo desde el módulo Fiados.', 'error');
-      }
-    }
-
     /* ----------------------------------------------------------
        ÉXITO
     ---------------------------------------------------------- */
@@ -7406,17 +7294,9 @@ async function _confirmarVentaRapidaInterno() {
       iva_porcentaje: r.ivaActivo ? r.ivaPct : 0,
     };
 
-    let ventaNueva, errVenta;
-    ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayloadConIva).select('id').single());
-    if (errVenta) {
-      ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayload).select('id').single());
-    }
-    if (errVenta) throw errVenta;
-    const ventaId = ventaNueva.id;
-
     const detallesPayload = VR.carrito.map(item => ({
       auth_user_id:    S.userId,
-      venta_id:        ventaId,
+      venta_id:        null,
       producto_id:     (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:        item.esCombo ? item.id : null,
       promocion_id:    item.esPromocion ? item.id : null,
@@ -7439,159 +7319,79 @@ async function _confirmarVentaRapidaInterno() {
       cantidad_pedida: item.cantidadPedida || null,
       unidad_pedida:   item.cantidadPedida ? (item.unidadPedida || null) : null,
     }));
-    let { error: errDetalles } = await sb.from('venta_detalles').insert(detallesPayload);
-    if (errDetalles) {
-      // Reintentar sin columnas escala_*/combo_id/promocion_id/vendido_sin_stock por si la migración aún no llegó a este entorno
-      ({ error: errDetalles } = await sb.from('venta_detalles').insert(
-        detallesPayload.map(({ escala_id, escala_nombre, combo_id, promocion_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
-      ));
+
+    // Inventario: el servidor lo resta sobre la existencia REAL del momento.
+    const stockPayload = construirStockDeVenta(VR.carrito);
+
+    // Movimiento de caja (igual que en Nueva Venta)
+    const montoIva  = Number(r.impuesto) || 0;
+    const montoCaja = Number(r.total) - montoIva;
+    const cajaPayload = [];
+    if (esPagoSeparadoVR) {
+      const ratioCaja = Number(r.total) > 0 ? montoCaja / Number(r.total) : 0;
+      const lineasConMonto = VR.pagoSeparadoLineas.filter(l => l.monto > 0);
+      let montoCajaAsignado = 0;
+      for (let i = 0; i < lineasConMonto.length; i++) {
+        const linea = lineasConMonto[i];
+        const esUltima = i === lineasConMonto.length - 1;
+        const montoCajaLinea = esUltima ? round2(montoCaja - montoCajaAsignado) : round2(linea.monto * ratioCaja);
+        montoCajaAsignado = round2(montoCajaAsignado + montoCajaLinea);
+        cajaPayload.push({
+          concepto:           `Venta rápida ${VR.numeroVenta} — ${linea.metodoNombre} (pago separado)`,
+          monto:              montoCajaLinea,
+          metodo_pago_id:     linea.metodoId,
+          metodo_pago_nombre: linea.metodoNombre,
+          banco_id:           linea.bancoId || null,
+          monto_moneda_banco: linea.bancoId ? _psMontoBanco(linea) : null,
+          observaciones:      _psNota(linea) || null,
+          fecha:              fechaVentaElegidaVR,
+        });
+      }
+    } else {
+      cajaPayload.push({
+        concepto:           montoIva>0 ? `Venta rápida ${VR.numeroVenta} (neto de IVA)` : `Venta rápida ${VR.numeroVenta}`,
+        monto:              montoCaja,
+        metodo_pago_id:     VR.metodoPagoId || null,
+        metodo_pago_nombre: VR.metodoPagoNombre,
+        banco_id:           bancoElegidoVR,
+        monto_moneda_banco: bancoElegidoVR ? (VR._montoBancoConvertido ?? null) : null,
+        fecha:              fechaVentaElegidaVR,
+      });
     }
-    if (errDetalles) { await anularVentaIncompleta(sb, S.userId, ventaNueva?.id); throw errDetalles; }
+
+    // Venta, productos, inventario y Caja en UNA sola operación del servidor (todo o nada).
+    const reg = await registrarVentaAtomica(ventaPayloadConIva, detallesPayload, stockPayload, cajaPayload, null, null);
+    if (reg.error) throw reg.error;
+    const ventaId = reg.data.venta_id;
+    detallesPayload.forEach(d => { d.venta_id = ventaId; });
+    const ultimoMovId = (reg.data.caja_ids || []).slice(-1)[0] || null;
+    (reg.data.avisos || []).forEach(a => console.warn('Venta rápida:', a));
 
     // Números de serie recolectados (si la función está activa y el
     // carrito los necesitaba) -- si nadie los pidió, esto no hace nada.
     await registrarNumerosDeSerie(ventaId, null, fechaVentaElegidaVR);
 
-    // Actualizar stock (solo productos normales, no servicios ni combos)
-    for (const item of VR.carrito.filter(i => i.tipo==='producto' && !i.esCombo)) {
-      if (item.origenStockId) {
-        try {
-          const { error: errRemoto } = await sb.rpc('descontar_stock_remoto', {
-            p_sucursal_id: item.origenStockId, p_nombre_producto: item.nombre, p_cantidad: unidadesInventario(item),
-          });
-          if (errRemoto) console.warn('Error descontando stock remoto:', item.nombre, errRemoto);
-        } catch (eRemoto) { console.warn('Error descontando stock remoto:', item.nombre, eRemoto); }
-        continue;
-      }
-      const nuevoStock = Math.max(0, item.stockDisponible - unidadesInventario(item));
-      const { error: errStock } = await sb.from('productos')
-        .update({ stock_actual: nuevoStock }).eq('id', item.id).eq('auth_user_id', S.userId);
-      if (errStock) console.warn('Error actualizando stock:', item.nombre, errStock);
-
-      if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
+    if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
+      for (const item of VR.carrito.filter(i => i.tipo === 'producto' && !i.esCombo && !i.esPromocion && !i.origenStockId)) {
         sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
           .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
       }
     }
 
-    // Combos vendidos: descontar el stock de CADA producto que los
-    // compone (cantidad del componente × cantidad de combos vendidos).
-    for (const combo of VR.carrito.filter(i => i.esCombo)) {
+    // Comisión bancaria (si el método de pago tiene una configurada) -- aislado.
+    if (ultimoMovId && !reg.data.ya_existia) {
       try {
-        const { data: itemsCombo } = await sb.from('combo_items')
-          .select('producto_id, cantidad').eq('combo_id', combo.id).eq('auth_user_id', S.userId);
-        for (const compItem of (itemsCombo || [])) {
-          const { data: prodActual } = await sb.from('productos')
-            .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', S.userId).maybeSingle();
-          if (!prodActual) continue;
-          const descuentoTotal = Number(compItem.cantidad) * combo.cantidad;
-          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
-          await sb.from('productos').update({ stock_actual: nuevoStock })
-            .eq('id', compItem.producto_id).eq('auth_user_id', S.userId);
-        }
-      } catch (eCombo) {
-        console.warn('No se pudo descontar el stock de los componentes del combo:', combo.nombre, eCombo);
-      }
+        await registrarComisionBancaria({
+          metodoPagoId: VR.metodoPagoId, metodoNombre: VR.metodoPagoNombre,
+          totalVenta: Number(r.total) || 0, numeroVenta: VR.numeroVenta,
+          ventaId: ventaId, fecha: fechaVentaElegidaVR,
+          bancoId: VR.bancoElegidoId || null, bancoNombre: VR.bancoElegidoNombre || null,
+          comisionMonto: VR._comisionBancoMonto || 0, comisionPct: VR._comisionBancoPct,
+        });
+      } catch (eCom) { console.warn('Comisión bancaria:', eCom); }
     }
 
-    // Promociones vendidas como línea única (mismo mecanismo que en
-    // Nueva Venta) — usa lo que ya viene guardado en el carrito, sin
-    // volver a consultar nada.
-    for (const promo of VR.carrito.filter(i => i.esPromocion)) {
-      try {
-        for (const comp of (promo.componentesPromo || [])) {
-          const { data: prodActual } = await sb.from('productos')
-            .select('stock_actual, tipo').eq('id', comp.producto_id).eq('auth_user_id', S.userId).maybeSingle();
-          if (!prodActual || prodActual.tipo !== 'producto') continue;
-          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - Number(comp.cantidad));
-          await sb.from('productos').update({ stock_actual: nuevoStock })
-            .eq('id', comp.producto_id).eq('auth_user_id', S.userId);
-        }
-      } catch (ePromo) {
-        console.warn('No se pudo descontar el stock de los componentes de la promoción:', promo.nombre, ePromo);
-      }
-    }
-
-    // Movimiento de caja (igual que en Nueva Venta)
-    const montoIva  = Number(r.impuesto) || 0;
-    const montoCaja = Number(r.total) - montoIva;
-    try {
-      const { data: ultMov } = await sb.from('movimientos_financieros')
-        .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado','completado')
-        .order('created_at',{ ascending:false }).limit(1).maybeSingle();
-
-      let saldoCorriente = ultMov ? Number(ultMov.saldo_resultante) : 0;
-      let ultimoMovId = null;
-
-      if (esPagoSeparadoVR) {
-        const ratioCaja = Number(r.total) > 0 ? montoCaja / Number(r.total) : 0;
-        const lineasConMonto = VR.pagoSeparadoLineas.filter(l => l.monto > 0);
-        let montoCajaAsignado = 0;
-
-        for (let i = 0; i < lineasConMonto.length; i++) {
-          const linea = lineasConMonto[i];
-          const esUltima = i === lineasConMonto.length - 1;
-          const montoCajaLinea = esUltima ? round2(montoCaja - montoCajaAsignado) : round2(linea.monto * ratioCaja);
-          montoCajaAsignado = round2(montoCajaAsignado + montoCajaLinea);
-
-          const saldoAntLinea = saldoCorriente;
-          const saldoResLinea = round2(saldoCorriente + montoCajaLinea);
-          saldoCorriente = saldoResLinea;
-
-          const { data: movLinea } = await N360CajaSegura.insertarMovimiento(sb, {
-            auth_user_id:       S.userId,
-            tipo_flujo:         'INGRESO',
-            tipo_movimiento:    'VENTA',
-            concepto:           `Venta rápida ${VR.numeroVenta} — ${linea.metodoNombre} (pago separado)`,
-            monto:              montoCajaLinea,
-            saldo_anterior:     saldoAntLinea,
-            saldo_resultante:   saldoResLinea,
-            metodo_pago_id:     linea.metodoId,
-            metodo_pago_nombre: linea.metodoNombre,
-            banco_id:           linea.bancoId || null,
-            monto_moneda_banco: linea.bancoId ? _psMontoBanco(linea) : null,
-            referencia_tipo:    'venta',
-            referencia_id:      ventaId,
-            observaciones:      _psNota(linea) || null,
-            fecha:              fechaVentaElegidaVR,
-          }, { etiqueta: 'La venta ' + VR.numeroVenta });
-          ultimoMovId = movLinea?.id || ultimoMovId;
-        }
-      } else {
-        const saldoAnt = saldoCorriente;
-        const saldoRes = round2(saldoCorriente + montoCaja);
-        const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sb, {
-          auth_user_id:       S.userId,
-          tipo_flujo:         'INGRESO',
-          tipo_movimiento:    'VENTA',
-          concepto:           montoIva>0 ? `Venta rápida ${VR.numeroVenta} (neto de IVA)` : `Venta rápida ${VR.numeroVenta}`,
-          monto:              montoCaja,
-          saldo_anterior:     saldoAnt,
-          saldo_resultante:   saldoRes,
-          metodo_pago_id:     VR.metodoPagoId || null,
-          metodo_pago_nombre: VR.metodoPagoNombre,
-          banco_id:           bancoElegidoVR,
-          monto_moneda_banco: bancoElegidoVR ? (VR._montoBancoConvertido ?? null) : null,
-          referencia_tipo:    'venta',
-          referencia_id:      ventaId,
-          fecha:              fechaVentaElegidaVR,
-        }, { etiqueta: 'La venta ' + VR.numeroVenta });
-        ultimoMovId = movNuevo?.id || null;
-      }
-
-      if (ultimoMovId) await sb.from('ventas').update({ referencia_caja: ultimoMovId }).eq('id', ventaId);
-
-      // Comisión bancaria (si el método de pago tiene una configurada)
-      await registrarComisionBancaria({
-        metodoPagoId: VR.metodoPagoId, metodoNombre: VR.metodoPagoNombre,
-        totalVenta: Number(r.total) || 0, numeroVenta: VR.numeroVenta,
-        ventaId: ventaId, fecha: fechaVentaElegidaVR,
-        bancoId: VR.bancoElegidoId || null, bancoNombre: VR.bancoElegidoNombre || null,
-        comisionMonto: VR._comisionBancoMonto || 0, comisionPct: VR._comisionBancoPct,
-      });
-    } catch(eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
-
-    if (montoIva > 0) {
+    if (montoIva > 0 && !reg.data.ya_existia) {
       await registrarMovimientoImpuesto(S.userId, montoIva, ventaId, VR.numeroVenta);
     }
 
