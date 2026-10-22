@@ -1,0 +1,1307 @@
+diff --git a/comision-pago-tarjeta.js b/comision-pago-tarjeta.js
+new file mode 100644
+index 0000000..a72af9d
+--- /dev/null
++++ b/comision-pago-tarjeta.js
+@@ -0,0 +1,186 @@
++/* ============================================================
++   COMISIÓN POR PAGAR CON TARJETA (egresos) — OPCIONAL
++   ------------------------------------------------------------
++   Cuando el negocio PAGA con tarjeta (un gasto, una compra, un pago a
++   proveedor) normalmente no hay comisión. A veces el proveedor sí la
++   cobra: entonces se marca la casilla y se indica el % o el monto.
++
++   - Solo aparece si el método de pago es tarjeta; apagada por defecto.
++   - Se registra igual que cualquier gasto: una fila en "gastos"
++     (categoría "Comisiones bancarias", ligada a la operación que la
++     originó con origen_tipo/origen_id) + su EGRESO en Caja ligado al
++     gasto, del mismo banco. Así aparece una sola vez en Gastos,
++     reportes y Contabilidad, y cuadra con Caja y con el banco.
++   - Si la operación original se anula/cancela, anular() cancela el gasto
++     de la comisión y anula su egreso.
++
++   Uso en cada módulo:
++     N360ComisionPago.montar({ prefijo, despuesDe, metodo, monto });
++     const com = N360ComisionPago.leer(prefijo);          // null si no aplica
++     await N360ComisionPago.registrar(sb, { ...datos, comision: com });
++     await N360ComisionPago.anular(sb, userId, origenTipo, origenId, motivo);
++   ============================================================ */
++(function () {
++  'use strict';
++  if (window.N360ComisionPago) return;
++
++  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
++  const montados = {};
++
++  const esTarjeta = (nombre) => String(nombre || '').toLowerCase().includes('tarjeta');
++
++  function nombreMetodo(sel) {
++    if (!sel) return '';
++    const op = sel.selectedOptions && sel.selectedOptions[0];
++    return (op && (op.dataset.nombre || op.textContent)) || '';
++  }
++
++  // cfg: { prefijo, despuesDe (id del elemento tras el que va), metodo (id del
++  // <select> de método), monto (id del input del monto, o función que lo devuelve) }
++  function montar(cfg) {
++    const ancla = document.getElementById(cfg.despuesDe);
++    if (!ancla || montados[cfg.prefijo]) return;
++    const wrap = document.createElement('div');
++    wrap.className = 'form-group';
++    wrap.id = `${cfg.prefijo}-comision-tarjeta-wrap`;
++    wrap.style.display = 'none';
++    wrap.innerHTML = `
++      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400">
++        <input type="checkbox" id="${cfg.prefijo}-com-chk" style="width:auto"/>
++        El proveedor me cobra una comisión por pagar con tarjeta (opcional)
++      </label>
++      <div id="${cfg.prefijo}-com-campos" style="display:none;margin-top:6px;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px">
++        <input type="number" id="${cfg.prefijo}-com-pct" min="0" max="100" step="0.01" placeholder="%" style="width:80px"/> <span>%</span>
++        <span>=</span>
++        <input type="number" id="${cfg.prefijo}-com-monto" min="0" step="0.01" placeholder="0.00" style="width:120px"/>
++        <div style="flex-basis:100%;font-size:11.5px;color:var(--text-muted)">Se registra aparte como gasto "Comisiones bancarias" y sale del mismo banco.</div>
++      </div>`;
++    ancla.insertAdjacentElement('afterend', wrap);
++    const st = { cfg, wrap, manual: false };
++    montados[cfg.prefijo] = st;
++    const $ = (s) => document.getElementById(`${cfg.prefijo}-com-${s}`);
++    $('chk').addEventListener('change', () => { $('campos').style.display = $('chk').checked ? 'flex' : 'none'; });
++    $('pct').addEventListener('input', () => { st.manual = false; recalcular(cfg.prefijo); });
++    $('monto').addEventListener('input', () => { st.manual = true; });
++    const sel = document.getElementById(cfg.metodo);
++    if (sel) sel.addEventListener('change', () => actualizar(cfg.prefijo));
++    const inp = typeof cfg.monto === 'string' ? document.getElementById(cfg.monto) : null;
++    if (inp) inp.addEventListener('input', () => recalcular(cfg.prefijo));
++    actualizar(cfg.prefijo);
++  }
++
++  function base(st) {
++    const m = typeof st.cfg.monto === 'function' ? st.cfg.monto() : document.getElementById(st.cfg.monto)?.value;
++    return Number(String(m == null ? '' : m).replace(',', '.')) || 0;
++  }
++
++  function recalcular(prefijo) {
++    const st = montados[prefijo]; if (!st || st.manual) return;
++    const pct = parseFloat(document.getElementById(`${prefijo}-com-pct`).value);
++    document.getElementById(`${prefijo}-com-monto`).value = pct > 0 ? r2(base(st) * pct / 100).toFixed(2) : '';
++  }
++
++  // Muestra la opción solo con tarjeta; con otro método se apaga sola.
++  function actualizar(prefijo) {
++    const st = montados[prefijo]; if (!st) return;
++    const tarjeta = esTarjeta(nombreMetodo(document.getElementById(st.cfg.metodo)));
++    st.wrap.style.display = tarjeta ? '' : 'none';
++    if (!tarjeta) limpiar(prefijo);
++  }
++
++  function limpiar(prefijo) {
++    const st = montados[prefijo]; if (!st) return;
++    document.getElementById(`${prefijo}-com-chk`).checked = false;
++    document.getElementById(`${prefijo}-com-campos`).style.display = 'none';
++    document.getElementById(`${prefijo}-com-pct`).value = '';
++    document.getElementById(`${prefijo}-com-monto`).value = '';
++    st.manual = false;
++  }
++
++  // Devuelve null si no aplica; { monto, pct } si se marcó. Lanza Error si falta un dato.
++  function leer(prefijo) {
++    const st = montados[prefijo]; if (!st) return null;
++    actualizar(prefijo);
++    if (st.wrap.style.display === 'none' || !document.getElementById(`${prefijo}-com-chk`).checked) return null;
++    const pctTxt = document.getElementById(`${prefijo}-com-pct`).value;
++    const pct = pctTxt === '' ? null : Math.min(100, Math.max(0, parseFloat(pctTxt) || 0));
++    const monto = r2(parseFloat(document.getElementById(`${prefijo}-com-monto`).value));
++    if (!(monto > 0)) throw new Error('Indica el monto de la comisión por pagar con tarjeta (o desmarca la casilla).');
++    const b = base(st);
++    if (b > 0 && monto >= b) throw new Error('La comisión no puede ser mayor o igual al monto pagado.');
++    return { monto, pct };
++  }
++
++  async function montoEnMonedaBanco(sb, userId, bancoId, monto) {
++    if (!bancoId) return null;
++    try {
++      const [{ data: b }, { data: cfg }] = await Promise.all([
++        sb.from('bancos').select('moneda').eq('id', bancoId).eq('auth_user_id', userId).maybeSingle(),
++        sb.from('configuracion_empresa').select('moneda, tasa_cambio_usd').eq('auth_user_id', userId).maybeSingle(),
++      ]);
++      const baseMon = cfg?.moneda === 'USD' ? 'USD' : 'NIO';
++      const mb = b?.moneda || 'NIO';
++      const tasa = Number(cfg?.tasa_cambio_usd || 0);
++      if (mb === baseMon || !tasa) return null;
++      return r2(baseMon === 'NIO' ? monto / tasa : monto * tasa);
++    } catch (_) { return null; }
++  }
++
++  // d: { userId, comision:{monto,pct}, fecha, metodoId, metodoNombre, bancoId, origenCaja,
++  //      descripcion (de qué fue el pago), origenTipo ('gasto'|'compra'|'pago_cxp'|'prima_cxp'), origenId }
++  // Devuelve { ok, gastoId } o { ok:false, error }. Gasto y egreso van juntos.
++  async function registrar(sb, d) {
++    const c = d && d.comision;
++    if (!c || !(c.monto > 0)) return { ok: true, gastoId: null };
++    if (!esTarjeta(d.metodoNombre)) return { ok: true, gastoId: null };
++    const concepto = `Comisión por pago con tarjeta${c.pct ? ` ${c.pct}%` : ''} — ${d.descripcion || ''}`.trim();
++    const fecha = d.fecha || new Date().toISOString().slice(0, 10);
++    const { data: gasto, error: eG } = await sb.from('gastos').insert({
++      auth_user_id: d.userId, tipo: 'inmediato', concepto, categoria: 'Comisiones bancarias', monto: c.monto, fecha,
++      metodo_pago_id: d.metodoId || null, metodo_pago_nombre: d.metodoNombre || null, estado: 'activo',
++      origen_tipo: d.origenTipo || null, origen_id: d.origenId || null,
++      observaciones: 'Comisión cobrada por el proveedor al pagar con tarjeta',
++    }).select('id').single();
++    if (eG || !gasto) return { ok: false, error: eG || new Error('No se guardó la comisión') };
++    const { data: ult } = await sb.from('movimientos_financieros').select('saldo_resultante')
++      .eq('auth_user_id', d.userId).eq('estado', 'completado').order('created_at', { ascending: false }).limit(1).maybeSingle();
++    const saldoAnt = Number(ult?.saldo_resultante) || 0;
++    const { data: mov, error: eM } = await sb.from('movimientos_financieros').insert({
++      auth_user_id: d.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'GASTO', concepto, monto: c.monto,
++      saldo_anterior: saldoAnt, saldo_resultante: r2(saldoAnt - c.monto),
++      metodo_pago_id: d.metodoId || null, metodo_pago_nombre: d.metodoNombre || null,
++      banco_id: d.bancoId || null, monto_moneda_banco: await montoEnMonedaBanco(sb, d.userId, d.bancoId, c.monto),
++      origen_caja: d.origenCaja || null, referencia_tipo: 'gasto', referencia_id: gasto.id, fecha, estado: 'completado',
++    }).select('id').single();
++    if (eM || !mov) {
++      // Sin su egreso, el gasto tampoco se queda (Caja y Gastos siempre iguales).
++      await sb.from('gastos').update({ estado: 'cancelado', cancelado_en: new Date().toISOString(), cancelado_motivo: 'No se pudo registrar en Caja' })
++        .eq('id', gasto.id).eq('auth_user_id', d.userId);
++      return { ok: false, error: eM || new Error('No se registró la comisión en Caja') };
++    }
++    await sb.from('gastos').update({ movimiento_financiero_id: mov.id }).eq('id', gasto.id).eq('auth_user_id', d.userId);
++    return { ok: true, gastoId: gasto.id };
++  }
++
++  // Cancela las comisiones de una operación (y anula sus egresos de Caja).
++  async function anular(sb, userId, origenTipo, origenId, motivo) {
++    if (!origenTipo || !origenId) return 0;
++    const ahora = new Date().toISOString();
++    const { data: gs, error } = await sb.from('gastos').select('id')
++      .eq('auth_user_id', userId).eq('origen_tipo', origenTipo).eq('origen_id', origenId).eq('estado', 'activo');
++    if (error) throw error;
++    for (const g of (gs || [])) {
++      const { error: e1 } = await sb.from('movimientos_financieros')
++        .update({ estado: 'anulado', anulado_en: ahora, anulado_motivo: motivo || 'Operación anulada' })
++        .eq('referencia_tipo', 'gasto').eq('referencia_id', g.id).eq('auth_user_id', userId).eq('estado', 'completado');
++      if (e1) throw e1;
++      const { error: e2 } = await sb.from('gastos')
++        .update({ estado: 'cancelado', cancelado_en: ahora, cancelado_motivo: motivo || 'Operación anulada' })
++        .eq('id', g.id).eq('auth_user_id', userId);
++      if (e2) throw e2;
++    }
++    return (gs || []).length;
++  }
++
++  window.N360ComisionPago = { montar, actualizar, leer, limpiar, registrar, anular, esTarjeta };
++})();
+diff --git a/compras.html b/compras.html
+index deeb5b1..d15bd63 100644
+--- a/compras.html
++++ b/compras.html
+@@ -2346,7 +2346,8 @@
+ <!-- SCRIPT -->
+ <script src="unidades-medida.js?v=20261008a"></script>
+ <script src="aviso-efectivo.js?v=20261013a"></script>
+-<script src="compras.js?v=20261016a"></script>
++<script src="comision-pago-tarjeta.js?v=20261022a"></script>
++<script src="compras.js?v=20261022a"></script>
+ <script>
+   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
+   const _nc7Sync = setInterval(() => {
+diff --git a/compras.js b/compras.js
+index 18dbf7e..b06e44e 100644
+--- a/compras.js
++++ b/compras.js
+@@ -855,6 +855,7 @@ function abrirNuevaCompra() {
+   resetNuevaCompraUI();
+   resetFormProductoNuevo();
+   mostrarPasoSeleccion();
++  montarComisionTarjetaCompra('nc', 'nc-banco-elegido-wrap', 'nc-metodo-pago', () => calcularTotales().total);
+   openModal('modal-nueva-compra');
+ 
+   hayCajaChicaAbiertaHoy().then(abierta => {
+@@ -1815,6 +1816,7 @@ function abrirCompraDirecta() {
+   document.getElementById('cd-banco').value = '';
+   STATE.proveedorSeleccionadoDirectaCompra = null;
+   populateMetodosSelect();
++  montarComisionTarjetaCompra('cd', 'cd-wrap-banco', 'cd-metodo-pago', 'cd-monto');
+   openModal('modal-compra-directa');
+ 
+   hayCajaChicaAbiertaHoy().then(abierta => {
+@@ -1898,6 +1900,9 @@ async function guardarCompraDirecta() {
+     if (!seguir) return;
+   }
+ 
++  let comision = null;
++  try { comision = leerComisionTarjetaCompra('cd'); } catch (eCom) { errEl.textContent = eCom.message; return; }
++
+   setBtnLoading('cd-btn-guardar', true);
+   try {
+     const { data: numData } = await sbClient.rpc('siguiente_numero_compra', { p_user_id: STATE.userId });
+@@ -1936,7 +1941,11 @@ async function guardarCompraDirecta() {
+       observaciones: `Proveedor: ${proveedor?.nombre || 'Sin proveedor'}`, fecha,
+     }).select().single();
+     if (errMov) showToast('La compra se guardó, pero no se pudo registrar en Caja: ' + errMov.message, 'error');
+-    else await sbClient.from('compras').update({ movimiento_caja_id: mov.id }).eq('id', compra.id);
++    else {
++      await sbClient.from('compras').update({ movimiento_caja_id: mov.id }).eq('id', compra.id);
++      await registrarComisionTarjetaCompra(comision, { fecha, metodoId: metodoPagoId, metodoNombre: metodoPagoNombre, bancoId: bancoPagoId,
++        origenCaja, descripcion: `Compra directa ${numero} — ${concepto}`, origenId: compra.id });
++    }
+ 
+     if (cdRet > 0) {
+       const { error: eRetD } = await sbClient.from('retenciones_ir').insert({
+@@ -1966,6 +1975,22 @@ async function guardarCompraDirecta() {
+   }
+ }
+ 
++// Comisión opcional por pagar con tarjeta (si el proveedor la cobra):
++// gasto aparte + su egreso del mismo banco, ligados a la compra.
++function montarComisionTarjetaCompra(prefijo, despuesDe, metodo, monto) {
++  if (!window.N360ComisionPago) return;
++  N360ComisionPago.montar({ prefijo, despuesDe, metodo, monto });
++  N360ComisionPago.limpiar(prefijo); N360ComisionPago.actualizar(prefijo);
++}
++function leerComisionTarjetaCompra(prefijo) {
++  return window.N360ComisionPago ? N360ComisionPago.leer(prefijo) : null; // lanza Error si falta un dato
++}
++async function registrarComisionTarjetaCompra(comision, d) {
++  if (!comision || !window.N360ComisionPago) return;
++  const r = await N360ComisionPago.registrar(sbClient, { userId: STATE.userId, comision, ...d, origenTipo: 'compra' });
++  if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('La compra se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala en Gastos.', 'warning'); }
++}
++
+ async function guardarCompra() {
+   if (STATE.carrito.length === 0) {
+     showToast('El carrito está vacío', 'error');
+@@ -2028,6 +2053,11 @@ async function guardarCompra() {
+     if (!seguir) return;
+   }
+ 
++  let comision = null;
++  if (estado === 'completada') {
++    try { comision = leerComisionTarjetaCompra('nc'); } catch (eCom) { showToast(eCom.message, 'error'); return; }
++  }
++
+   setBtnLoading('nc-btn-save', true);
+ 
+   try {
+@@ -2219,6 +2249,8 @@ async function guardarCompra() {
+         await sbClient.from('compras')
+           .update({ movimiento_caja_id: mov.id })
+           .eq('id', compra.id);
++        await registrarComisionTarjetaCompra(comision, { fecha, metodoId: metodoPagoId, metodoNombre: metodoPagoNombre,
++          bancoId: _bancoElegidoIdCompra || null, origenCaja, descripcion: `Compra ${numero}${STATE.proveedorSeleccionado?.nombre ? ' — ' + STATE.proveedorSeleccionado.nombre : ''}`, origenId: compra.id });
+       }
+     }
+ 
+@@ -2436,7 +2468,8 @@ async function convertirOrdenACompra(ordenId) {
+     if (typeof llenarSelectProveedores === 'function') llenarSelectProveedores();
+     const selProv = document.getElementById('nc-proveedor-select');
+     if (selProv && STATE.proveedorSeleccionado?.id) selProv.value = STATE.proveedorSeleccionado.id;
+-    openModal('modal-nueva-compra');
++    montarComisionTarjetaCompra('nc', 'nc-banco-elegido-wrap', 'nc-metodo-pago', () => calcularTotales().total);
++   openModal('modal-nueva-compra');
+     // Se salta directo al carrito ya lleno — el usuario revisa/ajusta
+     // y avanza normalmente por el resto del asistente (método de pago,
+     // observaciones, etc.) hasta confirmar en el último paso.
+@@ -2721,6 +2754,7 @@ function abrirCompletarCompra(id) {
+     ? STATE.metodosPago.map(m => `<option value="${m.id||''}" data-nombre="${escHtml(m.nombre)}">${escHtml(m.nombre)}</option>`).join('')
+     : '<option value="" data-nombre="Efectivo">Efectivo</option>';
+   document.getElementById('cc-metodo-pago').innerHTML = opciones;
++  montarComisionTarjetaCompra('cc', 'cc-banco-elegido-wrap', 'cc-metodo-pago', () => Number((STATE.compras.find(c => c.id === compraToCompletar) || {}).total) || 0);
+ 
+   openModal('modal-completar-compra');
+ }
+@@ -2805,6 +2839,9 @@ async function completarCompra() {
+     }
+   }
+ 
++  let comision = null;
++  try { comision = leerComisionTarjetaCompra('cc'); } catch (eCom) { errEl.textContent = eCom.message; return; }
++
+   setBtnLoading('btn-confirmar-completar', true);
+   try {
+     const { data: movResult } = await sbClient.from('movimientos_financieros')
+@@ -2830,6 +2867,8 @@ async function completarCompra() {
+       metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
+     }).eq('id', compra.id).eq('auth_user_id', STATE.userId);
+     if (errUpdate) throw errUpdate;
++    await registrarComisionTarjetaCompra(comision, { fecha: todayISO(), metodoId: metodoPagoId, metodoNombre: metodoPagoNombre,
++      bancoId: _bancoElegidoIdCompletar || null, descripcion: `Compra ${compra.numero}${compra.proveedor_nombre ? ' — ' + compra.proveedor_nombre : ''}`, origenId: compra.id });
+ 
+     showToast('Compra completada — se descontó de Caja');
+     closeModal('modal-completar-compra');
+@@ -2911,6 +2950,11 @@ async function anularCompra() {
+         .eq('auth_user_id', STATE.userId);
+     }
+ 
++    // 3b. Si al pagarla con tarjeta el proveedor cobró comisión, se anula también (gasto + egreso).
++    if (window.N360ComisionPago) {
++      await N360ComisionPago.anular(sbClient, STATE.userId, 'compra', compraToAnular, `Compra ${compra.numero} anulada`);
++    }
++
+     // 4. Cambiar estado compra a anulada
+     await sbClient.from('compras')
+       .update({
+diff --git a/cuentas-por-pagar.html b/cuentas-por-pagar.html
+index 5c384bc..de728fb 100644
+--- a/cuentas-por-pagar.html
++++ b/cuentas-por-pagar.html
+@@ -1845,7 +1845,8 @@
+ ===================================================== -->
+ <script src="cajaAPI.js?v=20261007a"></script>
+ <script src="moneda-alterna.js?v=20261021b"></script>
+-<script src="cuentas-por-pagar.js?v=20261021a"></script>
++<script src="comision-pago-tarjeta.js?v=20261022a"></script>
++<script src="cuentas-por-pagar.js?v=20261022a"></script>
+ 
+ <script src="moneda-visualizacion.js?v=1"></script>
+ <script src="perfiles-guard.js?v=20261021c"></script>
+diff --git a/cuentas-por-pagar.js b/cuentas-por-pagar.js
+index b295dfc..c6f019c 100644
+--- a/cuentas-por-pagar.js
++++ b/cuentas-por-pagar.js
+@@ -701,6 +701,12 @@ function abrirNuevaCuentaDirecta() {
+   setTipoCreditoDirecto('fecha_fija');
+   setModoCalculoDirecto('auto');
+   setTieneInteresDirecto(false);
++  montarComisionTarjetaCxP('ncd', 'ncd-wrap-banco', 'ncd-metodo-prima', () => {
++    const t = document.getElementById('ncd-prima-tipo')?.value || 'ninguna';
++    const v = Number(document.getElementById('ncd-prima-valor')?.value) || 0;
++    const m = Number(document.getElementById('ncd-monto')?.value) || 0;
++    try { return calcularPrimaDirecta(m, t, v); } catch (_) { return 0; }
++  });
+   openModal('modal-nueva-cuenta-directa');
+ }
+ 
+@@ -874,6 +880,10 @@ async function guardarCuentaDirecta() {
+       if (!bancoPrimaId) { errEl.textContent = 'Indica de qué banco salió la prima.'; return; }
+     }
+   }
++  let comisionPrima = null;
++  if (primaMonto > 0) {
++    try { comisionPrima = window.N360ComisionPago ? N360ComisionPago.leer('ncd') : null; } catch (eCom) { errEl.textContent = eCom.message; return; }
++  }
+   const capitalFinanciado = round2(montoOriginal - primaMonto);
+   if (capitalFinanciado < 0) { errEl.textContent = 'La prima no puede ser mayor que el monto total.'; return; }
+ 
+@@ -981,6 +991,8 @@ async function guardarCuentaDirecta() {
+           comprobante_numero: `PAG-${cuenta.numero}-PRIMA`,
+           usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+         });
++        await registrarComisionTarjetaCxP(comisionPrima, { fecha: todayISO(), metodoId: metodoPrimaId, metodoNombre: metodoPrimaNombre,
++          bancoId: bancoPrimaId, descripcion: `Prima ${cuenta.numero} (${concepto})`, origenTipo: 'prima_cxp', origenId: cuenta.id });
+       }
+     }
+ 
+@@ -1399,6 +1411,19 @@ function prepararMonedaAlternaCxP() {
+   N360MonedaAlterna.adjuntar('pg-monto', () => ({ moneda: STATE.empresaConfig?.moneda, tasa: STATE.empresaConfig?.tasa_cambio_usd }));
+   N360MonedaAlterna.reset('pg-monto');
+ }
++// Comisión opcional por pagar con tarjeta (si el proveedor la cobra):
++// gasto aparte + su egreso del mismo banco, ligados al pago.
++function montarComisionTarjetaCxP(prefijo, despuesDe, metodo, monto) {
++  if (!window.N360ComisionPago) return;
++  N360ComisionPago.montar({ prefijo, despuesDe, metodo, monto });
++  N360ComisionPago.limpiar(prefijo); N360ComisionPago.actualizar(prefijo);
++}
++async function registrarComisionTarjetaCxP(comision, d) {
++  if (!comision || !window.N360ComisionPago) return;
++  const r = await N360ComisionPago.registrar(sbClient, { userId: STATE.userId, comision, ...d });
++  if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('El pago se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala en Gastos.', 'warning'); }
++}
++
+ function abrirPagarGenerico() {
+   prepararMonedaAlternaCxP();
+   document.getElementById('pg-error').textContent = '';
+@@ -1411,6 +1436,7 @@ function abrirPagarGenerico() {
+   document.getElementById('pg-banco').value = '';
+   poblarSelectCuentasPagables(null);
+   STATE.cuentaActual = null;
++  montarComisionTarjetaCxP('pg', 'pg-wrap-banco', 'pg-metodo', 'pg-monto');
+   openModal('modal-pagar-cxp');
+ }
+ function abrirPagarDesdeTabla(id) {
+@@ -1423,6 +1449,7 @@ function abrirPagarDesdeTabla(id) {
+   document.getElementById('pg-banco').value = '';
+   poblarSelectCuentasPagables(id);
+   onSelectCuentaPagarCxP();
++  montarComisionTarjetaCxP('pg', 'pg-wrap-banco', 'pg-metodo', 'pg-monto');
+   openModal('modal-pagar-cxp');
+ }
+ function onSelectCuentaPagarCxP() {
+@@ -1493,6 +1520,9 @@ async function confirmarPagoCxP() {
+     if (bInfo && (bInfo.moneda || 'NIO') === otraMonedaCxP.moneda) montoMonedaBancoCxP = otraMonedaCxP.monto;
+   }
+ 
++  let comision = null;
++  try { comision = window.N360ComisionPago ? N360ComisionPago.leer('pg') : null; } catch (eCom) { errEl.textContent = eCom.message; return; }
++
+   if (STATE._pagandoCxP) return;   // candado contra doble clic
+   STATE._pagandoCxP = true;
+   setBtnLoading('btn-confirmar-pago-cxp', true);
+@@ -1582,6 +1612,9 @@ async function confirmarPagoCxP() {
+       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+     }).select('id').maybeSingle();
+     if (errPagoIns) { console.warn('pago no quedó en el historial:', errPagoIns); showToast('El dinero salió y la deuda bajó, pero el pago no quedó en el historial: avisa a soporte (' + errPagoIns.message + ')', 'error'); }
++    await registrarComisionTarjetaCxP(comision, { fecha: todayISO(), metodoId, metodoNombre, bancoId,
++      descripcion: `Pago a proveedor ${cuentaFresca.numero}${cuentaFresca.proveedor_nombre ? ' — ' + cuentaFresca.proveedor_nombre : ''}`,
++      origenTipo: 'pago_cxp', origenId: pagoIns?.id || cuentaFresca.id });
+ 
+     // Retención de IR practicada al proveedor: queda por pagar a la DGI (módulo Impuestos)
+     if (retCxP.ret > 0) {
+diff --git a/gastos.html b/gastos.html
+index c54107c..e42ca72 100644
+--- a/gastos.html
++++ b/gastos.html
+@@ -1581,7 +1581,8 @@
+ ===================================================== -->
+ <script src="cajaAPI.js?v=20261007a"></script>
+ <script src="aviso-efectivo.js?v=20261013a"></script>
+-<script src="gastos.js?v=20261014a"></script>
++<script src="comision-pago-tarjeta.js?v=20261022a"></script>
++<script src="gastos.js?v=20261022a"></script>
+ 
+ <script src="moneda-visualizacion.js?v=1"></script>
+ <script src="perfiles-guard.js?v=20261021c"></script>
+diff --git a/gastos.js b/gastos.js
+index 09cb6c4..52edd0c 100644
+--- a/gastos.js
++++ b/gastos.js
+@@ -590,6 +590,10 @@
+     document.getElementById('gasto-frecuencia-wrap').style.display = 'none';
+     document.getElementById('gasto-checkbox-wrap').style.display   = 'none';
+     toggleCategoriaEspecial();
++    if (window.N360ComisionPago) {
++      N360ComisionPago.montar({ prefijo: 'gasto', despuesDe: 'gasto-banco-wrap', metodo: 'gasto-metodo', monto: 'gasto-monto' });
++      N360ComisionPago.limpiar('gasto'); N360ComisionPago.actualizar('gasto');
++    }
+     openModal('modal-gasto');
+ 
+     const abierta = await hayCajaChicaAbiertaHoy();
+@@ -676,6 +680,11 @@
+ 
+     // Aviso (no bloqueante): pago en efectivo mayor al efectivo disponible.
+     const _pagaYa = tipo==='inmediato' || !!document.getElementById('gasto-pagar-ya')?.checked;
++
++    // Comisión opcional por pagar con tarjeta (solo si se paga ahora).
++    let comision = null;
++    try { comision = (_pagaYa && window.N360ComisionPago) ? N360ComisionPago.leer('gasto') : null; }
++    catch (eCom) { showToast(eCom.message, 'error'); return; }
+     if (_pagaYa && !bancoId && /efectivo/i.test(metodoNombre) && window.AvisoEfectivo) {
+       const _neto = retMonto > 0 ? Math.round((monto - retMonto) * 100) / 100 : monto;
+       const _seguir = await window.AvisoEfectivo.verificar({ sb: _sb, userId: GS.userId, monto: _neto, origenCaja });
+@@ -685,11 +694,11 @@
+     try {
+       setBtnLoading('btn-save-gasto', true);
+       if (tipo==='inmediato') {
+-        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct });
++        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct, comision });
+       } else {
+         const frecuencia = document.getElementById('gasto-frecuencia').value;
+         const pagarYa    = document.getElementById('gasto-pagar-ya').checked;
+-        await crearGastoProgramado({ categoria, nombre: concepto, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId });
++        await crearGastoProgramado({ categoria, nombre: concepto, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId, comision });
+       }
+       closeModal('modal-gasto');
+       showToast('Gasto registrado correctamente');
+@@ -705,7 +714,7 @@
+   /* ===================================================
+      GASTO INMEDIATO
+   =================================================== */
+-  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct }) {
++  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct, comision }) {
+     const { data: gastoRow, error: errGasto } = await _sb.from('gastos').insert({
+       auth_user_id: GS.userId, tipo:'inmediato', concepto, categoria, monto, fecha,
+       metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre, impuesto: ivaGasto || 0,
+@@ -733,6 +742,16 @@
+ 
+     const movId = await getUltimoMovimientoId();
+     if (movId) await _sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
++    await registrarComisionTarjeta(comision, { fecha, metodoId, metodoNombre, bancoId, origenCaja, descripcion: `${categoria}: ${concepto}`, gastoId: gastoRow.id });
++  }
++
++  // Comisión opcional por pagar con tarjeta: gasto aparte + su egreso,
++  // ligados a este gasto (si se cancela este gasto, se cancela también).
++  async function registrarComisionTarjeta(comision, { fecha, metodoId, metodoNombre, bancoId, origenCaja, descripcion, gastoId }) {
++    if (!comision || !window.N360ComisionPago) return;
++    const r = await N360ComisionPago.registrar(_sb, { userId: GS.userId, comision, fecha, metodoId, metodoNombre, bancoId, origenCaja,
++      descripcion, origenTipo: 'gasto', origenId: gastoId });
++    if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('El gasto se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala como gasto aparte.', 'warning'); }
+   }
+ 
+   async function getUltimoMovimientoId() {
+@@ -745,16 +764,16 @@
+   /* ===================================================
+      GASTO PROGRAMADO
+   =================================================== */
+-  async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId }) {
++  async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId, comision }) {
+     const { data: progRow, error } = await _sb.from('gastos_programados').insert({
+       auth_user_id: GS.userId, nombre, categoria, monto, frecuencia,
+       fecha_proxima: fecha, empleado: empleado||null, observaciones: observaciones||null, activo: true,
+     }).select().single();
+     if (error) throw error;
+-    if (pagarYa) await ejecutarPagoProgramado(progRow, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId });
++    if (pagarYa) await ejecutarPagoProgramado(progRow, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId, comision });
+   }
+ 
+-  async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId }) {
++  async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId, comision }) {
+     const fechaPago   = fecha || todayISO();
+     const metodoFinal = metodoNombre || 'Efectivo';
+ 
+@@ -777,6 +796,8 @@
+     if (mov.ok) {
+       const movId = await getUltimoMovimientoId();
+       if (movId) await _sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
++      await registrarComisionTarjeta(comision, { fecha: fechaPago, metodoId, metodoNombre: metodoFinal, bancoId, origenCaja,
++        descripcion: `${programado.categoria}: ${programado.nombre}`, gastoId: gastoRow.id });
+     } else {
+       console.error('No se pudo registrar pago en Caja:', mov.error);
+     }
+@@ -865,6 +886,10 @@
+     document.getElementById('pago-metodo').value = '';
+     document.getElementById('pago-banco-wrap').style.display = 'none';
+     document.getElementById('pago-obs').value    = '';
++    if (window.N360ComisionPago) {
++      N360ComisionPago.montar({ prefijo: 'pago', despuesDe: 'pago-banco-wrap', metodo: 'pago-metodo', monto: () => (_programadoEnPago && _programadoEnPago.monto) || 0 });
++      N360ComisionPago.limpiar('pago'); N360ComisionPago.actualizar('pago');
++    }
+     openModal('modal-registrar-pago');
+ 
+     const abierta = await hayCajaChicaAbiertaHoy();
+@@ -888,9 +913,12 @@
+       bancoId = document.getElementById('pago-banco').value;
+       if (!bancoId) { showToast('Indica de qué banco sale este dinero', 'error'); return; }
+     }
++    let comision = null;
++    try { comision = window.N360ComisionPago ? N360ComisionPago.leer('pago') : null; }
++    catch (eCom) { showToast(eCom.message, 'error'); return; }
+     try {
+       setBtnLoading('btn-confirmar-pago', true);
+-      await ejecutarPagoProgramado(_programadoEnPago, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId });
++      await ejecutarPagoProgramado(_programadoEnPago, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId, comision });
+       closeModal('modal-registrar-pago');
+       _programadoEnPago = null;
+       showToast('Pago registrado correctamente');
+@@ -1067,6 +1095,11 @@
+       await _sb.from('gastos').update({
+         estado:'cancelado', cancelado_en: new Date().toISOString(), cancelado_motivo:'Cancelado manualmente',
+       }).eq('id',_gastoToCancelar).eq('auth_user_id',GS.userId);
++      // Si al pagarlo con tarjeta el proveedor cobró comisión, se cancela también (gasto + egreso).
++      if (window.N360ComisionPago) {
++        try { await N360ComisionPago.anular(_sb, GS.userId, 'gasto', _gastoToCancelar, 'Gasto cancelado'); }
++        catch (eComC) { console.warn('comisión no anulada:', eComC); showToast('El gasto se canceló, pero revisa su comisión de tarjeta en Gastos.', 'warning'); }
++      }
+       try {
+         await _sb.from('retenciones_ir').update({ estado:'anulada' })
+           .eq('gasto_id',_gastoToCancelar).eq('auth_user_id',GS.userId).eq('estado','pendiente');
+diff --git a/supabase/migraciones/20261022_comision_pago_tarjeta_egresos.sql b/supabase/migraciones/20261022_comision_pago_tarjeta_egresos.sql
+new file mode 100644
+index 0000000..7624836
+--- /dev/null
++++ b/supabase/migraciones/20261022_comision_pago_tarjeta_egresos.sql
+@@ -0,0 +1,12 @@
++-- ============================================================
++-- Comisión OPCIONAL por pagar con tarjeta en egresos (Gastos, Compras,
++-- Cuentas por pagar). SOLO AGREGA: dos columnas opcionales en "gastos"
++-- para ligar la comisión con la operación que la originó, así se anula
++-- junto con ella (gasto cancelado, compra anulada).
++--   origen_tipo: 'gasto' | 'compra' | 'pago_cxp' | 'prima_cxp'
++--   origen_id:   id de esa operación
++-- Nada existente cambia: para el resto del sistema son columnas vacías.
++-- ============================================================
++alter table public.gastos add column if not exists origen_tipo text;
++alter table public.gastos add column if not exists origen_id uuid;
++create index if not exists gastos_origen_idx on public.gastos (auth_user_id, origen_tipo, origen_id) where origen_id is not null;
+diff --git a/supabase/migraciones/20261022_correccion_lotes_comision.sql b/supabase/migraciones/20261022_correccion_lotes_comision.sql
+new file mode 100644
+index 0000000..3b17560
+--- /dev/null
++++ b/supabase/migraciones/20261022_correccion_lotes_comision.sql
+@@ -0,0 +1,408 @@
++-- ============================================================
++-- Correcciones (2026-10-22), SOLO AGREGA en tablas existentes:
++--  1. gastos.venta_id (columna nueva, opcional): liga la comisión bancaria
++--     a su venta, para anularla junto con la venta.
++--  2. descontar_lote_venta (función nueva): descuenta el lote elegido en la
++--     venta UNA sola vez; si no alcanza, el resto del siguiente que vence.
++--     Corrige el doble descuento de lotes de Nueva venta.
++--  3. Funciones propias del modo sin conexión (creadas por este proyecto,
++--     solo las usa la cuenta piloto): misma regla de lotes y la comisión
++--     bancaria como gasto real, solo para tarjeta.
++-- ============================================================
++
++alter table public.gastos add column if not exists venta_id uuid;
++create index if not exists gastos_venta_id_idx on public.gastos (auth_user_id, venta_id) where venta_id is not null;
++
++create or replace function public.descontar_lote_venta(p_lote_id uuid, p_producto_id uuid, p_cantidad numeric)
++returns numeric language plpgsql security definer set search_path = public as $f$
++-- Devuelve lo que no se pudo asignar a ningún lote (0 si todo quedó en lotes).
++declare v_uid uuid := auth.uid(); v_restante numeric := p_cantidad; v_lote record; v_tomar numeric;
++begin
++  if v_uid is null or p_producto_id is null or p_cantidad is null or p_cantidad <= 0 then return 0; end if;
++  if not exists (select 1 from public.productos where id = p_producto_id and auth_user_id = v_uid) then return p_cantidad; end if;
++  -- 1) El lote elegido en la venta (si es de esta cuenta y de este producto)
++  if p_lote_id is not null then
++    select id, cantidad_actual into v_lote from public.producto_lotes
++     where id = p_lote_id and auth_user_id = v_uid and producto_id = p_producto_id for update;
++    if found and v_lote.cantidad_actual > 0 then
++      v_tomar := least(v_restante, v_lote.cantidad_actual);
++      update public.producto_lotes set cantidad_actual = cantidad_actual - v_tomar, updated_at = now() where id = v_lote.id;
++      v_restante := v_restante - v_tomar;
++    end if;
++  end if;
++  -- 2) Lo que falte, del siguiente que vence (FEFO)
++  for v_lote in select id, cantidad_actual from public.producto_lotes
++                 where auth_user_id = v_uid and producto_id = p_producto_id and activo = true and cantidad_actual > 0
++                   and id is distinct from p_lote_id
++                 order by fecha_vencimiento asc, created_at asc for update loop
++    exit when v_restante <= 0;
++    v_tomar := least(v_restante, v_lote.cantidad_actual);
++    update public.producto_lotes set cantidad_actual = cantidad_actual - v_tomar, updated_at = now() where id = v_lote.id;
++    v_restante := v_restante - v_tomar;
++  end loop;
++  return greatest(v_restante, 0);
++end $f$;
++revoke all on function public.descontar_lote_venta(uuid, uuid, numeric) from public, anon;
++grant execute on function public.descontar_lote_venta(uuid, uuid, numeric) to authenticated;
++
++create or replace function public._offline_insertar(p_tabla text, p_fila jsonb, p_permitidas text[])
++returns uuid language plpgsql security definer set search_path = public as $f$
++declare v_cols text; v_id uuid;
++begin
++  if p_tabla not in ('ventas','venta_detalles','movimientos_financieros','movimientos_impuestos',
++                     'venta_impuestos','retenciones_ir','garantias_clientes','auditoria_log','gastos') then
++    raise exception 'N360_OFFLINE:tabla_no_permitida';
++  end if;
++  select string_agg(quote_ident(k), ', ' order by k) into v_cols
++    from jsonb_object_keys(p_fila) k where k = any(p_permitidas);
++  if v_cols is null then raise exception 'N360_OFFLINE:fila_vacia'; end if;
++  execute format('insert into public.%I (%s) select %s from jsonb_populate_record(null::public.%I, $1) returning id',
++                 p_tabla, v_cols, v_cols, p_tabla)
++    into v_id using p_fila;
++  return v_id;
++end $f$;
++revoke all on function public._offline_insertar(text, jsonb, text[]) from public, anon, authenticated;
++
++create or replace function public.offline_registrar_venta(p jsonb)
++returns jsonb language plpgsql security definer set search_path = public set "TimeZone" = 'UTC' as $f$
++declare
++  v_uid uuid := auth.uid();
++  v_uuid uuid; v_disp public.offline_dispositivos%rowtype; v_cfg public.configuracion_empresa%rowtype;
++  v_huella text; v_prev public.offline_ventas_recibidas%rowtype;
++  v_venta jsonb; v_det jsonb; v_fila jsonb; v_item jsonb; v_comp record; v_i int;
++  v_tipo text; v_num_disp text; v_num_texto text; v_numero text; v_reemplazado boolean := false; v_nombre text;
++  v_venta_id uuid; v_mov_id uuid; v_ultimo_mov uuid; v_cliente uuid;
++  v_vendida timestamptz; v_reloj timestamptz; v_desfase int := 0; v_creada timestamptz;
++  v_alertas jsonb := '[]'::jsonb; v_res jsonb;
++  v_stock numeric; v_prod record; v_unid numeric; v_restante numeric; v_lote record; v_tomar numeric;
++  v_sin_stock boolean[] := '{}'; v_total numeric; v_suma_caja numeric := 0; v_neto numeric;
++  v_saldo_imp numeric; v_monto numeric; v_fecha_hoy date; v_garantia_num text;
++  c_venta constant text[] := array['numero_venta','cliente_id','cliente_nombre','fecha','subtotal','descuento','impuesto',
++    'total','costo_total','metodo_pago_id','metodo_pago_nombre','categoria','creado_por_nombre','estado',
++    'observaciones','iva_activo','iva_porcentaje','retencion_ir_monto','retencion_ir_porcentaje','auth_user_id','created_at'];
++  c_det constant text[] := array['auth_user_id','venta_id','producto_id','combo_id','promocion_id','producto_nombre',
++    'producto_sku','tipo_item','cantidad','precio','costo','descuento','subtotal','ganancia','escala_id','escala_nombre',
++    'vendido_sin_stock','es_regalia','presentacion_id','presentacion_nombre','presentacion_factor','lote_id',
++    'cantidad_pedida','unidad_pedida'];
++  c_mov constant text[] := array['auth_user_id','tipo_flujo','tipo_movimiento','concepto','monto','saldo_anterior',
++    'saldo_resultante','metodo_pago_id','metodo_pago_nombre','banco_id','monto_moneda_banco','referencia_tipo',
++    'referencia_id','observaciones','fecha'];
++  c_imp constant text[] := array['auth_user_id','tipo_movimiento','concepto','monto','saldo_anterior','saldo_resultante',
++    'referencia_venta_id','impuesto_id','impuesto_nombre','fecha','created_at'];
++  c_vimp constant text[] := array['auth_user_id','venta_id','impuesto_id','nombre','porcentaje','monto'];
++  c_ret constant text[] := array['auth_user_id','lado','origen','venta_id','estado','contraparte_nombre','fecha','base',
++    'porcentaje','monto'];
++  c_gar constant text[] := array['auth_user_id','numero','cliente_id','cliente_nombre','producto_id','producto_nombre',
++    'venta_id','fecha_compra','garantia_meses','fecha_vencimiento','origen','numero_serie'];
++  c_gasto constant text[] := array['auth_user_id','tipo','concepto','categoria','monto','fecha','metodo_pago_id',
++    'metodo_pago_nombre','observaciones','estado','venta_id'];
++  v_gasto_id uuid;
++  c_aud constant text[] := array['auth_user_id','perfil_nombre','perfil_tipo','modulo','tabla','accion','resumen','created_at'];
++begin
++  -- 1. Quién, interruptor, equipo
++  if v_uid is null then raise exception 'N360_OFFLINE:no_autorizado'; end if;
++  if public._es_cuenta_demo(v_uid) then raise exception 'N360_OFFLINE:cuenta_demo'; end if;
++  if not exists (select 1 from public.offline_cuentas_habilitadas where auth_user_id = v_uid and habilitado) then
++    raise exception 'N360_OFFLINE:no_habilitado';
++  end if;
++  if p is null or jsonb_typeof(p) <> 'object' or coalesce((p->>'version')::int, 0) <> 1 then
++    raise exception 'N360_OFFLINE:formato';
++  end if;
++  begin v_uuid := (p->>'uuid')::uuid; exception when others then raise exception 'N360_OFFLINE:uuid_invalido'; end;
++  if v_uuid is null then raise exception 'N360_OFFLINE:uuid_invalido'; end if;
++  select * into v_disp from public.offline_dispositivos
++   where auth_user_id = v_uid and dispositivo_uid = lower(coalesce(p->>'dispositivo_uid', ''));
++  if not found or not v_disp.activo then raise exception 'N360_OFFLINE:dispositivo_no_autorizado'; end if;
++
++  -- 2. Idempotencia: la misma venta nunca se registra dos veces
++  v_huella := encode(sha256(convert_to((p - 'reloj_envio')::text, 'UTF8')), 'hex');
++  perform pg_advisory_xact_lock(hashtextextended('offline_venta:' || v_uuid::text, 0));
++  select * into v_prev from public.offline_ventas_recibidas where uuid = v_uuid;
++  if found then
++    if v_prev.auth_user_id <> v_uid or v_prev.huella <> v_huella then
++      raise exception 'N360_OFFLINE:uuid_reutilizado';
++    end if;
++    return v_prev.resultado || jsonb_build_object('repetida', true);
++  end if;
++
++  -- 3. Validación del contenido (contado o pago dividido; nunca crédito/fiado)
++  v_tipo := p->>'tipo';
++  if v_tipo not in ('nueva', 'rapida') then raise exception 'N360_OFFLINE:tipo_invalido'; end if;
++  v_venta := p->'venta';
++  v_det := p->'detalles';
++  if jsonb_typeof(v_venta) <> 'object' or jsonb_typeof(v_det) <> 'array'
++     or jsonb_array_length(v_det) = 0 or jsonb_array_length(v_det) > 500 then
++    raise exception 'N360_OFFLINE:formato';
++  end if;
++  if lower(coalesce(v_venta->>'metodo_pago', '')) in ('fiado', 'credito')
++     or lower(coalesce(v_venta->>'estado_pago', '')) = 'credito' then
++    raise exception 'N360_OFFLINE:tipo_no_permitido';
++  end if;
++  if jsonb_typeof(coalesce(p->'caja', '[]'::jsonb)) <> 'array' then raise exception 'N360_OFFLINE:formato'; end if;
++  begin
++    v_total := (v_venta->>'total')::numeric;
++    v_fecha_hoy := coalesce((p->>'fecha_hoy')::date, (v_venta->>'fecha')::date);
++    perform (v_venta->>'fecha')::date;
++    for v_i in 0 .. jsonb_array_length(v_det) - 1 loop
++      if not ((v_det->v_i->>'cantidad')::numeric > 0) or (v_det->v_i->>'precio')::numeric < 0 then
++        raise exception 'N360_OFFLINE:linea_invalida';
++      end if;
++    end loop;
++  exception
++    when raise_exception then raise;
++    when others then raise exception 'N360_OFFLINE:formato';
++  end;
++  select * into v_cfg from public.configuracion_empresa where auth_user_id = v_uid;
++
++  -- 4. Hora real de la venta y reloj del equipo
++  begin
++    v_vendida := (p->>'vendida_en')::timestamptz;
++    v_reloj := (p->>'reloj_envio')::timestamptz;
++  exception when others then v_vendida := null; v_reloj := null; end;
++  if v_reloj is not null then v_desfase := extract(epoch from (now() - v_reloj))::int; end if;
++  v_creada := coalesce(v_vendida + make_interval(secs => v_desfase), now());
++  if v_creada > now() or v_creada < now() - interval '90 days' then v_creada := now(); end if;
++  if abs(v_desfase) > 600 then
++    v_alertas := v_alertas || jsonb_build_object('tipo', 'reloj_desfasado',
++      'mensaje', format('El reloj del equipo estaba %s minutos %s. Se usó la hora del servidor.',
++                        abs(v_desfase) / 60, case when v_desfase > 0 then 'atrasado' else 'adelantado' end),
++      'detalle', jsonb_build_object('desfase_segundos', v_desfase, 'equipo', v_disp.nombre));
++  end if;
++  if (v_venta->>'fecha')::date > current_date + 1 or (v_venta->>'fecha')::date < current_date - 60 then
++    v_alertas := v_alertas || jsonb_build_object('tipo', 'fecha_fuera_de_rango',
++      'mensaje', 'La fecha de la venta está lejos de la fecha de hoy. Revísala.',
++      'detalle', jsonb_build_object('fecha', v_venta->>'fecha'));
++  end if;
++
++  -- 5. Número de venta: el del equipo si está libre; si no, uno nuevo
++  perform pg_advisory_xact_lock(hashtextextended('ventas_num:' || v_uid::text, 0));
++  v_num_texto := nullif(btrim(coalesce(v_venta->>'numero_venta', '')), '');   -- el número que traen los textos
++  v_num_disp := v_num_texto;
++  if v_num_disp is not null and v_num_disp !~ '^V-[0-9]{6,}$' then v_num_disp := null; end if;
++  if v_num_disp is not null and not exists (select 1 from public.ventas where auth_user_id = v_uid
++         and numero_venta = v_num_disp and estado = 'completada') then
++    v_numero := v_num_disp;
++  else
++    v_numero := public.generar_numero_venta(v_uid);
++    v_reemplazado := true;
++    v_alertas := v_alertas || jsonb_build_object('tipo', 'numero_reemplazado',
++      'mensaje', format('La venta %s del equipo quedó registrada como %s.', coalesce(v_num_disp, '(sin número)'), v_numero),
++      'detalle', jsonb_build_object('numero_equipo', v_num_disp, 'numero_final', v_numero));
++  end if;
++
++  -- 6. Stock y lotes (lo calcula el servidor a partir del detalle)
++  for v_i in 0 .. jsonb_array_length(v_det) - 1 loop
++    v_item := v_det->v_i;
++    v_sin_stock := v_sin_stock || coalesce((v_item->>'vendido_sin_stock')::boolean, false);
++    -- 6a. Combo: cada componente × cantidad de combos
++    if public._offline_ref(v_uid, 'combos', v_item->>'combo_id') is not null then
++      for v_comp in select ci.producto_id, ci.cantidad from public.combo_items ci
++                     where ci.combo_id = (v_item->>'combo_id')::uuid and ci.auth_user_id = v_uid loop
++        update public.productos set stock_actual = coalesce(stock_actual, 0) - v_comp.cantidad * (v_item->>'cantidad')::numeric
++         where id = v_comp.producto_id and auth_user_id = v_uid returning stock_actual, nombre into v_stock, v_nombre;
++        if found and v_stock < 0 then
++          v_sin_stock[v_i + 1] := true;
++          v_alertas := v_alertas || jsonb_build_object('tipo', 'stock_negativo', 'mensaje',
++            format('"%s" quedó con stock %s (vendido sin conexión en el combo "%s").', v_nombre, v_stock, v_item->>'producto_nombre'),
++            'detalle', jsonb_build_object('producto_id', v_comp.producto_id, 'stock', v_stock));
++        end if;
++      end loop;
++    -- 6b. Promoción: sus componentes (los manda el equipo, como en la web)
++    elsif public._offline_ref(v_uid, 'promociones', v_item->>'promocion_id') is not null then
++      for v_comp in select (c->>'producto_id') pid, (c->>'cantidad')::numeric cant
++                      from jsonb_array_elements(coalesce(p->'componentes_promo'->(v_i::text), '[]'::jsonb)) c loop
++        if public._offline_ref(v_uid, 'productos', v_comp.pid) is null or not (v_comp.cant > 0) then continue; end if;
++        update public.productos set stock_actual = coalesce(stock_actual, 0) - v_comp.cant
++         where id = v_comp.pid::uuid and auth_user_id = v_uid and tipo = 'producto' returning stock_actual, nombre into v_stock, v_nombre;
++        if found and v_stock < 0 then
++          v_sin_stock[v_i + 1] := true;
++          v_alertas := v_alertas || jsonb_build_object('tipo', 'stock_negativo', 'mensaje',
++            format('"%s" quedó con stock %s (vendido sin conexión en una promoción).', v_nombre, v_stock),
++            'detalle', jsonb_build_object('producto_id', v_comp.pid, 'stock', v_stock));
++        end if;
++      end loop;
++    -- 6c. Producto normal
++    elsif public._offline_ref(v_uid, 'productos', v_item->>'producto_id') is not null then
++      select id, nombre, tipo, activo, precio into v_prod from public.productos
++       where id = (v_item->>'producto_id')::uuid and auth_user_id = v_uid;
++      if v_prod.activo is false then
++        v_alertas := v_alertas || jsonb_build_object('tipo', 'producto_inactivo', 'mensaje',
++          format('Se vendió "%s" aunque estaba desactivado.', v_prod.nombre), 'detalle', jsonb_build_object('producto_id', v_prod.id));
++      end if;
++      if (p->'precios_catalogo'->>(v_i::text)) is not null and v_prod.precio is distinct from (p->'precios_catalogo'->>(v_i::text))::numeric then
++        v_alertas := v_alertas || jsonb_build_object('tipo', 'precio_distinto', 'mensaje',
++          format('"%s" cambió de precio (%s → %s) mientras el equipo estaba sin conexión. Se respetó el precio cobrado (%s).',
++                 v_prod.nombre, p->'precios_catalogo'->>(v_i::text), v_prod.precio, v_item->>'precio'),
++          'detalle', jsonb_build_object('producto_id', v_prod.id, 'precio_equipo', p->'precios_catalogo'->>(v_i::text),
++                                        'precio_actual', v_prod.precio, 'precio_cobrado', v_item->>'precio'));
++      end if;
++      if v_prod.tipo = 'producto' then
++        v_unid := (v_item->>'cantidad')::numeric *
++                  case when coalesce((v_item->>'presentacion_factor')::numeric, 0) > 0 then (v_item->>'presentacion_factor')::numeric else 1 end;
++        update public.productos set stock_actual = coalesce(stock_actual, 0) - v_unid
++         where id = v_prod.id returning stock_actual into v_stock;
++        if v_stock < 0 then
++          v_sin_stock[v_i + 1] := true;
++          v_alertas := v_alertas || jsonb_build_object('tipo', 'stock_negativo', 'mensaje',
++            format('"%s" quedó con stock %s: se vendió sin conexión más de lo que había (posiblemente en dos equipos a la vez). Revisa el inventario.', v_prod.nombre, v_stock),
++            'detalle', jsonb_build_object('producto_id', v_prod.id, 'stock', v_stock));
++        end if;
++        -- Lotes (una sola vez, igual que la web): del lote indicado y, si no
++        -- alcanza, del siguiente que vence; sin lote indicado, FEFO si la
++        -- cuenta maneja lotes.
++        if public._offline_ref(v_uid, 'producto_lotes', v_item->>'lote_id') is not null then
++          perform public.descontar_lote_venta((v_item->>'lote_id')::uuid, v_prod.id, v_unid);
++        elsif v_cfg.maneja_lotes_vencimiento is true then
++          perform public.descontar_lote_venta(null, v_prod.id, v_unid);
++        end if;
++      end if;
++    end if;
++  end loop;
++
++  -- 7. Venta
++  v_cliente := public._offline_ref(v_uid, 'clientes', v_venta->>'cliente_id');
++  v_fila := (v_venta - 'id' - 'auth_user_id' - 'estado' - 'created_at' - 'referencia_caja')
++    || jsonb_build_object('auth_user_id', v_uid, 'estado', 'completada', 'numero_venta', v_numero,
++                          'cliente_id', v_cliente, 'created_at', v_creada,
++                          'metodo_pago_id', public._offline_ref(v_uid, 'metodos_pago', v_venta->>'metodo_pago_id'));
++  if v_fila->>'observaciones' is not null then
++    v_fila := v_fila || jsonb_build_object('observaciones', public._offline_numero_en_texto(v_fila->>'observaciones', v_num_texto, v_numero));
++  end if;
++  v_venta_id := public._offline_insertar('ventas', v_fila, c_venta);
++
++  -- 8. Detalle
++  for v_i in 0 .. jsonb_array_length(v_det) - 1 loop
++    v_item := v_det->v_i;
++    v_fila := (v_item - 'id' - 'auth_user_id' - 'venta_id' - 'created_at')
++      || jsonb_build_object('auth_user_id', v_uid, 'venta_id', v_venta_id,
++           'producto_id', public._offline_ref(v_uid, 'productos', v_item->>'producto_id'),
++           'combo_id', public._offline_ref(v_uid, 'combos', v_item->>'combo_id'),
++           'promocion_id', public._offline_ref(v_uid, 'promociones', v_item->>'promocion_id'),
++           'escala_id', public._offline_ref(v_uid, 'precios_escala', v_item->>'escala_id'),
++           'presentacion_id', public._offline_ref(v_uid, 'producto_presentaciones', v_item->>'presentacion_id'),
++           'lote_id', public._offline_ref(v_uid, 'producto_lotes', v_item->>'lote_id'),
++           'vendido_sin_stock', v_sin_stock[v_i + 1]);
++    if v_item->>'tipo_item' not in ('producto', 'servicio') then v_fila := v_fila || '{"tipo_item":"producto"}'; end if;
++    perform public._offline_insertar('venta_detalles', v_fila, c_det);
++  end loop;
++
++  -- 9. Caja (ingresos; el saldo lo encadena el trigger existente)
++  for v_item in select * from jsonb_array_elements(coalesce(p->'caja', '[]'::jsonb)) loop
++    begin v_monto := (v_item->>'monto')::numeric; exception when others then v_monto := null; end;
++    continue when v_monto is null or v_monto <= 0;   -- la web tampoco logra guardar montos en 0
++    v_suma_caja := v_suma_caja + v_monto;
++    v_fila := v_item || jsonb_build_object('auth_user_id', v_uid, 'tipo_flujo', 'INGRESO', 'tipo_movimiento', 'VENTA',
++      'referencia_tipo', 'venta', 'referencia_id', v_venta_id, 'saldo_anterior', 0, 'saldo_resultante', 0,
++      'metodo_pago_id', public._offline_ref(v_uid, 'metodos_pago', v_item->>'metodo_pago_id'),
++      'banco_id', public._offline_ref(v_uid, 'bancos', v_item->>'banco_id'),
++      'concepto', public._offline_numero_en_texto(v_item->>'concepto', v_num_texto, v_numero),
++      'observaciones', public._offline_numero_en_texto(v_item->>'observaciones', v_num_texto, v_numero));
++    v_ultimo_mov := public._offline_insertar('movimientos_financieros', v_fila, c_mov);
++  end loop;
++  if v_ultimo_mov is not null then
++    update public.ventas set referencia_caja = v_ultimo_mov where id = v_venta_id;
++  end if;
++  v_neto := v_total - coalesce((v_venta->>'impuesto')::numeric, 0) - coalesce((v_venta->>'retencion_ir_monto')::numeric, 0);
++  if abs(v_suma_caja - v_neto) > 0.011 then
++    v_alertas := v_alertas || jsonb_build_object('tipo', 'totales_distintos', 'mensaje',
++      format('Lo registrado en Caja (%s) no coincide con el total neto de la venta (%s). Revísala.', v_suma_caja, v_neto),
++      'detalle', jsonb_build_object('caja', v_suma_caja, 'neto', v_neto));
++  end if;
++
++  -- 10. Comisión bancaria (solo con ingreso en Caja y solo pagos con TARJETA,
++  --     como en la web): un gasto ligado a la venta + su egreso de Caja
++  --     ligado al gasto, igual que un gasto del módulo Gastos.
++  if v_ultimo_mov is not null and jsonb_typeof(p->'comision') = 'object'
++     and coalesce((p->'comision'->>'monto')::numeric, 0) > 0
++     and lower(coalesce(p->'comision'->'movimiento'->>'metodo_pago_nombre', '')) like '%tarjeta%'
++     and public._offline_ref(v_uid, 'bancos', p->'comision'->>'banco_id') is not null then
++    v_gasto_id := public._offline_insertar('gastos', jsonb_build_object('auth_user_id', v_uid, 'tipo', 'inmediato',
++      'concepto', public._offline_numero_en_texto(p->'comision'->'movimiento'->>'concepto', v_num_texto, v_numero),
++      'categoria', 'Comisiones bancarias', 'monto', (p->'comision'->>'monto')::numeric,
++      'fecha', coalesce(p->'comision'->'movimiento'->>'fecha', v_venta->>'fecha'),
++      'metodo_pago_id', public._offline_ref(v_uid, 'metodos_pago', p->'comision'->'movimiento'->>'metodo_pago_id'),
++      'metodo_pago_nombre', p->'comision'->'movimiento'->>'metodo_pago_nombre', 'estado', 'activo', 'venta_id', v_venta_id,
++      'observaciones', public._offline_numero_en_texto(coalesce(p->'comision'->'gasto'->>'observaciones',
++                         'Generado automáticamente por la venta ' || coalesce(v_num_texto, v_numero)), v_num_texto, v_numero)), c_gasto);
++    v_fila := coalesce(p->'comision'->'movimiento', '{}'::jsonb) || jsonb_build_object('auth_user_id', v_uid, 'tipo_flujo', 'EGRESO',
++      'tipo_movimiento', 'GASTO', 'referencia_tipo', 'gasto', 'referencia_id', v_gasto_id, 'saldo_anterior', 0, 'saldo_resultante', 0,
++      'monto', (p->'comision'->>'monto')::numeric,
++      'metodo_pago_id', public._offline_ref(v_uid, 'metodos_pago', p->'comision'->'movimiento'->>'metodo_pago_id'),
++      'banco_id', public._offline_ref(v_uid, 'bancos', p->'comision'->>'banco_id'),
++      'concepto', public._offline_numero_en_texto(p->'comision'->'movimiento'->>'concepto', v_num_texto, v_numero));
++    v_mov_id := public._offline_insertar('movimientos_financieros', v_fila, c_mov);
++    update public.gastos set movimiento_financiero_id = v_mov_id where id = v_gasto_id;
++    update public.ventas set comision_porcentaje = (p->'comision'->>'porcentaje')::numeric,
++                             comision_monto = (p->'comision'->>'monto')::numeric
++     where id = v_venta_id;
++  end if;
++
++  -- 11. Impuestos (saldo encadenado aquí, con candado por cuenta)
++  perform pg_advisory_xact_lock(hashtextextended('mov_imp:' || v_uid::text, 0));
++  for v_item in select * from jsonb_array_elements(coalesce(p->'impuestos', '[]'::jsonb)) loop
++    begin v_monto := (v_item->>'monto')::numeric; exception when others then v_monto := null; end;
++    continue when v_monto is null or v_monto <= 0;
++    select saldo_resultante into v_saldo_imp from public.movimientos_impuestos
++     where auth_user_id = v_uid order by created_at desc, id desc limit 1;
++    v_saldo_imp := coalesce(v_saldo_imp, 0);
++    v_fila := v_item || jsonb_build_object('auth_user_id', v_uid, 'tipo_movimiento', 'IVA_VENTA',
++      'referencia_venta_id', v_venta_id, 'saldo_anterior', v_saldo_imp, 'saldo_resultante', v_saldo_imp + v_monto,
++      'impuesto_id', public._offline_ref(v_uid, 'impuestos', v_item->>'impuesto_id'), 'created_at', clock_timestamp(),
++      'concepto', public._offline_numero_en_texto(v_item->>'concepto', v_num_texto, v_numero));
++    perform public._offline_insertar('movimientos_impuestos', v_fila, c_imp);
++  end loop;
++  for v_item in select * from jsonb_array_elements(coalesce(p->'venta_impuestos', '[]'::jsonb)) loop
++    perform public._offline_insertar('venta_impuestos', v_item || jsonb_build_object('auth_user_id', v_uid,
++      'venta_id', v_venta_id, 'impuesto_id', public._offline_ref(v_uid, 'impuestos', v_item->>'impuesto_id')), c_vimp);
++  end loop;
++
++  -- 12. Retención IR a favor
++  if jsonb_typeof(p->'retencion') = 'object' and coalesce((p->'retencion'->>'monto')::numeric, 0) > 0 then
++    perform public._offline_insertar('retenciones_ir', (p->'retencion') || jsonb_build_object('auth_user_id', v_uid,
++      'lado', 'a_favor', 'origen', 'venta', 'venta_id', v_venta_id, 'estado', 'pendiente'), c_ret);
++  end if;
++
++  -- 13. Cliente (suma atómica)
++  if v_cliente is not null then
++    update public.clientes set total_compras = coalesce(total_compras, 0) + v_total, num_compras = coalesce(num_compras, 0) + 1
++     where id = v_cliente and auth_user_id = v_uid;
++  end if;
++
++  -- 14. Garantías (número y vencimiento como en la web)
++  for v_item in select * from jsonb_array_elements(coalesce(p->'garantias', '[]'::jsonb)) loop
++    continue when coalesce((v_item->>'garantia_meses')::numeric, 0) <= 0;
++    v_garantia_num := public.generar_numero_garantia(v_uid);
++    perform public._offline_insertar('garantias_clientes', (v_item - 'numero') || jsonb_build_object(
++      'auth_user_id', v_uid, 'venta_id', v_venta_id, 'origen', 'automatica', 'numero', v_garantia_num,
++      'cliente_id', v_cliente, 'cliente_nombre', case when v_cliente is not null then v_item->>'cliente_nombre' end,
++      'producto_id', public._offline_ref(v_uid, 'productos', v_item->>'producto_id'),
++      'fecha_compra', coalesce((v_item->>'fecha_compra')::date, v_fecha_hoy),
++      'fecha_vencimiento', public._offline_sumar_meses_js(coalesce((v_item->>'fecha_compra')::date, v_fecha_hoy), (v_item->>'garantia_meses')::numeric)), c_gar);
++  end loop;
++
++  -- 15. Bitácora de auditoría: las mismas filas que deja auditoria-guard.js en la web
++  if jsonb_typeof(p->'auditoria') = 'array' and jsonb_array_length(p->'auditoria') <= 200 then
++    for v_item in select * from jsonb_array_elements(p->'auditoria') loop
++      continue when jsonb_typeof(v_item) <> 'object' or coalesce(v_item->>'tabla', '') = '' or coalesce(v_item->>'accion', '') = '';
++      perform public._offline_insertar('auditoria_log', jsonb_build_object(
++        'auth_user_id', v_uid, 'created_at', v_creada,
++        'perfil_nombre', coalesce(left(v_item->>'perfil_nombre', 120), 'Admin'), 'perfil_tipo', coalesce(left(v_item->>'perfil_tipo', 40), 'admin'),
++        'modulo', coalesce(left(v_item->>'modulo', 120), 'ventas.html'), 'tabla', left(v_item->>'tabla', 80), 'accion', left(v_item->>'accion', 20),
++        'resumen', public._offline_numero_en_texto(left(v_item->>'resumen', 500), v_num_texto, v_numero)), c_aud);
++    end loop;
++  end if;
++
++  -- 16. Alertas y control
++  insert into public.offline_alertas (auth_user_id, venta_id, venta_uuid, numero_venta, tipo, mensaje, detalle)
++  select v_uid, v_venta_id, v_uuid, v_numero, a->>'tipo', a->>'mensaje', coalesce(a->'detalle', '{}'::jsonb)
++    from jsonb_array_elements(v_alertas) a;
++  v_res := jsonb_build_object('ok', true, 'venta_id', v_venta_id, 'numero_venta', v_numero,
++    'numero_reemplazado', v_reemplazado, 'alertas', v_alertas, 'repetida', false);
++  insert into public.offline_ventas_recibidas (uuid, auth_user_id, dispositivo_id, venta_id, numero_venta, numero_dispositivo,
++    numero_reemplazado, huella, vendida_en, desfase_reloj_seg, resultado)
++  values (v_uuid, v_uid, v_disp.id, v_venta_id, v_numero, v_num_disp, v_reemplazado, v_huella, v_creada, v_desfase, v_res);
++  update public.offline_dispositivos set ultimo_contacto = now() where id = v_disp.id;
++  return v_res;
++end $f$;
++revoke all on function public.offline_registrar_venta(jsonb) from public, anon;
++grant execute on function public.offline_registrar_venta(jsonb) to authenticated;
+diff --git a/ventas.html b/ventas.html
+index e8c6e65..63dc073 100644
+--- a/ventas.html
++++ b/ventas.html
+@@ -2029,7 +2029,7 @@
+ <script src="proforma-de-credito.js?v=20261015a"></script>
+ <script src="moneda-alterna.js?v=20261021b"></script>
+ <script src="ventas-config.js?v=20261021a"></script>
+-<script src="ventas.js?v=20261021c"></script>
++<script src="ventas.js?v=20261022a"></script>
+ <script src="select-buscable.js?v=20261015b"></script>
+ <script src="ventas-correcciones.js?v=20261016a"></script>
+ <script src="devoluciones-venta.js?v=20261016a"></script>
+diff --git a/ventas.js b/ventas.js
+index c854f98..63aeafe 100644
+--- a/ventas.js
++++ b/ventas.js
+@@ -1234,6 +1234,9 @@ async function anularVenta() {
+         const ventaInfo = S.ventas.find(v => v.id === id);
+         const rev = await N360CajaSegura.reversarVentaEnCaja(sb, S.userId, id, ventaInfo?.numero_venta || '', todayISO());
+         if (!rev.ok) reversoFallo = true;
++        // La comisión del banco de esa venta también se anula (gasto + su egreso).
++        try { await anularComisionDeVenta(id); }
++        catch (eCom) { console.warn('No se pudo anular la comisión bancaria:', eCom); reversoFallo = true; }
+       } catch (eCaja) {
+         console.warn('No se pudo registrar el reverso en Caja:', eCaja);
+         reversoFallo = true;
+@@ -3372,63 +3375,92 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
+ // multiplica por su factor: vender 1 blister de 10 descuenta 10.
+ // ============================================================
+ // COMISION BANCARIA (POS de tarjeta)
+-// Si el metodo de pago usado tiene una comision configurada (ej.
+-// un POS que cobra 4.5%), se registra automaticamente como GASTO
+-// y como EGRESO de caja -- asi la caja refleja lo que de verdad
+-// llega del banco, y la comision queda contabilizada donde debe.
+-// Si el metodo no tiene comision (el caso de todos los negocios
+-// que no la configuraron), esta funcion no hace absolutamente
+-// nada y todo sigue igual que siempre.
++// Solo para pagos con TARJETA (en transferencias el banco no cobra
++// comisión de POS). Si el banco elegido tiene comisión, se registra
++// igual que cualquier gasto del módulo Gastos:
++//   1. una fila en "gastos" (tipo inmediato, categoría "Comisiones
++//      bancarias", ligada a la venta con venta_id) -> la ven Gastos,
++//      Reportes, Estadísticas y Contabilidad (Estado de resultados);
++//   2. su EGRESO en Caja, ligado al gasto (referencia_tipo 'gasto'),
++//      del banco donde entró el pago -> Caja y el saldo del banco
++//      reflejan lo que de verdad deposita el banco.
++// Los dos van juntos: si el gasto no se pudo guardar, tampoco se toca
++// Caja (así Caja y Contabilidad nunca quedan distintos). Si el método
++// no es tarjeta o el banco no cobra comisión, no hace nada.
+ // ============================================================
++function esPagoConTarjeta(nombre) {
++  return String(nombre || '').toLowerCase().includes('tarjeta');
++}
++
++// Monto de la comisión al CERRAR la venta: el % del banco sobre el
++// total final (por si el carrito cambió después de elegir el banco),
++// salvo que el vendedor lo haya ajustado a mano.
++function comisionAlCerrar(estado, totalVenta) {
++  const pct = estado._comisionBancoPct;
++  if (pct == null || !(Number(pct) > 0)) return { pct, monto: 0 };
++  const monto = estado._comisionBancoMontoEditadoManual
++    ? round2(Number(estado._comisionBancoMonto) || 0)
++    : round2((Number(totalVenta) || 0) * Number(pct) / 100);
++  return { pct, monto };
++}
++
++// Comisión en la moneda del banco (bancos en dólares): misma conversión
++// que usa Caja para el resto de movimientos de ese banco.
++function comisionEnMonedaBanco(bancoId, monto) {
++  const banco = (_bancosCache || []).find(b => b.id === bancoId);
++  const base = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
++  const mb = banco?.moneda || 'NIO';
++  const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
++  if (!banco || mb === base || !tasa) return null;
++  return round2(base === 'NIO' ? monto / tasa : monto * tasa);
++}
++
+ async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVenta, numeroVenta, ventaId, fecha, bancoId, bancoNombre, comisionMonto, comisionPct }) {
+   try {
+     if (!(Number(totalVenta) > 0)) return null;
++    if (!esPagoConTarjeta(metodoNombre)) return null;      // transferencias: sin comisión
+ 
+-    // La comision ahora vive POR BANCO (cada banco cobra distinto),
+-    // no por metodo de pago en general. Si no se eligio ningun banco
+-    // en esta venta, o el monto calculado/editado quedo en 0, no hay
+-    // nada que registrar -- comportamiento identico al de antes para
+-    // quien no usa bancos o no tiene comision configurada.
++    // La comision vive POR BANCO (cada banco cobra distinto). Sin banco
++    // elegido o con monto 0, no hay nada que registrar.
+     const monto = round2(Number(comisionMonto) || 0);
+     if (!bancoId || !(monto > 0)) return null;
+     const pct = comisionPct;
+ 
+     const concepto = `Comisión bancaria ${pct}% — ${bancoNombre} (Venta ${numeroVenta})`;
+ 
+-    // 1. Gasto (para que aparezca en el módulo de Gastos y en reportes)
+-    await sb.from('gastos').insert({
+-      auth_user_id: S.userId,
++    // 1. Gasto (módulo Gastos, reportes y Contabilidad)
++    const { data: gasto, error: errGasto } = await sb.from('gastos').insert({
++      auth_user_id:       S.userId,
++      tipo:               'inmediato',
+       concepto,
+-      categoria: 'Comisiones bancarias',
++      categoria:          'Comisiones bancarias',
+       monto,
+       fecha,
+-      tipo: 'operativo',
+-      estado: 'activo',
+-      observaciones: `Generado automáticamente por la venta ${numeroVenta}`,
+-    });
+-
+-    // 2. Egreso en caja (para que el saldo cuadre con lo que realmente
+-    //    deposita el banco, no con el total bruto cobrado al cliente)
+-    const { data: ult } = await sb.from('movimientos_financieros')
+-      .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado', 'completado')
+-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+-    const saldoAnt = Number(ult?.saldo_resultante) || 0;
++      metodo_pago_id:     metodoPagoId || null,
++      metodo_pago_nombre: metodoNombre || null,
++      estado:             'activo',
++      venta_id:           ventaId,
++      observaciones:      `Generado automáticamente por la venta ${numeroVenta}`,
++    }).select('id').single();
++    if (errGasto || !gasto) throw errGasto || new Error('No se guardó el gasto de la comisión');
+ 
+-    await sb.from('movimientos_financieros').insert({
++    // 2. Egreso en Caja, ligado al gasto (como cualquier gasto): así, si el
++    //    gasto se cancela desde Gastos, su egreso también se anula.
++    const { data: mov } = await N360CajaSegura.insertarMovimiento(sb, {
+       auth_user_id:       S.userId,
+       tipo_flujo:         'EGRESO',
+       tipo_movimiento:    'GASTO',
+       concepto,
+       monto,
+-      saldo_anterior:     saldoAnt,
+-      saldo_resultante:   round2(saldoAnt - monto),
+-      metodo_pago_id:     metodoPagoId,
++      metodo_pago_id:     metodoPagoId || null,
+       metodo_pago_nombre: metodoNombre || null,
+       banco_id:           bancoId,
+-      referencia_tipo:    'venta',
+-      referencia_id:      ventaId,
++      monto_moneda_banco: comisionEnMonedaBanco(bancoId, monto),
++      referencia_tipo:    'gasto',
++      referencia_id:      gasto.id,
+       fecha,
+-    });
++    }, { etiqueta: 'La comisión bancaria de la venta ' + numeroVenta });
++    if (mov?.id) await sb.from('gastos').update({ movimiento_financiero_id: mov.id }).eq('id', gasto.id).eq('auth_user_id', S.userId);
+ 
+     // 3. Dejar constancia en la venta
+     await sb.from('ventas')
+@@ -3437,13 +3469,41 @@ async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVent
+ 
+     return { pct, monto };
+   } catch (e) {
+-    // Nunca debe tumbar la venta: si esto falla, la venta ya quedo
+-    // guardada correctamente y solo se avisa en consola.
++    // Nunca debe tumbar la venta: la venta ya quedó guardada. Se avisa
++    // para que la comisión se registre a mano en Gastos.
+     console.error('registrarComisionBancaria:', e);
++    try { showToast('La venta se guardó, pero no se pudo registrar la comisión del banco. Regístrala en Gastos.', 'warning'); } catch (_) {}
+     return null;
+   }
+ }
+ 
++// Al anular una venta (con su dinero devuelto en Caja), la comisión del
++// banco también se anula: el gasto queda cancelado y su egreso de Caja
++// anulado — igual que cancelar un gasto desde el módulo Gastos. También
++// cubre comisiones antiguas (antes ligadas directo a la venta).
++async function anularComisionDeVenta(ventaId) {
++  const ahora = new Date().toISOString();
++  const { data: gastosCom, error } = await sb.from('gastos').select('id')
++    .eq('auth_user_id', S.userId).eq('venta_id', ventaId).eq('estado', 'activo');
++  if (error) throw error;
++  for (const g of (gastosCom || [])) {
++    const { error: e1 } = await sb.from('movimientos_financieros')
++      .update({ estado: 'anulado', anulado_en: ahora, anulado_motivo: 'Venta anulada' })
++      .eq('referencia_tipo', 'gasto').eq('referencia_id', g.id).eq('auth_user_id', S.userId).eq('estado', 'completado');
++    if (e1) throw e1;
++    const { error: e2 } = await sb.from('gastos')
++      .update({ estado: 'cancelado', cancelado_en: ahora, cancelado_motivo: 'Venta anulada' })
++      .eq('id', g.id).eq('auth_user_id', S.userId);
++    if (e2) throw e2;
++  }
++  const { error: e3 } = await sb.from('movimientos_financieros')
++    .update({ estado: 'anulado', anulado_en: ahora, anulado_motivo: 'Venta anulada' })
++    .eq('referencia_tipo', 'venta').eq('referencia_id', ventaId).eq('auth_user_id', S.userId)
++    .eq('tipo_flujo', 'EGRESO').eq('tipo_movimiento', 'GASTO').like('concepto', 'Comisión bancaria%').eq('estado', 'completado');
++  if (e3) throw e3;
++  return (gastosCom || []).length;
++}
++
+ /* ============================================================
+    NUMEROS DE SERIE -- solo si el negocio activo la funcion en
+    Configuracion (S.empresaConfig.usa_numero_serie). Si esta
+@@ -5458,7 +5518,10 @@ function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
+   S._comisionBancoMonto = 0;
+   S._comisionBancoMontoEditadoManual = false;
+ 
+-  if (banco && banco.comision_porcentaje === null) {
++  // La comisión es del POS de TARJETA: en transferencias no se cobra.
++  if (!esPagoConTarjeta(S.metodoPagoNombre)) {
++    /* transferencia u otro método: sin comisión */
++  } else if (banco && banco.comision_porcentaje === null) {
+     document.getElementById('bcc-nombre-banco').textContent = bancoNombre;
+     document.getElementById('bcc-porcentaje').value = '';
+     document.getElementById('banco-comision-configurar-wrap').style.display = '';
+@@ -5588,7 +5651,9 @@ function elegirBancoVentaVR(bancoId, bancoNombre, monedaBanco) {
+   VR._comisionBancoMonto = 0;
+   VR._comisionBancoMontoEditadoManual = false;
+ 
+-  if (banco && banco.comision_porcentaje === null) {
++  if (!esPagoConTarjeta(VR.metodoPagoNombre)) {
++    /* transferencia u otro método: sin comisión (solo aplica a tarjeta) */
++  } else if (banco && banco.comision_porcentaje === null) {
+     document.getElementById('vr-bcc-nombre-banco').textContent = bancoNombre;
+     document.getElementById('vr-bcc-porcentaje').value = '';
+     document.getElementById('vr-banco-comision-configurar-wrap').style.display = '';
+@@ -6010,24 +6075,29 @@ async function _confirmarVentaInterno(conImpresion) {
+     const ultimoMovId = (reg.data.caja_ids || []).slice(-1)[0] || null;
+     (reg.data.avisos || []).forEach(a => console.warn('Venta:', a));
+ 
+-    // Descontar el lote especifico usado (FEFO, Farmacia fase 2) --
+-    // aislado: si algo fallara aqui, la venta YA se confirmo
+-    // exitosamente, no se revierte nada por esto.
++    // Descontar el lote especifico usado (FEFO, Farmacia fase 2) -- UNA
++    // sola vez por línea: del lote elegido, y si no alcanza, el resto
++    // del siguiente que vence (todo en el servidor, de forma atómica).
++    // Cuenta las unidades reales del inventario (una caja de 12 = 12).
++    // Las líneas con lote ya NO pasan además por descontar_lote_fefo
++    // (antes se descontaban dos veces). Aislado: si algo fallara aquí,
++    // la venta YA se confirmó, no se revierte nada por esto.
+     try {
+       for (const item of S.carrito) {
+-        if (!item.loteId) continue;
+-        const { data: loteActual } = await sb.from('producto_lotes').select('cantidad_actual').eq('id', item.loteId).maybeSingle();
+-        if (loteActual) {
+-          await sb.from('producto_lotes').update({ cantidad_actual: Math.max(0, Number(loteActual.cantidad_actual) - item.cantidad) }).eq('id', item.loteId);
+-        }
++        if (!item.loteId || item.tipo !== 'producto' || item.esCombo || item.origenStockId) continue;
++        const { error: eLoteRpc } = await sb.rpc('descontar_lote_venta', {
++          p_lote_id: item.loteId, p_producto_id: item.id, p_cantidad: unidadesInventario(item),
++        });
++        if (eLoteRpc) console.warn('descontar_lote_venta:', item.nombre, eLoteRpc);
+       }
+     } catch (eLote) { console.warn('Descuento de lote FEFO:', eLote); }
+ 
+     // Si el negocio maneja lotes y vencimientos, se descuenta
+     // automáticamente del lote que vence primero (FEFO) — capa aparte,
+-    // nunca afecta el stock_actual (que ya descontó el servidor).
++    // nunca afecta el stock_actual (que ya descontó el servidor). Las
++    // líneas con un lote ya elegido se descontaron arriba (una sola vez).
+     if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
+-      for (const item of S.carrito.filter(i => i.tipo === 'producto' && !i.esCombo && !i.esPromocion && !i.origenStockId)) {
++      for (const item of S.carrito.filter(i => i.tipo === 'producto' && !i.esCombo && !i.esPromocion && !i.origenStockId && !i.loteId)) {
+         sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
+           .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
+       }
+@@ -6078,7 +6148,7 @@ async function _confirmarVentaInterno(conImpresion) {
+           totalVenta: Number(r.total) || 0, numeroVenta: S.numeroVenta,
+           ventaId: ventaId, fecha: fechaVentaElegida,
+           bancoId: S.bancoElegidoId || null, bancoNombre: S.bancoElegidoNombre || null,
+-          comisionMonto: S._comisionBancoMonto || 0, comisionPct: S._comisionBancoPct,
++          comisionMonto: comisionAlCerrar(S, r.total).monto, comisionPct: S._comisionBancoPct,
+         });
+       } catch (eCom) { console.warn('Comisión bancaria:', eCom); }
+     }
+@@ -7386,7 +7456,7 @@ async function _confirmarVentaRapidaInterno() {
+           totalVenta: Number(r.total) || 0, numeroVenta: VR.numeroVenta,
+           ventaId: ventaId, fecha: fechaVentaElegidaVR,
+           bancoId: VR.bancoElegidoId || null, bancoNombre: VR.bancoElegidoNombre || null,
+-          comisionMonto: VR._comisionBancoMonto || 0, comisionPct: VR._comisionBancoPct,
++          comisionMonto: comisionAlCerrar(VR, r.total).monto, comisionPct: VR._comisionBancoPct,
+         });
+       } catch (eCom) { console.warn('Comisión bancaria:', eCom); }
+     }

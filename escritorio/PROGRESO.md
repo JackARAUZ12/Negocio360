@@ -455,7 +455,7 @@ Pedida por el dueño. Detalle completo en `docs/CORRECCION-COMISION-LOTES.md`.
   servidor. Pantalla real probada sobre esta rama y sobre `main` actual. 60
   unitarias, 22 de navegador y 21 del programa real: todas pasan.
 - **Pendiente de autorización del dueño:**
-  - publicar en `main` (parche listo: `docs/correccion-comision-lotes-main.patch`);
+  - publicar en `main` (parche listo: `docs/publicar-main-comisiones.patch`);
   - corregir las 4 comisiones antiguas de la cuenta piloto.
 
 ### Aviso importante para el programa de escritorio
@@ -482,4 +482,8 @@ Queda como siguiente paso.
 - 2026-10-22: instalador piloto rehecho como `2.0.0-piloto.2` (incluye las correcciones; SHA-256 en `piloto/SHA256.txt`).
 - 2026-10-22: el dueño autorizó publicar y corregir datos antiguos.
   - Comisiones antiguas: corregidas en la cuenta piloto. 3 de transferencia anuladas (C$ 15,023) y la de tarjeta con su gasto. Caja C$ 323,941.90, saldos correctos, ningún cierre afectado.
-  - Publicar en `main`: la protección del entorno lo bloqueó. Parche probado listo en `docs/correccion-comision-lotes-main.patch`.
+  - Publicar en `main`: la protección del entorno lo bloqueó. Parche probado listo en `docs/publicar-main-comisiones.patch`.
+- 2026-10-22: comisión OPCIONAL al pagar con tarjeta en egresos (Gastos, Compras, Cuentas por pagar), pedida por el dueño.
+  - Migración aplicada: `gastos.origen_tipo/origen_id`.
+  - Pruebas: base revertida y 9/9 en pantallas reales sobre `main`.
+  - Paquete único para publicar: `docs/publicar-main-comisiones.patch`. Subir a `main` sigue bloqueado por la protección del entorno.

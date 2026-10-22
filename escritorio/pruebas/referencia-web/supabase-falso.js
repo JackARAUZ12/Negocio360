@@ -44,8 +44,15 @@
     if (q.op === 'update' || q.op === 'delete') {
       registro.push({ op: q.op, tabla: q.tabla, payload: copia(q.payload || null), filtros: copia(q.filtros) });
       // Como la base real: las lecturas siguientes ven el cambio.
+      let tocadas = [];
       if (q.op === 'update' && fx.tablas && fx.tablas[q.tabla]) {
-        for (const fila of filtrar(fx.tablas[q.tabla], q.filtros)) Object.assign(fila, copia(q.payload));
+        tocadas = filtrar(fx.tablas[q.tabla], q.filtros);
+        for (const fila of tocadas) Object.assign(fila, copia(q.payload));
+      }
+      // .update(...).select(): como la base real, devuelve las filas cambiadas.
+      if (q.select) {
+        if (q.single || q.maybeSingle) return { data: copia(tocadas[0] || null), error: null };
+        return { data: copia(tocadas), error: null };
       }
       return { data: null, error: null };
     }

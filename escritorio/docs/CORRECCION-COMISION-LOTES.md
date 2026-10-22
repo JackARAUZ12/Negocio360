@@ -105,10 +105,10 @@ Para publicarla, desde una copia de `main`:
 `main` cambió después de crear esta rama: ahora la venta se guarda con
 `venta_registrar_atomica`. La comisión y los lotes siguen igual que antes
 allí, con la misma falla. La corrección para `main` está lista en
-`docs/correccion-comision-lotes-main.patch`. Se probó sobre `main` (`e32bc49`)
+`docs/publicar-main-comisiones.patch`. Se probó sobre `main` (`e32bc49`)
 y aplica limpio:
 ```
-git checkout main && git apply escritorio/docs/correccion-comision-lotes-main.patch
+git checkout main && git apply escritorio/docs/publicar-main-comisiones.patch
 ```
 La base ya tiene lo necesario; no hace falta otra migración.
 
@@ -144,3 +144,63 @@ Propuesta:
 
 Con eso, Caja, Gastos y Contabilidad quedan iguales. Los lotes ya descontados
 de más en ventas antiguas se pueden revisar con un ajuste de inventario.
+
+
+## 3. Comisión OPCIONAL al pagar con tarjeta (egresos) — 2026-10-22
+Pedido del dueño: cuando el negocio **paga** con tarjeta normalmente no hay
+comisión, pero a veces el proveedor la cobra. En todo egreso debe ser
+**opcional**.
+
+### Qué hace
+- En **Gastos** (gasto pagado al momento y pago de gasto programado),
+  **Compras** (compra normal, compra directa, completar una compra pendiente,
+  orden convertida en compra) y **Cuentas por pagar** (pago a proveedor y
+  prima), si el método es **tarjeta** aparece la casilla "El proveedor me
+  cobra una comisión por pagar con tarjeta (opcional)":
+  - viene **apagada**;
+  - con transferencia o efectivo no aparece;
+  - marcada, se escribe el % (calcula el monto) o el monto directo.
+- Se registra como en Ventas:
+  - un gasto aparte "Comisiones bancarias";
+  - su egreso de Caja del **mismo banco**, ligado al gasto;
+  - el gasto queda ligado a la operación que lo originó (`gastos.origen_tipo`
+    / `origen_id`: `gasto`, `compra`, `pago_cxp`, `prima_cxp`).
+  - El egreso del pago original no cambia: la comisión va aparte. Así cuadran
+    Caja, el banco, Gastos, Contabilidad y los reportes.
+- Gasto y egreso van juntos: si el egreso no se pudo registrar, el gasto se
+  cancela solo y se avisa.
+- **Cancelar el gasto** original o **anular la compra** cancela también su
+  comisión (gasto y egreso). Los pagos de Cuentas por pagar no se anulan en
+  el sistema, así que su comisión se cancela desde Gastos si hiciera falta.
+- Pieza común: `comision-pago-tarjeta.js` (una sola lógica para los tres
+  módulos).
+
+### Base (solo agrega; aplicada)
+Migración `20261022_comision_pago_tarjeta_egresos.sql`: columnas opcionales
+`gastos.origen_tipo` y `gastos.origen_id`, con índice.
+
+### Pruebas
+- **Base real (revertida):** gasto con tarjeta de C$ 200 más comisión de
+  C$ 6.
+  - Caja pasa de 1,000 a 794 y Gastos suma 206.
+  - Al cancelar el gasto vuelve a 1,000, sin nada activo.
+- **Pantallas reales sobre `main` (Chromium):** 4 pruebas.
+  - En Gastos, la comisión está apagada por defecto; marcada se guarda
+    ligada al gasto; cancelar el gasto la cancela; con transferencia no
+    aparece.
+  - Compra directa con comisión de 2.5 %, anulada después.
+  - Pago de Cuentas por pagar con comisión de 3 %.
+  - Compra normal, completar compra, prima y pago de gasto programado: la
+    opción solo aparece con tarjeta.
+  - Junto con las 5 pruebas de Ventas: 9 de 9.
+
+## Paquete para publicar en `main`
+`docs/publicar-main-comisiones.patch` trae todo junto: corrección de Ventas,
+comisión opcional en egresos y las dos migraciones (ya aplicadas en la base).
+Se verificó que aplica limpio sobre `main` (`e32bc49`). Desde una copia de
+`main`:
+```
+git apply escritorio/docs/publicar-main-comisiones.patch
+git add -A && git commit -m "Comisiones bancarias: ventas solo con tarjeta; opcional en egresos; lotes una vez"
+git push origin main
+```
