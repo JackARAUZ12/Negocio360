@@ -2889,13 +2889,21 @@ async function anularCompra() {
         .maybeSingle();
 
       if (prod) {
-        const stockRevertido = Math.max(0, Number(prod.stock_actual) - Number(linea.cantidad));
-        // Si esta compra cambió el costo promedio y nadie lo cambió después, se devuelve el costo anterior.
+        // La existencia se resta en el servidor sobre el valor REAL del momento.
+        const { error: errStock } = await sbClient.rpc('ajustar_stock_producto', {
+          p_producto_id: linea.producto_id, p_delta: -Number(linea.cantidad || 0), p_exigir_existencia: false,
+        });
+        if (errStock) throw errStock;
+        // Si esta compra cambió el costo promedio y nadie lo cambió después, se devuelve el costo anterior
+        // (solo si el costo sigue siendo el que se acaba de leer).
         const devolverCosto = linea.costo_antes != null && linea.costo_despues != null && Math.abs(Number(prod.costo) - Number(linea.costo_despues)) < 0.005;
-        await sbClient.from('productos')
-          .update({ stock_actual: stockRevertido, ...(devolverCosto ? { costo: Number(linea.costo_antes) } : {}), updated_at: new Date().toISOString() })
-          .eq('id', linea.producto_id)
-          .eq('auth_user_id', STATE.userId);
+        if (devolverCosto) {
+          await sbClient.from('productos')
+            .update({ costo: Number(linea.costo_antes), updated_at: new Date().toISOString() })
+            .eq('id', linea.producto_id)
+            .eq('auth_user_id', STATE.userId)
+            .eq('costo', prod.costo);
+        }
       }
     }
 

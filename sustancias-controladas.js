@@ -489,7 +489,9 @@ async function guardarNuevoRegistro() {
     } catch (eReceta) { console.warn('Vincular receta (RSC):', eReceta); }
 
     // 4) Descontar stock real del producto
-    await sb.from('productos').update({ stock_actual: round2(Number(prod.stock_actual) - cantidad) }).eq('id', productoId);
+    //    (en el servidor, restando sobre la existencia REAL del momento)
+    { const { error: errStock } = await sb.rpc('ajustar_stock_relativo', { p_items: [{ producto_id: productoId, delta: -cantidad }] });
+      if (errStock) console.warn('Sustancia controlada: no se pudo descontar inventario:', errStock); }
 
     // 5) El registro de cumplimiento (quien compro que), ligado a la
     // venta real recien creada.

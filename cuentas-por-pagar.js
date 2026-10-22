@@ -1124,14 +1124,15 @@ async function guardarNuevaCuentaCxP() {
     //    vale el stock después de esta compra.
     //    Fórmula: nuevo_costo = (stock_antes×costo_antes + cantidad×precio_compra) / stock_después
     for (const l of STATE.carrito) {
-      const stockAntes = Number(l.producto.stock_actual||0);
-      const costoAntes = Number(l.producto.costo||0);
       const cantidadComprada = Number(l.cantidad);
-      const stockDespues = stockAntes + cantidadComprada;
-      const nuevoCosto = l.producto.tipo_costo === 'escala' ? costoAntes // escala de costos: el costo base lo define la escala del producto
-        : stockDespues > 0
-        ? round2((stockAntes*costoAntes + cantidadComprada*l.precioUnitario) / stockDespues)
-        : l.precioUnitario;
+      // Existencia y costo promedio se calculan en el servidor sobre los
+      // valores REALES del momento (antes se usaban los que la página
+      // cargó al abrir; si se vendía algo en ese rato, se pisaba).
+      const { data: ent, error: errStock } = await sbClient.rpc('stock_entrada_costo', {
+        p_producto_id: l.producto.id, p_cantidad: cantidadComprada, p_costo_unitario: Number(l.precioUnitario), p_promediar: true,
+      });
+      if (errStock) throw errStock;
+      const stockAntes = Number(ent?.antes ?? 0), stockDespues = Number(ent?.despues ?? cantidadComprada);
 
       const { error: errDet } = await sbClient.from('detalle_compras').insert({
         auth_user_id: STATE.userId, compra_id: compra.id, producto_id: l.producto.id,
@@ -1139,12 +1140,10 @@ async function guardarNuevaCuentaCxP() {
         cantidad: l.cantidad, costo_unitario: l.precioUnitario, descuento: l.descuento||0,
         iva_porcentaje: l.ivaPorc||0, iva_monto: l.ivaMonto||0, subtotal: l.subtotal,
         stock_antes: stockAntes, stock_despues: stockDespues,
+        // Para que al anular la compra se pueda devolver el costo anterior (igual que en Compras)
+        ...(ent && ent.costo_nuevo != null && Number(ent.costo_nuevo) !== Number(ent.costo_antes) ? { costo_antes: Number(ent.costo_antes), costo_despues: Number(ent.costo_nuevo) } : {}),
       });
       if (errDet) throw errDet;
-      const { error: errStock } = await sbClient.from('productos')
-        .update({ stock_actual: stockDespues, costo: nuevoCosto, updated_at: new Date().toISOString() })
-        .eq('id', l.producto.id).eq('auth_user_id', STATE.userId);
-      if (errStock) throw errStock;
     }
 
     // 3) Crea la cuenta por pagar — NUNCA descuenta Caja al crearla

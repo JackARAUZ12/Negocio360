@@ -645,12 +645,15 @@ async function confirmarCobro() {
           .select('id, tipo, stock_actual').in('id', idsProductos);
         const mapaProd = {};
         (productosReales || []).forEach(p => { mapaProd[p.id] = p; });
-        for (const item of STATE.comandaCobroActual.items) {
-          const prod = mapaProd[item.producto_id];
-          if (prod && prod.tipo === 'producto') {
-            const nuevoStock = Math.max(0, round2(Number(prod.stock_actual || 0) - item.cantidad));
-            await sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', item.producto_id);
-          }
+        // En el servidor, restando sobre la existencia REAL y en una sola
+        // operación (antes, si el mismo producto venía en dos líneas, solo
+        // se descontaba una de ellas).
+        const descontarComanda = STATE.comandaCobroActual.items
+          .filter(item => mapaProd[item.producto_id] && mapaProd[item.producto_id].tipo === 'producto')
+          .map(item => ({ producto_id: item.producto_id, delta: -Number(item.cantidad || 0) }));
+        if (descontarComanda.length) {
+          const { error: errStock } = await sb.rpc('ajustar_stock_relativo', { p_items: descontarComanda });
+          if (errStock) throw errStock;
         }
       }
     } catch (eStock) {

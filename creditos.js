@@ -252,6 +252,18 @@
      saldo_anterior/saldo_resultante. Solo se llama con la porción de impuesto
      efectivamente cobrada en cada pago de cuota, nunca con el total del crédito.
   =================================================== */
+  // Suma/resta existencias en el servidor sobre el valor REAL (todo o nada).
+  // items = [{ producto_id, delta } | { combo_id, delta }]  (delta + devuelve, - descuenta)
+  async function ajustarStockCredito(items) {
+    const lista = (items || []).filter(x => x && Number(x.delta) && (x.producto_id || x.combo_id));
+    if (!lista.length) return 0;
+    // Sin reintento automático: si la respuesta se perdiera, repetir podría
+    // descontar dos veces. Si falla, se avisa.
+    const { data, error } = await _sb.rpc('ajustar_stock_relativo', { p_items: lista });
+    if (error) throw error;
+    return data;
+  }
+
   async function registrarImpuestoCredito(montoImpuesto, credito, impuestoNombre, impuestoId) {
     if (!montoImpuesto || montoImpuesto <= 0) return;
     try {
@@ -1627,40 +1639,21 @@
       // lo que corresponde a la lista NUEVA -- así el stock siempre
       // queda igual de exacto que si se hubiera vendido así desde el
       // principio, sin importar cuántas veces se edite.
+      // Devolver y descontar en UNA sola operación del servidor, sumando y
+      // restando sobre la existencia REAL (nunca con un número viejo de la página).
+      const ajustesStock = [];
       for (const d of (detallesViejos||[])) {
         if (d.tipo_item !== 'producto') continue;
-        if (d.combo_id) {
-          const { data: itemsCombo } = await _sb.from('combo_items').select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', CS.userId);
-          for (const compItem of (itemsCombo||[])) {
-            const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-            if (!prodActual) continue;
-            const devolver = Number(compItem.cantidad) * d.cantidad;
-            await _sb.from('productos').update({ stock_actual: Number(prodActual.stock_actual||0) + devolver }).eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-          }
-        } else if (d.producto_id) {
-          const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-          if (!prodActual) continue;
-          await _sb.from('productos').update({ stock_actual: Number(prodActual.stock_actual||0) + Number(d.cantidad||0) }).eq('id', d.producto_id).eq('auth_user_id', CS.userId);
-        }
+        if (d.combo_id) ajustesStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
+        else if (d.producto_id) ajustesStock.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) });
       }
-
-      // Descontar la lista NUEVA
       for (const it of CS.ncItems) {
         if (it.tipo_item !== 'producto' || it.esCombo) continue;
-        const prod = CS.productos.find(p => p.id === it.producto_id);
-        if (!prod) continue;
-        const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
-        await _sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', it.producto_id).eq('auth_user_id', CS.userId);
+        if (!CS.productos.find(p => p.id === it.producto_id)) continue;
+        ajustesStock.push({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) });
       }
-      for (const it of CS.ncItems.filter(i => i.esCombo)) {
-        const { data: itemsCombo } = await _sb.from('combo_items').select('producto_id, cantidad').eq('combo_id', it.producto_id).eq('auth_user_id', CS.userId);
-        for (const compItem of (itemsCombo||[])) {
-          const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-          if (!prodActual) continue;
-          const descontar = Number(compItem.cantidad) * it.cantidad;
-          await _sb.from('productos').update({ stock_actual: Math.max(0, Number(prodActual.stock_actual||0) - descontar) }).eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-        }
-      }
+      for (const it of CS.ncItems.filter(i => i.esCombo)) ajustesStock.push({ combo_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+      await ajustarStockCredito(ajustesStock);
 
       // Reemplazar los detalles de la venta
       await _sb.from('venta_detalles').delete().eq('venta_id', credito.venta_id);
@@ -1975,6 +1968,7 @@
         }
 
         // Descontar stock solo de productos normales (no servicios, no combos)
+        const descuentosCredito = [];
         for (const it of CS.ncItems) {
           if (it.tipo_item !== 'producto' || it.esCombo) continue;
           if (it.origen_stock_id) {
@@ -1987,30 +1981,20 @@
             } catch (eRemoto) { console.warn('Error descontando stock remoto:', it.nombre, eRemoto); }
             continue;
           }
-          const prod = CS.productos.find(p => p.id === it.producto_id);
-          if (!prod) continue;
-          const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
-          await _sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', it.producto_id).eq('auth_user_id', CS.userId);
+          if (!CS.productos.find(p => p.id === it.producto_id)) continue;
+          descuentosCredito.push({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) });
         }
 
-        // Combos vendidos a crédito: descontar el stock de CADA producto
-        // que los compone (cantidad del componente × cantidad vendida).
-        for (const it of CS.ncItems.filter(i => i.esCombo)) {
-          try {
-            const { data: itemsCombo } = await _sb.from('combo_items')
-              .select('producto_id, cantidad').eq('combo_id', it.producto_id).eq('auth_user_id', CS.userId);
-            for (const compItem of (itemsCombo || [])) {
-              const { data: prodActual } = await _sb.from('productos')
-                .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-              if (!prodActual) continue;
-              const descuentoTotal = Number(compItem.cantidad) * it.cantidad;
-              const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
-              await _sb.from('productos').update({ stock_actual: nuevoStock })
-                .eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-            }
-          } catch (eCombo) {
-            console.warn('No se pudo descontar el stock de los componentes del combo:', it.nombre, eCombo);
-          }
+        // Combos vendidos a crédito: se descuenta cada producto que los
+        // compone (cantidad del componente × cantidad vendida).
+        for (const it of CS.ncItems.filter(i => i.esCombo)) descuentosCredito.push({ combo_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+
+        // Todo en UNA operación del servidor, restando sobre la existencia
+        // REAL del momento (antes se usaba la que la página cargó al abrir).
+        try { await ajustarStockCredito(descuentosCredito); }
+        catch (eStock) {
+          console.warn('No se pudo descontar el inventario del crédito:', eStock);
+          showToast('El crédito se guardó, pero el inventario NO se descontó. Revísalo en Productos.', 'warning');
         }
 
         // Un crédito por venta SÍ es una compra real del cliente — se
@@ -3319,29 +3303,15 @@
           const { data: detalles } = await _sb.from('venta_detalles')
             .select('producto_id, combo_id, tipo_item, cantidad')
             .eq('venta_id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+          // Se devuelve en UNA operación del servidor, sumando sobre la
+          // existencia REAL. Los combos se guardan como tipo 'producto' con
+          // combo_id (antes no se devolvían): ahora sí vuelven sus componentes.
+          const devolverStock = [];
           for (const d of (detalles || [])) {
-            if (d.tipo_item === 'producto' && d.producto_id) {
-              const { data: prod } = await _sb.from('productos')
-                .select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-              if (prod) {
-                const nuevoStock = round2(Number(prod.stock_actual || 0) + Number(d.cantidad));
-                await _sb.from('productos').update({ stock_actual: nuevoStock })
-                  .eq('id', d.producto_id).eq('auth_user_id', CS.userId);
-              }
-            } else if (d.tipo_item === 'combo' && d.combo_id) {
-              const { data: itemsCombo } = await _sb.from('combo_items')
-                .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', CS.userId);
-              for (const compItem of (itemsCombo || [])) {
-                const { data: prodActual } = await _sb.from('productos')
-                  .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-                if (!prodActual) continue;
-                const devolverCantidad = round2(Number(compItem.cantidad) * Number(d.cantidad));
-                const nuevoStock = round2(Number(prodActual.stock_actual || 0) + devolverCantidad);
-                await _sb.from('productos').update({ stock_actual: nuevoStock })
-                  .eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-              }
-            }
+            if (d.producto_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) });
+            else if (d.combo_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
           }
+          await ajustarStockCredito(devolverStock);
           await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
             .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
         }
