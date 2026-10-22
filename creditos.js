@@ -2451,6 +2451,7 @@
     document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
     document.getElementById('ct-direccion').value = c.direccion_ticket|| '';
     document.getElementById('ct-mensaje').value   = c.mensaje_pie_ticket || 'Gracias por su compra';
+    const selFirma = document.getElementById('ct-espacio-firma'); if (selFirma) selFirma.value = ['normal','amplio','extra'].includes(c.espacio_firma_ticket) ? c.espacio_firma_ticket : 'normal';
     openModal('modal-config-ticket');
   }
   window.abrirConfigTicket = abrirConfigTicket;
@@ -2465,6 +2466,7 @@
       telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
       direccion_ticket: document.getElementById('ct-direccion').value.trim() || null,
       mensaje_pie_ticket: document.getElementById('ct-mensaje').value.trim() || 'Gracias por su compra',
+      espacio_firma_ticket: document.getElementById('ct-espacio-firma')?.value || 'normal',
       updated_at: new Date().toISOString(),
     };
     try {
@@ -2920,6 +2922,8 @@
     const logoUrl = CS.empresaConfig?.logo_principal_url || CS.empresaConfig?.logo_url || '';
     const ancho = cfg.ancho_ticket || '80mm';
     const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
+    // Espacio para firmar: normal ~17mm, amplio ~25mm, extra ~35mm (sin configurar = normal)
+    const espacioFirmaPx = ({ amplio: 95, extra: 132 })[cfg.espacio_firma_ticket] || 64;
     const c = d.credito;
     const nombreCliente = d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : '—';
     // Hora de la factura: la de registro, si es del mismo día que la fecha del crédito
@@ -2977,7 +2981,7 @@
         ${fila('SALDO PENDIENTE:', fmt(d.saldo), ' style="font-weight:800;font-size:1.1em"')}
         <hr/>
         ${plan}
-        ${d.saldo > 0 ? `<div style="margin-top:64px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
+        ${d.saldo > 0 ? `<div style="margin-top:${espacioFirmaPx}px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
         <hr/>
         ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
         <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>
