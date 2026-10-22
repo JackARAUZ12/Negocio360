@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es" data-n360-sin-conexion="permitido">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sincronización — Negocio360</title>
+  <link rel="stylesheet" href="vendor/fuentes/fuentes.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root { --fondo:#f4f4f8; --tarjeta:#fff; --texto:#1a1a2e; --suave:#6b6b80; --borde:#e4e4ea; --prim:#6C63FF; --ok:#16a34a; --aviso:#d97706; --mal:#dc2626; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--fondo); color:var(--texto); font:14px/1.5 "Plus Jakarta Sans", system-ui, sans-serif; }
+    header { display:flex; align-items:center; gap:12px; padding:16px 24px; background:var(--tarjeta); border-bottom:1px solid var(--borde); }
+    header h1 { font-size:19px; margin:0; flex:1; }
+    main { max-width:1100px; margin:0 auto; padding:20px 24px 60px; }
+    .fila { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:18px; }
+    .dato { background:var(--tarjeta); border:1px solid var(--borde); border-radius:12px; padding:14px 16px; }
+    .dato b { display:block; font-size:22px; }
+    .dato span { color:var(--suave); font-size:12px; }
+    .tarjeta { background:var(--tarjeta); border:1px solid var(--borde); border-radius:12px; padding:16px 18px; margin-bottom:18px; }
+    .tarjeta h2 { font-size:15px; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
+    button { font:inherit; font-weight:600; border-radius:10px; padding:8px 16px; cursor:pointer; border:1px solid var(--borde); background:#fff; color:var(--texto); }
+    button.prim { background:var(--prim); border-color:var(--prim); color:#fff; }
+    button.peligro { color:var(--mal); border-color:#f3c4c4; }
+    button:disabled { opacity:.5; cursor:default; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--borde); vertical-align:top; }
+    th { color:var(--suave); font-weight:600; font-size:12px; }
+    .chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+    .chip.pendiente, .chip.enviando { background:#fef3c7; color:#92400e; }
+    .chip.subida { background:#dcfce7; color:#166534; }
+    .chip.error { background:#fee2e2; color:#991b1b; }
+    .chip.anulada { background:#e5e7eb; color:#374151; }
+    .nota { color:var(--suave); font-size:12px; }
+    .vacio { color:var(--suave); padding:14px 0; }
+    #mensaje { min-height:20px; margin:0 0 12px; font-weight:600; }
+    .acciones { display:flex; gap:8px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔄 Sincronización</h1>
+    <button type="button" id="btn-ventas">← Volver a Ventas</button>
+  </header>
+  <main>
+    <p id="mensaje" role="status"></p>
+    <div class="fila">
+      <div class="dato"><b id="d-conexion">—</b><span>Conexión</span></div>
+      <div class="dato"><b id="d-pendientes">0</b><span>Ventas por subir</span></div>
+      <div class="dato"><b id="d-errores">0</b><span>Ventas con problema</span></div>
+      <div class="dato"><b id="d-numeros">0</b><span>Números de venta apartados</span></div>
+      <div class="dato"><b id="d-ultima">—</b><span>Última subida</span></div>
+    </div>
+    <div class="tarjeta">
+      <div class="acciones">
+        <button type="button" class="prim" id="btn-subir">Subir ahora</button>
+        <button type="button" id="btn-exportar">Exportar ventas pendientes</button>
+      </div>
+      <p class="nota" id="d-detalle"></p>
+    </div>
+    <div class="tarjeta">
+      <h2>Ventas guardadas en este equipo</h2>
+      <p class="nota">Las ventas hechas en este equipo se guardan aquí primero y se suben solas. Solo se pueden anular aquí las que todavía no subieron; las ya subidas se anulan desde Ventas, con internet.</p>
+      <table>
+        <thead><tr><th>Número</th><th>Fecha y hora</th><th>Cliente</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="t-ventas"></tbody>
+      </table>
+    </div>
+    <div class="tarjeta">
+      <h2>Avisos del servidor</h2>
+      <p class="nota">Cosas para revisar que el servidor encontró al recibir ventas hechas sin conexión (stock en negativo, precio cambiado, número reemplazado…).</p>
+      <table>
+        <thead><tr><th>Fecha</th><th>Venta</th><th>Aviso</th><th></th></tr></thead>
+        <tbody id="t-alertas"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="n360/n360-sincronizacion.js"></script>
+</body>
+</html>

@@ -48,6 +48,38 @@ function enlacesCompartibles(texto) {
   return { texto: salida, n };
 }
 
+// Modo sin conexión: scripts propios del programa (carpeta escritorio/web y
+// src/compartido) que se agregan SOLO a la copia empaquetada.
+const CARPETA_PROPIA = path.join(RAIZ_ESCRITORIO, 'web');
+const COMPARTIDOS = ['motor-local.js', 'registro-a-payload.js'];
+const SCRIPTS_TODAS = ['n360/motor-local.js', 'n360/registro-a-payload.js', 'n360/n360-sin-conexion.js'];
+const INYECCIONES = [
+  { archivo: 'ventas.html', despuesDe: /<script\b[^>]*\ssrc=["']ventas\.js(\?[^"']*)?["'][^>]*><\/script>/, script: 'n360/n360-ventas-sin-conexion.js', funcionaSinConexion: true },
+  { archivo: 'caja.html', despuesDe: /<script\b[^>]*\ssrc=["']caja\.js(\?[^"']*)?["'][^>]*><\/script>/, script: 'n360/n360-caja-sin-conexion.js' },
+];
+const etiqueta = (src) => `<script src="${src}"></script>`;
+
+// Agrega los scripts del modo sin conexión a una página ya reescrita.
+function inyectarSinConexion(nombre, html) {
+  const cambios = [];
+  const ancla = /(<script\b[^>]*\ssrc=["']vendor\/supabase\.js["'][^>]*><\/script>)/;
+  if (ancla.test(html)) {
+    html = html.replace(ancla, (m) => m + SCRIPTS_TODAS.map(etiqueta).join(''));
+    cambios.push('sin-conexion');
+  }
+  for (const iny of INYECCIONES.filter((x) => x.archivo === nombre)) {
+    if (!iny.despuesDe.test(html)) throw new Error(`No se encontró dónde agregar ${iny.script} en ${nombre}. Revisar INYECCIONES.`);
+    if (!cambios.includes('sin-conexion')) throw new Error(`${nombre} no carga vendor/supabase.js: no se puede agregar el modo sin conexión.`);
+    html = html.replace(iny.despuesDe, (m) => m + etiqueta(iny.script));
+    if (iny.funcionaSinConexion) {
+      if (!/<html\b/i.test(html)) throw new Error(`${nombre} no tiene <html>`);
+      html = html.replace(/<html\b/i, '<html data-n360-sin-conexion="permitido"');
+    }
+    cambios.push(iny.script);
+  }
+  return { html, cambios };
+}
+
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
 
 function familiasDeGoogleFonts(url) {
@@ -130,6 +162,8 @@ function empaquetar(origen, destino) {
     .map((d) => d.name).sort();
   const informe = { origen_git: versionGit(origen), generado: new Date().toISOString(), paginas: 0, librerias: {}, parches: [], enlaces_compartibles: {}, sin_mapear: [], archivos: {} };
   const parchesPendientes = new Set(PARCHES.map((p) => p.archivo));
+  const inyeccionesPendientes = new Set(INYECCIONES.map((x) => x.archivo));
+  informe.sin_conexion = {};
   for (const nombre of archivos) {
     let contenido = fs.readFileSync(path.join(origen, nombre));
     if (nombre.endsWith('.html')) {
@@ -142,7 +176,10 @@ function empaquetar(origen, destino) {
       parchesPendientes.delete(nombre);
       const e = enlacesCompartibles(p.texto);
       if (e.n) informe.enlaces_compartibles[nombre] = e.n;
-      contenido = Buffer.from(e.texto, 'utf8');
+      const iny = inyectarSinConexion(nombre, e.texto);
+      iny.cambios.forEach((c) => { informe.sin_conexion[c] = (informe.sin_conexion[c] || 0) + 1; });
+      inyeccionesPendientes.delete(nombre);
+      contenido = Buffer.from(iny.html, 'utf8');
     } else if (nombre.endsWith('.js') || nombre.endsWith('.css')) {
       const p = aplicarParches(nombre, contenido.toString('utf8'));
       p.aplicados.forEach((m) => informe.parches.push({ archivo: nombre, motivo: m }));
@@ -154,6 +191,22 @@ function empaquetar(origen, destino) {
     fs.writeFileSync(path.join(destino, nombre), contenido);
     informe.archivos[nombre] = sha256(contenido);
   }
+  if (inyeccionesPendientes.size) throw new Error('Páginas del modo sin conexión que no existen: ' + [...inyeccionesPendientes].join(', '));
+  // Archivos propios del programa (modo sin conexión)
+  fs.mkdirSync(path.join(destino, 'n360'), { recursive: true });
+  for (const n of COMPARTIDOS) fs.copyFileSync(path.join(RAIZ_ESCRITORIO, 'src', 'compartido', n), path.join(destino, 'n360', n));
+  for (const n of fs.readdirSync(CARPETA_PROPIA).sort()) {
+    const desde = path.join(CARPETA_PROPIA, n);
+    if (n.endsWith('.js')) fs.copyFileSync(desde, path.join(destino, 'n360', n));
+    else if (n.endsWith('.html')) {
+      if (archivos.includes(n)) throw new Error(`${n} ya existe en el sistema web`);
+      const r = reescribirHtml(fs.readFileSync(desde, 'utf8'));
+      if (r.sinMapear.length) throw new Error(`${n}: librerías sin copia local`);
+      fs.writeFileSync(path.join(destino, n), inyectarSinConexion(n, r.html).html);
+      archivos.push(n);
+    }
+  }
+  for (const n of fs.readdirSync(path.join(destino, 'n360'))) informe.archivos['n360/' + n] = sha256(fs.readFileSync(path.join(destino, 'n360', n)));
   if (parchesPendientes.size) throw new Error('Parches para archivos que no existen: ' + [...parchesPendientes].join(', '));
   if (informe.sin_mapear.length) throw new Error('Librerías sin copia local: ' + JSON.stringify(informe.sin_mapear));
   // Librerías con versión fija
@@ -178,7 +231,7 @@ function empaquetar(origen, destino) {
   return informe;
 }
 
-module.exports = { reescribirHtml, aplicarParches, familiasDeGoogleFonts, enlacesCompartibles, empaquetar, PARCHES };
+module.exports = { reescribirHtml, aplicarParches, familiasDeGoogleFonts, enlacesCompartibles, inyectarSinConexion, empaquetar, PARCHES };
 
 if (require.main === module) {
   const origen = path.resolve(process.argv[2] || path.join(RAIZ_ESCRITORIO, '..'));
@@ -187,5 +240,6 @@ if (require.main === module) {
   console.log(`Empaquetadas ${inf.paginas} páginas y ${Object.keys(inf.archivos).length} archivos en ${destino}`);
   console.log('Reemplazos:', inf.librerias);
   console.log('Parches:', inf.parches.map((p) => `${p.archivo}: ${p.motivo}`));
+  console.log('Modo sin conexión:', inf.sin_conexion);
   console.log('Enlaces para compartir ajustados:', Object.values(inf.enlaces_compartibles).reduce((a, b) => a + b, 0), 'en', Object.keys(inf.enlaces_compartibles).length, 'archivos');
 }

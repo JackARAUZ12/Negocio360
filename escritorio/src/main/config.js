@@ -22,6 +22,9 @@ function crearConfig({ empaquetado, rutaRecursos, env = process.env }) {
     raizWeb: (prueba && env.N360_WEB_DIR) || (empaquetado ? path.join(rutaRecursos, 'web') : path.join(raizProyecto, 'build', 'web')),
     carpetaRecursos: empaquetado ? rutaRecursos : path.join(raizProyecto, 'recursos'),
     urlSalud: (prueba && env.N360_URL_SALUD) || `${SUPABASE_URL}/auth/v1/health`,
+    // Solo pruebas: servidor simulado y revisión de conexión más rápida.
+    urlServidor: (prueba && env.N360_SUPABASE_URL) || SUPABASE_URL,
+    intervaloConexionMs: (prueba && Number(env.N360_INTERVALO_CONEXION_MS)) || null,
     sinSplash: prueba && env.N360_SIN_SPLASH === '1',
     carpetaDatos: (prueba && env.N360_DATOS_DIR) || null,
     // Solo pruebas: en vez de mandar a Windows, guarda cada ticket en esta carpeta.

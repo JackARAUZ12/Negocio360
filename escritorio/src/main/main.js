@@ -3,7 +3,8 @@
 // programa (app://negocio360/...), con impresión directa a Windows,
 // una sola instancia abierta e indicador de conexión.
 'use strict';
-const { app, BrowserWindow, Menu, shell, ipcMain, protocol, net, session, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, protocol, net, session, dialog, safeStorage } = require('electron');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -16,6 +17,8 @@ const seg = require('./seguridad');
 const { crearImpresion } = require('./impresion');
 const { crearMonitor, crearComprobador } = require('./conexion');
 const { iniciarActualizador } = require('./actualizador');
+const { abrirBase } = require('./base-local');
+const { crearSincronizador } = require('./sincronizador');
 
 const CFG = crearConfig({ empaquetado: app.isPackaged, rutaRecursos: process.resourcesPath });
 if (CFG.carpetaDatos) app.setPath('userData', CFG.carpetaDatos);
@@ -48,6 +51,9 @@ let ventanaPrincipal = null;
 let splash = null;
 let monitor = null;
 let actualizador = { activo: false };
+let base = null;
+let sinc = null;
+let temporizadorRespaldo = null;
 
 const PREFS_SISTEMA = {
   contextIsolation: true,
@@ -152,6 +158,8 @@ function crearMenu() {
     { label: 'Negocio360', submenu: [
       { label: 'Recargar', accelerator: 'CmdOrCtrl+R', click: () => ventanaPrincipal && ventanaPrincipal.webContents.reload() },
       { label: 'Ir al inicio', click: () => irA('dashboard.html') },
+      { label: 'Ventas', click: () => irA('ventas.html') },
+      { label: 'Sincronización', click: () => irA('sincronizacion.html') },
       { label: 'Atrás', accelerator: 'Alt+Left', click: () => ventanaPrincipal && ventanaPrincipal.webContents.navigationHistory.canGoBack() && ventanaPrincipal.webContents.navigationHistory.goBack() },
       { type: 'separator' },
       { label: 'Pantalla completa', accelerator: 'F11', click: () => ventanaPrincipal && ventanaPrincipal.setFullScreen(!ventanaPrincipal.isFullScreen()) },
@@ -184,6 +192,84 @@ function registrarMensajes(impresion) {
   ipcMain.handle('n360-estado-conexion', solo(() => monitor.obtener()));
   ipcMain.handle('n360-reintentar-conexion', solo(() => monitor.revisarAhora().then(() => monitor.obtener())));
   ipcMain.handle('n360-info', solo(() => ({ version: app.getVersion(), plataforma: process.platform, prueba: CFG.prueba })));
+  registrarMensajesSinConexion(solo);
+}
+
+// Modo sin conexión. Todo se guarda bajo la cuenta de la sesión que pasó la
+// página (verificada contra su token); sin sesión no se lee ni se guarda nada.
+function registrarMensajesSinConexion(solo) {
+  const conCuenta = (fn) => solo((...args) => {
+    const c = sinc.cuenta();
+    if (!c) throw new Error('No hay una sesión iniciada en el programa.');
+    return fn(c, ...args);
+  });
+  const texto = (x, max = 200) => String(x == null ? '' : x).slice(0, max);
+  ipcMain.handle('n360so-estado', solo(() => sinc.obtener()));
+  ipcMain.handle('n360so-sesion', solo((s) => sinc.fijarSesion(s && {
+    access_token: texto(s.access_token, 8000), user_id: texto(s.user_id, 64), email: s.email ? texto(s.email, 200) : null,
+  })));
+  ipcMain.handle('n360so-catalogo-leer', conCuenta((c, tablas) => base.catalogoLeer(c, (Array.isArray(tablas) ? tablas : []).map((t) => texto(t, 64)).slice(0, 60))));
+  ipcMain.handle('n360so-catalogo-reemplazar', conCuenta((c, tabla, filas) => base.catalogoReemplazar(c, texto(tabla, 64), Array.isArray(filas) ? filas : [])));
+  ipcMain.handle('n360so-catalogo-info', conCuenta((c) => base.catalogoInfo(c)));
+  ipcMain.handle('n360so-rpc-guardar', conCuenta((c, clave, datos) => base.rpcGuardar(c, texto(clave, 100), datos)));
+  ipcMain.handle('n360so-rpc-leer', conCuenta((c, clave) => base.rpcLeer(c, texto(clave, 100))));
+  ipcMain.handle('n360so-numero', conCuenta((c) => {
+    const n = base.numeroTomar(c);
+    if (base.numerosLibres(c) < 15) sinc.despertar(0);
+    return n;
+  }));
+  ipcMain.handle('n360so-venta-guardar', conCuenta((c, v) => {
+    if (!sinc.estadoCuenta(c).habilitado) throw new Error('El modo sin conexión no está activo para esta cuenta.');
+    const r = base.ventaGuardar(c, v);
+    sinc.publicar();
+    sinc.despertar(0);
+    return r;
+  }));
+  ipcMain.handle('n360so-ventas-listar', conCuenta((c, opciones) => base.ventasListar(c, opciones || {})));
+  ipcMain.handle('n360so-venta-anular', conCuenta((c, uuid) => { const r = base.ventaAnular(c, texto(uuid, 40)); sinc.publicar(); return r; }));
+  ipcMain.handle('n360so-venta-reintentar', conCuenta((c, uuid) => { const r = base.reintentar(c, texto(uuid, 40)); sinc.despertar(0); return r; }));
+  ipcMain.handle('n360so-subir-ahora', solo(async () => { await sinc.subirAhora(); return sinc.obtener(); }));
+  ipcMain.handle('n360so-exportar', conCuenta(async (c) => {
+    const ventas = base.exportar(c);
+    const destino = await dialog.showSaveDialog(ventanaPrincipal || undefined, {
+      title: 'Exportar ventas pendientes',
+      defaultPath: path.join(app.getPath('documents'), `ventas-pendientes-${new Date().toISOString().slice(0, 10)}.json`),
+      filters: [{ name: 'Archivo de ventas', extensions: ['json'] }],
+    });
+    if (destino.canceled || !destino.filePath) return { ok: false, cancelado: true };
+    fs.writeFileSync(destino.filePath, JSON.stringify({ cuenta: c, equipo: base.dispositivoUid(), exportado: new Date().toISOString(), ventas }, null, 2));
+    return { ok: true, ruta: destino.filePath, cantidad: ventas.length };
+  }));
+  ipcMain.handle('n360so-pin-guardar', conCuenta((c, d) => base.pinGuardar(c, {
+    perfil_id: texto(d && d.perfil_id, 64), pin: texto(d && d.pin, 64), nombre: d && d.nombre ? texto(d.nombre, 120) : null, principal: !!(d && d.principal),
+  })));
+  ipcMain.handle('n360so-pin-verificar', conCuenta((c, pin, perfilId) => base.pinVerificar(c, texto(pin, 64), perfilId ? texto(perfilId, 64) : null)));
+}
+
+function cifradorDelEquipo() {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    return {
+      cifrar: (buf) => safeStorage.encryptString(buf.toString('utf8')),
+      descifrar: (buf) => Buffer.from(safeStorage.decryptString(buf), 'utf8'),
+    };
+  } catch (_) { return null; }
+}
+
+function iniciarSinConexion() {
+  const carpeta = path.join(app.getPath('userData'), 'local');
+  base = abrirBase(path.join(carpeta, 'negocio360.db'), { cifrador: cifradorDelEquipo() });
+  const respaldar = () => { try { base.respaldar(path.join(carpeta, 'respaldos')); } catch (e) { console.warn('Respaldo local:', e.message); } };
+  respaldar();
+  temporizadorRespaldo = setInterval(respaldar, 6 * 3600 * 1000);
+  temporizadorRespaldo.unref();
+  sinc = crearSincronizador({
+    base, fetch: net.fetch, url: CFG.urlServidor, clave: SUPABASE_CLAVE_PUBLICA,
+    dispositivo: { nombre: os.hostname(), version: app.getVersion(), plataforma: `${process.platform}-${process.arch}` },
+    avisar: (ev) => difundir('n360so-evento', ev),
+    fijarPendientes: (n) => monitor && monitor.fijarPendientes(n),
+    hayConexion: () => !monitor || monitor.obtener().conexion !== 'sin_conexion',
+  });
 }
 
 function difundir(canal, dato) {
@@ -227,19 +313,25 @@ function iniciar() {
   monitor = crearMonitor({
     comprobar: crearComprobador({ fetch: net.fetch, url: CFG.urlSalud, clave: SUPABASE_CLAVE_PUBLICA }),
     hayRed: () => net.isOnline(),
-    alCambiar: (estado) => difundir('n360-conexion', estado),
+    alCambiar: (estado) => {
+      difundir('n360-conexion', estado);
+      if (sinc && estado.conexion !== 'sin_conexion') sinc.despertar(0);
+    },
+    ...(CFG.intervaloConexionMs ? { intervaloEnLinea: CFG.intervaloConexionMs, intervaloSinConexion: CFG.intervaloConexionMs } : {}),
   });
+  iniciarSinConexion();
   registrarMensajes(impresion);
   crearMenu();
   if (!CFG.sinSplash) crearSplash();
   crearVentanaPrincipal();
   monitor.iniciar();
+  sinc.iniciar();
 
   try {
     const { autoUpdater } = require('electron-updater');
     actualizador = iniciarActualizador({
       autoUpdater, empaquetado: app.isPackaged,
-      puedeInstalar: () => true, // Fase 3: false si hay ventas sin subir
+      puedeInstalar: () => !base || base.totalSinSubir() === 0, // nunca con ventas sin subir
       avisar: (msg) => ventanaPrincipal && dialog.showMessageBox(ventanaPrincipal, { type: 'info', message: msg, buttons: ['Entendido'] }),
     });
   } catch (e) { console.warn('Actualizador no disponible:', e.message); }
@@ -247,6 +339,9 @@ function iniciar() {
 
 app.on('will-quit', () => {
   if (monitor) monitor.detener();
+  if (sinc) sinc.detener();
+  if (temporizadorRespaldo) clearInterval(temporizadorRespaldo);
+  if (base) { try { base.cerrar(); } catch (_) { /* ya cerrada */ } }
   if (actualizador.activo) actualizador.alSalir();
 });
 app.on('window-all-closed', () => app.quit());

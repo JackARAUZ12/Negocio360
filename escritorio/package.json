@@ -16,7 +16,8 @@
     "iniciar": "npm run -s empaquetar && electron .",
     "e2e": "npm run -s empaquetar && xvfb-run -a node --test \"pruebas/e2e/**/*.test.js\"",
     "instalador-win": "npm run -s empaquetar && electron-builder --win --publish never",
-    "referencia": "node pruebas/referencia-web/capturar.js && node pruebas/referencia-web/generar-sql.js --sin-migracion pruebas/referencia-web/capturas.json build/prueba-centavo.sql"
+    "referencia": "node pruebas/referencia-web/capturar.js && node pruebas/referencia-web/generar-sql.js --sin-migracion pruebas/referencia-web/capturas.json build/prueba-centavo.sql",
+    "navegador": "npm run -s empaquetar && node --test --test-concurrency=1 \"pruebas/navegador/**/*.test.js\""
   },
   "dependencies": {
     "electron-updater": "6.8.10"

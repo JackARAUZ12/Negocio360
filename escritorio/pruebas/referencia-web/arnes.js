@@ -11,7 +11,7 @@ const BASE = 'http://n360.prueba/';
 
 const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json' };
 
-async function abrirVentas(fixtures, { pagina = 'ventas.html' } = {}) {
+async function abrirVentas(fixtures, { pagina = 'ventas.html', extra = null, extraArg = null } = {}) {
   const navegador = await chromium.launch();
   const ctx = await navegador.newContext({ viewport: { width: 1360, height: 900 }, timezoneId: 'America/Managua', locale: 'es-NI' });
   const errores = [];
@@ -29,6 +29,7 @@ async function abrirVentas(fixtures, { pagina = 'ventas.html' } = {}) {
     try { localStorage.clear(); } catch (_) {}
     window.open = () => null; // sin ventanas emergentes de ticket
   }, fixtures);
+  if (extra) await ctx.addInitScript(extra, extraArg);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errores.push(String(e && e.message)));
   page.on('dialog', (d) => d.dismiss().catch(() => {}));
