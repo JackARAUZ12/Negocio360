@@ -187,6 +187,9 @@ function obtenerRestriccionHistorialVentas() {
     const raw = sessionStorage.getItem('n360_perfil_activo');
     if (!raw) return null; // sin perfil elegido = dueño viendo directo, sin restricción
     const perfil = JSON.parse(raw);
+    // El administrador puede darle a este usuario permiso de ver las ventas de todo el
+    // negocio (botón "Configuración del módulo"). Sin configurar, sigue como siempre.
+    if (perfil?.tipo === 'restringido' && window.N360VentasConfig && N360VentasConfig.verTodas()) return null;
     if (perfil?.tipo === 'restringido' && perfil?.nombre) return perfil.nombre;
     return null;
   } catch (_) { return null; }
@@ -8247,6 +8250,10 @@ async function initVentas() {
     await aplicarRecetaPendienteDeVender();
     await aplicarCobroVeterinaria();
     await aplicarCobroTransporte();
+
+    // 5c. Configuración del módulo (¿este usuario puede ver las ventas de todo el negocio?)
+    // Se lee ANTES de los totales para que salgan bien a la primera. Si falla, todo sigue como siempre.
+    if (window.N360VentasConfig) { try { await N360VentasConfig.cargar(sb, user.id); } catch (_) {} }
 
     // 6. Cargar KPIs y tabla
     await Promise.allSettled([

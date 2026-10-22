@@ -2071,6 +2071,8 @@ function obtenerRestriccionPerfilDashboard() {
     const raw = sessionStorage.getItem('n360_perfil_activo');
     if (!raw) return null;
     const perfil = JSON.parse(raw);
+    // Si el administrador le dio permiso (Ventas > Configuración del módulo), ve todo el negocio.
+    if (perfil?.tipo === 'restringido' && window.N360VentasConfig && N360VentasConfig.verTodas()) return null;
     if (perfil?.tipo === 'restringido' && perfil?.nombre) return perfil.nombre;
     return null;
   } catch (_) { return null; }
@@ -2894,6 +2896,9 @@ async function initDashboard() {
     verificarAnuncioSistema(userId);
     verificarEncuestaSistema(userId);
 
+    // Configuración de Ventas: ¿este usuario puede ver las ventas de todo el negocio? (si falla, todo como siempre)
+    if (window.N360VentasConfig) { try { await N360VentasConfig.cargar(sbClient, userId); } catch (_) {} }
+
     await Promise.allSettled([
       loadKPIs(userId),
       loadGastos(userId),
@@ -3089,6 +3094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script src="bienvenida-negocio360.js?v=9"></script>
+<script src="ventas-config.js?v=20261021a"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261021c"></script>
