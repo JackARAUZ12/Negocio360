@@ -266,7 +266,7 @@ la regla del proyecto es no cambiar `main`.
 2. **Stock no atómico**: se calcula `stock_en_caché − cantidad` y se escribe
    el resultado; si dos cajas venden a la vez, una puede pisar a la otra. →
    el servidor usará `stock_actual = stock_actual − cantidad`.
-3. **Posible doble descuento de lotes**: en Nueva venta, si la línea trae un
+3. **[CORREGIDO 2026-10-22, ver `CORRECCION-COMISION-LOTES.md`] Posible doble descuento de lotes**: en Nueva venta, si la línea trae un
    lote FEFO (`loteId`) **y** la cuenta tiene `maneja_lotes_vencimiento`,
    se descuenta el lote específico (Paso D-2) y además `descontar_lote_fefo`
    (Paso E). Además D-2 descuenta `cantidad` sin multiplicar por la
@@ -284,7 +284,7 @@ la regla del proyecto es no cambiar `main`.
    ventas se guardan a la vez.
 8. Venta rápida: `montoCaja` sin `round2` (con IVA puede llevar más de 2
    decimales; el trigger de saldo lo acepta tal cual).
-9. **La comisión bancaria nunca se guarda en Gastos** (confirmado en la base
+9. **[CORREGIDO 2026-10-22, ver `CORRECCION-COMISION-LOTES.md`; además ahora solo aplica a tarjeta] La comisión bancaria nunca se guarda en Gastos** (confirmado en la base
    real y en la Fase 2): la web inserta el gasto con `tipo: 'operativo'`, que
    la restricción `gastos_tipo_check` rechaza (solo acepta `inmediato` o
    `programado`); el error se ignora. Sí queda el egreso en Caja y los campos

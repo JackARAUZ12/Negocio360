@@ -22,7 +22,7 @@ filas que habría guardado la web.
 | `venta` | la fila de `ventas` tal como la arma la web (sin `id`, `auth_user_id`, `referencia_caja`) |
 | `detalles[]` | filas de `venta_detalles` |
 | `caja[]` | ingresos de Caja (uno por método en pago dividido): concepto, monto, método, banco, monto en moneda del banco, observaciones, fecha |
-| `comision` | `{banco_id, porcentaje, monto, movimiento}` si hubo comisión bancaria |
+| `comision` | `{banco_id, porcentaje, monto, gasto, movimiento}` si hubo comisión bancaria (solo pagos con tarjeta). El servidor guarda un gasto ligado a la venta y su egreso de Caja ligado al gasto |
 | `impuestos[]` | movimientos de Impuestos (IVA y otros): concepto, monto, impuesto, fecha |
 | `venta_impuestos[]` | detalle de otros impuestos de la venta |
 | `retencion` | retención de IR a favor, si aplica |

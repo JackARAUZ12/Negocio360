@@ -17,9 +17,14 @@ const crypto = require('crypto');
 const F = require('./fixtures');
 const { convertir } = require('../../src/compartido/registro-a-payload');
 
-const MIGRACION = path.join(__dirname, '..', '..', '..', 'supabase', 'migraciones', '20261021_offline_fase2_registrar_venta.sql');
+const MIGRACIONES = path.join(__dirname, '..', '..', '..', 'supabase', 'migraciones');
+// --migracion=<archivo>: migración a probar dentro de la transacción (por defecto la de la Fase 2).
+const argMig = process.argv.find((a) => a.startsWith('--migracion='));
+const MIGRACION = path.join(MIGRACIONES, argMig ? argMig.slice('--migracion='.length) : '20261021_offline_fase2_registrar_venta.sql');
 // --sin-migracion: la migración ya está aplicada (solo se prueban los escenarios).
 const SIN_MIGRACION = process.argv.includes('--sin-migracion');
+// --sin-auditoria: deja fuera la bitácora (para enviar menos texto cuando solo se prueba caja/stock/lotes/gastos).
+const SIN_AUDITORIA = process.argv.includes('--sin-auditoria');
 const [entrada = path.join(__dirname, 'capturas.json'), salida = '/dev/stdout', indices] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 
 const ident = (s) => { if (!/^[a-z_][a-z0-9_]*$/.test(s)) throw new Error('identificador raro: ' + s); return s; };
@@ -41,7 +46,7 @@ const FOTO = `jsonb_build_object(
                 from public.ventas v where v.auth_user_id = '${F.U}' and v.numero_venta = 'V-000777'),
       'detalles', (select jsonb_agg(to_jsonb(d) - array['id','venta_id','created_at'] order by d.producto_nombre, d.cantidad)
                    from public.venta_detalles d join public.ventas v on v.id = d.venta_id where v.auth_user_id = '${F.U}' and v.numero_venta = 'V-000777'),
-      'caja', (select jsonb_agg(jsonb_build_object('flujo', m.tipo_flujo, 'tipo', m.tipo_movimiento, 'concepto', m.concepto, 'monto', m.monto,
+      'caja', (select jsonb_agg(jsonb_build_object('ref', m.referencia_tipo, 'flujo', m.tipo_flujo, 'tipo', m.tipo_movimiento, 'concepto', m.concepto, 'monto', m.monto,
                  'metodo', m.metodo_pago_id, 'metodo_nombre', m.metodo_pago_nombre, 'banco', m.banco_id, 'monto_banco', m.monto_moneda_banco,
                  'obs', m.observaciones, 'fecha', m.fecha, 'estado', m.estado, 'saldo_ant', m.saldo_anterior, 'saldo_res', m.saldo_resultante,
                  'origen_caja', m.origen_caja) order by m.created_at, m.id)
@@ -56,7 +61,15 @@ const FOTO = `jsonb_build_object(
                join public.ventas v on v.id = x.venta_id where v.auth_user_id = '${F.U}' and v.numero_venta = 'V-000777'),
       'garantias', (select jsonb_agg(to_jsonb(g) - array['id','venta_id','created_at','updated_at'] order by g.producto_nombre) from public.garantias_clientes g
                where g.auth_user_id = '${F.U}'),
-      'gastos', (select jsonb_agg(to_jsonb(g) - array['id','created_at']) from public.gastos g where g.auth_user_id = '${F.U}'),
+      'gastos', (select jsonb_agg(to_jsonb(g) - array['id','created_at','venta_id','movimiento_financiero_id']
+                   || jsonb_build_object('de_la_venta', g.venta_id = v.id, 'mov_ligado', exists (select 1 from public.movimientos_financieros m
+                        where m.id = g.movimiento_financiero_id and m.referencia_tipo = 'gasto' and m.referencia_id = g.id)))
+                 from public.gastos g left join public.ventas v on v.auth_user_id = g.auth_user_id and v.numero_venta = 'V-000777'
+                 where g.auth_user_id = '${F.U}'),
+      'caja_gastos', (select jsonb_agg(jsonb_build_object('flujo', m.tipo_flujo, 'tipo', m.tipo_movimiento, 'concepto', m.concepto, 'monto', m.monto,
+                 'metodo', m.metodo_pago_id, 'metodo_nombre', m.metodo_pago_nombre, 'banco', m.banco_id, 'monto_banco', m.monto_moneda_banco,
+                 'fecha', m.fecha, 'estado', m.estado, 'saldo_ant', m.saldo_anterior, 'saldo_res', m.saldo_resultante) order by m.created_at, m.id)
+               from public.movimientos_financieros m join public.gastos g on g.id = m.referencia_id and m.referencia_tipo = 'gasto' where g.auth_user_id = '${F.U}'),
       'stock', (select jsonb_object_agg(nombre, stock_actual) from public.productos where auth_user_id = '${F.U}'),
       'lotes', (select jsonb_object_agg(numero_lote, cantidad_actual) from public.producto_lotes where auth_user_id = '${F.U}'),
       'cliente', (select jsonb_build_object('total', total_compras, 'num', num_compras) from public.clientes where id = '${CLIENTE}'),
@@ -88,7 +101,8 @@ function preparacion() {
 }
 
 function datosEscenario(cap) {
-  const ops = cap.registro.filter((o) => o.op !== 'select' && (o.op !== 'rpc' || o.nombre === 'descontar_lote_fefo'))
+  const ops = cap.registro.filter((o) => o.op !== 'select' && (o.op !== 'rpc' || /^descontar_lote_(fefo|venta)$/.test(o.nombre)))
+    .filter((o) => !(SIN_AUDITORIA && o.tabla === 'auditoria_log'))
     .map((o) => (o.op === 'rpc' ? { op: o.op, nombre: o.nombre, args: o.args } : { op: o.op, tabla: o.tabla, payload: o.payload, ids: o.ids, filtros: o.filtros }));
   const { payload, noPermitido } = convertir(cap.registro, {
     tipo: cap.tipo, uuid: crypto.randomUUID(), dispositivo_uid: F.IDS.dispositivo,
@@ -96,6 +110,7 @@ function datosEscenario(cap) {
     componentes_promo: cap.extra.componentes_promo, precios_catalogo: cap.extra.precios_catalogo,
   });
   if (noPermitido.length) throw new Error(`${cap.nombre}: ${noPermitido.join(', ')}`);
+  if (SIN_AUDITORIA) payload.auditoria = [];
   payload.reloj_envio = payload.vendida_en;
   return { nombre: cap.nombre, ops, payload };
 }
@@ -144,7 +159,7 @@ const migracion = fs.readFileSync(MIGRACION, 'utf8').split('\n').filter((l) => !
 const sql = `do $prueba$
 declare r jsonb := '{}'; v_web jsonb; v_off jsonb; v_res jsonb; v_err jsonb; v_dif jsonb; v_k text; v_ops jsonb[]; v_pay jsonb[]; v_nom text[]; v_n int;
 begin
-${SIN_MIGRACION ? '' : `-- ---------- Migración Fase 2 (se revierte al final) ----------\n${migracion}`}
+${SIN_MIGRACION ? '' : `-- ---------- Migración a probar (se revierte al final) ----------\n${migracion}`}
 -- ---------- Cuenta falsa de prueba ----------
   ${preparacion()}
   create function pg_temp.n360_foto() returns jsonb language sql as $fn$ select ${FOTO} $fn$;
@@ -167,6 +182,8 @@ ${SIN_MIGRACION ? '' : `-- ---------- Migración Fase 2 (se revierte al final) -
                          o->>'tabla', c, c, o->>'tabla', w) using o->'payload';
         elsif o->>'op' = 'rpc' and o->>'nombre' = 'descontar_lote_fefo' then
           perform public.descontar_lote_fefo((o->'args'->>'p_producto_id')::uuid, (o->'args'->>'p_cantidad')::numeric);
+        elsif o->>'op' = 'rpc' and o->>'nombre' = 'descontar_lote_venta' then
+          perform public.descontar_lote_venta((o->'args'->>'p_lote_id')::uuid, (o->'args'->>'p_producto_id')::uuid, (o->'args'->>'p_cantidad')::numeric);
         end if;
       exception when others then e := e || jsonb_build_array(coalesce(o->>'tabla', o->>'nombre') || ': ' || sqlerrm);
       end;
@@ -177,5 +194,5 @@ ${escenariosSql(elegidos.map((i) => datosEscenario(capturas[i])))}
   raise exception 'RESULTADO_PRUEBA %', r;
 end $prueba$;
 `;
-fs.writeFileSync(salida, sql);
+fs.writeFileSync(salida, SIN_AUDITORIA ? sql.replace(/^[ \t]+/gm, '') : sql);
 if (salida !== '/dev/stdout') console.error(`SQL generado: ${sql.length} caracteres, ${elegidos.length} escenario(s)`);

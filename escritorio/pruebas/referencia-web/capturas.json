@@ -620,12 +620,15 @@
         "tabla": "gastos",
         "payload": {
           "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "tipo": "inmediato",
           "concepto": "Comisión bancaria 3% — BAC (Venta V-000777)",
           "categoria": "Comisiones bancarias",
           "monto": 84,
           "fecha": "2026-10-21",
-          "tipo": "operativo",
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000102",
+          "metodo_pago_nombre": "Tarjeta",
           "estado": "activo",
+          "venta_id": "ffffffff-0000-4000-8000-000000000001",
           "observaciones": "Generado automáticamente por la venta V-000777"
         },
         "ids": [
@@ -657,14 +660,15 @@
           "tipo_movimiento": "GASTO",
           "concepto": "Comisión bancaria 3% — BAC (Venta V-000777)",
           "monto": 84,
-          "saldo_anterior": 5000,
-          "saldo_resultante": 4916,
           "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000102",
           "metodo_pago_nombre": "Tarjeta",
           "banco_id": "0ff11e00-0000-4000-8000-000000000201",
-          "referencia_tipo": "venta",
-          "referencia_id": "ffffffff-0000-4000-8000-000000000001",
-          "fecha": "2026-10-21"
+          "monto_moneda_banco": null,
+          "referencia_tipo": "gasto",
+          "referencia_id": "ffffffff-0000-4000-8000-000000000010",
+          "fecha": "2026-10-21",
+          "saldo_anterior": 7799.99,
+          "saldo_resultante": 7715.99
         },
         "ids": [
           "ffffffff-0000-4000-8000-000000000012"
@@ -684,6 +688,41 @@
         },
         "ids": [
           "ffffffff-0000-4000-8000-000000000013"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "gastos",
+        "payload": {
+          "movimiento_financiero_id": "ffffffff-0000-4000-8000-000000000012"
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "ffffffff-0000-4000-8000-000000000010"
+          ],
+          [
+            "eq",
+            "auth_user_id",
+            "0ff11e00-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "gastos",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000014"
         ]
       },
       {
@@ -719,7 +758,7 @@
           "resumen": null
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000014"
+          "ffffffff-0000-4000-8000-000000000015"
         ]
       },
       {
@@ -749,7 +788,7 @@
           }
         ],
         "ids": [
-          "ffffffff-0000-4000-8000-000000000015"
+          "ffffffff-0000-4000-8000-000000000016"
         ]
       },
       {
@@ -765,7 +804,7 @@
           "resumen": "1 registro"
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000016"
+          "ffffffff-0000-4000-8000-000000000017"
         ]
       }
     ],
@@ -2052,34 +2091,13 @@
         ]
       },
       {
-        "op": "update",
-        "tabla": "producto_lotes",
-        "payload": {
-          "cantidad_actual": 16
-        },
-        "filtros": [
-          [
-            "eq",
-            "id",
-            "0ff11e00-0000-4000-8000-000000000801"
-          ]
-        ]
-      },
-      {
-        "op": "insert",
-        "tabla": "auditoria_log",
-        "payload": {
-          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
-          "perfil_nombre": "Admin",
-          "perfil_tipo": "admin",
-          "modulo": "ventas.html",
-          "tabla": "producto_lotes",
-          "accion": "UPDATE",
-          "resumen": null
-        },
-        "ids": [
-          "ffffffff-0000-4000-8000-000000000006"
-        ]
+        "op": "rpc",
+        "nombre": "descontar_lote_venta",
+        "args": {
+          "p_lote_id": "0ff11e00-0000-4000-8000-000000000801",
+          "p_producto_id": "0ff11e00-0000-4000-8000-000000000305",
+          "p_cantidad": 4
+        }
       },
       {
         "op": "update",
@@ -2113,16 +2131,8 @@
           "resumen": null
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000007"
+          "ffffffff-0000-4000-8000-000000000006"
         ]
-      },
-      {
-        "op": "rpc",
-        "nombre": "descontar_lote_fefo",
-        "args": {
-          "p_producto_id": "0ff11e00-0000-4000-8000-000000000305",
-          "p_cantidad": 4
-        }
       },
       {
         "op": "update",
@@ -2156,7 +2166,7 @@
           "resumen": null
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000008"
+          "ffffffff-0000-4000-8000-000000000007"
         ]
       },
       {
@@ -2188,7 +2198,7 @@
           "fecha": "2026-10-21"
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000009"
+          "ffffffff-0000-4000-8000-000000000008"
         ]
       },
       {
@@ -2204,14 +2214,14 @@
           "resumen": "concepto: Venta V-000777 · monto: 549.4"
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000010"
+          "ffffffff-0000-4000-8000-000000000009"
         ]
       },
       {
         "op": "update",
         "tabla": "ventas",
         "payload": {
-          "referencia_caja": "ffffffff-0000-4000-8000-000000000009"
+          "referencia_caja": "ffffffff-0000-4000-8000-000000000008"
         },
         "filtros": [
           [
@@ -2234,7 +2244,7 @@
           "resumen": null
         },
         "ids": [
-          "ffffffff-0000-4000-8000-000000000011"
+          "ffffffff-0000-4000-8000-000000000010"
         ]
       }
     ],
@@ -2989,6 +2999,733 @@
     "errores": [],
     "toasts": [
       "✅ Venta rápida V-000777 registrada — NIO 224.83"
+    ]
+  },
+  {
+    "nombre": "nueva-transferencia-banco-sin-comision",
+    "tipo": "nueva",
+    "registro": [
+      {
+        "op": "insert",
+        "tabla": "ventas",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "numero_venta": "V-000777",
+          "cliente_id": null,
+          "cliente_nombre": "Consumidor Final",
+          "fecha": "2026-10-21",
+          "subtotal": 150,
+          "descuento": 0,
+          "impuesto": 0,
+          "total": 150,
+          "costo_total": 90,
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000103",
+          "metodo_pago_nombre": "Transferencia",
+          "creado_por_nombre": "Admin",
+          "estado": "completada",
+          "observaciones": null,
+          "iva_activo": false,
+          "iva_porcentaje": 0
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000001"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "ventas",
+          "accion": "INSERT",
+          "resumen": "numero_venta: V-000777 · estado: completada · total: 150"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000002"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "venta_detalles",
+        "payload": [
+          {
+            "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+            "venta_id": "ffffffff-0000-4000-8000-000000000001",
+            "producto_id": "0ff11e00-0000-4000-8000-000000000301",
+            "combo_id": null,
+            "promocion_id": null,
+            "producto_nombre": "Martillo",
+            "producto_sku": "MAR-1",
+            "tipo_item": "producto",
+            "cantidad": 1,
+            "precio": 150,
+            "costo": 90,
+            "descuento": 0,
+            "subtotal": 150,
+            "ganancia": 60,
+            "escala_id": null,
+            "escala_nombre": null,
+            "vendido_sin_stock": false,
+            "es_regalia": false,
+            "presentacion_id": null,
+            "presentacion_nombre": null,
+            "presentacion_factor": null,
+            "lote_id": null,
+            "cantidad_pedida": null,
+            "unidad_pedida": null
+          }
+        ],
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000003"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "venta_detalles",
+          "accion": "INSERT",
+          "resumen": "1 registro"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000004"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "productos",
+        "payload": {
+          "stock_actual": 9
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "0ff11e00-0000-4000-8000-000000000301"
+          ],
+          [
+            "eq",
+            "auth_user_id",
+            "0ff11e00-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "productos",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000005"
+        ]
+      },
+      {
+        "op": "rpc",
+        "nombre": "descontar_lote_fefo",
+        "args": {
+          "p_producto_id": "0ff11e00-0000-4000-8000-000000000301",
+          "p_cantidad": 1
+        }
+      },
+      {
+        "op": "insert",
+        "tabla": "movimientos_financieros",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "tipo_flujo": "INGRESO",
+          "tipo_movimiento": "VENTA",
+          "concepto": "Venta V-000777",
+          "monto": 150,
+          "saldo_anterior": 5000,
+          "saldo_resultante": 5150,
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000103",
+          "metodo_pago_nombre": "Transferencia",
+          "banco_id": "0ff11e00-0000-4000-8000-000000000201",
+          "monto_moneda_banco": null,
+          "referencia_tipo": "venta",
+          "referencia_id": "ffffffff-0000-4000-8000-000000000001",
+          "observaciones": null,
+          "fecha": "2026-10-21"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000006"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "movimientos_financieros",
+          "accion": "INSERT",
+          "resumen": "concepto: Venta V-000777 · monto: 150"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000007"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "ventas",
+        "payload": {
+          "referencia_caja": "ffffffff-0000-4000-8000-000000000006"
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "ffffffff-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "ventas",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000008"
+        ]
+      }
+    ],
+    "extra": {
+      "fecha_hoy": "2026-10-21",
+      "componentes_promo": {},
+      "precios_catalogo": {
+        "0": 150
+      },
+      "resumen": {
+        "subtotal": 150,
+        "descuento": 0,
+        "impuestos": 0,
+        "ivaMonto": 0,
+        "otros": [],
+        "total": 150,
+        "retencionIr": 0,
+        "retencionPct": 0,
+        "cobrar": 150,
+        "ganancia": 60,
+        "costoTotal": 90,
+        "descuentoPromociones": 0,
+        "descuentoPuntos": 0,
+        "promocionesAplicadas": []
+      }
+    },
+    "errores": [],
+    "toasts": [
+      "✅ Venta V-000777 registrada — NIO 150.00"
+    ]
+  },
+  {
+    "nombre": "rapida-tarjeta-comision",
+    "tipo": "rapida",
+    "registro": [
+      {
+        "op": "insert",
+        "tabla": "ventas",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "numero_venta": "V-000777",
+          "cliente_id": null,
+          "cliente_nombre": "Consumidor Final",
+          "fecha": "2026-10-21",
+          "subtotal": 168.75,
+          "descuento": 0,
+          "impuesto": 25.31,
+          "total": 194.06,
+          "costo_total": 99.4,
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000102",
+          "metodo_pago_nombre": "Tarjeta",
+          "creado_por_nombre": "Admin",
+          "estado": "completada",
+          "observaciones": "Venta rápida (escáner)",
+          "categoria": "venta_rapida",
+          "iva_activo": true,
+          "iva_porcentaje": 15
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000001"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "ventas",
+          "accion": "INSERT",
+          "resumen": "numero_venta: V-000777 · estado: completada · total: 194.06"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000002"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "venta_detalles",
+        "payload": [
+          {
+            "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+            "venta_id": "ffffffff-0000-4000-8000-000000000001",
+            "producto_id": "0ff11e00-0000-4000-8000-000000000301",
+            "combo_id": null,
+            "promocion_id": null,
+            "producto_nombre": "Martillo",
+            "producto_sku": "MAR-1",
+            "tipo_item": "producto",
+            "cantidad": 1,
+            "precio": 150,
+            "costo": 90,
+            "descuento": 0,
+            "subtotal": 150,
+            "ganancia": 60,
+            "escala_id": null,
+            "escala_nombre": null,
+            "vendido_sin_stock": false,
+            "es_regalia": false,
+            "presentacion_id": null,
+            "presentacion_nombre": null,
+            "presentacion_factor": null,
+            "cantidad_pedida": null,
+            "unidad_pedida": null
+          },
+          {
+            "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+            "venta_id": "ffffffff-0000-4000-8000-000000000001",
+            "producto_id": "0ff11e00-0000-4000-8000-000000000306",
+            "combo_id": null,
+            "promocion_id": null,
+            "producto_nombre": "Cable eléctrico (metro)",
+            "producto_sku": "CAB-1",
+            "tipo_item": "producto",
+            "cantidad": 1,
+            "precio": 18.75,
+            "costo": 9.4,
+            "descuento": 0,
+            "subtotal": 18.75,
+            "ganancia": 9.35,
+            "escala_id": null,
+            "escala_nombre": null,
+            "vendido_sin_stock": false,
+            "es_regalia": false,
+            "presentacion_id": null,
+            "presentacion_nombre": null,
+            "presentacion_factor": null,
+            "cantidad_pedida": null,
+            "unidad_pedida": null
+          }
+        ],
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000003",
+          "ffffffff-0000-4000-8000-000000000004"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "venta_detalles",
+          "accion": "INSERT",
+          "resumen": "2 registros"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000005"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "productos",
+        "payload": {
+          "stock_actual": 9
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "0ff11e00-0000-4000-8000-000000000301"
+          ],
+          [
+            "eq",
+            "auth_user_id",
+            "0ff11e00-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "productos",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000006"
+        ]
+      },
+      {
+        "op": "rpc",
+        "nombre": "descontar_lote_fefo",
+        "args": {
+          "p_producto_id": "0ff11e00-0000-4000-8000-000000000301",
+          "p_cantidad": 1
+        }
+      },
+      {
+        "op": "update",
+        "tabla": "productos",
+        "payload": {
+          "stock_actual": 199
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "0ff11e00-0000-4000-8000-000000000306"
+          ],
+          [
+            "eq",
+            "auth_user_id",
+            "0ff11e00-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "productos",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000007"
+        ]
+      },
+      {
+        "op": "rpc",
+        "nombre": "descontar_lote_fefo",
+        "args": {
+          "p_producto_id": "0ff11e00-0000-4000-8000-000000000306",
+          "p_cantidad": 1
+        }
+      },
+      {
+        "op": "insert",
+        "tabla": "movimientos_financieros",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "tipo_flujo": "INGRESO",
+          "tipo_movimiento": "VENTA",
+          "concepto": "Venta rápida V-000777 (neto de IVA)",
+          "monto": 168.75,
+          "saldo_anterior": 5000,
+          "saldo_resultante": 5168.75,
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000102",
+          "metodo_pago_nombre": "Tarjeta",
+          "banco_id": "0ff11e00-0000-4000-8000-000000000201",
+          "monto_moneda_banco": null,
+          "referencia_tipo": "venta",
+          "referencia_id": "ffffffff-0000-4000-8000-000000000001",
+          "fecha": "2026-10-21"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000008"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "movimientos_financieros",
+          "accion": "INSERT",
+          "resumen": "concepto: Venta rápida V-000777 (neto de IVA) · monto: 168.75"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000009"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "ventas",
+        "payload": {
+          "referencia_caja": "ffffffff-0000-4000-8000-000000000008"
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "ffffffff-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "ventas",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000010"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "gastos",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "tipo": "inmediato",
+          "concepto": "Comisión bancaria 3% — BAC (Venta V-000777)",
+          "categoria": "Comisiones bancarias",
+          "monto": 5.82,
+          "fecha": "2026-10-21",
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000102",
+          "metodo_pago_nombre": "Tarjeta",
+          "estado": "activo",
+          "venta_id": "ffffffff-0000-4000-8000-000000000001",
+          "observaciones": "Generado automáticamente por la venta V-000777"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000011"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "gastos",
+          "accion": "INSERT",
+          "resumen": "concepto: Comisión bancaria 3% — BAC (Venta V-000777) · estado: activo · monto: 5.82"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000012"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "movimientos_financieros",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "tipo_flujo": "EGRESO",
+          "tipo_movimiento": "GASTO",
+          "concepto": "Comisión bancaria 3% — BAC (Venta V-000777)",
+          "monto": 5.82,
+          "metodo_pago_id": "0ff11e00-0000-4000-8000-000000000102",
+          "metodo_pago_nombre": "Tarjeta",
+          "banco_id": "0ff11e00-0000-4000-8000-000000000201",
+          "monto_moneda_banco": null,
+          "referencia_tipo": "gasto",
+          "referencia_id": "ffffffff-0000-4000-8000-000000000011",
+          "fecha": "2026-10-21",
+          "saldo_anterior": 5168.75,
+          "saldo_resultante": 5162.93
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000013"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "movimientos_financieros",
+          "accion": "INSERT",
+          "resumen": "concepto: Comisión bancaria 3% — BAC (Venta V-000777) · monto: 5.82"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000014"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "gastos",
+        "payload": {
+          "movimiento_financiero_id": "ffffffff-0000-4000-8000-000000000013"
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "ffffffff-0000-4000-8000-000000000011"
+          ],
+          [
+            "eq",
+            "auth_user_id",
+            "0ff11e00-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "gastos",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000015"
+        ]
+      },
+      {
+        "op": "update",
+        "tabla": "ventas",
+        "payload": {
+          "comision_porcentaje": 3,
+          "comision_monto": 5.82
+        },
+        "filtros": [
+          [
+            "eq",
+            "id",
+            "ffffffff-0000-4000-8000-000000000001"
+          ],
+          [
+            "eq",
+            "auth_user_id",
+            "0ff11e00-0000-4000-8000-000000000001"
+          ]
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "ventas",
+          "accion": "UPDATE",
+          "resumen": null
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000016"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "movimientos_impuestos",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "tipo_movimiento": "IVA_VENTA",
+          "concepto": "IVA de venta V-000777",
+          "monto": 25.31,
+          "saldo_anterior": 100,
+          "saldo_resultante": 125.31,
+          "referencia_venta_id": "ffffffff-0000-4000-8000-000000000001",
+          "fecha": "2026-10-21"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000017"
+        ]
+      },
+      {
+        "op": "insert",
+        "tabla": "auditoria_log",
+        "payload": {
+          "auth_user_id": "0ff11e00-0000-4000-8000-000000000001",
+          "perfil_nombre": "Admin",
+          "perfil_tipo": "admin",
+          "modulo": "ventas.html",
+          "tabla": "movimientos_impuestos",
+          "accion": "INSERT",
+          "resumen": "concepto: IVA de venta V-000777 · monto: 25.31"
+        },
+        "ids": [
+          "ffffffff-0000-4000-8000-000000000018"
+        ]
+      },
+      {
+        "op": "rpc",
+        "nombre": "generar_numero_venta",
+        "args": {
+          "p_user_id": "0ff11e00-0000-4000-8000-000000000001"
+        }
+      }
+    ],
+    "extra": {
+      "fecha_hoy": "2026-10-21",
+      "componentes_promo": {},
+      "precios_catalogo": {
+        "0": 150,
+        "1": 18.75
+      },
+      "resumen": {
+        "subtotal": 168.75,
+        "impuesto": 25.31,
+        "total": 194.06,
+        "costoTotal": 99.4,
+        "ivaActivo": true,
+        "ivaPct": 15,
+        "descuentoPromociones": 0,
+        "promocionesAplicadas": []
+      }
+    },
+    "errores": [],
+    "toasts": [
+      "✅ Venta rápida V-000777 registrada — NIO 194.06"
     ]
   }
 ]

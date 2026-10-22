@@ -125,6 +125,34 @@ const escenarios = [
       VR.pagoSeparadoLineas[iTa].bancoId = I.bac; VR.pagoSeparadoLineas[iTa].bancoNombre = 'BAC'; VR.pagoSeparadoLineas[iTa].bancoMoneda = 'NIO';
     },
   },
+  {
+    // Transferencia a un banco que SÍ tiene comisión configurada (BAC 3%):
+    // la comisión es del POS de tarjeta, en transferencias no se cobra.
+    nombre: 'nueva-transferencia-banco-sin-comision',
+    tipo: 'nueva',
+    pasos: async (I) => {
+      await abrirNuevaVenta();
+      await agregarAlCarritoConPrecio(I.martillo, 'producto', null);
+      calcularResumen();
+      seleccionarMetodoPago(I.transferencia, 'Transferencia');
+      await cargarBancosDisponibles();
+      elegirBancoVenta(I.bac, 'BAC', 'NIO');
+      calcularResumen();
+    },
+  },
+  {
+    // Venta rápida con tarjeta: comisión del banco como gasto + egreso ligado.
+    nombre: 'rapida-tarjeta-comision',
+    tipo: 'rapida',
+    pasos: async (I) => {
+      await abrirVentaRapida();
+      const p = (id) => S.productosCache.find((x) => x.id === id);
+      agregarAlCarritoVR(p(I.martillo)); agregarAlCarritoVR(p(I.cable));
+      seleccionarMetodoPagoVR(I.tarjeta, 'Tarjeta');
+      await cargarBancosDisponibles();
+      elegirBancoVentaVR(I.bac, 'BAC', 'NIO');
+    },
+  },
 ];
 
 module.exports = { escenarios, IDS };

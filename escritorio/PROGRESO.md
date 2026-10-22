@@ -440,6 +440,36 @@ Fase 5 — instalador piloto, guía de instalación y uso, informe final.
 - Probar en la computadora del negocio con el servidor real (guía, sección 3).
 - Autorizar la publicación a clientes (reemplazar la descarga en `main`).
 
+## Corrección en la web: comisión y lotes (2026-10-22)
+Pedida por el dueño. Detalle completo en `docs/CORRECCION-COMISION-LOTES.md`.
+- **Comisión bancaria:** solo con tarjeta (nunca en transferencias). Ahora se
+  guarda como gasto real ligado a la venta, más su egreso de Caja ligado al
+  gasto. Así aparece una sola vez en Gastos, reportes y Contabilidad. Al
+  anular la venta se anulan el gasto, el egreso y el asiento.
+- **Lotes:** el lote elegido se descuenta una sola vez, en el servidor
+  (`descontar_lote_venta`), con las unidades reales.
+- **Base:** migración `20261022_correccion_lotes_comision.sql`, que solo
+  agrega. Se probó en una transacción revertida (10/10) y está aplicada.
+  También se actualizaron las funciones propias del modo sin conexión.
+- **Pruebas:** 5 ventas de la web corregida, idénticas fila por fila al
+  servidor. Pantalla real probada sobre esta rama y sobre `main` actual. 60
+  unitarias, 22 de navegador y 21 del programa real: todas pasan.
+- **Pendiente de autorización del dueño:**
+  - publicar en `main` (parche listo: `docs/correccion-comision-lotes-main.patch`);
+  - corregir las 4 comisiones antiguas de la cuenta piloto.
+
+### Aviso importante para el programa de escritorio
+Mientras tanto, `main` cambió cómo se guarda una venta: ahora usa
+`venta_registrar_atomica` (todo o nada en el servidor). El instalador piloto
+empaqueta la web de esta rama, que es la anterior a ese cambio, y está
+probado así. Para que el programa use la web más nueva hay que:
+1. traer `main` a esta rama;
+2. adaptar el convertidor de ventas sin conexión a esa función (la venta ya no
+   llega como filas sueltas);
+3. repetir las pruebas.
+
+Queda como siguiente paso.
+
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
 - 2026-10-21: Fase 0 terminada (ver arriba).
@@ -448,3 +478,5 @@ Fase 5 — instalador piloto, guía de instalación y uso, informe final.
 - 2026-10-22: Fase 3 terminada (ver arriba).
 - 2026-10-22: Fase 4 terminada (ver arriba).
 - 2026-10-22: Fase 5 terminada: piloto listo para probar en Windows.
+- 2026-10-22: corrección de comisión bancaria (solo tarjeta, como gasto real) y doble descuento de lotes; migración aplicada; parche para `main` listo (falta autorización).
+- 2026-10-22: instalador piloto rehecho como `2.0.0-piloto.2` (incluye las correcciones; SHA-256 en `piloto/SHA256.txt`).

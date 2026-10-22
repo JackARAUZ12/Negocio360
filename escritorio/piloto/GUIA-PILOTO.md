@@ -1,4 +1,4 @@
-# Negocio360 Escritorio — Guía del piloto (versión 2.0.0-piloto.1)
+# Negocio360 Escritorio — Guía del piloto (versión 2.0.0-piloto.2)
 
 Esta es una versión **de prueba** solo para la cuenta piloto
 (jackarauz2008@gmail.com). Las demás cuentas pueden instalarla y funciona
@@ -12,7 +12,7 @@ igual que la web, pero **sin** el modo sin conexión.
 - Ten **internet** la primera vez.
 
 ## 2. Instalar
-1. Abre `Negocio360-Escritorio-Piloto-2.0.0-piloto.1.exe`.
+1. Abre `Negocio360-Escritorio-Piloto-2.0.0-piloto.2.exe`.
 2. Windows puede decir "Windows protegió su PC" (el programa no tiene firma
    digital, igual que la versión anterior): toca **Más información** →
    **Ejecutar de todas formas**.

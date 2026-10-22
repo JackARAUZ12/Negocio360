@@ -34,7 +34,9 @@
       // Como la base real: lo insertado se ve en lecturas siguientes (con hora de creación creciente).
       if (fx.tablas) {
         fx.tablas[q.tabla] = fx.tablas[q.tabla] || [];
-        for (const f of filas) fx.tablas[q.tabla].push(Object.assign({ created_at: new Date(Date.now() + (++reloj)).toISOString() }, copia(f)));
+        // Valores por defecto de la base real que importan para las lecturas siguientes.
+        const porDefecto = q.tabla === 'movimientos_financieros' ? { estado: 'completado' } : {};
+        for (const f of filas) fx.tablas[q.tabla].push(Object.assign({ created_at: new Date(Date.now() + (++reloj)).toISOString() }, porDefecto, copia(f)));
       }
       if (q.single || q.maybeSingle) return { data: filas[0], error: null };
       return { data: q.select ? filas : null, error: null };
@@ -92,12 +94,37 @@
     return proxy;
   }
 
+  // Funciones del servidor que la web nueva usa para guardar todo junto
+  // (como la base real: lo guardado se ve en las lecturas siguientes).
+  const INTERNAS = {
+    venta_registrar_atomica(a) {
+      const t = F().tablas;
+      const ahora = () => new Date(Date.now() + (++reloj)).toISOString();
+      const vid = nuevoId();
+      const uid = F().userId;
+      (t.ventas = t.ventas || []).push(Object.assign({ created_at: ahora() }, copia(a.p_venta), { id: vid, auth_user_id: uid }));
+      for (const d of a.p_detalles || []) (t.venta_detalles = t.venta_detalles || []).push(Object.assign({ created_at: ahora() }, copia(d), { id: nuevoId(), venta_id: vid, auth_user_id: uid }));
+      const caja = [];
+      for (const c of a.p_caja || []) {
+        if (!(Number(c.monto) > 0)) continue;
+        const mid = nuevoId(); caja.push(mid);
+        (t.movimientos_financieros = t.movimientos_financieros || []).push(Object.assign({ created_at: ahora() }, copia(c),
+          { id: mid, auth_user_id: uid, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA', referencia_tipo: 'venta', referencia_id: vid, estado: 'completado',
+            monto: Math.round(Number(c.monto) * 100) / 100 }));
+      }
+      return { venta_id: vid, ya_existia: false, caja_ids: caja, avisos: [] };
+    },
+    ajustar_stock_relativo(a) { return (a.p_items || []).length; },
+  };
+
   function rpc(nombre, args) {
     const fx = F();
-    registro.push({ op: 'rpc', nombre, args: copia(args || {}) });
+    const entrada = { op: 'rpc', nombre, args: copia(args || {}) };
+    registro.push(entrada);
     (window.__N360_LECTURAS = window.__N360_LECTURAS || []).push({ rpc: nombre });
     const r = fx.rpc && fx.rpc[nombre];
-    const data = typeof r === 'function' ? r(args) : (r === undefined ? null : r);
+    const data = typeof r === 'function' ? r(args) : (r === undefined ? (INTERNAS[nombre] ? INTERNAS[nombre](args) : null) : r);
+    if (nombre in INTERNAS) entrada.resultado = copia(data);
     let proxy = null;
     const b = { then(ok, mal) { return Promise.resolve({ data, error: null }).then(ok, mal); } };
     proxy = new Proxy(b, { get(t, k) { if (k in t) return t[k]; if (typeof k === 'symbol') return undefined; return () => proxy; } });

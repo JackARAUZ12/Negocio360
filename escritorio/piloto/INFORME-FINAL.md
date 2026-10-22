@@ -14,7 +14,7 @@ El modo sin conexión está **encendido solo para la cuenta piloto**. Para todas
 las demás cuentas el programa funciona exactamente como la web.
 
 **Entregables** (carpeta `escritorio/piloto/`):
-- `Negocio360-Escritorio-Piloto-2.0.0-piloto.1.exe` (96 MB, Windows 64 bits);
+- `Negocio360-Escritorio-Piloto-2.0.0-piloto.2.exe` (96 MB, Windows 64 bits);
 - `SHA256.txt`;
 - `GUIA-PILOTO.md` (instalación y uso);
 - este informe.
@@ -56,7 +56,10 @@ Rendimiento medido:
 - en el servidor, unos 7 milésimos de segundo por venta;
 - en el programa, 500 ventas se guardan en 0,8 s y suben en unos 3 s (con el servidor simulado).
 
-## Hallazgos en el sistema web actual (para decidir aparte; no se tocaron)
+## Hallazgos en el sistema web (corregidos el 2026-10-22; falta publicarlos en `main`)
+Ver `escritorio/docs/CORRECCION-COMISION-LOTES.md`. La comisión ahora aplica
+solo a tarjeta y se guarda como gasto real. El lote se descuenta una sola vez.
+
 1. **Lotes descontados dos veces:** en cuentas de farmacia con FEFO, la web descuenta el lote dos veces en algunas ventas. La versión sin conexión lo descuenta una sola vez.
 2. **Comisión bancaria que no llega a Gastos:** la comisión de tarjeta nunca se guarda en Gastos porque usa `tipo: 'operativo'`, un tipo que la tabla no acepta. Sí queda en Caja: en la cuenta piloto hay 4 comisiones en Caja y 0 en Gastos.
 

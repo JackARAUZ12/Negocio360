@@ -7,7 +7,7 @@
 //   - actualizaciones de stock y lotes (la web escribe valores absolutos de
 //     su copia local; el servidor resta en el momento);
 //   - saldos de Caja e Impuestos, número de garantía, total del cliente,
-//     referencia_caja.
+//     referencia_caja, y los enlaces gasto ↔ egreso de la comisión bancaria.
 // Si la venta intentó algo que sin conexión no se permite (cliente nuevo,
 // fiado/crédito, recetas, transporte, números de serie…), se devuelve en
 // `noPermitido` y la venta NO debe guardarse sin conexión.
@@ -67,7 +67,8 @@
         } else if (m.tipo_flujo === 'EGRESO' && m.tipo_movimiento === 'GASTO' && /^Comisión bancaria/.test(m.concepto || '')) {
           p.comision = Object.assign(p.comision || {}, {
             banco_id: m.banco_id, monto: m.monto,
-            movimiento: { concepto: m.concepto, monto: m.monto, metodo_pago_id: m.metodo_pago_id || null, metodo_pago_nombre: m.metodo_pago_nombre || null, banco_id: m.banco_id, fecha: m.fecha },
+            movimiento: { concepto: m.concepto, monto: m.monto, metodo_pago_id: m.metodo_pago_id || null, metodo_pago_nombre: m.metodo_pago_nombre || null, banco_id: m.banco_id,
+              monto_moneda_banco: m.monto_moneda_banco == null ? null : m.monto_moneda_banco, fecha: m.fecha },
           });
         } else noPermitido.push('movimiento de Caja no reconocido: ' + (m.concepto || ''));
         continue;
@@ -104,7 +105,18 @@
         p.auditoria.push({ perfil_nombre: a.perfil_nombre, perfil_tipo: a.perfil_tipo, modulo: a.modulo, tabla: a.tabla, accion: a.accion, resumen: a.resumen == null ? null : a.resumen });
         continue;
       }
-      if (op.op === 'insert' && t === 'gastos') continue; // la web real no logra guardarlo (gastos.tipo 'operativo')
+      if (op.op === 'insert' && t === 'gastos') {
+        const g = op.payload || {};
+        if (g.categoria === 'Comisiones bancarias' && /^Comisión bancaria/.test(g.concepto || '')) {
+          p.comision = Object.assign(p.comision || {}, { gasto: { concepto: g.concepto, observaciones: g.observaciones == null ? null : g.observaciones } });
+        } else noPermitido.push('gasto no reconocido');
+        continue;
+      }
+      if (op.op === 'update' && t === 'gastos') {
+        // solo enlazar el gasto de la comisión con su egreso de Caja (lo rehace el servidor)
+        if (Object.keys(op.payload || {}).some((k) => k !== 'movimiento_financiero_id')) noPermitido.push('cambio no reconocido en un gasto');
+        continue;
+      }
       if (op.op === 'update' && IGNORAR_UPDATE.has(t)) continue;
       if (NO_PERMITIDAS.has(t)) { noPermitido.push(t); continue; }
       noPermitido.push(`${op.op} ${t}`);

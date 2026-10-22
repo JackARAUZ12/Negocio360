@@ -5,7 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
 
-const WEB = path.join(__dirname, '..', '..', 'build', 'web');
+// N360_REF_WEB: probar otra copia empaquetada de las páginas (p. ej. la versión de main).
+const WEB = process.env.N360_REF_WEB || path.join(__dirname, '..', '..', 'build', 'web');
 const FALSO = fs.readFileSync(path.join(__dirname, 'supabase-falso.js'), 'utf8');
 const BASE = 'http://n360.prueba/';
 
