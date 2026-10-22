@@ -6,7 +6,7 @@
 | 1 — Programa v2 en línea | ✅ Terminada | 2026-10-21 | Páginas empaquetadas, impresión RAW segura, una instancia, 🟢🟠🔴, actualizador preparado, instalador de Windows fabricado desde Linux |
 | 2 — Venta completa en el servidor | ✅ Terminada | 2026-10-21 | `offline_registrar_venta` todo-o-nada e idempotente; 8 ventas reales de la web comparadas centavo por centavo |
 | 3 — Modo sin conexión de ventas | ✅ Terminada | 2026-10-22 | Base local SQLite, bandeja, sincronizador, números por bloque, pantalla Sincronización; 8 ventas sin internet dan el mismo paquete que la web |
-| 4 — Pruebas de fuego | Pendiente | | |
+| 4 — Pruebas de fuego | ✅ Terminada | 2026-10-22 | Cortes, apagón, sesión vencida, 500 ventas, dos cajas con la última unidad; día completo cuadrado en el servidor |
 | 5 — Piloto listo | Pendiente | | |
 
 ## Fase 0 — Preparación (2026-10-21)
@@ -384,9 +384,44 @@ Fase 4 — pruebas de fuego (cortes a mitad de venta y de subida, apagón, dos
 equipos con la última unidad, 500 ventas sin internet, reloj mal puesto,
 precio/producto cambiado, sesión vencida, actualización con pendientes).
 
+## Fase 4 — Pruebas de fuego (2026-10-22)
+
+| Prueba | Dónde | Resultado |
+|---|---|---|
+| Se corta internet **en medio de una venta** con internet | Programa real + servidor simulado | ✅ La venta queda en el equipo o sube completa; ninguna fila suelta llega al servidor; sube una vez |
+| Corte **justo después de que el servidor guardó** (la respuesta no llega) | Programa real | ✅ Se reintenta; el servidor responde "repetida"; queda UNA venta |
+| **Apagón**: se mata el proceso justo después de vender sin internet | Programa real (SIGKILL) | ✅ Al abrir, la venta sigue pendiente y sube una vez; hay respaldo diario |
+| **Sesión vencida** (más de 1 hora sin internet) | Programa real | ✅ Ventas abre y vende con la sesión guardada; al volver internet la página renueva la sesión y sube todo |
+| **500 ventas sin internet** | Programa real | ✅ Guardar 500: 0,8 s; subir 500: ~3 s; todas una vez, en el orden en que se vendieron, totales y stock cuadrados |
+| **Día completo en el servidor**: 2 equipos, 12 bloques de números, la web numerando en medio, 500 ventas intercaladas + reenvíos | Base real, transacción revertida (`pruebas/sql/fase4_fuego.sql`) | ✅ 13/13: bloques sin cruce, 502 ventas, números únicos sin reemplazos, stock exacto, Caja = total vendido, saldo encadenado fila por fila, detalles y bitácora completos, hora real conservada. 7,1 ms por venta |
+| **Dos cajas venden la última unidad** | Base real (Fase 4 y Fase 2) | ✅ Se aceptan ambas, stock −1, "vendido sin stock" y una alerta |
+| El mismo equipo no vende más de su stock local | Navegador (Ventas real) | ✅ Después de vender las 3 unidades sin internet, la copia local queda en 0 y la web aplica su tope |
+| Reloj mal puesto | Base real (Fase 2, prueba 8) + sincronizador | ✅ Se manda la hora del equipo al enviar; el servidor corrige la hora y deja aviso si difiere más de 10 min |
+| Precio cambiado / producto desactivado | Base real (Fase 2, prueba 7) | ✅ Se respeta lo cobrado, con aviso |
+| Actualización con ventas pendientes | Unitaria (actualizador) | ✅ No instala mientras haya ventas sin subir |
+
+Totales: 59 unitarias, 15 de navegador, 21 del programa real, SQL Fase 0/2/3/4: todo pasa.
+
+### Auto-revisión
+- La prueba de 500 ventas usa paquetes armados por la prueba (lo que se mide
+  es la base local y la subida); el contenido real de cada tipo de venta ya
+  se probó en la Fase 3 (idéntico a la web).
+- No se pudo probar un corte de luz *durante* la escritura en disco: SQLite
+  en modo WAL + `synchronous=FULL` garantiza que una transacción confirmada
+  no se pierde y una a medias no aparece. Mientras la venta se arma no se
+  imprime nada, así que un apagón en ese instante solo pierde la venta que
+  todavía no se cobró en el sistema.
+- Todo lo de este entorno usa un servidor simulado para el programa; la base
+  real se probó con transacciones revertidas. Falta la prueba en Windows con
+  el servidor real (la hará el dueño con el instalador piloto).
+
+### Sigue
+Fase 5 — instalador piloto, guía de instalación y uso, informe final.
+
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
 - 2026-10-21: Fase 0 terminada (ver arriba).
 - 2026-10-21: Fase 1 terminada (ver arriba).
 - 2026-10-21: Fase 2 terminada (ver arriba).
 - 2026-10-22: Fase 3 terminada (ver arriba).
+- 2026-10-22: Fase 4 terminada (ver arriba).

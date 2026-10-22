@@ -39,16 +39,23 @@ function pasosDeConsulta(params, cabeceras) {
   return pasos;
 }
 
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+// Token con la forma real (el programa lee la cuenta del token).
+function tokenPara(usuario, segundos = 3600) {
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: usuario.id, email: usuario.email, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + segundos })}.firma`;
+}
+
 function crearServidorFalso({ tablas, usuario }) {
   const motor = crearMotor(tablas);
   const estado = {
-    cortado: false, habilitado: true, siguienteBloque: 1000, siguienteNumero: 900,
+    cortado: false, habilitado: true, cortarDespuesDeGuardar: false, renovaciones: 0, siguienteBloque: 1000, siguienteNumero: 900,
     ventas: new Map(), llamadas: [], escriturasDirectas: [],
   };
   const sockets = new Set();
 
   function sesion() {
-    return { access_token: 'x', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'r', user: usuario };
+    estado.renovaciones++;
+    return { access_token: tokenPara(usuario), token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'r', user: usuario };
   }
 
   const rpc = {
@@ -60,6 +67,7 @@ function crearServidorFalso({ tablas, usuario }) {
     offline_registrar_venta: (a) => {
       const p = a.p;
       if (estado.ventas.has(p.uuid)) return { ...estado.ventas.get(p.uuid).respuesta, repetida: true };
+      if (estado.cortarDespuesDeGuardar) { estado.cortarDespuesDeGuardar = false; estado.cortarRespuesta = true; }
       const respuesta = { ok: true, venta_id: `srv-${estado.ventas.size + 1}`, numero_venta: p.venta.numero_venta, numero_reemplazado: false, alertas: [], repetida: false };
       estado.ventas.set(p.uuid, { payload: p, respuesta });
       // Como el servidor real: resta el stock vendido.
@@ -101,7 +109,10 @@ function crearServidorFalso({ tablas, usuario }) {
       const mRpc = u.pathname.match(/^\/rest\/v1\/rpc\/(\w+)$/);
       if (mRpc) {
         const fn = rpc[mRpc[1]];
-        return responder(res, 200, fn ? fn(datos || {}) : null, cors);
+        const salida = fn ? fn(datos || {}) : null;
+        // Corte justo después de que el servidor guardó: la respuesta nunca llega.
+        if (estado.cortarRespuesta) { estado.cortarRespuesta = false; req.socket.destroy(); return undefined; }
+        return responder(res, 200, salida, cors);
       }
       const mTabla = u.pathname.match(/^\/rest\/v1\/(\w+)$/);
       if (mTabla) {
@@ -140,4 +151,4 @@ function crearServidorFalso({ tablas, usuario }) {
   };
 }
 
-module.exports = { crearServidorFalso, pasosDeConsulta };
+module.exports = { crearServidorFalso, pasosDeConsulta, tokenPara };

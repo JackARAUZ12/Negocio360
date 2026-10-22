@@ -200,3 +200,22 @@ test('códigos de perfil: con internet se guardan al acertar; sin internet se ve
     assert.strictEqual(res.otra, 'N360_SIN_CONEXION');
   } finally { await r.navegador.close(); }
 });
+
+test('el mismo equipo no vende más de su stock local (sin "Vender sin stock")', async () => {
+  const fx = fixtures();
+  fx.tablas.configuracion_empresa[0].vender_sin_stock = false;
+  const esc = { tipo: 'nueva', pasos: async (I) => { await abrirNuevaVenta(); await agregarAlCarritoConPrecio(I.taladro, 'producto', null); cambiarCantidad(I.taladro, 3); seleccionarMetodoPago(I.efectivo, 'Efectivo'); calcularResumen(); } };
+  const r = await sinConexion(esc, { fx });
+  try {
+    assert.strictEqual(r.prog.guardadas.length, 1);
+    const despues = await r.page.evaluate(async (I) => {
+      const stock = S.productosCache.find((p) => p.id === I.taladro).stock_actual;
+      await abrirNuevaVenta();
+      await agregarAlCarritoConPrecio(I.taladro, 'producto', null);
+      const linea = S.carrito.find((x) => x.id === I.taladro);
+      return { stock, linea: linea ? { stockMax: linea.stockMax, sinStock: linea.sinStock } : null };
+    }, F.IDS);
+    assert.strictEqual(Number(despues.stock), 0);
+    assert.ok(!despues.linea || (despues.linea.stockMax === 0 && despues.linea.sinStock), JSON.stringify(despues));
+  } finally { await r.navegador.close(); }
+});
