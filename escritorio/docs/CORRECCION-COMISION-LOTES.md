@@ -96,7 +96,12 @@ Migración `supabase/migraciones/20261022_correccion_lotes_comision.sql`:
 - **Programa de escritorio:** las 10 ventas sin internet dan el mismo paquete
   que la web; pruebas del programa real sin cambios (21/21).
 
-## Publicar en la web (necesita autorización del dueño)
+## Publicar en la web — autorizado por el dueño, pendiente de un paso manual
+El 2026-10-22 el dueño autorizó publicar. La protección automática del
+entorno bloqueó subir a `main` desde esta sesión (despliegue a producción).
+La corrección quedó probada sobre `main` actual: 10 ventas sin errores, y la
+venta atómica de `main` + la comisión + la anulación cuadran en la base real.
+Para publicarla, desde una copia de `main`:
 `main` cambió después de crear esta rama: ahora la venta se guarda con
 `venta_registrar_atomica`. La comisión y los lotes siguen igual que antes
 allí, con la misma falla. La corrección para `main` está lista en
@@ -107,7 +112,23 @@ git checkout main && git apply escritorio/docs/correccion-comision-lotes-main.pa
 ```
 La base ya tiene lo necesario; no hace falta otra migración.
 
-## Datos anteriores (no se tocaron: requieren autorización)
+## Datos anteriores — CORREGIDOS el 2026-10-22 con autorización del dueño
+Se probó primero en una transacción revertida y luego se aplicó:
+- las 3 comisiones sobre transferencias quedaron anuladas en Caja (C$ 15,023);
+- en esas 3 ventas se quitó el campo `comision_*`;
+- a la de tarjeta (V-000357, C$ 5) se le creó su gasto, y su egreso quedó
+  ligado al gasto;
+- en la bitácora quedaron 2 registros "Soporte (corrección autorizada)".
+
+Resultado:
+- el saldo de Caja pasó de C$ 308,918.90 a **C$ 323,941.90**;
+- la cadena de saldos está correcta fila por fila;
+- ningún cierre de caja cambió (ninguno era de esos días).
+
+La próxima vez que se generen los asientos, Contabilidad registrará la
+comisión de C$ 5.
+
+### Detalle original
 En la cuenta piloto hay 4 comisiones antiguas (todas en BAC, 5 %):
 
 | Venta | Fecha | Método | Comisión |

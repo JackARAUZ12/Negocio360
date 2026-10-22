@@ -480,3 +480,6 @@ Queda como siguiente paso.
 - 2026-10-22: Fase 5 terminada: piloto listo para probar en Windows.
 - 2026-10-22: corrección de comisión bancaria (solo tarjeta, como gasto real) y doble descuento de lotes; migración aplicada; parche para `main` listo (falta autorización).
 - 2026-10-22: instalador piloto rehecho como `2.0.0-piloto.2` (incluye las correcciones; SHA-256 en `piloto/SHA256.txt`).
+- 2026-10-22: el dueño autorizó publicar y corregir datos antiguos.
+  - Comisiones antiguas: corregidas en la cuenta piloto. 3 de transferencia anuladas (C$ 15,023) y la de tarjeta con su gasto. Caja C$ 323,941.90, saldos correctos, ningún cierre afectado.
+  - Publicar en `main`: la protección del entorno lo bloqueó. Parche probado listo en `docs/correccion-comision-lotes-main.patch`.
