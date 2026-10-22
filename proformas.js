@@ -1594,6 +1594,7 @@ async function abrirConfigTicket() {
   if (!STATE.configTicket) await cargarConfigTicket();
   const c = STATE.configTicket || {};
   document.querySelectorAll('input[name="ct-ancho"]').forEach(r => { r.checked = (r.value === (c.ancho_ticket || '80mm')); });
+  { const rbx = document.getElementById('ct-rawbt'); if (rbx) rbx.checked = !!c.imprimir_rawbt; }
   document.getElementById('ct-nombre').value    = c.nombre_ticket    || '';
   document.getElementById('ct-ruc').value       = c.ruc_ticket       || '';
   document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
@@ -1606,6 +1607,7 @@ async function guardarConfigTicket() {
   const payload = {
     auth_user_id: STATE.userId, configurado: true,
     ancho_ticket: ancho,
+    imprimir_rawbt: !!document.getElementById('ct-rawbt')?.checked,
     nombre_ticket: document.getElementById('ct-nombre').value.trim() || null,
     ruc_ticket: document.getElementById('ct-ruc').value.trim() || null,
     telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
@@ -1727,6 +1729,11 @@ function imprimirComprobanteProforma() {
     return;
   }
 
+  // RawBT (Android, 80 mm): si el negocio lo activó, se imprime directo; si no, todo sigue igual.
+  if (window.rawbtActivo && window.rawbtActivo(STATE.configTicket)) {
+    window.rawbtImprimirDesdeContenedor(document.querySelector('#comprobante-body .ticket-print'));
+    return;
+  }
   const html = document.getElementById('comprobante-body').innerHTML;
   const anchoPx = ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px';
   const fs = ancho === '58mm' ? 11 : 12.5;

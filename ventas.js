@@ -5147,7 +5147,7 @@ async function reimprimirTicketVenta() {
     const btListo = typeof btActivoLocal === 'function' && btActivoLocal() && !!ESCPOS_BT_DEVICE;
     const usbListo = !!document.getElementById('vrc-usar-usb')?.checked && escposConectado();
     const nativaLista = !!(window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa'));
-    if (!btListo && !usbListo && !nativaLista && cfg.ancho_ticket !== 'carta') {
+    if (!btListo && !usbListo && !nativaLista && cfg.ancho_ticket !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(cfg))) {
       S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
     }
     const { data: det } = await sb.from('venta_detalles').select('*')
@@ -5617,7 +5617,7 @@ async function _confirmarVentaInterno(conImpresion) {
   // la impresion nativa de la app de escritorio ya esta disponible.
   const usaraImpresionNativaNV = window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa');
   S._ventanaTicketPreabierta = null;
-  if (!usaraImpresionNativaNV && conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
+  if (!usaraImpresionNativaNV && conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(VR.config))) {
     try {
       S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
       if (S._ventanaTicketPreabierta) {
@@ -6134,6 +6134,7 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
   document.querySelectorAll('input[name="vrc-ancho"]').forEach(r => {
     r.checked = r.value === (c.ancho_ticket || '80mm');
   });
+  { const rbx = document.getElementById('vrc-rawbt'); if (rbx) rbx.checked = !!c.imprimir_rawbt; }
   onCambiarAnchoTicketVR();
 
   setEl2Value('vrc-nombre',    c.nombre_ticket    || S.empresaConfig?.nombre_comercial || '');
@@ -6403,6 +6404,7 @@ async function guardarConfigVentaRapida() {
     iva_activo:          ivaActivo,
     iva_porcentaje:      ivaPct,
     ancho_ticket:        ancho,
+    imprimir_rawbt:      !!document.getElementById('vrc-rawbt')?.checked,
     nombre_ticket:       document.getElementById('vrc-nombre')?.value.trim()   || null,
     ruc_ticket:          document.getElementById('vrc-ruc')?.value.trim()      || null,
     telefono_ticket:     document.getElementById('vrc-telefono')?.value.trim() || null,
@@ -7081,7 +7083,7 @@ async function _confirmarVentaRapidaInterno() {
   // por completo si la impresion nativa esta lista para usarse.
   const usaraImpresionNativaVR = window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa');
   VR._ventanaTicketPreabierta = null;
-  if (!usaraImpresionNativaVR && VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta') {
+  if (!usaraImpresionNativaVR && VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(VR.config))) {
     try {
       VR._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
       if (VR._ventanaTicketPreabierta) {
@@ -7330,13 +7332,61 @@ function construirDatosReciboDesdeVenta(cfg, venta, items) {
 //   1) App de escritorio nativa (RAW directo a Windows, la mejor)
 //   2) USB directo del navegador (WebUSB, solo Chrome/Edge)
 //   3) Impresion normal de siempre (CSS + dialogo de impresion)
-async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
+// Ticket de venta para RawBT (Android, 80 mm): mismos datos que el ticket normal,
+// armados como texto de impresora (ver rawbt-print.js).
+function elementosTicketVentaRawBT(cfg, venta, items, resumen) {
+  const nombreNeg = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
+  const fechaTxt = `${fmtFecha(venta.fecha || todayISO())} ${new Date().toLocaleTimeString('es-NI', {hour:'2-digit', minute:'2-digit'})}`;
+  const e = [];
+  e.push({ t: 'centro', texto: nombreNeg, negrita: true, grande: true });
+  if (cfg.ruc_ticket) e.push({ t: 'centro', texto: 'RUC: ' + cfg.ruc_ticket });
+  if (cfg.direccion_ticket) e.push({ t: 'centro', texto: cfg.direccion_ticket });
+  if (cfg.telefono_ticket) e.push({ t: 'centro', texto: 'Tel: ' + cfg.telefono_ticket });
+  e.push({ t: 'linea' }, { t: 'centro', texto: 'RECIBO DE VENTA', negrita: true }, { t: 'linea' });
+  e.push({ t: 'fila', izq: 'No. Venta:', der: String(venta.numero_venta || ''), negrita: true });
+  e.push({ t: 'fila', izq: 'Fecha:', der: fechaTxt });
+  e.push({ t: 'fila', izq: 'Método de pago:', der: venta.metodo_pago_nombre || '—' });
+  e.push({ t: 'linea' });
+  e.push({ t: 'fila', izq: 'Cliente:', der: venta.cliente_id ? (venta.cliente_nombre || 'Cliente') : 'Cliente', negrita: true });
+  e.push({ t: 'fila', izq: 'N° Cliente:', der: String(venta.cliente_id ? (venta._clienteNumero || '—') : (venta.numero_venta || '')) });
+  e.push({ t: 'linea' }, { t: 'fila', izq: 'Descripción', der: 'Subtotal', negrita: true }, { t: 'linea' });
+  (items || []).forEach(i => {
+    const [nombreReal, ...detalle] = String(i.nombre || '').split('\n');
+    e.push({ t: 'texto', texto: nombreReal + (i.escalaNombre ? ` (${i.escalaNombre})` : '') });
+    detalle.forEach(ln => e.push({ t: 'texto', texto: '  ' + ln }));
+    e.push({ t: 'fila', izq: `${cantTicket(i)} x ${fmt(precioTicket(i))}`, der: fmt(i.subtotal != null ? i.subtotal : round2(i.cantidad * i.precio)) });
+  });
+  e.push({ t: 'linea' });
+  const r = resumen || {};
+  e.push({ t: 'fila', izq: 'Subtotal', der: fmt(r.subtotal) });
+  if (r.descuento > 0) e.push({ t: 'fila', izq: 'Descuento', der: '-' + fmt(r.descuento) });
+  if (r.ivaPct != null ? r.ivaPct > 0 : S.ivaActivo) {
+    e.push({ t: 'fila', izq: `IVA (${r.ivaPct != null ? r.ivaPct : S.ivaPorcentaje}%)`, der: fmt(r.ivaMonto != null ? r.ivaMonto : r.impuestos) });
+  }
+  (r.otros || []).forEach(o => e.push({ t: 'fila', izq: `${o.nombre} (${o.porcentaje}%)`, der: fmt(o.monto) }));
+  e.push({ t: 'fila', izq: 'TOTAL', der: fmt(r.total), negrita: true, grande: true });
+  e.push({ t: 'linea' }, { t: 'centro', texto: cfg.mensaje_pie_ticket || 'Gracias por su compra' });
+  return e;
+}
+
+async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS, resumen) {
   const cerrarVentanaPreabiertaSiNoHaceFalta = () => {
     if (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed) VR._ventanaTicketPreabierta.close();
     VR._ventanaTicketPreabierta = null;
     if (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed) S._ventanaTicketPreabierta.close();
     S._ventanaTicketPreabierta = null;
   };
+
+  // RawBT (Android, 80 mm): solo si el negocio lo activó y el equipo es Android.
+  // Si algo falla al armarlo, sigue con las vías de siempre.
+  if (window.rawbtActivo && window.rawbtActivo(cfg) && resumen) {
+    try {
+      const itemsRB = await enriquecerItemsConCombo((items||[]).map(i => ({ ...i, combo_id: i.esCombo ? i.id : null })));
+      cerrarVentanaPreabiertaSiNoHaceFalta();
+      const rb = window.rawbtImprimirElementos(elementosTicketVentaRawBT(cfg, venta, itemsRB, resumen));
+      if (rb && rb.ok) return;
+    } catch (e) { console.warn('RawBT falló, probando la siguiente vía:', e); }
+  }
 
   const impresoraNativa = localStorage.getItem('n360_impresora_nativa') || '';
   if (window.negocio360Print?.disponible && impresoraNativa) {
@@ -7382,7 +7432,7 @@ async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS) {
 // Envoltorio de Venta Rápida — nunca toca la función CSS original,
 // solo decide cuál vía usar primero.
 function imprimirTicketVentaRapida(venta, items, resumen) {
-  imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketVentaRapidaCSS(venta, items, resumen));
+  imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketVentaRapidaCSS(venta, items, resumen), resumen);
 }
 
 async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
@@ -7588,7 +7638,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
 // Mismo criterio que en Venta Rápida — usa la función compartida de
 // prioridad (nativo → USB navegador → CSS).
 function imprimirTicketNuevaVenta(venta, items, resumen) {
-  imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketNuevaVentaCSS(venta, items, resumen));
+  imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketNuevaVentaCSS(venta, items, resumen), resumen);
 }
 
 async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
