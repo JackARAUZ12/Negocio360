@@ -370,13 +370,14 @@
     });
   }
 
-  // fetch con tiempo máximo para las LECTURAS (sin internet real no se queda colgado).
+  // fetch con tiempo máximo para las LECTURAS de cuentas con el modo sin conexión
+  // (si el internet se cae a medias, no se queda colgado: pasa a la copia local).
   function fetchConLimite(fetchBase) {
     const f = fetchBase || window.fetch.bind(window);
     return (entrada, init = {}) => {
       const metodo = String(init.method || 'GET').toUpperCase();
       const url = String(entrada && entrada.url ? entrada.url : entrada);
-      if (metodo !== 'GET' || !/\/rest\/v1\//.test(url) || init.signal) return f(entrada, init);
+      if (!usarLocal() || metodo !== 'GET' || !/\/rest\/v1\//.test(url) || init.signal) return f(entrada, init);
       return f(entrada, Object.assign({}, init, { signal: AbortSignal.timeout(15000) }));
     };
   }
@@ -427,6 +428,12 @@
     descartarGrabacion,
     uuid,
     sincronizarCatalogo,
+    // ¿Ya hay copia del catálogo en el equipo? (sin ella, con internet, la venta va por la web)
+    async tieneCatalogo() {
+      await listo;
+      if (!usarLocal()) return false;
+      try { return (await API.catalogoInfo()).some((t) => t.tabla === 'productos'); } catch (_) { return false; }
+    },
     alCambiar(fn) { oyentes.add(fn); return () => oyentes.delete(fn); },
     api: API,
     get servidor() { return urlServidor; },

@@ -32,13 +32,15 @@ function programaFalso(arg) {
     estado: async () => ({ habilitado: arg.habilitado, cuenta: arg.cuenta, dispositivo_uid: arg.dispositivo, sin_subir_equipo: P.guardadas.length }),
     fijarSesion: async () => ({ ok: true }),
     catalogoLeer: async (ts) => { log.push('catalogoLeer'); return Object.fromEntries(ts.map((t) => [t, JSON.parse(JSON.stringify(tablas()[t] || []))])); },
-    catalogoReemplazar: async () => ({}), catalogoInfo: async () => [],
-    rpcGuardar: async () => true, rpcLeer: async () => null,
+    catalogoReemplazar: async () => ({}), catalogoInfo: async () => (arg.sinCatalogo ? [] : [{ tabla: 'productos', filas: 6 }]),
+    rpcGuardar: async (k, d) => { log.push('rpcGuardar:' + k); P.rpc = P.rpc || {}; P.rpc[k] = d; return true; },
+    rpcLeer: async (k) => { log.push('rpcLeer:' + k); return P.rpc && P.rpc[k] ? { datos: P.rpc[k] } : null; },
     numeroTomar: async () => { log.push('numero'); return P.numeros.shift() || null; },
     ventaGuardar: async (v) => { log.push('ventaGuardar'); P.guardadas.push(JSON.parse(JSON.stringify(v))); return { guardada: true }; },
     ventasListar: async () => [], ventaAnular: async () => ({ ok: true }), ventaReintentar: async () => true,
     subirAhora: async () => ({}), exportar: async () => ({}),
-    pinGuardar: async () => true, pinVerificar: async () => ({ ok: false, motivo: 'incorrecto' }),
+    pinGuardar: async (d) => { log.push('pinGuardar:' + d.perfil_id + ':' + d.pin); return true; },
+    pinVerificar: async (pin, perfil) => { log.push('pinVerificar:' + pin + ':' + perfil); return pin === '4321' ? { ok: true, perfil_id: 'adm1', nombre: 'Jack', sin_conexion: true } : { ok: false, motivo: 'incorrecto', restantes: 4 }; },
     alCambiar: () => () => {},
     retenerImpresion: () => log.push('retener'),
     liberarImpresion: async () => { log.push('liberar'); return []; },
@@ -75,9 +77,9 @@ async function referencia(esc) {
   } finally { await navegador.close(); }
 }
 
-async function sinConexion(esc, { conexion = 'sin_conexion', habilitado = true } = {}) {
-  const { navegador, page, errores } = await abrirVentas(fixtures(), {
-    extra: programaFalso, extraArg: { conexion, habilitado, cuenta: F.U, dispositivo: F.IDS.dispositivo },
+async function sinConexion(esc, { conexion = 'sin_conexion', habilitado = true, sinCatalogo = false, fx = fixtures() } = {}) {
+  const { navegador, page, errores } = await abrirVentas(fx, {
+    extra: programaFalso, extraArg: { conexion, habilitado, sinCatalogo, cuenta: F.U, dispositivo: F.IDS.dispositivo },
   });
   try {
     await listo(page);
@@ -159,5 +161,42 @@ test('sin internet, pantalla de Ventas carga desde la copia local y numera desde
     const num = await r.page.evaluate(() => S.numeroVenta);
     assert.strictEqual(num, 'V-000777');
     assert.ok(r.prog.log.includes('catalogoLeer'));
+  } finally { await r.navegador.close(); }
+});
+
+test('con internet pero sin copia local todavía: la venta va por la web normal', async () => {
+  const r = await sinConexion(escenarios.find((e) => e.nombre === 'rapida-efectivo-iva'), { conexion: 'en_linea', sinCatalogo: true });
+  try {
+    assert.strictEqual(r.prog.guardadas.length, 0);
+    assert.ok(r.registroServidor > 0);
+  } finally { await r.navegador.close(); }
+});
+
+test('códigos de perfil: con internet se guardan al acertar; sin internet se verifican en el equipo', async () => {
+  const fx = fixtures();
+  fx.rpc.admin_verificar_codigo = { ok: true, perfil_id: 'adm1', nombre: 'Jack', principal: true };
+  fx.rpc.listar_perfiles_del_grupo_v2 = [{ id: 'adm1', nombre: 'Jack', tipo: 'admin' }];
+  const r = await sinConexion({ tipo: 'nueva', pasos: async () => {} }, { conexion: 'en_linea', fx });
+  try {
+    const res = await r.page.evaluate(async () => {
+      const c = window.supabase.createClient('https://x.supabase.co', 'k');
+      const enLinea = await c.rpc('admin_verificar_codigo', { p_pin: '4321', p_perfil_id: null, p_motivo: 'acceso' });
+      const perfiles = await c.rpc('listar_perfiles_del_grupo_v2');
+      window.__N360_PROG.cambiarConexion('sin_conexion');
+      const bien = await c.rpc('admin_verificar_codigo', { p_pin: '4321', p_perfil_id: 'adm1', p_motivo: 'acceso' });
+      const mal = await c.rpc('admin_verificar_codigo', { p_pin: '0000', p_perfil_id: 'adm1', p_motivo: 'acceso' });
+      const perfilesSin = await c.rpc('listar_perfiles_del_grupo_v2');
+      const ultima = await c.rpc('actualizar_ultima_conexion');
+      const otra = await c.rpc('crear_perfil_grupo', {});
+      return { enLinea: enLinea.data, perfiles: perfiles.data, bien: bien.data, mal: mal.data, perfilesSin: perfilesSin.data, ultima, otra: otra.error && otra.error.code, log: window.__N360_PROG.log };
+    });
+    assert.strictEqual(res.enLinea.ok, true);
+    assert.ok(res.log.includes('pinGuardar:adm1:4321'));
+    assert.ok(res.log.includes('rpcGuardar:listar_perfiles_del_grupo_v2'));
+    assert.strictEqual(res.bien.ok, true);
+    assert.strictEqual(res.mal.motivo, 'incorrecto');
+    assert.deepStrictEqual(res.perfilesSin, res.perfiles);
+    assert.deepStrictEqual([res.ultima.data, res.ultima.error], [null, null]);
+    assert.strictEqual(res.otra, 'N360_SIN_CONEXION');
   } finally { await r.navegador.close(); }
 });

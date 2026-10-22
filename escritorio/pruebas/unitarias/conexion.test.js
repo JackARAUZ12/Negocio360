@@ -84,3 +84,11 @@ test('comprobador: respuesta HTTP < 500 cuenta como conectado', async () => {
   await crearComprobador({ fetch: async (_u, o) => { cab = o.headers; return { status: 200 }; }, url: 'u', clave: 'clave-publica' })();
   assert.strictEqual(cab.apikey, 'clave-publica');
 });
+
+test('avisa cuando cambia la cantidad de ventas por subir aunque el color no cambie', async () => {
+  const avisos = [];
+  const m = crearMonitor({ comprobar: async () => ({ ok: false, ms: 1 }), hayRed: () => false, alCambiar: (e) => avisos.push(e.pendientes), reloj: relojFalso() });
+  await m.iniciar();
+  m.fijarPendientes(1); m.fijarPendientes(1); m.fijarPendientes(2); m.fijarPendientes(0);
+  assert.deepStrictEqual(avisos, [0, 1, 2, 0]);
+});

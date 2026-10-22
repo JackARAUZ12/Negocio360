@@ -79,6 +79,7 @@
       aviso('Necesita internet', `Sin conexión no se puede: ${motivo}. Sin internet solo se registran ventas de contado o con pago dividido.`);
       return undefined;
     }
+    if (N.enLinea() && !(await N.tieneCatalogo())) return original.apply(window, args); // primera vez: aún sin copia local
     if (enCurso) return undefined;
     enCurso = true;
     const extra = datosExtra(tipo);

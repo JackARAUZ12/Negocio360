@@ -24,11 +24,12 @@ function crearMonitor({
   let enCurso = null;
   let detenido = false;
 
+  let pendientesAvisados = 0;
   function publicar(conexion, extra = {}) {
     const visible = conexion === 'en_linea' && estado.pendientes > 0 ? 'inestable' : conexion;
     const cambio = visible !== estado.visible || conexion !== estado.conexion;
     estado = { ...estado, ...extra, conexion, visible, desde: cambio ? reloj.ahora() : estado.desde };
-    if (cambio) alCambiar(obtener());
+    if (cambio || estado.pendientes !== pendientesAvisados) { pendientesAvisados = estado.pendientes; alCambiar(obtener()); }
   }
 
   function obtener() { return { ...estado, visible: estado.visible || estado.conexion }; }

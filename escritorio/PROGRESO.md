@@ -5,7 +5,7 @@
 | 0 — Preparación | ✅ Terminada | 2026-10-21 | Estructura, inventario de la venta, interruptor y dispositivos en la base, versiones fijas |
 | 1 — Programa v2 en línea | ✅ Terminada | 2026-10-21 | Páginas empaquetadas, impresión RAW segura, una instancia, 🟢🟠🔴, actualizador preparado, instalador de Windows fabricado desde Linux |
 | 2 — Venta completa en el servidor | ✅ Terminada | 2026-10-21 | `offline_registrar_venta` todo-o-nada e idempotente; 8 ventas reales de la web comparadas centavo por centavo |
-| 3 — Modo sin conexión de ventas | Pendiente | | |
+| 3 — Modo sin conexión de ventas | ✅ Terminada | 2026-10-22 | Base local SQLite, bandeja, sincronizador, números por bloque, pantalla Sincronización; 8 ventas sin internet dan el mismo paquete que la web |
 | 4 — Pruebas de fuego | Pendiente | | |
 | 5 — Piloto listo | Pendiente | | |
 
@@ -272,8 +272,121 @@ Fase 3 — modo sin conexión de ventas en el programa: catálogo local, bandeja
 de salida en SQLite, sincronizador, numeración por bloques, alertas y
 pantalla "Sincronización".
 
+## Fase 3 — Modo sin conexión de ventas (2026-10-22)
+
+### Hecho
+- **Numeración por bloques** (base, solo agregar): tabla `offline_bloques_numeracion`
+  y función `offline_reservar_numeros`. Cada equipo aparta 50 números del MISMO
+  contador de la web (`ventas_numeracion`), con freno de 20 bloques por equipo
+  por día. Probada en transacción revertida y aplicada.
+- **Base local** `src/main/base-local.js` (SQLite de Electron, WAL +
+  `synchronous=FULL`), todo separado por cuenta:
+  - copia del catálogo (28 tablas: productos, clientes, métodos, bancos,
+    impuestos, combos, promociones, lotes, presentaciones, config., ventas de
+    los últimos 62 días…);
+  - **bandeja**: cada venta completa en UNA transacción con su UUID; estados
+    pendiente → enviando → subida (o "con problema"/anulada); si se corta a
+    mitad de subida, al abrir vuelve a "pendiente" (reintentar no duplica);
+  - las restas de stock de ventas aún no subidas se vuelven a aplicar cada vez
+    que llega una copia nueva del servidor (la copia nunca "devuelve" stock);
+  - números del bloque; respuestas guardadas (lista de perfiles);
+  - **códigos de administrador**: solo se guardan después de que el servidor
+    los aceptó en línea, como huella PBKDF2 (210 000 vueltas) cifrada con
+    `safeStorage` (Windows: DPAPI del usuario); sin internet se verifican en el
+    equipo con bloqueo de 5 minutos tras 5 fallos. Los perfiles restringidos
+    ya se verificaban en la página con la lista de perfiles (ahora guardada);
+  - respaldo diario (`VACUUM INTO`, se guardan 7).
+- **Sincronizador** `src/main/sincronizador.js` (proceso principal): usa la
+  sesión que le pasa la página (verifica que el token sea de esa cuenta; no la
+  renueva él), comprueba `offline_estado`, registra el equipo, sube una venta a
+  la vez a `offline_registrar_venta` con espera creciente (5 s, 15 s, 1 min,
+  5 min), aparta números cuando quedan menos de 15. Errores de contenido dejan
+  esa venta "con problema" (nunca se borra) y siguen las demás.
+- **Páginas** (scripts agregados SOLO a la copia empaquetada, `escritorio/web/`):
+  - `n360-sin-conexion.js` (todas las páginas): cliente de Supabase "doble".
+    Con internet todo va al servidor como en la web. Sin internet (solo cuentas
+    con el interruptor) las lecturas salen de la copia local
+    (`src/compartido/motor-local.js`: filtros, `or`, orden, rangos, conteos y
+    relaciones como `productos(...)`). La sesión guardada sirve sin internet;
+    el número de venta sale del bloque del equipo (si se acaba sin internet,
+    `V-TMP-…` que el servidor reemplaza con aviso).
+  - `n360-ventas-sin-conexion.js`: envuelve "Cerrar venta" y "Cobrar". La
+    venta de contado o pago dividido se arma con el código real de `ventas.js`
+    "grabando" sus escrituras, se convierte con `registro-a-payload.js`, se
+    guarda en la bandeja y **recién entonces** se imprime el ticket (el
+    puente retiene los tickets) y se muestra el aviso. **Con internet también
+    va por la bandeja** y sube en segundos: así un corte a mitad de venta no
+    deja la venta a medias (todo o nada en el servidor). Fiado, crédito,
+    cliente nuevo, corrección de venta, recetas, veterinaria, transporte,
+    canje, números de serie y stock de otra sucursal: con internet siguen el
+    camino normal de la web; sin internet se avisa y no se guarda nada.
+  - `n360-caja-sin-conexion.js`: el cierre de caja (diario y mensual) no se
+    permite con ventas del equipo sin subir.
+  - Pantalla **Sincronización** (`sincronizacion.html`, menú Negocio360 y al
+    tocar el indicador): conexión, ventas por subir/con problema, números
+    apartados, "Subir ahora", "Exportar ventas pendientes" (archivo JSON),
+    anular ventas aún no subidas (devuelve el stock local), reintentar, y los
+    avisos del servidor (`offline_alertas`) con "Revisado".
+  - El aviso "Requiere conexión" tiene botón **Ir a Ventas**; el indicador
+    muestra "N venta(s) por subir".
+- La actualización automática no se instala mientras haya ventas sin subir.
+- Empaquetador: agrega los scripts después de `vendor/supabase.js` en las 110
+  páginas que lo usan, el de Ventas después de `ventas.js` y el de Caja después
+  de `caja.js`; falla si no encuentra dónde.
+
+### Pruebas
+- Unitarias (59): base local (cuentas separadas, idempotencia, apagón a mitad
+  de subida, anular solo lo no subido, números, códigos con bloqueo y sin
+  guardar la huella en claro, respaldos), sincronizador (orden, sin red, corte
+  después de que el servidor guardó → no duplica, error de contenido, sesión
+  vencida, cuenta sin el modo, cerrar sesión), motor local (filtros, fechas
+  como las usa ventas.js, `or`, relaciones, escrituras en memoria), monitor.
+- Navegador (14, Chromium con la pantalla real de Ventas): **los 8 escenarios
+  de la Fase 2 sin internet producen exactamente el mismo paquete que la web**
+  (el que se comparó centavo por centavo en el servidor); el ticket se retiene
+  hasta guardar; nada se manda suelto al servidor; fiado sin internet se
+  rechaza con aviso; cuenta sin el modo funciona igual que la web; sin copia
+  local todavía, la venta va por la web; códigos de perfil en línea/sin línea.
+- Programa real (Electron, 16): las 9 de la Fase 1 + 7 nuevas con un Supabase
+  simulado: registra el equipo y aparta números; venta rápida con internet
+  sube en segundos e imprime después de guardarse; se corta internet → venta
+  guardada en el equipo, indicador "1 venta(s) por subir", ticket impreso;
+  recargar Ventas sin internet muestra el stock ya descontado; Caja pide
+  conexión y el cierre se bloquea; se cierra y abre el programa sin internet y
+  la venta sigue ahí; vuelve internet → sube una sola vez y Sincronización la
+  muestra "Subida".
+
+### Auto-revisión
+- Mensajes al proceso principal solo desde páginas `app://negocio360`; todo
+  lo local va bajo la cuenta del token que entregó la página (la firma la
+  valida el servidor al subir). Consultas SQLite con parámetros.
+- El cliente doble solo cambia algo para cuentas con el interruptor; para las
+  demás todo pasa directo al servidor, como en la web (el límite de 15 s en
+  lecturas también es solo para esas cuentas).
+- Una venta que la web no llegó a armar (faltaba un dato) muestra los avisos
+  normales de la web; una que incluye algo no permitido NO se guarda ni se
+  imprime y se avisa claramente.
+- Si guardar en el equipo fallara (disco lleno), no se imprime ticket y se
+  avisa que no se guardó.
+
+### Notas / pendientes conocidos
+- La web pide un número al abrir cada venta (y Venta rápida prepara el de la
+  siguiente), así que un día largo sin internet puede gastar el bloque de 50;
+  después salen números `V-TMP-…` que el servidor reemplaza con aviso. Si en
+  el piloto pasa seguido, subir `tamano_bloque` de la cuenta piloto.
+- Las ventas anuladas antes de subir no van al servidor (quedan en el equipo
+  como "Anulada" y en el archivo de respaldo); su número queda sin usar.
+- Sigue sin acceso HTTP a Supabase desde este entorno: la prueba con el
+  servidor real la hará el dueño en Windows con el instalador piloto.
+
+### Sigue
+Fase 4 — pruebas de fuego (cortes a mitad de venta y de subida, apagón, dos
+equipos con la última unidad, 500 ventas sin internet, reloj mal puesto,
+precio/producto cambiado, sesión vencida, actualización con pendientes).
+
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
 - 2026-10-21: Fase 0 terminada (ver arriba).
 - 2026-10-21: Fase 1 terminada (ver arriba).
 - 2026-10-21: Fase 2 terminada (ver arriba).
+- 2026-10-22: Fase 3 terminada (ver arriba).
