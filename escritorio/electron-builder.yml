@@ -39,6 +39,8 @@ nsis:
   shortcutName: Negocio360
   uninstallDisplayName: Negocio360 (piloto sin conexión)
   deleteAppDataOnUninstall: false
+  # Compresión completa (sin paquete diferencial): instalador más chico.
+  differentialPackage: false
 linux:
   target: dir
 # Actualizaciones: carpeta del sitio que SOLO se crea al publicar con

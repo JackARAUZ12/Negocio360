@@ -7,7 +7,7 @@
 | 2 — Venta completa en el servidor | ✅ Terminada | 2026-10-21 | `offline_registrar_venta` todo-o-nada e idempotente; 8 ventas reales de la web comparadas centavo por centavo |
 | 3 — Modo sin conexión de ventas | ✅ Terminada | 2026-10-22 | Base local SQLite, bandeja, sincronizador, números por bloque, pantalla Sincronización; 8 ventas sin internet dan el mismo paquete que la web |
 | 4 — Pruebas de fuego | ✅ Terminada | 2026-10-22 | Cortes, apagón, sesión vencida, 500 ventas, dos cajas con la última unidad; día completo cuadrado en el servidor |
-| 5 — Piloto listo | Pendiente | | |
+| 5 — Piloto listo | ✅ Terminada | 2026-10-22 | Instalador piloto (96 MB), guía e informe final en `escritorio/piloto/`; publicación a clientes espera autorización |
 
 ## Fase 0 — Preparación (2026-10-21)
 
@@ -418,6 +418,28 @@ Totales: 59 unitarias, 15 de navegador, 21 del programa real, SQL Fase 0/2/3/4: 
 ### Sigue
 Fase 5 — instalador piloto, guía de instalación y uso, informe final.
 
+## Fase 5 — Piloto listo (2026-10-22)
+
+### Hecho
+- Instalador `piloto/Negocio360-Escritorio-Piloto-2.0.0-piloto.1.exe`
+  (96 MB; SHA-256 en `piloto/SHA256.txt`). Se quitó el paquete diferencial
+  del instalador (`differentialPackage: false`) para comprimir mejor: bajó de
+  108,6 MB a 96 MB y ya cabe en GitHub (límite 100 MB por archivo). La
+  actualización automática sigue funcionando (descarga completa).
+- Se revisó el contenido: proceso principal, base local, sincronizador,
+  puente, 115 páginas y los scripts del modo sin conexión.
+- Bajo wine el `.exe` arranca, crea `%APPDATA%\Negocio360\local\negocio360.db`
+  y su respaldo diario (la ventana no se dibuja bajo wine: verificar en
+  Windows real).
+- `piloto/GUIA-PILOTO.md`: instalación, primera vez con internet, uso diario,
+  pantalla Sincronización, qué hacer si…
+- `piloto/INFORME-FINAL.md`: qué hace, cambios en la base, pruebas,
+  hallazgos de la web, límites y pasos para publicar.
+
+### Pendiente (requiere al dueño)
+- Probar en la computadora del negocio con el servidor real (guía, sección 3).
+- Autorizar la publicación a clientes (reemplazar la descarga en `main`).
+
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
 - 2026-10-21: Fase 0 terminada (ver arriba).
@@ -425,3 +447,4 @@ Fase 5 — instalador piloto, guía de instalación y uso, informe final.
 - 2026-10-21: Fase 2 terminada (ver arriba).
 - 2026-10-22: Fase 3 terminada (ver arriba).
 - 2026-10-22: Fase 4 terminada (ver arriba).
+- 2026-10-22: Fase 5 terminada: piloto listo para probar en Windows.

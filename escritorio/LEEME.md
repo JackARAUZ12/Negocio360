@@ -19,6 +19,7 @@ Guía del proyecto: [`PLAN.md`](PLAN.md). Avance: [`PROGRESO.md`](PROGRESO.md).
 | `pruebas/navegador/` | Pantalla real de Ventas sin internet en Chromium (`npm run navegador`) |
 | `pruebas/electron/` | Prueba de humo de Electron + SQLite (`npm run humo`) |
 | `pruebas/sql/` | Pruebas SQL que se corren dentro de una transacción revertida |
+| `piloto/` | **Entregables del piloto**: instalador, SHA-256, guía de uso e informe final |
 | `referencia-v1.0.1/` | Código recuperado del instalador anterior (solo referencia) |
 
 Migraciones de base: `../supabase/migraciones/20261021_offline_*.sql`.
