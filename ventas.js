@@ -1067,8 +1067,8 @@ async function anularVenta() {
       }
     }
 
-    // Fiados: si esta venta se dejó fiada, la deuda se elimina junto con ella.
-    // Si el cliente ya hizo abonos o pagos, no se anula desde aquí (el dinero ya entró a Caja).
+    // Fiados: si esta venta se dejó fiada y el cliente ya hizo abonos o pagos,
+    // no se anula desde aquí (el dinero ya entró a Caja). La base lo revisa también.
     if (ventaActual.metodo_pago === 'fiado') {
       const { data: fiadoVinc } = await sb.from('fiados').select('id, estado').eq('venta_id', id).eq('auth_user_id', S.userId).maybeSingle();
       if (fiadoVinc && fiadoVinc.estado !== 'eliminado') {
@@ -1078,172 +1078,30 @@ async function anularVenta() {
           if (btn) btn.disabled = false;
           return;
         }
-        await sb.from('fiados').update({ estado: 'eliminado', eliminado_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('id', fiadoVinc.id).eq('auth_user_id', S.userId);
       }
     }
 
-    // Devolver al inventario cada producto/combo vendido en esta
-    // factura — antes esto nunca pasaba, la anulación solo cambiaba
-    // el estado de la venta sin tocar el stock.
-    const { data: detalles, error: errDet } = await sb.from('venta_detalles')
-      .select('producto_id, combo_id, tipo_item, cantidad, producto_nombre')
-      .eq('venta_id', id).eq('auth_user_id', S.userId);
-    if (errDet) throw errDet;
-
-    // Se suma sobre la existencia REAL del momento (servidor), en una sola
-    // operación: o se devuelve todo o nada. Los servicios no tienen stock.
-    const devolver = [];
-    for (const d of (detalles || [])) {
-      if (d.tipo_item === 'producto' && d.producto_id) devolver.push({ producto_id: d.producto_id, delta: Number(d.cantidad) });
-      else if (d.combo_id) devolver.push({ combo_id: d.combo_id, delta: Number(d.cantidad) });
-    }
-    if (devolver.length) {
-      const { error: errDev } = await sb.rpc('ajustar_stock_relativo', { p_items: devolver });
-      if (errDev) throw errDev;
-    }
-
-    const { error } = await sb.from('ventas')
-      .update({ estado:'anulada', updated_at: new Date().toISOString() })
-      .eq('id', id).eq('auth_user_id', S.userId);
-
-    if (error) throw error;
-
-    // Si la venta tenía cliente asignado (no "Consumidor Final"), se le
-    // resta lo que esta venta le había sumado a su ficha — si no, su
-    // "total comprado" se quedaría inflado para siempre con ventas que
-    // ya no existen, y eso es justo el tipo de número que hace perder
-    // confianza en el sistema.
-    if (ventaActual.cliente_id) {
-      try {
-        const { data: cli } = await sb.from('clientes')
-          .select('total_compras, num_compras').eq('id', ventaActual.cliente_id).eq('auth_user_id', S.userId).maybeSingle();
-        if (cli) {
-          const nuevoTotal = Math.max(0, round2(Number(cli.total_compras || 0) - Number(ventaActual.total || 0)));
-          const nuevoNum   = Math.max(0, Number(cli.num_compras || 0) - 1);
-          await sb.from('clientes').update({ total_compras: nuevoTotal, num_compras: nuevoNum })
-            .eq('id', ventaActual.cliente_id).eq('auth_user_id', S.userId);
-        }
-      } catch (eCliente) {
-        console.warn('No se pudo actualizar el contador del cliente:', eCliente);
-      }
-    }
-
-    // El IVA que se registró al vender es una obligación fiscal ligada
-    // a ESA venta — si la venta se anula, ya no se debe ese IVA, sin
-    // importar si el dinero se devolvió o no. Se revierte SIEMPRE,
-    // con un registro nuevo que resta (nunca se borra el original,
-    // eso rompería el historial de Impuestos).
-    try {
-      const { data: movsImp } = await sb.from('movimientos_impuestos')
-        .select('monto, impuesto_id, impuesto_nombre').eq('referencia_venta_id', id).eq('auth_user_id', S.userId)
-        .eq('tipo_movimiento', 'IVA_VENTA').gt('monto', 0);
-      const ventaInfoImp = S.ventas.find(v => v.id === id);
-      for (const movIva of (movsImp || [])) {
-        if (!(Number(movIva.monto) > 0)) continue;
-        const { data: ultImp } = await sb.from('movimientos_impuestos')
-          .select('saldo_resultante').eq('auth_user_id', S.userId)
-          .order('created_at', { ascending:false }).limit(1).maybeSingle();
-        const saldoAntImp = ultImp ? Number(ultImp.saldo_resultante) : 0;
-        const montoRevertir = round2(Number(movIva.monto));
-        const saldoResImp = round2(saldoAntImp - montoRevertir);
-        await sb.from('movimientos_impuestos').insert({
-          auth_user_id:       S.userId,
-          tipo_movimiento:    'IVA_VENTA',
-          concepto:           `Reverso de ${movIva.impuesto_nombre || 'IVA'} por anulación de venta ${ventaInfoImp?.numero_venta || ''}`.trim(),
-          monto:              -montoRevertir,
-          saldo_anterior:     saldoAntImp,
-          saldo_resultante:   saldoResImp,
-          referencia_venta_id: id,
-          ...(movIva.impuesto_id ? { impuesto_id: movIva.impuesto_id, impuesto_nombre: movIva.impuesto_nombre } : {}),
-          fecha:              todayISO(),
-        });
-      }
-    } catch (eImp) {
-      console.warn('No se pudo revertir el IVA en Impuestos:', eImp);
-    }
-
-    // Retención de IR que el cliente me había hecho en esta venta: ya no aplica.
-    try {
-      await sb.from('retenciones_ir').update({ estado: 'anulada' })
-        .eq('venta_id', id).eq('auth_user_id', S.userId).eq('estado', 'pendiente');
-    } catch (eRetA) { console.warn('No se pudo anular la retención de IR de la venta:', eRetA); }
-
-    // Si esta venta vino de convertir una proforma, se devuelve la
-    // proforma a como estaba ANTES de convertirse -- así el negocio
-    // no tiene que rehacer la proforma desde cero solo porque el
-    // cliente cambió de opinión y ahora quiere crédito/pago parcial
-    // en vez de venta normal. Nunca bloquea la anulación si esto
-    // falla por cualquier motivo — es una mejora, no un requisito.
-    let proformaRevertida = false;
-    try {
-      const { data: proformaVinculada } = await sb.from('proformas')
-        .select('id, estado_antes_convertir').eq('venta_id', id).eq('auth_user_id', S.userId).maybeSingle();
-
-      if (proformaVinculada) {
-        await sb.from('proformas').update({
-          estado: proformaVinculada.estado_antes_convertir || 'aprobada',
-          venta_id: null, fecha_conversion: null, convertido_por: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', proformaVinculada.id).eq('auth_user_id', S.userId);
-        proformaRevertida = true;
-      }
-    } catch (eProforma) {
-      console.warn('No se pudo devolver la proforma vinculada a su estado anterior:', eProforma);
-    }
-
-    // BUG REAL CORREGIDO: anular una venta a crédito nunca tocaba su
-    // registro en Créditos -- el crédito se quedaba "activo" con
-    // saldo pendiente para siempre, como una deuda fantasma que el
-    // cliente nunca debió (confirmado con un caso real: la venta se
-    // anuló, pero el crédito siguió pidiendo cobro). Antes, el
-    // dueño tenía que entrar a Créditos y cancelarlo el mismo a
-    // mano. Ahora se cancela automático, con el mismo estado final
-    // ("cancelado", saldo en 0) que ya usa Créditos cuando un
-    // credito se salda por completo.
-    let creditoCancelado = false;
-    if (ventaActual.metodo_pago === 'credito') {
-      try {
-        const { data: creditoVinculado } = await sb.from('creditos')
-          .select('id, estado').eq('venta_id', id).eq('auth_user_id', S.userId).maybeSingle();
-        if (creditoVinculado && creditoVinculado.estado !== 'cancelado') {
-          await sb.from('creditos').update({
-            estado: 'cancelado', saldo_pendiente: 0, updated_at: new Date().toISOString(),
-          }).eq('id', creditoVinculado.id).eq('auth_user_id', S.userId);
-          await sb.from('creditos_historial').insert({
-            auth_user_id: S.userId, credito_id: creditoVinculado.id,
-            tipo_evento: 'cancelado', descripcion: 'Crédito cancelado automáticamente — la venta que lo originó fue anulada', data: {},
-          });
-          creditoCancelado = true;
-        }
-      } catch (eCredito) {
-        console.warn('No se pudo cancelar el crédito vinculado:', eCredito);
-      }
-    }
-
-    // Si el usuario marcó la casilla, se registra en Caja el egreso
-    // reverso — nunca se BORRA el ingreso original de la venta (eso
-    // rompería el historial), se registra un movimiento nuevo que lo
-    // compensa, igual de trazable que cualquier otro movimiento.
+    // Todo en UNA sola operación del servidor (o se hace todo, o nada):
+    // inventario (presentaciones y combos incluidos), estado de la venta,
+    // fiado, cliente, IVA, retención de IR, proforma, crédito y el reverso
+    // en Caja. Si ya estaba anulada, el servidor no repite nada.
     const descontarCaja = document.getElementById('chk-anular-descontar-caja')?.checked !== false;
-    let reversoFallo = false;
-    if (descontarCaja) {
-      try {
-        // Reversa TODAS las líneas de ingreso vigentes de la venta (también pagos separados),
-        // una sola vez, y reintenta/avisa si falla (ver caja-segura.js).
-        const ventaInfo = S.ventas.find(v => v.id === id);
-        const rev = await N360CajaSegura.reversarVentaEnCaja(sb, S.userId, id, ventaInfo?.numero_venta || '', todayISO());
-        if (!rev.ok) reversoFallo = true;
-      } catch (eCaja) {
-        console.warn('No se pudo registrar el reverso en Caja:', eCaja);
-        reversoFallo = true;
-      }
-      if (reversoFallo) showToast('La venta se anuló, pero NO se pudo descontar de Caja — quedó pendiente o revísalo en Caja', 'warning');
+    const { data: res, error: errAn } = await sb.rpc('venta_anular_atomica', {
+      p_venta_id: id, p_descontar_caja: descontarCaja, p_fecha: todayISO(),
+    });
+    if (errAn) throw errAn;
+    if (res?.ya_anulada) {
+      showToast('Esta venta ya estaba anulada', 'warning');
+      closeModal('modal-anular'); closeModal('modal-detalle');
+      await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
+      return;
     }
+    const proformaRevertida = !!res?.proforma_revertida;
+    const creditoCancelado  = !!res?.credito_cancelado;
 
     closeModal('modal-anular');
     closeModal('modal-detalle');
-    const mensajeBase = descontarCaja ? (reversoFallo ? 'Venta anulada y stock devuelto (descuento de Caja pendiente)' : 'Venta anulada, stock devuelto y descontado de Caja') : 'Venta anulada y stock devuelto (sin tocar Caja)';
+    const mensajeBase = descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)';
     const avisoCredito = creditoCancelado ? ' — el crédito asociado se canceló automáticamente' : '';
     showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : '') + avisoCredito, 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
