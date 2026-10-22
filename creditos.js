@@ -2693,7 +2693,7 @@
     const fs = ancho === '58mm' ? 11 : 12.5;
     const w = window.open('', '_blank', 'width=380,height=600');
     w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-      <style>body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+      <style>@page{size:${ancho} auto;margin:0}*{box-sizing:border-box}body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
       </head><body>${html}<script>window.print();</script></body></html>`);
     w.document.close();
   }
@@ -2993,7 +2993,7 @@
         ${fila('SALDO PENDIENTE:', fmt(d.saldo), ' style="font-weight:800;font-size:1.1em"')}
         <hr/>
         ${plan}
-        ${d.saldo > 0 ? `<div style="margin-top:22px;text-align:center"><div style="border-top:1px solid #000;margin:0 12%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
+        ${d.saldo > 0 ? `<div style="margin-top:64px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
         <hr/>
         ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
         <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>

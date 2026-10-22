@@ -1973,6 +1973,10 @@
             <input type="radio" name="ct-ancho" value="epson_tmu220"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
           </label>
         </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            <button type="button" class="btn-secondary" onclick="imprimirPruebaAnchoTicket('ct-ancho')">🧪 Probar ancho de ticket</button>
+            <div style="font-size:11.5px;color:var(--text-muted,#777);line-height:1.4">Si el ticket sale más angosto que tu papel: en el cuadro de imprimir elige tu impresora, pon el tamaño de papel en 80 mm y marca «Usar tamaño de página del CSS» (o cambia el papel en Preferencias de la impresora de Windows). El sistema pide el ancho, pero Windows decide.</div>
+          </div>
       </div>
       <div class="form-grid-2" style="margin-top:12px">
         <div class="form-group full-col">
@@ -2015,7 +2019,8 @@
 <script src="select-buscable.js?v=20261015b"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
 <script src="moneda-alterna.js?v=20261021b"></script>
-<script src="creditos.js?v=20261022a"></script>
+<script src="ticket-prueba-ancho.js?v=20261022a"></script>
+<script src="creditos.js?v=20261022b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261021c"></script>

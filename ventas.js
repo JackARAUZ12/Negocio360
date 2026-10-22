@@ -7439,6 +7439,14 @@ async function _confirmarVentaRapidaInterno() {
 
 // Arma los datos base del recibo a partir de una venta ya guardada —
 // compartido entre las 3 vías de impresión posibles.
+// Columnas de la impresión directa (app nativa / USB) según el ancho elegido.
+// Antes siempre eran 40. 76mm y EPSON TM-U220 se quedan en 40 (como siempre).
+function columnasImpresionDirecta(ancho) {
+  if (ancho === '58mm') return 32;
+  if (ancho === '80mm') return 48;
+  return 40;
+}
+
 function construirDatosReciboDesdeVenta(cfg, venta, items) {
   const lineasItems = (items||[]).map(i => `${cantTicket(i)}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
   return {
@@ -7454,6 +7462,7 @@ function construirDatosReciboDesdeVenta(cfg, venta, items) {
     items: lineasItems,
     totalTexto: `TOTAL: ${fmt(venta.total)}`,
     piePagina: '¡Gracias por su compra!',
+    columnas: columnasImpresionDirecta(cfg.ancho_ticket),
   };
 }
 
