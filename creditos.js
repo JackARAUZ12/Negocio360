@@ -3390,7 +3390,7 @@
 
   // ------------------------------------------------------------
   // ANULAR UN PAGO YA REGISTRADO
-  // Revierte por completo un pago: lo borra, borra su movimiento de
+  // Revierte por completo un pago: lo marca anulado, anula su movimiento de
   // Caja, devuelve el monto al saldo del credito, y descuenta lo
   // pagado de las cuotas -- exactamente al reves de como se aplico.
   // Pensado para el caso real de un pago tecleado por error o
@@ -3425,23 +3425,35 @@
       const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).eq('auth_user_id', CS.userId).maybeSingle();
       if (!credito) throw new Error('Crédito no encontrado');
 
-      // 1. Quitar el movimiento de Caja que genero este pago. Se busca
-      // por referencia + monto + fecha porque los movimientos guardan
-      // el credito_id como referencia, no el id del pago individual.
-      const { data: movs } = await _sb.from('movimientos_financieros')
-        .select('id, created_at')
-        .eq('auth_user_id', CS.userId)
-        .eq('referencia_id', creditoId)
-        .eq('monto', monto)
-        .eq('fecha', pago.fecha);
-      if (movs && movs.length) {
-        // Si hay varios del mismo monto y fecha, se borra el mas cercano
-        // en tiempo al pago -- nunca todos de golpe.
-        const objetivo = movs.reduce((mejor, m) => {
-          const dif = Math.abs(new Date(m.created_at) - new Date(pago.created_at));
-          return (!mejor || dif < mejor.dif) ? { id: m.id, dif } : mejor;
-        }, null);
-        if (objetivo) await _sb.from('movimientos_financieros').delete().eq('id', objetivo.id);
+      if (pago.estado === 'anulado') throw new Error('Este pago ya estaba anulado');
+      const motivoAnulacion = `Pago de crédito ${credito.numero_credito || ''} anulado`.trim();
+
+      // 1. Anular (no borrar) el movimiento de Caja que generó este pago:
+      // queda el rastro y la base recalcula sola el saldo de Caja.
+      // Primero por el enlace directo del pago; si no lo tiene (pagos
+      // viejos), por referencia + monto + fecha, el más cercano en tiempo.
+      let movObjetivoId = pago.movimiento_financiero_id || null;
+      if (!movObjetivoId) {
+        const { data: movs } = await _sb.from('movimientos_financieros')
+          .select('id, created_at')
+          .eq('auth_user_id', CS.userId)
+          .eq('referencia_id', creditoId)
+          .eq('monto', monto)
+          .eq('fecha', pago.fecha)
+          .eq('estado', 'completado');
+        if (movs && movs.length) {
+          const objetivo = movs.reduce((mejor, m) => {
+            const dif = Math.abs(new Date(m.created_at) - new Date(pago.created_at));
+            return (!mejor || dif < mejor.dif) ? { id: m.id, dif } : mejor;
+          }, null);
+          movObjetivoId = objetivo ? objetivo.id : null;
+        }
+      }
+      if (movObjetivoId) {
+        const { error: errMov } = await _sb.from('movimientos_financieros')
+          .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivoAnulacion })
+          .eq('id', movObjetivoId).eq('auth_user_id', CS.userId).eq('estado', 'completado');
+        if (errMov) throw errMov;
       }
 
       // 2. Descontar de las cuotas, de la ultima hacia atras (al reves
@@ -3472,9 +3484,13 @@
         updated_at: new Date().toISOString(),
       }).eq('id', creditoId);
 
-      // 4. Borrar el pago (al final, para que si algo falla antes, el
-      // pago siga existiendo y no quede un registro a medias)
-      await _sb.from('creditos_pagos').delete().eq('id', pagoId).eq('auth_user_id', CS.userId);
+      // 4. Marcar el pago como anulado (al final, para que si algo falla
+      // antes, el pago siga vigente y no quede un registro a medias).
+      // No se borra: así queda el rastro y nadie puede desaparecer abonos.
+      const { error: errPagoAn } = await _sb.from('creditos_pagos')
+        .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivoAnulacion })
+        .eq('id', pagoId).eq('auth_user_id', CS.userId);
+      if (errPagoAn) throw errPagoAn;
 
       // 5. Dejar rastro en el historial del credito
       try {
@@ -3861,7 +3877,7 @@
   window.buscarCreditos = buscarCreditos;
 
   async function loadPagosRecientes() {
-    const { data } = await _sb.from('creditos_pagos').select('*, creditos(id,numero_credito,venta_id)').eq('auth_user_id', CS.userId).order('created_at', { ascending:false }).limit(30);
+    const { data } = await _sb.from('creditos_pagos').select('*, creditos(id,numero_credito,venta_id)').eq('auth_user_id', CS.userId).or('estado.is.null,estado.neq.anulado').order('created_at', { ascending:false }).limit(30);
     const pagos = data || [];
     const prMapPag = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, pagos.map(p => p.creditos).filter(Boolean)) : new Map();
     const clienteIds = [...new Set(pagos.map(p=>p.cliente_id))];
