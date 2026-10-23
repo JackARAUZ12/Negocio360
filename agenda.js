@@ -18,8 +18,8 @@ let STATE = {
   categoriaEventoActual: 'otro',
 };
 
-const CATEGORIA_COLOR = { reunion:'#4361ee', entrega:'#9061f9', tarea:'#f4419f', pago:'#fb9f1c', evento:'#0ecb9d', otro:'#9ca3af' };
-const CATEGORIA_LABEL = { reunion:'Reunión', entrega:'Entrega', tarea:'Tarea', pago:'Pago', evento:'Evento', otro:'Otro' };
+const CATEGORIA_COLOR = { reunion:'#4361ee', entrega:'#9061f9', tarea:'#f4419f', pago:'#fb9f1c', evento:'#0ecb9d', otro:'#9ca3af', cita:'#a855f7' };
+const CATEGORIA_LABEL = { reunion:'Reunión', entrega:'Entrega', tarea:'Tarea', pago:'Pago', evento:'Evento', otro:'Otro', cita:'Cita' };
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmt(amount) {
@@ -261,6 +261,12 @@ async function cargarAgenda() {
       urlDestino: 'activos.html', clickeable: true,
     }));
 
+    // Citas por profesional (agenda-citas.js): en mes/semana se muestran como
+    // una pastilla más; en la vista Día las pinta ese módulo en su columna.
+    if (window.N360Citas && STATE.calVista !== 'dia') {
+      try { items.push(...await N360Citas.itemsParaCalendario(desde, hasta)); } catch (_) {}
+    }
+
     items.forEach(it => { it.color = CATEGORIA_COLOR[it.categoria] || CATEGORIA_COLOR.otro; });
     items.sort((a, b) => a.fecha.localeCompare(b.fecha));
     STATE.itemsAgenda = items;
@@ -365,6 +371,9 @@ function renderCalendarioDia() {
   const iso = ymdLocal(STATE.calFecha);
   const items = itemsDelDia(iso);
 
+  // Vista del día por horas, con una columna por profesional (agenda-citas.js).
+  if (window.N360Citas) { N360Citas.renderDia(cont, iso, items); return; }
+
   if (!items.length) {
     cont.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">Nada agendado este día. 🎉</div>`;
     return;
@@ -377,7 +386,7 @@ function renderCalendarioDia() {
 function filaEventoHTML(it) {
   return `
     <div class="panel-card" style="margin:0 0 8px;border-left:3px solid ${it.color};${it.clickeable?'cursor:pointer':''};${it.completado?'opacity:.55':''}"
-         ${it.tipo==='evento' ? `onclick="abrirEditarEvento('${it.id}')"` : (it.urlDestino ? `onclick="navigate('${it.urlDestino}')"` : '')}>
+         ${it.tipo==='evento' ? `onclick="abrirEditarEvento('${it.id}')"` : it.tipo==='cita' ? `onclick="N360Citas.abrirCita('${it.id}')"` : (it.urlDestino ? `onclick="navigate('${it.urlDestino}')"` : '')}>
       <div class="panel-body" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
         <span class="cal-dot" style="background:${it.color};width:10px;height:10px"></span>
         <div style="flex:1;min-width:0">
@@ -392,7 +401,15 @@ function filaEventoHTML(it) {
 // Al hacer clic en cualquier celda del calendario (mes o semana) —
 // muestra todo lo de ese día, con acceso directo a crear uno nuevo
 // ya con esa fecha lista.
+// 23-oct-2026: al tocar un día del mes o de la semana se ENTRA a ese día
+// (vista por horas, con lo que hay que hacer y a qué hora). La lista en
+// ventanita queda como respaldo si el módulo de citas no cargara.
 function abrirEventosDia(iso) {
+  if (window.N360Citas) {
+    STATE.calFecha = new Date(iso + 'T12:00:00');
+    cambiarVistaCalendario('dia');
+    return;
+  }
   const items = itemsDelDia(iso);
   const fechaLegible = new Date(iso + 'T00:00:00').toLocaleDateString('es-NI', { weekday:'long', day:'numeric', month:'long' });
   document.getElementById('ed-titulo').textContent = fechaLegible;

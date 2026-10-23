@@ -1806,6 +1806,7 @@ async function abrirNuevaVenta() {
   S._vetConsultaId = null;
   S._txOrdenId = null;
   S._vetEstanciaId = null;
+  S._agendaCitaId = null;
   S._recompensas  = undefined;
   S._saldoPuntos  = undefined;
   S.metodoPagoId  = null;
@@ -3054,6 +3055,44 @@ async function aplicarCobroTransporte() {
     }
   }
   showToast(`Flete de la orden ${d.numero || ''} cargado en la venta.`);
+}
+
+// Cobro de una cita de la Agenda (23-oct-2026): abre la venta con el cliente y los
+// servicios de la cita ya cargados, con el precio que se acordó en la cita. El cobro
+// sigue el camino NORMAL de Ventas (Caja, IVA, reportes); al confirmar, la cita queda
+// marcada como cobrada (ver más abajo). Si algo no se puede cargar, se avisa.
+async function aplicarCobroAgenda() {
+  const raw = sessionStorage.getItem('n360_agenda_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_agenda_cobro');       // una sola vez: no se repite al recargar
+  let d;
+  try { d = JSON.parse(raw); }
+  catch (e) { console.error('aplicarCobroAgenda, dato corrupto:', e); return; }
+
+  await abrirNuevaVenta();                              // reinicia el estado: lo demás se arma DESPUÉS
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else if (d.cliente) showToast(`Cliente de la cita: ${d.cliente}. Elígelo o créalo si hace falta.`, 'warning');
+
+  let noAgregados = 0;
+  for (const it of (d.items || [])) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'servicio', null);
+    const linea = S.carrito.find(x => x.id === it.producto_id);
+    if (!linea) { noAgregados++; continue; }
+    const cant = Math.max(1, Number(it.cantidad) || 1);
+    linea.cantidad = cant;
+    const totalCita = Math.round((Number(it.total) || 0) * 100) / 100;
+    // Mismo servicio varias veces con precios distintos: una línea con el total acordado.
+    if (cant > 1 && Math.round(totalCita / cant * 100) * cant !== Math.round(totalCita * 100)) { linea.cantidad = 1; linea.precio = totalCita; }
+    else linea.precio = Math.round(totalCita / cant * 100) / 100;
+    recalcItem(linea);
+  }
+  renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
+  S._agendaCitaId = d.citaId || null;
+  showToast(`Cita de ${d.cliente || 'el cliente'} cargada en la venta.`);
+  if (noAgregados) showToast(`${noAgregados} servicio(s) no se pudieron agregar (ya no existen o están inactivos). Revísalos.`, 'warning');
+  if ((d.sinCatalogo || []).length) showToast(`Agrega a mano: ${d.sinCatalogo.join(', ')} (no están en tu catálogo).`, 'warning');
 }
 
 // Vincular receta con la venta (Farmacia fase 2) -- gateado igual
@@ -6004,6 +6043,17 @@ async function _confirmarVentaInterno(conImpresion) {
       }
     } catch (eVet) { console.warn('Vincular consulta veterinaria:', eVet); }
 
+    // Cobro de una cita de la Agenda: la cita queda ligada a la venta y completada. Aislado:
+    // la venta YA se confirmó, nada de esto la revierte.
+    try {
+      if (S._agendaCitaId) {
+        const { error: eCita } = await sb.from('agenda_citas').update({ venta_id: ventaId, estado: 'completada', updated_at: new Date().toISOString() })
+          .eq('id', S._agendaCitaId).eq('auth_user_id', S.userId);
+        if (eCita) console.warn('Vincular cita de agenda:', eCita);
+        S._agendaCitaId = null;
+      }
+    } catch (eCita) { console.warn('Vincular cita de agenda:', eCita); }
+
     // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
     try {
       if (S._txOrdenId) {
@@ -8061,6 +8111,7 @@ async function initVentas() {
     await aplicarRecetaPendienteDeVender();
     await aplicarCobroVeterinaria();
     await aplicarCobroTransporte();
+    await aplicarCobroAgenda();
 
     // 5c. Configuración del módulo (¿este usuario puede ver las ventas de todo el negocio?)
     // Se lee ANTES de los totales para que salgan bien a la primera. Si falla, todo sigue como siempre.

@@ -1011,6 +1011,57 @@
     .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
     .metodo-card .mc-icon{font-size:16px}
     .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
+    /* =====================================================
+       AGENDA POR PROFESIONAL (agenda-citas.js) — 23-oct-2026
+    ===================================================== */
+    .ac-barra { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .ac-sel { width:auto !important; max-width:240px; padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-surface); color:var(--text-primary); font-size:12.5px; }
+    .ac-resumen { font-size:12px; color:var(--text-muted); font-weight:600; }
+    .ac-todo-dia { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; }
+    .ac-todo-dia-t { font-size:12px; font-weight:700; color:var(--text-secondary); }
+    .ac-chip { font-size:11.5px; font-weight:600; border:1.5px solid; border-radius:20px; padding:3px 10px; cursor:pointer; background:var(--bg-surface); }
+    .ac-aviso { background:var(--accent-soft); border-radius:10px; padding:12px; font-size:13px; margin-bottom:10px; }
+    .ac-scroll { overflow:auto; max-height:72vh; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--bg-surface); }
+    .ac-tabla { display:grid; grid-template-columns:58px repeat(var(--ncols), minmax(150px, 1fr)); position:relative; min-width:min-content; }
+    .ac-esquina, .ac-col-cab { position:sticky; top:0; z-index:4; background:var(--bg-surface); border-bottom:1px solid var(--border); }
+    .ac-esquina { left:0; z-index:5; }
+    .ac-col-cab { display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 6px 8px; border-left:1px solid var(--border); }
+    .ac-avatar { width:34px; height:34px; border-radius:50%; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; font-size:14px; }
+    .ac-col-nombre { font-size:12.5px; font-weight:600; color:var(--text-secondary); text-align:center; }
+    .ac-eje { position:sticky; left:0; z-index:3; background:var(--bg-surface); border-right:1px solid var(--border); }
+    .ac-hora { position:absolute; right:6px; transform:translateY(-50%); font-size:11px; color:var(--text-muted); }
+    .ac-hora:first-child { transform:none; }
+    .ac-hora-llena { font-weight:700; color:var(--text-secondary); }
+    .ac-col { position:relative; border-left:1px solid var(--border); cursor:copy; }
+    .ac-linea { position:absolute; left:0; right:0; border-top:1px dashed var(--border); opacity:.55; pointer-events:none; }
+    .ac-linea-hora { border-top-style:solid; opacity:1; }
+    .ac-bloque { position:absolute; border-radius:6px; border-left:4px solid; padding:3px 6px; font-size:11.5px; line-height:1.25; overflow:hidden; cursor:pointer; display:flex; flex-direction:column; box-shadow:0 1px 2px rgba(0,0,0,.08); z-index:2; }
+    .ac-bloque b { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ac-bloque span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ac-bloque:hover { filter:brightness(.96); box-shadow:0 2px 6px rgba(0,0,0,.15); }
+    .ac-general { background:var(--bg-app); color:var(--text-primary); }
+    .ac-bloque.ac-compacto { justify-content:center; padding:1px 22px 1px 6px; }
+    .ac-pagado { position:absolute; left:-4px; top:50%; transform:translateY(-50%); width:16px; height:16px; border-radius:4px; background:#16a34a; color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+    .ac-bloque .ac-pagado { left:auto; right:4px; top:4px; transform:none; }
+    .ac-bloqueo { position:absolute; left:0; right:0; z-index:1; background:repeating-linear-gradient(45deg, rgba(148,163,184,.18) 0 6px, rgba(148,163,184,.30) 6px 12px); color:var(--text-muted); font-size:11px; padding:3px 6px; display:flex; flex-direction:column; cursor:pointer; overflow:hidden; }
+    .ac-ahora { position:absolute; left:0; right:0; border-top:2px solid #ef4444; z-index:3; pointer-events:none; }
+    .ac-ahora-etq { position:absolute; right:4px; transform:translateY(-50%); background:#ef4444; color:#fff; font-size:10px; font-weight:700; border-radius:8px; padding:1px 6px; z-index:4; }
+    .ac-leyenda { display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--text-secondary); margin-top:8px; align-items:center; }
+    .ac-lineas-cab, .ac-linea-form { display:grid; grid-template-columns:2fr 1.5fr 0.9fr 0.8fr 0.9fr 32px; gap:6px; align-items:start; }
+    .ac-lineas-cab { font-size:11px; font-weight:700; color:var(--text-muted); margin-top:6px; }
+    .ac-linea-form { padding:6px 0; border-bottom:1px dashed var(--border); }
+    .ac-linea-form input, .ac-linea-form select { width:100%; }
+    .ac-nota-verde { background:var(--success-soft); color:var(--success); border-radius:8px; padding:8px 10px; font-size:12.5px; margin-bottom:10px; }
+    .ac-nota-roja { background:var(--danger-soft); color:var(--danger); border-radius:8px; padding:8px 10px; font-size:12.5px; margin-top:6px; }
+    .ac-prof-fila { display:grid; grid-template-columns:44px 1fr auto auto; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
+    .ac-prof-fila input[type=color] { width:40px; height:32px; padding:0; border:none; background:none; }
+    .ac-serv-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:4px; font-size:12px; margin:6px 0; }
+    .ac-hueco { padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-bottom:6px; cursor:pointer; font-size:12.5px; }
+    .ac-hueco:hover { border-color:var(--accent); background:var(--accent-soft); }
+    @media (max-width:640px) {
+      .ac-lineas-cab { display:none; }
+      .ac-linea-form { grid-template-columns:1fr 1fr; }
+    }
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -1247,7 +1298,8 @@
               <button class="cal-vista-btn" data-vista="semana" onclick="cambiarVistaCalendario('semana')">Semana</button>
               <button class="cal-vista-btn active" data-vista="mes" onclick="cambiarVistaCalendario('mes')">Mes</button>
             </div>
-            <button class="btn-primary btn-sm" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
+            <button class="btn-secondary btn-sm" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
+            <button class="btn-primary btn-sm" onclick="N360Citas.nuevaCita()">+ Nueva cita</button>
           </div>
         </div>
 
@@ -1260,6 +1312,7 @@
           <span><span class="cal-dot" style="background:#fb9f1c"></span>Pagos</span>
           <span><span class="cal-dot" style="background:#0ecb9d"></span>Eventos</span>
           <span><span class="cal-dot" style="background:#9ca3af"></span>Otros</span>
+          <span><span class="cal-dot" style="background:#a855f7"></span>Citas</span>
         </div>
       </div>
 
@@ -1332,7 +1385,8 @@
 </div><!-- /app -->
 
 <script src="select-buscable.js?v=20261015b"></script>
-<script src="agenda.js?v=20261015a"></script>
+<script src="agenda.js?v=20261023h"></script>
+<script src="agenda-citas.js?v=20261023h"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261021c"></script>
 <script src="modulos-guard.js?v=20261021b"></script>
