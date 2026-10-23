@@ -87,6 +87,10 @@
     elementos.forEach(function (e) {
       if (!e) return;
       var neg = !!e.negrita;
+      if (e.t === 'imagen') {                       // logo ya convertido a puntos (ver cargarLogo)
+        b.push(ESC, 0x61, 0x01); push(e.bytes); b.push(10); b.push(ESC, 0x61, 0x00);
+        return;
+      }
       if (e.t === 'linea') { linea(new Array(COLS + 1).join('-')); return; }
       if (e.t === 'espacio') { for (var i = 0; i < (e.n || 1); i++) b.push(10); return; }
 
@@ -121,6 +125,74 @@
     return b;
   }
 
+  /* ---------- logo del negocio → imagen de impresora ----------
+     Se reduce (máx. 288 x 100 puntos), se pasa a blanco y negro con tramado
+     (Floyd-Steinberg, se ve mejor en papel térmico) y se manda como imagen ESC/POS
+     (GS v 0). Se guarda en memoria para que imprimir no se retrase. Si algo falla
+     (no carga, el navegador lo bloquea, tarda demasiado) devuelve null y el ticket
+     sale sin logo, igual que antes: nunca impide imprimir. */
+  var LOGO_MAX_W = 288, LOGO_MAX_H = 100, LOGO_ESPERA_MS = 4000;
+  var cacheLogos = {};            // url -> promesa de bytes (o null)
+
+  function logoABytes(url) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      var listo = false;
+      function fin(v) { if (!listo) { listo = true; resolve(v); } }
+      img.crossOrigin = 'anonymous';
+      img.onerror = function () { fin(null); };
+      img.onload = function () {
+        try {
+          var w0 = img.naturalWidth, h0 = img.naturalHeight;
+          if (!w0 || !h0) return fin(null);
+          var esc = Math.min(LOGO_MAX_W / w0, LOGO_MAX_H / h0, 1.6);
+          var w = Math.max(8, Math.round(w0 * esc / 8) * 8);          // ancho múltiplo de 8 (1 byte = 8 puntos)
+          var h = Math.max(1, Math.round(h0 * esc * (w / (w0 * esc))));
+          var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          var cx = cv.getContext('2d');
+          cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h);             // lo transparente queda blanco
+          cx.drawImage(img, 0, 0, w, h);
+          var px = cx.getImageData(0, 0, w, h).data;                  // puede lanzar error si el navegador bloquea la imagen
+          var g = new Float32Array(w * h);
+          for (var i = 0; i < w * h; i++) g[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+          var wb = w / 8, datos = new Array(wb * h);
+          for (var k = 0; k < datos.length; k++) datos[k] = 0;
+          for (var y = 0; y < h; y++) {
+            for (var x = 0; x < w; x++) {
+              var idx = y * w + x, viejo = g[idx], nuevo = viejo < 140 ? 0 : 255, err = viejo - nuevo;
+              if (nuevo === 0) datos[y * wb + (x >> 3)] |= (0x80 >> (x & 7));   // punto negro
+              if (x + 1 < w) g[idx + 1] += err * 7 / 16;
+              if (y + 1 < h) {
+                if (x > 0) g[idx + w - 1] += err * 3 / 16;
+                g[idx + w] += err * 5 / 16;
+                if (x + 1 < w) g[idx + w + 1] += err * 1 / 16;
+              }
+            }
+          }
+          var out = [GS, 0x76, 0x30, 0x00, wb & 255, wb >> 8, h & 255, h >> 8];
+          for (var j = 0; j < datos.length; j++) out.push(datos[j]);
+          fin(out);
+        } catch (e) { console.warn('RawBT: no se pudo preparar el logo:', e); fin(null); }
+      };
+      setTimeout(function () { fin(null); }, LOGO_ESPERA_MS);
+      img.src = url;
+    });
+  }
+  function cargarLogo(url) {
+    if (!url) return Promise.resolve(null);
+    if (!cacheLogos[url]) cacheLogos[url] = logoABytes(url).then(function (r) { if (!r) delete cacheLogos[url]; return r; });
+    return cacheLogos[url];
+  }
+  function precargarLogo(url) { if (esAndroid() && url) cargarLogo(url); }
+
+  // Cambia los elementos {t:'logo', url} por {t:'imagen', bytes}; si no hay logo, se quitan.
+  function resolverLogos(elementos) {
+    return Promise.all(elementos.map(function (e) {
+      if (!e || e.t !== 'logo') return e;
+      return cargarLogo(e.url).then(function (bytes) { return bytes ? { t: 'imagen', bytes: bytes } : null; });
+    }));
+  }
+
   /* ---------- enviar a RawBT ---------- */
   function aBase64(bytes) {
     var s = '';
@@ -131,9 +203,11 @@
     var url = 'intent:base64,' + aBase64(bytes) + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
     window.location.href = url;
   }
-  function imprimirElementos(elementos) {
+  async function imprimirElementos(elementos) {
     try {
-      enviarARawBT(armarBytes(elementos));
+      var listos = elementos;
+      try { listos = await resolverLogos(elementos); } catch (e) { listos = elementos.filter(function (x) { return !x || x.t !== 'logo'; }); }
+      enviarARawBT(armarBytes(listos));
       return { ok: true };
     } catch (e) {
       console.error('RawBT:', e);
@@ -165,7 +239,12 @@
     var primerTexto = true;
     Array.prototype.forEach.call(cont.children, function (el) {
       var tag = el.tagName;
-      if (tag === 'IMG' || tag === 'SCRIPT' || tag === 'STYLE') return;
+      if (tag === 'IMG') {
+        var srcLogo = el.getAttribute('src');
+        if (srcLogo && el.style.display !== 'none') els.push({ t: 'logo', url: srcLogo });
+        return;
+      }
+      if (tag === 'SCRIPT' || tag === 'STYLE') return;
       if (tag === 'HR' || tieneClase(el, 'linea')) { els.push({ t: 'linea' }); return; }
       var txt = limpiar(el.textContent);
       if (FILAS.some(function (c) { return tieneClase(el, c); })) {
@@ -200,6 +279,18 @@
     return imprimirElementos(desdeContenedor(cont, opciones));
   }
 
+  // Al mostrarse un comprobante en pantalla (Android), se prepara su logo para imprimir sin demora.
+  function vigilarComprobante() {
+    if (!esAndroid() || !window.MutationObserver) return;
+    var cont = document.getElementById('comprobante-body');
+    if (!cont) return;
+    new MutationObserver(function () {
+      Array.prototype.forEach.call(cont.querySelectorAll('img[src]'), function (im) { precargarLogo(im.getAttribute('src')); });
+    }).observe(cont, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', vigilarComprobante); else vigilarComprobante();
+
+  window.rawbtPrecargarLogo = precargarLogo;
   window.rawbtActivo = rawbtActivo;
   window.rawbtImprimirElementos = imprimirElementos;
   window.rawbtImprimirDesdeContenedor = imprimirDesdeContenedor;

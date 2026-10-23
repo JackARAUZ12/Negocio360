@@ -6148,6 +6148,7 @@ async function cargarConfigVentaRapida() {
       .select('*').eq('auth_user_id', S.userId).maybeSingle();
     if (error) throw error;
     VR.config = data || null;
+    try { if (window.rawbtActivo && window.rawbtActivo(VR.config)) window.rawbtPrecargarLogo(S.empresaConfig?.logo_principal_url || S.empresaConfig?.logo_url || ''); } catch (_) {}
   } catch(e) {
     console.warn('cargarConfigVentaRapida:', e);
     VR.config = null;
@@ -7414,6 +7415,8 @@ function elementosTicketVentaRawBT(cfg, venta, items, resumen) {
   const nombreNeg = cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360';
   const fechaTxt = `${fmtFecha(venta.fecha || todayISO())} ${new Date().toLocaleTimeString('es-NI', {hour:'2-digit', minute:'2-digit'})}`;
   const e = [];
+  const logoRB = S.empresaConfig?.logo_principal_url || S.empresaConfig?.logo_url || '';
+  if (logoRB) e.push({ t: 'logo', url: logoRB });
   e.push({ t: 'centro', texto: nombreNeg, negrita: true, grande: true });
   if (cfg.ruc_ticket) e.push({ t: 'centro', texto: 'RUC: ' + cfg.ruc_ticket });
   if (cfg.direccion_ticket) e.push({ t: 'centro', texto: cfg.direccion_ticket });
@@ -7459,7 +7462,7 @@ async function imprimirConMejorViaDisponible(venta, items, cfg, funcionCSS, resu
     try {
       const itemsRB = await enriquecerItemsConCombo((items||[]).map(i => ({ ...i, combo_id: i.esCombo ? i.id : null })));
       cerrarVentanaPreabiertaSiNoHaceFalta();
-      const rb = window.rawbtImprimirElementos(elementosTicketVentaRawBT(cfg, venta, itemsRB, resumen));
+      const rb = await window.rawbtImprimirElementos(elementosTicketVentaRawBT(cfg, venta, itemsRB, resumen));
       if (rb && rb.ok) return;
     } catch (e) { console.warn('RawBT falló, probando la siguiente vía:', e); }
   }
