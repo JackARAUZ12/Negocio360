@@ -5054,10 +5054,11 @@ function dibujarRecibo(doc, venta, items) {
   linea(7);
   divisor();
 
-  if (venta.observaciones) {
+  const notaCliente = (typeof observacionesParaCliente === 'function') ? observacionesParaCliente(venta.observaciones) : (venta.observaciones || '');
+  if (notaCliente) {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7.3);
-    const obsLineas = doc.splitTextToSize(`Nota: ${venta.observaciones}`, W - M*2);
+    const obsLineas = doc.splitTextToSize(`Nota: ${notaCliente}`, W - M*2);
     obsLineas.forEach(ln => { doc.text(ln, M, y); linea(3.8); });
     linea(1.5);
   }

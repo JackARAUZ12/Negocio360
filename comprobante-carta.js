@@ -126,7 +126,18 @@ async function _cc_datosCliente(datos) {
   return { direccion, telefono };
 }
 
+// Quita de las observaciones las etiquetas INTERNAS de correcciones de venta
+// ([Corrige a V-000081 — motivo: ...] y [Reemplazada por V-... — motivo: ...]); el cliente
+// no debe verlas. Se queda la nota real. Lo guardado en el sistema no se toca.
+function observacionesParaCliente(texto) {
+  return String(texto == null ? '' : texto)
+    .replace(/\[\s*(Corrige a|Reemplazada por)[^\]]*\]/gi, ' ')
+    .replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+}
+window.observacionesParaCliente = observacionesParaCliente;
+
 async function generarComprobanteCartaPDF(tipo, datos, items) {
+  if (datos && datos.observaciones) datos = Object.assign({}, datos, { observaciones: observacionesParaCliente(datos.observaciones) });
   if (!window.jspdf) throw new Error('jsPDF no está disponible');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
