@@ -1885,6 +1885,19 @@ async function loadBancos() {
     const { data: bancos } = await sbClient.from('bancos').select('*').eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
     STATE.bancos = bancos || [];
 
+    // Saldos calculados EN LA BASE (antes se traían todos los movimientos a la
+    // página y la base solo entrega 1,000 por consulta: en negocios grandes
+    // el saldo salía incompleto). Si la función no respondiera, se usa el
+    // cálculo de siempre como respaldo.
+    const r = await sbClient.rpc('bancos_saldos');
+    if (!r.error && Array.isArray(r.data)) {
+      STATE.bancoSaldos = new Map(r.data.map(s => [s.banco_id, s]));
+      renderBancosGrid([]);
+      renderSinAsignar(await traerSinAsignarBancos());
+      return;
+    }
+    console.warn('bancos_saldos no disponible, se usa el cálculo de respaldo:', r.error);
+    STATE.bancoSaldos = null;
     const { data: movs } = await sbClient.from('movimientos_financieros')
       .select('tipo_flujo, monto, monto_moneda_banco, metodo_pago_nombre, banco_id, concepto, fecha, tipo_movimiento')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completado');
@@ -1895,6 +1908,18 @@ async function loadBancos() {
   } catch (e) {
     console.error('loadBancos:', e);
   }
+}
+
+// Cobros por tarjeta/transferencia sin banco asignado, en páginas de 1,000 (sin límite).
+async function traerSinAsignarBancos() {
+  const todos = [];
+  for (let desde = 0; desde < 100000; desde += 1000) {
+    const { data, error } = await sbClient.rpc('bancos_sin_asignar').range(desde, desde + 999);
+    if (error) { console.warn('bancos_sin_asignar:', error); break; }
+    todos.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return todos;
 }
 
 function simboloMoneda(moneda) { return moneda === 'USD' ? '$' : 'C$'; }
@@ -1929,13 +1954,16 @@ function renderBancosGrid(lista) {
     // — nunca el monto en moneda base, para que cuadre contra el
     // estado de cuenta real del banco en SU propia moneda.
     const montoDe = (m) => monedaBanco !== monedaBase ? _montoMonedaBanco(m) : Number(m.monto);
-    const saldo = saldoBancoDe(b, delBanco, monedaBase);
+    const srv = STATE.bancoSaldos ? STATE.bancoSaldos.get(b.id) : null;
+    const saldo = srv ? Number(srv.saldo) : saldoBancoDe(b, delBanco, monedaBase);
+    const pendientes = srv ? Number(srv.pendientes || 0) : null;
     return `
       <div class="panel-card" style="margin:0">
         <div class="panel-body" style="cursor:pointer" onclick="verBanco('${b.id}')">
           <div style="font-size:12px;color:var(--text-muted)">${esc(b.nombre)} ${monedaBanco !== monedaBase ? `<span style="background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700">${monedaBanco}</span>` : ''}</div>
           ${b.numero_cuenta ? `<div style="font-size:11px;color:var(--text-muted)">${esc(b.numero_cuenta)}</div>` : ''}
           <div style="font-size:22px;font-weight:800;margin-top:6px">${fmtMoneda(saldo, monedaBanco)}</div>
+          ${pendientes !== null ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${pendientes ? `${pendientes} movimiento${pendientes === 1 ? '' : 's'} sin conciliar` : 'Todo conciliado ✓'}</div>` : ''}
         </div>
         <div style="padding:0 16px 14px;display:flex;gap:8px">
           <button class="btn-secondary btn-sm" style="flex:1" onclick="event.stopPropagation();abrirConciliarBanco('${b.id}','${esc(b.nombre)}')">🧾 Conciliar</button>
@@ -2094,24 +2122,72 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
   // conciliado antes — sin el saldo inicial, la conciliación nunca
   // podría cuadrar si el banco no arrancó en cero. Todo esto en la
   // MONEDA REAL del banco, nunca en la moneda base del negocio.
+  // Se calcula en la base (sin el límite de 1,000 filas); si no respondiera,
+  // se usa el cálculo de siempre.
+  const hastaEl = document.getElementById('cb-hasta-fecha'); if (hastaEl) hastaEl.value = '';
+  ['cb-saldo-sistema', 'cb-saldo-previo', 'cb-saldo-pendiente'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '…'; });
   const saldoInicial = Number(banco?.saldo_inicial || 0);
-  const { data: previos } = await sbClient.from('movimientos_financieros')
-    .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
-  const montoDe = (m) => CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
-  const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
-  CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);
+  let srv = null;
+  try {
+    const r = await sbClient.rpc('bancos_saldos');
+    if (!r.error && Array.isArray(r.data)) srv = r.data.find(s => s.banco_id === bancoId) || null;
+  } catch (_) {}
+  if (srv) {
+    CONC.saldoReconciliadoPrevio = round2(Number(srv.saldo_conciliado));
+    CONC.saldoSistema = round2(Number(srv.saldo));
+  } else {
+    const { data: previos } = await sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
+    const montoDe = (m) => CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
+    const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
+    CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);
+    CONC.saldoSistema = null;
+  }
 
   await cargarMovimientosConciliacion();
+  pintarResumenConciliacion();
   await cargarHistorialConciliaciones();
   recalcularDiferenciaConciliacion();
 }
 
 async function cargarMovimientosConciliacion() {
-  const { data } = await sbClient.from('movimientos_financieros')
-    .select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
-    .eq('conciliado', false).eq('estado','completado').order('fecha');
-  CONC.movimientos = data || [];
+  // En páginas de 1,000 (la base no entrega más por consulta).
+  const todos = [];
+  for (let desde = 0; desde < 100000; desde += 1000) {
+    const { data, error } = await sbClient.from('movimientos_financieros')
+      .select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
+      .eq('conciliado', false).eq('estado','completado').order('fecha').order('created_at').order('id').range(desde, desde + 999);
+    if (error) { console.warn('cargarMovimientosConciliacion:', error); break; }
+    todos.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  CONC.movimientos = todos;
   renderMovimientosConciliacion();
+}
+
+// Los tres números de arriba: saldo del banco en el sistema, lo ya conciliado y lo pendiente.
+function pintarResumenConciliacion() {
+  const pend = round2(CONC.movimientos.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? _montoConcMov(m) : -_montoConcMov(m)), 0));
+  const sistema = CONC.saldoSistema != null ? CONC.saldoSistema : round2(CONC.saldoReconciliadoPrevio + pend);
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  set('cb-saldo-sistema', fmtMoneda(sistema, CONC.moneda));
+  set('cb-saldo-previo', fmtMoneda(CONC.saldoReconciliadoPrevio, CONC.moneda));
+  set('cb-saldo-pendiente', `${fmtMoneda(pend, CONC.moneda)} (${CONC.movimientos.length} mov.)`);
+}
+
+// Marcar todos / ninguno / hasta la fecha de corte del estado de cuenta.
+function marcarConciliacion(modo) {
+  const errEl = document.getElementById('cb-error');
+  if (errEl) errEl.textContent = '';
+  if (modo === 'todos') CONC.marcados = new Set(CONC.movimientos.map(m => m.id));
+  else if (modo === 'ninguno') CONC.marcados = new Set();
+  else if (modo === 'hasta') {
+    const hasta = document.getElementById('cb-hasta-fecha')?.value;
+    if (!hasta) { if (errEl) errEl.textContent = 'Elige la fecha de corte de tu estado de cuenta.'; return; }
+    CONC.marcados = new Set(CONC.movimientos.filter(m => (m.fecha || '') <= hasta).map(m => m.id));
+  }
+  renderMovimientosConciliacion();
+  recalcularDiferenciaConciliacion();
 }
 
 function _montoConcMov(m) { return CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto); }
@@ -2148,6 +2224,8 @@ function recalcularDiferenciaConciliacion() {
   elDif.style.color = diferencia === 0 ? 'var(--success)' : 'var(--danger)';
   CONC._saldoCalculado = saldoCalculado;
   CONC._diferencia = diferencia;
+  const info = document.getElementById('cb-marcados-info');
+  if (info) info.textContent = CONC.movimientos.length ? `(${CONC.marcados.size} de ${CONC.movimientos.length} marcados)` : '';
 }
 
 function abrirAgregarAjusteConciliacion() {
@@ -2197,6 +2275,8 @@ async function guardarAjusteConciliacion() {
 
     CONC.movimientos.push(nuevo);
     CONC.marcados.add(nuevo.id); // un ajuste que tú mismo agregas ya se da por conciliado de una vez
+    if (CONC.saldoSistema != null) CONC.saldoSistema = round2(CONC.saldoSistema + (tipo === 'INGRESO' ? montoBanco : -montoBanco));
+    pintarResumenConciliacion();
     renderMovimientosConciliacion();
     recalcularDiferenciaConciliacion();
     document.getElementById('cb-ajuste-form').style.display = 'none';
@@ -2234,23 +2314,17 @@ async function cerrarConciliacion() {
 
   setBtnLoading('btn-cerrar-conciliacion', true);
   try {
+    // Se guarda la conciliación y se marcan sus movimientos en UNA sola
+    // operación del servidor, que además vuelve a comprobar que cuadre.
     const idsMarcados = Array.from(CONC.marcados);
-    const fechas = CONC.movimientos.filter(m => CONC.marcados.has(m.id)).map(m => m.fecha);
-    const periodoDesde = fechas.length ? fechas.reduce((a,b) => a<b?a:b) : todayISO();
-    const periodoHasta = fechas.length ? fechas.reduce((a,b) => a>b?a:b) : todayISO();
-
-    const { data: conciliacion, error: errC } = await sbClient.from('conciliaciones_bancarias').insert({
-      auth_user_id: STATE.userId, banco_id: CONC.bancoId, periodo_desde: periodoDesde, periodo_hasta: periodoHasta,
-      saldo_banco_declarado: saldoBanco, saldo_sistema_calculado: CONC._saldoCalculado, diferencia: CONC._diferencia,
-    }).select('id').single();
+    const { error: errC } = await sbClient.rpc('conciliacion_cerrar', {
+      p_banco_id: CONC.bancoId, p_ids: idsMarcados, p_saldo_banco: saldoBanco,
+    });
     if (errC) throw errC;
-
-    const { error: errU } = await sbClient.from('movimientos_financieros')
-      .update({ conciliado: true, conciliacion_id: conciliacion.id }).in('id', idsMarcados);
-    if (errU) throw errU;
 
     showToast('Conciliación cerrada — todo cuadra');
     await abrirConciliarBanco(CONC.bancoId, CONC.bancoNombre); // se recarga fresco, ya sin lo que se acaba de conciliar
+    loadBancos(); // la tarjeta del banco actualiza "sin conciliar"
   } catch (e) {
     errEl.textContent = 'Error al cerrar: ' + (e.message||'');
   } finally {
