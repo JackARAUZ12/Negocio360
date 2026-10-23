@@ -382,18 +382,33 @@ async function guardarDineroInicial(monto) {
 /* =====================================================
    RESUMEN FINANCIERO (KPIs del mes)
 ===================================================== */
+// Trae TODAS las filas de una consulta, en páginas de 1,000 (la base no
+// entrega más por consulta: en negocios grandes los totales salían incompletos).
+// construir() debe devolver la consulta con un orden fijo.
+async function traerTodasLasFilas(construir) {
+  const todas = [];
+  for (let desde = 0; desde < 200000; desde += 1000) {
+    const { data, error } = await construir().range(desde, desde + 999);
+    if (error) throw error;
+    todas.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return todas;
+}
+
 async function loadResumen() {
   const monthStart = startOfMonthISO();
   const today      = todayISO();
 
   try {
-    const { data } = await sbClient
+    const data = await traerTodasLasFilas(() => sbClient
       .from('movimientos_financieros')
       .select('tipo_flujo, monto, fecha, referencia_tipo, tipo_movimiento')
       .eq('auth_user_id', STATE.userId)
       .eq('estado', 'completado')
       .gte('fecha', monthStart)
-      .lte('fecha', today);
+      .lte('fecha', today)
+      .order('created_at').order('id'));
 
     const movsTodos = data || [];
     // Las transferencias entre cuentas propias no son ingresos ni egresos del negocio.
@@ -1154,12 +1169,12 @@ async function crearCierreMensual() {
   try {
     setBtnLoading('btn-cierre-mensual', true);
 
-    const { data: movs } = await sbClient
+    const movs = await traerTodasLasFilas(() => sbClient
       .from('movimientos_financieros')
       .select('tipo_flujo, monto, saldo_anterior, tipo_movimiento')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
       .gte('fecha', desde).lte('fecha', hasta)
-      .order('created_at');
+      .order('created_at').order('id'));
 
     const lista = movs || [];
     if (!lista.length) { showToast('No hay movimientos este mes para cerrar', 'error'); return; }
