@@ -828,6 +828,10 @@
     .cfg-pw-campo input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
     .cfg-pw-ojo { position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:0; color:var(--text-muted); cursor:pointer; padding:6px; font-size:12px; font-weight:600; }
     .cfg-pw-ayuda { font-size:12px; color:var(--text-muted); margin-top:8px; }
+    .cfg-pw-olvido { margin-top:18px; padding-top:14px; border-top:1px dashed var(--border); }
+    .cfg-pw-olvido-titulo { font-size:13px; font-weight:700; color:var(--text-primary); }
+    .cfg-pw-link { margin-top:10px; background:none; border:0; padding:0; color:var(--accent); font-size:13px; font-weight:700; cursor:pointer; text-decoration:underline; }
+    .cfg-pw-link:disabled { opacity:.6; cursor:not-allowed; }
     .cfg-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; cursor: pointer; }
     .cfg-back:hover { color: var(--accent); }
 
@@ -1756,6 +1760,13 @@
             </button>
           </form>
           <div class="cfg-status" id="pw-status"></div>
+
+          <div class="cfg-pw-olvido">
+            <div class="cfg-pw-olvido-titulo">¿Olvidaste tu contraseña actual?</div>
+            <div class="cfg-pw-ayuda" style="margin-top:4px">Te enviamos un enlace a tu correo <strong id="pw-correo-oculto"></strong> para que crees una contraseña nueva sin necesidad de la actual. El enlace vence en poco tiempo; revisa también la carpeta de spam.</div>
+            <button type="button" class="cfg-pw-link" id="btn-olvide-contrasena" onclick="enviarEnlaceRecuperacion()">Enviarme el enlace para crear una contraseña nueva</button>
+            <div class="cfg-status" id="pw-olvido-status"></div>
+          </div>
         </div>
 
         <!-- ELIMINAR CUENTA (oculta hasta confirmar que NO es una cuenta de demostración) -->
@@ -3170,8 +3181,50 @@ async function aplicarCambioContrasena(email) {
     if (error || !data || data.puede !== true) return;
     pwEmailCuenta = email;
     const u = document.getElementById('pw-usuario'); if (u) u.value = email;
+    const oc = document.getElementById('pw-correo-oculto'); if (oc) oc.textContent = ocultarCorreo(email);
     card.style.display = '';
   } catch (_) { /* si algo falla, simplemente no se muestra la opción */ }
+}
+
+// "jack@gmail.com" -> "ja**@gmail.com" (para que se reconozca sin mostrarlo completo)
+function ocultarCorreo(email) {
+  const [u, d] = String(email || '').split('@');
+  if (!d) return email || '';
+  return (u.length <= 2 ? u[0] + '*' : u.slice(0, 2) + '*'.repeat(Math.min(6, u.length - 2))) + '@' + d;
+}
+
+// ¿Olvidaste tu contraseña? -> el mismo enlace de recuperación que ya usa la
+// pantalla de inicio de sesión (lleva a reset-password.html). No cambia nada
+// hasta que la persona abre el enlace y escribe la contraseña nueva.
+let enviandoRecuperacion = false;
+async function enviarEnlaceRecuperacion() {
+  if (enviandoRecuperacion) return;
+  const statusEl = document.getElementById('pw-olvido-status');
+  const btn = document.getElementById('btn-olvide-contrasena');
+  if (!pwEmailCuenta) { setStatus(statusEl, 'Esta opción no está disponible para esta cuenta.', false); return; }
+  if (!confirm(`Te enviaremos un enlace a ${ocultarCorreo(pwEmailCuenta)} para crear una contraseña nueva.\n\n¿Enviar ahora?`)) return;
+  enviandoRecuperacion = true;
+  if (btn) btn.disabled = true;
+  try {
+    const { error } = await sbClient.auth.resetPasswordForEmail(pwEmailCuenta, {
+      redirectTo: window.location.origin + '/reset-password.html',
+    });
+    if (error) {
+      const m = String(error.message || '').toLowerCase();
+      setStatus(statusEl, (m.includes('rate') || m.includes('too many') || m.includes('seconds'))
+        ? 'Ya se envió un enlace hace poco. Espera unos minutos y revisa tu correo (también spam).'
+        : 'No se pudo enviar el correo. Intenta de nuevo.', false);
+      return;
+    }
+    setStatus(statusEl, `Listo: revisa ${ocultarCorreo(pwEmailCuenta)} (también spam) y abre el enlace para crear tu contraseña nueva.`, true);
+  } catch (e) {
+    console.error('enviarEnlaceRecuperacion:', e);
+    setStatus(statusEl, 'Sin conexión. Revisa tu internet e intenta de nuevo.', false);
+  } finally {
+    enviandoRecuperacion = false;
+    // Se deja pasar un minuto antes de permitir otro envío (evita mandar varios correos seguidos).
+    setTimeout(() => { if (btn) btn.disabled = false; }, 60000);
+  }
 }
 
 function alternarVerContrasena(id, btn) {
@@ -3219,7 +3272,7 @@ async function cambiarContrasena() {
     const { data: ses, error: errLogin } = await verif.auth.signInWithPassword({ email: pwEmailCuenta, password: actual });
     if (errLogin || !ses || !ses.user) {
       const m = String(errLogin?.message || '').toLowerCase();
-      setStatus(statusEl, (m.includes('rate') || m.includes('too many')) ? 'Demasiados intentos. Espera unos minutos y vuelve a probar.' : 'La contraseña actual no es correcta.', false);
+      setStatus(statusEl, (m.includes('rate') || m.includes('too many')) ? 'Demasiados intentos. Espera unos minutos y vuelve a probar.' : 'La contraseña actual no es correcta. Si no la recuerdas, usa "¿Olvidaste tu contraseña actual?" aquí abajo.', false);
       return;
     }
     if (ses.user.id !== currentAuthUserId) { setStatus(statusEl, 'No se pudo verificar la cuenta. Recarga la página.', false); return; }
