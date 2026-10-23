@@ -1099,11 +1099,20 @@ async function anularVenta() {
     const proformaRevertida = !!res?.proforma_revertida;
     const creditoCancelado  = !!res?.credito_cancelado;
 
+    // La comisión del banco de esa venta (si se pagó con tarjeta) también se
+    // anula cuando el dinero se devuelve en Caja: su gasto y su egreso.
+    let comisionPendiente = false;
+    if (descontarCaja) {
+      try { await anularComisionDeVenta(id); }
+      catch (eCom) { console.warn('No se pudo anular la comisión bancaria:', eCom); comisionPendiente = true; }
+    }
+
     closeModal('modal-anular');
     closeModal('modal-detalle');
     const mensajeBase = descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)';
     const avisoCredito = creditoCancelado ? ' — el crédito asociado se canceló automáticamente' : '';
-    showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : '') + avisoCredito, 'warning');
+    showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : '') + avisoCredito
+      + (comisionPendiente ? ' — revisa la comisión del banco en Gastos (no se pudo anular sola)' : ''), 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
   } catch(e) {
     showToast('Error al anular: '+e.message, 'error');
@@ -3230,63 +3239,92 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 // multiplica por su factor: vender 1 blister de 10 descuenta 10.
 // ============================================================
 // COMISION BANCARIA (POS de tarjeta)
-// Si el metodo de pago usado tiene una comision configurada (ej.
-// un POS que cobra 4.5%), se registra automaticamente como GASTO
-// y como EGRESO de caja -- asi la caja refleja lo que de verdad
-// llega del banco, y la comision queda contabilizada donde debe.
-// Si el metodo no tiene comision (el caso de todos los negocios
-// que no la configuraron), esta funcion no hace absolutamente
-// nada y todo sigue igual que siempre.
+// Solo para pagos con TARJETA (en transferencias el banco no cobra
+// comisión de POS). Si el banco elegido tiene comisión, se registra
+// igual que cualquier gasto del módulo Gastos:
+//   1. una fila en "gastos" (tipo inmediato, categoría "Comisiones
+//      bancarias", ligada a la venta con venta_id) -> la ven Gastos,
+//      Reportes, Estadísticas y Contabilidad (Estado de resultados);
+//   2. su EGRESO en Caja, ligado al gasto (referencia_tipo 'gasto'),
+//      del banco donde entró el pago -> Caja y el saldo del banco
+//      reflejan lo que de verdad deposita el banco.
+// Los dos van juntos: si el gasto no se pudo guardar, tampoco se toca
+// Caja (así Caja y Contabilidad nunca quedan distintos). Si el método
+// no es tarjeta o el banco no cobra comisión, no hace nada.
 // ============================================================
+function esPagoConTarjeta(nombre) {
+  return String(nombre || '').toLowerCase().includes('tarjeta');
+}
+
+// Monto de la comisión al CERRAR la venta: el % del banco sobre el
+// total final (por si el carrito cambió después de elegir el banco),
+// salvo que el vendedor lo haya ajustado a mano.
+function comisionAlCerrar(estado, totalVenta) {
+  const pct = estado._comisionBancoPct;
+  if (pct == null || !(Number(pct) > 0)) return { pct, monto: 0 };
+  const monto = estado._comisionBancoMontoEditadoManual
+    ? round2(Number(estado._comisionBancoMonto) || 0)
+    : round2((Number(totalVenta) || 0) * Number(pct) / 100);
+  return { pct, monto };
+}
+
+// Comisión en la moneda del banco (bancos en dólares): misma conversión
+// que usa Caja para el resto de movimientos de ese banco.
+function comisionEnMonedaBanco(bancoId, monto) {
+  const banco = (_bancosCache || []).find(b => b.id === bancoId);
+  const base = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const mb = banco?.moneda || 'NIO';
+  const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+  if (!banco || mb === base || !tasa) return null;
+  return round2(base === 'NIO' ? monto / tasa : monto * tasa);
+}
+
 async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVenta, numeroVenta, ventaId, fecha, bancoId, bancoNombre, comisionMonto, comisionPct }) {
   try {
     if (!(Number(totalVenta) > 0)) return null;
+    if (!esPagoConTarjeta(metodoNombre)) return null;      // transferencias: sin comisión
 
-    // La comision ahora vive POR BANCO (cada banco cobra distinto),
-    // no por metodo de pago en general. Si no se eligio ningun banco
-    // en esta venta, o el monto calculado/editado quedo en 0, no hay
-    // nada que registrar -- comportamiento identico al de antes para
-    // quien no usa bancos o no tiene comision configurada.
+    // La comision vive POR BANCO (cada banco cobra distinto). Sin banco
+    // elegido o con monto 0, no hay nada que registrar.
     const monto = round2(Number(comisionMonto) || 0);
     if (!bancoId || !(monto > 0)) return null;
     const pct = comisionPct;
 
     const concepto = `Comisión bancaria ${pct}% — ${bancoNombre} (Venta ${numeroVenta})`;
 
-    // 1. Gasto (para que aparezca en el módulo de Gastos y en reportes)
-    await sb.from('gastos').insert({
-      auth_user_id: S.userId,
+    // 1. Gasto (módulo Gastos, reportes y Contabilidad)
+    const { data: gasto, error: errGasto } = await sb.from('gastos').insert({
+      auth_user_id:       S.userId,
+      tipo:               'inmediato',
       concepto,
-      categoria: 'Comisiones bancarias',
+      categoria:          'Comisiones bancarias',
       monto,
       fecha,
-      tipo: 'operativo',
-      estado: 'activo',
-      observaciones: `Generado automáticamente por la venta ${numeroVenta}`,
-    });
+      metodo_pago_id:     metodoPagoId || null,
+      metodo_pago_nombre: metodoNombre || null,
+      estado:             'activo',
+      venta_id:           ventaId,
+      observaciones:      `Generado automáticamente por la venta ${numeroVenta}`,
+    }).select('id').single();
+    if (errGasto || !gasto) throw errGasto || new Error('No se guardó el gasto de la comisión');
 
-    // 2. Egreso en caja (para que el saldo cuadre con lo que realmente
-    //    deposita el banco, no con el total bruto cobrado al cliente)
-    const { data: ult } = await sb.from('movimientos_financieros')
-      .select('saldo_resultante').eq('auth_user_id', S.userId).eq('estado', 'completado')
-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    const saldoAnt = Number(ult?.saldo_resultante) || 0;
-
-    await sb.from('movimientos_financieros').insert({
+    // 2. Egreso en Caja, ligado al gasto (como cualquier gasto): así, si el
+    //    gasto se cancela desde Gastos, su egreso también se anula.
+    const { data: mov } = await N360CajaSegura.insertarMovimiento(sb, {
       auth_user_id:       S.userId,
       tipo_flujo:         'EGRESO',
       tipo_movimiento:    'GASTO',
       concepto,
       monto,
-      saldo_anterior:     saldoAnt,
-      saldo_resultante:   round2(saldoAnt - monto),
-      metodo_pago_id:     metodoPagoId,
+      metodo_pago_id:     metodoPagoId || null,
       metodo_pago_nombre: metodoNombre || null,
       banco_id:           bancoId,
-      referencia_tipo:    'venta',
-      referencia_id:      ventaId,
+      monto_moneda_banco: comisionEnMonedaBanco(bancoId, monto),
+      referencia_tipo:    'gasto',
+      referencia_id:      gasto.id,
       fecha,
-    });
+    }, { etiqueta: 'La comisión bancaria de la venta ' + numeroVenta });
+    if (mov?.id) await sb.from('gastos').update({ movimiento_financiero_id: mov.id }).eq('id', gasto.id).eq('auth_user_id', S.userId);
 
     // 3. Dejar constancia en la venta
     await sb.from('ventas')
@@ -3295,11 +3333,39 @@ async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVent
 
     return { pct, monto };
   } catch (e) {
-    // Nunca debe tumbar la venta: si esto falla, la venta ya quedo
-    // guardada correctamente y solo se avisa en consola.
+    // Nunca debe tumbar la venta: la venta ya quedó guardada. Se avisa
+    // para que la comisión se registre a mano en Gastos.
     console.error('registrarComisionBancaria:', e);
+    try { showToast('La venta se guardó, pero no se pudo registrar la comisión del banco. Regístrala en Gastos.', 'warning'); } catch (_) {}
     return null;
   }
+}
+
+// Al anular una venta (con su dinero devuelto en Caja), la comisión del
+// banco también se anula: el gasto queda cancelado y su egreso de Caja
+// anulado — igual que cancelar un gasto desde el módulo Gastos. También
+// cubre comisiones antiguas (antes ligadas directo a la venta).
+async function anularComisionDeVenta(ventaId) {
+  const ahora = new Date().toISOString();
+  const { data: gastosCom, error } = await sb.from('gastos').select('id')
+    .eq('auth_user_id', S.userId).eq('venta_id', ventaId).eq('estado', 'activo');
+  if (error) throw error;
+  for (const g of (gastosCom || [])) {
+    const { error: e1 } = await sb.from('movimientos_financieros')
+      .update({ estado: 'anulado', anulado_en: ahora, anulado_motivo: 'Venta anulada' })
+      .eq('referencia_tipo', 'gasto').eq('referencia_id', g.id).eq('auth_user_id', S.userId).eq('estado', 'completado');
+    if (e1) throw e1;
+    const { error: e2 } = await sb.from('gastos')
+      .update({ estado: 'cancelado', cancelado_en: ahora, cancelado_motivo: 'Venta anulada' })
+      .eq('id', g.id).eq('auth_user_id', S.userId);
+    if (e2) throw e2;
+  }
+  const { error: e3 } = await sb.from('movimientos_financieros')
+    .update({ estado: 'anulado', anulado_en: ahora, anulado_motivo: 'Venta anulada' })
+    .eq('referencia_tipo', 'venta').eq('referencia_id', ventaId).eq('auth_user_id', S.userId)
+    .eq('tipo_flujo', 'EGRESO').eq('tipo_movimiento', 'GASTO').like('concepto', 'Comisión bancaria%').eq('estado', 'completado');
+  if (e3) throw e3;
+  return (gastosCom || []).length;
 }
 
 /* ============================================================
@@ -5316,7 +5382,10 @@ function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
   S._comisionBancoMonto = 0;
   S._comisionBancoMontoEditadoManual = false;
 
-  if (banco && banco.comision_porcentaje === null) {
+  // La comisión es del POS de TARJETA: en transferencias no se cobra.
+  if (!esPagoConTarjeta(S.metodoPagoNombre)) {
+    /* transferencia u otro método: sin comisión */
+  } else if (banco && banco.comision_porcentaje === null) {
     document.getElementById('bcc-nombre-banco').textContent = bancoNombre;
     document.getElementById('bcc-porcentaje').value = '';
     document.getElementById('banco-comision-configurar-wrap').style.display = '';
@@ -5446,7 +5515,9 @@ function elegirBancoVentaVR(bancoId, bancoNombre, monedaBanco) {
   VR._comisionBancoMonto = 0;
   VR._comisionBancoMontoEditadoManual = false;
 
-  if (banco && banco.comision_porcentaje === null) {
+  if (!esPagoConTarjeta(VR.metodoPagoNombre)) {
+    /* transferencia u otro método: sin comisión (solo aplica a tarjeta) */
+  } else if (banco && banco.comision_porcentaje === null) {
     document.getElementById('vr-bcc-nombre-banco').textContent = bancoNombre;
     document.getElementById('vr-bcc-porcentaje').value = '';
     document.getElementById('vr-banco-comision-configurar-wrap').style.display = '';
@@ -5868,24 +5939,29 @@ async function _confirmarVentaInterno(conImpresion) {
     const ultimoMovId = (reg.data.caja_ids || []).slice(-1)[0] || null;
     (reg.data.avisos || []).forEach(a => console.warn('Venta:', a));
 
-    // Descontar el lote especifico usado (FEFO, Farmacia fase 2) --
-    // aislado: si algo fallara aqui, la venta YA se confirmo
-    // exitosamente, no se revierte nada por esto.
+    // Descontar el lote especifico usado (FEFO, Farmacia fase 2) -- UNA
+    // sola vez por línea: del lote elegido, y si no alcanza, el resto
+    // del siguiente que vence (todo en el servidor, de forma atómica).
+    // Cuenta las unidades reales del inventario (una caja de 12 = 12).
+    // Las líneas con lote ya NO pasan además por descontar_lote_fefo
+    // (antes se descontaban dos veces). Aislado: si algo fallara aquí,
+    // la venta YA se confirmó, no se revierte nada por esto.
     try {
       for (const item of S.carrito) {
-        if (!item.loteId) continue;
-        const { data: loteActual } = await sb.from('producto_lotes').select('cantidad_actual').eq('id', item.loteId).maybeSingle();
-        if (loteActual) {
-          await sb.from('producto_lotes').update({ cantidad_actual: Math.max(0, Number(loteActual.cantidad_actual) - item.cantidad) }).eq('id', item.loteId);
-        }
+        if (!item.loteId || item.tipo !== 'producto' || item.esCombo || item.origenStockId) continue;
+        const { error: eLoteRpc } = await sb.rpc('descontar_lote_venta', {
+          p_lote_id: item.loteId, p_producto_id: item.id, p_cantidad: unidadesInventario(item),
+        });
+        if (eLoteRpc) console.warn('descontar_lote_venta:', item.nombre, eLoteRpc);
       }
     } catch (eLote) { console.warn('Descuento de lote FEFO:', eLote); }
 
     // Si el negocio maneja lotes y vencimientos, se descuenta
     // automáticamente del lote que vence primero (FEFO) — capa aparte,
-    // nunca afecta el stock_actual (que ya descontó el servidor).
+    // nunca afecta el stock_actual (que ya descontó el servidor). Las
+    // líneas con un lote ya elegido se descontaron arriba (una sola vez).
     if (S.empresaConfig?.maneja_lotes_vencimiento === true) {
-      for (const item of S.carrito.filter(i => i.tipo === 'producto' && !i.esCombo && !i.esPromocion && !i.origenStockId)) {
+      for (const item of S.carrito.filter(i => i.tipo === 'producto' && !i.esCombo && !i.esPromocion && !i.origenStockId && !i.loteId)) {
         sb.rpc('descontar_lote_fefo', { p_producto_id: item.id, p_cantidad: unidadesInventario(item) })
           .then(({ error }) => { if (error) console.warn('descontar_lote_fefo:', item.nombre, error); });
       }
@@ -5936,7 +6012,7 @@ async function _confirmarVentaInterno(conImpresion) {
           totalVenta: Number(r.total) || 0, numeroVenta: S.numeroVenta,
           ventaId: ventaId, fecha: fechaVentaElegida,
           bancoId: S.bancoElegidoId || null, bancoNombre: S.bancoElegidoNombre || null,
-          comisionMonto: S._comisionBancoMonto || 0, comisionPct: S._comisionBancoPct,
+          comisionMonto: comisionAlCerrar(S, r.total).monto, comisionPct: S._comisionBancoPct,
         });
       } catch (eCom) { console.warn('Comisión bancaria:', eCom); }
     }
@@ -7246,7 +7322,7 @@ async function _confirmarVentaRapidaInterno() {
           totalVenta: Number(r.total) || 0, numeroVenta: VR.numeroVenta,
           ventaId: ventaId, fecha: fechaVentaElegidaVR,
           bancoId: VR.bancoElegidoId || null, bancoNombre: VR.bancoElegidoNombre || null,
-          comisionMonto: VR._comisionBancoMonto || 0, comisionPct: VR._comisionBancoPct,
+          comisionMonto: comisionAlCerrar(VR, r.total).monto, comisionPct: VR._comisionBancoPct,
         });
       } catch (eCom) { console.warn('Comisión bancaria:', eCom); }
     }
