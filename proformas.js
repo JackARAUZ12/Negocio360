@@ -1594,6 +1594,7 @@ async function abrirConfigTicket() {
   if (!STATE.configTicket) await cargarConfigTicket();
   const c = STATE.configTicket || {};
   document.querySelectorAll('input[name="ct-ancho"]').forEach(r => { r.checked = (r.value === (c.ancho_ticket || '80mm')); });
+  { const rbx = document.getElementById('ct-rawbt'); if (rbx) rbx.checked = !!c.imprimir_rawbt; }
   document.getElementById('ct-nombre').value    = c.nombre_ticket    || '';
   document.getElementById('ct-ruc').value       = c.ruc_ticket       || '';
   document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
@@ -1606,6 +1607,7 @@ async function guardarConfigTicket() {
   const payload = {
     auth_user_id: STATE.userId, configurado: true,
     ancho_ticket: ancho,
+    imprimir_rawbt: !!document.getElementById('ct-rawbt')?.checked,
     nombre_ticket: document.getElementById('ct-nombre').value.trim() || null,
     ruc_ticket: document.getElementById('ct-ruc').value.trim() || null,
     telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
@@ -1727,12 +1729,17 @@ function imprimirComprobanteProforma() {
     return;
   }
 
+  // RawBT (Android, 80 mm): si el negocio lo activó, se imprime directo; si no, todo sigue igual.
+  if (window.rawbtActivo && window.rawbtActivo(STATE.configTicket)) {
+    window.rawbtImprimirDesdeContenedor(document.querySelector('#comprobante-body .ticket-print'));
+    return;
+  }
   const html = document.getElementById('comprobante-body').innerHTML;
   const anchoPx = ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px';
   const fs = ancho === '58mm' ? 11 : 12.5;
   const w = window.open('', '_blank', 'width=380,height=600');
   w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-    <style>body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+    <style>@page{size:${ancho} auto;margin:0}*{box-sizing:border-box}body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
     </head><body>${html}<script>window.print();</script></body></html>`);
   w.document.close();
 }
@@ -1749,6 +1756,49 @@ async function anularVentaIncompleta(cliente, userId, ventaId) {
       observaciones: 'Anulada automáticamente: no se pudieron guardar sus productos (falla de conexión). Se puede volver a registrar.',
     }).eq('id', ventaId).eq('auth_user_id', userId);
   } catch (e) { console.warn('anularVentaIncompleta:', e); }
+}
+
+// Termina la conversión en el servidor (todo o nada). Reintenta si la
+// conexión falla; la función es repetible sin duplicar nada.
+const RE_UUID_PROF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function finalizarConversionProforma(ventaId, proformaId, metodoId, metodoNombre, bancoId) {
+  const args = {
+    p_venta_id: ventaId, p_proforma_id: proformaId,
+    p_metodo_id: RE_UUID_PROF.test(metodoId || '') ? metodoId : null,
+    p_metodo_nombre: metodoNombre || null,
+    p_banco_id: RE_UUID_PROF.test(bancoId || '') ? bancoId : null,
+    p_convertido_por: (typeof obtenerNombrePerfilActivo === 'function' && obtenerNombrePerfilActivo()) || STATE.currentUser?.nombre || null,
+  };
+  let ultimo = null;
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise(r => setTimeout(r, i === 1 ? 700 : 1500));
+    try {
+      const { data, error } = await sbClient.rpc('proforma_finalizar_conversion', args);
+      if (!error) return { data, error: null };
+      ultimo = error;
+      // Errores de datos (no de conexión): no tiene sentido reintentar.
+      if (error.code && !/^(08|57|53|40)/.test(error.code) && error.code !== 'PGRST301') break;
+    } catch (e) { ultimo = e; }
+  }
+  return { data: null, error: ultimo };
+}
+
+// Al abrir Proformas: si alguna venta de proforma quedó a medias (se cortó
+// la conexión justo después de crearla), se termina de registrar sola.
+let conversionesRevisadas = false;
+async function completarConversionesIncompletas() {
+  if (conversionesRevisadas) return;
+  conversionesRevisadas = true;
+  try {
+    const { data, error } = await sbClient.rpc('proforma_conversiones_incompletas');
+    if (error || !data || !data.length) return;
+    for (const c of data) {
+      const r = await finalizarConversionProforma(c.venta_id, c.proforma_id, c.metodo_pago_id, c.metodo_pago_nombre, null);
+      if (!r.error) showToast(`✅ Se terminó de registrar la venta ${c.numero_venta} (proforma ${c.numero_proforma}), que había quedado incompleta`);
+      else console.warn('No se pudo completar', c.numero_venta, r.error);
+    }
+    await Promise.allSettled([loadProformas(), loadKPIsProf()]);
+  } catch (e) { console.warn('completarConversionesIncompletas:', e); }
 }
 
 async function confirmarConvertirAVenta() {
@@ -1875,104 +1925,19 @@ async function confirmarConvertirAVenta() {
     }
     if (errDetV) { await anularVentaIncompleta(sbClient, STATE.userId, ventaNueva?.id); throw errDetV; }
 
-    // ---- E: descontar stock (productos normales) ----
-    for (const d of detalles.filter(x => x.tipo_item === 'producto' && x.producto_id)) {
-      if (d.origen_stock_id) {
-        // Stock Compartido: se descuenta de OTRA cuenta del grupo.
-        try {
-          const { error: errRemoto } = await sbClient.rpc('descontar_stock_remoto', {
-            p_sucursal_id: d.origen_stock_id, p_nombre_producto: d.producto_nombre, p_cantidad: d.cantidad,
-          });
-          if (errRemoto) console.warn('Error descontando stock remoto:', d.producto_nombre, errRemoto);
-        } catch (eRemoto) { console.warn('Error descontando stock remoto:', d.producto_nombre, eRemoto); }
-        continue;
-      }
-      const { data: prod } = await sbClient.from('productos').select('stock_actual').eq('id', d.producto_id).maybeSingle();
-      if (prod) {
-        const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - Number(d.cantidad));
-        await sbClient.from('productos').update({ stock_actual: nuevoStock }).eq('id', d.producto_id).eq('auth_user_id', STATE.userId);
-      }
+    // ---- E a G + proforma convertida: TODO en una sola operación del
+    // servidor (inventario, combos, stock compartido, Caja, IVA, historial
+    // del cliente y marcar la proforma). Antes se hacía paso por paso desde
+    // aquí y, si la página se cerraba o se caía el internet a la mitad,
+    // quedaba la venta a medias (caso V-000848, 21-oct-2026). Ahora es todo
+    // o nada, y se puede repetir sin duplicar.
+    const fin = await finalizarConversionProforma(ventaId, p.id, metodoId, metodoNombre, bancoConvId);
+    if (fin.error) {
+      errEl.textContent = `La venta ${ventaPayload.numero_venta} se creó, pero no se terminó de registrar el inventario y la Caja (${fin.error.message || 'sin conexión'}). NO la vuelvas a convertir: se completa sola al abrir Proformas otra vez.`;
+      await Promise.allSettled([loadProformas(), loadKPIsProf()]);
+      return;
     }
-
-    // ---- E-2: combos — descontar el stock de CADA producto que los
-    // compone (cantidad del componente × cantidad de combos vendidos).
-    for (const d of detalles.filter(x => x.tipo_item === 'combo' && x.combo_id)) {
-      try {
-        const { data: itemsCombo } = await sbClient.from('combo_items')
-          .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', STATE.userId);
-        for (const compItem of (itemsCombo || [])) {
-          const { data: prodActual } = await sbClient.from('productos')
-            .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', STATE.userId).maybeSingle();
-          if (!prodActual) continue;
-          const descuentoTotal = Number(compItem.cantidad) * Number(d.cantidad);
-          const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
-          await sbClient.from('productos').update({ stock_actual: nuevoStock })
-            .eq('id', compItem.producto_id).eq('auth_user_id', STATE.userId);
-        }
-      } catch (eCombo) {
-        console.warn('No se pudo descontar el stock de los componentes del combo:', d.producto_nombre, eCombo);
-      }
-    }
-
-    // ---- F: movimiento de Caja (mismo criterio que Ventas: neto de IVA) ----
-    const montoIva = Number(p.impuesto) || 0;
-    const montoCaja = Number(p.total) - montoIva;
-    try {
-      const { data: ultMov } = await sbClient.from('movimientos_financieros')
-        .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
-        .order('created_at', { ascending:false }).limit(1).maybeSingle();
-      const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-      const saldoRes = saldoAnt + montoCaja;
-      const { data: movNuevo } = await N360CajaSegura.insertarMovimiento(sbClient, {
-        auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
-        concepto: montoIva>0 ? `Venta ${ventaPayload.numero_venta} (neto de IVA, desde proforma ${p.numero_proforma})` : `Venta ${ventaPayload.numero_venta} (desde proforma ${p.numero_proforma})`,
-        monto: montoCaja, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
-        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
-        ...(bancoConvId ? { banco_id: bancoConvId } : {}),
-        referencia_tipo: 'venta', referencia_id: ventaId, fecha: todayISO(),
-      }, { etiqueta: 'La venta ' + ventaPayload.numero_venta });
-      if (movNuevo?.id) await sbClient.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
-    } catch (eCaja) { console.warn('No se pudo registrar en caja:', eCaja); }
-
-    // ---- F-2: IVA en Impuestos ----
-    if (montoIva > 0) {
-      try {
-        const { data: ultImp } = await sbClient.from('movimientos_impuestos')
-          .select('saldo_resultante').eq('auth_user_id', STATE.userId)
-          .order('created_at', { ascending:false }).limit(1).maybeSingle();
-        const saldoAnt = ultImp ? Number(ultImp.saldo_resultante) : 0;
-        await sbClient.from('movimientos_impuestos').insert({
-          auth_user_id: STATE.userId, tipo_movimiento: 'IVA_VENTA',
-          concepto: `IVA de venta ${ventaPayload.numero_venta} (desde proforma ${p.numero_proforma})`,
-          monto: montoIva, saldo_anterior: saldoAnt, saldo_resultante: saldoAnt + montoIva,
-          referencia_venta_id: ventaId, fecha: todayISO(),
-        });
-      } catch (eImp) { console.warn('No se pudo registrar el IVA:', eImp); }
-    }
-
-    // ---- G: actualizar historial del cliente ----
-    if (p.cliente_id) {
-      try {
-        const { data: cliente } = await sbClient.from('clientes').select('total_compras,num_compras').eq('id', p.cliente_id).maybeSingle();
-        if (cliente) {
-          await sbClient.from('clientes').update({
-            total_compras: (Number(cliente.total_compras)||0) + p.total,
-            num_compras: (Number(cliente.num_compras)||0) + 1,
-          }).eq('id', p.cliente_id).eq('auth_user_id', STATE.userId);
-        }
-      } catch (eCli) { console.warn('Error actualizando cliente:', eCli); }
-    }
-
-    // ---- Actualizar la proforma: convertida, con referencia a la venta ----
-    // Se guarda el estado exacto en el que estaba ANTES de convertir
-    // (no siempre es el mismo — puede venir de borrador, pendiente,
-    // enviada, aprobada, o vencida), para poder devolverla ahí si
-    // esta venta se llega a anular más adelante.
-    await sbClient.from('proformas').update({
-      estado: 'convertida', estado_antes_convertir: p.estado, venta_id: ventaId, fecha_conversion: new Date().toISOString(),
-      convertido_por: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
-      updated_at: new Date().toISOString(),
-    }).eq('id', p.id);
+    (fin.data?.avisos || []).forEach(a => console.warn('Conversión:', a));
 
     try { localStorage.setItem('n360_venta_nueva', JSON.stringify({ ventaId, numero: ventaPayload.numero_venta, total: p.total, ts: Date.now() })); } catch(e) {}
 
@@ -2527,6 +2492,7 @@ async function initProformas() {
     await Promise.allSettled([loadMetodosPago(), loadClientes(), loadProductos(), loadProveedoresProf()]);
     await loadProformas();
     await loadKPIsProf();
+    completarConversionesIncompletas();
 
     if (window.Negocio360Tutorial) {
       const pasosProformas = [

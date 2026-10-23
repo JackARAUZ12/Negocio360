@@ -15,7 +15,7 @@
 <title>Configuración — Negocio360</title>
 
 <!-- Supabase CDN -->
-<script src="ver-como.js?v=20261013a"></script>
+<script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="modulos-registro.js?v=20261021b"></script>
 <script src="auditoria-guard.js"></script>
@@ -821,6 +821,17 @@
     .cfg-btn-neutral { margin-top: 18px; width: 100%; padding: 12px 18px; background: var(--accent); color: #fff; border-radius: var(--radius-sm); font-size: 13.5px; font-weight: 700; transition: opacity var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; }
     .cfg-btn-neutral:hover { opacity: 0.88; }
     .cfg-btn-neutral:disabled { opacity: 0.6; cursor: not-allowed; }
+    .cfg-pw-campo { display:block; margin-top:12px; }
+    .cfg-pw-campo span { display:block; font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:5px; }
+    .cfg-pw-fila { position:relative; }
+    .cfg-pw-campo input { width:100%; box-sizing:border-box; padding:11px 42px 11px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-surface); color:var(--text-primary); font-size:14px; }
+    .cfg-pw-campo input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+    .cfg-pw-ojo { position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:0; color:var(--text-muted); cursor:pointer; padding:6px; font-size:12px; font-weight:600; }
+    .cfg-pw-ayuda { font-size:12px; color:var(--text-muted); margin-top:8px; }
+    .cfg-pw-olvido { margin-top:18px; padding-top:14px; border-top:1px dashed var(--border); }
+    .cfg-pw-olvido-titulo { font-size:13px; font-weight:700; color:var(--text-primary); }
+    .cfg-pw-link { margin-top:10px; background:none; border:0; padding:0; color:var(--accent); font-size:13px; font-weight:700; cursor:pointer; text-decoration:underline; }
+    .cfg-pw-link:disabled { opacity:.6; cursor:not-allowed; }
     .cfg-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; cursor: pointer; }
     .cfg-back:hover { color: var(--accent); }
 
@@ -1717,6 +1728,45 @@
             Cerrar sesión
           </button>
           <div class="cfg-status" id="logout-status"></div>
+        </div>
+
+        <!-- CAMBIAR CONTRASEÑA (oculta hasta confirmar que es una cuenta real de cliente:
+             no aparece en cuentas de prueba, cuentas internas de sucursal ni administradores) -->
+        <div class="cfg-card fade-in stagger-3" id="card-cambiar-contrasena" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Cambiar contraseña</div>
+              <div class="cfg-card-desc">Cambia la contraseña con la que entras a tu cuenta. Tu correo, tus datos y tus usuarios con PIN no cambian.</div>
+            </div>
+          </div>
+          <form id="form-cambiar-contrasena" autocomplete="on" onsubmit="event.preventDefault(); cambiarContrasena();">
+            <input type="email" id="pw-usuario" autocomplete="username" style="display:none" tabindex="-1" aria-hidden="true">
+            <label class="cfg-pw-campo"><span>Contraseña actual</span>
+              <div class="cfg-pw-fila"><input type="password" id="pw-actual" autocomplete="current-password" required>
+                <button type="button" class="cfg-pw-ojo" onclick="alternarVerContrasena('pw-actual', this)">Ver</button></div></label>
+            <label class="cfg-pw-campo"><span>Contraseña nueva</span>
+              <div class="cfg-pw-fila"><input type="password" id="pw-nueva" autocomplete="new-password" minlength="8" required>
+                <button type="button" class="cfg-pw-ojo" onclick="alternarVerContrasena('pw-nueva', this)">Ver</button></div></label>
+            <label class="cfg-pw-campo"><span>Repite la contraseña nueva</span>
+              <div class="cfg-pw-fila"><input type="password" id="pw-repetir" autocomplete="new-password" minlength="8" required>
+                <button type="button" class="cfg-pw-ojo" onclick="alternarVerContrasena('pw-repetir', this)">Ver</button></div></label>
+            <div class="cfg-pw-ayuda">Mínimo 8 caracteres. Usa letras y números, y evita contraseñas fáciles de adivinar.</div>
+            <button type="submit" class="cfg-btn-neutral" id="btn-cambiar-contrasena">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Cambiar contraseña
+            </button>
+          </form>
+          <div class="cfg-status" id="pw-status"></div>
+
+          <div class="cfg-pw-olvido">
+            <div class="cfg-pw-olvido-titulo">¿Olvidaste tu contraseña actual?</div>
+            <div class="cfg-pw-ayuda" style="margin-top:4px">Te enviamos un enlace a tu correo <strong id="pw-correo-oculto"></strong> para que crees una contraseña nueva sin necesidad de la actual. El enlace vence en poco tiempo; revisa también la carpeta de spam.</div>
+            <button type="button" class="cfg-pw-link" id="btn-olvide-contrasena" onclick="enviarEnlaceRecuperacion()">Enviarme el enlace para crear una contraseña nueva</button>
+            <div class="cfg-status" id="pw-olvido-status"></div>
+          </div>
         </div>
 
         <!-- ELIMINAR CUENTA (oculta hasta confirmar que NO es una cuenta de demostración) -->
@@ -3112,6 +3162,146 @@ async function aplicarModoDemo() {
 }
 
 /* =====================================================
+   CAMBIAR CONTRASEÑA — solo cuentas reales de clientes.
+   El servidor decide si se muestra (no en cuentas de prueba, cuentas
+   internas de sucursal/bodega, negocios vinculados secundarios ni
+   administradores). Tampoco en "Ver como" (solo lectura).
+   Primero se comprueba la contraseña actual con un cliente aparte
+   (no toca la sesión abierta) y desde esa sesión recién verificada se
+   guarda la nueva.
+===================================================== */
+let pwEmailCuenta = null;
+async function aplicarCambioContrasena(email) {
+  const card = document.getElementById('card-cambiar-contrasena');
+  if (!card) return;
+  try {
+    if (window.N360VerComo && window.N360VerComo.activo) return;
+    if (!email) return;
+    const { data, error } = await sbClient.rpc('cuenta_puede_cambiar_contrasena');
+    if (error || !data || data.puede !== true) return;
+    pwEmailCuenta = email;
+    const u = document.getElementById('pw-usuario'); if (u) u.value = email;
+    const oc = document.getElementById('pw-correo-oculto'); if (oc) oc.textContent = ocultarCorreo(email);
+    card.style.display = '';
+  } catch (_) { /* si algo falla, simplemente no se muestra la opción */ }
+}
+
+// "jack@gmail.com" -> "ja**@gmail.com" (para que se reconozca sin mostrarlo completo)
+function ocultarCorreo(email) {
+  const [u, d] = String(email || '').split('@');
+  if (!d) return email || '';
+  return (u.length <= 2 ? u[0] + '*' : u.slice(0, 2) + '*'.repeat(Math.min(6, u.length - 2))) + '@' + d;
+}
+
+// ¿Olvidaste tu contraseña? -> el mismo enlace de recuperación que ya usa la
+// pantalla de inicio de sesión (lleva a reset-password.html). No cambia nada
+// hasta que la persona abre el enlace y escribe la contraseña nueva.
+let enviandoRecuperacion = false;
+async function enviarEnlaceRecuperacion() {
+  if (enviandoRecuperacion) return;
+  const statusEl = document.getElementById('pw-olvido-status');
+  const btn = document.getElementById('btn-olvide-contrasena');
+  if (!pwEmailCuenta) { setStatus(statusEl, 'Esta opción no está disponible para esta cuenta.', false); return; }
+  if (!confirm(`Te enviaremos un enlace a ${ocultarCorreo(pwEmailCuenta)} para crear una contraseña nueva.\n\n¿Enviar ahora?`)) return;
+  enviandoRecuperacion = true;
+  if (btn) btn.disabled = true;
+  try {
+    const { error } = await sbClient.auth.resetPasswordForEmail(pwEmailCuenta, {
+      redirectTo: window.location.origin + '/reset-password.html',
+    });
+    if (error) {
+      const m = String(error.message || '').toLowerCase();
+      setStatus(statusEl, (m.includes('rate') || m.includes('too many') || m.includes('seconds'))
+        ? 'Ya se envió un enlace hace poco. Espera unos minutos y revisa tu correo (también spam).'
+        : 'No se pudo enviar el correo. Intenta de nuevo.', false);
+      return;
+    }
+    setStatus(statusEl, `Listo: revisa ${ocultarCorreo(pwEmailCuenta)} (también spam) y abre el enlace para crear tu contraseña nueva.`, true);
+  } catch (e) {
+    console.error('enviarEnlaceRecuperacion:', e);
+    setStatus(statusEl, 'Sin conexión. Revisa tu internet e intenta de nuevo.', false);
+  } finally {
+    enviandoRecuperacion = false;
+    // Se deja pasar un minuto antes de permitir otro envío (evita mandar varios correos seguidos).
+    setTimeout(() => { if (btn) btn.disabled = false; }, 60000);
+  }
+}
+
+function alternarVerContrasena(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const ver = el.type === 'password';
+  el.type = ver ? 'text' : 'password';
+  if (btn) btn.textContent = ver ? 'Ocultar' : 'Ver';
+}
+
+function mensajeErrorContrasena(err) {
+  const m = String((err && (err.message || err.msg)) || '').toLowerCase();
+  const code = String((err && err.code) || '').toLowerCase();
+  if (code === 'same_password' || m.includes('different from the old')) return 'La contraseña nueva debe ser distinta a la actual.';
+  if (code === 'weak_password' || m.includes('weak') || m.includes('pwned') || m.includes('leaked'))
+    return 'Esa contraseña es muy débil o ya apareció filtrada en internet. Elige otra.';
+  if (m.includes('should be at least') || m.includes('at least')) return 'La contraseña nueva es muy corta.';
+  if (code === 'over_request_rate_limit' || m.includes('rate limit') || m.includes('too many')) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if (m.includes('fetch') || m.includes('network')) return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+  return 'No se pudo cambiar la contraseña. Intenta de nuevo.';
+}
+
+let cambiandoContrasena = false;
+async function cambiarContrasena() {
+  if (cambiandoContrasena) return;
+  const statusEl = document.getElementById('pw-status');
+  const btn = document.getElementById('btn-cambiar-contrasena');
+  const actual = document.getElementById('pw-actual').value;
+  const nueva = document.getElementById('pw-nueva').value;
+  const repetir = document.getElementById('pw-repetir').value;
+
+  if (!pwEmailCuenta) { setStatus(statusEl, 'Esta opción no está disponible para esta cuenta.', false); return; }
+  if (!actual) { setStatus(statusEl, 'Escribe tu contraseña actual.', false); return; }
+  if (nueva.length < 8) { setStatus(statusEl, 'La contraseña nueva debe tener al menos 8 caracteres.', false); return; }
+  if (nueva !== repetir) { setStatus(statusEl, 'La contraseña nueva y su repetición no coinciden.', false); return; }
+  if (nueva === actual) { setStatus(statusEl, 'La contraseña nueva debe ser distinta a la actual.', false); return; }
+
+  cambiandoContrasena = true;
+  if (btn) btn.disabled = true;
+  // Cliente aparte, sin guardar nada en el navegador: no toca la sesión abierta.
+  const verif = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'n360_verificar_contrasena' },
+  });
+  try {
+    const { data: ses, error: errLogin } = await verif.auth.signInWithPassword({ email: pwEmailCuenta, password: actual });
+    if (errLogin || !ses || !ses.user) {
+      const m = String(errLogin?.message || '').toLowerCase();
+      setStatus(statusEl, (m.includes('rate') || m.includes('too many')) ? 'Demasiados intentos. Espera unos minutos y vuelve a probar.' : 'La contraseña actual no es correcta. Si no la recuerdas, usa "¿Olvidaste tu contraseña actual?" aquí abajo.', false);
+      return;
+    }
+    if (ses.user.id !== currentAuthUserId) { setStatus(statusEl, 'No se pudo verificar la cuenta. Recarga la página.', false); return; }
+
+    const { error: errUpd } = await verif.auth.updateUser({ password: nueva });
+    if (errUpd) { setStatus(statusEl, mensajeErrorContrasena(errUpd), false); return; }
+
+    ['pw-actual', 'pw-nueva', 'pw-repetir'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; el.type = 'password'; } });
+    document.querySelectorAll('#form-cambiar-contrasena .cfg-pw-ojo').forEach(b => { b.textContent = 'Ver'; });
+    setStatus(statusEl, 'Contraseña cambiada. Úsala la próxima vez que inicies sesión.', true);
+    // Rastro en la bitácora (sin la contraseña). Si falla, el cambio ya quedó hecho.
+    try {
+      await sbClient.from('auditoria_log').insert({
+        auth_user_id: currentAuthUserId, modulo: 'Configuración', tabla: 'cuenta', accion: 'UPDATE',
+        resumen: 'Se cambió la contraseña de la cuenta',
+      });
+    } catch (_) {}
+  } catch (e) {
+    console.error('cambiarContrasena:', e);
+    setStatus(statusEl, mensajeErrorContrasena(e), false);
+  } finally {
+    // Se cierra solo la sesión de verificación (scope local: no cierra esta ni otras).
+    try { await verif.auth.signOut({ scope: 'local' }); } catch (_) {}
+    cambiandoContrasena = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* =====================================================
    ELIMINAR CUENTA — doble confirmación + RPC segura
 ===================================================== */
 function confirmarEliminarCuenta() {
@@ -3199,6 +3389,7 @@ async function initConfiguracion() {
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('app').style.display = 'flex';
       cargarMultiusuario().then(aplicarModoDemo);
+      aplicarCambioContrasena(user.email);
       cargarSkuDoc();
       cargarModulosOpcionales();
       cargarLotesVencimiento();
@@ -3241,7 +3432,7 @@ sbClient.auth.onAuthStateChange((event) => {
 document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
-<script src="perfiles-guard.js?v=20261015a"></script>
+<script src="perfiles-guard.js?v=20261021c"></script>
 <script src="modulos-guard.js?v=20261021b"></script>
 </body>
 </html>

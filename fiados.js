@@ -512,11 +512,12 @@ async function crearVentaDeFiado(n, clienteId, nombreCli, total, fecha) {
   const { error: eD } = await sb.from('venta_detalles').insert(detalles);
   if (eD) { await sb.from('ventas').delete().eq('id', venta.id); throw eD; }
   // Inventario: el producto ya salió, se descuenta ahora
-  for (const it of n.items) {
-    if (it.tipo_item !== 'producto') continue;
-    const { data: p } = await sb.from('productos').select('stock_actual').eq('id', it.producto_id).eq('auth_user_id', FD.userId).maybeSingle();
-    if (!p) continue;
-    await sb.from('productos').update({ stock_actual: Math.max(0, Number(p.stock_actual || 0) - it.cantidad) }).eq('id', it.producto_id).eq('auth_user_id', FD.userId);
+  // (en el servidor, restando sobre la existencia REAL; nunca baja de 0)
+  const descontar = n.items.filter(it => it.tipo_item === 'producto' && it.producto_id)
+    .map(it => ({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) }));
+  if (descontar.length) {
+    const { error: eS } = await sb.rpc('ajustar_stock_relativo', { p_items: descontar });
+    if (eS) console.warn('Inventario del fiado:', eS);
   }
   await ajustarCompras(clienteId, total, 1);
   return venta.id;
@@ -541,12 +542,19 @@ async function bloqueoDevolucionesVenta(cli, ventaId) {
 }
 
 async function devolverStockDeVenta(ventaId) {
-  const { data: dets } = await sb.from('venta_detalles').select('producto_id,cantidad,tipo_item').eq('venta_id', ventaId);
+  // Se suma en el servidor sobre la existencia REAL, en una sola operación.
+  // Igual que se descontó al vender: presentaciones (caja x12) y combos.
+  const { data: dets } = await sb.from('venta_detalles').select('producto_id,combo_id,cantidad,tipo_item,presentacion_factor').eq('venta_id', ventaId);
+  const devolver = [];
   for (const d of (dets || [])) {
-    if (d.tipo_item !== 'producto' || !d.producto_id) continue;
-    const { data: p } = await sb.from('productos').select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', FD.userId).maybeSingle();
-    if (!p) continue;
-    await sb.from('productos').update({ stock_actual: Number(p.stock_actual || 0) + Number(d.cantidad || 0) }).eq('id', d.producto_id).eq('auth_user_id', FD.userId);
+    if (d.tipo_item !== 'producto') continue;
+    const factor = Number(d.presentacion_factor) > 0 ? Number(d.presentacion_factor) : 1;
+    if (d.producto_id) devolver.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) * factor });
+    else if (d.combo_id) devolver.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
+  }
+  if (devolver.length) {
+    const { error } = await sb.rpc('ajustar_stock_relativo', { p_items: devolver });
+    if (error) throw error;
   }
 }
 // Si la venta (hecha desde Ventas) registró IVA, al eliminar el fiado se revierte con un registro nuevo que resta.
@@ -564,11 +572,17 @@ async function revertirIvaDeVenta(ventaId, etiqueta) {
     });
   } catch (e) { console.warn('revertirIvaDeVenta:', e); }
 }
+// Anula la venta del fiado en UNA operación del servidor (todo o nada):
+// inventario (con presentaciones y combos), estado, historial del cliente
+// e IVA. Si ya estaba anulada, no repite nada. No toca Caja (un fiado no entró a Caja).
+async function anularVentaDelFiado(ventaId) {
+  const { data, error } = await sb.rpc('venta_anular_atomica', { p_venta_id: ventaId, p_descontar_caja: false, p_fecha: hoyISO() });
+  if (error) throw error;
+  return data;
+}
 async function revertirVentaFiado(ventaId) {
-  try {
-    await devolverStockDeVenta(ventaId);
-    await sb.from('ventas').update({ estado: 'anulada' }).eq('id', ventaId).eq('auth_user_id', FD.userId);
-  } catch (e) { console.warn('revertirVentaFiado:', e); }
+  try { await anularVentaDelFiado(ventaId); }
+  catch (e) { console.warn('revertirVentaFiado:', e); }
 }
 
 /* ============================================================
@@ -701,12 +715,7 @@ async function eliminarFiado(id) {
   const ok = await confirmar('¿Eliminar este fiado?', `Se eliminará el fiado de ${fmt(f.monto_total)} de ${f.cliente_nombre}.${extra}`, 'Sí, eliminar', true);
   if (!ok) return;
   try {
-    if (f.venta_id) {
-      await devolverStockDeVenta(f.venta_id);
-      await sb.from('ventas').update({ estado: 'anulada' }).eq('id', f.venta_id).eq('auth_user_id', FD.userId);
-      if (f.cliente_id) await ajustarCompras(f.cliente_id, Number(f.monto_total), -1);
-      await revertirIvaDeVenta(f.venta_id, f.cliente_nombre);
-    }
+    if (f.venta_id) await anularVentaDelFiado(f.venta_id);
     const { error } = await sb.from('fiados').update({ estado: 'eliminado', eliminado_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('auth_user_id', FD.userId);
     if (error) throw error;
     showToast('Fiado eliminado');

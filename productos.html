@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="productos.css?v=20261007a" />
 
   <!-- Supabase JS CDN -->
-  <script src="ver-como.js?v=20261013a"></script>
+  <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js?v=20261021b"></script>
   <script src="auditoria-guard.js"></script>
@@ -1519,6 +1519,9 @@
         <div id="listaColumnasServicios" style="display:flex;flex-direction:column;gap:6px"></div>
         <button class="btn btn-secondary" style="margin-top:10px;font-size:12.5px" onclick="restaurarColumnasServiciosDefault()">Restaurar el orden de siempre</button>
       </div>
+
+      <!-- Solo la ve el administrador (la arma productos-permisos.js) -->
+      <div id="permisosInvSeccion" style="display:none"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarModalConfigInventario()">Cancelar</button>
@@ -1551,9 +1554,11 @@
 </script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="ajuste-existencia.js?v=20261014d"></script>
-<script src="productos.js?v=20261014d"></script>
-<script src="productos-importar.js?v=20261012a"></script>
+<script src="productos.js?v=20261022x"></script>
+<script src="productos-importar.js?v=20261021a"></script>
 <script src="productos-traslados.js?v=20261012a"></script>
+<script src="productos-permisos.js?v=20261021a"></script>
+<script src="empresa-productos.js?v=20261021a"></script>
 
 <!-- Preview margen en modal (helper inline) -->
 <script>
@@ -1586,7 +1591,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261015a"></script>
+<script src="perfiles-guard.js?v=20261021c"></script>
 <script src="modulos-guard.js?v=20261021b"></script>
 <div class="modal-overlay" id="modalMonedaVis" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:380px">

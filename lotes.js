@@ -374,17 +374,25 @@ async function guardarDevolucionProveedor() {
 
   document.getElementById('btn-guardar-devolucion').disabled = true;
   try {
-    // 1) Descontar del lote
-    const { error: errLote } = await sb.from('producto_lotes')
+    // 1) Descontar del lote, solo si su cantidad sigue siendo la que se ve
+    //    en pantalla (si justo se vendió algo de este lote, no se pisa).
+    const { data: loteOk, error: errLote } = await sb.from('producto_lotes')
       .update({ cantidad_actual: round2(Number(lote.cantidad_actual) - cantidad) })
-      .eq('id', lote.id).eq('auth_user_id', STATE.userId);
+      .eq('id', lote.id).eq('auth_user_id', STATE.userId).eq('cantidad_actual', lote.cantidad_actual).select('id');
     if (errLote) throw errLote;
+    if (!loteOk || loteOk.length !== 1) {
+      errEl.textContent = 'La cantidad de este lote cambió mientras tenías la ventana abierta (por ejemplo, una venta). Ciérrala y vuelve a intentarlo.';
+      await cargarLotes();
+      return;
+    }
 
-    // 2) Descontar del stock general del producto
-    const { data: prod } = await sb.from('productos').select('stock_actual').eq('id', lote.producto_id).eq('auth_user_id', STATE.userId).maybeSingle();
-    if (prod) {
-      await sb.from('productos').update({ stock_actual: Math.max(0, round2(Number(prod.stock_actual || 0) - cantidad)) })
-        .eq('id', lote.producto_id).eq('auth_user_id', STATE.userId);
+    // 2) Descontar del stock general del producto (en el servidor, sobre la existencia REAL)
+    const { error: errStock } = await sb.rpc('ajustar_stock_relativo', { p_items: [{ producto_id: lote.producto_id, delta: -cantidad }] });
+    if (errStock) {
+      // Se deshace el lote para no dejar las dos cantidades distintas
+      await sb.from('producto_lotes').update({ cantidad_actual: lote.cantidad_actual })
+        .eq('id', lote.id).eq('auth_user_id', STATE.userId).eq('cantidad_actual', round2(Number(lote.cantidad_actual) - cantidad));
+      throw errStock;
     }
 
     // 3) Dejar registro

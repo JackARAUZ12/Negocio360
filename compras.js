@@ -855,6 +855,7 @@ function abrirNuevaCompra() {
   resetNuevaCompraUI();
   resetFormProductoNuevo();
   mostrarPasoSeleccion();
+  montarComisionTarjetaCompra('nc', 'nc-banco-elegido-wrap', 'nc-metodo-pago', () => calcularTotales().total);
   openModal('modal-nueva-compra');
 
   hayCajaChicaAbiertaHoy().then(abierta => {
@@ -1815,6 +1816,7 @@ function abrirCompraDirecta() {
   document.getElementById('cd-banco').value = '';
   STATE.proveedorSeleccionadoDirectaCompra = null;
   populateMetodosSelect();
+  montarComisionTarjetaCompra('cd', 'cd-wrap-banco', 'cd-metodo-pago', 'cd-monto');
   openModal('modal-compra-directa');
 
   hayCajaChicaAbiertaHoy().then(abierta => {
@@ -1898,6 +1900,9 @@ async function guardarCompraDirecta() {
     if (!seguir) return;
   }
 
+  let comision = null;
+  try { comision = leerComisionTarjetaCompra('cd'); } catch (eCom) { errEl.textContent = eCom.message; return; }
+
   setBtnLoading('cd-btn-guardar', true);
   try {
     const { data: numData } = await sbClient.rpc('siguiente_numero_compra', { p_user_id: STATE.userId });
@@ -1936,7 +1941,11 @@ async function guardarCompraDirecta() {
       observaciones: `Proveedor: ${proveedor?.nombre || 'Sin proveedor'}`, fecha,
     }).select().single();
     if (errMov) showToast('La compra se guardó, pero no se pudo registrar en Caja: ' + errMov.message, 'error');
-    else await sbClient.from('compras').update({ movimiento_caja_id: mov.id }).eq('id', compra.id);
+    else {
+      await sbClient.from('compras').update({ movimiento_caja_id: mov.id }).eq('id', compra.id);
+      await registrarComisionTarjetaCompra(comision, { fecha, metodoId: metodoPagoId, metodoNombre: metodoPagoNombre, bancoId: bancoPagoId,
+        origenCaja, descripcion: `Compra directa ${numero} — ${concepto}`, origenId: compra.id });
+    }
 
     if (cdRet > 0) {
       const { error: eRetD } = await sbClient.from('retenciones_ir').insert({
@@ -1964,6 +1973,22 @@ async function guardarCompraDirecta() {
   } finally {
     setBtnLoading('cd-btn-guardar', false);
   }
+}
+
+// Comisión opcional por pagar con tarjeta (si el proveedor la cobra):
+// gasto aparte + su egreso del mismo banco, ligados a la compra.
+function montarComisionTarjetaCompra(prefijo, despuesDe, metodo, monto) {
+  if (!window.N360ComisionPago) return;
+  N360ComisionPago.montar({ prefijo, despuesDe, metodo, monto });
+  N360ComisionPago.limpiar(prefijo); N360ComisionPago.actualizar(prefijo);
+}
+function leerComisionTarjetaCompra(prefijo) {
+  return window.N360ComisionPago ? N360ComisionPago.leer(prefijo) : null; // lanza Error si falta un dato
+}
+async function registrarComisionTarjetaCompra(comision, d) {
+  if (!comision || !window.N360ComisionPago) return;
+  const r = await N360ComisionPago.registrar(sbClient, { userId: STATE.userId, comision, ...d, origenTipo: 'compra' });
+  if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('La compra se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala en Gastos.', 'warning'); }
 }
 
 async function guardarCompra() {
@@ -2026,6 +2051,11 @@ async function guardarCompra() {
   if (estado === 'completada' && !_bancoElegidoIdCompra && /efectivo/i.test(metodoPagoNombre) && window.AvisoEfectivo) {
     const seguir = await window.AvisoEfectivo.verificar({ sb: sbClient, userId: STATE.userId, monto: retNeto, origenCaja });
     if (!seguir) return;
+  }
+
+  let comision = null;
+  if (estado === 'completada') {
+    try { comision = leerComisionTarjetaCompra('nc'); } catch (eCom) { showToast(eCom.message, 'error'); return; }
   }
 
   setBtnLoading('nc-btn-save', true);
@@ -2219,6 +2249,8 @@ async function guardarCompra() {
         await sbClient.from('compras')
           .update({ movimiento_caja_id: mov.id })
           .eq('id', compra.id);
+        await registrarComisionTarjetaCompra(comision, { fecha, metodoId: metodoPagoId, metodoNombre: metodoPagoNombre,
+          bancoId: _bancoElegidoIdCompra || null, origenCaja, descripcion: `Compra ${numero}${STATE.proveedorSeleccionado?.nombre ? ' — ' + STATE.proveedorSeleccionado.nombre : ''}`, origenId: compra.id });
       }
     }
 
@@ -2436,7 +2468,8 @@ async function convertirOrdenACompra(ordenId) {
     if (typeof llenarSelectProveedores === 'function') llenarSelectProveedores();
     const selProv = document.getElementById('nc-proveedor-select');
     if (selProv && STATE.proveedorSeleccionado?.id) selProv.value = STATE.proveedorSeleccionado.id;
-    openModal('modal-nueva-compra');
+    montarComisionTarjetaCompra('nc', 'nc-banco-elegido-wrap', 'nc-metodo-pago', () => calcularTotales().total);
+   openModal('modal-nueva-compra');
     // Se salta directo al carrito ya lleno — el usuario revisa/ajusta
     // y avanza normalmente por el resto del asistente (método de pago,
     // observaciones, etc.) hasta confirmar en el último paso.
@@ -2721,6 +2754,7 @@ function abrirCompletarCompra(id) {
     ? STATE.metodosPago.map(m => `<option value="${m.id||''}" data-nombre="${escHtml(m.nombre)}">${escHtml(m.nombre)}</option>`).join('')
     : '<option value="" data-nombre="Efectivo">Efectivo</option>';
   document.getElementById('cc-metodo-pago').innerHTML = opciones;
+  montarComisionTarjetaCompra('cc', 'cc-banco-elegido-wrap', 'cc-metodo-pago', () => Number((STATE.compras.find(c => c.id === compraToCompletar) || {}).total) || 0);
 
   openModal('modal-completar-compra');
 }
@@ -2805,6 +2839,9 @@ async function completarCompra() {
     }
   }
 
+  let comision = null;
+  try { comision = leerComisionTarjetaCompra('cc'); } catch (eCom) { errEl.textContent = eCom.message; return; }
+
   setBtnLoading('btn-confirmar-completar', true);
   try {
     const { data: movResult } = await sbClient.from('movimientos_financieros')
@@ -2830,6 +2867,8 @@ async function completarCompra() {
       metodo_pago_id: metodoPagoId, metodo_pago_nombre: metodoPagoNombre,
     }).eq('id', compra.id).eq('auth_user_id', STATE.userId);
     if (errUpdate) throw errUpdate;
+    await registrarComisionTarjetaCompra(comision, { fecha: todayISO(), metodoId: metodoPagoId, metodoNombre: metodoPagoNombre,
+      bancoId: _bancoElegidoIdCompletar || null, descripcion: `Compra ${compra.numero}${compra.proveedor_nombre ? ' — ' + compra.proveedor_nombre : ''}`, origenId: compra.id });
 
     showToast('Compra completada — se descontó de Caja');
     closeModal('modal-completar-compra');
@@ -2889,13 +2928,21 @@ async function anularCompra() {
         .maybeSingle();
 
       if (prod) {
-        const stockRevertido = Math.max(0, Number(prod.stock_actual) - Number(linea.cantidad));
-        // Si esta compra cambió el costo promedio y nadie lo cambió después, se devuelve el costo anterior.
+        // La existencia se resta en el servidor sobre el valor REAL del momento.
+        const { error: errStock } = await sbClient.rpc('ajustar_stock_producto', {
+          p_producto_id: linea.producto_id, p_delta: -Number(linea.cantidad || 0), p_exigir_existencia: false,
+        });
+        if (errStock) throw errStock;
+        // Si esta compra cambió el costo promedio y nadie lo cambió después, se devuelve el costo anterior
+        // (solo si el costo sigue siendo el que se acaba de leer).
         const devolverCosto = linea.costo_antes != null && linea.costo_despues != null && Math.abs(Number(prod.costo) - Number(linea.costo_despues)) < 0.005;
-        await sbClient.from('productos')
-          .update({ stock_actual: stockRevertido, ...(devolverCosto ? { costo: Number(linea.costo_antes) } : {}), updated_at: new Date().toISOString() })
-          .eq('id', linea.producto_id)
-          .eq('auth_user_id', STATE.userId);
+        if (devolverCosto) {
+          await sbClient.from('productos')
+            .update({ costo: Number(linea.costo_antes), updated_at: new Date().toISOString() })
+            .eq('id', linea.producto_id)
+            .eq('auth_user_id', STATE.userId)
+            .eq('costo', prod.costo);
+        }
       }
     }
 
@@ -2909,6 +2956,11 @@ async function anularCompra() {
         })
         .eq('id', compra.movimiento_caja_id)
         .eq('auth_user_id', STATE.userId);
+    }
+
+    // 3b. Si al pagarla con tarjeta el proveedor cobró comisión, se anula también (gasto + egreso).
+    if (window.N360ComisionPago) {
+      await N360ComisionPago.anular(sbClient, STATE.userId, 'compra', compraToAnular, `Compra ${compra.numero} anulada`);
     }
 
     // 4. Cambiar estado compra a anulada
