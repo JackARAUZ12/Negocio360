@@ -1869,7 +1869,7 @@
       </div>
 
       <div class="form-row">
-        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()"/></div>
+        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()" onchange="autoMarcarSiCoincideConSistema()"/></div>
         <div><label>Conciliado + lo marcado ahora</label><div class="stat-readonly" id="cb-saldo-calculado">—</div></div>
         <div><label>Diferencia</label><div class="stat-readonly" id="cb-diferencia" style="font-weight:800">—</div></div>
       </div>
@@ -1905,6 +1905,7 @@
         </div>
       </div>
 
+      <p id="cb-auto-nota" style="display:none;color:var(--success);font-size:12.5px;margin-top:10px"></p>
       <p id="cb-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
 
       <div style="margin-top:14px">
@@ -1930,7 +1931,7 @@
   <script src="cajaAPI.js?v=20261007a"></script>
   <script src="caja-segura.js?v=20261012a"></script>
   <script src="moneda-alterna.js?v=20261021b"></script>
-  <script src="caja.js?v=20261023b"></script>
+  <script src="caja.js?v=20261023c"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261021c"></script>

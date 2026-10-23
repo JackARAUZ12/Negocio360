@@ -2120,6 +2120,24 @@ async function verBanco(bancoId) {
 ===================================================== */
 let CONC = { bancoId: null, bancoNombre: null, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0 };
 
+// Si el saldo que escribes del banco es IGUAL al saldo que tiene el sistema y todavía no
+// marcaste nada, se marcan todos los movimientos pendientes (así no hay que marcarlos a
+// mano). Se avisa en pantalla y puedes quitar las marcas. Una sola vez por ventana.
+// Cerrar la conciliación sigue exigiendo diferencia 0 (y el servidor lo vuelve a comprobar).
+function autoMarcarSiCoincideConSistema() {
+  const inp = document.getElementById('cb-saldo-banco');
+  if (!inp || inp.value === '' || CONC._autoMarcado || CONC.marcados.size || !CONC.movimientos.length) return;
+  const pend = round2(CONC.movimientos.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? _montoConcMov(m) : -_montoConcMov(m)), 0));
+  const sistema = CONC.saldoSistema != null ? CONC.saldoSistema : round2(CONC.saldoReconciliadoPrevio + pend);
+  if (Math.abs(round2(parseFloat(inp.value) || 0) - sistema) >= 0.005) return;
+  CONC._autoMarcado = true;
+  CONC.marcados = new Set(CONC.movimientos.map(m => m.id));
+  renderMovimientosConciliacion();
+  recalcularDiferenciaConciliacion();
+  const nota = document.getElementById('cb-auto-nota');
+  if (nota) { nota.textContent = '✅ Tu saldo coincide con el del sistema, así que marqué todos los movimientos. Si algo no aparece en tu estado de cuenta, quítale la marca.'; nota.style.display = ''; }
+}
+
 async function abrirConciliarBanco(bancoId, bancoNombre) {
   const banco = STATE.bancos.find(b => b.id === bancoId);
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
@@ -2128,6 +2146,7 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
   document.getElementById('cb-banco-nombre').textContent = bancoNombre;
   document.getElementById('cb-saldo-banco').value = '';
   document.getElementById('cb-error').textContent = '';
+  { const n = document.getElementById('cb-auto-nota'); if (n) { n.style.display = 'none'; n.textContent = ''; } }
   document.getElementById('cb-ajuste-form').style.display = 'none';
   document.getElementById('cb-movimientos-tbody').innerHTML = '<tr><td colspan="4" class="empty-cell">Cargando…</td></tr>';
   openModal('modal-conciliar-banco');
@@ -2195,7 +2214,7 @@ function marcarConciliacion(modo) {
   const errEl = document.getElementById('cb-error');
   if (errEl) errEl.textContent = '';
   if (modo === 'todos') CONC.marcados = new Set(CONC.movimientos.map(m => m.id));
-  else if (modo === 'ninguno') CONC.marcados = new Set();
+  else if (modo === 'ninguno') { CONC.marcados = new Set(); CONC._autoMarcado = true; }
   else if (modo === 'hasta') {
     const hasta = document.getElementById('cb-hasta-fecha')?.value;
     if (!hasta) { if (errEl) errEl.textContent = 'Elige la fecha de corte de tu estado de cuenta.'; return; }
