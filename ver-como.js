@@ -41,7 +41,7 @@
     clientes_con_cobro_pendiente: 1, asistente_top_clientes: 1, asistente_productos_mas_vendidos: 1,
     catalogo_obtener_limites: 1, catalogo_resumen_eventos: 1, catalogo_visitas_por_catalogo: 1,
     nombres_miembros_chat_grupal: 1, empresa_mis_negocios: 1, empresa_productos_negocio: 1, empresa_inventario_resumen: 1,
-    bancos_saldos: 1, bancos_sin_asignar: 1
+    bancos_saldos: 1, bancos_sin_asignar: 1, empresa_bancos_resumen: 1, empresa_banco_movimientos: 1
   };
 
   function leerInfo() {

@@ -8,7 +8,7 @@
   <title>Caja — Negocio360</title>
 
   <!-- Supabase CDN -->
-  <script src="ver-como.js?v=20261023a"></script>
+  <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js?v=20261021b"></script>
   <script src="auditoria-guard.js"></script>
@@ -1437,6 +1437,18 @@
             <button class="btn-secondary btn-sm" onclick="guardarTasaCambio()">Guardar</button>
             <span style="font-size:11px;color:var(--text-muted)">Se usa para convertir pagos entre cuentas en córdobas y en dólares. Actualízala cuando cambie.</span>
           </div>
+        </div>
+
+        <!-- BANCOS DE LA EMPRESA (solo aparece si este negocio es parte de una empresa con bancos compartidos) -->
+        <div class="panel-card" id="empresa-bancos-panel" style="display:none;margin-bottom:16px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+              Bancos de la empresa
+            </div>
+            <span style="font-size:12px;color:var(--text-muted)">Saldo real de cada banco = la parte de cada negocio sumada. Aquí se concilia contra el estado de cuenta.</span>
+          </div>
+          <div id="empresa-bancos-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;padding:16px"></div>
         </div>
 
         <div class="panel-card">
