@@ -274,7 +274,12 @@
   // entrar por URL directa (favoritos guardados, enlaces viejos, etc.).
   function protegerPaginaActual(cfg) {
     const mod = MODULOS_POR_ARCHIVO[currentFile()];
-    if (mod && !estaActivo(cfg, mod.key, mod.flagPropio, mod.flagsAlternos)) {
+    // "Mis Negocios" NO lleva candado de interruptor: toda cuenta entra desde
+    // Configuración. (Antes exigía un interruptor que nada en el sistema podía
+    // encender, y el botón de Configuración rebotaba siempre al dashboard.)
+    // Las restricciones de perfil/sucursal de más abajo SÍ se siguen aplicando.
+    const libreDeInterruptor = !!mod && mod.key === 'negocios_vinculados';
+    if (mod && !libreDeInterruptor && !estaActivo(cfg, mod.key, mod.flagPropio, mod.flagsAlternos)) {
       location.href = 'dashboard.html';
       return true;
     }
