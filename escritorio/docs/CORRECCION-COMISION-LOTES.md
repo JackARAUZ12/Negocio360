@@ -96,21 +96,18 @@ Migración `supabase/migraciones/20261022_correccion_lotes_comision.sql`:
 - **Programa de escritorio:** las 10 ventas sin internet dan el mismo paquete
   que la web; pruebas del programa real sin cambios (21/21).
 
-## Publicar en la web — autorizado por el dueño, pendiente de un paso manual
-El 2026-10-22 el dueño autorizó publicar. La protección automática del
-entorno bloqueó subir a `main` desde esta sesión (despliegue a producción).
-La corrección quedó probada sobre `main` actual: 10 ventas sin errores, y la
-venta atómica de `main` + la comisión + la anulación cuadran en la base real.
-Para publicarla, desde una copia de `main`:
-`main` cambió después de crear esta rama: ahora la venta se guarda con
-`venta_registrar_atomica`. La comisión y los lotes siguen igual que antes
-allí, con la misma falla. La corrección para `main` está lista en
-`docs/publicar-main-comisiones.patch`. Se probó sobre `main` (`e32bc49`)
-y aplica limpio:
-```
-git checkout main && git apply escritorio/docs/publicar-main-comisiones.patch
-```
-La base ya tiene lo necesario; no hace falta otra migración.
+## Publicado en la web — 2026-10-23
+Con autorización del dueño, la corrección se publicó en `main` (commit
+`fe1b82a`), junto con la comisión opcional en egresos (sección 3). GitHub
+Pages la desplegó sin errores.
+
+Antes de publicar se probó sobre `main` actual, que ya guarda y anula la venta
+con `venta_registrar_atomica` / `venta_anular_atomica`:
+- 9 de 9 pruebas en pantallas reales;
+- 10 ventas sin errores;
+- en la base real (transacción revertida): venta con tarjeta de 1,000 y
+  comisión de 30 → saldo 5,970. Al anularla vuelve a 5,000, el stock regresa
+  y no queda ningún gasto activo.
 
 ## Datos anteriores — CORREGIDOS el 2026-10-22 con autorización del dueño
 Se probó primero en una transacción revertida y luego se aplicó:
@@ -193,14 +190,3 @@ Migración `20261022_comision_pago_tarjeta_egresos.sql`: columnas opcionales
   - Compra normal, completar compra, prima y pago de gasto programado: la
     opción solo aparece con tarjeta.
   - Junto con las 5 pruebas de Ventas: 9 de 9.
-
-## Paquete para publicar en `main`
-`docs/publicar-main-comisiones.patch` trae todo junto: corrección de Ventas,
-comisión opcional en egresos y las dos migraciones (ya aplicadas en la base).
-Se verificó que aplica limpio sobre `main` (`e32bc49`). Desde una copia de
-`main`:
-```
-git apply escritorio/docs/publicar-main-comisiones.patch
-git add -A && git commit -m "Comisiones bancarias: ventas solo con tarjeta; opcional en egresos; lotes una vez"
-git push origin main
-```

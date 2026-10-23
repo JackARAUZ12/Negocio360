@@ -454,9 +454,8 @@ Pedida por el dueño. Detalle completo en `docs/CORRECCION-COMISION-LOTES.md`.
 - **Pruebas:** 5 ventas de la web corregida, idénticas fila por fila al
   servidor. Pantalla real probada sobre esta rama y sobre `main` actual. 60
   unitarias, 22 de navegador y 21 del programa real: todas pasan.
-- **Pendiente de autorización del dueño:**
-  - publicar en `main` (parche listo: `docs/publicar-main-comisiones.patch`);
-  - corregir las 4 comisiones antiguas de la cuenta piloto.
+- **Publicado en `main`** el 2026-10-23 (commit `fe1b82a`), con autorización
+  del dueño. Las 4 comisiones antiguas de la cuenta piloto ya se corrigieron.
 
 ### Aviso importante para el programa de escritorio
 Mientras tanto, `main` cambió cómo se guarda una venta: ahora usa
@@ -487,3 +486,4 @@ Queda como siguiente paso.
   - Migración aplicada: `gastos.origen_tipo/origen_id`.
   - Pruebas: base revertida y 9/9 en pantallas reales sobre `main`.
   - Paquete único para publicar: `docs/publicar-main-comisiones.patch`. Subir a `main` sigue bloqueado por la protección del entorno.
+- 2026-10-23: PUBLICADO en `main` (`fe1b82a`), con autorización del dueño: comisión solo con tarjeta en Ventas, comisión opcional en egresos y lote una sola vez. GitHub Pages desplegó sin errores. Antes se probó sobre `main` actual: 9/9 pantallas reales, 10 ventas sin errores, y venta + comisión + anulación en la base real (revertida). Se quitó el parche, que ya no hace falta.

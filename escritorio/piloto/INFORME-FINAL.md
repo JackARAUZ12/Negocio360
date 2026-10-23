@@ -56,7 +56,7 @@ Rendimiento medido:
 - en el servidor, unos 7 milésimos de segundo por venta;
 - en el programa, 500 ventas se guardan en 0,8 s y suben en unos 3 s (con el servidor simulado).
 
-## Hallazgos en el sistema web (corregidos el 2026-10-22; falta publicarlos en `main`)
+## Hallazgos en el sistema web (corregidos y publicados en `main` el 2026-10-23)
 Ver `escritorio/docs/CORRECCION-COMISION-LOTES.md`. La comisión ahora aplica
 solo a tarjeta y se guarda como gasto real. El lote se descuenta una sola vez.
 

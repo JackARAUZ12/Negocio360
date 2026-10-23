@@ -108,14 +108,17 @@ test('anular una venta con tarjeta: también se anula su comisión (gasto cancel
     const reg = await r.page.evaluate((d) => window.__N360_REGISTRO.slice(d), desde);
     const movs = reg.filter((w) => w.tabla === 'movimientos_financieros');
     // reverso del ingreso de la venta
-    assert.ok(movs.some((w) => w.op === 'insert' && w.payload.tipo_flujo === 'EGRESO' && /^Reverso por anulación/.test(w.payload.concepto)));
+    // reverso del ingreso: en la página (web anterior) o en el servidor con venta_anular_atomica (web nueva)
+    const anulaServidor = reg.find((w) => w.op === 'rpc' && w.nombre === 'venta_anular_atomica');
+    assert.ok(movs.some((w) => w.op === 'insert' && w.payload.tipo_flujo === 'EGRESO' && /^Reverso por anulación/.test(w.payload.concepto))
+      || (anulaServidor && anulaServidor.args.p_descontar_caja === true && anulaServidor.resultado.caja_lineas === 1));
     // egreso de la comisión anulado, buscado por su gasto
     const anulaCom = movs.find((w) => w.op === 'update' && w.payload.estado === 'anulado'
       && w.filtros.some((f) => f[1] === 'referencia_tipo' && f[2] === 'gasto') && w.filtros.some((f) => f[1] === 'referencia_id' && f[2] === gastoId));
     assert.ok(anulaCom, 'se anula el egreso de la comisión');
     const cancela = reg.find((w) => w.tabla === 'gastos' && w.op === 'update' && w.payload.estado === 'cancelado');
     assert.ok(cancela && cancela.filtros.some((f) => f[1] === 'id' && f[2] === gastoId), 'se cancela el gasto de la comisión');
-    const anulada = reg.find((w) => w.tabla === 'ventas' && w.op === 'update' && w.payload.estado === 'anulada');
+    const anulada = reg.find((w) => w.tabla === 'ventas' && w.op === 'update' && w.payload.estado === 'anulada') || anulaServidor;
     assert.ok(anulada);
   } finally { await r.navegador.close(); }
 });

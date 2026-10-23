@@ -122,6 +122,25 @@
       return { venta_id: vid, ya_existia: false, caja_ids: caja, avisos: [] };
     },
     ajustar_stock_relativo(a) { return (a.p_items || []).length; },
+    // Anulación en el servidor (como venta_anular_atomica): venta anulada y,
+    // si se pide, un egreso que compensa cada ingreso vigente de la venta.
+    venta_anular_atomica(a) {
+      const t = F().tablas;
+      const v = (t.ventas || []).find((x) => x.id === a.p_venta_id);
+      if (!v) return null;
+      if (v.estado === 'anulada') return { ya_anulada: true };
+      v.estado = 'anulada';
+      let caja = 0;
+      if (a.p_descontar_caja) {
+        for (const m of (t.movimientos_financieros || []).filter((x) => x.referencia_tipo === 'venta' && x.referencia_id === v.id && x.tipo_flujo === 'INGRESO' && x.estado === 'completado')) {
+          t.movimientos_financieros.push({ id: nuevoId(), auth_user_id: m.auth_user_id, tipo_flujo: 'EGRESO', tipo_movimiento: 'OTRO_EGRESO',
+            concepto: 'Reverso por anulación de venta ' + (v.numero_venta || ''), monto: m.monto, banco_id: m.banco_id,
+            referencia_tipo: 'venta', referencia_id: v.id, estado: 'completado', created_at: new Date(Date.now() + (++reloj)).toISOString() });
+          caja++;
+        }
+      }
+      return { ya_anulada: false, caja_lineas: caja, stock_lineas: 0, iva_reversado: 0, proforma_revertida: false, credito_cancelado: false };
+    },
   };
 
   function rpc(nombre, args) {
