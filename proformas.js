@@ -1590,6 +1590,13 @@ async function cargarConfigTicket() {
     STATE.configTicket = data || null;
   } catch (e) { STATE.configTicket = null; }
 }
+// FIX 23-oct-2026: ¿el negocio quiere que se descargue el comprobante PDF
+// al cerrar una venta? (Ventas › Configurar ticket › "Descargar el recibo en
+// PDF..."). Si lo desactivó, convertir una proforma en venta ya no lo descarga.
+async function proformaDescargaPdfActiva() {
+  try { if (!STATE.configTicket) await cargarConfigTicket(); } catch (_) {}
+  return STATE.configTicket?.descargar_pdf_automatico !== false;
+}
 async function abrirConfigTicket() {
   if (!STATE.configTicket) await cargarConfigTicket();
   const c = STATE.configTicket || {};
@@ -1961,7 +1968,7 @@ async function confirmarConvertirAVenta() {
     // una vez el comprobante tamaño carta correspondiente — mismo
     // estilo que ya usa el sistema, sin que la persona tenga que ir
     // a buscarlo aparte a Ventas.
-    try {
+    if (await proformaDescargaPdfActiva()) try {
       const itemsCarta2 = detallesConCombo.map(d => ({
         nombre: d.producto_nombre, cantidad: d.cantidad, precio: d.precio,
         descuento: d.descuento, subtotal: d.subtotal,

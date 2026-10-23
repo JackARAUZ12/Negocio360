@@ -5063,7 +5063,14 @@ function dibujarRecibo(doc, venta, items) {
   }
 
   linea(2);
-  centrado('¡Gracias por su compra!', 8.5, true);
+  // FIX 23-oct-2026: el recibo PDF usaba siempre "¡Gracias por su compra!"
+  // fijo; ahora lleva el "Mensaje al pie del ticket" configurado (igual que
+  // el ticket impreso). Si no hay mensaje, queda el de siempre.
+  {
+    const msgPie = String(venta._mensajePie || '').trim() || '¡Gracias por su compra!';
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+    doc.splitTextToSize(msgPie, W - M*2).forEach((ln, i) => { if (i) linea(4); centrado(ln, 8.5, true); });
+  }
   linea(4.5);
   centrado('Generado por Negocio360', 6.5);
   linea(5);
@@ -5083,6 +5090,7 @@ function generarPDFRecibo(venta, items) {
     ruc:       S.empresaConfig?.ruc || '',
   };
   venta._hora = new Date().toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' });
+  venta._mensajePie = (typeof VR !== 'undefined' && VR.config?.mensaje_pie_ticket) || '';
 
   // Unidad de medida junto a la cantidad (lb, kg...): viene del item o, si es un
   // detalle guardado, se busca por producto_id en los productos ya cargados.
@@ -5153,12 +5161,18 @@ async function enriquecerItemsConCombo(items) {
   }
 }
 
-async function descargarReciboDeVenta(venta, items) {
+// FIX 23-oct-2026: si el negocio DESACTIVÓ "Descargar el recibo en PDF al
+// cerrar cada venta", al cerrar la venta ya no se genera ni se abre ninguna
+// pestaña con el PDF (antes se abría igual para imprimir). El ticket impreso
+// sigue saliendo por su propia vía, como siempre. El botón "Descargar recibo"
+// del detalle (opciones.manual) siempre descarga, porque lo pide la persona.
+async function descargarReciboDeVenta(venta, items, opciones = {}) {
   try {
-    items = await enriquecerItemsConCombo(items);
     await cargarConfigVentaRapida();
     const cfg = VR.config || {};
-    const descargarAutomatico = cfg.descargar_pdf_automatico !== false;
+    if (opciones.manual !== true && cfg.descargar_pdf_automatico === false) return;
+    items = await enriquecerItemsConCombo(items);
+    const descargarAutomatico = true;
     if (cfg.ancho_ticket === 'carta') {
       const doc = await generarComprobanteCartaPDF('venta', {
         userId: S.userId, numero: venta.numero_venta, fecha: fmtFecha(venta.fecha || todayISO()),
@@ -5192,7 +5206,7 @@ async function descargarReciboActual() {
   try {
     const { data: items } = await sb.from('venta_detalles').select('*')
       .eq('venta_id', S.ventaDetalleId).eq('auth_user_id', S.userId);
-    descargarReciboDeVenta(venta, items || []);
+    descargarReciboDeVenta(venta, items || [], { manual: true });
   } catch (e) {
     console.error('descargarReciboActual:', e);
     showToast('No se pudo generar el recibo', 'error');
