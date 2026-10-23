@@ -1807,6 +1807,8 @@ async function abrirNuevaVenta() {
   S._txOrdenId = null;
   S._vetEstanciaId = null;
   S._agendaCitaId = null;
+  S.certificado = null;          // certificado de regalo aplicado a esta venta (certificados-venta.js)
+  S._certEmisionId = null;       // esta venta COBRA un certificado (modo "venta")
   S._recompensas  = undefined;
   S._saldoPuntos  = undefined;
   S.metodoPagoId  = null;
@@ -3093,6 +3095,26 @@ async function aplicarCobroAgenda() {
   showToast(`Cita de ${d.cliente || 'el cliente'} cargada en la venta.`);
   if (noAgregados) showToast(`${noAgregados} servicio(s) no se pudieron agregar (ya no existen o están inactivos). Revísalos.`, 'warning');
   if ((d.sinCatalogo || []).length) showToast(`Agrega a mano: ${d.sinCatalogo.join(', ')} (no están en tu catálogo).`, 'warning');
+}
+
+// Cobro de un certificado de regalo "como venta" (certificados.html): abre la venta con el
+// servicio "Certificado de regalo" al monto del certificado. Al confirmar, la base activa el
+// certificado en la MISMA operación que guarda la venta (certificado_emision_id).
+async function aplicarCobroCertificado() {
+  const raw = sessionStorage.getItem('n360_certificado_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_certificado_cobro');
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarCobroCertificado, dato corrupto:', e); return; }
+  await abrirNuevaVenta();
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  const prod = (S.productosCache || []).find(p => p.id === d.productoId);
+  if (!prod) { showToast('No se encontró el servicio "Certificado de regalo". Recarga la página e intenta de nuevo.', 'error'); return; }
+  await agregarAlCarritoConPrecio(prod.id, 'servicio', null);
+  const it = S.carrito.find(x => x.id === prod.id);
+  if (it) { it.cantidad = 1; it.precio = round2(Number(d.monto) || 0); it.nombre = `Certificado de regalo ${d.codigo || ''}`.trim(); recalcItem(it); renderCarrito('servicio'); calcularResumen(); }
+  S._certEmisionId = d.certId || null;
+  showToast(`Certificado ${d.codigo || ''} cargado en la venta: cóbralo para activarlo.`);
 }
 
 // Vincular receta con la venta (Farmacia fase 2) -- gateado igual
@@ -4597,7 +4619,13 @@ function calcularResumen() {
       if (!(descuentoPuntos > 0)) { const nom = S.canje.nombre; S.canje = null; descuentoPuntos = 0; showToast(`El canje "${nom}" ya no aplica a esta venta y se quitó.`, 'warning'); }
     }
   }
-  const descuento = round2(descuentoBase + descuentoPuntos);
+  // Certificado de regalo cobrado como venta o de cortesía: se usa como DESCUENTO
+  // (la venta ya se contó al emitirlo, o es un regalo). Ver certificados-venta.js.
+  let descuentoCert = 0;
+  if (S.certificado && S.certificado.modo !== 'anticipo') {
+    descuentoCert = round2(Math.min(Number(S.certificado.saldo) || 0, Math.max(subtotal - descuentoBase - descuentoPuntos, 0)));
+  }
+  const descuento = round2(descuentoBase + descuentoPuntos + descuentoCert);
   const baseImponible = Math.max(subtotal - descuento, 0);
   const ivaMonto = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
   const otros = (S.otrosImpuestos || []).map(o => ({ id: o.id, nombre: o.nombre, porcentaje: Number(o.porcentaje)||0, monto: round2(baseImponible * ((Number(o.porcentaje)||0)/100)) })).filter(o => o.monto > 0);
@@ -4607,12 +4635,19 @@ function calcularResumen() {
   // Retención de IR que me hace el cliente: NO cambia el total, solo lo que cobro.
   const retencionIr = S.retIr.activo ? round2(baseImponible * ((Number(S.retIr.porcentaje)||0)/100)) : 0;
   const retencionPct = retencionIr > 0 ? Number(S.retIr.porcentaje) : 0;
-  const cobrar = round2(total - retencionIr);
-  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos;
+  // Certificado de regalo cobrado por adelantado: paga parte (o todo) de lo que se cobra;
+  // ese dinero ya entró a Caja cuando se vendió el certificado.
+  const cobrarSinCert = round2(total - retencionIr);
+  const certPago = (S.certificado && S.certificado.modo === 'anticipo')
+    ? round2(Math.min(Number(S.certificado.saldo) || 0, Math.max(cobrarSinCert, 0))) : 0;
+  const cobrar = round2(cobrarSinCert - certPago);
+  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos - descuentoCert;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle };
+  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle,
+                 descuentoCert, certPago, certAplicado: round2(descuentoCert + certPago) };
+  if (window.N360CertVenta) { try { N360CertVenta.pintar(); } catch (_) {} }
 
   // Aviso visual de promociones aplicadas — se inserta junto al
   // resumen si el contenedor existe; si no existe en el HTML, esto
@@ -4674,6 +4709,7 @@ function setEl2(id, val) {
 function renderMetodosPagoModal() {
   const grid = document.getElementById('metodos-grid');
   if (!grid) return;
+  if (window.N360CertVenta) { try { N360CertVenta.pintar(); } catch (_) {} }
 
   const iconos = {
     'Efectivo':'💵', 'Transferencia':'🏦', 'Tarjeta':'💳',
@@ -4709,6 +4745,7 @@ function renderMetodosPagoModal() {
 /* Fiados: la venta se registra, pero el dinero NO entra a Caja hasta que el cliente pague
    (eso se cobra desde el módulo Fiados). Solo existe si el módulo de Fiados está activo. */
 function seleccionarFiado() {
+  if (S.certificado) { showToast('Una venta pagada con certificado de regalo no puede ir fiada. Quita el certificado primero.', 'warning'); return; }
   S.metodoPagoId = 'fiado';
   S.metodoPagoNombre = 'Fiado';
   S.bancoElegidoId = null; S.bancoElegidoNombre = null;
@@ -4890,6 +4927,7 @@ function renderResumenPagoSeparado() {
 // pago separado, no aplica (siempre pasa).
 function validarPagoSeparado() {
   if (S.metodoPagoId !== 'separado') return true;
+  if (S.certificado && (S._resumen?.cobrar ?? 1) <= 0) return true;   // el certificado cubre todo: no hay nada que repartir
   const total = S._resumen?.cobrar ?? S._resumen?.total ?? 0;
   const suma = round2((S.pagoSeparadoLineas||[]).reduce((s,l) => s + (Number(l.monto)||0), 0));
   if (Math.abs(total - suma) >= 0.01) {
@@ -4949,6 +4987,7 @@ function renderResumenFinal() {
         <strong style="color:var(--success)">${fmt(r.ganancia||0)}</strong>
       </div>
     </div>`;
+  if (window.N360CertVenta) { try { N360CertVenta.resumenFinal(); } catch (_) {} }
 }
 
 /* ============================================================
@@ -5403,7 +5442,7 @@ function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
 
   const monedaBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
-  const totalVenta = S._resumen?.total || 0;
+  const totalVenta = ((S._resumen?.certPago || 0) > 0 ? S._resumen.cobrar : S._resumen?.total) || 0;
 
   if (esOtraMoneda) {
     const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
@@ -5456,7 +5495,7 @@ function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
 // cerrar la venta, igual que el precio de un producto.
 function aplicarComisionBancoVenta(pct) {
   S._comisionBancoPct = pct;
-  const totalVenta = S._resumen?.total || 0;
+  const totalVenta = ((S._resumen?.certPago || 0) > 0 ? S._resumen.cobrar : S._resumen?.total) || 0;
   const monto = round2(totalVenta * pct / 100);
   S._comisionBancoMonto = monto;
   document.getElementById('bcr-porcentaje-texto').textContent = `${pct}%`;
@@ -5839,9 +5878,14 @@ async function _confirmarVentaInterno(conImpresion) {
     // "separado" no es un UUID real -- en la venta se guarda null
     // ahí, y un nombre legible con el detalle de los métodos usados
     // (el desglose exacto por monto vive en los movimientos de Caja).
-    const nombreMetodoParaGuardar = esPagoSeparado
-      ? `Pago separado (${S.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
-      : S.metodoPagoNombre;
+    const certAplicado = S.certificado ? round2(Number(r.certAplicado) || 0) : 0;
+    const certCubreTodo = S.certificado && S.certificado.modo === 'anticipo' && (Number(r.cobrar) || 0) <= 0;
+    const nombreMetodoParaGuardar = certCubreTodo ? 'Certificado de regalo'
+      : (esPagoSeparado
+        ? `Pago separado (${S.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
+        : S.metodoPagoNombre) + ((S.certificado && S.certificado.modo === 'anticipo' && certAplicado > 0) ? ' + Certificado de regalo' : '');
+    const notaCert = (S.certificado && certAplicado > 0)
+      ? `Certificado de regalo ${S.certificado.codigo}: ${fmt(certAplicado)}${S.certificado.modo === 'anticipo' ? ' (pagado)' : ' (descuento)'}` : '';
     const fechaVentaElegida = document.getElementById('nv-fecha-venta')?.value || todayISO();
 
     const ventaPayload = {
@@ -5860,7 +5904,10 @@ async function _confirmarVentaInterno(conImpresion) {
       ...(esFiado ? { metodo_pago: 'fiado', estado_pago: 'credito', categoria: 'fiado' } : {}),
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
-      observaciones:      ((S.correccion ? `[Corrige a ${S.correccion.numero} — motivo: ${S.correccion.motivo}] ` : '') + (S.observaciones || '')).trim() || null,
+      observaciones:      ((S.correccion ? `[Corrige a ${S.correccion.numero} — motivo: ${S.correccion.motivo}] ` : '') + [S.observaciones, notaCert].filter(Boolean).join(' · ')).trim() || null,
+      // Certificado de regalo: la base valida el saldo y lo descuenta EN LA MISMA operación que guarda la venta.
+      ...((S.certificado && certAplicado > 0) ? { certificados_aplicados: [{ certificado_id: S.certificado.id, monto: certAplicado }] } : {}),
+      ...(S._certEmisionId ? { certificado_emision_id: S._certEmisionId } : {}),
       // Canje de puntos: va en el payload BASE para que el reintento sin
       // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
       ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
@@ -5930,7 +5977,8 @@ async function _confirmarVentaInterno(conImpresion) {
     const montoIva  = Number(r.impuestos) || 0;
     // Retención de IR del cliente: no entra a Caja (la retiene el cliente). En fiado se ignora.
     const retIrMonto = esFiado ? 0 : (Number(r.retencionIr) || 0);
-    const montoCaja = round2(Number(r.total) - montoIva - retIrMonto);
+    // Lo pagado con certificado de regalo cobrado por adelantado no entra otra vez a Caja.
+    const montoCaja = Math.max(0, round2(Number(r.total) - montoIva - retIrMonto - (Number(r.certPago) || 0)));
     const cajaPayload = [];
     // Fiado: el dinero todavía no entró, así que no se registra nada en Caja ahora.
     if (!esFiado) {
@@ -5958,7 +6006,7 @@ async function _confirmarVentaInterno(conImpresion) {
             fecha:              fechaVentaElegida,
           });
         }
-      } else {
+      } else if (montoCaja > 0) {
         cajaPayload.push({
           concepto:           (montoIva>0 || retIrMonto>0) ? `Venta ${S.numeroVenta} (neto de ${[montoIva>0?'IVA':'', retIrMonto>0?'retención IR':''].filter(Boolean).join(' y ')})` : `Venta ${S.numeroVenta}`,
           monto:              montoCaja,
@@ -8112,6 +8160,7 @@ async function initVentas() {
     await aplicarCobroVeterinaria();
     await aplicarCobroTransporte();
     await aplicarCobroAgenda();
+    await aplicarCobroCertificado();
 
     // 5c. Configuración del módulo (¿este usuario puede ver las ventas de todo el negocio?)
     // Se lee ANTES de los totales para que salgan bien a la primera. Si falla, todo sigue como siempre.

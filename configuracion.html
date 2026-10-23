@@ -17,7 +17,7 @@
 <!-- Supabase CDN -->
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261021b"></script>
+<script src="modulos-registro.js?v=20261023i"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1608,6 +1608,27 @@
           <div class="cfg-status" id="cotizaciones-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="certificados-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🎁</div>
+            <div>
+              <div class="cfg-card-title">Certificados de regalo</div>
+              <div class="cfg-card-desc">Vende o regala certificados (gift cards) de monto libre. Se usan en Ventas escribiendo su código. Cada certificado elige si vence, si se usa por partes y si se cobra por adelantado, como venta o es cortesía.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Certificados de regalo</div>
+              <div class="cfg-row-sub" id="certificados-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="certificados-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCertificadosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="certificados-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎁</div>
@@ -2804,6 +2825,45 @@ async function guardarModuloCotizaciones(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Certificados de regalo (23-oct-2026): mismo criterio que Cotizaciones. Apagado por defecto.
+async function cargarModuloCertificados() {
+  const toggle = document.getElementById('certificados-toggle');
+  const sub = document.getElementById('certificados-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_certificados').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_certificados === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Certificados de regalo aparece en el menú y en Ventas.' : 'Desactivado — no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloCertificados:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleCertificadosClick(evt) {
+  const toggle = document.getElementById('certificados-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloCertificados(toggle.checked);
+}
+async function guardarModuloCertificados(activo) {
+  const toggle = document.getElementById('certificados-toggle');
+  const sub = document.getElementById('certificados-row-sub');
+  const statusEl = document.getElementById('certificados-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_certificados: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Certificados de regalo aparece en el menú y en Ventas.' : 'Desactivado — no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Certificados de regalo activado. Recarga la página para ver el menú.' : 'Certificados de regalo desactivado (los certificados ya creados se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloCertificados:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 function onToggleFiadosClick(evt) {
   const toggle = document.getElementById('fiados-toggle');
   if (toggle.disabled) { evt.preventDefault(); return; }
@@ -3407,6 +3467,7 @@ async function initConfiguracion() {
       cargarModuloDiseno();
       cargarModuloFiados();
       cargarModuloCotizaciones();
+      cargarModuloCertificados();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -3433,6 +3494,6 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261021b"></script>
+<script src="modulos-guard.js?v=20261023i"></script>
 </body>
 </html>

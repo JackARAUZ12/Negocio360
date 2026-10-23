@@ -124,6 +124,12 @@
           .select('usa_modulo_cotizaciones').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_cotizaciones = co?.usa_modulo_cotizaciones === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_cotizaciones = false; }
+      // Certificados de regalo: consulta aparte, mismo criterio.
+      try {
+        const { data: ce } = await client.from('configuracion_empresa')
+          .select('usa_modulo_certificados').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_certificados = ce?.usa_modulo_certificados === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_certificados = false; }
       return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);

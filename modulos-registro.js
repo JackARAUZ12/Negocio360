@@ -190,6 +190,10 @@
     'cotizaciones.html': { key: 'cotizaciones', label: 'Cotizaciones', icon: '🗒️', obligatorio: false, flagPropio: 'usa_modulo_cotizaciones',
                        desc: 'Cotizaciones con productos y precios para tus clientes (PDF o WhatsApp). No crean ventas ni créditos, no tocan Caja ni inventario.' },
 
+    // ---- Certificados de regalo (secundario: apagado por defecto, interruptor propio en Configuración) ----
+    'certificados.html': { key: 'certificados', label: 'Certificados de regalo', icon: '🎁', obligatorio: false, flagPropio: 'usa_modulo_certificados',
+                       desc: 'Certificados de regalo (gift cards) de monto libre: cobrados por adelantado, como venta o de cortesía. Se usan en Ventas con su código.' },
+
     // ---- Calculadora costo-precio (herramienta aislada: no guarda ni cambia datos) ----
     'calculadora-precio.html': { key: 'calculadora_precio', label: 'Calculadora costo-precio', icon: '🧮', obligatorio: false,
                        desc: 'Escribe el costo de un producto y te sugiere a qué precio venderlo para ganar y ser competitivo. Solo calcula: no guarda nada.' },
