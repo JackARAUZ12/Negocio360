@@ -64,6 +64,14 @@ Los indicadores → La lista de cuentas → Nueva compra al crédito → A fecha
 - Arreglos hechos en el sistema (rama `claude/relaxed-johnson-0gxrvb`, sobre el anular seguro que otra sesión ya subió a `main`): origen del pago, primera cuota de Cuenta directa, N° de compra y factura en la tabla/buscador, textos, retención que se arrastraba, detalle más ancho, aviso de anular sin texto repetido.
 - Pendientes sin tocar: anular no devuelve el costo promedio; Impuestos no resta el IVA de compras del "IVA por pagar".
 
+## Primeros pasos (video visual, sin voz, 177.5 s, 16:9)
+Pedido del dueño: tutorial "full visual" desde que mandamos el código por WhatsApp hasta tener el inventario cargado, sin tocar nada del sistema. Música propia + efectos, sin voz.
+Capítulos: Recibí tu código (escena WhatsApp hecha en HTML) → Creá tu cuenta (`register.html`: código y formulario) → Personalizá tu negocio (`personalizacion.html`, 6 pasos) → Tu caja inicial (modal de `caja.html`) → Tu inventario a mano (`productos.html`, Nuevo Producto) → Tu inventario desde Excel (plantilla oficial, escena Excel en HTML, Importar Excel). Cierre "¡Listo para vender!".
+- Archivos: `fake-nuevo.js` (cuenta NUEVA vacía, guarda lo que se escribe; imita `validar_codigo_acceso`, `signUp`, `refreshSession` e `importar_productos_masivo`; en register/personalizacion no hay configuración, en el resto ya está "Minisúper La Esperanza" con logo `logo_demo_esperanza.png` que hay que copiar a la copia de main), `capnew.js` (capturas en `nshots/`), `tpp_body.js` + `python3 build_tpp.py` → `tpp.html`, `rtpp.js`, `tpp_music.py` y `tpp_sfx.py` (`DUR=177.5 DROP=0 BPM=100`, leen `tpp_events.json` de `node rtpp.js info`), `pp/mis_productos_minisuper.xlsx` (plantilla oficial con 10 productos) y `pp/logo_esperanza.png`.
+- Capturas: `cp pp/logo_esperanza.png <copia de main>/logo_demo_esperanza.png && REPO=<copia de main> FAKE=fake-nuevo.js XLSX=pp/mis_productos_minisuper.xlsx LOGO=pp/logo_esperanza.png node capnew.js`. Necesita `npm install --no-save xlsx@0.18.5` en `deps/` (open.js sirve SheetJS desde ahí).
+- Efecto de escritura: `typ()` muestra la captura "después" recortada con clip-path de izquierda a derecha + cursor de texto; `capnew.js` guarda el rectángulo y la letra de cada campo en `meta[estado].F`.
+- Mezcla: sin ducking (no hay voz): `amix` de música (volume 0.55) y efectos.
+
 ## Voz Piper (para los próximos tutoriales)
 - El usuario decidió hacer los próximos tutoriales con **voz Piper es_MX "claude"** (open source, Apache-2.0) en vez de ElevenLabs.
 - **No se espera audio del usuario.** Claude escribe el guion, se lo muestra al usuario para aprobarlo, genera la voz y arma el video.
