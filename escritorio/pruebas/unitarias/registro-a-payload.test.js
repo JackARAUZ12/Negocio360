@@ -5,10 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const { convertir } = require('../../src/compartido/registro-a-payload');
 
-const CAPTURAS = path.join(__dirname, '..', 'referencia-web', 'capturas.json');
-const capturas = fs.existsSync(CAPTURAS) ? JSON.parse(fs.readFileSync(CAPTURAS, 'utf8')) : [];
+// Dos formas de la web: la actual (venta_registrar_atomica) y la anterior (filas sueltas).
+const leer = (n) => { const f = path.join(__dirname, '..', 'referencia-web', n); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []; };
+for (const [forma, archivo, minAuditoria] of [['web actual', 'capturas.json', 1], ['web anterior', 'capturas-web-anterior.json', 5]]) {
+const capturas = leer(archivo);
 
-test('las 10 ventas capturadas de la web real se convierten sin nada prohibido', { skip: !capturas.length }, () => {
+test(`${forma}: las 10 ventas capturadas se convierten sin nada prohibido`, { skip: !capturas.length }, () => {
   assert.strictEqual(capturas.length, 10);
   for (const c of capturas) {
     const { payload, noPermitido } = convertir(c.registro, { tipo: c.tipo, componentes_promo: c.extra.componentes_promo });
@@ -23,7 +25,7 @@ test('las 10 ventas capturadas de la web real se convierten sin nada prohibido',
   }
 });
 
-test('pago dividido, comisión, garantía, otros impuestos y retención se trasladan', { skip: !capturas.length }, () => {
+test(`${forma}: pago dividido, comisión, garantía, otros impuestos y retención se trasladan`, { skip: !capturas.length }, () => {
   const por = Object.fromEntries(capturas.map((c) => [c.nombre, convertir(c.registro, { tipo: c.tipo }).payload]));
   assert.strictEqual(por['nueva-pago-separado-iva'].caja.length, 2);
   assert.deepStrictEqual(por['nueva-tarjeta-banco-comision-garantia'].comision, {
@@ -36,7 +38,28 @@ test('pago dividido, comisión, garantía, otros impuestos y retención se trasl
   assert.strictEqual(por['nueva-otros-impuestos-retencion'].impuestos.length, 2);
   assert.strictEqual(por['nueva-otros-impuestos-retencion'].venta_impuestos.length, 1);
   assert.strictEqual(por['nueva-otros-impuestos-retencion'].retencion.monto, 30.03);
-  assert.ok(por['rapida-efectivo-iva'].auditoria.length >= 5);
+  assert.ok(por['rapida-efectivo-iva'].auditoria.length >= minAuditoria);
+});
+}
+
+test('web actual: la venta atómica trae venta, detalle y Caja; fiado y stock de otra sucursal no se permiten', () => {
+  const args = { p_venta: { numero_venta: 'V-1', total: 100, impuesto: 0, auth_user_id: 'u', id: 'x' },
+    p_detalles: [{ producto_id: 'p', cantidad: 1, venta_id: null, auth_user_id: 'u' }],
+    p_stock: [{ tipo: 'producto', producto_id: 'p', cantidad: 1 }],
+    p_caja: [{ concepto: 'Venta V-1', monto: 100, metodo_pago_nombre: 'Efectivo', fecha: '2026-10-23' }, { concepto: 'cero', monto: 0 }],
+    p_cliente_total: null, p_fiado: null };
+  const reg = [{ op: 'rpc', nombre: 'venta_registrar_atomica', args, resultado: { venta_id: 'v1', caja_ids: ['m1'] } }];
+  const { payload, noPermitido } = convertir(reg, { tipo: 'nueva' });
+  assert.deepStrictEqual(noPermitido, []);
+  assert.deepStrictEqual(payload.venta, { numero_venta: 'V-1', total: 100, impuesto: 0 });
+  assert.deepStrictEqual(payload.detalles, [{ producto_id: 'p', cantidad: 1 }]);
+  assert.strictEqual(payload.caja.length, 1); // la línea en cero no se guarda (igual que el servidor)
+  const conFiado = convertir([{ ...reg[0], args: { ...args, p_fiado: { monto_total: 100 } } }], { tipo: 'nueva' });
+  assert.ok(conFiado.noPermitido.includes('venta a crédito o fiado'));
+  const remoto = convertir([{ ...reg[0], args: { ...args, p_stock: [{ tipo: 'remoto', sucursal_id: 's', cantidad: 1 }] } }], { tipo: 'nueva' });
+  assert.ok(remoto.noPermitido.includes('stock compartido entre sucursales'));
+  const doble = convertir([reg[0], reg[0]], { tipo: 'nueva' });
+  assert.ok(doble.noPermitido.includes('más de una venta en la misma operación'));
 });
 
 test('lo que no se permite sin conexión se detecta', () => {

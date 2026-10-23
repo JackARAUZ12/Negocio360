@@ -143,7 +143,7 @@ test('sin internet: recargar Ventas funciona con la copia local y el stock ya de
 test('sin internet: otras pantallas piden conexión, el cierre de caja se bloquea', async () => {
   await ventana.goto('app://negocio360/caja.html');
   await esperar(() => ventana.evaluate(() => document.querySelector('[data-n360-escritorio]')?.shadowRoot.getElementById('velo').classList.contains('visible')));
-  await ventana.waitForFunction(() => typeof crearCierreDiario === 'function');
+  await ventana.waitForFunction(() => typeof crearCierreDiario === 'function' && crearCierreDiario.n360Protegido === true);
   const cierresAntes = srv.estado.escriturasDirectas.filter((w) => w.tabla === 'cierres_caja').length;
   const msg = await ventana.evaluate(async () => {
     let visto = '';

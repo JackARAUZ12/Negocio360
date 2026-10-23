@@ -22,6 +22,7 @@
       if (n > 0) { avisar(n); return undefined; }
       return original.apply(this, args);
     };
+    window[nombre].n360Protegido = true;
   }
   envolver('crearCierreDiario');
   envolver('crearCierreMensual');

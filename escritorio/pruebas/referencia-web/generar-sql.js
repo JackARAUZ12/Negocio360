@@ -101,9 +101,9 @@ function preparacion() {
 }
 
 function datosEscenario(cap) {
-  const ops = cap.registro.filter((o) => o.op !== 'select' && (o.op !== 'rpc' || /^descontar_lote_(fefo|venta)$/.test(o.nombre)))
+  const ops = cap.registro.filter((o) => o.op !== 'select' && (o.op !== 'rpc' || /^(descontar_lote_(fefo|venta)|venta_registrar_atomica)$/.test(o.nombre)))
     .filter((o) => !(SIN_AUDITORIA && o.tabla === 'auditoria_log'))
-    .map((o) => (o.op === 'rpc' ? { op: o.op, nombre: o.nombre, args: o.args } : { op: o.op, tabla: o.tabla, payload: o.payload, ids: o.ids, filtros: o.filtros }));
+    .map((o) => (o.op === 'rpc' ? { op: o.op, nombre: o.nombre, args: o.args, resultado: o.resultado } : { op: o.op, tabla: o.tabla, payload: o.payload, ids: o.ids, filtros: o.filtros }));
   const { payload, noPermitido } = convertir(cap.registro, {
     tipo: cap.tipo, uuid: crypto.randomUUID(), dispositivo_uid: F.IDS.dispositivo,
     fecha_hoy: cap.extra.fecha_hoy, vendida_en: new Date().toISOString(),
@@ -164,9 +164,11 @@ ${SIN_MIGRACION ? '' : `-- ---------- Migración a probar (se revierte al final)
   ${preparacion()}
   create function pg_temp.n360_foto() returns jsonb language sql as $fn$ select ${FOTO} $fn$;
   create function pg_temp.n360_web(p_ops jsonb) returns jsonb language plpgsql as $fn$
-  declare o jsonb; f jsonb; i int; c text; w text; e jsonb := '[]';
+  declare o jsonb; f jsonb; i int; c text; w text; e jsonb := '[]'; ra jsonb; ids_web text[] := '{}'; ids_bd text[] := '{}';
   begin
     for o in select * from jsonb_array_elements(p_ops) loop
+      -- la venta guardada por venta_registrar_atomica tiene otro id en la base: se reemplaza en lo que sigue
+      for i in 1 .. coalesce(array_length(ids_web, 1), 0) loop o := replace(o::text, ids_web[i], ids_bd[i])::jsonb; end loop;
       begin
         if o->>'op' in ('insert', 'upsert') then
           i := 0;
@@ -180,6 +182,14 @@ ${SIN_MIGRACION ? '' : `-- ---------- Migración a probar (se revierte al final)
           select string_agg(format('%I = %L', x->>1, x->>2), ' and ') into w from jsonb_array_elements(o->'filtros') x where x->>0 = 'eq';
           execute format('update public.%I set (%s) = (select %s from jsonb_populate_record(null::public.%I, $1)) where %s',
                          o->>'tabla', c, c, o->>'tabla', w) using o->'payload';
+        elsif o->>'op' = 'rpc' and o->>'nombre' = 'venta_registrar_atomica' then
+          ra := public.venta_registrar_atomica(o->'args'->'p_venta', o->'args'->'p_detalles', o->'args'->'p_stock', o->'args'->'p_caja',
+                                               (o->'args'->>'p_cliente_total')::numeric, o->'args'->'p_fiado');
+          ids_web := ids_web || (o->'resultado'->>'venta_id');
+          ids_bd := ids_bd || (ra->>'venta_id');
+          for i in 0 .. coalesce(jsonb_array_length(o->'resultado'->'caja_ids'), 0) - 1 loop
+            ids_web := ids_web || (o->'resultado'->'caja_ids'->>i); ids_bd := ids_bd || (ra->'caja_ids'->>i);
+          end loop;
         elsif o->>'op' = 'rpc' and o->>'nombre' = 'descontar_lote_fefo' then
           perform public.descontar_lote_fefo((o->'args'->>'p_producto_id')::uuid, (o->'args'->>'p_cantidad')::numeric);
         elsif o->>'op' = 'rpc' and o->>'nombre' = 'descontar_lote_venta' then

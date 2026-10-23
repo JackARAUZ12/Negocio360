@@ -1,7 +1,7 @@
 {
   "name": "negocio360-escritorio",
   "productName": "Negocio360",
-  "version": "2.0.0-piloto.2",
+  "version": "2.0.0-piloto.3",
   "description": "Negocio360 — programa de escritorio para Windows con modo sin conexión (versión piloto)",
   "main": "src/main/main.js",
   "author": "Negocio360",

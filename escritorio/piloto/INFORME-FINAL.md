@@ -1,6 +1,6 @@
 # Negocio360 Escritorio con modo sin conexión — Informe final del piloto
 
-Fecha: 2026-10-22 · Rama: `escritorio-sin-conexion` (no publicada; `main` no se tocó)
+Fecha: 2026-10-23 · Rama: `escritorio-sin-conexion` (el programa no se publicó; la web de `main` va adentro tal cual)
 
 ## Resumen
 Se rehízo el programa de escritorio para Windows (el 1.0.1 no tenía código
@@ -14,7 +14,7 @@ El modo sin conexión está **encendido solo para la cuenta piloto**. Para todas
 las demás cuentas el programa funciona exactamente como la web.
 
 **Entregables** (carpeta `escritorio/piloto/`):
-- `Negocio360-Escritorio-Piloto-2.0.0-piloto.2.exe` (96 MB, Windows 64 bits);
+- `Negocio360-Escritorio-Piloto-2.0.0-piloto.3.exe` (96 MB, Windows 64 bits);
 - `SHA256.txt`;
 - `GUIA-PILOTO.md` (instalación y uso);
 - este informe.
@@ -22,7 +22,7 @@ las demás cuentas el programa funciona exactamente como la web.
 ## Qué hace el programa
 | Tema | Cómo quedó |
 |---|---|
-| Pantallas | Las mismas 114 páginas del sistema web, dentro del programa. Abren sin internet; las librerías van con versión fija |
+| Pantallas | Las mismas páginas del sistema web actual (`main` del 2026-10-23, con la venta atómica), dentro del programa. Abren sin internet; las librerías van con versión fija |
 | Impresión | Directa a Windows en modo RAW (EPSON TM-U220), con la misma interfaz que usaba el 1.0.1. Se corrigió una falla de seguridad del 1.0.1 (inyección de comandos con el nombre de la impresora) |
 | Indicador | 🟢 en línea · 🟠 inestable o "N venta(s) por subir" · 🔴 sin conexión |
 | Ventas sin internet | Venta normal y venta rápida, de contado o con pago dividido; búsqueda de productos y clientes; ventas recientes |
@@ -65,12 +65,33 @@ solo a tarjeta y se guarda como gasto real. El lote se descuenta una sola vez.
 
 Detalle en `escritorio/docs/INVENTARIO-VENTA.md`.
 
+## Versión 2.0.0-piloto.3 (2026-10-23): web actual adentro
+La web cambió la forma de guardar una venta: ahora lo hace todo junto en el
+servidor (`venta_registrar_atomica`). El programa se adaptó:
+- al grabar una venta sin internet, hace lo mismo en la copia del equipo
+  (venta, detalle, Caja, inventario y cliente), para que Ventas la muestre
+  enseguida;
+- el convertidor entiende las dos formas de la web (la anterior y la actual).
+
+Pruebas:
+- **Base real** (cuenta falsa, transacción revertida): las 10 ventas de la web
+  actual dan **exactamente lo mismo** subidas desde el programa que hechas en
+  la web. Se compararon venta, detalle, Caja y saldos, IVA y otros impuestos,
+  retención, comisión de tarjeta, garantía, inventario, lotes y cliente.
+- Programa: 63 unitarias, 26 de navegador y 21 del programa real. Todas pasan.
+
 ## Lo que falta / límites conocidos
 - **Prueba en Windows con el servidor real.** Desde este entorno no hay conexión directa por internet a Supabase. La base real se probó con SQL, y el programa con un servidor simulado. Hay que hacer la primera prueba en la computadora del negocio siguiendo la guía.
 - **Bajo wine** el programa de Windows arranca y crea su base local y su respaldo, pero no se pudo ver la ventana. Falta verlo en un Windows real.
 - **Sin firma digital.** Windows mostrará "editor desconocido", igual que en el 1.0.1.
 - **Números apartados:** la web pide un número al abrir cada venta, así que un día muy largo sin internet puede gastar los 50. Si pasa seguido, se sube el tamaño del bloque de la cuenta piloto (es un dato de la tabla del interruptor).
 - **Sucursales:** las 4 sucursales/bodegas de la cuenta piloto tienen usuario propio y **no** tienen el modo encendido. Se encienden agregando su fila al interruptor, cuando el dueño lo decida.
+- **Stock en cero:** si el inventario no alcanza, la web deja el stock en
+  0 y el programa lo deja en negativo con aviso "vendido sin stock". Es a
+  propósito: así se ve la diferencia y se ajusta.
+- **Lotes en la copia del equipo:** sin internet, la copia local no descuenta
+  lotes; el servidor sí lo hace bien al recibir la venta. La copia se
+  refresca al volver internet.
 - **Ventas anuladas antes de subir:** no llegan al servidor. Quedan en la computadora como "Anulada" y su número queda sin usar.
 
 ## Para publicar a clientes (requiere tu autorización)

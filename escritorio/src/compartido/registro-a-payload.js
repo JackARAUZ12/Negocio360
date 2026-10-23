@@ -3,6 +3,10 @@
 // offline_registrar_venta. Así la venta sin conexión lleva exactamente las
 // mismas filas que habría guardado la web.
 //
+// Acepta las dos formas de la web: la anterior (filas sueltas: ventas,
+// venta_detalles, movimientos_financieros) y la actual (una sola llamada a
+// venta_registrar_atomica con venta, detalle, inventario y Caja).
+//
 // Lo que NO se copia, porque lo calcula el servidor de forma segura:
 //   - actualizaciones de stock y lotes (la web escribe valores absolutos de
 //     su copia local; el servidor resta en el momento);
@@ -48,6 +52,23 @@
       if (op.op === 'rpc') {
         if (/^(descontar_lote_fefo|generar_numero_garantia|generar_numero_venta)$/.test(op.nombre)) continue;
         if (op.nombre === 'descontar_stock_remoto') { noPermitido.push('stock compartido entre sucursales'); continue; }
+        if (op.nombre === 'venta_registrar_atomica') {
+          // Web nueva: venta, detalle, inventario y Caja llegan juntos en una sola función.
+          const a = op.args || {};
+          if (p.venta) { noPermitido.push('más de una venta en la misma operación'); continue; }
+          p.venta = sinId(a.p_venta || {});
+          ventaFalsaId = (op.resultado && op.resultado.venta_id) || null;
+          p.detalles = comoLista(a.p_detalles).map(sinId);
+          for (const m of comoLista(a.p_caja)) {
+            if (!(Number(m.monto) > 0)) continue; // el servidor tampoco guarda líneas en cero
+            p.caja.push({ concepto: m.concepto, monto: m.monto, metodo_pago_id: m.metodo_pago_id || null, metodo_pago_nombre: m.metodo_pago_nombre || null,
+              banco_id: m.banco_id || null, monto_moneda_banco: m.monto_moneda_banco == null ? null : m.monto_moneda_banco,
+              observaciones: m.observaciones == null ? null : m.observaciones, fecha: m.fecha });
+          }
+          if (a.p_fiado) noPermitido.push('venta a crédito o fiado');
+          if (comoLista(a.p_stock).some((s) => s && s.tipo === 'remoto')) noPermitido.push('stock compartido entre sucursales');
+          continue;
+        }
         continue; // otras funciones de solo lectura o de fondo
       }
       const t = op.tabla;

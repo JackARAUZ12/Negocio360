@@ -274,9 +274,65 @@
         return { data: null, error: { message: 'El stock de otras sucursales necesita conexión.', code: 'N360_SIN_CONEXION' }, count: null, status: 400, statusText: '' };
       }
       if (RPC_GUARDADAS.has(nombre) || nombre === 'admin_verificar_codigo') return rpcNormalSinGrabar(real, nombre, args);
+      if (nombre === 'venta_registrar_atomica') {
+        const resultado = await ventaAtomicaLocal(args || {});
+        grab.registro.push({ op: 'rpc', nombre, args: copia(args || {}), resultado: copia(resultado) });
+        return respuesta(resultado);
+      }
       grab.registro.push({ op: 'rpc', nombre, args: copia(args || {}) });
       return respuesta(null);
     });
+  }
+
+  // La web guarda la venta con venta_registrar_atomica (todo en el servidor).
+  // Al grabar, se hace lo mismo en la copia del equipo: venta, detalle, Caja,
+  // inventario y total del cliente, para que Ventas los muestre enseguida.
+  // Lo definitivo lo hace el servidor al recibir la venta.
+  async function ventaAtomicaLocal(a) {
+    const m = await motor();
+    const insertar = (tabla, filas) => {
+      const antes = new Set(m.filas(tabla).map((f) => String(f.id)));
+      m.ejecutar(tabla, [['insert', [filas]]]);
+      const nuevas = m.filas(tabla).filter((f) => !antes.has(String(f.id)));
+      for (const f of nuevas) grab.insertadas.push({ tabla, id: String(f.id) });
+      return nuevas;
+    };
+    const sinMeta = (f) => { const x = Object.assign({}, f); delete x.id; delete x.created_at; delete x.updated_at; return x; };
+    const v = sinMeta(a.p_venta || {});
+    const uid = v.auth_user_id || estado.cuenta || null;
+    const venta = insertar('ventas', [Object.assign(v, { auth_user_id: uid })])[0];
+    insertar('venta_detalles', (a.p_detalles || []).map((d) => Object.assign(sinMeta(d), { auth_user_id: uid, venta_id: venta.id })));
+    const movs = insertar('movimientos_financieros', (a.p_caja || []).filter((c) => Number(c.monto) > 0).map((c) => ({
+      auth_user_id: uid, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA', concepto: c.concepto, monto: Math.round(Number(c.monto) * 100) / 100,
+      metodo_pago_id: c.metodo_pago_id || null, metodo_pago_nombre: c.metodo_pago_nombre || null, banco_id: c.banco_id || null,
+      monto_moneda_banco: c.monto_moneda_banco == null ? null : c.monto_moneda_banco, referencia_tipo: 'venta', referencia_id: venta.id,
+      observaciones: c.observaciones || null, fecha: c.fecha || v.fecha, estado: 'completado',
+    })));
+    if (movs.length) m.ejecutar('ventas', [['update', [{ referencia_caja: movs[movs.length - 1].id }]], ['eq', ['id', venta.id]]]);
+    const sumar = (tabla, id, campo, delta) => {
+      const f = m.filas(tabla).find((x) => String(x.id) === String(id));
+      if (!f || !Number.isFinite(Number(delta)) || !delta) return;
+      m.ejecutar(tabla, [['update', [{ [campo]: Math.round(((Number(f[campo]) || 0) + delta) * 1e6) / 1e6 }]], ['eq', ['id', f.id]]]);
+      grab.deltas.push({ tabla, id: String(f.id), campo, delta: Math.round(delta * 1e6) / 1e6 });
+    };
+    const esProducto = (id) => (m.filas('productos').find((x) => String(x.id) === String(id)) || {}).tipo === 'producto';
+    for (const s of a.p_stock || []) {
+      const cant = Number(s.cantidad);
+      if (s.tipo === 'remoto') { grab.bloqueos.push('stock de otra sucursal'); continue; }
+      if (!(cant > 0)) continue;
+      if ((s.tipo === 'producto' || s.tipo === 'componente') && esProducto(s.producto_id)) sumar('productos', s.producto_id, 'stock_actual', -cant);
+      else if (s.tipo === 'combo') {
+        for (const ci of m.filas('combo_items').filter((x) => String(x.combo_id) === String(s.combo_id))) {
+          if (esProducto(ci.producto_id)) sumar('productos', ci.producto_id, 'stock_actual', -Number(ci.cantidad) * cant);
+        }
+      }
+    }
+    if (a.p_cliente_total != null && v.cliente_id) {
+      sumar('clientes', v.cliente_id, 'total_compras', Number(a.p_cliente_total));
+      sumar('clientes', v.cliente_id, 'num_compras', 1);
+    }
+    if (a.p_fiado) grab.bloqueos.push('fiados');
+    return { venta_id: venta.id, ya_existia: false, caja_ids: movs.map((x) => x.id), avisos: [] };
   }
 
   // fn: la confirmación real de ventas.js. Devuelve lo que intentó escribir.

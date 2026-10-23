@@ -457,17 +457,26 @@ Pedida por el dueño. Detalle completo en `docs/CORRECCION-COMISION-LOTES.md`.
 - **Publicado en `main`** el 2026-10-23 (commit `fe1b82a`), con autorización
   del dueño. Las 4 comisiones antiguas de la cuenta piloto ya se corrigieron.
 
-### Aviso importante para el programa de escritorio
-Mientras tanto, `main` cambió cómo se guarda una venta: ahora usa
-`venta_registrar_atomica` (todo o nada en el servidor). El instalador piloto
-empaqueta la web de esta rama, que es la anterior a ese cambio, y está
-probado así. Para que el programa use la web más nueva hay que:
-1. traer `main` a esta rama;
-2. adaptar el convertidor de ventas sin conexión a esa función (la venta ya no
-   llega como filas sueltas);
-3. repetir las pruebas.
-
-Queda como siguiente paso.
+### Programa adaptado a la web actual (2026-10-23) — HECHO
+`main` ahora guarda la venta con `venta_registrar_atomica` (todo o nada en el
+servidor). Se trajo `main` a esta rama: fuera de `escritorio/` la rama queda
+igual que `main`, salvo las migraciones propias del modo sin conexión.
+- `web/n360-sin-conexion.js`: al grabar, `venta_registrar_atomica` se hace en
+  la copia del equipo (venta, detalle, Caja, stock de productos, combos y
+  promociones, total del cliente) y devuelve lo mismo que el servidor
+  (`venta_id`, `caja_ids`). La comisión de tarjeta sigue funcionando porque
+  depende de `caja_ids`.
+- `src/compartido/registro-a-payload.js`: entiende las dos formas de la web.
+  Fiado y stock de otra sucursal siguen sin permitirse sin internet.
+- `pruebas/referencia-web/generar-sql.js`: repite también la llamada atómica.
+  `capturas.json` es ahora de la web actual; la anterior queda en
+  `capturas-web-anterior.json`.
+- Caja: el candado del cierre se marca (`n360Protegido`) y la prueba espera
+  esa marca. Antes, una vez de cada tantas, revisaba antes de que cargara.
+- **Base real** (cuenta falsa, revertida): 10/10 ventas idénticas entre la web
+  actual y el programa.
+- Pruebas: 63 unitarias, 26 de navegador, 21 del programa real.
+- Instalador `2.0.0-piloto.3` (SHA-256 en `piloto/SHA256.txt`).
 
 ## Bitácora
 - 2026-10-21: creada la rama `escritorio-sin-conexion` con el plan (`PLAN.md`).
@@ -487,3 +496,4 @@ Queda como siguiente paso.
   - Pruebas: base revertida y 9/9 en pantallas reales sobre `main`.
   - Paquete único para publicar: `docs/publicar-main-comisiones.patch`. Subir a `main` sigue bloqueado por la protección del entorno.
 - 2026-10-23: PUBLICADO en `main` (`fe1b82a`), con autorización del dueño: comisión solo con tarjeta en Ventas, comisión opcional en egresos y lote una sola vez. GitHub Pages desplegó sin errores. Antes se probó sobre `main` actual: 9/9 pantallas reales, 10 ventas sin errores, y venta + comisión + anulación en la base real (revertida). Se quitó el parche, que ya no hace falta.
+- 2026-10-23: programa adaptado a la web actual (venta atómica). 10/10 ventas idénticas en la base real; 63 + 26 + 21 pruebas; instalador `2.0.0-piloto.3`.
