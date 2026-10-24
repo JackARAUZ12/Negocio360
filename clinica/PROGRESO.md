@@ -6,7 +6,7 @@
 | 2 — Documentos | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Recetas (a Farmacia y a la cuenta), órdenes, constancias, certificados, referencias, consentimiento, CIE-10, adjuntos privados |
 | 3 — Operación diaria | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Sala de espera con turnos y pantalla, recordatorios por WhatsApp, honorarios → Salarios, reportes que cuadran con Ventas |
 | Ajuste — Agenda y usuarios del sistema | ✅ Terminado y probado | ✅ Sí (2026-10-24) | Sin agenda propia (se usa la Agenda), médicos = usuarios del multiusuario con su mismo código |
-| 4 — Especialidades | Pendiente | | |
+| 4 — Especialidades | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Plantilla propia de las 16 especialidades con cálculos automáticos y odontograma |
 | 5 — Crecimiento y cierre | Pendiente | | |
 
 ## Fase 1 — qué se hizo
@@ -227,6 +227,40 @@ usuarios. Recomendación: que los médicos usen códigos de 6 números y no los 
   apagada mandan exactamente lo mismo que antes. Cuadre: el cobro desde la Clínica escribe lo
   mismo que una venta directa (única diferencia: la cita queda ligada a su venta).
 
+## Fase 4 — qué se hizo (Especialidades)
+
+Sin cambios en la base de datos: lo propio de cada especialidad se guarda dentro de la nota
+(`clinica_consultas.datos`), con el mismo candado, la misma firma y la misma inmutabilidad.
+Solo aparecen las especialidades elegidas en Configuración / Médicos y seguridad.
+
+**Plantilla por especialidad** (catálogo en `clinica-comun.js`; agregar campos es una línea):
+- Medicina interna: revisión por sistemas, control de crónicas.
+- Pediatría: perímetro cefálico, percentiles, desarrollo, alimentación, vacunas · edad en
+  meses y avisos (vacunas pendientes, retraso del desarrollo).
+- Ginecología y obstetricia: embarazo, FUM, G/P/C/A, FCF, altura uterina, movimientos,
+  presentación, edema, PAP, planificación · **edad gestacional y fecha probable de parto
+  automáticas**, avisos de FCF fuera de rango, movimientos disminuidos y edema (preeclampsia).
+- Cardiología (NYHA, ritmo, ECG, riesgo), dermatología (lesión, tamaño, distribución),
+  oftalmología (agudeza visual, presión intraocular con aviso >21), otorrino, ortopedia
+  (escala de dolor 0–10, fuerza, movilidad), neurología (**Glasgow** calculado y clasificado),
+  psicología (**PHQ-9, GAD-7** clasificados y aviso de riesgo suicida), nutrición (riesgo por
+  cintura e índice cintura/cadera según sexo), fisioterapia (cambio del dolor en la sesión),
+  urología (IPSS y PSA), endocrinología (HbA1c en meta o no, TSH), laboratorio.
+- Los números se validan por rango antes de guardar.
+
+**Odontograma** (numeración FDI): permanente (32), temporal (20) o mixta (52). Se toca un
+diente y se marca su estado (sano, caries, obturado, sellante, endodoncia, corona, fractura,
+extracción indicada, ausente, implante), las caras afectadas y una nota. Una consulta dental
+nueva parte del último odontograma del paciente. Índices **CPO-D / ceo-d** automáticos. En
+la nota firmada queda el odontograma de solo lectura. Funciona en celular de 360 px.
+
+**Pruebas (todas en verde):** unitarias 66 (7 nuevas: catálogo válido, edad gestacional,
+Glasgow, escalas, cintura, índices dentales y limpieza del odontograma, validación de rangos);
+navegador 289 (34 nuevas en computadora y celular: solo especialidades elegidas, odontograma
+que parte del anterior, dentición mixta, marcar diente y caras, índice recalculado, guardado
+dentro de la nota firmada, notas escapadas, FUM futura rechazada, edad gestacional y FCF,
+rangos, Glasgow); regresión contra `main` idéntica.
+
 ## Bitácora
 - 2026-10-23: creada la rama `modulo-clinica` con el plan (`PLAN.md`).
 - 2026-10-23: Fase 1 — base de datos aplicada en producción tras prueba revertida.
@@ -236,3 +270,4 @@ usuarios. Recomendación: que los médicos usen códigos de 6 números y no los 
 - 2026-10-24: Fase 2 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 3 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Ajuste pedido por Jack — sin agenda propia (se usa la Agenda) y médicos = usuarios del sistema. Probado e integrado a `main`.
+- 2026-10-24: Fase 4 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.

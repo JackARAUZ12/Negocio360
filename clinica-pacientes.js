@@ -373,13 +373,25 @@ function tarjetaConsulta(c, yo) {
       <div class="cl-item-fecha">${esc(fechaHora(c.fecha))} · ${esc(c.medico_nombre)} · ${esc(clinicaNombreEspecialidad(c.especialidad))}</div></div>
       <span class="cl-badge cl-badge-${est.clase}">${esc(est.n)}</span></div>
     ${signos.length ? `<p><b>Signos vitales:</b> ${esc(signos.join(' · '))}</p>` : ''}
-    ${linea('Enfermedad actual', c.enfermedad_actual)}${linea('Examen físico', c.examen_fisico)}${htmlDiagnosticos(c.diagnosticos)}${linea('Diagnóstico', c.diagnostico)}
+    ${linea('Enfermedad actual', c.enfermedad_actual)}${linea('Examen físico', c.examen_fisico)}${htmlPlantilla(c)}${htmlDiagnosticos(c.diagnosticos)}${linea('Diagnóstico', c.diagnostico)}
     ${linea('Plan', c.plan)}${linea('Indicaciones', c.indicaciones)}${c.proximo_control ? `<p><b>Próximo control:</b> ${esc(fechaCorta(c.proximo_control))}</p>` : ''}
     ${(c.adendas || []).map(d => `<div class="cl-info"><b>Adenda · ${esc(d.autor_nombre)} · ${esc(fechaHora(d.created_at))}</b><br>${esc(d.texto)}</div>`).join('')}
     ${c.estado === 'cerrada' ? `<p class="cl-sub">🔏 Firmada el ${esc(fechaHora(c.cerrada_en))} · código ${esc(String(c.firma_hash || '').slice(0, 12))}</p>` : ''}
     ${c.estado === 'anulada' ? `<p class="cl-sub">🚫 Anulada por ${esc(c.anulada_por_nombre || '—')} el ${esc(fechaHora(c.anulada_en))}: ${esc(c.motivo_anulacion || '')}</p>` : ''}
     ${btns.length ? `<div class="cl-acciones">${btns.join('')}</div>` : ''}
   </div>`;
+}
+
+// Lo que la plantilla de la especialidad guardó en la nota (datos, cálculos y odontograma de solo lectura).
+function htmlPlantilla(c) {
+  const d = c.datos || {}, filas = clinicaResumenDatos(c.especialidad, d);
+  const calc = clinicaCalculosEspecialidad(c.especialidad, d, contextoPaciente(String(c.fecha || '').slice(0, 10)));
+  const od = d.odontograma ? clinicaLimpiarOdontograma(d.odontograma) : null;
+  if (!filas.length && !calc.length && !od) return '';
+  const notas = od ? Object.entries(od).filter(([, v]) => v.n).map(([k, v]) => `${k}: ${v.n}`) : [];
+  return `<div class="cl-plantilla">${filas.map(f => `<p><b>${esc(f.n)}:</b> ${esc(f.v)}</p>`).join('')}
+    ${od && Object.keys(od).length ? htmlOdontograma(od, d.denticion, {}) : ''}${notas.length ? `<p class="cl-sub"><b>Notas por diente:</b> ${esc(notas.join(' · '))}</p>` : ''}
+    ${calc.length ? `<div class="cl-calc">${htmlCalculos(calc)}</div>` : ''}</div>`;
 }
 
 /* ---------- Antecedentes ---------- */
@@ -436,21 +448,97 @@ function abrirConsulta(id) {
   openModal('modal-consulta');
   setTimeout(() => $p('co-motivo').focus(), 50);
 }
-// Campos propios de la especialidad elegida (catálogo en clinica-comun.js; se guardan en consulta.datos).
+// Plantilla de la especialidad elegida (catálogo en clinica-comun.js; se guarda en consulta.datos con
+// el mismo candado y la misma firma que el resto de la nota). Los cálculos se actualizan al escribir.
 function pintarCamposEspecialidad(datos) {
-  const esp = CLINICA_ESPECIALIDADES[$p('co-especialidad').value];
+  const espK = $p('co-especialidad').value, esp = CLINICA_ESPECIALIDADES[espK];
   const campos = esp?.campos || [];
-  $p('co-extra').innerHTML = campos.length ? `<div class="cl-seccion">${esc(esp.n)}</div><div class="cl-grid2">${campos.map(f => {
+  const origenPrevio = datos?.odontograma ? CP.odoOrigen : null;      // al cambiar de especialidad y volver, se conserva el aviso
+  CP.odo = null; CP.odoSel = null; CP.odoOrigen = origenPrevio;
+  if (campos.some(f => f.tipo === 'odontograma')) {
+    let base = datos?.odontograma;
+    // Consulta nueva: se parte del último odontograma del paciente (el de su consulta dental más reciente).
+    if (!base && !CP.notaId) {
+      const prev = (CP.exp?.consultas || []).filter(c => c.estado !== 'anulada' && c.especialidad === 'odontologia' && c.datos?.odontograma)
+        .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
+      if (prev) { base = prev.datos.odontograma; CP.odoOrigen = prev.fecha; if (!datos?.denticion && prev.datos.denticion) datos = { ...(datos || {}), denticion: prev.datos.denticion }; }
+    }
+    CP.odo = clinicaLimpiarOdontograma(base);
+  }
+  const conOdo = !!CP.odo;
+  const campoHTML = f => {
     const val = datos?.[f.k] ?? '';
     const ctrl = f.tipo === 'textarea' ? `<textarea class="cl-ta" data-extra="${esc(f.k)}" maxlength="2000">${esc(val)}</textarea>`
       : f.tipo === 'select' ? `<select class="cl-in" data-extra="${esc(f.k)}"><option value=""></option>${(f.opciones || []).map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-      : `<input class="cl-in" data-extra="${esc(f.k)}" type="${f.tipo === 'number' ? 'number' : f.tipo === 'date' ? 'date' : 'text'}" step="any" value="${esc(val)}" maxlength="300"/>`;
-    return `<div class="cl-field"><label>${esc(f.n)}</label>${ctrl}</div>`; }).join('')}</div>` : '';
+      : `<input class="cl-in" data-extra="${esc(f.k)}" type="${f.tipo === 'number' ? 'number' : f.tipo === 'date' ? 'date' : 'text'}" ${f.tipo === 'number' ? `inputmode="decimal" step="any"${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''}` : 'maxlength="300"'} value="${esc(val)}"/>`;
+    return `<div class="cl-field${f.tipo === 'textarea' ? ' cl-ancho' : ''}"><label>${esc(f.n)}${f.u ? ` <span class="cl-sub">(${esc(f.u)})</span>` : ''}</label>${ctrl}</div>`; };
+  // Con odontograma: primero los datos cortos, luego el odontograma y al final los textos largos.
+  const cortos = campos.filter(f => f.tipo !== 'odontograma' && (!conOdo || f.tipo !== 'textarea')), largos = conOdo ? campos.filter(f => f.tipo === 'textarea') : [];
+  $p('co-extra').innerHTML = campos.length ? `<div class="cl-seccion">${esc(esp.e)} ${esc(esp.n)}</div><div class="cl-grid2">${cortos.map(campoHTML).join('')}</div>
+    ${conOdo ? `<div class="cl-seccion">Odontograma</div>${CP.odoOrigen ? `<p class="cl-sub" style="margin:0 0 6px">Se tomó el odontograma de la consulta del ${esc(fechaCorta(CP.odoOrigen))}: actualiza solo lo que cambió.</p>` : ''}<div id="co-odo"></div>` : ''}
+    ${largos.length ? `<div class="cl-grid2">${largos.map(campoHTML).join('')}</div>` : ''}
+    <div id="co-extra-calc"></div>` : '';
+  $p('co-extra').querySelectorAll('[data-extra]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+    if (el.dataset.extra === 'denticion') pintarOdontograma(); recalcularEspecialidad(); }));
+  if (CP.odo) pintarOdontograma();
+  recalcularEspecialidad();
 }
 function leerCamposEspecialidad() {
   const d = {};
   document.querySelectorAll('#co-extra [data-extra]').forEach(el => { const v = String(el.value || '').trim(); if (v) d[el.dataset.extra] = v.slice(0, 2000); });
+  if (CP.odo) { const o = clinicaLimpiarOdontograma(CP.odo); if (Object.keys(o).length) d.odontograma = o; }
   return d;
+}
+function contextoPaciente(fecha) { return { fecha: fecha || vetHoy(), nacimiento: CP.ficha?.fecha_nacimiento || null, sexo: CP.ficha?.sexo || null }; }
+function htmlCalculos(lista) { return lista.map(x => `<span class="cl-badge cl-badge-${esc(x.clase)}" style="white-space:normal;text-align:left">${esc(x.t)}</span>`).join(' '); }
+function recalcularEspecialidad() {
+  const caja = $p('co-extra-calc'); if (!caja) return;
+  const r = clinicaCalculosEspecialidad($p('co-especialidad').value, leerCamposEspecialidad(), contextoPaciente());
+  caja.innerHTML = r.length ? `<div class="cl-calc">${htmlCalculos(r)}</div>` : '';
+}
+
+/* ---------- Odontograma (numeración FDI; se toca un diente para marcar su estado) ---------- */
+function htmlOdontograma(od, denticion, { editable, sel } = {}) {
+  const diente = n => {
+    const v = od[n] || { e: 'sano' }, e = CLINICA_ESTADOS_DIENTE[v.e] || CLINICA_ESTADOS_DIENTE.sano;
+    const caras = (v.s || []).join(''), titulo = `Diente ${n}: ${e.n}${caras ? ' (' + caras + ')' : ''}${v.n ? ' · ' + v.n : ''}`;
+    return `<button type="button" class="odo-d${sel === String(n) ? ' odo-sel' : ''}" ${editable ? `onclick="elegirDiente('${n}')"` : 'tabindex="-1" disabled'}
+      style="background:${e.c};border-color:${e.b}" title="${esc(titulo)}" aria-label="${esc(titulo)}"><span class="odo-n">${n}</span><span class="odo-i" style="color:${e.b}">${esc(e.ic || '')}</span><span class="odo-s">${esc(caras)}</span></button>`;
+  };
+  const arcada = filas => `<div class="odo-fila"><div class="odo-q odo-izq">${filas[0].map(diente).join('')}</div><div class="odo-q">${filas[1].map(diente).join('')}</div></div>
+    <div class="odo-fila"><div class="odo-q odo-izq">${filas[2].map(diente).join('')}</div><div class="odo-q">${filas[3].map(diente).join('')}</div></div>`;
+  const tipos = denticion === 'Temporal' ? ['temporal'] : denticion === 'Mixta' ? ['permanente', 'temporal'] : ['permanente'];
+  const usados = new Set(Object.values(od).map(v => v.e));
+  return `<div class="odo">${tipos.map(t => `${tipos.length > 1 ? `<div class="odo-tit">${t === 'permanente' ? 'Permanentes' : 'Temporales'}</div>` : ''}<div class="odo-arcada">${arcada(CLINICA_DIENTES[t])}</div>`).join('')}
+    <div class="odo-leyenda">${Object.entries(CLINICA_ESTADOS_DIENTE).filter(([k]) => editable || usados.has(k)).map(([, e]) => `<span><i style="background:${e.c};border-color:${e.b};color:${e.b}">${esc(e.ic || '')}</i>${esc(e.n)}</span>`).join('')}</div></div>`;
+}
+function denticionActual() { return document.querySelector('#co-extra [data-extra="denticion"]')?.value || 'Permanente'; }
+function pintarOdontograma() {
+  const cont = $p('co-odo'); if (!cont || !CP.odo) return;
+  cont.innerHTML = htmlOdontograma(CP.odo, denticionActual(), { editable: true, sel: CP.odoSel }) + '<div id="odo-editor"></div>';
+  pintarEditorDiente();
+}
+function elegirDiente(n) { CP.odoSel = CP.odoSel === String(n) ? null : String(n); pintarOdontograma(); if (CP.odoSel) setTimeout(() => $p('odo-editor')?.scrollIntoView({ block: 'nearest' }), 30); }
+function pintarEditorDiente() {
+  const ed = $p('odo-editor'); if (!ed) return;
+  const n = CP.odoSel; if (!n) { ed.innerHTML = '<p class="cl-sub" style="margin:6px 0 0">Toca un diente para marcar su estado.</p>'; return; }
+  const v = CP.odo[n] || { e: 'sano' }, est = CLINICA_ESTADOS_DIENTE[v.e] || CLINICA_ESTADOS_DIENTE.sano;
+  ed.innerHTML = `<div class="odo-editor"><div class="cl-item-tit">🦷 Diente ${esc(n)}</div>
+    <div class="odo-chips">${Object.entries(CLINICA_ESTADOS_DIENTE).map(([k, e]) => `<button type="button" class="odo-chip${k === v.e ? ' activa' : ''}" style="border-color:${e.b}" onclick="estadoDiente('${k}')">${e.ic ? `<b style="color:${e.b}">${esc(e.ic)}</b> ` : ''}${esc(e.n)}</button>`).join('')}</div>
+    ${est.caras ? `<div class="cl-sub" style="margin:6px 0 2px">Caras afectadas:</div><div class="odo-chips">${Object.entries(CLINICA_CARAS).map(([c, t]) => `<button type="button" class="odo-chip${(v.s || []).includes(c) ? ' activa' : ''}" onclick="caraDiente('${c}')" title="${esc(t)}"><b>${c}</b> ${esc(t)}</button>`).join('')}</div>` : ''}
+    <div class="cl-field" style="margin:8px 0 0"><label for="odo-nota">Nota del diente</label><input id="odo-nota" class="cl-in" maxlength="200" value="${esc(v.n || '')}" oninput="notaDiente(this.value)"/></div>
+    <div class="cl-acciones"><button type="button" class="btn-accion-tabla btn-ghost" onclick="elegirDiente('${esc(n)}')">✓ Listo</button></div></div>`;
+}
+function cambioDiente(f) {
+  const n = CP.odoSel; if (!n) return;
+  const v = { e: 'sano', ...(CP.odo[n] || {}) }; f(v);
+  if (!CLINICA_ESTADOS_DIENTE[v.e]?.caras) delete v.s;
+  if (v.e === 'sano' && !v.n) delete CP.odo[n]; else CP.odo[n] = v;
+}
+function estadoDiente(e) { cambioDiente(v => { v.e = e; }); pintarOdontograma(); recalcularEspecialidad(); }
+function caraDiente(c) { cambioDiente(v => { const s = new Set(v.s || []); s.has(c) ? s.delete(c) : s.add(c); v.s = [...s]; }); pintarOdontograma(); recalcularEspecialidad(); }
+function notaDiente(t) {
+  cambioDiente(v => { v.n = String(t || '').slice(0, 200); if (!v.n) delete v.n; });   // sin repintar: no se pierde lo que se escribe
 }
 function recalcularSignos() {
   const v = {}; Object.keys(CLINICA_SIGNOS).forEach(k => { v[k] = $p('co-' + k).value; });
@@ -473,7 +561,7 @@ function validarConsulta(d) {
   const vs = {}; Object.keys(CLINICA_SIGNOS).forEach(k => { vs[k] = $p('co-' + k).value; });
   const e = clinicaValidarSignos(vs); if (e) return e;
   if (d.proximo_control && d.proximo_control < vetHoy()) return 'El próximo control no puede ser una fecha pasada.';
-  return '';
+  return clinicaValidarDatos(d.especialidad, d.datos);
 }
 async function guardarNota({ silencioso } = {}) {
   const err = $p('co-error'); err.textContent = '';
@@ -572,6 +660,7 @@ const PASOS_TUTORIAL = [
   { icono: '👤', titulo: 'Pacientes', texto: 'Aquí registras a cada paciente con sus datos generales. Su número de expediente y su edad se calculan solos.' },
   { icono: '🔒', titulo: 'Expediente clínico', texto: 'Antecedentes, alergias y consultas solo los ven los médicos con su código de usuario. Cada vez que alguien abre un expediente queda anotado.' },
   { icono: '📝', titulo: 'La consulta', texto: 'Escribe motivo, signos vitales (el IMC sale solo), examen, diagnóstico y plan. Puedes guardar un borrador y terminar después.' },
+  { icono: '🦷', titulo: 'Según la especialidad', texto: 'Al elegir la especialidad aparecen sus datos propios y los cálculos se hacen solos: edad gestacional y fecha de parto, Glasgow, escalas de dolor, depresión y ansiedad, riesgo por cintura, y el odontograma, que parte del último del paciente.' },
   { icono: '✅', titulo: 'Cerrar y firmar', texto: 'Al terminar, "Cerrar y firmar". La nota queda fija: si luego hay que corregir algo, se agrega una adenda con fecha.' },
   { icono: '📄', titulo: 'Recetas y documentos', texto: 'Con "📄 Documento" haces recetas, órdenes de laboratorio o imágenes, constancias, certificados, referencias y consentimientos, listos para imprimir en hoja o en ticket. La receta puede pasar a Farmacia o a la cuenta de la visita.' },
   { icono: '📎', titulo: 'Archivos', texto: 'Sube resultados o fotos (PDF o imagen, hasta 10 MB). Se guardan en un lugar privado: solo los médicos con su código de usuario los abren.' },

@@ -622,6 +622,79 @@ async function pruebasFase3(browser, base, ancho, alto) {
   await ctx.close();
 }
 
+// ---- FASE 4: plantillas por especialidad (cálculos automáticos) y odontograma
+async function pruebasFase4(browser, base, ancho, alto) {
+  const tag = ancho < 500 ? 'celular' : 'computadora';
+  console.log(`\n▶ Fase 4 en ${tag} (${ancho}px)`);
+  const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+  await page.goto(base + '/clinica-pacientes.html');
+  await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: (() => {
+    const db = semilla();
+    db.configuracion_empresa[0].clinica_especialidades = ['odontologia', 'ginecologia', 'neurologia'];
+    db.clinica_consultas = [{ id: 'cc-odo', paciente_id: 'pac-xss', medico_id: 'per-med', medico_nombre: 'Dra. Ruiz', especialidad: 'odontologia', estado: 'cerrada', motivo: 'Revisión dental',
+      fecha: '2026-09-01T15:00:00Z', datos: { denticion: 'Permanente', odontograma: { 16: { e: 'caries', s: ['O'] }, 36: { e: 'ausente' } } }, diagnosticos: [] }];
+    return db; })() });
+  await page.goto(base + '/clinica-pacientes.html?paciente=pac-xss'); await esperarListo(page);
+  await page.click('text=🔓 Entrar con mi código'); await page.selectOption('#cp-persona', 'perf-med'); await page.fill('#cp-pin', '1357'); await page.click('#cp-ok');
+  await page.waitForSelector('#fi-panel-exp .odo');
+  verificar((await page.textContent('#fi-panel-exp')).includes('CPO-D 2'), `${tag}: la nota dental muestra su odontograma y el índice CPO-D`);
+  await sinDesborde(page, `${tag} expediente con odontograma`);
+
+  // Odontología: parte del último odontograma, se marca un diente con sus caras
+  await page.click('text=📝 Nueva consulta'); await page.waitForSelector('#modal-consulta.modal-open');
+  const esp = await page.$$eval('#co-especialidad option', os => os.map(o => o.value));
+  verificar(JSON.stringify(esp) === '["odontologia","ginecologia","neurologia"]', `${tag}: solo se cargan las especialidades elegidas (${esp})`);
+  await page.selectOption('#co-especialidad', 'odontologia'); await page.dispatchEvent('#co-especialidad', 'change');
+  await page.waitForSelector('#co-odo .odo-d');
+  verificar((await page.textContent('#co-extra')).includes('Se tomó el odontograma') && (await page.textContent('#co-extra-calc')).includes('CPO-D 2'), `${tag}: la consulta nueva parte del último odontograma del paciente`);
+  verificar(await page.locator('#co-odo .odo-d').count() === 32, `${tag}: dentición permanente = 32 dientes`);
+  await page.selectOption('#co-extra [data-extra="denticion"]', 'Mixta');
+  verificar(await page.locator('#co-odo .odo-d').count() === 52, `${tag}: dentición mixta = 52 dientes`);
+  await page.selectOption('#co-extra [data-extra="denticion"]', 'Permanente');
+  await page.click('#co-odo .odo-d[aria-label^="Diente 26:"]'); await page.waitForSelector('.odo-editor');
+  await page.click('.odo-editor >> text=Obturado'); await page.click('.odo-editor .odo-chip:has-text("Mesial")'); await page.click('.odo-editor .odo-chip:has-text("Oclusal")');
+  await page.fill('#odo-nota', 'Resina <b>x</b>');
+  await modalesSinDesborde(page, `${tag} odontograma`); await sinDesborde(page, `${tag} odontograma abierto`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/odontograma-' + tag + '.png', fullPage: false });
+  await page.click('.odo-editor >> text=✓ Listo');
+  verificar((await page.textContent('#co-extra-calc')).includes('CPO-D 3 (cariados 1, perdidos 1, obturados 1)'), `${tag}: el índice se recalcula al marcar el diente (${await page.textContent('#co-extra-calc')})`);
+  await page.fill('#co-motivo', 'Control dental'); await page.fill('#co-extra [data-extra="tratamiento_realizado"]', 'Resina en 26');
+  await page.fill('#co-plan', 'Tratar caries del 16'); await page.click('#co-btn-cerrar');
+  await page.waitForFunction(() => document.querySelectorAll('#fi-panel-exp .cl-item .odo').length === 2);
+  const nota = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_consultas.find(c => c.motivo === 'Control dental'));
+  verificar(JSON.stringify(nota.datos.odontograma['26']) === JSON.stringify({ e: 'obturado', s: ['M', 'O'], n: 'Resina <b>x</b>' }) && nota.datos.odontograma['16'].e === 'caries' && nota.estado === 'cerrada',
+    `${tag}: el odontograma se guarda dentro de la nota firmada (${JSON.stringify(nota.datos.odontograma)})`);
+  verificar((await page.innerHTML('#fi-panel-exp')).includes('26: Resina &lt;b&gt;x'), `${tag}: las notas por diente se muestran como texto`);
+
+  // Ginecología: edad gestacional y fecha probable de parto automáticas, avisos de riesgo, validación de la FUM
+  const fum = (() => { const d = new Date(); d.setDate(d.getDate() - 30 * 7 - 2); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  await page.click('#fi-panel-exp >> text=📝 Nueva consulta'); await page.waitForSelector('#modal-consulta.modal-open');
+  await page.selectOption('#co-especialidad', 'ginecologia'); await page.dispatchEvent('#co-especialidad', 'change');
+  await page.selectOption('#co-extra [data-extra="embarazo"]', 'Sí');
+  await page.fill('#co-extra [data-extra="fum"]', '2099-01-01'); await page.fill('#co-motivo', 'Control prenatal');
+  await page.click('#co-btn-guardar');
+  verificar((await page.textContent('#co-error')).includes('FUM'), `${tag}: no acepta una FUM futura`);
+  await page.fill('#co-extra [data-extra="fum"]', fum); await page.fill('#co-extra [data-extra="fcf"]', '180');
+  const calc = await page.textContent('#co-extra-calc');
+  verificar(calc.includes('30 semanas 2 días') && calc.includes('Fecha probable de parto') && calc.includes('FCF fuera de rango'), `${tag}: edad gestacional, fecha de parto y aviso de FCF automáticos`);
+  await page.fill('#co-extra [data-extra="fcf"]', '400'); await page.click('#co-btn-guardar');
+  verificar((await page.textContent('#co-error')).includes('entre 50 y 250'), `${tag}: valida los rangos de la plantilla`);
+  await page.fill('#co-extra [data-extra="fcf"]', '140'); await page.click('#co-btn-guardar');
+  await page.waitForSelector('#modal-consulta', { state: 'hidden' });
+  verificar((await page.textContent('#fi-panel-exp')).includes('30 semanas 2 días'), `${tag}: la nota muestra la edad gestacional`);
+
+  // Neurología: escala de Glasgow
+  await page.click('#fi-panel-exp >> text=📝 Nueva consulta'); await page.waitForSelector('#modal-consulta.modal-open');
+  await page.selectOption('#co-especialidad', 'neurologia'); await page.dispatchEvent('#co-especialidad', 'change');
+  await page.selectOption('#co-extra [data-extra="glasgow_o"]', '2'); await page.selectOption('#co-extra [data-extra="glasgow_v"]', '2'); await page.selectOption('#co-extra [data-extra="glasgow_m"]', '4');
+  verificar((await page.textContent('#co-extra-calc')).includes('Glasgow 8/15') && (await page.textContent('#co-extra-calc')).includes('grave'), `${tag}: Glasgow 8/15 grave calculado solo`);
+  await modalesSinDesborde(page, `${tag} plantilla neurología`);
+  await page.click('#modal-consulta .modal-close');
+  verificar(page.__errores.length === 0, `${tag}: fase 4 sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  verificar(!(await page.evaluate(() => window.__xss)), `${tag}: fase 4 sin XSS`);
+  await ctx.close();
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -656,6 +729,8 @@ async function regresion(browser, base) {
     await pruebasFase2(browser, base, 360, 740);
     await pruebasFase3(browser, base, 1280, 900);
     await pruebasFase3(browser, base, 360, 740);
+    await pruebasFase4(browser, base, 1280, 900);
+    await pruebasFase4(browser, base, 360, 740);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);

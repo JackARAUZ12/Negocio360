@@ -179,5 +179,62 @@ t('cobro por el camino de la Agenda: servicios + cuenta de la visita', () => {
   assert.strictEqual(JSON.stringify(d.items), JSON.stringify([{ producto_id: 'srv', cantidad: 1, total: 500 }, { producto_id: 'med', cantidad: 4, total: 50 }]));
   assert.strictEqual(d.citaId, 'a1'); assert.strictEqual(d.clienteId, 'cli1'); assert.strictEqual(d.sinCatalogo.length, 2);
 });
+t('fase 4: todas las especialidades tienen plantilla válida', () => {
+  Object.entries(C.CLINICA_ESPECIALIDADES).forEach(([k, e]) => {
+    assert.ok(e.n && e.e && Array.isArray(e.campos), k);
+    const vistos = new Set();
+    e.campos.forEach(f => { assert.ok(f.k && f.n && ['text', 'number', 'select', 'textarea', 'date', 'odontograma'].includes(f.tipo), k + '.' + f.k); assert.ok(!vistos.has(f.k), 'repetido ' + k + '.' + f.k); vistos.add(f.k);
+      if (f.tipo === 'select') assert.ok(f.opciones.length > 1, k + '.' + f.k); });
+    if (e.calc) assert.ok(Array.isArray(C.clinicaCalculosEspecialidad(k, {}, {})), k);
+  });
+  assert.strictEqual(Object.keys(C.CLINICA_ESPECIALIDADES).filter(k => k !== 'medicina_general' && !C.CLINICA_ESPECIALIDADES[k].campos.length).length, 0);
+});
+t('edad gestacional y fecha probable de parto (Naegele)', () => {
+  const eg = C.clinicaEdadGestacional('2026-03-01', '2026-10-24');
+  assert.strictEqual(eg.semanas, 33); assert.strictEqual(eg.dias, 6); assert.strictEqual(eg.fpp, '2026-12-06');
+  assert.strictEqual(C.clinicaEdadGestacional('2026-11-01', '2026-10-24'), null);   // futura
+  assert.strictEqual(C.clinicaEdadGestacional('2025-01-01', '2026-10-24'), null);   // más de 45 semanas
+  const r = C.clinicaCalculosEspecialidad('ginecologia', { embarazo: 'Sí', fum: '2026-03-01', fcf: '170', edema: 'Severo' }, { fecha: '2026-10-24' });
+  assert.ok(r[0].t.includes('33 semanas 6 días') && r.some(x => x.t.includes('FCF fuera de rango')) && r.some(x => x.t.includes('preeclampsia')));
+});
+t('Glasgow, dolor, PHQ-9/GAD-7, riesgo suicida', () => {
+  assert.strictEqual(C.clinicaGlasgow('4', '5', '6').total, 15); assert.ok(C.clinicaGlasgow('2', '2', '4').t.includes('grave'));
+  assert.ok(C.clinicaGlasgow('3', '5', '6').t.includes('leve')); assert.ok(C.clinicaGlasgow('3', '4', '5').t.includes('moderado')); assert.strictEqual(C.clinicaGlasgow('5', '5', '6'), null); assert.strictEqual(C.clinicaGlasgow('4', '', '6'), null);
+  assert.ok(C.clinicaEscalaDolor('8').t.includes('intenso')); assert.strictEqual(C.clinicaEscalaDolor('11'), null);
+  const p = C.clinicaCalculosEspecialidad('psicologia', { phq9: '16', gad7: '4', riesgo_suicida: 'Alto' });
+  assert.ok(p[0].t.includes('moderadamente grave') && p[1].t.includes('mínima') && p[2].clase === 'rojo');
+});
+t('nutrición: cintura e índice cintura/cadera según sexo', () => {
+  const m = C.clinicaRiesgoCintura('90', '100', 'femenino'); assert.ok(m[0].t.includes('muy alto') && m[1].t.includes('0.9 (alto)'));
+  const h = C.clinicaRiesgoCintura('90', '100', 'masculino'); assert.ok(h[0].t.includes('sin riesgo') && h[1].t.includes('(normal)'));
+});
+t('urología, endocrinología, oftalmología, fisioterapia, pediatría', () => {
+  assert.ok(C.clinicaCalculosEspecialidad('urologia', { ipss: '22', psa: '6.1' }).map(x => x.t).join('|').includes('severos|PSA elevado'));
+  assert.ok(C.clinicaCalculosEspecialidad('endocrinologia', { hba1c: '8.2', tsh: '9' })[0].t.includes('fuera de meta'));
+  assert.ok(C.clinicaCalculosEspecialidad('endocrinologia', { hba1c: '6' })[0].t.includes('prediabetes'));
+  assert.strictEqual(C.clinicaCalculosEspecialidad('oftalmologia', { pio_od: '25', pio_oi: '15' }).length, 1);
+  assert.ok(C.clinicaCalculosEspecialidad('fisioterapia', { eva_antes: '7', eva_despues: '4' })[0].t.includes('bajó 3 puntos'));
+  assert.ok(C.clinicaCalculosEspecialidad('pediatria', { vacunas: 'Incompletas' }, { nacimiento: '2025-01-30', fecha: '2026-10-24' })[0].t.includes('20 meses'));
+  assert.strictEqual(C.clinicaMesesEdad('2026-01-31', '2026-02-28'), 0);
+});
+t('odontograma: limpieza (no se guarda basura) e índices CPO-D / ceo-d', () => {
+  const o = C.clinicaLimpiarOdontograma({ 16: { e: 'caries', s: ['O', 'M', 'X', 'O'] }, 26: { e: 'obturado', s: ['O'] }, 36: { e: 'ausente', s: ['O'] }, 99: { e: 'caries' },
+    11: { e: 'hackeo' }, 21: { e: 'sano' }, 22: { e: 'sano', n: 'vigilar' }, 46: { e: 'por_extraer', n: 'x'.repeat(300) }, 55: { e: 'caries' }, 85: { e: 'ausente' } });
+  assert.strictEqual(JSON.stringify(o[16]), JSON.stringify({ e: 'caries', s: ['O', 'M'] }));
+  assert.ok(!o[36].s && !o[99] && !o[11] && !o[21] && o[22].n === 'vigilar' && o[46].n.length === 200);
+  const r = C.clinicaIndicesDentales(o).map(x => x.t);
+  assert.ok(r[0].startsWith('CPO-D 4 (cariados 2, perdidos 1, obturados 1)'), r[0]);
+  assert.ok(r[1].startsWith('ceo-d 2'), r[1]);
+  assert.ok(r.some(x => x.includes('2 dientes con caries')) && r.some(x => x.includes('1 extracción indicada')));
+  assert.strictEqual(C.clinicaDientesDe('Mixta').length, 52); assert.strictEqual(C.clinicaDientesDe('Temporal').length, 20); assert.strictEqual(C.clinicaDientesDe('').length, 32);
+});
+t('plantilla: resumen para la nota y validación de rangos', () => {
+  const r = C.clinicaResumenDatos('ginecologia', { fum: '2026-03-01', fcf: '140', gestas: '', odontograma: {} });
+  assert.strictEqual(r.length, 2); assert.ok(r[1].v === '140 lpm' && r[0].v.includes('marzo'));
+  assert.ok(C.clinicaValidarDatos('ortopedia', { dolor_eva: '12' }).includes('entre 0 y 10'));
+  assert.ok(C.clinicaValidarDatos('nutricion', { cintura_cm: 'abc' }).includes('número'));
+  assert.strictEqual(C.clinicaValidarDatos('ortopedia', { dolor_eva: '7' }), '');
+  assert.ok(C.clinicaValidarDatos('ginecologia', { embarazo: 'Sí', fum: '2099-01-01' }).includes('FUM'));
+});
 t('CSV seguro para Excel', () => { const c = C.clinicaCSV([['a', '=1+1', 'x,y', 'di"jo']]); assert.ok(c.includes("'=1+1") && c.includes('"x,y"') && c.includes('"di""jo"')); });
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);
