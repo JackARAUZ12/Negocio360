@@ -118,6 +118,12 @@
           .select('usa_modulo_fiados').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_fiados = fi?.usa_modulo_fiados === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_fiados = false; }
+      // Clínica: consulta aparte, mismo criterio.
+      try {
+        const { data: cl } = await client.from('configuracion_empresa')
+          .select('usa_modulo_clinica').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_clinica = cl?.usa_modulo_clinica === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_clinica = false; }
       // Cotizaciones: consulta aparte, mismo criterio.
       try {
         const { data: co } = await client.from('configuracion_empresa')

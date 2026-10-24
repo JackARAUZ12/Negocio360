@@ -1,0 +1,100 @@
+/* =====================================================
+   CLÍNICA -- estilos propios del módulo (prefijo cl-).
+   Se apoyan en las variables de color del sistema, así se
+   ven bien en tema claro y oscuro. Pensados primero para
+   celular (360 px) y luego computadora.
+===================================================== */
+.cl-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+.cl-barra { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+.cl-buscador { position:relative; flex:1; min-width:200px; max-width:460px; }
+.cl-buscador-icono { position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; pointer-events:none; opacity:.7; }
+.cl-buscador input, .cl-select, .cl-in, .cl-ta { padding:10px 12px; border-radius:10px; border:1px solid var(--border,#e5e7eb); background:var(--bg-surface,#fff); color:var(--text-primary); font-size:14px; box-sizing:border-box; font-family:inherit; max-width:100%; }
+.cl-buscador input { width:100%; padding-left:36px; }
+.cl-in, .cl-ta { width:100%; } .cl-ta { min-height:70px; resize:vertical; line-height:1.45; }
+.cl-in:focus, .cl-ta:focus, .cl-select:focus { outline:2px solid var(--accent,#6C63FF); outline-offset:0; border-color:transparent; }
+.cl-field { margin-bottom:10px; min-width:0; } .cl-field label { display:block; font-size:12.5px; font-weight:700; margin-bottom:5px; color:var(--text-secondary); }
+.cl-field .cl-ayuda { font-size:11.5px; color:var(--text-muted); margin-top:4px; }
+.cl-grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0 10px; }
+.cl-grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:0 10px; }
+.cl-check { display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer; margin-bottom:8px; }
+.cl-check input { width:18px; height:18px; flex:none; margin:0; accent-color:var(--accent,#6C63FF); }
+.cl-nombre { font-weight:800; font-size:14px; word-break:break-word; } .cl-sub { font-size:12px; color:var(--text-muted); }
+.cl-badge { display:inline-block; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:20px; white-space:nowrap; line-height:1.35; }
+.cl-badge-rojo { background:#FEE2E2; color:#991B1B; } .cl-badge-ambar { background:#FEF3C7; color:#92400E; }
+.cl-badge-azul { background:#DBEAFE; color:#1E40AF; } .cl-badge-verde { background:#DCFCE7; color:#166534; }
+.cl-badge-morado { background:#EDE9FE; color:#5B21B6; } .cl-badge-gris { background:var(--bg-app,#f3f4f6); color:var(--text-muted); }
+.cl-resultados { border:1px solid var(--border,#e5e7eb); border-radius:8px; margin-top:4px; max-height:200px; overflow-y:auto; background:var(--bg-surface,#fff); }
+.cl-resultado { padding:10px 11px; cursor:pointer; font-size:13.5px; } .cl-resultado:hover, .cl-resultado:focus { background:var(--bg-app); outline:none; }
+.cl-elegido { margin-top:6px; padding:9px 11px; background:var(--bg-app); border-radius:8px; font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.cl-link { background:none; border:none; color:var(--accent,#6C63FF); font-weight:700; font-size:12.5px; cursor:pointer; padding:4px 0; }
+.cl-tabs { display:flex; gap:4px; margin:12px 0; border-bottom:1px solid var(--border,#e5e7eb); overflow-x:auto; scrollbar-width:none; }
+.cl-tab { background:none; border:none; padding:10px 12px; font-weight:700; font-size:13.5px; color:var(--text-muted); cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; }
+.cl-tab.activa { color:var(--accent,#6C63FF); border-bottom-color:var(--accent,#6C63FF); }
+.cl-datos { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; margin-top:10px; }
+.cl-dato { background:var(--bg-app); border-radius:10px; padding:8px 11px; min-width:0; } .cl-dato b { display:block; font-size:11px; color:var(--text-muted); font-weight:600; } .cl-dato span { font-size:13.5px; font-weight:700; word-break:break-word; }
+.cl-alerta { background:#FEE2E2; color:#991B1B; border-radius:10px; padding:10px 12px; font-size:13px; font-weight:700; margin-top:10px; border:1px solid #FCA5A5; word-break:break-word; }
+.cl-aviso { background:#FEF3C7; color:#92400E; border-radius:10px; padding:9px 12px; font-size:12.5px; margin-top:10px; }
+.cl-info { background:var(--bg-app); color:var(--text-secondary); border-radius:10px; padding:9px 12px; font-size:12.5px; margin-top:10px; }
+.cl-item { border:1px solid var(--border,#e5e7eb); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:var(--bg-surface,#fff); min-width:0; }
+.cl-item.anulada { opacity:.65; }
+.cl-item-cab { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; }
+.cl-item-tit { font-weight:800; font-size:14px; word-break:break-word; } .cl-item-fecha { font-size:12px; color:var(--text-muted); }
+.cl-item p { margin:6px 0 0; font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word; } .cl-item p b { color:var(--text-secondary); }
+.cl-acciones { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+.cl-hbtns { display:flex; gap:8px; flex-wrap:wrap; }
+.cl-seccion { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:16px 0 8px; padding-top:12px; border-top:1px solid var(--border,#e5e7eb); }
+.cl-seccion:first-child { border-top:none; padding-top:0; margin-top:0; }
+.cl-imc { margin-top:4px; font-size:12.5px; font-weight:700; }
+.cl-lista { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; }
+.cl-card { border:1px solid var(--border,#e5e7eb); border-radius:12px; padding:12px 14px; background:var(--bg-surface,#fff); display:flex; flex-direction:column; gap:6px; cursor:pointer; min-width:0; }
+.cl-card:hover { box-shadow:var(--shadow-md, 0 4px 14px rgba(0,0,0,.08)); }
+.cl-avatar { width:40px; height:40px; border-radius:50%; background:var(--accent-soft,#eef); color:var(--accent,#6C63FF); display:flex; align-items:center; justify-content:center; font-weight:800; flex:none; }
+.cl-fila { display:flex; align-items:center; gap:10px; min-width:0; }
+.cl-candado { text-align:center; padding:28px 14px; border:2px dashed var(--border,#e5e7eb); border-radius:14px; }
+.cl-candado .cl-candado-icono { font-size:40px; }
+.cl-chip-sesion { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; padding:6px 10px; border-radius:20px; background:#DCFCE7; color:#166534; border:none; cursor:pointer; }
+.cl-chip-sesion.cerrada { background:var(--bg-app); color:var(--text-muted); }
+.cl-diabar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+.cl-nav { width:40px; height:40px; border-radius:10px; border:1px solid var(--border,#e5e7eb); background:var(--bg-surface,#fff); cursor:pointer; font-size:14px; color:var(--text-primary); flex:none; }
+.cl-fechatit { font-size:15px; font-weight:800; margin:8px 0 12px; }
+.cl-vista { display:inline-flex; border:1px solid var(--border,#e5e7eb); border-radius:10px; overflow:hidden; }
+.cl-vista button { border:none; background:var(--bg-surface,#fff); padding:9px 12px; font-weight:700; font-size:13px; cursor:pointer; color:var(--text-secondary); }
+.cl-vista button.activa { background:var(--accent,#6C63FF); color:#fff; }
+.ag-card { border:1px solid var(--border,#e5e7eb); border-left:4px solid #3B82F6; border-radius:12px; padding:12px 14px; background:var(--bg-surface,#fff); display:flex; flex-direction:column; gap:6px; min-width:0; }
+.ag-card.est-confirmada { border-left-color:#16a34a; } .ag-card.est-en_espera { border-left-color:#d97706; }
+.ag-card.est-en_consulta { border-left-color:#7c3aed; } .ag-card.est-atendida { border-left-color:#6b7280; }
+.ag-card.est-cancelada, .ag-card.est-no_asistio { opacity:.6; border-left-color:#dc2626; }
+.ag-hora { font-weight:800; font-size:14px; color:var(--accent,#6C63FF); }
+.ag-fila { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+.ag-btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+.ag-btns .btn-accion-tabla { flex:1 1 auto; justify-content:center; text-align:center; }
+.ag-semana { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; }
+.ag-dia { border:1px solid var(--border,#e5e7eb); border-radius:12px; background:var(--bg-surface,#fff); min-width:0; display:flex; flex-direction:column; }
+.ag-dia-cab { padding:8px 10px; font-weight:800; font-size:12.5px; border-bottom:1px solid var(--border,#e5e7eb); cursor:pointer; }
+.ag-dia-cab.hoy { color:var(--accent,#6C63FF); }
+.ag-mini { margin:6px; padding:6px 8px; border-radius:8px; background:var(--bg-app); font-size:12px; cursor:pointer; border-left:3px solid #3B82F6; word-break:break-word; }
+.ag-mini.est-cancelada, .ag-mini.est-no_asistio { opacity:.55; text-decoration:line-through; }
+.ag-mini.est-atendida { border-left-color:#6b7280; } .ag-mini.est-en_espera { border-left-color:#d97706; }
+.cl-tabla-cuenta { width:100%; border-collapse:collapse; font-size:13px; }
+.cl-tabla-cuenta td { padding:8px 4px; border-bottom:1px solid var(--border,#e5e7eb); vertical-align:top; }
+.cl-total { font-size:16px; font-weight:800; text-align:right; margin-top:10px; }
+.cl-pin-in { font-size:22px; letter-spacing:6px; text-align:center; }
+.cl-bit { font-size:12.5px; }
+.cl-bit .cl-item { padding:9px 12px; }
+.cl-oculto { display:none !important; }
+/* Formulario grande (consulta): pantalla completa en el celular */
+.modal-box.cl-modal-grande { max-width:860px; width:100%; }
+@media (max-width:640px) {
+  .cl-kpis { grid-template-columns:repeat(2,1fr); gap:8px; }
+  .cl-buscador { max-width:none; flex-basis:100%; }
+  .cl-barra .cl-select { flex:1 1 140px; }
+  .cl-lista { grid-template-columns:1fr; }
+  .cl-hbtns { width:100%; } .cl-hbtns .btn-accion-tabla { flex:1; text-align:center; }
+  .cl-diabar .cl-in { flex:1; min-width:130px; width:auto; }
+  .cl-diabar .cl-select { width:100%; }
+  .ag-semana { grid-template-columns:1fr; }
+  .modal-box.cl-modal-grande { max-height:100vh !important; height:100%; border-radius:0 !important; }
+  .modal-overlay.cl-overlay-grande { padding:0 !important; }
+  .cl-hide-m { display:none !important; }
+}
+@media print { .cl-no-imprimir { display:none !important; } }
