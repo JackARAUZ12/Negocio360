@@ -1,7 +1,7 @@
 /* =====================================================
    CLÍNICA -- utilidades compartidas (puras, sin acceso a la
    base de datos ni al DOM, para poder probarlas bien).
-   Las usan: clinica-agenda.js, clinica-pacientes.js y
+   Las usan: clinica-sala.js, clinica-pacientes.js y
    clinica-equipo.js. Reutiliza las de fecha/hora/WhatsApp de
    vet-comun.js (que se carga antes).
 ===================================================== */
@@ -178,7 +178,7 @@ const CLINICA_ESTADOS_NOTA = {
 function clinicaTextoError(e, porDefecto) {
   const m = String(e?.message || e || '');
   const tabla = {
-    clinica_sesion_invalida: 'Tu sesión médica se cerró. Ingresa tu PIN de nuevo.',
+    clinica_sesion_invalida: 'Tu sesión médica se cerró. Escribe tu código de nuevo.',
     clinica_choque_horario: 'Ese médico ya tiene una cita a esa hora. Elige otra hora.',
     clinica_cita_pasa_medianoche: 'La cita debe terminar antes de la medianoche.',
     clinica_fecha_nacimiento_invalida: 'La fecha de nacimiento no puede ser futura.',
@@ -198,28 +198,31 @@ const CLINICA_MOTIVOS_RPC = {
   no_borrador: 'Esta nota ya está cerrada: no se puede modificar.', no_autor: 'Solo el médico que escribió la nota puede hacer esto.',
   incompleta: 'Para cerrar la nota escribe al menos el diagnóstico o el plan.', no_cerrada: 'Solo se agregan adendas a notas cerradas.',
   texto: 'Escribe el texto.', ya_anulada: 'Esta nota ya estaba anulada.', sin_permiso: 'Necesitas el código de administrador.',
-  incorrecto: 'PIN o código incorrecto.', bloqueado: 'Demasiados intentos fallidos. Espera unos minutos.',
+  incorrecto: 'Código incorrecto.', bloqueado: 'Demasiados intentos fallidos. Espera unos minutos.',
   pin_formato: 'El PIN debe tener de 4 a 8 números.', pin_requerido: 'Médicos y administradores necesitan un PIN (4 a 8 números).',
   nombre: 'Escribe el nombre.', rol: 'Elige el rol.', consultorio: 'Ese consultorio no existe.', no_encontrado: 'No se encontró.',
-  sin_pin: 'Esta persona todavía no tiene PIN. Pídele al administrador que se lo asigne.',
-  sin_acceso_clinico: 'Recepción no tiene acceso al expediente clínico.', formato: 'El código debe tener de 4 a 12 números.',
+  sin_pin: 'Este usuario todavía no tiene código. Defínelo en el menú de usuarios.',
+  sin_acceso_clinico: 'Tu usuario no está marcado como médico: no tiene acceso al expediente clínico.', formato: 'El código debe tener de 4 a 12 números.',
   incompleto: 'Faltan datos obligatorios del documento.', tipo: 'Tipo de documento no válido.', contenido: 'El documento es demasiado grande.',
   consulta: 'Esa consulta no es de este paciente.', ya_en_farmacia: 'Esta receta ya está en Farmacia.', tipo_archivo: 'Solo se aceptan PDF, JPG, PNG o WEBP.',
   tamano: 'El archivo es muy grande (máximo 10 MB).', archivo_no_llego: 'El archivo no terminó de subir. Intenta de nuevo.',
+  perfil: 'Elige un usuario del sistema.', perfil_repetido: 'Ese usuario ya está en la lista de médicos.',
+  profesional: 'Esa columna de la Agenda no existe.', profesional_repetido: 'Esa columna de la Agenda ya es de otro médico.',
+  usar_usuarios: 'El código se cambia en el menú de usuarios del sistema.', sin_usuario: 'Esta persona no está ligada a un usuario del sistema.',
   honorario: 'Revisa el honorario: el porcentaje va de 0 a 100.', empleado: 'Ese empleado no existe en Salarios.', fechas: 'Revisa las fechas (máximo 2 años).',
 };
 function clinicaTextoMotivo(r) {
   if (!r) return 'No se pudo completar. Intenta de nuevo.';
   if (r.motivo === 'bloqueado') { const m = Math.max(1, Math.ceil((r.bloqueado_seg || 60) / 60)); return `Demasiados intentos fallidos. Espera ${m} minuto${m === 1 ? '' : 's'}.`; }
-  if (r.motivo === 'incorrecto' && r.restantes > 0 && r.restantes <= 3) return `PIN o código incorrecto (te quedan ${r.restantes} intento${r.restantes === 1 ? '' : 's'}).`;
+  if (r.motivo === 'incorrecto' && r.restantes > 0 && r.restantes <= 3) return `Código incorrecto (te quedan ${r.restantes} intento${r.restantes === 1 ? '' : 's'}).`;
   return CLINICA_MOTIVOS_RPC[r.motivo] || 'No se pudo completar. Intenta de nuevo.';
 }
 
 const CLINICA_ACCIONES_BITACORA = {
-  inicio_sesion: '🔓 Entró con su PIN', cierre_sesion: '🔒 Cerró su sesión', pin_incorrecto: '⚠️ PIN incorrecto', bloqueo: '⛔ Bloqueo por intentos',
+  inicio_sesion: '🔓 Entró con su código', cierre_sesion: '🔒 Cerró su sesión', pin_incorrecto: '⚠️ Código incorrecto', bloqueo: '⛔ Bloqueo por intentos',
   abrir_expediente: '📂 Abrió el expediente', editar_antecedentes: '✏️ Editó antecedentes', crear_nota: '📝 Creó una nota',
   editar_borrador: '✏️ Editó un borrador', cerrar_nota: '✅ Cerró y firmó una nota', adenda: '➕ Agregó una adenda',
-  anular_nota: '🚫 Anuló una nota', personal_creado: '👤 Agregó personal', personal_editado: '👤 Editó personal',
+  anular_nota: '🚫 Anuló una nota', personal_creado: '👤 Marcó a un médico', personal_editado: '👤 Editó un médico',
   pin_definido: '🔑 Asignó un PIN', pin_cambiado: '🔑 Cambió su PIN', ver_bitacora: '🕵️ Revisó la bitácora',
   emitir_documento: '📄 Emitió un documento', anular_documento: '🚫 Anuló un documento', receta_a_farmacia: '💊 Pasó una receta a Farmacia',
   subir_adjunto: '📎 Subió un archivo', ver_adjunto: '👁️ Abrió un archivo', anular_adjunto: '🚫 Anuló un archivo',
@@ -312,12 +315,62 @@ function clinicaResumenReporte({ citas, ventas, detalles, devoluciones, medicos 
   return { total, porMedico: Object.entries(porMedico).map(([id, f]) => ({ medico_id: id === '_sin' ? null : id, nombre: id === '_sin' ? 'Sin médico asignado' : nombre(id), ...f }))
     .sort((a, b) => b.citas - a.citas), servicios: Object.values(servicios).sort((a, b) => b.total - a.total) };
 }
+/* ---------- Citas de la Agenda vistas por la clínica ---------- */
+// Una cita de la Agenda (agenda_citas + servicios) + lo propio de la clínica (clinica_cita_info) en la
+// forma que usan la sala, los reportes y el expediente. El médico es el primer servicio cuyo profesional
+// está ligado a un médico; el paciente, el ligado a la cita o el que tiene el mismo cliente.
+function clinicaCitaDeAgenda(a, { info, medicos, pacientes, clientes } = {}) {
+  const lin = (a.agenda_citas_servicios || []).slice()
+    .sort((x, y) => String(x.hora_inicio).localeCompare(String(y.hora_inicio)) || (Number(x.orden) || 0) - (Number(y.orden) || 0));
+  const meds = medicos || [], pacs = pacientes || [], i = info || {};
+  const med = lin.map(l => l.profesional_id && meds.find(m => m.agenda_profesional_id === l.profesional_id)).find(Boolean) || null;
+  const pac = (i.paciente_id && pacs.find(p => p.id === i.paciente_id)) || (a.cliente_id && pacs.find(p => p.cliente_id === a.cliente_id)) || null;
+  let estado;
+  if (a.estado === 'cancelada' || a.estado === 'no_asistio') estado = a.estado;
+  else if (a.estado === 'completada' || i.atendida_en) estado = 'atendida';
+  else if (a.estado === 'en_atencion') estado = 'en_consulta';
+  else if (i.llegada_en) estado = 'en_espera';
+  else estado = a.estado === 'confirmada' ? 'confirmada' : 'programada';
+  const telCliente = a.cliente_id ? ((clientes || []).find(c => c.id === a.cliente_id)?.telefono || '') : '';
+  return {
+    id: a.id, fecha: a.fecha, hora: lin[0] ? String(lin[0].hora_inicio).slice(0, 5) : '',
+    duracion_min: lin[0] ? Number(lin[0].duracion_min) || 30 : 30, estado, estado_agenda: a.estado,
+    venta_id: a.venta_id || null, notas: a.notas || '', cliente_id: a.cliente_id || null, cliente_nombre: a.cliente_nombre || '',
+    paciente_id: pac ? pac.id : null, paciente: pac,
+    clinica_pacientes: pac || { nombres: a.cliente_nombre || 'Sin nombre', apellidos: '', telefono: a.cliente_telefono || telCliente },
+    telefono: (pac && pac.telefono) || a.cliente_telefono || telCliente || '',
+    medico_id: med ? med.id : null, consultorio_id: i.consultorio_id || (med && med.consultorio_id) || null,
+    llegada_en: i.llegada_en || null, llamado_en: i.llamado_en || null, atendida_en: i.atendida_en || null,
+    recordatorio_enviado_en: i.recordatorio_enviado_en || null,
+    servicios: lin.map(l => l.servicio_nombre), motivo: lin.map(l => l.servicio_nombre).join(', '),
+  };
+}
+// Datos para cobrar por el camino de la Agenda (n360_agenda_cobro): los servicios de la cita con el
+// precio acordado + lo agregado a la cuenta de la visita (al precio del catálogo).
+function clinicaCobroAgenda(cita, cargos) {
+  const items = [], sinCatalogo = [];
+  const sumar = (producto_id, cantidad, total) => {
+    const ya = items.find(x => x.producto_id === producto_id);
+    if (ya) { ya.cantidad = _r2c(ya.cantidad + cantidad); ya.total = _r2c(ya.total + total); }
+    else items.push({ producto_id, cantidad: _r2c(cantidad), total: _r2c(total) });
+  };
+  (cita.agenda_citas_servicios || []).forEach(l => {
+    if (l.producto_id) sumar(l.producto_id, 1, Number(l.precio) || 0);
+    else sinCatalogo.push(`${l.servicio_nombre} (${(Number(l.precio) || 0).toFixed(2)})`);
+  });
+  (cargos || []).forEach(x => {
+    if (x.producto_id && x.productos) sumar(x.producto_id, Number(x.cantidad) || 1, (Number(x.cantidad) || 1) * (Number(x.productos.precio) || 0));
+    else sinCatalogo.push(x.descripcion);
+  });
+  return { citaId: cita.id, clienteId: cita.cliente_id || null, cliente: cita.cliente_nombre || '', items, sinCatalogo };
+}
 function clinicaCSV(filas) {
   const celda = v => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   return '﻿' + filas.map(f => f.map(celda).join(',')).join('\r\n');
 }
 
 if (typeof module !== 'undefined') module.exports = {
+  clinicaCitaDeAgenda, clinicaCobroAgenda,
   CLINICA_ESPECIALIDADES, clinicaEspecialidadesActivas, clinicaNombreEspecialidad, CLINICA_TIPOS_CITA, CLINICA_ESTADOS_CITA,
   clinicaSiguientesEstados, clinicaChoqueCita, clinicaSemana, clinicaMensajeCita, clinicaEdad, clinicaAnios, clinicaNombrePaciente,
   CLINICA_SIGNOS, clinicaValidarSignos, clinicaNumero, clinicaIMC, clinicaClasificarIMC, clinicaAlertasSignos, clinicaTextoPA,

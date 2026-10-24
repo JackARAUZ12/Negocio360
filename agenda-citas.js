@@ -576,6 +576,21 @@
       if (ya) { ya.cantidad += 1; ya.total = Math.round((ya.total + Number(l.precio || 0)) * 100) / 100; }
       else items.push({ producto_id: l.producto_id, cantidad: 1, total: Number(l.precio || 0) });
     });
+    // Clínica (solo si la cuenta la usa): lo que el médico agregó a la cuenta de la visita
+    // (p. ej. medicamentos de la receta) se cobra junto con la cita, al precio del catálogo.
+    if (STATE.empresaConfig?.usa_modulo_clinica === true) {
+      try {
+        const { data: cargos } = await sb.from('clinica_cita_cargos').select('producto_id, descripcion, cantidad, productos(precio)')
+          .eq('auth_user_id', STATE.userId).eq('agenda_cita_id', c.id);
+        (cargos || []).forEach(x => {
+          if (!x.producto_id || !x.productos) return;          // el producto ya no existe en el catálogo
+          const cant = Number(x.cantidad) || 1, monto = Math.round(cant * Number(x.productos.precio || 0) * 100) / 100;
+          const ya = items.find(i => i.producto_id === x.producto_id);
+          if (ya) { ya.cantidad += cant; ya.total = Math.round((ya.total + monto) * 100) / 100; }
+          else items.push({ producto_id: x.producto_id, cantidad: cant, total: monto });
+        });
+      } catch (e) { console.warn('cuenta de la clínica:', e); }
+    }
     sessionStorage.setItem('n360_agenda_cobro', JSON.stringify({
       citaId: c.id, clienteId: c.cliente_id || null, cliente: c.cliente_nombre, items,
       sinCatalogo: sinCatalogo.map(l => `${l.servicio_nombre} (${fmt(l.precio)})`),

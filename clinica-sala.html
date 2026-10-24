@@ -10,7 +10,7 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="modulos-registro.js?v=20261024c"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261024b" />
+  <link rel="stylesheet" href="clinica.css?v=20261024c" />
 </head>
 <body>
 
@@ -1319,10 +1319,11 @@
       <div class="hab-page-header">
         <div>
           <h1>🪑 Sala de espera</h1>
-          <p class="hab-page-subtitle">Turnos de hoy por orden de llegada. Se actualiza sola.</p>
+          <p class="hab-page-subtitle">Las citas de hoy de la <a href="agenda.html" style="color:var(--accent)">Agenda</a>, con turnos por orden de llegada. Se actualiza sola.</p>
         </div>
         <div class="cl-hbtns">
           <button class="btn-accion-tabla btn-ghost" onclick="cargar()">🔄 Actualizar</button>
+          <button class="btn-accion-tabla btn-ghost" onclick="abrirRecordatorios()">📲 Recordatorios</button>
           <button class="btn-accion-tabla btn-primary" onclick="abrirPantalla()">📺 Modo pantalla</button>
         </div>
       </div>
@@ -1338,14 +1339,17 @@
       <div id="sa-consulta" class="cl-lista"></div>
       <div class="cl-seccion">Por llegar hoy</div>
       <div id="sa-llegar" class="cl-lista"></div>
+      <div class="cl-seccion">Atendidos hoy</div>
+      <div id="sa-atendidos" class="cl-lista"></div>
     </div>
 
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261024b"></script>
-<script src="clinica-sesion.js?v=20261024b"></script>
-<script src="clinica-sala.js?v=20261024b"></script>
+<script src="clinica-comun.js?v=20261024c"></script>
+<script src="clinica-sesion.js?v=20261024c"></script>
+<script src="clinica-citas.js?v=20261024c"></script>
+<script src="clinica-sala.js?v=20261024c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1386,6 +1390,53 @@
   <div class="sp-cab"><span id="sp-negocio"></span><span id="sp-hora"></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
   <div class="sp-cuerpo"><div class="sp-llamado" id="sp-llamado"></div><div class="sp-cola"><div class="sp-tit">En espera</div><div id="sp-lista"></div></div></div>
 </div>
+
+<div class="modal-overlay" id="modal-recordatorios" onclick="if(event.target===this)closeModal('modal-recordatorios')">
+  <div class="modal-box" style="max-width:540px;width:100%" role="dialog" aria-labelledby="re-titulo">
+    <div class="modal-header"><span class="modal-title" id="re-titulo">📲 Recordatorios de citas</span><button class="modal-close" onclick="closeModal('modal-recordatorios')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div class="cl-diabar"><div class="cl-field" style="margin:0"><label for="re-fecha">Citas del día</label><input type="date" id="re-fecha" class="cl-in" onchange="cargarRecordatorios()"/></div><span class="cl-sub" id="re-resumen" style="align-self:flex-end"></span></div>
+      <p class="cl-sub">Cada botón abre WhatsApp con el mensaje listo; solo tienes que enviarlo. Queda marcado como avisado.</p>
+      <div id="re-lista"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-recordatorios')">Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-vincular" onclick="if(event.target===this)closeModal('modal-vincular')">
+  <div class="modal-box" style="max-width:500px;width:100%" role="dialog" aria-labelledby="vi-titulo">
+    <div class="modal-header"><span class="modal-title" id="vi-titulo">🩺 ¿Quién es el paciente?</span><button class="modal-close" onclick="closeModal('modal-vincular')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <p class="cl-sub" id="vi-ayuda" style="margin-top:0"></p>
+      <div class="cl-field"><label for="vi-buscar">Buscar su expediente</label>
+        <input type="text" id="vi-buscar" class="cl-in" placeholder="Nombre, cédula, teléfono o N.º de expediente…" oninput="buscarPacienteVincular(this.value)" autocomplete="off"/>
+        <div id="vi-resultados" class="cl-resultados" style="display:none"></div></div>
+      <button class="btn-accion-tabla btn-primary" style="width:100%;padding:10px;white-space:normal;line-height:1.3;height:auto" onclick="crearPacienteDeCita()">➕ Es nuevo: crear su expediente con los datos de la cita</button>
+      <p id="vi-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-vincular')">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cuenta" onclick="if(event.target===this)closeModal('modal-cuenta')">
+  <div class="modal-box" style="max-width:540px;width:100%" role="dialog" aria-labelledby="cu-titulo">
+    <div class="modal-header"><span class="modal-title" id="cu-titulo">💳 Cuenta</span><button class="modal-close" onclick="closeModal('modal-cuenta')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div id="cu-lista"></div>
+      <div class="cl-seccion">Agregar a la cuenta</div>
+      <div class="cl-field"><label for="cu-buscar">Producto o servicio</label>
+        <input type="text" id="cu-buscar" class="cl-in" placeholder="Ej: inyección, medicamento…" oninput="buscarProducto(this.value)" autocomplete="off"/>
+        <div id="cu-resultados" class="cl-resultados" style="display:none"></div>
+        <div id="cu-elegido" class="cl-elegido" style="display:none"></div></div>
+      <div class="cl-grid2">
+        <div class="cl-field"><label for="cu-cantidad">Cantidad</label><input type="number" id="cu-cantidad" class="cl-in" min="0.01" step="any" value="1"/></div>
+        <div class="cl-field" style="display:flex;align-items:flex-end"><button class="btn-accion-tabla btn-ghost" id="cu-btn-agregar" style="width:100%;padding:10px" onclick="agregarCargo()">➕ Agregar</button></div>
+      </div>
+      <p id="cu-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-cuenta')">Cerrar</button><button class="btn-accion-tabla btn-primary" id="cu-btn-cobrar" onclick="cobrarCita()">💳 Cobrar en Ventas</button></div>
+  </div>
+</div>
 <style>
 .sp{position:fixed;inset:0;z-index:10060;background:#0f172a;color:#fff;flex-direction:column;font-family:inherit}
 .sp-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 22px;font-size:clamp(16px,2.4vw,28px);font-weight:700;background:#1e293b}
@@ -1395,7 +1446,7 @@
 .sp-turno{font-size:clamp(22px,4vw,54px);font-weight:700;opacity:.9}.sp-nombre{font-size:clamp(40px,8vw,120px);font-weight:900;line-height:1.05;word-break:break-word}
 .sp-donde{font-size:clamp(20px,3.4vw,46px);margin-top:12px;opacity:.95}
 .sp-cola{background:#1e293b;border-radius:22px;padding:18px;overflow:hidden}.sp-tit{font-size:clamp(18px,2.4vw,30px);font-weight:800;margin-bottom:10px;opacity:.8}
-.sp-item{font-size:clamp(18px,2.6vw,34px);padding:8px 0;border-bottom:1px solid #334155}.sp-item b{display:inline-block;min-width:2.2em;color:#93c5fd}
+.sp-item{font-size:clamp(18px,2.6vw,34px);padding:8px 0;border-bottom:1px solid #334155}.sp-item b{display:inline-block;min-width:1.8em;color:#93c5fd}
 @media (max-width:700px){.sp-cuerpo{grid-template-columns:1fr}}
 </style>
 </body>

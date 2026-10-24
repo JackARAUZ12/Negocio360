@@ -256,16 +256,16 @@ async function recetaAFarmacia(id) {
 async function recetaACuenta(id) {
   const d = (CP.exp?.documentos || []).find(x => x.id === id);
   const c = d && (CP.exp?.consultas || []).find(x => x.id === d.consulta_id);
-  if (!c || !c.cita_id) { showToast('Esta receta no está ligada a una consulta con cita: cóbrala directo en Ventas.', 'error'); return; }
+  if (!c || !c.agenda_cita_id) { showToast('Esta receta no está ligada a una consulta con cita: cóbrala directo en Ventas.', 'error'); return; }
   try {
-    const { data: cita } = await sb.from('clinica_citas').select('id, ventas(estado)').eq('id', c.cita_id).eq('auth_user_id', STATE.userId).maybeSingle();
+    const { data: cita } = await sb.from('agenda_citas').select('id, ventas(estado)').eq('id', c.agenda_cita_id).eq('auth_user_id', STATE.userId).maybeSingle();
     if (!cita) { showToast('No se encontró la cita de esta consulta.', 'error'); return; }
     if (cita.ventas?.estado === 'completada') { showToast('Esa visita ya fue cobrada: vende los medicamentos directo en Ventas.', 'error'); return; }
-    const filas = (d.contenido?.items || []).filter(it => it.producto_id).map(it => ({ auth_user_id: STATE.userId, cita_id: c.cita_id, producto_id: it.producto_id,
+    const filas = (d.contenido?.items || []).filter(it => it.producto_id).map(it => ({ auth_user_id: STATE.userId, agenda_cita_id: c.agenda_cita_id, producto_id: it.producto_id,
       descripcion: it.medicamento.slice(0, 200), cantidad: Number(String(it.cantidad).replace(',', '.')) > 0 ? Number(String(it.cantidad).replace(',', '.')) : 1 }));
-    const { error } = await sb.from('clinica_cargos').insert(filas);
+    const { error } = await sb.from('clinica_cita_cargos').insert(filas);
     if (error) throw error;
-    showToast(`${filas.length} medicamento(s) agregados a la cuenta de la visita. Recepción la cobra en la Agenda.`);
+    showToast(`${filas.length} medicamento(s) agregados a la cuenta de la visita. Se cobra junto con la cita (Sala de espera o Agenda).`);
   } catch (e) { console.error('recetaACuenta:', e); showToast(clinicaTextoError(e, 'No se pudo agregar a la cuenta.'), 'error'); }
 }
 
@@ -287,7 +287,7 @@ function abrirAdjunto() {
   $p('aj-consulta').innerHTML = '<option value="">— Sin ligar a una consulta —</option>' + cons.map(c => `<option value="${esc(c.id)}">${esc(fechaDoc(c.fecha))} · ${esc(c.motivo.slice(0, 60))}</option>`).join('');
   openModal('modal-adjunto');
 }
-// Llama a la función del servidor que entrega enlaces firmados (con la sesión médica). Si venció, pide el PIN y reintenta.
+// Llama a la función del servidor que entrega enlaces firmados (con la sesión médica). Si venció, pide el código y reintenta.
 async function servidorAdjuntos(cuerpo) {
   for (let intento = 0; intento < 2; intento++) {
     let s = ClinicaSesion.leer() || await ClinicaSesion.pedir();

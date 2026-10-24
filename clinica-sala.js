@@ -1,10 +1,12 @@
 /* =====================================================
-   CLINICA-SALA.JS — NEGOCIO360 · Módulo Clínica (Fase 3)
-   Sala de espera del día: quién llegó (turno por orden de
-   llegada y tiempo esperando), quién está en consulta y
-   quién falta por llegar. "Llamar" avisa en la pantalla de
-   la sala (modo pantalla), que solo muestra el nombre y la
-   inicial del apellido. Información administrativa.
+   CLINICA-SALA.JS — NEGOCIO360 · Módulo Clínica
+   Sala de espera del día sobre las citas de la AGENDA del
+   sistema: quién llegó (turno por orden de llegada y tiempo
+   esperando), quién está en consulta y quién falta por
+   llegar. "Llamar" avisa en la pantalla de la sala (modo
+   pantalla), que solo muestra el nombre y la inicial del
+   apellido. También: recordatorios por WhatsApp, cuenta de
+   la visita y cobro (por el mismo camino de la Agenda).
 ===================================================== */
 
 const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
@@ -13,6 +15,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let STATE = { userId: null, empresaConfig: {}, currentUser: {} };
 
+function fmt(amount) {
+  const sym = typeof monedaParaMostrar === 'function' ? monedaParaMostrar(STATE.empresaConfig?.moneda) : 'C$';
+  const n = typeof convertirParaMostrar === 'function' ? convertirParaMostrar(amount, STATE.empresaConfig?.moneda) : Number(amount || 0);
+  return `${sym} ${Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* =====================================================
@@ -71,7 +78,7 @@ function renderUserInfo(profile, email) {
 /* =====================================================
    SALA DE ESPERA
 ===================================================== */
-const SA = { citas: [], personal: [], consultorios: [], ultimoLlamado: null, pantalla: false, timer: null };
+const SA = { citas: [], personal: [], consultorios: [], ultimoLlamado: null, pantalla: false, timer: null, recordar: [], citaCuenta: null, cuenta: [], prodCargo: null, vincular: null };
 const $s = id => document.getElementById(id);
 
 async function init() {
@@ -85,11 +92,8 @@ async function init() {
     renderUserInfo(await loadUserProfile(user.id), user.email);
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
-    const [p, k] = await Promise.all([
-      sb.from('clinica_personal').select('id, nombre').eq('auth_user_id', STATE.userId),
-      sb.from('clinica_consultorios').select('id, nombre').eq('auth_user_id', STATE.userId),
-    ]);
-    SA.personal = p.data || []; SA.consultorios = k.data || [];
+    const { data: k } = await sb.from('clinica_consultorios').select('id, nombre').eq('auth_user_id', STATE.userId);
+    SA.consultorios = k || [];
     await cargar();
     if (new URLSearchParams(location.search).get('pantalla') === '1') abrirPantalla();
     SA.timer = setInterval(() => { cargar(true); }, 20000);           // la sala se actualiza sola
@@ -103,13 +107,12 @@ document.addEventListener('DOMContentLoaded', () => { init(); if (window.lucide)
 
 const medico = id => SA.personal.find(p => p.id === id)?.nombre || '';
 const consultorio = id => SA.consultorios.find(k => k.id === id)?.nombre || '';
+const citaPorId = id => SA.citas.find(c => c.id === id) || SA.recordar.find(c => c.id === id) || null;
 async function cargar(silencioso) {
   try {
-    const { data, error } = await sb.from('clinica_citas')
-      .select('id, paciente_id, medico_id, consultorio_id, hora, duracion_min, estado, motivo, llegada_en, llamado_en, fecha, clinica_pacientes(nombres, apellidos, telefono, numero_expediente)')
-      .eq('auth_user_id', STATE.userId).eq('fecha', vetHoy()).order('hora');
-    if (error) throw error;
-    SA.citas = data || [];
+    const r = await ClinicaCitas.cargar(vetHoy(), vetHoy());
+    SA.personal = r.medicos;
+    SA.citas = r.citas.sort((a, b) => a.hora.localeCompare(b.hora));
     render();
   } catch (e) { console.error('cargar sala:', e); if (!silencioso) $s('sa-espera').innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo cargar la sala.</p>'; }
 }
@@ -119,44 +122,229 @@ function render() {
   const espera = turnos.filter(t => t.estado === 'en_espera');
   const enConsulta = SA.citas.filter(c => c.estado === 'en_consulta');
   const porLlegar = SA.citas.filter(c => ['programada', 'confirmada'].includes(c.estado));
+  const atendidos = SA.citas.filter(c => c.estado === 'atendida');
   $s('sa-kpi-espera').textContent = espera.length; $s('sa-kpi-consulta').textContent = enConsulta.length;
-  $s('sa-kpi-llegar').textContent = porLlegar.length; $s('sa-kpi-atendidos').textContent = SA.citas.filter(c => c.estado === 'atendida').length;
+  $s('sa-kpi-llegar').textContent = porLlegar.length; $s('sa-kpi-atendidos').textContent = atendidos.length;
   const nombre = c => clinicaNombrePaciente(c.clinica_pacientes || {});
   const donde = c => [medico(c.medico_id) && '👨‍⚕️ ' + medico(c.medico_id), consultorio(c.consultorio_id) && '🚪 ' + consultorio(c.consultorio_id)].filter(Boolean).map(esc).join(' · ');
+  const sinExp = c => c.paciente_id ? '' : '<div class="cl-sub" style="color:var(--warning,#b45309)">⚠️ Sin expediente: al atender se elige o se crea.</div>';
+  const cobrada = c => c.venta_id ? '<span class="cl-badge cl-badge-verde">Cobrada</span>' : '';
+  const btnCuenta = c => c.venta_id ? '' : `<button class="btn-accion-tabla btn-ghost" onclick="abrirCuenta('${c.id}')">💳 Cuenta y cobro</button>`;
   $s('sa-espera').innerHTML = espera.length ? espera.map(c => `<div class="ag-card est-en_espera">
       <div class="ag-fila"><span class="ag-hora">Turno ${c.turno}</span><span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ ${esc(clinicaTextoEspera(c.espera_min))}</span></div>
-      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">Cita ${esc(vetFormatoHora(c.hora))}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div><div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>
+      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">Cita ${esc(vetFormatoHora(c.hora))}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div><div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
       ${c.llamado_en ? `<div class="cl-sub">📢 Llamado a las ${esc(new Date(c.llamado_en).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
       <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="llamar('${c.id}')">📢 Llamar</button>
-        <button class="btn-accion-tabla btn-ghost" onclick="location.href='clinica-pacientes.html?cita=${c.id}'">🩺 Atender</button>
-        <button class="btn-accion-tabla btn-ghost" onclick="cambiar('${c.id}','programada')">↩ Aún no llega</button></div></div>`).join('')
+        <button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Atender</button>
+        <button class="btn-accion-tabla btn-ghost" onclick="aunNoLlega('${c.id}')">↩ Aún no llega</button></div></div>`).join('')
     : '<div class="cl-info" style="grid-column:1/-1">Nadie esperando en este momento.</div>';
   $s('sa-consulta').innerHTML = enConsulta.length ? enConsulta.map(c => `<div class="ag-card est-en_consulta"><div class="ag-fila"><span class="ag-hora">${turnoDe(c.id) ? 'Turno ' + turnoDe(c.id) : 'En consulta'}</span><span class="cl-badge cl-badge-morado">En consulta</span></div>
-      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${donde(c)}</div></div>`).join('')
+      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${donde(c)}</div>
+      <div class="ag-btns"><button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Expediente</button>${btnCuenta(c)}</div></div>`).join('')
     : '<div class="cl-info" style="grid-column:1/-1">Ningún paciente en consulta.</div>';
   $s('sa-llegar').innerHTML = porLlegar.length ? porLlegar.map(c => `<div class="ag-card est-${esc(c.estado)}"><div class="ag-fila"><span class="ag-hora">${esc(vetFormatoHora(c.hora))}</span><span class="cl-badge cl-badge-${CLINICA_ESTADOS_CITA[c.estado].clase}">${esc(CLINICA_ESTADOS_CITA[c.estado].n)}</span></div>
-      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${donde(c)}</div>
-      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="cambiar('${c.id}','en_espera')">🪑 Llegó</button><button class="btn-accion-tabla btn-ghost" onclick="cambiar('${c.id}','no_asistio')">🚫 No asistió</button></div></div>`).join('')
+      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${c.motivo ? esc(c.motivo) : ''}</div><div class="cl-sub">${donde(c)}</div>
+      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="llego('${c.id}')">🪑 Llegó</button><button class="btn-accion-tabla btn-ghost" onclick="noAsistio('${c.id}')">🚫 No asistió</button></div></div>`).join('')
     : '<div class="cl-info" style="grid-column:1/-1">No falta nadie por llegar hoy.</div>';
+  $s('sa-atendidos').innerHTML = atendidos.length ? atendidos.map(c => `<div class="ag-card est-atendida"><div class="ag-fila"><span class="ag-hora">${esc(vetFormatoHora(c.hora))}</span>${cobrada(c) || '<span class="cl-badge cl-badge-ambar">Falta cobrar</span>'}</div>
+      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${donde(c)}</div>
+      <div class="ag-btns">${c.paciente_id ? `<button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Expediente</button>` : ''}${btnCuenta(c)}</div></div>`).join('')
+    : '<div class="cl-info" style="grid-column:1/-1">Todavía nadie atendido hoy.</div>';
   if (SA.pantalla) renderPantalla(turnos);
 }
-async function cambiar(id, estado) {
-  const cambios = { estado };
-  if (estado === 'en_espera') cambios.llegada_en = new Date().toISOString();
-  if (estado === 'programada') { cambios.llegada_en = null; cambios.llamado_en = null; }
-  try {
-    const { error } = await sb.from('clinica_citas').update(cambios).eq('id', id).eq('auth_user_id', STATE.userId);
-    if (error) throw error;
-    await cargar();
-  } catch (e) { console.error('cambiar:', e); showToast(clinicaTextoError(e, 'No se pudo cambiar.'), 'error'); }
+async function accion(fn, msgError) {
+  try { await fn(); await cargar(); }
+  catch (e) { console.error(msgError, e); showToast(clinicaTextoError(e, msgError), 'error'); }
 }
+function llego(id) {
+  const c = citaPorId(id); if (!c) return;
+  // Si la cita es de un cliente que ya tiene expediente, queda ligado de una vez.
+  return accion(() => ClinicaCitas.guardarInfo(id, { llegada_en: new Date().toISOString(), ...(c.paciente_id ? { paciente_id: c.paciente_id } : {}) }), 'No se pudo marcar la llegada.');
+}
+function aunNoLlega(id) { return accion(() => ClinicaCitas.guardarInfo(id, { llegada_en: null, llamado_en: null }), 'No se pudo cambiar.'); }
+function noAsistio(id) { return accion(() => ClinicaCitas.cambiarEstado(id, 'no_asistio'), 'No se pudo cambiar.'); }
 async function llamar(id) {
   try {
-    const { error } = await sb.from('clinica_citas').update({ llamado_en: new Date().toISOString() }).eq('id', id).eq('auth_user_id', STATE.userId).eq('estado', 'en_espera');
-    if (error) throw error;
+    await ClinicaCitas.guardarInfo(id, { llamado_en: new Date().toISOString() });
     showToast('Paciente llamado: aparece en la pantalla de la sala.');
     await cargar();
   } catch (e) { console.error('llamar:', e); showToast('No se pudo llamar.', 'error'); }
+}
+
+/* ---------- Atender: abrir el expediente (si la cita no tiene expediente, se elige o se crea) ---------- */
+function atender(id) {
+  const c = citaPorId(id); if (!c) return;
+  if (c.paciente_id) { window.location.href = 'clinica-pacientes.html?cita=' + encodeURIComponent(id); return; }
+  SA.vincular = c;
+  $s('vi-ayuda').textContent = `La cita de "${c.cliente_nombre}" todavía no está ligada a un expediente.`;
+  $s('vi-buscar').value = ''; $s('vi-resultados').style.display = 'none'; $s('vi-error').textContent = '';
+  openModal('modal-vincular');
+  setTimeout(() => $s('vi-buscar').focus(), 50);
+}
+let _tPac = null;
+function buscarPacienteVincular(q) {
+  clearTimeout(_tPac);
+  const cont = $s('vi-resultados'); q = (q || '').replace(/[,()%*\\]/g, ' ').trim();
+  if (q.length < 2) { cont.style.display = 'none'; return; }
+  _tPac = setTimeout(async () => {
+    try {
+      const { data, error } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, cedula, telefono, numero_expediente')
+        .eq('auth_user_id', STATE.userId).eq('activo', true)
+        .or(`nombres.ilike.%${q}%,apellidos.ilike.%${q}%,cedula.ilike.%${q}%,telefono.ilike.%${q}%,numero_expediente.ilike.%${q}%`).order('nombres').limit(8);
+      if (error) throw error;
+      cont.innerHTML = (data && data.length)
+        ? data.map(p => `<div class="cl-resultado" tabindex="0" data-id="${esc(p.id)}">${esc(clinicaNombrePaciente(p))} <span class="cl-sub">· ${esc(p.numero_expediente || '')}${p.telefono ? ' · ' + esc(p.telefono) : ''}</span></div>`).join('')
+        : '<div class="cl-resultado" style="cursor:default;color:var(--text-muted)">Sin resultados. Si es nuevo, créalo con el botón de abajo.</div>';
+      cont.querySelectorAll('[data-id]').forEach(el => { const f = () => vincular(el.dataset.id); el.addEventListener('click', f); el.addEventListener('keydown', e => { if (e.key === 'Enter') f(); }); });
+      cont.style.display = '';
+    } catch (e) { console.error('buscarPacienteVincular:', e); }
+  }, 250);
+}
+async function vincular(pacienteId) {
+  const c = SA.vincular; if (!c) return;
+  try {
+    await ClinicaCitas.guardarInfo(c.id, { paciente_id: pacienteId });
+    closeModal('modal-vincular');
+    window.location.href = 'clinica-pacientes.html?cita=' + encodeURIComponent(c.id);
+  } catch (e) { console.error('vincular:', e); $s('vi-error').textContent = clinicaTextoError(e, 'No se pudo ligar el expediente.'); }
+}
+// Expediente nuevo con los datos de la cita (y ligado al mismo cliente, para cobrarle igual que siempre).
+async function crearPacienteDeCita() {
+  const c = SA.vincular; if (!c) return;
+  const partes = String(c.cliente_nombre || '').trim().split(/\s+/);
+  const nombres = partes.length > 2 ? partes.slice(0, partes.length - 2).join(' ') : (partes[0] || 'Paciente');
+  const apellidos = partes.length > 2 ? partes.slice(-2).join(' ') : (partes[1] || '');
+  try {
+    const { data, error } = await sb.from('clinica_pacientes').insert({ auth_user_id: STATE.userId, nombres: nombres.slice(0, 80), apellidos: apellidos.slice(0, 80) || null,
+      telefono: (c.telefono || '').slice(0, 30) || null, cliente_id: c.cliente_id || null }).select('id').single();
+    if (error) throw error;
+    showToast('Expediente creado. Completa sus datos en la ficha cuando puedas.');
+    await vincular(data.id);
+  } catch (e) { console.error('crearPacienteDeCita:', e); $s('vi-error').textContent = clinicaTextoError(e, 'No se pudo crear el expediente.'); }
+}
+
+/* ---------- Cuenta de la visita y cobro (camino de la Agenda) ---------- */
+async function abrirCuenta(id) {
+  const c = citaPorId(id); if (!c) return;
+  SA.citaCuenta = id; SA.prodCargo = null;
+  $s('cu-buscar').value = ''; $s('cu-resultados').style.display = 'none'; $s('cu-elegido').style.display = 'none';
+  $s('cu-cantidad').value = '1'; $s('cu-error').textContent = '';
+  $s('cu-titulo').textContent = `💳 Cuenta — ${clinicaNombrePaciente(c.clinica_pacientes || {})}`;
+  openModal('modal-cuenta');
+  await pintarCuenta();
+}
+async function pintarCuenta() {
+  const cont = $s('cu-lista'), c = citaPorId(SA.citaCuenta);
+  try {
+    SA.cuenta = await ClinicaCitas.cargos(SA.citaCuenta);
+    const { data: lin } = await sb.from('agenda_citas_servicios').select('servicio_nombre, precio, producto_id').eq('auth_user_id', STATE.userId).eq('cita_id', SA.citaCuenta).order('orden');
+    const servicios = lin || [];
+    const total = servicios.reduce((t, l) => t + Number(l.precio || 0), 0) + SA.cuenta.reduce((t, x) => t + Number(x.cantidad) * Number(x.productos?.precio || 0), 0);
+    cont.innerHTML = `<table class="cl-tabla-cuenta">
+        ${servicios.map(l => `<tr><td>1 ×</td><td>${esc(l.servicio_nombre)} <span class="cl-sub">(de la cita)</span>${l.producto_id ? '' : ' <span class="cl-badge cl-badge-rojo">no está en el catálogo</span>'}</td><td style="text-align:right;white-space:nowrap">${esc(fmt(l.precio || 0))}</td><td></td></tr>`).join('')}
+        ${SA.cuenta.map(x => `<tr><td>${esc(vetFormatoNumero(x.cantidad))} ×</td><td>${esc(x.descripcion)}${x.producto_id ? '' : ' <span class="cl-badge cl-badge-rojo">ya no existe</span>'}</td>
+          <td style="text-align:right;white-space:nowrap">${x.productos?.precio != null ? esc(fmt(Number(x.cantidad) * Number(x.productos.precio))) : '—'}</td>
+          <td style="text-align:right"><button class="cl-link" onclick="quitarCargo('${x.id}')" aria-label="Quitar">quitar</button></td></tr>`).join('')}</table>
+      <div class="cl-total">Total estimado: ${esc(fmt(total))}</div><p class="cl-sub" style="text-align:right;margin:2px 0 0">El total final (impuestos, descuentos) lo calcula Ventas.</p>`;
+    $s('cu-btn-cobrar').disabled = !!(c && c.venta_id);
+  } catch (e) { console.error('pintarCuenta:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo cargar la cuenta.</p>'; }
+}
+function elegirProducto(id, nombre) {
+  SA.prodCargo = { id, nombre };
+  $s('cu-resultados').style.display = 'none'; $s('cu-buscar').value = '';
+  const el = $s('cu-elegido'); el.innerHTML = `<span>✔ ${esc(nombre)}</span>`; el.style.display = '';
+}
+let _tProd = null;
+function buscarProducto(q) {
+  clearTimeout(_tProd);
+  const cont = $s('cu-resultados'); q = (q || '').replace(/[,()%*\\]/g, ' ').trim();
+  if (q.length < 2) { cont.style.display = 'none'; return; }
+  _tProd = setTimeout(async () => {
+    try {
+      const { data, error } = await sb.from('productos').select('id, nombre, precio, tipo')
+        .eq('auth_user_id', STATE.userId).eq('activo', true)
+        .or('es_sustancia_controlada.is.null,es_sustancia_controlada.eq.false')   // las controladas se venden desde su propio módulo
+        .ilike('nombre', `%${q}%`).order('nombre').limit(8);
+      if (error) throw error;
+      cont.innerHTML = (data && data.length)
+        ? data.map(p => `<div class="cl-resultado" tabindex="0" data-id="${esc(p.id)}" data-n="${esc(p.nombre)}">${p.tipo === 'servicio' ? '🛎️' : '📦'} ${esc(p.nombre)} <span class="cl-sub">· ${esc(fmt(p.precio || 0))}</span></div>`).join('')
+        : '<div class="cl-resultado" style="cursor:default;color:var(--text-muted)">Sin resultados.</div>';
+      cont.querySelectorAll('[data-id]').forEach(el => { const f = () => elegirProducto(el.dataset.id, el.dataset.n); el.addEventListener('click', f); el.addEventListener('keydown', e => { if (e.key === 'Enter') f(); }); });
+      cont.style.display = '';
+    } catch (e) { console.error('buscarProducto:', e); }
+  }, 250);
+}
+async function agregarCargo() {
+  const err = $s('cu-error'); err.textContent = '';
+  const cant = Number($s('cu-cantidad').value);
+  if (!SA.prodCargo) { err.textContent = 'Busca y elige el producto o servicio.'; return; }
+  if (!(cant > 0) || cant > 100000) { err.textContent = 'La cantidad debe ser mayor que 0.'; return; }
+  const btn = $s('cu-btn-agregar'); btn.disabled = true;
+  try {
+    const { error } = await sb.from('clinica_cita_cargos').insert({ auth_user_id: STATE.userId, agenda_cita_id: SA.citaCuenta, producto_id: SA.prodCargo.id, descripcion: SA.prodCargo.nombre.slice(0, 200), cantidad: cant });
+    if (error) throw error;
+    SA.prodCargo = null; $s('cu-elegido').style.display = 'none'; $s('cu-cantidad').value = '1';
+    await pintarCuenta();
+  } catch (e) { console.error('agregarCargo:', e); err.textContent = clinicaTextoError(e, 'No se pudo agregar.'); }
+  finally { btn.disabled = false; }
+}
+async function quitarCargo(id) {
+  try {
+    const { error } = await sb.from('clinica_cita_cargos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    await pintarCuenta();
+  } catch (e) { console.error('quitarCargo:', e); showToast(clinicaTextoError(e, 'No se pudo quitar.'), 'error'); }
+}
+async function cobrarCita() {
+  const c = citaPorId(SA.citaCuenta); if (!c) return;
+  const btn = $s('cu-btn-cobrar'); btn.disabled = true;
+  try {
+    const r = await ClinicaCitas.cobrar(c);
+    if (!r.ok) { $s('cu-error').textContent = r.motivo; await cargar(); }
+  } catch (e) { console.error('cobrarCita:', e); $s('cu-error').textContent = 'No se pudo preparar el cobro. Intenta de nuevo.'; }
+  finally { btn.disabled = false; }
+}
+
+/* ---------- Recordatorios de las citas de mañana (o de otra fecha), uno por uno por WhatsApp ---------- */
+async function abrirRecordatorios() {
+  $s('re-fecha').value = vetSumarDias(vetHoy(), 1);
+  openModal('modal-recordatorios');
+  await cargarRecordatorios();
+}
+async function cargarRecordatorios() {
+  const fecha = $s('re-fecha').value, cont = $s('re-lista');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+  cont.innerHTML = '<p class="cl-sub">Cargando…</p>';
+  try {
+    const r = await ClinicaCitas.cargar(fecha, fecha, { soloEstados: ['reservada', 'confirmada'] });
+    if (!SA.personal.length) SA.personal = r.medicos;
+    SA.recordar = r.citas.sort((a, b) => a.hora.localeCompare(b.hora));
+    pintarRecordatorios();
+  } catch (e) { console.error('cargarRecordatorios:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudieron cargar las citas.</p>'; }
+}
+function pintarRecordatorios() {
+  const lista = SA.recordar || [];
+  const pend = lista.filter(c => !c.recordatorio_enviado_en).length;
+  $s('re-resumen').textContent = lista.length ? `${lista.length} cita${lista.length === 1 ? '' : 's'} · ${pend} sin avisar` : '';
+  $s('re-lista').innerHTML = lista.length ? lista.map(c => {
+    const tel = vetTelefonoWhatsApp(c.telefono, STATE.empresaConfig?.pais);
+    return `<div class="cl-item"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(vetFormatoHora(c.hora))} · ${esc(clinicaNombrePaciente(c.clinica_pacientes || {}))}</div>
+      <div class="cl-item-fecha">${c.medico_id ? esc(medico(c.medico_id)) : (c.motivo ? esc(c.motivo) : '')}${c.telefono ? ' · 📞 ' + esc(c.telefono) : ''}</div></div>
+      ${c.recordatorio_enviado_en ? '<span class="cl-badge cl-badge-verde">✓ Avisado</span>' : ''}</div>
+      <div class="cl-acciones">${tel ? `<button class="btn-accion-tabla ${c.recordatorio_enviado_en ? 'btn-ghost' : 'btn-primary'}" onclick="recordar('${c.id}')">📲 ${c.recordatorio_enviado_en ? 'Avisar de nuevo' : 'Enviar por WhatsApp'}</button>` : '<span class="cl-badge cl-badge-rojo">Sin teléfono válido</span>'}</div></div>`;
+  }).join('') : '<p class="cl-sub">No hay citas pendientes para esa fecha.</p>';
+}
+async function recordar(id) {
+  const c = citaPorId(id); if (!c) return;
+  const tel = vetTelefonoWhatsApp(c.telefono, STATE.empresaConfig?.pais);
+  if (!tel) { showToast('La cita no tiene un teléfono válido.', 'error'); return; }
+  const texto = clinicaMensajeCita({ paciente: (c.clinica_pacientes?.nombres || '').split(/\s+/)[0], negocio: STATE.empresaConfig?.nombre_comercial, fecha: c.fecha, hora: c.hora, medico: medico(c.medico_id) });
+  window.open(vetEnlaceWhatsApp(tel, texto), '_blank', 'noopener');
+  try {
+    const ahora = new Date().toISOString();
+    await ClinicaCitas.guardarInfo(id, { recordatorio_enviado_en: ahora });
+    c.recordatorio_enviado_en = ahora; pintarRecordatorios();
+  } catch (e) { console.warn('recordar:', e); }
 }
 
 /* ---------- Modo pantalla (televisor de la sala): solo nombre e inicial ---------- */

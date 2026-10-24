@@ -5,6 +5,7 @@
 | 1 — Base para atender y cobrar | ✅ Terminada y probada | ✅ Sí (2026-10-24, commit 7add681) | Agenda, pacientes/expediente con candado, consulta firmada, equipo y seguridad, cobro por Ventas |
 | 2 — Documentos | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Recetas (a Farmacia y a la cuenta), órdenes, constancias, certificados, referencias, consentimiento, CIE-10, adjuntos privados |
 | 3 — Operación diaria | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Sala de espera con turnos y pantalla, recordatorios por WhatsApp, honorarios → Salarios, reportes que cuadran con Ventas |
+| Ajuste — Agenda y usuarios del sistema | ✅ Terminado y probado | ✅ Sí (2026-10-24) | Sin agenda propia (se usa la Agenda), médicos = usuarios del multiusuario con su mismo código |
 | 4 — Especialidades | Pendiente | | |
 | 5 — Crecimiento y cierre | Pendiente | | |
 
@@ -173,6 +174,59 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
 - **Regresión contra `main`**: Ventas escribe exactamente lo mismo; Salarios (pago normal con
   bonificación, Clínica apagada) escribe exactamente lo mismo y no lee los honorarios.
 
+## Ajuste pedido por Jack: una sola Agenda y médicos = usuarios del sistema
+
+Jack pidió (2026-10-24) no duplicar lo que el sistema ya tiene:
+- **Sin agenda propia de la clínica.** Las citas se hacen en la **Agenda** de siempre
+  (`agenda.html`: citas por profesional, estados y "Cobrar"). `clinica-agenda.html` quedó solo
+  como redirección a la Agenda; su lógica se borró.
+- **Sin médicos ni PIN aparte.** Un médico ES un **usuario del multiusuario**. En
+  "Clínica · Médicos y seguridad" (antes "Equipo") solo se marca qué usuarios son médicos,
+  su columna en la Agenda, especialidad, consultorio y honorario. Para abrir un expediente
+  escriben **su mismo código de usuario** (si el usuario activo es médico, ni siquiera elige
+  nombre). El servidor lo verifica y bloquea tras 5 intentos fallidos; los usuarios de tipo
+  administrador usan su código de administrador con su propio candado.
+
+**Cómo encaja con la Agenda:**
+- El médico de una cita es el profesional de la Agenda ligado a ese médico.
+- Lo propio de la clínica va aparte (`clinica_cita_info`: expediente, consultorio, llegada,
+  llamado, recordatorio), sin tocar las tablas de la Agenda.
+- **Sala de espera**: muestra las citas de hoy de la Agenda; "Llegó", "Llamar", "Atender"
+  (si la cita no tiene expediente, se busca o se crea con los datos de la cita), "No asistió",
+  modo pantalla, **recordatorios por WhatsApp** (pasaron aquí) y **"Cuenta y cobro"**.
+- Al escribir la nota la cita pasa a "en atención" en la Agenda; al cobrar queda
+  "completada" con su venta, por el camino que la Agenda ya tenía.
+- **Cobro**: un solo camino, el de la Agenda (`n360_agenda_cobro` en Ventas). Lo que el médico
+  deja en la cuenta (medicamentos de la receta, `clinica_cita_cargos`) se cobra junto con la
+  cita, desde la Sala o desde la misma Agenda (pequeño agregado en `agenda-citas.js` que solo
+  actúa si la cuenta usa Clínica). Se quitó de `ventas.js` el cobro propio de la clínica.
+- Reportes y honorarios leen las citas de la Agenda (cuadran con las ventas igual que antes).
+
+**Base de datos** (`supabase/migraciones/20261024_clinica_usuarios_agenda.sql`, aplicada; solo
+agrega): `clinica_personal.perfil_id` y `.agenda_profesional_id`, `clinica_perfil_intentos`,
+`clinica_cita_info`, `clinica_cita_cargos`, `clinica_consultas.agenda_cita_id`, la función
+`clinica_iniciar_sesion_perfil` y nuevas versiones de `clinica_personal_guardar`,
+`clinica_consulta_guardar/cerrar/anular`, `clinica_iniciar_sesion` (redirige al usuario) y
+`clinica_cambiar_pin` (el código se cambia en el menú de usuarios). `clinica_citas`,
+`clinica_cargos` y `clinica_personal_secretos` quedan sin uso (no se borran; estaban vacías).
+
+**Nota de seguridad (para Jack):** el expediente queda tan protegido como los códigos de los
+usuarios. Recomendación: que los médicos usen códigos de 6 números y no los compartan.
+
+**Pruebas (todas en verde):**
+- SQL revertido (25 comprobaciones): marcar médico solo con código de administrador, usuario
+  repetido, columna de la Agenda repetida, usuario de otra cuenta, sesión con el código del
+  usuario (incorrecto, bloqueo tras 5), usuario no médico sin acceso, nota ligada a la cita de
+  la Agenda (pasa a "en atención", no dos notas por cita, anular la regresa), no se cambia el
+  paciente de una cita con nota, cuenta de una visita cobrada bloqueada, otra cuenta no puede
+  tocar ni ver nada, intentos fallidos invisibles.
+- Unitarias: 59 (cita de la Agenda vista por la clínica; cobro = servicios + cuenta).
+- Navegador: 241 en computadora y celular 360 px (sala sobre la Agenda, crear expediente desde
+  la cita, código de usuario, nota, cuenta y cobro, médicos como usuarios, redirección de la
+  agenda vieja) y regresión contra `main`: Ventas, Salarios y el cobro de la Agenda con Clínica
+  apagada mandan exactamente lo mismo que antes. Cuadre: el cobro desde la Clínica escribe lo
+  mismo que una venta directa (única diferencia: la cita queda ligada a su venta).
+
 ## Bitácora
 - 2026-10-23: creada la rama `modulo-clinica` con el plan (`PLAN.md`).
 - 2026-10-23: Fase 1 — base de datos aplicada en producción tras prueba revertida.
@@ -181,3 +235,4 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
 - 2026-10-24: Fase 1 integrada a `main` (avance rápido, commit 7add681). El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 2 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 3 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
+- 2026-10-24: Ajuste pedido por Jack — sin agenda propia (se usa la Agenda) y médicos = usuarios del sistema. Probado e integrado a `main`.

@@ -1806,7 +1806,6 @@ async function abrirNuevaVenta() {
   S._vetConsultaId = null;
   S._txOrdenId = null;
   S._vetEstanciaId = null;
-  S._clinicaCitaId = null;
   S._agendaCitaId = null;
   S.certificado = null;          // certificado de regalo aplicado a esta venta (certificados-venta.js)
   S._certEmisionId = null;       // esta venta COBRA un certificado (modo "venta")
@@ -3019,44 +3018,6 @@ async function aplicarCobroVeterinaria() {
   S._vetConsultaId = d.consultaId || null;
   S._vetEstanciaId = d.estanciaId || null;       // hospital / pension / bano
   showToast(`Cuenta de ${d.mascota || 'la mascota'} cargada en la venta.`);
-  if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
-}
-
-// Cobro desde la Clinica (solo si el modulo esta activo): mismo camino que Veterinaria. Abre
-// la venta con el paciente (como cliente) y la cuenta de la visita ya cargados; al confirmar,
-// la venta queda ligada a la cita. Si la visita ya se cobro, no se vuelve a cargar.
-async function aplicarCobroClinica() {
-  if (S.empresaConfig?.usa_modulo_clinica !== true) return;
-  const raw = sessionStorage.getItem('n360_clinica_cobro');
-  if (!raw) return;
-  sessionStorage.removeItem('n360_clinica_cobro');      // una sola vez: no se repite al recargar
-  let d;
-  try { d = JSON.parse(raw); }
-  catch (e) { console.error('aplicarCobroClinica, dato corrupto:', e); return; }
-  if (!d || typeof d !== 'object') return;
-
-  if (d.citaId) {
-    try {
-      const { data: c } = await sb.from('clinica_citas').select('id, ventas(estado, numero_venta)').eq('id', d.citaId).eq('auth_user_id', S.userId).maybeSingle();
-      if (!c) { showToast('No se encontró la cita a cobrar.', 'warning'); return; }
-      if (c.ventas && c.ventas.estado === 'completada') { showToast(`Esta visita ya fue cobrada (${c.ventas.numero_venta || 'venta'}).`, 'warning'); return; }
-    } catch (e) { console.warn('aplicarCobroClinica, revisar cita:', e); }
-  }
-
-  await abrirNuevaVenta();                              // reinicia el estado: lo demas se arma DESPUES
-  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
-  else showToast('No se pudo seleccionar al paciente: elígelo manualmente.', 'warning');
-
-  let noAgregados = 0;
-  for (const it of (Array.isArray(d.items) ? d.items : [])) {
-    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
-    if (!prod) { noAgregados++; continue; }             // ya no existe, esta inactivo o es sustancia controlada
-    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
-    if (Number(it.cantidad) > 0 && Number(it.cantidad) !== 1) cambiarCantidad(it.producto_id, Number(it.cantidad));
-    if (!S.carrito.some(x => x.id === it.producto_id)) noAgregados++;
-  }
-  S._clinicaCitaId = d.citaId || null;
-  showToast(`Cuenta de ${d.paciente || 'el paciente'} cargada en la venta.`);
   if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
 }
 
@@ -6130,15 +6091,6 @@ async function _confirmarVentaInterno(conImpresion) {
       }
     } catch (eVet) { console.warn('Vincular consulta veterinaria:', eVet); }
 
-    // Cobro de una visita de la Clinica: la venta queda ligada a la cita. Aislado: la venta YA
-    // se confirmo, nada de esto la revierte.
-    try {
-      if (S._clinicaCitaId) {
-        const { error: eCl } = await sb.from('clinica_citas').update({ venta_id: ventaId }).eq('id', S._clinicaCitaId).eq('auth_user_id', S.userId);
-        if (eCl) console.warn('Vincular cita de la clinica:', eCl);
-        S._clinicaCitaId = null;
-      }
-    } catch (eCl) { console.warn('Vincular cita de la clinica:', eCl); }
     // Cobro de una cita de la Agenda: la cita queda ligada a la venta y completada. Aislado:
     // la venta YA se confirmó, nada de esto la revierte.
     try {
@@ -8206,7 +8158,6 @@ async function initVentas() {
     // armar el carrito con los medicamentos de esa receta.
     await aplicarRecetaPendienteDeVender();
     await aplicarCobroVeterinaria();
-    await aplicarCobroClinica();
     await aplicarCobroTransporte();
     await aplicarCobroAgenda();
     await aplicarCobroCertificado();

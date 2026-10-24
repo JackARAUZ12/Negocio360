@@ -150,5 +150,34 @@ t('resumen del reporte cuadra con las ventas', () => {
   assert.strictEqual(r.servicios.find(x => x.nombre === 'Consulta').total, 1500);
   assert.strictEqual(r.porMedico.find(x => x.medico_id === 'm1').nombre, 'Dra. A');
 });
+t('cita de la Agenda vista por la clínica (estado, médico, paciente)', () => {
+  const meds = [{ id: 'm1', nombre: 'Dra. A', agenda_profesional_id: 'prof1', consultorio_id: 'k1' }];
+  const pacs = [{ id: 'p1', nombres: 'Ana', apellidos: 'Ruiz', telefono: '8888', cliente_id: 'cli1' }];
+  const base = { id: 'a1', fecha: '2026-10-24', estado: 'confirmada', cliente_id: 'cli1', cliente_nombre: 'Ana Ruiz', agenda_citas_servicios: [
+    { profesional_id: 'otro', servicio_nombre: 'Lavado', hora_inicio: '09:00:00', duracion_min: 15, orden: 1 },
+    { profesional_id: 'prof1', servicio_nombre: 'Consulta', hora_inicio: '08:30:00', duracion_min: 30, orden: 0 }] };
+  let c = C.clinicaCitaDeAgenda(base, { medicos: meds, pacientes: pacs });
+  assert.strictEqual(c.estado, 'confirmada'); assert.strictEqual(c.hora, '08:30'); assert.strictEqual(c.medico_id, 'm1');
+  assert.strictEqual(c.paciente_id, 'p1'); assert.strictEqual(c.consultorio_id, 'k1'); assert.strictEqual(c.telefono, '8888'); assert.strictEqual(c.motivo, 'Consulta, Lavado');
+  c = C.clinicaCitaDeAgenda(base, { info: { llegada_en: '2026-10-24T14:00:00Z' }, medicos: meds, pacientes: pacs });
+  assert.strictEqual(c.estado, 'en_espera');
+  assert.strictEqual(C.clinicaCitaDeAgenda({ ...base, estado: 'en_atencion' }, { info: { llegada_en: 'x' } }).estado, 'en_consulta');
+  assert.strictEqual(C.clinicaCitaDeAgenda({ ...base, estado: 'en_atencion' }, { info: { atendida_en: 'x' } }).estado, 'atendida');
+  assert.strictEqual(C.clinicaCitaDeAgenda({ ...base, estado: 'completada' }).estado, 'atendida');
+  assert.strictEqual(C.clinicaCitaDeAgenda({ ...base, estado: 'reservada' }).estado, 'programada');
+  assert.strictEqual(C.clinicaCitaDeAgenda({ ...base, estado: 'no_asistio' }, { info: { llegada_en: 'x' } }).estado, 'no_asistio');
+  // sin expediente: muestra el nombre de la cita; el paciente ligado a la cita gana al del cliente
+  c = C.clinicaCitaDeAgenda({ ...base, cliente_id: null, cliente_telefono: '7777' }, { medicos: meds, pacientes: pacs });
+  assert.strictEqual(c.paciente_id, null); assert.strictEqual(c.clinica_pacientes.nombres, 'Ana Ruiz'); assert.strictEqual(c.telefono, '7777');
+  c = C.clinicaCitaDeAgenda(base, { info: { paciente_id: 'p2' }, pacientes: [...pacs, { id: 'p2', nombres: 'Otra', cliente_id: null }] });
+  assert.strictEqual(c.paciente_id, 'p2');
+});
+t('cobro por el camino de la Agenda: servicios + cuenta de la visita', () => {
+  const d = C.clinicaCobroAgenda({ id: 'a1', cliente_id: 'cli1', cliente_nombre: 'Ana', agenda_citas_servicios: [
+    { producto_id: 'srv', servicio_nombre: 'Consulta', precio: 500 }, { producto_id: null, servicio_nombre: 'Extra', precio: 50 }] },
+    [{ producto_id: 'med', cantidad: 3, productos: { precio: 12.5 }, descripcion: 'Acet' }, { producto_id: 'med', cantidad: 1, productos: { precio: 12.5 } }, { producto_id: null, descripcion: 'Viejo' }]);
+  assert.strictEqual(JSON.stringify(d.items), JSON.stringify([{ producto_id: 'srv', cantidad: 1, total: 500 }, { producto_id: 'med', cantidad: 4, total: 50 }]));
+  assert.strictEqual(d.citaId, 'a1'); assert.strictEqual(d.clienteId, 'cli1'); assert.strictEqual(d.sinCatalogo.length, 2);
+});
 t('CSV seguro para Excel', () => { const c = C.clinicaCSV([['a', '=1+1', 'x,y', 'di"jo']]); assert.ok(c.includes("'=1+1") && c.includes('"x,y"') && c.includes('"di""jo"')); });
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);

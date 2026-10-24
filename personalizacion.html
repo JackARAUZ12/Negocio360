@@ -12,7 +12,7 @@
 <!-- Supabase JS v2 -->
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="clinica-comun.js?v=20261024b"></script>
+<script src="clinica-comun.js?v=20261024c"></script>
 
 <style>
 /* ═══════════════════════════════════════════════════════════
@@ -1857,7 +1857,7 @@ function renderModuloEspecial() {
   else if (tipoNegocioSeleccionado === 'transporte') especial = { icono:'🚛', nombre:'Módulo de Transporte de carga', desc:'Panel de operación, flota, conductores, viajes, costos y cobros — conectado con Ventas, Créditos, Gastos y Caja.' };
   else if (['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) especial = { icono:'🎨', nombre:'Módulo de Diseño', desc:'Marca de agua: pon tu logo o tu texto a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
-  else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Agenda por médico, pacientes y expediente clínico con PIN médico, consultas firmadas y cobro por Ventas.' };
+  else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Pacientes y expediente clínico (médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda y cobro por Ventas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
 

@@ -145,16 +145,14 @@
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
 
     // ---- Clínica (secundario: apagado para toda cuenta hasta encender "Módulo de Clínica" en Configuración) ----
-    'clinica-agenda.html': { key: 'clinica_agenda', label: 'Clínica · Agenda', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Citas por día, semana y médico, sala de espera, recordatorio por WhatsApp y cobro de la visita por Ventas.' },
     'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas), protegido con PIN médico.' },
+                       desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas): solo lo abren los médicos con su código de usuario.' },
     'clinica-sala.html': { key: 'clinica_sala', label: 'Clínica · Sala de espera', icon: '🪑', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Turnos del día por orden de llegada, tiempo de espera, llamar al paciente y pantalla para la sala.' },
+                       desc: 'Las citas de hoy de la Agenda: turnos por llegada, llamar al paciente, pantalla para la sala, recordatorios por WhatsApp y cobro.' },
     'clinica-reportes.html': { key: 'clinica_reportes', label: 'Clínica · Reportes y honorarios', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_clinica',
                        desc: 'Atendidos, inasistencias, ingresos por médico y servicio, diagnósticos frecuentes y honorarios pagados por Salarios.' },
-    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Equipo y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Médicos y su PIN, recepción, consultorios, especialidades y bitácora de accesos al expediente.' },
+    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Médicos y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Qué usuarios del sistema son médicos (su columna en la Agenda y honorarios), consultorios, especialidades y bitácora de accesos.' },
 
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',

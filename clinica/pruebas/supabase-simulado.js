@@ -13,6 +13,7 @@
   const log = (op, tabla, datos, filtros) => { const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op, tabla, datos, filtros }); sessionStorage.setItem('__LOG', JSON.stringify(l)); };
   let n = 0; const uuid = () => 'id-' + Date.now().toString(36) + '-' + (++n) + '-' + Math.random().toString(36).slice(2, 8);
   const REL = { clinica_pacientes: 'paciente_id', ventas: 'venta_id', productos: 'producto_id', clientes: 'cliente_id', clinica_personal: 'medico_id' };
+  const HIJOS = { agenda_citas_servicios: 'cita_id' };          // relaciones uno-a-muchos: nombre(campos) -> lista
 
   function partirTope(s) {            // separa "a, b(c, d), e" respetando paréntesis
     const out = []; let nivel = 0, cur = '';
@@ -31,6 +32,7 @@
       case 'is': return f.val === null || f.val === 'null' ? v == null : v === (f.val === true || f.val === 'true');
       case 'ilike': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i'); return re.test(comoTexto(v)); }
       case 'or': return f.val.some(g => cumple(fila, g));
+      case 'not': return !cumple(fila, f.val);
       default: return true;
     }
   }
@@ -39,13 +41,20 @@
   }
 
   function builder(tabla) {
-    const st = { tabla, filtros: [], orden: [], limite: null, rango: null, modo: 'select', datos: null, cols: '*', uno: null, head: false, count: null, devolver: false };
+    const st = { tabla, filtros: [], orden: [], limite: null, rango: null, modo: 'select', datos: null, cols: '*', uno: null, head: false, count: null, devolver: false, conflicto: null };
     const ejecutar = () => {
       const db = leerDB(); db[tabla] = db[tabla] || [];
       let filas = db[tabla];
       const aplica = f => st.filtros.every(x => cumple(f, x));
       let resultado = null, error = null;
-      if (st.modo === 'insert') {
+      if (st.modo === 'upsert') {             // si ya existe (misma llave), solo cambia lo que se manda
+        const lista = (Array.isArray(st.datos) ? st.datos : [st.datos]).map(d => {
+          const ya = db[tabla].find(f => comoTexto(f[st.conflicto]) === comoTexto(d[st.conflicto]));
+          if (ya) { Object.assign(ya, d); return ya; }
+          const fila = { created_at: new Date().toISOString(), ...d }; db[tabla].push(fila); return fila;
+        });
+        log('upsert', tabla, st.datos); resultado = lista;
+      } else if (st.modo === 'insert') {
         const lista = (Array.isArray(st.datos) ? st.datos : [st.datos]).map(d => {
           const fila = { id: uuid(), created_at: new Date().toISOString(), ...d };
           if (tabla === 'clinica_pacientes' && !fila.numero_expediente) fila.numero_expediente = 'EXP-' + String(db[tabla].length + 1).padStart(6, '0');
@@ -74,7 +83,9 @@
       const embebidos = partirTope(st.cols || '*').filter(c => c.includes('(')).map(c => c.slice(0, c.indexOf('(')).trim());
       if (embebidos.length && resultado) {
         const db2 = leerDB();
-        resultado = resultado.map(f => { const g = { ...f }; embebidos.forEach(rel => { const fk = REL[rel]; const otra = (db2[rel] || []).find(x => x.id === f[fk]); g[rel] = otra ? { ...otra } : null; }); return g; });
+        resultado = resultado.map(f => { const g = { ...f }; embebidos.forEach(rel => {
+          if (HIJOS[rel]) { g[rel] = (db2[rel] || []).filter(x => x.id && comoTexto(x[HIJOS[rel]]) === comoTexto(f.id)).map(x => ({ ...x })); return; }
+          const fk = REL[rel]; const otra = (db2[rel] || []).find(x => x.id === f[fk]); g[rel] = otra ? { ...otra } : null; }); return g; });
       }
       let data = resultado;
       if (st.uno === 'single') { if (!data || data.length !== 1) { error = { message: 'JSON object requested, multiple (or no) rows returned' }; data = null; } else data = data[0]; }
@@ -86,7 +97,7 @@
     const api = {
       select(cols, opts) { if (st.modo !== 'select') st.devolver = true; st.cols = cols || '*'; if (opts?.head) st.head = true; return prox; },
       insert(d) { st.modo = 'insert'; st.datos = d; return prox; },
-      upsert(d) { st.modo = 'insert'; st.datos = d; return prox; },
+      upsert(d, o) { st.modo = 'upsert'; st.datos = d; st.conflicto = (o && o.onConflict) || 'id'; return prox; },
       update(d) { st.modo = 'update'; st.datos = d; return prox; },
       delete() { st.modo = 'delete'; return prox; },
       eq(c, v) { st.filtros.push({ col: c, op: 'eq', val: v }); return prox; }, neq(c, v) { st.filtros.push({ col: c, op: 'neq', val: v }); return prox; },
@@ -95,6 +106,7 @@
       in(c, v) { st.filtros.push({ col: c, op: 'in', val: v || [] }); return prox; }, is(c, v) { st.filtros.push({ col: c, op: 'is', val: v }); return prox; },
       ilike(c, v) { st.filtros.push({ col: c, op: 'ilike', val: v }); return prox; },
       or(txt) { st.filtros.push({ op: 'or', val: parseOr(txt) }); return prox; },
+      not(c, op, v) { st.filtros.push({ op: 'not', val: { col: c, op, val: v } }); return prox; },
       order(c, o) { st.orden.push({ col: c, asc: o?.ascending !== false }); return prox; },
       limit(n) { st.limite = n; return prox; }, range(a, b) { st.rango = [a, b]; return prox; },
       single() { st.uno = 'single'; return prox; }, maybeSingle() { st.uno = 'maybe'; return prox; },
@@ -113,12 +125,14 @@
     const exigir = () => { const s = sesion(); if (!s) throw { message: 'clinica_sesion_invalida' }; return persona(s); };
     const guardar = () => guardarDB(db);
     switch (nombre) {
-      case 'clinica_iniciar_sesion': {
-        const p = T('clinica_personal').find(x => x.id === a.p_personal_id);
-        if (!p) return { ok: false, motivo: 'no_encontrado' };
-        if (a.p_pin !== PIN_OK) return { ok: false, motivo: 'incorrecto', restantes: 4 };
-        const token = 'ab'.repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
-        return { ok: true, token, personal_id: p.id, nombre: p.nombre, rol: p.rol };
+      case 'clinica_iniciar_sesion_perfil': {
+        const perfil = T('perfiles_acceso').find(x => x.id === a.p_perfil_id);
+        if (!perfil) return { ok: false, motivo: 'no_encontrado' };
+        const p = T('clinica_personal').find(x => x.perfil_id === a.p_perfil_id && x.activo !== false && ['medico', 'admin'].includes(x.rol));
+        if (!p) return { ok: false, motivo: 'sin_acceso_clinico' };
+        if (a.p_pin !== (perfil.tipo === 'admin' ? '2468' : PIN_OK)) return { ok: false, motivo: 'incorrecto', restantes: 4 };
+        const token = (p.id.length % 2 ? 'cd' : 'ab').repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
+        return { ok: true, token, personal_id: p.id, perfil_id: perfil.id, nombre: perfil.nombre, rol: p.rol };
       }
       case 'clinica_sesion_estado': { const s = sesion(); return s ? { ok: true, ...persona(s) } : { ok: false }; }
       case 'clinica_cerrar_sesion': { T('_sesiones').forEach(s => { if (s.token === a.p_token) s.cerrada = true; }); guardar(); return null; }
@@ -137,10 +151,14 @@
         const num = k => d[k] == null ? null : Number(d[k]);
         const imc = num('peso_kg') && num('talla_cm') ? Math.round(num('peso_kg') / Math.pow(num('talla_cm') / 100, 2) * 100) / 100 : null;
         if (!a.p_id) {
-          if (d.cita_id && T('clinica_consultas').some(c => c.cita_id === d.cita_id && c.estado !== 'anulada')) return { ok: false, motivo: 'cita_con_nota' };
+          if (d.agenda_cita_id && T('clinica_consultas').some(c => c.agenda_cita_id === d.agenda_cita_id && c.estado !== 'anulada')) return { ok: false, motivo: 'cita_con_nota' };
           const c = { id: uuid(), ...d, imc, medico_id: p.id, medico_nombre: p.nombre, estado: 'borrador', fecha: new Date().toISOString(), created_at: new Date().toISOString() };
           T('clinica_consultas').push(c);
-          if (d.cita_id) { const ci = T('clinica_citas').find(x => x.id === d.cita_id); if (ci && ['programada', 'confirmada', 'en_espera'].includes(ci.estado)) ci.estado = 'en_consulta'; }
+          if (d.agenda_cita_id) {
+            const ci = T('agenda_citas').find(x => x.id === d.agenda_cita_id); if (ci && ['reservada', 'confirmada'].includes(ci.estado)) ci.estado = 'en_atencion';
+            const inf = T('clinica_cita_info').find(x => x.agenda_cita_id === d.agenda_cita_id);
+            if (inf) inf.paciente_id = d.paciente_id; else T('clinica_cita_info').push({ agenda_cita_id: d.agenda_cita_id, auth_user_id: UID, paciente_id: d.paciente_id });
+          }
           guardar(); return { ok: true, id: c.id };
         }
         const c = T('clinica_consultas').find(x => x.id === a.p_id);
@@ -154,22 +172,30 @@
         if (c.medico_id !== p.id) return { ok: false, motivo: 'no_autor' };
         if (!c.diagnostico && !c.plan) return { ok: false, motivo: 'incompleta' };
         c.estado = 'cerrada'; c.cerrada_en = new Date().toISOString(); c.firma_hash = 'f'.repeat(64);
-        if (c.cita_id) { const ci = T('clinica_citas').find(x => x.id === c.cita_id); if (ci) ci.estado = 'atendida'; }
+        if (c.agenda_cita_id) { const inf = T('clinica_cita_info').find(x => x.agenda_cita_id === c.agenda_cita_id); if (inf && !inf.atendida_en) inf.atendida_en = new Date().toISOString(); }
         guardar(); return { ok: true };
       }
       case 'clinica_consulta_adenda': { const p = exigir(); const c = T('clinica_consultas').find(x => x.id === a.p_id);
         if (c.estado !== 'cerrada') return { ok: false, motivo: 'no_cerrada' }; T('clinica_adendas').push({ id: uuid(), consulta_id: c.id, autor_nombre: p.nombre, texto: a.p_texto, created_at: new Date().toISOString() }); guardar(); return { ok: true }; }
       case 'clinica_consulta_anular': { const p = exigir(); const c = T('clinica_consultas').find(x => x.id === a.p_id);
-        if (!a.p_motivo || a.p_motivo.length < 5) return { ok: false, motivo: 'falta_motivo' }; c.estado = 'anulada'; c.motivo_anulacion = a.p_motivo; c.anulada_por_nombre = p.nombre; guardar(); return { ok: true }; }
+        if (!a.p_motivo || a.p_motivo.length < 5) return { ok: false, motivo: 'falta_motivo' }; c.estado = 'anulada'; c.motivo_anulacion = a.p_motivo; c.anulada_por_nombre = p.nombre;
+        if (c.agenda_cita_id) { const ci = T('agenda_citas').find(x => x.id === c.agenda_cita_id); if (ci && ci.estado === 'en_atencion') ci.estado = 'confirmada';
+          const inf = T('clinica_cita_info').find(x => x.agenda_cita_id === c.agenda_cita_id); if (inf) inf.atendida_en = null; }
+        guardar(); return { ok: true }; }
       case 'clinica_personal_guardar': {
         const auth = a.p_auth || {}; const ses = T('_sesiones').find(s => s.token === auth.token && !s.cerrada);
         const okAdmin = (ses && persona(ses)?.rol === 'admin') || auth.admin_pin === '2468';
         if (!okAdmin) return { ok: false, motivo: auth.admin_pin ? 'incorrecto' : 'sin_permiso', restantes: 4 };
         const d = a.p_datos;
-        if (!a.p_id) { if (d.rol !== 'recepcion' && !d.pin) return { ok: false, motivo: 'pin_requerido' };
-          const f = { id: uuid(), auth_user_id: UID, nombre: d.nombre, rol: d.rol, atiende: d.atiende, especialidad: d.especialidad, registro_profesional: d.registro_profesional, telefono: d.telefono, consultorio_id: d.consultorio_id, pin_configurado: !!d.pin, activo: true };
+        if (!a.p_id) {
+          const perfil = T('perfiles_acceso').find(x => x.id === d.perfil_id); if (!perfil) return { ok: false, motivo: 'perfil' };
+          if (T('clinica_personal').some(x => x.perfil_id === d.perfil_id)) return { ok: false, motivo: 'perfil_repetido' };
+          const prof = d.agenda_profesional_id && T('agenda_profesionales').find(x => x.id === d.agenda_profesional_id);
+          const f = { id: uuid(), auth_user_id: UID, nombre: perfil.nombre, perfil_id: perfil.id, rol: d.rol || 'medico', especialidad: d.especialidad, registro_profesional: d.registro_profesional,
+            consultorio_id: d.consultorio_id, agenda_profesional_id: d.agenda_profesional_id || null, honorario_tipo: d.honorario_tipo || 'ninguno', honorario_valor: d.honorario_valor || 0,
+            empleado_id: d.empleado_id || (prof && prof.empleado_id) || null, activo: true };
           T('clinica_personal').push(f); guardar(); return { ok: true, id: f.id }; }
-        const f = T('clinica_personal').find(x => x.id === a.p_id); Object.assign(f, { ...d, pin: undefined, pin_configurado: f.pin_configurado || !!d.pin }); guardar(); return { ok: true, id: f.id };
+        const f = T('clinica_personal').find(x => x.id === a.p_id); Object.assign(f, d); guardar(); return { ok: true, id: f.id };
       }
       case 'clinica_bitacora_ver': {
         const auth = a.p_auth || {}; if (auth.admin_pin !== '2468' && !T('_sesiones').some(s => s.token === auth.token)) return { ok: false, motivo: 'incorrecto', restantes: 3 };
@@ -193,7 +219,7 @@
         const cuenta = {}; T('clinica_consultas').filter(c => c.estado === 'cerrada').forEach(c => (c.diagnosticos || []).forEach(d => { const k = d.codigo || d.nombre; cuenta[k] = cuenta[k] || { codigo: d.codigo || '—', nombre: d.nombre, total: 0 }; cuenta[k].total++; }));
         return { ok: true, diagnosticos: Object.values(cuenta).sort((x, y) => y.total - x.total), notas: [] };
       }
-      case 'clinica_cambiar_pin': return a.p_pin_actual === PIN_OK ? { ok: true } : { ok: false, motivo: 'incorrecto', restantes: 4 };
+      case 'clinica_cambiar_pin': return { ok: false, motivo: 'usar_usuarios' };
     }
     return undefined;
   }
@@ -211,6 +237,7 @@
       rpc: async (nombre, args) => {
         const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'rpc', tabla: nombre, datos: args }); sessionStorage.setItem('__LOG', JSON.stringify(l));
         if (nombre.startsWith('clinica_')) { try { const r = rpcClinica(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
+        if (nombre === 'listar_perfiles_del_grupo_v2') { const db = leerDB(); return { data: (db.perfiles_acceso || []).map(p => ({ ...p, activo: p.activo !== false })), error: null }; }
         if (nombre === 'generar_numero_venta') { const db = leerDB(); const k = (db.ventas || []).length + 1; return { data: 'V-' + String(k).padStart(5, '0'), error: null }; }
         if (nombre === 'venta_registrar_atomica') {        // guarda la venta como lo haría el servidor (en una sola operación)
           const db = leerDB(); db.ventas = db.ventas || []; const id = uuid(); const num = 'V-' + String(db.ventas.length + 1).padStart(5, '0');

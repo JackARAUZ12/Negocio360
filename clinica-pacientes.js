@@ -2,7 +2,7 @@
    CLINICA-PACIENTES.JS — NEGOCIO360 · Módulo Clínica
    Pacientes (datos generales: los maneja recepción) y su
    EXPEDIENTE CLÍNICO (antecedentes, alergias, consultas),
-   que solo entrega el servidor con la sesión médica (PIN).
+   que solo entrega el servidor con la sesión médica (código del usuario médico).
    Notas: borrador -> "Cerrar y firmar" (ya no se modifica);
    después solo adendas fechadas o anulación con motivo.
 ===================================================== */
@@ -123,7 +123,7 @@ async function cargarPacientes() {
     const hoy = vetHoy();
     const [ps, citasHoy] = await Promise.all([
       traerTodo(() => sb.from('clinica_pacientes').select('*').eq('auth_user_id', STATE.userId).order('id')),
-      sb.from('clinica_citas').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('fecha', hoy).neq('estado', 'cancelada'),
+      sb.from('agenda_citas').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('fecha', hoy).neq('estado', 'cancelada'),
     ]);
     CP.pacientes = ps;
     $p('cp-kpi-activos').textContent = ps.filter(p => p.activo).length;
@@ -252,13 +252,14 @@ function pintarCabecera() {
         <div class="cl-sub">${p.telefono ? '📞 ' + esc(p.telefono) : 'Sin teléfono'}${p.cedula ? ' · 🪪 ' + esc(p.cedula) : ''}</div></div>
       <div class="cl-acciones" style="margin:0">
         <button class="btn-accion-tabla btn-ghost" onclick="editarDesdeFicha()">✏️ Editar</button>
-        <button class="btn-accion-tabla btn-ghost" onclick="agendarCita()">📅 Agendar cita</button>
+        <button class="btn-accion-tabla btn-ghost" onclick="agendarCita()">📅 Agendar en la Agenda</button>
       </div></div>`;
 }
 function editarDesdeFicha() { const id = CP.ficha.id; cerrarFicha(); abrirPaciente(id); }
+// Las citas se hacen en la Agenda del sistema (con el paciente como cliente).
 function agendarCita(fecha) {
-  const q = new URLSearchParams({ nueva: '1', paciente: CP.ficha.id }); if (fecha) q.set('fecha', fecha);
-  window.location.href = 'clinica-agenda.html?' + q.toString();
+  if (fecha) alert(`Abre la Agenda y agenda el control para el ${vetFechaLarga(fecha)}.`);
+  window.location.href = 'agenda.html';
 }
 async function cambiarTab(tab) {
   CP.tab = tab;
@@ -283,17 +284,13 @@ async function pintarCitas() {
   const cont = $p('fi-panel-citas');
   cont.innerHTML = '<p class="cl-sub">Cargando…</p>';
   try {
-    const [{ data, error }, { data: pers }] = await Promise.all([
-      sb.from('clinica_citas').select('id, fecha, hora, estado, tipo, motivo, medico_id, ventas(numero_venta, estado)').eq('auth_user_id', STATE.userId).eq('paciente_id', CP.ficha.id).order('fecha', { ascending: false }).order('hora', { ascending: false }).limit(60),
-      sb.from('clinica_personal').select('id, nombre').eq('auth_user_id', STATE.userId),
-    ]);
-    if (error) throw error;
+    const { citas: data, medicos: pers } = await ClinicaCitas.delPaciente(CP.ficha);
     const nom = id => (pers || []).find(x => x.id === id)?.nombre || '';
-    cont.innerHTML = (data || []).length ? data.map(c => { const e = CLINICA_ESTADOS_CITA[c.estado] || CLINICA_ESTADOS_CITA.programada, t = CLINICA_TIPOS_CITA[c.tipo] || CLINICA_TIPOS_CITA.consulta;
-      return `<div class="cl-item"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(fechaCorta(c.fecha))} · ${esc(vetFormatoHora(c.hora))}</div>
-        <div class="cl-item-fecha">${t.e} ${esc(t.n)}${c.motivo ? ' · ' + esc(c.motivo) : ''}${c.medico_id ? ' · ' + esc(nom(c.medico_id)) : ''}</div></div>
+    cont.innerHTML = (data || []).length ? data.map(c => { const e = CLINICA_ESTADOS_CITA[c.estado] || CLINICA_ESTADOS_CITA.programada;
+      return `<div class="cl-item"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(fechaCorta(c.fecha))}${c.hora ? ' · ' + esc(vetFormatoHora(c.hora)) : ''}</div>
+        <div class="cl-item-fecha">${c.motivo ? esc(c.motivo) : 'Cita'}${c.medico_id ? ' · ' + esc(nom(c.medico_id)) : ''}</div></div>
         <div><span class="cl-badge cl-badge-${e.clase}">${esc(e.n)}</span>${c.ventas?.estado === 'completada' ? ` <span class="cl-badge cl-badge-verde">Cobrada · ${esc(c.ventas.numero_venta || '')}</span>` : ''}</div></div></div>`; }).join('')
-      : '<p class="cl-sub">Este paciente no tiene citas.</p>';
+      : '<p class="cl-sub">Este paciente no tiene citas en la Agenda.</p>';
   } catch (e) { console.error('pintarCitas:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudieron cargar las citas.</p>'; }
 }
 async function alternarArchivado() {
@@ -318,8 +315,8 @@ async function pintarExpediente() {
     CP.exp = null;
     cont.innerHTML = `<div class="cl-candado"><div class="cl-candado-icono">🔒</div>
       <p class="cl-nombre" style="margin:6px 0 4px">Expediente clínico confidencial</p>
-      <p class="cl-sub" style="margin:0 0 14px">Solo el personal médico puede verlo, con su PIN personal. Cada acceso queda registrado.</p>
-      <button class="btn-accion-tabla btn-primary" onclick="entrarExpediente()">🔓 Entrar con mi PIN</button></div>`;
+      <p class="cl-sub" style="margin:0 0 14px">Solo los médicos pueden verlo, con su código de usuario. Cada acceso queda registrado.</p>
+      <button class="btn-accion-tabla btn-primary" onclick="entrarExpediente()">🔓 Entrar con mi código</button></div>`;
     return;
   }
   cont.innerHTML = '<p class="cl-sub">Cargando expediente…</p>';
@@ -425,7 +422,7 @@ function abrirConsulta(id) {
     : (CP.especialidades.includes('medicina_general') ? 'medicina_general' : CP.especialidades[0]);
   selE.value = c?.especialidad && CP.especialidades.includes(c.especialidad) ? c.especialidad : espDefecto;
   CAMPOS_TEXTO.forEach(k => { $p('co-' + k).value = c?.[k] || ''; });
-  if (!c && CP.citaActiva?.motivo) $p('co-motivo').value = CP.citaActiva.motivo;
+  if (!c && CP.citaActiva?.notas) $p('co-motivo').value = CP.citaActiva.notas.slice(0, 500);
   Object.keys(CLINICA_SIGNOS).forEach(k => { $p('co-' + k).value = c?.[k] ?? ''; });
   $p('co-proximo_control').value = c?.proximo_control || '';
   $p('co-proximo_control').min = vetHoy();
@@ -482,11 +479,11 @@ async function guardarNota({ silencioso } = {}) {
   const err = $p('co-error'); err.textContent = '';
   const d = datosConsulta(), e = validarConsulta(d);
   if (e) { err.textContent = e; return null; }
-  if (!CP.notaId) { d.paciente_id = CP.ficha.id; if (CP.citaActiva) d.cita_id = CP.citaActiva.id; }
+  if (!CP.notaId) { d.paciente_id = CP.ficha.id; if (CP.citaActiva) d.agenda_cita_id = CP.citaActiva.id; }
   const r = await ClinicaSesion.rpc('clinica_consulta_guardar', { p_id: CP.notaId, p_datos: d });
   if (!r || !r.ok) { err.textContent = clinicaTextoMotivo(r); return null; }
   CP.notaId = r.id;
-  if (d.cita_id) CP.citaActiva = null;              // la cita ya quedó ligada a esta nota
+  if (d.agenda_cita_id) CP.citaActiva = null;              // la cita ya quedó ligada a esta nota
   if (!silencioso) showToast('Borrador guardado. Recuerda cerrarlo y firmarlo al terminar.');
   return r.id;
 }
@@ -544,13 +541,13 @@ async function confirmarAnular() {
   } catch (e) { if (!e.cancelado) { console.error('anular:', e); $p('nu-error').textContent = clinicaTextoError(e); } }
 }
 
-/* ---------- Venir desde la Agenda (?cita=) o con ?paciente= ---------- */
+/* ---------- Venir desde la Sala de espera (?cita= de la Agenda) o con ?paciente= ---------- */
 async function procesarURL() {
   try {
     const q = new URLSearchParams(window.location.search);
     const citaId = q.get('cita'), pacId = q.get('paciente');
     if (citaId) {
-      const { data: cita } = await sb.from('clinica_citas').select('*').eq('id', citaId).eq('auth_user_id', STATE.userId).maybeSingle();
+      const cita = await ClinicaCitas.una(citaId);
       if (!cita || ['cancelada', 'no_asistio', 'atendida'].includes(cita.estado) || !CP.pacientes.some(p => p.id === cita.paciente_id)) {
         showToast('Esa cita ya no está disponible para atender.', 'error');
         if (cita && CP.pacientes.some(p => p.id === cita.paciente_id)) await abrirFicha(cita.paciente_id);
@@ -558,10 +555,10 @@ async function procesarURL() {
       }
       CP.citaActiva = cita;
       await abrirFicha(cita.paciente_id, 'exp');
-      if (!ClinicaSesion.leer()) { const s = await ClinicaSesion.pedir({ ayuda: 'Para atender a este paciente, elige tu nombre y escribe tu PIN.' }); if (!s) return; await pintarExpediente(); }
+      if (!ClinicaSesion.leer()) { const s = await ClinicaSesion.pedir({ ayuda: 'Para atender a este paciente, escribe tu código de usuario.' }); if (!s) return; await pintarExpediente(); }
       if (!CP.exp) return;
       // Si la cita ya tiene un borrador, se continúa ese mismo.
-      const yaNota = (CP.exp.consultas || []).find(c => c.cita_id === cita.id && c.estado !== 'anulada');
+      const yaNota = (CP.exp.consultas || []).find(c => c.agenda_cita_id === cita.id && c.estado !== 'anulada');
       if (yaNota) { CP.citaActiva = null; if (yaNota.estado === 'borrador' && yaNota.medico_id === CP.exp.yo?.id) abrirConsulta(yaNota.id); return; }
       abrirConsulta();
       return;
@@ -573,11 +570,11 @@ async function procesarURL() {
 /* ---------- Tutorial ---------- */
 const PASOS_TUTORIAL = [
   { icono: '👤', titulo: 'Pacientes', texto: 'Aquí registras a cada paciente con sus datos generales. Su número de expediente y su edad se calculan solos.' },
-  { icono: '🔒', titulo: 'Expediente clínico', texto: 'Antecedentes, alergias y consultas solo los ve el personal médico con su PIN. Cada vez que alguien abre un expediente queda anotado.' },
+  { icono: '🔒', titulo: 'Expediente clínico', texto: 'Antecedentes, alergias y consultas solo los ven los médicos con su código de usuario. Cada vez que alguien abre un expediente queda anotado.' },
   { icono: '📝', titulo: 'La consulta', texto: 'Escribe motivo, signos vitales (el IMC sale solo), examen, diagnóstico y plan. Puedes guardar un borrador y terminar después.' },
   { icono: '✅', titulo: 'Cerrar y firmar', texto: 'Al terminar, "Cerrar y firmar". La nota queda fija: si luego hay que corregir algo, se agrega una adenda con fecha.' },
   { icono: '📄', titulo: 'Recetas y documentos', texto: 'Con "📄 Documento" haces recetas, órdenes de laboratorio o imágenes, constancias, certificados, referencias y consentimientos, listos para imprimir en hoja o en ticket. La receta puede pasar a Farmacia o a la cuenta de la visita.' },
-  { icono: '📎', titulo: 'Archivos', texto: 'Sube resultados o fotos (PDF o imagen, hasta 10 MB). Se guardan en un lugar privado: solo el personal médico con su PIN los abre.' },
+  { icono: '📎', titulo: 'Archivos', texto: 'Sube resultados o fotos (PDF o imagen, hasta 10 MB). Se guardan en un lugar privado: solo los médicos con su código de usuario los abren.' },
 ];
 function mostrarTutorial(forzar) {
   try {

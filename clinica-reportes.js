@@ -1,10 +1,10 @@
 /* =====================================================
-   CLINICA-REPORTES.JS — NEGOCIO360 · Módulo Clínica (Fase 3)
-   Atendidos, inasistencias e ingresos por médico y por
+   CLINICA-REPORTES.JS — NEGOCIO360 · Módulo Clínica
+   Sobre las citas de la Agenda del sistema. Atendidos, inasistencias e ingresos por médico y por
    servicio (lo cobrado se lee de las MISMAS ventas, menos
    sus devoluciones, para que cuadre con Ventas y Caja),
    honorarios por médico con pago por Salarios, y
-   diagnósticos frecuentes (con PIN médico o código de
+   diagnósticos frecuentes (con código del médico o de
    administrador; solo cifras, sin nombres de pacientes).
 ===================================================== */
 
@@ -125,13 +125,12 @@ async function cargar() {
   if (!desde || !hasta || desde > hasta) { showToast('Revisa las fechas: "desde" no puede ser después de "hasta".', 'error'); return; }
   $r('rp-cuerpo').style.opacity = '.5';
   try {
-    const [citas, per, pag] = await Promise.all([
-      traerTodo(() => sb.from('clinica_citas').select('id, fecha, hora, estado, medico_id, venta_id, motivo_cancelacion, clinica_pacientes(nombres, apellidos, telefono)')
-        .eq('auth_user_id', STATE.userId).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('id')),
-      sb.from('clinica_personal').select('id, nombre, rol, honorario_tipo, honorario_valor, empleado_id, activo').eq('auth_user_id', STATE.userId).order('nombre'),
+    const [cc, pag] = await Promise.all([
+      ClinicaCitas.cargar(desde, hasta),
       traerTodo(() => sb.from('clinica_honorarios').select('id, personal_id, desde, hasta, monto, estado, citas, created_at, pagada_en').eq('auth_user_id', STATE.userId).order('created_at', { ascending: false }).order('id')),
     ]);
-    RP.citas = citas; RP.personal = per.data || []; RP.liquidaciones = pag;
+    const citas = cc.citas;
+    RP.citas = citas; RP.personal = cc.medicos; RP.liquidaciones = pag;
     RP.pagadas = pag.filter(h => h.estado === 'pagada').flatMap(h => h.citas || []);
     const ventaIds = [...new Set(citas.map(c => c.venta_id).filter(Boolean))];
     const [ventas, detalles, devoluciones] = await Promise.all([
@@ -146,7 +145,7 @@ async function cargar() {
       RP.honorarios[m.id] = clinicaCalcularHonorarios({ medico: m, citas, ventas, detalles, devoluciones, pagadas: RP.pagadas });
     });
     render();
-    $r('rp-dx').innerHTML = '<p class="cl-sub">Por confidencialidad, los diagnósticos se ven con el PIN médico o el código de administrador.</p>';
+    $r('rp-dx').innerHTML = '<p class="cl-sub">Por confidencialidad, los diagnósticos se ven con el código de un médico o el de administrador.</p>';
   } catch (e) { console.error('cargar reportes:', e); showToast('No se pudieron cargar los reportes.', 'error'); }
   finally { $r('rp-cuerpo').style.opacity = ''; }
 }
@@ -155,14 +154,14 @@ function render() {
   $r('rp-kpi-citas').textContent = t.citas; $r('rp-kpi-aten').textContent = t.atendidas;
   $r('rp-kpi-falta').textContent = validas > 0 ? Math.round(t.no_asistio * 100 / validas) + '%' : '0%';
   $r('rp-kpi-cobrado').textContent = fmt(t.cobrado);
-  $r('rp-sin-cobrar').innerHTML = t.sin_cobrar ? `<div class="cl-aviso">⚠️ ${t.sin_cobrar} consulta${t.sin_cobrar === 1 ? '' : 's'} atendida${t.sin_cobrar === 1 ? '' : 's'} todavía sin cobrar en este periodo (cóbralas desde la Agenda).</div>` : '';
+  $r('rp-sin-cobrar').innerHTML = t.sin_cobrar ? `<div class="cl-aviso">⚠️ ${t.sin_cobrar} consulta${t.sin_cobrar === 1 ? '' : 's'} atendida${t.sin_cobrar === 1 ? '' : 's'} todavía sin cobrar en este periodo (cóbralas desde la Sala de espera o la Agenda).</div>` : '';
   // Por médico (con honorarios)
   $r('rp-medicos').innerHTML = RP.resumen.porMedico.length ? RP.resumen.porMedico.map(f => {
     const m = RP.personal.find(x => x.id === f.medico_id), h = f.medico_id && RP.honorarios[f.medico_id];
     const hon = !m || !m.honorario_tipo || m.honorario_tipo === 'ninguno' ? '<span class="cl-sub">Sin honorarios</span>'
       : `<b>${esc(fmt(h.monto))}</b> <span class="cl-sub">(${m.honorario_tipo === 'porcentaje' ? Number(m.honorario_valor) + '% de ' + esc(fmt(h.base)) + ' en servicios' : esc(fmt(m.honorario_valor)) + ' por consulta'})${h.yaPagadas ? ` · ${h.yaPagadas} ya pagada${h.yaPagadas === 1 ? '' : 's'}` : ''}</span>`;
     const pagar = h && h.monto > 0 ? (m.empleado_id ? `<button class="btn-accion-tabla btn-primary" onclick="pagarHonorarios('${m.id}')">💵 Pagar en Salarios</button>`
-      : '<span class="cl-badge cl-badge-ambar">Ligar a un empleado en Equipo para pagar</span>') : '';
+      : '<span class="cl-badge cl-badge-ambar">Ligar a un empleado en Clínica · Médicos para pagar</span>') : '';
     return `<div class="cl-item"><div class="cl-item-cab"><div class="cl-item-tit">👨‍⚕️ ${esc(f.nombre)}</div><div class="cl-item-tit">${esc(fmt(f.cobrado))}</div></div>
       <p class="cl-sub">${f.citas} citas · ${f.atendidas} atendidas · ${f.no_asistio} no asistió · ${f.canceladas} canceladas${f.sin_cobrar ? ` · ${f.sin_cobrar} sin cobrar` : ''}</p>
       <p>Honorarios: ${hon}</p>${pagar ? `<div class="cl-acciones">${pagar}</div>` : ''}</div>`;
@@ -176,8 +175,8 @@ function render() {
   // Inasistencias
   const falta = RP.citas.filter(c => c.estado === 'no_asistio');
   $r('rp-falta').innerHTML = falta.length ? falta.map(c => `<div class="cl-item" style="padding:9px 12px"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(clinicaNombrePaciente(c.clinica_pacientes || {}))}</div>
-      <div class="cl-item-fecha">${esc(vetFechaLarga(c.fecha))} · ${esc(vetFormatoHora(c.hora))}${c.medico_id ? ' · ' + esc(RP.personal.find(m => m.id === c.medico_id)?.nombre || '') : ''}</div></div>
-      ${c.clinica_pacientes?.telefono ? `<span class="cl-sub">📞 ${esc(c.clinica_pacientes.telefono)}</span>` : ''}</div></div>`).join('')
+      <div class="cl-item-fecha">${esc(vetFechaLarga(c.fecha))}${c.hora ? ' · ' + esc(vetFormatoHora(c.hora)) : ''}${c.medico_id ? ' · ' + esc(RP.personal.find(m => m.id === c.medico_id)?.nombre || '') : ''}</div></div>
+      ${c.telefono ? `<span class="cl-sub">📞 ${esc(c.telefono)}</span>` : ''}</div></div>`).join('')
     : '<p class="cl-sub">Nadie faltó en estas fechas. 🎉</p>';
   // Liquidaciones de honorarios
   const est = { enviada: ['Pendiente de pago', 'ambar'], pagada: ['Pagada', 'verde'], anulada: ['Anulada', 'rojo'] };
@@ -216,7 +215,7 @@ async function anularLiquidacion(id) {
   } catch (e) { console.error('anularLiquidacion:', e); showToast('No se pudo anular.', 'error'); }
 }
 
-/* ---------- Diagnósticos frecuentes (con PIN médico o código de administrador) ---------- */
+/* ---------- Diagnósticos frecuentes (con código del médico o de administrador) ---------- */
 async function verDiagnosticos() {
   const s = ClinicaSesion.leer();
   let auth = s ? { token: s.token } : (RP.codigoAdmin ? { admin_pin: RP.codigoAdmin } : null);

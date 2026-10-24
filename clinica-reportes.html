@@ -10,7 +10,7 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="modulos-registro.js?v=20261024c"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261024b" />
+  <link rel="stylesheet" href="clinica.css?v=20261024c" />
 </head>
 <body>
 
@@ -1349,9 +1349,10 @@
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261024b"></script>
-<script src="clinica-sesion.js?v=20261024b"></script>
-<script src="clinica-reportes.js?v=20261024b"></script>
+<script src="clinica-comun.js?v=20261024c"></script>
+<script src="clinica-sesion.js?v=20261024c"></script>
+<script src="clinica-citas.js?v=20261024c"></script>
+<script src="clinica-reportes.js?v=20261024c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1392,7 +1393,7 @@
   <div class="modal-box" style="max-width:380px;width:100%" role="dialog" aria-labelledby="ac-titulo">
     <div class="modal-header"><span class="modal-title" id="ac-titulo">🛡️ Código de administrador</span><button class="modal-close" onclick="respuestaAdmin(false)" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
     <div class="modal-body">
-      <p class="cl-sub" style="margin:0 0 10px">Escribe el código de administrador de la cuenta, o cierra y entra con tu PIN médico (botón 🔒 Acceso médico en Pacientes).</p>
+      <p class="cl-sub" style="margin:0 0 10px">Escribe el código de administrador de la cuenta, o cierra y entra con tu código de médico (botón 🔒 Acceso médico en Pacientes).</p>
       <input type="password" id="ac-codigo" class="cl-in cl-pin-in" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="••••" onkeydown="if(event.key==='Enter')respuestaAdmin(true)"/>
       <p id="ac-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
     </div>

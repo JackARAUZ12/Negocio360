@@ -98,6 +98,11 @@ fijo por especialidad).
 - Alergias siempre visibles como alerta.
 
 ## Fases
+> **Ajuste del 2026-10-24 (pedido de Jack):** la clínica NO tiene agenda propia: usa la
+> Agenda del sistema (citas por profesional). Los médicos NO se crean aparte: son usuarios
+> del multiusuario marcados como médicos y abren el expediente con su mismo código de usuario.
+> Ver PROGRESO.md.
+
 - **Fase 1 — Base para atender y cobrar:** activación (Configuración y
   Personalización con selección de especialidades); médicos y consultorios;
   pacientes/expediente (datos generales, cédula, edad automática, tipo de

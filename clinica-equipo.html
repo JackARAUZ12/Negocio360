@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
   <script src="movil-recargar.js?v=20261021b" defer></script>
-  <title>Equipo y seguridad — Negocio360</title>
+  <title>Médicos y seguridad — Negocio360</title>
 
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="modulos-registro.js?v=20261024c"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261024b" />
+  <link rel="stylesheet" href="clinica.css?v=20261024c" />
 </head>
 <body>
 
@@ -1300,7 +1300,7 @@
       <button class="header-toggle" onclick="toggleSidebar()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="header-title">Equipo y seguridad</span>
+      <span class="header-title">Médicos y seguridad</span>
       <div class="header-spacer"></div>
       <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
         <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -1318,24 +1318,23 @@
     <div class="page-content">
       <div class="hab-page-header">
         <div>
-          <h1>👩‍⚕️ Equipo y seguridad</h1>
-          <p class="hab-page-subtitle">Médicos y su PIN, consultorios, especialidades y quién abrió cada expediente.</p>
+          <h1>👩‍⚕️ Médicos y seguridad</h1>
+          <p class="hab-page-subtitle">Qué usuarios del sistema son médicos, consultorios, especialidades y quién abrió cada expediente.</p>
         </div>
         <div class="cl-hbtns">
           <button type="button" data-clinica-chip class="cl-chip-sesion cerrada">🔒 Acceso médico</button>
         </div>
       </div>
       <div class="cl-tabs" role="tablist">
-        <button class="cl-tab activa" id="eq-tab-personal" role="tab" onclick="cambiarTab('personal')">👥 Personal</button>
+        <button class="cl-tab activa" id="eq-tab-personal" role="tab" onclick="cambiarTab('personal')">🩺 Médicos</button>
         <button class="cl-tab" id="eq-tab-consultorios" role="tab" onclick="cambiarTab('consultorios')">🚪 Consultorios</button>
         <button class="cl-tab" id="eq-tab-especialidades" role="tab" onclick="cambiarTab('especialidades')">🩺 Especialidades</button>
         <button class="cl-tab" id="eq-tab-bitacora" role="tab" onclick="cambiarTab('bitacora')">🕵️ Bitácora</button>
-        <button class="cl-tab" id="eq-tab-pin" role="tab" onclick="cambiarTab('pin')">🔑 Mi PIN</button>
       </div>
 
       <div id="eq-panel-personal">
-        <div class="cl-info" style="margin:0 0 12px">🔒 Para agregar o cambiar al personal se pide el <b>código de administrador</b> de la cuenta. Cada médico entra al expediente con <b>su propio PIN</b>; recepción no puede ver notas clínicas.</div>
-        <div class="cl-barra"><button class="btn-accion-tabla btn-primary" onclick="abrirPersona()">+ Agregar persona</button></div>
+        <div class="cl-info" style="margin:0 0 12px">👤 Los médicos son <b>usuarios del sistema</b> (se crean en el menú de usuarios, arriba a la derecha, con su código y sus módulos). Aquí solo marcas cuáles son médicos. Para abrir un expediente usan <b>su mismo código de usuario</b>; los demás usuarios no pueden ver notas clínicas. Se pide el <b>código de administrador</b>.</div>
+        <div class="cl-barra"><button class="btn-accion-tabla btn-primary" onclick="abrirPersona()">+ Marcar un usuario como médico</button></div>
         <div id="eq-personal-lista" class="cl-lista"><p class="cl-sub">Cargando…</p></div>
       </div>
 
@@ -1362,27 +1361,14 @@
         <div id="bi-lista" class="cl-bit" style="margin-top:12px"></div>
       </div>
 
-      <div id="eq-panel-pin" style="display:none">
-        <div style="max-width:420px">
-          <p class="cl-sub" style="margin:0 0 10px">Cambia tu PIN personal. Si lo olvidaste, pídele al administrador que te asigne uno nuevo en "Personal".</p>
-          <div class="cl-field"><label for="mp-persona">¿Quién eres?</label><select id="mp-persona" class="cl-in"></select></div>
-          <div class="cl-field"><label for="mp-actual">PIN actual</label><input type="password" id="mp-actual" class="cl-in" inputmode="numeric" maxlength="8" autocomplete="off"/></div>
-          <div class="cl-grid2">
-            <div class="cl-field"><label for="mp-nuevo">PIN nuevo</label><input type="password" id="mp-nuevo" class="cl-in" inputmode="numeric" maxlength="8" autocomplete="new-password"/></div>
-            <div class="cl-field"><label for="mp-nuevo2">Repite el PIN nuevo</label><input type="password" id="mp-nuevo2" class="cl-in" inputmode="numeric" maxlength="8" autocomplete="new-password"/></div>
-          </div>
-          <p id="mp-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0" role="alert"></p>
-          <button class="btn-accion-tabla btn-primary" onclick="cambiarMiPin()">Cambiar mi PIN</button>
-        </div>
-      </div>
     </div>
 
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261024b"></script>
-<script src="clinica-sesion.js?v=20261024b"></script>
-<script src="clinica-equipo.js?v=20261024b"></script>
+<script src="clinica-comun.js?v=20261024c"></script>
+<script src="clinica-sesion.js?v=20261024c"></script>
+<script src="clinica-equipo.js?v=20261024c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1423,13 +1409,14 @@
   <div class="modal-box" style="max-width:560px;width:100%" role="dialog" aria-labelledby="pe-titulo">
     <div class="modal-header"><span class="modal-title" id="pe-titulo">👤 Agregar persona</span><button class="modal-close" onclick="closeModal('modal-persona')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
     <div class="modal-body" style="max-height:72vh;overflow-y:auto">
-      <div class="cl-field"><label for="pe-nombre">Nombre completo *</label><input type="text" id="pe-nombre" class="cl-in" maxlength="80" placeholder="Ej: Dra. Ana Ruiz"/></div>
-      <div class="cl-field"><label for="pe-rol">Rol *</label><select id="pe-rol" class="cl-in" onchange="alCambiarRol()"><option value="medico">🩺 Médico</option><option value="recepcion">🛎️ Recepción</option><option value="admin">🛡️ Administración clínica</option></select><div class="cl-ayuda" id="pe-rol-ayuda"></div></div>
-      <label class="cl-check"><input type="checkbox" id="pe-atiende"/> Atiende pacientes (aparece en la agenda)</label>
+      <div class="cl-field"><label for="pe-usuario">Usuario del sistema *</label><select id="pe-usuario" class="cl-in"></select>
+        <div class="cl-ayuda" id="pe-usuario-ayuda">¿No aparece? Créalo primero en el menú de usuarios (arriba a la derecha) con su código y los módulos que usará.</div></div>
+      <div class="cl-field"><label for="pe-rol">Rol *</label><select id="pe-rol" class="cl-in" onchange="alCambiarRol()"><option value="medico">🩺 Médico</option><option value="admin">🛡️ Administración clínica</option></select><div class="cl-ayuda" id="pe-rol-ayuda"></div></div>
+      <div class="cl-field"><label for="pe-profesional">Su columna en la Agenda</label><select id="pe-profesional" class="cl-in"></select>
+        <div class="cl-ayuda">Las citas de esa columna son sus pacientes (sala de espera, reportes y honorarios). Las columnas se crean en Agenda › Profesionales.</div></div>
       <div class="cl-grid2">
         <div class="cl-field"><label for="pe-especialidad">Especialidad</label><select id="pe-especialidad" class="cl-in"><option value="">— Ninguna —</option></select></div>
         <div class="cl-field"><label for="pe-registro">Código MINSA / registro profesional</label><input type="text" id="pe-registro" class="cl-in" maxlength="40"/></div>
-        <div class="cl-field"><label for="pe-telefono">Teléfono</label><input type="tel" id="pe-telefono" class="cl-in" maxlength="30"/></div>
         <div class="cl-field"><label for="pe-consultorio">Consultorio</label><select id="pe-consultorio" class="cl-in"></select></div>
       </div>
       <div id="pe-hon-wrap">
@@ -1442,15 +1429,7 @@
         <div class="cl-field"><label for="pe-empleado">Empleado en Salarios (para pagarle)</label><select id="pe-empleado" class="cl-in"></select>
           <div class="cl-ayuda">Los honorarios se pagan desde Clínica · Reportes y entran a Salarios como bonificación, con su caja y contabilidad de siempre.</div></div>
       </div>
-      <div id="pe-pin-wrap">
-        <div class="cl-seccion">PIN personal</div>
-        <div class="cl-grid2">
-          <div class="cl-field"><label for="pe-pin">PIN (4 a 8 números)</label><input type="password" id="pe-pin" class="cl-in" inputmode="numeric" maxlength="8" autocomplete="new-password"/></div>
-          <div class="cl-field"><label for="pe-pin2">Repite el PIN</label><input type="password" id="pe-pin2" class="cl-in" inputmode="numeric" maxlength="8" autocomplete="new-password"/></div>
-        </div>
-        <div class="cl-ayuda" id="pe-pin-ayuda"></div>
-      </div>
-      <label class="cl-check" id="pe-activo-wrap" style="margin-top:10px"><input type="checkbox" id="pe-activo"/> Activo (si lo desmarcas, ya no puede entrar)</label>
+      <label class="cl-check" id="pe-activo-wrap" style="margin-top:10px"><input type="checkbox" id="pe-activo"/> Tiene acceso clínico (si lo desmarcas, ya no puede abrir expedientes)</label>
       <p id="pe-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
     </div>
     <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-persona')">Cancelar</button><button class="btn-accion-tabla btn-primary" id="pe-btn-guardar" onclick="guardarPersona()">Guardar</button></div>
