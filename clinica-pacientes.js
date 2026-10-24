@@ -347,12 +347,15 @@ function renderExpediente() {
     <div class="cl-acciones" style="margin-top:12px">
       <button class="btn-accion-tabla btn-primary" onclick="abrirConsulta()">📝 Nueva consulta</button>
       <button class="btn-accion-tabla btn-ghost" onclick="abrirAntecedentes()">✏️ Antecedentes</button>
+      <button class="btn-accion-tabla btn-ghost" onclick="abrirDocumento()">📄 Documento</button>
+      <button class="btn-accion-tabla btn-ghost" onclick="abrirAdjunto()">📎 Subir archivo</button>
     </div>
     <div class="cl-seccion">Antecedentes</div>
     <div class="cl-item">${ant || '<p class="cl-sub" style="margin:0">Sin antecedentes registrados.</p>'}
       ${a.actualizado_en ? `<p class="cl-sub">Actualizado por ${esc(a.actualizado_por_nombre || '—')} · ${esc(fechaHora(a.actualizado_en))}</p>` : ''}</div>
     <div class="cl-seccion">Consultas (${consultas.length})</div>
     ${consultas.length ? consultas.map(c => tarjetaConsulta(c, yo)).join('') : '<p class="cl-sub">Todavía no hay consultas.</p>'}
+    ${seccionDocumentos(ex.documentos || [], yo)}${seccionAdjuntos(ex.adjuntos || [], yo)}
     <p class="cl-sub" style="margin-top:10px">🔓 Viendo como ${esc(yo.nombre || '')}. Este acceso quedó registrado en la bitácora.</p>`;
 }
 function tarjetaConsulta(c, yo) {
@@ -366,13 +369,14 @@ function tarjetaConsulta(c, yo) {
   if (c.estado === 'borrador' && soyAutor) { btns.push(`<button class="btn-accion-tabla btn-ghost" onclick="abrirConsulta('${c.id}')">✏️ Continuar</button>`); btns.push(`<button class="btn-accion-tabla btn-primary" onclick="cerrarNota('${c.id}')">✅ Cerrar y firmar</button>`); }
   if (c.estado === 'cerrada') btns.push(`<button class="btn-accion-tabla btn-ghost" onclick="abrirAdenda('${c.id}')">➕ Adenda</button>`);
   if (c.estado === 'cerrada' && c.proximo_control && c.proximo_control >= vetHoy()) btns.push(`<button class="btn-accion-tabla btn-ghost" onclick="agendarCita('${c.proximo_control}')">📅 Agendar control</button>`);
+  if (c.estado !== 'anulada') btns.push(`<button class="btn-accion-tabla btn-ghost" onclick="abrirDocumento(null, '${c.id}')">📄 Documento</button>`);
   if (c.estado !== 'anulada' && (soyAutor || yo.rol === 'admin')) btns.push(`<button class="btn-accion-tabla btn-ghost" onclick="abrirAnular('${c.id}')">🚫 Anular</button>`);
   return `<div class="cl-item ${c.estado === 'anulada' ? 'anulada' : ''}">
     <div class="cl-item-cab"><div><div class="cl-item-tit">${esc(c.motivo)}</div>
       <div class="cl-item-fecha">${esc(fechaHora(c.fecha))} · ${esc(c.medico_nombre)} · ${esc(clinicaNombreEspecialidad(c.especialidad))}</div></div>
       <span class="cl-badge cl-badge-${est.clase}">${esc(est.n)}</span></div>
     ${signos.length ? `<p><b>Signos vitales:</b> ${esc(signos.join(' · '))}</p>` : ''}
-    ${linea('Enfermedad actual', c.enfermedad_actual)}${linea('Examen físico', c.examen_fisico)}${linea('Diagnóstico', c.diagnostico)}
+    ${linea('Enfermedad actual', c.enfermedad_actual)}${linea('Examen físico', c.examen_fisico)}${htmlDiagnosticos(c.diagnosticos)}${linea('Diagnóstico', c.diagnostico)}
     ${linea('Plan', c.plan)}${linea('Indicaciones', c.indicaciones)}${c.proximo_control ? `<p><b>Próximo control:</b> ${esc(fechaCorta(c.proximo_control))}</p>` : ''}
     ${(c.adendas || []).map(d => `<div class="cl-info"><b>Adenda · ${esc(d.autor_nombre)} · ${esc(fechaHora(d.created_at))}</b><br>${esc(d.texto)}</div>`).join('')}
     ${c.estado === 'cerrada' ? `<p class="cl-sub">🔏 Firmada el ${esc(fechaHora(c.cerrada_en))} · código ${esc(String(c.firma_hash || '').slice(0, 12))}</p>` : ''}
@@ -428,6 +432,7 @@ function abrirConsulta(id) {
   $p('co-error').textContent = '';
   $p('co-cita-aviso').style.display = (!c && CP.citaActiva) ? '' : 'none';
   pintarCamposEspecialidad(c?.datos || {});
+  CP.dx = Array.isArray(c?.diagnosticos) ? c.diagnosticos.map(x => ({ ...x })) : []; $p('co-dx-buscar').value = ''; $p('co-dx-resultados').style.display = 'none'; pintarDx();
   recalcularSignos();
   const alerg = CP.exp?.antecedentes?.alergias;
   $p('co-alergias').innerHTML = alerg ? `<div class="cl-alerta" style="margin:0 0 10px">⚠️ ALERGIAS: ${esc(alerg)}</div>` : '';
@@ -459,9 +464,11 @@ function recalcularSignos() {
   $p('co-alertas').innerHTML = al.length ? `<div class="cl-aviso" style="margin:6px 0 0">⚠️ ${al.map(esc).join(' · ')}</div>` : '';
 }
 function datosConsulta() {
-  const d = { especialidad: $p('co-especialidad').value || 'medicina_general', proximo_control: $p('co-proximo_control').value || null, datos: leerCamposEspecialidad() };
+  const d = { especialidad: $p('co-especialidad').value || 'medicina_general', proximo_control: $p('co-proximo_control').value || null, datos: leerCamposEspecialidad(), diagnosticos: CP.dx || [] };
   CAMPOS_TEXTO.forEach(k => { d[k] = $p('co-' + k).value.trim() || null; });
   Object.keys(CLINICA_SIGNOS).forEach(k => { const n = clinicaNumero($p('co-' + k).value); d[k] = n == null ? null : String(n); });
+  // Si solo se eligieron diagnósticos CIE-10, también quedan escritos en el texto del diagnóstico.
+  if (!d.diagnostico && d.diagnosticos.length) d.diagnostico = d.diagnosticos.map(x => (x.codigo ? x.codigo + ' ' : '') + x.nombre).join('; ').slice(0, 4000);
   return d;
 }
 function validarConsulta(d) {
@@ -569,6 +576,8 @@ const PASOS_TUTORIAL = [
   { icono: '🔒', titulo: 'Expediente clínico', texto: 'Antecedentes, alergias y consultas solo los ve el personal médico con su PIN. Cada vez que alguien abre un expediente queda anotado.' },
   { icono: '📝', titulo: 'La consulta', texto: 'Escribe motivo, signos vitales (el IMC sale solo), examen, diagnóstico y plan. Puedes guardar un borrador y terminar después.' },
   { icono: '✅', titulo: 'Cerrar y firmar', texto: 'Al terminar, "Cerrar y firmar". La nota queda fija: si luego hay que corregir algo, se agrega una adenda con fecha.' },
+  { icono: '📄', titulo: 'Recetas y documentos', texto: 'Con "📄 Documento" haces recetas, órdenes de laboratorio o imágenes, constancias, certificados, referencias y consentimientos, listos para imprimir en hoja o en ticket. La receta puede pasar a Farmacia o a la cuenta de la visita.' },
+  { icono: '📎', titulo: 'Archivos', texto: 'Sube resultados o fotos (PDF o imagen, hasta 10 MB). Se guardan en un lugar privado: solo el personal médico con su PIN los abre.' },
 ];
 function mostrarTutorial(forzar) {
   try {

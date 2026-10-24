@@ -322,6 +322,113 @@ async function regresionVentas(browser, raizMain) {
   verificar(norm(viejo) === norm(nuevo), 'regresión: Ventas escribe EXACTAMENTE lo mismo que antes (caja, inventario, cliente, detalle)');
 }
 
+
+// ---- FASE 2: diagnósticos CIE-10, documentos, receta a Farmacia y a la cuenta, archivos adjuntos
+async function pruebasFase2(browser, base, ancho, alto) {
+  const tag = ancho < 500 ? 'celular' : 'computadora';
+  console.log(`\n▶ Fase 2 en ${tag} (${ancho}px)`);
+  const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+  await page.goto(base + '/clinica-pacientes.html');
+  await page.evaluate(({ UID, HOY }) => {
+    const db = JSON.parse(JSON.stringify(window.__SEED));
+    db.configuracion_empresa[0].usa_farmacia_fase2 = true;
+    db.clinica_personal[1].registro_profesional = 'MINSA-777';
+    db.clinica_citas = [{ id: 'cita-f2', auth_user_id: UID, paciente_id: 'pac-xss', medico_id: 'per-med', fecha: HOY, hora: '08:00', duracion_min: 30, estado: 'en_espera' }];
+    sessionStorage.setItem('__DB', JSON.stringify(db));
+  }, { UID, HOY });
+  await page.goto(base + '/clinica-pacientes.html?cita=cita-f2'); await esperarListo(page);
+  await page.waitForSelector('#modal-clinica-pin.modal-open'); await page.selectOption('#cp-persona', 'per-med'); await page.fill('#cp-pin', '1357'); await page.click('#cp-ok');
+  await page.waitForSelector('#modal-consulta.modal-open');
+  await page.fill('#co-motivo', 'Dolor de garganta');
+  await page.fill('#co-dx-buscar', 'faringitis estrep'); await page.waitForSelector('#co-dx-resultados [data-i]');
+  await page.click('#co-dx-resultados [data-i]');
+  await page.fill('#co-dx-buscar', 'mal de ojo raro'); await page.waitForSelector('#co-dx-resultados [data-libre]'); await page.click('#co-dx-resultados [data-libre]');
+  verificar((await page.textContent('#co-dx-lista')).includes('J02.0') && (await page.textContent('#co-dx-lista')).includes('mal de ojo raro'), `${tag}: diagnósticos CIE-10 y texto libre`);
+  await modalesSinDesborde(page, `${tag} consulta con diagnósticos`);
+  await page.fill('#co-plan', 'Amoxicilina'); await page.click('#co-btn-cerrar');
+  await page.waitForSelector('text=Cerrada y firmada');
+  verificar((await page.textContent('#fi-panel-exp')).includes('J02.0 · Faringitis estreptocócica'), `${tag}: la nota muestra el diagnóstico codificado`);
+  const nota = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_consultas.find(c => c.motivo === 'Dolor de garganta'));
+  verificar(nota.diagnosticos.length === 2 && nota.diagnosticos[0].principal && (nota.diagnostico || '').includes('J02.0'), `${tag}: diagnósticos guardados (principal y texto)`);
+
+  // Receta ligada al inventario, emitida e impresa en carta
+  await page.locator('#fi-panel-exp .cl-item', { hasText: 'Dolor de garganta' }).locator('text=📄 Documento').click();
+  await page.waitForSelector('#modal-documento.modal-open'); await modalesSinDesborde(page, `${tag} documento`);
+  verificar(await page.inputValue('#do-consulta') === nota.id, `${tag}: el documento queda ligado a la consulta`);
+  await page.fill('#dc-med-0', 'Acetamin'); await page.waitForSelector('#dc-med-res-0 [data-id]'); await page.click('#dc-med-res-0 [data-id]');
+  verificar((await page.inputValue('#dc-med-0')).startsWith('Acetaminofén'), `${tag}: medicamento ligado al inventario`);
+  await page.fill('#dc-can-0', '10'); await page.fill('#dc-ind-0', '1 tableta cada 8 horas <b>x</b>');
+  await page.click('text=+ Agregar otro medicamento'); await page.fill('#dc-med-1', 'Gárgaras de agua con sal');
+  const [popup] = await Promise.all([ctx.waitForEvent('page'), page.click('text=🖨️ Emitir e imprimir carta')]);
+  await popup.waitForFunction(() => document.body && document.body.innerHTML.includes('RX-'), null, { timeout: 8000 });
+  const htmlRx = await popup.content(); await popup.close();
+  verificar(htmlRx.includes('RX-000001') && htmlRx.includes('MINSA-777') && htmlRx.includes('&lt;b&gt;x'), `${tag}: receta impresa con número, código MINSA y texto escapado`);
+  await page.waitForSelector('#fi-panel-exp >> text=RX-000001');
+
+  // A la cuenta de la visita
+  await page.locator('#fi-panel-exp .cl-item', { hasText: 'RX-000001' }).locator('text=➕ A la cuenta').click();
+  await page.waitForTimeout(400);
+  const cargos = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_cargos || []);
+  verificar(cargos.length === 1 && cargos[0].producto_id === 'prod-acet' && cargos[0].cantidad === 10 && cargos[0].cita_id === 'cita-f2', `${tag}: receta agregada a la cuenta de la visita (solo lo del inventario)`);
+
+  // Otros tipos de documento
+  const tipos = [['orden_lab', async () => { await page.check('#do-campos [data-examen][value="Glucosa en ayunas"]'); }],
+    ['orden_imagen', async () => { await page.check('#do-campos [data-examen][value="Radiografía de tórax PA"]'); }],
+    ['constancia', async () => {}], ['certificado', async () => { await page.fill('#dc-dias', '3'); }],
+    ['referencia', async () => { await page.fill('#dc-destino', 'Otorrinolaringología'); await page.fill('#dc-motivo', 'Amigdalitis recurrente'); }],
+    ['consentimiento', async () => { await page.fill('#dc-procedimiento', 'Drenaje de absceso'); }]];
+  for (const [tipo, llenar] of tipos) {
+    await page.click('#fi-panel-exp >> text=📄 Documento >> nth=0'); await page.waitForSelector('#modal-documento.modal-open');
+    await page.selectOption('#do-tipo', tipo); await llenar();
+    if (tipo === 'referencia') { await page.fill('#dc-motivo', ''); await page.click('text=💾 Emitir'); verificar((await page.textContent('#do-error')).length > 0, `${tag}: referencia sin motivo no se emite`); await page.fill('#dc-motivo', 'Amigdalitis recurrente'); }
+    await page.click('text=💾 Emitir'); await page.waitForSelector('#modal-documento', { state: 'hidden' });
+  }
+  const nums = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_documentos.map(d => d.numero));
+  verificar(['LAB-000001', 'IMG-000001', 'CON-000001', 'CER-000001', 'REF-000001', 'CI-000001'].every(n => nums.includes(n)), `${tag}: los 7 tipos de documento se emiten con su número (${nums.join(',')})`);
+  const [pop2] = await Promise.all([ctx.waitForEvent('page'), page.locator('#fi-panel-exp .cl-item', { hasText: 'CER-000001' }).locator('text=🧾 Ticket').click()]);
+  await pop2.waitForFunction(() => document.body && document.body.innerHTML.includes('CER-'));
+  verificar((await pop2.content()).includes('reposo por 3 días') && (await pop2.content()).includes('80mm'), `${tag}: certificado en ticket con días de reposo`);
+  await pop2.close();
+  // Anular un documento
+  await page.locator('#fi-panel-exp .cl-item', { hasText: 'CON-000001' }).locator('text=🚫 Anular').click();
+  await page.fill('#ndoc-motivo', 'Fecha equivocada'); await page.click('#modal-anular-doc .modal-footer .btn-primary');
+  await page.waitForSelector('#fi-panel-exp .cl-item.anulada >> text=CON-000001');
+  verificar(true, `${tag}: documento anulado con motivo`);
+
+  // Archivos adjuntos
+  await page.click('#fi-panel-exp >> text=📎 Subir archivo'); await modalesSinDesborde(page, `${tag} subir archivo`);
+  await page.setInputFiles('#aj-archivo', { name: 'virus.exe', mimeType: 'application/x-msdownload', buffer: Buffer.from('MZ') });
+  await page.click('#aj-btn'); verificar((await page.textContent('#aj-error')).includes('PDF'), `${tag}: rechaza archivos que no son PDF o imagen`);
+  await page.setInputFiles('#aj-archivo', { name: 'grande.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(10485761) });
+  await page.click('#aj-btn'); verificar((await page.textContent('#aj-error')).includes('10 MB'), `${tag}: rechaza archivos de más de 10 MB`);
+  await page.setInputFiles('#aj-archivo', { name: 'hemograma <b>.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 prueba') });
+  await page.fill('#aj-descripcion', 'Hemograma del 20/10'); await page.click('#aj-btn');
+  await page.waitForSelector('#fi-panel-exp >> text=Hemograma del 20/10');
+  verificar(await page.locator('#fi-panel-exp >> text=hemograma <b>.pdf').count() === 1, `${tag}: archivo subido y nombre mostrado como texto`);
+  const [pop3] = await Promise.all([ctx.waitForEvent('page'), page.locator('#fi-panel-exp .cl-item', { hasText: 'Hemograma del 20/10' }).locator('text=👁️ Ver').click()]);
+  await pop3.waitForURL(/almacen\.simulado\/firmado/, { timeout: 8000 }).catch(() => {});
+  verificar(pop3.url().includes('almacen.simulado/firmado/'), `${tag}: ver archivo abre un enlace firmado temporal`);
+  await pop3.close();
+  verificar(!(await page.evaluate(() => JSON.stringify(JSON.parse(sessionStorage.getItem('__LOG'))).includes('"token":"abab'))), `${tag}: el token médico no queda en registros`);
+  await page.locator('#fi-panel-exp .cl-item', { hasText: 'Hemograma del 20/10' }).locator('text=🚫 Anular').click();
+  await page.fill('#ndoc-motivo', 'Paciente equivocado'); await page.click('#modal-anular-doc .modal-footer .btn-primary');
+  await page.waitForSelector('#fi-panel-exp .cl-item.anulada >> text=Hemograma del 20/10');
+  verificar(true, `${tag}: archivo anulado con motivo`);
+  await sinDesborde(page, `${tag} expediente con documentos`);
+
+  // Receta a Farmacia -> Ventas (camino de siempre de Farmacia)
+  await page.locator('#fi-panel-exp .cl-item', { hasText: 'RX-000001' }).locator('text=💊 Pasar a Farmacia').click();
+  await page.waitForURL(/ventas\.html/, { timeout: 10000 });
+  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 15000 });
+  const cart = await page.evaluate(() => S.carrito.map(i => ({ id: i.id, cantidad: i.cantidad })));
+  const farm = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); return { r: db.farmacia_recetas, i: db.farmacia_receta_items, d: db.clinica_documentos.find(x => x.numero === 'RX-000001') }; });
+  verificar(farm.r.length === 1 && farm.r[0].numero_receta === 'RX-000001' && farm.i.length === 2 && farm.d.farmacia_receta_id === farm.r[0].id, `${tag}: receta registrada en Farmacia · Recetas y ligada`);
+  verificar(cart[0].id === 'prod-acet' && cart[0].cantidad === 10, `${tag}: los medicamentos del inventario llegan al carrito de Ventas`);
+  verificar(page.__errores.length === 0, `${tag}: fase 2 sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  verificar(!(await page.evaluate(() => window.__xss)), `${tag}: fase 2 sin ejecución de texto de usuarios (XSS)`);
+  await ctx.close();
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -352,6 +459,8 @@ async function regresion(browser, base) {
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 360, 740);
     await pruebaCuadre(browser, base);
+    await pruebasFase2(browser, base, 1280, 900);
+    await pruebasFase2(browser, base, 360, 740);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);

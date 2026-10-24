@@ -203,6 +203,9 @@ const CLINICA_MOTIVOS_RPC = {
   nombre: 'Escribe el nombre.', rol: 'Elige el rol.', consultorio: 'Ese consultorio no existe.', no_encontrado: 'No se encontró.',
   sin_pin: 'Esta persona todavía no tiene PIN. Pídele al administrador que se lo asigne.',
   sin_acceso_clinico: 'Recepción no tiene acceso al expediente clínico.', formato: 'El código debe tener de 4 a 12 números.',
+  incompleto: 'Faltan datos obligatorios del documento.', tipo: 'Tipo de documento no válido.', contenido: 'El documento es demasiado grande.',
+  consulta: 'Esa consulta no es de este paciente.', ya_en_farmacia: 'Esta receta ya está en Farmacia.', tipo_archivo: 'Solo se aceptan PDF, JPG, PNG o WEBP.',
+  tamano: 'El archivo es muy grande (máximo 10 MB).', archivo_no_llego: 'El archivo no terminó de subir. Intenta de nuevo.',
 };
 function clinicaTextoMotivo(r) {
   if (!r) return 'No se pudo completar. Intenta de nuevo.';
@@ -217,6 +220,8 @@ const CLINICA_ACCIONES_BITACORA = {
   editar_borrador: '✏️ Editó un borrador', cerrar_nota: '✅ Cerró y firmó una nota', adenda: '➕ Agregó una adenda',
   anular_nota: '🚫 Anuló una nota', personal_creado: '👤 Agregó personal', personal_editado: '👤 Editó personal',
   pin_definido: '🔑 Asignó un PIN', pin_cambiado: '🔑 Cambió su PIN', ver_bitacora: '🕵️ Revisó la bitácora',
+  emitir_documento: '📄 Emitió un documento', anular_documento: '🚫 Anuló un documento', receta_a_farmacia: '💊 Pasó una receta a Farmacia',
+  subir_adjunto: '📎 Subió un archivo', ver_adjunto: '👁️ Abrió un archivo', anular_adjunto: '🚫 Anuló un archivo',
 };
 
 if (typeof module !== 'undefined') module.exports = {

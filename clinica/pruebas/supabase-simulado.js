@@ -125,7 +125,8 @@
       case 'clinica_expediente_abrir': {
         const p = exigir(); T('clinica_bitacora').push({ accion: 'abrir_expediente', paciente_id: a.p_paciente_id, quien: p.nombre }); guardar();
         return { yo: { id: p.id, nombre: p.nombre, rol: p.rol }, antecedentes: T('clinica_antecedentes').find(x => x.paciente_id === a.p_paciente_id) || null,
-          consultas: T('clinica_consultas').filter(c => c.paciente_id === a.p_paciente_id).map(c => ({ ...c, adendas: T('clinica_adendas').filter(d => d.consulta_id === c.id) })) };
+          consultas: T('clinica_consultas').filter(c => c.paciente_id === a.p_paciente_id).map(c => ({ ...c, adendas: T('clinica_adendas').filter(d => d.consulta_id === c.id) })),
+          documentos: T('clinica_documentos').filter(d => d.paciente_id === a.p_paciente_id).slice().reverse(), adjuntos: T('clinica_adjuntos').filter(x => x.paciente_id === a.p_paciente_id && x.estado !== 'pendiente').map(x => { const y = { ...x }; delete y.ruta; return y; }) };
       }
       case 'clinica_antecedentes_guardar': { const p = exigir(); const lista = T('clinica_antecedentes'); const i = lista.findIndex(x => x.paciente_id === a.p_paciente_id);
         const fila = { paciente_id: a.p_paciente_id, ...a.p_datos, actualizado_en: new Date().toISOString(), actualizado_por_nombre: p.nombre }; if (i >= 0) lista[i] = fila; else lista.push(fila); guardar(); return { ok: true }; }
@@ -174,6 +175,18 @@
         const auth = a.p_auth || {}; if (auth.admin_pin !== '2468' && !T('_sesiones').some(s => s.token === auth.token)) return { ok: false, motivo: 'incorrecto', restantes: 3 };
         return { ok: true, filas: T('clinica_bitacora').map(b => ({ fecha: new Date().toISOString(), quien: b.quien, accion: b.accion, paciente: '<b>Ana</b>', expediente: 'EXP-000001' })) };
       }
+      case 'clinica_documento_emitir': {
+        const p = exigir(); const d = a.p_datos || {}; const pref = { receta: 'RX', orden_lab: 'LAB', orden_imagen: 'IMG', constancia: 'CON', certificado: 'CER', referencia: 'REF', consentimiento: 'CI' }[d.tipo];
+        if (!pref) return { ok: false, motivo: 'tipo' };
+        if (d.tipo === 'receta' && !(d.contenido?.items || []).length) return { ok: false, motivo: 'incompleto' };
+        const n = T('clinica_documentos').filter(x => x.tipo === d.tipo).length + 1;
+        const doc = { id: uuid(), paciente_id: d.paciente_id, consulta_id: d.consulta_id || null, tipo: d.tipo, numero: pref + '-' + String(n).padStart(6, '0'), fecha: new Date().toISOString(),
+          medico_id: p.id, medico_nombre: p.nombre, medico_registro: p.registro_profesional || null, medico_especialidad: p.especialidad || null, contenido: d.contenido, estado: 'emitido' };
+        T('clinica_documentos').push(doc); guardar(); return { ok: true, id: doc.id, numero: doc.numero };
+      }
+      case 'clinica_documento_anular': { exigir(); const d = T('clinica_documentos').find(x => x.id === a.p_id); if (!a.p_motivo || a.p_motivo.length < 5) return { ok: false, motivo: 'falta_motivo' }; d.estado = 'anulado'; d.motivo_anulacion = a.p_motivo; guardar(); return { ok: true }; }
+      case 'clinica_documento_farmacia': { exigir(); const d = T('clinica_documentos').find(x => x.id === a.p_id); if (d.farmacia_receta_id) return { ok: false, motivo: 'ya_en_farmacia' }; d.farmacia_receta_id = a.p_farmacia_receta_id; guardar(); return { ok: true }; }
+      case 'clinica_adjunto_anular': { exigir(); const x = T('clinica_adjuntos').find(y => y.id === a.p_id); x.estado = 'anulado'; x.motivo_anulacion = a.p_motivo; guardar(); return { ok: true }; }
       case 'clinica_cambiar_pin': return a.p_pin_actual === PIN_OK ? { ok: true } : { ok: false, motivo: 'incorrecto', restantes: 4 };
     }
     return undefined;
@@ -201,9 +214,27 @@
         if (window.__RPC && window.__RPC[nombre]) return { data: window.__RPC[nombre](args), error: null };
         return { data: null, error: null };
       },
-      storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }), createSignedUrl: async () => ({ data: null, error: null }) }) },
+      storage: { from: bucket => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }), createSignedUrl: async () => ({ data: null, error: null }),
+        uploadToSignedUrl: async (ruta, tok, archivo) => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); l[bucket + '/' + ruta] = { tok, tamano: archivo.size, tipo: archivo.type }; sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: { path: ruta }, error: null }; } }) },
       channel: () => { const c = { on: () => c, subscribe: () => c, unsubscribe() {} }; return c; },
-      removeChannel() {}, functions: { invoke: async () => ({ data: null, error: null }) },
+      removeChannel() {}, functions: { invoke: async (nombre, op) => {
+        const b = (op && op.body) || {}; const db = leerDB(); const T = k => (db[k] = db[k] || []);
+        const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'funcion', tabla: nombre, datos: { ...b, token: '***' } }); sessionStorage.setItem('__LOG', JSON.stringify(l));
+        if (nombre !== 'clinica-adjuntos') return { data: null, error: null };
+        const ses = T('_sesiones').find(x => x.token === b.token && !x.cerrada); if (!ses) return { data: { ok: false, motivo: 'sesion' }, error: null };
+        const per = T('clinica_personal').find(p => p.id === ses.personal_id);
+        if (b.accion === 'subir') {
+          if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(b.mime)) return { data: { ok: false, motivo: 'tipo_archivo' }, error: null };
+          if (b.tamano > 10485760) return { data: { ok: false, motivo: 'tamano' }, error: null };
+          const id = uuid(), ruta = UID + '/' + b.paciente_id + '/' + id;
+          T('clinica_adjuntos').push({ id, paciente_id: b.paciente_id, consulta_id: b.consulta_id, nombre: b.nombre, mime: b.mime, tamano: b.tamano, ruta, descripcion: b.descripcion, estado: 'pendiente', subido_por_nombre: per.nombre, created_at: new Date().toISOString() });
+          guardarDB(db); return { data: { ok: true, id, ruta, subida: 'tok-' + id }, error: null };
+        }
+        const x = T('clinica_adjuntos').find(y => y.id === b.id);
+        if (b.accion === 'confirmar') { const alm = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); if (!alm['clinica-adjuntos/' + x.ruta]) return { data: { ok: false, motivo: 'archivo_no_llego' }, error: null }; x.estado = 'listo'; guardarDB(db); return { data: { ok: true }, error: null }; }
+        if (b.accion === 'ver') return x && x.estado === 'listo' ? { data: { ok: true, url: 'https://almacen.simulado/firmado/' + x.id, nombre: x.nombre }, error: null } : { data: { ok: false, motivo: 'no_encontrado' }, error: null };
+        return { data: { ok: false }, error: null };
+      } },
     };
   }
   window.supabase = { createClient: () => crearCliente() };

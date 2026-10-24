@@ -6,6 +6,7 @@ const raiz = path.join(__dirname, '..', '..');
 const ctx = vm.createContext({ console });
 vm.runInContext(fs.readFileSync(path.join(raiz, 'vet-comun.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(raiz, 'clinica-comun.js'), 'utf8').replace(/if \(typeof module[\s\S]*$/, ''), ctx);
+for (const f of ['clinica-cie10.js', 'clinica-documentos.js']) vm.runInContext(fs.readFileSync(path.join(raiz, f), 'utf8').replace(/if \(typeof module[\s\S]*$/, ''), ctx);
 const C = new Proxy({}, { get: (_, k) => vm.runInContext(String(k), ctx) });
 let ok = 0;
 const t = (nombre, fn) => { try { fn(); ok++; } catch (e) { console.error('✗', nombre, '\n ', e.message); process.exitCode = 1; } };
@@ -82,4 +83,32 @@ t('textos de error', () => {
   assert.ok(C.clinicaTextoMotivo({ ok: false, motivo: 'bloqueado', bloqueado_seg: 300 }).includes('5 minutos'));
   assert.ok(C.clinicaTextoMotivo({ ok: false, motivo: 'incorrecto', restantes: 2 }).includes('2 intentos'));
 });
+// ---- Fase 2: CIE-10 y documentos
+t('CIE-10 por código exacto', () => assert.strictEqual(C.clinicaBuscarCIE10('j00')[0].codigo, 'J00'));
+t('CIE-10 código sin punto', () => assert.strictEqual(C.clinicaBuscarCIE10('J069')[0].codigo, 'J06.9'));
+t('CIE-10 por palabras sin tildes', () => assert.ok(C.clinicaBuscarCIE10('dolor lumbar').some(d => d.codigo === 'M54.5')));
+t('CIE-10 palabras en otro orden', () => assert.ok(C.clinicaBuscarCIE10('aguda faringitis').some(d => d.codigo === 'J02.9')));
+t('CIE-10 hipertension', () => assert.strictEqual(C.clinicaBuscarCIE10('hipertension')[0].codigo, 'I10'));
+t('CIE-10 texto corto o vacío', () => { assert.strictEqual(C.clinicaBuscarCIE10('a').length, 0); assert.strictEqual(C.clinicaBuscarCIE10('').length, 0); });
+t('CIE-10 sin códigos repetidos', () => { const cs = C.CLINICA_CIE10.map(x => x[0]); assert.strictEqual(new Set(cs).size, cs.length); assert.ok(cs.length >= 250); });
+const XSS = '<img src=x onerror=alert(1)>';
+const pac = { nombres: 'Ana ' + XSS, apellidos: 'López', fecha_nacimiento: '1990-01-01', cedula: '001', numero_expediente: 'EXP-000001' };
+const neg = { nombre_comercial: 'Clínica ' + XSS, direccion: 'Managua', telefono: '2222', logo_principal_url: 'javascript:alert(1)' };
+for (const tipo of ['receta', 'orden_lab', 'orden_imagen', 'constancia', 'certificado', 'referencia', 'consentimiento']) {
+  for (const formato of ['carta', 'ticket']) t(`documento ${tipo} (${formato}) escapa todo`, () => {
+    const contenido = { items: [{ medicamento: 'Acet ' + XSS, indicaciones: XSS, cantidad: '10', presentacion: XSS }], notas: XSS, examenes: [XSS], estudios: [XSS], otros: XSS,
+      texto: XSS, dias_reposo: '3', desde: '2026-10-24', destino: XSS, motivo: XSS, procedimiento: XSS, riesgos: XSS, diagnostico: XSS };
+    const html = C.clinicaHtmlDocumento({ doc: { tipo, numero: 'X-1', fecha: '2026-10-24T10:00:00Z', medico_nombre: 'Dra ' + XSS, medico_registro: '123', contenido, estado: 'emitido' }, paciente: pac, negocio: neg, formato });
+    assert.ok(!html.includes('<img src=x'), 'no debe quedar HTML ejecutable');
+    assert.ok(!html.includes('javascript:'), 'no debe usar enlaces javascript:');
+    assert.ok(html.includes('&lt;img'), 'el texto se muestra escapado');
+    assert.ok(html.includes('Cód. MINSA 123'), 'lleva el código MINSA');
+  });
+}
+t('certificado calcula fechas de reposo', () => {
+  const html = C.clinicaHtmlDocumento({ doc: { tipo: 'certificado', numero: 'CER-1', fecha: '2026-10-24', contenido: { texto: 'x', dias_reposo: '3', desde: '2026-10-30' } }, paciente: pac, negocio: neg, formato: 'carta' });
+  assert.ok(html.includes('reposo por 3 días') && html.includes('30 de octubre de 2026') && html.includes('1 de noviembre de 2026'));
+});
+t('documento anulado lleva sello', () => assert.ok(C.clinicaHtmlDocumento({ doc: { tipo: 'constancia', estado: 'anulado', contenido: { texto: 'x' } }, paciente: pac, negocio: {}, formato: 'carta' }).includes('ANULADO')));
+t('logo solo con https', () => assert.ok(C.clinicaHtmlDocumento({ doc: { tipo: 'constancia', contenido: { texto: 'x' } }, paciente: pac, negocio: { logo_principal_url: 'https://x.supabase.co/logo.png' }, formato: 'carta' }).includes('<img src="https://x.supabase.co/logo.png"')));
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);

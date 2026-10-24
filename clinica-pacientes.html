@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261023a" />
+  <link rel="stylesheet" href="clinica.css?v=20261024a" />
 </head>
 <body>
 
@@ -1345,9 +1345,12 @@
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261023a"></script>
-<script src="clinica-sesion.js?v=20261023a"></script>
-<script src="clinica-pacientes.js?v=20261023a"></script>
+<script src="clinica-comun.js?v=20261024a"></script>
+<script src="clinica-sesion.js?v=20261024a"></script>
+<script src="clinica-cie10.js?v=20261024a"></script>
+<script src="clinica-documentos.js?v=20261024a"></script>
+<script src="clinica-expediente-docs.js?v=20261024a"></script>
+<script src="clinica-pacientes.js?v=20261024a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1445,7 +1448,10 @@
       <div id="co-imc" class="cl-imc"></div><div id="co-alertas"></div>
       <div class="cl-seccion">Examen, diagnóstico y plan</div>
       <div class="cl-field"><label for="co-examen_fisico">Examen físico</label><textarea id="co-examen_fisico" class="cl-ta" maxlength="8000" placeholder="" ></textarea></div>
-      <div class="cl-field"><label for="co-diagnostico">Diagnóstico</label><textarea id="co-diagnostico" class="cl-ta" maxlength="4000" placeholder="Ej: Diagnóstico principal y otros" ></textarea></div>
+      <div class="cl-field"><label for="co-dx-buscar">Diagnósticos (CIE-10)</label>
+        <input type="text" id="co-dx-buscar" class="cl-in" placeholder="Busca: faringitis, lumbalgia, J02…" oninput="buscarDx(this.value)" autocomplete="off"/>
+        <div id="co-dx-resultados" class="cl-resultados" style="display:none"></div><div id="co-dx-lista"></div></div>
+      <div class="cl-field"><label for="co-diagnostico">Diagnóstico (notas)</label><textarea id="co-diagnostico" class="cl-ta" maxlength="4000" placeholder="Ej: Detalle del diagnóstico. Si lo dejas vacío se llena con los diagnósticos elegidos." ></textarea></div>
       <div class="cl-field"><label for="co-plan">Plan / tratamiento</label><textarea id="co-plan" class="cl-ta" maxlength="8000" placeholder="Ej: Medicamentos, exámenes, procedimientos…" ></textarea></div>
       <div class="cl-field"><label for="co-indicaciones">Indicaciones al paciente</label><textarea id="co-indicaciones" class="cl-ta" maxlength="4000" placeholder="Ej: Cuidados, dieta, señales de alarma…" ></textarea></div>
       <div id="co-extra"></div>
@@ -1500,6 +1506,52 @@
       <p id="nu-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
     </div>
     <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-anular')">Volver</button><button class="btn-accion-tabla btn-primary" onclick="confirmarAnular()">Anular nota</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay cl-overlay-grande" id="modal-documento">
+  <div class="modal-box cl-modal-grande" style="max-width:680px" role="dialog" aria-labelledby="do-titulo">
+    <div class="modal-header"><span class="modal-title" id="do-titulo">📄 Nuevo documento</span><button class="modal-close" onclick="closeModal('modal-documento')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:74vh;overflow-y:auto">
+      <div class="cl-grid2">
+        <div class="cl-field"><label for="do-tipo">Tipo de documento</label><select id="do-tipo" class="cl-in" onchange="cambiarTipoDocumento()"></select></div>
+        <div class="cl-field"><label for="do-consulta">Consulta</label><select id="do-consulta" class="cl-in" onchange="cambiarTipoDocumento()"></select></div>
+      </div>
+      <div id="do-campos"></div>
+      <p class="cl-sub">Al emitirlo recibe un número y ya no se modifica (si hay un error, se anula y se hace otro). Lleva tu nombre, especialidad y código MINSA.</p>
+      <p id="do-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-documento')">Cancelar</button>
+      <button class="btn-accion-tabla btn-ghost" onclick="guardarDocumento(null)">💾 Emitir</button>
+      <button class="btn-accion-tabla btn-ghost" onclick="guardarDocumento('ticket')">🧾 Emitir e imprimir ticket</button>
+      <button class="btn-accion-tabla btn-primary" onclick="guardarDocumento('carta')">🖨️ Emitir e imprimir carta</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-anular-doc">
+  <div class="modal-box" style="max-width:440px;width:100%" role="dialog" aria-labelledby="ndoc-titulo">
+    <div class="modal-header"><span class="modal-title" id="ndoc-titulo">🚫 Anular</span><button class="modal-close" onclick="closeModal('modal-anular-doc')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <p class="cl-sub" style="margin:0 0 8px">No se borra: queda marcado como anulado, con tu nombre y el motivo.</p>
+      <div class="cl-field"><label for="ndoc-motivo">Motivo *</label><input type="text" id="ndoc-motivo" class="cl-in" maxlength="500"/></div>
+      <p id="ndoc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-anular-doc')">Volver</button><button class="btn-accion-tabla btn-primary" onclick="confirmarAnularDoc()">Anular</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-adjunto">
+  <div class="modal-box" style="max-width:480px;width:100%" role="dialog" aria-labelledby="aj-titulo">
+    <div class="modal-header"><span class="modal-title" id="aj-titulo">📎 Subir archivo</span><button class="modal-close" onclick="closeModal('modal-adjunto')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="cl-field"><label for="aj-archivo">Archivo (PDF o foto, máximo 10 MB)</label><input type="file" id="aj-archivo" class="cl-in" accept="application/pdf,image/jpeg,image/png,image/webp"/></div>
+      <div class="cl-field"><label for="aj-descripcion">Descripción</label><input type="text" id="aj-descripcion" class="cl-in" maxlength="300" placeholder="Ej: hemograma del 20/10"/></div>
+      <div class="cl-field"><label for="aj-consulta">Consulta</label><select id="aj-consulta" class="cl-in"></select></div>
+      <p class="cl-sub" style="margin:0">Se guarda en un almacén privado: solo el personal médico con su PIN lo puede abrir, y cada vista queda registrada.</p>
+      <p id="aj-progreso" class="cl-sub" style="margin:6px 0 0"></p>
+      <p id="aj-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-adjunto')">Cancelar</button><button class="btn-accion-tabla btn-primary" id="aj-btn" onclick="subirAdjunto()">Subir</button></div>
   </div>
 </div>
 </body>
