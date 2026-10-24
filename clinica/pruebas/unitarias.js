@@ -236,5 +236,43 @@ t('plantilla: resumen para la nota y validación de rangos', () => {
   assert.strictEqual(C.clinicaValidarDatos('ortopedia', { dolor_eva: '7' }), '');
   assert.ok(C.clinicaValidarDatos('ginecologia', { embarazo: 'Sí', fum: '2099-01-01' }).includes('FUM'));
 });
+t('fase 5: días de estancia y su cobro', () => {
+  const ing = '2026-10-20T10:00:00Z';
+  assert.strictEqual(C.clinicaDiasEstancia(ing, '2026-10-20T20:00:00Z', 'hospitalizacion'), 1);
+  assert.strictEqual(C.clinicaDiasEstancia(ing, '2026-10-22T10:00:00Z', 'hospitalizacion'), 2);
+  assert.strictEqual(C.clinicaDiasEstancia(ing, '2026-10-22T10:01:00Z', 'hospitalizacion'), 3);
+  assert.strictEqual(C.clinicaDiasEstancia(ing, '2026-10-25T10:00:00Z', 'observacion'), 1);
+  assert.strictEqual(C.clinicaDuracionTexto(ing, '2026-10-21T13:30:00Z'), '1 d 3 h');
+  const c = C.clinicaCobroEstancia({ tipo: 'hospitalizacion', ingreso_en: ing, alta_en: '2026-10-22T09:00:00Z' }, { id: 'dia', precio: 1500 },
+    [{ producto_id: 'suero', cantidad: 2, productos: { precio: 120 } }, { producto_id: 'suero', cantidad: 1, productos: { precio: 120 } }, { producto_id: null, descripcion: 'borrado' }]);
+  assert.strictEqual(JSON.stringify(c.items), JSON.stringify([{ producto_id: 'dia', cantidad: 2, total: 3000 }, { producto_id: 'suero', cantidad: 3, total: 360 }]));
+  assert.strictEqual(c.unidades, 2); assert.strictEqual(c.sinCatalogo[0], 'borrado');
+});
+t('fase 5: seguro — vigencia y reparto exacto (sin centavos perdidos)', () => {
+  const k = { id: 'k1', activo: true, cobertura_pct: 80 };
+  assert.ok(C.clinicaConvenioVigente({ convenio_id: 'k1', poliza_vence: '2026-12-31' }, k, '2026-10-24'));
+  assert.ok(!C.clinicaConvenioVigente({ convenio_id: 'k1', poliza_vence: '2026-10-01' }, k, '2026-10-24'));
+  assert.ok(!C.clinicaConvenioVigente({ convenio_id: 'k1' }, { ...k, activo: false }));
+  assert.ok(!C.clinicaConvenioVigente({ convenio_id: 'k2' }, k));
+  const r = C.clinicaAplicarConvenio([{ producto_id: 's', cantidad: 1, total: 500 }, { producto_id: 'm', cantidad: 3, total: 37.5 }, { producto_id: 'x', cantidad: 1, total: 33.33 }], 80, { s: 'servicio', m: 'producto' });
+  assert.strictEqual(JSON.stringify(r.paciente.map(x => x.total)), '[100,7.5,6.67]');
+  assert.strictEqual(r.cubierto, 456.66); assert.strictEqual(r.cubiertoServicios, 400);
+  assert.strictEqual(Math.round((r.totalPaciente + r.cubierto) * 100), Math.round((500 + 37.5 + 33.33) * 100));   // cuadra al centavo
+  assert.strictEqual(C.clinicaAplicarConvenio([{ producto_id: 's', total: 500 }], 100, {}).totalPaciente, 0);
+});
+t('fase 5: pendientes por facturar a la aseguradora (sin repetir)', () => {
+  const citas = [{ id: 'a', convenio_id: 'k1', monto_cubierto: 400, venta_id: 'v1' }, { id: 'b', convenio_id: 'k1', monto_cubierto: 100, venta_id: 'v2' },
+    { id: 'c', convenio_id: 'k2', monto_cubierto: 50, venta_id: 'v3' }, { id: 'd', convenio_id: 'k1', monto_cubierto: 70, venta_id: null }, { id: 'e', convenio_id: null, monto_cubierto: 0, venta_id: 'v5' }];
+  const g = C.clinicaPendientesSeguro(citas, [{ estado: 'facturado', citas: ['b'] }, { estado: 'anulado', citas: ['c'] }]);
+  assert.strictEqual(JSON.stringify(g.map(x => [x.convenio_id, x.citas.map(c => c.id).join(''), x.monto])), '[["k1","a",400],["k2","c",50]]');
+});
+t('fase 5: honorario sobre el total cuando paga el seguro', () => {
+  const h = C.clinicaCalcularHonorarios({ medico: { id: 'm1', honorario_tipo: 'porcentaje', honorario_valor: 30 },
+    citas: [{ id: 'c1', medico_id: 'm1', estado: 'atendida', venta_id: 'v1', cubierto_servicios: 400, monto_cubierto: 400 }],
+    ventas: [{ id: 'v1', estado: 'completada', total: 100 }], detalles: [{ venta_id: 'v1', tipo_item: 'servicio', subtotal: 100 }], devoluciones: [], pagadas: [] });
+  assert.strictEqual(h.base, 500); assert.strictEqual(h.monto, 150);
+  const r = C.clinicaResumenReporte({ citas: [{ id: 'c1', medico_id: 'm1', estado: 'atendida', venta_id: 'v1', monto_cubierto: 400 }], ventas: [{ id: 'v1', estado: 'completada', total: 100 }], detalles: [], devoluciones: [] });
+  assert.strictEqual(r.total.cobrado, 100); assert.strictEqual(r.total.cubierto, 400);
+});
 t('CSV seguro para Excel', () => { const c = C.clinicaCSV([['a', '=1+1', 'x,y', 'di"jo']]); assert.ok(c.includes("'=1+1") && c.includes('"x,y"') && c.includes('"di""jo"')); });
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);

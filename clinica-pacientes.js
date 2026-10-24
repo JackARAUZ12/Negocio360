@@ -93,6 +93,8 @@ async function init() {
     CP.especialidades = clinicaEspecialidadesActivas(STATE.empresaConfig.clinica_especialidades);
     ClinicaSesion.iniciar(user.id, { onCambio: alCambiarSesion });
     await ClinicaSesion.comprobar();
+    try { const { data: kv } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('auth_user_id', STATE.userId).order('nombre'); CP.convenios = kv || []; }
+    catch (_) { CP.convenios = []; }
     await cargarPacientes();
     await procesarURL();
     mostrarTutorial(false);
@@ -169,6 +171,9 @@ function abrirPaciente(id) {
   const campos = ['nombres', 'apellidos', 'cedula', 'fecha_nacimiento', 'telefono', 'email', 'direccion', 'ocupacion', 'contacto_emergencia_nombre', 'contacto_emergencia_telefono', 'contacto_emergencia_parentesco', 'notas'];
   campos.forEach(k => { $p('pa-' + k).value = p?.[k] || ''; });
   $p('pa-sexo').value = p?.sexo || '';
+  $p('pa-convenio').innerHTML = '<option value="">— Sin seguro —</option>' + (CP.convenios || []).filter(k => k.activo || k.id === p?.convenio_id)
+    .map(k => `<option value="${esc(k.id)}">${esc(k.nombre)} · ${esc(Number(k.cobertura_pct))}%</option>`).join('');
+  $p('pa-convenio').value = p?.convenio_id || ''; $p('pa-poliza').value = p?.poliza || ''; $p('pa-poliza_vence').value = p?.poliza_vence || '';
   $p('pa-error').textContent = '';
   CP.cliente = p?.cliente_id ? { id: p.cliente_id } : null;
   pintarClienteVinculado();
@@ -216,7 +221,8 @@ async function guardarPaciente() {
   const payload = { nombres, apellidos: v('apellidos'), cedula: v('cedula'), fecha_nacimiento: nac, sexo: $p('pa-sexo').value || null,
     telefono: v('telefono'), email, direccion: v('direccion'), ocupacion: v('ocupacion'),
     contacto_emergencia_nombre: v('contacto_emergencia_nombre'), contacto_emergencia_telefono: v('contacto_emergencia_telefono'),
-    contacto_emergencia_parentesco: v('contacto_emergencia_parentesco'), notas: v('notas'), cliente_id: CP.cliente?.id || null };
+    contacto_emergencia_parentesco: v('contacto_emergencia_parentesco'), notas: v('notas'), cliente_id: CP.cliente?.id || null,
+    convenio_id: $p('pa-convenio').value || null, poliza: v('poliza'), poliza_vence: v('poliza_vence') };
   const btn = $p('pa-btn-guardar'); btn.disabled = true;
   try {
     const q = CP.editId
@@ -275,6 +281,7 @@ function pintarDatos() {
       ${dato('Edad', clinicaEdad(p.fecha_nacimiento))}${dato('Sexo', p.sexo === 'femenino' ? 'Femenino' : p.sexo === 'masculino' ? 'Masculino' : '')}
       ${dato('Teléfono', p.telefono)}${dato('Correo', p.email)}${dato('Ocupación', p.ocupacion)}${dato('Dirección', p.direccion)}
     </div>
+    ${p.convenio_id ? `<div class="cl-seccion">Seguro o convenio</div><div class="cl-datos">${dato('Aseguradora', (CP.convenios || []).find(k => k.id === p.convenio_id)?.nombre)}${dato('Póliza', p.poliza)}${dato('Vence', p.poliza_vence ? fechaCorta(p.poliza_vence) : '')}</div>` : ''}
     <div class="cl-seccion">Contacto de emergencia</div>
     <div class="cl-datos">${dato('Nombre', p.contacto_emergencia_nombre)}${dato('Teléfono', p.contacto_emergencia_telefono)}${dato('Parentesco', p.contacto_emergencia_parentesco)}</div>
     ${p.notas ? `<div class="cl-info">📝 ${esc(p.notas)}</div>` : ''}

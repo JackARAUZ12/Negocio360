@@ -1807,6 +1807,7 @@ async function abrirNuevaVenta() {
   S._txOrdenId = null;
   S._vetEstanciaId = null;
   S._agendaCitaId = null;
+  S._clinicaCobro = null;
   S.certificado = null;          // certificado de regalo aplicado a esta venta (certificados-venta.js)
   S._certEmisionId = null;       // esta venta COBRA un certificado (modo "venta")
   S._recompensas  = undefined;
@@ -3095,6 +3096,48 @@ async function aplicarCobroAgenda() {
   showToast(`Cita de ${d.cliente || 'el cliente'} cargada en la venta.`);
   if (noAgregados) showToast(`${noAgregados} servicio(s) no se pudieron agregar (ya no existen o están inactivos). Revísalos.`, 'warning');
   if ((d.sinCatalogo || []).length) showToast(`Agrega a mano: ${d.sinCatalogo.join(', ')} (no están en tu catálogo).`, 'warning');
+}
+
+// Cobro desde la Clínica (solo si el módulo está activo): una estancia de observación/hospitalización o
+// la factura a una aseguradora (convenio). Abre la venta con el cliente y las líneas con el monto ya
+// acordado; el cobro sigue el camino NORMAL de Ventas (Caja, crédito, IVA, reportes) y al confirmar
+// queda ligado (ver arriba). Si ya se cobró, no se vuelve a cargar.
+async function aplicarCobroClinica() {
+  if (S.empresaConfig?.usa_modulo_clinica !== true) return;
+  const raw = sessionStorage.getItem('n360_clinica_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_clinica_cobro');      // una sola vez: no se repite al recargar
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarCobroClinica, dato corrupto:', e); return; }
+  if (!d || !['estancia', 'reclamo'].includes(d.tipo) || !d.id) return;
+  try {
+    const tabla = d.tipo === 'estancia' ? 'clinica_estancias' : 'clinica_reclamos';
+    const { data: x } = await sb.from(tabla).select('id, venta_id, ventas(estado, numero_venta)').eq('id', d.id).eq('auth_user_id', S.userId).maybeSingle();
+    if (!x) { showToast('No se encontró lo que se iba a cobrar.', 'warning'); return; }
+    if (x.ventas && x.ventas.estado !== 'anulada') { showToast(`Esto ya se cobró (${x.ventas.numero_venta || 'venta'}).`, 'warning'); return; }
+  } catch (e) { console.warn('aplicarCobroClinica, revisar:', e); return; }
+
+  await abrirNuevaVenta();                              // reinicia el estado: lo demás se arma DESPUÉS
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else showToast('Elige al cliente manualmente.', 'warning');
+  let noAgregados = 0;
+  for (const it of (Array.isArray(d.items) ? d.items : [])) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'servicio', null);
+    const linea = S.carrito.find(x => x.id === it.producto_id);
+    if (!linea) { noAgregados++; continue; }
+    const cant = Math.max(0.01, Number(it.cantidad) || 1), tot = Math.round((Number(it.total) || 0) * 100) / 100;
+    linea.cantidad = cant;
+    if (Math.round(tot / cant * 100) * cant !== Math.round(tot * 100)) { linea.cantidad = 1; linea.precio = tot; }
+    else linea.precio = Math.round(tot / cant * 100) / 100;
+    if (d.concepto && d.tipo === 'reclamo') linea.nombre = String(d.concepto).slice(0, 120);
+    recalcItem(linea);
+  }
+  renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
+  S._clinicaCobro = { tipo: d.tipo, id: d.id };
+  showToast(d.tipo === 'reclamo' ? 'Factura a la aseguradora cargada: elige "Crédito" como forma de pago si te pagará después.' : 'Cuenta de la estancia cargada en la venta.');
+  if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock o ya no disponibles). Revísalos.`, 'warning');
 }
 
 // Cobro de un certificado de regalo "como venta" (certificados.html): abre la venta con el
@@ -6102,6 +6145,20 @@ async function _confirmarVentaInterno(conImpresion) {
       }
     } catch (eCita) { console.warn('Vincular cita de agenda:', eCita); }
 
+    // Clínica (solo cuentas con el módulo): la estancia (observación/hospitalización) o la factura a la
+    // aseguradora queda ligada a su venta. Aislado: la venta YA se confirmó, nada de esto la revierte.
+    try {
+      const cc = S._clinicaCobro;
+      if (cc && cc.id && (cc.tipo === 'estancia' || cc.tipo === 'reclamo')) {
+        const q = cc.tipo === 'estancia'
+          ? sb.from('clinica_estancias').update({ venta_id: ventaId }).eq('id', cc.id).eq('auth_user_id', S.userId)
+          : sb.from('clinica_reclamos').update({ venta_id: ventaId, estado: 'facturado' }).eq('id', cc.id).eq('auth_user_id', S.userId).eq('estado', 'enviado');
+        const { error: eCc } = await q;
+        if (eCc) console.warn('Vincular cobro de la clínica:', eCc);
+      }
+      S._clinicaCobro = null;
+    } catch (eCc) { console.warn('Vincular cobro de la clínica:', eCc); }
+
     // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
     try {
       if (S._txOrdenId) {
@@ -8160,6 +8217,7 @@ async function initVentas() {
     await aplicarCobroVeterinaria();
     await aplicarCobroTransporte();
     await aplicarCobroAgenda();
+    await aplicarCobroClinica();
     await aplicarCobroCertificado();
 
     // 5c. Configuración del módulo (¿este usuario puede ver las ventas de todo el negocio?)

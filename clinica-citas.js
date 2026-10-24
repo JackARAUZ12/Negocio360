@@ -49,7 +49,7 @@ const ClinicaCitas = (() => {
   async function armar(agenda, meds) {
     const info = await porIds('clinica_cita_info', '*', 'agenda_cita_id', agenda.map(a => a.id));
     const infoDe = {}; info.forEach(i => { infoDe[i.agenda_cita_id] = i; });
-    const cols = 'id, nombres, apellidos, telefono, numero_expediente, cliente_id';
+    const cols = 'id, nombres, apellidos, telefono, numero_expediente, cliente_id, convenio_id, poliza, poliza_vence';
     const [pPorId, pPorCliente, clientes] = await Promise.all([
       porIds('clinica_pacientes', cols, 'id', info.map(i => i.paciente_id)),
       porIds('clinica_pacientes', cols, 'cliente_id', agenda.map(a => a.cliente_id)),
@@ -99,7 +99,9 @@ const ClinicaCitas = (() => {
   }
   // Cobrar = el MISMO camino de la Agenda: Ventas abre la venta con el cliente, los servicios de la cita
   // y lo que se agregó a la cuenta; al confirmar, la cita queda cobrada (venta_id) y completada.
-  async function cobrar(cita) {
+  // Con seguro (convenio vigente del paciente): el paciente paga su parte y lo que cubre la aseguradora queda
+  // anotado en la cita para facturárselo después desde Clínica · Seguros.
+  async function cobrar(cita, { convenio } = {}) {
     const { data: actual, error } = await sb.from('agenda_citas').select('id, venta_id, cliente_id, cliente_nombre, agenda_citas_servicios(*), ventas(estado, numero_venta)')
       .eq('id', cita.id).eq('auth_user_id', STATE.userId).maybeSingle();
     if (error) throw error;
@@ -108,6 +110,13 @@ const ClinicaCitas = (() => {
     const extra = await cargos(cita.id);
     const d = clinicaCobroAgenda(actual, extra);
     if (!d.items.length) return { ok: false, motivo: 'La cuenta está vacía: los servicios de la cita no están en tu catálogo.' };
+    if (convenio) {
+      const { data: prods } = await sb.from('productos').select('id, tipo').eq('auth_user_id', STATE.userId).in('id', d.items.map(x => x.producto_id));
+      const tipos = {}; (prods || []).forEach(x => { tipos[x.id] = x.tipo; });
+      const rep = clinicaAplicarConvenio(d.items, convenio.cobertura_pct, tipos);
+      d.items = rep.paciente;
+      await guardarInfo(cita.id, { convenio_id: convenio.id, cobertura_pct: Number(convenio.cobertura_pct), monto_cubierto: rep.cubierto, cubierto_servicios: rep.cubiertoServicios });
+    } else await guardarInfo(cita.id, { convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null });
     sessionStorage.setItem('n360_agenda_cobro', JSON.stringify(d));
     window.location.href = 'ventas.html';
     return { ok: true };

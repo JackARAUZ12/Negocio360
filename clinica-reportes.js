@@ -154,6 +154,8 @@ function render() {
   $r('rp-kpi-citas').textContent = t.citas; $r('rp-kpi-aten').textContent = t.atendidas;
   $r('rp-kpi-falta').textContent = validas > 0 ? Math.round(t.no_asistio * 100 / validas) + '%' : '0%';
   $r('rp-kpi-cobrado').textContent = fmt(t.cobrado);
+  $r('rp-kpi-cobrado').title = t.cubierto ? `Además, ${fmt(t.cubierto)} cubierto por seguros (se factura en Clínica · Seguros)` : '';
+  $r('rp-cubierto').innerHTML = t.cubierto ? `<div class="cl-info">🛡️ Además de lo cobrado a pacientes, los seguros cubrieron <b>${esc(fmt(t.cubierto))}</b> en estas fechas (se les factura en Clínica · Seguros).</div>` : '';
   $r('rp-sin-cobrar').innerHTML = t.sin_cobrar ? `<div class="cl-aviso">⚠️ ${t.sin_cobrar} consulta${t.sin_cobrar === 1 ? '' : 's'} atendida${t.sin_cobrar === 1 ? '' : 's'} todavía sin cobrar en este periodo (cóbralas desde la Sala de espera o la Agenda).</div>` : '';
   // Por médico (con honorarios)
   $r('rp-medicos').innerHTML = RP.resumen.porMedico.length ? RP.resumen.porMedico.map(f => {

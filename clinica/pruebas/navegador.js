@@ -695,10 +695,173 @@ async function pruebasFase4(browser, base, ancho, alto) {
   await ctx.close();
 }
 
+// ---- FASE 5: observación/hospitalización y seguros/convenios (cobro por Ventas, sin descuadres)
+async function confirmarVentaAbierta(page) {
+  await page.evaluate(async () => { for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; if (S.paso >= 4) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; }
+    if (!S.metodoPagoId) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); await confirmarVenta(false); });
+  await page.waitForTimeout(700);
+}
+function semillaFase5() {
+  const db = semilla();
+  db.productos.push({ id: 'srv-dia', auth_user_id: UID, nombre: 'Día de hospitalización', tipo: 'servicio', precio: 1500, costo: 0, stock_actual: 0, activo: true, tipo_precio: 'fijo', es_sustancia_controlada: false },
+                   { id: 'prod-suero', auth_user_id: UID, nombre: 'Suero fisiológico 1 L', tipo: 'producto', precio: 120, costo: 50, stock_actual: 50, activo: true, tipo_precio: 'fijo', es_sustancia_controlada: false });
+  db.clientes.push({ id: 'cli-pedro', auth_user_id: UID, nombre: 'Pedro', apellido: 'Gómez', telefono: '88887777', activo: true });
+  db.clinica_pacientes[0].cliente_id = 'cli-pedro';
+  db.clinica_convenios = [{ id: 'k1', auth_user_id: UID, nombre: 'Seguros América <b>x</b>', tipo: 'aseguradora', cobertura_pct: 80, activo: true }];
+  return db;
+}
+async function pruebasFase5(browser, base, ancho, alto) {
+  const tag = ancho < 500 ? 'celular' : 'computadora';
+  console.log(`\n▶ Fase 5 en ${tag} (${ancho}px)`);
+  const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+  // A) Observación / hospitalización
+  await page.goto(base + '/clinica-hospital.html');
+  await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: semillaFase5() });
+  await page.reload(); await esperarListo(page); await page.waitForSelector('#ho-lista .cl-info');
+  await sinDesborde(page, `${tag} hospitalización vacía`);
+  await page.click('text=+ Ingreso'); await modalesSinDesborde(page, `${tag} ingreso`);
+  await page.click('#in-btn'); verificar((await page.textContent('#in-error')).includes('paciente'), `${tag}: el ingreso pide el paciente`);
+  await page.fill('#in-buscar', 'Pedro'); await page.waitForSelector('#in-resultados [data-id]'); await page.click('#in-resultados [data-id]');
+  await page.selectOption('#in-tipo', 'hospitalizacion'); await page.fill('#in-cama', 'Cama 3'); await page.selectOption('#in-medico', 'per-med'); await page.selectOption('#in-servicio', 'srv-dia');
+  await page.fill('#in-nota', 'Ingresa por deshidratación <b>x</b>');
+  await page.click('#in-btn');
+  await page.waitForSelector('#modal-clinica-pin.modal-open'); await page.selectOption('#cp-persona', 'perf-med'); await page.fill('#cp-pin', '1357'); await page.click('#cp-ok');
+  await page.waitForSelector('#ho-lista .ag-card');
+  const tarjeta = await page.textContent('#ho-lista');
+  verificar(tarjeta.includes('HOS-000001') && tarjeta.includes('Cama 3') && tarjeta.includes('Día de hospitalización × 1') && tarjeta.includes('1,500.00'), `${tag}: ingreso con número, cama y cuenta por día`);
+  verificar(await page.textContent('#ho-kpi-hos') === '1', `${tag}: cuenta los hospitalizados`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/hospital-' + tag + '.png', fullPage: true });
+  // Notas y signos (con el código del médico)
+  await page.click('#ho-lista >> text=📝 Notas y signos'); await page.waitForSelector('#no-lista .cl-item');
+  verificar((await page.innerHTML('#no-lista')).includes('deshidratación &lt;b&gt;x'), `${tag}: la nota de ingreso se guardó con el código y se muestra como texto`);
+  await page.fill('#no-fc', '400'); await page.fill('#no-texto', 'Evoluciona estable'); await page.click('#no-btn');
+  verificar((await page.textContent('#no-error')).length > 0, `${tag}: valida los signos vitales de la nota`);
+  await page.fill('#no-fc', '88'); await page.fill('#no-temperatura', '37.2'); await page.click('#no-btn');
+  await page.waitForFunction(() => document.querySelectorAll('#no-lista .cl-item').length === 2);
+  verificar((await page.textContent('#no-lista')).includes('FC 88'), `${tag}: nota de evolución con signos`);
+  await modalesSinDesborde(page, `${tag} notas de la estancia`);
+  await page.click('#modal-notas .modal-footer button');
+  // Cuenta: suero x2
+  await page.click('#ho-lista >> text=💊 Cuenta'); await page.waitForSelector('#modal-cuenta.modal-open');
+  await page.fill('#cu-buscar', 'Suero'); await page.waitForSelector('#cu-resultados [data-id]'); await page.click('#cu-resultados [data-id]');
+  await page.fill('#cu-cantidad', '2'); await page.click('#cu-btn'); await page.waitForFunction(() => document.querySelectorAll('#cu-lista tr').length === 2);
+  verificar((await page.textContent('#cu-lista')).includes('1,740.00'), `${tag}: total de la estancia 1500 + 2×120 = 1,740.00`);
+  await page.click('#modal-cuenta .modal-footer button');
+  // Alta y cobro
+  await page.click('#ho-lista >> text=🏁 Dar de alta'); await page.waitForSelector('#ho-lista >> text=Alta · falta cobrar');
+  verificar(await page.locator('#ho-lista >> text=📝 Notas y signos').count() === 1 && await page.locator('#ho-lista >> text=💳 Cobrar').count() === 1, `${tag}: con alta queda lista para cobrar`);
+  await page.click('#ho-lista >> text=💳 Cobrar'); await page.waitForURL(/ventas\.html/);
+  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 2, null, { timeout: 15000 });
+  const carE = await page.evaluate(() => ({ cobro: S._clinicaCobro, items: S.carrito.map(i => [i.id, i.cantidad, i.precio]), cliente: S.clienteId }));
+  verificar(carE.cobro?.tipo === 'estancia' && JSON.stringify(carE.items) === '[["srv-dia",1,1500],["prod-suero",2,120]]' && carE.cliente === 'cli-pedro', `${tag}: Ventas abre la cuenta de la estancia con el paciente (${JSON.stringify(carE)})`);
+  await confirmarVentaAbierta(page);
+  const est = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); const e = db.clinica_estancias[0]; return { e, v: db.ventas.find(v => v.id === e.venta_id) }; });
+  verificar(!!est.v && Number(est.v.total) === 1740, `${tag}: la estancia quedó cobrada y ligada a su venta (${est.v && est.v.total})`);
+  await page.goto(base + '/clinica-hospital.html'); await esperarListo(page); await page.click('#ho-chips >> text=🏁 Con alta');
+  await page.waitForSelector('#ho-lista >> text=Cobrada');
+  verificar(await page.locator('#ho-lista >> text=💳 Cobrar').count() === 0 && await page.locator('#ho-lista >> text=💊 Cuenta').count() === 0, `${tag}: una estancia cobrada ya no se cobra ni cambia su cuenta`);
+
+  // B) Seguros: el paciente paga su parte, lo cubierto se factura a la aseguradora
+  await page.evaluate(({ HOY, UID }) => { const db = JSON.parse(sessionStorage.getItem('__DB'));
+    db.clinica_pacientes[0].convenio_id = 'k1'; db.clinica_pacientes[0].poliza = 'POL-77'; db.clinica_pacientes[0].poliza_vence = '2099-12-31';
+    db.agenda_citas = [{ id: 'ag-s', auth_user_id: UID, fecha: HOY, cliente_id: 'cli-pedro', cliente_nombre: 'Pedro Gómez', estado: 'en_atencion' }];
+    db.agenda_citas_servicios = [{ id: 's-s', auth_user_id: UID, cita_id: 'ag-s', profesional_id: 'prof-ruiz', producto_id: 'prod-consulta', servicio_nombre: 'Consulta general', precio: 500, hora_inicio: '08:00:00', duracion_min: 30, orden: 0 }];
+    db.clinica_cita_info = [{ agenda_cita_id: 'ag-s', auth_user_id: UID, paciente_id: 'pac-xss', llegada_en: new Date().toISOString(), atendida_en: new Date().toISOString() }];
+    sessionStorage.setItem('__DB', JSON.stringify(db)); }, { HOY, UID });
+  await page.goto(base + '/clinica-sala.html'); await esperarListo(page); await page.waitForSelector('#sa-atendidos .ag-card');
+  await page.click('#sa-atendidos >> text=💳 Cuenta y cobro'); await page.waitForSelector('#cu-seguro');
+  const caja = await page.textContent('#cu-seguro-box');
+  verificar(caja.includes('cubre el 80%') && caja.includes('100.00') && caja.includes('400.00'), `${tag}: la cuenta muestra lo que paga el paciente y lo que cubre el seguro`);
+  verificar((await page.innerHTML('#cu-seguro-box')).includes('&lt;b&gt;x'), `${tag}: el nombre del convenio se muestra como texto`);
+  await modalesSinDesborde(page, `${tag} cuenta con seguro`);
+  await page.click('#cu-btn-cobrar'); await page.waitForURL(/ventas\.html/);
+  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 15000 });
+  verificar(await page.evaluate(() => S.carrito[0].precio) === 100, `${tag}: el paciente paga solo su 20% (100.00)`);
+  await confirmarVentaAbierta(page);
+  const snap = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); return { i: db.clinica_cita_info.find(x => x.agenda_cita_id === 'ag-s'), c: db.agenda_citas.find(x => x.id === 'ag-s') }; });
+  verificar(snap.i.monto_cubierto === 400 && snap.i.cubierto_servicios === 400 && snap.i.convenio_id === 'k1' && !!snap.c.venta_id, `${tag}: queda anotado lo que cubre el seguro (400) y la cita cobrada`);
+  // Facturar a la aseguradora
+  await page.goto(base + '/clinica-seguros.html'); await esperarListo(page); await page.waitForSelector('#sg-pendiente .cl-item');
+  await sinDesborde(page, `${tag} seguros`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/seguros-' + tag + '.png', fullPage: true });
+  verificar((await page.textContent('#sg-kpi-pend')).includes('400.00'), `${tag}: por facturar a aseguradoras 400.00`);
+  await page.click('#sg-pendiente >> text=🧾 Facturar'); await page.waitForURL(/ventas\.html/);
+  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 15000 });
+  const fac = await page.evaluate(() => ({ cobro: S._clinicaCobro, item: [S.carrito[0].nombre, S.carrito[0].precio], cliente: S.clienteId, db: JSON.parse(sessionStorage.getItem('__DB')) }));
+  const k1 = fac.db.clinica_convenios.find(k => k.id === 'k1');
+  verificar(fac.cobro?.tipo === 'reclamo' && fac.item[1] === 400 && /Cobertura Seguros América/.test(fac.item[0]) && k1.cliente_id && fac.cliente === k1.cliente_id,
+    `${tag}: la factura a la aseguradora se abre en Ventas a nombre de la aseguradora (${JSON.stringify(fac.item)})`);
+  await confirmarVentaAbierta(page);
+  const rec = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_reclamos[0]);
+  verificar(rec.estado === 'facturado' && !!rec.venta_id && rec.monto === 400 && JSON.stringify(rec.citas) === '["ag-s"]', `${tag}: la factura quedó registrada y ligada a su venta`);
+  await page.goto(base + '/clinica-seguros.html'); await esperarListo(page); await page.waitForSelector('#sg-pendiente .cl-info');
+  verificar((await page.textContent('#sg-kpi-pend')).includes('0.00'), `${tag}: lo facturado ya no queda pendiente (no se cobra dos veces)`);
+  // Nuevo convenio
+  await page.click('text=+ Convenio'); await modalesSinDesborde(page, `${tag} convenio`);
+  await page.fill('#kv-nombre', 'Empresa Textil'); await page.selectOption('#kv-tipo', 'empresa'); await page.fill('#kv-pct', '150'); await page.click('#modal-convenio .btn-primary');
+  verificar((await page.textContent('#kv-error')).includes('0 a 100'), `${tag}: la cobertura va de 0 a 100 %`);
+  await page.fill('#kv-pct', '50'); await page.click('#modal-convenio .btn-primary'); await page.waitForSelector('#sg-convenios >> text=Empresa Textil');
+  verificar(true, `${tag}: convenio nuevo guardado`);
+  verificar(page.__errores.length === 0, `${tag}: fase 5 sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  verificar(!(await page.evaluate(() => window.__xss)), `${tag}: fase 5 sin XSS`);
+  await ctx.close();
+}
+
+// Cuadre de la Fase 5: cobrar una estancia o facturar a la aseguradora desde la Clínica escribe EXACTAMENTE
+// lo mismo que la misma venta hecha a mano en Ventas (la única diferencia es ligar la estancia / factura).
+async function pruebaCuadreFase5(browser, base) {
+  console.log('\n▶ Cuadre fase 5: estancia y factura a aseguradora vs venta directa');
+  const casos = {
+    estancia: { tabla: 'clinica_estancias', cliente: 'cli-pedro', items: [['srv-dia', 'servicio', 2, 1500], ['prod-suero', 'producto', 3, 120]],
+      prep: db => { db.clinica_estancias = [{ id: 'e-c', auth_user_id: UID, numero: 'HOS-000001', paciente_id: 'pac-xss', tipo: 'hospitalizacion', estado: 'alta', ingreso_en: '2026-10-20T10:00:00Z', alta_en: '2026-10-22T09:00:00Z' }]; },
+      pago: { tipo: 'estancia', id: 'e-c', clienteId: 'cli-pedro', items: [{ producto_id: 'srv-dia', cantidad: 2, total: 3000 }, { producto_id: 'prod-suero', cantidad: 3, total: 360 }] } },
+    reclamo: { tabla: 'clinica_reclamos', cliente: 'cli-1', items: [['srv-dia', 'servicio', 1, 400]], nombre: 'Cobertura Seguros · 1 cita',
+      prep: db => { db.clinica_reclamos = [{ id: 'r-c', auth_user_id: UID, convenio_id: 'k1', citas: ['x'], monto: 400, estado: 'enviado' }]; },
+      pago: { tipo: 'reclamo', id: 'r-c', clienteId: 'cli-1', concepto: 'Cobertura Seguros · 1 cita', items: [{ producto_id: 'srv-dia', cantidad: 1, total: 400 }] } },
+  };
+  for (const [nombre, k] of Object.entries(casos)) {
+    const correr = async desdeClinica => {
+      const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+      await page.goto(base + '/ventas.html');
+      await page.evaluate(({ db, desdeClinica, pago }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG');
+        if (desdeClinica) sessionStorage.setItem('n360_clinica_cobro', JSON.stringify(pago)); }, { db: (() => { const db = semillaFase5(); k.prep(db); return db; })(), desdeClinica, pago: k.pago });
+      await page.reload(); await esperarListo(page);
+      await page.waitForFunction(() => typeof S !== 'undefined' && Array.isArray(S.productosCache) && S.productosCache.length === 4, null, { timeout: 15000 });
+      if (desdeClinica) await page.waitForFunction(n => S.carrito.length === n, k.items.length, { timeout: 15000 });
+      else await page.evaluate(async ({ items, cliente, nombre }) => {
+        await abrirNuevaVenta(); selectClienteOpcion('existente'); seleccionarCliente(cliente);
+        for (const [id, tipo, cant, precio] of items) { await agregarAlCarritoConPrecio(id, tipo, null); const l = S.carrito.find(x => x.id === id); l.cantidad = cant; l.precio = precio; if (nombre) l.nombre = nombre; recalcItem(l); }
+        renderCarrito('servicio'); renderCarrito('producto'); calcularResumen(); }, { items: k.items, cliente: k.cliente, nombre: k.nombre });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      await confirmarVentaAbierta(page);
+      const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), db: JSON.parse(sessionStorage.getItem('__DB')) }));
+      const errores = page.__errores; await ctx.close(); return { ...r, errores };
+    };
+    const limpiar = o => JSON.parse(JSON.stringify(o, (kk, v) => ['id', 'venta_id', 'created_at', 'fecha', 'updated_at', 'numero_venta', 'numero_factura', 'observaciones', 'notas', 'referencia_id', 'referencia_caja', 'facturado_en'].includes(kk) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id>' : v)));
+    const escr = log => log.filter(x => (x.op !== 'rpc' || ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'].includes(x.tabla)) && !['tutoriales_vistos', 'usuarios', 'presencia_usuarios', 'auditoria_eventos', 'auditoria'].includes(x.tabla) && x.tabla !== k.tabla && !(x.tabla === 'auditoria_log' && x.datos?.tabla === k.tabla));
+    const a = await correr(true), b = await correr(false);
+    const igual = JSON.stringify(limpiar(escr(a.log))) === JSON.stringify(limpiar(escr(b.log)));
+    verificar(escr(a.log).some(x => x.tabla === 'venta_registrar_atomica'), `cuadre ${nombre}: la venta se registró (${a.errores.join(' | ')})`);
+    verificar(igual, `cuadre ${nombre}: venta, detalle, caja e inventario IDÉNTICOS a la venta directa`);
+    if (!igual) { const la = limpiar(escr(a.log)), lb = limpiar(escr(b.log)); for (let i = 0; i < Math.max(la.length, lb.length); i++) if (JSON.stringify(la[i]) !== JSON.stringify(lb[i])) console.log('  dif #' + i + '\n   clínica:', JSON.stringify(la[i]), '\n   directa:', JSON.stringify(lb[i])); }
+    const ligada = a.db[k.tabla][0], venta = a.db.ventas[0];
+    verificar(ligada.venta_id === venta.id && (nombre !== 'reclamo' || ligada.estado === 'facturado'), `cuadre ${nombre}: queda ligada a su venta`);
+    verificar(!b.db[k.tabla][0].venta_id, `cuadre ${nombre}: la venta directa no toca la clínica`);
+  }
+  // Con Clínica apagada, Ventas ignora por completo un cobro de la clínica.
+  const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/ventas.html');
+  await page.evaluate(({ db, pago }) => { db.configuracion_empresa[0].usa_modulo_clinica = false; sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('n360_clinica_cobro', JSON.stringify(pago)); },
+    { db: semillaFase5(), pago: casos.estancia.pago });
+  await page.reload(); await esperarListo(page); await page.waitForTimeout(1500);
+  verificar(await page.evaluate(() => S.carrito.length === 0 && !S._clinicaCobro), 'con Clínica apagada Ventas no carga cobros de la clínica');
+  await ctx.close();
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
-  const paginas = ['dashboard.html', 'ventas.html', 'agenda.html', 'salarios.html', 'clientes.html', 'productos.html', 'caja.html', 'reportes.html', 'configuracion.html', 'mascotas.html', 'vet-agenda.html', 'lotes.html', 'vencimientos.html', 'personalizacion.html', 'contabilidad.html', 'compras.html'];
+  const paginas = ['dashboard.html', 'ventas.html', 'agenda.html', 'salarios.html', 'creditos.html', 'clientes.html', 'productos.html', 'caja.html', 'reportes.html', 'configuracion.html', 'mascotas.html', 'vet-agenda.html', 'lotes.html', 'vencimientos.html', 'personalizacion.html', 'contabilidad.html', 'compras.html'];
   for (const p of paginas) {
     const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
     await page.goto(base + '/' + p);
@@ -731,6 +894,9 @@ async function regresion(browser, base) {
     await pruebasFase3(browser, base, 360, 740);
     await pruebasFase4(browser, base, 1280, 900);
     await pruebasFase4(browser, base, 360, 740);
+    await pruebasFase5(browser, base, 1280, 900);
+    await pruebasFase5(browser, base, 360, 740);
+    await pruebaCuadreFase5(browser, base);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);

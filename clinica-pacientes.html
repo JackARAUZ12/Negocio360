@@ -10,7 +10,7 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024c"></script>
+  <script src="modulos-registro.js?v=20261024d"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1404,6 +1404,12 @@
       <div class="cl-field"><label for="pa-direccion">Dirección</label><input type="text" id="pa-direccion" class="cl-in" maxlength="200"/></div>
       <div class="cl-seccion">Contacto de emergencia</div>
       <div class="cl-grid3"><div class="cl-field"><label for="pa-contacto_emergencia_nombre">Nombre</label><input type="text" id="pa-contacto_emergencia_nombre" class="cl-in" maxlength="80"/></div><div class="cl-field"><label for="pa-contacto_emergencia_telefono">Teléfono</label><input type="tel" id="pa-contacto_emergencia_telefono" class="cl-in" maxlength="30"/></div><div class="cl-field"><label for="pa-contacto_emergencia_parentesco">Parentesco</label><input type="text" id="pa-contacto_emergencia_parentesco" class="cl-in" maxlength="40" placeholder="Ej: madre"/></div></div>
+      <div class="cl-seccion">Seguro o convenio</div>
+      <div class="cl-grid3">
+        <div class="cl-field"><label for="pa-convenio">Aseguradora / convenio</label><select id="pa-convenio" class="cl-in"></select></div>
+        <div class="cl-field"><label for="pa-poliza">N.º de póliza o carné</label><input type="text" id="pa-poliza" class="cl-in" maxlength="60"/></div>
+        <div class="cl-field"><label for="pa-poliza_vence">Vence</label><input type="date" id="pa-poliza_vence" class="cl-in"/></div>
+      </div>
       <div class="cl-seccion">Para cobrar</div>
       <div class="cl-field"><label for="pa-cli-buscar">Cliente vinculado (opcional)</label>
         <div id="pa-cliente" class="cl-elegido"></div>

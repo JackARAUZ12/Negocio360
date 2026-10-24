@@ -589,6 +589,9 @@
           if (ya) { ya.cantidad += cant; ya.total = Math.round((ya.total + monto) * 100) / 100; }
           else items.push({ producto_id: x.producto_id, cantidad: cant, total: monto });
         });
+        // Desde la Agenda se cobra el total al paciente: se borra un reparto con seguro que se haya preparado antes.
+        await sb.from('clinica_cita_info').update({ convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null })
+          .eq('auth_user_id', STATE.userId).eq('agenda_cita_id', c.id);
       } catch (e) { console.warn('cuenta de la clínica:', e); }
     }
     sessionStorage.setItem('n360_agenda_cobro', JSON.stringify({

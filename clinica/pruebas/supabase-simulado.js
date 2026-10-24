@@ -60,13 +60,18 @@
           if (tabla === 'clinica_pacientes' && !fila.numero_expediente) fila.numero_expediente = 'EXP-' + String(db[tabla].length + 1).padStart(6, '0');
           if (tabla.startsWith('clinica_') && fila.activo === undefined && ['clinica_pacientes', 'clinica_consultorios', 'clinica_personal'].includes(tabla)) fila.activo = true;
           if (tabla === 'clientes' && fila.activo === undefined) fila.activo = true;
+          if (tabla === 'clinica_estancias') { const pref = fila.tipo === 'hospitalizacion' ? 'HOS' : 'OBS'; fila.numero = pref + '-' + String(db[tabla].filter(x => String(x.numero).startsWith(pref)).length + 1).padStart(6, '0');
+            fila.estado = fila.estado || 'activa'; fila.ingreso_en = fila.ingreso_en || new Date().toISOString(); if (!fila.tipo) fila.tipo = 'observacion';
+            if (db[tabla].some(x => x.paciente_id === fila.paciente_id && x.estado === 'activa')) { error = { message: 'duplicate key value violates unique constraint "clinica_estancias_una_activa"' }; return null; } }
+          if (tabla === 'clinica_reclamos' && !fila.estado) fila.estado = 'enviado';
+          if (tabla === 'clinica_convenios' && fila.activo === undefined) fila.activo = true;
           if (tabla === 'clinica_citas' && !fila.estado) fila.estado = 'programada';
           if (tabla === 'clinica_citas' && !fila.duracion_min) fila.duracion_min = 30;
           return fila;
         });
-        db[tabla].push(...lista); log('insert', tabla, st.datos); resultado = lista;
+        if (error) { resultado = null; } else { db[tabla].push(...lista); log('insert', tabla, st.datos); resultado = lista; }
       } else if (st.modo === 'update') {
-        const afectadas = filas.filter(aplica); afectadas.forEach(f => Object.assign(f, st.datos));
+        const afectadas = filas.filter(aplica); afectadas.forEach(f => { Object.assign(f, st.datos); if (tabla === 'clinica_estancias' && st.datos.estado === 'alta' && !f.alta_en) f.alta_en = new Date().toISOString(); if (tabla === 'clinica_reclamos' && st.datos.estado === 'facturado') f.facturado_en = new Date().toISOString(); });
         log('update', tabla, st.datos, st.filtros); resultado = afectadas;
       } else if (st.modo === 'delete') {
         const quedan = filas.filter(f => !aplica(f)); resultado = filas.filter(aplica); db[tabla] = quedan; log('delete', tabla, null, st.filtros);
@@ -219,6 +224,15 @@
         const cuenta = {}; T('clinica_consultas').filter(c => c.estado === 'cerrada').forEach(c => (c.diagnosticos || []).forEach(d => { const k = d.codigo || d.nombre; cuenta[k] = cuenta[k] || { codigo: d.codigo || '—', nombre: d.nombre, total: 0 }; cuenta[k].total++; }));
         return { ok: true, diagnosticos: Object.values(cuenta).sort((x, y) => y.total - x.total), notas: [] };
       }
+      case 'clinica_estancia_nota_agregar': {
+        const p = exigir(); const e = T('clinica_estancias').find(x => x.id === a.p_estancia_id); const d = a.p_datos || {};
+        if (!e) return { ok: false, motivo: 'no_encontrado' }; if (e.estado !== 'activa') return { ok: false, motivo: 'estancia_cerrada' };
+        if (!String(d.texto || '').trim()) return { ok: false, motivo: 'texto' };
+        if (d.fc != null && (Number(d.fc) < 20 || Number(d.fc) > 250)) return { ok: false, motivo: 'signos' };
+        T('clinica_estancia_notas').push({ id: uuid(), estancia_id: e.id, paciente_id: e.paciente_id, ...d, autor_id: p.id, autor_nombre: p.nombre, created_at: new Date().toISOString() });
+        T('clinica_bitacora').push({ accion: 'nota_estancia', quien: p.nombre }); guardar(); return { ok: true };
+      }
+      case 'clinica_estancia_notas': { exigir(); return { ok: true, notas: T('clinica_estancia_notas').filter(n => n.estancia_id === a.p_estancia_id) }; }
       case 'clinica_cambiar_pin': return { ok: false, motivo: 'usar_usuarios' };
     }
     return undefined;

@@ -230,6 +230,11 @@ async function abrirCuenta(id) {
   $s('cu-buscar').value = ''; $s('cu-resultados').style.display = 'none'; $s('cu-elegido').style.display = 'none';
   $s('cu-cantidad').value = '1'; $s('cu-error').textContent = '';
   $s('cu-titulo').textContent = `💳 Cuenta — ${clinicaNombrePaciente(c.clinica_pacientes || {})}`;
+  SA.convenio = null;
+  if (c.paciente?.convenio_id) {
+    try { const { data: k } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('id', c.paciente.convenio_id).eq('auth_user_id', STATE.userId).maybeSingle();
+      if (clinicaConvenioVigente(c.paciente, k)) SA.convenio = k; else if (k) SA.convenioVencido = k; } catch (_) {}
+  }
   openModal('modal-cuenta');
   await pintarCuenta();
 }
@@ -240,6 +245,11 @@ async function pintarCuenta() {
     const { data: lin } = await sb.from('agenda_citas_servicios').select('servicio_nombre, precio, producto_id').eq('auth_user_id', STATE.userId).eq('cita_id', SA.citaCuenta).order('orden');
     const servicios = lin || [];
     const total = servicios.reduce((t, l) => t + Number(l.precio || 0), 0) + SA.cuenta.reduce((t, x) => t + Number(x.cantidad) * Number(x.productos?.precio || 0), 0);
+    const k = SA.convenio, aplica = k && $s('cu-seguro')?.checked !== false;
+    $s('cu-seguro-box').innerHTML = k ? `<div class="cl-info" style="margin:0 0 10px"><label class="cl-check" style="margin:0"><input type="checkbox" id="cu-seguro" ${aplica ? 'checked' : ''} onchange="pintarCuenta()"/>
+        🛡️ <b>${esc(k.nombre)}</b> cubre el ${esc(Number(k.cobertura_pct))}%</label>
+        ${aplica ? `<div class="cl-sub" style="margin-top:4px">Paga el paciente: <b>${esc(fmt(total * (100 - Number(k.cobertura_pct)) / 100))}</b> · lo cubre la aseguradora: <b>${esc(fmt(total * Number(k.cobertura_pct) / 100))}</b> (se le factura en Clínica · Seguros)</div>` : '<div class="cl-sub" style="margin-top:4px">Se cobrará todo al paciente.</div>'}</div>`
+      : (c?.paciente?.convenio_id ? '<div class="cl-aviso" style="margin:0 0 10px">⚠️ El seguro del paciente está vencido o inactivo: se cobra todo al paciente.</div>' : '');
     cont.innerHTML = `<table class="cl-tabla-cuenta">
         ${servicios.map(l => `<tr><td>1 ×</td><td>${esc(l.servicio_nombre)} <span class="cl-sub">(de la cita)</span>${l.producto_id ? '' : ' <span class="cl-badge cl-badge-rojo">no está en el catálogo</span>'}</td><td style="text-align:right;white-space:nowrap">${esc(fmt(l.precio || 0))}</td><td></td></tr>`).join('')}
         ${SA.cuenta.map(x => `<tr><td>${esc(vetFormatoNumero(x.cantidad))} ×</td><td>${esc(x.descripcion)}${x.producto_id ? '' : ' <span class="cl-badge cl-badge-rojo">ya no existe</span>'}</td>
@@ -299,7 +309,7 @@ async function cobrarCita() {
   const c = citaPorId(SA.citaCuenta); if (!c) return;
   const btn = $s('cu-btn-cobrar'); btn.disabled = true;
   try {
-    const r = await ClinicaCitas.cobrar(c);
+    const r = await ClinicaCitas.cobrar(c, { convenio: SA.convenio && $s('cu-seguro')?.checked ? SA.convenio : null });
     if (!r.ok) { $s('cu-error').textContent = r.motivo; await cargar(); }
   } catch (e) { console.error('cobrarCita:', e); $s('cu-error').textContent = 'No se pudo preparar el cobro. Intenta de nuevo.'; }
   finally { btn.disabled = false; }

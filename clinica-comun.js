@@ -349,6 +349,7 @@ const CLINICA_MOTIVOS_RPC = {
   perfil: 'Elige un usuario del sistema.', perfil_repetido: 'Ese usuario ya está en la lista de médicos.',
   profesional: 'Esa columna de la Agenda no existe.', profesional_repetido: 'Esa columna de la Agenda ya es de otro médico.',
   usar_usuarios: 'El código se cambia en el menú de usuarios del sistema.', sin_usuario: 'Esta persona no está ligada a un usuario del sistema.',
+  estancia_cerrada: 'Esta estancia ya tiene alta: no admite más notas.', signos: 'Revisa los signos vitales: hay un valor fuera de rango.',
   honorario: 'Revisa el honorario: el porcentaje va de 0 a 100.', empleado: 'Ese empleado no existe en Salarios.', fechas: 'Revisa las fechas (máximo 2 años).',
 };
 function clinicaTextoMotivo(r) {
@@ -366,7 +367,7 @@ const CLINICA_ACCIONES_BITACORA = {
   pin_definido: '🔑 Asignó un PIN', pin_cambiado: '🔑 Cambió su PIN', ver_bitacora: '🕵️ Revisó la bitácora',
   emitir_documento: '📄 Emitió un documento', anular_documento: '🚫 Anuló un documento', receta_a_farmacia: '💊 Pasó una receta a Farmacia',
   subir_adjunto: '📎 Subió un archivo', ver_adjunto: '👁️ Abrió un archivo', anular_adjunto: '🚫 Anuló un archivo',
-  ver_reporte: '📊 Vio el reporte clínico',
+  ver_reporte: '📊 Vio el reporte clínico', nota_estancia: '🛏️ Escribió en una estancia', ver_estancia: '🛏️ Abrió las notas de una estancia',
 };
 
 /* =====================================================
@@ -414,10 +415,11 @@ function clinicaCalcularHonorarios({ medico, citas, ventas, detalles, devolucion
     if (!v || v.estado !== 'completada') { res.sinCobrar++; return; }
     const { neto, factor } = clinicaNetoVenta(v, devoluciones);
     const servicios = (porVenta[v.id] || []).filter(d => d.tipo_item === 'servicio').reduce((t, d) => t + (Number(d.subtotal) || 0), 0);
-    const base = _r2c(servicios * factor);
+    // Con seguro: el paciente pagó su parte y la aseguradora el resto (cubierto_servicios): el honorario es sobre el total.
+    const base = _r2c(servicios * factor + (Number(c.cubierto_servicios) || 0));
     let monto = 0;
     if (medico.honorario_tipo === 'porcentaje') monto = _r2c(base * (Number(medico.honorario_valor) || 0) / 100);
-    else if (medico.honorario_tipo === 'monto') monto = neto > 0 ? _r2c(medico.honorario_valor) : 0;
+    else if (medico.honorario_tipo === 'monto') monto = neto > 0 || Number(c.monto_cubierto) > 0 ? _r2c(medico.honorario_valor) : 0;
     res.lineas.push({ cita_id: c.id, fecha: c.fecha, venta: v.numero_venta, neto, base, monto });
     res.base = _r2c(res.base + base); res.monto = _r2c(res.monto + monto);
   });
@@ -426,7 +428,7 @@ function clinicaCalcularHonorarios({ medico, citas, ventas, detalles, devolucion
 // Resumen para Reportes: por médico (citas, atendidas, no asistió, cobrado neto) y por servicio/producto.
 function clinicaResumenReporte({ citas, ventas, detalles, devoluciones, medicos }) {
   const vPorId = {}; (ventas || []).forEach(v => { vPorId[v.id] = v; });
-  const fila = () => ({ citas: 0, atendidas: 0, no_asistio: 0, canceladas: 0, cobrado: 0, sin_cobrar: 0 });
+  const fila = () => ({ citas: 0, atendidas: 0, no_asistio: 0, canceladas: 0, cobrado: 0, sin_cobrar: 0, cubierto: 0 });
   const total = fila(), porMedico = {};
   const ventasContadas = new Set();
   (citas || []).forEach(c => {
@@ -439,6 +441,7 @@ function clinicaResumenReporte({ citas, ventas, detalles, devoluciones, medicos 
       if (c.estado === 'cancelada') x.canceladas++;
     });
     const v = vPorId[c.venta_id];
+    if (v && v.estado === 'completada' && Number(c.monto_cubierto) > 0) { f.cubierto = _r2c(f.cubierto + Number(c.monto_cubierto)); total.cubierto = _r2c(total.cubierto + Number(c.monto_cubierto)); }
     if (v && v.estado === 'completada' && !ventasContadas.has(v.id)) {
       ventasContadas.add(v.id);
       const { neto } = clinicaNetoVenta(v, devoluciones);
@@ -574,6 +577,67 @@ function clinicaValidarDatos(especialidad, datos) {
   return '';
 }
 
+/* ---------- Fase 5: observación / hospitalización y seguros ---------- */
+const CLINICA_TIPOS_ESTANCIA = { observacion: { e: '🛋️', n: 'Observación' }, hospitalizacion: { e: '🛏️', n: 'Hospitalización' } };
+const CLINICA_TIPOS_NOTA_ESTANCIA = { ingreso: '📥 Ingreso', evolucion: '📈 Evolución', enfermeria: '💉 Enfermería', indicaciones: '📋 Indicaciones', alta: '🏁 Alta' };
+// Unidades a cobrar: hospitalización = días (cada 24 h o fracción, mínimo 1); observación = 1.
+function clinicaDiasEstancia(ingreso, alta, tipo, ahoraMs) {
+  if (tipo !== 'hospitalizacion') return 1;
+  const ini = new Date(ingreso).getTime(), fin = alta ? new Date(alta).getTime() : (ahoraMs || Date.now());
+  if (!(ini > 0) || !(fin >= ini)) return 1;
+  return Math.max(1, Math.ceil((fin - ini) / 86400000));
+}
+function clinicaDuracionTexto(ingreso, alta, ahoraMs) {
+  const min = Math.max(0, Math.floor(((alta ? new Date(alta).getTime() : (ahoraMs || Date.now())) - new Date(ingreso).getTime()) / 60000));
+  const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+}
+// Cobro de una estancia (mismo formato que el cobro de la Agenda): servicio × unidades + cargos al precio del catálogo.
+function clinicaCobroEstancia(estancia, servicio, cargos, ahoraMs) {
+  const items = [], sinCatalogo = [];
+  const sumar = (producto_id, cantidad, total) => {
+    const ya = items.find(x => x.producto_id === producto_id);
+    if (ya) { ya.cantidad = _r2c(ya.cantidad + cantidad); ya.total = _r2c(ya.total + total); }
+    else items.push({ producto_id, cantidad: _r2c(cantidad), total: _r2c(total) });
+  };
+  const unidades = clinicaDiasEstancia(estancia.ingreso_en, estancia.alta_en, estancia.tipo, ahoraMs);
+  if (servicio && servicio.id) sumar(servicio.id, unidades, unidades * (Number(servicio.precio) || 0));
+  (cargos || []).forEach(x => {
+    if (x.producto_id && x.productos) sumar(x.producto_id, Number(x.cantidad) || 1, (Number(x.cantidad) || 1) * (Number(x.productos.precio) || 0));
+    else sinCatalogo.push(x.descripcion);
+  });
+  return { unidades, items, sinCatalogo };
+}
+// ¿El convenio del paciente aplica hoy? (activo y póliza sin vencer)
+function clinicaConvenioVigente(paciente, convenio, hoy) {
+  if (!paciente || !convenio || paciente.convenio_id !== convenio.id || !convenio.activo) return false;
+  if (!(Number(convenio.cobertura_pct) > 0)) return false;
+  return !paciente.poliza_vence || paciente.poliza_vence >= (hoy || vetHoy());
+}
+// Reparte la cuenta con el seguro: el paciente paga (100 - cobertura)% de cada línea; la aseguradora el resto.
+// tipos: { producto_id: 'servicio' | 'producto' } para saber cuánto de lo cubierto son servicios (honorarios).
+function clinicaAplicarConvenio(items, pct, tipos) {
+  const p = Math.min(100, Math.max(0, Number(pct) || 0));
+  let cubierto = 0, cubiertoServicios = 0;
+  const paciente = (items || []).map(it => {
+    const total = _r2c(Number(it.total) || 0), pagaPaciente = _r2c(total * (100 - p) / 100), cubre = _r2c(total - pagaPaciente);
+    cubierto = _r2c(cubierto + cubre);
+    if ((tipos || {})[it.producto_id] === 'servicio') cubiertoServicios = _r2c(cubiertoServicios + cubre);
+    return { ...it, total: pagaPaciente };
+  });
+  return { paciente, cubierto, cubiertoServicios, totalPaciente: _r2c(paciente.reduce((t, x) => t + x.total, 0)) };
+}
+// Citas cobradas con seguro que todavía no se facturan a la aseguradora (por convenio).
+function clinicaPendientesSeguro(citas, reclamos) {
+  const yaFacturadas = new Set((reclamos || []).filter(r => r.estado !== 'anulado').flatMap(r => r.citas || []));
+  const porConvenio = {};
+  (citas || []).filter(c => c.convenio_id && Number(c.monto_cubierto) > 0 && c.venta_id && !yaFacturadas.has(c.id)).forEach(c => {
+    const g = porConvenio[c.convenio_id] = porConvenio[c.convenio_id] || { convenio_id: c.convenio_id, citas: [], monto: 0 };
+    g.citas.push(c); g.monto = _r2c(g.monto + Number(c.monto_cubierto));
+  });
+  return Object.values(porConvenio);
+}
+
 /* ---------- Citas de la Agenda vistas por la clínica ---------- */
 // Una cita de la Agenda (agenda_citas + servicios) + lo propio de la clínica (clinica_cita_info) en la
 // forma que usan la sala, los reportes y el expediente. El médico es el primer servicio cuyo profesional
@@ -601,6 +665,8 @@ function clinicaCitaDeAgenda(a, { info, medicos, pacientes, clientes } = {}) {
     medico_id: med ? med.id : null, consultorio_id: i.consultorio_id || (med && med.consultorio_id) || null,
     llegada_en: i.llegada_en || null, llamado_en: i.llamado_en || null, atendida_en: i.atendida_en || null,
     recordatorio_enviado_en: i.recordatorio_enviado_en || null,
+    convenio_id: i.convenio_id || null, cobertura_pct: i.cobertura_pct != null ? Number(i.cobertura_pct) : null,
+    monto_cubierto: Number(i.monto_cubierto) || 0, cubierto_servicios: Number(i.cubierto_servicios) || 0,
     servicios: lin.map(l => l.servicio_nombre), motivo: lin.map(l => l.servicio_nombre).join(', '),
   };
 }
@@ -629,7 +695,8 @@ function clinicaCSV(filas) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  clinicaCitaDeAgenda, clinicaCobroAgenda, clinicaMesesEdad, clinicaEdadGestacional, clinicaGlasgow, clinicaEscalaDolor, clinicaRiesgoCintura,
+  clinicaCitaDeAgenda, clinicaCobroAgenda, CLINICA_TIPOS_ESTANCIA, CLINICA_TIPOS_NOTA_ESTANCIA, clinicaDiasEstancia, clinicaDuracionTexto,
+  clinicaCobroEstancia, clinicaConvenioVigente, clinicaAplicarConvenio, clinicaPendientesSeguro, clinicaMesesEdad, clinicaEdadGestacional, clinicaGlasgow, clinicaEscalaDolor, clinicaRiesgoCintura,
   CLINICA_DIENTES, CLINICA_ESTADOS_DIENTE, CLINICA_CARAS, clinicaDientesDe, clinicaLimpiarOdontograma, clinicaIndicesDentales,
   clinicaCalculosEspecialidad, clinicaResumenDatos, clinicaValidarDatos,
   CLINICA_ESPECIALIDADES, clinicaEspecialidadesActivas, clinicaNombreEspecialidad, CLINICA_TIPOS_CITA, CLINICA_ESTADOS_CITA,
