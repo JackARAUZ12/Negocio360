@@ -2,7 +2,7 @@
 
 | Fase | Estado | Integrada a main | Notas |
 |---|---|---|---|
-| 1 — Base para atender y cobrar | ✅ Terminada y probada | Ver bitácora | Agenda, pacientes/expediente con candado, consulta firmada, equipo y seguridad, cobro por Ventas |
+| 1 — Base para atender y cobrar | ✅ Terminada y probada | ✅ Sí (2026-10-24, commit 7add681) | Agenda, pacientes/expediente con candado, consulta firmada, equipo y seguridad, cobro por Ventas |
 | 2 — Documentos | Pendiente | | |
 | 3 — Operación diaria | Pendiente | | |
 | 4 — Especialidades | Pendiente | | |
@@ -89,3 +89,4 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
 - 2026-10-23: Fase 1 — base de datos aplicada en producción tras prueba revertida.
 - 2026-10-24: Fase 1 — pantallas, integración con Ventas/Configuración/Personalización,
   pruebas en navegador y cuadre; traído `main` (venta atómica, agenda general, certificados).
+- 2026-10-24: Fase 1 integrada a `main` (avance rápido, commit 7add681). El módulo sigue apagado para todas las cuentas.
