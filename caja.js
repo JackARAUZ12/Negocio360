@@ -1685,6 +1685,12 @@ async function initCaja() {
       Negocio360Tutorial.agregarBotonAyuda('caja', pasosCaja);
     }
 
+    // Desde el aviso de "cierre de mes pendiente" › "Contar el dinero primero"
+    if (new URLSearchParams(location.search).get('cierre') === '1') {
+      try { history.replaceState(null, '', 'caja.html'); } catch (_) {}
+      crearCierreMensual();
+    }
+
   } catch(err) {
     console.error('initCaja:', err);
     document.getElementById('loader').classList.add('hidden');
