@@ -1,0 +1,4054 @@
+/* =====================================================
+   CREDITOS.JS — NEGOCIO360  v1.0
+   Módulo de Créditos: crédito por venta y crédito financiero,
+   con y sin intereses, prima, frecuencia, cuotas, pagos,
+   historial/auditoría, integración con Caja (movimientos_financieros)
+   e integración con Ventas (solo al crear un crédito por venta).
+
+   IIFE wrapper: mismo patrón que gastos.js / ventas.js para no
+   chocar con variables globales de otros scripts.
+===================================================== */
+
+(function () {
+  'use strict';
+
+  /* ===================================================
+     SUPABASE CLIENT — reutiliza el de cajaAPI.js
+  =================================================== */
+  const _sb = window.__cajaSB || window.supabase.createClient(
+    'https://zvlincmqmmoclqhykejv.supabase.co',
+    'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'
+  );
+  window.__cajaSB = _sb;
+
+  // Se declaran aquí arriba (no donde se usan más abajo) para que
+  // nunca queden en "zona muerta temporal" — si algo entre este punto
+  // y donde se usaban antes fallara, estas quedaban inaccesibles y
+  // rompían silenciosamente el botón de Registrar pago.
+  let _bancosCacheCred = null;
+  let _bancoElegidoIdCred = null;
+  let _montoBancoConvertidoCred = null;
+
+  /* ===================================================
+     ESTADO LOCAL
+  =================================================== */
+  const CS = {
+    userId: null, userEmail: null,
+    empresaConfig: {}, currentUser: {},
+    metodosPago: [], clientes: [], productos: [], productosFinancieros: [], impuestos: [],
+    creditos: [], creditosPage: 1, creditosPerPage: 15, creditosTotal: 0,
+    creditosFiltro: 'todos', creditosSearch: '',
+    pagosRecientes: [],
+    kpis: {},
+    activeSection: 'creditos',
+
+    // Stock Compartido — grupo (Sucursales/Bodegas), mismo mecanismo de Ventas
+    stockCompartidoActivo: false,
+    miSucursalId:          null,
+    stockOrigenPendiente:  null,
+    origenStockElegido:    null,
+    productosCacheGrupo:   [],
+
+    // Vender sin stock — apagado por defecto, mismo interruptor que Ventas
+    // (se lee de configuracion_empresa, no se guarda aparte por módulo).
+    venderSinStockActivo: false,
+    ncItems: [],          // ítems agregados al crédito por venta en curso
+    ncAmortizacionPreview: [],
+    ultimoComprobante: null,
+    escalasPorProducto: {}, // { producto_id: [{id,nombre,precio}, ...] } — solo tipo_precio='escala'
+    escalaPendiente: null,  // { productoId, cantidad } mientras el selector de escala está abierto
+  };
+
+  /* ===================================================
+     HELPERS FECHA (mismo fix de zona horaria que el resto del ERP)
+  =================================================== */
+  function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  function todayISO() { return ymd(new Date()); }
+  function startOfMonthISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
+
+  function sumarFrecuencia(fechaISO, frecuencia, veces) {
+    const d = new Date(fechaISO + 'T12:00:00');
+    for (let i = 0; i < veces; i++) {
+      switch (frecuencia) {
+        case 'diaria':     d.setDate(d.getDate() + 1);        break;
+        case 'semanal':    d.setDate(d.getDate() + 7);        break;
+        case 'quincenal':  d.setDate(d.getDate() + 15);       break;
+        case 'mensual':    d.setMonth(d.getMonth() + 1);      break;
+        case 'bimestral':  d.setMonth(d.getMonth() + 2);      break;
+        case 'trimestral': d.setMonth(d.getMonth() + 3);      break;
+        case 'anual':      d.setFullYear(d.getFullYear() + 1); break;
+        default:           d.setMonth(d.getMonth() + 1);
+      }
+    }
+    return ymd(d);
+  }
+
+  function daysDiff(dateISO) {
+    const t = new Date(todayISO()+'T00:00:00');
+    const x = new Date(dateISO+'T00:00:00');
+    return Math.round((x - t) / 86400000);
+  }
+
+  /* ===================================================
+     HELPERS FORMATO
+  =================================================== */
+  function sym() { return monedaParaMostrar(CS.empresaConfig?.moneda); }
+  function fmt(amount) {
+    if (amount === null || amount === undefined || isNaN(amount)) return `${sym()} 0.00`;
+    return `${sym()} ${convertirParaMostrar(amount, CS.empresaConfig?.moneda).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+  }
+  function fmtDate(isoDate) {
+    if (!isoDate) return '—';
+    return new Date(isoDate + 'T12:00:00').toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+  }
+  // dd/mm/aaaa — para la "Fecha límite de pago" del comprobante (sin
+  // abreviaturas de mes, que no dejen duda al cliente).
+  function fmtDateNum(isoDate) {
+    if (!isoDate) return '—';
+    const [a, m, d] = String(isoDate).slice(0, 10).split('-');
+    return `${d}/${m}/${a}`;
+  }
+  // Admin = sin perfil activo (dueño) o perfil tipo admin — mismo criterio
+  // que perfilStockCompartido().
+  function esPerfilAdmin() {
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const perfil = raw ? JSON.parse(raw) : null;
+      return !perfil || perfil.tipo === 'admin';
+    } catch (_) { return true; }
+  }
+  // Mismo dato que ya usa auditoria-guard.js -- que perfil de
+  // personal hizo la venta que genera este credito.
+  function obtenerNombrePerfilActivo() {
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const perfil = raw ? JSON.parse(raw) : null;
+      return perfil?.nombre || 'Admin';
+    } catch (_) { return 'Admin'; }
+  }
+
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
+  function setBtnLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    if (loading) {
+      if (!btn.dataset.textoOriginal) btn.dataset.textoOriginal = btn.textContent;
+      btn.textContent = 'Guardando…';
+    } else if (btn.dataset.textoOriginal) {
+      btn.textContent = btn.dataset.textoOriginal;
+    }
+  }
+
+  const LABEL_TIPO_FIN = { sin_interes:'Sin intereses', con_interes:'Con intereses' };
+  const LABEL_ESTADO   = { en_proceso:'En proceso', activo:'Activo', al_dia:'Al día', con_atraso:'Con atraso', cancelado:'Cancelado', refinanciado:'Refinanciado' };
+  const LABEL_FREC     = { diaria:'Diaria', semanal:'Semanal', quincenal:'Quincenal', mensual:'Mensual', bimestral:'Bimestral', trimestral:'Trimestral', anual:'Anual' };
+
+  /* ===================================================
+     NOMBRE DEL NEGOCIO / THEME / SIDEBAR (boilerplate estándar del ERP)
+  =================================================== */
+  function nombreNegocio() {
+    return CS.empresaConfig?.nombre_comercial || CS.empresaConfig?.nombre_negocio ||
+           CS.currentUser?.nombre_negocio || 'Mi negocio';
+  }
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('n360_theme', theme);
+    const sun = document.getElementById('icon-sun'), moon = document.getElementById('icon-moon');
+    if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
+    if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
+  }
+  function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
+
+  let _sidebarCollapsed = false;
+  function isMobileViewport() { return window.matchMedia('(max-width: 768px)').matches; }
+  function toggleSidebar() {
+    if (isMobileViewport()) {
+      const sb = document.getElementById('sidebar'), ov = document.getElementById('sidebar-overlay');
+      const isOpen = sb.classList.toggle('mobile-open');
+      if (ov) ov.classList.toggle('show', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    } else {
+      _sidebarCollapsed = !_sidebarCollapsed;
+      document.getElementById('sidebar').classList.toggle('collapsed', _sidebarCollapsed);
+      document.getElementById('main').classList.toggle('sidebar-collapsed', _sidebarCollapsed);
+    }
+  }
+  function closeMobileSidebar() {
+    const sb = document.getElementById('sidebar'), ov = document.getElementById('sidebar-overlay');
+    sb.classList.remove('mobile-open'); if (ov) ov.classList.remove('show');
+    document.body.style.overflow = '';
+  }
+  function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+  window.addEventListener('resize', () => { if (!isMobileViewport()) closeMobileSidebar(); });
+
+  async function loadEmpresaConfig(userId) {
+    try {
+      const { data } = await _sb.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
+      if (data) {
+        CS.empresaConfig = data;
+        CS.venderSinStockActivo = !!data.vender_sin_stock;
+        const chkVSS = document.getElementById('chk-vender-sin-stock');
+        if (chkVSS) chkVSS.checked = CS.venderSinStockActivo;
+        const logoText = document.getElementById('sidebar-logo-text');
+        if (logoText) logoText.textContent = nombreNegocio();
+        const color = data.color_principal || data.color_primario;
+        if (color) {
+          document.documentElement.style.setProperty('--accent', color);
+          document.documentElement.style.setProperty('--accent-soft', color + '22');
+          document.documentElement.style.setProperty('--border-focus', color);
+        }
+        if (data.logo_principal_url) {
+          const li = document.querySelector('.logo-icon');
+          if (li) li.innerHTML = `<img src="${data.logo_principal_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+        }
+      }
+    } catch(e) { console.warn('loadEmpresaConfig:', e); }
+  }
+  async function loadUserProfile(userId) {
+    try { const { data } = await _sb.from('usuarios').select('*').eq('auth_user_id', userId).maybeSingle(); return data; }
+    catch(e) { return null; }
+  }
+  function renderUserInfo(user, email) {
+    if (!user) return;
+    CS.currentUser = user;
+    const nombre = user.nombre || email?.split('@')[0] || 'Usuario';
+    const apellido = user.apellido || '';
+    const plan = user.plan || 'Gratuito';
+    const initials = ((nombre[0]||'') + (apellido[0]||'')).toUpperCase();
+    document.getElementById('header-name').textContent   = `${nombre} ${apellido}`.trim();
+    document.getElementById('header-biz').textContent    = nombreNegocio();
+    document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
+    document.getElementById('plan-text').textContent     = plan.charAt(0).toUpperCase() + plan.slice(1);
+    const hour = new Date().getHours();
+    const greet = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+    document.getElementById('greeting-text').textContent = `${greet}, ${nombre.split(' ')[0]}`;
+  }
+  async function checkAdminAccess(email) {
+    try {
+      const { data } = await _sb.from('administradores').select('email,activo').eq('email', email).eq('activo', true).maybeSingle();
+      if (data) { const el = document.getElementById('nav-admin'); if (el) el.style.display = 'flex'; }
+    } catch(e) {}
+  }
+
+  /* ===================================================
+     CAJA API (reutiliza cajaAPI.js — nunca duplicar lógica de caja)
+  =================================================== */
+  async function registrarEnCaja(params) {
+    if (!window.CajaAPI || typeof window.CajaAPI.registrarMovimiento !== 'function') {
+      console.error('CajaAPI no disponible');
+      return { ok:false, error:'CajaAPI no disponible' };
+    }
+    return window.CajaAPI.registrarMovimiento(params);
+  }
+
+  /* ===================================================
+     IMPUESTOS.HTML — acumulación por cobro real (no por creación del crédito)
+     Mismo patrón/tabla que usa Ventas (movimientos_impuestos), encadenando
+     saldo_anterior/saldo_resultante. Solo se llama con la porción de impuesto
+     efectivamente cobrada en cada pago de cuota, nunca con el total del crédito.
+  =================================================== */
+  // Suma/resta existencias en el servidor sobre el valor REAL (todo o nada).
+  // items = [{ producto_id, delta } | { combo_id, delta }]  (delta + devuelve, - descuenta)
+  async function ajustarStockCredito(items) {
+    const lista = (items || []).filter(x => x && Number(x.delta) && (x.producto_id || x.combo_id));
+    if (!lista.length) return 0;
+    // Sin reintento automático: si la respuesta se perdiera, repetir podría
+    // descontar dos veces. Si falla, se avisa.
+    const { data, error } = await _sb.rpc('ajustar_stock_relativo', { p_items: lista });
+    if (error) throw error;
+    return data;
+  }
+
+  async function registrarImpuestoCredito(montoImpuesto, credito, impuestoNombre, impuestoId) {
+    if (!montoImpuesto || montoImpuesto <= 0) return;
+    try {
+      const { data: ultMov } = await _sb.from('movimientos_impuestos')
+        .select('saldo_resultante').eq('auth_user_id', CS.userId)
+        .order('created_at', { ascending:false }).limit(1).maybeSingle();
+      const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      const saldoRes = round2(saldoAnt + montoImpuesto);
+      await _sb.from('movimientos_impuestos').insert({
+        auth_user_id: CS.userId, tipo_movimiento: 'IVA_VENTA',
+        concepto: `${impuestoNombre || 'Impuesto'} cobrado en cuota de crédito ${credito.numero_credito}`,
+        monto: montoImpuesto, saldo_anterior: saldoAnt, saldo_resultante: saldoRes,
+        impuesto_id: impuestoId || null, impuesto_nombre: impuestoNombre || null,
+        referencia_venta_id: credito.venta_id || null, fecha: todayISO(),
+      });
+    } catch (e) { console.warn('registrarImpuestoCredito:', e); }
+  }
+
+  /* ===================================================
+     CATÁLOGOS: clientes, productos/servicios, financieros, métodos, impuestos
+  =================================================== */
+  async function loadClientes() {
+    const { data } = await _sb.from('clientes').select('id,nombre,apellido,telefono')
+      .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
+    CS.clientes = data || [];
+    const opts = '<option value="">Selecciona un cliente…</option>' +
+      CS.clientes.map(c => `<option value="${c.id}" data-buscar="${esc(c.telefono||'')}">${esc(c.nombre)} ${esc(c.apellido||'')}</option>`).join('');
+    ['nc-cliente','ce-cliente','rp-cliente'].forEach(id => {
+      const el = document.getElementById(id); if (!el) return;
+      el.innerHTML = opts;
+      // Buscador: se escribe el nombre (o teléfono) y la lista se va filtrando.
+      // El <select> sigue guardando el valor, así que nada más cambia.
+      if (window.N360SelectBuscable) N360SelectBuscable.mejorar(el, { placeholder: 'Escribe el nombre o teléfono del cliente…' });
+    });
+  }
+
+  async function loadProductosYServicios() {
+    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
+      .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+    const todos = data || [];
+    CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
+    // Los "productos financieros" ya no se seleccionan de un catálogo aparte: el usuario
+    // simplemente escribe el nombre en el modal de Nuevo Crédito (ver confirmarNuevoCredito).
+    // Aquí solo se cachean para reutilizar el mismo registro si el usuario repite un nombre.
+    CS.productosFinancieros = todos.filter(p => p.tipo === 'financiero');
+
+    // Combos: se agregan al mismo catálogo (mismo patrón que Ventas y
+    // Proformas) — tipo:'producto' para que las validaciones de stock
+    // ya existentes se apliquen igual, marcados con esCombo:true.
+    try {
+      const { data: combos } = await _sb.from('combos')
+        .select('id,nombre,sku,codigo_barras,precio,costo,tipo_precio,activo')
+        .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
+      if (combos && combos.length) {
+        const comboIds = combos.map(c => c.id);
+        const { data: items } = await _sb.from('combo_items')
+          .select('combo_id, cantidad, productos(stock_actual, costo)').in('combo_id', comboIds);
+        const itemsPorCombo = {};
+        (items||[]).forEach(it => {
+          if (!itemsPorCombo[it.combo_id]) itemsPorCombo[it.combo_id] = [];
+          itemsPorCombo[it.combo_id].push(it);
+        });
+        const combosCache = combos.map(c => {
+          const suyos = itemsPorCombo[c.id] || [];
+          const stockDisponible = suyos.length
+            ? Math.min(...suyos.map(it => Math.floor(Number(it.productos?.stock_actual || 0) / (Number(it.cantidad) || 1))))
+            : 0;
+          const costoActual = suyos.reduce((s, it) => s + Number(it.cantidad||0) * Number(it.productos?.costo || 0), 0);
+          return {
+            id: c.id, nombre: c.nombre, sku: c.sku || c.codigo_barras || '',
+            tipo: 'producto', precio: c.precio, costo: costoActual, tipo_precio: c.tipo_precio,
+            stock_actual: stockDisponible, activo: c.activo, esCombo: true,
+          };
+        });
+        CS.productos = [...CS.productos, ...combosCache];
+      }
+    } catch (eCombo) { console.warn('No se pudieron cargar los combos para Créditos:', eCombo); }
+
+    await loadEscalasDePrecios();
+  }
+
+  // Precios por escala (Detalle/Mayorista/etc.) — mismo patrón que Ventas: los productos
+  // con tipo_precio='escala' no tienen un precio único en `productos.precio` (queda en 0),
+  // el precio real vive en `precios_escala` y el usuario debe elegir cuál usar.
+  async function loadEscalasDePrecios() {
+    CS.escalasPorProducto = {};
+    const idsConEscala = CS.productos.filter(p => p.tipo_precio === 'escala').map(p => p.id);
+    if (!idsConEscala.length) return;
+    const { data } = await _sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .in('producto_id', idsConEscala).order('orden');
+    (data || []).forEach(e => {
+      if (!CS.escalasPorProducto[e.producto_id]) CS.escalasPorProducto[e.producto_id] = [];
+      CS.escalasPorProducto[e.producto_id].push(e);
+    });
+
+    // Escalas de combos (si algún combo tiene tipo_precio='escala', aunque
+    // en Créditos hoy no se usa su precio propio — solo el de sus
+    // componentes — se deja cargado por si se necesita más adelante).
+    const idsCombosConEscala = CS.productos.filter(p => p.esCombo && p.tipo_precio === 'escala').map(p => p.id);
+    if (idsCombosConEscala.length) {
+      try {
+        const { data: comboEscalas } = await _sb.from('combo_precios_escala')
+          .select('id,combo_id,nombre,precio,orden').in('combo_id', idsCombosConEscala).order('orden');
+        (comboEscalas || []).forEach(e => {
+          if (!CS.escalasPorProducto[e.combo_id]) CS.escalasPorProducto[e.combo_id] = [];
+          CS.escalasPorProducto[e.combo_id].push(e);
+        });
+      } catch (eCombo) { /* si falla, no rompe el resto */ }
+    }
+  }
+
+  async function loadMetodosPago() {
+    const { data } = await _sb.from('metodos_pago').select('*').eq('auth_user_id', CS.userId).eq('activo', true).order('orden');
+    CS.metodosPago = data || [];
+    const sel = document.getElementById('rp-metodo');
+    if (sel) sel.innerHTML = CS.metodosPago.map(m => `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('') || '<option value="">Efectivo</option>';
+  }
+
+  async function loadImpuestos() {
+    await asegurarIvaEnCatalogo();
+    const { data } = await _sb.from('impuestos').select('*').eq('auth_user_id', CS.userId).eq('estado', true).order('nombre');
+    CS.impuestos = data || [];
+    renderImpuestosCheck();
+  }
+
+  // El IVA ahora vive dentro del mismo catálogo flexible de impuestos (tabla `impuestos`),
+  // así aparece como una opción más — seleccionable o editable — igual que cualquier
+  // impuesto personalizado. Solo se crea una vez por negocio, la primera vez que hace falta.
+  async function asegurarIvaEnCatalogo() {
+    try {
+      // Catálogo base (IVA + IR) lo garantiza la base de datos, sin duplicados.
+      const { error: eBase } = await _sb.rpc('asegurar_impuestos_base');
+      if (!eBase) return;
+    } catch (e) { /* respaldo abajo */ }
+    try {
+      const { data: existente } = await _sb.from('impuestos').select('id')
+        .eq('auth_user_id', CS.userId).ilike('nombre', 'IVA').limit(1).maybeSingle();
+      if (existente) return;
+      await _sb.from('impuestos').insert({
+        auth_user_id: CS.userId, nombre: 'IVA', categoria: 'iva', tipo_valor: 'porcentaje',
+        valor: Number(CS.empresaConfig?.porcentaje_iva) || 15, estado: true,
+        descripcion: 'Impuesto al Valor Agregado',
+      });
+    } catch (e) { console.warn('asegurarIvaEnCatalogo:', e); }
+  }
+
+  function renderImpuestosCheck() {
+    const wrap = document.getElementById('nc-impuestos-check');
+    if (!wrap) return;
+    // Los de tabla progresiva (como el IR de nómina) no aplican a una
+    // venta puntual — se calculan sobre ingresos totales, no por
+    // transacción, así que no se muestran aquí como opción marcable.
+    const disponibles = CS.impuestos.filter(i => i.tipo_valor !== 'tabla_progresiva');
+    wrap.innerHTML = (disponibles.length
+      ? disponibles.map(i => `
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--text-secondary)">
+            <input type="checkbox" class="nc-impuesto-chk" value="${i.id}" data-valor="${i.valor}" data-tipo="${i.tipo_valor}" data-nombre="${esc(i.nombre)}" style="width:auto" onchange="recalcularCredito()" />
+            ${esc(i.nombre)} (${i.tipo_valor==='porcentaje' ? i.valor+'%' : fmt(i.valor)})
+          </label>`).join('')
+      : '<span style="font-size:12.5px;color:var(--text-muted)">Sin impuestos disponibles.</span>');
+  }
+
+  // Crear un impuesto sin salir del formulario de crédito — se agrega
+  // al mismo catálogo que usa todo el sistema (Ventas, Impuestos,
+  // Salarios), nunca uno aparte.
+  function abrirCrearImpuestoRapido() {
+    const nombre = prompt('Nombre del nuevo impuesto (ej: IR, Retención en la fuente):');
+    if (!nombre || !nombre.trim()) return;
+    const valorStr = prompt(`¿Qué porcentaje aplica "${nombre.trim()}"? (ej: 15)`);
+    const valor = parseFloat(valorStr);
+    if (isNaN(valor) || valor < 0) { showToast('Porcentaje inválido', 'error'); return; }
+    (async () => {
+      try {
+        const { data: existente } = await _sb.from('impuestos').select('id')
+          .eq('auth_user_id', CS.userId).ilike('nombre', nombre.trim()).maybeSingle();
+        if (existente) { showToast('Ya existe un impuesto con ese nombre — lo puedes marcar de la lista', 'error'); return; }
+        const { error } = await _sb.from('impuestos').insert({
+          auth_user_id: CS.userId, nombre: nombre.trim(), categoria: 'otro',
+          tipo_valor: 'porcentaje', valor, estado: true,
+        });
+        if (error) throw error;
+        showToast(`Impuesto "${nombre.trim()}" creado`);
+        const { data } = await _sb.from('impuestos').select('*').eq('auth_user_id', CS.userId).eq('estado', true);
+        CS.impuestos = data || [];
+        renderImpuestosCheck();
+      } catch (e) { showToast('Error al crear el impuesto: ' + (e.message||''), 'error'); }
+    })();
+  }
+  window.abrirCrearImpuestoRapido = abrirCrearImpuestoRapido;
+
+  // Crear un impuesto nuevo sin salir del modal de Nuevo Crédito (igual que el
+  // producto financiero: el usuario lo nombra ahí mismo). También queda disponible
+  // de inmediato en el módulo Impuestos.
+  async function agregarImpuestoInline() {
+    const nombre = document.getElementById('nc-nuevo-impuesto-nombre').value.trim();
+    const tipoValor = document.getElementById('nc-nuevo-impuesto-tipo').value;
+    const valor = parseFloat(document.getElementById('nc-nuevo-impuesto-valor').value) || 0;
+    if (!nombre) { showToast('Escribe el nombre del impuesto', 'error'); return; }
+    if (valor <= 0) { showToast('El valor del impuesto debe ser mayor a cero', 'error'); return; }
+    try {
+      const { data, error } = await _sb.from('impuestos').insert({
+        auth_user_id: CS.userId, nombre, categoria: 'otro', tipo_valor: tipoValor, valor, estado: true,
+      }).select().single();
+      if (error) throw error;
+      CS.impuestos.push(data);
+      renderImpuestosCheck();
+      document.getElementById('nc-nuevo-impuesto-nombre').value = '';
+      document.getElementById('nc-nuevo-impuesto-valor').value = '';
+      // Deja el nuevo impuesto ya seleccionado
+      const chk = wrapQuery(`.nc-impuesto-chk[value="${data.id}"]`);
+      if (chk) chk.checked = true;
+      recalcularCredito();
+      showToast(`Impuesto "${nombre}" creado`, 'success');
+    } catch (e) {
+      console.error('agregarImpuestoInline:', e);
+      showToast('Error al crear el impuesto: ' + (e.message||e), 'error');
+    }
+  }
+  window.agregarImpuestoInline = agregarImpuestoInline;
+  function wrapQuery(sel) { return document.querySelector(sel); }
+
+  /* ===================================================
+     MOTOR DE AMORTIZACIÓN
+     - "simple": interés fijo calculado sobre el capital financiado,
+       repartido en partes iguales entre las cuotas (junto con el capital).
+     - "frances": cuota fija, interés sobre saldo insoluto.
+     Diseñado para poder agregar más métodos sin reescribir el resto.
+  =================================================== */
+  function calcularPrima(monto, tipo, valor) {
+    monto = Number(monto)||0; valor = Number(valor)||0;
+    if (tipo === 'fija') return Math.min(round2(valor), monto);
+    if (tipo === 'porcentual') return round2(monto * valor / 100);
+    return 0;
+  }
+
+  function prorratearFijo(total, numCuotas) {
+    const base = round2(Number(total||0) / numCuotas);
+    const arr = new Array(numCuotas).fill(base);
+    arr[numCuotas-1] = round2(Number(total||0) - base*(numCuotas-1));
+    return arr;
+  }
+
+  // Modalidad "un solo pago a fecha fija": se representa como un crédito de
+  // UNA cuota con la fecha elegida (sin cambios de esquema; todo el resto del
+  // módulo -pagos, agenda, mora, reportes- ya sabe trabajar con 1 cuota).
+  function leerPlanPago() {
+    const fija = document.getElementById('nc-modalidad')?.value === 'fecha_fija';
+    const fecha = document.getElementById('nc-ff-fecha')?.value || '';
+    return { fija, fecha };
+  }
+  function aplicarFechaFija(cuotas, plan) {
+    if (plan.fija && plan.fecha && cuotas.length === 1) cuotas[0].fecha_vencimiento = plan.fecha;
+    return cuotas;
+  }
+  function calcularFechaPreset(valor, base) {
+    const d = new Date((base || todayISO()) + 'T12:00:00');
+    if (/^\d+$/.test(valor)) d.setDate(d.getDate() + parseInt(valor));
+    else if (valor[0] === 'm') d.setMonth(d.getMonth() + parseInt(valor.slice(1)));
+    else if (valor[0] === 'a') d.setFullYear(d.getFullYear() + parseInt(valor.slice(1)));
+    else return null;
+    return ymd(d);
+  }
+  function onPresetFechaFijaChange() {
+    const v = document.getElementById('nc-ff-preset').value;
+    if (v !== 'otra') document.getElementById('nc-ff-fecha').value = calcularFechaPreset(v, document.getElementById('nc-fecha-inicio').value || todayISO());
+    recalcularCredito();
+  }
+  function onFechaFijaManual() { document.getElementById('nc-ff-preset').value = 'otra'; recalcularCredito(); }
+  function onModalidadCreditoChange() {
+    const fija = document.getElementById('nc-modalidad').value === 'fecha_fija';
+    document.getElementById('nc-bloque-fecha-fija').style.display = fija ? '' : 'none';
+    document.getElementById('nc-bloque-cuotas').style.display = fija ? 'none' : '';
+    if (fija) onPresetFechaFijaChange(); else recalcularCredito();
+  }
+  window.onPresetFechaFijaChange = onPresetFechaFijaChange;
+  window.onFechaFijaManual = onFechaFijaManual;
+  window.onModalidadCreditoChange = onModalidadCreditoChange;
+
+  function generarAmortizacion({ capitalFinanciado, tipoFinanciamiento, tasaInteres, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto }) {
+    capitalFinanciado = Number(capitalFinanciado)||0;
+    numCuotas = Math.max(1, parseInt(numCuotas)||1);
+    tasaInteres = Number(tasaInteres)||0;
+    baseImpuesto = baseImpuesto || 'capital'; // 'capital' (créditos por venta) | 'interes' (créditos financieros)
+    impuestosLista = impuestosLista || [];
+
+    // Impuestos de monto fijo (no porcentuales) se prorratean en partes iguales entre
+    // las cuotas, igual que el capital; los porcentuales se calculan cuota por cuota.
+    const fijosPorCuota = {};
+    impuestosLista.forEach(t => { if (t.tipo_valor === 'fijo') fijosPorCuota[t.id || t.nombre] = prorratearFijo(t.valor, numCuotas); });
+
+    function detalleImpuestos(base, indiceCuota) {
+      const detalle = []; let total = 0;
+      impuestosLista.forEach(t => {
+        const key = t.id || t.nombre;
+        const monto = t.tipo_valor === 'fijo' ? fijosPorCuota[key][indiceCuota-1] : round2(base * (Number(t.valor)||0) / 100);
+        if (monto) { detalle.push({ impuesto_id: t.id||null, nombre: t.nombre, tipo_valor: t.tipo_valor, valor: t.valor, monto }); total = round2(total+monto); }
+      });
+      return { detalle, total };
+    }
+
+    const cuotas = [];
+    let totalIntereses = 0;
+
+    if (tipoFinanciamiento === 'sin_interes') {
+      const capitalCuota = round2(capitalFinanciado / numCuotas);
+      let saldo = capitalFinanciado;
+      for (let i = 1; i <= numCuotas; i++) {
+        const esUltima = i === numCuotas;
+        const cap = esUltima ? round2(saldo) : capitalCuota;
+        const { detalle, total: impuesto } = detalleImpuestos(cap, i);
+        saldo = round2(saldo - cap);
+        cuotas.push({
+          numero: i,
+          fecha_vencimiento: sumarFrecuencia(fechaInicio, frecuencia, i),
+          capital: cap, interes: 0, impuesto, impuestos_detalle: detalle,
+          monto_total: round2(cap + impuesto),
+          saldo: saldo,
+        });
+      }
+    } else if (metodo === 'frances') {
+      const tasaPeriodo = tasaInteres / 100;
+      let cuotaFija;
+      if (tasaPeriodo > 0) {
+        cuotaFija = capitalFinanciado * (tasaPeriodo * Math.pow(1+tasaPeriodo, numCuotas)) / (Math.pow(1+tasaPeriodo, numCuotas) - 1);
+      } else {
+        cuotaFija = capitalFinanciado / numCuotas;
+      }
+      let saldo = capitalFinanciado;
+      for (let i = 1; i <= numCuotas; i++) {
+        const interes = round2(saldo * tasaPeriodo);
+        let cap = round2(cuotaFija - interes);
+        const esUltima = i === numCuotas;
+        if (esUltima) cap = round2(saldo);
+        saldo = round2(saldo - cap);
+        totalIntereses += interes;
+        const { detalle, total: impuesto } = detalleImpuestos(baseImpuesto === 'interes' ? interes : cap, i);
+        cuotas.push({
+          numero: i,
+          fecha_vencimiento: sumarFrecuencia(fechaInicio, frecuencia, i),
+          capital: cap, interes, impuesto, impuestos_detalle: detalle,
+          monto_total: round2(cap + interes + impuesto),
+          saldo: saldo,
+        });
+      }
+    } else {
+      // "simple": interés total = capital * tasa (una sola vez), prorrateado en partes iguales
+      totalIntereses = round2(capitalFinanciado * tasaInteres / 100);
+      const interesCuota = round2(totalIntereses / numCuotas);
+      const capitalCuota = round2(capitalFinanciado / numCuotas);
+      let saldo = capitalFinanciado;
+      for (let i = 1; i <= numCuotas; i++) {
+        const esUltima = i === numCuotas;
+        const cap = esUltima ? round2(saldo) : capitalCuota;
+        const interes = esUltima ? round2(totalIntereses - interesCuota*(numCuotas-1)) : interesCuota;
+        const { detalle, total: impuesto } = detalleImpuestos(baseImpuesto === 'interes' ? interes : cap, i);
+        saldo = round2(saldo - cap);
+        cuotas.push({
+          numero: i,
+          fecha_vencimiento: sumarFrecuencia(fechaInicio, frecuencia, i),
+          capital: cap, interes, impuesto, impuestos_detalle: detalle,
+          monto_total: round2(cap + interes + impuesto),
+          saldo: saldo,
+        });
+      }
+    }
+
+    if (tipoFinanciamiento !== 'sin_interes' && metodo !== 'frances') {
+      // ya calculado arriba (rama "simple")
+    } else if (tipoFinanciamiento !== 'sin_interes') {
+      totalIntereses = round2(cuotas.reduce((s,c)=>s+c.interes,0));
+    }
+
+    const totalFinanciado = round2(capitalFinanciado + totalIntereses);
+    const valorCuotaAprox = round2(cuotas.reduce((s,c)=>s+c.monto_total,0) / numCuotas);
+    return { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox };
+  }
+
+  /* ===================================================
+     NUMERACIÓN (RPC dedicada, mismo patrón que ventas)
+  =================================================== */
+  async function generarNumeroCredito() {
+    try {
+      const { data, error } = await _sb.rpc('generar_numero_credito', { p_user_id: CS.userId });
+      if (error) throw error;
+      return data;
+    } catch (e) {
+      console.warn('generarNumeroCredito fallback:', e);
+      return 'CR-' + Date.now().toString().slice(-6);
+    }
+  }
+  async function generarNumeroVenta() {
+    const { data, error } = await _sb.rpc('generar_numero_venta', { p_user_id: CS.userId });
+    if (error) throw error;
+    return data;
+  }
+
+  /* ===================================================
+     HISTORIAL / AUDITORÍA
+  =================================================== */
+  async function registrarHistorial(creditoId, tipoEvento, descripcion, data) {
+    try {
+      await _sb.from('creditos_historial').insert({
+        auth_user_id: CS.userId, credito_id: creditoId,
+        tipo_evento: tipoEvento, descripcion, data: data || {},
+      });
+    } catch (e) { console.warn('registrarHistorial:', e); }
+  }
+
+  /* ===================================================
+     UI: TOGGLES DEL FORMULARIO "NUEVO CRÉDITO"
+  =================================================== */
+  function setTipoCredito(tipo) {
+    document.getElementById('nc-tipo').value = tipo;
+    document.getElementById('tipo-credito-venta-btn').classList.toggle('active', tipo==='venta');
+    document.getElementById('tipo-credito-financiero-btn').classList.toggle('active', tipo==='financiero');
+    document.getElementById('nc-bloque-venta').style.display = tipo==='venta' ? 'block' : 'none';
+    document.getElementById('nc-bloque-financiero').style.display = tipo==='financiero' ? 'block' : 'none';
+    actualizarVisibilidadImpuestosFinanciero();
+    recalcularCredito();
+  }
+  window.setTipoCredito = setTipoCredito;
+
+  function setTipoFinanciamiento(tipo) {
+    document.getElementById('nc-tipo-financiamiento').value = tipo;
+    document.getElementById('nc-sin-interes-btn').classList.toggle('active', tipo==='sin_interes');
+    document.getElementById('nc-con-interes-btn').classList.toggle('active', tipo==='con_interes');
+    document.getElementById('nc-bloque-interes').style.display = tipo==='con_interes' ? 'block' : 'none';
+    actualizarVisibilidadImpuestosFinanciero();
+    recalcularCredito();
+  }
+  window.setTipoFinanciamiento = setTipoFinanciamiento;
+
+  // El impuesto de un crédito financiero solo tiene sentido si hay interés
+  // (se calcula sobre el interés, nunca sobre el capital prestado).
+  function actualizarVisibilidadImpuestosFinanciero() {
+    const tipo = document.getElementById('nc-tipo').value;
+    const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
+    const wrap = document.getElementById('nc-fin-impuestos-wrap');
+    if (!wrap) return;
+    const mostrar = tipo === 'financiero' && tipoFin === 'con_interes';
+    wrap.style.display = mostrar ? 'block' : 'none';
+    if (!mostrar) document.querySelectorAll('.nc-impuesto-chk:checked').forEach(chk => chk.checked = false);
+  }
+
+  function toggleNCPrima() {
+    const tipo = document.getElementById('nc-prima-tipo').value;
+    document.getElementById('nc-prima-valor-wrap').style.display = tipo === 'ninguna' ? 'none' : 'block';
+  }
+  window.toggleNCPrima = toggleNCPrima;
+
+  function buscarProductoCredito(q) {
+    const cont = document.getElementById('nc-producto-resultados');
+    if (!cont) return;
+    const texto = (q || '').trim().toLowerCase();
+    if (!texto) { cont.innerHTML = ''; return; }
+
+    const resultados = CS.productos.filter(p =>
+      (p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto)
+    ).slice(0, 10);
+
+    // Alcance restringido (específicas, solo bodegas o solo sucursales): igual que
+    // Ventas, se muestran SOLO los productos con existencia en las cuentas
+    // permitidas, sumando lo de cada una y diciendo de dónde sale.
+    const alcanceRestringido = CS.stockCompartidoActivo && CS.stockCompartidoAlcance && CS.stockCompartidoAlcance !== 'todas';
+    if (alcanceRestringido) {
+      const porNombre = new Map();
+      CS.productosCacheGrupo.forEach(p => {
+        const clave = (p.nombre||'').trim().toLowerCase();
+        if (p.tipo !== 'producto' || !clave || p.es_materia_prima || p.activo === false) return;
+        const stock = Number(p.stock_actual || 0);
+        if (!(stock > 0)) return;
+        if (!(clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto))) return;
+        const cuenta = CS.cuentasGrupo?.[p.auth_user_id]?.nombre || '';
+        const g = porNombre.get(clave);
+        if (g) { g.stockTotal += stock; if (cuenta && !g.cuentas.includes(cuenta)) g.cuentas.push(cuenta); }
+        else porNombre.set(clave, { ...p, stockTotal: stock, cuentas: cuenta ? [cuenta] : [] });
+      });
+      // Servicios y combos de esta cuenta se siguen ofreciendo (no tienen stock que elegir).
+      const sinStock = CS.productos.filter(p => p.tipo !== 'producto' &&
+        ((p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto))).slice(0, 5);
+      const grupo = [...porNombre.values()].slice(0, 10);
+      if (!grupo.length && !sinStock.length) {
+        cont.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(texto)}" en las cuentas elegidas para Stock Compartido</div>`;
+        return;
+      }
+      cont.innerHTML = grupo.map(p => {
+        const local = CS.productos.find(x => x.tipo === 'producto' && (x.nombre||'').trim().toLowerCase() === (p.nombre||'').trim().toLowerCase());
+        const onclick = local ? `agregarItemCredito('${local.id}')` : `agregarProductoSoloEnGrupoCredito('${esc(p.nombre).replace(/'/g,"\\'")}')`;
+        return `
+      <div class="search-result-item" onclick="${onclick}">
+        <div class="sri-info">
+          <span class="sri-nombre">${esc(p.nombre)}${p.tipo_precio === 'escala' ? ' <span style="font-size:10px;color:var(--accent)">📊 escala</span>' : ''}</span>
+          <span class="sri-meta">Disponible: ${Number(p.stockTotal).toLocaleString('es-NI', { maximumFractionDigits: 2 })}${p.cuentas.length ? ' · 📦 ' + p.cuentas.map(esc).join(' · ') : ''}</span>
+        </div>
+        <span class="sri-costo">${p.tipo_precio === 'escala' ? 'Elegir precio' : fmt((local || p).precio)}</span>
+      </div>`;
+      }).join('') + sinStock.map(p => `
+      <div class="search-result-item" onclick="agregarItemCredito('${p.id}')">
+        <div class="sri-info">
+          <span class="sri-nombre">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}</span>
+          <span class="sri-meta">${p.esCombo ? 'Combo' : 'Servicio'}${p.sku ? ' · SKU: ' + esc(p.sku) : ''}</span>
+        </div>
+        <span class="sri-costo">${p.tipo_precio === 'escala' ? 'Elegir precio' : fmt(p.precio)}</span>
+      </div>`).join('');
+      return;
+    }
+
+    let resultadosGrupo = [];
+    if (CS.stockCompartidoActivo) {
+      const nombresLocales = new Set(CS.productos.map(p => (p.nombre||'').trim().toLowerCase()));
+      const vistos = new Set();
+      resultadosGrupo = CS.productosCacheGrupo.filter(p => {
+        const clave = (p.nombre||'').trim().toLowerCase();
+        if (p.tipo !== 'producto' || !clave || p.es_materia_prima || nombresLocales.has(clave) || vistos.has(clave)) return false;
+        const coincide = clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto);
+        if (coincide) vistos.add(clave);
+        return coincide;
+      }).slice(0, 10 - resultados.length);
+    }
+
+    if (!resultados.length && !resultadosGrupo.length) { cont.innerHTML = `<div class="search-no-results">Sin resultados para "${esc(texto)}"</div>`; return; }
+
+    const htmlLocal = resultados.map(p => {
+      const esEscala = p.tipo_precio === 'escala';
+      return `
+      <div class="search-result-item" onclick="agregarItemCredito('${p.id}')">
+        <div class="sri-info">
+          <span class="sri-nombre">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}${esEscala ? ' <span style="font-size:10px;color:var(--accent)">📊 escala</span>' : ''}</span>
+          <span class="sri-meta">${p.esCombo ? 'Combo' : (p.tipo === 'servicio' ? 'Servicio' : 'Producto')}${p.sku ? ' · SKU: ' + esc(p.sku) : ''}${p.tipo === 'producto' ? ' · Stock: ' + (p.stock_actual || 0) : ''}</span>
+        </div>
+        <span class="sri-costo">${esEscala ? 'Elegir precio' : fmt(p.precio)}</span>
+      </div>`;
+    }).join('');
+
+    const htmlGrupo = resultadosGrupo.map(p => `
+      <div class="search-result-item" onclick="agregarProductoSoloEnGrupoCredito('${esc(p.nombre).replace(/'/g,"\\'")}')">
+        <div class="sri-info">
+          <span class="sri-nombre">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b)">📦 en otra cuenta</span></span>
+          <span class="sri-meta">Producto · Solo en otra sucursal/bodega</span>
+        </div>
+        <span class="sri-costo">${fmt(p.precio)}</span>
+      </div>`).join('');
+
+    cont.innerHTML = htmlLocal + htmlGrupo;
+  }
+  window.buscarProductoCredito = buscarProductoCredito;
+
+  function limpiarBusquedaProductoCredito() {
+    const s = document.getElementById('nc-producto-search'); if (s) s.value = '';
+    const r = document.getElementById('nc-producto-resultados'); if (r) r.innerHTML = '';
+  }
+
+  /* ===================================================
+     STOCK COMPARTIDO — mismo mecanismo ya construido en Ventas.
+     Si está desactivado, ninguna de estas funciones se dispara y el
+     módulo funciona exactamente como antes.
+  =================================================== */
+  // Mismo perfil que usa Ventas para la configuración propia de cada usuario.
+  function perfilStockCompartido() {
+    try {
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const perfil = raw ? JSON.parse(raw) : null;
+      if (!perfil || perfil.tipo === 'admin' || !perfil.id) return { key: 'admin', nombre: perfil?.nombre || 'Admin' };
+      return { key: String(perfil.id), nombre: perfil.nombre || 'este usuario' };
+    } catch (_) { return { key: 'admin', nombre: 'Admin' }; }
+  }
+
+  async function cargarEstadoStockCompartido() {
+    try {
+      // Igual que Ventas: primero la configuración del grupo (activo + alcance)...
+      let activo = false;
+      CS.stockCompartidoAlcance = 'todas'; CS.stockCompartidoSucursalIds = [];
+      try {
+        const { data: cfg, error: errCfg } = await _sb.rpc('obtener_stock_compartido_config');
+        if (errCfg) throw errCfg;
+        const fila = Array.isArray(cfg) ? cfg[0] : cfg;
+        activo = !!fila?.activo;
+        CS.stockCompartidoAlcance = fila?.alcance || 'todas';
+        CS.stockCompartidoSucursalIds = Array.isArray(fila?.sucursal_ids) && fila.sucursal_ids.length
+          ? fila.sucursal_ids.filter(Boolean) : (fila?.sucursal_id ? [fila.sucursal_id] : []);
+      } catch (eCfg) {
+        const { data: activoViejo, error } = await _sb.rpc('obtener_stock_compartido');
+        if (error) throw error;
+        activo = !!activoViejo;
+      }
+      // ...y si este usuario configuró la suya (en Ventas), esa manda. Antes Créditos
+      // no la leía: en Ventas aparecía "¿de dónde sale?" y en Créditos no.
+      try {
+        const { data: propia, error: errPropia } = await _sb.from('stock_compartido_usuario')
+          .select('activo, alcance, sucursal_ids')
+          .eq('auth_user_id', CS.userId).eq('perfil_key', perfilStockCompartido().key).maybeSingle();
+        if (errPropia) throw errPropia;
+        if (propia) {
+          activo = !!propia.activo;
+          CS.stockCompartidoAlcance = propia.alcance || 'todas';
+          CS.stockCompartidoSucursalIds = (propia.sucursal_ids || []).filter(Boolean);
+        }
+      } catch (ePropia) { console.warn('cargarEstadoStockCompartido (creditos), configuración propia:', ePropia); }
+      CS.stockCompartidoActivo = activo;
+
+      const { data: miFila } = await _sb.from('sucursales')
+        .select('id').eq('auth_user_id_sucursal', CS.userId).maybeSingle();
+      CS.miSucursalId = miFila?.id || null;
+
+      // Mismo permiso que Ventas para tocar el interruptor.
+      let puedeConfigurar = true;
+      try {
+        const { data: cfgAdmin } = await _sb.from('configuracion_empresa')
+          .select('permitir_usuarios_config_stock_compartido').eq('auth_user_id', CS.userId).maybeSingle();
+        puedeConfigurar = perfilStockCompartido().key === 'admin' || cfgAdmin?.permitir_usuarios_config_stock_compartido !== false;
+      } catch (_) {}
+      CS.puedeConfigurarStockCompartido = puedeConfigurar;
+
+      const wrap = document.getElementById('stock-compartido-wrap');
+      const chk  = document.getElementById('chk-stock-compartido');
+      if (wrap && CS.miSucursalId) wrap.style.display = 'flex';
+      if (chk) { chk.checked = CS.stockCompartidoActivo; chk.disabled = !puedeConfigurar; }
+      actualizarBotonEditarSCCredito();
+      if (wrap) wrap.title = CS.stockCompartidoAlcance && CS.stockCompartidoAlcance !== 'todas'
+        ? 'Stock Compartido con alcance limitado (se cambia desde Ventas)'
+        : 'Al dar un crédito, elige de cuál sucursal o bodega de tu grupo se descuenta el stock';
+
+      if (CS.stockCompartidoActivo) await cargarProductosGrupoCredito();
+    } catch (e) {
+      console.warn('cargarEstadoStockCompartido (creditos):', e);
+      CS.stockCompartidoActivo = false;
+    }
+  }
+  window.cargarEstadoStockCompartido = cargarEstadoStockCompartido;
+
+  async function cargarProductosGrupoCredito() {
+    try {
+      const sbGrupo = crearClienteGrupo(_sb);
+      const { data, error } = await sbGrupo.from('productos').select('*');
+      if (error) throw error;
+      let productos = data || [];
+      // Igual que Ventas: nombre de cada cuenta del grupo (para decir de dónde
+      // sale el stock) y filtro por el alcance elegido.
+      CS.cuentasGrupo = {};
+      try {
+        const { data: sucs } = await _sb.from('sucursales').select('id, nombre, auth_user_id_sucursal, auth_user_id_central, tipo, es_central');
+        (sucs || []).forEach(x => {
+          const uid = x.auth_user_id_sucursal || x.auth_user_id_central;
+          if (uid) CS.cuentasGrupo[uid] = { sucursalId: x.id, nombre: x.nombre, tipo: x.tipo, esCentral: !!x.es_central };
+        });
+        const alcance = CS.stockCompartidoAlcance || 'todas';
+        if (alcance !== 'todas' && sucs && sucs.length) {
+          const central = sucs[0].auth_user_id_central;
+          let permitidos;
+          if (alcance === 'especifica') {
+            const elegidas = new Set(CS.stockCompartidoSucursalIds || []);
+            permitidos = new Set(sucs.filter(x => elegidas.has(x.id)).map(x => x.auth_user_id_sucursal || x.auth_user_id_central).filter(Boolean));
+          } else {
+            const tipo = alcance === 'bodegas' ? 'bodega' : 'sucursal';
+            permitidos = new Set([central, ...sucs.filter(x => x.tipo === tipo).map(x => x.auth_user_id_sucursal)].filter(Boolean));
+          }
+          productos = productos.filter(p => permitidos.has(p.auth_user_id));
+        }
+      } catch (eSucs) { console.warn('cargarProductosGrupoCredito, alcance:', eSucs); }
+      CS.productosCacheGrupo = productos;
+    } catch (e) {
+      console.warn('cargarProductosGrupoCredito:', e);
+      CS.productosCacheGrupo = [];
+    }
+  }
+
+  async function toggleStockCompartido(activo) {
+    if (CS.puedeConfigurarStockCompartido === false) {
+      const chk = document.getElementById('chk-stock-compartido'); if (chk) chk.checked = CS.stockCompartidoActivo;
+      showToast('Solo el administrador puede configurar Stock Compartido', 'error');
+      return;
+    }
+    // Al ENCENDER, igual que Ventas: primero se pregunta de dónde descontar.
+    if (activo) { abrirModalStockCompartidoCredito(); return; }
+    try {
+      // Igual que Ventas: se guarda la configuración PROPIA de este usuario
+      // (conservando su alcance), así Ventas y Créditos siempre coinciden.
+      const yo = perfilStockCompartido();
+      const alcance = CS.stockCompartidoAlcance || 'todas';
+      const { error } = await _sb.from('stock_compartido_usuario').upsert({
+        auth_user_id: CS.userId, perfil_key: yo.key, perfil_nombre: yo.nombre,
+        activo, alcance, sucursal_ids: alcance === 'especifica' ? (CS.stockCompartidoSucursalIds || []) : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'auth_user_id,perfil_key' });
+      if (error) throw error;
+      CS.stockCompartidoActivo = activo;
+      actualizarBotonEditarSCCredito();
+      if (activo) await cargarProductosGrupoCredito();
+      showToast(activo ? `Stock Compartido activado para ${yo.nombre}` : `Stock Compartido desactivado para ${yo.nombre}`, 'success');
+    } catch (e) {
+      console.error('toggleStockCompartido (creditos):', e);
+      showToast('No se pudo cambiar Stock Compartido', 'error');
+      const chk = document.getElementById('chk-stock-compartido');
+      if (chk) chk.checked = !activo;
+    }
+  }
+  window.toggleStockCompartido = toggleStockCompartido;
+
+  function actualizarBotonEditarSCCredito() {
+    const btn = document.getElementById('sc-btn-editar');
+    if (btn) btn.style.display = (CS.stockCompartidoActivo && CS.miSucursalId && CS.puedeConfigurarStockCompartido !== false) ? 'inline-flex' : 'none';
+  }
+
+  function asegurarModalSCCredito() {
+    if (document.getElementById('modal-sc-credito')) return;
+    const opc = 'display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:13px';
+    const div = document.createElement('div');
+    div.id = 'modal-sc-credito';
+    div.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px';
+    div.innerHTML = `
+      <div style="background:var(--bg-surface,#fff);color:var(--text-primary,#111);border-radius:14px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;font-size:15px">📦 Stock Compartido</span>
+          <button type="button" onclick="cancelarStockCompartidoCredito()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary)">✕</button>
+        </div>
+        <div style="padding:16px 18px">
+          <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 4px">¿De dónde se descuenta el stock al dar un crédito?</p>
+          <p id="scc-para-quien" style="font-size:11.5px;color:var(--text-muted);margin:0 0 12px"></p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="todas" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Todas</strong> — sucursales y bodegas del grupo</span></label>
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="bodegas" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Solo bodegas</strong></span></label>
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="sucursales" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Solo sucursales</strong></span></label>
+            <label style="${opc}"><input type="radio" name="scc-alcance" value="especifica" onchange="onCambiarAlcanceSCCredito()"/><span><strong>Específicas</strong> — elige una o varias</span></label>
+          </div>
+          <div id="scc-wrap-especifica" style="display:none;margin-top:10px">
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Sucursales y bodegas</div>
+            <div id="scc-lista" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+          </div>
+          <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0">Es la misma configuración que en Ventas: si la cambias aquí, también cambia allá.</p>
+          <p id="scc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:8px 0 0"></p>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)">
+          <button type="button" class="btn-ghost" onclick="cancelarStockCompartidoCredito()">Cancelar</button>
+          <button type="button" class="btn-primary" id="scc-btn-guardar" onclick="confirmarStockCompartidoCredito()">Guardar</button>
+        </div>
+      </div>`;
+    div.addEventListener('click', e => { if (e.target === div) cancelarStockCompartidoCredito(); });
+    document.body.appendChild(div);
+  }
+
+  async function abrirModalStockCompartidoCredito() {
+    if (CS.puedeConfigurarStockCompartido === false) { showToast('Solo el administrador puede configurar Stock Compartido', 'error'); return; }
+    asegurarModalSCCredito();
+    document.getElementById('scc-error').textContent = '';
+    document.getElementById('scc-para-quien').textContent = `Solo para ${perfilStockCompartido().nombre} — cada usuario configura la suya.`;
+    const actual = CS.stockCompartidoActivo ? (CS.stockCompartidoAlcance || 'todas') : 'todas';
+    const radio = document.querySelector(`input[name="scc-alcance"][value="${actual}"]`) || document.querySelector('input[name="scc-alcance"][value="todas"]');
+    radio.checked = true;
+    onCambiarAlcanceSCCredito();
+    const cont = document.getElementById('scc-lista');
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted)">Cargando…</div>';
+    document.getElementById('modal-sc-credito').style.display = 'flex';
+    try {
+      const { data } = await _sb.from('sucursales').select('id, nombre, tipo, es_central').eq('activa', true).order('nombre');
+      const marcadas = new Set(CS.stockCompartidoSucursalIds || []);
+      cont.innerHTML = (data || []).length ? data.map(x => `
+        <label style="display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:13px">
+          <input type="checkbox" value="${x.id}" ${marcadas.has(x.id) ? 'checked' : ''}/>
+          <span>${x.tipo === 'bodega' ? '📦' : (x.es_central ? '🏠' : '🏬')} <strong>${esc(x.nombre)}</strong> <span style="color:var(--text-muted);font-size:11.5px">${x.tipo === 'bodega' ? 'Bodega' : (x.es_central ? 'Central' : 'Sucursal')}</span></span>
+        </label>`).join('') : '<div style="font-size:12.5px;color:var(--text-muted)">No hay sucursales/bodegas creadas</div>';
+    } catch (e) {
+      console.warn('abrirModalStockCompartidoCredito:', e);
+      cont.innerHTML = '<div style="font-size:12.5px;color:var(--danger,#dc2626)">No se pudo cargar la lista</div>';
+    }
+  }
+  window.abrirModalStockCompartidoCredito = abrirModalStockCompartidoCredito;
+
+  function onCambiarAlcanceSCCredito() {
+    const v = document.querySelector('input[name="scc-alcance"]:checked')?.value;
+    const w = document.getElementById('scc-wrap-especifica'); if (w) w.style.display = v === 'especifica' ? '' : 'none';
+  }
+  window.onCambiarAlcanceSCCredito = onCambiarAlcanceSCCredito;
+
+  function cancelarStockCompartidoCredito() {
+    const m = document.getElementById('modal-sc-credito'); if (m) m.style.display = 'none';
+    const chk = document.getElementById('chk-stock-compartido'); if (chk) chk.checked = CS.stockCompartidoActivo;
+  }
+  window.cancelarStockCompartidoCredito = cancelarStockCompartidoCredito;
+
+  async function confirmarStockCompartidoCredito() {
+    const errEl = document.getElementById('scc-error'); errEl.textContent = '';
+    const alcance = document.querySelector('input[name="scc-alcance"]:checked')?.value || 'todas';
+    let ids = [];
+    if (alcance === 'especifica') {
+      ids = [...document.querySelectorAll('#scc-lista input[type="checkbox"]:checked')].map(c => c.value);
+      if (!ids.length) { errEl.textContent = 'Elige al menos una sucursal o bodega.'; return; }
+    }
+    const btn = document.getElementById('scc-btn-guardar'); btn.disabled = true;
+    try {
+      const yo = perfilStockCompartido();
+      const { error } = await _sb.from('stock_compartido_usuario').upsert({
+        auth_user_id: CS.userId, perfil_key: yo.key, perfil_nombre: yo.nombre,
+        activo: true, alcance, sucursal_ids: alcance === 'especifica' ? ids : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'auth_user_id,perfil_key' });
+      if (error) throw error;
+      CS.stockCompartidoActivo = true; CS.stockCompartidoAlcance = alcance; CS.stockCompartidoSucursalIds = ids;
+      const chk = document.getElementById('chk-stock-compartido'); if (chk) chk.checked = true;
+      actualizarBotonEditarSCCredito();
+      await cargarProductosGrupoCredito();
+      document.getElementById('modal-sc-credito').style.display = 'none';
+      const etiquetas = { todas: 'todas las sucursales y bodegas', bodegas: 'solo bodegas', sucursales: 'solo sucursales', especifica: ids.length > 1 ? `${ids.length} cuentas específicas` : 'una cuenta específica' };
+      showToast(`Stock Compartido de ${yo.nombre} — ${etiquetas[alcance]}`, 'success');
+    } catch (e) {
+      console.error('confirmarStockCompartidoCredito:', e);
+      errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    } finally { btn.disabled = false; }
+  }
+  window.confirmarStockCompartidoCredito = confirmarStockCompartidoCredito;
+
+  async function toggleVenderSinStock(activo) {
+    try {
+      const { error } = await _sb.from('configuracion_empresa')
+        .update({ vender_sin_stock: activo }).eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      CS.venderSinStockActivo = activo;
+      if (CS.empresaConfig) CS.empresaConfig.vender_sin_stock = activo;
+      showToast(activo ? 'Ahora puedes dar crédito sin stock disponible' : 'Vender sin stock desactivado', 'success');
+    } catch (e) {
+      console.error('toggleVenderSinStock (creditos):', e);
+      showToast('No se pudo cambiar esta opción', 'error');
+      const chk = document.getElementById('chk-vender-sin-stock');
+      if (chk) chk.checked = !activo;
+    }
+  }
+  window.toggleVenderSinStock = toggleVenderSinStock;
+
+  async function abrirSelectorStockOrigen(nombreProducto, callbackContinuar) {
+    try {
+      const { data, error } = await _sb.rpc('stock_grupo_por_nombre', { p_nombre: nombreProducto });
+      if (error) throw error;
+      let opciones = data || [];
+      if (!opciones.length) { callbackContinuar(null); return; }
+
+      // Alcance (igual que Ventas): si se eligieron sucursales/bodegas específicas,
+      // solo se ofrecen esas; si una sola tiene stock, se usa directo.
+      const elegidas = new Set(CS.stockCompartidoSucursalIds || []);
+      if (CS.stockCompartidoAlcance === 'especifica' && elegidas.size) {
+        const conStock = opciones.filter(o => elegidas.has(o.sucursal_id) && Number(o.stock_actual) > 0);
+        if (conStock.length === 1) {
+          const u = conStock[0];
+          callbackContinuar({ sucursalId: u.sucursal_id, stockDisponible: Number(u.stock_actual), nombreCuenta: u.nombre_cuenta, esLocal: u.sucursal_id === CS.miSucursalId });
+          return;
+        }
+        if (!conStock.length) {
+          showToast(`Sin stock de "${nombreProducto}" en ${elegidas.size > 1 ? 'las cuentas elegidas' : 'la cuenta elegida'} para Stock Compartido`, 'error');
+          callbackContinuar(null);
+          return;
+        }
+        opciones = conStock;
+      }
+      if (CS.stockCompartidoAlcance === 'bodegas' || CS.stockCompartidoAlcance === 'sucursales') {
+        const tipoPermitido = CS.stockCompartidoAlcance === 'bodegas' ? 'bodega' : 'sucursal';
+        opciones = opciones.filter(o => o.es_central || o.tipo_cuenta === tipoPermitido);
+        if (!opciones.length) { callbackContinuar(null); return; }
+      }
+
+      CS.stockOrigenPendiente = { callback: callbackContinuar };
+      document.getElementById('stock-origen-title').textContent = nombreProducto;
+      document.getElementById('stock-origen-lista').innerHTML = opciones.map((o, i) => `
+        <label class="esc-precio-opcion" style="${o.stock_actual<=0 ? 'opacity:.5' : ''}">
+          <input type="radio" name="stock-origen-radio" value="${o.sucursal_id}"
+                 data-stock="${o.stock_actual}" data-nombre="${esc(o.nombre_cuenta)}"
+                 ${i===0 ? 'checked' : ''} ${o.stock_actual<=0 ? 'disabled' : ''}/>
+          <span class="esc-precio-nombre">${o.tipo_cuenta==='bodega'?'📦':(o.es_central?'🏠':'🏬')} ${esc(o.nombre_cuenta)}</span>
+          <span class="esc-precio-valor">${Number(o.stock_actual||0).toLocaleString('es-NI',{maximumFractionDigits:2})} disp.</span>
+        </label>
+      `).join('');
+      openModal('modal-stock-origen');
+    } catch (e) {
+      console.error('abrirSelectorStockOrigen (creditos):', e);
+      showToast('No se pudo consultar el stock del grupo', 'error');
+      callbackContinuar(null);
+    }
+  }
+
+  function confirmarSeleccionStockOrigen() {
+    const pend = CS.stockOrigenPendiente;
+    if (!pend) return;
+    const radio = document.querySelector('input[name="stock-origen-radio"]:checked');
+    if (!radio) { showToast('Elige de dónde sacar el stock', 'error'); return; }
+    const stockDisp = parseFloat(radio.dataset.stock || 0);
+    if (stockDisp <= 0) { showToast('Esa cuenta no tiene stock disponible de este producto', 'error'); return; }
+
+    const origen = {
+      sucursalId: radio.value, stockDisponible: stockDisp,
+      nombreCuenta: radio.dataset.nombre, esLocal: radio.value === CS.miSucursalId,
+    };
+    closeModal('modal-stock-origen');
+    CS.stockOrigenPendiente = null;
+    pend.callback(origen);
+  }
+  window.confirmarSeleccionStockOrigen = confirmarSeleccionStockOrigen;
+
+  function cerrarSelectorStockOrigen() {
+    const pend = CS.stockOrigenPendiente;
+    closeModal('modal-stock-origen');
+    CS.stockOrigenPendiente = null;
+    if (pend) pend.callback(null);
+  }
+  window.cerrarSelectorStockOrigen = cerrarSelectorStockOrigen;
+
+  // Un producto que solo existe en OTRA cuenta del grupo — se salta
+  // directo al selector de origen (no hay fila local que buscar).
+  function agregarProductoSoloEnGrupoCredito(nombreProducto) {
+    abrirSelectorStockOrigen(nombreProducto, async (origen) => {
+      if (!origen || origen.esLocal) return;
+      const refGrupo = CS.productosCacheGrupo.find(p => (p.nombre||'').trim().toLowerCase() === nombreProducto.trim().toLowerCase());
+      if (!refGrupo) { showToast('No se pudo encontrar ese producto', 'error'); return; }
+
+      CS.origenStockElegido = origen;
+      const prodTemporal = {
+        id: refGrupo.id, nombre: refGrupo.nombre, sku: refGrupo.sku,
+        tipo: 'producto', tipo_precio: refGrupo.tipo_precio || 'fijo',
+        precio: refGrupo.precio, costo: refGrupo.costo, stock_actual: origen.stockDisponible,
+      };
+      const yaEstaEnCache = CS.productos.some(p => p.id === prodTemporal.id);
+      if (!yaEstaEnCache) CS.productos.push(prodTemporal);
+
+      if (prodTemporal.tipo_precio === 'escala') {
+        // Traer las escalas del producto remoto — antes se quedaban
+        // vacías porque solo se cacheaban las de esta misma cuenta.
+        if (!CS.escalasPorProducto[refGrupo.id]) {
+          try {
+            const sbGrupo = crearClienteGrupo(_sb);
+            const { data } = await sbGrupo.from('precios_escala').select('*');
+            CS.escalasPorProducto[refGrupo.id] = (data || []).filter(e => e.producto_id === refGrupo.id);
+          } catch (e) {
+            console.warn('No se pudieron cargar las escalas remotas:', e);
+            CS.escalasPorProducto[refGrupo.id] = [];
+          }
+        }
+        abrirSelectorEscalaCredito(prodTemporal.id, 1);
+      } else {
+        agregarItemCreditoConPrecio(prodTemporal, 1, null);
+      }
+      limpiarBusquedaProductoCredito();
+    });
+  }
+  window.agregarProductoSoloEnGrupoCredito = agregarProductoSoloEnGrupoCredito;
+
+  function agregarItemCredito(prodId) {
+    const prod = CS.productos.find(p => p.id === prodId);
+    if (!prod) return;
+
+    const continuarNormal = () => {
+      // Si es escala de precios, SIEMPRE se pregunta qué precio usar —
+      // nunca se asume el que se eligió antes (igual que en Ventas).
+      if (prod.tipo_precio === 'escala') {
+        abrirSelectorEscalaCredito(prodId, 1);
+        limpiarBusquedaProductoCredito();
+        return;
+      }
+      agregarItemCreditoConPrecio(prod, 1, null);
+      limpiarBusquedaProductoCredito();
+    };
+
+    // Stock Compartido activo: se pregunta primero de cuál sucursal/
+    // bodega del grupo se va a descontar — si está desactivado, nunca
+    // se ejecuta este bloque.
+    if (CS.stockCompartidoActivo && prod.tipo === 'producto') {
+      abrirSelectorStockOrigen(prod.nombre, (origen) => {
+        if (!origen) return;
+        CS.origenStockElegido = origen;
+        continuarNormal();
+      });
+      return;
+    }
+
+    if (prod.tipo === 'producto' && Number(prod.stock_actual || 0) <= 0 && !CS.venderSinStockActivo) {
+      showToast(`"${prod.nombre}" no tiene stock disponible`, 'error'); return;
+    }
+
+    CS.origenStockElegido = null;
+    continuarNormal();
+  }
+  window.agregarItemCredito = agregarItemCredito;
+
+  function agregarItemCreditoConPrecio(prod, cantidad, escalaElegida) {
+    const origen = CS.origenStockElegido; CS.origenStockElegido = null;
+    const esRemoto = !!(origen && !origen.esLocal);
+
+    const precioUsar = escalaElegida ? Number(escalaElegida.precio||0) : Number(prod.precio||0);
+    // Si el stock sale de OTRA cuenta del grupo (Stock Compartido), lo disponible
+    // es lo de esa cuenta, no lo de esta (igual que en Ventas).
+    const stockReal = esRemoto ? Number(origen.stockDisponible || 0) : Number(prod.stock_actual || 0);
+    const existente = CS.ncItems.find(i => i.producto_id === prod.id && (i.escala_id || null) === (escalaElegida?.id || null) && (i.origen_stock_id || null) === (esRemoto ? origen.sucursalId : null));
+    if (existente) {
+      existente.cantidad += cantidad; existente.cantidad_pedida = null; existente.unidad_pedida = null;
+      if (prod.tipo === 'producto' && existente.cantidad > stockReal) existente.sinStock = true;
+    }
+    else CS.ncItems.push({
+      producto_id: prod.id, nombre: prod.nombre, sku: prod.sku || null, tipo_item: prod.tipo,
+      precio: precioUsar, costo: Number(prod.costo)||0, cantidad,
+      escala_id: escalaElegida ? escalaElegida.id : null,
+      escala_nombre: escalaElegida ? escalaElegida.nombre : null,
+      esCombo: !!prod.esCombo,
+      unidadCodigo: prod.unidad_codigo || null,
+      contenidoCantidad: Number(prod.contenido_cantidad) > 0 ? Number(prod.contenido_cantidad) : null,
+      contenidoUnidadCodigo: prod.contenido_unidad_codigo || null,
+      sinStock: prod.tipo === 'producto' && cantidad > stockReal,
+      stock_disponible: prod.tipo === 'producto' ? stockReal : null,
+      origen_stock_id:     esRemoto ? origen.sucursalId   : null,
+      origen_stock_nombre: esRemoto ? origen.nombreCuenta : null,
+    });
+    renderNCItems();
+    recalcularCredito();
+  }
+
+  // Cambiar la cantidad directo en la tabla de ítems ya agregados (antes
+  // se fijaba solo al agregar; ahora que se agrega de a 1 con un clic,
+  // esto es lo que reemplaza al campo "Cantidad" que tenía el selector).
+  // Ajustar el precio de una línea SOLO para este crédito — nunca
+  // cambia el precio ni la escala real del producto en Productos/Servicios.
+  function actualizarPrecioItemCredito(idx, valor) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    const n = parseFloat(valor);
+    if (isNaN(n) || n < 0) { renderNCItems(); return; }
+    it.precio = round2(n);
+    it.precio_editado = true;
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.actualizarPrecioItemCredito = actualizarPrecioItemCredito;
+
+  // Mismo patron exacto que actualizarPrecioItemCredito -- ajusta el
+  // costo SOLO para este credito, nunca el costo real guardado en
+  // Productos/Servicios.
+  function actualizarCostoItemCredito(idx, valor) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    const n = parseFloat(valor);
+    if (isNaN(n) || n < 0) { renderNCItems(); return; }
+    it.costo = round2(n);
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.actualizarCostoItemCredito = actualizarCostoItemCredito;
+
+  // Mismo mecanismo exacto ya probado en Ventas y Proformas -- precio
+  // a C$0, restaurable, sin tocar como se descuenta el stock.
+  function alternarRegaliaCredito(idx) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    if (it.esRegalia) {
+      it.esRegalia = false;
+      it.precio = it.precioAntesRegalia != null ? it.precioAntesRegalia : it.precio;
+      it.precioAntesRegalia = undefined;
+    } else {
+      it.precioAntesRegalia = it.precio;
+      it.esRegalia = true;
+      it.precio = 0;
+    }
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.alternarRegaliaCredito = alternarRegaliaCredito;
+
+  function actualizarCantidadItemCredito(idx, valor, opciones) {
+    const it = CS.ncItems[idx];
+    if (!it) return;
+    let n = parseFloat(valor);
+    if (isNaN(n) || n <= 0) n = 1;
+    if (permiteFraccionItemCredito(it) === false && !Number.isInteger(n)) {
+      showToast(`"${it.nombre}" se vende en unidades enteras. Escribe un número entero.`, 'error');
+      renderNCItems();
+      return;
+    }
+    if (!it.esCombo) {
+      const prod = CS.productos.find(p => p.id === it.producto_id);
+      const disponible = it.stock_disponible != null ? Number(it.stock_disponible) : Number(prod?.stock_actual||0);
+      if (prod && prod.tipo === 'producto' && n > disponible) {
+        if (!CS.venderSinStockActivo) {
+          showToast(`Stock insuficiente (disponible: ${disponible})`, 'error');
+          n = disponible || 1;
+        } else {
+          it.sinStock = true; // se vendió por encima de lo disponible — queda marcado
+        }
+      }
+    }
+    n = Math.round(n * 1000000) / 1000000;
+    it.cantidad = n;
+    if (opciones && opciones.pedida > 0 && it.contenidoUnidadCodigo) { it.cantidad_pedida = opciones.pedida; it.unidad_pedida = it.contenidoUnidadCodigo; }
+    else { it.cantidad_pedida = null; it.unidad_pedida = null; }
+    renderNCItems();
+    recalcularCredito();
+  }
+  window.actualizarCantidadItemCredito = actualizarCantidadItemCredito;
+
+  // Fracción escrita (1/4, 3/4, 1 1/2, 1/2/2…) y "pedir en otra unidad" (100 m de un rollo de 300 m).
+  function cantidadPorFraccionCredito(idx, texto) {
+    if (!String(texto || '').trim()) return;
+    const n = window.N360Cant ? window.N360Cant.parse(texto) : null;
+    if (n == null) { showToast('No entendí esa cantidad. Prueba con 1/4, 3/4, 1 1/2 o un decimal.', 'error'); return; }
+    actualizarCantidadItemCredito(idx, n);
+  }
+  function cantidadPorPedidoCredito(idx, val) {
+    const it = CS.ncItems[idx];
+    const pedido = parseFloat(String(val).replace(',', '.'));
+    if (!it || !(pedido > 0) || !(it.contenidoCantidad > 0)) return;
+    const n = window.N360Cant ? window.N360Cant.desdePedido(pedido, it.contenidoCantidad) : null;
+    if (n == null) return;
+    actualizarCantidadItemCredito(idx, n, { pedida: pedido });
+  }
+  window.cantidadPorFraccionCredito = cantidadPorFraccionCredito;
+  window.cantidadPorPedidoCredito = cantidadPorPedidoCredito;
+  // ¿Se puede fraccionar este producto? Misma regla que Ventas y Proformas:
+  //   true  = vendible por partes (se muestran ¼ ½ ¾, fracción escrita, etc.)
+  //   false = solo unidades enteras (se rechaza 0.5, 1/4…)
+  //   null  = sin definir (productos antiguos): no se muestran atajos de fracción,
+  //           pero se sigue aceptando escribir decimales, como siempre.
+  function permiteFraccionItemCredito(it) {
+    if (!it || it.esCombo) return null;
+    const prod = (CS.productos || []).find(p => p.id === it.producto_id);
+    if (!prod) return null;
+    return (prod.permite_fraccion === true || prod.permite_fraccion === false) ? prod.permite_fraccion : null;
+  }
+  function abrevUnidadCred(codigo) { return (!codigo || codigo === 'unidad') ? '' : (window.N360Unidades?.porCodigo(codigo)?.abreviatura || ''); }
+  function controlesCantidadCreditoHTML(it, idx) {
+    if (it.esCombo || it.tipo_item !== 'producto') return '';
+    if (permiteFraccionItemCredito(it) !== true) return ''; // solo productos que se venden por partes
+    const st = 'font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--bg-app);color:var(--text-primary)';
+    const ab = abrevUnidadCred(it.contenidoUnidadCodigo);
+    const ped = (it.cantidad_pedida > 0 && it.unidad_pedida)
+      ? `<div style="font-size:10.5px;color:var(--accent);margin-top:3px">✔ ${it.cantidad_pedida} ${esc(abrevUnidadCred(it.unidad_pedida))} = ${window.N360Cant ? window.N360Cant.bonito(it.cantidad) : it.cantidad}</div>` : '';
+    return `<div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
+        ${[0.25, 0.5, 0.75].map(v => `<button type="button" onclick="actualizarCantidadItemCredito(${idx}, ${v})" style="padding:1px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg-hover,#f0f0f5);color:var(--text-secondary);cursor:pointer">${window.N360Cant ? window.N360Cant.bonito(v) : v}</button>`).join('')}
+      </div>
+      <input type="text" placeholder="Fracción: 1/4" title="1/4, 3/4, 1 1/2, 1/2/2…" onchange="cantidadPorFraccionCredito(${idx}, this.value); this.value=''" style="margin-top:4px;width:84px;${st}"/>
+      ${it.contenidoCantidad > 0 ? `<input type="number" min="0" step="any" placeholder="Pedir en ${esc(ab || 'unidad menor')}" onchange="cantidadPorPedidoCredito(${idx}, this.value); this.value=''" style="margin-top:4px;width:96px;${st}"/>` : ''}
+      ${ped}`;
+  }
+
+  /* ===================================================
+     SELECTOR DE ESCALA DE PRECIOS (crédito por venta)
+     Se muestra únicamente cuando el producto tiene tipo_precio='escala';
+     antes esos productos quedaban en C$0.00 porque su precio no vive en
+     productos.precio sino en precios_escala. Mismo patrón que Ventas.
+  =================================================== */
+  function abrirSelectorEscalaCredito(productoId, cantidad) {
+    const prod = CS.productos.find(p => p.id === productoId);
+    const escalas = CS.escalasPorProducto[productoId] || [];
+    if (!prod || !escalas.length) {
+      showToast('Este producto no tiene precios de escala configurados', 'error');
+      return;
+    }
+    CS.escalaPendiente = { productoId, cantidad };
+    document.getElementById('esc-precio-title').textContent = prod.nombre;
+    document.getElementById('esc-precio-lista').innerHTML = escalas.map((e, i) => `
+      <label class="esc-precio-opcion">
+        <input type="radio" name="esc-precio-radio-credito" value="${e.id}" ${i===0 ? 'checked' : ''} />
+        <span class="esc-precio-nombre">${esc(e.nombre)}</span>
+        <span class="esc-precio-valor">${fmt(e.precio)}</span>
+      </label>`).join('');
+    openModal('modal-escala-precio-credito');
+  }
+  window.abrirSelectorEscalaCredito = abrirSelectorEscalaCredito;
+
+  function confirmarSeleccionEscalaCredito() {
+    const pend = CS.escalaPendiente;
+    if (!pend) return;
+    const radio = document.querySelector('input[name="esc-precio-radio-credito"]:checked');
+    if (!radio) { showToast('Selecciona un precio', 'error'); return; }
+    const escalas = CS.escalasPorProducto[pend.productoId] || [];
+    const escalaElegida = escalas.find(e => e.id === radio.value);
+    const prod = CS.productos.find(p => p.id === pend.productoId);
+    if (!escalaElegida || !prod) return;
+    agregarItemCreditoConPrecio(prod, pend.cantidad, escalaElegida);
+    closeModal('modal-escala-precio-credito');
+    CS.escalaPendiente = null;
+  }
+  window.confirmarSeleccionEscalaCredito = confirmarSeleccionEscalaCredito;
+
+  function cerrarSelectorEscalaCredito() {
+    closeModal('modal-escala-precio-credito');
+    CS.escalaPendiente = null;
+  }
+  window.cerrarSelectorEscalaCredito = cerrarSelectorEscalaCredito;
+
+  function quitarItemCredito(idx) { CS.ncItems.splice(idx,1); renderNCItems(); recalcularCredito(); }
+  window.quitarItemCredito = quitarItemCredito;
+
+  function renderNCItems() {
+    const tbody = document.getElementById('nc-items-tbody');
+    if (!CS.ncItems.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">Sin ítems agregados</td></tr>'; return; }
+    tbody.innerHTML = CS.ncItems.map((it, idx) => `
+      <tr>
+        <td>${esc(it.nombre)}${it.origen_stock_nombre ? `<div style="font-size:11px;color:var(--accent-3,#e08e0b);font-weight:600">📦 Stock de: ${esc(it.origen_stock_nombre)}</div>` : ''}${it.esCombo ? `<div style="font-size:11px;color:var(--accent-4,var(--accent));font-weight:600">📦 Combo</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}${it.esRegalia ? `<div style="font-size:11px;color:#d6336c;font-weight:600">🎀 Regalía</div>` : ''}${it.precio_editado ? `<div style="font-size:10px;color:var(--text-muted)">✏️ Precio ajustado</div>` : ''}${it.sinStock ? `<div style="font-size:10px;color:#e08e0b;font-weight:600" title="No hay existencias registradas ahora mismo, pero se puede vender igual">⚠️ Sin stock (se puede vender)</div>` : ''}</td>
+        <td><input type="number" value="${it.cantidad}" min="${permiteFraccionItemCredito(it) === false ? 1 : 0.001}" step="${permiteFraccionItemCredito(it) === false ? 1 : 'any'}"
+              style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary)"
+              onchange="actualizarCantidadItemCredito(${idx}, this.value)"/>${controlesCantidadCreditoHTML(it, idx)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" value="${it.precio}" min="0" step="0.01"
+                  title="Ajustar el precio solo para este crédito"
+                  style="width:78px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
+                  onchange="actualizarPrecioItemCredito(${idx}, this.value)"/>
+            <button type="button" onclick="alternarRegaliaCredito(${idx})" title="${it.esRegalia?'Quitar regalía':'Marcar como regalía (precio C$0)'}" style="flex-shrink:0;width:24px;height:24px;border-radius:6px;border:1px solid ${it.esRegalia?'#d6336c':'var(--border)'};background:${it.esRegalia?'#d6336c22':'var(--bg-app)'};cursor:pointer;font-size:12px">🎀</button>
+          </div>
+        </td>
+        <td><input type="number" value="${it.costo||0}" min="0" step="0.01"
+              title="Ajustar el costo solo para este crédito"
+              style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-mono)"
+              onchange="actualizarCostoItemCredito(${idx}, this.value)"/></td>
+        <td>${fmt(round2(it.precio * it.cantidad))}</td>
+        <td><button class="btn-ghost" style="padding:3px 8px" onclick="quitarItemCredito(${idx})">✕</button></td>
+      </tr>`).join('');
+  }
+
+  /* ===================================================
+     RECALCULAR CRÉDITO (preview en vivo)
+  =================================================== */
+  function calcularMontoOriginal() {
+    const tipo = document.getElementById('nc-tipo').value;
+    if (tipo === 'venta') {
+      return round2(CS.ncItems.reduce((s,i)=>s + i.precio*i.cantidad, 0));
+    }
+    return parseFloat(document.getElementById('nc-monto-financiero').value) || 0;
+  }
+
+  function obtenerImpuestosSeleccionados() {
+    const tipo = document.getElementById('nc-tipo').value;
+    if (tipo === 'venta') {
+      const ivaActivo = document.getElementById('nc-iva-activo')?.checked;
+      if (!ivaActivo) return [];
+      const ivaCatalogo = CS.impuestos.find(i => (i.nombre||'').toLowerCase() === 'iva');
+      return [{ id: ivaCatalogo?.id || null, nombre: 'IVA', tipo_valor: 'porcentaje', valor: Number(CS.empresaConfig?.porcentaje_iva || 15) }];
+    }
+    // financiero: el impuesto solo aplica sobre el interés, y solo si hay interés
+    const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
+    if (tipoFin !== 'con_interes') return [];
+    const seleccionados = [];
+    document.querySelectorAll('.nc-impuesto-chk:checked').forEach(chk => {
+      seleccionados.push({ id: chk.value, nombre: chk.dataset.nombre, tipo_valor: chk.dataset.tipo, valor: Number(chk.dataset.valor)||0 });
+    });
+    return seleccionados;
+  }
+
+  function baseImpuestoActual() {
+    return document.getElementById('nc-tipo').value === 'financiero' ? 'interes' : 'capital';
+  }
+
+  function recalcularCredito() {
+    const montoOriginal = calcularMontoOriginal();
+    document.getElementById('nc-monto-original').textContent = fmt(montoOriginal);
+
+    if (document.getElementById('nc-tipo').value === 'venta') {
+      const ivaPct = document.getElementById('nc-iva-activo')?.checked ? Number(CS.empresaConfig?.porcentaje_iva||15) : 0;
+      document.getElementById('nc-subtotal').textContent = fmt(montoOriginal);
+      document.getElementById('nc-iva-monto').textContent = fmt(montoOriginal * ivaPct/100);
+    }
+
+    const primaTipo = document.getElementById('nc-prima-tipo').value;
+    const primaValor = parseFloat(document.getElementById('nc-prima-valor').value) || 0;
+    const primaMonto = calcularPrima(montoOriginal, primaTipo, primaValor);
+    const capitalFinanciado = round2(montoOriginal - primaMonto);
+    document.getElementById('nc-capital-financiado').textContent = fmt(capitalFinanciado);
+
+    const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
+    const tasa = parseFloat(document.getElementById('nc-tasa-interes').value) || 0;
+    const metodo = document.getElementById('nc-metodo-amortizacion').value;
+    const frecuencia = document.getElementById('nc-frecuencia').value;
+    const plan = leerPlanPago();
+    const numCuotas = plan.fija ? 1 : (parseInt(document.getElementById('nc-num-cuotas').value) || 1);
+    const fechaInicio = document.getElementById('nc-fecha-inicio').value || todayISO();
+    const impuestosLista = obtenerImpuestosSeleccionados();
+
+    const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
+      capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto: baseImpuestoActual(),
+    });
+    aplicarFechaFija(cuotas, plan);
+    CS.ncAmortizacionPreview = cuotas;
+    document.getElementById('nc-total-intereses').textContent = fmt(totalIntereses);
+    document.getElementById('nc-total-financiado').textContent = fmt(totalFinanciado);
+    document.getElementById('nc-valor-cuota').textContent = fmt(valorCuotaAprox);
+  }
+  window.recalcularCredito = recalcularCredito;
+
+  function previsualizarAmortizacion() {
+    recalcularCredito();
+    const wrap = document.getElementById('nc-amortizacion-wrap');
+    const tbody = document.getElementById('nc-amortizacion-tbody');
+    tbody.innerHTML = CS.ncAmortizacionPreview.map(c => `
+      <tr>
+        <td>${c.numero}</td><td>${fmtDate(c.fecha_vencimiento)}</td>
+        <td>${fmt(c.capital)}</td><td>${fmt(c.interes)}</td><td>${fmt(c.impuesto)}</td>
+        <td>${fmt(c.monto_total)}</td><td>${fmt(c.saldo)}</td>
+      </tr>`).join('');
+    wrap.style.display = 'block';
+  }
+  window.previsualizarAmortizacion = previsualizarAmortizacion;
+
+  /* ===================================================
+     ABRIR MODALES
+  =================================================== */
+  /* ===================================================
+     EDITAR PRODUCTOS DE UN CRÉDITO (solo antes de cualquier pago)
+     Reutiliza el MISMO modal de "Nuevo crédito" (mismo buscador de
+     productos, misma lista) -- solo cambia qué pasa al guardar.
+     Para las cuotas, en vez de duplicar esa lógica, se reutiliza el
+     flujo de "Renegociar saldo restante" que ya existe y ya maneja
+     bien los casos raros (cuotas pagadas, carrera con un pago, etc).
+  =================================================== */
+  let EDITANDO_PRODUCTOS_CREDITO_ID = null;
+
+  // El botón del modal compartido llama a esto -- decide si crea un
+  // crédito nuevo o guarda los cambios de uno existente.
+  function guardarCredito() {
+    if (EDITANDO_PRODUCTOS_CREDITO_ID) confirmarEditarProductosCredito();
+    else confirmarNuevoCredito();
+  }
+  window.guardarCredito = guardarCredito;
+
+  async function abrirEditarProductosCredito(creditoId) {
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+    if (!credito) { showToast('Crédito no encontrado', 'error'); return; }
+    if (Number(credito.saldo_pendiente) <= 0) {
+      showToast('Este crédito ya está totalmente pagado, no queda nada que editar', 'error');
+      return;
+    }
+    const { data: detalles } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id).order('created_at');
+
+    EDITANDO_PRODUCTOS_CREDITO_ID = creditoId;
+    CS.ncItems = (detalles||[]).map(d => ({
+      producto_id: d.combo_id || d.producto_id, nombre: d.producto_nombre, tipo_item: d.tipo_item,
+      precio: Number(d.precio)||0, costo: Number(d.costo)||0, cantidad: Number(d.cantidad)||1,
+      escala_id: d.escala_id || null, escala_nombre: d.escala_nombre || null,
+      esCombo: !!d.combo_id, origen_stock_id: null, origen_stock_nombre: null,
+    }));
+    renderNCItems();
+    document.getElementById('nc-cliente').value = credito.cliente_id;
+    document.getElementById('nc-observaciones').value = credito.observaciones || '';
+    setTipoCredito('venta');
+    const selTipo = document.getElementById('nc-tipo');
+    if (selTipo) selTipo.disabled = true; // editando productos no se cambia si era venta o financiero
+    document.getElementById('nc-modal-titulo').textContent = `Editar productos — ${credito.numero_credito}`;
+    document.getElementById('btn-crear-credito').textContent = 'Guardar cambios';
+    recalcularCredito();
+    closeModal('modal-detalle-credito');
+    openModal('modal-nuevo-credito');
+  }
+  window.abrirEditarProductosCredito = abrirEditarProductosCredito;
+
+
+  // Devoluciones (Ventas): una venta con devoluciones ya no se anula ni se cambia desde aquí.
+  // Devuelve un mensaje si no se puede seguir, o null. Se revisa ANTES de tocar inventario o Caja.
+  async function bloqueoDevolucionesVenta(cli, ventaId) {
+    if (!ventaId) return null;
+    try {
+      const r = await cli.from('devoluciones_venta').select('id', { count: 'exact', head: true }).eq('venta_id', ventaId);
+      if (r.error) return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.';
+      return (r.count || 0) > 0 ? 'La venta de esto tiene devoluciones registradas (Ventas › Devolución): ya no se puede anular ni cambiar desde aquí.' : null;
+    } catch (_) { return 'No se pudo comprobar si la venta tiene devoluciones. Revisa tu conexión e intenta de nuevo.'; }
+  }
+
+  async function confirmarEditarProductosCredito() {
+    const creditoId = EDITANDO_PRODUCTOS_CREDITO_ID;
+    if (!CS.ncItems.length) { showToast('Agrega al menos un producto o servicio', 'error'); return; }
+
+    const btn = document.getElementById('btn-crear-credito');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+      if (!credito) throw new Error('Crédito no encontrado');
+      if (Number(credito.saldo_pendiente) <= 0) throw new Error('Este crédito ya está totalmente pagado');
+      { const bloqDev = await bloqueoDevolucionesVenta(_sb, credito.venta_id); if (bloqDev) throw new Error(bloqDev); }
+
+      const { data: detallesViejos } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id);
+
+      // Devolver al inventario lo que tenía la venta ANTES de editar
+      // (productos normales y componentes de combos), luego descontar
+      // lo que corresponde a la lista NUEVA -- así el stock siempre
+      // queda igual de exacto que si se hubiera vendido así desde el
+      // principio, sin importar cuántas veces se edite.
+      // Devolver y descontar en UNA sola operación del servidor, sumando y
+      // restando sobre la existencia REAL (nunca con un número viejo de la página).
+      const ajustesStock = [];
+      for (const d of (detallesViejos||[])) {
+        if (d.tipo_item !== 'producto') continue;
+        if (d.combo_id) ajustesStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
+        else if (d.producto_id) ajustesStock.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) });
+      }
+      for (const it of CS.ncItems) {
+        if (it.tipo_item !== 'producto' || it.esCombo) continue;
+        if (!CS.productos.find(p => p.id === it.producto_id)) continue;
+        ajustesStock.push({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+      }
+      for (const it of CS.ncItems.filter(i => i.esCombo)) ajustesStock.push({ combo_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+      await ajustarStockCredito(ajustesStock);
+
+      // Reemplazar los detalles de la venta
+      await _sb.from('venta_detalles').delete().eq('venta_id', credito.venta_id);
+      const idsEscalaAValidar1 = [...new Set(CS.ncItems.filter(it => it.escala_id).map(it => it.escala_id))];
+      let idsEscalaValidos1 = new Set();
+      if (idsEscalaAValidar1.length) {
+        const { data: escReales1 } = await _sb.from('precios_escala').select('id').in('id', idsEscalaAValidar1);
+        idsEscalaValidos1 = new Set((escReales1 || []).map(e => e.id));
+      }
+      const nuevosDetalles = CS.ncItems.map(it => ({
+        venta_id: credito.venta_id, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
+        combo_id: it.esCombo ? it.producto_id : null, producto_nombre: it.nombre, producto_sku: it.sku || null,
+        // BUG REAL (preexistente): venta_detalles.tipo_item solo
+        // acepta 'producto'/'servicio', nunca 'combo'.
+        tipo_item: it.esCombo ? 'producto' : it.tipo_item,
+        cantidad: it.cantidad, precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
+        ganancia: round2((it.precio-it.costo)*it.cantidad),
+        escala_id: (it.escala_id && idsEscalaValidos1.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre||null,
+        es_regalia: !!it.esRegalia,
+        vendido_sin_stock: !!it.sinStock,
+      }));
+      let { error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles);
+      if (errDet) ({ error: errDet } = await _sb.from('venta_detalles').insert(nuevosDetalles.map(({combo_id,vendido_sin_stock,...r}) => r)));
+      if (errDet) throw errDet;
+
+      // Recalcular subtotal/impuesto/total de la venta con la lista nueva
+      const { data: venta } = await _sb.from('ventas').select('*').eq('id', credito.venta_id).maybeSingle();
+      const subtotal = round2(CS.ncItems.reduce((s,i)=>s+i.precio*i.cantidad,0));
+      const ivaPct = Number(venta?.iva_porcentaje || 0);
+      const ivaMonto = round2(subtotal * ivaPct/100);
+      const total = round2(subtotal + ivaMonto);
+      const costoTotal = round2(CS.ncItems.reduce((s,i)=>s+i.costo*i.cantidad,0));
+      await _sb.from('ventas').update({ subtotal, impuesto: ivaMonto, total, costo_total: costoTotal }).eq('id', credito.venta_id);
+
+      // Si el crédito ya tiene pagos hechos (venía "activo", no
+      // "en_proceso"), no se puede simplemente reemplazar el capital
+      // financiado por el nuevo total -- eso ignoraría lo que el
+      // cliente ya pagó. En vez de eso, se calcula cuánto CAMBIÓ el
+      // costo de los productos (la diferencia), y ese mismo cambio se
+      // suma o resta tanto al capital financiado como al saldo
+      // pendiente -- lo ya pagado queda intacto, sin importar el estado.
+      const totalViejo = Number(venta?.total || 0);
+      const deltaProductos = round2(total - totalViejo);
+      const nuevoCapitalFinanciado = round2(Number(credito.capital_financiado||0) + deltaProductos);
+      const nuevoMontoOriginal = round2(Number(credito.monto_original||0) + deltaProductos);
+      const nuevoSaldoPendiente = round2(Math.max(0, Number(credito.saldo_pendiente||0) + deltaProductos));
+      await _sb.from('creditos').update({
+        monto_original: nuevoMontoOriginal, capital_financiado: nuevoCapitalFinanciado,
+        saldo_pendiente: nuevoSaldoPendiente, updated_at: new Date().toISOString(),
+      }).eq('id', creditoId);
+
+      await registrarHistorial(creditoId, 'editado', `Productos editados — ${deltaProductos>=0?'aumentó':'bajó'} ${fmt(Math.abs(deltaProductos))} — nuevo saldo pendiente: ${fmt(nuevoSaldoPendiente)}`, { deltaProductos, nuevoSaldoPendiente });
+
+      showToast('Productos actualizados — ahora define cómo quedan las cuotas');
+      EDITANDO_PRODUCTOS_CREDITO_ID = null;
+      closeModal('modal-nuevo-credito');
+      document.getElementById('nc-tipo').disabled = false;
+
+      // Las cuotas se definen reutilizando el flujo de "Renegociar
+      // saldo restante" ya existente -- como este crédito nunca tuvo
+      // pagos, ahí simplemente regenera todas las cuotas desde cero.
+      await abrirEditarCredito(creditoId);
+    } catch (e) {
+      console.error('confirmarEditarProductosCredito:', e);
+      showToast('Error al guardar los cambios: ' + (e.message||''), 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Crear crédito';
+    }
+  }
+  window.confirmarEditarProductosCredito = confirmarEditarProductosCredito;
+
+  function abrirNuevoCredito() {
+    EDITANDO_PRODUCTOS_CREDITO_ID = null;
+    document.getElementById('nc-modal-titulo').textContent = 'Nuevo crédito';
+    document.getElementById('btn-crear-credito').textContent = 'Crear crédito';
+    const selTipo = document.getElementById('nc-tipo');
+    if (selTipo) selTipo.disabled = false;
+    CS.ncItems = [];
+    CS.escalaPendiente = null;
+    renderNCItems();
+    document.getElementById('nc-fecha-inicio').value = todayISO();
+    document.getElementById('nc-monto-financiero').value = '';
+    document.getElementById('nc-producto-financiero-nombre').value = '';
+    document.getElementById('nc-prima-tipo').value = 'ninguna';
+    document.getElementById('nc-prima-valor').value = '';
+    document.getElementById('nc-tasa-interes').value = '';
+    document.getElementById('nc-num-cuotas').value = 12;
+    if (document.getElementById('nc-modalidad')) { document.getElementById('nc-modalidad').value = 'cuotas'; document.getElementById('nc-bloque-fecha-fija').style.display = 'none'; document.getElementById('nc-bloque-cuotas').style.display = ''; document.getElementById('nc-ff-fecha').value = ''; document.getElementById('nc-ff-preset').value = '8'; }
+    document.getElementById('nc-observaciones').value = '';
+    document.getElementById('nc-amortizacion-wrap').style.display = 'none';
+    setTipoCredito('venta');
+    setTipoFinanciamiento('sin_interes');
+    toggleNCPrima();
+    recalcularCredito();
+    openModal('modal-nuevo-credito');
+  }
+  window.abrirNuevoCredito = abrirNuevoCredito;
+
+  // Abre "Nuevo crédito" prellenado con el cliente y los productos de
+  // una proforma — el usuario solo decide cuánto le están dando ahora
+  // (la "prima") y cómo queda el resto (fecha fija o cuotas). El
+  // crédito se crea con la MISMA función de siempre (confirmarNuevoCredito),
+  // nunca con un cálculo aparte.
+  CS.proformaOrigenId = null;
+  function abrirNuevoCreditoDesdeProforma(payload) {
+    if (!payload) return;
+    abrirNuevoCredito();
+    CS.proformaOrigenId = payload.proformaId;
+    document.getElementById('nc-cliente').value = payload.clienteId || '';
+    CS.ncItems = (payload.items || []).map(it => ({
+      producto_id: it.producto_id, nombre: it.nombre, tipo_item: it.tipo_item,
+      precio: Number(it.precio) || 0, costo: Number(it.costo) || 0, cantidad: Number(it.cantidad) || 1,
+      escala_id: it.escala_id || null, escala_nombre: it.escala_nombre || null,
+      esCombo: !!it.combo_id,
+      origen_stock_id: it.origen_stock_id || null, origen_stock_nombre: it.origen_stock_nombre || null,
+    }));
+    renderNCItems();
+    recalcularCredito();
+
+    const aviso = document.getElementById('nc-aviso-proforma');
+    if (aviso) { aviso.style.display = ''; aviso.textContent = `📋 Creando este crédito a partir de la proforma ${payload.numeroProforma || ''} — el pago que registres ahora será la prima inicial.`; }
+  }
+  window.abrirNuevoCreditoDesdeProforma = abrirNuevoCreditoDesdeProforma;
+
+  function abrirCreditoExistente() {
+    document.getElementById('ce-fecha-original').value = todayISO();
+    document.getElementById('ce-proximo-vencimiento').value = sumarFrecuencia(todayISO(),'mensual',1);
+    ['ce-capital-original','ce-saldo-pendiente','ce-observaciones'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('ce-num-cuotas').value = 1;
+    document.getElementById('ce-cuotas-restantes').value = 1;
+    openModal('modal-credito-existente');
+  }
+  window.abrirCreditoExistente = abrirCreditoExistente;
+
+  async function abrirRegistrarPago(creditoId) {
+    // Se usa un helper seguro en vez de asumir que el elemento
+    // siempre existe — si el navegador tiene una versión vieja
+    // cacheada del HTML (desfasada del JS más nuevo), esto evita que
+    // TODO el botón se rompa por un solo elemento que falte.
+    const ocultar = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
+    const vaciar = (id) => { const el = document.getElementById(id); if (el) el.value = ''; };
+
+    ocultar('rp-resumen');
+    vaciar('rp-monto');
+    vaciar('rp-observaciones');
+    if (window.N360MonedaAlterna) N360MonedaAlterna.reset('rp-monto');
+    _bancoElegidoIdCred = null;
+    ocultar('rp-banco-elegir-wrap');
+    ocultar('rp-banco-elegido-wrap');
+    openModal('modal-registrar-pago');
+    if (creditoId) {
+      const credito = CS.creditos.find(c => c.id === creditoId) || (await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle()).data;
+      if (credito) {
+        document.getElementById('rp-cliente').value = credito.cliente_id;
+        await cargarCreditosDelCliente();
+        document.getElementById('rp-credito').value = credito.id;
+        await cargarResumenCredito();
+      }
+    }
+  }
+  window.abrirRegistrarPago = abrirRegistrarPago;
+
+  async function cargarCreditosDelCliente() {
+    const clienteId = document.getElementById('rp-cliente').value;
+    const sel = document.getElementById('rp-credito');
+    sel.innerHTML = '<option value="">Cargando…</option>';
+    document.getElementById('rp-resumen').style.display = 'none';
+    if (!clienteId) { sel.innerHTML = '<option value="">Selecciona un cliente primero…</option>'; return; }
+    const { data } = await _sb.from('creditos').select('*')
+      .eq('auth_user_id', CS.userId).eq('cliente_id', clienteId)
+      .not('estado', 'in', '("cancelado")').order('created_at', { ascending:false });
+    const abiertos = data || [];
+    const prMapRp = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, abiertos) : new Map();
+    sel.innerHTML = abiertos.length
+      ? abiertos.map(c => `<option value="${c.id}">${esc(window.N360ProformaCredito ? N360ProformaCredito.texto(c.numero_credito, prMapRp.get(c.id)) : c.numero_credito)} — ${fmt(c.saldo_pendiente)} pendiente</option>`).join('')
+      : '<option value="">Este cliente no tiene créditos activos</option>';
+  }
+  window.cargarCreditosDelCliente = cargarCreditosDelCliente;
+
+  async function cargarResumenCredito() {
+    const creditoId = document.getElementById('rp-credito').value;
+    if (!creditoId) { document.getElementById('rp-resumen').style.display = 'none'; return; }
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+    const { data: cuotas } = await _sb.from('creditos_cuotas').select('*')
+      .eq('credito_id', creditoId).neq('estado','pagada').order('numero');
+    if (!credito) return;
+    document.getElementById('rp-resumen').style.display = 'grid';
+    document.getElementById('rp-saldo').textContent = fmt(credito.saldo_pendiente);
+    document.getElementById('rp-cuotas-pendientes').textContent = (cuotas||[]).length;
+    const prox = (cuotas||[])[0];
+    document.getElementById('rp-proxima-cuota').textContent = prox ? `${fmtDate(prox.fecha_vencimiento)} · ${fmt(prox.monto_total - prox.monto_pagado)}` : '—';
+    document.getElementById('rp-monto').value = prox ? round2(prox.monto_total - prox.monto_pagado) : '';
+    if (window.N360MonedaAlterna) N360MonedaAlterna.reset('rp-monto');
+    refrescarTextoBancoCred();
+  }
+  window.cargarResumenCredito = cargarResumenCredito;
+
+  /* ===================================================
+     CONFIRMAR NUEVO CRÉDITO
+  =================================================== */
+  async function confirmarNuevoCredito() {
+    // BUG REAL: crear un crédito dos veces (doble clic, doble toque en
+    // pantalla táctil, o la tecla Enter repetida) creaba DOS créditos
+    // REALES distintos por el mismo monto -- cada uno con su propio
+    // saldo pendiente, sumando de más en el estado de cuenta del
+    // cliente. Mismo candado ya usado en confirmarConvertirAVenta().
+    if (CS.creandoCredito) return;
+    CS.creandoCredito = true;
+
+    const btn = document.getElementById('btn-crear-credito');
+    const tipo = document.getElementById('nc-tipo').value;
+    const clienteId = document.getElementById('nc-cliente').value;
+    if (!clienteId) { showToast('Selecciona un cliente', 'error'); CS.creandoCredito = false; return; }
+    if (tipo === 'venta' && !CS.ncItems.length) { showToast('Agrega al menos un producto o servicio', 'error'); CS.creandoCredito = false; return; }
+    if (tipo === 'financiero' && !document.getElementById('nc-producto-financiero-nombre').value.trim()) { showToast('Escribe el nombre del préstamo o financiamiento', 'error'); CS.creandoCredito = false; return; }
+
+    const montoOriginal = calcularMontoOriginal();
+    if (montoOriginal <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.creandoCredito = false; return; }
+
+    // Un préstamo/financiamiento sale de Caja: si no hay fondos suficientes, no se crea el crédito.
+    if (tipo === 'financiero') {
+      const saldoCaja = await window.CajaAPI.getCapital(CS.userId);
+      if (montoOriginal > saldoCaja + 0.01) {
+        showToast(`Fondos insuficientes en caja para este préstamo. Saldo disponible: ${fmt(saldoCaja)}`, 'error');
+        CS.creandoCredito = false;
+        return;
+      }
+    }
+
+    const primaTipo = document.getElementById('nc-prima-tipo').value;
+    const primaValor = parseFloat(document.getElementById('nc-prima-valor').value) || 0;
+    const primaMonto = calcularPrima(montoOriginal, primaTipo, primaValor);
+    const capitalFinanciado = round2(montoOriginal - primaMonto);
+    const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
+    const tasa = parseFloat(document.getElementById('nc-tasa-interes').value) || 0;
+    const metodo = document.getElementById('nc-metodo-amortizacion').value;
+    const frecuencia = document.getElementById('nc-frecuencia').value;
+    const plan = leerPlanPago();
+    const numCuotas = plan.fija ? 1 : (parseInt(document.getElementById('nc-num-cuotas').value) || 1);
+    const fechaInicio = document.getElementById('nc-fecha-inicio').value || todayISO();
+    const impuestosLista = obtenerImpuestosSeleccionados();
+    const observaciones = document.getElementById('nc-observaciones').value.trim() || null;
+
+    const { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox } = generarAmortizacion({
+      capitalFinanciado, tipoFinanciamiento: tipoFin, tasaInteres: tasa, metodo, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto: baseImpuestoActual(),
+    });
+
+    if (plan.fija && !plan.fecha) { showToast('Elige la fecha de pago', 'error'); CS.creandoCredito = false; return; }
+    aplicarFechaFija(cuotas, plan);
+    btn.disabled = true; btn.textContent = 'Creando…';
+    try {
+      let ventaId = null;
+      const cliente = CS.clientes.find(c => c.id === clienteId);
+
+      if (tipo === 'venta') {
+        // 1) Crear la venta (reutiliza exactamente la lógica de Ventas: descuenta stock, calcula impuesto)
+        const numeroVenta = await generarNumeroVenta();
+        const ivaActivo = document.getElementById('nc-iva-activo')?.checked || false;
+        const ivaPct = ivaActivo ? Number(CS.empresaConfig?.porcentaje_iva || 15) : 0;
+        const subtotal = round2(CS.ncItems.reduce((s,i)=>s+i.precio*i.cantidad,0));
+        const costoTotal = round2(CS.ncItems.reduce((s,i)=>s+i.costo*i.cantidad,0));
+        const ivaMonto = round2(subtotal * ivaPct/100);
+        const total = round2(subtotal + ivaMonto);
+
+        const { data: venta, error: errVenta } = await _sb.from('ventas').insert({
+          auth_user_id: CS.userId, cliente_id: clienteId, cliente_nombre: `${cliente?.nombre||''} ${cliente?.apellido||''}`.trim(),
+          numero_venta: numeroVenta, subtotal, impuesto: ivaMonto, total, costo_total: costoTotal,
+          metodo_pago: 'credito', estado_pago: 'credito', estado: 'completada',
+          iva_activo: ivaActivo, iva_porcentaje: ivaPct,
+          categoria: 'credito', notas: 'Venta generada automáticamente por el módulo de Créditos',
+          creado_por_nombre: obtenerNombrePerfilActivo(),
+        }).select().single();
+        if (errVenta) throw errVenta;
+        ventaId = venta.id;
+
+        const idsEscalaAValidar2 = [...new Set(CS.ncItems.filter(it => it.escala_id).map(it => it.escala_id))];
+        let idsEscalaValidos2 = new Set();
+        if (idsEscalaAValidar2.length) {
+          const { data: escReales2 } = await _sb.from('precios_escala').select('id').in('id', idsEscalaAValidar2);
+          idsEscalaValidos2 = new Set((escReales2 || []).map(e => e.id));
+        }
+        const detalles = CS.ncItems.map(it => ({
+          venta_id: ventaId, auth_user_id: CS.userId, producto_id: it.esCombo ? null : it.producto_id,
+          combo_id: it.esCombo ? it.producto_id : null,
+          producto_nombre: it.nombre, producto_sku: it.sku || null,
+          // BUG REAL (preexistente): venta_detalles.tipo_item solo
+          // acepta 'producto'/'servicio', nunca 'combo'.
+          tipo_item: it.esCombo ? 'producto' : it.tipo_item, cantidad: it.cantidad,
+          precio: it.precio, costo: it.costo, subtotal: round2(it.precio*it.cantidad),
+          ganancia: round2((it.precio-it.costo)*it.cantidad),
+          escala_id: (it.escala_id && idsEscalaValidos2.has(it.escala_id)) ? it.escala_id : null, escala_nombre: it.escala_nombre || null,
+          es_regalia: !!it.esRegalia,
+          vendido_sin_stock: !!it.sinStock,
+          cantidad_pedida: it.cantidad_pedida || null, unidad_pedida: it.cantidad_pedida ? (it.unidad_pedida || null) : null,
+        }));
+        let { error: errDet } = await _sb.from('venta_detalles').insert(detalles);
+        if (errDet) {
+          // Reintentar sin combo_id/vendido_sin_stock por si la migración aún no llegó a este entorno
+          ({ error: errDet } = await _sb.from('venta_detalles').insert(
+            detalles.map(({ combo_id, vendido_sin_stock, cantidad_pedida, unidad_pedida, ...resto }) => resto)
+          ));
+        }
+        if (errDet) {
+          // La venta se creó pero sus productos no: se anula (nunca se borra)
+          // antes de tocar inventario o crear el crédito.
+          try {
+            await _sb.from('ventas').update({ estado: 'anulada', observaciones: 'Anulada automáticamente: no se pudieron guardar sus productos (falla de conexión). Se puede volver a registrar.' })
+              .eq('id', ventaId).eq('auth_user_id', CS.userId);
+          } catch (eAn) { console.warn('anular venta incompleta:', eAn); }
+          throw errDet;
+        }
+
+        // Descontar stock solo de productos normales (no servicios, no combos)
+        const descuentosCredito = [];
+        for (const it of CS.ncItems) {
+          if (it.tipo_item !== 'producto' || it.esCombo) continue;
+          if (it.origen_stock_id) {
+            // Stock Compartido: se descuenta de OTRA cuenta del grupo.
+            try {
+              const { error: errRemoto } = await _sb.rpc('descontar_stock_remoto', {
+                p_sucursal_id: it.origen_stock_id, p_nombre_producto: it.nombre, p_cantidad: it.cantidad,
+              });
+              if (errRemoto) console.warn('Error descontando stock remoto:', it.nombre, errRemoto);
+            } catch (eRemoto) { console.warn('Error descontando stock remoto:', it.nombre, eRemoto); }
+            continue;
+          }
+          if (!CS.productos.find(p => p.id === it.producto_id)) continue;
+          descuentosCredito.push({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+        }
+
+        // Combos vendidos a crédito: se descuenta cada producto que los
+        // compone (cantidad del componente × cantidad vendida).
+        for (const it of CS.ncItems.filter(i => i.esCombo)) descuentosCredito.push({ combo_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+
+        // Todo en UNA operación del servidor, restando sobre la existencia
+        // REAL del momento (antes se usaba la que la página cargó al abrir).
+        try { await ajustarStockCredito(descuentosCredito); }
+        catch (eStock) {
+          console.warn('No se pudo descontar el inventario del crédito:', eStock);
+          showToast('El crédito se guardó, pero el inventario NO se descontó. Revísalo en Productos.', 'warning');
+        }
+
+        // Un crédito por venta SÍ es una compra real del cliente — se
+        // suma a su ficha igual que ya pasa en Ventas y Proformas. Antes
+        // esto no se hacía, así que el "total comprado" de un cliente
+        // que compraba a crédito se veía incompleto (le faltaba justo
+        // eso: sus compras a crédito).
+        try {
+          const { data: cliActualizar } = await _sb.from('clientes')
+            .select('total_compras, num_compras').eq('id', clienteId).eq('auth_user_id', CS.userId).maybeSingle();
+          if (cliActualizar) {
+            await _sb.from('clientes').update({
+              total_compras: round2(Number(cliActualizar.total_compras||0) + total),
+              num_compras: Number(cliActualizar.num_compras||0) + 1,
+            }).eq('id', clienteId).eq('auth_user_id', CS.userId);
+          }
+        } catch (eCli) {
+          console.warn('No se pudo actualizar el contador del cliente:', eCli);
+        }
+      }
+
+      // 2) Producto financiero: el usuario solo escribe el nombre; se reutiliza o se crea
+      //    automáticamente en el catálogo de Productos/Servicios (tipo "financiero"), sin
+      //    obligar al usuario a salir de este modal.
+      let productoFinancieroId = null;
+      if (tipo === 'financiero') {
+        const nombreFin = document.getElementById('nc-producto-financiero-nombre').value.trim();
+        const existente = CS.productosFinancieros.find(p => (p.nombre||'').trim().toLowerCase() === nombreFin.toLowerCase());
+        if (existente) {
+          productoFinancieroId = existente.id;
+        } else {
+          const { data: nuevoProd, error: errProd } = await _sb.from('productos').insert({
+            auth_user_id: CS.userId, tipo: 'financiero', nombre: nombreFin, activo: true,
+          }).select().single();
+          if (errProd) throw errProd;
+          productoFinancieroId = nuevoProd.id;
+          CS.productosFinancieros.push(nuevoProd);
+        }
+      }
+
+      // 3) Crear el crédito
+      const numeroCredito = await generarNumeroCredito();
+      const creditoPayload = {
+        auth_user_id: CS.userId, numero_credito: numeroCredito, tipo, cliente_id: clienteId,
+        venta_id: ventaId, producto_financiero_id: productoFinancieroId,
+        monto_original: montoOriginal, prima_tipo: primaTipo, prima_valor: primaValor, prima_monto: primaMonto,
+        capital_financiado: capitalFinanciado, tipo_financiamiento: tipoFin,
+        tasa_interes: tipoFin==='con_interes' ? tasa : null, tipo_interes: tipoFin==='con_interes' ? metodo : null,
+        metodo_amortizacion: metodo, frecuencia, num_cuotas: numCuotas, fecha_inicio: fechaInicio,
+        total_intereses: totalIntereses, total_financiado: totalFinanciado, valor_cuota_aprox: valorCuotaAprox,
+        saldo_pendiente: totalFinanciado, estado: 'en_proceso', observaciones,
+        modalidad_pago: plan.fija ? 'fecha_fija' : 'cuotas',
+      };
+      let { data: credito, error: errCredito } = await _sb.from('creditos').insert(creditoPayload).select().single();
+      if (errCredito && /modalidad_pago/.test(errCredito.message || '')) {
+        // Por si la migración 20261019 aún no llegó a este entorno: se guarda como antes.
+        const { modalidad_pago, ...sinModalidad } = creditoPayload;
+        ({ data: credito, error: errCredito } = await _sb.from('creditos').insert(sinModalidad).select().single());
+      }
+      if (errCredito) throw errCredito;
+
+      // 3) Crear cuotas
+      const cuotasInsert = cuotas.map(c => ({
+        auth_user_id: CS.userId, credito_id: credito.id, numero: c.numero,
+        fecha_vencimiento: c.fecha_vencimiento, capital: c.capital, interes: c.interes,
+        impuesto: c.impuesto, impuestos_detalle: c.impuestos_detalle || [], monto_total: c.monto_total, saldo: c.saldo, estado: 'pendiente',
+      }));
+      const { error: errCuotas } = await _sb.from('creditos_cuotas').insert(cuotasInsert);
+      if (errCuotas) throw errCuotas;
+
+      // 4) Activar el crédito y registrar historial
+      await _sb.from('creditos').update({ estado: 'activo' }).eq('id', credito.id);
+      await registrarHistorial(credito.id, 'creado', `Crédito ${numeroCredito} creado (${tipo}) por ${fmt(totalFinanciado)}`, { numeroCredito, tipo, totalFinanciado });
+
+      // 5) Si es un préstamo financiero, el monto entregado sale de Caja (egreso).
+      //    El saldo ya se validó al inicio, así que esto no debería fallar por fondos
+      //    insuficientes, pero se avisa igual si CajaAPI no pudo registrar el movimiento.
+      if (tipo === 'financiero') {
+        const cajaRes = await registrarEnCaja({
+          auth_user_id: CS.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'CREDITO_OTORGADO',
+          concepto: `Préstamo otorgado — crédito ${numeroCredito}`, monto: montoOriginal,
+          referencia_tipo: 'credito', referencia_id: credito.id, observaciones,
+        });
+        if (!cajaRes.ok) {
+          showToast('El crédito se creó, pero no se pudo descontar de caja: ' + cajaRes.error, 'error');
+        } else {
+          await registrarHistorial(credito.id, 'desembolso', `Se descontaron ${fmt(montoOriginal)} de Caja por el préstamo otorgado`, {});
+        }
+      }
+
+      showToast(`Crédito ${numeroCredito} creado correctamente`, 'success');
+      closeModal('modal-nuevo-credito');
+
+      // Si este crédito se creó desde una Proforma (iframe incrustado),
+      // se le avisa al padre — Proformas nunca calcula el crédito, solo
+      // reacciona cuando de verdad ya se creó. BUG REAL CORREGIDO: antes
+      // solo se mandaba el ID del crédito, nunca el de la venta que este
+      // mismo flujo tambien crea internamente (ventaId) -- la proforma
+      // se quedaba sin saber cual era su venta real, mostrando "pago
+      // parcial" para siempre sin ningun enlace, aunque la venta ya
+      // existiera completa y correcta.
+      if (CS.proformaOrigenId && window.self !== window.top) {
+        try { window.parent.postMessage({ tipo: 'n360_credito_desde_proforma', creditoId: credito.id, proformaId: CS.proformaOrigenId, ventaId: ventaId || null }, '*'); } catch(e) {}
+      }
+
+      await refrescarTodo();
+    } catch (e) {
+      console.error('confirmarNuevoCredito:', e);
+      showToast('Error al crear el crédito: ' + (e.message||e), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Crear crédito';
+      CS.creandoCredito = false;
+    }
+  }
+  window.confirmarNuevoCredito = confirmarNuevoCredito;
+
+  /* ===================================================
+     REGISTRAR CRÉDITO EXISTENTE (fiados previos a Negocio360)
+  =================================================== */
+  async function confirmarCreditoExistente() {
+    const clienteId = document.getElementById('ce-cliente').value;
+    const capitalOriginal = parseFloat(document.getElementById('ce-capital-original').value) || 0;
+    const saldoPendiente = parseFloat(document.getElementById('ce-saldo-pendiente').value) || 0;
+    const cuotasRestantes = parseInt(document.getElementById('ce-cuotas-restantes').value) || 1;
+    const numCuotasOriginal = parseInt(document.getElementById('ce-num-cuotas').value) || cuotasRestantes;
+    const frecuencia = document.getElementById('ce-frecuencia').value;
+    const fechaOriginal = document.getElementById('ce-fecha-original').value || todayISO();
+    const proximoVencimiento = document.getElementById('ce-proximo-vencimiento').value || todayISO();
+    const observaciones = document.getElementById('ce-observaciones').value.trim() || null;
+
+    if (!clienteId) { showToast('Selecciona un cliente', 'error'); return; }
+    if (saldoPendiente <= 0) { showToast('El saldo pendiente debe ser mayor a cero', 'error'); return; }
+
+    try {
+      const numeroCredito = await generarNumeroCredito();
+      const { data: credito, error } = await _sb.from('creditos').insert({
+        auth_user_id: CS.userId, numero_credito: numeroCredito, tipo: 'financiero', cliente_id: clienteId,
+        monto_original: capitalOriginal || saldoPendiente, prima_tipo: 'ninguna', prima_monto: 0,
+        capital_financiado: capitalOriginal || saldoPendiente, tipo_financiamiento: 'sin_interes',
+        metodo_amortizacion: 'simple', frecuencia, num_cuotas: numCuotasOriginal, fecha_inicio: fechaOriginal,
+        total_intereses: 0, total_financiado: saldoPendiente, valor_cuota_aprox: round2(saldoPendiente/cuotasRestantes),
+        saldo_pendiente: saldoPendiente, estado: 'activo', es_existente: true, observaciones,
+      }).select().single();
+      if (error) throw error;
+
+      // Reparte el saldo restante en las cuotas restantes, comenzando en el próximo vencimiento
+      const cuotaBase = round2(saldoPendiente / cuotasRestantes);
+      let saldo = saldoPendiente;
+      const cuotasInsert = [];
+      for (let i = 1; i <= cuotasRestantes; i++) {
+        const esUltima = i === cuotasRestantes;
+        const monto = esUltima ? round2(saldo) : cuotaBase;
+        saldo = round2(saldo - monto);
+        cuotasInsert.push({
+          auth_user_id: CS.userId, credito_id: credito.id, numero: i,
+          fecha_vencimiento: i===1 ? proximoVencimiento : sumarFrecuencia(proximoVencimiento, frecuencia, i-1),
+          capital: monto, interes: 0, impuesto: 0, monto_total: monto, saldo, estado: 'pendiente',
+        });
+      }
+      await _sb.from('creditos_cuotas').insert(cuotasInsert);
+      await registrarHistorial(credito.id, 'creado', `Crédito existente ${numeroCredito} registrado con saldo ${fmt(saldoPendiente)}`, {});
+
+      showToast(`Crédito existente ${numeroCredito} registrado`, 'success');
+      closeModal('modal-credito-existente');
+      await refrescarTodo();
+    } catch (e) {
+      console.error('confirmarCreditoExistente:', e);
+      showToast('Error al registrar el crédito existente: ' + (e.message||e), 'error');
+    }
+  }
+  window.confirmarCreditoExistente = confirmarCreditoExistente;
+
+  /* ===================================================
+     REGISTRAR PAGO
+  =================================================== */
+  /* ===================================================
+     ¿A QUÉ BANCO ENTRA? — aparece EN EL MOMENTO de elegir Tarjeta o
+     Transferencia en el select de método (no al final, al
+     confirmar), con tarjetas para tocar y una "✕" para regresar.
+     Sin bancos creados, esto nunca aparece.
+  =================================================== */
+  async function cargarBancosDisponiblesCred() {
+    if (_bancosCacheCred) return _bancosCacheCred;
+    try {
+      const { data } = await _sb.from('bancos').select('*').eq('auth_user_id', CS.userId).eq('activo', true).order('created_at');
+      _bancosCacheCred = data || [];
+    } catch (e) { _bancosCacheCred = []; }
+    return _bancosCacheCred;
+  }
+  window.mostrarSelectorBancoCred = async function(metodoPagoNombre) {
+    const elById = (id) => document.getElementById(id);
+    const ocultar = (id) => { const el = elById(id); if (el) el.style.display = 'none'; };
+
+    ocultar('rp-banco-elegir-wrap');
+    ocultar('rp-banco-elegido-wrap');
+    _bancoElegidoIdCred = null;
+    const metodo = (metodoPagoNombre || '').toLowerCase();
+    if (!metodo.includes('tarjeta') && !metodo.includes('transferencia')) return;
+
+    const bancos = await cargarBancosDisponiblesCred();
+    if (!bancos.length) return; // sin bancos creados, sigue todo normal
+
+    const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    const elMetodo = elById('rp-banco-elegir-metodo'); if (elMetodo) elMetodo.textContent = metodoPagoNombre;
+    const elGrid = elById('rp-banco-elegir-grid');
+    if (elGrid) elGrid.innerHTML = bancos.map(b => `
+      <div class="metodo-card" onclick="elegirBancoCred('${b.id}','${esc(b.nombre)}','${b.moneda||'NIO'}')">
+        <span class="mc-icon">🏦</span>
+        <span class="mc-name">${esc(b.nombre)}${(b.moneda||'NIO')!==monedaBase ? ` <b style="color:var(--accent)">(${b.moneda})</b>` : ''}</span>
+      </div>`).join('');
+    const elWrap = elById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = '';
+  };
+  // Texto "se registrará como ..." siempre con el monto actual: si el monto
+  // cambia después de elegir el banco, el texto se actualiza (antes se
+  // quedaba con el monto viejo).
+  let _bancoElegidoInfoCred = null;
+  function refrescarTextoBancoCred() {
+    if (!_bancoElegidoIdCred || !_bancoElegidoInfoCred) return;
+    window.elegirBancoCred(_bancoElegidoIdCred, _bancoElegidoInfoCred.nombre, _bancoElegidoInfoCred.moneda, true);
+  }
+  window.elegirBancoCred = function(bancoId, bancoNombre, monedaBanco, soloTexto) {
+    _bancoElegidoIdCred = bancoId;
+    _bancoElegidoInfoCred = { nombre: bancoNombre, moneda: monedaBanco || 'NIO' };
+    const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
+
+    const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+    const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
+    const montoPago = parseFloat(document.getElementById('rp-monto')?.value) || 0;
+    const elNombre = document.getElementById('rp-banco-elegido-nombre');
+
+    if (esOtraMoneda) {
+      const tasa = Number(CS.empresaConfig?.tasa_cambio_usd || 0);
+      if (!tasa) {
+        if (elNombre) elNombre.innerHTML = `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
+        _montoBancoConvertidoCred = null;
+      } else {
+        const ma = window.N360MonedaAlterna ? N360MonedaAlterna.estado('rp-monto') : null;
+        const montoConvertido = (ma && ma.moneda === (monedaBanco||'NIO')) ? ma.monto
+          : Math.round((monedaBase === 'NIO' ? montoPago / tasa : montoPago * tasa) * 100) / 100;
+        _montoBancoConvertidoCred = montoConvertido;
+        if (elNombre) elNombre.innerHTML = `${esc(bancoNombre)} — se registrará como ${monedaBanco==='USD'?'$':'C$'} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
+      }
+    } else {
+      _montoBancoConvertidoCred = null;
+      if (elNombre) elNombre.textContent = bancoNombre;
+    }
+
+    if (soloTexto) return;
+    const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'flex';
+  };
+  window.cancelarSeleccionBancoCred = function() {
+    _bancoElegidoIdCred = null; _bancoElegidoInfoCred = null;
+    const elMetodo = document.getElementById('rp-metodo'); if (elMetodo) elMetodo.value = '';
+    const elWrap = document.getElementById('rp-banco-elegir-wrap'); if (elWrap) elWrap.style.display = 'none';
+    const elElegido = document.getElementById('rp-banco-elegido-wrap'); if (elElegido) elElegido.style.display = 'none';
+  };
+
+  async function confirmarRegistrarPagoCredito() {
+    // Mismo riesgo real ya corregido en confirmarNuevoCredito(): un
+    // doble clic aqui descontaria el pago DOS VECES del saldo, y
+    // duplicaria el ingreso en Caja. Mismo candado, misma proteccion.
+    if (CS.registrandoPago) return;
+    CS.registrandoPago = true;
+
+    const btn = document.getElementById('btn-confirmar-pago');
+    const creditoId = document.getElementById('rp-credito').value;
+    const monto = round2(parseFloat(document.getElementById('rp-monto').value) || 0);
+    const metodoSel = document.getElementById('rp-metodo');
+    const metodoId = metodoSel.value || null;
+    const metodoNombre = metodoSel.selectedOptions[0]?.dataset.nombre || metodoSel.selectedOptions[0]?.textContent || 'Efectivo';
+    // Si se escribió en la otra moneda (💱), queda constancia en las observaciones.
+    const pagoOtraMoneda = window.N360MonedaAlterna ? N360MonedaAlterna.estado('rp-monto') : null;
+    const notaOtraMoneda = window.N360MonedaAlterna ? N360MonedaAlterna.nota('rp-monto') : '';
+    const obsEscrita = document.getElementById('rp-observaciones').value.trim();
+    const observaciones = [obsEscrita, notaOtraMoneda].filter(Boolean).join(' · ') || null;
+
+    if (!creditoId) { showToast('Selecciona un crédito', 'error'); CS.registrandoPago = false; return; }
+    if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.registrandoPago = false; return; }
+
+    // El banco ya se eligió al momento de cambiar el método a
+    // Tarjeta/Transferencia (no aquí al final) — esto es solo un
+    // candado de seguridad, por si alguien llegó hasta aquí sin
+    // completar ese paso.
+    const metodoActualCred = (metodoNombre||'').toLowerCase();
+    if ((metodoActualCred.includes('tarjeta') || metodoActualCred.includes('transferencia')) && (await cargarBancosDisponiblesCred()).length && !_bancoElegidoIdCred) {
+      showToast('Elige a qué banco entra este pago', 'error');
+      CS.registrandoPago = false;
+      return;
+    }
+    const bancoElegidoPago = _bancoElegidoIdCred || null;
+    // Monto en la moneda del banco: se calcula con el monto FINAL (antes se
+    // tomaba el calculado al elegir el banco, y si después se cambiaba el
+    // monto el banco quedaba descuadrado). Si se cobró en la moneda de ese
+    // banco con 💱, se usa el monto exacto recibido; si no, CajaAPI lo
+    // convierte con la tasa (null = misma moneda o lo calcula CajaAPI).
+    let montoMonedaBancoPago = null;
+    if (bancoElegidoPago && pagoOtraMoneda && _bancoElegidoInfoCred && _bancoElegidoInfoCred.moneda === pagoOtraMoneda.moneda) {
+      montoMonedaBancoPago = pagoOtraMoneda.monto;
+    }
+
+    // Si el banco elegido es en otra moneda y no hay tasa de cambio
+    // configurada, no se deja continuar — mejor pedirla ahora que
+    // guardar un pago sin la conversión correcta.
+    if (bancoElegidoPago) {
+      const bancoInfo = (await cargarBancosDisponiblesCred()).find(b => b.id === bancoElegidoPago);
+      const monedaBase = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+      if (bancoInfo && (bancoInfo.moneda||'NIO') !== monedaBase && !CS.empresaConfig?.tasa_cambio_usd) {
+        showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de registrar este pago', 'error');
+        CS.registrandoPago = false;
+        return;
+      }
+    }
+
+    btn.disabled = true; btn.textContent = 'Registrando…';
+    try {
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+      if (!credito) throw new Error('Crédito no encontrado');
+      if (monto > credito.saldo_pendiente + 0.01) throw new Error('El monto excede el saldo pendiente');
+
+      const { data: cuotasPendientes } = await _sb.from('creditos_cuotas').select('*')
+        .eq('credito_id', creditoId).neq('estado','pagada').order('numero');
+
+      let restante = monto;
+      let impuestoAcreditadoEstaVez = 0;
+      const porImpuesto = new Map(); // key: impuesto_id||nombre -> { nombre, id, monto }
+      for (const cuota of (cuotasPendientes||[])) {
+        if (restante <= 0) break;
+        const debeCuota = round2(cuota.monto_total - cuota.monto_pagado);
+        if (debeCuota <= 0) continue;
+        const aplicar = Math.min(restante, debeCuota);
+        const nuevoPagado = round2(cuota.monto_pagado + aplicar);
+        const nuevoEstado = nuevoPagado >= cuota.monto_total - 0.01 ? 'pagada' : 'parcial';
+
+        // El impuesto de la cuota se acredita en la misma proporción en que se está
+        // pagando su saldo (no todo de una vez): así, si el cliente paga en abonos,
+        // el impuesto también se acumula a impuestos.html en abonos. Si la cuota tiene
+        // más de un impuesto (ej. IVA + otro), cada uno se reparte y se registra por separado.
+        const impuestoPendienteCuota = round2((cuota.impuesto||0) - (cuota.impuesto_acreditado||0));
+        const fraccionPagada = aplicar / debeCuota;
+        const impuestoEstaVez = round2(impuestoPendienteCuota * fraccionPagada);
+        impuestoAcreditadoEstaVez = round2(impuestoAcreditadoEstaVez + impuestoEstaVez);
+
+        const detalle = Array.isArray(cuota.impuestos_detalle) ? cuota.impuestos_detalle : [];
+        if (detalle.length && impuestoEstaVez > 0) {
+          detalle.forEach(d => {
+            // Reparte impuestoEstaVez entre los impuestos de la cuota según su peso relativo
+            const peso = (cuota.impuesto > 0) ? (Number(d.monto)||0) / cuota.impuesto : 0;
+            const parte = round2(impuestoEstaVez * peso);
+            if (parte <= 0) return;
+            const key = d.impuesto_id || d.nombre;
+            const acc = porImpuesto.get(key) || { nombre: d.nombre, id: d.impuesto_id, monto: 0 };
+            acc.monto = round2(acc.monto + parte);
+            porImpuesto.set(key, acc);
+          });
+        }
+
+        await _sb.from('creditos_cuotas').update({
+          monto_pagado: nuevoPagado, estado: nuevoEstado,
+          impuesto_acreditado: round2((cuota.impuesto_acreditado||0) + impuestoEstaVez),
+          updated_at: new Date().toISOString(),
+        }).eq('id', cuota.id);
+        restante = round2(restante - aplicar);
+      }
+
+      const saldoAnterior = credito.saldo_pendiente;
+      const saldoNuevo = round2(Math.max(0, saldoAnterior - monto));
+      const nuevoEstadoCredito = saldoNuevo <= 0.01 ? 'cancelado' : (credito.estado === 'en_proceso' ? 'activo' : credito.estado);
+      await _sb.from('creditos').update({ saldo_pendiente: saldoNuevo, estado: nuevoEstadoCredito, updated_at: new Date().toISOString() }).eq('id', creditoId);
+
+      // Registrar en Caja (nunca crea una venta nueva)
+      const cajaRes = await registrarEnCaja({
+        auth_user_id: CS.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'PAGO_CREDITO',
+        concepto: `Pago crédito ${credito.numero_credito}`, monto, metodo_pago_id: metodoId,
+        metodo_pago_nombre: metodoNombre, banco_id: bancoElegidoPago,
+        monto_moneda_banco: bancoElegidoPago ? montoMonedaBancoPago : null,
+        referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
+      });
+      if (!cajaRes.ok) console.warn('No se pudo registrar en caja:', cajaRes.error);
+
+      // El impuesto NO se manda completo a impuestos.html al crear el crédito: solo la
+      // porción correspondiente a lo efectivamente cobrado en este pago, y cada impuesto
+      // (IVA, retención, u otro) se registra en su propia línea, no mezclados.
+      for (const { nombre, id, monto: montoTax } of porImpuesto.values()) {
+        await registrarImpuestoCredito(montoTax, credito, nombre, id);
+      }
+
+      const comprobanteNumero = `PAG-${credito.numero_credito}-${Date.now().toString().slice(-5)}`;
+      const { data: pago, error: errPago } = await _sb.from('creditos_pagos').insert({
+        auth_user_id: CS.userId, credito_id: creditoId, cliente_id: credito.cliente_id, monto,
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
+        saldo_anterior: saldoAnterior, saldo_nuevo: saldoNuevo, comprobante_numero: comprobanteNumero,
+      }).select().single();
+      if (errPago) throw errPago;
+
+      await registrarHistorial(creditoId, 'pago', `Pago de ${fmt(monto)} registrado`, { monto, saldoNuevo });
+      if (nuevoEstadoCredito === 'cancelado') await registrarHistorial(creditoId, 'cancelado', 'Crédito cancelado — saldo en cero', {});
+
+      showToast('Pago registrado correctamente', 'success');
+      closeModal('modal-registrar-pago');
+
+      // Si esta pantalla se abrió incrustada desde Rutas (iframe), se
+      // le avisa al padre que el pago sí se registró — Rutas nunca
+      // calcula el pago, solo reacciona quando de verdad ya pasó.
+      if (window.self !== window.top) {
+        try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto, nota: observaciones }, '*'); } catch(e) {}
+      }
+
+      const cliente = CS.clientes.find(c => c.id === credito.cliente_id);
+      const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
+      let productosComprobante = [];
+      if (credito.venta_id) {
+        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad,tipo_item,combo_id').eq('venta_id', credito.venta_id);
+        productosComprobante = await enriquecerItemsConCombo(detalles || []);
+      }
+      mostrarComprobante({
+        titulo: 'Pago de crédito', numero: comprobanteNumero, credito: await textoCredito(credito),
+        clienteId: cliente?.id || null,
+        cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
+        usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombre,
+        saldoAnterior, saldoNuevo, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
+        fechaLimite: await fechaLimiteComprobante(credito, proximaCuota, saldoNuevo),
+        estado: LABEL_ESTADO[nuevoEstadoCredito] || nuevoEstadoCredito,
+        productos: productosComprobante,
+      });
+
+      await refrescarTodo();
+    } catch (e) {
+      console.error('confirmarRegistrarPagoCredito:', e);
+      showToast('Error al registrar el pago: ' + (e.message||e), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Registrar pago';
+      CS.registrandoPago = false;
+    }
+  }
+  window.confirmarRegistrarPagoCredito = confirmarRegistrarPagoCredito;
+
+  /* ===================================================
+     CONFIGURAR TICKET DE IMPRESIÓN — misma tabla que usa Ventas
+     (configuracion_venta_rapida), compartida por todo el sistema.
+  =================================================== */
+  CS.configTicket = null;
+  async function cargarConfigTicket() {
+    try {
+      const { data } = await _sb.from('configuracion_venta_rapida').select('*').eq('auth_user_id', CS.userId).maybeSingle();
+      CS.configTicket = data || null;
+    } catch (e) { CS.configTicket = null; }
+  }
+  async function abrirConfigTicket() {
+    if (!CS.configTicket) await cargarConfigTicket();
+    const c = CS.configTicket || {};
+    document.querySelectorAll('input[name="ct-ancho"]').forEach(r => { r.checked = (r.value === (c.ancho_ticket || '80mm')); });
+    { const rbx = document.getElementById('ct-rawbt'); if (rbx) rbx.checked = !!c.imprimir_rawbt; }
+    document.getElementById('ct-nombre').value    = c.nombre_ticket    || '';
+    document.getElementById('ct-ruc').value       = c.ruc_ticket       || '';
+    document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
+    document.getElementById('ct-direccion').value = c.direccion_ticket|| '';
+    document.getElementById('ct-mensaje').value   = c.mensaje_pie_ticket || 'Gracias por su compra';
+    const selFirma = document.getElementById('ct-espacio-firma'); if (selFirma) selFirma.value = ['normal','amplio','extra'].includes(c.espacio_firma_ticket) ? c.espacio_firma_ticket : 'normal';
+    openModal('modal-config-ticket');
+  }
+  window.abrirConfigTicket = abrirConfigTicket;
+
+  async function guardarConfigTicket() {
+    const ancho = document.querySelector('input[name="ct-ancho"]:checked')?.value || '80mm';
+    const payload = {
+      auth_user_id: CS.userId, configurado: true,
+      ancho_ticket: ancho,
+      imprimir_rawbt: !!document.getElementById('ct-rawbt')?.checked,
+      nombre_ticket: document.getElementById('ct-nombre').value.trim() || null,
+      ruc_ticket: document.getElementById('ct-ruc').value.trim() || null,
+      telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
+      direccion_ticket: document.getElementById('ct-direccion').value.trim() || null,
+      mensaje_pie_ticket: document.getElementById('ct-mensaje').value.trim() || 'Gracias por su compra',
+      espacio_firma_ticket: document.getElementById('ct-espacio-firma')?.value || 'normal',
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const { data, error } = await _sb.from('configuracion_venta_rapida')
+        .upsert(payload, { onConflict: 'auth_user_id' }).select('*').single();
+      if (error) throw error;
+      CS.configTicket = data;
+      closeModal('modal-config-ticket');
+      showToast('Configuración del ticket guardada', 'success');
+    } catch (e) {
+      console.error('guardarConfigTicket:', e);
+      showToast('No se pudo guardar la configuración', 'error');
+    }
+  }
+  window.guardarConfigTicket = guardarConfigTicket;
+
+  /* ===================================================
+     CONFIGURACIÓN DE CRÉDITO — opciones propias del módulo, guardadas
+     por negocio en configuracion_empresa. Solo el perfil Admin las cambia.
+  =================================================== */
+  function abrirConfigCredito() {
+    const admin = esPerfilAdmin();
+    const chk = document.getElementById('cfc-fecha-limite');
+    chk.checked = !!CS.empresaConfig?.creditos_mostrar_fecha_limite;
+    chk.disabled = !admin;
+    document.getElementById('cfc-btn-guardar').style.display = admin ? '' : 'none';
+    document.getElementById('cfc-aviso-admin').style.display = admin ? 'none' : '';
+    openModal('modal-config-credito');
+  }
+  window.abrirConfigCredito = abrirConfigCredito;
+
+  async function guardarConfigCredito() {
+    if (!esPerfilAdmin()) { showToast('Solo el perfil Admin puede cambiar esta configuración', 'error'); return; }
+    const activo = document.getElementById('cfc-fecha-limite').checked;
+    const btn = document.getElementById('cfc-btn-guardar');
+    btn.disabled = true;
+    try {
+      const { error } = await _sb.from('configuracion_empresa')
+        .update({ creditos_mostrar_fecha_limite: activo }).eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      if (CS.empresaConfig) CS.empresaConfig.creditos_mostrar_fecha_limite = activo;
+      closeModal('modal-config-credito');
+      showToast(activo ? 'La fecha límite de pago saldrá en los comprobantes de créditos a fecha fija' : 'Fecha límite de pago desactivada', 'success');
+    } catch (e) {
+      console.error('guardarConfigCredito:', e);
+      showToast('No se pudo guardar la configuración', 'error');
+    } finally { btn.disabled = false; }
+  }
+  window.guardarConfigCredito = guardarConfigCredito;
+
+  // Interruptor del detalle: marcar a mano un crédito de 1 cuota como
+  // "a fecha fija" (para los creados antes de que se guardara la modalidad).
+  async function toggleModalidadFechaFija(creditoId, activo, chk) {
+    try {
+      const { error } = await _sb.from('creditos')
+        .update({ modalidad_pago: activo ? 'fecha_fija' : 'cuotas', updated_at: new Date().toISOString() })
+        .eq('id', creditoId).eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      const enLista = CS.creditos.find(c => c.id === creditoId);
+      if (enLista) enLista.modalidad_pago = activo ? 'fecha_fija' : 'cuotas';
+      if (window._creditoDetalleData?.credito?.id === creditoId) window._creditoDetalleData.credito.modalidad_pago = activo ? 'fecha_fija' : 'cuotas';
+      await registrarHistorial(creditoId, 'editado', activo ? 'Marcado como "Un solo pago a fecha fija"' : 'Desmarcado como "Un solo pago a fecha fija"', { modalidad_pago: activo ? 'fecha_fija' : 'cuotas' });
+      showToast(activo ? 'Crédito marcado como a fecha fija' : 'Crédito marcado como en cuotas', 'success');
+    } catch (e) {
+      console.error('toggleModalidadFechaFija:', e);
+      showToast('No se pudo cambiar la modalidad', 'error');
+      if (chk) chk.checked = !activo;
+    }
+  }
+  window.toggleModalidadFechaFija = toggleModalidadFechaFija;
+
+  /* ===================================================
+     COMPROBANTE / TICKET
+  =================================================== */
+  // Fecha de pago de un crédito a fecha fija: la de su cuota pendiente o,
+  // si ya se pagó todo, la de su (única) cuota.
+  async function fechaDeCreditoFechaFija(credito, proximaCuota) {
+    if (proximaCuota?.fecha_vencimiento) return proximaCuota.fecha_vencimiento;
+    try {
+      const { data } = await _sb.from('creditos_cuotas').select('fecha_vencimiento')
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId)
+        .order('numero', { ascending: false }).limit(1).maybeSingle();
+      return data?.fecha_vencimiento || null;
+    } catch (_) { return null; }
+  }
+  // "Fecha límite de pago" del comprobante de pago (Configuración de crédito):
+  // solo si la casilla está encendida y el crédito es "Un solo pago a fecha
+  // fija". Si no, null — y el comprobante sale exactamente como siempre.
+  async function fechaLimiteComprobante(credito, proximaCuota, saldoNuevo) {
+    if (!CS.empresaConfig?.creditos_mostrar_fecha_limite) return null;
+    if (!credito || credito.modalidad_pago !== 'fecha_fija') return null;
+    const fecha = await fechaDeCreditoFechaFija(credito, proximaCuota);
+    return fecha ? { fecha, pagado: !(Number(saldoNuevo) > 0) } : null;
+  }
+  // Texto de la fecha límite: "(PAGADO)" si ya no hay saldo, "(VENCIDA)" si
+  // ya pasó a la fecha del comprobante y aún se debe.
+  function textoFechaLimite(c) {
+    const fl = c?.fechaLimite;
+    if (!fl?.fecha) return '';
+    if (fl.pagado) return `${fmtDateNum(fl.fecha)} (PAGADO)`;
+    const vencida = String(fl.fecha).slice(0, 10) < String(c.fecha || todayISO()).slice(0, 10);
+    return `${fmtDateNum(fl.fecha)}${vencida ? ' (VENCIDA)' : ''}`;
+  }
+  // Observaciones del comprobante carta (PDF), con la fecha límite si aplica.
+  function observacionesCartaPago(c) {
+    const base = `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`;
+    return c.fechaLimite ? `${base} — FECHA LÍMITE DE PAGO: ${textoFechaLimite(c)}` : base;
+  }
+
+  function mostrarComprobante(c) {
+    CS.ultimoComprobante = c;
+
+    // Si el negocio eligió "Carta / A4", nunca se arma la vista
+    // previa de ticket angosto — se genera y descarga directo el
+    // comprobante profesional real, igual que ya pasa en Ventas.
+    if (CS.configTicket?.ancho_ticket === 'carta') {
+      (async () => {
+        try {
+          const doc = await generarComprobanteCartaPDF('credito', {
+            userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
+            cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
+            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
+            empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+            empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
+          }, [{ nombre: `Pago de cuota — ${c.credito || 'crédito'}`, cantidad: 1, precio: c.monto, descuento: 0, subtotal: c.monto }]);
+          doc.save(`Comprobante_pago_${c.numero || Date.now()}.pdf`);
+          showToast('Comprobante generado');
+        } catch (e) {
+          console.warn('No se pudo generar el comprobante carta:', e);
+          showToast('No se pudo generar el comprobante', 'error');
+        }
+      })();
+      return;
+    }
+
+    const logoUrl = CS.empresaConfig?.logo_principal_url || CS.empresaConfig?.logo_url || '';
+    const anchoTicket = CS.configTicket?.ancho_ticket || '80mm';
+    const logoMaxW = anchoTicket === '58mm' ? 70 : anchoTicket === '76mm' ? 85 : anchoTicket === 'carta' ? 130 : 95;
+    document.getElementById('comprobante-body').innerHTML = `
+      <div class="ticket-print">
+        ${logoUrl ? `<img src="${esc(logoUrl)}" alt="" style="display:block;max-width:${logoMaxW}px;max-height:70px;object-fit:contain;margin:0 auto 6px" onerror="this.style.display='none'"/>` : ''}
+        <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(CS.configTicket?.nombre_ticket || nombreNegocio())}</div>
+        ${CS.configTicket?.ruc_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">RUC: ${esc(CS.configTicket.ruc_ticket)}</div>` : ''}
+        ${CS.configTicket?.telefono_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">Tel: ${esc(CS.configTicket.telefono_ticket)}</div>` : ''}
+        ${CS.configTicket?.direccion_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(CS.configTicket.direccion_ticket)}</div>` : ''}
+        <div style="text-align:center;color:var(--text-muted);margin-bottom:8px">${esc(c.titulo)}</div>
+        <hr/>
+        <div class="tp-row"><span>N° comprobante:</span><b>${esc(c.numero)}</b></div>
+        <div class="tp-row"><span>N° crédito:</span><b>${esc(c.credito)}</b></div>
+        <div class="tp-row"><span>Cliente:</span><b>${esc(c.cliente)}</b></div>
+        <div class="tp-row"><span>Fecha:</span><b>${fmtDate(c.fecha)}</b></div>
+        <div class="tp-row"><span>Usuario:</span><b>${esc(c.usuario)}</b></div>
+        ${(c.productos && c.productos.length) ? `
+        <hr/>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Productos financiados:</div>
+        ${c.productos.map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px"><span>${esc(p.producto_nombre)}</span><span>x${Number(p.cantidad)}</span></div>`).join('')}
+        ` : ''}
+        <hr/>
+        <div class="tp-row"><span>Monto pagado:</span><b>${fmt(c.monto)}</b></div>
+        <div class="tp-row"><span>Método de pago:</span><b>${esc(c.metodo)}</b></div>
+        <div class="tp-row"><span>Saldo anterior:</span><b>${fmt(c.saldoAnterior)}</b></div>
+        <div class="tp-row"><span>Saldo nuevo:</span><b>${fmt(c.saldoNuevo)}</b></div>
+        <hr/>
+        ${c.fechaLimite
+          ? `<div class="tp-row" style="font-weight:800"><span>FECHA LÍMITE DE PAGO:</span><b>${esc(textoFechaLimite(c))}</b></div>`
+          : `<div class="tp-row"><span>Próxima cuota:</span><b>${esc(c.proximaCuota)}</b></div>`}
+        <div class="tp-row"><span>Estado del crédito:</span><b>${esc(c.estado)}</b></div>
+        ${CS.configTicket?.mensaje_pie_ticket ? `<hr/><div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(CS.configTicket.mensaje_pie_ticket)}</div>` : ''}
+      </div>`;
+    openModal('modal-comprobante');
+  }
+  function imprimirComprobante() {
+    const esEpson = CS.configTicket?.ancho_ticket === 'epson_tmu220';
+    const ancho = esEpson ? '76mm' : (CS.configTicket?.ancho_ticket || '80mm');
+    const fontFamily = esEpson ? "'Courier New', Courier, monospace" : 'Arial,Helvetica,sans-serif';
+
+    // Si el negocio eligió "Carta / A4", se genera el comprobante
+    // profesional real (con logo, color de marca y tabla), no solo
+    // el mismo recibo angosto ensanchado — nunca se activa para quien
+    // tenga 58/76/80mm configurado.
+    if (ancho === 'carta') {
+      (async () => {
+        try {
+          const c = CS.ultimoComprobante;
+          if (!c) throw new Error('No hay comprobante para imprimir');
+          if (c.tipoDoc === 'credito') { await pdfComprobanteCredito(c.datos); return; }
+          const doc = await generarComprobanteCartaPDF('credito', {
+            userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
+            cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
+            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
+            empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+            empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+            empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
+          }, [{ nombre: `Pago de cuota — ${c.credito || 'crédito'}`, cantidad: 1, precio: c.monto, descuento: 0, subtotal: c.monto }]);
+          doc.save(`Comprobante_pago_${c.numero || Date.now()}.pdf`);
+        } catch (e) {
+          console.warn('No se pudo generar el comprobante carta:', e);
+          showToast('No se pudo generar el comprobante', 'error');
+        }
+      })();
+      return;
+    }
+
+    // RawBT (Android, 80 mm): si el negocio lo activó, se imprime directo; si no, todo sigue igual.
+    if (window.rawbtActivo && window.rawbtActivo(CS.configTicket)) {
+      window.rawbtImprimirDesdeContenedor(document.querySelector('#comprobante-body .ticket-print'), { espacioFirma: CS.configTicket?.espacio_firma_ticket });
+      return;
+    }
+    const html = document.getElementById('comprobante-body').innerHTML;
+    const anchoPx = ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px';
+    // En 58mm hay menos ancho real de impresión — con la misma letra
+    // que 80mm, el texto se ve apretado o se corta en impresoras
+    // térmicas baratas de bajo DPI (como la Hoin HOP-E58, 203dpi/58mm).
+    const fs = ancho === '58mm' ? 11 : 12.5;
+    const w = window.open('', '_blank', 'width=380,height=600');
+    w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
+      <style>@page{size:${ancho} auto;margin:0}*{box-sizing:border-box}body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+      </head><body>${html}<script>window.print();</script></body></html>`);
+    w.document.close();
+  }
+  window.imprimirComprobante = imprimirComprobante;
+
+  /* ===================================================
+     DETALLE DE CRÉDITO (cuotas + historial)
+  =================================================== */
+  window._creditoDetalleActual = null;
+  /* ===================================================
+     PAGARÉ / CONTRATO DE CRÉDITO — se llena solo con los datos ya
+     guardados del crédito, cliente y sus cuotas, sin tener que
+     redactarlo desde cero cada vez. Plantilla base — el negocio
+     puede ajustarla según sus necesidades específicas.
+  =================================================== */
+  window.generarPagareCredito = function(credito, cliente, cuotas) {
+    const bizName = CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'La Empresa';
+    const bizRuc = CS.empresaConfig?.ruc || '';
+    const bizDireccion = CS.empresaConfig?.direccion || '';
+    const moneda = monedaParaMostrar(CS.empresaConfig?.moneda);
+    const nombreCliente = cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '________________';
+    const hoy = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+    const numCuotas = (cuotas||[]).length || credito.num_cuotas || 0;
+    const valorCuota = numCuotas ? (Number(credito.total_financiado||0) / numCuotas) : Number(credito.valor_cuota_aprox||0);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 20;
+    let y = 20;
+
+    doc.setFontSize(14); doc.setFont(undefined,'bold');
+    doc.text('PAGARÉ', W/2, y, { align:'center' }); y += 8;
+    doc.setFontSize(10); doc.setFont(undefined,'normal');
+    doc.text(`N.º ${credito.numero_credito}`, W/2, y, { align:'center' }); y += 12;
+    const prPagare = (window.N360ProformaCredito && N360ProformaCredito._cache[credito.id]) || null; // ya se cargó al abrir el detalle
+    if (prPagare) { y -= 6; doc.setFontSize(9); doc.text(`Proforma ${prPagare}`, W/2, y, { align:'center' }); doc.setFontSize(10); y += 6; }
+
+    const parrafo1 = `Yo, ${nombreCliente}${cliente?.direccion ? ', con domicilio en ' + cliente.direccion : ''}${cliente?.telefono ? ', teléfono ' + cliente.telefono : ''}, por medio del presente documento me comprometo a pagar incondicionalmente a la orden de ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, la cantidad de ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})} (${numeroALetrasSimple(Number(credito.total_financiado||0))}), correspondiente a la compra/financiamiento detallado a continuación.`;
+    const lineas1 = doc.splitTextToSize(parrafo1, W - M*2);
+    doc.text(lineas1, M, y); y += lineas1.length * 5 + 8;
+
+    doc.setFont(undefined,'bold'); doc.text('CONDICIONES DEL PAGO:', M, y); y += 6;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9.5);
+    const condiciones = [
+      `Capital financiado: ${moneda} ${Number(credito.capital_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Total a pagar (con intereses/impuestos si aplica): ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Número de cuotas: ${numCuotas}`,
+      `Valor aproximado por cuota: ${moneda} ${valorCuota.toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Fecha de inicio: ${credito.fecha_inicio ? fmtDate(credito.fecha_inicio) : '—'}`,
+    ];
+    condiciones.forEach(c => { doc.text('• ' + c, M+2, y); y += 5.5; });
+    y += 4;
+
+    if ((cuotas||[]).length) {
+      doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.text('CALENDARIO DE PAGOS:', M, y); y += 3;
+      doc.autoTable({
+        startY: y, head: [['Cuota', 'Vencimiento', 'Monto']],
+        body: cuotas.map(c => [c.numero, fmtDate(c.fecha_vencimiento), `${moneda} ${Number(c.monto_total).toLocaleString('es-NI',{minimumFractionDigits:2})}`]),
+        theme:'grid', styles:{ fontSize:8.5, cellPadding:2 }, headStyles:{ fillColor:[108,99,255] }, margin:{ left:M, right:M },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    doc.setFontSize(9.5); doc.setFont(undefined,'normal');
+    const parrafo2 = 'En caso de incumplimiento en el pago de cualquiera de las cuotas señaladas, EL ACREEDOR podrá exigir el pago inmediato del saldo total pendiente, sin necesidad de requerimiento judicial previo, quedando este pagaré sujeto a las leyes de la República de Nicaragua.';
+    const lineas2 = doc.splitTextToSize(parrafo2, W - M*2);
+    doc.text(lineas2, M, y); y += lineas2.length * 5 + 14;
+
+    doc.text(`Firmado en la ciudad de _________________, a los ${hoy}.`, M, y); y += 20;
+    doc.text('_____________________________', M, y);
+    doc.text('_____________________________', W - M - 70, y);
+    y += 5;
+    doc.setFont(undefined,'bold');
+    doc.text('EL DEUDOR', M, y);
+    doc.text('EL ACREEDOR', W - M - 70, y);
+    y += 5;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9);
+    doc.text(nombreCliente, M, y);
+    doc.text(bizName, W - M - 70, y);
+
+    doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+    doc.text('Este documento es una plantilla base generada automáticamente — revísala y ajústala según las necesidades específicas de tu negocio antes de usarla.', M, doc.internal.pageSize.getHeight() - 10);
+
+    doc.save(`Pagare_${credito.numero_credito}.pdf`);
+    showToast('Pagaré generado', 'success');
+  };
+
+  // Conversión simple de número a letras, solo para el monto del
+  // pagaré — cubre los montos típicos de un crédito comercial.
+  function numeroALetrasSimple(n) {
+    n = Math.round(n);
+    if (n === 0) return 'cero córdobas';
+    const UNIDADES = ['','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve'];
+    const DECENAS = ['','diez','veinte','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
+    const ESPECIALES = {11:'once',12:'doce',13:'trece',14:'catorce',15:'quince',16:'dieciséis',17:'diecisiete',18:'dieciocho',19:'diecinueve',21:'veintiuno',22:'veintidós',23:'veintitrés',24:'veinticuatro',25:'veinticinco',26:'veintiséis',27:'veintisiete',28:'veintiocho',29:'veintinueve'};
+    function centenas(num) {
+      if (num === 0) return '';
+      if (num === 100) return 'cien';
+      const c = Math.floor(num/100), resto = num%100;
+      const CENT = ['','ciento','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+      let texto = CENT[c];
+      if (resto > 0) {
+        let parteResto;
+        if (ESPECIALES[resto]) parteResto = ESPECIALES[resto];
+        else {
+          const d = Math.floor(resto/10), u = resto%10;
+          parteResto = d === 0 ? UNIDADES[u] : DECENAS[d] + (u>0?' y '+UNIDADES[u]:'');
+        }
+        texto += (texto?' ':'') + parteResto;
+      }
+      return texto;
+    }
+    function miles(num) {
+      if (num < 1000) return centenas(num);
+      const m = Math.floor(num/1000), resto = num%1000;
+      return (m===1?'mil':centenas(m)+' mil') + (resto>0?' '+centenas(resto):'');
+    }
+    const millones = Math.floor(n/1000000), resto = n%1000000;
+    let texto = millones > 0 ? (millones===1?'un millón':miles(millones)+' millones') + (resto>0?' ':'') : '';
+    texto += miles(resto);
+    return (texto.trim() || 'cero') + ' córdobas';
+  }
+
+  async function enriquecerItemsConCombo(items) {
+    const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
+    if (!combosIds.length) return items;
+    try {
+      const { data: cis } = await _sb.from('combo_items')
+        .select('combo_id, producto_id, cantidad').eq('auth_user_id', CS.userId).in('combo_id', combosIds);
+      const prodIds = [...new Set((cis||[]).map(ci => ci.producto_id))];
+      const { data: prods } = await _sb.from('productos').select('id,nombre').eq('auth_user_id', CS.userId).in('id', prodIds);
+      const nombreProd = {}; (prods||[]).forEach(p => { nombreProd[p.id] = p.nombre; });
+      const porCombo = {};
+      (cis||[]).forEach(ci => {
+        if (!porCombo[ci.combo_id]) porCombo[ci.combo_id] = [];
+        porCombo[ci.combo_id].push(`${nombreProd[ci.producto_id]||'Producto'} x${Number(ci.cantidad)}`);
+      });
+      return (items||[]).map(it => {
+        if (it.combo_id && porCombo[it.combo_id]?.length && !(it.nombre||'').includes('\n  •')) {
+          const detalle = '\n' + porCombo[it.combo_id].map(x => `  • ${x}`).join('\n');
+        return { ...it, nombre: `${it.nombre}${detalle}`, producto_nombre: `${it.producto_nombre||it.nombre}${detalle}` };
+        }
+        return it;
+      });
+    } catch (e) { console.warn('enriquecerItemsConCombo:', e); return items; }
+  }
+
+  window.descargarComprobanteCartaCredito = async function(credito, cliente, productos) {
+    try {
+      const itemsEnriquecidos = await enriquecerItemsConCombo((productos||[]).map(p => ({
+        nombre: p.producto_nombre, cantidad: p.cantidad, precio: p.precio, descuento: 0, subtotal: p.subtotal,
+        tipo_item: p.tipo_item, combo_id: p.combo_id,
+        sku: p.producto_sku || p.sku || null, producto_id: p.producto_id || null,
+      })));
+      const doc = await generarComprobanteCartaPDF('credito', {
+        userId: CS.userId,
+        numero: await textoCredito(credito),
+        fecha: fmtDate(credito.fecha_inicio || credito.created_at),
+        cliente_nombre: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : 'Cliente',
+        cliente_telefono: cliente?.telefono || '',
+        cliente_direccion: cliente?.direccion || '',
+        cliente_id: credito?.cliente_id || cliente?.id || null,      // respaldo: si la direccion no vino, el comprobante la busca
+        subtotal: credito.capital_financiado,
+        descuento: 0,
+        impuesto: Number(credito.total_financiado||0) - Number(credito.capital_financiado||0),
+        total: credito.total_financiado,
+        metodo_pago: 'Crédito',
+        observaciones: `Saldo pendiente: ${fmt(credito.saldo_pendiente)}`,
+        empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+        empresaDireccion: CS.empresaConfig?.direccion || '',
+        empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+        empresaRuc: CS.empresaConfig?.ruc || '',
+        moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
+      }, itemsEnriquecidos);
+      doc.save(`Comprobante_${credito.numero_credito}.pdf`);
+    } catch (e) {
+      console.error('descargarComprobanteCartaCredito:', e);
+      showToast('No se pudo generar el comprobante', 'error');
+    }
+  };
+
+  /* ===================================================
+     FACTURA DE CRÉDITO — como el recibo de una venta, pero sin
+     cobrar nada: lo financiado, lo pagado, el saldo y cuándo toca
+     pagar (fecha límite si es a fecha fija; próxima cuota y cuotas
+     pendientes si es en cuotas). SOLO LEE datos: no registra pagos,
+     no toca Caja, inventario ni el crédito. Respeta el formato del
+     ticket configurado (58/76/80 mm, Epson o Carta en PDF).
+  =================================================== */
+  async function datosComprobanteCredito(creditoId) {
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).eq('auth_user_id', CS.userId).maybeSingle();
+    if (!credito) throw new Error('Crédito no encontrado');
+    const [{ data: cuotas }, { data: cliente }] = await Promise.all([
+      _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).eq('auth_user_id', CS.userId).order('numero'),
+      _sb.from('clientes').select('id,nombre,apellido,telefono,direccion').eq('id', credito.cliente_id).maybeSingle(),
+    ]);
+    let items = [];
+    if (credito.venta_id) {
+      const { data: detalles } = await _sb.from('venta_detalles').select('producto_id,producto_nombre,producto_sku,cantidad,precio,descuento,subtotal,tipo_item,combo_id').eq('venta_id', credito.venta_id).order('created_at');
+      items = await enriquecerItemsConCombo((detalles || []).map(d => ({ ...d, nombre: d.producto_nombre })));
+    } else {
+      let concepto = 'Préstamo / financiamiento';
+      if (credito.producto_financiero_id) {
+        const { data: pf } = await _sb.from('productos').select('nombre').eq('id', credito.producto_financiero_id).maybeSingle();
+        if (pf?.nombre) concepto = pf.nombre;
+      }
+      items = [{ nombre: concepto, producto_nombre: concepto, cantidad: 1, precio: Number(credito.monto_original || credito.capital_financiado || 0), descuento: 0, subtotal: Number(credito.monto_original || credito.capital_financiado || 0) }];
+    }
+    const lista = cuotas || [];
+    const pendientes = lista.filter(q => q.estado !== 'pagada');
+    const totalFinanciado = round2(credito.total_financiado);
+    const saldo = round2(Math.max(0, Number(credito.saldo_pendiente || 0)));
+    const impuestos = round2(lista.reduce((s, q) => s + Number(q.impuesto || 0), 0));
+    const esFechaFija = credito.modalidad_pago === 'fecha_fija';
+    // Fecha / Plazo / Vence de la factura: vence = fecha fija o la última
+    // cuota del crédito; plazo = días entre la fecha del crédito y el vencimiento.
+    const fechaCredito = String(credito.fecha_inicio || credito.created_at || '').slice(0, 10);
+    const ultima = lista.length ? lista[lista.length - 1] : null;
+    const vence = esFechaFija ? await fechaDeCreditoFechaFija(credito, pendientes[0]) : (ultima?.fecha_vencimiento || null);
+    const plazoDias = (fechaCredito && vence) ? Math.round((new Date(String(vence).slice(0, 10) + 'T12:00:00') - new Date(fechaCredito + 'T12:00:00')) / 86400000) : null;
+    return {
+      fechaCredito, vence, plazoDias,
+      credito, cliente, items, pendientes, esFechaFija, totalCuotas: lista.length,
+      numeroTexto: await textoCredito(credito),
+      montoOriginal: round2(credito.monto_original || credito.capital_financiado),
+      prima: round2(credito.prima_monto), capital: round2(credito.capital_financiado),
+      intereses: round2(credito.total_intereses), impuestos, totalFinanciado,
+      pagado: round2(Math.max(0, totalFinanciado - saldo)), saldo,
+      fechaLimite: esFechaFija ? await fechaDeCreditoFechaFija(credito, pendientes[0]) : null,
+      proxima: pendientes[0] || null,
+    };
+  }
+
+  // Lo que falta de una cuota (si tiene abonos, solo lo pendiente).
+  function pendienteDeCuota(q) { return round2(Math.max(0, Number(q.monto_total || 0) - Number(q.monto_pagado || 0))); }
+
+  function htmlComprobanteCredito(d) {
+    const cfg = CS.configTicket || {};
+    const logoUrl = CS.empresaConfig?.logo_principal_url || CS.empresaConfig?.logo_url || '';
+    const ancho = cfg.ancho_ticket || '80mm';
+    const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
+    // Espacio para firmar: normal ~17mm, amplio ~25mm, extra ~35mm (sin configurar = normal)
+    const espacioFirmaPx = ({ amplio: 95, extra: 132 })[cfg.espacio_firma_ticket] || 64;
+    const c = d.credito;
+    const nombreCliente = d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : '—';
+    // Hora de la factura: la de registro, si es del mismo día que la fecha del crédito
+    const creado = c.created_at ? new Date(c.created_at) : null;
+    const hora = creado && !isNaN(creado) && String(c.created_at).slice(0, 10) === d.fechaCredito ? ' ' + creado.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '';
+    const fila = (a, b, extra = '') => `<div class="tp-row"${extra}><span>${a}</span><b>${b}</b></div>`;
+    const filasItems = d.items.map(i => {
+      const [nombreReal, ...detalle] = String(i.nombre || i.producto_nombre || 'Ítem').split('\n');
+      const sub = i.subtotal != null ? Number(i.subtotal) : round2(Number(i.cantidad) * Number(i.precio));
+      return `<div style="margin-top:5px">${esc(nombreReal)}</div>
+        ${detalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('')}
+        <div class="tp-row"><span>${Number(i.cantidad || 0).toLocaleString('es-NI', { maximumFractionDigits: 3 })} x ${fmt(i.precio)}</span><span>${fmt(sub)}</span></div>`;
+    }).join('');
+
+    let plan;
+    if (d.esFechaFija) {
+      const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
+      plan = `
+        ${d.saldo <= 0 ? fila('Estado:', 'Crédito pagado') : vencida ? fila('Estado:', 'Vencida') : ''}`;
+    } else {
+      plan = `
+        ${d.proxima ? fila('Próxima cuota:', `${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}`, ' style="font-weight:800"') : fila('Próxima cuota:', 'Sin cuotas pendientes')}
+        ${d.pendientes.length > 1 ? `
+          <div style="font-size:11px;margin-top:6px;font-weight:700">Cuotas pendientes:</div>
+          ${d.pendientes.map(q => `<div class="tp-row" style="font-size:11px"><span>#${q.numero} · ${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''}</span><span>${fmt(pendienteDeCuota(q))}</span></div>`).join('')}` : ''}`;
+    }
+
+    return `
+      <div class="ticket-print">
+        ${logoUrl ? `<img src="${esc(logoUrl)}" alt="" style="display:block;max-width:${logoMaxW}px;max-height:70px;object-fit:contain;margin:0 auto 6px" onerror="this.style.display='none'"/>` : ''}
+        <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(cfg.nombre_ticket || nombreNegocio())}</div>
+        ${cfg.ruc_ticket ? `<div style="text-align:center;font-size:11px">RUC: ${esc(cfg.ruc_ticket)}</div>` : ''}
+        ${cfg.telefono_ticket ? `<div style="text-align:center;font-size:11px">Tel: ${esc(cfg.telefono_ticket)}</div>` : ''}
+        ${cfg.direccion_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.direccion_ticket)}</div>` : ''}
+        <hr/>
+        <div style="text-align:center;font-weight:800">FACTURA DE CRÉDITO</div>
+        <hr/>
+        ${fila('N° crédito:', esc(d.numeroTexto))}
+        ${fila('Fecha:', fmtDateNum(d.fechaCredito) + hora)}
+        ${d.plazoDias != null ? fila('Plazo:', `${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}`) : ''}
+        ${d.vence ? fila('Vence:', fmtDateNum(d.vence)) : ''}
+        ${fila('Cliente:', esc(nombreCliente))}
+        ${d.cliente?.telefono ? fila('Teléfono:', esc(d.cliente.telefono)) : ''}
+        <hr/>
+        <div class="tp-row" style="font-weight:700"><span>Descripción</span><span>Subtotal</span></div>
+        ${filasItems}
+        <hr/>
+        ${fila('Subtotal:', fmt(d.montoOriginal))}
+        ${d.prima > 0 ? fila('Prima / anticipo:', '-' + fmt(d.prima)) : ''}
+        ${d.prima > 0 ? fila('Monto financiado:', fmt(d.capital)) : ''}
+        ${d.intereses > 0 ? fila('Intereses:', fmt(d.intereses)) : ''}
+        ${d.impuestos > 0 ? fila('Impuestos:', fmt(d.impuestos)) : ''}
+        ${fila('TOTAL A PAGAR:', fmt(d.totalFinanciado), ' style="font-weight:800;font-size:1.1em;margin-top:4px"')}
+        ${fila('Pagado a la fecha:', fmt(d.pagado))}
+        ${fila('SALDO PENDIENTE:', fmt(d.saldo), ' style="font-weight:800;font-size:1.1em"')}
+        <hr/>
+        ${plan}
+        ${d.saldo > 0 ? `<div style="margin-top:${espacioFirmaPx}px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
+        <hr/>
+        ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
+        <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>
+      </div>`;
+  }
+
+  async function pdfComprobanteCredito(d) {
+    const c = d.credito;
+    const lineas = [
+      `Fecha: ${fmtDateNum(d.fechaCredito)}${d.plazoDias != null ? `  ·  Plazo: ${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}` : ''}${d.vence ? `  ·  Vence: ${fmtDateNum(d.vence)}` : ''}`,
+      `Total a pagar: ${fmt(d.totalFinanciado)}  ·  Pagado a la fecha: ${fmt(d.pagado)}  ·  SALDO PENDIENTE: ${fmt(d.saldo)}`,
+    ];
+    if (d.prima > 0) lineas.push(`Prima / anticipo: ${fmt(d.prima)}  ·  Monto financiado: ${fmt(d.capital)}`);
+    if (d.esFechaFija) {
+      const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
+      if (d.saldo <= 0) lineas.push('Estado: Crédito pagado'); else if (vencida) lineas.push('Estado: Vencida');
+    } else {
+      lineas.push(d.proxima ? `PRÓXIMA CUOTA: ${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}` : 'Sin cuotas pendientes');
+      if (d.pendientes.length > 1) {
+        lineas.push('Cuotas pendientes:');
+        d.pendientes.forEach(q => lineas.push(`   #${q.numero} — vence ${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''} — ${fmt(pendienteDeCuota(q))}`));
+      }
+    }
+    lineas.push('Esta factura no registra pagos ni movimientos de caja.');
+    const doc = await generarComprobanteCartaPDF('credito', {
+      userId: CS.userId, numero: d.numeroTexto,
+      fecha: fmtDate(c.fecha_inicio || String(c.created_at || '').slice(0, 10)),
+      cliente_nombre: d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : 'Cliente',
+      cliente_telefono: d.cliente?.telefono || '', cliente_direccion: d.cliente?.direccion || '',
+      cliente_id: c.cliente_id || null,
+      // Mismos totales que el "Comprobante tamaño carta" de siempre (la prima va
+      // en las observaciones, no como descuento).
+      subtotal: d.capital, descuento: 0,
+      impuesto: round2(d.totalFinanciado - d.capital), total: d.totalFinanciado,
+      metodo_pago: 'Crédito', observaciones: lineas.join('\n'), titulo: 'Factura de Crédito',
+      empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
+      empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
+      empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
+    }, d.items.map(i => ({
+      nombre: i.nombre || i.producto_nombre, cantidad: i.cantidad, precio: i.precio, descuento: i.descuento || 0,
+      subtotal: i.subtotal != null ? i.subtotal : round2(Number(i.cantidad) * Number(i.precio)),
+      sku: i.producto_sku || null, producto_id: i.producto_id || null,
+    })));
+    doc.save(`Factura_credito_${c.numero_credito}.pdf`);
+  }
+
+  async function generarComprobanteCredito(creditoId) {
+    try {
+      if (!CS.configTicket) await cargarConfigTicket();
+      const d = await datosComprobanteCredito(creditoId);
+      if (CS.configTicket?.ancho_ticket === 'carta') {
+        await pdfComprobanteCredito(d);
+        showToast('Factura de crédito generada');
+        return;
+      }
+      CS.ultimoComprobante = { tipoDoc: 'credito', datos: d };
+      document.getElementById('comprobante-body').innerHTML = htmlComprobanteCredito(d);
+      openModal('modal-comprobante');
+    } catch (e) {
+      console.error('generarComprobanteCredito:', e);
+      showToast('No se pudo generar la factura de crédito', 'error');
+    }
+  }
+  window.generarComprobanteCredito = generarComprobanteCredito;
+
+  // Deja corregir la fecha en que se originó el crédito -- solo la
+  // fecha registrada de la factura, NO mueve las fechas de
+  // vencimiento de las cuotas (eso es un cambio distinto y más
+  // grande, no lo que se pidió aquí). Si el crédito viene de una
+  // venta, esa venta se corrige a la misma fecha también.
+  function editarFechaCredito(creditoId) {
+    const credito = CS.creditos.find(c => c.id === creditoId);
+    if (!credito) return;
+    const cont = document.getElementById('det-credito-fecha-display');
+    if (!cont) return;
+    cont.innerHTML = `
+      <input type="date" id="det-credito-fecha-input" class="form-input" value="${(credito.fecha_inicio||'').slice(0,10)}" style="width:150px;display:inline-block"/>
+      <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Guardar" onclick="guardarFechaCredito('${creditoId}')">✅</button>
+      <button class="btn-icon" style="width:22px;height:22px;display:inline-flex" title="Cancelar" onclick="abrirDetalleCredito('${creditoId}')">✕</button>
+    `;
+  }
+  window.editarFechaCredito = editarFechaCredito;
+
+  async function guardarFechaCredito(creditoId) {
+    const input = document.getElementById('det-credito-fecha-input');
+    const nuevaFecha = input?.value;
+    if (!nuevaFecha) { showToast('Elige una fecha', 'error'); return; }
+
+    try {
+      const { data: credito } = await _sb.from('creditos').select('venta_id').eq('id', creditoId).maybeSingle();
+      await _sb.from('creditos').update({ fecha_inicio: nuevaFecha, updated_at: new Date().toISOString() })
+        .eq('id', creditoId).eq('auth_user_id', CS.userId);
+
+      if (credito?.venta_id) {
+        await _sb.from('ventas').update({ fecha: nuevaFecha }).eq('id', credito.venta_id).eq('auth_user_id', CS.userId);
+      }
+
+      showToast('Fecha actualizada');
+      await loadCreditos();
+      abrirDetalleCredito(creditoId);
+    } catch (e) {
+      console.error('guardarFechaCredito:', e);
+      showToast('No se pudo actualizar la fecha', 'error');
+    }
+  }
+  window.guardarFechaCredito = guardarFechaCredito;
+
+  async function abrirDetalleCredito(creditoId) {
+    window._creditoDetalleActual = creditoId;
+    openModal('modal-detalle-credito');
+    document.getElementById('detalle-credito-body').innerHTML = 'Cargando…';
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+    if (!credito) return;
+    const cliente = CS.clientes.find(c => c.id === credito.cliente_id);
+    const { data: cuotas } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).order('numero');
+    const { data: historial } = await _sb.from('creditos_historial').select('*').eq('credito_id', creditoId).order('created_at', { ascending:false });
+    const { data: pagos } = await _sb.from('creditos_pagos').select('*').eq('credito_id', creditoId).eq('estado','completado').order('created_at', { ascending:false });
+
+    // Productos financiados — se leen de la venta que originó el
+    // crédito (creditos NUNCA guarda productos directamente). Si el
+    // crédito se creó sin venta (ej. deuda existente migrada), no hay
+    // nada que traer, y esa sección simplemente no aparece.
+    let productosFinanciados = [];
+    if (credito.venta_id) {
+      const { data: detalles } = await _sb.from('venta_detalles').select('*').eq('venta_id', credito.venta_id).order('created_at');
+      productosFinanciados = detalles || [];
+    }
+
+    // Guardado para que abrirAnularCredito() no tenga que volver a
+    // consultar todo -- ya tenemos el credito, sus pagos y su venta_id.
+    window._creditoDetalleData = { credito, pagos: pagos || [], productosFinanciados };
+
+    const btnAnular = document.getElementById('btn-anular-credito');
+    const avisoAnular = document.getElementById('det-credito-aviso-anular');
+    if (btnAnular) {
+      const tienePagos = (pagos || []).length > 0;
+      const yaAnulado = credito.estado === 'cancelado';
+      const bloqueado = tienePagos || yaAnulado;
+      const razon = yaAnulado
+        ? 'Este crédito ya está anulado.'
+        : tienePagos
+          ? '🔒 No se puede anular: este crédito tiene pagos registrados. Anula cada pago primero desde el historial de abajo — cuando el saldo quede completo, podrás anular el crédito.'
+          : '';
+
+      // IMPORTANTE: el boton se deja SIEMPRE clicable (no se usa
+      // disabled=true) -- un boton con disabled nativo nunca dispara
+      // el clic en el navegador, asi que el aviso de abrirAnularCredito()
+      // JAMAS llegaba a mostrarse. Ahora, aunque se vea "apagado", el
+      // clic si funciona y explica el motivo -- ademas de este aviso
+      // que queda visible de inmediato, sin necesidad de tocar nada.
+      btnAnular.style.opacity = bloqueado ? '0.5' : '1';
+      btnAnular.style.cursor = bloqueado ? 'not-allowed' : 'pointer';
+      btnAnular.dataset.bloqueado = bloqueado ? '1' : '';
+      btnAnular.dataset.razon = razon;
+
+      if (razon) { avisoAnular.textContent = razon; avisoAnular.style.display = ''; }
+      else { avisoAnular.style.display = 'none'; }
+    }
+
+    const prDet = await prDe(credito);
+    document.getElementById('det-credito-title').textContent = prDet ? `${prDet} · crédito ${credito.numero_credito}` : `Crédito ${credito.numero_credito}`;
+    document.getElementById('detalle-credito-body').innerHTML = `
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Cliente</label><div class="stat-readonly">${esc(cliente ? cliente.nombre+' '+(cliente.apellido||'') : '—')}</div></div>
+        <div><label>Tipo</label><div class="stat-readonly">${credito.tipo==='venta'?'Por venta':'Financiero'}</div></div>
+        <div><label>Estado</label><div><span class="badge-credito badge-${credito.estado}">${LABEL_ESTADO[credito.estado]||credito.estado}</span></div></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Fecha del crédito</label><div class="stat-readonly" id="det-credito-fecha-display">
+          ${fmtDate(credito.fecha_inicio)}
+          <button class="btn-icon" style="width:20px;height:20px;display:inline-flex;vertical-align:middle" title="Editar fecha" onclick="editarFechaCredito('${credito.id}')">✏️</button>
+        </div></div>
+        ${(cuotas||[]).length === 1 && credito.estado !== 'cancelado' ? `
+        <div><label>Modalidad de pago</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;margin-top:6px" title="Marca si este crédito es de un solo pago a fecha fija (para la Fecha límite de pago del comprobante)">
+            <span class="n360-switch">
+              <input type="checkbox" ${credito.modalidad_pago === 'fecha_fija' ? 'checked' : ''} onchange="toggleModalidadFechaFija('${credito.id}', this.checked, this)" />
+              <span class="n360-switch-slider"></span>
+            </span>
+            <span>Este crédito es a fecha fija</span>
+          </label>
+        </div>` : ''}
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label>Capital financiado</label><div class="stat-readonly">${fmt(credito.capital_financiado)}</div></div>
+        <div><label>Total financiado</label><div class="stat-readonly">${fmt(credito.total_financiado)}</div></div>
+        <div><label>Saldo pendiente</label><div class="stat-readonly">${fmt(credito.saldo_pendiente)}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn-primary btn-sm" onclick="generarComprobanteCredito('${credito.id}')" title="Lo financiado, lo pagado, el saldo, el plazo y el vencimiento — no registra ningún pago">🧾 Factura de crédito</button>
+        <button class="btn-secondary btn-sm" onclick='generarPagareCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(cuotas||[]).replace(/'/g,"&apos;")})'>📄 Generar pagaré</button>
+        <button class="btn-secondary btn-sm" onclick='descargarComprobanteCartaCredito(${JSON.stringify(credito).replace(/'/g,"&apos;")}, ${JSON.stringify(cliente||{}).replace(/'/g,"&apos;")}, ${JSON.stringify(productosFinanciados||[]).replace(/'/g,"&apos;")})'>📄 Comprobante tamaño carta</button>
+        ${credito.tipo === 'venta' && credito.venta_id && Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarProductosCredito('${credito.id}')">🛒 Editar productos</button>` : ''}
+        ${Number(credito.saldo_pendiente) > 0 ? `<button class="btn-secondary btn-sm" onclick="abrirEditarCredito('${credito.id}')">✏️ Renegociar saldo restante</button>` : ''}
+      </div>
+      ${Number(credito.saldo_pendiente) <= 0 ? `<p style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px">✅ Este crédito ya está totalmente pagado.</p>` : ''}
+      ${productosFinanciados.length ? `
+        <label>Productos financiados</label>
+        <div class="table-wrap" style="margin-bottom:16px">
+          <table>
+            <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Subtotal</th></tr></thead>
+            <tbody>
+              ${productosFinanciados.map(d => `<tr>
+                <td>${esc(d.producto_nombre || '—')}</td>
+                <td>${Number(d.cantidad||0).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
+                <td>${fmt(d.precio)}</td>
+                <td>${fmt(d.subtotal)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
+      <label>Cuotas</label>
+      <div class="table-wrap" style="margin-bottom:16px">
+        <table>
+          <thead><tr><th>#</th><th>Vence</th><th>Capital</th><th>Interés</th><th>Impuesto</th><th>Cuota</th><th>Pagado</th><th>Estado</th></tr></thead>
+          <tbody>
+            ${(cuotas||[]).map(c => `<tr>
+              <td>${c.numero}</td><td>${fmtDate(c.fecha_vencimiento)}</td>
+              <td>${fmt(c.capital)}</td><td>${fmt(c.interes)}</td><td>${fmt(c.impuesto)}</td>
+              <td>${fmt(c.monto_total)}</td><td>${fmt(c.monto_pagado)}</td>
+              <td><span class="badge-credito badge-${c.estado==='vencida'?'con_atraso':c.estado==='pagada'?'al_dia':'en_proceso'}">${c.estado}</span></td>
+            </tr>`).join('') || '<tr><td colspan="8" class="empty-cell">Sin cuotas</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <label>Historial de pagos ${(pagos||[]).length ? `(${pagos.length})` : ''}</label>
+      <div class="table-wrap" style="margin-bottom:16px">
+        <table>
+          <thead><tr><th>Fecha</th><th>N° comprobante</th><th>Monto</th><th>Método</th><th>Observaciones</th><th></th></tr></thead>
+          <tbody>
+            ${(pagos||[]).map(p => `<tr>
+              <td>${fmtDate(p.fecha)}</td><td>${esc(p.comprobante_numero||'—')}</td>
+              <td>${fmt(p.monto)}</td><td>${esc(p.metodo_pago_nombre||'—')}</td>
+              <td style="max-width:220px;white-space:normal;font-size:12.5px;color:var(--text-secondary)">${p.observaciones ? esc(p.observaciones) : '—'}</td>
+              <td style="white-space:nowrap">
+                <button class="btn-icon" title="Volver a descargar comprobante" onclick="reimprimirComprobantePago('${p.id}')">🖨️</button>
+                <button class="btn-icon" title="Anular este pago (lo revierte por completo)" onclick="confirmarAnularPago('${p.id}','${credito.id}')" style="color:var(--danger)">🗑️</button>
+              </td>
+            </tr>`).join('') || '<tr><td colspan="6" class="empty-cell">Todavía no hay pagos registrados</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <label>Historial</label>
+      <ul class="timeline">
+        ${(historial||[]).map(h => `<li><span class="t-dot"></span><div><b>${esc(h.descripcion||h.tipo_evento)}</b><br><span style="color:var(--text-muted);font-size:11.5px">${new Date(h.created_at).toLocaleString('es-NI')}</span></div></li>`).join('') || '<li>Sin eventos</li>'}
+      </ul>`;
+  }
+  window.abrirDetalleCredito = abrirDetalleCredito;
+
+  /* ============================================================
+     ANULAR CREDITO -- opcion segura, con 3 casos manejados:
+     1. Sin pagos, sin venta real: anula directo.
+     2. Sin pagos, CON venta real (tipo 'venta'): ademas devuelve el
+        stock de cada producto/combo (mismo patron ya probado en
+        anularVenta() de ventas.js) y marca esa venta como anulada.
+     3. CON pagos: bloqueado desde el boton mismo (ver
+        abrirDetalleCredito) -- primero hay que anular cada pago por
+        separado con anularPagoCredito(), que ya revierte caja con
+        cuidado. Nunca se revierte dinero de caja de forma automatica
+        en bloque aqui, para no arriesgar un movimiento real mal
+        calculado.
+     Nunca se borra nada -- todo queda marcado 'anulado', con el
+     motivo guardado para siempre en creditos_historial.
+     ============================================================ */
+  function abrirAnularCredito() {
+    const info = window._creditoDetalleData;
+    if (!info) return;
+    const { credito, pagos } = info;
+    if ((pagos || []).length > 0) {
+      showToast('🔒 No se puede anular: tiene pagos registrados. Anula cada pago primero desde el historial.', 'error');
+      return;
+    }
+    if (credito.estado === 'cancelado') { showToast('Este crédito ya está anulado', 'error'); return; }
+
+    document.getElementById('ac-resumen').textContent =
+      `Crédito ${window.N360ProformaCredito ? N360ProformaCredito.texto(credito.numero_credito, N360ProformaCredito._cache[credito.id]) : credito.numero_credito} — saldo actual ${fmt(credito.saldo_pendiente)}`;
+    document.getElementById('ac-aviso-productos').style.display = credito.venta_id ? '' : 'none';
+    document.getElementById('ac-motivo').value = '';
+    document.getElementById('ac-error').textContent = '';
+    openModal('modal-anular-credito');
+  }
+  window.abrirAnularCredito = abrirAnularCredito;
+
+  async function confirmarAnularCredito() {
+    const errEl = document.getElementById('ac-error');
+    errEl.textContent = '';
+    const info = window._creditoDetalleData;
+    if (!info) return;
+    const { credito } = info;
+    const motivo = document.getElementById('ac-motivo').value.trim();
+    if (!motivo) { errEl.textContent = 'Escribe el motivo de la anulación.'; return; }
+
+    // Candado contra doble clic -- mismo riesgo real ya corregido en
+    // crear credito y registrar pago.
+    if (CS.anulandoCredito) return;
+    CS.anulandoCredito = true;
+
+    const btn = document.getElementById('btn-confirmar-anular-credito');
+    if (btn) { btn.disabled = true; btn.textContent = 'Anulando…'; }
+
+    try {
+      // Verificacion fresca contra la base de datos -- no solo lo que
+      // ya estaba en memoria -- por si algo cambio mientras el modal
+      // estaba abierto (ej. otra pestaña registro un pago).
+      const { data: creditoFresco } = await _sb.from('creditos').select('*')
+        .eq('id', credito.id).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!creditoFresco) throw new Error('Crédito no encontrado');
+      if (creditoFresco.estado === 'cancelado') { showToast('Este crédito ya estaba anulado', 'warning'); closeModal('modal-anular-credito'); closeModal('modal-detalle-credito'); return; }
+      const { data: pagosFrescos } = await _sb.from('creditos_pagos').select('id')
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).eq('estado','completado');
+      if ((pagosFrescos || []).length > 0) throw new Error('Este crédito ya tiene pagos registrados. Anula cada pago primero.');
+      { const bloqDev = await bloqueoDevolucionesVenta(_sb, creditoFresco.venta_id); if (bloqDev) throw new Error(bloqDev); }
+
+      // Si tiene una venta real vinculada (tipo 'venta' con
+      // productos), devolver el stock de cada producto/combo -- mismo
+      // patron exacto ya probado en anularVenta() de ventas.js -- y
+      // marcar esa venta como anulada tambien.
+      if (creditoFresco.venta_id) {
+        const { data: ventaActual } = await _sb.from('ventas').select('estado')
+          .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId).maybeSingle();
+        if (ventaActual && ventaActual.estado !== 'anulada') {
+          const { data: detalles } = await _sb.from('venta_detalles')
+            .select('producto_id, combo_id, tipo_item, cantidad')
+            .eq('venta_id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+          // Se devuelve en UNA operación del servidor, sumando sobre la
+          // existencia REAL. Los combos se guardan como tipo 'producto' con
+          // combo_id (antes no se devolvían): ahora sí vuelven sus componentes.
+          const devolverStock = [];
+          for (const d of (detalles || [])) {
+            if (d.producto_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) });
+            else if (d.combo_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
+          }
+          await ajustarStockCredito(devolverStock);
+          await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
+            .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+        }
+      }
+
+      // Marcar el credito como anulado -- nunca se borra.
+      // BUG REAL: 'anulado' nunca fue un valor valido para creditos.estado
+      // (la restriccion real solo permite: en_proceso, activo, al_dia,
+      // con_atraso, cancelado, refinanciado) -- el update fallaba en
+      // silencio en produccion, dejando el credito activo a pesar de que
+      // la interfaz mostraba "anulado correctamente". Corregido a 'cancelado'.
+      await _sb.from('creditos').update({ estado: 'cancelado', saldo_pendiente: 0, updated_at: new Date().toISOString() })
+        .eq('id', credito.id).eq('auth_user_id', CS.userId);
+
+      // Marcar sus cuotas pendientes como anuladas tambien, para que
+      // no sigan apareciendo como "por cobrar" en ningun listado.
+      // BUG REAL: 'anulada' nunca fue un valor valido para
+      // creditos_cuotas.estado (solo acepta: pendiente, parcial,
+      // pagada, vencida). Se marca 'pagada' con su monto correspondiente
+      // -- el credito padre ya queda en 0 y cancelado, asi que la cuota
+      // deja de contar para cualquier calculo de cobro pendiente.
+      await _sb.from('creditos_cuotas').update({ estado: 'pagada' })
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId).neq('estado', 'pagada');
+
+      // Si este credito vino de una proforma, liberarla de vuelta --
+      // que no quede "atada" a un credito que ya no existe.
+      await _sb.from('proformas')
+        .update({ estado: 'pendiente', credito_id: null, venta_id: null, fecha_pago_parcial: null })
+        .eq('credito_id', credito.id).eq('auth_user_id', CS.userId);
+
+      await registrarHistorial(credito.id, 'anulado', `Crédito anulado — Motivo: ${motivo}`, { motivo });
+
+      showToast('Crédito anulado correctamente');
+      closeModal('modal-anular-credito');
+      closeModal('modal-detalle-credito');
+      await Promise.allSettled([loadKpis(), loadCreditos()]);
+    } catch (e) {
+      console.error('confirmarAnularCredito:', e);
+      errEl.textContent = e.message || 'No se pudo anular el crédito. Intenta de nuevo.';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Sí, anular este crédito'; }
+      CS.anulandoCredito = false;
+    }
+  }
+  window.confirmarAnularCredito = confirmarAnularCredito;
+
+  // ------------------------------------------------------------
+  // ANULAR UN PAGO YA REGISTRADO
+  // Revierte por completo un pago: lo marca anulado, anula su movimiento de
+  // Caja, devuelve el monto al saldo del credito, y descuenta lo
+  // pagado de las cuotas -- exactamente al reves de como se aplico.
+  // Pensado para el caso real de un pago tecleado por error o
+  // duplicado sin querer.
+  // ------------------------------------------------------------
+  async function confirmarAnularPago(pagoId, creditoId) {
+    try {
+      const { data: pago } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!pago) { showToast('No se encontró ese pago', 'error'); return; }
+
+      const ok = confirm(
+        `¿Anular este pago de ${fmt(pago.monto)} del ${fmtDate(pago.fecha)}?\n\n` +
+        `Esto lo quitará del historial, lo restará de Caja, y devolverá ${fmt(pago.monto)} al saldo pendiente del crédito.\n\n` +
+        `Esta acción no se puede deshacer.`
+      );
+      if (!ok) return;
+
+      await anularPagoCredito(pagoId, creditoId);
+    } catch (e) {
+      console.error('confirmarAnularPago:', e);
+      showToast('No se pudo anular el pago', 'error');
+    }
+  }
+  window.confirmarAnularPago = confirmarAnularPago;
+
+  async function anularPagoCredito(pagoId, creditoId) {
+    try {
+      const { data: pago } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!pago) throw new Error('Pago no encontrado');
+      const monto = Number(pago.monto) || 0;
+
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!credito) throw new Error('Crédito no encontrado');
+
+      if (pago.estado === 'anulado') throw new Error('Este pago ya estaba anulado');
+      const motivoAnulacion = `Pago de crédito ${credito.numero_credito || ''} anulado`.trim();
+
+      // 1. Anular (no borrar) el movimiento de Caja que generó este pago:
+      // queda el rastro y la base recalcula sola el saldo de Caja.
+      // Primero por el enlace directo del pago; si no lo tiene (pagos
+      // viejos), por referencia + monto + fecha, el más cercano en tiempo.
+      let movObjetivoId = pago.movimiento_financiero_id || null;
+      if (!movObjetivoId) {
+        const { data: movs } = await _sb.from('movimientos_financieros')
+          .select('id, created_at')
+          .eq('auth_user_id', CS.userId)
+          .eq('referencia_id', creditoId)
+          .eq('monto', monto)
+          .eq('fecha', pago.fecha)
+          .eq('estado', 'completado');
+        if (movs && movs.length) {
+          const objetivo = movs.reduce((mejor, m) => {
+            const dif = Math.abs(new Date(m.created_at) - new Date(pago.created_at));
+            return (!mejor || dif < mejor.dif) ? { id: m.id, dif } : mejor;
+          }, null);
+          movObjetivoId = objetivo ? objetivo.id : null;
+        }
+      }
+      if (movObjetivoId) {
+        const { error: errMov } = await _sb.from('movimientos_financieros')
+          .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivoAnulacion })
+          .eq('id', movObjetivoId).eq('auth_user_id', CS.userId).eq('estado', 'completado');
+        if (errMov) throw errMov;
+      }
+
+      // 2. Descontar de las cuotas, de la ultima hacia atras (al reves
+      // de como se aplico, que va de la primera hacia adelante).
+      const { data: cuotas } = await _sb.from('creditos_cuotas')
+        .select('*').eq('credito_id', creditoId).order('numero', { ascending: false });
+      let restante = monto;
+      for (const cuota of (cuotas || [])) {
+        if (restante <= 0.01) break;
+        const pagadoCuota = Number(cuota.monto_pagado) || 0;
+        if (pagadoCuota <= 0) continue;
+        const quitar = Math.min(pagadoCuota, restante);
+        const nuevoPagado = round2(pagadoCuota - quitar);
+        const totalCuota = Number(cuota.monto_total) || 0;
+        const nuevoEstado = nuevoPagado <= 0.01 ? 'pendiente' : (nuevoPagado >= totalCuota - 0.01 ? 'pagada' : 'parcial');
+        await _sb.from('creditos_cuotas').update({
+          monto_pagado: nuevoPagado, estado: nuevoEstado, updated_at: new Date().toISOString(),
+        }).eq('id', cuota.id);
+        restante = round2(restante - quitar);
+      }
+
+      // 3. Devolver el monto al saldo del credito (nunca mas alla del total)
+      const saldoNuevo = round2(Math.min(Number(credito.total_financiado) || Number(credito.capital_financiado) || 0,
+                                         (Number(credito.saldo_pendiente) || 0) + monto));
+      await _sb.from('creditos').update({
+        saldo_pendiente: saldoNuevo,
+        estado: saldoNuevo > 0.01 && credito.estado === 'cancelado' ? 'activo' : credito.estado,
+        updated_at: new Date().toISOString(),
+      }).eq('id', creditoId);
+
+      // 4. Marcar el pago como anulado (al final, para que si algo falla
+      // antes, el pago siga vigente y no quede un registro a medias).
+      // No se borra: así queda el rastro y nadie puede desaparecer abonos.
+      const { error: errPagoAn } = await _sb.from('creditos_pagos')
+        .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivoAnulacion })
+        .eq('id', pagoId).eq('auth_user_id', CS.userId);
+      if (errPagoAn) throw errPagoAn;
+
+      // 5. Dejar rastro en el historial del credito
+      try {
+        await _sb.from('creditos_historial').insert({
+          credito_id: creditoId, auth_user_id: CS.userId, tipo_evento: 'pago_anulado',
+          descripcion: `Se anuló un pago de ${fmt(monto)} del ${fmtDate(pago.fecha)}`,
+        });
+      } catch (e) { /* el historial es informativo -- si falla, la anulación ya se hizo bien */ }
+
+      showToast('Pago anulado correctamente');
+      await abrirDetalleCredito(creditoId);
+      if (typeof cargarCreditos === 'function') cargarCreditos();
+    } catch (e) {
+      console.error('anularPagoCredito:', e);
+      showToast('No se pudo anular el pago: ' + (e.message || 'intenta de nuevo'), 'error');
+    }
+  }
+  window.anularPagoCredito = anularPagoCredito;
+
+  // Reconstruye y muestra de nuevo el mismo comprobante de un pago ya
+  // hecho — los datos numéricos vienen tal cual quedaron guardados en
+  // creditos_pagos en el momento real del pago, nunca se recalculan.
+  async function reimprimirComprobantePago(pagoId) {
+    try {
+      const { data: p } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
+      if (!p) { showToast('No se encontró ese pago', 'error'); return; }
+      const { data: credito } = await _sb.from('creditos').select('*').eq('id', p.credito_id).maybeSingle();
+      const cliente = CS.clientes.find(c => c.id === p.cliente_id) || {};
+      const proximaCuota = (await _sb.from('creditos_cuotas').select('*').eq('credito_id', p.credito_id).neq('estado','pagada').order('numero').limit(1).maybeSingle()).data;
+      let productosComprobante = [];
+      if (credito?.venta_id) {
+        const { data: detalles } = await _sb.from('venta_detalles').select('producto_nombre,cantidad,tipo_item,combo_id').eq('venta_id', credito.venta_id);
+        productosComprobante = await enriquecerItemsConCombo(detalles || []);
+      }
+      mostrarComprobante({
+        titulo: 'Pago de crédito (reimpresión)', numero: p.comprobante_numero || '—', credito: credito ? await textoCredito(credito) : '—',
+        clienteId: cliente?.id || null,
+        cliente: cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '—', fecha: p.fecha,
+        usuario: CS.currentUser?.nombre || CS.userEmail, monto: p.monto, metodo: p.metodo_pago_nombre || '—',
+        saldoAnterior: p.saldo_anterior, saldoNuevo: p.saldo_nuevo,
+        proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
+        fechaLimite: await fechaLimiteComprobante(credito, proximaCuota, p.saldo_nuevo),
+        estado: credito ? (LABEL_ESTADO[credito.estado] || credito.estado) : '—',
+        productos: productosComprobante,
+      });
+    } catch (e) {
+      console.error('reimprimirComprobantePago:', e);
+      showToast('No se pudo reconstruir el comprobante', 'error');
+    }
+  }
+  window.reimprimirComprobantePago = reimprimirComprobantePago;
+
+  // Editar el SALDO RESTANTE de un crédito — nunca toca las cuotas ya
+  // pagadas (esas quedan intactas, con su historial real de pago).
+  // Sirve para renegociar: el cliente da menos de lo acordado, más de
+  // lo acordado, o simplemente cambia el plan de lo que falta.
+  let CREDITO_EDITANDO = null;
+  async function abrirEditarCredito(creditoId) {
+    const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
+    if (!credito) { showToast('Crédito no encontrado', 'error'); return; }
+    if (Number(credito.saldo_pendiente) <= 0) {
+      showToast('Este crédito ya está totalmente pagado, no queda nada por renegociar', 'error');
+      return;
+    }
+    const { data: cuotas } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).order('numero');
+    const pagadas = (cuotas||[]).filter(c => c.estado === 'pagada');
+    const pendientes = (cuotas||[]).filter(c => c.estado !== 'pagada');
+
+    CREDITO_EDITANDO = { credito, totalPagadas: pagadas.length, pendientes };
+    document.getElementById('ec-resumen-pagadas').textContent = pagadas.length
+      ? `${pagadas.length} cuota(s) ya pagada(s) por ${fmt(pagadas.reduce((s,c)=>s+Number(c.monto_pagado||0),0))} — no se van a tocar.`
+      : 'Este crédito todavía no tiene ninguna cuota pagada.';
+    document.getElementById('ec-capital').value = credito.saldo_pendiente;
+    document.querySelectorAll('input[name="ec-baja-tipo"]').forEach(r => { r.checked = false; });
+    { const mt = document.getElementById('ec-baja-motivo'); if (mt) mt.value = ''; }
+    actualizarAvisoBajaCredito();
+    document.getElementById('ec-num-cuotas').value = pendientes.length || 1;
+    document.getElementById('ec-frecuencia').value = credito.frecuencia;
+    document.getElementById('ec-fecha-inicio').value = pendientes[0]?.fecha_vencimiento || todayISO();
+    const filaInteres = document.getElementById('ec-fila-interes');
+    if (credito.tipo_financiamiento === 'con_interes') {
+      filaInteres.style.display = '';
+      document.getElementById('ec-tasa').value = credito.tasa_interes || 0;
+    } else {
+      filaInteres.style.display = 'none';
+    }
+    closeModal('modal-detalle-credito');
+    openModal('modal-editar-credito');
+  }
+  window.abrirEditarCredito = abrirEditarCredito;
+
+  // BUG REAL CORREGIDO (All Plastic Mayorista: CR-000016 bajó C$28,000 y
+  // CR-000090 C$4,570 "renegociando", sin abono ni dinero en Caja ni motivo).
+  // Ahora, si el nuevo saldo es MENOR que lo que se debe hoy, hay que decir
+  // por qué: si el cliente pagó, se registra como pago (entra a Caja); si es
+  // un descuento, el motivo es obligatorio y queda en el historial.
+  function bajaRenegociacion() {
+    if (!CREDITO_EDITANDO) return 0;
+    const nuevo = round2(parseFloat(document.getElementById('ec-capital')?.value) || 0);
+    const actual = round2(Number(CREDITO_EDITANDO.credito.saldo_pendiente) || 0);
+    return nuevo > 0 && nuevo < actual - 0.009 ? round2(actual - nuevo) : 0;
+  }
+  function actualizarAvisoBajaCredito() {
+    const box = document.getElementById('ec-baja');
+    if (!box) return;
+    const baja = bajaRenegociacion();
+    box.style.display = baja > 0 ? '' : 'none';
+    if (baja > 0) {
+      document.getElementById('ec-baja-texto').textContent =
+        `El nuevo saldo es ${fmt(baja)} menor que lo que debe hoy (${fmt(CREDITO_EDITANDO.credito.saldo_pendiente)}). ¿Por qué baja la deuda?`;
+    }
+    const tipo = document.querySelector('input[name="ec-baja-tipo"]:checked')?.value || '';
+    const mt = document.getElementById('ec-baja-motivo');
+    if (mt) mt.style.display = (baja > 0 && tipo === 'descuento') ? '' : 'none';
+    const btn = document.getElementById('btn-guardar-editar-credito');
+    if (btn) btn.textContent = (baja > 0 && tipo === 'pago') ? 'Ir a registrar el pago' : 'Recalcular y guardar';
+  }
+  window.actualizarAvisoBajaCredito = actualizarAvisoBajaCredito;
+
+  async function guardarEdicionCredito() {
+    if (!CREDITO_EDITANDO) return;
+    const { credito, totalPagadas } = CREDITO_EDITANDO;
+
+    const nuevoSaldo = round2(parseFloat(document.getElementById('ec-capital').value) || 0);
+    const numCuotas = Math.max(1, parseInt(document.getElementById('ec-num-cuotas').value) || 1);
+    const frecuencia = document.getElementById('ec-frecuencia').value;
+    const fechaInicio = document.getElementById('ec-fecha-inicio').value || todayISO();
+    const tasa = credito.tipo_financiamiento === 'con_interes' ? (parseFloat(document.getElementById('ec-tasa').value) || 0) : 0;
+    if (nuevoSaldo <= 0) { showToast('El nuevo saldo debe ser mayor a cero', 'error'); return; }
+
+    // ¿Baja la deuda? Entonces debe ser un pago (va a Caja) o un descuento con motivo.
+    const baja = bajaRenegociacion();
+    let descuento = null;
+    if (baja > 0) {
+      const tipoBaja = document.querySelector('input[name="ec-baja-tipo"]:checked')?.value || '';
+      if (!tipoBaja) {
+        actualizarAvisoBajaCredito();
+        showToast('La deuda baja ' + fmt(baja) + ': indica si el cliente pagó o si es un descuento', 'error');
+        return;
+      }
+      if (tipoBaja === 'pago') {
+        // No se renegocia: se registra el pago por la diferencia (así entra a Caja).
+        closeModal('modal-editar-credito');
+        CREDITO_EDITANDO = null;
+        await abrirRegistrarPago(credito.id);
+        const m = document.getElementById('rp-monto');
+        if (m) m.value = baja;
+        showToast('Registra aquí el pago de ' + fmt(baja) + ' para que entre a Caja. Si después quieres cambiar el plazo, vuelve a "Renegociar".');
+        return;
+      }
+      const motivo = (document.getElementById('ec-baja-motivo')?.value || '').trim();
+      if (motivo.length < 5) {
+        showToast('Escribe el motivo del descuento (es obligatorio)', 'error');
+        document.getElementById('ec-baja-motivo')?.focus();
+        return;
+      }
+      descuento = { monto: baja, motivo };
+    }
+
+    setBtnLoading('btn-guardar-editar-credito', true);
+    try {
+      // Protección: se vuelve a traer el crédito y sus cuotas AHORA
+      // mismo, por si alguien registró un pago mientras este modal
+      // estaba abierto — nunca se debe borrar una cuota que se acabó
+      // de pagar sin que este cálculo se haya enterado.
+      const { data: cuotasAhora } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', credito.id).order('numero');
+      const pagadasAhora = (cuotasAhora||[]).filter(c => c.estado === 'pagada');
+      const pendientesAhora = (cuotasAhora||[]).filter(c => c.estado !== 'pagada');
+      if (pagadasAhora.length !== totalPagadas) {
+        showToast('Se registró un pago mientras tanto — vuelve a abrir "Editar" para ver el saldo actualizado', 'error');
+        closeModal('modal-editar-credito');
+        return;
+      }
+
+      const impuestosLista = (pendientesAhora[0]?.impuestos_detalle || cuotasAhora?.[0]?.impuestos_detalle || []).map(d => ({ id: d.impuesto_id, nombre: d.nombre, tipo_valor: d.tipo_valor, valor: d.valor }));
+      const baseImpuesto = credito.tipo === 'financiero' ? 'interes' : 'capital';
+
+      const { cuotas: cuotasNuevas, totalFinanciado: totalRestanteNuevo, valorCuotaAprox } = generarAmortizacion({
+        capitalFinanciado: nuevoSaldo, tipoFinanciamiento: credito.tipo_financiamiento, tasaInteres: tasa,
+        metodo: credito.metodo_amortizacion, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto,
+      });
+
+      // Se borran SOLO las cuotas que todavía no están pagadas — las
+      // pagadas quedan intactas, con su historial real.
+      const idsPendientes = pendientesAhora.map(c => c.id);
+      if (idsPendientes.length) {
+        await _sb.from('creditos_cuotas').delete().in('id', idsPendientes).eq('auth_user_id', CS.userId);
+      }
+
+      // Las cuotas nuevas continúan la numeración después de las ya pagadas.
+      const cuotasInsert = cuotasNuevas.map((c, i) => ({
+        auth_user_id: CS.userId, credito_id: credito.id, numero: pagadasAhora.length + i + 1,
+        fecha_vencimiento: c.fecha_vencimiento, capital: c.capital, interes: c.interes,
+        impuesto: c.impuesto, impuestos_detalle: c.impuestos_detalle || [], monto_total: c.monto_total, saldo: c.saldo, estado: 'pendiente',
+      }));
+      await _sb.from('creditos_cuotas').insert(cuotasInsert);
+
+      // El total financiado ahora es: lo que ya se pagó/comprometió en
+      // las cuotas pagadas + el nuevo plan de lo restante — así
+      // "total_financiado - pagado = saldo_pendiente" se mantiene exacto.
+      const totalYaComprometido = pagadasAhora.reduce((s,c) => s + Number(c.monto_total||0), 0);
+      const nuevoTotalFinanciado = round2(totalYaComprometido + totalRestanteNuevo);
+
+      const camposCredito = {
+        tasa_interes: credito.tipo_financiamiento==='con_interes' ? tasa : credito.tasa_interes,
+        frecuencia, num_cuotas: pagadasAhora.length + cuotasNuevas.length,
+        total_financiado: nuevoTotalFinanciado, valor_cuota_aprox: valorCuotaAprox,
+        saldo_pendiente: totalRestanteNuevo, updated_at: new Date().toISOString(),
+      };
+      // Un crédito a fecha fija renegociado en varias cuotas deja de ser "un solo pago".
+      if (credito.modalidad_pago === 'fecha_fija' && cuotasNuevas.length > 1) camposCredito.modalidad_pago = 'cuotas';
+      if (descuento) {
+        // El descuento también se asienta en Contabilidad ("Generar asientos" → Descuento o rebaja a un crédito).
+        const nota = `[Descuento de ${fmt(descuento.monto)} el ${todayISO()}: ${descuento.motivo}]`;
+        camposCredito.observaciones = credito.observaciones ? `${credito.observaciones} ${nota}` : nota;
+      }
+      await _sb.from('creditos').update(camposCredito).eq('id', credito.id).eq('auth_user_id', CS.userId);
+
+      await registrarHistorial(credito.id, 'editado', `Saldo restante renegociado: ${fmt(nuevoSaldo)} en ${numCuotas} cuota(s) nueva(s) — ${pagadasAhora.length} cuota(s) previa(s) sin tocar`
+        + (descuento ? ` — DESCUENTO de ${fmt(descuento.monto)}. Motivo: ${descuento.motivo}` : ''),
+        { nuevoSaldo, numCuotas, nuevoTotalFinanciado, ...(descuento ? { descuento: descuento.monto, motivoDescuento: descuento.motivo, numeroCredito: credito.numero_credito } : {}) });
+
+      showToast('Crédito actualizado — cuotas pendientes recalculadas');
+      closeModal('modal-editar-credito');
+      CREDITO_EDITANDO = null;
+      await Promise.allSettled([refrescarTodo(), abrirDetalleCredito(credito.id)]);
+    } catch (e) {
+      console.error('guardarEdicionCredito:', e);
+      showToast('Error al guardar los cambios: ' + (e.message||''), 'error');
+    } finally {
+      setBtnLoading('btn-guardar-editar-credito', false);
+    }
+  }
+  window.guardarEdicionCredito = guardarEdicionCredito;
+
+  /* ===================================================
+     LISTA DE CRÉDITOS / KPIs
+  =================================================== */
+  function badgeEstado(e) { return `<span class="badge-credito badge-${e}">${LABEL_ESTADO[e]||e}</span>`; }
+  function badgeTipo(t) { return `<span class="badge-credito badge-tipo-${t}">${t==='venta'?'Por venta':'Financiero'}</span>`; }
+
+  async function loadKpis() {
+    const uid = CS.userId;
+    const { data: creditos } = await _sb.from('creditos').select('estado,saldo_pendiente,capital_financiado,tipo').eq('auth_user_id', uid);
+    const list = creditos || [];
+    const activos = list.filter(c => ['activo','al_dia','con_atraso','en_proceso'].includes(c.estado)).length;
+    const conAtraso = list.filter(c => c.estado==='con_atraso').length;
+    const saldoPendiente = list.reduce((s,c)=>s+Number(c.saldo_pendiente||0),0);
+    const capitalColocado = list.reduce((s,c)=>s+Number(c.capital_financiado||0),0);
+
+    const { data: pagosMes } = await _sb.from('creditos_pagos').select('monto').eq('auth_user_id', uid).gte('fecha', startOfMonthISO()).eq('estado','completado');
+    const pagosMesTotal = (pagosMes||[]).reduce((s,p)=>s+Number(p.monto||0),0);
+
+    const en7dias = ymd(new Date(Date.now()+7*86400000));
+    const { data: proximas } = await _sb.from('creditos_cuotas').select('id').eq('auth_user_id', uid).neq('estado','pagada').lte('fecha_vencimiento', en7dias).gte('fecha_vencimiento', todayISO());
+
+    document.getElementById('kpi-activos').textContent = activos;
+    document.getElementById('kpi-atraso').textContent = conAtraso;
+    document.getElementById('kpi-saldo-pendiente').textContent = fmt(saldoPendiente);
+    document.getElementById('kpi-capital-colocado').textContent = fmt(capitalColocado);
+    document.getElementById('kpi-pagos-mes').textContent = fmt(pagosMesTotal);
+    document.getElementById('kpi-proximos').textContent = (proximas||[]).length;
+  }
+
+  async function marcarCuotasVencidas() {
+    // Marca como "vencida" toda cuota pendiente cuya fecha ya pasó (no borra nada, solo actualiza estado)
+    try {
+      await _sb.from('creditos_cuotas').update({ estado: 'vencida' })
+        .eq('auth_user_id', CS.userId).eq('estado','pendiente').lt('fecha_vencimiento', todayISO());
+      // Si un crédito tiene alguna cuota vencida, marcarlo con_atraso (sin tocar cancelados/refinanciados)
+      const { data: conVencidas } = await _sb.from('creditos_cuotas').select('credito_id').eq('auth_user_id', CS.userId).eq('estado','vencida');
+      const ids = [...new Set((conVencidas||[]).map(c=>c.credito_id))];
+      if (ids.length) {
+        await _sb.from('creditos').update({ estado: 'con_atraso' }).eq('auth_user_id', CS.userId).in('id', ids).in('estado', ['activo','al_dia','en_proceso']);
+      }
+    } catch (e) { console.warn('marcarCuotasVencidas:', e); }
+  }
+
+  // Número de la proforma de la que nació un crédito (solo para mostrar; el número CR no cambia).
+  async function prDe(credito) {
+    if (!credito || !window.N360ProformaCredito) return null;
+    try { return (await N360ProformaCredito.mapa(_sb, CS.userId, [credito])).get(credito.id) || null; } catch (_) { return null; }
+  }
+  async function textoCredito(credito) {
+    const pr = await prDe(credito);
+    return window.N360ProformaCredito ? N360ProformaCredito.texto(credito?.numero_credito, pr) : (credito?.numero_credito || '');
+  }
+
+  async function loadCreditos() {
+    let q = _sb.from('creditos').select('*', { count:'exact' }).eq('auth_user_id', CS.userId);
+    if (CS.creditosFiltro === 'venta') q = q.eq('tipo','venta');
+    else if (CS.creditosFiltro === 'financiero') q = q.eq('tipo','financiero');
+    else if (CS.creditosFiltro === 'con_atraso') q = q.eq('estado','con_atraso');
+    else if (CS.creditosFiltro === 'cancelado') q = q.eq('estado','cancelado');
+    if (CS.creditosSearch) {
+      // El campo dice "Buscar cliente o número" -- pero antes solo
+      // filtraba por numero_credito, nunca por el nombre del cliente
+      // (bug real: buscar un nombre que SI existia siempre decia
+      // "no hay resultados"). Ahora busca tambien los clientes cuyo
+      // nombre/apellido coincida, y trae los creditos de cualquiera
+      // de los dos casos.
+      const { data: clientesCoinciden } = await _sb.from('clientes')
+        .select('id').eq('auth_user_id', CS.userId)
+        .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`);
+      const idsClientes = (clientesCoinciden||[]).map(c=>c.id);
+      // También busca en Observaciones (ahí se anota, por ejemplo, el número
+      // de factura manual). Las comas y paréntesis romperían el filtro, así
+      // que se cambian por "_" (comodín de un carácter): sigue encontrando.
+      const termino = CS.creditosSearch.replace(/[,()]/g, '_');
+      let filtroOr = idsClientes.length
+        ? `numero_credito.ilike.%${CS.creditosSearch}%,observaciones.ilike.%${termino}%,cliente_id.in.(${idsClientes.join(',')})`
+        : `numero_credito.ilike.%${CS.creditosSearch}%,observaciones.ilike.%${termino}%`;
+      // También por el número de la proforma de la que nació el crédito (PR-…)
+      const idsPorProforma = window.N360ProformaCredito ? await N360ProformaCredito.buscarCreditos(_sb, CS.userId, CS.creditosSearch) : [];
+      if (idsPorProforma.length) filtroOr += `,id.in.(${idsPorProforma.join(',')})`;
+      q = q.or(filtroOr);
+    }
+
+    const from = (CS.creditosPage-1)*CS.creditosPerPage, to = from + CS.creditosPerPage - 1;
+    const { data, count } = await q.order('created_at', { ascending:false }).range(from,to);
+    CS.creditos = data || []; CS.creditosTotal = count || 0;
+    renderCreditosTable();
+    renderPaginacion();
+  }
+
+  async function renderCreditosTable() {
+    const tbody = document.getElementById('creditos-tbody');
+    if (!CS.creditos.length) { tbody.innerHTML = '<tr><td colspan="10" class="empty-cell">No hay créditos registrados</td></tr>'; return; }
+
+    const clienteIds = [...new Set(CS.creditos.map(c=>c.cliente_id))];
+    const creditoIds = CS.creditos.map(c=>c.id);
+    const [{ data: clientesData }, { data: proxCuotas }] = await Promise.all([
+      _sb.from('clientes').select('id,nombre,apellido').in('id', clienteIds),
+      _sb.from('creditos_cuotas').select('credito_id,fecha_vencimiento,monto_total,numero').neq('estado','pagada').in('credito_id', creditoIds).order('numero'),
+    ]);
+    const clienteMap = new Map((clientesData||[]).map(c=>[c.id,c]));
+    const prMap = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, CS.creditos) : new Map();
+    const proxMap = new Map();
+    (proxCuotas||[]).forEach(c => { if (!proxMap.has(c.credito_id)) proxMap.set(c.credito_id, c); });
+
+    tbody.innerHTML = CS.creditos.map(c => {
+      const cli = clienteMap.get(c.cliente_id);
+      const prox = proxMap.get(c.id);
+      return `<tr>
+        <td class="td-num">${window.N360ProformaCredito ? N360ProformaCredito.etiquetaHTML(c.numero_credito, prMap.get(c.id), esc) : `<span style="font-family:var(--font-mono);font-weight:700">${esc(c.numero_credito)}</span>`}</td>
+        <td>${esc(cli ? cli.nombre+' '+(cli.apellido||'') : '—')}</td>
+        <td>${badgeTipo(c.tipo)}</td>
+        <td>${fmt(c.capital_financiado)}</td>
+        <td>${fmt(c.saldo_pendiente)}</td>
+        <td>${c.num_cuotas}</td>
+        <td>${prox ? fmtDate(prox.fecha_vencimiento) : '—'}</td>
+        <td title="${esc(c.observaciones || '')}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--text-secondary)">${c.observaciones ? esc(c.observaciones) : '—'}</td>
+        <td>${badgeEstado(c.estado)}</td>
+        <td>
+          <button class="btn-ghost" style="padding:4px 8px" onclick="abrirDetalleCredito('${c.id}')">Ver</button>
+          ${c.estado!=='cancelado' ? `<button class="btn-ghost" style="padding:4px 8px" onclick="abrirRegistrarPago('${c.id}')">Pagar</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderPaginacion() {
+    const totalPaginas = Math.max(1, Math.ceil(CS.creditosTotal / CS.creditosPerPage));
+    document.getElementById('paginacion-info').textContent = `Página ${CS.creditosPage} de ${totalPaginas} · ${CS.creditosTotal} créditos`;
+    document.getElementById('btn-pag-prev').disabled = CS.creditosPage <= 1;
+    document.getElementById('btn-pag-next').disabled = CS.creditosPage >= totalPaginas;
+  }
+  function paginaAnterior() { if (CS.creditosPage>1) { CS.creditosPage--; loadCreditos(); } }
+  function paginaSiguiente() { CS.creditosPage++; loadCreditos(); }
+  window.paginaAnterior = paginaAnterior; window.paginaSiguiente = paginaSiguiente;
+
+  function setFiltroCreditos(f) {
+    CS.creditosFiltro = f; CS.creditosPage = 1;
+    document.querySelectorAll('[data-filtro]').forEach(b => b.classList.toggle('active', b.dataset.filtro===f));
+    loadCreditos();
+  }
+  window.setFiltroCreditos = setFiltroCreditos;
+
+  let _searchTimer;
+  function buscarCreditos() {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => { CS.creditosSearch = document.getElementById('creditos-search').value.trim(); CS.creditosPage = 1; loadCreditos(); }, 350);
+  }
+  window.buscarCreditos = buscarCreditos;
+
+  async function loadPagosRecientes() {
+    const { data } = await _sb.from('creditos_pagos').select('*, creditos(id,numero_credito,venta_id)').eq('auth_user_id', CS.userId).or('estado.is.null,estado.neq.anulado').order('created_at', { ascending:false }).limit(30);
+    const pagos = data || [];
+    const prMapPag = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, pagos.map(p => p.creditos).filter(Boolean)) : new Map();
+    const clienteIds = [...new Set(pagos.map(p=>p.cliente_id))];
+    const { data: clientesData } = await _sb.from('clientes').select('id,nombre,apellido').in('id', clienteIds.length?clienteIds:['00000000-0000-0000-0000-000000000000']);
+    const clienteMap = new Map((clientesData||[]).map(c=>[c.id,c]));
+    const tbody = document.getElementById('pagos-tbody');
+    tbody.innerHTML = pagos.length ? pagos.map(p => {
+      const cli = clienteMap.get(p.cliente_id);
+      return `<tr>
+        <td>${fmtDate(p.fecha)}</td>
+        <td>${esc(cli ? cli.nombre+' '+(cli.apellido||'') : '—')}</td>
+        <td>${p.creditos && window.N360ProformaCredito ? N360ProformaCredito.etiquetaHTML(p.creditos.numero_credito, prMapPag.get(p.creditos.id), esc) : esc(p.creditos?.numero_credito||'—')}</td>
+        <td>${fmt(p.monto)}</td>
+        <td>${esc(p.metodo_pago_nombre||'—')}</td>
+        <td>${fmt(p.saldo_nuevo)}</td>
+        <td style="max-width:200px;white-space:normal;font-size:12.5px;color:var(--text-secondary)">${p.observaciones ? esc(p.observaciones) : '—'}</td>
+        <td></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="8" class="empty-cell">Sin pagos registrados</td></tr>';
+  }
+
+  function setSection(section) {
+    CS.activeSection = section;
+    document.querySelectorAll('.section-tab').forEach(t => t.classList.toggle('active', t.dataset.section===section));
+    document.querySelectorAll('.section-panel').forEach(p => p.style.display = p.dataset.section===section ? 'block' : 'none');
+    if (section === 'pagos') loadPagosRecientes();
+  }
+  window.setSection = setSection;
+
+  async function refrescarTodo() {
+    await marcarCuotasVencidas();
+    await Promise.all([loadKpis(), loadCreditos()]);
+    if (CS.activeSection === 'pagos') await loadPagosRecientes();
+  }
+
+  /* ===================================================
+     MODAL HELPERS / TOAST
+  =================================================== */
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) { el.style.display='flex'; el.classList.add('modal-open'); document.body.style.overflow='hidden'; }
+  }
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) { el.style.display='none'; el.classList.remove('modal-open'); document.body.style.overflow=''; }
+  }
+  window.openModal = openModal; window.closeModal = closeModal;
+
+  function showToast(msg, type='success') {
+    const el = document.getElementById('toast'); if (!el) return;
+    el.textContent = msg; el.className = `toast toast-${type} toast-show`;
+    clearTimeout(el._timer); el._timer = setTimeout(()=>el.classList.remove('toast-show'), 3500);
+  }
+
+  /* ===================================================
+     INIT
+  =================================================== */
+  function adjuntarMonedaAlternaCred() {
+    if (!window.N360MonedaAlterna) return;
+    N360MonedaAlterna.adjuntar('rp-monto', () => ({ moneda: CS.empresaConfig?.moneda, tasa: CS.empresaConfig?.tasa_cambio_usd }));
+    const m = document.getElementById('rp-monto');
+    if (m) m.addEventListener('input', refrescarTextoBancoCred);
+  }
+
+  async function initCreditos() {
+    applyTheme(localStorage.getItem('n360_theme') || 'light');
+    const fechaEl = document.getElementById('header-fecha');
+    if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-NI',{day:'numeric',month:'long',year:'numeric'});
+    try {
+      const { data: { user }, error } = await _sb.auth.getUser();
+      if (error || !user) { window.location.href = 'login.html'; return; }
+      CS.userId = user.id; CS.userEmail = user.email;
+      if (user.email) checkAdminAccess(user.email);
+      await cargarEstadoStockCompartido();
+      await cargarConfigTicket();
+      await loadEmpresaConfig(user.id);
+      adjuntarMonedaAlternaCred();
+      const profile = await loadUserProfile(user.id);
+      if (profile) renderUserInfo(profile, user.email);
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('app').style.display = 'flex';
+
+      try { await window.N360Unidades?.cargarPersonalizadas(_sb, CS.userId); } catch (_) {}
+      await Promise.all([loadClientes(), loadProductosYServicios(), loadMetodosPago(), loadImpuestos()]);
+      await refrescarTodo();
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'new') abrirNuevoCredito();
+      if (params.get('action') === 'pagar') abrirRegistrarPago();
+      // Deep link desde el módulo de Rutas — abre el pago de ESE
+      // crédito puntual, directamente en la misma pantalla de siempre.
+      const abrirPagoId = params.get('abrir_pago');
+      if (abrirPagoId) abrirRegistrarPago(abrirPagoId);
+      // Deep link desde el detalle de una venta a crédito ("Ver crédito").
+      const verCreditoId = params.get('ver');
+      if (verCreditoId && !abrirPagoId) { try { await abrirDetalleCredito(verCreditoId); } catch (eVer) { console.warn('ver crédito:', eVer); } }
+
+      // Deep link desde Proformas ("Pago parcial / a crédito") — abre
+      // Nuevo Crédito ya con el cliente y los productos de la proforma
+      // cargados, usando el MISMO formulario de siempre. Nunca se crea
+      // el crédito con una lógica aparte.
+      const claveSesion = params.get('desde_proforma_clave');
+      if (claveSesion) {
+        try {
+          const crudo = sessionStorage.getItem(claveSesion);
+          if (crudo) {
+            abrirNuevoCreditoDesdeProforma(JSON.parse(crudo));
+            sessionStorage.removeItem(claveSesion); // no dejar basura acumulándose
+          }
+        } catch (e) { console.error('No se pudo leer la proforma desde sessionStorage:', e); }
+      }
+
+      if (window.Negocio360Tutorial) {
+        const pasosCreditos = [
+          { icono: '📋', titulo: 'Bienvenido a Créditos', texto: 'Aquí registras ventas que tu cliente te va a pagar después, en vez de pagarte todo de una vez.' },
+          { icono: '💵', titulo: 'Registra los pagos', texto: 'Cada vez que tu cliente te abone algo, lo registras aquí -- el saldo pendiente se actualiza solo.' },
+          { icono: '🔔', titulo: 'Nunca pierdas de vista quién te debe', texto: 'La lista te muestra siempre cuánto te debe cada cliente y desde cuándo, para que no se te olvide cobrar.' },
+        ];
+        Negocio360Tutorial.verificarYMostrar('creditos', pasosCreditos);
+        Negocio360Tutorial.agregarBotonAyuda('creditos', pasosCreditos);
+      }
+    } catch (err) {
+      console.error('initCreditos:', err);
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('app').style.display = 'flex';
+    }
+  }
+
+  _sb.auth.onAuthStateChange(event => { if (event==='SIGNED_OUT') window.location.href = 'login.html'; });
+
+  window.toggleSidebar = toggleSidebar;
+  window.closeMobileSidebar = closeMobileSidebar;
+  window.toggleTheme = toggleTheme;
+  window.navigate = navigate;
+  // CS vive dentro de este IIFE, pero el modal de moneda de
+  // visualizacion esta definido FUERA (al final del archivo) y
+  // necesita leer CS.empresaConfig -- sin esto, al abrir el modal
+  // lanzaba "CS is not defined" y no pasaba nada al tocar el boton.
+  // Mismo caso ya corregido antes en gastos.js.
+  window.CS = CS;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initCreditos();
+    if (window.lucide) lucide.createIcons();
+  });
+
+})(); // fin IIFE
+
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACION -- agregado para que este
+   modulo tambien pueda ver todo en otra moneda (nunca toca los
+   datos reales, solo como se muestran).
+   ============================================================ */
+function abrirModalMonedaVis() {
+  const oficial = CS.empresaConfig?.moneda || 'NIO';
+  document.getElementById('mv-moneda-oficial').textContent = oficial;
+  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
+  document.getElementById('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  document.getElementById('modal-moneda-vis').style.display = 'flex';
+}
+function onCambiarSelectMonedaVis() {
+  const oficial = CS.empresaConfig?.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
+}
+function guardarMonedaVis() {
+  const oficial = CS.empresaConfig?.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  const errEl = document.getElementById('mv-error');
+  errEl.textContent = '';
+  if (!elegida || elegida === oficial) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  let intentos = 0;
+  const intervalo = setInterval(() => {
+    intentos++;
+    if (CS.empresaConfig || intentos >= 30) {
+      clearInterval(intervalo);
+      const btn = document.getElementById('btn-moneda-vis-texto');
+      if (btn) btn.textContent = monedaParaMostrar(CS.empresaConfig?.moneda);
+    }
+  }, 100);
+});

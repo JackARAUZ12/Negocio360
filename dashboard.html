@@ -14,6 +14,8 @@
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="modulos-registro.js?v=20261024d"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
+  <script src="cierre-pendiente.js?v=20261024b"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Chart.js -->
@@ -1793,6 +1795,7 @@ function ymd(d) {
 }
 function todayISO() { return ymd(new Date()); }
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }

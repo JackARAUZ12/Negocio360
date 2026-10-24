@@ -18,6 +18,7 @@
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="modulos-registro.js?v=20261024d"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1262,6 +1263,53 @@
               <span class="cfg-switch-track" onclick="onToggleCierreAutoMensual(event)"></span>
             </label>
           </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Día de cierre del mes</div>
+              <div class="cfg-row-sub" id="dcm-row-sub">Opcional. Si cierras el mes otro día (ej. el 20), elígelo aquí: Caja, Ventas, Reportes, Dashboard y Estadísticas usarán ese período como "este mes".</div>
+            </div>
+            <select id="dcm-select" disabled onchange="guardarDiaCierreMes()" style="width:auto;min-width:150px">
+              <option value="">Último día del mes</option>
+              <option value="1">Día 1</option>
+              <option value="2">Día 2</option>
+              <option value="3">Día 3</option>
+              <option value="4">Día 4</option>
+              <option value="5">Día 5</option>
+              <option value="6">Día 6</option>
+              <option value="7">Día 7</option>
+              <option value="8">Día 8</option>
+              <option value="9">Día 9</option>
+              <option value="10">Día 10</option>
+              <option value="11">Día 11</option>
+              <option value="12">Día 12</option>
+              <option value="13">Día 13</option>
+              <option value="14">Día 14</option>
+              <option value="15">Día 15</option>
+              <option value="16">Día 16</option>
+              <option value="17">Día 17</option>
+              <option value="18">Día 18</option>
+              <option value="19">Día 19</option>
+              <option value="20">Día 20</option>
+              <option value="21">Día 21</option>
+              <option value="22">Día 22</option>
+              <option value="23">Día 23</option>
+              <option value="24">Día 24</option>
+              <option value="25">Día 25</option>
+              <option value="26">Día 26</option>
+              <option value="27">Día 27</option>
+              <option value="28">Día 28</option>
+            </select>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Empezar de cero en cada cierre de mes</div>
+              <div class="cfg-row-sub" id="cez-row-sub">Opcional. Al cerrar el mes, el saldo de Caja se registra como retiro (se lo lleva el dueño o se deposita) y el nuevo período empieza en cero. Se puede deshacer junto con el cierre.</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cez-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleEmpezarCero(event)"></span>
+            </label>
+          </div>
           <div class="cfg-status" id="cierres-auto-status"></div>
         </div>
 
@@ -2163,6 +2211,16 @@ async function cargarCierresAuto() {
     if (error) throw error;
     pintarCierreAuto('cad', data?.cierre_auto_diario === true, 'diario');
     pintarCierreAuto('cam', data?.cierre_auto_mensual === true, 'mensual');
+    // Día de cierre y "empezar de cero" (24-oct-2026): consulta aparte, si falla no afecta lo de arriba
+    try {
+      const { data: dc } = await sbClient.from('configuracion_empresa').select('dia_cierre_mensual, cierre_empezar_cero')
+        .eq('auth_user_id', currentAuthUserId).maybeSingle();
+      const sel = document.getElementById('dcm-select'), tz = document.getElementById('cez-toggle');
+      if (sel) { sel.value = dc?.dia_cierre_mensual ? String(dc.dia_cierre_mensual) : ''; sel.disabled = false; }
+      if (tz) { tz.checked = dc?.cierre_empezar_cero === true; tz.disabled = false; }
+      pintarDiaCierre(dc?.dia_cierre_mensual || null);
+      try { window.N360PeriodoMes?.guardar(currentAuthUserId, dc?.dia_cierre_mensual || null, dc?.cierre_empezar_cero); } catch (_) {}
+    } catch (e2) { console.warn('dia de cierre:', e2); }
   } catch (e) {
     console.error('cargarCierresAuto:', e);
     const s1 = document.getElementById('cad-row-sub');
@@ -2170,6 +2228,51 @@ async function cargarCierresAuto() {
     if (s1) s1.textContent = 'No se pudo cargar el estado.';
     if (s2) s2.textContent = 'No se pudo cargar el estado.';
   }
+}
+
+function pintarDiaCierre(dia) {
+  const sub = document.getElementById('dcm-row-sub'); if (!sub) return;
+  if (!dia) { sub.textContent = 'Último día del mes (como siempre). Si cierras el mes otro día (ej. el 20), elígelo aquí.'; return; }
+  const r = (function () { const h = new Date(); let y = h.getFullYear(), m = h.getMonth(); if (h.getDate() <= dia) m -= 1;
+    const f = d => d.toLocaleDateString('es-NI', { day: 'numeric', month: 'short' }); return `${f(new Date(y, m, dia + 1))} al ${f(new Date(y, m + 1, dia))}`; })();
+  sub.textContent = `Cada período va del ${dia + 1} al ${dia}. Período actual: ${r}. Caja, Ventas, Reportes, Dashboard y Estadísticas lo usan como "este mes".`;
+}
+async function guardarDiaCierreMes() {
+  const sel = document.getElementById('dcm-select');
+  const statusEl = document.getElementById('cierres-auto-status');
+  const dia = sel.value ? parseInt(sel.value, 10) : null;
+  sel.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ dia_cierre_mensual: dia }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    pintarDiaCierre(dia);
+    try { window.N360PeriodoMes?.guardar(currentAuthUserId, dia, document.getElementById('cez-toggle')?.checked); } catch (_) {}
+    setStatus(statusEl, dia ? `Día de cierre: ${dia}. El cierre mensual (manual o automático) usará ese período.` : 'Día de cierre: último día del mes.', true);
+  } catch (e) {
+    console.error('guardarDiaCierreMes:', e);
+    setStatus(statusEl, 'No se pudo guardar el día de cierre. Intenta de nuevo.', false);
+  } finally { sel.disabled = false; }
+}
+function onToggleEmpezarCero(evt) {
+  const t = document.getElementById('cez-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarEmpezarCero(t.checked);
+}
+async function guardarEmpezarCero(activo) {
+  const t = document.getElementById('cez-toggle');
+  const statusEl = document.getElementById('cierres-auto-status');
+  t.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ cierre_empezar_cero: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    try { const sel = document.getElementById('dcm-select'); window.N360PeriodoMes?.guardar(currentAuthUserId, sel?.value ? parseInt(sel.value, 10) : null, activo); } catch (_) {}
+    setStatus(statusEl, activo ? 'Empezar de cero: activado. Al cerrar el mes se registrará el retiro del saldo (puedes cambiarlo en cada cierre).' : 'Empezar de cero: desactivado.', true);
+  } catch (e) {
+    console.error('guardarEmpezarCero:', e);
+    t.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { t.disabled = false; }
 }
 
 function pintarCierreAuto(prefijo, activo, tipo) {
@@ -2184,7 +2287,7 @@ function pintarCierreAuto(prefijo, activo, tipo) {
       : 'Desactivado — los cierres diarios los haces tú desde Caja.';
   } else {
     sub.textContent = activo
-      ? 'Activado — el día 1 de cada mes se crea el cierre del mes que terminó.'
+      ? 'Activado — al día siguiente de tu día de cierre se crea el cierre del período que terminó.'
       : 'Desactivado — los cierres mensuales los haces tú desde Caja.';
   }
 }
