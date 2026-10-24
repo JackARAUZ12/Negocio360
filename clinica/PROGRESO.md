@@ -7,7 +7,7 @@
 | 3 — Operación diaria | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Sala de espera con turnos y pantalla, recordatorios por WhatsApp, honorarios → Salarios, reportes que cuadran con Ventas |
 | Ajuste — Agenda y usuarios del sistema | ✅ Terminado y probado | ✅ Sí (2026-10-24) | Sin agenda propia (se usa la Agenda), médicos = usuarios del multiusuario con su mismo código |
 | 4 — Especialidades | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Plantilla propia de las 16 especialidades con cálculos automáticos y odontograma |
-| 5 — Crecimiento y cierre | Pendiente | | |
+| 5 — Crecimiento y cierre | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Observación/hospitalización, seguros y convenios, demo "Clínica", guía e informe final |
 
 ## Fase 1 — qué se hizo
 
@@ -261,6 +261,37 @@ que parte del anterior, dentición mixta, marcar diente y caras, índice recalcu
 dentro de la nota firmada, notas escapadas, FUM futura rechazada, edad gestacional y FCF,
 rangos, Glasgow); regresión contra `main` idéntica.
 
+## Fase 5 — qué se hizo (Crecimiento y cierre)
+
+- **Observación y hospitalización** (`clinica-hospital.html`, modelo de las estancias de
+  Veterinaria): ingreso (OBS-/HOS- numerado), cama, médico, servicio por día; notas de
+  ingreso, evolución, enfermería, indicaciones y alta con signos vitales **con candado**
+  (`clinica_estancia_notas`, solo con sesión médica, solo agregar, en la bitácora); cuenta de
+  medicamentos e insumos; alta (no se reabre) y cobro por Ventas. Una estancia cobrada o
+  anulada ya no cambia su cuenta; un paciente solo puede tener una estancia activa.
+- **Seguros y convenios** (`clinica-seguros.html`): aseguradoras/empresas con % de
+  cobertura (cada una ligada a un cliente), convenio y póliza del paciente, reparto en la
+  cuenta de la Sala (el paciente paga su parte, la aseguradora el resto, al centavo), lo
+  cubierto queda anotado en la cita y se **factura a la aseguradora por Ventas** (normalmente
+  a crédito). Una cita nunca se factura dos veces. Reportes muestra lo cubierto y los
+  honorarios se calculan sobre el total (paciente + seguro).
+- `ventas.js`: cobro de estancias y facturas a aseguradoras (solo con Clínica encendida,
+  mismo patrón que Veterinaria). `agenda-citas.js`: al cobrar desde la Agenda se cobra todo
+  al paciente (se borra un reparto con seguro preparado antes).
+- **Cuenta demo "Clínica"** (`demo-clinica@negocio360oficial.com`, en el selector del login,
+  código de los médicos 1234), registrada en `cuentas_prueba` como demo pública, con datos de
+  ejemplo y sin ventas ni caja. Script: `supabase/migraciones/20261024_clinica_demo.sql`.
+- **Guía de uso** (`clinica/GUIA.md`) e **informe final** (`clinica/INFORME_FINAL.md`).
+- Base de datos: `supabase/migraciones/20261024_clinica_fase5.sql` (aplicada; solo agrega).
+
+**Pruebas:** SQL revertido 27/27 (convenio ajeno, numeración, una estancia activa, notas con
+sesión y rangos, solo agregar, alta sin reabrir, cuenta cerrada al cobrar/anular, factura sin
+duplicar e inmutable, permisos y RLS entre cuentas); unitarias 70; navegador en computadora y
+celular (ingreso con nota, notas y signos, cuenta, alta, cobro y ligado; seguro: reparto,
+cobro del paciente, factura a la aseguradora a su nombre, sin duplicar; convenios); **cuadre**:
+cobro de estancia y factura a aseguradora escriben lo mismo que la venta directa; con la
+Clínica apagada Ventas ignora estos cobros; regresión contra `main`.
+
 ## Bitácora
 - 2026-10-23: creada la rama `modulo-clinica` con el plan (`PLAN.md`).
 - 2026-10-23: Fase 1 — base de datos aplicada en producción tras prueba revertida.
@@ -271,3 +302,4 @@ rangos, Glasgow); regresión contra `main` idéntica.
 - 2026-10-24: Fase 3 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Ajuste pedido por Jack — sin agenda propia (se usa la Agenda) y médicos = usuarios del sistema. Probado e integrado a `main`.
 - 2026-10-24: Fase 4 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
+- 2026-10-24: Fase 5 terminada, probada e integrada a `main`. Módulo completo; apagado por defecto. Demo "Clínica" publicada.
