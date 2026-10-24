@@ -210,10 +210,11 @@ async function pruebaCuadre(browser, base) {
     return { ...r, paso, errores };
   };
   const limpiar = o => JSON.parse(JSON.stringify(o, (k, v) => ['id', 'venta_id', 'created_at', 'fecha', 'updated_at', 'numero_venta', 'numero_factura', 'observaciones', 'notas', 'referencia_id', 'referencia_caja'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id generado>' : v)));
-  const escrituras = log => log.filter(x => x.op !== 'rpc' && !['tutoriales_vistos', 'usuarios', 'presencia_usuarios', 'auditoria_eventos', 'auditoria'].includes(x.tabla) && x.tabla !== 'clinica_citas' && !(x.tabla === 'auditoria_log' && x.datos?.tabla === 'clinica_citas'));
+  const RPC_DINERO = ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'];
+  const escrituras = log => log.filter(x => (x.op !== 'rpc' || RPC_DINERO.includes(x.tabla)) && !['tutoriales_vistos', 'usuarios', 'presencia_usuarios', 'auditoria_eventos', 'auditoria'].includes(x.tabla) && x.tabla !== 'clinica_citas' && !(x.tabla === 'auditoria_log' && x.datos?.tabla === 'clinica_citas'));
   const a = await correr(true), b = await correr(false);
   const wa = escrituras(a.log), wb = escrituras(b.log);
-  verificar(wa.some(x => x.tabla === 'ventas' && x.op === 'insert'), `cuadre: la venta desde la clínica se registró (paso ${a.paso}; ${a.errores.join(' | ')})`);
+  verificar(wa.some(x => (x.tabla === 'ventas' && x.op === 'insert') || x.tabla === 'venta_registrar_atomica'), `cuadre: la venta desde la clínica se registró (paso ${a.paso}; ${a.errores.join(' | ')})`);
   verificar(JSON.stringify(limpiar(wa)) === JSON.stringify(limpiar(wb)), 'cuadre: venta, detalle y movimientos IDÉNTICOS a la venta directa');
   if (JSON.stringify(limpiar(wa)) !== JSON.stringify(limpiar(wb))) {
     const la = limpiar(wa), lb = limpiar(wb);
@@ -315,9 +316,9 @@ async function regresionVentas(browser, raizMain) {
     if (process.env.DEPURAR) console.log('  ', raiz, page.url(), page.__errores, log.length);
     await ctx.close(); srv.close(); return log;
   };
-  const norm = l => JSON.stringify(l.filter(x => x.op !== 'rpc'), (k, v) => ['id', 'created_at', 'fecha', 'updated_at', 'referencia_id', 'referencia_caja'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id>' : v));
+  const norm = l => JSON.stringify(l.filter(x => x.op !== 'rpc' || ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'].includes(x.tabla)), (k, v) => ['id', 'created_at', 'fecha', 'updated_at', 'referencia_id', 'referencia_caja'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id>' : v));
   const viejo = await correr(raizMain), nuevo = await correr(RAIZ);
-  verificar(viejo.some(x => x.tabla === 'ventas' && x.op === 'insert'), 'regresión: la venta se registra con el código de main');
+  verificar(viejo.some(x => (x.tabla === 'ventas' && x.op === 'insert') || x.tabla === 'venta_registrar_atomica'), 'regresión: la venta se registra con el código de main');
   verificar(norm(viejo) === norm(nuevo), 'regresión: Ventas escribe EXACTAMENTE lo mismo que antes (caja, inventario, cliente, detalle)');
 }
 

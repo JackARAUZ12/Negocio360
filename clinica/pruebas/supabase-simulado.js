@@ -193,6 +193,11 @@
         const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'rpc', tabla: nombre, datos: args }); sessionStorage.setItem('__LOG', JSON.stringify(l));
         if (nombre.startsWith('clinica_')) { try { const r = rpcClinica(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
         if (nombre === 'generar_numero_venta') { const db = leerDB(); const k = (db.ventas || []).length + 1; return { data: 'V-' + String(k).padStart(5, '0'), error: null }; }
+        if (nombre === 'venta_registrar_atomica') {        // guarda la venta como lo haría el servidor (en una sola operación)
+          const db = leerDB(); db.ventas = db.ventas || []; const id = uuid(); const num = 'V-' + String(db.ventas.length + 1).padStart(5, '0');
+          db.ventas.push({ id, numero_venta: num, ...args.p_venta, estado: args.p_venta?.estado || 'completada' }); guardarDB(db);
+          return { data: { venta_id: id, numero_venta: num }, error: null };
+        }
         if (window.__RPC && window.__RPC[nombre]) return { data: window.__RPC[nombre](args), error: null };
         return { data: null, error: null };
       },
