@@ -205,7 +205,8 @@ function renderAgenda() {
 }
 
 function botonEstado(c, est) {
-  const t = { confirmada: '✔ Confirmar', en_espera: '🪑 Llegó', no_asistio: '🚫 No asistió', cancelada: '✖ Cancelar', programada: '↩ Reactivar' }[est];
+  const t = { confirmada: '✔ Confirmar', en_espera: '🪑 Llegó', no_asistio: '🚫 No asistió', cancelada: '✖ Cancelar',
+    programada: c.estado === 'en_espera' ? '↩ Aún no llega' : '↩ Reactivar' }[est];
   return `<button class="btn-accion-tabla btn-ghost" onclick="cambiarEstado('${c.id}','${est}')">${t}</button>`;
 }
 function tarjetaCita(c) {

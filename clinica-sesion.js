@@ -17,11 +17,16 @@ const ClinicaSesion = (() => {
   const INACTIVIDAD_MS = 15 * 60 * 1000;
   let uid = null, alCambiar = null, ultimaActividad = Date.now(), pendiente = null;
 
+  // Perfil multiusuario elegido en esta pestaña: si alguien "cambia de usuario", la sesión médica
+  // abierta por el perfil anterior ya no sirve (no se hereda el acceso al expediente).
+  function perfilActual() { try { return JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null')?.id || null; } catch (_) { return null; } }
   function leer() {
-    try { const s = JSON.parse(sessionStorage.getItem(CLAVE) || 'null'); return s && s.uid === uid && /^[0-9a-f]{64}$/.test(s.token || '') ? s : null; }
-    catch (_) { return null; }
+    try {
+      const s = JSON.parse(sessionStorage.getItem(CLAVE) || 'null');
+      return s && s.uid === uid && s.perfil === perfilActual() && /^[0-9a-f]{64}$/.test(s.token || '') ? s : null;
+    } catch (_) { return null; }
   }
-  function guardar(r) { sessionStorage.setItem(CLAVE, JSON.stringify({ uid, token: r.token, personal_id: r.personal_id, nombre: r.nombre, rol: r.rol })); avisar(); }
+  function guardar(r) { sessionStorage.setItem(CLAVE, JSON.stringify({ uid, perfil: perfilActual(), token: r.token, personal_id: r.personal_id, nombre: r.nombre, rol: r.rol })); avisar(); }
   function limpiar() { sessionStorage.removeItem(CLAVE); avisar(); }
   function avisar() { try { pintarChips(); alCambiar && alCambiar(leer()); } catch (e) { console.warn('ClinicaSesion:', e); } }
 
