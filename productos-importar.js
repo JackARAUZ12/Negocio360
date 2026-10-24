@@ -313,9 +313,15 @@ function validarFilas(filas, tipoPlantilla) {
   // Para detectar SKU duplicado dentro del propio archivo
   const skusEnArchivo = new Set();
   // SKUs ya existentes en el catálogo del usuario (cache ya cargado por productos.js)
-  const skusExistentes = new Set(
-    (STATE.productos || []).filter(p => p.sku).map(p => p.sku.trim().toLowerCase())
-  );
+  // (cualquier producto del catálogo, activo o no). Un SKU que ya existe NO es error:
+  // esa fila se muestra aparte para revisar y, si se aprueba, COMPLETA el producto existente.
+  const productosPorSku = new Map();
+  (STATE.productos || []).filter(p => p.sku && String(p.sku).trim()).forEach(p => {
+    const k = String(p.sku).trim().toLowerCase();
+    if (!productosPorSku.has(k)) productosPorSku.set(k, []);
+    productosPorSku.get(k).push(p);
+  });
+  let productoExistentePorSku = null;
 
   filas.forEach(row => {
     const fila = row._filaExcel;
@@ -383,12 +389,18 @@ function validarFilas(filas, tipoPlantilla) {
 
     // --- SKU (opcional, único) ---
     const sku = String(row.SKU || '').trim();
+    productoExistentePorSku = null;
     if (sku) {
       const skuKey = sku.toLowerCase();
       if (skusEnArchivo.has(skuKey)) {
         agregarError('SKU', 'SKU duplicado dentro del archivo');
-      } else if (skusExistentes.has(skuKey)) {
-        agregarError('SKU', 'SKU duplicado: ya existe en tu catálogo');
+      } else if (productosPorSku.has(skuKey)) {
+        const coinciden = productosPorSku.get(skuKey);
+        if (coinciden.length > 1) {
+          agregarError('SKU', 'Este SKU está repetido en ' + coinciden.length + ' productos de tu catálogo: corrígelo en el inventario antes de importar');
+        } else {
+          productoExistentePorSku = coinciden[0];   // se completará este producto (con revisión y aprobación)
+        }
       }
       skusEnArchivo.add(skuKey);
     }
@@ -432,6 +444,12 @@ function validarFilas(filas, tipoPlantilla) {
       escalas:          esEscala ? escalas : [],
       stock_actual:     esProducto ? stockInicial : 0,
       stock_minimo:     esProducto ? stockMinimo : 0,
+      // Solo para completar un producto que ya existe con el mismo SKU:
+      // se distingue "vino vacío en el archivo" (no se toca) de "vino 0".
+      _productoExistenteId: productoExistentePorSku ? productoExistentePorSku.id : null,
+      _filaExcel:       fila,
+      _stockMinimoArchivo: (esProducto && !esVacio(row.StockMinimo)) ? stockMinimo : null,
+      _stockArchivo:    (esProducto && !esVacio(row.StockInicial)) ? stockInicial : null,
     });
   });
 
@@ -445,7 +463,63 @@ function normalizarNombreImport(s) {
   return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-function construirVistaPrevia(validas) {
+// Compara una fila del archivo con el producto existente (mismo SKU) y devuelve
+// qué cambiaría. Es solo la VISTA PREVIA: la regla real la aplica la base de datos
+// (importar_productos_con_actualizaciones) con exactamente estas mismas reglas.
+function calcularCambiosPorSku(v, p) {
+  const cambios = [], avisos = [];
+  const txt = x => (x === null || x === undefined) ? '' : String(x).trim();
+  const num = x => Number(x || 0);
+  const comparaTxt = (campo, antes, despues) => {
+    if (txt(despues) && txt(despues) !== txt(antes)) cambios.push({ campo, antes: txt(antes) || '—', despues: txt(despues) });
+  };
+  comparaTxt('Descripción', p.descripcion, v.descripcion);
+  comparaTxt('Categoría', p.categoria, v.categoria);
+  comparaTxt('Código de barras', p.codigo_barras, v.codigo_barras);
+  if (txt(v.marca_proveedor) && txt(v.marca_proveedor).toLowerCase() !== txt(p.proveedor_nombre).toLowerCase()) {
+    cambios.push({ campo: 'Marca / proveedor', antes: txt(p.proveedor_nombre) || '—', despues: txt(v.marca_proveedor) });
+  }
+  if (p.tipo_costo === 'escala') {
+    avisos.push('Este producto usa escala de costos: su costo no se cambia.');
+  } else if (Math.abs(num(p.costo) - num(v.costo)) > 0.0001) {
+    cambios.push({ campo: 'Costo', antes: String(num(p.costo)), despues: String(num(v.costo)) });
+  }
+  if (p.tipo === 'producto' && v._stockMinimoArchivo !== null && num(p.stock_minimo) !== num(v._stockMinimoArchivo)) {
+    cambios.push({ campo: 'Stock mínimo', antes: String(num(p.stock_minimo)), despues: String(num(v._stockMinimoArchivo)) });
+  }
+  const tipoP = p.tipo_precio === 'escala' ? 'escala' : 'fijo';
+  if (tipoP !== v.tipo_precio) {
+    avisos.push('El precio no se cambia: este producto usa precio ' + (tipoP === 'escala' ? 'por escalas' : 'fijo') + ' y el archivo trae precio ' + (v.tipo_precio === 'escala' ? 'por escalas' : 'fijo') + '.');
+  } else if (tipoP === 'fijo') {
+    if (Math.abs(num(p.precio) - num(v.precio)) > 0.0001) cambios.push({ campo: 'Precio', antes: String(num(p.precio)), despues: String(num(v.precio)) });
+  } else {
+    const actuales = (STATE.escalasPorProducto && STATE.escalasPorProducto[p.id]) || [];
+    (v.escalas || []).forEach(e => {
+      const act = actuales.find(x => Number(x.orden) === Number(e.orden));
+      if (!act) cambios.push({ campo: 'Escala "' + e.nombre + '"', antes: '(nueva)', despues: String(e.precio) });
+      else if (txt(act.nombre) !== txt(e.nombre) || Math.abs(num(act.precio) - num(e.precio)) > 0.0001) {
+        cambios.push({ campo: 'Escala ' + (Number(e.orden) + 1), antes: txt(act.nombre) + ' = ' + num(act.precio), despues: txt(e.nombre) + ' = ' + num(e.precio) });
+      }
+    });
+  }
+  return { cambios, avisos };
+}
+
+function construirVistaPrevia(todasValidas) {
+  // Las filas con SKU de un producto que ya existe NO se crean: se completan (con aprobación).
+  const actualizaciones = [];
+  const validas = [];
+  todasValidas.forEach(v => {
+    const p = v._productoExistenteId ? (STATE.productos || []).find(x => x.id === v._productoExistenteId) : null;
+    if (p) {
+      const { cambios, avisos } = calcularCambiosPorSku(v, p);
+      actualizaciones.push({ fila: v, producto: p, cambios, avisos, stockArchivo: (p.tipo === 'producto' && v._stockArchivo > 0) ? v._stockArchivo : 0 });
+    } else validas.push(v);
+  });
+  IMPORT_STATE.actualizaciones = actualizaciones;
+  IMPORT_STATE.actSel = new Set(actualizaciones.map((a, i) => a.cambios.length ? i : -1).filter(i => i >= 0));   // por defecto solo los que traen cambios
+  IMPORT_STATE.sumarStock = false;
+
   const categoriasExistentes = new Set(
     (STATE.productos || []).filter(p => p.categoria).map(p => p.categoria.trim().toLowerCase())
   );
@@ -479,7 +553,9 @@ function construirVistaPrevia(validas) {
   });
 
   return {
-    total: validas.length,
+    total: todasValidas.length,
+    nuevos: validas.length,
+    porSku: actualizaciones.length,
     productos,
     servicios,
     categoriasNuevas: categoriasNuevas.size,
@@ -493,7 +569,7 @@ function construirVistaPrevia(validas) {
    Una sola llamada RPC = una sola transacción en la base de datos.
    Si cualquier registro falla, NADA queda guardado.
    ============================================================ */
-async function ejecutarImportacion(validas, modoDuplicados) {
+async function ejecutarImportacion(validas, modoDuplicados, actualizaciones, sumarStock) {
   // Si la pestaña estuvo mucho tiempo inactiva (segundo plano, la
   // computadora en reposo, etc.), la renovación automática de sesión
   // puede no haber alcanzado a dispararse a tiempo, y el token
@@ -523,10 +599,26 @@ async function ejecutarImportacion(validas, modoDuplicados) {
     stock_minimo:    v.stock_minimo,
   }));
 
-  const { data, error } = await supabaseClient.rpc('importar_productos_masivo', {
-    p_registros: payload,
-    p_modo_duplicados: modoDuplicados || 'crear_nuevos',
-  });
+  // Sin productos por completar (SKU existentes) => exactamente el camino de siempre.
+  // Con ellos => una sola función en la base que hace todo (nuevos + completar) en una transacción.
+  const hayAct = Array.isArray(actualizaciones) && actualizaciones.length > 0;
+  const { data, error } = hayAct
+    ? await supabaseClient.rpc('importar_productos_con_actualizaciones', {
+        p_registros: payload,
+        p_modo_duplicados: modoDuplicados || 'crear_nuevos',
+        p_actualizaciones: actualizaciones.map(a => ({
+          producto_id: a.producto.id, sku: a.fila.sku,
+          descripcion: a.fila.descripcion, categoria: a.fila.categoria, marca_proveedor: a.fila.marca_proveedor,
+          codigo_barras: a.fila.codigo_barras, costo: a.fila.costo, tipo_precio: a.fila.tipo_precio,
+          precio: a.fila.precio, escalas: a.fila.escalas, stock_minimo: a.fila._stockMinimoArchivo,
+          stock_sumar: a.stockArchivo,
+        })),
+        p_sumar_stock: !!sumarStock,
+      })
+    : await supabaseClient.rpc('importar_productos_masivo', {
+        p_registros: payload,
+        p_modo_duplicados: modoDuplicados || 'crear_nuevos',
+      });
   if (error) {
     // Por si el token vence justo entre la renovación de arriba y
     // esta llamada (muy raro, pero posible) -- mismo mensaje claro.
@@ -547,6 +639,9 @@ function abrirModalImportar() {
   IMPORT_STATE.filasValidas = [];
   IMPORT_STATE.errores = [];
   IMPORT_STATE.preview = null;
+  IMPORT_STATE.actualizaciones = [];
+  IMPORT_STATE.actSel = new Set();
+  IMPORT_STATE.sumarStock = false;
   IMPORT_STATE.procesando = false;
   IMPORT_STATE.tipoPlantilla = null;
   IMPORT_STATE.encabezadosCrudos = null;
@@ -771,6 +866,7 @@ function renderPasoPreview(preview, tipoPlantilla) {
       </p>
     </div>`;
 
+  const bloqueSku = renderBloqueSku(preview);
   document.getElementById('importarBody').innerHTML = `
     <div style="margin-bottom:14px;padding:10px 14px;background:var(--success-soft, #DCFCE7);border-radius:var(--radius-md);color:var(--success);font-size:13px;font-weight:600">
       ✅ El archivo es válido (plantilla "${escHtml(nombrePlantilla)}"). Revisa el resumen antes de confirmar.
@@ -778,13 +874,15 @@ function renderPasoPreview(preview, tipoPlantilla) {
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${tarjeta('Registros totales', preview.total, 'var(--accent)')}
-      ${tarjeta('Productos', preview.productos, 'var(--text-primary)')}
-      ${tarjeta('Servicios', preview.servicios, 'var(--text-primary)')}
+      ${tarjeta('Productos nuevos', preview.productos, 'var(--text-primary)')}
+      ${tarjeta('Servicios nuevos', preview.servicios, 'var(--text-primary)')}
+      ${preview.porSku ? tarjeta('Ya existen (mismo SKU)', preview.porSku, '#2563EB') : ''}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       ${tarjeta('Categorías nuevas', preview.categoriasNuevas, '#F59E0B')}
       ${tarjeta('Marcas/Proveedores nuevos', preview.marcasNuevas, '#F59E0B')}
     </div>
+    ${bloqueSku}
     ${bloqueDuplicados}
     <p style="font-size:12px;color:var(--text-muted);margin-top:16px">
       Al confirmar, todos los registros se guardan en una sola operación: si algo fallara a mitad de camino, no queda nada guardado.
@@ -792,14 +890,112 @@ function renderPasoPreview(preview, tipoPlantilla) {
   `;
   document.getElementById('importarFooter').innerHTML = `
     <button class="btn btn-secondary" onclick="cerrarModalImportar()">Cancelar</button>
-    <button class="btn btn-primary" onclick="confirmarImportacionFinal()">✅ Confirmar importación</button>
+    <button class="btn btn-primary" id="btnConfirmarImportacion" onclick="confirmarImportacionFinal()">✅ Confirmar importación</button>
   `;
+  actualizarBotonImportar();
 }
+
+/* ------------------------------------------------------------
+   Productos cuyo SKU YA existe: se muestran para revisar y aprobar.
+   Al aprobar, se COMPLETAN esos productos (no se crean duplicados).
+   Tarjetas que se acomodan solas: una columna en teléfono, varias en computadora.
+   ------------------------------------------------------------ */
+function renderBloqueSku(preview) {
+  const acts = IMPORT_STATE.actualizaciones || [];
+  if (!acts.length) return '';
+  const hayStock = acts.some(a => a.stockArchivo > 0);
+  const items = acts.map((a, i) => {
+    const sinCambios = !a.cambios.length;
+    const marcado = IMPORT_STATE.actSel.has(i);
+    return `
+    <div class="imp-sku-item" style="opacity:${marcado || !sinCambios ? 1 : .75}">
+      <label class="imp-sku-cab">
+        <input type="checkbox" ${marcado ? 'checked' : ''} onchange="toggleActSku(${i}, this.checked)">
+        <span class="imp-sku-nombre"><b>${escHtml(a.producto.nombre)}</b>
+          <span class="imp-sku-badge">SKU ${escHtml(a.producto.sku)}</span>
+          ${a.producto.activo === false ? '<span class="imp-sku-badge" style="background:#FEE2E2;color:#991B1B">inactivo</span>' : ''}
+          <span class="imp-sku-fila">fila ${escHtml(String(a.fila._filaExcel))}</span></span>
+      </label>
+      ${sinCambios ? '<div class="imp-sku-nada">El archivo no trae nada distinto: no hay cambios en este producto.</div>' : `
+      <div class="imp-sku-cambios">
+        ${a.cambios.map(c => `
+          <div class="imp-sku-cambio"><span class="imp-sku-campo">${escHtml(c.campo)}</span>
+            <span class="imp-sku-antes">${escHtml(c.antes)}</span><span class="imp-sku-flecha">→</span><span class="imp-sku-desp">${escHtml(c.despues)}</span></div>`).join('')}
+      </div>`}
+      ${a.avisos.map(t => `<div class="imp-sku-aviso">ℹ️ ${escHtml(t)}</div>`).join('')}
+      ${a.stockArchivo > 0 ? `<div class="imp-sku-aviso">📦 El archivo trae stock ${a.stockArchivo}; hoy tienes ${Number(a.producto.stock_actual || 0)}. <span class="imp-sku-stk">Solo se suma si marcas la opción de abajo.</span></div>` : ''}
+    </div>`;
+  }).join('');
+  return `
+    <style>
+      .imp-sku-box{margin-top:16px;padding:14px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:var(--radius-md)}
+      .imp-sku-tit{font-weight:700;font-size:13px;color:#1E3A8A;margin-bottom:4px}
+      .imp-sku-sub{font-size:12px;color:#1E40AF;margin-bottom:10px;line-height:1.45}
+      .imp-sku-acciones{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-bottom:8px}
+      .imp-sku-acciones a{color:#1D4ED8;cursor:pointer;text-decoration:underline}
+      .imp-sku-lista{max-height:340px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+      .imp-sku-item{background:var(--bg-surface,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:10px 12px;min-width:0}
+      .imp-sku-cab{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+      .imp-sku-cab input{margin-top:3px;flex:none;width:18px;height:18px}
+      .imp-sku-nombre{font-size:13px;color:var(--text-primary);word-break:break-word;min-width:0}
+      .imp-sku-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;background:#DBEAFE;color:#1E3A8A;font-size:11px;font-weight:600}
+      .imp-sku-fila{margin-left:6px;font-size:11px;color:var(--text-muted)}
+      .imp-sku-cambios{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+      .imp-sku-cambio{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:12.5px;border-top:1px dashed var(--border,#e5e7eb);padding-top:5px}
+      .imp-sku-campo{font-weight:600;color:var(--text-secondary);min-width:96px}
+      .imp-sku-antes{color:#991B1B;text-decoration:line-through;word-break:break-word}
+      .imp-sku-desp{color:#166534;font-weight:600;word-break:break-word}
+      .imp-sku-flecha{color:var(--text-muted)}
+      .imp-sku-nada,.imp-sku-aviso{margin-top:8px;font-size:12px;color:var(--text-secondary);line-height:1.4}
+      .imp-sku-stk{color:#92400E}
+      .imp-sku-stock{margin-top:12px;padding-top:10px;border-top:1px solid #93C5FD;font-size:12.5px;color:#1E3A8A}
+      @media (max-width:560px){.imp-sku-lista{grid-template-columns:1fr;max-height:50vh}.imp-sku-campo{min-width:100%}}
+    </style>
+    <div class="imp-sku-box">
+      <div class="imp-sku-tit">🔁 ${acts.length} producto${acts.length === 1 ? '' : 's'} del archivo ya existe${acts.length === 1 ? '' : 'n'} en tu sistema (mismo SKU)</div>
+      <div class="imp-sku-sub">No se van a crear de nuevo: el archivo <b>completará</b> los datos de esos productos. Revisa lo que cambiaría
+        (<span style="text-decoration:line-through;color:#991B1B">antes</span> → <span style="color:#166534;font-weight:600">después</span>) y deja marcados solo los que quieras aprobar.
+        Solo se llenan los datos que el archivo trae; nunca se borra nada. No se cambia el nombre, el SKU ni el stock.</div>
+      <div class="imp-sku-acciones">
+        <a onclick="toggleTodasActSku(true)">Marcar todos</a><a onclick="toggleTodasActSku(false)">Quitar todos</a>
+        <span id="impSkuContador" style="color:#1E3A8A;font-weight:600"></span>
+      </div>
+      <div class="imp-sku-lista">${items}</div>
+      ${hayStock ? `<label class="imp-sku-stock" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" style="margin-top:2px;width:16px;height:16px;flex:none" ${IMPORT_STATE.sumarStock ? 'checked' : ''} onchange="IMPORT_STATE.sumarStock=this.checked">
+        <span><b>También sumar el stock del archivo</b> al stock actual de los productos aprobados. Queda registrado como un ajuste de inventario con su costo (igual que un ajuste manual). Si es una compra real, mejor regístrala en Compras.</span></label>` : ''}
+    </div>`;
+}
+function actualizarBotonImportar() {
+  const acts = IMPORT_STATE.actualizaciones || [];
+  const sel = IMPORT_STATE.actSel ? IMPORT_STATE.actSel.size : 0;
+  const nuevos = IMPORT_STATE.preview ? IMPORT_STATE.preview.nuevos : 0;
+  const c = document.getElementById('impSkuContador'); if (c) c.textContent = sel + ' de ' + acts.length + ' aprobados' + (nuevos ? ' · además se crean ' + nuevos + ' nuevo' + (nuevos === 1 ? '' : 's') : '');
+  const b = document.getElementById('btnConfirmarImportacion');
+  if (b) {
+    const nada = (nuevos + sel) === 0;
+    b.disabled = nada;
+    b.textContent = acts.length ? '✅ Aprobar e importar' : '✅ Confirmar importación';
+    b.style.whiteSpace = 'normal';
+    b.title = acts.length ? (nuevos + ' nuevo' + (nuevos === 1 ? '' : 's') + ' + ' + sel + ' por completar') : '';
+    const f = document.getElementById('importarFooter'); if (f) f.style.flexWrap = 'wrap';
+  }
+}
+function toggleActSku(i, on) { if (on) IMPORT_STATE.actSel.add(i); else IMPORT_STATE.actSel.delete(i); actualizarBotonImportar(); }
+function toggleTodasActSku(on) {
+  IMPORT_STATE.actSel = on ? new Set((IMPORT_STATE.actualizaciones || []).map((_, i) => i)) : new Set();
+  document.querySelectorAll('.imp-sku-cab input[type=checkbox]').forEach((cb, i) => { cb.checked = on; });
+  actualizarBotonImportar();
+}
+window.toggleActSku = toggleActSku; window.toggleTodasActSku = toggleTodasActSku;
 
 function renderPasoExito(resultado) {
   const extra = [];
   if (resultado.actualizados) extra.push(`${resultado.actualizados} con stock sumado a lo que ya existía`);
   if (resultado.omitidos) extra.push(`${resultado.omitidos} omitidos por ya existir`);
+  if (resultado.actualizados_sku) extra.push(`${resultado.actualizados_sku} producto${resultado.actualizados_sku===1?'':'s'} existente${resultado.actualizados_sku===1?'':'s'} completado${resultado.actualizados_sku===1?'':'s'} por SKU`);
+  if (resultado.stock_sumado_sku) extra.push(`stock sumado en ${resultado.stock_sumado_sku}`);
+  if (resultado.no_encontrados_sku) extra.push(`${resultado.no_encontrados_sku} ya no existían y se omitieron`);
   document.getElementById('importarBody').innerHTML = `
     <div style="text-align:center;padding:24px 8px">
       <div style="font-size:44px;margin-bottom:10px">🎉</div>
@@ -893,9 +1089,13 @@ async function confirmarImportacionFinal() {
   renderPasoProcesando('Importando registros… esto puede tardar unos segundos.');
 
   try {
-    const resultado = await ejecutarImportacion(IMPORT_STATE.filasValidas, IMPORT_STATE.modoDuplicados);
+    // Las filas con SKU existente NO se envían como nuevas: solo las aprobadas se envían para completar.
+    const nuevas = IMPORT_STATE.filasValidas.filter(v => !v._productoExistenteId);
+    const aprobadas = (IMPORT_STATE.actualizaciones || []).filter((_, i) => IMPORT_STATE.actSel && IMPORT_STATE.actSel.has(i));
+    if (!nuevas.length && !aprobadas.length) throw new Error('No hay nada aprobado para importar.');
+    const resultado = await ejecutarImportacion(nuevas, IMPORT_STATE.modoDuplicados, aprobadas, IMPORT_STATE.sumarStock);
     renderPasoExito(resultado);
-    showToast('success', 'Importación completada', resultado.productos + ' productos y ' + resultado.servicios + ' servicios agregados');
+    showToast('success', 'Importación completada', resultado.productos + ' productos y ' + resultado.servicios + ' servicios agregados' + (resultado.actualizados_sku ? ' · ' + resultado.actualizados_sku + ' completados' : ''));
 
     // Refrescar el catálogo, escalas y marcas para reflejar lo recién importado
     await Promise.all([cargarProductos(), cargarEscalas()]);

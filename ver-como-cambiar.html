@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Cambiando de negocio (solo lectura) — Negocio360</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f4f0;color:#111;font-family:system-ui,-apple-system,sans-serif}
+    .caja{max-width:420px;padding:28px;text-align:center}
+    h1{font-size:18px;margin:0 0 8px}
+    p{font-size:14px;color:#555;margin:0 0 14px;line-height:1.45}
+    a{color:#2563eb}
+  </style>
+</head>
+<body>
+  <div class="caja">
+    <h1 id="titulo">Abriendo el otro negocio…</h1>
+    <p id="detalle">Sigue en modo solo lectura: puedes ver todo, pero no se guarda ningún cambio.</p>
+    <p id="salida" style="display:none"><a href="admin.html">Volver al panel de administrador</a></p>
+  </div>
+<script>
+/* "Ver como cliente" (solo lectura, administrador): pasar al OTRO negocio de
+   la misma empresa sin volver al panel. Usa la sesión de ADMINISTRADOR de este
+   navegador y la misma función admin-ver-como del panel (verifica que seas
+   administrador y deja constancia). No escribe nada en ningún negocio. */
+(async function () {
+  var URL_SB = 'https://zvlincmqmmoclqhykejv.supabase.co';
+  var KEY_SB = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+  function falla(msg) {
+    document.getElementById('titulo').textContent = 'No se pudo abrir el otro negocio';
+    document.getElementById('detalle').textContent = msg;
+    document.getElementById('salida').style.display = 'block';
+  }
+  var h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  var uid = h.get('u') || '', nombre = h.get('n') || '';
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (!/^[0-9a-f-]{36}$/i.test(uid)) return falla('El enlace no es válido.');
+  try {
+    var sb = window.supabase.createClient(URL_SB, KEY_SB);
+    var s = await sb.auth.getSession();
+    if (!s.data || !s.data.session) return falla('Tu sesión de administrador no está abierta en este navegador. Entra al panel y usa el botón 👁 del negocio.');
+    var r = await sb.functions.invoke('admin-ver-como', { body: { auth_user_id: uid } });
+    var data = r.data, msg = null;
+    if (r.error || !data || !data.ok) {
+      msg = (data && data.error) || 'No se pudo abrir el negocio';
+      try { if (r.error && r.error.context && r.error.context.json) { var j = await r.error.context.json(); if (j && j.error) msg = j.error; } } catch (e) {}
+      if (/administrador/i.test(msg)) msg = 'Este navegador no tiene abierta tu sesión de administrador. Entra al panel y usa el botón 👁 del negocio.';
+      return falla(msg);
+    }
+    location.replace('ver-como.html#th=' + encodeURIComponent(data.token_hash)
+      + '&n=' + encodeURIComponent(data.negocio || nombre)
+      + '&e=' + encodeURIComponent(data.email || ''));
+  } catch (e) {
+    falla('Ocurrió un error. Intenta de nuevo desde el panel de administrador.');
+  }
+})();
+</script>
+</body>
+</html>

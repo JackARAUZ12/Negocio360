@@ -1782,6 +1782,10 @@ async function generarAsientosAutomaticosInterno() {
 
   setBtnLoading('btn-generar-asientos', true);
   document.getElementById('ga-resultado').innerHTML = 'Leyendo tus Ventas, Gastos, Compras y Salarios…';
+  // Empresa vinculada: si a este libro le falta el asiento de algún traslado
+  // entre negocios (por ejemplo, después de "Reiniciar contabilidad"), se
+  // vuelve a crear. Para cuentas sin empresa la función no hace nada.
+  try { await sbClient.rpc('empresa_traslados_asentar_pendientes'); } catch (_) {}
   try {
     // BUG REAL CORREGIDO: esta consulta traia como maximo 1000 filas
     // (limite por defecto de Supabase) -- con miles de asientos ya

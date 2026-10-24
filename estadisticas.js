@@ -24,6 +24,8 @@ function todayISO() { return ymd(new Date()); }
 function parseFechaSegura(input) {
   if (!input) return null;
   const str = String(input);
+  // FIX 23-oct-2026: medianoche universal = solo un día calendario (ver reportes.js)
+  if (/^\d{4}-\d{2}-\d{2}[T ]00:00:00(\.0+)?(Z|[+-]00(:?00)?)$/.test(str)) { const d = new Date(str.slice(0, 10) + 'T12:00:00'); return isNaN(d.getTime()) ? null : d; }
   if (str.includes('T')) { const d = new Date(str); return isNaN(d.getTime()) ? null : d; }
   const d = new Date(str + 'T12:00:00');
   return isNaN(d.getTime()) ? null : d;

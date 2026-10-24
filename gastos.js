@@ -590,6 +590,10 @@
     document.getElementById('gasto-frecuencia-wrap').style.display = 'none';
     document.getElementById('gasto-checkbox-wrap').style.display   = 'none';
     toggleCategoriaEspecial();
+    if (window.N360ComisionPago) {
+      N360ComisionPago.montar({ prefijo: 'gasto', despuesDe: 'gasto-banco-wrap', metodo: 'gasto-metodo', monto: 'gasto-monto' });
+      N360ComisionPago.limpiar('gasto'); N360ComisionPago.actualizar('gasto');
+    }
     openModal('modal-gasto');
 
     const abierta = await hayCajaChicaAbiertaHoy();
@@ -676,6 +680,11 @@
 
     // Aviso (no bloqueante): pago en efectivo mayor al efectivo disponible.
     const _pagaYa = tipo==='inmediato' || !!document.getElementById('gasto-pagar-ya')?.checked;
+
+    // Comisión opcional por pagar con tarjeta (solo si se paga ahora).
+    let comision = null;
+    try { comision = (_pagaYa && window.N360ComisionPago) ? N360ComisionPago.leer('gasto') : null; }
+    catch (eCom) { showToast(eCom.message, 'error'); return; }
     if (_pagaYa && !bancoId && /efectivo/i.test(metodoNombre) && window.AvisoEfectivo) {
       const _neto = retMonto > 0 ? Math.round((monto - retMonto) * 100) / 100 : monto;
       const _seguir = await window.AvisoEfectivo.verificar({ sb: _sb, userId: GS.userId, monto: _neto, origenCaja });
@@ -685,11 +694,11 @@
     try {
       setBtnLoading('btn-save-gasto', true);
       if (tipo==='inmediato') {
-        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct });
+        await registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct, comision });
       } else {
         const frecuencia = document.getElementById('gasto-frecuencia').value;
         const pagarYa    = document.getElementById('gasto-pagar-ya').checked;
-        await crearGastoProgramado({ categoria, nombre: concepto, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId });
+        await crearGastoProgramado({ categoria, nombre: concepto, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId, comision });
       }
       closeModal('modal-gasto');
       showToast('Gasto registrado correctamente');
@@ -705,7 +714,7 @@
   /* ===================================================
      GASTO INMEDIATO
   =================================================== */
-  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct }) {
+  async function registrarGastoInmediato({ categoria, concepto, monto, fecha, metodoId, metodoNombre, observaciones, empleado, origenCaja, bancoId, ivaGasto, retMonto, retPct, comision }) {
     const { data: gastoRow, error: errGasto } = await _sb.from('gastos').insert({
       auth_user_id: GS.userId, tipo:'inmediato', concepto, categoria, monto, fecha,
       metodo_pago_id: metodoId||null, metodo_pago_nombre: metodoNombre, impuesto: ivaGasto || 0,
@@ -733,6 +742,16 @@
 
     const movId = await getUltimoMovimientoId();
     if (movId) await _sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
+    await registrarComisionTarjeta(comision, { fecha, metodoId, metodoNombre, bancoId, origenCaja, descripcion: `${categoria}: ${concepto}`, gastoId: gastoRow.id });
+  }
+
+  // Comisión opcional por pagar con tarjeta: gasto aparte + su egreso,
+  // ligados a este gasto (si se cancela este gasto, se cancela también).
+  async function registrarComisionTarjeta(comision, { fecha, metodoId, metodoNombre, bancoId, origenCaja, descripcion, gastoId }) {
+    if (!comision || !window.N360ComisionPago) return;
+    const r = await N360ComisionPago.registrar(_sb, { userId: GS.userId, comision, fecha, metodoId, metodoNombre, bancoId, origenCaja,
+      descripcion, origenTipo: 'gasto', origenId: gastoId });
+    if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('El gasto se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala como gasto aparte.', 'warning'); }
   }
 
   async function getUltimoMovimientoId() {
@@ -745,16 +764,16 @@
   /* ===================================================
      GASTO PROGRAMADO
   =================================================== */
-  async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId }) {
+  async function crearGastoProgramado({ categoria, nombre, monto, fecha, frecuencia, metodoId, metodoNombre, observaciones, empleado, pagarYa, origenCaja, bancoId, comision }) {
     const { data: progRow, error } = await _sb.from('gastos_programados').insert({
       auth_user_id: GS.userId, nombre, categoria, monto, frecuencia,
       fecha_proxima: fecha, empleado: empleado||null, observaciones: observaciones||null, activo: true,
     }).select().single();
     if (error) throw error;
-    if (pagarYa) await ejecutarPagoProgramado(progRow, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId });
+    if (pagarYa) await ejecutarPagoProgramado(progRow, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId, comision });
   }
 
-  async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId }) {
+  async function ejecutarPagoProgramado(programado, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId, comision }) {
     const fechaPago   = fecha || todayISO();
     const metodoFinal = metodoNombre || 'Efectivo';
 
@@ -777,6 +796,8 @@
     if (mov.ok) {
       const movId = await getUltimoMovimientoId();
       if (movId) await _sb.from('gastos').update({ movimiento_financiero_id: movId }).eq('id', gastoRow.id);
+      await registrarComisionTarjeta(comision, { fecha: fechaPago, metodoId, metodoNombre: metodoFinal, bancoId, origenCaja,
+        descripcion: `${programado.categoria}: ${programado.nombre}`, gastoId: gastoRow.id });
     } else {
       console.error('No se pudo registrar pago en Caja:', mov.error);
     }
@@ -865,6 +886,10 @@
     document.getElementById('pago-metodo').value = '';
     document.getElementById('pago-banco-wrap').style.display = 'none';
     document.getElementById('pago-obs').value    = '';
+    if (window.N360ComisionPago) {
+      N360ComisionPago.montar({ prefijo: 'pago', despuesDe: 'pago-banco-wrap', metodo: 'pago-metodo', monto: () => (_programadoEnPago && _programadoEnPago.monto) || 0 });
+      N360ComisionPago.limpiar('pago'); N360ComisionPago.actualizar('pago');
+    }
     openModal('modal-registrar-pago');
 
     const abierta = await hayCajaChicaAbiertaHoy();
@@ -888,9 +913,12 @@
       bancoId = document.getElementById('pago-banco').value;
       if (!bancoId) { showToast('Indica de qué banco sale este dinero', 'error'); return; }
     }
+    let comision = null;
+    try { comision = window.N360ComisionPago ? N360ComisionPago.leer('pago') : null; }
+    catch (eCom) { showToast(eCom.message, 'error'); return; }
     try {
       setBtnLoading('btn-confirmar-pago', true);
-      await ejecutarPagoProgramado(_programadoEnPago, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId });
+      await ejecutarPagoProgramado(_programadoEnPago, { fecha, metodoId, metodoNombre, observaciones, origenCaja, bancoId, comision });
       closeModal('modal-registrar-pago');
       _programadoEnPago = null;
       showToast('Pago registrado correctamente');
@@ -1067,6 +1095,11 @@
       await _sb.from('gastos').update({
         estado:'cancelado', cancelado_en: new Date().toISOString(), cancelado_motivo:'Cancelado manualmente',
       }).eq('id',_gastoToCancelar).eq('auth_user_id',GS.userId);
+      // Si al pagarlo con tarjeta el proveedor cobró comisión, se cancela también (gasto + egreso).
+      if (window.N360ComisionPago) {
+        try { await N360ComisionPago.anular(_sb, GS.userId, 'gasto', _gastoToCancelar, 'Gasto cancelado'); }
+        catch (eComC) { console.warn('comisión no anulada:', eComC); showToast('El gasto se canceló, pero revisa su comisión de tarjeta en Gastos.', 'warning'); }
+      }
       try {
         await _sb.from('retenciones_ir').update({ estado:'anulada' })
           .eq('gasto_id',_gastoToCancelar).eq('auth_user_id',GS.userId).eq('estado','pendiente');

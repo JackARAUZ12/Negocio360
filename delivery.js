@@ -677,13 +677,18 @@ async function crearVentaDesdeDelivery(numeroPedido) {
 
   // Descontar stock (solo productos, no servicios) — mismo espiritu
   // que ya usa Ventas/Venta Rapida.
-  for (const item of items) {
-    if (item.tipo === 'servicio') continue;
-    const prod = STATE.productosCacheDelivery.find(p => p.id === item.producto_id);
-    if (!prod) continue;
-    const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - item.cantidad);
-    await sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', item.producto_id).eq('auth_user_id', STATE.userId);
-    prod.stock_actual = nuevoStock;
+  // En el servidor y en una sola operación, restando sobre la existencia
+  // REAL del momento (antes se usaba la que la página cargó al abrir).
+  const descontarDelivery = items
+    .filter(item => item.tipo !== 'servicio' && STATE.productosCacheDelivery.find(p => p.id === item.producto_id))
+    .map(item => ({ producto_id: item.producto_id, delta: -Number(item.cantidad || 0) }));
+  if (descontarDelivery.length) {
+    const { error: errStock } = await sb.rpc('ajustar_stock_relativo', { p_items: descontarDelivery });
+    if (errStock) console.warn('Delivery: no se pudo descontar inventario:', errStock);
+    else for (const d of descontarDelivery) {
+      const prod = STATE.productosCacheDelivery.find(p => p.id === d.producto_id);
+      if (prod) prod.stock_actual = Math.max(0, Number(prod.stock_actual || 0) + d.delta);
+    }
   }
 
   // Registrar en Caja el anticipo (si es parcial) o el total (si es

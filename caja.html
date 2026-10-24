@@ -8,9 +8,9 @@
   <title>Caja — Negocio360</title>
 
   <!-- Supabase CDN -->
-  <script src="ver-como.js?v=20261013a"></script>
+  <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261023a"></script>
+  <script src="modulos-registro.js?v=20261024a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -1439,6 +1439,18 @@
           </div>
         </div>
 
+        <!-- BANCOS DE LA EMPRESA (solo aparece si este negocio es parte de una empresa con bancos compartidos) -->
+        <div class="panel-card" id="empresa-bancos-panel" style="display:none;margin-bottom:16px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+              Bancos de la empresa
+            </div>
+            <span style="font-size:12px;color:var(--text-muted)">Saldo real de cada banco = la parte de cada negocio sumada. Aquí se concilia contra el estado de cuenta.</span>
+          </div>
+          <div id="empresa-bancos-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;padding:16px"></div>
+        </div>
+
         <div class="panel-card">
           <div class="panel-header">
             <div class="panel-title">
@@ -1859,18 +1871,30 @@
     </div>
     <div class="modal-body">
       <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-        Marca cada movimiento que sí aparece en el estado de cuenta real de tu banco. Lo que ya conciliaste antes no vuelve a aparecer aquí.
+        Marca cada movimiento que sí aparece en el estado de cuenta real de tu banco (o usa "Marcar hasta" con la fecha de corte de tu estado de cuenta). Lo que ya conciliaste antes no vuelve a aparecer aquí.
       </p>
 
       <div class="form-row">
-        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()"/></div>
-        <div><label>Saldo calculado por el sistema</label><div class="stat-readonly" id="cb-saldo-calculado">—</div></div>
+        <div><label>Saldo del banco en el sistema</label><div class="stat-readonly" id="cb-saldo-sistema" title="El mismo saldo que muestra la tarjeta del banco: saldo inicial + todos sus movimientos">—</div></div>
+        <div><label>Ya conciliado antes</label><div class="stat-readonly" id="cb-saldo-previo" title="Saldo inicial + lo que ya cerraste en conciliaciones anteriores">—</div></div>
+        <div><label>Pendiente de conciliar</label><div class="stat-readonly" id="cb-saldo-pendiente">—</div></div>
+      </div>
+
+      <div class="form-row">
+        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()" onchange="autoMarcarSiCoincideConSistema()"/></div>
+        <div><label>Conciliado + lo marcado ahora</label><div class="stat-readonly" id="cb-saldo-calculado">—</div></div>
         <div><label>Diferencia</label><div class="stat-readonly" id="cb-diferencia" style="font-weight:800">—</div></div>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
-        <label style="margin:0">Movimientos sin conciliar</label>
-        <button class="btn-secondary btn-sm" onclick="abrirAgregarAjusteConciliacion()">+ Agregar ajuste</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 8px">
+        <label style="margin:0">Movimientos sin conciliar <span id="cb-marcados-info" style="font-weight:400;color:var(--text-muted)"></span></label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('todos')">Marcar todos</button>
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('ninguno')">Quitar marcas</button>
+          <input type="date" id="cb-hasta-fecha" style="width:auto;padding:5px 8px;font-size:12.5px" title="Fecha de corte de tu estado de cuenta"/>
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('hasta')">Marcar hasta esa fecha</button>
+          <button class="btn-secondary btn-sm" onclick="abrirAgregarAjusteConciliacion()">+ Agregar ajuste</button>
+        </div>
       </div>
       <div class="table-wrap" style="max-height:320px;overflow-y:auto">
         <table>
@@ -1893,6 +1917,7 @@
         </div>
       </div>
 
+      <p id="cb-auto-nota" style="display:none;color:var(--success);font-size:12.5px;margin-top:10px"></p>
       <p id="cb-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
 
       <div style="margin-top:14px">
@@ -1918,11 +1943,11 @@
   <script src="cajaAPI.js?v=20261007a"></script>
   <script src="caja-segura.js?v=20261012a"></script>
   <script src="moneda-alterna.js?v=20261021b"></script>
-  <script src="caja.js?v=20261021a"></script>
+  <script src="caja.js?v=20261023d"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261015a"></script>
-<script src="modulos-guard.js?v=20261023a"></script>
+<script src="perfiles-guard.js?v=20261021c"></script>
+<script src="modulos-guard.js?v=20261024a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

@@ -1446,6 +1446,167 @@
   }
 
   // ------------------------------------------------------------
+  // EMPRESA VINCULADA (fase 1): pasar a otro negocio de la misma empresa
+  // ------------------------------------------------------------
+  // Solo aparece si esta cuenta pertenece a una empresa vinculada
+  // (tabla empresa_miembros). Para todas las demás cuentas
+  // empresa_mis_negocios() devuelve vacío y no se agrega nada.
+  // El paso lo autoriza la función del servidor empresa-cambiar-negocio
+  // (pase de un solo uso, sin contraseñas guardadas). Si en el otro
+  // negocio hay un perfil activo con el MISMO nombre, se entra directo
+  // con ese perfil; si no, se pide elegir perfil con su PIN como siempre.
+  function normNombrePerfil(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+
+  async function iniciarEmpresaVinculada() {
+    try {
+      // En "Ver como cliente" (solo lectura, soporte) el botón se muestra para
+      // que se vea igual que lo ve el cliente, pero no cambia de negocio.
+      PG.empresaSoloLectura = !!(window.N360VerComo && window.N360VerComo.activo);
+      const { data, error } = await PG.client.rpc('empresa_mis_negocios');
+      if (error || !Array.isArray(data) || !data.length) return;
+      PG.empresaNegocios = data;
+      if (!PG.empresaSoloLectura) vigilarCambioDeCuentaEnOtraPestana();
+      ponerBotonesEmpresa(data, 0);
+    } catch (_) { /* si falla, simplemente no aparece el botón */ }
+  }
+
+  function ponerBotonesEmpresa(negocios, intento) {
+    const nav = document.querySelector('#sidebar .sidebar-nav, .sidebar-nav');
+    if (!nav) {
+      if (intento < 20) setTimeout(() => ponerBotonesEmpresa(negocios, intento + 1), 250);
+      return;
+    }
+    if (document.getElementById('pg-empresa-ir')) return;
+    const cont = document.createElement('div');
+    cont.id = 'pg-empresa-ir';
+    negocios.forEach(n => {
+      const item = document.createElement('div');
+      item.className = 'nav-item pg-empresa-item';
+      item.setAttribute('data-tooltip', 'Ir a ' + n.nombre_negocio);
+      item.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>'
+        + '<span class="nav-label">Ir a ' + esc(n.nombre_negocio) + '</span>';
+      item.addEventListener('click', () => confirmarCambioNegocio(n));
+      cont.appendChild(item);
+    });
+    nav.insertBefore(cont, nav.firstChild);
+  }
+
+  function confirmarCambioNegocio(n) {
+    showOverlay();
+    if (PG.empresaSoloLectura) {
+      card().innerHTML = `
+        <div class="pg-pin-wrap">
+          <div class="pg-pin-avatar" style="background:#1A1D2E">👁️</div>
+          <div class="pg-title" style="margin-bottom:2px">Modo solo lectura</div>
+          <div class="pg-subtitle" style="margin-bottom:4px">Se abre ${esc(n.nombre_negocio)} también en solo lectura, en esta misma pestaña. No se guarda nada en ningún negocio.</div>
+          <div class="pg-btn-row">
+            <button class="pg-btn pg-btn-ghost" id="pg-emp-cancel">Cancelar</button>
+            <button class="pg-btn pg-btn-primary" id="pg-emp-ok">Ir ahora</button>
+          </div>
+        </div>`;
+      document.getElementById('pg-emp-cancel').addEventListener('click', hideOverlay);
+      document.getElementById('pg-emp-ok').addEventListener('click', () => {
+        // Se termina la vista actual (solo vive en esta pestaña) y la página
+        // ver-como-cambiar.html abre el otro negocio con el pase de administrador.
+        try { sessionStorage.clear(); } catch (_) {}
+        location.href = 'ver-como-cambiar.html#u=' + encodeURIComponent(n.auth_user_id) + '&n=' + encodeURIComponent(n.nombre_negocio);
+      });
+      return;
+    }
+    card().innerHTML = `
+      <div class="pg-pin-wrap">
+        <div class="pg-pin-avatar" style="background:#1A1D2E">🔁</div>
+        <div class="pg-title" style="margin-bottom:2px">Ir a ${esc(n.nombre_negocio)}</div>
+        <div class="pg-subtitle" style="margin-bottom:4px">Esta ventana pasa a ${esc(n.nombre_negocio)} (${esc(n.empresa)}). Lo que no hayas guardado aquí se pierde.</div>
+        <div class="pg-error" id="pg-emp-error"></div>
+        <div class="pg-btn-row">
+          <button class="pg-btn pg-btn-ghost" id="pg-emp-cancel">Cancelar</button>
+          <button class="pg-btn pg-btn-primary" id="pg-emp-ok">Ir ahora</button>
+        </div>
+      </div>`;
+    document.getElementById('pg-emp-cancel').addEventListener('click', hideOverlay);
+    document.getElementById('pg-emp-ok').addEventListener('click', async (ev) => {
+      ev.currentTarget.disabled = true;
+      ev.currentTarget.textContent = 'Abriendo…';
+      const err = await cambiarANegocio(n);
+      if (err) {
+        document.getElementById('pg-emp-error').textContent = err;
+        const b = document.getElementById('pg-emp-ok');
+        if (b) { b.disabled = false; b.textContent = 'Reintentar'; }
+      }
+    });
+  }
+
+  // Devuelve un mensaje de error, o nada si ya se está navegando al otro negocio.
+  async function cambiarANegocio(n) {
+    const perfilActual = getSesion();
+    let resp;
+    try {
+      resp = await PG.client.functions.invoke('empresa-cambiar-negocio', {
+        body: { destino: n.auth_user_id, perfil: perfilActual ? perfilActual.nombre : null },
+      });
+    } catch (e) { return 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'; }
+    if (resp.error || !resp.data || !resp.data.token_hash) {
+      let msg = resp.data && resp.data.error;
+      try { if (!msg && resp.error && resp.error.context) msg = (await resp.error.context.json()).error; } catch (_) {}
+      return msg || 'No se pudo abrir el otro negocio.';
+    }
+    const origen = PG.authUserId;
+    PG.cambiandoNegocio = true;
+    const { data: v, error: ev } = await PG.client.auth.verifyOtp({ token_hash: resp.data.token_hash, type: 'magiclink' });
+    if (ev || !v || !v.session || v.session.user.id !== n.auth_user_id) {
+      PG.cambiandoNegocio = false;
+      // Seguridad: si algo no salió como se esperaba, se vuelve a revisar la sesión real.
+      const { data: { session } } = await PG.client.auth.getSession();
+      if (!session || session.user.id !== origen) { location.href = 'login.html'; return 'Inicia sesión de nuevo.'; }
+      return 'No se pudo abrir el otro negocio.';
+    }
+
+    // Sesión ya es del otro negocio. Se limpian datos de la pestaña que eran del negocio anterior.
+    limpiarSesion();
+    ['n360_central_session_backup', 'n360_sucursal_modulos'].forEach(k => { try { sessionStorage.removeItem(k); } catch (_) {} });
+
+    // Perfil con el mismo nombre en el otro negocio: se entra directo con él.
+    if (perfilActual && perfilActual.nombre) {
+      try {
+        const { data: perfilesDestino } = await PG.client.from('perfiles_acceso')
+          .select('id, nombre, tipo, modulos, activo').eq('auth_user_id', n.auth_user_id).eq('activo', true);
+        const iguales = (perfilesDestino || []).filter(p => normNombrePerfil(p.nombre) === normNombrePerfil(perfilActual.nombre));
+        if (iguales.length === 1) {
+          PG.authUserId = n.auth_user_id;
+          setSesion(iguales[0]);
+        }
+      } catch (_) { /* sin perfil elegido: el otro negocio pedirá elegirlo con su PIN */ }
+    }
+    location.href = 'dashboard.html';
+    return null;
+  }
+
+  // Protección: si en OTRA pestaña se cambia de negocio (o de cuenta), esta
+  // pestaña ya no puede seguir trabajando con los datos del negocio anterior
+  // (lo que se guarde iría al negocio equivocado). Se bloquea y se pide recargar.
+  function vigilarCambioDeCuentaEnOtraPestana() {
+    window.addEventListener('storage', (e) => {
+      try {
+        if (!e.key || !/^sb-.*-auth-token$/.test(e.key) || PG.cambiandoNegocio) return;
+        const nuevo = e.newValue ? JSON.parse(e.newValue) : null;
+        const uid = nuevo && (nuevo.user ? nuevo.user.id : (nuevo.currentSession && nuevo.currentSession.user && nuevo.currentSession.user.id));
+        if (!uid || uid === PG.authUserId) return;
+        if (document.getElementById('pg-cambio-cuenta')) return;
+        const d = document.createElement('div');
+        d.id = 'pg-cambio-cuenta';
+        d.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,15,25,.72);display:flex;align-items:center;justify-content:center;padding:16px';
+        d.innerHTML = '<div style="background:var(--bg-surface,#fff);color:var(--text-primary,#111);max-width:380px;border-radius:14px;padding:22px;text-align:center;font-family:inherit">'
+          + '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Se cambió de negocio en otra pestaña</div>'
+          + '<div style="font-size:13.5px;color:var(--text-secondary,#555);margin-bottom:16px">Para no guardar nada en el negocio equivocado, esta pestaña se debe recargar.</div>'
+          + '<button type="button" style="padding:10px 16px;border-radius:10px;border:0;background:var(--accent,#6C63FF);color:#fff;font-weight:600;cursor:pointer">Recargar</button></div>';
+        d.querySelector('button').addEventListener('click', () => { location.href = 'dashboard.html'; });
+        document.body.appendChild(d);
+      } catch (_) {}
+    });
+  }
+
+  // ------------------------------------------------------------
   // Arranque
   // ------------------------------------------------------------
   async function init() {
@@ -1496,6 +1657,7 @@
     // toda página con un botón para salir — si no, quien entra a una
     // sucursal se queda sin ninguna forma de volver a su cuenta principal.
     mostrarAvisoSucursalSiAplica();
+    iniciarEmpresaVinculada();
 
     // Presencia (última conexión / en línea): corre siempre que haya
     // sesión, independientemente del sistema de perfiles/PIN.

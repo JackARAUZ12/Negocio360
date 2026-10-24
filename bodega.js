@@ -1999,10 +1999,10 @@ async function guardarProducto() {
         stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
         activo,
       };
-      // Solo tocar stock_actual para productos (los servicios no manejan stock)
-      if (tipo === 'producto') {
-        updatePayload.stock_actual = isNaN(stockActual) ? 0 : stockActual;
-      }
+      // La existencia YA NO va en este guardado: antes, si alguien vendía el
+      // producto mientras esta ventana estaba abierta, al guardar (aunque solo
+      // se cambiara el precio) la existencia volvía al número viejo. Ahora
+      // solo se toca si el usuario la cambió, y en el servidor (ver abajo).
       // Fecha de creación corregible a mano (ej: producto que ya existía
       // antes del sistema y quedó registrado con la fecha de "hoy").
       // FIX: mismo anclaje a mediodía UTC que en creación, ver nota arriba.
@@ -2025,27 +2025,43 @@ async function guardarProducto() {
       error = res.error;
       productoIdGuardado = STATE.editTarget.id;
 
-      // Dejar rastro del ajuste manual de stock (auditoría), igual que hacen
-      // los Movimientos especiales. Si la tabla no existe o falla, no se
-      // interrumpe el guardado del producto — solo se registra en consola.
-      if (!error && tipo === 'producto' && updatePayload.stock_actual !== undefined
-          && updatePayload.stock_actual !== stockAntes) {
-        try {
-          await supabaseClient.from('movimientos_inventario').insert([{
-            auth_user_id:   STATE.user.id,
-            producto_id:    STATE.editTarget.id,
-            tipo:           'ajuste_manual',
-            razon:          motivoAjuste ? motivoAjuste.razon : 'edicion_producto',
-            cantidad:       updatePayload.stock_actual - stockAntes,
-            stock_antes:    stockAntes,
-            stock_despues:  updatePayload.stock_actual,
-            nota:           window.N360AjusteExistencia ? window.N360AjusteExistencia.notaMovimiento(motivoAjuste) : 'Editado directamente desde el formulario de producto',
-            costo_unitario: isNaN(costo) ? null : costo,
-            costo_total:    isNaN(costo) ? null : Math.round(Math.abs(updatePayload.stock_actual - stockAntes) * costo * 100) / 100,
-            descuenta_caja: false,
-          }]);
-        } catch (_) {
-          console.warn('Tabla movimientos_inventario no disponible aún');
+      // Existencia cambiada a mano: se aplica en el servidor sobre el valor
+      // REAL. Si nadie movió el producto mientras se editaba, queda el número
+      // escrito; si hubo una venta en ese rato, se aplica la diferencia que
+      // hizo el usuario (la venta no se pierde).
+      if (!error && tipo === 'producto' && stockNuevoPrevisto !== stockAntes) {
+        const { data: fij, error: errFij } = await supabaseClient.rpc('stock_fijar', {
+          p_producto_id: STATE.editTarget.id, p_esperado: stockAntes, p_nuevo: stockNuevoPrevisto,
+        });
+        if (errFij) {
+          error = errFij;
+        } else {
+          const antesReal = Number(fij?.antes ?? stockAntes), despuesReal = Number(fij?.despues ?? stockNuevoPrevisto);
+          if (fij?.hubo_movimiento_en_medio) {
+            showToast('info', 'Existencia ajustada', `Mientras editabas hubo otro movimiento de este producto. Se aplicó tu cambio sobre lo real: quedó en ${fmtNum(despuesReal)}.`);
+          }
+          // Dejar rastro del ajuste manual de stock (auditoría), igual que hacen
+          // los Movimientos especiales. Si la tabla no existe o falla, no se
+          // interrumpe el guardado del producto — solo se registra en consola.
+          if (despuesReal !== antesReal) {
+            try {
+              await supabaseClient.from('movimientos_inventario').insert([{
+                auth_user_id:   STATE.user.id,
+                producto_id:    STATE.editTarget.id,
+                tipo:           'ajuste_manual',
+                razon:          motivoAjuste ? motivoAjuste.razon : 'edicion_producto',
+                cantidad:       Math.round((despuesReal - antesReal) * 1000) / 1000,
+                stock_antes:    antesReal,
+                stock_despues:  despuesReal,
+                nota:           window.N360AjusteExistencia ? window.N360AjusteExistencia.notaMovimiento(motivoAjuste) : 'Editado directamente desde el formulario de producto',
+                costo_unitario: isNaN(costo) ? null : costo,
+                costo_total:    isNaN(costo) ? null : Math.round(Math.abs(despuesReal - antesReal) * costo * 100) / 100,
+                descuenta_caja: false,
+              }]);
+            } catch (_) {
+              console.warn('Tabla movimientos_inventario no disponible aún');
+            }
+          }
         }
       }
     }
@@ -2379,15 +2395,14 @@ async function confirmarMovimiento() {
   if (btn) { btn.disabled = true; btn.classList.add('btn-loading'); }
 
   try {
-    const nuevoStock = stockActual - cantidad;
-
-    const { error: stockErr } = await supabaseClient
-      .from('productos')
-      .update({ stock_actual: nuevoStock })
-      .eq('id', p.id)
-      .eq('auth_user_id', STATE.user.id);
-
+    // En el servidor, restando sobre la existencia REAL (si ya no alcanza
+    // porque se vendió algo mientras tanto, se avisa y no se descuenta nada).
+    const { data: mov, error: stockErr } = await supabaseClient.rpc('ajustar_stock_producto', {
+      p_producto_id: p.id, p_delta: -cantidad, p_exigir_existencia: true,
+    });
     if (stockErr) throw stockErr;
+    const stockAntesReal = Number(mov?.antes ?? stockActual);
+    const nuevoStock = Number(mov?.despues ?? (stockActual - cantidad));
 
     // Registrar en tabla de movimientos (si existe)
     try {
@@ -2397,7 +2412,7 @@ async function confirmarMovimiento() {
         tipo:           'merma',
         razon,
         cantidad:       -cantidad,
-        stock_antes:    stockActual,
+        stock_antes:    stockAntesReal,
         stock_despues:  nuevoStock,
         nota:           nota || null,
         descuenta_caja: desCaja,

@@ -81,6 +81,15 @@ function parseFechaSegura(input) {
   if (!input) return null;
   const str = String(input);
   // Si ya trae información de hora (timestamp completo), la usamos tal cual
+  // FIX 23-oct-2026: las ventas guardan el DÍA como "AAAA-MM-DDT00:00:00+00:00"
+  // (medianoche universal). Leído en hora de Nicaragua (UTC-6) eso es el día
+  // ANTERIOR a las 6 pm: los lunes salían como domingo y el día 1 caía en el
+  // mes anterior. Si la hora es exactamente medianoche universal, es solo un
+  // día calendario y se lee como tal.
+  if (/^\d{4}-\d{2}-\d{2}[T ]00:00:00(\.0+)?(Z|[+-]00(:?00)?)$/.test(str)) {
+    const d = new Date(str.slice(0, 10) + 'T12:00:00');
+    return isNaN(d.getTime()) ? null : d;
+  }
   if (str.includes('T')) {
     const d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
@@ -2758,7 +2767,7 @@ const COLUMNAS_REPORTES = {
   ventas: [
     { key:'codigosBarras', label:'Código(s) de barras', tipo:'texto' },
     { key:'numero',    label:'#Venta',            tipo:'texto' },
-    { key:'fecha',     label:'Fecha',              tipo:'texto' },
+    { key:'fecha',     label:'Fecha',              tipo:'fecha' },
     { key:'cliente',   label:'Cliente',            tipo:'texto' },
     { key:'metodo',    label:'Método de pago',     tipo:'texto' },
     { key:'productos', label:'Productos vendidos', tipo:'texto' },
@@ -2774,7 +2783,7 @@ const COLUMNAS_REPORTES = {
   ],
   compras: [
     { key:'numero',    label:'#Compra',   tipo:'texto' },
-    { key:'fecha',     label:'Fecha',     tipo:'texto' },
+    { key:'fecha',     label:'Fecha',     tipo:'fecha' },
     { key:'proveedor', label:'Proveedor', tipo:'texto' },
     { key:'producto',    label:'Producto',          tipo:'texto' },
     { key:'descripcion', label:'Descripción',       tipo:'texto' },
@@ -2790,7 +2799,7 @@ const COLUMNAS_REPORTES = {
     { key:'email',        label:'Email',         tipo:'texto' },
     { key:'compras',      label:'Compras',       tipo:'entero' },
     { key:'totalGastado', label:'Total gastado', tipo:'moneda' },
-    { key:'ultimaCompra', label:'Última compra', tipo:'texto' },
+    { key:'ultimaCompra', label:'Última compra', tipo:'fecha' },
   ],
   inventario: [
     { key:'codigoBarras', label:'Código de barras', tipo:'texto' },
@@ -2808,7 +2817,7 @@ const COLUMNAS_REPORTES = {
     { key:'nombre',        label:'Nombre',              tipo:'texto' },
     { key:'categoria',     label:'Categoría',           tipo:'texto' },
     { key:'estado',        label:'Estado',              tipo:'texto' },
-    { key:'fechaAdq',      label:'Fecha de adquisición',tipo:'texto' },
+    { key:'fechaAdq',      label:'Fecha de adquisición',tipo:'fecha' },
     { key:'vidaUtil',      label:'Vida útil (años)',    tipo:'cantidad' },
     { key:'costo',         label:'Costo',               tipo:'moneda' },
     { key:'depreciacion',  label:'Depreciación acum.',  tipo:'moneda' },
@@ -2817,14 +2826,14 @@ const COLUMNAS_REPORTES = {
   gastos: [
     { key:'concepto',  label:'Concepto',  tipo:'texto' },
     { key:'categoria', label:'Categoría', tipo:'texto' },
-    { key:'fecha',     label:'Fecha',     tipo:'texto' },
+    { key:'fecha',     label:'Fecha',     tipo:'fecha' },
     { key:'monto',     label:'Monto',     tipo:'moneda' },
     { key:'tipo',      label:'Tipo',      tipo:'texto' },
   ],
   salarios: [
     { key:'nombre',      label:'Nombre',          tipo:'texto' },
     { key:'tipo',        label:'Tipo',            tipo:'texto' },
-    { key:'fecha',       label:'Fecha',           tipo:'texto' },
+    { key:'fecha',       label:'Fecha',           tipo:'fecha' },
     { key:'metodo_pago', label:'Método de pago',  tipo:'texto' },
     { key:'monto',       label:'Monto',           tipo:'moneda' },
   ],
@@ -2836,7 +2845,7 @@ const COLUMNAS_REPORTES = {
     { key:'telefono',       label:'Teléfono',        tipo:'texto' },
     { key:'numero_credito', label:'N° crédito',      tipo:'texto' },
     { key:'cuota',          label:'Cuota',           tipo:'texto' },
-    { key:'fecha_venc',     label:'Vencimiento',     tipo:'texto' },
+    { key:'fecha_venc',     label:'Vencimiento',     tipo:'fecha' },
     { key:'monto_cuota',    label:'Monto cuota',     tipo:'moneda' },
     { key:'pagado',         label:'Pagado',          tipo:'moneda' },
     { key:'saldo',          label:'Saldo',           tipo:'moneda' },
@@ -2865,7 +2874,7 @@ function filaVenta(v, detMap) {
   const info = detMap[v.id];
   return {
     codigosBarras: fmtCodigosBarraVenta(info),
-    numero: v.numero_venta, fecha: fmtFecha(v.fecha),
+    numero: v.numero_venta, fecha: fmtFecha(v.fecha), _iso: { fecha: v.fecha },
     cliente: v.cliente_nombre||'Consumidor Final', metodo: v.metodo_pago_nombre||'—',
     productos: fmtProductosVenta(info), servicios: fmtServiciosVenta(info),
     proveedor: fmtProveedorVenta(info),
@@ -2918,7 +2927,7 @@ function filasVentaExport(cols, detMap) {
   return out;
 }
 function filaCompra(c) {
-  return { numero:c.numero, fecha:fmtFecha(c.fecha), proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
+  return { numero:c.numero, fecha:fmtFecha(c.fecha), _iso:{ fecha:c.fecha }, proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
 }
 // Una fila por producto comprado (si hay columnas de detalle activas).
 // Sub Total = lo cobrado por la linea (con IVA); Sub Total Neto = sin IVA.
@@ -2953,7 +2962,7 @@ function filasCompraExport(cols) {
   return out;
 }
 function filaCliente(c) {
-  return { nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra) };
+  return { nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra), _iso:{ ultimaCompra:c.ultima_compra } };
 }
 function filaProducto(p) {
   return { codigoBarras:p.codigo_barras||'—', producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
@@ -2964,19 +2973,19 @@ function filaActivoFijo(a) {
   const dep = calcularDepreciacionActivo(a);
   const estadoLabel = { activo:'Activo', mantenimiento:'En mantenimiento', baja:'Dado de baja' }[a.estado] || a.estado;
   return { numero:a.numero||'', nombre:a.nombre||'', categoria:a.categoria||'—', estado:estadoLabel,
-    fechaAdq:fmtFecha(a.fecha_adquisicion), vidaUtil:Number(a.vida_util_anos||0),
+    fechaAdq:fmtFecha(a.fecha_adquisicion), _iso:{ fechaAdq:a.fecha_adquisicion }, vidaUtil:Number(a.vida_util_anos||0),
     costo:Number(a.costo_adquisicion||0), depreciacion:dep.depreciacionAcumulada, valorLibros:dep.valorEnLibros };
 }
 function filaGasto(g) {
-  return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), monto:Number(g.monto||0), tipo:g.tipo||'' };
+  return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), _iso:{ fecha:g.fecha }, monto:Number(g.monto||0), tipo:g.tipo||'' };
 }
 function filaSalario(s) {
-  return { nombre:s.nombre||'', tipo:s.tipo||'', fecha:fmtFecha(s.fecha), metodo_pago:s.metodo_pago||'', monto:Number(s.monto||0) };
+  return { nombre:s.nombre||'', tipo:s.tipo||'', fecha:fmtFecha(s.fecha), _iso:{ fecha:s.fecha }, metodo_pago:s.metodo_pago||'', monto:Number(s.monto||0) };
 }
 function filaCreditoPago(f) {
   return {
     cliente: f.cliente||'', telefono: f.telefono||'—', numero_credito: f.numero_credito||'',
-    cuota: f.cuota||'', fecha_venc: fmtFecha(f.fecha_venc),
+    cuota: f.cuota||'', fecha_venc: fmtFecha(f.fecha_venc), _iso: { fecha_venc: f.fecha_venc },
     monto_cuota: Number(f.monto_cuota||0), pagado: Number(f.pagado||0), saldo: Number(f.saldo||0),
     estado: estadoCuotaInfo(f.estado).label,
   };
@@ -3029,8 +3038,20 @@ const COLS_CON_UNIDAD = ['cantidad', 'stock'];
 function filaAPDF(fila, cols)  { return cols.map(c => celdaPDF(fila[c.key], c.tipo, COLS_CON_UNIDAD.includes(c.key) ? fila._unidad : '')); }
 // En Excel el valor sigue siendo un NUMERO (se puede sumar); la unidad se muestra
 // con el formato de la celda (ej. 1.5 lb), asi no se rompen filtros ni formulas.
+// FIX 23-oct-2026: en Excel las fechas iban como TEXTO ("01 sept 2026"), así
+// el filtro no las agrupaba por año/mes/día ni se podían ordenar. Ahora van
+// como fecha real de Excel (número de serie con formato dd/mm/aaaa).
+const NUM_FECHA = 'dd/mm/yyyy';
+function fechaSerialExcel(iso) {
+  const d = parseFechaSegura(iso);
+  if (!d) return null;
+  return (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000;
+}
 function filaAXLSX(fila, cols) {
-  const arr = cols.map(c => celdaXLSX(fila[c.key], c.tipo));
+  const arr = cols.map(c => {
+    if (c.tipo === 'fecha') { const n = fechaSerialExcel(fila._iso?.[c.key]); if (n !== null) return n; }
+    return celdaXLSX(fila[c.key], c.tipo);
+  });
   if (fila._unidad) {
     const z = {};
     cols.forEach((c, ci) => { if (COLS_CON_UNIDAD.includes(c.key) && c.tipo === 'cantidad' && typeof arr[ci] === 'number') z[ci] = `#,##0.###" ${String(fila._unidad).replace(/"/g, '')}"`; });
@@ -3041,7 +3062,7 @@ function filaAXLSX(fila, cols) {
 function headersPDF(cols)  { return cols.map(c => c.label); }
 function headersXLSX(cols) { return cols.map(c => c.tipo==='moneda' ? `${c.label} (${sym()})` : c.label); }
 function formatosXLSX(cols) {
-  return cols.map(c => c.tipo==='moneda' ? NUM_MONEDA : c.tipo==='entero' ? NUM_ENTERO : c.tipo==='cantidad' ? NUM_CANT : null);
+  return cols.map(c => c.tipo==='moneda' ? NUM_MONEDA : c.tipo==='entero' ? NUM_ENTERO : c.tipo==='cantidad' ? NUM_CANT : c.tipo==='fecha' ? NUM_FECHA : null);
 }
 
 /* ---- UI: pintar los checkboxes de configuración en la pestaña Exportar ---- */

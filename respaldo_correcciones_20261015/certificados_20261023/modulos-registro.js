@@ -1,0 +1,203 @@
+/* ============================================================
+   MODULOS-REGISTRO.JS — NEGOCIO360
+   ------------------------------------------------------------
+   ÚNICA fuente de verdad de todos los módulos del sistema. Se
+   carga ANTES que perfiles-guard.js y modulos-guard.js (por eso
+   va justo después del SDK de Supabase en el <head> de cada
+   página) para que ambos lean de aquí en vez de tener cada uno
+   su propia lista por separado.
+
+   A partir de ahora, agregar un módulo nuevo a Negocio360 es UNA
+   sola línea aquí:
+     - El sistema de permisos por perfil (perfiles-guard.js) lo
+       detecta solo.
+     - El interruptor de "Editar módulos" en Configuración
+       (modulos-guard.js) lo detecta solo, si no es obligatorio.
+     - El registro de auditoría (auditoria-guard.js) ya audita
+       cualquier módulo automáticamente, sin tocar nada aquí.
+   Lo ÚNICO que sigue siendo manual es agregar el enlace visual
+   en el <nav> de cada página (ícono + texto) y, si aplica, la
+   tarjeta de acceso rápido del Dashboard — como cualquier
+   cambio de diseño, eso no se puede inventar solo.
+
+   Campos de cada módulo:
+     key         identificador corto (usado por perfiles-guard)
+     label       nombre visible
+     icon        emoji (usado por modulos-guard y menús)
+     obligatorio true = siempre disponible, nunca se puede
+                 desactivar ni asignar/quitar por perfil
+     soloAdmin   true = el módulo tiene su propio candado de
+                 código de administrador (Configuración,
+                 Auditoría) — por eso NO se ofrece como algo
+                 asignable a perfiles restringidos: aunque se
+                 marcara, el candado igual los bloquearía.
+   ============================================================ */
+'use strict';
+
+(function () {
+  const MODULOS = {
+    // ---- Obligatorios (siempre visibles, nunca se desactivan) ----
+    'dashboard.html':        { key: 'dashboard',        label: 'Dashboard',           icon: '🏠', obligatorio: true },
+    'ventas.html':           { key: 'ventas',           label: 'Ventas',              icon: '💰', obligatorio: true },
+    'clientes.html':         { key: 'clientes',         label: 'Clientes',            icon: '👥', obligatorio: true },
+    'productos.html':        { key: 'productos',        label: 'Productos/Servicios', icon: '📦', obligatorio: true },
+    'compras.html':          { key: 'compras',          label: 'Compras',             icon: '🛒', obligatorio: true },
+    'gastos.html':           { key: 'gastos',           label: 'Gastos',              icon: '💸', obligatorio: true },
+    'caja.html':             { key: 'caja',             label: 'Caja / Pagos',        icon: '🏦', obligatorio: true },
+    'reportes.html':         { key: 'reportes',         label: 'Reportes',            icon: '📊', obligatorio: true },
+    'chat.html':             { key: 'chat',             label: 'Chat con Negocio360', icon: '💬', obligatorio: true },
+    'configuracion.html':    { key: 'configuracion',    label: 'Configuración',       icon: '⚙️', obligatorio: true, soloAdmin: true },
+
+    // ---- Opcionales (se pueden activar/desactivar desde Configuración) ----
+    'creditos.html':         { key: 'creditos',         label: 'Créditos',            icon: '🧾', obligatorio: false,
+                               desc: 'Ventas y préstamos a crédito, cuotas y cobros.' },
+    'estadisticas.html':     { key: 'estadisticas',     label: 'Estadísticas',        icon: '📈', obligatorio: false,
+                               desc: 'Gráficas y tendencias adicionales del negocio.' },
+    'notificaciones.html':   { key: 'notificaciones',   label: 'Notificaciones',      icon: '🔔', obligatorio: false,
+                               desc: 'Centro de avisos y alertas del sistema.' },
+    'impuestos.html':        { key: 'impuestos',        label: 'Impuestos',           icon: '🧮', obligatorio: false,
+                               desc: 'Catálogo de impuestos aplicados a ventas y créditos.' },
+    'cuentas-por-pagar.html':{ key: 'cuentas_por_pagar',label: 'Cuentas por Pagar',   icon: '📇', obligatorio: false,
+                               desc: 'Compras a crédito a proveedores y sus pagos.' },
+    'salarios.html':         { key: 'salarios',         label: 'Salarios',            icon: '🧑‍💼', obligatorio: false,
+                               desc: 'Empleados, pagos, adelantos y bonificaciones.' },
+    'auditoria.html':        { key: 'auditoria',        label: 'Auditoría',           icon: '🕵️', obligatorio: false, soloAdmin: true,
+                               desc: 'Registro de movimientos por usuario, con fecha y hora. Requiere código de administrador.' },
+    'personalizacion.html':  { key: 'personalizacion',  label: 'Personalización',     icon: '🎨', obligatorio: false,
+                               desc: 'Colores, logo y tema visual del negocio.' },
+    'proformas.html':        { key: 'proformas',        label: 'Proformas',           icon: '📄', obligatorio: false,
+                               desc: 'Cotizaciones para clientes, convertibles a venta con un clic.' },
+    'codigos-barras.html':   { key: 'codigos_barras',    label: 'Códigos de Barras',   icon: '📊', obligatorio: false,
+                               desc: 'Crear, administrar e imprimir códigos de barras (Code 128), de forma independiente.' },
+    'sucursales.html':       { key: 'sucursales',        label: 'Sucursales',          icon: '🏬', obligatorio: false,
+                               desc: 'Entrar a las sucursales permitidas. Crear, configurar y eliminar sigue siendo exclusivo de la Central.' },
+    'consulta-inventario.html': { key: 'consulta_inventario', label: 'Consulta/Inventario', icon: '🔎', obligatorio: false,
+                               desc: 'Busca cualquier producto o servicio (por nombre/SKU o escaneando su código) y ve cómo está repartido entre todas tus sucursales y bodegas.' },
+    'rutas.html':              { key: 'rutas',              label: 'Rutas',               icon: '🗺️', obligatorio: false,
+                               desc: 'Ubica a tus clientes en el mapa y arma rutas de cobro o venta en ruta, conectadas con Créditos y Ventas.' },
+    'delivery.html':           { key: 'delivery',           label: 'Delivery',            icon: '🛵', obligatorio: false,
+                               desc: 'Pedidos de entrega individuales, con repartidor propio o servicio externo — para negocios donde cada entrega es su propio caso, no una ronda planificada.' },
+    'activos.html':            { key: 'activos',            label: 'Activos Fijos',       icon: '🏭', obligatorio: false,
+                               desc: 'Vehículos, herramientas, maquinaria y todo lo que el negocio posee para operar (no para vender) — con depreciación automática según la ley nicaragüense y asientos contables generados solos.' },
+    'agenda.html':             { key: 'agenda',             label: 'Agenda',              icon: '📅', obligatorio: false,
+                               desc: 'Todo lo que tiene fecha en tu negocio en un solo lugar — cuotas de crédito por vencer, cuentas por pagar, gastos programados, garantías de activos — más tus propias citas y recordatorios.' },
+    'asistente.html':          { key: 'asistente',          label: 'Asistente IA',        icon: '🤖', obligatorio: false,
+                               desc: 'Pregúntale a tu negocio en lenguaje normal — ventas, gastos, salarios, caja, stock, clientes — y recibe la respuesta al instante, con tus datos reales.' },
+    'catalogo360.html':        { key: 'catalogo360',        label: 'Catálogo360',         icon: '📇', obligatorio: false,
+                               desc: 'Crea un catálogo digital profesional con tus productos, publícalo con un enlace y QR propios, y compártelo en WhatsApp, Instagram o Facebook.' },
+    'produccion.html':         { key: 'produccion',         label: 'Producción',          icon: '🏭', obligatorio: false,
+                               desc: 'Para negocios que fabrican lo que venden — recetas de fabricación, órdenes de producción, y el costo real de lo que produces, calculado desde la materia prima que de verdad se consumió.' },
+    'servicio.html':           { key: 'servicio',           label: 'Servicio Postventa',  icon: '🛠️', obligatorio: false,
+                               desc: 'Qué pasa después de la venta — reclamos, reparaciones, garantías y cambios, con seguimiento de estado y vigencia de garantía calculada sola.' },
+    'contabilidad.html':       { key: 'contabilidad',       label: 'Contabilidad',        icon: '📒', obligatorio: false,
+                               desc: 'Catálogo de cuentas y asientos contables con partida doble real (Debe = Haber siempre). Libro Mayor y Balance de Comprobación.' },
+
+    // ---- Hotel (secundario -- apagado por defecto para TODA cuenta,
+    // solo se enciende con el interruptor dedicado "Módulo de Hotel"
+    // en Configuración, nunca desde el listado genérico de arriba) ----
+    'hotel-habitaciones.html': { key: 'hotel_habitaciones', label: 'Hotel · Habitaciones', icon: '🛏️', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Habitaciones, precios y estados en tiempo real.' },
+    'hotel-reservaciones.html':{ key: 'hotel_reservaciones', label: 'Hotel · Reservaciones', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Reservas por habitación, sin cruces de fecha, con anticipo y bloqueo manual.' },
+    'hotel-mapa.html':         { key: 'hotel_mapa',         label: 'Hotel · Mapa',        icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Vista de calendario de todas las habitaciones y reservaciones, de un vistazo.' },
+    'hotel-housekeeping.html': { key: 'hotel_housekeeping', label: 'Hotel · Housekeeping', icon: '🧹', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Habitaciones pendientes de limpieza o mantenimiento, con alerta por tiempo.' },
+    'hotel-huespedes.html':    { key: 'hotel_huespedes',    label: 'Hotel · Huéspedes',   icon: '🧳', obligatorio: false, flagPropio: 'usa_modulo_hotel',
+                               desc: 'Historial de estadías por huésped, conectado con Clientes.' },
+
+    // ---- Restaurante (secundario -- mismo criterio que Hotel) ----
+    'restaurante-mesas.html':    { key: 'restaurante_mesas',    label: 'Restaurante · Mesas',    icon: '🍽️', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+                               desc: 'Mesas, zonas y estados en tiempo real.' },
+    'restaurante-comandas.html': { key: 'restaurante_comandas', label: 'Restaurante · Comandas', icon: '📝', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+                               desc: 'Toma pedidos por mesa, envíalos a cocina, cobra y cierra la cuenta.' },
+    'restaurante-cocina.html':   { key: 'restaurante_cocina',   label: 'Restaurante · Cocina',   icon: '🍳', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+                               desc: 'Pantalla de cocina en tiempo real -- platillos por preparar y listos para servir.' },
+
+    // ---- Mis Negocios (secundario -- mismo criterio, aunque no es un
+    // rubro de negocio sino una funcion de cuenta) ----
+    'negocios-vinculados.html': { key: 'negocios_vinculados', label: 'Mis Negocios',      icon: '🏢', obligatorio: false, flagPropio: 'usa_negocios_vinculados',
+                               desc: 'Varios negocios bajo el mismo correo y contraseña, cada uno completamente independiente.' },
+
+    // ---- Farmacia (secundario -- mismo criterio que Hotel/Restaurante) ----
+    'lotes.html':        { key: 'farmacia_lotes',        label: 'Farmacia · Lotes',        icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes', usa_modulo_insumos: 'Insumos · Lotes' },
+                               desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
+    'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos', usa_modulo_insumos: 'Insumos · Vencimientos' },
+                               desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
+    'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
+                               desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
+    'recetas.html': { key: 'farmacia_recetas', label: 'Farmacia · Recetas', icon: '📝', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
+                               desc: 'Recetas medicas -- paciente, medico y medicamentos recetados.' },
+    'vet-agenda.html': { key: 'vet_agenda', label: 'Veterinaria · Agenda', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
+                       desc: 'Citas por día y por veterinario, con aviso al dueño por WhatsApp.' },
+    'vet-estancias.html': { key: 'vet_estancias', label: 'Veterinaria · En el local', icon: '🏥', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
+                       desc: 'Hospitalización, pensión y baño: quién está hoy, su evolución y su cuenta.' },
+    'mascotas.html': { key: 'vet_mascotas', label: 'Veterinaria · Mascotas', icon: '🐾', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
+                       desc: 'Fichas de mascotas, historia clínica y carnet de vacunación.' },
+    'vet-recordatorios.html': { key: 'vet_recordatorios', label: 'Veterinaria · Recordatorios', icon: '💉', obligatorio: false, flagPropio: 'usa_modulo_veterinaria',
+                       desc: 'Refuerzos de vacunas por vencer, con aviso al dueño por WhatsApp.' },
+    'puntos.html': { key: 'puntos', label: 'Puntos · Programa de puntos', icon: '🎁', obligatorio: false, flagPropio: 'usa_puntos',
+                               desc: 'Tus clientes acumulan puntos por sus compras y los canjean por recompensas.' },
+    'rotacion.html': { key: 'farmacia_rotacion', label: 'Farmacia · Rotación y Margen', icon: '📊', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
+                               flagsAlternos: ['usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_insumos: 'Insumos · Rotación y Margen' },
+                               desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
+
+    // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
+    'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Centro de mando del transporte de carga: flota, viajes, costos y cobros, conectado con Ventas, Créditos, Gastos y Caja.' },
+    'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Tus cabezales, camiones, furgones y plataformas con fotos, documentos con vencimiento y estado.' },
+    'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Conductores y ayudantes con documentos, licencias y disponibilidad.' },
+
+    'transporte-rutas.html': { key: 'transporte_rutas', label: 'Transporte · Rutas y tarifas', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Tus rutas habituales con distancia, fronteras y tarifas por viaje, km o tonelada.' },
+    'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Órdenes de transporte con tablero de despacho, costos del viaje y rentabilidad.' },
+
+    'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Pago a conductores y ayudantes por viaje, km o comisión, con anticipos y descuentos.' },
+
+    'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Transportistas externos: subcontrata viajes y paga de contado o a crédito (Cuentas por Pagar).' },
+
+    'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Convierte los viajes entregados en venta (contado o crédito) y da seguimiento al cobro.' },
+
+    'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Cruces de frontera, trámites aduaneros, carta de porte y documentos de cada orden.' },
+
+    'transporte-mantenimiento.html': { key: 'transporte_mantenimiento', label: 'Transporte · Mantenimiento y llantas', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Servicios preventivos por km o fecha, órdenes de trabajo del taller y control de llantas.' },
+
+    'transporte-entregas.html': { key: 'transporte_entregas', label: 'Transporte · Entregas e incidencias', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Prueba de entrega con firma, y registro y seguimiento de incidencias y reclamos de cada viaje.' },
+
+    'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Viajes, ingresos, costos, utilidad, cumplimiento, mantenimiento e incidencias por cliente, ruta, unidad y conductor.' },
+
+    // ---- Diseño (secundario: herramientas para diseñadores; interruptor propio) ----
+    'diseno-marca-agua.html': { key: 'diseno_marca_agua', label: 'Diseño · Marca de agua', icon: '💧', obligatorio: false, flagPropio: 'usa_modulo_diseno',
+                       desc: 'Pon tu logo o tu texto como marca de agua a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' },
+
+    // ---- Fiados (secundario: cuaderno de deudas tipo pulpería) ----
+    'fiados.html': { key: 'fiados', label: 'Fiados', icon: '📒', obligatorio: false, flagPropio: 'usa_modulo_fiados',
+                       desc: 'Anota quién te debe, cobra pagos o abonos y lleva el control, conectado con Clientes, Inventario, Ventas y Caja.' },
+
+    // ---- Cotizaciones (secundario: apagado por defecto, interruptor propio en Configuración) ----
+    'cotizaciones.html': { key: 'cotizaciones', label: 'Cotizaciones', icon: '🗒️', obligatorio: false, flagPropio: 'usa_modulo_cotizaciones',
+                       desc: 'Cotizaciones con productos y precios para tus clientes (PDF o WhatsApp). No crean ventas ni créditos, no tocan Caja ni inventario.' },
+
+    // ---- Calculadora costo-precio (herramienta aislada: no guarda ni cambia datos) ----
+    'calculadora-precio.html': { key: 'calculadora_precio', label: 'Calculadora costo-precio', icon: '🧮', obligatorio: false,
+                       desc: 'Escribe el costo de un producto y te sugiere a qué precio venderlo para ganar y ser competitivo. Solo calcula: no guarda nada.' },
+
+    // ---- Etiquetas de precio (herramienta aislada: solo LEE Productos/Servicios, no guarda ni cambia datos) ----
+    'etiquetas-precio.html': { key: 'etiquetas_precio', label: 'Etiquetas de precio', icon: '🏷️', obligatorio: false,
+                       desc: 'Crea etiquetas de precio para tus productos (o escritas a mano) y descárgalas en PDF para imprimir en hoja, rollo de etiquetas o impresora de tickets. Solo lee: no cambia precios ni inventario.' },
+  };
+
+  window.NEGOCIO360_MODULOS = MODULOS;
+})();

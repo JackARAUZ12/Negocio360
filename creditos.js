@@ -252,6 +252,18 @@
      saldo_anterior/saldo_resultante. Solo se llama con la porción de impuesto
      efectivamente cobrada en cada pago de cuota, nunca con el total del crédito.
   =================================================== */
+  // Suma/resta existencias en el servidor sobre el valor REAL (todo o nada).
+  // items = [{ producto_id, delta } | { combo_id, delta }]  (delta + devuelve, - descuenta)
+  async function ajustarStockCredito(items) {
+    const lista = (items || []).filter(x => x && Number(x.delta) && (x.producto_id || x.combo_id));
+    if (!lista.length) return 0;
+    // Sin reintento automático: si la respuesta se perdiera, repetir podría
+    // descontar dos veces. Si falla, se avisa.
+    const { data, error } = await _sb.rpc('ajustar_stock_relativo', { p_items: lista });
+    if (error) throw error;
+    return data;
+  }
+
   async function registrarImpuestoCredito(montoImpuesto, credito, impuestoNombre, impuestoId) {
     if (!montoImpuesto || montoImpuesto <= 0) return;
     try {
@@ -1627,40 +1639,21 @@
       // lo que corresponde a la lista NUEVA -- así el stock siempre
       // queda igual de exacto que si se hubiera vendido así desde el
       // principio, sin importar cuántas veces se edite.
+      // Devolver y descontar en UNA sola operación del servidor, sumando y
+      // restando sobre la existencia REAL (nunca con un número viejo de la página).
+      const ajustesStock = [];
       for (const d of (detallesViejos||[])) {
         if (d.tipo_item !== 'producto') continue;
-        if (d.combo_id) {
-          const { data: itemsCombo } = await _sb.from('combo_items').select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', CS.userId);
-          for (const compItem of (itemsCombo||[])) {
-            const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-            if (!prodActual) continue;
-            const devolver = Number(compItem.cantidad) * d.cantidad;
-            await _sb.from('productos').update({ stock_actual: Number(prodActual.stock_actual||0) + devolver }).eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-          }
-        } else if (d.producto_id) {
-          const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-          if (!prodActual) continue;
-          await _sb.from('productos').update({ stock_actual: Number(prodActual.stock_actual||0) + Number(d.cantidad||0) }).eq('id', d.producto_id).eq('auth_user_id', CS.userId);
-        }
+        if (d.combo_id) ajustesStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
+        else if (d.producto_id) ajustesStock.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) });
       }
-
-      // Descontar la lista NUEVA
       for (const it of CS.ncItems) {
         if (it.tipo_item !== 'producto' || it.esCombo) continue;
-        const prod = CS.productos.find(p => p.id === it.producto_id);
-        if (!prod) continue;
-        const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
-        await _sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', it.producto_id).eq('auth_user_id', CS.userId);
+        if (!CS.productos.find(p => p.id === it.producto_id)) continue;
+        ajustesStock.push({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) });
       }
-      for (const it of CS.ncItems.filter(i => i.esCombo)) {
-        const { data: itemsCombo } = await _sb.from('combo_items').select('producto_id, cantidad').eq('combo_id', it.producto_id).eq('auth_user_id', CS.userId);
-        for (const compItem of (itemsCombo||[])) {
-          const { data: prodActual } = await _sb.from('productos').select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-          if (!prodActual) continue;
-          const descontar = Number(compItem.cantidad) * it.cantidad;
-          await _sb.from('productos').update({ stock_actual: Math.max(0, Number(prodActual.stock_actual||0) - descontar) }).eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-        }
-      }
+      for (const it of CS.ncItems.filter(i => i.esCombo)) ajustesStock.push({ combo_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+      await ajustarStockCredito(ajustesStock);
 
       // Reemplazar los detalles de la venta
       await _sb.from('venta_detalles').delete().eq('venta_id', credito.venta_id);
@@ -1975,6 +1968,7 @@
         }
 
         // Descontar stock solo de productos normales (no servicios, no combos)
+        const descuentosCredito = [];
         for (const it of CS.ncItems) {
           if (it.tipo_item !== 'producto' || it.esCombo) continue;
           if (it.origen_stock_id) {
@@ -1987,30 +1981,20 @@
             } catch (eRemoto) { console.warn('Error descontando stock remoto:', it.nombre, eRemoto); }
             continue;
           }
-          const prod = CS.productos.find(p => p.id === it.producto_id);
-          if (!prod) continue;
-          const nuevoStock = Math.max(0, Number(prod.stock_actual||0) - it.cantidad);
-          await _sb.from('productos').update({ stock_actual: nuevoStock }).eq('id', it.producto_id).eq('auth_user_id', CS.userId);
+          if (!CS.productos.find(p => p.id === it.producto_id)) continue;
+          descuentosCredito.push({ producto_id: it.producto_id, delta: -Number(it.cantidad || 0) });
         }
 
-        // Combos vendidos a crédito: descontar el stock de CADA producto
-        // que los compone (cantidad del componente × cantidad vendida).
-        for (const it of CS.ncItems.filter(i => i.esCombo)) {
-          try {
-            const { data: itemsCombo } = await _sb.from('combo_items')
-              .select('producto_id, cantidad').eq('combo_id', it.producto_id).eq('auth_user_id', CS.userId);
-            for (const compItem of (itemsCombo || [])) {
-              const { data: prodActual } = await _sb.from('productos')
-                .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-              if (!prodActual) continue;
-              const descuentoTotal = Number(compItem.cantidad) * it.cantidad;
-              const nuevoStock = Math.max(0, Number(prodActual.stock_actual || 0) - descuentoTotal);
-              await _sb.from('productos').update({ stock_actual: nuevoStock })
-                .eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-            }
-          } catch (eCombo) {
-            console.warn('No se pudo descontar el stock de los componentes del combo:', it.nombre, eCombo);
-          }
+        // Combos vendidos a crédito: se descuenta cada producto que los
+        // compone (cantidad del componente × cantidad vendida).
+        for (const it of CS.ncItems.filter(i => i.esCombo)) descuentosCredito.push({ combo_id: it.producto_id, delta: -Number(it.cantidad || 0) });
+
+        // Todo en UNA operación del servidor, restando sobre la existencia
+        // REAL del momento (antes se usaba la que la página cargó al abrir).
+        try { await ajustarStockCredito(descuentosCredito); }
+        catch (eStock) {
+          console.warn('No se pudo descontar el inventario del crédito:', eStock);
+          showToast('El crédito se guardó, pero el inventario NO se descontó. Revísalo en Productos.', 'warning');
         }
 
         // Un crédito por venta SÍ es una compra real del cliente — se
@@ -2462,11 +2446,13 @@
     if (!CS.configTicket) await cargarConfigTicket();
     const c = CS.configTicket || {};
     document.querySelectorAll('input[name="ct-ancho"]').forEach(r => { r.checked = (r.value === (c.ancho_ticket || '80mm')); });
+    { const rbx = document.getElementById('ct-rawbt'); if (rbx) rbx.checked = !!c.imprimir_rawbt; }
     document.getElementById('ct-nombre').value    = c.nombre_ticket    || '';
     document.getElementById('ct-ruc').value       = c.ruc_ticket       || '';
     document.getElementById('ct-telefono').value  = c.telefono_ticket || '';
     document.getElementById('ct-direccion').value = c.direccion_ticket|| '';
     document.getElementById('ct-mensaje').value   = c.mensaje_pie_ticket || 'Gracias por su compra';
+    const selFirma = document.getElementById('ct-espacio-firma'); if (selFirma) selFirma.value = ['normal','amplio','extra'].includes(c.espacio_firma_ticket) ? c.espacio_firma_ticket : 'normal';
     openModal('modal-config-ticket');
   }
   window.abrirConfigTicket = abrirConfigTicket;
@@ -2476,11 +2462,13 @@
     const payload = {
       auth_user_id: CS.userId, configurado: true,
       ancho_ticket: ancho,
+      imprimir_rawbt: !!document.getElementById('ct-rawbt')?.checked,
       nombre_ticket: document.getElementById('ct-nombre').value.trim() || null,
       ruc_ticket: document.getElementById('ct-ruc').value.trim() || null,
       telefono_ticket: document.getElementById('ct-telefono').value.trim() || null,
       direccion_ticket: document.getElementById('ct-direccion').value.trim() || null,
       mensaje_pie_ticket: document.getElementById('ct-mensaje').value.trim() || 'Gracias por su compra',
+      espacio_firma_ticket: document.getElementById('ct-espacio-firma')?.value || 'normal',
       updated_at: new Date().toISOString(),
     };
     try {
@@ -2685,6 +2673,11 @@
       return;
     }
 
+    // RawBT (Android, 80 mm): si el negocio lo activó, se imprime directo; si no, todo sigue igual.
+    if (window.rawbtActivo && window.rawbtActivo(CS.configTicket)) {
+      window.rawbtImprimirDesdeContenedor(document.querySelector('#comprobante-body .ticket-print'), { espacioFirma: CS.configTicket?.espacio_firma_ticket });
+      return;
+    }
     const html = document.getElementById('comprobante-body').innerHTML;
     const anchoPx = ancho === '58mm' ? '220px' : ancho === '76mm' ? '280px' : '300px';
     // En 58mm hay menos ancho real de impresión — con la misma letra
@@ -2693,7 +2686,7 @@
     const fs = ancho === '58mm' ? 11 : 12.5;
     const w = window.open('', '_blank', 'width=380,height=600');
     w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-      <style>body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+      <style>@page{size:${ancho} auto;margin:0}*{box-sizing:border-box}body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
       </head><body>${html}<script>window.print();</script></body></html>`);
     w.document.close();
   }
@@ -2936,6 +2929,8 @@
     const logoUrl = CS.empresaConfig?.logo_principal_url || CS.empresaConfig?.logo_url || '';
     const ancho = cfg.ancho_ticket || '80mm';
     const logoMaxW = ancho === '58mm' ? 70 : ancho === '76mm' ? 85 : 95;
+    // Espacio para firmar: normal ~17mm, amplio ~25mm, extra ~35mm (sin configurar = normal)
+    const espacioFirmaPx = ({ amplio: 95, extra: 132 })[cfg.espacio_firma_ticket] || 64;
     const c = d.credito;
     const nombreCliente = d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : '—';
     // Hora de la factura: la de registro, si es del mismo día que la fecha del crédito
@@ -2993,7 +2988,7 @@
         ${fila('SALDO PENDIENTE:', fmt(d.saldo), ' style="font-weight:800;font-size:1.1em"')}
         <hr/>
         ${plan}
-        ${d.saldo > 0 ? `<div style="margin-top:22px;text-align:center"><div style="border-top:1px solid #000;margin:0 12%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
+        ${d.saldo > 0 ? `<div style="margin-top:${espacioFirmaPx}px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
         <hr/>
         ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
         <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>
@@ -3319,29 +3314,15 @@
           const { data: detalles } = await _sb.from('venta_detalles')
             .select('producto_id, combo_id, tipo_item, cantidad')
             .eq('venta_id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+          // Se devuelve en UNA operación del servidor, sumando sobre la
+          // existencia REAL. Los combos se guardan como tipo 'producto' con
+          // combo_id (antes no se devolvían): ahora sí vuelven sus componentes.
+          const devolverStock = [];
           for (const d of (detalles || [])) {
-            if (d.tipo_item === 'producto' && d.producto_id) {
-              const { data: prod } = await _sb.from('productos')
-                .select('stock_actual').eq('id', d.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-              if (prod) {
-                const nuevoStock = round2(Number(prod.stock_actual || 0) + Number(d.cantidad));
-                await _sb.from('productos').update({ stock_actual: nuevoStock })
-                  .eq('id', d.producto_id).eq('auth_user_id', CS.userId);
-              }
-            } else if (d.tipo_item === 'combo' && d.combo_id) {
-              const { data: itemsCombo } = await _sb.from('combo_items')
-                .select('producto_id, cantidad').eq('combo_id', d.combo_id).eq('auth_user_id', CS.userId);
-              for (const compItem of (itemsCombo || [])) {
-                const { data: prodActual } = await _sb.from('productos')
-                  .select('stock_actual').eq('id', compItem.producto_id).eq('auth_user_id', CS.userId).maybeSingle();
-                if (!prodActual) continue;
-                const devolverCantidad = round2(Number(compItem.cantidad) * Number(d.cantidad));
-                const nuevoStock = round2(Number(prodActual.stock_actual || 0) + devolverCantidad);
-                await _sb.from('productos').update({ stock_actual: nuevoStock })
-                  .eq('id', compItem.producto_id).eq('auth_user_id', CS.userId);
-              }
-            }
+            if (d.producto_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ producto_id: d.producto_id, delta: Number(d.cantidad || 0) });
+            else if (d.combo_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
           }
+          await ajustarStockCredito(devolverStock);
           await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
             .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
         }
@@ -3390,7 +3371,7 @@
 
   // ------------------------------------------------------------
   // ANULAR UN PAGO YA REGISTRADO
-  // Revierte por completo un pago: lo borra, borra su movimiento de
+  // Revierte por completo un pago: lo marca anulado, anula su movimiento de
   // Caja, devuelve el monto al saldo del credito, y descuenta lo
   // pagado de las cuotas -- exactamente al reves de como se aplico.
   // Pensado para el caso real de un pago tecleado por error o
@@ -3425,23 +3406,35 @@
       const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).eq('auth_user_id', CS.userId).maybeSingle();
       if (!credito) throw new Error('Crédito no encontrado');
 
-      // 1. Quitar el movimiento de Caja que genero este pago. Se busca
-      // por referencia + monto + fecha porque los movimientos guardan
-      // el credito_id como referencia, no el id del pago individual.
-      const { data: movs } = await _sb.from('movimientos_financieros')
-        .select('id, created_at')
-        .eq('auth_user_id', CS.userId)
-        .eq('referencia_id', creditoId)
-        .eq('monto', monto)
-        .eq('fecha', pago.fecha);
-      if (movs && movs.length) {
-        // Si hay varios del mismo monto y fecha, se borra el mas cercano
-        // en tiempo al pago -- nunca todos de golpe.
-        const objetivo = movs.reduce((mejor, m) => {
-          const dif = Math.abs(new Date(m.created_at) - new Date(pago.created_at));
-          return (!mejor || dif < mejor.dif) ? { id: m.id, dif } : mejor;
-        }, null);
-        if (objetivo) await _sb.from('movimientos_financieros').delete().eq('id', objetivo.id);
+      if (pago.estado === 'anulado') throw new Error('Este pago ya estaba anulado');
+      const motivoAnulacion = `Pago de crédito ${credito.numero_credito || ''} anulado`.trim();
+
+      // 1. Anular (no borrar) el movimiento de Caja que generó este pago:
+      // queda el rastro y la base recalcula sola el saldo de Caja.
+      // Primero por el enlace directo del pago; si no lo tiene (pagos
+      // viejos), por referencia + monto + fecha, el más cercano en tiempo.
+      let movObjetivoId = pago.movimiento_financiero_id || null;
+      if (!movObjetivoId) {
+        const { data: movs } = await _sb.from('movimientos_financieros')
+          .select('id, created_at')
+          .eq('auth_user_id', CS.userId)
+          .eq('referencia_id', creditoId)
+          .eq('monto', monto)
+          .eq('fecha', pago.fecha)
+          .eq('estado', 'completado');
+        if (movs && movs.length) {
+          const objetivo = movs.reduce((mejor, m) => {
+            const dif = Math.abs(new Date(m.created_at) - new Date(pago.created_at));
+            return (!mejor || dif < mejor.dif) ? { id: m.id, dif } : mejor;
+          }, null);
+          movObjetivoId = objetivo ? objetivo.id : null;
+        }
+      }
+      if (movObjetivoId) {
+        const { error: errMov } = await _sb.from('movimientos_financieros')
+          .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivoAnulacion })
+          .eq('id', movObjetivoId).eq('auth_user_id', CS.userId).eq('estado', 'completado');
+        if (errMov) throw errMov;
       }
 
       // 2. Descontar de las cuotas, de la ultima hacia atras (al reves
@@ -3472,9 +3465,13 @@
         updated_at: new Date().toISOString(),
       }).eq('id', creditoId);
 
-      // 4. Borrar el pago (al final, para que si algo falla antes, el
-      // pago siga existiendo y no quede un registro a medias)
-      await _sb.from('creditos_pagos').delete().eq('id', pagoId).eq('auth_user_id', CS.userId);
+      // 4. Marcar el pago como anulado (al final, para que si algo falla
+      // antes, el pago siga vigente y no quede un registro a medias).
+      // No se borra: así queda el rastro y nadie puede desaparecer abonos.
+      const { error: errPagoAn } = await _sb.from('creditos_pagos')
+        .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivoAnulacion })
+        .eq('id', pagoId).eq('auth_user_id', CS.userId);
+      if (errPagoAn) throw errPagoAn;
 
       // 5. Dejar rastro en el historial del credito
       try {
@@ -3861,7 +3858,7 @@
   window.buscarCreditos = buscarCreditos;
 
   async function loadPagosRecientes() {
-    const { data } = await _sb.from('creditos_pagos').select('*, creditos(id,numero_credito,venta_id)').eq('auth_user_id', CS.userId).order('created_at', { ascending:false }).limit(30);
+    const { data } = await _sb.from('creditos_pagos').select('*, creditos(id,numero_credito,venta_id)').eq('auth_user_id', CS.userId).or('estado.is.null,estado.neq.anulado').order('created_at', { ascending:false }).limit(30);
     const pagos = data || [];
     const prMapPag = window.N360ProformaCredito ? await N360ProformaCredito.mapa(_sb, CS.userId, pagos.map(p => p.creditos).filter(Boolean)) : new Map();
     const clienteIds = [...new Set(pagos.map(p=>p.cliente_id))];

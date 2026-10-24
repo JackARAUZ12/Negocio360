@@ -1,0 +1,389 @@
+/* =====================================================
+   COMPROBANTE TAMAÑO CARTA — compartido entre Ventas y Créditos.
+   Mismo estilo visual que ya usan Proformas/Compras/Reportes
+   (franja de color de marca, logo ajustable, tabla de ítems,
+   totales, mensaje de pie personalizable). No es un documento
+   fiscal — es un comprobante formal para el cliente, alternativa
+   al ticket térmico de 58/80mm.
+
+   Requiere que el archivo que lo use ya tenga cargado: jsPDF +
+   jspdf-autotable, un cliente de Supabase (sb / supabaseClient /
+   sbClient — se detecta solo), y las funciones fmt()/esc()/sym()
+   ya usadas en el resto del sistema.
+===================================================== */
+
+async function _cc_clienteSupabase() {
+  // Cada página usa un nombre distinto para su cliente de Supabase
+  // ("sb" en Ventas, "_sb" en Créditos, "sbClient" en Proformas) — se
+  // prueban todos, incluyendo el que Créditos sí expone en window
+  // bajo otro nombre. Si ninguno existe (no debería pasar nunca),
+  // se crea uno nuevo directamente como último respaldo, para que
+  // esto nunca vuelva a fallar en silencio.
+  if (typeof sb !== 'undefined' && sb?.from) return sb;
+  if (typeof sbClient !== 'undefined' && sbClient?.from) return sbClient;
+  if (typeof _sb !== 'undefined' && _sb?.from) return _sb;
+  if (window.__cajaSB?.from) return window.__cajaSB;
+  if (window.sbClient?.from) return window.sbClient;
+  return window.supabase.createClient(
+    'https://zvlincmqmmoclqhykejv.supabase.co',
+    'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'
+  );
+}
+
+async function _cc_cargarConfigDocumentos(userId) {
+  const sb = await _cc_clienteSupabase();
+  // Se usa la misma configuración que Proformas (documentos de cara
+  // al cliente), no la de Compras/Reportes (documentos internos) —
+  // así el cliente que ya configuró su color, logo y mensaje de pie
+  // para sus proformas ve exactamente eso mismo en este comprobante,
+  // en vez de una configuración distinta o vacía.
+  const { data } = await sb.from('configuracion_proforma').select('*').eq('auth_user_id', userId).maybeSingle();
+  return data || {};
+}
+
+async function _cc_cargarLogo(userId) {
+  try {
+    const sb = await _cc_clienteSupabase();
+    const { data: cfg } = await sb.from('configuracion_empresa').select('logo_principal_url').eq('auth_user_id', userId).maybeSingle();
+    if (!cfg?.logo_principal_url) return null;
+    const resp = await fetch(cfg.logo_principal_url);
+    const blob = await resp.blob();
+    const dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+    const formato = blob.type.includes('png') ? 'PNG' : 'JPEG';
+    const img = new Image();
+    await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; img.src = dataUrl; });
+    return { dataUrl, formato, anchoNatural: img.naturalWidth || 200, altoNatural: img.naturalHeight || 200 };
+  } catch (e) { return null; }
+}
+
+function _cc_ajustarLogo(anchoNatural, altoNatural, maxAncho, maxAlto) {
+  const escala = Math.min(maxAncho / anchoNatural, maxAlto / altoNatural, 1) || 1;
+  return { w: anchoNatural * escala, h: altoNatural * escala };
+}
+
+function _cc_hexARgb(hex) {
+  if (!hex) return null;
+  const m = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return null;
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+}
+
+/**
+ * Genera el PDF del comprobante tamaño carta.
+ * @param {'venta'|'credito'} tipo
+ * @param {object} datos - { numero, fecha, cliente_nombre, cliente_telefono, cliente_direccion,
+ *                            subtotal, descuento, impuesto, iva_porcentaje, total, metodo_pago,
+ *                            observaciones, userId, empresaNombre, empresaDireccion,
+ *                            empresaTelefono, empresaRuc, moneda_simbolo,
+ *                            destacado? { titulo, valor, nota } — recuadro resaltado
+ *                            antes de las observaciones (opcional; solo lo usa
+ *                            el Comprobante de crédito para la fecha de pago) }
+ * @param {Array}  items  - [{ nombre, cantidad, precio, descuento, subtotal }]
+ */
+/* ----------------------------------------------------------
+   Direccion y telefono del CLIENTE para el comprobante.
+   Si quien llama solo manda el cliente_id, se buscan en vivo
+   (igual que ya se hace con el codigo de barras). Si el llamador
+   ya mando direccion y telefono, NO se hace ninguna consulta.
+---------------------------------------------------------- */
+// Direccion de facturacion si existe; si no, la direccion normal. La ciudad se
+// agrega al final solo si la direccion no la menciona ya.
+function _cc_armarDireccionCliente(c) {
+  const base = String(c?.direccion_factura || '').trim() || String(c?.direccion || '').trim();
+  const ciudad = String(c?.ciudad || '').trim();
+  if (!base) return ciudad;
+  return ciudad && !base.toLowerCase().includes(ciudad.toLowerCase()) ? `${base}, ${ciudad}` : base;
+}
+async function _cc_datosCliente(datos) {
+  let direccion = String(datos.cliente_direccion || '').trim();
+  let telefono = String(datos.cliente_telefono || '').trim();
+  if ((!direccion || !telefono) && datos.cliente_id) {
+    try {
+      const sb = await _cc_clienteSupabase();
+      let q = sb.from('clientes').select('direccion, direccion_factura, ciudad, telefono').eq('id', datos.cliente_id);
+      if (datos.userId) q = q.eq('auth_user_id', datos.userId);
+      const { data } = await q.maybeSingle();
+      if (data) {
+        if (!direccion) direccion = _cc_armarDireccionCliente(data);
+        if (!telefono) telefono = String(data.telefono || '').trim();
+      }
+    } catch (e) { console.warn('_cc_datosCliente:', e); }     // sin esto el comprobante sale igual, solo sin esos datos
+  }
+  return { direccion, telefono };
+}
+
+async function generarComprobanteCartaPDF(tipo, datos, items) {
+  if (!window.jspdf) throw new Error('jsPDF no está disponible');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 14;
+
+  const cfg  = await _cc_cargarConfigDocumentos(datos.userId);
+  const logo = await _cc_cargarLogo(datos.userId);
+
+  // El codigo de barras NO se guarda en el historico de la venta (solo
+  // el SKU) -- si esta opcion esta activa, se busca en vivo contra
+  // productos usando los producto_id de los items de ESTE comprobante.
+  // Si la opcion esta apagada (el caso por defecto), no se hace
+  // ninguna consulta extra -- cero impacto para quien nunca la usa.
+  // SKU: algunas ventas/creditos antiguos o creados por ciertos caminos guardaron producto_sku vacio;
+  // si la columna SKU esta activa y a un item le falta, se completa en vivo desde productos
+  // (por producto_id). Solo rellena lo que falta; nunca cambia un SKU ya guardado.
+  const faltaSku = cfg.mostrar_sku === true && Array.isArray(items) && items.some(it => !it.sku && it.producto_id);
+  // Unidad de medida (lb, kg, m...): si la pagina cargo el catalogo de unidades,
+  // se completa en vivo por producto_id para mostrar "1.5 lb" en vez de "1.5".
+  const faltaUnidad = !!window.N360Unidades && Array.isArray(items) && items.some(it => it.unidad === undefined && it.producto_id);
+  if ((cfg.mostrar_codigo_barras === true || faltaSku || faltaUnidad) && Array.isArray(items) && items.length) {
+    try {
+      const ids = [...new Set(items.map(it => it.producto_id).filter(Boolean))];
+      if (ids.length) {
+        const sb = await _cc_clienteSupabase();
+        let prods = null;
+        try {
+          const r = await sb.from('productos').select('id, codigo_barras, sku, unidad_codigo').in('id', ids);
+          if (!r.error) prods = r.data;
+        } catch (_) {}
+        if (!prods) { // respaldo: sin la columna de unidad, igual que antes
+          const r2 = await sb.from('productos').select('id, codigo_barras, sku').in('id', ids);
+          prods = r2.data;
+        }
+        const mapa = {}, mapaSku = {}, mapaUni = {};
+        (prods || []).forEach(p => { mapa[p.id] = p.codigo_barras; mapaSku[p.id] = p.sku; mapaUni[p.id] = p.unidad_codigo; });
+        items = items.map(it => {
+          const cod = mapaUni[it.producto_id];
+          const u = (cod && cod !== 'unidad') ? (window.N360Unidades?.porCodigo(cod)?.abreviatura || '') : '';
+          return { ...it, codigo_barras: it.codigo_barras || mapa[it.producto_id] || '', sku: it.sku || mapaSku[it.producto_id] || '',
+                   unidad: it.unidad !== undefined ? it.unidad : u };
+        });
+      }
+    } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras/SKU:', e); }
+  }
+
+  const palabraBase = (cfg.titulo_comprobante || '').trim() || 'Comprobante';
+  const TITULOS = { venta: `${palabraBase} de Venta`, credito: `${palabraBase} de Crédito` };
+  // datos.titulo (opcional) reemplaza el título, p. ej. "Factura de Crédito"
+  const titulo = (datos && datos.titulo) || TITULOS[tipo] || palabraBase;
+  const moneda = datos.moneda_simbolo || 'C$';
+  const fmtM = (n) => `${moneda} ${Number(n||0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}`;
+
+  const [rC, gC, bC] = _cc_hexARgb(cfg.color_principal) || [108, 99, 255];
+  doc.setFillColor(rC, gC, bC);
+  doc.rect(0, 0, W, 38, 'F');
+
+  // Texto del encabezado: negro o blanco automaticamente, segun que
+  // tan claro sea el color de fondo elegido -- si el cliente pone un
+  // color claro (ej. blanco, amarillo palido), el texto blanco se
+  // volvia invisible. Formula estandar de luminosidad percibida (YIQ).
+  const luminosidad = (rC * 299 + gC * 587 + bC * 114) / 1000;
+  const colorTextoEncabezado = luminosidad > 150 ? [20, 20, 30] : [255, 255, 255];
+
+  let textoX = M;
+  const TAMANOS_LOGO = { pequeno: {ancho:32, alto:22}, mediano: {ancho:45, alto:28}, grande: {ancho:58, alto:34} };
+  const cajaLogo = TAMANOS_LOGO[cfg.logo_tamano] || TAMANOS_LOGO.mediano;
+  if (logo) {
+    try {
+      const { w, h } = _cc_ajustarLogo(logo.anchoNatural, logo.altoNatural, cajaLogo.ancho, cajaLogo.alto);
+      doc.addImage(logo.dataUrl, logo.formato, M, (38-h)/2, w, h);
+      textoX = M + w + 6;
+    } catch (e) { /* si falla, se sigue sin logo */ }
+  }
+
+  doc.setTextColor(...colorTextoEncabezado);
+  const anchoDisponibleNombre = (W - M - 40) - textoX;
+  let tamanoNombre = 20;
+  doc.setFont(undefined, 'bold');
+  while (tamanoNombre > 12) {
+    doc.setFontSize(tamanoNombre);
+    if (doc.getTextWidth(datos.empresaNombre || '') <= anchoDisponibleNombre) break;
+    tamanoNombre -= 1;
+  }
+  doc.text(datos.empresaNombre || 'Mi Negocio', textoX, 20);
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+  doc.text(titulo, textoX, 29);
+  doc.setFontSize(9);
+  doc.text(`N.º ${datos.numero || '—'}`, W - M, 18, { align: 'right' });
+  doc.text(`Fecha: ${datos.fecha || '—'}`, W - M, 24, { align: 'right' });
+
+  let y = 50;
+  doc.setTextColor(20,20,30);
+
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+  const infoNegocio = [
+    cfg.mostrar_direccion !== false ? datos.empresaDireccion : '',
+    cfg.mostrar_telefono !== false && datos.empresaTelefono ? `Tel: ${datos.empresaTelefono}` : '',
+    cfg.mostrar_ruc !== false && datos.empresaRuc ? `RUC: ${datos.empresaRuc}` : '',
+  ].filter(Boolean);
+  infoNegocio.forEach((linea, i) => doc.text(linea, M, y + i*5));
+
+  doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
+  doc.text('Cliente', W - M - 70, y);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+  const dCliente = await _cc_datosCliente(datos);
+  // La columna derecha mide ~70 mm: los textos largos (nombre, direccion) se parten en
+  // varias lineas en vez de salirse de la hoja; con un tope para no empujar todo hacia abajo.
+  const envolverCliente = (texto, maxLineas) => {
+    const lineas = doc.splitTextToSize(String(texto), 68);
+    if (lineas.length > maxLineas) { lineas.length = maxLineas; lineas[maxLineas - 1] = lineas[maxLineas - 1].replace(/.{0,2}$/, '') + '…'; }
+    return lineas;
+  };
+  const infoCliente = [
+    ...envolverCliente(datos.cliente_nombre || 'Consumidor final', 2),
+    ...(dCliente.telefono ? [`Tel: ${dCliente.telefono}`] : []),
+    ...(dCliente.direccion ? envolverCliente(dCliente.direccion, 3) : []),
+  ];
+  infoCliente.forEach((linea, i) => doc.text(linea, W - M - 70, y + 5 + i*5));
+
+  y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + 10;
+  doc.setDrawColor(230,230,235);
+  doc.line(M, y, W - M, y);
+  y += 8;
+
+  if (datos.metodo_pago) {
+    doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
+    doc.text(`Método de pago: ${datos.metodo_pago}`, M, y);
+    y += 10;
+  }
+
+  // Columnas SKU / Código de barras: opcionales, controladas desde
+  // Configuración general (mostrar_sku, mostrar_codigo_barras en
+  // configuracion_proforma) -- apagadas por defecto, no cambian nada
+  // para quien nunca las active. Se insertan justo despues de la
+  // descripcion, y el resto de columnas se calcula dinamicamente para
+  // no desalinear los estilos de alineacion (numeros a la derecha).
+  const colSku = cfg.mostrar_sku === true;
+  const colBarras = cfg.mostrar_codigo_barras === true;
+
+  const encabezado = ['Descripción'];
+  if (colSku) encabezado.push('SKU');
+  if (colBarras) encabezado.push('Código de barras');
+  encabezado.push('Cant.', 'Precio unit.', 'Descuento', 'Subtotal');
+
+  const filas = (items||[]).map(it => {
+    const fila = [it.nombre || 'Ítem'];
+    if (colSku) fila.push(it.sku || '—');
+    if (colBarras) fila.push(it.codigo_barras || '—');
+    fila.push(
+      Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidad ? ' ' + it.unidad : ''),
+      fmtM(it.precio),
+      Number(it.descuento) > 0 ? fmtM(it.descuento) : '—',
+      fmtM(it.subtotal),
+    );
+    return fila;
+  });
+
+  // Los ultimos 4 indices (Cant./Precio/Descuento/Subtotal) siempre
+  // van alineados a la derecha, sin importar cuantas columnas nuevas
+  // se hayan insertado antes.
+  const totalColumnas = encabezado.length;
+  const columnStyles = {};
+  for (let i = totalColumnas - 4; i < totalColumnas; i++) columnStyles[i] = { halign: 'right' };
+
+  const colorFondoTabla = _cc_hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255];
+  const [rT, gT, bT] = colorFondoTabla;
+  const luminosidadTabla = (rT * 299 + gT * 587 + bT * 114) / 1000;
+  const colorTextoTabla = luminosidadTabla > 150 ? [20, 20, 30] : [255, 255, 255];
+
+  doc.autoTable({
+    startY: y,
+    head: [encabezado],
+    body: filas,
+    theme: 'striped',
+    headStyles: { fillColor: colorFondoTabla, textColor: colorTextoTabla },
+    styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: 3.5, valign: 'top' },
+    columnStyles,
+    margin: { left: M, right: M },
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 10;
+  const anchoTotales = 75;
+  const xEtiqueta = W - M - anchoTotales, xValor = W - M;
+  const filaTotal = (label, val, big) => {
+    doc.setFontSize(big ? 13 : 10);
+    doc.setFont(undefined, big ? 'bold' : 'normal');
+    doc.setTextColor(big ? 20 : 90, big ? 20 : 90, big ? 30 : 110);
+    doc.text(label, xEtiqueta, finalY);
+    doc.text(val, xValor, finalY, { align: 'right' });
+    finalY += big ? 8 : 6.5;
+  };
+  filaTotal('Subtotal:', fmtM(datos.subtotal));
+  if (Number(datos.descuento) > 0) filaTotal('Descuento:', '-' + fmtM(datos.descuento));
+  if (Number(datos.impuesto) > 0) filaTotal(`Impuesto${datos.iva_porcentaje?` (${Number(datos.iva_porcentaje)}%)`:''}:`, fmtM(datos.impuesto));
+  doc.setDrawColor(230,230,235);
+  doc.line(xEtiqueta, finalY - 4, xValor, finalY - 4);
+  filaTotal('TOTAL:', fmtM(datos.total), true);
+
+  finalY += 6;
+  doc.setTextColor(20,20,30);
+
+  // Recuadro resaltado opcional (p. ej. "FECHA LÍMITE DE PAGO"). Si quien
+  // llama no manda datos.destacado, no se dibuja nada: todo queda igual.
+  if (datos.destacado && datos.destacado.valor) {
+    const alto = datos.destacado.nota ? 24 : 19;
+    if (finalY + alto > doc.internal.pageSize.getHeight() - 20) { doc.addPage(); finalY = 20; }
+    doc.setFillColor(Math.round(rC + (255 - rC) * 0.88), Math.round(gC + (255 - gC) * 0.88), Math.round(bC + (255 - bC) * 0.88));
+    doc.setDrawColor(rC, gC, bC); doc.setLineWidth(0.6);
+    doc.roundedRect(M, finalY, W - M*2, alto, 2.5, 2.5, 'FD');
+    doc.setLineWidth(0.2);
+    doc.setTextColor(rC, gC, bC); doc.setFontSize(9.5); doc.setFont(undefined, 'bold');
+    doc.text(String(datos.destacado.titulo || ''), W/2, finalY + 6.5, { align: 'center' });
+    doc.setTextColor(20,20,30); doc.setFontSize(15);
+    doc.text(String(datos.destacado.valor), W/2, finalY + 14, { align: 'center' });
+    if (datos.destacado.nota) {
+      doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(90,90,110);
+      doc.text(String(datos.destacado.nota), W/2, finalY + 20, { align: 'center' });
+    }
+    doc.setFont(undefined, 'normal'); doc.setTextColor(20,20,30);
+    finalY += alto + 8;
+  }
+
+  if (datos.observaciones) {
+    doc.setFontSize(10); doc.setFont(undefined, 'bold');
+    doc.text('Observaciones', M, finalY);
+    finalY += 6;
+    doc.setFontSize(9.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+    const altoHojaObs = doc.internal.pageSize.getHeight();
+    doc.splitTextToSize(datos.observaciones, W - M*2).forEach(ln => {
+      // Observaciones largas: continúan en otra página en vez de salirse de la hoja
+      if (finalY > altoHojaObs - 14) { doc.addPage(); finalY = 20; doc.setFontSize(9.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110); }
+      doc.text(ln, M, finalY); finalY += 5;
+    });
+    finalY += 4;
+  }
+
+  // Pie (condiciones fijas): al pie si cabe; si no, a continuación del
+  // contenido y en otra página si hace falta, para que nunca se encimen.
+  const alturaPagina = doc.internal.pageSize.getHeight();
+  let yPie = alturaPagina - 16;
+  if (cfg.mensaje_pie) {
+    doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+    const lineasPie = doc.splitTextToSize(cfg.mensaje_pie, W - M*2);
+    const inicioAlPie = yPie - (lineasPie.length - 1) * 4.5;
+    if (inicioAlPie - 4 >= finalY) {
+      yPie = inicioAlPie;
+      lineasPie.forEach(ln => { doc.text(ln, M, yPie); yPie += 4.5; });
+    } else {
+      yPie = finalY + 2;
+      // Las condiciones se mantienen juntas: si no caben enteras aquí pero
+      // sí en una hoja nueva, pasan completas a la siguiente página.
+      const altoBloque = lineasPie.length * 4.5 + 5;
+      if (yPie + altoBloque > alturaPagina - 6 && 20 + altoBloque <= alturaPagina - 6) {
+        doc.addPage(); yPie = 20; doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110);
+      }
+      lineasPie.forEach(ln => {
+        if (yPie > alturaPagina - 14) { doc.addPage(); yPie = 20; doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(90,90,110); }
+        doc.text(ln, M, yPie); yPie += 4.5;
+      });
+      if (yPie + 5 > alturaPagina - 6) { doc.addPage(); yPie = 15; }
+    }
+    yPie += 5;
+  }
+  doc.setFontSize(8.5); doc.setTextColor(150,150,170);
+  doc.text(`Comprobante generado por Negocio360 · ${moneda}`, M, yPie);
+
+  return doc;
+}

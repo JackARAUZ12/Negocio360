@@ -1,0 +1,2158 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
+  <script src="movil-recargar.js?v=20261021b" defer></script>
+  <title>Ventas — Negocio360</title>
+
+  <script src="ver-como.js?v=20261023b"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="modulos-registro.js?v=20261021b"></script>
+  <script src="auditoria-guard.js"></script>
+  <script src="tutorial-motor.js?v=20261013a"></script>
+  <!-- jsPDF: usado para generar el recibo PDF de cada venta -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =====================================================
+       CSS VARIABLES — idénticas a dashboard / caja
+    ===================================================== */
+    :root {
+      --bg-base:#f5f5f7;--bg-surface:#ffffff;--bg-surface-2:#fafafa;
+      --bg-sidebar:#ffffff;--bg-header:rgba(255,255,255,0.85);
+      --bg-hover:#f0f0f5;--bg-active:#eff0ff;
+      --text-primary:#0d0d14;--text-secondary:#60607a;
+      --text-muted:#9999b3;--text-accent:#5a5af4;
+      --border:#e8e8ef;--border-focus:#5a5af4;
+      --accent:#5a5af4;--accent-soft:#eff0ff;
+      --accent-2:#22c55e;--accent-2-soft:#f0fdf4;
+      --accent-3:#f97316;--accent-3-soft:#fff7ed;
+      --accent-4:#8b5cf6;--accent-4-soft:#f5f3ff;
+      --accent-5:#06b6d4;--accent-5-soft:#ecfeff;
+      --danger:#ef4444;--danger-soft:#fef2f2;
+      --warning:#f59e0b;--warning-soft:#fffbeb;
+      --success:#22c55e;--success-soft:#f0fdf4;
+      --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
+      --shadow-lg:0 12px 32px rgba(0,0,0,.1),0 4px 8px rgba(0,0,0,.05);
+      --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px;
+      --sidebar-w:240px;--header-h:64px;
+      --font-main:'Plus Jakarta Sans',sans-serif;
+      --font-mono:'JetBrains Mono',monospace;
+      --transition:0.2s cubic-bezier(0.4,0,0.2,1);
+    }
+    [data-theme="dark"] {
+      --bg-base:#0c0c14;--bg-surface:#13131f;--bg-surface-2:#1a1a2a;
+      --bg-sidebar:#13131f;--bg-header:rgba(19,19,31,.9);
+      --bg-hover:#1e1e30;--bg-active:#1e1e40;
+      --text-primary:#f0f0fa;--text-secondary:#9090b0;
+      --text-muted:#5a5a7a;--text-accent:#7b7bff;
+      --border:#1e1e30;--border-focus:#7b7bff;
+      --accent:#7b7bff;--accent-soft:#1e1e40;
+      --accent-2:#22c55e;--accent-2-soft:#0f2a1a;
+      --accent-3:#f97316;--accent-3-soft:#2a1a0a;
+      --accent-4:#a78bfa;--accent-4-soft:#1e1530;
+      --accent-5:#22d3ee;--accent-5-soft:#0a1e25;
+      --danger:#f87171;--danger-soft:#2a0f0f;
+      --warning:#fbbf24;--warning-soft:#2a200a;
+      --success:#4ade80;--success-soft:#0f2a1a;
+      --shadow-sm:0 1px 3px rgba(0,0,0,.3);
+      --shadow-md:0 4px 12px rgba(0,0,0,.4);
+      --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+    }
+
+    /* =====================================================
+       RESET
+    ===================================================== */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth;overflow-x:hidden;width:100%;max-width:100%}
+    body{font-family:var(--font-main);background:var(--bg-base);color:var(--text-primary);
+      font-size:14px;line-height:1.5;transition:background var(--transition),color var(--transition);
+      overflow-x:hidden;width:100%;max-width:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+    a{text-decoration:none;color:inherit}
+    button{cursor:pointer;border:none;background:none;font-family:inherit}
+    ul,ol{list-style:none}
+    img,svg{max-width:100%}
+    input,select,textarea{font-family:var(--font-main);font-size:13.5px;color:var(--text-primary);
+      background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+      padding:9px 12px;width:100%;max-width:100%;transition:border-color var(--transition),box-shadow var(--transition);outline:none}
+    /* Los radio buttons y checkboxes NUNCA deben heredar el ancho 100%
+       de arriba -- son controles pequeños de tamaño fijo, no campos de
+       texto. Sin esto, un radio dentro de un flex-label se estira a
+       todo el ancho disponible, empujando su propio punto visual lejos
+       de donde el navegador lo dibuja -- bug real confirmado en el
+       selector de ancho de ticket (58mm/76mm/80mm/carta/EPSON). */
+    input[type="radio"],input[type="checkbox"]{width:auto;max-width:none;padding:0;flex-shrink:0}
+    input:focus,select:focus,textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-soft)}
+    select{appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+    label{font-size:12.5px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:5px}
+    textarea{resize:vertical;min-height:72px}
+
+    /* =====================================================
+       LAYOUT
+    ===================================================== */
+    #app{display:flex;min-height:100vh;width:100%;max-width:100vw}
+
+    /* SIDEBAR */
+    #sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg-sidebar);
+      border-right:1px solid var(--border);display:flex;flex-direction:column;
+      position:fixed;top:0;left:0;z-index:100;
+      transition:width var(--transition),transform var(--transition),background var(--transition);overflow:hidden}
+    #sidebar.collapsed{width:64px}
+    .sidebar-logo{display:flex;align-items:center;gap:10px;padding:18px 20px;
+      border-bottom:1px solid var(--border);min-height:var(--header-h)}
+    .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .logo-icon svg{color:#fff}
+    .logo-text{font-size:16px;font-weight:800;color:var(--text-primary);white-space:nowrap;transition:opacity var(--transition)}
+    #sidebar.collapsed .logo-text,#sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,
+    #sidebar.collapsed .nav-badge{opacity:0;pointer-events:none;width:0;overflow:hidden}
+    .sidebar-nav{flex:1;padding:12px;overflow-y:auto;overflow-x:hidden}
+    .nav-section-title{font-size:10px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.1em;color:var(--text-muted);padding:12px 8px 6px;white-space:nowrap;transition:opacity var(--transition)}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;
+      border-radius:var(--radius-sm);color:var(--text-secondary);transition:all var(--transition);
+      cursor:pointer;white-space:nowrap;margin-bottom:2px}
+    .nav-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+    .nav-item svg{flex-shrink:0;width:18px;height:18px}
+    .nav-label{font-size:13.5px;font-weight:500;white-space:nowrap}
+
+    /* MAIN */
+    #main{flex:1;margin-left:var(--sidebar-w);transition:margin-left var(--transition);
+      min-height:100vh;display:flex;flex-direction:column;min-width:0;max-width:100%}
+    #main.sidebar-collapsed{margin-left:64px}
+
+    /* HEADER */
+    #header{height:var(--header-h);background:var(--bg-header);backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--border);display:flex;align-items:center;
+      padding:0 24px;gap:12px;position:sticky;top:0;z-index:50;min-width:0}
+    .header-toggle{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
+    .header-toggle:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .header-title{font-size:16px;font-weight:700;color:var(--text-primary)}
+    .header-spacer{flex:1;min-width:0}
+    .plan-badge{display:flex;align-items:center;gap:6px;padding:6px 14px;
+      background:var(--accent-soft);border:1px solid var(--border);
+      border-radius:100px;font-size:12px;font-weight:600;color:var(--accent);flex-shrink:0}
+    .theme-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;color:var(--text-secondary);transition:all var(--transition);flex-shrink:0}
+    .theme-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .user-menu{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;
+      border:1px solid var(--border);border-radius:100px;flex-shrink:0}
+    .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);
+      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+    .user-info{display:flex;flex-direction:column;min-width:0}
+    .user-name{font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.2;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+    .user-biz{font-size:11px;color:var(--text-muted);line-height:1.2;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+
+    /* PAGE CONTENT */
+    #content{flex:1;padding:28px 28px 60px;max-width:1440px;width:100%;min-width:0}
+
+    /* GREETING */
+    .greeting-row{display:flex;align-items:flex-start;justify-content:space-between;
+      margin-bottom:28px;flex-wrap:wrap;gap:12px}
+    .greeting-text{min-width:0}
+    .greeting-text h1{font-size:22px;font-weight:800;color:var(--text-primary);margin-bottom:3px}
+    .greeting-text p{font-size:13.5px;color:var(--text-secondary)}
+    .greeting-actions{display:flex;align-items:center;gap:10px}
+
+    /* KPI CARDS */
+    .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
+    .kpi-card{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-lg);padding:18px 20px;display:flex;align-items:flex-start;
+      gap:14px;box-shadow:var(--shadow-sm);transition:all var(--transition);min-width:0}
+    .kpi-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+    .kpi-icon{width:44px;height:44px;border-radius:var(--radius-sm);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .kpi-body{flex:1;min-width:0}
+    .kpi-label{font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .kpi-value{font-size:20px;font-weight:800;color:var(--text-primary);line-height:1.1;
+      margin-bottom:5px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+    .kpi-delta{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:3px}
+    /* Desglose debajo de las tarjetas de ventas (cobrado / a crédito / abonos / devoluciones):
+       una fila por concepto, ordenada y que se adapta al ancho de la tarjeta. */
+    .kpi-desglose { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; }
+    .kpi-desglose .kd-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 8px; row-gap: 0;
+      padding: 4px 8px; border-radius: 8px; background: var(--bg-app, rgba(127,127,127,.08)); font-size: 11.5px; line-height: 1.35; min-width: 0; }
+    .kpi-desglose .kd-row span { color: var(--text-secondary); font-weight: 600; min-width: 0; }
+    .kpi-desglose .kd-row b { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* Tarjeta angosta: concepto arriba y monto abajo (ordenado). Tarjeta ancha: en una sola línea. */
+    .kpi-desglose { container-type: inline-size; }
+    .kpi-desglose .kd-row { flex-direction: column; align-items: flex-start; }
+    /* En teléfono, la tarjeta que trae desglose ocupa todo el ancho para que se lea completo */
+    @media (max-width: 520px) { .kpi-card:has(.kpi-desglose) { grid-column: 1 / -1; } }
+    @container (min-width: 210px) {
+      .kpi-desglose .kd-row { flex-direction: row; align-items: baseline; flex-wrap: nowrap; }
+      .kpi-desglose .kd-row b { margin-left: auto; }
+    }
+    .kpi-desglose .kd-ok b { color: var(--success); }
+    .kpi-desglose .kd-cred b { color: var(--warning); }
+    .kpi-desglose .kd-abono b { color: var(--accent); }
+    .kpi-desglose .kd-dev b { color: var(--danger); }
+    .kpi-delta.positive{color:var(--success)}
+    .kpi-delta.negative{color:var(--danger)}
+    .kpi-delta.neutral{color:var(--text-muted)}
+    .currency-symbol{font-size:.75em;font-weight:600;opacity:.8;vertical-align:super}
+
+    /* PANEL CARD */
+    .panel-card{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:24px;max-width:100%}
+    .panel-header{display:flex;align-items:center;justify-content:space-between;
+      padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+    .panel-title{font-size:15px;font-weight:700;color:var(--text-primary);
+      display:flex;align-items:center;gap:8px}
+    .panel-title svg{width:16px;height:16px;color:var(--accent)}
+    .panel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+    /* BUTTONS */
+    .btn-primary{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
+      background:var(--accent);color:#fff;border-radius:var(--radius-sm);
+      font-size:13.5px;font-weight:600;transition:opacity var(--transition),transform var(--transition)}
+    .btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+    .btn-primary svg{width:15px;height:15px}
+    .btn-secondary{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+      background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-secondary);
+      border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:all var(--transition)}
+    .btn-secondary:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+    .btn-ghost{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;
+      color:var(--text-secondary);border-radius:var(--radius-sm);font-size:12.5px;font-weight:600;
+      transition:all var(--transition)}
+    .btn-ghost:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .btn-danger-outline{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+      background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);
+      border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:all var(--transition)}
+    .btn-danger-outline:hover{background:var(--danger);color:#fff}
+
+    /* FILTROS */
+    .filtros-row{display:flex;align-items:center;gap:8px;padding:14px 20px;
+      border-bottom:1px solid var(--border);flex-wrap:wrap}
+    .filter-btn{padding:6px 12px;border:1px solid var(--border);border-radius:6px;
+      font-size:12.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-surface-2);
+      transition:all var(--transition);cursor:pointer;flex-shrink:0}
+    .filter-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .search-wrap{display:flex;align-items:center;gap:0;border:1px solid var(--border);
+      border-radius:var(--radius-sm);background:var(--bg-surface);overflow:hidden;
+      transition:border-color var(--transition);flex:1;max-width:280px;min-width:160px}
+    .search-wrap:focus-within{border-color:var(--border-focus)}
+    .search-wrap svg{flex-shrink:0;margin-left:10px;color:var(--text-muted);width:14px;height:14px}
+    .search-wrap input{border:none;box-shadow:none;padding:8px 10px;background:transparent}
+    .search-wrap input:focus{box-shadow:none;border-color:transparent}
+
+    /* CUSTOM DATE RANGE */
+    #custom-dates{display:none;align-items:center;gap:6px;flex-wrap:wrap}
+    #custom-dates input{width:auto;padding:6px 8px;font-size:12.5px}
+
+    /* TABLA */
+    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:100%;position:relative}
+    .table-hint{display:none;text-align:center;font-size:11px;color:var(--text-muted);
+      padding:7px 0 3px;border-bottom:1px solid var(--border);background:var(--bg-surface-2)}
+    table{width:100%;border-collapse:collapse}
+    thead th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border);
+      text-align:left;white-space:nowrap;background:var(--bg-surface-2)}
+    tbody td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);
+      vertical-align:middle;color:var(--text-primary)}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover{background:var(--bg-hover)}
+    tbody tr.venta-anulada{opacity:.45}
+
+    .td-num{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)}
+    .td-fecha{white-space:nowrap;color:var(--text-secondary);font-size:12.5px}
+    .td-cliente{font-weight:500}
+    .td-cliente-sub{font-size:11.5px;color:var(--text-muted)}
+    .td-metodo{color:var(--text-secondary);font-size:12.5px;white-space:nowrap}
+    .td-productos{font-size:12.5px;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .td-proveedor{font-size:12.5px;color:var(--text-secondary);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .td-total{font-family:var(--font-mono);font-size:13.5px;font-weight:700;color:var(--text-primary);white-space:nowrap}
+    .td-ganancia{font-family:var(--font-mono);font-size:12.5px;font-weight:600;color:var(--success);white-space:nowrap}
+    .td-actions{white-space:nowrap}
+
+    /* ESTADO BADGE */
+    .estado-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+      border-radius:5px;font-size:11px;font-weight:700}
+    .estado-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+    .estado-completada{background:var(--success-soft);color:var(--success)}
+    .estado-anulada{background:var(--bg-hover);color:var(--text-muted)}
+    .estado-devuelta{background:var(--warning-soft);color:var(--warning)}
+    .estado-aldia{background:var(--success-soft);color:var(--success)}
+    .estado-atrasado{background:var(--danger-soft);color:var(--danger)}
+    .estado-parcial{background:var(--warning-soft);color:var(--warning)}
+
+    /* ICON BTNS */
+    .btn-icon-sm{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+      border-radius:6px;color:var(--text-muted);transition:all var(--transition);cursor:pointer}
+    .btn-icon-sm:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .btn-icon-sm.del:hover{background:var(--danger-soft);color:var(--danger)}
+
+    /* PAGINACIÓN */
+    .paginacion-row{display:flex;align-items:center;justify-content:space-between;
+      padding:12px 20px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px}
+    .pag-btns{display:flex;gap:6px}
+    .pag-btns button{padding:6px 12px;border:1px solid var(--border);border-radius:6px;
+      font-size:12.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-surface);
+      cursor:pointer;transition:all var(--transition)}
+    .pag-btns button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+    .pag-btns button:disabled{opacity:.4;cursor:not-allowed}
+
+    /* EMPTY STATE */
+    .empty-cell{text-align:center;padding:40px;color:var(--text-muted);font-size:13px}
+    .empty-icon{font-size:36px;opacity:.35;margin-bottom:8px}
+
+    /* =====================================================
+       MODAL BASE
+    ===================================================== */
+    .modal-overlay{display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,.45);backdrop-filter:blur(4px);
+      z-index:500;align-items:flex-start;justify-content:center;
+      padding:20px;overflow-y:auto}
+    .modal-overlay.modal-open{display:flex}
+    .modal-box{background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);
+      width:100%;max-width:860px;margin:auto;overflow-x:hidden;
+      animation:modalIn .22s cubic-bezier(.34,1.56,.64,1) forwards}
+    .modal-box.modal-sm{max-width:440px}
+    .modal-box.modal-md{max-width:580px}
+    @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;
+      padding:20px 24px 16px;border-bottom:1px solid var(--border);gap:10px}
+    .modal-title{font-size:17px;font-weight:700;color:var(--text-primary);min-width:0}
+    .modal-subtitle{font-size:12.5px;color:var(--text-muted);margin-top:2px}
+    .modal-close{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+      border-radius:7px;color:var(--text-muted);transition:all var(--transition);cursor:pointer;flex-shrink:0}
+    .modal-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .modal-body{padding:20px 24px}
+    .modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;
+      padding:14px 24px 20px;border-top:1px solid var(--border);flex-wrap:wrap}
+
+    /* =====================================================
+       MODAL NUEVA VENTA — PASOS
+    ===================================================== */
+    .steps-nav{display:flex;gap:0;margin-bottom:24px;border:1px solid var(--border);
+      border-radius:var(--radius-md);overflow:hidden}
+    .step-btn{flex:1;padding:10px 4px;font-size:12px;font-weight:600;
+      color:var(--text-muted);background:var(--bg-surface-2);
+      border-right:1px solid var(--border);cursor:default;
+      transition:all var(--transition);text-align:center;line-height:1.3}
+    .step-btn:last-child{border-right:none}
+    .step-btn.done{color:var(--success);background:var(--success-soft)}
+    .step-btn.active{color:var(--accent);background:var(--accent-soft);font-weight:700}
+
+    /* PASO CLIENTE */
+    .cliente-opciones{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+    .cliente-opcion{padding:14px;border:1.5px solid var(--border);border-radius:var(--radius-md);
+      cursor:pointer;text-align:center;transition:all var(--transition)}
+    .cliente-opcion:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .cliente-opcion.selected{border-color:var(--accent);background:var(--accent-soft)}
+    .co-icon{font-size:24px;margin-bottom:6px}
+    .co-label{font-size:13px;font-weight:700;color:var(--text-primary)}
+    .co-desc{font-size:11.5px;color:var(--text-muted)}
+
+    /* BUSCADOR DE PRODUCTOS */
+    .prod-search-wrap{position:relative;margin-bottom:12px}
+    .prod-search-results{position:absolute;top:calc(100% + 4px);left:0;right:0;
+      background:var(--bg-surface);border:1px solid var(--border);
+      border-radius:var(--radius-md);box-shadow:var(--shadow-lg);
+      max-height:260px;overflow-y:auto;z-index:50;display:none}
+    .prod-search-results.open{display:block}
+    .prod-result-item{display:flex;align-items:center;gap:12px;padding:10px 14px;
+      cursor:pointer;transition:background var(--transition);border-bottom:1px solid var(--border)}
+    .prod-result-item:last-child{border-bottom:none}
+    .prod-result-item:hover{background:var(--bg-hover)}
+    .pri-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+    .pri-sku{font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
+    .pri-precio{font-size:13px;font-weight:700;color:var(--accent);white-space:nowrap}
+    .pri-stock{font-size:11.5px;padding:2px 7px;border-radius:4px;font-weight:600;white-space:nowrap}
+    .stock-ok{background:var(--success-soft);color:var(--success)}
+    .stock-low{background:var(--warning-soft);color:var(--warning)}
+    .stock-out{background:var(--danger-soft);color:var(--danger)}
+
+    /* CARRITO */
+    .carrito-tabla{width:100%;border-collapse:collapse;font-size:13px}
+    .carrito-tabla th{padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:left}
+    .carrito-tabla td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+    .carrito-tabla tr:last-child td{border-bottom:none}
+    .cart-qty-input{width:70px;padding:5px 8px;font-size:13px;text-align:center}
+    .cart-desc-input{width:90px;padding:5px 8px;font-size:13px;text-align:center}
+    .cart-remove{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+      border-radius:5px;color:var(--danger);transition:all var(--transition);cursor:pointer}
+    .cart-remove:hover{background:var(--danger-soft)}
+    .tipo-item-badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:4px}
+    .badge-prod{background:var(--accent-5-soft);color:var(--accent-5)}
+    .badge-serv{background:var(--accent-4-soft);color:var(--accent-4)}
+
+    /* RESUMEN VENTA */
+    .resumen-row{display:flex;justify-content:space-between;align-items:center;
+      padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+    .resumen-row:last-child{border-bottom:none}
+    .resumen-row.total-row{border-top:2px solid var(--border);padding-top:14px;margin-top:4px}
+    .resumen-row .label{color:var(--text-secondary)}
+    .resumen-row .value{font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums}
+    .resumen-row.total-row .value{font-size:18px;color:var(--accent)}
+    .resumen-row .ganancia-val{color:var(--success)}
+
+    /* IVA TOGGLE BLOCK */
+    .iva-block{display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:12px 14px;background:var(--bg-surface-2);border:1px solid var(--border);
+      border-radius:var(--radius-md);margin-bottom:14px;flex-wrap:wrap}
+    .iva-left{display:flex;align-items:center;gap:10px}
+    .iva-label{font-size:13px;font-weight:700;color:var(--text-primary)}
+    .iva-sub{font-size:11.5px;color:var(--text-muted)}
+    .iva-switch{position:relative;width:42px;height:24px;border-radius:100px;background:var(--border);
+      transition:background var(--transition);flex-shrink:0;cursor:pointer}
+    .iva-switch.on{background:var(--accent)}
+    .iva-switch::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;
+      border-radius:50%;background:#fff;transition:transform var(--transition);box-shadow:var(--shadow-sm)}
+    .iva-switch.on::after{transform:translateX(18px)}
+    .iva-right{display:flex;align-items:center;gap:6px}
+    .iva-right input{width:70px;padding:6px 8px;text-align:center;font-weight:700}
+    .iva-right span{font-size:12.5px;color:var(--text-secondary);font-weight:600}
+
+    /* METODOS DE PAGO CARDS */
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+    .metodo-card{padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);
+      cursor:pointer;transition:all var(--transition);display:flex;align-items:center;gap:10px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card.selected{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:20px}
+    .metodo-card .mc-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+
+    /* FORM GRID */
+    .form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .form-group{margin-bottom:14px}
+    .form-group:last-child{margin-bottom:0}
+    .full-col{grid-column:1/-1}
+
+    /* TOAST */
+    .toast{position:fixed;bottom:24px;right:24px;left:24px;margin:0 auto;padding:12px 20px;
+      border-radius:var(--radius-md);font-size:13.5px;font-weight:600;
+      box-shadow:var(--shadow-lg);z-index:1000;max-width:360px;
+      opacity:0;transform:translateY(12px);transition:all .3s cubic-bezier(.34,1.56,.64,1);
+      pointer-events:none;display:flex;align-items:center;gap:10px}
+    .toast.show{opacity:1;transform:translateY(0)}
+    .toast-success{background:var(--success);color:#fff}
+    .toast-error{background:var(--danger);color:#fff}
+    .toast-info{background:var(--accent);color:#fff}
+    .toast-warning{background:var(--warning);color:#fff}
+
+    /* LOADER */
+    #loader{position:fixed;inset:0;background:var(--bg-base);z-index:1000;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;
+      gap:16px;transition:opacity .4s}
+    #loader.hidden{opacity:0;pointer-events:none}
+    .loader-logo{width:48px;height:48px;background:var(--accent);border-radius:12px;
+      display:flex;align-items:center;justify-content:center}
+    .loader-spinner{width:24px;height:24px;border:3px solid var(--border);
+      border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+
+    /* TOOLTIP */
+    [data-tooltip]{position:relative}
+    [data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:50%;
+      bottom:calc(100% + 6px);transform:translateX(-50%);background:var(--text-primary);
+      color:var(--bg-surface);font-size:11px;padding:4px 8px;border-radius:5px;
+      white-space:nowrap;pointer-events:none;opacity:0;transition:opacity var(--transition);z-index:200}
+    [data-tooltip]:hover::after{opacity:1}
+
+    /* ANIMATE */
+    .fade-in{animation:fadeIn .4s ease forwards}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .stagger-1{animation-delay:.05s}.stagger-2{animation-delay:.1s}
+    .stagger-3{animation-delay:.15s}.stagger-4{animation-delay:.2s}.stagger-5{animation-delay:.25s}
+
+    /* =====================================================
+       OVERLAY MÓVIL PARA SIDEBAR
+    ===================================================== */
+    #mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+      z-index:99;opacity:0;transition:opacity var(--transition)}
+    #mobile-overlay.show{display:block;opacity:1}
+
+    /* =====================================================
+       RESPONSIVE — cualquier dispositivo, tamaño u orientación
+    ===================================================== */
+    @media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+
+    @media(max-width:768px){
+      #sidebar{transform:translateX(-100%);box-shadow:var(--shadow-lg)}
+      #sidebar.mobile-open{transform:translateX(0)}
+      #main{margin-left:0!important}
+      .kpi-grid{grid-template-columns:repeat(2,1fr)}
+      #content{padding:16px 16px 40px}
+      .form-grid-2{grid-template-columns:1fr}
+      .cliente-opciones{grid-template-columns:1fr}
+      .steps-nav{flex-wrap:wrap}
+      .step-btn{flex:none;min-width:calc(33.33% - 1px)}
+      .detalle-grid{grid-template-columns:1fr}
+
+      /* Header compacto: solo lo esencial cabe en cualquier teléfono */
+      .header-title{display:none}
+      .user-info{display:none}
+      .plan-badge span:last-child{display:none}
+
+      .greeting-row{flex-direction:column;align-items:stretch}
+      .greeting-actions{width:100%}
+      .greeting-actions .btn-primary{width:100%;justify-content:center}
+
+      .panel-header{flex-direction:column;align-items:stretch}
+      .panel-actions{width:100%}
+      .panel-actions .btn-primary,
+      .panel-actions .btn-secondary{flex:1;justify-content:center}
+
+      .search-wrap{max-width:100%;width:100%;margin-left:0!important;flex-basis:100%;order:5}
+
+      .table-hint{display:block}
+
+      .modal-overlay{padding:12px}
+
+      .iva-block{flex-direction:column;align-items:stretch}
+      .iva-right{justify-content:flex-end}
+    }
+
+    @media(max-width:480px){
+      .kpi-grid{grid-template-columns:1fr 1fr}
+      #header{padding:0 14px;gap:8px}
+      .modal-overlay{padding:8px}
+      .modal-box{border-radius:var(--radius-lg)}
+      .modal-body{padding:16px}
+      .modal-header{padding:16px 16px 12px}
+      .modal-footer{padding:12px 16px 16px}
+      .toast{left:16px;right:16px;bottom:16px;max-width:none}
+      .step-btn{font-size:11px;padding:8px 3px}
+    }
+
+    @media(max-width:360px){
+      .kpi-grid{grid-template-columns:1fr 1fr;gap:8px}
+      .kpi-card{padding:12px;gap:10px}
+      .kpi-value{font-size:16px}
+    }
+
+    /* Pantallas muy grandes */
+    @media(min-width:1800px){#content{max-width:1600px;margin:0 auto}}
+
+    /* DETALLE MODAL */
+    .detalle-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .detalle-item{display:flex;flex-direction:column;gap:3px;min-width:0}
+    .detalle-item.full{grid-column:1/-1}
+    .detalle-label{font-size:11px;font-weight:700;color:var(--text-muted);
+      text-transform:uppercase;letter-spacing:.06em}
+    .detalle-value{font-size:14px;color:var(--text-primary);font-weight:500;word-break:break-word}
+    .detalle-divider{grid-column:1/-1;height:1px;background:var(--border);margin:4px 0}
+
+    /* MINI TABLE EN DETALLE */
+    .detalle-items-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+    .detalle-items-table th{padding:7px 10px;background:var(--bg-surface-2);
+      font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+      color:var(--text-muted);border-bottom:1px solid var(--border)}
+    .detalle-items-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text-primary)}
+    .detalle-items-table tr:last-child td{border-bottom:none}
+
+    /* LOADING INLINE */
+    .loading-row td{text-align:center;padding:32px;color:var(--text-muted)}
+
+    /* CONFIRM MODAL */
+    .confirm-icon{width:52px;height:52px;border-radius:50%;background:var(--danger-soft);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+
+    /* SELECTOR DE ESCALA DE PRECIOS */
+    .esc-precio-opcion{display:flex;align-items:center;gap:10px;padding:12px 14px;
+      border:1.5px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;
+      cursor:pointer;transition:border-color .15s ease,background .15s ease}
+    .esc-precio-opcion:hover{border-color:var(--accent)}
+    .esc-precio-opcion input[type="radio"]{accent-color:var(--accent);width:16px;height:16px}
+    .esc-precio-opcion:has(input:checked){border-color:var(--accent);background:var(--accent-soft, rgba(90,90,244,.06))}
+    .esc-precio-nombre{flex:1;font-size:13.5px;font-weight:600}
+    .esc-precio-valor{font-family:var(--font-mono);font-weight:700;color:var(--accent)}
+
+    /* PILLS DE TABS */
+    .section-tabs{display:flex;gap:4px;background:var(--bg-surface);
+      border:1px solid var(--border);border-radius:var(--radius-md);
+      padding:4px;width:fit-content;margin-bottom:24px;flex-wrap:wrap}
+    .section-tab{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;
+      color:var(--text-secondary);cursor:pointer;transition:all var(--transition)}
+    .section-tab:hover{color:var(--text-primary);background:var(--bg-hover)}
+    .section-tab.active{background:var(--accent);color:#fff}
+    .n360-switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+    .n360-switch input{opacity:0;width:0;height:0}
+    .n360-switch-slider{position:absolute;cursor:pointer;inset:0;background:var(--border);transition:.15s;border-radius:20px}
+    .n360-switch-slider::before{content:"";position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;transition:.15s;border-radius:50%}
+    .n360-switch input:checked + .n360-switch-slider{background:var(--accent)}
+    .n360-switch input:checked + .n360-switch-slider::before{transform:translateX(16px)}
+  .sc-alcance-opcion {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border: 1.5px solid var(--border, #e5e7eb); border-radius: 10px; cursor: pointer;
+    font-size: 12.5px; transition: border-color .15s, background .15s;
+  }
+  .sc-alcance-opcion:hover { border-color: var(--accent, #6C63FF); }
+  .sc-alcance-opcion input[type="radio"] { flex-shrink: 0; }
+  </style>
+  <link rel="stylesheet" href="perfiles-guard.css" />
+<style>
+  .cj-btn { width:100%; padding:11px 14px; border-radius:10px; font-weight:700; font-size:14px; border:1.5px dashed var(--accent,#6C63FF); color:var(--accent,#6C63FF); background:transparent; cursor:pointer; }
+  .cj-aplicado { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 12px; border-radius:10px; background:#DCFCE7; color:#166534; border:1px solid #86EFAC; font-size:13px; line-height:1.4; }
+  .cj-quitar { border:none; background:rgba(0,0,0,.08); color:inherit; padding:5px 12px; border-radius:20px; font-weight:700; font-size:12px; cursor:pointer; }
+  .cj-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border:1px solid var(--border,#e5e7eb); border-radius:12px; margin-bottom:8px; background:var(--bg-surface,#fff); }
+  .cj-item.cj-off { opacity:.55; }
+  .cj-nombre { font-weight:800; font-size:14px; }
+  .cj-desc { font-size:12.5px; color:var(--text-secondary); margin-top:2px; }
+  .cj-costo { font-size:12.5px; font-weight:800; color:var(--accent,#6C63FF); margin-top:3px; }
+  .cj-faltan { font-size:11.5px; color:var(--text-muted); margin-top:3px; }
+  .cj-btn-ok { border:none; background:var(--accent,#6C63FF); color:#fff; padding:9px 16px; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; }
+  @media (max-width:480px) { .cj-item { flex-direction:column; align-items:stretch; } .cj-btn-ok { width:100%; } }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+    </svg>
+  </div>
+  <div class="loader-spinner"></div>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Ventas…</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- OVERLAY MÓVIL -->
+<div id="mobile-overlay" onclick="toggleSidebar()"></div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <span class="logo-text" id="sidebar-logo-text">Negocio360</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">PRINCIPAL</div>
+      <div class="nav-item" onclick="navigate('dashboard.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </div>
+      <div class="nav-item active" onclick="navigate('ventas.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Ventas</span>
+      </div>
+      <div class="nav-item" onclick="navigate('clientes.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Clientes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('productos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span class="nav-label">Productos / Servicios</span>
+      </div>
+      <div class="nav-item" onclick="navigate('compras.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-label">Compras</span>
+      </div>
+      <div class="nav-item" onclick="navigate('gastos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="nav-label">Gastos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('caja.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span class="nav-label">Caja / Pagos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('cuentas-por-pagar.html')" data-tooltip="Cuentas por Pagar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+        <span class="nav-label">Cuentas por Pagar</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('salarios.html')" data-tooltip="Salarios">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+        <span class="nav-label">Salarios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">Auditoría</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('codigos-barras.html')" data-tooltip="Códigos de Barras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
+        <span class="nav-label">Códigos de Barras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('sucursales.html')" data-tooltip="Sucursales">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="9" y1="15" x2="9" y2="15.01"/></svg>
+        <span class="nav-label">Sucursales</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="nav-label">Contabilidad</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
+        <span class="nav-label">Rutas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('delivery.html')" data-tooltip="Delivery">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M2 17.5h1.5l1.5-8h9l3.5 4h4.5v4H21"/><path d="M5 9.5h5"/></svg>
+        <span class="nav-label">Delivery</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('activos.html')" data-tooltip="Activos Fijos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="2" y1="13" x2="22" y2="13"/></svg>
+        <span class="nav-label">Activos Fijos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('agenda.html')" data-tooltip="Agenda">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="nav-label">Agenda</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('produccion.html')" data-tooltip="Producción">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
+        <span class="nav-label">Producción</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('servicio.html')" data-tooltip="Servicio Postventa">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span class="nav-label">Servicio Postventa</span>
+      </div>
+      <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+        <span class="nav-label">Créditos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('impuestos.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
+      </div>
+      <div class="nav-item" onclick="navigate('reportes.html')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-label">Reportes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('estadisticas.html')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="nav-label">Estadísticas</span>
+      </div>
+      <div class="nav-item" onclick="navigate('notificaciones.html')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="nav-label">Notificaciones</span>
+      </div>
+      <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
+      <div class="nav-item" onclick="abrirNuevaVenta()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Nueva venta</span>
+      </div>
+      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')"
+        style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nav-label">⚙️ Panel Admin</span>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- HEADER -->
+    <header id="header">
+      <button class="header-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="header-title">Ventas</span>
+      <div class="header-spacer"></div>
+      <label id="stock-compartido-wrap" style="display:none;align-items:center;gap:7px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-right:6px" title="Al vender, elige de cuál sucursal o bodega de tu grupo se descuenta el stock">
+        <span>📦 Stock Compartido</span>
+        <span class="n360-switch">
+          <input type="checkbox" id="chk-stock-compartido" onchange="toggleStockCompartido(this.checked)" />
+          <span class="n360-switch-slider"></span>
+        </span>
+      </label>
+      <button type="button" id="sc-btn-editar" onclick="abrirModalStockCompartido()" title="Cambiar de dónde se descuenta el stock (agregar o quitar sucursales/bodegas)" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;margin:0 8px 0 -2px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px">⚙️</button>
+      <label id="vender-sin-stock-wrap" style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-right:6px" title="Permite facturar productos aunque no tengan existencias disponibles en este momento">
+        <span>🧾 Vender sin stock</span>
+        <span class="n360-switch">
+          <input type="checkbox" id="chk-vender-sin-stock" onchange="toggleVenderSinStock(this.checked)" />
+          <span class="n360-switch-slider"></span>
+        </span>
+      </label>
+      <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
+      <div class="plan-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span id="plan-text">Plan</span>
+      </div>
+      <button class="theme-btn" onclick="abrirModalMonedaVis()" data-tooltip="Cambiar moneda de visualización" style="font-size:11px;font-weight:700;width:auto;padding:0 8px">
+        <span id="btn-moneda-vis-texto">NIO</span>
+      </button>
+      <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
+        <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="user-menu">
+        <div class="user-avatar" id="header-avatar">--</div>
+        <div class="user-info">
+          <span class="user-name" id="header-name">Cargando…</span>
+          <span class="user-biz"  id="header-biz">—</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div id="content">
+
+      <!-- GREETING -->
+      <div class="greeting-row fade-in">
+        <div class="greeting-text">
+          <h1>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span id="greeting-text">Ventas</span>
+          </h1>
+          <p>Centro operativo de ventas. Registra, controla y analiza cada transacción.</p>
+        </div>
+        <div class="greeting-actions">
+          <!-- Solo la ve el administrador (la muestra ventas-config.js) -->
+          <button class="btn-secondary" id="btn-config-ventas" style="display:none" onclick="N360VentasConfig.abrir()" title="Configuración del módulo de Ventas">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Configuración del módulo
+          </button>
+          <button class="btn-secondary" id="btn-venta-rapida" onclick="abrirVentaRapida()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/>
+              <path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/>
+              <line x1="7" y1="12" x2="17" y2="12"/>
+            </svg>
+            Venta rápida
+          </button>
+          <button class="btn-primary" onclick="abrirNuevaVenta()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva Venta
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid">
+        <div class="kpi-card fade-in stagger-1">
+          <div class="kpi-icon" style="background:var(--accent-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ventas del día</div>
+            <div class="kpi-value" id="kpi-dia"><span class="currency-symbol" id="sym-dia">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-dia-d">Sin ventas hoy</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-2">
+          <div class="kpi-icon" style="background:var(--accent-2-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ventas del mes</div>
+            <div class="kpi-value" id="kpi-mes"><span class="currency-symbol" id="sym-mes">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-mes-d">Sin ventas este mes</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-3">
+          <div class="kpi-icon" style="background:var(--accent-3-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Cantidad de ventas</div>
+            <div class="kpi-value" id="kpi-count">0</div>
+            <div class="kpi-delta neutral" id="kpi-count-d">este mes</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-4">
+          <div class="kpi-icon" style="background:var(--accent-4-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ticket promedio</div>
+            <div class="kpi-value" id="kpi-ticket"><span class="currency-symbol" id="sym-ticket">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-ticket-d">promedio por venta</div>
+          </div>
+        </div>
+        <div class="kpi-card fade-in stagger-5">
+          <div class="kpi-icon" style="background:var(--success-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ganancia estimada</div>
+            <div class="kpi-value" id="kpi-ganancia"><span class="currency-symbol" id="sym-gan">C$</span>0</div>
+            <div class="kpi-delta neutral" id="kpi-ganancia-d">este mes</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLIENTES CON PAGO RECURRENTE -->
+      <div class="panel-card fade-in" id="panel-recurrentes">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Clientes con pago recurrente
+          </div>
+          <div class="panel-actions">
+            <span style="font-size:12.5px;color:var(--text-muted)" id="recurrentes-count-label">0 clientes</span>
+            <button class="btn-secondary" onclick="loadClientesRecurrentes()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Frecuencia</th>
+                <th>Último pago</th>
+                <th>Próxima fecha a pagar</th>
+                <th>Debe pagar</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="recurrentes-tbody">
+              <tr class="loading-row"><td colspan="7">Cargando clientes recurrentes…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-hint">← Desliza la tabla para ver más columnas →</div>
+      </div>
+
+      <!-- HISTORIAL DE VENTAS -->
+      <div class="panel-card fade-in">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Historial de ventas
+          </div>
+          <div class="panel-actions">
+            <span style="font-size:12.5px;color:var(--text-muted)" id="ventas-count-label">0 ventas</span>
+            <button class="btn-secondary" id="btn-revisar-caja" style="display:none" onclick="abrirRevisionCaja()" title="Ventas pagadas que no quedaron anotadas en Caja">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              Revisar Caja
+            </button>
+            <button class="btn-secondary" onclick="loadVentas()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Actualizar
+            </button>
+            <button class="btn-primary" onclick="abrirNuevaVenta()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nueva Venta
+            </button>
+          </div>
+        </div>
+
+        <!-- FILTROS -->
+        <div class="filtros-row">
+          <button class="filter-btn" data-f="hoy"    onclick="setFiltro('hoy')">Hoy</button>
+          <button class="filter-btn" data-f="semana" onclick="setFiltro('semana')">Semana</button>
+          <button class="filter-btn active" data-f="mes" onclick="setFiltro('mes')">Mes</button>
+          <button class="filter-btn" data-f="año"    onclick="setFiltro('año')">Año</button>
+          <button class="filter-btn" data-f="custom" onclick="setFiltro('custom')">Personalizado</button>
+          <div id="custom-dates">
+            <input type="date" id="date-from" onchange="S.dateFrom=this.value;loadVentas()" style="width:140px"/>
+            <span style="color:var(--text-muted);font-size:12px">—</span>
+            <input type="date" id="date-to"   onchange="S.dateTo=this.value;loadVentas()"   style="width:140px"/>
+          </div>
+          <div class="search-wrap" style="margin-left:auto">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="ventas-search" placeholder="Buscar cliente, número…" oninput="buscarVentas()"/>
+          </div>
+        </div>
+        <!-- Forma de pago: solo filtra lo que se lista -->
+        <div class="filtros-row" style="padding-top:0">
+          <span style="font-size:12px;color:var(--text-muted)">Forma de pago:</span>
+          <button class="filter-btn filter-pago-btn active" data-fp="todas"     onclick="setFiltroPago('todas')">Todas</button>
+          <button class="filter-btn filter-pago-btn" data-fp="contado"   onclick="setFiltroPago('contado')" title="Ventas cobradas al momento: el dinero entró a Caja">💵 Contado</button>
+          <button class="filter-btn filter-pago-btn" data-fp="credito"   onclick="setFiltroPago('credito')" title="Ventas a crédito: el dinero entra cuando el cliente abona">🧾 A crédito</button>
+          <button class="filter-btn filter-pago-btn" data-fp="pendiente" onclick="setFiltroPago('pendiente')" title="Ventas a crédito o fiado que todavía deben algo">⏳ Con saldo pendiente</button>
+        </div>
+
+        <!-- TABLA -->
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th># Venta</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Método</th>
+                <th>Productos</th>
+                <th>Proveedor</th>
+                <th>Total</th>
+                <th>Ganancia</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ventas-tbody">
+              <tr class="loading-row"><td colspan="10">Cargando ventas…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-hint">← Desliza la tabla para ver más columnas →</div>
+
+        <!-- PAGINACIÓN -->
+        <div class="paginacion-row">
+          <span id="pag-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
+          <div class="pag-btns">
+            <button id="btn-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
+            <button id="btn-next" onclick="paginaSiguiente()">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- =====================================================
+     MODAL: NUEVA VENTA (wizard multi-paso)
+===================================================== -->
+<div class="modal-overlay" id="modal-venta" onclick="if(event.target===this)cerrarModalVenta()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="mv-title">Nueva Venta</div>
+        <div class="modal-subtitle" id="mv-num">Generando número…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="modal-close" title="Configurar ticket de impresión" onclick="abrirConfigTicketNuevaVenta()" style="position:static">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="modal-close" onclick="cerrarModalVenta()" style="position:static">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body">
+
+      <!-- STEPS NAV -->
+      <div class="steps-nav" id="steps-nav">
+        <div class="step-btn active" data-step="1">1. Cliente</div>
+        <div class="step-btn" data-step="2">2. Productos</div>
+        <div class="step-btn" data-step="3">3. Servicios</div>
+        <div class="step-btn" data-step="4">4. Resumen</div>
+        <div class="step-btn" data-step="5">5. Pago</div>
+        <div class="step-btn" data-step="6">6. Observaciones</div>
+      </div>
+
+      <!-- PASO 1: CLIENTE -->
+      <div id="step-1" class="step-panel">
+        <div class="cliente-opciones">
+          <div class="cliente-opcion" id="co-existente" onclick="selectClienteOpcion('existente')">
+            <div class="co-icon">👤</div>
+            <div class="co-label">Cliente existente</div>
+            <div class="co-desc">Buscar en tu lista</div>
+          </div>
+          <div class="cliente-opcion selected" id="co-final" onclick="selectClienteOpcion('final')">
+            <div class="co-icon">🛒</div>
+            <div class="co-label">Consumidor final</div>
+            <div class="co-desc">Sin registro</div>
+          </div>
+          <div class="cliente-opcion" id="co-nuevo" onclick="selectClienteOpcion('nuevo')">
+            <div class="co-icon">➕</div>
+            <div class="co-label">Cliente rápido</div>
+            <div class="co-desc">Crear al instante</div>
+          </div>
+        </div>
+
+        <!-- Buscador cliente existente -->
+        <div id="bloque-buscar-cliente" style="display:none;position:relative">
+          <label>Buscar cliente</label>
+          <input type="text" id="cliente-search-input" placeholder="Nombre, teléfono o correo…"
+            oninput="buscarClientes(this.value)" autocomplete="off"/>
+          <div id="clientes-results" class="prod-search-results">
+            <!-- resultados dinámicos -->
+          </div>
+          <div id="cliente-seleccionado-info" style="display:none;margin-top:10px;
+            padding:10px 14px;background:var(--accent-soft);border:1px solid var(--accent);
+            border-radius:var(--radius-md);font-size:13px">
+          </div>
+        </div>
+
+        <!-- Formulario cliente rápido -->
+        <div id="bloque-cliente-rapido" style="display:none">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Nombres <span style="color:var(--danger)">*</span></label>
+              <input type="text" id="cq-nombre" placeholder="Ej: María José" autocomplete="off"/>
+            </div>
+            <div class="form-group">
+              <label>Apellidos</label>
+              <input type="text" id="cq-apellidos" placeholder="Ej: López Pérez" autocomplete="off"/>
+            </div>
+            <div class="form-group full-col">
+              <label>RUC</label>
+              <input type="text" id="cq-ruc" placeholder="Ej: J0310000000000 (opcional)" autocomplete="off"/>
+            </div>
+            <div class="form-group">
+              <label>Teléfono</label>
+              <input type="text" id="cq-telefono" placeholder="Ej: 8888-8888"/>
+            </div>
+            <div class="form-group">
+              <label>Correo</label>
+              <input type="email" id="cq-correo" placeholder="correo@ejemplo.com"/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 2: PRODUCTOS -->
+      <div id="step-2" class="step-panel" style="display:none">
+        <button type="button" class="btn-secondary btn-sm" id="btn-ver-promociones" style="display:none;margin-bottom:12px" onclick="abrirPromocionesDisponibles('normal')">
+          🎉 Ver promociones disponibles
+        </button>
+        <div class="prod-search-wrap" style="position:relative">
+          <label>Buscar producto</label>
+          <input type="text" id="prod-search-input"
+            placeholder="Nombre o SKU del producto…"
+            oninput="buscarProductosParaVenta(this.value,'producto')" autocomplete="off"/>
+          <div id="prod-results" class="prod-search-results"></div>
+        </div>
+        <div id="carrito-productos-wrap" style="margin-top:16px;overflow-x:auto">
+          <table class="carrito-tabla">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Qty</th>
+                <th>Precio</th>
+                <th class="col-costo-venta" style="display:none">Costo</th>
+                <th>Desc.</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="carrito-productos-tbody">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+                Sin productos agregados
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PASO 3: SERVICIOS -->
+      <div id="step-3" class="step-panel" style="display:none">
+        <div class="prod-search-wrap" style="position:relative">
+          <label>Buscar servicio</label>
+          <input type="text" id="serv-search-input"
+            placeholder="Nombre del servicio…"
+            oninput="buscarProductosParaVenta(this.value,'servicio')" autocomplete="off"/>
+          <div id="serv-results" class="prod-search-results"></div>
+        </div>
+        <div id="carrito-servicios-wrap" style="margin-top:16px;overflow-x:auto">
+          <table class="carrito-tabla">
+            <thead>
+              <tr>
+                <th>Servicio</th>
+                <th>Qty</th>
+                <th>Precio</th>
+                <th class="col-costo-venta" style="display:none">Costo</th>
+                <th>Desc.</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="carrito-servicios-tbody">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+                Sin servicios agregados
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PASO 4: RESUMEN -->
+      <div id="step-4" class="step-panel" style="display:none">
+        <div id="resumen-items-preview" style="margin-bottom:16px;overflow-x:auto">
+          <!-- tabla dinámica -->
+        </div>
+
+        <div id="res-puntos" style="display:none;margin-bottom:16px;padding:10px 12px;background:var(--bg-app,#f8fafc);border-left:3px solid var(--accent,#6C63FF);border-radius:8px;font-size:13px;line-height:1.45"></div>
+
+        <div id="res-canje" style="display:none;margin:-8px 0 16px"></div>
+
+        <div id="wrap-vincular-receta" style="display:none;margin-bottom:16px;padding:10px 12px;background:var(--bg-app,#f8fafc);border-radius:8px">
+          <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">📝 ¿Esta venta corresponde a una receta pendiente?</label>
+          <select id="sel-receta-vincular" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)">
+            <option value="">Ninguna</option>
+          </select>
+        </div>
+
+        <!-- BLOQUE IVA -->
+        <div class="iva-block">
+          <div class="iva-left">
+            <div class="iva-switch" id="iva-switch" onclick="toggleIva()"></div>
+            <div>
+              <div class="iva-label">Cobrar impuesto (IVA)</div>
+              <div class="iva-sub">Se suma al total y se acumula en Impuestos</div>
+            </div>
+          </div>
+          <div class="iva-right">
+            <input type="number" id="iva-porcentaje" value="15" min="0" max="100" step="0.01"
+              onchange="cambiarIvaPorcentaje(this.value)" disabled/>
+            <span>%</span>
+          </div>
+        </div>
+
+        <!-- Retención de IR del cliente (opcional, colapsada) -->
+        <div id="otros-imp-block" style="margin:10px 0 14px"></div>
+
+        <div style="max-width:380px;margin-left:auto">
+          <div class="resumen-row">
+            <span class="label">Subtotal</span>
+            <span class="value" id="res-subtotal">—</span>
+          </div>
+          <div class="resumen-row">
+            <span class="label">Descuento total</span>
+            <span class="value" id="res-descuento">—</span>
+          </div>
+          <div id="res-promociones-aviso" style="margin-bottom:8px"></div>
+          <div class="resumen-row">
+            <span class="label" id="res-impuestos-label">Impuestos (IVA)</span>
+            <span class="value" style="color:var(--text-muted)" id="res-impuestos">C$ 0.00</span>
+          </div>
+          <div class="resumen-row total-row">
+            <span class="label" style="font-weight:700;font-size:15px">TOTAL</span>
+            <span class="value" id="res-total">—</span>
+          </div>
+          <div class="resumen-row" id="res-ret-row" style="display:none">
+            <span class="label">Retención IR del cliente</span>
+            <span class="value" style="color:var(--warning)" id="res-ret">—</span>
+          </div>
+          <div class="resumen-row" id="res-ret-row2" style="display:none">
+            <span class="label" style="font-weight:700">Cobrarás</span>
+            <span class="value" id="res-cobrar">—</span>
+          </div>
+          <div class="resumen-row">
+            <span class="label" style="color:var(--success)">Ganancia estimada</span>
+            <span class="ganancia-val" id="res-ganancia">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 5: MÉTODO DE PAGO -->
+      <div id="step-5" class="step-panel" style="display:none">
+        <div class="form-group" style="margin-bottom:14px">
+          <label>Fecha de esta venta</label>
+          <input type="date" id="nv-fecha-venta" class="form-input" style="max-width:200px"/>
+          <span class="form-hint">Por defecto es hoy — cámbiala solo si estás registrando algo con fecha atrasada.</span>
+        </div>
+        <div class="metodos-grid" id="metodos-grid">
+          <div style="color:var(--text-muted);font-size:13px;grid-column:1/-1;padding:20px;text-align:center">
+            Cargando métodos de pago…
+          </div>
+        </div>
+        <input type="hidden" id="metodo-pago-id-selected"/>
+        <input type="hidden" id="metodo-pago-nombre-selected" value="Efectivo"/>
+
+        <!-- Elegir banco — solo aparece si el método es Tarjeta/Transferencia y ya hay bancos creados -->
+        <div id="banco-elegir-wrap" style="display:none;margin-top:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarSeleccionBanco()">✕</button>
+            <span style="font-size:13px;font-weight:600">¿A qué banco entra este <span id="banco-elegir-metodo">pago</span>?</span>
+          </div>
+          <div class="metodos-grid" id="banco-elegir-grid"></div>
+        </div>
+
+        <!-- Confirmación visual una vez elegido el banco -->
+        <div id="banco-elegido-wrap" style="display:none;margin-top:14px;padding:12px 14px;border:1.5px solid var(--success);border-radius:var(--radius-md);background:var(--success-soft);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Entra a: <span id="banco-elegido-nombre"></span></span>
+          <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBanco()">✕</button>
+        </div>
+
+        <!-- Primera vez que se usa este banco con tarjeta: pide la
+             comisión del POS, una sola vez -- de ahí en adelante se
+             recuerda sola. -->
+        <div id="banco-comision-configurar-wrap" style="display:none;margin-top:12px;padding:12px 14px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--warning-soft, #fff8e1)">
+          <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">💳 ¿Cuánto te cobra <span id="bcc-nombre-banco"></span> de comisión por cobrar con tarjeta?</div>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Solo se pregunta la primera vez — luego queda guardado para este banco.</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="bcc-porcentaje" min="0" max="100" step="0.01" placeholder="Ej: 4.5" style="max-width:110px"/>
+            <span style="font-size:13px">%</span>
+            <button type="button" class="btn-secondary btn-sm" onclick="guardarComisionBancoVenta()">Guardar</button>
+            <button type="button" class="btn-ghost btn-sm" onclick="omitirComisionBancoVenta()">No cobra comisión</button>
+          </div>
+        </div>
+
+        <!-- Comisión ya calculada, con el monto editable antes de
+             cerrar la venta -- mismo criterio que el precio de un
+             producto: se sugiere un monto, pero el vendedor puede
+             ajustarlo si el banco cobró distinto esa vez. -->
+        <div id="banco-comision-resultado-wrap" style="display:none;margin-top:12px;padding:10px 14px;border-radius:var(--radius-md);background:var(--bg-hover);align-items:center;justify-content:space-between;gap:10px">
+          <span style="font-size:12.5px;color:var(--text-secondary)">Comisión del banco (<span id="bcr-porcentaje-texto"></span>)</span>
+          <span style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:12.5px;color:var(--text-muted)">C$</span>
+            <input type="number" id="bcr-monto" min="0" step="0.01" style="width:90px;text-align:right" onchange="onEditarMontoComisionVenta()"/>
+          </span>
+        </div>
+
+        <!-- PAGO SEPARADO — un monto por cada método, debe sumar el total exacto -->
+        <div id="pago-separado-wrap" style="display:none;margin-top:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarPagoSeparado()">✕</button>
+            <span style="font-size:13px;font-weight:600">¿Cuánto entra por cada método?</span>
+          </div>
+          <div id="pago-separado-lineas"></div>
+          <div id="pago-separado-resumen" style="margin-top:10px;padding:10px 12px;border-radius:var(--radius-md);font-size:13px;font-weight:600"></div>
+        </div>
+        <p id="metodo-error" style="color:var(--danger);font-size:12.5px;margin-top:8px;display:none">
+          Selecciona un método de pago.
+        </p>
+      </div>
+
+      <!-- PASO 6: OBSERVACIONES -->
+      <div id="step-6" class="step-panel" style="display:none">
+        <div class="form-group">
+          <label>Observaciones (opcional)</label>
+          <textarea id="venta-observaciones" rows="4"
+            placeholder="Notas internas, condiciones especiales, información adicional…"></textarea>
+        </div>
+        <!-- Resumen final compacto -->
+        <div style="background:var(--bg-surface-2);border:1px solid var(--border);
+          border-radius:var(--radius-md);padding:16px;margin-top:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:10px">
+            Resumen final
+          </div>
+          <div id="resumen-final-contenido" style="font-size:13px;color:var(--text-secondary)">
+            <!-- dinámico -->
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /modal-body -->
+
+    <div class="modal-footer">
+      <button class="btn-ghost" id="btn-anterior" onclick="pasoAnterior()" style="display:none">
+        ← Anterior
+      </button>
+      <div style="flex:1"></div>
+      <button class="btn-ghost" onclick="cerrarModalVenta()">Cancelar</button>
+      <button class="btn-primary" id="btn-siguiente" onclick="pasoSiguiente()">
+        Siguiente →
+      </button>
+      <button class="btn-ghost" id="btn-confirmar-venta-imprimir" style="display:none"
+        onclick="iniciarConfirmarVenta(true)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Cerrar venta e imprimir
+      </button>
+      <button class="btn-primary" id="btn-confirmar-venta" style="display:none;background:var(--success)"
+        onclick="iniciarConfirmarVenta(false)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Cerrar venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: CONFIGURACIÓN DE VENTA RÁPIDA (solo primera vez,
+     o al presionar el ícono de ajustes dentro de Venta rápida)
+===================================================== -->
+<div class="modal-overlay" id="modal-vr-config" onclick="if(event.target===this)cerrarConfigVentaRapida()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="vrc-modal-title">Configurar Venta rápida</div>
+        <div class="modal-subtitle" id="vrc-modal-subtitle">Impuestos y formato de ticket para tu impresora térmica</div>
+      </div>
+      <button class="modal-close" onclick="cerrarConfigVentaRapida()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+
+      <div id="vrc-seccion-iva">
+      <div class="form-section-title">Impuesto (IVA)</div>
+      <div class="iva-block">
+        <div class="iva-left">
+          <div class="iva-switch" id="vrc-iva-switch" onclick="vrToggleIvaConfig()"></div>
+          <div>
+            <div class="iva-label">Cobrar IVA en Venta rápida</div>
+            <div class="iva-sub">Se calcula automáticamente sobre cada venta</div>
+          </div>
+        </div>
+        <div class="iva-right">
+          <input type="number" id="vrc-iva-porcentaje" value="15" min="0" max="100" step="0.01" disabled/>
+          <span>%</span>
+        </div>
+      </div>
+      </div>
+
+      <div class="form-section-title" style="margin-top:18px">Ticket / comprobante</div>
+      <div class="form-grid-2">
+        <div class="form-group full-col">
+          <label>Ancho del papel (impresora térmica)</label>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="58mm" onchange="onCambiarAnchoTicketVR()"> 58mm (térmica angosta)
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="80mm" checked onchange="onCambiarAnchoTicketVR()"> 80mm (térmica estándar)
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="76mm" onchange="onCambiarAnchoTicketVR()"> 76mm (matriz de punto, ej. Epson TM-U220A)
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="carta" onchange="onCambiarAnchoTicketVR()"> Carta / A4 (hoja completa)
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer">
+              <input type="radio" name="vrc-ancho" value="epson_tmu220" onchange="onCambiarAnchoTicketVR()"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
+            </label>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            <button type="button" class="btn-secondary" onclick="imprimirPruebaAnchoTicket('vrc-ancho')">🧪 Probar ancho de ticket</button>
+            <div style="font-size:11.5px;color:var(--text-muted,#777);line-height:1.4">Si el ticket sale más angosto que tu papel: en el cuadro de imprimir elige tu impresora, pon el tamaño de papel en 80 mm y marca «Usar tamaño de página del CSS» (o cambia el papel en Preferencias de la impresora de Windows). El sistema pide el ancho, pero Windows decide.</div>
+          </div>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer;margin-top:12px;padding:10px 12px;background:var(--bg-app);border-radius:8px">
+            <input type="checkbox" id="vrc-rawbt" style="margin-top:3px"/>
+            <span>📱 <b>Imprimir directo con RawBT</b> (Android, papel de 80 mm)<br><span style="font-weight:400;font-size:11.5px;color:var(--text-muted,#777)">Compatible con la app RawBT. Sale a todo el ancho del papel, centrado y con letra normal. Solo funciona en celulares Android con RawBT instalada; en otros equipos se imprime como siempre. La versión gratuita de RawBT es para uso personal; para negocio requiere su licencia.</span></span>
+          </label>
+        </div>
+
+        <div class="form-group full-col" id="vrc-wrap-usb" style="display:none;padding:10px 12px;background:var(--bg-app);border-radius:8px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:6px">
+            <input type="checkbox" id="vrc-usar-usb" onchange="toggleUsarUSBVR()"/>
+            <span>🔌 Imprimir directo por USB (letra real de la impresora, no una simulación)</span>
+          </label>
+          <div id="vrc-usb-estado" style="font-size:11.5px;color:var(--text-muted)">Solo funciona en Chrome o Edge, con la impresora conectada por USB.</div>
+          <button type="button" class="btn-secondary btn-sm" id="vrc-btn-conectar-usb" style="display:none;margin-top:8px" onclick="conectarImpresoraUSBDesdeUI('vr')">Conectar impresora USB</button>
+
+          <div id="vrc-wrap-app-escritorio" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+            <label style="font-size:12.5px;font-weight:600">🖥️ Detectamos la app de escritorio — elige tu impresora:</label>
+            <select id="vrc-impresora-nativa" class="form-input" style="margin-top:4px" onchange="guardarImpresoraNativaElegida()">
+              <option value="">— Ninguna (usar impresión normal) —</option>
+            </select>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Esta forma es la más confiable — usa la impresora tal como está instalada en Windows, sin depender del navegador.</p>
+          </div>
+        </div>
+        <div class="form-group full-col" id="vrc-wrap-bt" style="padding:10px 12px;background:var(--bg-app);border-radius:8px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:6px">
+            <input type="checkbox" id="vrc-usar-bt" onchange="toggleUsarBTVR()"/>
+            <span>📱 Imprimir directo por Bluetooth (teléfono o computadora, sin apps)</span>
+          </label>
+          <div id="vrc-bt-estado" style="font-size:11.5px;color:var(--text-muted)">Funciona en Chrome (Android o computadora) con impresoras Bluetooth BLE. No funciona en iPhone.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button type="button" class="btn-secondary btn-sm" id="vrc-btn-conectar-bt" style="display:none" onclick="conectarImpresoraBTDesdeUI()">Conectar impresora Bluetooth</button>
+            <button type="button" class="btn-secondary btn-sm" id="vrc-btn-probar-bt" style="display:none" onclick="probarImpresoraBT()">Imprimir prueba</button>
+            <button type="button" class="btn-ghost btn-sm" id="vrc-btn-desconectar-bt" style="display:none" onclick="desconectarBTDesdeUI()">Desconectar</button>
+          </div>
+          <label id="vrc-wrap-bt-preguntar" style="display:none;align-items:flex-start;gap:8px;cursor:pointer;font-size:12.5px;margin-top:10px">
+            <input type="checkbox" id="vrc-bt-preguntar" onchange="toggleBTPreguntar()" style="margin-top:2px"/>
+            <span>Preguntar por la impresora antes de imprimir si no está conectada <span style="color:var(--text-muted)">(al cerrar la venta aparece un aviso para conectarla en un toque, reintentar o imprimir normal)</span></span>
+          </label>
+        </div>
+        <div class="form-group full-col">
+          <label>Nombre del negocio en el ticket</label>
+          <input type="text" class="form-input" id="vrc-nombre" placeholder="Ej: Mi Tienda S.A."/>
+        </div>
+        <div class="form-group">
+          <label>RUC / Cédula (opcional)</label>
+          <input type="text" class="form-input" id="vrc-ruc" placeholder="Opcional"/>
+        </div>
+        <div class="form-group">
+          <label>Teléfono (opcional)</label>
+          <input type="text" class="form-input" id="vrc-telefono" placeholder="Opcional"/>
+        </div>
+        <div class="form-group full-col">
+          <label>Dirección (opcional)</label>
+          <input type="text" class="form-input" id="vrc-direccion" placeholder="Opcional"/>
+        </div>
+        <div class="form-group full-col">
+          <label>Mensaje al pie del ticket</label>
+          <input type="text" class="form-input" id="vrc-mensaje" placeholder="Ej: ¡Gracias por su compra!"/>
+        </div>
+        <div class="form-group full-col" id="vrc-fila-autoimprimir" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="vrc-autoimprimir" style="width:16px;height:16px" checked/>
+          <label for="vrc-autoimprimir" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
+            Imprimir el ticket automáticamente al cerrar cada venta
+          </label>
+        </div>
+        <div class="form-group full-col" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="vrc-descargar-pdf" style="width:16px;height:16px" checked/>
+          <label for="vrc-descargar-pdf" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
+            Descargar el recibo en PDF a la computadora al cerrar cada venta
+          </label>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0;padding-left:26px">Desactívalo si solo quieres imprimir directo, sin que se vaya acumulando un archivo por cada venta en tu computadora.</p>
+        <div class="form-group full-col" style="display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+          <input type="checkbox" id="vrc-mostrar-costo" style="width:16px;height:16px"/>
+          <label for="vrc-mostrar-costo" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
+            Mostrar el costo (no solo el precio) al agregar productos o servicios a una venta o proforma
+          </label>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0;padding-left:26px">Desactivado por defecto — el costo suele ser información sensible que no todo el personal debe ver al vender.</p>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarConfigVentaRapida()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarConfigVentaRapida()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Guardar y continuar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: VENTA RÁPIDA (pantalla tipo caja de supermercado,
+     opera con lector de código de barras USB/Bluetooth que
+     funciona como teclado: escribe el código y envía Enter)
+===================================================== -->
+<div class="modal-overlay modal-md" id="modal-vr-pos" onclick="if(event.target===this)confirmarCerrarVentaRapida()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Venta rápida</div>
+        <div class="modal-subtitle" id="vr-num">Generando número…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="modal-close" title="Configuración" onclick="abrirConfigVentaRapida(true)" style="position:static">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="modal-close" onclick="confirmarCerrarVentaRapida()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body">
+
+      <button type="button" class="btn-secondary btn-sm" id="btn-ver-promociones-vr" style="display:none;margin-bottom:12px" onclick="abrirPromocionesDisponibles('vr')">
+        🎉 Ver promociones disponibles
+      </button>
+      <div class="prod-search-wrap" style="position:relative">
+        <label>Escanea el producto</label>
+        <input type="text" id="vr-scan-input" autocomplete="off"
+          placeholder="Esperando lectura del escáner… (o escribe el código y presiona Enter)"
+          style="font-family:var(--font-mono);font-size:15px;letter-spacing:.5px"/>
+        <div id="vr-scan-status" style="margin-top:6px;font-size:12.5px;color:var(--text-muted)">
+          📡 Listo para escanear
+        </div>
+      </div>
+
+      <div style="margin-top:14px;overflow-x:auto">
+        <table class="carrito-tabla">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Código</th>
+              <th>Qty</th>
+              <th>Precio</th>
+              <th>Subtotal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="vr-carrito-tbody">
+            <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">
+              Escanea el primer producto para comenzar
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="max-width:380px;margin-left:auto;margin-top:16px">
+        <div class="resumen-row">
+          <span class="label">Subtotal</span>
+          <span class="value" id="vr-res-subtotal">—</span>
+        </div>
+        <div id="vr-res-promociones-aviso" style="margin-bottom:8px"></div>
+        <div class="resumen-row" id="vr-res-iva-row" style="display:none">
+          <span class="label">IVA</span>
+          <span class="value" id="vr-res-iva">—</span>
+        </div>
+        <div class="resumen-row total-row">
+          <span class="label" style="font-weight:700;font-size:15px">TOTAL</span>
+          <span class="value" id="vr-res-total">—</span>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin:12px 0">
+        <label>Fecha de esta venta</label>
+        <input type="date" id="vr-fecha-venta" class="form-input" style="max-width:200px"/>
+      </div>
+
+      <div class="form-section-title" style="margin-top:16px">Método de pago</div>
+      <div class="metodos-grid" id="vr-metodos-grid">
+        <div style="color:var(--text-muted);font-size:13px;grid-column:1/-1;padding:10px;text-align:center">
+          Cargando métodos de pago…
+        </div>
+      </div>
+
+      <div id="vr-banco-elegir-wrap" style="display:none;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarSeleccionBancoVR()">✕</button>
+          <span style="font-size:13px;font-weight:600">¿A qué banco entra este <span id="vr-banco-elegir-metodo">pago</span>?</span>
+        </div>
+        <div class="metodos-grid" id="vr-banco-elegir-grid"></div>
+      </div>
+
+      <div id="vr-banco-elegido-wrap" style="display:none;margin-top:14px;padding:12px 14px;border:1.5px solid var(--success);border-radius:var(--radius-md);background:var(--success-soft);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:var(--success);font-weight:600">🏦 Entra a: <span id="vr-banco-elegido-nombre"></span></span>
+        <button type="button" class="btn-icon" title="Cambiar" onclick="cancelarSeleccionBancoVR()">✕</button>
+      </div>
+
+      <div id="vr-banco-comision-configurar-wrap" style="display:none;margin-top:12px;padding:12px 14px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--warning-soft, #fff8e1)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">💳 ¿Cuánto te cobra <span id="vr-bcc-nombre-banco"></span> de comisión por cobrar con tarjeta?</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Solo se pregunta la primera vez — luego queda guardado para este banco.</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="vr-bcc-porcentaje" min="0" max="100" step="0.01" placeholder="Ej: 4.5" style="max-width:110px"/>
+          <span style="font-size:13px">%</span>
+          <button type="button" class="btn-secondary btn-sm" onclick="guardarComisionBancoVentaVR()">Guardar</button>
+          <button type="button" class="btn-ghost btn-sm" onclick="omitirComisionBancoVentaVR()">No cobra comisión</button>
+        </div>
+      </div>
+
+      <div id="vr-banco-comision-resultado-wrap" style="display:none;margin-top:12px;padding:10px 14px;border-radius:var(--radius-md);background:var(--bg-hover);align-items:center;justify-content:space-between;gap:10px">
+        <span style="font-size:12.5px;color:var(--text-secondary)">Comisión del banco (<span id="vr-bcr-porcentaje-texto"></span>)</span>
+        <span style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:12.5px;color:var(--text-muted)">C$</span>
+          <input type="number" id="vr-bcr-monto" min="0" step="0.01" style="width:90px;text-align:right" onchange="onEditarMontoComisionVentaVR()"/>
+        </span>
+      </div>
+
+      <div id="vr-pago-separado-wrap" style="display:none;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <button type="button" class="btn-icon" title="Cambiar método de pago" onclick="cancelarPagoSeparadoVR()">✕</button>
+          <span style="font-size:13px;font-weight:600">¿Cuánto entra por cada método?</span>
+        </div>
+        <div id="vr-pago-separado-lineas"></div>
+        <div id="vr-pago-separado-resumen" style="margin-top:10px;padding:10px 12px;border-radius:var(--radius-md);font-size:13px;font-weight:600"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="confirmarCerrarVentaRapida()">Cancelar</button>
+      <div style="flex:1"></div>
+      <button class="btn-primary" id="btn-vr-cobrar" style="background:var(--success)" onclick="iniciarConfirmarVentaRapida()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Cobrar y cerrar venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Contenedor oculto usado solo para armar el HTML del ticket
+     térmico antes de enviarlo al diálogo de impresión del navegador -->
+<div id="vr-print-area" style="display:none"></div>
+
+<!-- =====================================================
+     MODAL: DETALLE VENTA
+===================================================== -->
+<div class="modal-overlay" id="modal-canje" onclick="if(event.target===this)closeModal('modal-canje')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">🎉 Canjear puntos</div>
+        <div class="modal-subtitle" id="canje-subtitulo"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-canje')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body"><div id="canje-lista"></div></div>
+  </div>
+</div>
+
+<div class="modal-overlay modal-md" id="modal-detalle" onclick="if(event.target===this)closeModal('modal-detalle')">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="det-title">Detalle de venta</div>
+        <div class="modal-subtitle" id="det-subtitle">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-detalle')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="det-body" style="max-height:70vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-detalle')">Cerrar</button>
+      <button class="btn-ghost" id="btn-reimprimir-ticket" onclick="reimprimirTicketVenta()">
+        🖨️ Imprimir ticket
+      </button>
+      <button class="btn-ghost" id="btn-descargar-recibo" onclick="descargarReciboActual()">
+        🧾 Descargar recibo
+      </button>
+      <button class="btn-ghost" id="btn-descargar-comprobante-carta" onclick="descargarComprobanteCartaVenta()">
+        📄 Comprobante tamaño carta
+      </button>
+      <button class="btn-secondary" id="btn-corregir-venta" style="display:none" onclick="N360Correccion.iniciar()">
+        ✏️ Corregir venta
+      </button>
+      <button class="btn-danger-outline" id="btn-anular-venta" onclick="abrirConfirmarAnular()">
+        Anular venta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: CONFIRMAR ANULAR
+===================================================== -->
+<div class="modal-overlay" id="modal-anular" onclick="if(event.target===this)closeModal('modal-anular')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Anular venta</span>
+      <button class="modal-close" onclick="closeModal('modal-anular')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:24px">
+      <div class="confirm-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">¿Anular esta venta?</h3>
+      <p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6">
+        La venta quedará marcada como <strong>Anulada</strong> y el stock vendido se repondrá automáticamente al inventario.
+      </p>
+      <label style="display:flex;align-items:flex-start;gap:8px;text-align:left;background:var(--bg-app);border-radius:10px;padding:12px 14px;margin-top:14px;cursor:pointer">
+        <input type="checkbox" id="chk-anular-descontar-caja" checked style="margin-top:2px"/>
+        <span style="font-size:12.5px;color:var(--text-secondary);line-height:1.5">
+          <strong>Descontar también el ingreso de esta venta en Caja</strong><br/>
+          Márcalo si el dinero se le devolvió al cliente. Si NO se devolvió dinero (ej. solo fue un error al registrarla), desmárcalo para que el saldo de Caja no se toque.
+        </span>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-anular')">Cancelar</button>
+      <button class="btn-danger-outline" id="btn-confirmar-anular" onclick="anularVenta()">
+        Sí, anular
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: SELECCIONAR PRECIO DE ESCALA
+     Solo aparece para productos con Tipo de precio = "Escala
+     de precios" configurada en Productos. Los productos de
+     precio fijo nunca muestran este modal.
+===================================================== -->
+<div class="modal-overlay" id="modal-escala-precio" onclick="if(event.target===this)cerrarSelectorEscala()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">Seleccionar precio</span>
+        <div class="modal-subtitle" id="esc-precio-title">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorEscala()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="esc-precio-lista" style="max-height:50vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorEscala()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionEscala()">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     PROMOCIONES DISPONIBLES — vitrina para elegir y "vender" una
+     promoción directamente, igual que un Combo, en vez de esperar a
+     que se detecte sola. La detección automática sigue funcionando
+     también (por si el carrito ya cumple sin usar este botón).
+===================================================== -->
+<div class="modal-overlay" id="modal-promociones-disponibles" onclick="if(event.target===this)cerrarPromocionesDisponibles()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">🎉 Promociones disponibles</span>
+      <button class="modal-close" onclick="cerrarPromocionesDisponibles()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="promo-disponibles-lista" style="max-height:60vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarPromocionesDisponibles()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     SELECTOR DE ORIGEN DE STOCK — solo aparece cuando "Stock
+     Compartido" está activo, para productos físicos. Deja elegir de
+     cuál sucursal/bodega del grupo se descuenta esta venta.
+===================================================== -->
+<div class="modal-overlay" id="modal-stock-origen" onclick="if(event.target===this)cerrarSelectorStockOrigen()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">¿De dónde sacas el stock?</span>
+        <div class="modal-subtitle" id="stock-origen-title">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorStockOrigen()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="stock-origen-lista" style="max-height:50vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorStockOrigen()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionStockOrigen()">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: PRODUCTO DUPLICADO (mismo código de barras en varios)
+     Ocurre cuando el mismo código de barras quedó registrado en
+     más de un producto (ej. "Unidad", "Docena", "Caja" del mismo
+     artículo) — no hay forma de adivinar cuál, así que se le
+     pregunta al cajero.
+===================================================== -->
+<div class="modal-overlay" id="modal-producto-duplicado" onclick="if(event.target===this)cerrarSelectorProductoDuplicado()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">Este código pertenece a varios productos</span>
+        <div class="modal-subtitle" id="dup-producto-codigo">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarSelectorProductoDuplicado()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="dup-producto-lista" style="max-height:50vh;overflow-y:auto">
+      <!-- dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarSelectorProductoDuplicado()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSeleccionProductoDuplicado()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: REGISTRAR PAGO DE CLIENTE RECURRENTE
+===================================================== -->
+<div class="modal-overlay" id="modal-pago-recurrente" onclick="if(event.target===this)cerrarModalPagoRecurrente()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Registrar pago</div>
+        <div class="modal-subtitle" id="pr-cliente-nombre">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalPagoRecurrente()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Info del ciclo -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;
+        padding:12px 14px;background:var(--bg-surface-2);border-radius:var(--radius-md);font-size:13px">
+        <div><span style="color:var(--text-muted)">Frecuencia:</span> <strong id="pr-frecuencia">—</strong></div>
+        <div><span style="color:var(--text-muted)">Próxima fecha:</span> <strong id="pr-fecha-proxima">—</strong></div>
+        <div><span style="color:var(--text-muted)">Último pago:</span> <strong id="pr-ultimo-pago">—</strong></div>
+        <div><span style="color:var(--text-muted)">Estado:</span> <strong id="pr-estado-badge">—</strong></div>
+      </div>
+
+      <div style="text-align:center;padding:14px;background:var(--accent-soft);border-radius:var(--radius-md);margin-bottom:16px">
+        <div style="font-size:12px;color:var(--text-secondary)">Monto que debe pagar</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent)" id="pr-monto-debido">C$ 0.00</div>
+      </div>
+
+      <!-- Tipo de pago -->
+      <div class="form-group full-col">
+        <label>Tipo de pago</label>
+        <div style="display:flex;gap:10px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;flex:1;
+            padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md)">
+            <input type="radio" name="pr-tipo" value="completo" checked onchange="onCambioTipoPagoRecurrente()"/>
+            Pago completo
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;flex:1;
+            padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md)">
+            <input type="radio" name="pr-tipo" value="parcial" onchange="onCambioTipoPagoRecurrente()"/>
+            Pago parcial
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group full-col" id="pr-wrap-monto-parcial" style="display:none">
+        <label>Monto a pagar ahora</label>
+        <input type="number" id="pr-monto-parcial" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenPagoRecurrente()"/>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>Método de pago</label>
+          <select id="pr-metodo-pago" onchange="onCambiarMetodoPagoRecurrente()"></select>
+        </div>
+        <div class="form-group" id="pr-wrap-banco" style="display:none">
+          <label>¿De qué banco entra? *</label>
+          <select id="pr-banco"></select>
+        </div>
+        <div class="form-group" id="pr-wrap-iva" style="display:none">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="pr-iva-activo" onchange="actualizarResumenPagoRecurrente()"/>
+            Aplicar IVA
+          </label>
+          <input type="number" id="pr-iva-porcentaje" min="0" max="100" step="0.01" value="15"
+            style="margin-top:6px" oninput="actualizarResumenPagoRecurrente()"/>
+        </div>
+        <div class="form-group" id="pr-hint-sin-iva" style="font-size:11.5px;color:var(--text-muted);align-self:center">
+          El IVA solo aplica cuando el pago queda completo. En un pago parcial no se cobra IVA todavía;
+          se agregará automáticamente cuando se liquide el saldo restante.
+        </div>
+      </div>
+
+      <div class="form-group full-col">
+        <label>Observaciones</label>
+        <textarea id="pr-observaciones" placeholder="Nota interna sobre este pago (opcional)"></textarea>
+      </div>
+
+      <!-- Resumen -->
+      <div style="margin-top:6px;padding:12px 14px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px">
+          <span>Monto base (abono a la cuenta)</span><strong id="pr-r-base">C$ 0.00</strong>
+        </div>
+        <div style="display:none;justify-content:space-between;margin-bottom:4px;font-size:13px" id="pr-r-iva-row">
+          <span style="color:var(--text-muted)">+ IVA (se suma al total, se registra en Impuestos)</span><strong id="pr-r-iva">C$ 0.00</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;margin-top:4px">
+          <span>Total a cobrar ahora</span><strong style="color:var(--accent)" id="pr-r-total">C$ 0.00</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:13px">
+          <span style="color:var(--success)">Ingresa a Caja</span><strong style="color:var(--success)" id="pr-r-caja">C$ 0.00</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+          <span>Saldo restante del periodo</span><strong id="pr-r-restante">C$ 0.00</strong>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarModalPagoRecurrente()">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-pago-recurrente" onclick="confirmarPagoRecurrente()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Registrar pago
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-numeros-serie" onclick="if(event.target===this)cerrarModalNumerosSerie()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">📟 Números de serie</div>
+        <div class="modal-subtitle">Antes de cerrar la venta, registra el número de serie de cada unidad</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalNumerosSerie()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="ns-lista-campos"></div>
+      <p id="ns-venta-error" style="color:var(--danger);font-size:12.5px;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarModalNumerosSerie()">Cancelar</button>
+      <button class="btn-primary" id="btn-continuar-con-series" onclick="continuarVentaConSeries()">Continuar con la venta</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- REVISIÓN: ventas pagadas sin movimiento en Caja -->
+<div class="modal-overlay" id="modal-revision-caja" onclick="if(event.target===this)closeModal('modal-revision-caja')">
+  <div class="modal-box modal-md" style="max-width:720px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Ventas pagadas que no están en Caja</div>
+        <div class="modal-subtitle">Son ventas cobradas (no a crédito) cuyo ingreso no quedó anotado en Caja. Revisa cada una antes de registrarla.</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('modal-revision-caja')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:13px;color:var(--text-secondary)">Mostrar los últimos</label>
+        <select id="rc-dias" onchange="cargarRevisionCaja()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);color:var(--text-primary)">
+          <option value="3">3 días</option><option value="15">15 días</option><option value="60">60 días</option><option value="180">180 días</option>
+        </select>
+        <span id="rc-resumen" style="font-size:13px;color:var(--text-muted)"></span>
+      </div>
+      <div id="rc-lista" style="max-height:52vh;overflow:auto"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-revision-caja')">Cerrar</button></div>
+  </div>
+</div>
+
+<script src="reporte-grupo-shim.js"></script>
+<script src="comprobante-carta.js?v=20261023h"></script>
+<script src="escpos-usb.js?v=20261011a"></script>
+<script src="escpos-ble.js?v=20261012a"></script>
+<script src="unidades-medida.js?v=20261008a"></script>
+<script src="cantidad-inteligente.js?v=20261009a"></script>
+<script src="caja-segura.js?v=20261012a"></script>
+<script src="cliente-repetido.js?v=20261016a"></script>
+<script src="proforma-de-credito.js?v=20261015a"></script>
+<script src="moneda-alterna.js?v=20261021b"></script>
+<script src="ventas-config.js?v=20261021a"></script>
+<script src="rawbt-print.js?v=20261023a"></script>
+<script src="ticket-prueba-ancho.js?v=20261022a"></script>
+<script src="ventas.js?v=20261023h"></script>
+<script src="select-buscable.js?v=20261015b"></script>
+<script src="ventas-correcciones.js?v=20261016a"></script>
+<script src="devoluciones-venta.js?v=20261016a"></script>
+<script src="ventas-devoluciones.js?v=20261016a"></script>
+<script src="moneda-visualizacion.js?v=1"></script>
+<script src="perfiles-guard.js?v=20261021c"></script>
+<script src="modulos-guard.js?v=20261021b"></script>
+<div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
+      <span style="font-weight:700;font-size:15px">💱 Moneda de visualización</span>
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary,#666)">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <p style="font-size:12.5px;color:var(--text-secondary,#666);margin-bottom:14px">
+        Tus datos siempre se guardan en tu moneda oficial (<b id="mv-moneda-oficial">—</b>). Esto solo cambia cómo se <b>muestran</b> los números en este dispositivo — nada se modifica de verdad.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Ver todo en</label>
+        <select id="mv-select-moneda" onchange="onCambiarSelectMonedaVis()" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px">
+          <option value="" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Mi moneda oficial (sin conversión)</option>
+          <option value="NIO" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Córdobas (NIO)</option>
+          <option value="USD" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Dólares (USD)</option>
+        </select>
+      </div>
+      <div id="mv-wrap-tasa" style="display:none;margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Tu tasa de cambio (córdobas por 1 dólar)</label>
+        <input type="number" id="mv-tasa" min="0.01" step="0.01" placeholder="Ej: 36.60" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
+      </div>
+      <p id="mv-error" style="color:#ef4444;font-size:12.5px"></p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- STOCK COMPARTIDO -- elegir alcance al activar -->
+<div class="modal-overlay" id="modal-stock-compartido" onclick="if(event.target===this)cancelarStockCompartido()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">📦 Stock Compartido</span>
+      <button class="modal-close" onclick="cancelarStockCompartido()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:4px">¿De dónde se descuenta el stock al vender?</p>
+      <p id="sc-para-quien" style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px">Esta configuración es solo para tu usuario — cada quien configura la suya.</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="todas" checked onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Todas</strong> — sucursales y bodegas del grupo</span>
+        </label>
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="bodegas" onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Solo bodegas</strong></span>
+        </label>
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="sucursales" onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Solo sucursales</strong></span>
+        </label>
+        <label class="sc-alcance-opcion">
+          <input type="radio" name="sc-alcance" value="especifica" onchange="onCambiarAlcanceStockCompartido()"/>
+          <span><strong>Específicas</strong> — elige una o varias</span>
+        </label>
+      </div>
+      <div id="sc-wrap-especifica" style="display:none;margin-top:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--text-secondary)">Sucursales y bodegas</span>
+          <span id="sc-conteo-especifica" style="font-size:11.5px;color:var(--text-muted)"></span>
+        </div>
+        <div id="sc-lista-especifica" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+      </div>
+      <p id="sc-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin-top:8px"></p>
+      <div id="sc-admin-wrap" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb)">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer">
+          <span style="font-size:12px;color:var(--text-secondary)">Permitir que los usuarios configuren Stock Compartido</span>
+          <span class="n360-switch">
+            <input type="checkbox" id="sc-chk-permitir-usuarios" onchange="toggleSCPermitirUsuarios(this.checked)"/>
+            <span class="n360-switch-slider"></span>
+          </span>
+        </label>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:4px">Si lo desactivas, solo tú (el administrador) podrás cambiar esto — a los demás usuarios les aparecerá bloqueado.</p>
+        <button type="button" class="btn-icon btn-ghost" style="width:100%;margin-top:10px;justify-content:center" onclick="abrirModalConfigPorUsuario()">👥 Configurar por usuario</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="cancelarStockCompartido()">Cancelar</button>
+      <button class="btn-icon btn-primary" id="sc-btn-confirmar" onclick="confirmarStockCompartido()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIGURAR STOCK COMPARTIDO POR USUARIO -- solo admin -->
+<div class="modal-overlay" id="modal-config-por-usuario" onclick="if(event.target===this)cerrarModalConfigPorUsuario()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">👥 Stock Compartido por usuario</span>
+      <button class="modal-close" onclick="cerrarModalConfigPorUsuario()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px">Elige de dónde saca inventario cada usuario al vender. Se guarda al instante por usuario — no hace falta un botón de "Guardar todo".</p>
+      <div id="cpu-lista" style="display:flex;flex-direction:column;gap:10px;max-height:360px;overflow-y:auto"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="cerrarModalConfigPorUsuario()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

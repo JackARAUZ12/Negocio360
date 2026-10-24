@@ -130,6 +130,12 @@
           .select('usa_modulo_cotizaciones').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_cotizaciones = co?.usa_modulo_cotizaciones === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_cotizaciones = false; }
+      // Certificados de regalo: consulta aparte, mismo criterio.
+      try {
+        const { data: ce } = await client.from('configuracion_empresa')
+          .select('usa_modulo_certificados').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_certificados = ce?.usa_modulo_certificados === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_certificados = false; }
       return cfg;
     } catch (e) {
       console.warn('modulos-guard cargarConfigModulos:', e);
@@ -280,7 +286,12 @@
   // entrar por URL directa (favoritos guardados, enlaces viejos, etc.).
   function protegerPaginaActual(cfg) {
     const mod = MODULOS_POR_ARCHIVO[currentFile()];
-    if (mod && !estaActivo(cfg, mod.key, mod.flagPropio, mod.flagsAlternos)) {
+    // "Mis Negocios" NO lleva candado de interruptor: toda cuenta entra desde
+    // Configuración. (Antes exigía un interruptor que nada en el sistema podía
+    // encender, y el botón de Configuración rebotaba siempre al dashboard.)
+    // Las restricciones de perfil/sucursal de más abajo SÍ se siguen aplicando.
+    const libreDeInterruptor = !!mod && mod.key === 'negocios_vinculados';
+    if (mod && !libreDeInterruptor && !estaActivo(cfg, mod.key, mod.flagPropio, mod.flagsAlternos)) {
       location.href = 'dashboard.html';
       return true;
     }

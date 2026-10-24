@@ -7,9 +7,9 @@
   <script src="movil-recargar.js?v=20261021b" defer></script>
   <title>Ventas — Negocio360</title>
 
-  <script src="ver-como.js?v=20261013a"></script>
+  <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261023a"></script>
+  <script src="modulos-registro.js?v=20261024a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- jsPDF: usado para generar el recibo PDF de cada venta -->
@@ -849,6 +849,11 @@
           <p>Centro operativo de ventas. Registra, controla y analiza cada transacción.</p>
         </div>
         <div class="greeting-actions">
+          <!-- Solo la ve el administrador (la muestra ventas-config.js) -->
+          <button class="btn-secondary" id="btn-config-ventas" style="display:none" onclick="N360VentasConfig.abrir()" title="Configuración del módulo de Ventas">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Configuración del módulo
+          </button>
           <button class="btn-secondary" id="btn-venta-rapida" onclick="abrirVentaRapida()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/>
@@ -1438,6 +1443,14 @@
               <input type="radio" name="vrc-ancho" value="epson_tmu220" onchange="onCambiarAnchoTicketVR()"> 🖨️ EPSON TM-U220 (letra de matriz de puntos real)
             </label>
           </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            <button type="button" class="btn-secondary" onclick="imprimirPruebaAnchoTicket('vrc-ancho')">🧪 Probar ancho de ticket</button>
+            <div style="font-size:11.5px;color:var(--text-muted,#777);line-height:1.4">Si el ticket sale más angosto que tu papel: en el cuadro de imprimir elige tu impresora, pon el tamaño de papel en 80 mm y marca «Usar tamaño de página del CSS» (o cambia el papel en Preferencias de la impresora de Windows). El sistema pide el ancho, pero Windows decide.</div>
+          </div>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:500;cursor:pointer;margin-top:12px;padding:10px 12px;background:var(--bg-app);border-radius:8px">
+            <input type="checkbox" id="vrc-rawbt" style="margin-top:3px"/>
+            <span>📱 <b>Imprimir directo con RawBT</b> (Android, papel de 80 mm)<br><span style="font-weight:400;font-size:11.5px;color:var(--text-muted,#777)">Compatible con la app RawBT. Sale a todo el ancho del papel, centrado y con letra normal. Solo funciona en celulares Android con RawBT instalada; en otros equipos se imprime como siempre. La versión gratuita de RawBT es para uso personal; para negocio requiere su licencia.</span></span>
+          </label>
         </div>
 
         <div class="form-group full-col" id="vrc-wrap-usb" style="display:none;padding:10px 12px;background:var(--bg-app);border-radius:8px">
@@ -2014,7 +2027,7 @@
 </div>
 
 <script src="reporte-grupo-shim.js"></script>
-<script src="comprobante-carta.js?v=20261008a"></script>
+<script src="comprobante-carta.js?v=20261023h"></script>
 <script src="escpos-usb.js?v=20261011a"></script>
 <script src="escpos-ble.js?v=20261012a"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
@@ -2023,14 +2036,18 @@
 <script src="cliente-repetido.js?v=20261016a"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
 <script src="moneda-alterna.js?v=20261021b"></script>
-<script src="ventas.js?v=20261023a"></script>
+<script src="ventas-config.js?v=20261021a"></script>
+<script src="rawbt-print.js?v=20261023a"></script>
+<script src="ticket-prueba-ancho.js?v=20261022a"></script>
+<script src="ventas.js?v=20261024a"></script>
+<script src="certificados-venta.js?v=20261023i"></script>
 <script src="select-buscable.js?v=20261015b"></script>
 <script src="ventas-correcciones.js?v=20261016a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
 <script src="ventas-devoluciones.js?v=20261016a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261015a"></script>
-<script src="modulos-guard.js?v=20261023a"></script>
+<script src="perfiles-guard.js?v=20261021c"></script>
+<script src="modulos-guard.js?v=20261024a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

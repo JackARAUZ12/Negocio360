@@ -41,6 +41,16 @@ async function _cc_cargarConfigDocumentos(userId) {
   return data || {};
 }
 
+// FIX 23-oct-2026: el "Mensaje al pie del ticket" (Ventas › Configurar ticket)
+// solo salía en el ticket impreso; ahora también en este comprobante virtual.
+async function _cc_mensajePieTicket(userId) {
+  try {
+    const sb = await _cc_clienteSupabase();
+    const { data } = await sb.from('configuracion_venta_rapida').select('mensaje_pie_ticket').eq('auth_user_id', userId).maybeSingle();
+    return String(data?.mensaje_pie_ticket || '').trim();
+  } catch (_) { return ''; }
+}
+
 async function _cc_cargarLogo(userId) {
   try {
     const sb = await _cc_clienteSupabase();
@@ -116,7 +126,18 @@ async function _cc_datosCliente(datos) {
   return { direccion, telefono };
 }
 
+// Quita de las observaciones las etiquetas INTERNAS de correcciones de venta
+// ([Corrige a V-000081 — motivo: ...] y [Reemplazada por V-... — motivo: ...]); el cliente
+// no debe verlas. Se queda la nota real. Lo guardado en el sistema no se toca.
+function observacionesParaCliente(texto) {
+  return String(texto == null ? '' : texto)
+    .replace(/\[\s*(Corrige a|Reemplazada por)[^\]]*\]/gi, ' ')
+    .replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+}
+window.observacionesParaCliente = observacionesParaCliente;
+
 async function generarComprobanteCartaPDF(tipo, datos, items) {
+  if (datos && datos.observaciones) datos = Object.assign({}, datos, { observaciones: observacionesParaCliente(datos.observaciones) });
   if (!window.jspdf) throw new Error('jsPDF no está disponible');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -124,6 +145,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   const M = 14;
 
   const cfg  = await _cc_cargarConfigDocumentos(datos.userId);
+  const mensajeTicket = await _cc_mensajePieTicket(datos.userId);
   const logo = await _cc_cargarLogo(datos.userId);
 
   // El codigo de barras NO se guarda en el historico de la venta (solo
@@ -353,6 +375,17 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
       doc.text(ln, M, finalY); finalY += 5;
     });
     finalY += 4;
+  }
+
+  if (mensajeTicket) {
+    const altoHojaMsg = doc.internal.pageSize.getHeight();
+    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(60,60,80);
+    doc.splitTextToSize(mensajeTicket, W - M*2).forEach(ln => {
+      if (finalY > altoHojaMsg - 14) { doc.addPage(); finalY = 20; doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(60,60,80); }
+      doc.text(ln, W/2, finalY, { align: 'center' }); finalY += 5;
+    });
+    finalY += 4;
+    doc.setFont(undefined, 'normal'); doc.setTextColor(20,20,30);
   }
 
   // Pie (condiciones fijas): al pie si cabe; si no, a continuación del
