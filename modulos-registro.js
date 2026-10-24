@@ -121,10 +121,10 @@
 
     // ---- Farmacia (secundario -- mismo criterio que Hotel/Restaurante) ----
     'lotes.html':        { key: 'farmacia_lotes',        label: 'Farmacia · Lotes',        icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
-                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes', usa_modulo_insumos: 'Insumos · Lotes' },
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos', 'usa_modulo_clinica'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes', usa_modulo_insumos: 'Insumos · Lotes', usa_modulo_clinica: 'Clínica · Lotes' },
                                desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
     'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
-                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos', usa_modulo_insumos: 'Insumos · Vencimientos' },
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos', 'usa_modulo_clinica'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos', usa_modulo_insumos: 'Insumos · Vencimientos', usa_modulo_clinica: 'Clínica · Vencimientos' },
                                desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
     'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
@@ -143,6 +143,14 @@
     'rotacion.html': { key: 'farmacia_rotacion', label: 'Farmacia · Rotación y Margen', icon: '📊', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
                                flagsAlternos: ['usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_insumos: 'Insumos · Rotación y Margen' },
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
+
+    // ---- Clínica (secundario: apagado para toda cuenta hasta encender "Módulo de Clínica" en Configuración) ----
+    'clinica-agenda.html': { key: 'clinica_agenda', label: 'Clínica · Agenda', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Citas por día, semana y médico, sala de espera, recordatorio por WhatsApp y cobro de la visita por Ventas.' },
+    'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas), protegido con PIN médico.' },
+    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Equipo y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Médicos y su PIN, recepción, consultorios, especialidades y bitácora de accesos al expediente.' },
 
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',

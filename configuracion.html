@@ -17,7 +17,7 @@
 <!-- Supabase CDN -->
 <script src="ver-como.js?v=20261013a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261021b"></script>
+<script src="modulos-registro.js?v=20261023a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1492,6 +1492,34 @@
           <div class="cfg-status" id="vet-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="clinica-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🏥</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Clínica</div>
+              <div class="cfg-card-desc">Agenda por médico, pacientes y expediente clínico protegido con PIN médico, consultas firmadas, bitácora de accesos y cobro por Ventas.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Clínica</div>
+              <div class="cfg-row-sub" id="clinica-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="clinica-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleClinicaClick(event)"></span>
+            </label>
+          </div>
+          <div id="clinica-esp-wrap" style="display:none;padding-top:10px">
+            <div class="cfg-row-label" style="margin-bottom:6px">Especialidades de la clínica</div>
+            <div class="cfg-row-sub" style="margin-bottom:8px">Solo las que elijas aparecen al agendar y al escribir la consulta.</div>
+            <label style="display:flex;gap:8px;align-items:center;font-size:13px;font-weight:700;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="clinica-esp-todas" onchange="alMarcarClinicaTodas()" style="width:17px;height:17px"/> Todas (medicina general con todas las especialidades)</label>
+            <div id="clinica-esp-lista" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 12px;font-size:13px"></div>
+            <button class="btn btn-secondary" style="padding:7px 12px;font-size:12.5px;margin-top:10px" onclick="guardarClinicaEspecialidades()">Guardar especialidades</button>
+          </div>
+          <div class="cfg-status" id="clinica-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="insumos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🩺</div>
@@ -2606,6 +2634,73 @@ async function guardarModuloVet(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Clinica: se activa/desactiva desde aqui. Apagado por defecto. Al encenderlo se
+// muestran las especialidades (vacio = todas).
+async function cargarModuloClinica() {
+  const toggle = document.getElementById('clinica-toggle');
+  const sub = document.getElementById('clinica-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_clinica, clinica_especialidades').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_clinica === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — "Clínica" aparece en el menú.' : 'Desactivado — el módulo de Clínica no aparece en ningún lado.';
+    pintarClinicaEspecialidades(Array.isArray(data?.clinica_especialidades) ? data.clinica_especialidades : []);
+    document.getElementById('clinica-esp-wrap').style.display = activo ? '' : 'none';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloClinica:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function pintarClinicaEspecialidades(cfg) {
+  const lista = document.getElementById('clinica-esp-lista');
+  if (!lista || typeof CLINICA_ESPECIALIDADES === 'undefined') return;
+  const todas = !cfg.length || cfg.includes('multiespecialidad');
+  document.getElementById('clinica-esp-todas').checked = todas;
+  lista.innerHTML = Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
+    `<label style="display:flex;gap:7px;align-items:center;cursor:pointer"><input type="checkbox" data-clinica-esp="${k}" ${todas || cfg.includes(k) ? 'checked' : ''} ${todas ? 'disabled' : ''} style="width:16px;height:16px"/> ${v.e} ${v.n}</label>`).join('');
+}
+function alMarcarClinicaTodas() {
+  const t = document.getElementById('clinica-esp-todas').checked;
+  document.querySelectorAll('[data-clinica-esp]').forEach(el => { el.disabled = t; if (t) el.checked = true; });
+}
+async function guardarClinicaEspecialidades() {
+  const statusEl = document.getElementById('clinica-status');
+  const todas = document.getElementById('clinica-esp-todas').checked;
+  const elegidas = [...document.querySelectorAll('[data-clinica-esp]')].filter(el => el.checked).map(el => el.dataset.clinicaEsp);
+  if (!todas && !elegidas.length) { setStatus(statusEl, 'Elige al menos una especialidad (o marca "Todas").', false); return; }
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ clinica_especialidades: todas ? ['multiespecialidad'] : elegidas }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(statusEl, 'Especialidades guardadas.', true);
+  } catch (e) { console.error('guardarClinicaEspecialidades:', e); setStatus(statusEl, 'No se pudieron guardar. Intenta de nuevo.', false); }
+}
+function onToggleClinicaClick(evt) {
+  const toggle = document.getElementById('clinica-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloClinica(toggle.checked);
+}
+async function guardarModuloClinica(activo) {
+  const toggle = document.getElementById('clinica-toggle');
+  const sub = document.getElementById('clinica-row-sub');
+  const statusEl = document.getElementById('clinica-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_clinica: activo, ...(activo ? { maneja_lotes_vencimiento: true } : {}) }).eq('auth_user_id', currentAuthUserId);   // los medicamentos llevan lote y vencimiento
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — "Clínica" aparece en el menú.' : 'Desactivado — el módulo de Clínica no aparece en ningún lado.';
+    document.getElementById('clinica-esp-wrap').style.display = activo ? '' : 'none';
+    setStatus(statusEl, activo ? 'Módulo de Clínica activado. Recarga la página para ver el menú.' : 'Módulo de Clínica desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloClinica:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Modulo de Insumos Medicos: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloInsumos() {
   const toggle = document.getElementById('insumos-toggle');
@@ -3211,6 +3306,7 @@ async function initConfiguracion() {
       cargarModuloFarmacia();
       cargarModuloPuntos();
       cargarModuloVet();
+      cargarModuloClinica();
       cargarModuloInsumos();
       cargarModuloTransporte();
       cargarModuloDiseno();
@@ -3241,7 +3337,8 @@ sbClient.auth.onAuthStateChange((event) => {
 document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
+<script src="clinica-comun.js?v=20261023a"></script>
 <script src="perfiles-guard.js?v=20261015a"></script>
-<script src="modulos-guard.js?v=20261021b"></script>
+<script src="modulos-guard.js?v=20261023a"></script>
 </body>
 </html>

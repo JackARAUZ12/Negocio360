@@ -12,6 +12,7 @@
 <!-- Supabase JS v2 -->
 <script src="ver-como.js?v=20261013a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="clinica-comun.js?v=20261023a"></script>
 
 <style>
 /* ═══════════════════════════════════════════════════════════
@@ -1478,6 +1479,11 @@ async function finalizarOnboarding() {
     if (moduloEspecialActivo && ['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) { modulosAuto.usa_modulo_diseno = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'clinica') {
+      const esp = [...document.querySelectorAll('[data-onb-esp]:checked')].map(el => el.value);
+      modulosAuto.usa_modulo_clinica = true; modulosAuto.maneja_lotes_vencimiento = true;
+      modulosAuto.clinica_especialidades = esp.length ? esp : ['multiespecialidad'];
+    }
 
     const modulosOpcionales = {};
     MODULOS_SECUNDARIOS.forEach(m => {
@@ -1655,6 +1661,7 @@ const TIPOS_NEGOCIO = [
     { v:'servicios_profesionales', icono:'💼', nombre:'Servicios profesionales' },
     { v:'consultoria', icono:'📊', nombre:'Consultoría' },
     { v:'salud', icono:'⚕️', nombre:'Salud / Médico' },
+    { v:'clinica', icono:'🏥', nombre:'Clínica / Consultorio médico' },
     { v:'veterinaria', icono:'🐾', nombre:'Veterinaria' },
     { v:'educacion', icono:'🎓', nombre:'Educación / Academia' },
     { v:'tecnologia', icono:'💻', nombre:'Tecnología / Software' },
@@ -1850,6 +1857,7 @@ function renderModuloEspecial() {
   else if (tipoNegocioSeleccionado === 'transporte') especial = { icono:'🚛', nombre:'Módulo de Transporte de carga', desc:'Panel de operación, flota, conductores, viajes, costos y cobros — conectado con Ventas, Créditos, Gastos y Caja.' };
   else if (['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) especial = { icono:'🎨', nombre:'Módulo de Diseño', desc:'Marca de agua: pon tu logo o tu texto a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
+  else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Agenda por médico, pacientes y expediente clínico con PIN médico, consultas firmadas y cobro por Ventas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
 
@@ -1864,6 +1872,13 @@ function renderModuloEspecial() {
         <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${especial.desc}</div>
       </div>
     </div>`;
+  // Clinica: elegir especialidades (vacio = todas). Se puede cambiar luego en Configuracion.
+  if (tipoNegocioSeleccionado === 'clinica' && typeof CLINICA_ESPECIALIDADES !== 'undefined') {
+    card.innerHTML += `<div style="margin-top:12px;font-size:.78rem">
+      <div style="font-weight:700;margin-bottom:6px">¿Qué especialidades atiende? <span style="color:var(--muted);font-weight:400">(si no eliges ninguna: todas)</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 10px">${Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
+        `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-onb-esp value="${k}" style="width:15px;height:15px"/> ${v.e} ${v.n}</label>`).join('')}</div></div>`;
+  }
 }
 
 function toggleModuloEspecial() {
